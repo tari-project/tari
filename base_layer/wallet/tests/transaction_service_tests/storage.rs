@@ -33,9 +33,10 @@ use tari_common_types::{
 };
 use tari_core::{
     covenants::Covenant,
+    test_helpers::create_test_core_key_manager_with_memory_db,
     transactions::{
         tari_amount::{uT, MicroTari},
-        test_helpers::{create_non_recoverable_unblinded_output, TestParams},
+        test_helpers::{create_key_manager_output_with_data, TestParams},
         transaction_components::{OutputFeatures, Transaction},
         transaction_protocol::sender::TransactionSenderMessage,
         CryptoFactories,
@@ -44,7 +45,7 @@ use tari_core::{
     },
 };
 use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
-use tari_script::{script, ExecutionStack, TariScript};
+use tari_script::{inputs, script, ExecutionStack, TariScript};
 use tari_test_utils::random;
 use tari_wallet::{
     storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
@@ -63,45 +64,48 @@ use tari_wallet::{
 };
 use tempfile::tempdir;
 
-pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
+pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let mut db = TransactionDatabase::new(backend);
     let factories = CryptoFactories::default();
-    let input = create_non_recoverable_unblinded_output(
+    let key_manager = create_test_core_key_manager_with_memory_db();
+    let input = create_key_manager_output_with_data(
         TariScript::default(),
         OutputFeatures::default(),
-        &TestParams::new(),
+        &TestParams::new(&key_manager).await,
         MicroTari::from(100_000),
+        &key_manager,
     )
+    .await
     .unwrap();
     let constants = create_consensus_constants(0);
-    let mut builder = SenderTransactionProtocol::builder(1, constants);
+    let mut builder = SenderTransactionProtocol::builder(constants, key_manager);
     let amount = MicroTari::from(10_000);
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroTari::from(177 / 5))
-        .with_offset(PrivateKey::random(&mut OsRng))
-        .with_private_nonce(PrivateKey::random(&mut OsRng))
-        .with_amount(0, amount)
         .with_message("Yo!".to_string())
-        .with_input(
-            input
-                .as_transaction_input(&factories.commitment)
-                .expect("Should be able to make transaction input"),
-            input,
-        )
-        .with_change_secret(PrivateKey::random(&mut OsRng))
+        .with_input(input)
+        .await
+        .unwrap()
         .with_recipient_data(
-            0,
             script!(Nop),
-            PrivateKey::random(&mut OsRng),
             Default::default(),
-            PrivateKey::random(&mut OsRng),
             Covenant::default(),
             MicroTari::zero(),
+            amount,
         )
-        .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
+        .await
+        .unwrap();
+    let change = TestParams::new(&key_manager).await;
+    builder.with_change_data(
+        script!(Nop),
+        inputs!(script_key),
+        change.script_key_id.clone(),
+        change.change_spend_key_id.clone(),
+        Covenant::default(),
+    );
 
-    let stp = builder.build(&factories, None, u64::MAX).unwrap();
+    let stp = builder.build().await.unwrap();
 
     let messages = vec!["Hey!".to_string(), "Yo!".to_string(), "Sup!".to_string()];
     let amounts = vec![MicroTari::from(10_000), MicroTari::from(23_000), MicroTari::from(5_000)];

@@ -27,8 +27,8 @@ use log::*;
 use tari_comms_dht::Dht;
 use tari_core::{
     consensus::ConsensusManager,
-    core_key_manager::BaseLayerKeyManagerInterface,
     proto::base_node as base_node_proto,
+    transaction_key_manager::BaseLayerKeyManagerInterface,
     transactions::{transaction_protocol::proto::protocol as proto, CryptoFactories},
 };
 use tari_p2p::{

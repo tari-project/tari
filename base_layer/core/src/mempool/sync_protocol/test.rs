@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fmt, io, iter::repeat_with, sync::Arc};
+use std::{fmt, io, sync::Arc};
 
 use futures::{Sink, SinkExt, Stream, StreamExt};
 use tari_common::configuration::Network;
@@ -51,17 +51,19 @@ use crate::{
         sync_protocol::{MempoolPeerProtocol, MempoolSyncProtocol, MAX_FRAME_SIZE, MEMPOOL_SYNC_PROTOCOL},
         Mempool,
     },
+    test_helpers::create_test_core_key_manager_with_memory_db,
     transactions::{tari_amount::uT, test_helpers::create_tx, transaction_components::Transaction},
     validation::mocks::MockValidator,
 };
 
-pub fn create_transactions(n: usize) -> Vec<Transaction> {
-    repeat_with(|| {
-        let (transaction, _, _) = create_tx(5000 * uT, 3 * uT, 1, 2, 1, 3, Default::default());
-        transaction
-    })
-    .take(n)
-    .collect()
+pub async fn create_transactions(n: usize) -> Vec<Transaction> {
+    let key_manager = create_test_core_key_manager_with_memory_db();
+    let mut transactions = Vec::new();
+    for _i in 0..n {
+        let (transaction, _, _) = create_tx(5000 * uT, 3 * uT, 1, 2, 1, 3, Default::default(), &key_manager).await;
+        transactions.push(transaction);
+    }
+    transactions
 }
 
 async fn new_mempool_with_transactions(n: usize) -> (Mempool, Vec<Transaction>) {
@@ -71,7 +73,7 @@ async fn new_mempool_with_transactions(n: usize) -> (Mempool, Vec<Transaction>) 
         Box::new(MockValidator::new(true)),
     );
 
-    let transactions = create_transactions(n);
+    let transactions = create_transactions(n).await;
     for txn in &transactions {
         mempool.insert(Arc::new(txn.clone())).await.unwrap();
     }
@@ -252,7 +254,7 @@ async fn initiator_messages() {
         .await
         .unwrap();
 
-    let mut transactions = create_transactions(2);
+    let mut transactions = create_transactions(2).await;
     transactions.push(transactions1[0].clone());
     let mut framed = framing::canonical(sock_out, MAX_FRAME_SIZE);
     // As the initiator, send an inventory

@@ -30,6 +30,7 @@ pub use kernel_builder::KernelBuilder;
 pub use kernel_features::KernelFeatures;
 pub use kernel_sum::KernelSum;
 pub use key_manager_output::KeyManagerOutput;
+pub use key_manager_output_builder::KeyManagerOutputBuilder;
 pub use output_features::OutputFeatures;
 pub use output_features_version::OutputFeaturesVersion;
 pub use output_type::OutputType;
@@ -47,7 +48,6 @@ pub use transaction_kernel_version::TransactionKernelVersion;
 pub use transaction_output::TransactionOutput;
 pub use transaction_output_version::TransactionOutputVersion;
 pub use unblinded_output::UnblindedOutput;
-pub use unblinded_output_builder::UnblindedOutputBuilder;
 use zeroize::Zeroize;
 
 pub mod encrypted_data;
@@ -72,7 +72,6 @@ mod transaction_kernel_version;
 pub mod transaction_output;
 mod transaction_output_version;
 mod unblinded_output;
-mod unblinded_output_builder;
 
 #[cfg(test)]
 mod test;

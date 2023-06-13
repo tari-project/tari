@@ -37,7 +37,7 @@ use tari_core::{
         proto::wallet_rpc::{TxLocation, TxQueryResponse, TxSubmissionRejectionReason, TxSubmissionResponse},
         rpc::BaseNodeWalletRpcClient,
     },
-    core_key_manager::BaseLayerKeyManagerInterface,
+    transaction_key_manager::BaseLayerKeyManagerInterface,
     transactions::transaction_components::Transaction,
 };
 use tari_utilities::hex::Hex;

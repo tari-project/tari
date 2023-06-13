@@ -289,7 +289,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         Ok(Response::new(GetUnspentAmountsResponse {
             amount: unspent_amounts
                 .into_iter()
-                .map(|o| o.unblinded_output.value.as_u64())
+                .map(|o| o.key_manager_output.value.as_u64())
                 .filter(|&a| a > 0)
                 .collect(),
         }))
@@ -844,7 +844,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         for o in &unblinded_outputs {
             tx_ids.push(
                 wallet
-                    .import_unblinded_output_as_non_rewindable(
+                    .import_key_manager_output_as_non_rewindable(
                         o.clone(),
                         TariAddress::default(),
                         "Imported via gRPC".to_string(),

@@ -343,20 +343,26 @@ mod test {
         use super::*;
 
         mod is_eq {
-
             use super::*;
+            use crate::test_helpers::create_test_core_key_manager_with_memory_db;
 
-            #[test]
-            fn it_returns_true_if_eq() {
+            #[tokio::test]
+            async fn it_returns_true_if_eq() {
+                let key_manager = create_test_core_key_manager_with_memory_db();
                 let side_chain_features = make_sample_sidechain_feature();
-                let output = create_outputs(1, UtxoTestParams {
-                    features: OutputFeatures {
-                        sidechain_feature: Some(side_chain_features),
+                let output = create_outputs(
+                    1,
+                    UtxoTestParams {
+                        features: OutputFeatures {
+                            sidechain_feature: Some(side_chain_features),
+                            ..Default::default()
+                        },
+                        script: script![Drop Nop],
                         ..Default::default()
                     },
-                    script: script![Drop Nop],
-                    ..Default::default()
-                })
+                    &key_manager,
+                )
+                .await
                 .remove(0);
 
                 assert!(OutputField::Commitment.is_eq(&output, &output.commitment).unwrap());
@@ -377,17 +383,23 @@ mod test {
                     .unwrap());
             }
 
-            #[test]
-            fn it_returns_false_if_not_eq() {
+            #[tokio::test]
+            async fn it_returns_false_if_not_eq() {
+                let key_manager = create_test_core_key_manager_with_memory_db();
                 let side_chain_features = make_sample_sidechain_feature();
-                let output = create_outputs(1, UtxoTestParams {
-                    features: OutputFeatures {
-                        sidechain_feature: Some(side_chain_features),
+                let output = create_outputs(
+                    1,
+                    UtxoTestParams {
+                        features: OutputFeatures {
+                            sidechain_feature: Some(side_chain_features),
+                            ..Default::default()
+                        },
+                        script: script![Drop Nop],
                         ..Default::default()
                     },
-                    script: script![Drop Nop],
-                    ..Default::default()
-                })
+                    &key_manager,
+                )
+                .await
                 .remove(0);
 
                 assert!(!OutputField::Commitment.is_eq(&output, &Commitment::default()).unwrap());
@@ -410,19 +422,26 @@ mod test {
 
         mod is_eq_input {
             use super::*;
+            use crate::test_helpers::create_test_core_key_manager_with_memory_db;
 
-            #[test]
-            fn it_returns_true_if_eq_input() {
-                let output = create_outputs(1, UtxoTestParams {
-                    features: OutputFeatures {
-                        maturity: 42,
+            #[tokio::test]
+            async fn it_returns_true_if_eq_input() {
+                let key_manager = create_test_core_key_manager_with_memory_db();
+                let output = create_outputs(
+                    1,
+                    UtxoTestParams {
+                        features: OutputFeatures {
+                            maturity: 42,
+                            ..Default::default()
+                        },
+                        script: script![Drop Nop],
                         ..Default::default()
                     },
-                    script: script![Drop Nop],
-                    ..Default::default()
-                })
+                    &key_manager,
+                )
+                .await
                 .remove(0);
-                let mut input = create_input();
+                let mut input = create_input(&key_manager).await;
                 if let SpentOutput::OutputData {
                     features,
                     commitment,
@@ -476,19 +495,26 @@ mod test {
             use tari_crypto::hashing::DomainSeparation;
 
             use super::*;
+            use crate::test_helpers::create_test_core_key_manager_with_memory_db;
 
-            #[test]
-            fn it_constructs_challenge_using_consensus_encoding() {
+            #[tokio::test]
+            async fn it_constructs_challenge_using_consensus_encoding() {
+                let key_manager = create_test_core_key_manager_with_memory_db();
                 let features = OutputFeatures {
                     maturity: 42,
                     output_type: OutputType::Coinbase,
                     ..Default::default()
                 };
-                let output = create_outputs(1, UtxoTestParams {
-                    features,
-                    script: script![Drop Nop],
-                    ..Default::default()
-                })
+                let output = create_outputs(
+                    1,
+                    UtxoTestParams {
+                        features,
+                        script: script![Drop Nop],
+                        ..Default::default()
+                    },
+                    &key_manager,
+                )
+                .await
                 .remove(0);
 
                 let mut fields = OutputFields::new();
@@ -512,17 +538,24 @@ mod test {
 
         mod get_field_value_ref {
             use super::*;
+            use crate::test_helpers::create_test_core_key_manager_with_memory_db;
 
-            #[test]
-            fn it_retrieves_the_value_as_ref() {
+            #[tokio::test]
+            async fn it_retrieves_the_value_as_ref() {
+                let key_manager = create_test_core_key_manager_with_memory_db();
                 let features = OutputFeatures {
                     maturity: 42,
                     ..Default::default()
                 };
-                let output = create_outputs(1, UtxoTestParams {
-                    features: features.clone(),
-                    ..Default::default()
-                })
+                let output = create_outputs(
+                    1,
+                    UtxoTestParams {
+                        features: features.clone(),
+                        ..Default::default()
+                    },
+                    &key_manager,
+                )
+                .await
                 .pop()
                 .unwrap();
                 let r = OutputField::Features.get_field_value_ref::<OutputFeatures>(&output);

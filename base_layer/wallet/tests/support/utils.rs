@@ -21,11 +21,14 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use rand::{CryptoRng, Rng};
-use tari_common_types::types::{CommitmentFactory, PrivateKey, PublicKey};
-use tari_core::transactions::{
-    tari_amount::MicroTari,
-    test_helpers::{create_non_recoverable_unblinded_output, TestParams as TestParamsHelpers},
-    transaction_components::{OutputFeatures, TransactionInput, UnblindedOutput},
+use tari_common_types::types::{PrivateKey, PublicKey};
+use tari_core::{
+    test_helpers::TestKeyManager,
+    transactions::{
+        tari_amount::MicroTari,
+        test_helpers::{create_key_manager_output_with_data, TestParams as TestParamsHelpers},
+        transaction_components::{KeyManagerOutput, OutputFeatures, TransactionInput},
+    },
 };
 use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
 use tari_script::script;
@@ -53,13 +56,16 @@ impl TestParams {
 pub async fn make_non_recoverable_input<R: Rng + CryptoRng>(
     _rng: &mut R,
     val: MicroTari,
-    factory: &CommitmentFactory,
-) -> (TransactionInput, UnblindedOutput) {
-    let test_params = TestParamsHelpers::new();
-    let utxo =
-        create_non_recoverable_unblinded_output(script!(Nop), OutputFeatures::default(), &test_params, val).unwrap();
+    features: &OutputFeatures,
+    key_manager: &TestKeyManager,
+) -> (TransactionInput, KeyManagerOutput) {
+    let test_params = TestParamsHelpers::new(key_manager).await;
+    let utxo = create_key_manager_output_with_data(script!(Nop), features.clone(), &test_params, val, key_manager)
+        .await
+        .unwrap();
     (
-        utxo.as_transaction_input(factory)
+        utxo.as_transaction_input(key_manager)
+            .await
             .expect("Should be able to make transaction input"),
         utxo,
     )
@@ -68,14 +74,16 @@ pub async fn make_non_recoverable_input<R: Rng + CryptoRng>(
 pub async fn make_input_with_features<R: Rng + CryptoRng>(
     _rng: &mut R,
     value: MicroTari,
-    factory: &CommitmentFactory,
-    features: Option<OutputFeatures>,
-) -> (TransactionInput, UnblindedOutput) {
-    let test_params = TestParamsHelpers::new();
-    let utxo = create_non_recoverable_unblinded_output(script!(Nop), features.unwrap_or_default(), &test_params, value)
+    features: OutputFeatures,
+    key_manager: &TestKeyManager,
+) -> (TransactionInput, KeyManagerOutput) {
+    let test_params = TestParamsHelpers::new(key_manager).await;
+    let utxo = create_key_manager_output_with_data(script!(Nop), features, &test_params, value, key_manager)
+        .await
         .unwrap();
     (
-        utxo.as_transaction_input(factory)
+        utxo.as_transaction_input(key_manager)
+            .await
             .expect("Should be able to make transaction input"),
         utxo,
     )

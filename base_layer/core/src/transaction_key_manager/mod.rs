@@ -20,14 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod handle;
-pub use handle::CoreKeyManagerHandle;
+mod transaction_key_manager;
+pub use transaction_key_manager::TransactionKeyManager;
+
 mod interface;
-pub use interface::CoreKeyManagerBranch;
+pub use interface::{BaseLayerKeyManagerInterface, CoreKeyManagerBranch, TariKeyId, TxoStage};
+
 mod initializer;
 pub use initializer::CoreKeyManagerInitializer;
 
-mod service;
-pub use interface::BaseLayerKeyManagerInterface;
-pub use service::CoreKeyManagerInner;
-pub use tari_key_manager::key_manager_service::KeyId;
+mod transaction_key_manager_inner;
+pub use transaction_key_manager_inner::TransactionKeyManagerInner;

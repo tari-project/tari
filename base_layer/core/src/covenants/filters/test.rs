@@ -26,14 +26,16 @@ use crate::{
         test::{create_context, create_outputs},
         Covenant,
     },
+    test_helpers::TestKeyManager,
     transactions::transaction_components::{TransactionInput, TransactionOutput},
 };
 
-pub fn setup_filter_test<'a, F>(
+pub async fn setup_filter_test<'a, F>(
     covenant: &Covenant,
     input: &'a TransactionInput,
     block_height: u64,
     output_mod: F,
+    key_manager: &TestKeyManager,
 ) -> (CovenantContext<'a>, Vec<TransactionOutput>)
 where
     F: FnOnce(&mut Vec<TransactionOutput>),
@@ -41,7 +43,7 @@ where
     let mut context = create_context(covenant, input, block_height);
     // Consume root token (i.e the filter we're testing), args for filter presumably come next
     context.next_filter().unwrap();
-    let mut outputs = create_outputs(10, Default::default());
+    let mut outputs = create_outputs(10, Default::default(), key_manager).await;
     output_mod(&mut outputs);
     (context, outputs)
 }

@@ -24,48 +24,42 @@ use std::{convert::TryInto, fmt, sync::Arc};
 
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use futures::{pin_mut, StreamExt};
-use itertools::Itertools;
 use log::*;
 use rand::{rngs::OsRng, RngCore};
-use strum::IntoEnumIterator;
 use tari_common_types::{
     transaction::TxId,
     types::{BlockHash, Commitment, HashOutput, PrivateKey, PublicKey},
 };
-use tari_comms::{types::CommsDHKE, NodeIdentity};
+use tari_comms::types::CommsDHKE;
 use tari_core::{
     borsh::SerializedSize,
     consensus::ConsensusConstants,
-    core_key_manager::{BaseLayerKeyManagerInterface, CoreKeyManagerBranch},
     covenants::Covenant,
+    one_sided::{shared_secret_to_output_encryption_key, stealth_address_script_spending_key},
     proto::base_node::FetchMatchingUtxos,
+    transaction_key_manager::{BaseLayerKeyManagerInterface, CoreKeyManagerBranch, TariKeyId},
     transactions::{
         fee::Fee,
         tari_amount::MicroTari,
         transaction_components::{
             EncryptedData,
             KernelFeatures,
+            KeyManagerOutput,
+            KeyManagerOutputBuilder,
             OutputFeatures,
             Transaction,
             TransactionError,
-            TransactionInput,
             TransactionOutput,
             TransactionOutputVersion,
-            UnblindedOutput,
-            UnblindedOutputBuilder,
         },
-        transaction_protocol::{sender::TransactionSenderMessage, RecoveryData, TransactionMetadata},
+        transaction_protocol::{sender::TransactionSenderMessage, TransactionMetadata},
         CoinbaseBuilder,
         CryptoFactories,
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
     },
 };
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    errors::RangeProofError,
-    keys::{PublicKey as PublicKeyTrait, SecretKey},
-};
+use tari_crypto::errors::RangeProofError;
 use tari_script::{inputs, script, Opcode, TariScript};
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
@@ -87,20 +81,16 @@ use crate::{
         },
         input_selection::UtxoSelectionCriteria,
         recovery::StandardUtxoRecoverer,
-        resources::{OutputManagerKeyManagerBranch, OutputManagerResources},
+        resources::OutputManagerResources,
         storage::{
             database::{OutputBackendQuery, OutputManagerBackend, OutputManagerDatabase},
-            models::{DbUnblindedOutput, KnownOneSidedPaymentScript, SpendingPriority},
+            models::{DbKeyManagerOutput, KnownOneSidedPaymentScript, SpendingPriority},
             OutputSource,
             OutputStatus,
         },
         tasks::TxoValidationTask,
     },
-    util::one_sided::{
-        diffie_hellman_stealth_domain_hasher,
-        shared_secret_to_output_encryption_key,
-        stealth_address_script_spending_key,
-    },
+    util::wallet_identity::WalletIdentity,
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service";
@@ -115,7 +105,6 @@ pub struct OutputManagerService<TBackend, TWalletConnectivity, TKeyManagerInterf
         Option<reply_channel::Receiver<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>>,
     base_node_service: BaseNodeServiceHandle,
     last_seen_tip_height: Option<u64>,
-    node_identity: Arc<NodeIdentity>,
     validation_in_progress: Arc<Mutex<()>>,
 }
 
@@ -139,25 +128,19 @@ where
         shutdown_signal: ShutdownSignal,
         base_node_service: BaseNodeServiceHandle,
         connectivity: TWalletConnectivity,
-        node_identity: Arc<NodeIdentity>,
+        wallet_identity: WalletIdentity,
         key_manager: TKeyManagerInterface,
     ) -> Result<Self, OutputManagerError> {
-        Self::initialise_key_manager(&key_manager).await?;
-        let encryption_key = key_manager
-            .get_key_at_index(OutputManagerKeyManagerBranch::OpeningsEncryption.get_branch_key(), 0)
-            .await?;
-        let recovery_data = RecoveryData { encryption_key };
-
         let resources = OutputManagerResources {
             config,
             db,
             factories,
             connectivity,
             event_publisher,
-            master_key_manager: key_manager,
+            key_manager,
             consensus_constants,
             shutdown_signal,
-            recovery_data,
+            wallet_identity,
         };
 
         Ok(Self {
@@ -165,23 +148,18 @@ where
             request_stream: Some(request_stream),
             base_node_service,
             last_seen_tip_height: None,
-            node_identity,
             validation_in_progress: Arc::new(Mutex::new(())),
         })
     }
 
-    async fn initialise_key_manager(key_manager: &TKeyManagerInterface) -> Result<(), OutputManagerError> {
-        // TODO: Remove this loop when removing `OutputManagerKeyManagerBranch`
-        for branch in OutputManagerKeyManagerBranch::iter() {
-            key_manager.add_new_branch(branch.get_branch_key()).await?;
-        }
-        for branch in CoreKeyManagerBranch::iter() {
-            key_manager.add_new_branch(branch.get_branch_key()).await?;
-        }
-        Ok(())
-    }
-
     pub async fn start(mut self) -> Result<(), OutputManagerError> {
+        // we need to ensure the wallet identity secret key is stored in the key manager
+        let _ = self
+            .resources
+            .key_manager
+            .import_key(self.resources.wallet_identity.node_identity.secret_key().clone())
+            .await?;
+
         let request_stream = self
             .request_stream
             .take()
@@ -234,12 +212,15 @@ where
         match request {
             OutputManagerRequest::AddOutput((uo, spend_priority)) => self
                 .add_output(None, *uo, spend_priority)
+                .await
                 .map(|_| OutputManagerResponse::OutputAdded),
             OutputManagerRequest::AddOutputWithTxId((tx_id, uo, spend_priority)) => self
                 .add_output(Some(tx_id), *uo, spend_priority)
+                .await
                 .map(|_| OutputManagerResponse::OutputAdded),
             OutputManagerRequest::AddUnvalidatedOutput((tx_id, uo, spend_priority)) => self
                 .add_unvalidated_output(tx_id, *uo, spend_priority)
+                .await
                 .map(|_| OutputManagerResponse::OutputAdded),
             OutputManagerRequest::UpdateOutputMetadataSignature(uo) => self
                 .update_output_metadata_signature(*uo)
@@ -327,7 +308,7 @@ where
                 .cancel_transaction(tx_id)
                 .map(|_| OutputManagerResponse::TransactionCancelled),
             OutputManagerRequest::GetSpentOutputs => {
-                let outputs = self.fetch_spent_outputs()?.into_iter().map(|v| v.into()).collect();
+                let outputs = self.fetch_spent_outputs()?;
                 Ok(OutputManagerResponse::SpentOutputs(outputs))
             },
             OutputManagerRequest::GetUnspentOutputs => {
@@ -395,17 +376,15 @@ where
                 .await
                 .map(OutputManagerResponse::Transaction),
 
-            OutputManagerRequest::ScanForRecoverableOutputs(outputs) => StandardUtxoRecoverer::new(
-                self.resources.master_key_manager.clone(),
-                self.resources.recovery_data.clone(),
-                self.resources.factories.clone(),
-                self.resources.db.clone(),
-            )
-            .scan_and_recover_outputs(outputs)
-            .await
-            .map(OutputManagerResponse::RewoundOutputs),
+            OutputManagerRequest::ScanForRecoverableOutputs(outputs) => {
+                StandardUtxoRecoverer::new(self.resources.key_manager.clone(), self.resources.db.clone())
+                    .scan_and_recover_outputs(outputs)
+                    .await
+                    .map(OutputManagerResponse::RewoundOutputs)
+            },
             OutputManagerRequest::ScanOutputs(outputs) => self
                 .scan_outputs_for_one_sided_payments(outputs)
+                .await
                 .map(OutputManagerResponse::ScanOutputs),
             OutputManagerRequest::AddKnownOneSidedPaymentScript(known_script) => self
                 .add_known_script(known_script)
@@ -414,9 +393,9 @@ where
                 .reinstate_cancelled_inbound_transaction_outputs(tx_id)
                 .map(|_| OutputManagerResponse::ReinstatedCancelledInboundTx),
             OutputManagerRequest::CreateOutputWithFeatures { value, features } => {
-                let unblinded_output = self.create_output_with_features(value, *features).await?;
+                let key_manager_output = self.create_output_with_features(value, *features).await?;
                 Ok(OutputManagerResponse::CreateOutputWithFeatures {
-                    output: Box::new(unblinded_output),
+                    output: Box::new(key_manager_output),
                 })
             },
             OutputManagerRequest::CreatePayToSelfWithOutputs {
@@ -611,11 +590,11 @@ where
         self.validate_outputs()
     }
 
-    /// Add an unblinded recoverable output to the outputs table and mark it as `Unspent`.
-    pub fn add_output(
+    /// Add a key manager recoverable output to the outputs table and mark it as `Unspent`.
+    pub async fn add_output(
         &mut self,
         tx_id: Option<TxId>,
-        output: UnblindedOutput,
+        output: KeyManagerOutput,
         spend_priority: Option<SpendingPriority>,
     ) -> Result<(), OutputManagerError> {
         debug!(
@@ -623,14 +602,15 @@ where
             "Add output of value {} to Output Manager", output.value
         );
 
-        let output = DbUnblindedOutput::from_unblinded_output(
+        let output = DbKeyManagerOutput::from_key_manager_output(
             output,
-            &self.resources.factories,
+            &self.resources.key_manager,
             spend_priority,
             OutputSource::default(),
             tx_id,
             None,
-        )?;
+        )
+        .await?;
         debug!(
             target: LOG_TARGET,
             "saving output of hash {} to Output Manager",
@@ -643,26 +623,27 @@ where
         Ok(())
     }
 
-    /// Add an unblinded output to the outputs table and marks is as `EncumberedToBeReceived`. This is so that it will
+    /// Add a key manager output to the outputs table and marks is as `EncumberedToBeReceived`. This is so that it will
     /// require a successful validation to confirm that it indeed spendable.
-    pub fn add_unvalidated_output(
+    pub async fn add_unvalidated_output(
         &mut self,
         tx_id: TxId,
-        output: UnblindedOutput,
+        output: KeyManagerOutput,
         spend_priority: Option<SpendingPriority>,
     ) -> Result<(), OutputManagerError> {
         debug!(
             target: LOG_TARGET,
             "Add unvalidated output of value {} to Output Manager", output.value
         );
-        let output = DbUnblindedOutput::from_unblinded_output(
+        let output = DbKeyManagerOutput::from_key_manager_output(
             output,
-            &self.resources.factories,
+            &self.resources.key_manager,
             spend_priority,
             OutputSource::default(),
             Some(tx_id),
             None,
-        )?;
+        )
+        .await?;
         self.resources.db.add_unvalidated_output(tx_id, output)?;
 
         // Because we added new outputs, let try to trigger a validation for them
@@ -676,38 +657,21 @@ where
         Ok(())
     }
 
-    async fn get_next_spend_and_script_keys(&self) -> Result<(PrivateKey, PrivateKey), OutputManagerError> {
-        let result = self
-            .resources
-            .master_key_manager
-            .get_next_key(OutputManagerKeyManagerBranch::Spend.get_branch_key())
-            .await?;
-        let script_key = self
-            .resources
-            .master_key_manager
-            .get_key_at_index(
-                OutputManagerKeyManagerBranch::SpendScript.get_branch_key(),
-                result.index,
-            )
-            .await?;
-        Ok((result.key, script_key))
-    }
-
     async fn create_output_with_features(
         &mut self,
         value: MicroTari,
         features: OutputFeatures,
-    ) -> Result<UnblindedOutputBuilder, OutputManagerError> {
-        let (spending_key, script_private_key) = self.get_next_spend_and_script_keys().await?;
-        let input_data = inputs!(PublicKey::from_secret_key(&script_private_key));
+    ) -> Result<KeyManagerOutputBuilder, OutputManagerError> {
+        let (spending_key_id, _, script_key_id, script_public_key) =
+            self.resources.key_manager.get_next_spend_and_script_key_ids().await?;
+        let input_data = inputs!(script_public_key);
         let script = script!(Nop);
 
-        Ok(UnblindedOutputBuilder::new(value, spending_key)
+        Ok(KeyManagerOutputBuilder::new(value, spending_key_id)
             .with_features(features)
             .with_script(script)
             .with_input_data(input_data)
-            .with_recovery_and_encrypted_data(self.resources.recovery_data.clone())?
-            .with_script_private_key(script_private_key))
+            .with_script_private_key(script_key_id))
     }
 
     fn get_balance(&self, current_tip_for_time_lock_calculation: Option<u64>) -> Result<Balance, OutputManagerError> {
@@ -731,69 +695,72 @@ where
             return Err(OutputManagerError::InvalidScriptHash);
         }
 
-        let (spending_key, script_private_key) = self.get_next_spend_and_script_keys().await?;
+        let (spending_key_id, _, script_key_id, script_public_key) =
+            self.resources.key_manager.get_next_spend_and_script_key_ids().await?;
 
-        let commitment = self
+        let encrypted_data = self
             .resources
-            .factories
-            .commitment
-            .commit_value(&spending_key, single_round_sender_data.amount.as_u64());
-        let features = single_round_sender_data.features.clone();
-        let encrypted_data = EncryptedData::encrypt_data(
-            &self.resources.recovery_data.encryption_key,
-            &commitment,
-            single_round_sender_data.amount,
-            &spending_key,
-        )?;
+            .key_manager
+            .encrypt_data_for_recovery(&spending_key_id, None, single_round_sender_data.amount.as_u64())
+            .await
+            .unwrap();
         let minimum_value_promise = single_round_sender_data.minimum_value_promise;
-        let output = DbUnblindedOutput::from_unblinded_output(
-            UnblindedOutput::new_current_version(
-                single_round_sender_data.amount,
-                spending_key.clone(),
-                features.clone(),
-                single_round_sender_data.script.clone(),
-                // TODO: The input data should be variable; this will only work for a Nop script #LOGGED
-                inputs!(PublicKey::from_secret_key(&script_private_key)),
-                script_private_key,
-                single_round_sender_data.sender_offset_public_key.clone(),
-                // Note: The signature at this time is only partially built
-                TransactionOutput::create_receiver_partial_metadata_signature(
-                    TransactionOutputVersion::get_current_version(),
-                    single_round_sender_data.amount,
-                    &spending_key,
-                    &single_round_sender_data.script,
-                    &features,
-                    &single_round_sender_data.sender_offset_public_key,
-                    &single_round_sender_data.ephemeral_public_nonce,
-                    &single_round_sender_data.covenant,
-                    &encrypted_data,
-                    minimum_value_promise,
-                )?,
-                0,
-                single_round_sender_data.covenant.clone(),
-                encrypted_data,
-                minimum_value_promise,
-            ),
-            &self.resources.factories,
+
+        let metadata_message = TransactionOutput::metadata_signature_message_from_parts(
+            &TransactionOutputVersion::get_current_version(),
+            &single_round_sender_data.script,
+            &single_round_sender_data.features.clone(),
+            &single_round_sender_data.covenant,
+            &encrypted_data,
+            minimum_value_promise,
+        );
+        let metadata_signature = self
+            .resources
+            .key_manager
+            .get_receiver_partial_metadata_signature(
+                &spending_key_id,
+                &single_round_sender_data.amount.into(),
+                &single_round_sender_data.sender_offset_public_key,
+                &single_round_sender_data.ephemeral_public_nonce,
+                &TransactionOutputVersion::get_current_version(),
+                &metadata_message,
+                single_round_sender_data.features.range_proof_type,
+            )
+            .await?;
+
+        let key_kanager_output = KeyManagerOutput::new_current_version(
+            single_round_sender_data.amount,
+            spending_key_id.clone(),
+            single_round_sender_data.features.clone(),
+            single_round_sender_data.script.clone(),
+            // TODO: The input data should be variable; this will only work for a Nop script #LOGGED
+            inputs!(script_public_key),
+            script_key_id,
+            single_round_sender_data.sender_offset_public_key.clone(),
+            // Note: The signature at this time is only partially built
+            metadata_signature,
+            0,
+            single_round_sender_data.covenant.clone(),
+            encrypted_data,
+            minimum_value_promise,
+        );
+        let output = DbKeyManagerOutput::from_key_manager_output(
+            key_kanager_output.clone(),
+            &self.resources.key_manager,
             None,
             OutputSource::default(),
             Some(single_round_sender_data.tx_id),
             None,
-        )?;
+        )
+        .await?;
 
         self.resources
             .db
             .add_output_to_be_received(single_round_sender_data.tx_id, output, None)?;
 
-        let nonce = PrivateKey::random(&mut OsRng);
-
-        let rtp = ReceiverTransactionProtocol::new_with_recoverable_output(
-            sender_message.clone(),
-            nonce,
-            spending_key,
-            &self.resources.factories,
-            &encrypted_data,
-        );
+        let rtp =
+            ReceiverTransactionProtocol::new(sender_message.clone(), key_kanager_output, &self.resources.key_manager)
+                .await;
 
         Ok(rtp)
     }
@@ -909,24 +876,20 @@ where
             )
             .await?;
 
-        let offset = PrivateKey::random(&mut OsRng);
-        let nonce = PrivateKey::random(&mut OsRng);
-
-        let mut builder = SenderTransactionProtocol::builder(1, self.resources.consensus_constants.clone());
+        let mut builder = SenderTransactionProtocol::builder(
+            self.resources.consensus_constants.clone(),
+            self.resources.key_manager.clone(),
+        );
         builder
             .with_fee_per_gram(fee_per_gram)
-            .with_offset(offset.clone())
-            .with_private_nonce(nonce.clone())
-            .with_amount(0, amount)
             .with_recipient_data(
-                0,
                 recipient_script,
-                PrivateKey::random(&mut OsRng),
                 recipient_output_features,
-                PrivateKey::random(&mut OsRng),
                 recipient_covenant,
                 recipient_minimum_value_promise,
+                amount,
             )
+            .await?
             .with_message(message)
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_lock_height(tx_meta.lock_height)
@@ -934,11 +897,7 @@ where
             .with_tx_id(tx_id);
 
         for uo in input_selection.iter() {
-            builder.with_input(
-                uo.unblinded_output
-                    .as_transaction_input(&self.resources.factories.commitment)?,
-                uo.unblinded_output.clone(),
-            );
+            builder.with_input(uo.key_manager_output.clone()).await?;
         }
         debug!(
             target: LOG_TARGET,
@@ -948,41 +907,41 @@ where
         );
 
         if input_selection.requires_change_output() {
-            let (spending_key, script_private_key) = self.get_next_spend_and_script_keys().await?;
-            builder
-                .with_change_secret(spending_key)
-                .with_recoverable_outputs(self.resources.recovery_data.clone())
-                .with_change_script(
-                    script!(Nop),
-                    inputs!(PublicKey::from_secret_key(&script_private_key)),
-                    script_private_key,
-                );
+            let (change_spending_key_id, _, change_script_key_id, change_script_public_key) =
+                self.resources.key_manager.get_next_spend_and_script_key_ids().await?;
+            builder.with_change_data(
+                script!(Nop),
+                inputs!(change_script_public_key),
+                change_script_key_id,
+                change_spending_key_id,
+                Covenant::default(),
+            );
         }
 
         let stp = builder
-            .build(
-                &self.resources.factories,
-                None,
-                self.last_seen_tip_height.unwrap_or(u64::MAX),
-            )
+            .build()
+            .await
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
 
         // If a change output was created add it to the pending_outputs list.
-        let mut change_output = Vec::<DbUnblindedOutput>::new();
+        let mut change_output = Vec::<DbKeyManagerOutput>::new();
         if input_selection.requires_change_output() {
-            let unblinded_output = stp.get_change_unblinded_output()?.ok_or_else(|| {
+            let key_manager_output = stp.get_change_output()?.ok_or_else(|| {
                 OutputManagerError::BuildError(
                     "There should be a change output metadata signature available".to_string(),
                 )
             })?;
-            change_output.push(DbUnblindedOutput::from_unblinded_output(
-                unblinded_output,
-                &self.resources.factories,
-                None,
-                OutputSource::default(),
-                Some(tx_id),
-                None,
-            )?);
+            change_output.push(
+                DbKeyManagerOutput::from_key_manager_output(
+                    key_manager_output,
+                    &self.resources.key_manager,
+                    None,
+                    OutputSource::default(),
+                    Some(tx_id),
+                    None,
+                )
+                .await?,
+            );
         }
 
         // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
@@ -1013,40 +972,36 @@ where
             "Building coinbase transaction for block_height {} with TxId: {}", block_height, tx_id
         );
 
-        let spending_key = self
+        let (coinbase_spending_key, _) = self
             .resources
-            .master_key_manager
-            .get_key_at_index(OutputManagerKeyManagerBranch::Coinbase.get_branch_key(), block_height)
+            .key_manager
+            .get_next_key(CoreKeyManagerBranch::Coinbase.get_branch_key())
             .await?;
-        let script_private_key = self
+        let (coinbase_script_key, _) = self
             .resources
-            .master_key_manager
-            .get_key_at_index(
-                OutputManagerKeyManagerBranch::CoinbaseScript.get_branch_key(),
-                block_height,
-            )
+            .key_manager
+            .get_next_key(CoreKeyManagerBranch::CoinbaseScript.get_branch_key())
             .await?;
 
-        let nonce = PrivateKey::random(&mut OsRng);
-        let (tx, unblinded_output) = CoinbaseBuilder::new(self.resources.factories.clone())
+        let (tx, key_manager_output) = CoinbaseBuilder::new(self.resources.key_manager.clone())
             .with_block_height(block_height)
             .with_fees(fees)
-            .with_spend_key(spending_key.clone())
-            .with_script_key(script_private_key)
+            .with_spend_key_id(coinbase_spending_key)
+            .with_script_key_id(coinbase_script_key)
             .with_script(script!(Nop))
-            .with_nonce(nonce)
-            .with_recovery_data(self.resources.recovery_data.clone())
             .with_extra(extra)
-            .build_with_reward(&self.resources.consensus_constants, reward)?;
+            .build_with_reward(&self.resources.consensus_constants, reward)
+            .await?;
 
-        let output = DbUnblindedOutput::from_unblinded_output(
-            unblinded_output,
-            &self.resources.factories,
+        let output = DbKeyManagerOutput::from_key_manager_output(
+            key_manager_output,
+            &self.resources.key_manager,
             None,
             OutputSource::Coinbase,
             Some(tx_id),
             None,
-        )?;
+        )
+        .await?;
 
         // If there is no existing output available, we store the one we produced.
         match self.resources.db.fetch_by_commitment(output.commitment.clone()) {
@@ -1066,7 +1021,7 @@ where
 
     async fn create_pay_to_self_containing_outputs(
         &mut self,
-        outputs: Vec<UnblindedOutputBuilder>,
+        outputs: Vec<KeyManagerOutputBuilder>,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroTari,
     ) -> Result<(TxId, Transaction), OutputManagerError> {
@@ -1091,81 +1046,90 @@ where
                 features_and_scripts_byte_size,
             )
             .await?;
-        let offset = PrivateKey::random(&mut OsRng);
-        let nonce = PrivateKey::random(&mut OsRng);
 
         // Create builder with no recipients (other than ourselves)
-        let mut builder = SenderTransactionProtocol::builder(0, self.resources.consensus_constants.clone());
+        let mut builder = SenderTransactionProtocol::builder(
+            self.resources.consensus_constants.clone(),
+            self.resources.key_manager.clone(),
+        );
         builder
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
-            .with_offset(offset.clone())
-            .with_private_nonce(nonce.clone())
             .with_prevent_fee_gt_amount(false)
             .with_kernel_features(KernelFeatures::empty());
 
         for uo in input_selection.iter() {
-            builder.with_input(
-                uo.unblinded_output
-                    .as_transaction_input(&self.resources.factories.commitment)?,
-                uo.unblinded_output.clone(),
-            );
+            builder.with_input(uo.key_manager_output.clone()).await?;
         }
 
         if input_selection.requires_change_output() {
-            let (spending_key, script_private_key) = self.get_next_spend_and_script_keys().await?;
-            builder.with_change_secret(spending_key);
-            builder.with_recoverable_outputs(self.resources.recovery_data.clone());
-            builder.with_change_script(
+            let (change_spending_key_id, _, change_script_key_id, change_script_public_key) =
+                self.resources.key_manager.get_next_spend_and_script_key_ids().await?;
+            builder.with_change_data(
                 script!(Nop),
-                inputs!(PublicKey::from_secret_key(&script_private_key)),
-                script_private_key,
+                inputs!(change_script_public_key),
+                change_script_key_id,
+                change_spending_key_id,
+                Covenant::default(),
             );
         }
 
         let mut db_outputs = vec![];
-        for mut unblinded_output in outputs {
-            let sender_offset_private_key = PrivateKey::random(&mut OsRng);
-            unblinded_output.sign_as_sender_and_receiver(&sender_offset_private_key)?;
+        for mut key_manager_output in outputs {
+            let (sender_offset_key_id, _) = self
+                .resources
+                .key_manager
+                .get_next_key(&CoreKeyManagerBranch::Nonce.get_branch_key())
+                .await?;
+            key_manager_output = key_manager_output
+                .sign_as_sender_and_receiver_using_key_id(&self.resources.key_manager, &sender_offset_key_id)
+                .await?;
 
-            let ub = unblinded_output.try_build()?;
+            let ub = key_manager_output.try_build()?;
             builder
-                .with_output(ub.clone(), sender_offset_private_key.clone())
-                .map_err(|e| OutputManagerError::BuildError(e.message))?;
-            db_outputs.push(DbUnblindedOutput::from_unblinded_output(
-                ub,
-                &self.resources.factories,
-                None,
-                OutputSource::default(),
-                None,
-                None,
-            )?)
+                .with_output(ub.clone(), sender_offset_key_id.clone())
+                .await
+                .map_err(|e| OutputManagerError::BuildError(e.to_string()))?;
+            db_outputs.push(
+                DbKeyManagerOutput::from_key_manager_output(
+                    ub,
+                    &self.resources.key_manager,
+                    None,
+                    OutputSource::default(),
+                    None,
+                    None,
+                )
+                .await?,
+            )
         }
 
         let mut stp = builder
-            .build(&self.resources.factories, None, u64::MAX)
+            .build()
+            .await
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
         let tx_id = stp.get_tx_id()?;
-        if let Some(unblinded_output) = stp.get_change_unblinded_output()? {
-            db_outputs.push(DbUnblindedOutput::from_unblinded_output(
-                unblinded_output,
-                &self.resources.factories,
-                None,
-                OutputSource::default(),
-                Some(tx_id),
-                None,
-            )?);
+        if let Some(key_manager_output) = stp.get_change_output()? {
+            db_outputs.push(
+                DbKeyManagerOutput::from_key_manager_output(
+                    key_manager_output,
+                    &self.resources.key_manager,
+                    None,
+                    OutputSource::default(),
+                    Some(tx_id),
+                    None,
+                )
+                .await?,
+            );
         }
 
         self.resources
             .db
             .encumber_outputs(tx_id, input_selection.into_selected(), db_outputs)?;
-        stp.finalize()?;
+        stp.finalize(&self.resources.key_manager).await?;
 
         Ok((tx_id, stp.take_transaction()?))
     }
 
-    #[allow(clippy::too_many_lines)]
     async fn create_pay_to_self_transaction(
         &mut self,
         tx_id: TxId,
@@ -1196,114 +1160,61 @@ where
             )
             .await?;
 
-        let offset = PrivateKey::random(&mut OsRng);
-        let nonce = PrivateKey::random(&mut OsRng);
-        let sender_offset_private_key = PrivateKey::random(&mut OsRng);
-
         // Create builder with no recipients (other than ourselves)
-        let mut builder = SenderTransactionProtocol::builder(0, self.resources.consensus_constants.clone());
+        let mut builder = SenderTransactionProtocol::builder(
+            self.resources.consensus_constants.clone(),
+            self.resources.key_manager.clone(),
+        );
         builder
             .with_lock_height(lock_height.unwrap_or(0))
             .with_fee_per_gram(fee_per_gram)
-            .with_offset(offset.clone())
-            .with_private_nonce(nonce.clone())
-            .with_recoverable_outputs(self.resources.recovery_data.clone())
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_kernel_features(KernelFeatures::empty())
             .with_tx_id(tx_id);
 
-        for uo in input_selection.iter() {
-            builder.with_input(
-                uo.unblinded_output
-                    .as_transaction_input(&self.resources.factories.commitment)?,
-                uo.unblinded_output.clone(),
-            );
+        for kmo in input_selection.iter() {
+            builder.with_input(kmo.key_manager_output.clone()).await?;
         }
 
-        let (spending_key, script_private_key) = self.get_next_spend_and_script_keys().await?;
-        let commitment = self
-            .resources
-            .factories
-            .commitment
-            .commit_value(&spending_key, amount.into());
-        let encrypted_data = EncryptedData::encrypt_data(
-            &self.resources.recovery_data.encryption_key,
-            &commitment,
-            amount,
-            &spending_key,
-        )?;
-        let minimum_amount_promise = MicroTari::zero();
-        let metadata_signature = TransactionOutput::create_metadata_signature(
-            TransactionOutputVersion::get_current_version(),
-            amount,
-            &spending_key.clone(),
-            &script,
-            &output_features,
-            &sender_offset_private_key,
-            &covenant,
-            &encrypted_data,
-            minimum_amount_promise,
-        )?;
-        let utxo = DbUnblindedOutput::from_unblinded_output(
-            UnblindedOutput::new_current_version(
-                amount,
-                spending_key.clone(),
-                output_features,
-                script,
-                inputs!(PublicKey::from_secret_key(&script_private_key)),
-                script_private_key,
-                PublicKey::from_secret_key(&sender_offset_private_key),
-                metadata_signature,
-                0,
-                covenant,
-                encrypted_data,
-                minimum_amount_promise,
-            ),
-            &self.resources.factories,
-            None,
-            OutputSource::default(),
-            Some(tx_id),
-            None,
-        )?;
+        let (output, sender_offset_key_id) = self.output_to_self(amount, &covenant, &script).await?;
+
         builder
-            .with_output(utxo.unblinded_output.clone(), sender_offset_private_key.clone())
-            .map_err(|e| OutputManagerError::BuildError(e.message))?;
+            .with_output(output.key_manager_output.clone(), sender_offset_key_id.clone())
+            .await
+            .map_err(|e| OutputManagerError::BuildError(e.to_string()))?;
 
-        let mut outputs = vec![utxo];
+        let mut outputs = vec![output];
 
-        if input_selection.requires_change_output() {
-            let (spending_key, script_private_key) = self.get_next_spend_and_script_keys().await?;
-            builder.with_change_secret(spending_key);
-            builder.with_recoverable_outputs(self.resources.recovery_data.clone());
-            builder.with_change_script(
-                script!(Nop),
-                inputs!(PublicKey::from_secret_key(&script_private_key)),
-                script_private_key,
-            );
-        }
+        let (change_spending_key_id, _spend_public_key, change_script_key_id, change_script_public_key) =
+            self.resources.key_manager.get_next_spend_and_script_key_ids().await?;
+        builder.with_change_data(
+            script!(Nop),
+            inputs!(change_script_public_key),
+            change_script_key_id.clone(),
+            change_spending_key_id,
+            Covenant::default(),
+        );
 
         let mut stp = builder
-            .build(
-                &self.resources.factories,
-                None,
-                self.last_seen_tip_height.unwrap_or(u64::MAX),
-            )
+            .build()
+            .await
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
 
         if input_selection.requires_change_output() {
-            let unblinded_output = stp.get_change_unblinded_output()?.ok_or_else(|| {
+            let key_manager_output = stp.get_change_output()?.ok_or_else(|| {
                 OutputManagerError::BuildError(
                     "There should be a change output metadata signature available".to_string(),
                 )
             })?;
-            let change_output = DbUnblindedOutput::from_unblinded_output(
-                unblinded_output,
-                &self.resources.factories,
+            let change_output = DbKeyManagerOutput::from_key_manager_output(
+                key_manager_output,
+                &self.resources.key_manager,
                 None,
                 OutputSource::default(),
                 Some(tx_id),
                 None,
-            )?;
+            )
+            .await?;
             outputs.push(change_output);
         }
 
@@ -1318,7 +1229,7 @@ where
         self.confirm_encumberance(tx_id)?;
         let fee = stp.get_fee_amount()?;
         trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", tx_id);
-        stp.finalize()?;
+        stp.finalize(&self.resources.key_manager).await?;
         let tx = stp.take_transaction()?;
 
         Ok((fee, tx))
@@ -1414,7 +1325,7 @@ where
         let mut fee_without_change = MicroTari::from(0);
         let mut fee_with_change = MicroTari::from(0);
         for o in uo {
-            utxos_total_value += o.unblinded_output.value;
+            utxos_total_value += o.key_manager_output.value;
 
             trace!(target: LOG_TARGET, "-- utxos_total_value = {:?}", utxos_total_value);
             utxos.push(o);
@@ -1467,19 +1378,19 @@ where
         })
     }
 
-    pub fn fetch_spent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {
+    pub fn fetch_spent_outputs(&self) -> Result<Vec<DbKeyManagerOutput>, OutputManagerError> {
         Ok(self.resources.db.fetch_spent_outputs()?)
     }
 
-    pub fn fetch_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {
+    pub fn fetch_unspent_outputs(&self) -> Result<Vec<DbKeyManagerOutput>, OutputManagerError> {
         Ok(self.resources.db.fetch_all_unspent_outputs()?)
     }
 
-    pub fn fetch_outputs_by(&self, q: OutputBackendQuery) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {
+    pub fn fetch_outputs_by(&self, q: OutputBackendQuery) -> Result<Vec<DbKeyManagerOutput>, OutputManagerError> {
         Ok(self.resources.db.fetch_outputs_by(q)?)
     }
 
-    pub fn fetch_invalid_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {
+    pub fn fetch_invalid_outputs(&self) -> Result<Vec<DbKeyManagerOutput>, OutputManagerError> {
         Ok(self.resources.db.get_invalid_outputs()?)
     }
 
@@ -1510,7 +1421,7 @@ where
 
         let accumulated_amount = src_outputs
             .iter()
-            .fold(MicroTari::zero(), |acc, x| acc + x.unblinded_output.value);
+            .fold(MicroTari::zero(), |acc, x| acc + x.key_manager_output.value);
 
         let fee = self.get_fee_calc().calculate(
             fee_per_gram,
@@ -1555,7 +1466,7 @@ where
 
         let accumulated_amount = src_outputs
             .iter()
-            .fold(MicroTari::zero(), |acc, x| acc + x.unblinded_output.value);
+            .fold(MicroTari::zero(), |acc, x| acc + x.key_manager_output.value);
 
         let aftertax_amount = accumulated_amount.saturating_sub(fee);
         let amount_per_split = MicroTari(aftertax_amount.as_u64() / number_of_splits as u64);
@@ -1632,7 +1543,7 @@ where
     #[allow(clippy::too_many_lines)]
     async fn create_coin_split_even(
         &mut self,
-        src_outputs: Vec<DbUnblindedOutput>,
+        src_outputs: Vec<DbKeyManagerOutput>,
         number_of_splits: usize,
         fee_per_gram: MicroTari,
     ) -> Result<(TxId, Transaction, MicroTari), OutputManagerError> {
@@ -1642,14 +1553,13 @@ where
             ));
         }
 
-        let covenant = Covenant::default();
         let default_features_and_scripts_size = self.default_features_and_scripts_size();
         let mut dest_outputs = Vec::with_capacity(number_of_splits + 1);
 
         // accumulated value amount from given source outputs
-        let accumulated_amount = src_outputs
+        let accumulated_amount_with_fee = src_outputs
             .iter()
-            .fold(MicroTari::zero(), |acc, x| acc + x.unblinded_output.value);
+            .fold(MicroTari::zero(), |acc, x| acc + x.key_manager_output.value);
 
         let fee = self.get_fee_calc().calculate(
             fee_per_gram,
@@ -1659,45 +1569,35 @@ where
             default_features_and_scripts_size * number_of_splits,
         );
 
-        let aftertax_amount = accumulated_amount.saturating_sub(fee);
-        let amount_per_split = MicroTari(aftertax_amount.as_u64() / number_of_splits as u64);
-        let unspent_remainder = MicroTari(aftertax_amount.as_u64() % amount_per_split.as_u64());
+        let accumulated_amount = accumulated_amount_with_fee.saturating_sub(fee);
+        let amount_per_split = MicroTari(accumulated_amount.as_u64() / number_of_splits as u64);
+        let unspent_remainder = MicroTari(accumulated_amount.as_u64() % amount_per_split.as_u64());
 
         // preliminary balance check
-        if self.get_balance(None)?.available_balance < (aftertax_amount + fee) {
+        if self.get_balance(None)?.available_balance < (accumulated_amount + fee) {
             return Err(OutputManagerError::NotEnoughFunds);
         }
 
         trace!(target: LOG_TARGET, "initializing new split (even) transaction");
 
-        let mut tx_builder = SenderTransactionProtocol::builder(0, self.resources.consensus_constants.clone());
+        let mut tx_builder = SenderTransactionProtocol::builder(
+            self.resources.consensus_constants.clone(),
+            self.resources.key_manager.clone(),
+        );
         tx_builder
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
-            .with_offset(PrivateKey::random(&mut OsRng))
-            .with_private_nonce(PrivateKey::random(&mut OsRng))
-            .with_kernel_features(KernelFeatures::empty())
-            .with_recoverable_outputs(self.resources.recovery_data.clone());
+            .with_kernel_features(KernelFeatures::empty());
 
         // collecting inputs from source outputs
-        let inputs: Vec<TransactionInput> = src_outputs
-            .iter()
-            .map(|src_out| {
-                src_out
-                    .unblinded_output
-                    .as_transaction_input(&self.resources.factories.commitment)
-            })
-            .try_collect()?;
-
-        // adding inputs to the transaction
-        src_outputs.iter().zip(inputs).for_each(|(src_output, input)| {
+        for input in &src_outputs {
             trace!(
                 target: LOG_TARGET,
                 "adding transaction input: output_hash=: {:?}",
-                src_output.hash
+                input.hash
             );
-            tx_builder.with_input(input, src_output.unblinded_output.clone());
-        });
+            tx_builder.with_input(input.key_manager_output.clone()).await?;
+        }
 
         for i in 1..=number_of_splits {
             // NOTE: adding the unspent `change` to the last output
@@ -1707,73 +1607,21 @@ where
                 amount_per_split
             };
 
-            let noop_script = script!(Nop);
-            let (spending_key, script_private_key) = self.get_next_spend_and_script_keys().await?;
-            let output_features = OutputFeatures::default();
-
-            // generating sender's keypair
-            let sender_offset_private_key = PrivateKey::random(&mut OsRng);
-            let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
-            let commitment = self
-                .resources
-                .factories
-                .commitment
-                .commit_value(&spending_key, amount_per_split.into());
-            let encrypted_data = EncryptedData::encrypt_data(
-                &self.resources.recovery_data.encryption_key,
-                &commitment,
-                amount_per_split,
-                &spending_key,
-            )?;
-
-            let minimum_amount_promise = MicroTari::zero();
-            let commitment_signature = TransactionOutput::create_metadata_signature(
-                TransactionOutputVersion::get_current_version(),
-                amount_per_split,
-                &spending_key,
-                &noop_script,
-                &output_features,
-                &sender_offset_private_key,
-                &covenant,
-                &encrypted_data,
-                minimum_amount_promise,
-            )?;
-
-            let output = DbUnblindedOutput::from_unblinded_output(
-                UnblindedOutput::new_current_version(
-                    amount_per_split,
-                    spending_key,
-                    output_features,
-                    noop_script,
-                    inputs!(PublicKey::from_secret_key(&script_private_key)),
-                    script_private_key,
-                    sender_offset_public_key,
-                    commitment_signature,
-                    0,
-                    covenant.clone(),
-                    encrypted_data,
-                    minimum_amount_promise,
-                ),
-                &self.resources.factories,
-                None,
-                OutputSource::default(),
-                None,
-                None,
-            )?;
+            let (output, sender_offset_key_id) = self
+                .output_to_self(amount_per_split, &Covenant::default(), &script!(Nop))
+                .await?;
 
             tx_builder
-                .with_output(output.unblinded_output.clone(), sender_offset_private_key)
-                .map_err(|e| OutputManagerError::BuildError(e.message))?;
+                .with_output(output.key_manager_output.clone(), sender_offset_key_id)
+                .await
+                .map_err(|e| OutputManagerError::BuildError(e.to_string()))?;
 
             dest_outputs.push(output);
         }
 
         let mut stp = tx_builder
-            .build(
-                &self.resources.factories,
-                None,
-                self.last_seen_tip_height.unwrap_or(u64::MAX),
-            )
+            .build()
+            .await
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
 
         // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
@@ -1799,15 +1647,15 @@ where
         );
 
         // finalizing transaction
-        stp.finalize()?;
+        stp.finalize(&self.resources.key_manager).await?;
 
-        Ok((tx_id, stp.take_transaction()?, aftertax_amount + fee))
+        Ok((tx_id, stp.take_transaction()?, accumulated_amount + fee))
     }
 
     #[allow(clippy::too_many_lines)]
     async fn create_coin_split(
         &mut self,
-        src_outputs: Vec<DbUnblindedOutput>,
+        src_outputs: Vec<DbKeyManagerOutput>,
         amount_per_split: MicroTari,
         number_of_splits: usize,
         fee_per_gram: MicroTari,
@@ -1824,7 +1672,6 @@ where
             ));
         }
 
-        let covenant = Covenant::default();
         let default_features_and_scripts_size = self.default_features_and_scripts_size();
         let mut dest_outputs = Vec::with_capacity(number_of_splits + 1);
         let total_split_amount = MicroTari::from(amount_per_split.as_u64() * number_of_splits as u64);
@@ -1832,7 +1679,7 @@ where
         // accumulated value amount from given source outputs
         let accumulated_amount = src_outputs
             .iter()
-            .fold(MicroTari::zero(), |acc, x| acc + x.unblinded_output.value);
+            .fold(MicroTari::zero(), |acc, x| acc + x.key_manager_output.value);
 
         if total_split_amount >= accumulated_amount {
             return Err(OutputManagerError::NotEnoughFunds);
@@ -1883,127 +1730,66 @@ where
             return Err(OutputManagerError::NotEnoughFunds);
         }
 
-        // NOTE: called `leftover` to remove possible brainlag by confusing `change` as a verb
-        let leftover_change = accumulated_amount.saturating_sub(total_split_amount + final_fee);
+        let change = accumulated_amount.saturating_sub(total_split_amount + final_fee);
 
         // ----------------------------------------------------------------------------
         // initializing new transaction
 
         trace!(target: LOG_TARGET, "initializing new split transaction");
 
-        let mut tx_builder = SenderTransactionProtocol::builder(0, self.resources.consensus_constants.clone());
+        let mut tx_builder = SenderTransactionProtocol::builder(
+            self.resources.consensus_constants.clone(),
+            self.resources.key_manager.clone(),
+        );
         tx_builder
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
-            .with_offset(PrivateKey::random(&mut OsRng))
-            .with_private_nonce(PrivateKey::random(&mut OsRng))
-            .with_recoverable_outputs(self.resources.recovery_data.clone())
             .with_kernel_features(KernelFeatures::empty());
 
         // collecting inputs from source outputs
-        let inputs: Vec<TransactionInput> = src_outputs
-            .iter()
-            .map(|src_out| {
-                src_out
-                    .unblinded_output
-                    .as_transaction_input(&self.resources.factories.commitment)
-            })
-            .try_collect()?;
-
-        // adding inputs to the transaction
-        src_outputs.iter().zip(inputs).for_each(|(src_output, input)| {
+        for output in &src_outputs {
             trace!(
                 target: LOG_TARGET,
                 "adding transaction input: output_hash=: {:?}",
-                src_output.hash
+                output.hash
             );
-            tx_builder.with_input(input, src_output.unblinded_output.clone());
-        });
+            tx_builder.with_input(output.key_manager_output.clone()).await?;
+        }
 
         // ----------------------------------------------------------------------------
         // initializing primary outputs
 
         for _ in 0..number_of_splits {
-            let noop_script = script!(Nop);
-            let (spending_key, script_private_key) = self.get_next_spend_and_script_keys().await?;
-            let output_features = OutputFeatures::default();
-
-            // generating sender's keypair
-            let sender_offset_private_key = PrivateKey::random(&mut OsRng);
-            let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
-            let commitment = self
-                .resources
-                .factories
-                .commitment
-                .commit_value(&spending_key, amount_per_split.into());
-            let encrypted_data = EncryptedData::encrypt_data(
-                &self.resources.recovery_data.encryption_key,
-                &commitment,
-                amount_per_split,
-                &spending_key,
-            )?;
-            let minimum_value_promise = MicroTari::zero();
-            let commitment_signature = TransactionOutput::create_metadata_signature(
-                TransactionOutputVersion::get_current_version(),
-                amount_per_split,
-                &spending_key,
-                &noop_script,
-                &output_features,
-                &sender_offset_private_key,
-                &covenant,
-                &encrypted_data,
-                minimum_value_promise,
-            )?;
-
-            let output = DbUnblindedOutput::from_unblinded_output(
-                UnblindedOutput::new_current_version(
-                    amount_per_split,
-                    spending_key,
-                    output_features,
-                    noop_script,
-                    inputs!(PublicKey::from_secret_key(&script_private_key)),
-                    script_private_key,
-                    sender_offset_public_key,
-                    commitment_signature,
-                    0,
-                    covenant.clone(),
-                    encrypted_data,
-                    minimum_value_promise,
-                ),
-                &self.resources.factories,
-                None,
-                OutputSource::default(),
-                None,
-                None,
-            )?;
+            let (output, sender_offset_key_id) = self
+                .output_to_self(amount_per_split, &Covenant::default(), &script!(Nop))
+                .await?;
 
             tx_builder
-                .with_output(output.unblinded_output.clone(), sender_offset_private_key)
-                .map_err(|e| OutputManagerError::BuildError(e.message))?;
+                .with_output(output.key_manager_output.clone(), sender_offset_key_id)
+                .await
+                .map_err(|e| OutputManagerError::BuildError(e.to_string()))?;
 
             dest_outputs.push(output);
         }
 
-        let has_leftover_change = leftover_change > MicroTari::zero();
+        let has_leftover_change = change > MicroTari::zero();
 
         // extending transaction if there is some `change` left over
         if has_leftover_change {
-            let (spending_key, script_private_key) = self.get_next_spend_and_script_keys().await?;
-            tx_builder.with_change_secret(spending_key);
-            tx_builder.with_recoverable_outputs(self.resources.recovery_data.clone());
-            tx_builder.with_change_script(
+            let (change_spending_key_id, _, change_script_key_id, change_script_public_key) =
+                self.resources.key_manager.get_next_spend_and_script_key_ids().await?;
+            tx_builder.with_change_data(
                 script!(Nop),
-                inputs!(PublicKey::from_secret_key(&script_private_key)),
-                script_private_key,
+                inputs!(change_script_public_key),
+                change_script_key_id,
+                change_spending_key_id,
+                Covenant::default(),
             );
         }
 
         let mut stp = tx_builder
-            .build(
-                &self.resources.factories,
-                None,
-                self.last_seen_tip_height.unwrap_or(u64::MAX),
-            )
+            .build()
+            .await
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
 
         // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
@@ -2019,21 +1805,24 @@ where
         // again, to obtain output for leftover change
         if has_leftover_change {
             // obtaining output for the `change`
-            let unblinded_output_for_change = stp.get_change_unblinded_output()?.ok_or_else(|| {
+            let key_manager_output_for_change = stp.get_change_output()?.ok_or_else(|| {
                 OutputManagerError::BuildError(
                     "There should be a `change` output metadata signature available".to_string(),
                 )
             })?;
 
             // appending `change` output to the result
-            dest_outputs.push(DbUnblindedOutput::from_unblinded_output(
-                unblinded_output_for_change,
-                &self.resources.factories,
-                None,
-                OutputSource::default(),
-                Some(tx_id),
-                None,
-            )?);
+            dest_outputs.push(
+                DbKeyManagerOutput::from_key_manager_output(
+                    key_manager_output_for_change,
+                    &self.resources.key_manager,
+                    None,
+                    OutputSource::default(),
+                    Some(tx_id),
+                    None,
+                )
+                .await?,
+            );
         }
 
         // encumbering transaction
@@ -2049,7 +1838,7 @@ where
         );
 
         // finalizing transaction
-        stp.finalize()?;
+        stp.finalize(&self.resources.key_manager).await?;
 
         let value = if has_leftover_change {
             total_split_amount
@@ -2060,14 +1849,80 @@ where
         Ok((tx_id, stp.take_transaction()?, value))
     }
 
+    async fn output_to_self(
+        &mut self,
+        amount: MicroTari,
+        covenant: &Covenant,
+        script: &TariScript,
+    ) -> Result<(DbKeyManagerOutput, TariKeyId), OutputManagerError> {
+        let (spending_key_id, _, script_key_id, script_public_key) =
+            self.resources.key_manager.get_next_spend_and_script_key_ids().await?;
+        let output_features = OutputFeatures::default();
+
+        let encrypted_data = self
+            .resources
+            .key_manager
+            .encrypt_data_for_recovery(&spending_key_id, None, amount.as_u64())
+            .await?;
+        let minimum_value_promise = MicroTari::zero();
+        let metadata_message = TransactionOutput::metadata_signature_message_from_parts(
+            &TransactionOutputVersion::get_current_version(),
+            script,
+            &output_features,
+            covenant,
+            &encrypted_data,
+            minimum_value_promise,
+        );
+        let (sender_offset_key_id, sender_offset_public_key) = self
+            .resources
+            .key_manager
+            .get_next_key(&CoreKeyManagerBranch::Nonce.get_branch_key())
+            .await?;
+        let metadata_signature = self
+            .resources
+            .key_manager
+            .get_metadata_signature(
+                &spending_key_id,
+                &PrivateKey::from(amount),
+                &sender_offset_key_id,
+                &TransactionOutputVersion::get_current_version(),
+                &metadata_message,
+                output_features.range_proof_type,
+            )
+            .await?;
+
+        let output = DbKeyManagerOutput::from_key_manager_output(
+            KeyManagerOutput::new_current_version(
+                amount,
+                spending_key_id,
+                output_features,
+                script.clone(),
+                inputs!(script_public_key),
+                script_key_id,
+                sender_offset_public_key,
+                metadata_signature,
+                0,
+                covenant.clone(),
+                encrypted_data,
+                minimum_value_promise,
+            ),
+            &self.resources.key_manager,
+            None,
+            OutputSource::default(),
+            None,
+            None,
+        )
+        .await?;
+
+        Ok((output, sender_offset_key_id))
+    }
+
     #[allow(clippy::too_many_lines)]
     pub async fn create_coin_join(
         &mut self,
         commitments: Vec<Commitment>,
         fee_per_gram: MicroTari,
     ) -> Result<(TxId, Transaction, MicroTari), OutputManagerError> {
-        let covenant = Covenant::default();
-        let noop_script = script!(Nop);
         let default_features_and_scripts_size = self.default_features_and_scripts_size();
 
         let src_outputs = self.resources.db.fetch_unspent_outputs_for_spending(
@@ -2076,24 +1931,24 @@ where
             None,
         )?;
 
-        let accumulated_amount = src_outputs
+        let accumulated_amount_with_fee = src_outputs
             .iter()
-            .fold(MicroTari::zero(), |acc, x| acc + x.unblinded_output.value);
+            .fold(MicroTari::zero(), |acc, x| acc + x.key_manager_output.value);
 
         let fee =
             self.get_fee_calc()
                 .calculate(fee_per_gram, 1, src_outputs.len(), 1, default_features_and_scripts_size);
 
-        let aftertax_amount = accumulated_amount.saturating_sub(fee);
+        let accumulated_amount = accumulated_amount_with_fee.saturating_sub(fee);
 
         // checking, again, whether a total output value is enough
-        if aftertax_amount == MicroTari::zero() {
+        if accumulated_amount == MicroTari::zero() {
             error!(target: LOG_TARGET, "failed to join coins, not enough funds");
             return Err(OutputManagerError::NotEnoughFunds);
         }
 
         // preliminary balance check
-        if self.get_balance(None)?.available_balance < aftertax_amount {
+        if self.get_balance(None)?.available_balance < accumulated_amount {
             return Err(OutputManagerError::NotEnoughFunds);
         }
 
@@ -2102,98 +1957,36 @@ where
 
         trace!(target: LOG_TARGET, "initializing new join transaction");
 
-        let mut tx_builder = SenderTransactionProtocol::builder(0, self.resources.consensus_constants.clone());
+        let mut tx_builder = SenderTransactionProtocol::builder(
+            self.resources.consensus_constants.clone(),
+            self.resources.key_manager.clone(),
+        );
         tx_builder
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
-            .with_offset(PrivateKey::random(&mut OsRng))
-            .with_private_nonce(PrivateKey::random(&mut OsRng))
-            .with_recoverable_outputs(self.resources.recovery_data.clone())
             .with_kernel_features(KernelFeatures::empty());
 
         // collecting inputs from source outputs
-        let inputs: Vec<TransactionInput> = src_outputs
-            .iter()
-            .map(|src_out| {
-                src_out
-                    .unblinded_output
-                    .as_transaction_input(&self.resources.factories.commitment)
-            })
-            .try_collect()?;
-
-        // adding inputs to the transaction
-        src_outputs.iter().zip(inputs).for_each(|(src_output, input)| {
+        for input in &src_outputs {
             trace!(
                 target: LOG_TARGET,
                 "adding transaction input: output_hash=: {:?}",
-                src_output.hash
+                input.hash
             );
-            tx_builder.with_input(input, src_output.unblinded_output.clone());
-        });
+            tx_builder.with_input(input.key_manager_output.clone()).await?;
+        }
 
-        // initializing primary output
-        let (spending_key, script_private_key) = self.get_next_spend_and_script_keys().await?;
-        let output_features = OutputFeatures::default();
-
-        // generating sender's keypair
-        let sender_offset_private_key = PrivateKey::random(&mut OsRng);
-        let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
-        let commitment = self
-            .resources
-            .factories
-            .commitment
-            .commit_value(&spending_key, aftertax_amount.into());
-        let encrypted_data = EncryptedData::encrypt_data(
-            &self.resources.recovery_data.encryption_key,
-            &commitment,
-            aftertax_amount,
-            &spending_key,
-        )?;
-        let minimum_value_promise = MicroTari::zero();
-        let commitment_signature = TransactionOutput::create_metadata_signature(
-            TransactionOutputVersion::get_current_version(),
-            aftertax_amount,
-            &spending_key,
-            &noop_script,
-            &output_features,
-            &sender_offset_private_key,
-            &covenant,
-            &encrypted_data,
-            minimum_value_promise,
-        )?;
-
-        let output = DbUnblindedOutput::from_unblinded_output(
-            UnblindedOutput::new_current_version(
-                aftertax_amount,
-                spending_key,
-                output_features,
-                noop_script,
-                inputs!(PublicKey::from_secret_key(&script_private_key)),
-                script_private_key,
-                sender_offset_public_key,
-                commitment_signature,
-                0,
-                covenant.clone(),
-                encrypted_data,
-                minimum_value_promise,
-            ),
-            &self.resources.factories,
-            None,
-            OutputSource::default(),
-            None,
-            None,
-        )?;
+        let (output, sender_offset_key_id) = self
+            .output_to_self(accumulated_amount, &Covenant::default(), &script!(Nop))
+            .await?;
 
         tx_builder
-            .with_output(output.unblinded_output.clone(), sender_offset_private_key)
-            .map_err(|e| OutputManagerError::BuildError(e.message))?;
+            .with_output(output.key_manager_output.clone(), sender_offset_key_id)
+            .await?;
 
         let mut stp = tx_builder
-            .build(
-                &self.resources.factories,
-                None,
-                self.last_seen_tip_height.unwrap_or(u64::MAX),
-            )
+            .build()
+            .await
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
 
         // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
@@ -2219,9 +2012,9 @@ where
         );
 
         // finalizing transaction
-        stp.finalize()?;
+        stp.finalize(&self.resources.key_manager).await?;
 
-        Ok((tx_id, stp.take_transaction()?, aftertax_amount + fee))
+        Ok((tx_id, stp.take_transaction()?, accumulated_amount + fee))
     }
 
     async fn fetch_outputs_from_node(
@@ -2259,23 +2052,28 @@ where
         pre_image: PublicKey,
         fee_per_gram: MicroTari,
     ) -> Result<(TxId, MicroTari, MicroTari, Transaction), OutputManagerError> {
-        let shared_secret = CommsDHKE::new(
-            self.node_identity.as_ref().secret_key(),
-            &output.sender_offset_public_key,
-        );
+        let shared_secret = self
+            .resources
+            .key_manager
+            .get_diffie_hellman_shared_secret(
+                &self.resources.wallet_identity.wallet_node_key_id,
+                &output.sender_offset_public_key,
+            )
+            .await?;
         let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
-        if let Ok((amount, blinding_factor)) =
+        if let Ok((amount, spending_key)) =
             EncryptedData::decrypt_data(&encryption_key, &output.commitment, &output.encrypted_data)
         {
-            if output.verify_mask(&self.resources.factories.range_proof, &blinding_factor, amount.as_u64())? {
-                let rewound_output = UnblindedOutput::new(
+            if output.verify_mask(&self.resources.factories.range_proof, &spending_key, amount.as_u64())? {
+                let spending_key_id = self.resources.key_manager.import_key(spending_key).await?;
+                let rewound_output = KeyManagerOutput::new(
                     output.version,
                     amount,
-                    blinding_factor,
+                    spending_key_id,
                     output.features,
                     output.script,
                     inputs!(pre_image),
-                    self.node_identity.as_ref().secret_key().clone(),
+                    self.resources.wallet_identity.wallet_node_key_id.clone(),
                     output.sender_offset_public_key,
                     output.metadata_signature,
                     // Although the technically the script does have a script lock higher than 0, this does not apply
@@ -2286,59 +2084,55 @@ where
                     output.minimum_value_promise,
                 );
 
-                let offset = PrivateKey::random(&mut OsRng);
-                let nonce = PrivateKey::random(&mut OsRng);
                 let message = "SHA-XTR atomic swap".to_string();
 
                 // Create builder with no recipients (other than ourselves)
-                let mut builder = SenderTransactionProtocol::builder(0, self.resources.consensus_constants.clone());
+                let mut builder = SenderTransactionProtocol::builder(
+                    self.resources.consensus_constants.clone(),
+                    self.resources.key_manager.clone(),
+                );
                 builder
                     .with_lock_height(0)
                     .with_fee_per_gram(fee_per_gram)
-                    .with_offset(offset.clone())
-                    .with_private_nonce(nonce.clone())
                     .with_message(message)
                     .with_kernel_features(KernelFeatures::empty())
                     .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
-                    .with_input(
-                        rewound_output.as_transaction_input(&self.resources.factories.commitment)?,
-                        rewound_output,
-                    );
+                    .with_input(rewound_output)
+                    .await?;
 
                 let mut outputs = Vec::new();
 
-                let (spending_key, script_private_key) = self.get_next_spend_and_script_keys().await?;
-                builder.with_change_secret(spending_key);
-                builder.with_recoverable_outputs(self.resources.recovery_data.clone());
-                builder.with_change_script(
+                let (change_spending_key_id, _, change_script_key_id, change_script_public_key) =
+                    self.resources.key_manager.get_next_spend_and_script_key_ids().await?;
+                builder.with_change_data(
                     script!(Nop),
-                    inputs!(PublicKey::from_secret_key(&script_private_key)),
-                    script_private_key,
+                    inputs!(change_script_public_key),
+                    change_script_key_id,
+                    change_spending_key_id,
+                    Covenant::default(),
                 );
 
                 let mut stp = builder
-                    .build(
-                        &self.resources.factories,
-                        None,
-                        self.last_seen_tip_height.unwrap_or(u64::MAX),
-                    )
+                    .build()
+                    .await
                     .map_err(|e| OutputManagerError::BuildError(e.message))?;
 
                 let tx_id = stp.get_tx_id()?;
 
-                let unblinded_output = stp.get_change_unblinded_output()?.ok_or_else(|| {
+                let key_manager_output = stp.get_change_output()?.ok_or_else(|| {
                     OutputManagerError::BuildError(
                         "There should be a change output metadata signature available".to_string(),
                     )
                 })?;
-                let change_output = DbUnblindedOutput::from_unblinded_output(
-                    unblinded_output,
-                    &self.resources.factories,
+                let change_output = DbKeyManagerOutput::from_key_manager_output(
+                    key_manager_output,
+                    &self.resources.key_manager,
                     None,
                     OutputSource::AtomicSwap,
                     Some(tx_id),
                     None,
-                )?;
+                )
+                .await?;
                 outputs.push(change_output);
 
                 trace!(target: LOG_TARGET, "Claiming HTLC with transaction ({}).", tx_id);
@@ -2346,7 +2140,7 @@ where
                 self.confirm_encumberance(tx_id)?;
                 let fee = stp.get_fee_amount()?;
                 trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", tx_id);
-                stp.finalize()?;
+                stp.finalize(&self.resources.key_manager).await?;
                 let tx = stp.take_transaction()?;
 
                 Ok((tx_id, fee, amount - fee, tx))
@@ -2369,69 +2163,65 @@ where
         output_hash: HashOutput,
         fee_per_gram: MicroTari,
     ) -> Result<(TxId, MicroTari, MicroTari, Transaction), OutputManagerError> {
-        let output = self.resources.db.get_unspent_output(output_hash)?.unblinded_output;
+        let output = self.resources.db.get_unspent_output(output_hash)?.key_manager_output;
 
         let amount = output.value;
 
-        let offset = PrivateKey::random(&mut OsRng);
-        let nonce = PrivateKey::random(&mut OsRng);
         let message = "SHA-XTR atomic refund".to_string();
 
         // Create builder with no recipients (other than ourselves)
-        let mut builder = SenderTransactionProtocol::builder(0, self.resources.consensus_constants.clone());
+        let mut builder = SenderTransactionProtocol::builder(
+            self.resources.consensus_constants.clone(),
+            self.resources.key_manager.clone(),
+        );
         builder
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
-            .with_offset(offset.clone())
-            .with_private_nonce(nonce.clone())
             .with_message(message)
             .with_kernel_features(KernelFeatures::empty())
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
-            .with_input(
-                output.as_transaction_input(&self.resources.factories.commitment)?,
-                output,
-            );
+            .with_input(output)
+            .await?;
 
         let mut outputs = Vec::new();
 
-        let (spending_key, script_private_key) = self.get_next_spend_and_script_keys().await?;
-        builder.with_change_secret(spending_key);
-        builder.with_recoverable_outputs(self.resources.recovery_data.clone());
-        builder.with_change_script(
+        let (change_spending_key_id, _, change_script_key_id, change_script_public_key) =
+            self.resources.key_manager.get_next_spend_and_script_key_ids().await?;
+        builder.with_change_data(
             script!(Nop),
-            inputs!(PublicKey::from_secret_key(&script_private_key)),
-            script_private_key,
+            inputs!(change_script_public_key),
+            change_script_key_id,
+            change_spending_key_id,
+            Covenant::default(),
         );
 
         let mut stp = builder
-            .build(
-                &self.resources.factories,
-                None,
-                self.last_seen_tip_height.unwrap_or(u64::MAX),
-            )
+            .build()
+            .await
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
 
         let tx_id = stp.get_tx_id()?;
 
-        let unblinded_output = stp.get_change_unblinded_output()?.ok_or_else(|| {
+        let key_manager_output = stp.get_change_output()?.ok_or_else(|| {
             OutputManagerError::BuildError("There should be a change output metadata signature available".to_string())
         })?;
 
-        let change_output = DbUnblindedOutput::from_unblinded_output(
-            unblinded_output,
-            &self.resources.factories,
+        let change_output = DbKeyManagerOutput::from_key_manager_output(
+            key_manager_output,
+            &self.resources.key_manager,
             None,
             OutputSource::Refund,
             Some(tx_id),
             None,
-        )?;
+        )
+        .await?;
         outputs.push(change_output);
 
         trace!(target: LOG_TARGET, "Claiming HTLC refund with transaction ({}).", tx_id);
 
         let fee = stp.get_fee_amount()?;
 
-        stp.finalize()?;
+        stp.finalize(&self.resources.key_manager).await?;
 
         let tx = stp.take_transaction()?;
 
@@ -2462,16 +2252,24 @@ where
     }
 
     // Scanning outputs addressed to this wallet
-    fn scan_outputs_for_one_sided_payments(
+    async fn scan_outputs_for_one_sided_payments(
         &mut self,
         outputs: Vec<TransactionOutput>,
     ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
-        // TODO: use MultiKey
-        // NOTE: known keys is a list consisting of an actual and deprecated wallet keys
-        let known_keys = self.resources.db.get_all_known_one_sided_payment_scripts()?;
+        let mut known_keys = Vec::new();
+        let known_scripts = self.resources.db.get_all_known_one_sided_payment_scripts()?;
+        for known_script in known_scripts {
+            known_keys.push((
+                self.resources
+                    .key_manager
+                    .get_public_key_at_key_id(&known_script.script_key_id)
+                    .await?,
+                known_script.script_key_id.clone(),
+            ));
+        }
 
-        let wallet_sk = self.node_identity.secret_key().clone();
-        let wallet_pk = self.node_identity.public_key();
+        let wallet_sk = self.resources.wallet_identity.wallet_node_key_id.clone();
+        let wallet_pk = self.resources.key_manager.get_public_key_at_key_id(&wallet_sk).await?;
 
         let mut scanned_outputs = vec![];
 
@@ -2480,21 +2278,21 @@ where
                 // ----------------------------------------------------------------------------
                 // simple one-sided address
                 [Opcode::PushPubKey(scanned_pk)] => {
-                    match known_keys
-                        .iter()
-                        .find(|x| &PublicKey::from_secret_key(&x.private_key) == scanned_pk.as_ref())
-                    {
+                    match known_keys.iter().find(|x| &x.0 == scanned_pk.as_ref()) {
                         // none of the keys match, skipping
                         None => continue,
 
                         // match found
                         Some(matched_key) => {
-                            let shared_secret =
-                                CommsDHKE::new(&matched_key.private_key, &output.sender_offset_public_key);
+                            let shared_secret = self
+                                .resources
+                                .key_manager
+                                .get_diffie_hellman_shared_secret(&matched_key.1, &output.sender_offset_public_key)
+                                .await?;
                             scanned_outputs.push((
                                 output.clone(),
                                 OutputSource::OneSided,
-                                matched_key.private_key.clone(),
+                                matched_key.1.clone(),
                                 shared_secret,
                             ));
                         },
@@ -2506,22 +2304,35 @@ where
                 // NOTE: Extracting the nonce R and a spending (public aka scan_key) key from the script
                 // NOTE: [RFC 203 on Stealth Addresses](https://rfc.tari.com/RFC-0203_StealthAddresses.html)
                 [Opcode::PushPubKey(nonce), Opcode::Drop, Opcode::PushPubKey(scanned_pk)] => {
-                    // Compute the stealth address offset
-                    let stealth_address_hasher = diffie_hellman_stealth_domain_hasher(&wallet_sk, nonce.as_ref());
-                    let stealth_address_offset = PrivateKey::from_bytes(stealth_address_hasher.as_ref())
-                        .expect("'DomainSeparatedHash<Blake256>' has correct size");
-
                     // matching spending (public) keys
-                    let script_spending_key = stealth_address_script_spending_key(&stealth_address_hasher, wallet_pk);
+                    let stealth_address_hasher = self
+                        .resources
+                        .key_manager
+                        .get_diffie_hellman_stealth_domain_hasher(&wallet_sk, nonce.as_ref())
+                        .await?;
+                    let script_spending_key = stealth_address_script_spending_key(&stealth_address_hasher, &wallet_pk);
                     if &script_spending_key != scanned_pk.as_ref() {
                         continue;
                     }
 
-                    let shared_secret = CommsDHKE::new(&wallet_sk, &output.sender_offset_public_key);
+                    // Compute the stealth address offset
+                    let stealth_address_offset = PrivateKey::from_bytes(stealth_address_hasher.as_ref())
+                        .expect("'DomainSeparatedHash<Blake256>' has correct size");
+                    let stealth_key = self
+                        .resources
+                        .key_manager
+                        .import_add_offset_to_private_key(&wallet_sk, stealth_address_offset)
+                        .await?;
+
+                    let shared_secret = self
+                        .resources
+                        .key_manager
+                        .get_diffie_hellman_shared_secret(&wallet_sk, &output.sender_offset_public_key)
+                        .await?;
                     scanned_outputs.push((
                         output.clone(),
                         OutputSource::StealthOneSided,
-                        wallet_sk.clone() + stealth_address_offset,
+                        stealth_key,
                         shared_secret,
                     ));
                 },
@@ -2530,30 +2341,31 @@ where
             }
         }
 
-        self.import_onesided_outputs(scanned_outputs)
+        self.import_onesided_outputs(scanned_outputs).await
     }
 
-    // Imports scanned outputs into the wallet
-    fn import_onesided_outputs(
+    // Import scanned outputs into the wallet
+    async fn import_onesided_outputs(
         &self,
-        scanned_outputs: Vec<(TransactionOutput, OutputSource, PrivateKey, CommsDHKE)>,
+        scanned_outputs: Vec<(TransactionOutput, OutputSource, TariKeyId, CommsDHKE)>,
     ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
         let mut rewound_outputs = Vec::with_capacity(scanned_outputs.len());
 
         for (output, output_source, script_private_key, shared_secret) in scanned_outputs {
             let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
-            if let Ok((committed_value, blinding_factor)) =
+            if let Ok((committed_value, spending_key)) =
                 EncryptedData::decrypt_data(&encryption_key, &output.commitment, &output.encrypted_data)
             {
                 if output.verify_mask(
                     &self.resources.factories.range_proof,
-                    &blinding_factor,
+                    &spending_key,
                     committed_value.into(),
                 )? {
-                    let rewound_output = UnblindedOutput::new(
+                    let spending_key_id = self.resources.key_manager.import_key(spending_key).await?;
+                    let rewound_output = KeyManagerOutput::new(
                         output.version,
                         committed_value,
-                        blinding_factor.clone(),
+                        spending_key_id,
                         output.features,
                         output.script,
                         tari_script::ExecutionStack::new(vec![]),
@@ -2567,23 +2379,22 @@ where
                     );
 
                     let tx_id = TxId::new_random();
-                    let db_output = DbUnblindedOutput::from_unblinded_output(
+                    let db_output = DbKeyManagerOutput::from_key_manager_output(
                         rewound_output.clone(),
-                        &self.resources.factories,
+                        &self.resources.key_manager,
                         None,
                         output_source,
                         Some(tx_id),
                         None,
-                    )?;
-
-                    let output_hex = output.commitment.to_hex();
+                    )
+                    .await?;
 
                     match self.resources.db.add_unspent_output_with_tx_id(tx_id, db_output) {
                         Ok(_) => {
                             trace!(
                                 target: LOG_TARGET,
                                 "One-sided payment Output {} with value {} recovered",
-                                output_hex,
+                                output.commitment.to_hex(),
                                 committed_value,
                             );
 
@@ -2596,7 +2407,7 @@ where
                             warn!(
                                 target: LOG_TARGET,
                                 "Attempt to add scanned output {} that already exists. Ignoring the output.",
-                                output_hex
+                                output.commitment.to_hex()
                             );
                         },
                         Err(err) => {
@@ -2653,7 +2464,7 @@ impl fmt::Display for Balance {
 
 #[derive(Debug, Clone)]
 struct UtxoSelection {
-    utxos: Vec<DbUnblindedOutput>,
+    utxos: Vec<DbKeyManagerOutput>,
     requires_change_output: bool,
     total_value: MicroTari,
     fee_without_change: MicroTari,
@@ -2682,11 +2493,11 @@ impl UtxoSelection {
         self.utxos.len()
     }
 
-    pub fn into_selected(self) -> Vec<DbUnblindedOutput> {
+    pub fn into_selected(self) -> Vec<DbKeyManagerOutput> {
         self.utxos
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &DbUnblindedOutput> + '_ {
+    pub fn iter(&self) -> impl Iterator<Item = &DbKeyManagerOutput> + '_ {
         self.utxos.iter()
     }
 }

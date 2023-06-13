@@ -26,9 +26,12 @@ use chrono::NaiveDateTime;
 use derivative::Derivative;
 use tari_common_types::{
     transaction::TxId,
-    types::{BlockHash, Commitment, HashOutput, PrivateKey},
+    types::{BlockHash, Commitment, HashOutput},
 };
-use tari_core::transactions::{transaction_components::UnblindedOutput, CryptoFactories};
+use tari_core::{
+    transaction_key_manager::{BaseLayerKeyManagerInterface, TariKeyId},
+    transactions::transaction_components::KeyManagerOutput,
+};
 use tari_script::{ExecutionStack, TariScript};
 
 use crate::output_manager_service::{
@@ -36,10 +39,12 @@ use crate::output_manager_service::{
     storage::{OutputSource, OutputStatus},
 };
 
+// ---------------------------------------------------------------------------
+
 #[derive(Debug, Clone)]
-pub struct DbUnblindedOutput {
+pub struct DbKeyManagerOutput {
     pub commitment: Commitment,
-    pub unblinded_output: UnblindedOutput,
+    pub key_manager_output: KeyManagerOutput,
     pub hash: HashOutput,
     pub status: OutputStatus,
     pub mined_height: Option<u64>,
@@ -54,19 +59,19 @@ pub struct DbUnblindedOutput {
     pub spent_in_tx_id: Option<TxId>,
 }
 
-impl DbUnblindedOutput {
-    pub fn from_unblinded_output(
-        output: UnblindedOutput,
-        factory: &CryptoFactories,
+impl DbKeyManagerOutput {
+    pub async fn from_key_manager_output<KM: BaseLayerKeyManagerInterface>(
+        output: KeyManagerOutput,
+        key_manager: &KM,
         spend_priority: Option<SpendingPriority>,
         source: OutputSource,
         received_in_tx_id: Option<TxId>,
         spent_in_tx_id: Option<TxId>,
-    ) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
-        Ok(DbUnblindedOutput {
-            hash: output.hash(factory),
-            commitment: output.commitment(factory),
-            unblinded_output: output,
+    ) -> Result<DbKeyManagerOutput, OutputManagerStorageError> {
+        Ok(DbKeyManagerOutput {
+            hash: output.hash(key_manager).await?,
+            commitment: output.commitment(key_manager).await?,
+            key_manager_output: output,
             status: OutputStatus::NotStored,
             mined_height: None,
             mined_in_block: None,
@@ -82,31 +87,35 @@ impl DbUnblindedOutput {
     }
 }
 
-impl From<DbUnblindedOutput> for UnblindedOutput {
-    fn from(value: DbUnblindedOutput) -> UnblindedOutput {
-        value.unblinded_output
+impl From<DbKeyManagerOutput> for KeyManagerOutput {
+    fn from(value: DbKeyManagerOutput) -> KeyManagerOutput {
+        value.key_manager_output
     }
 }
 
-impl PartialEq for DbUnblindedOutput {
-    fn eq(&self, other: &DbUnblindedOutput) -> bool {
-        self.unblinded_output.value == other.unblinded_output.value
+impl PartialEq for DbKeyManagerOutput {
+    fn eq(&self, other: &DbKeyManagerOutput) -> bool {
+        self.key_manager_output.value == other.key_manager_output.value
     }
 }
 
-impl PartialOrd<DbUnblindedOutput> for DbUnblindedOutput {
+impl PartialOrd<DbKeyManagerOutput> for DbKeyManagerOutput {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.unblinded_output.value.partial_cmp(&other.unblinded_output.value)
+        self.key_manager_output
+            .value
+            .partial_cmp(&other.key_manager_output.value)
     }
 }
 
-impl Ord for DbUnblindedOutput {
+impl Ord for DbKeyManagerOutput {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.unblinded_output.value.cmp(&other.unblinded_output.value)
+        self.key_manager_output.value.cmp(&other.key_manager_output.value)
     }
 }
 
-impl Eq for DbUnblindedOutput {}
+impl Eq for DbKeyManagerOutput {}
+
+// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone)]
 pub enum SpendingPriority {
@@ -138,8 +147,7 @@ impl From<SpendingPriority> for u32 {
 #[derivative(Debug)]
 pub struct KnownOneSidedPaymentScript {
     pub script_hash: Vec<u8>,
-    #[derivative(Debug = "ignore")]
-    pub private_key: PrivateKey,
+    pub script_key_id: TariKeyId,
     pub script: TariScript,
     pub input: ExecutionStack,
     pub script_lock_height: u64,

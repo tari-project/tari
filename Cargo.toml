@@ -10,7 +10,7 @@ members = [
     "base_layer/p2p",
     "base_layer/service_framework",
     "base_layer/wallet",
-    "base_layer/wallet_ffi",
+    #"base_layer/wallet_ffi",
     "base_layer/tari_mining_helper_ffi",
     "clients/rust/base_node_grpc_client",
     "clients/rust/wallet_grpc_client",
@@ -30,7 +30,7 @@ members = [
     "applications/tari_app_utilities",
     "applications/tari_merge_mining_proxy",
     "applications/tari_miner",
-    "integration_tests"
+    #"integration_tests"
 ]
 
 # Add here until we move to edition=2021

@@ -32,6 +32,7 @@ use serde_json::Value;
 use tari_chat_client::ChatClient;
 use tari_core::{
     blocks::Block,
+    test_helpers::TestKeyManager,
     transactions::transaction_components::{Transaction, UnblindedOutput},
 };
 use tari_utilities::hex::Hex;
@@ -88,6 +89,7 @@ pub struct TariWorld {
     pub last_imported_tx_ids: Vec<u64>,
     // We need to store this for the merge mining proxy steps. The checks are get and check are done on separate steps.
     pub last_merge_miner_response: Value,
+    pub key_manager: TestKeyManager,
 }
 
 impl Debug for TariWorld {
@@ -110,6 +112,7 @@ impl Debug for TariWorld {
             .field("errors", &self.errors)
             .field("last_imported_tx_ids", &self.last_imported_tx_ids)
             .field("last_merge_miner_response", &self.last_merge_miner_response)
+            .field("key_manager", &self.key_manager)
             .finish()
     }
 }

@@ -56,6 +56,7 @@ pub struct NodeIdentity {
     node_id: NodeId,
     public_key: CommsPublicKey,
     features: PeerFeatures,
+    // TODO: Must replace `secret_key` with `key_id` of type `KeyId`
     secret_key: CommsSecretKey,
     public_addresses: RwLock<Vec<Multiaddr>>,
     #[serde(default = "rwlock_none")]

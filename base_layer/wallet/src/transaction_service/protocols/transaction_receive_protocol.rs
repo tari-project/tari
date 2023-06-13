@@ -30,7 +30,7 @@ use tari_common_types::{
     transaction::{TransactionDirection, TransactionStatus, TxId},
 };
 use tari_core::{
-    core_key_manager::BaseLayerKeyManagerInterface,
+    transaction_key_manager::BaseLayerKeyManagerInterface,
     transactions::{
         transaction_components::Transaction,
         transaction_protocol::{recipient::RecipientState, sender::TransactionSenderMessage},

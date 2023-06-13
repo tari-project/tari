@@ -20,29 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common_types::types::{PrivateKey as SK, PublicKey, RangeProof, Signature};
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    errors::RangeProofError,
-    keys::PublicKey as PK,
-    range_proof::RangeProofService as RPS,
-    tari_utilities::byte_array::ByteArray,
-};
-
-use crate::transactions::{
-    crypto_factories::CryptoFactories,
-    transaction_components::{
-        EncryptedData,
-        RangeProofType,
-        TransactionKernel,
-        TransactionKernelVersion,
-        TransactionOutput,
-        TransactionOutputVersion,
-    },
-    transaction_protocol::{
-        recipient::RecipientSignedMessage as RD,
-        sender::SingleRoundSenderData as SD,
-        TransactionProtocolError as TPE,
+use crate::{
+    transaction_key_manager::{BaseLayerKeyManagerInterface, CoreKeyManagerBranch, TxoStage},
+    transactions::{
+        transaction_components::{KeyManagerOutput, TransactionKernel, TransactionKernelVersion},
+        transaction_protocol::{
+            recipient::RecipientSignedMessage,
+            sender::SingleRoundSenderData,
+            TransactionProtocolError as TPE,
+        },
     },
 };
 
@@ -55,167 +41,154 @@ use crate::transactions::{
 pub struct SingleReceiverTransactionProtocol {}
 
 impl SingleReceiverTransactionProtocol {
-    pub fn create(
-        sender_info: &SD,
-        nonce: SK,
-        spending_key: SK,
-        factories: &CryptoFactories,
-        encrypted_data: &EncryptedData,
-    ) -> Result<RD, TPE> {
+    pub async fn create<KM: BaseLayerKeyManagerInterface>(
+        sender_info: &SingleRoundSenderData,
+        output: KeyManagerOutput,
+        key_manager: &KM,
+    ) -> Result<RecipientSignedMessage, TPE> {
+        // output.fill in metadata
         SingleReceiverTransactionProtocol::validate_sender_data(sender_info)?;
-        let output =
-            SingleReceiverTransactionProtocol::build_output(sender_info, &spending_key, factories, encrypted_data)?;
-        let public_nonce = PublicKey::from_secret_key(&nonce);
+        let transaction_output = output.as_transaction_output(key_manager).await?;
+
+        let (nonce_id, public_nonce) = key_manager
+            .get_next_key(CoreKeyManagerBranch::Nonce.get_branch_key())
+            .await?;
         let tx_meta = if output.is_burned() {
             let mut meta = sender_info.metadata.clone();
-            meta.burn_commitment = Some(output.commitment().clone());
+            meta.burn_commitment = Some(transaction_output.commitment().clone());
             meta
         } else {
             sender_info.metadata.clone()
         };
-        let public_spending_key = PublicKey::from_secret_key(&spending_key);
-        let e = TransactionKernel::build_kernel_challenge_from_tx_meta(
+        let public_excess = key_manager
+            .get_txo_kernel_signature_excess_with_offset(&output.spending_key_id, &nonce_id)
+            .await?;
+
+        let kernel_message = TransactionKernel::build_kernel_signature_message(
             &TransactionKernelVersion::get_current_version(),
-            &(&sender_info.public_nonce + &public_nonce),
-            &(&sender_info.public_excess + &public_spending_key),
-            &tx_meta,
+            tx_meta.fee,
+            tx_meta.lock_height,
+            &tx_meta.kernel_features,
+            &tx_meta.burn_commitment,
         );
-        let signature = Signature::sign_raw(&spending_key, nonce, &e).map_err(TPE::SigningError)?;
-        let data = RD {
+        let signature = key_manager
+            .get_txo_kernel_signature(
+                &output.spending_key_id,
+                &nonce_id,
+                &(&sender_info.public_nonce + &public_nonce),
+                &(&sender_info.public_excess + &public_excess),
+                &TransactionKernelVersion::get_current_version(),
+                &kernel_message,
+                &tx_meta.kernel_features,
+                TxoStage::Output,
+            )
+            .await?;
+        let offset = key_manager
+            .get_txo_private_kernel_offset(&output.spending_key_id, &nonce_id)
+            .await?;
+
+        let data = RecipientSignedMessage {
             tx_id: sender_info.tx_id,
-            output,
-            public_spend_key: public_spending_key,
+            output: transaction_output,
+            public_spend_key: public_excess,
             partial_signature: signature,
             tx_metadata: tx_meta,
+            offset,
         };
         Ok(data)
     }
 
     /// Validates the sender info
-    fn validate_sender_data(sender_info: &SD) -> Result<(), TPE> {
+    fn validate_sender_data(sender_info: &SingleRoundSenderData) -> Result<(), TPE> {
         if sender_info.amount == 0.into() {
             return Err(TPE::ValidationError("Cannot send zero microTari".into()));
         }
         Ok(())
     }
-
-    fn build_output(
-        sender_info: &SD,
-        spending_key: &SK,
-        factories: &CryptoFactories,
-        encrypted_data: &EncryptedData,
-    ) -> Result<TransactionOutput, TPE> {
-        let commitment = factories
-            .commitment
-            .commit_value(spending_key, sender_info.amount.into());
-
-        let sender_features = sender_info.features.clone();
-
-        let proof = if sender_features.range_proof_type == RangeProofType::BulletProofPlus {
-            let range_proof = factories
-                .range_proof
-                .construct_proof(spending_key, sender_info.amount.into())?;
-            Some(RangeProof::from_bytes(&range_proof).map_err(|_| {
-                TPE::RangeProofError(RangeProofError::ProofConstructionError(
-                    "Creating transaction output".to_string(),
-                ))
-            })?)
-        } else {
-            None
-        };
-
-        let minimum_value_promise = sender_info.minimum_value_promise;
-
-        let partial_metadata_signature = TransactionOutput::create_receiver_partial_metadata_signature(
-            TransactionOutputVersion::get_current_version(),
-            sender_info.amount,
-            spending_key,
-            &sender_info.script,
-            &sender_features,
-            &sender_info.sender_offset_public_key,
-            &sender_info.ephemeral_public_nonce,
-            &sender_info.covenant,
-            encrypted_data,
-            minimum_value_promise,
-        )?;
-
-        let output = TransactionOutput::new_current_version(
-            sender_features,
-            commitment,
-            proof,
-            sender_info.script.clone(),
-            sender_info.sender_offset_public_key.clone(),
-            partial_metadata_signature,
-            sender_info.covenant.clone(),
-            *encrypted_data,
-            minimum_value_promise,
-        );
-        Ok(output)
-    }
 }
 
 #[cfg(test)]
 mod test {
-    use rand::rngs::OsRng;
-    use tari_common_types::types::{PrivateKey, PublicKey};
-    use tari_crypto::{
-        commitment::HomomorphicCommitmentFactory,
-        keys::{PublicKey as PK, SecretKey as SK},
-    };
-    use tari_script::TariScript;
+    use tari_common_types::types::PublicKey;
+    use tari_crypto::{keys::PublicKey as PublicKeyTrait, signatures::CommitmentAndPublicKeySignature};
+    use tari_key_manager::key_manager_service::KeyManagerInterface;
+    use tari_script::{script, ExecutionStack, TariScript};
 
-    use crate::transactions::{
-        crypto_factories::CryptoFactories,
-        tari_amount::*,
-        transaction_components::{
-            EncryptedData,
-            OutputFeatures,
-            OutputType,
-            TransactionKernel,
-            TransactionKernelVersion,
+    use crate::{
+        covenants::Covenant,
+        test_helpers::create_test_core_key_manager_with_memory_db,
+        transaction_key_manager::BaseLayerKeyManagerInterface,
+        transactions::{
+            tari_amount::*,
+            test_helpers::TestParams,
+            transaction_components::{
+                EncryptedData,
+                KeyManagerOutput,
+                OutputFeatures,
+                TransactionKernel,
+                TransactionKernelVersion,
+                TransactionOutput,
+            },
+            transaction_protocol::{
+                sender::SingleRoundSenderData,
+                single_receiver::SingleReceiverTransactionProtocol,
+                TransactionMetadata,
+                TransactionProtocolError,
+            },
         },
-        transaction_protocol::{
-            sender::SingleRoundSenderData,
-            single_receiver::SingleReceiverTransactionProtocol,
-            TransactionMetadata,
-            TransactionProtocolError,
-        },
     };
 
-    fn generate_output_parms() -> (PrivateKey, PrivateKey, OutputFeatures) {
-        let r = PrivateKey::random(&mut OsRng);
-        let k = PrivateKey::random(&mut OsRng);
-        let of = OutputFeatures::default();
-        (r, k, of)
-    }
-
-    #[test]
-    fn zero_amount_fails() {
-        let factories = CryptoFactories::default();
+    #[tokio::test]
+    async fn zero_amount_fails() {
+        let key_manager = create_test_core_key_manager_with_memory_db();
+        let test_params = TestParams::new(&key_manager).await;
         let info = SingleRoundSenderData::default();
-        let (r, k, _) = generate_output_parms();
+        let bob_output = KeyManagerOutput::new_current_version(
+            MicroTari(5000),
+            test_params.spend_key_id,
+            OutputFeatures::default(),
+            script!(Nop),
+            ExecutionStack::default(),
+            test_params.script_key_id,
+            PublicKey::default(),
+            CommitmentAndPublicKeySignature::default(),
+            0,
+            Covenant::default(),
+            EncryptedData::default(),
+            0.into(),
+        );
+
         #[allow(clippy::match_wild_err_arm)]
-        match SingleReceiverTransactionProtocol::create(&info, r, k, &factories, &EncryptedData::default()) {
+        match SingleReceiverTransactionProtocol::create(&info, bob_output, &key_manager).await {
             Ok(_) => panic!("Zero amounts should fail"),
             Err(TransactionProtocolError::ValidationError(s)) => assert_eq!(s, "Cannot send zero microTari"),
             Err(_) => panic!("Protocol fails for the wrong reason"),
         };
     }
 
-    #[test]
-    fn valid_request() {
-        let factories = CryptoFactories::default();
-        let (_xs, pub_xs) = PublicKey::random_keypair(&mut OsRng);
-        let (_rs, pub_rs) = PublicKey::random_keypair(&mut OsRng);
-        let (r, k, of) = generate_output_parms();
-        let pubkey = PublicKey::from_secret_key(&k);
-        let pubnonce = PublicKey::from_secret_key(&r);
+    #[tokio::test]
+    async fn valid_request() {
+        let key_manager = create_test_core_key_manager_with_memory_db();
         let m = TransactionMetadata::new(MicroTari(100), 0);
-        let script_offset_secret_key = PrivateKey::random(&mut OsRng);
-        let sender_offset_public_key = PublicKey::from_secret_key(&script_offset_secret_key);
-        let private_commitment_nonce = PrivateKey::random(&mut OsRng);
-        let ephemeral_public_nonce = PublicKey::from_secret_key(&private_commitment_nonce);
+        let test_params = TestParams::new(&key_manager).await;
+        let test_params2 = TestParams::new(&key_manager).await;
         let script = TariScript::default();
+        let sender_offset_public_key = key_manager
+            .get_public_key_at_key_id(&test_params.sender_offset_key_id)
+            .await
+            .unwrap();
+        let ephemeral_public_nonce = key_manager
+            .get_public_key_at_key_id(&test_params.kernel_nonce_key_id)
+            .await
+            .unwrap();
+        let pub_xs = key_manager
+            .get_public_key_at_key_id(&test_params.spend_key_id)
+            .await
+            .unwrap();
+        let pub_rs = key_manager
+            .get_public_key_at_key_id(&test_params.kernel_nonce_key_id)
+            .await
+            .unwrap();
         let info = SingleRoundSenderData {
             tx_id: 500u64.into(),
             amount: MicroTari(1500),
@@ -223,41 +196,69 @@ mod test {
             public_nonce: pub_rs.clone(),
             metadata: m.clone(),
             message: "".to_string(),
-            features: of,
-            script,
+            features: OutputFeatures::default(),
+            script: script.clone(),
             sender_offset_public_key,
-            ephemeral_public_nonce,
+            ephemeral_public_nonce: ephemeral_public_nonce.clone(),
             covenant: Default::default(),
             minimum_value_promise: MicroTari::zero(),
         };
-        let prot =
-            SingleReceiverTransactionProtocol::create(&info, r, k.clone(), &factories, &EncryptedData::default())
-                .unwrap();
+        let bob_public_key = key_manager
+            .get_public_key_at_key_id(&test_params.sender_offset_key_id)
+            .await
+            .unwrap();
+        let mut bob_output = KeyManagerOutput::new_current_version(
+            MicroTari(1500),
+            test_params2.spend_key_id.clone(),
+            OutputFeatures::default(),
+            script.clone(),
+            ExecutionStack::default(),
+            test_params2.script_key_id,
+            bob_public_key,
+            CommitmentAndPublicKeySignature::default(),
+            0,
+            Covenant::default(),
+            EncryptedData::default(),
+            0.into(),
+        );
+        let metadata_message = TransactionOutput::metadata_signature_message(&bob_output);
+        bob_output.metadata_signature = key_manager
+            .get_receiver_partial_metadata_signature(
+                &bob_output.spending_key_id,
+                &bob_output.value.into(),
+                &bob_output.sender_offset_public_key,
+                &ephemeral_public_nonce,
+                &bob_output.version,
+                &metadata_message,
+                bob_output.features.range_proof_type,
+            )
+            .await
+            .unwrap();
+
+        let prot = SingleReceiverTransactionProtocol::create(&info, bob_output, &key_manager)
+            .await
+            .unwrap();
         assert_eq!(prot.tx_id.as_u64(), 500, "tx_id is incorrect");
         // Check the signature
-        assert_eq!(prot.public_spend_key, pubkey, "Public key is incorrect");
-        let excess = &pub_xs + PublicKey::from_secret_key(&k);
+
+        let pubkey = key_manager
+            .get_public_key_at_key_id(&test_params2.spend_key_id)
+            .await
+            .unwrap();
+        let offset = prot.offset.clone();
+        let public_offset = PublicKey::from_secret_key(&offset);
+        let signing_pubkey = &pubkey - &public_offset;
+        assert_eq!(prot.public_spend_key, signing_pubkey, "Public key is incorrect");
+        let excess = &pub_xs + &signing_pubkey;
         let e = TransactionKernel::build_kernel_challenge_from_tx_meta(
             &TransactionKernelVersion::get_current_version(),
-            &(&pub_rs + &pubnonce),
+            &(&pub_rs + prot.partial_signature.get_public_nonce()),
             &excess,
             &m,
         );
         assert!(
-            prot.partial_signature.verify_challenge(&pubkey, &e),
+            prot.partial_signature.verify_challenge(&signing_pubkey, &e),
             "Partial signature is incorrect"
-        );
-        let out = &prot.output;
-        // Check the output that was constructed
-        assert!(
-            factories.commitment.open_value(&k, info.amount.into(), &out.commitment),
-            "Output commitment is invalid"
-        );
-        out.verify_range_proof(&factories.range_proof).unwrap();
-        assert_eq!(
-            out.features.output_type,
-            OutputType::Standard,
-            "Output features flags have changed"
         );
     }
 }

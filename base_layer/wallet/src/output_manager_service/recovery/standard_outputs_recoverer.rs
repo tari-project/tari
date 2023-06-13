@@ -23,31 +23,23 @@
 use std::time::Instant;
 
 use log::*;
-use rand::rngs::OsRng;
-use tari_common_types::{
-    transaction::TxId,
-    types::{PrivateKey, PublicKey},
+use tari_common_types::transaction::TxId;
+use tari_core::{
+    transaction_key_manager::{BaseLayerKeyManagerInterface, CoreKeyManagerBranch, TariKeyId},
+    transactions::{
+        tari_amount::MicroTari,
+        transaction_components::{KeyManagerOutput, TransactionOutput},
+    },
 };
-use tari_core::transactions::{
-    tari_amount::MicroTari,
-    transaction_components::{EncryptedData, TransactionOutput, UnblindedOutput},
-    transaction_protocol::RecoveryData,
-    CryptoFactories,
-};
-use tari_crypto::{
-    keys::{PublicKey as PublicKeyTrait, SecretKey},
-    tari_utilities::hex::Hex,
-};
-use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tari_script::{inputs, script, Opcode};
+use tari_utilities::hex::Hex;
 
 use crate::output_manager_service::{
     error::{OutputManagerError, OutputManagerStorageError},
     handle::RecoveredOutput,
-    resources::OutputManagerKeyManagerBranch,
     storage::{
         database::{OutputManagerBackend, OutputManagerDatabase},
-        models::DbUnblindedOutput,
+        models::DbKeyManagerOutput,
         OutputSource,
     },
 };
@@ -56,31 +48,19 @@ const LOG_TARGET: &str = "wallet::output_manager_service::recovery";
 
 pub(crate) struct StandardUtxoRecoverer<TBackend: OutputManagerBackend + 'static, TKeyManagerInterface> {
     master_key_manager: TKeyManagerInterface,
-    recovery_data: RecoveryData,
-    factories: CryptoFactories,
     db: OutputManagerDatabase<TBackend>,
 }
 
 impl<TBackend, TKeyManagerInterface> StandardUtxoRecoverer<TBackend, TKeyManagerInterface>
 where
     TBackend: OutputManagerBackend + 'static,
-    TKeyManagerInterface: KeyManagerInterface<PublicKey>,
+    TKeyManagerInterface: BaseLayerKeyManagerInterface,
 {
-    pub fn new(
-        master_key_manager: TKeyManagerInterface,
-        recovery_data: RecoveryData,
-        factories: CryptoFactories,
-        db: OutputManagerDatabase<TBackend>,
-    ) -> Self {
-        Self {
-            master_key_manager,
-            recovery_data,
-            factories,
-            db,
-        }
+    pub fn new(master_key_manager: TKeyManagerInterface, db: OutputManagerDatabase<TBackend>) -> Self {
+        Self { master_key_manager, db }
     }
 
-    /// Attempt to rewind all of the given transaction outputs into unblinded outputs. If they can be rewound then add
+    /// Attempt to rewind all of the given transaction outputs into key_manager outputs. If they can be rewound then add
     /// them to the database and increment the key manager index
     pub async fn scan_and_recover_outputs(
         &mut self,
@@ -91,14 +71,14 @@ where
 
         let known_scripts = self.db.get_all_known_one_sided_payment_scripts()?;
 
-        let mut rewound_outputs: Vec<UnblindedOutput> = Vec::new();
+        let mut rewound_outputs: Vec<KeyManagerOutput> = Vec::new();
         for output in outputs {
             let known_script_index = known_scripts.iter().position(|s| s.script == output.script);
             if output.script != script!(Nop) && known_script_index.is_none() {
                 continue;
             }
 
-            let (blinding_factor, committed_value) = match self.attempt_output_recovery(&output)? {
+            let (spending_key, committed_value) = match self.attempt_output_recovery(&output).await? {
                 Some(recovered) => recovered,
                 None => continue,
             };
@@ -106,16 +86,19 @@ where
             let (input_data, script_key) = if let Some(index) = known_script_index {
                 (
                     known_scripts[index].input.clone(),
-                    known_scripts[index].private_key.clone(),
+                    known_scripts[index].script_key_id.clone(),
                 )
             } else {
-                let key = PrivateKey::random(&mut OsRng);
-                (inputs!(PublicKey::from_secret_key(&key)), key)
+                let (key, public_key) = self
+                    .master_key_manager
+                    .get_next_key(CoreKeyManagerBranch::ScriptKey.get_branch_key())
+                    .await?;
+                (inputs!(public_key), key)
             };
-            let uo = UnblindedOutput::new(
+            let uo = KeyManagerOutput::new(
                 output.version,
                 committed_value,
-                blinding_factor,
+                spending_key,
                 output.features,
                 output.script,
                 input_data,
@@ -149,14 +132,15 @@ where
                 _ => OutputSource::RecoveredButUnrecognized,
             };
 
-            let db_output = DbUnblindedOutput::from_unblinded_output(
+            let db_output = DbKeyManagerOutput::from_key_manager_output(
                 output.clone(),
-                &self.factories,
+                &self.master_key_manager,
                 None,
                 output_source,
                 None,
                 None,
-            )?;
+            )
+            .await?;
             let tx_id = TxId::new_random();
             let output_hex = db_output.commitment.to_hex();
             if let Err(e) = self.db.add_unspent_output_with_tx_id(tx_id, db_output) {
@@ -186,24 +170,20 @@ where
         Ok(rewound_outputs_with_tx_id)
     }
 
-    fn attempt_output_recovery(
+    async fn attempt_output_recovery(
         &self,
         output: &TransactionOutput,
-    ) -> Result<Option<(PrivateKey, MicroTari)>, OutputManagerError> {
-        let (committed_value, blinding_factor) = match EncryptedData::decrypt_data(
-            &self.recovery_data.encryption_key,
-            &output.commitment,
-            &output.encrypted_data,
-        ) {
+    ) -> Result<Option<(TariKeyId, MicroTari)>, OutputManagerError> {
+        let (key, committed_value) = match self
+            .master_key_manager
+            .try_commitment_key_recovery(&output.commitment, &output.encrypted_data, None)
+            .await
+        {
             Ok(value) => value,
             Err(_) => return Ok(None),
         };
 
-        if !output.verify_mask(&self.factories.range_proof, &blinding_factor, committed_value.into())? {
-            return Ok(None);
-        }
-
-        Ok(Some((blinding_factor, committed_value)))
+        Ok(Some((key, committed_value)))
     }
 
     /// Find the key manager index that corresponds to the spending key in the rewound output, if found then modify
@@ -211,49 +191,42 @@ where
     /// seen so far.
     async fn update_outputs_script_private_key_and_update_key_manager_index(
         &mut self,
-        output: &mut UnblindedOutput,
+        output: &mut KeyManagerOutput,
     ) -> Result<(), OutputManagerError> {
+        let public_key = self
+            .master_key_manager
+            .get_public_key_at_key_id(&output.spending_key_id)
+            .await?;
         let script_key = if output.features.is_coinbase() {
             let found_index = self
                 .master_key_manager
-                .find_key_index(
-                    OutputManagerKeyManagerBranch::Coinbase.get_branch_key(),
-                    &PublicKey::from_secret_key(&output.spending_key),
-                )
+                .find_key_index(CoreKeyManagerBranch::Coinbase.get_branch_key(), &public_key)
                 .await?;
-
-            self.master_key_manager
-                .get_key_at_index(
-                    OutputManagerKeyManagerBranch::CoinbaseScript.get_branch_key(),
-                    found_index,
-                )
-                .await?
+            TariKeyId::Managed {
+                branch: CoreKeyManagerBranch::CoinbaseScript.get_branch_key(),
+                index: found_index,
+            }
         } else {
             let found_index = self
                 .master_key_manager
-                .find_key_index(
-                    OutputManagerKeyManagerBranch::Spend.get_branch_key(),
-                    &PublicKey::from_secret_key(&output.spending_key),
-                )
+                .find_key_index(CoreKeyManagerBranch::CommitmentMask.get_branch_key(), &public_key)
                 .await?;
 
             self.master_key_manager
-                .update_current_key_index_if_higher(OutputManagerKeyManagerBranch::Spend.get_branch_key(), found_index)
+                .update_current_key_index_if_higher(CoreKeyManagerBranch::CommitmentMask.get_branch_key(), found_index)
                 .await?;
             self.master_key_manager
-                .update_current_key_index_if_higher(
-                    OutputManagerKeyManagerBranch::SpendScript.get_branch_key(),
-                    found_index,
-                )
+                .update_current_key_index_if_higher(CoreKeyManagerBranch::ScriptKey.get_branch_key(), found_index)
                 .await?;
 
-            self.master_key_manager
-                .get_key_at_index(OutputManagerKeyManagerBranch::SpendScript.get_branch_key(), found_index)
-                .await?
+            TariKeyId::Managed {
+                branch: CoreKeyManagerBranch::ScriptKey.get_branch_key(),
+                index: found_index,
+            }
         };
-
-        output.input_data = inputs!(PublicKey::from_secret_key(&script_key));
-        output.script_private_key = script_key;
+        let public_script_key = self.master_key_manager.get_public_key_at_key_id(&script_key).await?;
+        output.input_data = inputs!(public_script_key);
+        output.script_key_id = script_key;
         Ok(())
     }
 }

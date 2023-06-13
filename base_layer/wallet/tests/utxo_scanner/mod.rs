@@ -38,7 +38,12 @@ use tari_core::{
     base_node::rpc::BaseNodeWalletRpcServer,
     blocks::BlockHeader,
     proto::base_node::{ChainMetadata, TipInfoResponse},
-    transactions::{tari_amount::MicroTari, transaction_components::UnblindedOutput, CryptoFactories},
+    test_helpers::create_test_core_key_manager_with_memory_db,
+    transactions::{
+        tari_amount::MicroTari,
+        transaction_components::{KeyManagerOutput, OutputFeatures},
+        CryptoFactories,
+    },
 };
 use tari_key_manager::{cipher_seed::CipherSeed, get_birthday_from_unix_epoch_in_seconds};
 use tari_service_framework::reply_channel;
@@ -48,7 +53,7 @@ use tari_utilities::{epoch_time::EpochTime, ByteArray, SafePassword};
 use tari_wallet::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     connectivity_service::{create_wallet_connectivity_mock, WalletConnectivityMock},
-    output_manager_service::storage::{models::DbUnblindedOutput, OutputSource},
+    output_manager_service::storage::{models::DbKeyManagerOutput, OutputSource},
     storage::{
         database::WalletDatabase,
         sqlite_db::wallet::WalletSqliteDatabase,
@@ -215,11 +220,11 @@ async fn setup(
 
 pub struct TestBlockData {
     block_headers: HashMap<u64, BlockHeader>,
-    unblinded_outputs: HashMap<u64, Vec<UnblindedOutput>>,
+    key_manager_outputs: HashMap<u64, Vec<KeyManagerOutput>>,
     utxos_by_block: Vec<UtxosByBlock>,
 }
 
-/// Generates a set of block headers and unblinded outputs for each header. The `birthday_offset` specifies at which
+/// Generates a set of block headers and key manager outputs for each header. The `birthday_offset` specifies at which
 /// block in the `num_block` the birthday timestamp will have passed i.e. it occured during the previous block period.
 /// e.g. with `num_blocks` = 10 and `birthday_offset` = 5 the birthday timestamp will occur between block 4 and 5
 async fn generate_block_headers_and_utxos(
@@ -232,7 +237,8 @@ async fn generate_block_headers_and_utxos(
     let factories = CryptoFactories::default();
     let mut block_headers = HashMap::new();
     let mut utxos_by_block = Vec::new();
-    let mut unblinded_outputs = HashMap::new();
+    let mut key_manager_outputs = HashMap::new();
+    let key_manager = create_test_core_key_manager_with_memory_db();
     for i in start_height..num_blocks + start_height {
         let mut block_header = BlockHeader::new(0);
         block_header.height = i;
@@ -246,7 +252,8 @@ async fn generate_block_headers_and_utxos(
             let (_ti, uo) = make_non_recoverable_input(
                 &mut OsRng,
                 MicroTari::from(100 + OsRng.next_u64() % 1000),
-                &factories.commitment,
+                &OutputFeatures::default(),
+                &key_manager,
             )
             .await;
             block_outputs.push(uo);
@@ -258,7 +265,7 @@ async fn generate_block_headers_and_utxos(
         let transaction_outputs = block_outputs
             .clone()
             .iter()
-            .map(|uo| uo.as_transaction_output(&factories).unwrap())
+            .map(|uo| uo.as_transaction_output(&key_manager).unwrap())
             .collect();
         let utxos = UtxosByBlock {
             height: i,
@@ -266,11 +273,11 @@ async fn generate_block_headers_and_utxos(
             utxos: transaction_outputs,
         };
         utxos_by_block.push(utxos);
-        unblinded_outputs.insert(i, block_outputs);
+        key_manager_outputs.insert(i, block_outputs);
     }
     TestBlockData {
         block_headers,
-        unblinded_outputs,
+        key_manager_outputs,
         utxos_by_block,
     }
 }
@@ -290,7 +297,7 @@ async fn test_utxo_scanner_recovery() {
 
     let TestBlockData {
         block_headers,
-        unblinded_outputs,
+        key_manager_outputs,
         utxos_by_block,
     } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false).await;
 
@@ -312,31 +319,33 @@ async fn test_utxo_scanner_recovery() {
     });
 
     // Adding half the outputs of the blocks to the OMS mock
-    let mut db_unblinded_outputs = Vec::new();
+    let mut db_key_manager_outputs = Vec::new();
     let mut total_outputs_to_recover = 0;
     let mut total_amount_to_recover = MicroTari::from(0);
-    for (h, outputs) in &unblinded_outputs {
+    let key_manager = create_test_core_key_manager_with_memory_db();
+    for (h, outputs) in &key_manager_outputs {
         for output in outputs.iter().skip(outputs.len() / 2) {
-            let dbo = DbUnblindedOutput::from_unblinded_output(
+            let dbo = DbKeyManagerOutput::from_key_manager_output(
                 output.clone(),
-                &factories,
+                &key_manager,
                 None,
                 OutputSource::Unknown,
                 None,
                 None,
             )
+            .await
             .unwrap();
             // Only the outputs in blocks after the birthday should be included in the recovered total
             if *h >= NUM_BLOCKS.saturating_sub(BIRTHDAY_OFFSET).saturating_sub(2) {
                 total_outputs_to_recover += 1;
-                total_amount_to_recover += dbo.unblinded_output.value;
+                total_amount_to_recover += dbo.key_manager_output.value;
             }
-            db_unblinded_outputs.push(dbo);
+            db_key_manager_outputs.push(dbo);
         }
     }
     test_interface
         .oms_mock_state
-        .set_recoverable_outputs(db_unblinded_outputs);
+        .set_recoverable_outputs(db_key_manager_outputs);
 
     let mut scanner_event_stream = test_interface.scanner_handle.get_event_receiver();
 
@@ -389,7 +398,7 @@ async fn test_utxo_scanner_recovery_with_restart() {
 
     let TestBlockData {
         block_headers,
-        unblinded_outputs,
+        key_manager_outputs,
         utxos_by_block,
     } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false).await;
 
@@ -411,31 +420,33 @@ async fn test_utxo_scanner_recovery_with_restart() {
     });
 
     // Adding half the outputs of the blocks to the OMS mock
-    let mut db_unblinded_outputs = Vec::new();
+    let mut db_key_manager_outputs = Vec::new();
     let mut total_outputs_to_recover = 0;
     let mut total_amount_to_recover = MicroTari::from(0);
-    for (h, outputs) in &unblinded_outputs {
+    let key_manager = create_test_core_key_manager_with_memory_db();
+    for (h, outputs) in &key_manager_outputs {
         for output in outputs.iter().skip(outputs.len() / 2) {
-            let dbo = DbUnblindedOutput::from_unblinded_output(
+            let dbo = DbKeyManagerOutput::from_key_manager_output(
                 output.clone(),
-                &factories,
+                &key_manager,
                 None,
                 OutputSource::Unknown,
                 None,
                 None,
             )
+            .await
             .unwrap();
             // Only the outputs in blocks after the birthday should be included in the recovered total
             if *h >= NUM_BLOCKS.saturating_sub(BIRTHDAY_OFFSET).saturating_sub(2) {
                 total_outputs_to_recover += 1;
-                total_amount_to_recover += dbo.unblinded_output.value;
+                total_amount_to_recover += dbo.key_manager_output.value;
             }
-            db_unblinded_outputs.push(dbo);
+            db_key_manager_outputs.push(dbo);
         }
     }
     test_interface
         .oms_mock_state
-        .set_recoverable_outputs(db_unblinded_outputs.clone());
+        .set_recoverable_outputs(db_key_manager_outputs.clone());
 
     let (tx, rx) = mpsc::channel(100);
     test_interface.rpc_service_state.set_utxos_by_block_trigger_channel(rx);
@@ -491,7 +502,7 @@ async fn test_utxo_scanner_recovery_with_restart() {
         });
     test_interface2
         .oms_mock_state
-        .set_recoverable_outputs(db_unblinded_outputs);
+        .set_recoverable_outputs(db_key_manager_outputs);
     let mut scanner_event_stream = test_interface2.scanner_handle.get_event_receiver();
     tokio::spawn(test_interface2.scanner_service.take().unwrap().run());
 
@@ -554,7 +565,7 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
 
     let TestBlockData {
         mut block_headers,
-        mut unblinded_outputs,
+        key_manager_outputs: mut key_manager_outputs,
         utxos_by_block,
     } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false).await;
 
@@ -576,24 +587,26 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
     });
 
     // Adding half the outputs of the blocks to the OMS mock
-    let mut db_unblinded_outputs = Vec::new();
-    for outputs in unblinded_outputs.values() {
+    let mut db_key_manager_outputs = Vec::new();
+    let key_manager = create_test_core_key_manager_with_memory_db();
+    for outputs in key_manager_outputs.values() {
         for output in outputs.iter().skip(outputs.len() / 2) {
-            let dbo = DbUnblindedOutput::from_unblinded_output(
+            let dbo = DbKeyManagerOutput::from_key_manager_output(
                 output.clone(),
-                &factories,
+                &key_manager,
                 None,
                 OutputSource::Unknown,
                 None,
                 None,
             )
+            .await
             .unwrap();
-            db_unblinded_outputs.push(dbo);
+            db_key_manager_outputs.push(dbo);
         }
     }
     test_interface
         .oms_mock_state
-        .set_recoverable_outputs(db_unblinded_outputs.clone());
+        .set_recoverable_outputs(db_key_manager_outputs.clone());
 
     let (tx, rx) = mpsc::channel(100);
     test_interface.rpc_service_state.set_utxos_by_block_trigger_channel(rx);
@@ -613,7 +626,7 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
     // So at this point we have synced to block 6. We are going to create a reorg back to block 4 so that blocks 5-10
     // are new blocks.
     block_headers.retain(|h, _| h <= &4u64);
-    unblinded_outputs.retain(|h, _| h <= &4u64);
+    key_manager_outputs.retain(|h, _| h <= &4u64);
     let mut utxos_by_block = utxos_by_block
         .into_iter()
         .filter(|u| u.height <= 4)
@@ -621,13 +634,13 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
 
     let TestBlockData {
         block_headers: new_block_headers,
-        unblinded_outputs: new_unblinded_outputs,
+        key_manager_outputs: new_key_manager_outputs,
         utxos_by_block: mut new_utxos_by_block,
     } = generate_block_headers_and_utxos(5, 5, birthday_epoch_time + 500, 0, false).await;
 
     block_headers.extend(new_block_headers);
     utxos_by_block.append(&mut new_utxos_by_block);
-    unblinded_outputs.extend(new_unblinded_outputs);
+    key_manager_outputs.extend(new_key_manager_outputs);
 
     let mut test_interface2 = setup(UtxoScannerMode::Recovery, Some(test_interface.wallet_db), None, None).await;
     test_interface2
@@ -650,32 +663,34 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
 
     // calculate new recoverable outputs for the reorg
     // Adding half the outputs of the blocks to the OMS mock
-    let mut db_unblinded_outputs = Vec::new();
+    let mut db_key_manager_outputs = Vec::new();
     let mut total_outputs_to_recover = 0;
     let mut total_amount_to_recover = MicroTari::from(0);
-    for (h, outputs) in &unblinded_outputs {
+    let key_manager = create_test_core_key_manager_with_memory_db();
+    for (h, outputs) in &key_manager_outputs {
         for output in outputs.iter().skip(outputs.len() / 2) {
-            let dbo = DbUnblindedOutput::from_unblinded_output(
+            let dbo = DbKeyManagerOutput::from_key_manager_output(
                 output.clone(),
-                &factories,
+                &key_manager,
                 None,
                 OutputSource::Unknown,
                 None,
                 None,
             )
+            .await
             .unwrap();
             // Only the outputs in blocks after the birthday should be included in the recovered total
             if *h >= 4 {
                 total_outputs_to_recover += 1;
-                total_amount_to_recover += dbo.unblinded_output.value;
+                total_amount_to_recover += dbo.key_manager_output.value;
             }
-            db_unblinded_outputs.push(dbo);
+            db_key_manager_outputs.push(dbo);
         }
     }
 
     test_interface2
         .oms_mock_state
-        .set_recoverable_outputs(db_unblinded_outputs);
+        .set_recoverable_outputs(db_key_manager_outputs);
 
     let mut scanner_event_stream = test_interface2.scanner_handle.get_event_receiver();
     tokio::spawn(test_interface2.scanner_service.take().unwrap().run());
@@ -737,7 +752,7 @@ async fn test_utxo_scanner_scanned_block_cache_clearing() {
 
     let TestBlockData {
         block_headers,
-        unblinded_outputs: _unblinded_outputs,
+        key_manager_outputs: _key_manager_outputs,
         utxos_by_block,
     } = generate_block_headers_and_utxos(800, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, true).await;
 
@@ -840,7 +855,7 @@ async fn test_utxo_scanner_one_sided_payments() {
 
     let TestBlockData {
         mut block_headers,
-        unblinded_outputs,
+        key_manager_outputs,
         mut utxos_by_block,
     } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false).await;
 
@@ -862,31 +877,33 @@ async fn test_utxo_scanner_one_sided_payments() {
     });
 
     // Adding half the outputs of the blocks to the OMS mock
-    let mut db_unblinded_outputs = Vec::new();
+    let mut db_key_manager_outputs = Vec::new();
     let mut total_outputs_to_recover = 0;
     let mut total_amount_to_recover = MicroTari::from(0);
-    for (h, outputs) in &unblinded_outputs {
+    let key_manager = create_test_core_key_manager_with_memory_db();
+    for (h, outputs) in &key_manager_outputs {
         for output in outputs.iter().skip(outputs.len() / 2) {
-            let dbo = DbUnblindedOutput::from_unblinded_output(
+            let dbo = DbKeyManagerOutput::from_key_manager_output(
                 output.clone(),
-                &factories,
+                &key_manager,
                 None,
                 OutputSource::Unknown,
                 None,
                 None,
             )
+            .await
             .unwrap();
             // Only the outputs in blocks after the birthday should be included in the recovered total
             if *h >= NUM_BLOCKS.saturating_sub(BIRTHDAY_OFFSET).saturating_sub(2) {
                 total_outputs_to_recover += 1;
-                total_amount_to_recover += dbo.unblinded_output.value;
+                total_amount_to_recover += dbo.key_manager_output.value;
             }
-            db_unblinded_outputs.push(dbo);
+            db_key_manager_outputs.push(dbo);
         }
     }
     test_interface
         .oms_mock_state
-        .set_one_sided_payments(db_unblinded_outputs.clone());
+        .set_one_sided_payments(db_key_manager_outputs.clone());
 
     let mut scanner_event_stream = test_interface.scanner_handle.get_event_receiver();
 
@@ -937,23 +954,31 @@ async fn test_utxo_scanner_one_sided_payments() {
     let mut block_header11 = BlockHeader::new(0);
     block_header11.height = 11;
     block_header11.timestamp = EpochTime::from(block_headers.get(&10).unwrap().timestamp.as_u64() + 1000000u64);
-    let (_ti, uo) = make_non_recoverable_input(&mut OsRng, MicroTari::from(666000u64), &factories.commitment).await;
+    let (_ti, uo) = make_non_recoverable_input(
+        &mut OsRng,
+        MicroTari::from(666000u64),
+        &OutputFeatures::default(),
+        &key_manager,
+    )
+    .await;
 
     let block11 = UtxosByBlock {
         height: NUM_BLOCKS,
         header_hash: block_header11.hash().to_vec(),
-        utxos: vec![uo.as_transaction_output(&factories).unwrap()],
+        utxos: vec![uo.as_transaction_output(&key_manager).unwrap()],
     };
 
     utxos_by_block.push(block11);
     block_headers.insert(NUM_BLOCKS, block_header11);
 
-    db_unblinded_outputs.push(
-        DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown, None, None).unwrap(),
+    db_key_manager_outputs.push(
+        DbKeyManagerOutput::from_key_manager_output(uo, &key_manager, None, OutputSource::Unknown, None, None)
+            .await
+            .unwrap(),
     );
     test_interface
         .oms_mock_state
-        .set_one_sided_payments(db_unblinded_outputs);
+        .set_one_sided_payments(db_key_manager_outputs);
 
     test_interface.rpc_service_state.set_utxos_by_block(utxos_by_block);
     test_interface.rpc_service_state.set_blocks(block_headers.clone());

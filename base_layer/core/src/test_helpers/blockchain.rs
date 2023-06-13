@@ -72,9 +72,15 @@ use crate::{
     },
     consensus::{chain_strength_comparer::ChainStrengthComparerBuilder, ConsensusConstantsBuilder, ConsensusManager},
     proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
-    test_helpers::{block_spec::BlockSpecs, create_consensus_rules, BlockSpec},
+    test_helpers::{
+        block_spec::BlockSpecs,
+        create_consensus_rules,
+        create_test_core_key_manager_with_memory_db,
+        BlockSpec,
+        TestKeyManager,
+    },
     transactions::{
-        transaction_components::{TransactionInput, TransactionKernel, UnblindedOutput},
+        transaction_components::{KeyManagerOutput, TransactionInput, TransactionKernel},
         CryptoFactories,
     },
     validation::{
@@ -435,13 +441,14 @@ impl BlockchainBackend for TempDatabase {
     }
 }
 
-pub fn create_chained_blocks<T: Into<BlockSpecs>>(
+pub async fn create_chained_blocks<T: Into<BlockSpecs>>(
     blocks: T,
     genesis_block: Arc<ChainBlock>,
 ) -> (Vec<String>, HashMap<String, Arc<ChainBlock>>) {
     let mut block_hashes = HashMap::new();
     block_hashes.insert("GB".to_string(), genesis_block);
     let rules = ConsensusManager::builder(Network::LocalNet).build();
+    let km = create_test_core_key_manager_with_memory_db();
     let blocks: BlockSpecs = blocks.into();
     let mut block_names = Vec::with_capacity(blocks.len());
     for block_spec in blocks {
@@ -450,7 +457,7 @@ pub fn create_chained_blocks<T: Into<BlockSpecs>>(
             .unwrap_or_else(|| panic!("Could not find block {}", block_spec.parent));
         let name = block_spec.name;
         let difficulty = block_spec.difficulty;
-        let (block, _) = create_block(&rules, prev_block.block(), block_spec);
+        let (block, _) = create_block(&rules, prev_block.block(), block_spec, &km).await;
         let block = mine_block(block, prev_block.accumulated_data(), difficulty);
         block_names.push(name.to_string());
         block_hashes.insert(name.to_string(), block);
@@ -472,7 +479,7 @@ fn mine_block(block: Block, prev_block_accum: &BlockHeaderAccumulatedData, diffi
     Arc::new(ChainBlock::try_construct(Arc::new(block), accum).unwrap())
 }
 
-pub fn create_main_chain<T: Into<BlockSpecs>>(
+pub async fn create_main_chain<T: Into<BlockSpecs>>(
     db: &BlockchainDatabase<TempDatabase>,
     blocks: T,
 ) -> (Vec<String>, HashMap<String, Arc<ChainBlock>>) {
@@ -482,7 +489,7 @@ pub fn create_main_chain<T: Into<BlockSpecs>>(
         .try_into_chain_block()
         .map(Arc::new)
         .unwrap();
-    let (names, chain) = create_chained_blocks(blocks, genesis_block);
+    let (names, chain) = create_chained_blocks(blocks, genesis_block).await;
     names.iter().for_each(|name| {
         let block = chain.get(name).unwrap();
         db.add_block(block.to_arc_block()).unwrap();
@@ -491,12 +498,12 @@ pub fn create_main_chain<T: Into<BlockSpecs>>(
     (names, chain)
 }
 
-pub fn create_orphan_chain<T: Into<BlockSpecs>>(
+pub async fn create_orphan_chain<T: Into<BlockSpecs>>(
     db: &BlockchainDatabase<TempDatabase>,
     blocks: T,
     root_block: Arc<ChainBlock>,
 ) -> (Vec<String>, HashMap<String, Arc<ChainBlock>>) {
-    let (names, chain) = create_chained_blocks(blocks, root_block);
+    let (names, chain) = create_chained_blocks(blocks, root_block).await;
     let mut txn = DbTransaction::new();
     for name in &names {
         let block = chain.get(name).unwrap().clone();
@@ -511,6 +518,7 @@ pub struct TestBlockchain {
     db: BlockchainDatabase<TempDatabase>,
     chain: Vec<(&'static str, Arc<ChainBlock>)>,
     rules: ConsensusManager,
+    pub km: TestKeyManager,
 }
 
 impl TestBlockchain {
@@ -521,10 +529,12 @@ impl TestBlockchain {
             .try_into_chain_block()
             .map(Arc::new)
             .unwrap();
+        let km = create_test_core_key_manager_with_memory_db();
         let mut blockchain = Self {
             db,
             chain: Default::default(),
             rules,
+            km,
         };
 
         blockchain.chain.push(("GB", genesis));
@@ -535,22 +545,23 @@ impl TestBlockchain {
         Self::new(create_custom_blockchain(rules.clone()), rules)
     }
 
-    pub fn append_chain(
+    pub async fn append_chain(
         &mut self,
         block_specs: BlockSpecs,
-    ) -> Result<Vec<(Arc<ChainBlock>, UnblindedOutput)>, ChainStorageError> {
+    ) -> Result<Vec<(Arc<ChainBlock>, KeyManagerOutput)>, ChainStorageError> {
         let mut blocks = Vec::with_capacity(block_specs.len());
         for spec in block_specs {
-            blocks.push(self.append(spec)?);
+            blocks.push(self.append(spec).await?);
         }
         Ok(blocks)
     }
 
-    pub fn create_chain(&self, block_specs: BlockSpecs) -> Vec<(Arc<ChainBlock>, UnblindedOutput)> {
-        block_specs
-            .into_iter()
-            .map(|spec| self.create_chained_block(spec))
-            .collect()
+    pub async fn create_chain(&self, block_specs: BlockSpecs) -> Vec<(Arc<ChainBlock>, KeyManagerOutput)> {
+        let mut result = Vec::new();
+        for spec in block_specs.into_iter() {
+            result.push(self.create_chained_block(spec).await);
+        }
+        result
     }
 
     pub fn add_blocks(&self, blocks: Vec<Arc<ChainBlock>>) -> Result<(), ChainStorageError> {
@@ -575,20 +586,23 @@ impl TestBlockchain {
         &self.db
     }
 
-    pub fn add_block(
+    pub async fn add_block(
         &mut self,
         block_spec: BlockSpec,
-    ) -> Result<(Arc<ChainBlock>, UnblindedOutput), ChainStorageError> {
+    ) -> Result<(Arc<ChainBlock>, KeyManagerOutput), ChainStorageError> {
         let name = block_spec.name;
-        let (block, coinbase) = self.create_chained_block(block_spec);
+        let (block, coinbase) = self.create_chained_block(block_spec).await;
         let result = self.append_block(name, block.clone())?;
         assert!(result.is_added());
         Ok((block, coinbase))
     }
 
-    pub fn add_next_tip(&mut self, spec: BlockSpec) -> Result<(Arc<ChainBlock>, UnblindedOutput), ChainStorageError> {
+    pub async fn add_next_tip(
+        &mut self,
+        spec: BlockSpec,
+    ) -> Result<(Arc<ChainBlock>, KeyManagerOutput), ChainStorageError> {
         let name = spec.name;
-        let (block, coinbase) = self.create_next_tip(spec);
+        let (block, coinbase) = self.create_next_tip(spec).await;
         let result = self.append_block(name, block.clone())?;
         assert!(result.is_added());
         Ok((block, coinbase))
@@ -612,23 +626,23 @@ impl TestBlockchain {
         self.chain.last().cloned().unwrap()
     }
 
-    pub fn create_chained_block(&self, block_spec: BlockSpec) -> (Arc<ChainBlock>, UnblindedOutput) {
+    pub async fn create_chained_block(&self, block_spec: BlockSpec) -> (Arc<ChainBlock>, KeyManagerOutput) {
         let parent = self
             .get_block_by_name(block_spec.parent)
             .ok_or_else(|| format!("Parent block not found with name '{}'", block_spec.parent))
             .unwrap();
         let difficulty = block_spec.difficulty;
-        let (block, coinbase) = create_block(&self.rules, parent.block(), block_spec);
+        let (block, coinbase) = create_block(&self.rules, parent.block(), block_spec, &self.km).await;
         let block = mine_block(block, parent.accumulated_data(), difficulty);
         (block, coinbase)
     }
 
-    pub fn create_unmined_block(&self, block_spec: BlockSpec) -> (Block, UnblindedOutput) {
+    pub async fn create_unmined_block(&self, block_spec: BlockSpec) -> (Block, KeyManagerOutput) {
         let parent = self
             .get_block_by_name(block_spec.parent)
             .ok_or_else(|| format!("Parent block not found with name '{}'", block_spec.parent))
             .unwrap();
-        let (mut block, outputs) = create_block(&self.rules, parent.block(), block_spec);
+        let (mut block, outputs) = create_block(&self.rules, parent.block(), block_spec, &self.km).await;
         block.body.sort();
         (block, outputs)
     }
@@ -638,19 +652,22 @@ impl TestBlockchain {
         mine_block(block, parent.accumulated_data(), difficulty)
     }
 
-    pub fn create_next_tip(&self, spec: BlockSpec) -> (Arc<ChainBlock>, UnblindedOutput) {
+    pub async fn create_next_tip(&self, spec: BlockSpec) -> (Arc<ChainBlock>, KeyManagerOutput) {
         let (name, _) = self.get_tip_block();
-        self.create_chained_block(spec.with_parent_block(name))
+        self.create_chained_block(spec.with_parent_block(name)).await
     }
 
-    pub fn append_to_tip(&mut self, spec: BlockSpec) -> Result<(Arc<ChainBlock>, UnblindedOutput), ChainStorageError> {
+    pub async fn append_to_tip(
+        &mut self,
+        spec: BlockSpec,
+    ) -> Result<(Arc<ChainBlock>, KeyManagerOutput), ChainStorageError> {
         let (tip, _) = self.get_tip_block();
-        self.append(spec.with_parent_block(tip))
+        self.append(spec.with_parent_block(tip)).await
     }
 
-    pub fn append(&mut self, spec: BlockSpec) -> Result<(Arc<ChainBlock>, UnblindedOutput), ChainStorageError> {
+    pub async fn append(&mut self, spec: BlockSpec) -> Result<(Arc<ChainBlock>, KeyManagerOutput), ChainStorageError> {
         let name = spec.name;
-        let (block, outputs) = self.create_chained_block(spec);
+        let (block, outputs) = self.create_chained_block(spec).await;
         self.append_block(name, block.clone())?;
         Ok((block, outputs))
     }

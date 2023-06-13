@@ -169,7 +169,7 @@ impl TestTransactionBuilder {
     fn create_non_recoverable_utxo(&mut self) {
         let input_data: RistrettoPublicKey = PublicKey::from_secret_key(&self.keys.script_private_key);
 
-        let mut builder = UnblindedOutputBuilder::new(self.calculate_spendable(), self.keys.spend_key.clone())
+        let mut builder = KeyManagerOutputBuilder::new(self.calculate_spendable(), self.keys.spend_key.clone())
             .with_features(Default::default())
             .with_script(script!(Nop))
             .with_script_private_key(self.keys.script_private_key.clone())

@@ -41,23 +41,32 @@ mod test {
     use crate::{
         covenant,
         covenants::{filters::test::setup_filter_test, test::create_input},
+        test_helpers::create_test_core_key_manager_with_memory_db,
         transactions::transaction_components::OutputType,
     };
 
-    #[test]
-    fn it_filters_outputs_that_match_input_fields() {
+    #[tokio::test]
+    async fn it_filters_outputs_that_match_input_fields() {
         let covenant = covenant!(fields_preserved(@fields(@field::features_maturity, @field::features_output_type)));
-        let mut input = create_input();
+        let key_manager = create_test_core_key_manager_with_memory_db();
+        let mut input = create_input(&key_manager).await;
         input.set_maturity(42).unwrap();
         input.features_mut().unwrap().output_type = OutputType::Standard;
-        let (mut context, outputs) = setup_filter_test(&covenant, &input, 0, |outputs| {
-            outputs[5].features.maturity = 42;
-            outputs[5].features.output_type = OutputType::Standard;
-            outputs[7].features.maturity = 42;
-            outputs[7].features.output_type = OutputType::Standard;
-            outputs[8].features.maturity = 42;
-            outputs[8].features.output_type = OutputType::Coinbase;
-        });
+        let (mut context, outputs) = setup_filter_test(
+            &covenant,
+            &input,
+            0,
+            |outputs| {
+                outputs[5].features.maturity = 42;
+                outputs[5].features.output_type = OutputType::Standard;
+                outputs[7].features.maturity = 42;
+                outputs[7].features.output_type = OutputType::Standard;
+                outputs[8].features.maturity = 42;
+                outputs[8].features.output_type = OutputType::Coinbase;
+            },
+            &key_manager,
+        )
+        .await;
         let mut output_set = OutputSet::new(&outputs);
 
         FieldsPreservedFilter.filter(&mut context, &mut output_set).unwrap();

@@ -36,7 +36,7 @@ use thiserror::Error;
 use crate::{covenants::CovenantError, transactions::transaction_components::EncryptedDataError};
 
 //----------------------------------------     TransactionError   ----------------------------------------------------//
-#[derive(Clone, Debug, PartialEq, Error, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Error, Deserialize, Serialize, Eq)]
 pub enum TransactionError {
     #[error("Error validating the transaction: {0}")]
     ValidationError(String),

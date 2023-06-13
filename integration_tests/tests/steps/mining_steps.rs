@@ -281,7 +281,8 @@ async fn mining_node_mine_blocks(world: &mut TariWorld, blocks: u64) {
 async fn mine_without_submit(world: &mut TariWorld, block: String, node: String) {
     let mut client = world.get_node_client(&node).await.unwrap();
 
-    let unmined_block: Block = Block::try_from(mine_block_before_submit(&mut client).await).unwrap();
+    let unmined_block: Block =
+        Block::try_from(mine_block_before_submit(&mut client, &world.key_manager).await).unwrap();
     world.blocks.insert(block, unmined_block);
 }
 

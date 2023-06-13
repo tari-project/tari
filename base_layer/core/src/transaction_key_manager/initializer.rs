@@ -35,7 +35,7 @@ use tari_key_manager::{
 };
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 
-use crate::{core_key_manager::CoreKeyManagerHandle, transactions::CryptoFactories};
+use crate::{transaction_key_manager::TransactionKeyManager, transactions::CryptoFactories};
 
 /// Initializes the key manager service by implementing the [ServiceInitializer] trait.
 pub struct CoreKeyManagerInitializer<T>
@@ -69,7 +69,7 @@ where T: KeyManagerBackend<PublicKey> + 'static
             .take()
             .expect("Cannot start Key Manager Service without setting a storage backend");
 
-        let key_manager: CoreKeyManagerHandle<T> = CoreKeyManagerHandle::new(
+        let key_manager: TransactionKeyManager<T> = TransactionKeyManager::new(
             self.master_seed.clone(),
             KeyManagerDatabase::new(backend),
             self.crypto_factories.clone(),

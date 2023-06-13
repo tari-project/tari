@@ -20,53 +20,60 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    collections::HashMap,
-    fmt::{Debug, Error, Formatter},
-};
+use std::fmt::{Debug, Error, Formatter};
 
 use log::*;
-use rand::rngs::OsRng;
+use serde::{Deserialize, Serialize};
 use tari_common_types::{
     transaction::TxId,
-    types::{Commitment, HashOutput, PrivateKey, PublicKey},
+    types::{Commitment, PrivateKey, PublicKey, Signature},
 };
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    keys::{PublicKey as PublicKeyTrait, SecretKey},
-    tari_utilities::fixed_set::FixedSet,
-};
+use tari_key_manager::key_manager_service::KeyManagerServiceError;
 use tari_script::{ExecutionStack, TariScript};
 
 use crate::{
     borsh::SerializedSize,
     consensus::ConsensusConstants,
     covenants::Covenant,
+    transaction_key_manager::{BaseLayerKeyManagerInterface, CoreKeyManagerBranch, TariKeyId},
     transactions::{
-        crypto_factories::CryptoFactories,
         fee::Fee,
         tari_amount::*,
         transaction_components::{
-            EncryptedData,
+            KeyManagerOutput,
             OutputFeatures,
-            TransactionInput,
             TransactionOutput,
             TransactionOutputVersion,
-            UnblindedOutput,
             MAX_TRANSACTION_INPUTS,
             MAX_TRANSACTION_OUTPUTS,
         },
         transaction_protocol::{
-            recipient::RecipientInfo,
-            sender::{calculate_tx_id, RawTransactionInfo, SenderState, SenderTransactionProtocol},
+            sender::{calculate_tx_id, OutputPair, RawTransactionInfo, SenderState, SenderTransactionProtocol},
             KernelFeatures,
-            RecoveryData,
             TransactionMetadata,
         },
     },
 };
 
 pub const LOG_TARGET: &str = "c::tx::tx_protocol::tx_initializer";
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub(super) struct ChangeDetails {
+    change_spending_key_id: TariKeyId,
+    change_script: TariScript,
+    change_input_data: ExecutionStack,
+    change_script_key_id: TariKeyId,
+    change_covenant: Covenant,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub(super) struct RecipientDetails {
+    pub amount: MicroTari,
+    pub recipient_output_features: OutputFeatures,
+    pub recipient_script: TariScript,
+    pub recipient_sender_offset_key_id: TariKeyId,
+    pub recipient_covenant: Covenant,
+    pub recipient_minimum_value_promise: MicroTari,
+    pub recipient_ephemeral_public_key_nonce: TariKeyId,
+}
 
 /// The SenderTransactionProtocolBuilder is a Builder that helps set up the initial state for the Sender party of a new
 /// transaction Typically you don't instantiate this object directly. Rather use
@@ -77,83 +84,51 @@ pub const LOG_TARGET: &str = "c::tx::tx_protocol::tx_initializer";
 /// which returns an instance of this builder. Once all the sender's information has been added via the builder
 /// methods, you can call `build()` which will return a
 #[derive(Debug, Clone)]
-pub struct SenderTransactionInitializer {
-    num_recipients: usize,
-    amounts: FixedSet<MicroTari>,
+pub struct SenderTransactionInitializer<KM> {
     lock_height: Option<u64>,
     fee_per_gram: Option<MicroTari>,
-    inputs: Vec<TransactionInput>,
-    unblinded_inputs: Vec<UnblindedOutput>,
-    sender_custom_outputs: Vec<UnblindedOutput>,
-    sender_offset_private_keys: Vec<PrivateKey>,
-    change_secret: Option<PrivateKey>,
-    change_script: Option<TariScript>,
-    change_input_data: Option<ExecutionStack>,
-    change_script_private_key: Option<PrivateKey>,
-    change_sender_offset_private_key: Option<PrivateKey>,
-    change_covenant: Covenant,
-    recovery_data: Option<RecoveryData>,
-    offset: Option<PrivateKey>,
-    excess_blinding_factor: PrivateKey,
-    private_nonce: Option<PrivateKey>,
-    message: Option<String>,
+    inputs: Vec<OutputPair>,
+    sender_custom_outputs: Vec<OutputPair>,
+    change: Option<ChangeDetails>,
+    recipient: Option<RecipientDetails>,
+    recipient_text_message: Option<String>,
     prevent_fee_gt_amount: bool,
-    recipient_output_features: FixedSet<OutputFeatures>,
-    recipient_scripts: FixedSet<TariScript>,
-    recipient_sender_offset_private_keys: FixedSet<PrivateKey>,
-    recipient_covenants: FixedSet<Covenant>,
-    recipient_minimum_value_promise: FixedSet<MicroTari>,
-    private_commitment_nonces: FixedSet<PrivateKey>,
     tx_id: Option<TxId>,
     kernel_features: KernelFeatures,
     burn_commitment: Option<Commitment>,
     fee: Fee,
+    key_manager: KM,
 }
 
-pub struct BuildError {
-    pub builder: SenderTransactionInitializer,
+pub struct BuildError<KM> {
+    pub builder: SenderTransactionInitializer<KM>,
     pub message: String,
 }
 
-impl Debug for BuildError {
+impl<KM> Debug for BuildError<KM> {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         f.write_str(&self.message)
     }
 }
 
-impl SenderTransactionInitializer {
-    pub fn new(num_recipients: usize, consensus_constants: &ConsensusConstants) -> Self {
+impl<KM> SenderTransactionInitializer<KM>
+where KM: BaseLayerKeyManagerInterface
+{
+    pub fn new(consensus_constants: &ConsensusConstants, key_manager: KM) -> Self {
         Self {
             fee: Fee::new(*consensus_constants.transaction_weight()),
-            num_recipients,
-            amounts: FixedSet::new(num_recipients),
             lock_height: None,
             fee_per_gram: None,
             inputs: Vec::new(),
-            unblinded_inputs: Vec::new(),
             sender_custom_outputs: Vec::new(),
-            sender_offset_private_keys: vec![],
-            change_secret: None,
-            change_script: None,
-            change_input_data: None,
-            change_script_private_key: None,
-            change_sender_offset_private_key: None,
-            change_covenant: Covenant::default(),
-            recovery_data: None,
-            offset: None,
-            private_nonce: None,
-            excess_blinding_factor: PrivateKey::default(),
-            message: None,
+            change: None,
+            recipient_text_message: None,
             prevent_fee_gt_amount: true,
-            recipient_output_features: FixedSet::new(num_recipients),
-            recipient_scripts: FixedSet::new(num_recipients),
-            recipient_sender_offset_private_keys: FixedSet::new(num_recipients),
-            recipient_covenants: FixedSet::new(num_recipients),
-            recipient_minimum_value_promise: FixedSet::new(num_recipients),
-            private_commitment_nonces: FixedSet::new(num_recipients),
+            recipient: None,
             kernel_features: KernelFeatures::empty(),
             burn_commitment: None,
             tx_id: None,
+            key_manager,
         }
     }
 
@@ -164,35 +139,35 @@ impl SenderTransactionInitializer {
         self
     }
 
-    /// Set the amount to pay to the ith recipient. This method will silently fail if `receiver_index` >= num_receivers.
-    pub fn with_amount(&mut self, receiver_index: usize, amount: MicroTari) -> &mut Self {
-        self.amounts.set_item(receiver_index, amount);
-        self
-    }
-
     /// Set the spending script of the ith recipient's output, a script offset will be generated for this recipient at
     /// the same time. This method will silently fail if `receiver_index` >= num_receivers.
-    pub fn with_recipient_data(
+    pub async fn with_recipient_data(
         &mut self,
-        receiver_index: usize,
-        script: TariScript,
-        recipient_sender_offset_private_key: PrivateKey,
+        recipient_script: TariScript,
         recipient_output_features: OutputFeatures,
-        private_commitment_nonce: PrivateKey,
-        covenant: Covenant,
-        minimum_value_promise: MicroTari,
-    ) -> &mut Self {
-        self.recipient_output_features
-            .set_item(receiver_index, recipient_output_features);
-        self.recipient_scripts.set_item(receiver_index, script);
-        self.recipient_sender_offset_private_keys
-            .set_item(receiver_index, recipient_sender_offset_private_key);
-        self.private_commitment_nonces
-            .set_item(receiver_index, private_commitment_nonce);
-        self.recipient_covenants.set_item(receiver_index, covenant);
-        self.recipient_minimum_value_promise
-            .set_item(receiver_index, minimum_value_promise);
-        self
+        recipient_covenant: Covenant,
+        recipient_minimum_value_promise: MicroTari,
+        amount: MicroTari,
+    ) -> Result<&mut Self, KeyManagerServiceError> {
+        let (recipient_ephemeral_public_key_nonce, _) = self
+            .key_manager
+            .get_next_key(CoreKeyManagerBranch::Nonce.get_branch_key())
+            .await?;
+        let (recipient_sender_offset_key_id, _) = self
+            .key_manager
+            .get_next_key(CoreKeyManagerBranch::Nonce.get_branch_key())
+            .await?;
+        let recipient_details = RecipientDetails {
+            recipient_output_features,
+            recipient_script,
+            recipient_sender_offset_key_id,
+            recipient_covenant,
+            recipient_minimum_value_promise,
+            recipient_ephemeral_public_key_nonce,
+            amount,
+        };
+        self.recipient = Some(recipient_details);
+        Ok(self)
     }
 
     /// Sets the minimum block height that this transaction will be mined.
@@ -201,69 +176,64 @@ impl SenderTransactionInitializer {
         self
     }
 
-    /// Manually sets the offset value. If this is not called, a random offset will be used when `build()` is called.
-    pub fn with_offset(&mut self, offset: PrivateKey) -> &mut Self {
-        self.offset = Some(offset);
-        self
-    }
-
-    /// Adds an input to the transaction. The sender must provide the blinding factor that was used when the input
-    /// was first set as an output. We don't check that the input and commitments match at this point.
-    pub fn with_input(&mut self, utxo: TransactionInput, input: UnblindedOutput) -> &mut Self {
-        self.inputs.push(utxo);
-        self.excess_blinding_factor = &self.excess_blinding_factor - &input.spending_key;
-        self.unblinded_inputs.push(input);
-        self
-    }
-
-    /// As the Sender adds an output to the transaction. Because we are adding this output as the sender a
-    /// sender_offset_private_key needs to be provided with the output. This can be called multiple times
-    pub fn with_output(
-        &mut self,
-        output: UnblindedOutput,
-        sender_offset_private_key: PrivateKey,
-    ) -> Result<&mut Self, BuildError> {
-        self.excess_blinding_factor = &self.excess_blinding_factor + &output.spending_key;
-        self.sender_custom_outputs.push(output);
-        self.sender_offset_private_keys.push(sender_offset_private_key);
+    /// Adds an input to the transaction.
+    pub async fn with_input(&mut self, input: KeyManagerOutput) -> Result<&mut Self, KeyManagerServiceError> {
+        let (nonce_id, _) = self
+            .key_manager
+            .get_next_key(CoreKeyManagerBranch::Nonce.get_branch_key())
+            .await?;
+        let pair = OutputPair {
+            output: input,
+            kernel_nonce: nonce_id,
+            sender_offset_key_id: None,
+        };
+        self.inputs.push(pair);
         Ok(self)
     }
 
-    /// Provide a blinding factor for the change output. The amount of change will automatically be calculated when
-    /// the transaction is built.
-    pub fn with_change_secret(&mut self, blinding_factor: PrivateKey) -> &mut Self {
-        self.change_secret = Some(blinding_factor);
-        self
-    }
-
-    /// Provide the script data that will be used to spend the change output
-    pub fn with_change_script(
+    /// As the Sender adds an output to the transaction.
+    pub async fn with_output(
         &mut self,
-        script: TariScript,
-        input_data: ExecutionStack,
-        script_private_key: PrivateKey,
+        output: KeyManagerOutput,
+        sender_offset_key_id: TariKeyId,
+    ) -> Result<&mut Self, KeyManagerServiceError> {
+        let (nonce_id, _) = self
+            .key_manager
+            .get_next_key(CoreKeyManagerBranch::Nonce.get_branch_key())
+            .await?;
+        let pair = OutputPair {
+            output,
+            kernel_nonce: nonce_id,
+            sender_offset_key_id: Some(sender_offset_key_id),
+        };
+        self.sender_custom_outputs.push(pair);
+        Ok(self)
+    }
+
+    /// Provide the change data that will be used to create change output.The amount of change will automatically be
+    /// calculated when the transaction is built.
+    pub fn with_change_data(
+        &mut self,
+        change_script: TariScript,
+        change_input_data: ExecutionStack,
+        change_script_key_id: TariKeyId,
+        change_spending_key_id: TariKeyId,
+        change_covenant: Covenant,
     ) -> &mut Self {
-        self.change_script = Some(script);
-        self.change_input_data = Some(input_data);
-        self.change_script_private_key = Some(script_private_key);
-        self
-    }
-
-    /// Provide the recovery data required for outputs (change and manually added sender outputs) to be rewindable.
-    pub fn with_recoverable_outputs(&mut self, recovery_data: RecoveryData) -> &mut Self {
-        self.recovery_data = Some(recovery_data);
-        self
-    }
-
-    /// Provide the private nonce that will be used for the sender's partial signature for the transaction.
-    pub fn with_private_nonce(&mut self, nonce: PrivateKey) -> &mut Self {
-        self.private_nonce = Some(nonce);
+        let details = ChangeDetails {
+            change_spending_key_id,
+            change_script,
+            change_input_data,
+            change_script_key_id,
+            change_covenant,
+        };
+        self.change = Some(details);
         self
     }
 
     /// Provide a text message for receiver
     pub fn with_message(&mut self, message: String) -> &mut Self {
-        self.message = Some(message);
+        self.recipient_text_message = Some(message);
         self
     }
 
@@ -293,21 +263,26 @@ impl SenderTransactionInitializer {
             .map(|o| {
                 self.fee
                     .weighting()
-                    .round_up_features_and_scripts_size(o.features_and_scripts_byte_size())
+                    .round_up_features_and_scripts_size(o.output.features_and_scripts_byte_size())
             })
             .sum::<usize>();
-
-        size += self
-            .recipient_scripts
-            .iter()
-            .filter_map(|script| {
-                script.map(|s| {
-                    self.fee.weighting().round_up_features_and_scripts_size(
-                        self.get_recipient_output_features().get_serialized_size() + s.get_serialized_size(),
-                    )
-                })
-            })
-            .sum::<usize>();
+        if let Some(recipient_data) = &self.recipient {
+            size += self.fee.weighting().round_up_features_and_scripts_size(
+                self.get_recipient_output_features().get_serialized_size() +
+                    recipient_data.recipient_script.get_serialized_size(),
+            )
+        }
+        // size += self
+        //     .recipient_scripts
+        //     .iter()
+        //     .filter_map(|script| {
+        //         script.map(|s| {
+        //             self.fee.weighting().round_up_features_and_scripts_size(
+        //                 self.get_recipient_output_features().get_serialized_size() + s.get_serialized_size(),
+        //             )
+        //         })
+        //     })
+        //     .sum::<usize>();
 
         size
     }
@@ -320,25 +295,23 @@ impl SenderTransactionInitializer {
     /// fee, including the additional change output (if any) is returned along with the amount of change.
     /// The change output **always has default output features**.
     #[allow(clippy::too_many_lines)]
-    fn add_change_if_required(
+    async fn add_change_if_required(
         &mut self,
-        factories: &CryptoFactories,
-    ) -> Result<(MicroTari, MicroTari, Option<UnblindedOutput>), String> {
+    ) -> Result<(MicroTari, MicroTari, Option<(KeyManagerOutput, TariKeyId)>), String> {
         // The number of outputs excluding a possible residual change output
-        let num_outputs = self.sender_custom_outputs.len() + self.num_recipients;
+        let num_outputs = self.sender_custom_outputs.len() + usize::from(self.recipient.is_some());
         let num_inputs = self.inputs.len();
-        let total_being_spent = self.unblinded_inputs.iter().map(|i| i.value).sum::<MicroTari>();
-        let total_to_self = self.sender_custom_outputs.iter().map(|o| o.value).sum::<MicroTari>();
-        let total_amount = self.amounts.sum().ok_or("Not all amounts have been provided")?;
+        let total_being_spent = self.inputs.iter().map(|i| i.output.value).sum::<MicroTari>();
+        let total_to_self = self
+            .sender_custom_outputs
+            .iter()
+            .map(|o| o.output.value)
+            .sum::<MicroTari>();
+        let total_amount = match &self.recipient {
+            Some(data) => data.amount,
+            None => 0.into(),
+        };
         let fee_per_gram = self.fee_per_gram.ok_or("Fee per gram was not provided")?;
-
-        // We require scripts for each recipient to be set to calculate the fee
-        if !self.recipient_scripts.is_full() {
-            return Err(format!(
-                "{} recipient script(s) are required",
-                self.recipient_scripts.size()
-            ));
-        }
 
         let features_and_scripts_size_without_change = self.get_total_features_and_scripts_size_for_outputs();
         let fee_without_change = self.fee().calculate(
@@ -349,13 +322,13 @@ impl SenderTransactionInitializer {
             features_and_scripts_size_without_change,
         );
 
-        let output_features = self.get_recipient_output_features();
-        let change_features_and_scripts_size = self
-            .change_script
-            .as_ref()
-            .map(|script| script.get_serialized_size())
-            .unwrap_or(0) +
-            output_features.get_serialized_size();
+        let output_features = OutputFeatures::default();
+        let change_features_and_scripts_size = match &self.recipient {
+            Some(data) => {
+                data.recipient_script.get_serialized_size() + data.recipient_output_features.get_serialized_size()
+            },
+            None => output_features.get_serialized_size(),
+        };
         let change_features_and_scripts_size = self
             .fee()
             .weighting()
@@ -375,71 +348,82 @@ impl SenderTransactionInitializer {
             Some(MicroTari(0)) => Ok((fee_without_change, MicroTari(0), None)),
             Some(v) => {
                 let change_amount = v.checked_sub(change_fee);
-                let change_sender_offset_private_key = PrivateKey::random(&mut OsRng);
-                self.change_sender_offset_private_key = Some(change_sender_offset_private_key.clone());
                 match change_amount {
                     // You can't win. Just add the change to the fee (which is less than the cost of adding another
                     // output and go without a change output
                     None => Ok((fee_without_change + v, MicroTari(0), None)),
                     Some(MicroTari(0)) => Ok((fee_without_change + v, MicroTari(0), None)),
                     Some(v) => {
-                        let change_script = self
-                            .change_script
+                        let change_data = self.change.as_ref().ok_or("Change data was not provided")?;
+                        let change_script = change_data.change_script.clone();
+                        let change_script_key_id = change_data.change_script_key_id.clone();
+                        let change_key_id = change_data.change_spending_key_id.clone();
+                        let (sender_offset_key_id, sender_offset_public_key) = self
+                            .key_manager
+                            .get_next_key(&CoreKeyManagerBranch::Nonce.get_branch_key())
+                            .await
+                            .map_err(|e| e.to_string())?;
+                        let input_data = change_data.change_input_data.clone();
+
+                        let covenant = self
+                            .change
                             .as_ref()
-                            .ok_or("Change script was not provided")?
+                            .ok_or("Change covenant was not provided")?
+                            .change_covenant
                             .clone();
-                        let change_key = self
-                            .change_secret
-                            .as_ref()
-                            .ok_or("Change spending key was not provided")?;
-                        let commitment = factories.commitment.commit_value(&change_key.clone(), v.as_u64());
 
                         let encrypted_data = self
-                            .recovery_data
-                            .as_ref()
-                            .map(|rd| {
-                                EncryptedData::encrypt_data(&rd.encryption_key, &commitment, v, &change_key.clone())
-                            })
-                            .transpose()
-                            .map_err(|e| e.to_string())?
-                            .unwrap_or_default();
+                            .key_manager
+                            .encrypt_data_for_recovery(&change_key_id, None, v.as_u64())
+                            .await
+                            .map_err(|e| e.to_string())?;
 
                         let minimum_value_promise = MicroTari::zero();
 
-                        let metadata_signature = TransactionOutput::create_metadata_signature(
-                            TransactionOutputVersion::get_current_version(),
-                            v,
-                            change_key,
+                        let output_version = TransactionOutputVersion::get_current_version();
+
+                        let features = OutputFeatures::default();
+                        let metadata_message = TransactionOutput::metadata_signature_message_from_parts(
+                            &output_version,
                             &change_script,
-                            &output_features,
-                            &change_sender_offset_private_key,
-                            &self.change_covenant,
+                            &features,
+                            &covenant,
                             &encrypted_data,
                             minimum_value_promise,
-                        )
-                        .map_err(|e| e.to_string())?;
+                        );
 
-                        let change_unblinded_output = UnblindedOutput::new_current_version(
+                        let metadata_sig = self
+                            .key_manager
+                            .get_metadata_signature(
+                                &change_key_id,
+                                &v.into(),
+                                &sender_offset_key_id,
+                                &output_version,
+                                &metadata_message,
+                                features.range_proof_type,
+                            )
+                            .await
+                            .map_err(|e| e.to_string())?;
+
+                        let change_key_manager_output = KeyManagerOutput::new_current_version(
                             v,
-                            change_key.clone(),
+                            change_key_id.clone(),
                             output_features,
                             change_script,
-                            self.change_input_data
-                                .as_ref()
-                                .ok_or("Change script was not provided")?
-                                .clone(),
-                            self.change_script_private_key
-                                .as_ref()
-                                .ok_or("Change script private key was not provided")?
-                                .clone(),
-                            PublicKey::from_secret_key(&change_sender_offset_private_key),
-                            metadata_signature,
+                            input_data,
+                            change_script_key_id,
+                            sender_offset_public_key.clone(),
+                            metadata_sig,
                             0,
-                            self.change_covenant.clone(),
+                            covenant,
                             encrypted_data,
                             minimum_value_promise,
                         );
-                        Ok((fee_without_change + change_fee, v, Some(change_unblinded_output)))
+                        Ok((
+                            fee_without_change + change_fee,
+                            v,
+                            Some((change_key_manager_output, sender_offset_key_id)),
+                        ))
                     },
                 }
             },
@@ -458,15 +442,11 @@ impl SenderTransactionInitializer {
         }
     }
 
-    fn build_err<T>(self, msg: &str) -> Result<T, BuildError> {
+    fn build_err<T>(self, msg: &str) -> Result<T, BuildError<KM>> {
         Err(BuildError {
             builder: self,
             message: msg.to_string(),
         })
-    }
-
-    fn calculate_amount_to_others(&self) -> MicroTari {
-        self.amounts.clone().into_vec().iter().sum()
     }
 
     pub(super) fn fee(&self) -> &Fee {
@@ -479,37 +459,14 @@ impl SenderTransactionInitializer {
     /// If all the input data is present, but one or more fields are invalid, the function will return a
     /// `SenderTransactionProtocol` instance in the Failed state.
     #[allow(clippy::too_many_lines)]
-    pub fn build(
-        mut self,
-        factories: &CryptoFactories,
-        prev_header: Option<HashOutput>,
-        height: u64,
-    ) -> Result<SenderTransactionProtocol, BuildError> {
+    pub async fn build(mut self) -> Result<SenderTransactionProtocol, BuildError<KM>> {
         // Compile a list of all data that is missing
         let mut message = Vec::new();
         Self::check_value("Missing Lock Height", &self.lock_height, &mut message);
         Self::check_value("Missing Fee per gram", &self.fee_per_gram, &mut message);
-        Self::check_value("Missing Offset", &self.offset, &mut message);
-        Self::check_value("Missing private nonce", &self.private_nonce, &mut message);
 
         if !message.is_empty() {
             return self.build_err(&message.join(","));
-        }
-        if !self.amounts.is_full() {
-            let size = self.amounts.size();
-            return self.build_err(&format!("Missing all {} amounts", size));
-        }
-        if !self.recipient_sender_offset_private_keys.is_full() {
-            let size = self.recipient_sender_offset_private_keys.size();
-            return self.build_err(&format!("Missing {} recipient script offset private key/s", size));
-        }
-        if !self.private_commitment_nonces.is_full() {
-            let size = self.private_commitment_nonces.size();
-            return self.build_err(&format!("Missing {} private commitment nonce/s", size));
-        }
-        if !self.recipient_scripts.is_full() {
-            let size = self.recipient_scripts.size();
-            return self.build_err(&format!("Missing all {} recipient scripts", size));
         }
         if self.inputs.is_empty() {
             return self.build_err("A transaction cannot have zero inputs");
@@ -519,7 +476,7 @@ impl SenderTransactionInitializer {
             return self.build_err("Too many inputs in transaction");
         }
         // Calculate the fee based on whether we need to add a residual change output or not
-        let (total_fee, change, change_output) = match self.add_change_if_required(factories) {
+        let (total_fee, change, change_output) = match self.add_change_if_required().await {
             Ok((fee, change, output)) => (fee, change, output),
             Err(e) => return self.build_err(&e),
         };
@@ -532,120 +489,74 @@ impl SenderTransactionInitializer {
             return self.build_err("Fee is less than the minimum");
         }
 
-        // Create transaction outputs
-        let mut outputs = match self
-            .sender_custom_outputs
-            .iter()
-            .map(|o| o.as_transaction_output(factories))
-            .collect::<Result<Vec<TransactionOutput>, _>>()
-        {
-            Ok(o) => o,
-            Err(e) => {
-                return self.build_err(&e.to_string());
+        let change_output_pair = match { change_output } {
+            Some((output, sender_offset_key_id)) => {
+                if self.sender_custom_outputs.len() >= MAX_TRANSACTION_OUTPUTS {
+                    return self.build_err("Too many outputs in transaction");
+                }
+                let (nonce_id, _) = match self
+                    .key_manager
+                    .get_next_key(CoreKeyManagerBranch::Nonce.get_branch_key())
+                    .await
+                {
+                    Ok(key_id) => key_id,
+                    Err(e) => return self.build_err(&e.to_string()),
+                };
+                Some(OutputPair {
+                    output,
+                    kernel_nonce: nonce_id,
+                    sender_offset_key_id: Some(sender_offset_key_id),
+                })
             },
+            None => None,
         };
 
-        if let Some(change_unblinded_output) = change_output.clone() {
-            let change_output_sender_offset_private_key = match self.change_sender_offset_private_key {
-                None => return self.build_err("A change output script offset was not provided"),
-                Some(ref pk) => pk.clone(),
-            };
-
-            self.excess_blinding_factor = self.excess_blinding_factor + change_unblinded_output.spending_key.clone();
-
-            let change_output = match change_unblinded_output.as_transaction_output(factories) {
-                Ok(o) => o,
-                Err(e) => {
-                    return self.build_err(e.to_string().as_str());
-                },
-            };
-            self.sender_custom_outputs.push(change_unblinded_output);
-            self.sender_offset_private_keys
-                .push(change_output_sender_offset_private_key);
-            outputs.push(change_output);
-        }
-
-        // Prevent overflow attacks by imposing sane limits on outputs
-        if outputs.len() > MAX_TRANSACTION_OUTPUTS {
-            return self.build_err("Too many outputs in transaction");
-        }
-
-        // Calculate the Inputs portion of Gamma so we don't have to store the individual script private keys in
-        // RawTransactionInfo while we wait for the recipients reply
-        let mut gamma = PrivateKey::default();
-        for uo in &self.unblinded_inputs {
-            gamma = gamma + uo.script_private_key.clone();
-        }
-
-        if outputs.len() != self.sender_offset_private_keys.len() {
-            return self
-                .build_err("There should be the same number of sender added outputs as script offset private keys");
-        }
-
-        for sender_offset_private_key in &self.sender_offset_private_keys {
-            gamma = gamma - sender_offset_private_key.clone();
-        }
-
-        let nonce = self.private_nonce.clone().unwrap();
-        let public_nonce = PublicKey::from_secret_key(&nonce);
-        let offset = self.offset.clone().unwrap();
-        let excess_blinding_factor = self.excess_blinding_factor.clone();
-        let offset_blinding_factor = &excess_blinding_factor - &offset;
-        let excess = PublicKey::from_secret_key(&offset_blinding_factor);
-        let amount_to_self = self
-            .sender_custom_outputs
-            .iter()
-            .fold(MicroTari::from(0), |sum, o| sum + o.value);
-
-        let recipient_info = match self.num_recipients {
-            0 => RecipientInfo::None,
-            1 => RecipientInfo::Single(None),
-            _ => RecipientInfo::Multiple(HashMap::new()),
+        let spending_key = match self
+            .key_manager
+            .get_public_key_at_key_id(&self.inputs[0].output.spending_key_id)
+            .await
+        {
+            Ok(key) => key,
+            Err(e) => return self.build_err(&e.to_string()),
         };
-
+        // we need some random data here, the public excess of the commitment is random.
         let tx_id = match self.tx_id {
             Some(id) => id,
-            None => calculate_tx_id(&public_nonce, 0),
+            None => calculate_tx_id(&spending_key, 0),
         };
 
-        let recipient_output_features = self.recipient_output_features.clone().into_vec();
         // The fee should be less than the amount being sent. This isn't a protocol requirement, but it's what you want
         // 99.999% of the time, however, always preventing this will also prevent spending dust in some edge
         // cases.
         // Don't care about the fees when we are sending token.
-        if self.amounts.size() > 0 && total_fee > self.calculate_amount_to_others() {
-            warn!(
-                target: LOG_TARGET,
-                "Fee ({}) is greater than amount ({}) being sent for Transaction (TxId: {}).",
-                total_fee,
-                self.calculate_amount_to_others(),
-                tx_id
-            );
-            if self.prevent_fee_gt_amount {
-                return self.build_err("Fee is greater than amount");
+        if let Some(data) = &self.recipient {
+            if total_fee > data.amount {
+                warn!(
+                    target: LOG_TARGET,
+                    "Fee ({}) is greater than amount ({}) being sent for Transaction (TxId: {}).",
+                    total_fee,
+                    data.amount,
+                    tx_id
+                );
+                if self.prevent_fee_gt_amount {
+                    return self.build_err("Fee is greater than amount");
+                }
             }
         }
 
-        let change_output_metadata_signature = change_output.as_ref().map(|v| v.metadata_signature.clone());
+        // cached data
 
         // Everything is here. Let's send some Tari!
         let sender_info = RawTransactionInfo {
-            num_recipients: self.num_recipients,
-            amount_to_self,
             tx_id,
-            amounts: self.amounts.into_vec(),
-            recipient_output_features,
-            recipient_scripts: self.recipient_scripts.into_vec(),
-            recipient_sender_offset_private_keys: self.recipient_sender_offset_private_keys.into_vec(),
-            recipient_covenants: self.recipient_covenants.into_vec(),
-            recipient_minimum_value_promise: self.recipient_minimum_value_promise.into_vec(),
-            private_commitment_nonces: self.private_commitment_nonces.into_vec(),
-            change,
-            unblinded_change_output: change_output,
-            change_output_metadata_signature,
-            change_sender_offset_public_key: self
-                .change_sender_offset_private_key
-                .map(|pk| PublicKey::from_secret_key(&pk)),
+            recipient_data: self.recipient,
+            recipient_output: None,
+            recipient_partial_kernel_excess: PublicKey::default(),
+            recipient_partial_kernel_signature: Signature::default(),
+            recipient_partial_kernel_offset: PrivateKey::default(),
+            change_output: change_output_pair,
+            total_sender_nonce: PublicKey::default(),
+            total_sender_excess: PublicKey::default(),
             metadata: TransactionMetadata {
                 fee: total_fee,
                 lock_height: self.lock_height.unwrap(),
@@ -653,25 +564,15 @@ impl SenderTransactionInitializer {
                 burn_commitment: self.burn_commitment.clone(),
             },
             inputs: self.inputs,
-            outputs,
-            offset,
-            offset_blinding_factor,
-            gamma,
-            public_excess: excess,
-            private_nonce: nonce,
-            public_nonce: public_nonce.clone(),
-            public_nonce_sum: public_nonce,
-            recipient_info,
-            signatures: Vec::new(),
-            message: self.message.unwrap_or_default(),
-            prev_header,
-            height,
+            outputs: self.sender_custom_outputs,
+            text_message: self.recipient_text_message.unwrap_or_default(),
         };
 
         let state = SenderState::Initializing(Box::new(sender_info));
         let state = state
             .initialize()
             .expect("It should be possible to call initialize from Initializing state");
+        // let stp = SenderTransactionProtocol::from_state(state, self.key_manager.clone());
         Ok(state.into())
     }
 }
@@ -680,92 +581,98 @@ impl SenderTransactionInitializer {
 
 #[cfg(test)]
 mod test {
-    use rand::rngs::OsRng;
-    use tari_common_types::types::PrivateKey;
-    use tari_crypto::keys::SecretKey;
-    use tari_script::{script, ExecutionStack, TariScript};
+    use tari_key_manager::key_manager_service::KeyManagerInterface;
+    use tari_script::{inputs, script, TariScript};
 
     use crate::{
         covenants::Covenant,
-        test_helpers::create_consensus_constants,
+        test_helpers::{create_consensus_constants, create_test_core_key_manager_with_memory_db},
         transactions::{
-            crypto_factories::CryptoFactories,
             fee::Fee,
             tari_amount::*,
-            test_helpers::{create_non_recoverable_unblinded_output, create_test_input, TestParams, UtxoTestParams},
+            test_helpers::{create_key_manager_output_with_data, create_test_input, TestParams, UtxoTestParams},
             transaction_components::{OutputFeatures, MAX_TRANSACTION_INPUTS},
-            transaction_protocol::{
-                sender::SenderState,
-                transaction_initializer::SenderTransactionInitializer,
-                TransactionProtocolError,
-            },
+            transaction_protocol::{sender::SenderState, transaction_initializer::SenderTransactionInitializer},
         },
     };
 
     /// One input, 2 outputs
-    #[test]
-    fn no_receivers() {
+    #[tokio::test]
+    async fn no_receivers() {
         // Create some inputs
-        let factories = CryptoFactories::default();
-        let p = TestParams::new();
+        let key_manager = create_test_core_key_manager_with_memory_db();
+        let p = TestParams::new(&key_manager).await;
         // Start the builder
-        let builder = SenderTransactionInitializer::new(0, &create_consensus_constants(0));
-        let err = builder.build(&factories, None, u64::MAX).unwrap_err();
+        let builder = SenderTransactionInitializer::new(&create_consensus_constants(0), key_manager.clone());
+        let err = builder.build().await.unwrap_err();
         let script = script!(Nop);
         // We should have a bunch of fields missing still, but we can recover and continue
-        assert_eq!(
-            err.message,
-            "Missing Lock Height,Missing Fee per gram,Missing Offset,Missing private nonce"
-        );
+        assert_eq!(err.message, "Missing Lock Height,Missing Fee per gram");
 
         let mut builder = err.builder;
-        builder
-            .with_lock_height(100)
-            .with_offset(p.offset.clone())
-            .with_private_nonce(p.nonce.clone());
+        builder.with_lock_height(100);
         builder
             .with_output(
-                create_non_recoverable_unblinded_output(script.clone(), OutputFeatures::default(), &p, MicroTari(100))
-                    .unwrap(),
-                PrivateKey::random(&mut OsRng),
+                create_key_manager_output_with_data(
+                    script.clone(),
+                    OutputFeatures::default(),
+                    &p,
+                    MicroTari(100),
+                    &key_manager,
+                )
+                .await
+                .unwrap(),
+                p.sender_offset_key_id.clone(),
             )
+            .await
             .unwrap();
-        let (utxo, input) = TestParams::new().create_input(UtxoTestParams {
-            value: MicroTari(5_000),
-            ..Default::default()
-        });
-        builder.with_input(utxo, input);
-        builder
-            .with_fee_per_gram(MicroTari(20))
-            .with_recipient_data(
-                0,
-                script.clone(),
-                PrivateKey::random(&mut OsRng),
-                Default::default(),
-                PrivateKey::random(&mut OsRng),
-                Covenant::default(),
-                MicroTari::zero(),
+        let input = TestParams::new(&key_manager)
+            .await
+            .create_input(
+                UtxoTestParams {
+                    value: MicroTari(5_000),
+                    ..Default::default()
+                },
+                &key_manager,
             )
-            .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
+            .await;
+        builder.with_input(input).await.unwrap();
+        builder.with_fee_per_gram(MicroTari(20));
+        // .with_recipient_data(
+        //     script.clone(),
+        //     recp.sender_offset_private_key,
+        //     Default::default(),
+        //     Default::default(),
+        //     0.into(),
+        //     MicroTari(1000),
+        // )
+        // .await
+        // .unwrap();
         let expected_fee =
             builder
                 .fee()
-                .calculate(MicroTari(20), 1, 1, 2, p.get_size_for_default_features_and_scripts(2));
+                .calculate(MicroTari(20), 1, 1, 2, p.get_size_for_default_features_and_scripts(2)) -
+                MicroTari(20);
         // We needed a change input, so this should fail
-        let err = builder.build(&factories, None, u64::MAX).unwrap_err();
-        assert_eq!(err.message, "Change spending key was not provided");
+        let err = builder.build().await.unwrap_err();
+        assert_eq!(err.message, "Change data was not provided");
         // Ok, give them a change output
         let mut builder = err.builder;
-        builder.with_change_secret(p.change_spend_key);
-        let result = builder.build(&factories, None, u64::MAX).unwrap();
+        let change = TestParams::new(&key_manager).await;
+        builder.with_change_data(
+            script!(Nop),
+            Default::default(),
+            change.script_key_id.clone(),
+            change.change_spend_key_id.clone(),
+            Covenant::default(),
+        );
+        let result = builder.build().await.unwrap();
         // Peek inside and check the results
         if let SenderState::Finalizing(info) = result.into_state() {
-            assert_eq!(info.num_recipients, 0, "Number of receivers");
-            assert_eq!(info.signatures.len(), 0, "Number of signatures");
-            assert_eq!(info.amounts.len(), 0, "Number of external payment amounts");
             assert_eq!(info.metadata.lock_height, 100, "Lock height");
             assert_eq!(info.metadata.fee, expected_fee, "Fee");
-            assert_eq!(info.outputs.len(), 2, "There should be 2 outputs");
+            assert_eq!(info.outputs.len(), 1, "There should be 1 output1");
+            assert!(info.change_output.is_some(), "There should be 1 change output1");
             assert_eq!(info.inputs.len(), 1, "There should be 1 input");
         } else {
             panic!("There were no recipients, so we should be finalizing");
@@ -773,12 +680,12 @@ mod test {
     }
 
     /// One output, one input
-    #[test]
-    fn no_change_or_receivers() {
+    #[tokio::test]
+    async fn no_change_or_receivers() {
         // Create some inputs
-        let factories = CryptoFactories::default();
-        let p = TestParams::new();
-        let (utxo, input) = create_test_input(MicroTari(5000), 0, &factories.commitment);
+        let key_manager = create_test_core_key_manager_with_memory_db();
+        let p = TestParams::new(&key_manager).await;
+        let input = create_test_input(MicroTari(5000), 0, &key_manager).await;
         let constants = create_consensus_constants(0);
         let expected_fee = Fee::from(*constants.transaction_weight()).calculate(
             MicroTari(4),
@@ -788,30 +695,30 @@ mod test {
             p.get_size_for_default_features_and_scripts(1),
         );
 
-        let output = create_non_recoverable_unblinded_output(
+        let output = create_key_manager_output_with_data(
             TariScript::default(),
             OutputFeatures::default(),
             &p,
             MicroTari(5000) - expected_fee,
+            &key_manager,
         )
+        .await
         .unwrap();
         // Start the builder
-        let mut builder = SenderTransactionInitializer::new(0, &constants);
+        let mut builder = SenderTransactionInitializer::new(&constants, key_manager.clone());
         builder
             .with_lock_height(0)
-            .with_offset(p.offset)
-            .with_private_nonce(p.nonce)
-            .with_output(output, p.sender_offset_private_key)
+            .with_output(output, p.sender_offset_key_id)
+            .await
             .unwrap()
-            .with_input(utxo, input)
+            .with_input(input)
+            .await
+            .unwrap()
             .with_fee_per_gram(MicroTari(4))
             .with_prevent_fee_gt_amount(false);
-        let result = builder.build(&factories, None, u64::MAX).unwrap();
+        let result = builder.build().await.unwrap();
         // Peek inside and check the results
         if let SenderState::Finalizing(info) = result.into_state() {
-            assert_eq!(info.num_recipients, 0, "Number of receivers");
-            assert_eq!(info.signatures.len(), 0, "Number of signatures");
-            assert_eq!(info.amounts.len(), 0, "Number of external payment amounts");
             assert_eq!(info.metadata.lock_height, 0, "Lock height");
             assert_eq!(info.metadata.fee, expected_fee, "Fee");
             assert_eq!(info.outputs.len(), 1, "There should be 1 output");
@@ -822,12 +729,12 @@ mod test {
     }
 
     /// Hit the edge case where our change isn't enough to cover the cost of an extra output
-    #[test]
+    #[tokio::test]
     #[allow(clippy::identity_op)]
-    fn change_edge_case() {
+    async fn change_edge_case() {
         // Create some inputs
-        let factories = CryptoFactories::default();
-        let p = TestParams::new();
+        let key_manager = create_test_core_key_manager_with_memory_db();
+        let p = TestParams::new(&key_manager).await;
         let constants = create_consensus_constants(0);
         let weighting = constants.transaction_weight();
         let tx_fee = Fee::new(*weighting).calculate(1.into(), 1, 1, 1, 0);
@@ -836,35 +743,38 @@ mod test {
         // outputs weight: 1060, kernel weight: 10, input weight: 9, output weight: 53,
 
         // Pay out so that I should get change, but not enough to pay for the output
-        let (utxo, input) = create_test_input(
+        let input = create_test_input(
             // one under the amount required to pay the fee for a change output
             2000 * uT + tx_fee + fee_for_change_output - 1 * uT,
             0,
-            &factories.commitment,
-        );
+            &key_manager,
+        )
+        .await;
         let output = p
-            .create_unblinded_output_not_recoverable(UtxoTestParams {
-                value: 2000 * uT,
-                ..Default::default()
-            })
+            .create_output(
+                UtxoTestParams {
+                    value: 2000 * uT,
+                    ..Default::default()
+                },
+                &key_manager,
+            )
+            .await
             .unwrap();
         // Start the builder
-        let mut builder = SenderTransactionInitializer::new(0, &constants);
+        let mut builder = SenderTransactionInitializer::new(&constants, key_manager.clone());
         builder
             .with_lock_height(0)
-            .with_offset(p.offset)
-            .with_private_nonce(p.nonce)
-            .with_output(output, p.sender_offset_private_key)
+            .with_output(output, p.sender_offset_key_id)
+            .await
             .unwrap()
-            .with_input(utxo, input)
+            .with_input(input)
+            .await
+            .unwrap()
             .with_fee_per_gram(MicroTari(1))
             .with_prevent_fee_gt_amount(false);
-        let result = builder.build(&factories, None, u64::MAX).unwrap();
+        let result = builder.build().await.unwrap();
         // Peek inside and check the results
         if let SenderState::Finalizing(info) = result.into_state() {
-            assert_eq!(info.num_recipients, 0, "Number of receivers");
-            assert_eq!(info.signatures.len(), 0, "Number of signatures");
-            assert_eq!(info.amounts.len(), 0, "Number of external payment amounts");
             assert_eq!(info.metadata.lock_height, 0, "Lock height");
             assert_eq!(info.metadata.fee, tx_fee + fee_for_change_output - 1 * uT, "Fee");
             assert_eq!(info.outputs.len(), 1, "There should be 1 output");
@@ -874,175 +784,141 @@ mod test {
         }
     }
 
-    #[test]
-    fn too_many_inputs() {
+    #[tokio::test]
+    async fn too_many_inputs() {
         // Create some inputs
-        let factories = CryptoFactories::default();
-        let p = TestParams::new();
+        let key_manager = create_test_core_key_manager_with_memory_db();
+        let p = TestParams::new(&key_manager).await;
 
-        let output = create_non_recoverable_unblinded_output(
+        let output = create_key_manager_output_with_data(
             TariScript::default(),
             OutputFeatures::default(),
             &p,
             MicroTari(500),
+            &key_manager,
         )
+        .await
         .unwrap();
         let constants = create_consensus_constants(0);
         // Start the builder
-        let mut builder = SenderTransactionInitializer::new(0, &constants);
+        let mut builder = SenderTransactionInitializer::new(&constants, key_manager.clone());
         builder
             .with_lock_height(0)
-            .with_offset(p.offset)
-            .with_private_nonce(p.nonce)
-            .with_output(output, p.sender_offset_private_key)
+            .with_output(output, p.sender_offset_key_id)
+            .await
             .unwrap()
             .with_fee_per_gram(MicroTari(2));
 
         for _ in 0..=MAX_TRANSACTION_INPUTS {
-            let (utxo, input) = create_test_input(MicroTari(50), 0, &factories.commitment);
-            builder.with_input(utxo, input);
+            let input = create_test_input(MicroTari(50), 0, &key_manager).await;
+            builder.with_input(input).await.unwrap();
         }
-        let err = builder.build(&factories, None, u64::MAX).unwrap_err();
+        let err = builder.build().await.unwrap_err();
         assert_eq!(err.message, "Too many inputs in transaction");
     }
 
-    #[test]
-    fn fee_too_low() {
+    #[tokio::test]
+    async fn fee_too_low() {
         // Create some inputs
-        let factories = CryptoFactories::default();
-        let p = TestParams::new();
+        let key_manager = create_test_core_key_manager_with_memory_db();
+        let p = TestParams::new(&key_manager).await;
         let tx_fee = p
             .fee()
             .calculate(MicroTari(1), 1, 1, 1, p.get_size_for_default_features_and_scripts(1));
-        let (utxo, input) = create_test_input(500 * uT + tx_fee, 0, &factories.commitment);
+        let input = create_test_input(500 * uT + tx_fee, 0, &key_manager).await;
         let script = script!(Nop);
-        let output =
-            create_non_recoverable_unblinded_output(script.clone(), OutputFeatures::default(), &p, MicroTari(500))
-                .unwrap();
         // Start the builder
         let constants = create_consensus_constants(0);
-        let mut builder = SenderTransactionInitializer::new(0, &constants);
+        let mut builder = SenderTransactionInitializer::new(&constants, key_manager.clone());
+        let change = TestParams::new(&key_manager).await;
+        let script_key = key_manager
+            .get_public_key_at_key_id(&change.script_key_id)
+            .await
+            .unwrap();
         builder
             .with_lock_height(0)
-            .with_offset(p.offset)
-            .with_private_nonce(p.nonce)
-            .with_input(utxo, input)
-            .with_output(output, p.sender_offset_private_key)
+            .with_input(input)
+            .await
             .unwrap()
-            .with_change_secret(p.change_spend_key)
-            .with_fee_per_gram(MicroTari(1))
-            .with_recipient_data(
-                0,
-                script,
-                PrivateKey::random(&mut OsRng),
-                Default::default(),
-                PrivateKey::random(&mut OsRng),
+            .with_change_data(
+                script!(Nop),
+                inputs!(script_key),
+                change.script_key_id.clone(),
+                change.change_spend_key_id.clone(),
                 Covenant::default(),
-                MicroTari::zero(),
-            );
+            )
+            .with_fee_per_gram(MicroTari(1))
+            .with_recipient_data(script, Default::default(), Default::default(), 0.into(), MicroTari(500))
+            .await
+            .unwrap();
         // .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
-        let err = builder.build(&factories, None, u64::MAX).unwrap_err();
+        let err = builder.build().await.unwrap_err();
         assert_eq!(err.message, "Fee is less than the minimum");
     }
 
-    #[test]
-    fn not_enough_funds() {
+    #[tokio::test]
+    async fn not_enough_funds() {
         // Create some inputs
-        let factories = CryptoFactories::default();
-        let p = TestParams::new();
-        let (utxo, input) = create_test_input(MicroTari(400), 0, &factories.commitment);
+        let key_manager = create_test_core_key_manager_with_memory_db();
+        let p = TestParams::new(&key_manager).await;
+        let input = create_test_input(MicroTari(400), 0, &key_manager).await;
         let script = script!(Nop);
-        let output =
-            create_non_recoverable_unblinded_output(script.clone(), OutputFeatures::default(), &p, MicroTari(400))
-                .unwrap();
+        let output = create_key_manager_output_with_data(
+            script.clone(),
+            OutputFeatures::default(),
+            &p,
+            MicroTari(400),
+            &key_manager,
+        )
+        .await
+        .unwrap();
         // Start the builder
         let constants = create_consensus_constants(0);
-        let mut builder = SenderTransactionInitializer::new(0, &constants);
+        let mut builder = SenderTransactionInitializer::new(&constants, key_manager.clone());
+        let change = TestParams::new(&key_manager).await;
+        let script_key = key_manager
+            .get_public_key_at_key_id(&change.script_key_id)
+            .await
+            .unwrap();
         builder
             .with_lock_height(0)
-            .with_offset(p.offset)
-            .with_private_nonce(p.nonce)
-            .with_input(utxo, input)
-            .with_output(output, p.sender_offset_private_key.clone())
+            .with_input(input)
+            .await
             .unwrap()
-            .with_change_secret(p.change_spend_key)
+            .with_output(output, p.sender_offset_key_id.clone())
+            .await
+            .unwrap()
+            .with_change_data(
+                script!(Nop),
+                inputs!(script_key),
+                change.script_key_id.clone(),
+                change.change_spend_key_id.clone(),
+                Covenant::default(),
+            )
             .with_fee_per_gram(MicroTari(1))
             .with_recipient_data(
-                0,
                 script.clone(),
-                PrivateKey::random(&mut OsRng),
                 Default::default(),
-                PrivateKey::random(&mut OsRng),
-                Covenant::default(),
+                Default::default(),
+                0.into(),
                 MicroTari::zero(),
             )
-            .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
-        let err = builder.build(&factories, None, u64::MAX).unwrap_err();
+            .await
+            .unwrap();
+        let err = builder.build().await.unwrap_err();
         assert_eq!(
             err.message,
-            "You are spending (473 µT) more than you're providing (400 µT)."
+            "You are spending (528 µT) more than you're providing (400 µT)."
         );
     }
 
-    #[test]
-    fn multi_recipients() {
+    #[tokio::test]
+    async fn single_recipient() {
         // Create some inputs
-        let factories = CryptoFactories::default();
-        let p = TestParams::new();
-        let (utxo, input) = create_test_input(MicroTari(100_000), 0, &factories.commitment);
-        let script = script!(Nop);
-        let output =
-            create_non_recoverable_unblinded_output(script.clone(), OutputFeatures::default(), &p, MicroTari(15000))
-                .unwrap();
-        // Start the builder
-        let constants = create_consensus_constants(0);
-        let mut builder = SenderTransactionInitializer::new(2, &constants);
-        builder
-            .with_lock_height(0)
-            .with_offset(p.offset)
-            .with_amount(0, MicroTari(1200))
-            .with_amount(1, MicroTari(1100))
-            .with_private_nonce(p.nonce)
-            .with_input(utxo, input)
-            .with_output(output, p.sender_offset_private_key.clone())
-            .unwrap()
-            .with_change_secret(p.change_spend_key)
-            .with_fee_per_gram(MicroTari(4))
-            .with_recipient_data(
-                0,
-                script.clone(),
-                PrivateKey::random(&mut OsRng),
-                Default::default(),
-                PrivateKey::random(&mut OsRng),
-                Covenant::default(),
-                MicroTari::zero(),
-            )
-            .with_recipient_data(
-                1,
-                script.clone(),
-                PrivateKey::random(&mut OsRng),
-                Default::default(),
-                PrivateKey::random(&mut OsRng),
-                Covenant::default(),
-                MicroTari::zero(),
-            )
-            .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
-        let result = builder.build(&factories, None, u64::MAX).unwrap();
-        // Peek inside and check the results
-        if let SenderState::Failed(TransactionProtocolError::UnsupportedError(s)) = result.into_state() {
-            assert_eq!(s, "Multiple recipients are not supported yet")
-        } else {
-            panic!("We should not allow multiple recipients at this time");
-        }
-    }
-
-    #[test]
-    fn single_recipient() {
-        // Create some inputs
-        let factories = CryptoFactories::default();
-        let p = TestParams::new();
-        let (utxo1, input1) = create_test_input(MicroTari(2000), 0, &factories.commitment);
-        let (utxo2, input2) = create_test_input(MicroTari(3000), 0, &factories.commitment);
+        let key_manager = create_test_core_key_manager_with_memory_db();
+        let p = TestParams::new(&key_manager).await;
+        let input1 = create_test_input(MicroTari(2000), 0, &key_manager).await;
+        let input2 = create_test_input(MicroTari(3000), 0, &key_manager).await;
         let fee_per_gram = MicroTari(6);
 
         let script = script!(Nop);
@@ -1054,100 +930,60 @@ mod test {
             3,
             p.get_size_for_default_features_and_scripts(3),
         );
-        let output = create_non_recoverable_unblinded_output(
+        let output = create_key_manager_output_with_data(
             script.clone(),
             OutputFeatures::default(),
             &p,
             MicroTari(1500) - expected_fee,
+            &key_manager,
         )
+        .await
         .unwrap();
         // Start the builder
-        let mut builder = SenderTransactionInitializer::new(1, &constants);
+        let mut builder = SenderTransactionInitializer::new(&constants, key_manager.clone());
+        let change = TestParams::new(&key_manager).await;
+        let script_key = key_manager
+            .get_public_key_at_key_id(&change.script_key_id)
+            .await
+            .unwrap();
         builder
             .with_lock_height(1234)
-            .with_offset(p.offset)
-            .with_private_nonce(p.nonce)
-            .with_output(output, p.sender_offset_private_key.clone())
+            .with_output(output, p.sender_offset_key_id.clone())
+            .await
             .unwrap()
-            .with_input(utxo1, input1)
-            .with_input(utxo2, input2)
-            .with_amount(0, MicroTari(2500))
-            .with_change_secret(p.change_spend_key)
+            .with_input(input1)
+            .await
+            .unwrap()
+            .with_input(input2)
+            .await
+            .unwrap()
+            .with_change_data(
+                script!(Nop),
+                inputs!(script_key),
+                change.script_key_id.clone(),
+                change.change_spend_key_id.clone(),
+                Covenant::default(),
+            )
             .with_fee_per_gram(fee_per_gram)
             .with_recipient_data(
-                0,
                 script.clone(),
-                PrivateKey::random(&mut OsRng),
                 Default::default(),
-                PrivateKey::random(&mut OsRng),
-                Covenant::default(),
-                MicroTari::zero(),
+                Default::default(),
+                0.into(),
+                MicroTari(2500),
             )
-            .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
-        let result = builder.build(&factories, None, u64::MAX).unwrap();
+            .await
+            .unwrap();
+        let result = builder.build().await.unwrap();
         // Peek inside and check the results
         if let SenderState::SingleRoundMessageReady(info) = result.into_state() {
-            assert_eq!(info.num_recipients, 1, "Number of receivers");
-            assert_eq!(info.signatures.len(), 0, "Number of signatures");
-            assert_eq!(info.amounts.len(), 1, "Number of external payment amounts");
             assert_eq!(info.metadata.lock_height, 1234, "Lock height");
             assert_eq!(info.metadata.fee, expected_fee, "Fee");
-            assert_eq!(info.outputs.len(), 2, "There should be 2 outputs");
+            assert_eq!(info.outputs.len(), 1, "There should be 1 outputs");
+            assert!(info.change_output.is_some(), "There should be 1 change output");
             assert_eq!(info.inputs.len(), 2, "There should be 2 input");
         } else {
             panic!("There was a recipient, we should be ready to send a message");
-        }
-    }
-
-    #[test]
-    fn fail_range_proof() {
-        // Create some inputs
-        let factories = CryptoFactories::new(32);
-        let p = TestParams::new();
-
-        let script = script!(Nop);
-        let output = create_non_recoverable_unblinded_output(
-            script.clone(),
-            OutputFeatures::default(),
-            &p,
-            (1u64.pow(32) + 1u64).into(),
-        )
-        .unwrap();
-        // Start the builder
-        let (utxo1, input1) = create_test_input((2u64.pow(32) + 20000u64).into(), 0, &factories.commitment);
-        let fee_per_gram = MicroTari(6);
-        let constants = create_consensus_constants(0);
-        let mut builder = SenderTransactionInitializer::new(1, &constants);
-        builder
-            .with_lock_height(1234)
-            .with_offset(p.offset)
-            .with_private_nonce(p.nonce)
-            .with_output(output, p.sender_offset_private_key.clone())
-            .unwrap()
-            .with_input(utxo1, input1)
-            .with_amount(0, MicroTari(9800))
-            .with_change_secret(p.change_spend_key)
-            .with_fee_per_gram(fee_per_gram)
-            .with_recipient_data(
-                0,
-                script.clone(),
-                PrivateKey::random(&mut OsRng),
-                Default::default(),
-                PrivateKey::random(&mut OsRng),
-                Covenant::default(),
-                MicroTari::zero(),
-            )
-            .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
-        let result = builder.build(&factories, None, u64::MAX);
-
-        match result {
-            Ok(_) => panic!("Range proof should have failed to verify"),
-            Err(e) => assert!(
-                e.message
-                    .contains("Value provided is outside the range allowed by the range proof"),
-                "Message did not contain 'Value provided is outside the range allowed by the range proof'. Error: {:?}",
-                e
-            ),
         }
     }
 }

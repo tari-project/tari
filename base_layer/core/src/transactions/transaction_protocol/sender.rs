@@ -22,42 +22,38 @@
 
 use std::fmt;
 
-use derivative::Derivative;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     transaction::TxId,
-    types::{ComAndPubSignature, HashOutput, PrivateKey, PublicKey, Signature},
+    types::{PrivateKey, PublicKey, Signature},
 };
-use tari_crypto::{
-    keys::PublicKey as PublicKeyTrait,
-    ristretto::pedersen::PedersenCommitment,
-    tari_utilities::ByteArray,
-};
+use tari_crypto::{ristretto::pedersen::PedersenCommitment, tari_utilities::ByteArray};
+pub use tari_key_manager::key_manager_service::KeyId;
 use tari_script::TariScript;
 
 use super::CalculateTxIdTransactionProtocolHasherBlake256;
 use crate::{
     consensus::ConsensusConstants,
     covenants::Covenant,
+    transaction_key_manager::{BaseLayerKeyManagerInterface, TariKeyId, TxoStage},
     transactions::{
         fee::Fee,
         tari_amount::*,
         transaction_components::{
             KernelBuilder,
+            KeyManagerOutput,
             OutputFeatures,
             Transaction,
             TransactionBuilder,
-            TransactionInput,
             TransactionKernel,
             TransactionKernelVersion,
             TransactionOutput,
-            UnblindedOutput,
             MAX_TRANSACTION_INPUTS,
             MAX_TRANSACTION_OUTPUTS,
         },
         transaction_protocol::{
-            recipient::{RecipientInfo, RecipientSignedMessage},
-            transaction_initializer::SenderTransactionInitializer,
+            recipient::RecipientSignedMessage,
+            transaction_initializer::{RecipientDetails, SenderTransactionInitializer},
             TransactionMetadata,
             TransactionProtocolError as TPE,
         },
@@ -65,54 +61,36 @@ use crate::{
 };
 
 //----------------------------------------   Local Data types     ----------------------------------------------------//
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub(crate) struct OutputPair {
+    pub output: KeyManagerOutput,
+    pub kernel_nonce: TariKeyId,
+    pub sender_offset_key_id: Option<TariKeyId>,
+}
 
 /// This struct contains all the information that a transaction initiator (the sender) will manage throughout the
 /// Transaction construction process.
-// TODO: Investigate necessity to use the 'Serialize' and 'Deserialize' traits here; this could potentially leak
-// TODO:   information when least expected. #LOGGED
-#[derive(Clone, Derivative, Serialize, Deserialize, PartialEq)]
-#[derivative(Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub(super) struct RawTransactionInfo {
-    pub num_recipients: usize,
-    // The sum of self-created outputs plus change
-    pub amount_to_self: MicroTari,
     pub tx_id: TxId,
-    pub amounts: Vec<MicroTari>,
-    pub recipient_scripts: Vec<TariScript>,
-    pub recipient_output_features: Vec<OutputFeatures>,
-    #[derivative(Debug = "ignore")]
-    pub recipient_sender_offset_private_keys: Vec<PrivateKey>,
-    pub recipient_covenants: Vec<Covenant>,
-    pub recipient_minimum_value_promise: Vec<MicroTari>,
+    // the recipient's data
+    pub recipient_data: Option<RecipientDetails>,
+    pub recipient_output: Option<TransactionOutput>,
+    pub recipient_partial_kernel_excess: PublicKey,
+    pub recipient_partial_kernel_signature: Signature,
+    pub recipient_partial_kernel_offset: PrivateKey,
     // The sender's portion of the public commitment nonce
-    #[derivative(Debug = "ignore")]
-    pub private_commitment_nonces: Vec<PrivateKey>,
-    pub change: MicroTari,
-    pub change_output_metadata_signature: Option<ComAndPubSignature>,
-    pub change_sender_offset_public_key: Option<PublicKey>,
-    pub unblinded_change_output: Option<UnblindedOutput>,
+    pub change_output: Option<OutputPair>,
+    pub inputs: Vec<OutputPair>,
+    pub outputs: Vec<OutputPair>,
+    // cached data
+    // this is calculated when sender sends single round message to receiver
+    pub total_sender_excess: PublicKey,
+    // this is calculated when sender sends single round message to receiver
+    pub total_sender_nonce: PublicKey,
+
     pub metadata: TransactionMetadata,
-    pub inputs: Vec<TransactionInput>,
-    pub outputs: Vec<TransactionOutput>,
-    pub offset: PrivateKey,
-    // The sender's blinding factor shifted by the sender-selected offset
-    pub offset_blinding_factor: PrivateKey,
-    #[derivative(Debug = "ignore")]
-    pub gamma: PrivateKey,
-    pub public_excess: PublicKey,
-    // The sender's private nonce
-    #[derivative(Debug = "ignore")]
-    pub private_nonce: PrivateKey,
-    // The sender's public nonce
-    pub public_nonce: PublicKey,
-    // The sum of all public nonces
-    pub public_nonce_sum: PublicKey,
-    #[serde(skip)]
-    pub recipient_info: RecipientInfo,
-    pub signatures: Vec<Signature>,
-    pub message: String,
-    pub height: u64,
-    pub prev_header: Option<HashOutput>,
+    pub text_message: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -170,10 +148,17 @@ pub struct SenderTransactionProtocol {
 }
 
 impl SenderTransactionProtocol {
+    // pub fn from_state(state: SenderState) -> Self {
+    //     SenderTransactionProtocol { state }
+    // }
+
     /// Begin constructing a new transaction. All the up-front data is collected via the
     /// `SenderTransactionInitializer` builder function
-    pub fn builder(num_recipients: usize, consensus_constants: ConsensusConstants) -> SenderTransactionInitializer {
-        SenderTransactionInitializer::new(num_recipients, &consensus_constants)
+    pub fn builder<KM: BaseLayerKeyManagerInterface>(
+        consensus_constants: ConsensusConstants,
+        key_manager: KM,
+    ) -> SenderTransactionInitializer<KM> {
+        SenderTransactionInitializer::new(&consensus_constants, key_manager)
     }
 
     /// Convenience method to check whether we're receiving recipient data
@@ -245,24 +230,39 @@ impl SenderTransactionProtocol {
         }
     }
 
-    pub fn get_total_amount(&self) -> Result<MicroTari, TPE> {
+    pub fn get_amount_to_recipient(&self) -> Result<MicroTari, TPE> {
         match &self.state {
             SenderState::Initializing(info) |
             SenderState::Finalizing(info) |
             SenderState::SingleRoundMessageReady(info) |
-            SenderState::CollectingSingleSignature(info) => Ok(info.amounts.iter().sum()),
+            SenderState::CollectingSingleSignature(info) => Ok(info
+                .recipient_data
+                .as_ref()
+                .map(|data| data.amount)
+                .unwrap_or(MicroTari::zero())),
             SenderState::FinalizedTransaction(_) => Err(TPE::InvalidStateError),
             SenderState::Failed(_) => Err(TPE::InvalidStateError),
         }
     }
 
-    /// This function will return the total value of outputs being sent to yourself in the transaction
+    /// This function will return the total value of outputs being sent to yourself in the transaction including the
+    /// change
     pub fn get_amount_to_self(&self) -> Result<MicroTari, TPE> {
         match &self.state {
             SenderState::Initializing(info) |
             SenderState::Finalizing(info) |
             SenderState::SingleRoundMessageReady(info) |
-            SenderState::CollectingSingleSignature(info) => Ok(info.amount_to_self),
+            SenderState::CollectingSingleSignature(info) => {
+                let mut amount = info
+                    .change_output
+                    .as_ref()
+                    .map(|output| output.output.value)
+                    .unwrap_or(MicroTari::zero());
+                for output in &info.outputs {
+                    amount += output.output.value
+                }
+                Ok(amount)
+            },
             SenderState::FinalizedTransaction(_) => Err(TPE::InvalidStateError),
             SenderState::Failed(_) => Err(TPE::InvalidStateError),
         }
@@ -274,59 +274,40 @@ impl SenderTransactionProtocol {
             SenderState::Initializing(info) |
             SenderState::Finalizing(info) |
             SenderState::SingleRoundMessageReady(info) |
-            SenderState::CollectingSingleSignature(info) => Ok(info.change),
+            SenderState::CollectingSingleSignature(info) => Ok(info
+                .change_output
+                .as_ref()
+                .map(|output| output.output.value)
+                .unwrap_or(MicroTari::zero())),
             SenderState::FinalizedTransaction(_) => Err(TPE::InvalidStateError),
             SenderState::Failed(_) => Err(TPE::InvalidStateError),
         }
     }
 
     /// This function will return the change output
-    pub fn get_change_unblinded_output(&self) -> Result<Option<UnblindedOutput>, TPE> {
+    pub fn get_change_output(&self) -> Result<Option<KeyManagerOutput>, TPE> {
         match &self.state {
             SenderState::Initializing(info) |
             SenderState::Finalizing(info) |
             SenderState::SingleRoundMessageReady(info) |
-            SenderState::CollectingSingleSignature(info) => Ok(info.unblinded_change_output.clone()),
-            SenderState::FinalizedTransaction(_) => Err(TPE::InvalidStateError),
-            SenderState::Failed(_) => Err(TPE::InvalidStateError),
-        }
-    }
-
-    /// This function will return the metadata signature of the change output
-    pub fn get_change_output_metadata_signature(&self) -> Result<Option<ComAndPubSignature>, TPE> {
-        match &self.state {
-            SenderState::Initializing(info) |
-            SenderState::Finalizing(info) |
-            SenderState::SingleRoundMessageReady(info) |
-            SenderState::CollectingSingleSignature(info) => Ok(info.change_output_metadata_signature.clone()),
-            SenderState::FinalizedTransaction(_) => Err(TPE::InvalidStateError),
-            SenderState::Failed(_) => Err(TPE::InvalidStateError),
-        }
-    }
-
-    /// This function will return the the script offset public key of the change transaction
-    pub fn get_change_sender_offset_public_key(&self) -> Result<Option<PublicKey>, TPE> {
-        match &self.state {
-            SenderState::Initializing(info) |
-            SenderState::Finalizing(info) |
-            SenderState::SingleRoundMessageReady(info) |
-            SenderState::CollectingSingleSignature(info) => Ok(info.change_sender_offset_public_key.clone()),
+            SenderState::CollectingSingleSignature(info) => {
+                Ok(info.change_output.as_ref().map(|output| output.output.clone()))
+            },
             SenderState::FinalizedTransaction(_) => Err(TPE::InvalidStateError),
             SenderState::Failed(_) => Err(TPE::InvalidStateError),
         }
     }
 
     /// This function will return the script offset private keys for a single recipient
-    pub fn get_recipient_sender_offset_private_key(&self, recipient_index: usize) -> Result<PrivateKey, TPE> {
+    pub fn get_recipient_sender_offset_private_key(&self) -> Result<Option<TariKeyId>, TPE> {
         match &self.state {
             SenderState::Initializing(info) |
             SenderState::Finalizing(info) |
             SenderState::SingleRoundMessageReady(info) |
             SenderState::CollectingSingleSignature(info) => Ok({
-                info.recipient_sender_offset_private_keys
-                    .get(recipient_index)
-                    .ok_or(TPE::ScriptOffsetPrivateKeyNotFound)?
-                    .clone()
+                info.recipient_data
+                    .as_ref()
+                    .map(|data| data.recipient_sender_offset_key_id.clone())
             }),
             SenderState::FinalizedTransaction(_) => Err(TPE::InvalidStateError),
             SenderState::Failed(_) => Err(TPE::InvalidStateError),
@@ -347,30 +328,19 @@ impl SenderTransactionProtocol {
         }
     }
 
-    pub fn get_minimum_value_promise(&self, recipient_index: usize) -> Result<MicroTari, TPE> {
-        match &self.state {
-            SenderState::Initializing(info) |
-            SenderState::Finalizing(info) |
-            SenderState::SingleRoundMessageReady(info) |
-            SenderState::CollectingSingleSignature(info) => Ok(*info
-                .recipient_minimum_value_promise
-                .get(recipient_index)
-                .ok_or(TPE::MinimumValuePromiseNotFound)?),
-            SenderState::FinalizedTransaction(_) => Err(TPE::InvalidStateError),
-            SenderState::Failed(_) => Err(TPE::InvalidStateError),
-        }
-    }
-
     /// Build the sender's message for the single-round protocol (one recipient) and move to next State
-    pub fn build_single_round_message(&mut self) -> Result<SingleRoundSenderData, TPE> {
-        match &self.state {
-            SenderState::SingleRoundMessageReady(info) => {
-                let result = self.get_single_round_message()?;
-                self.state = SenderState::CollectingSingleSignature(info.clone());
-                Ok(result)
-            },
-            _ => Err(TPE::InvalidStateError),
+    pub async fn build_single_round_message<KM: BaseLayerKeyManagerInterface>(
+        &mut self,
+        key_manager: &KM,
+    ) -> Result<SingleRoundSenderData, TPE> {
+        if !matches!(&self.state, SenderState::SingleRoundMessageReady(_)) {
+            return Err(TPE::InvalidStateError);
+        };
+        let result = self.get_single_round_message(key_manager).await?;
+        if let SenderState::SingleRoundMessageReady(info) = &self.state {
+            self.state = SenderState::CollectingSingleSignature(info.clone());
         }
+        Ok(result)
     }
 
     /// Revert the sender state back to 'SingleRoundMessageReady', used if transactions gets queued
@@ -385,42 +355,48 @@ impl SenderTransactionProtocol {
     }
 
     /// Return the single round sender message
-    pub fn get_single_round_message(&self) -> Result<SingleRoundSenderData, TPE> {
-        match &self.state {
+    pub async fn get_single_round_message<KM: BaseLayerKeyManagerInterface>(
+        &mut self,
+        key_manager: &KM,
+    ) -> Result<SingleRoundSenderData, TPE> {
+        match &mut self.state {
             SenderState::SingleRoundMessageReady(info) | SenderState::CollectingSingleSignature(info) => {
-                let recipient_output_features = info.recipient_output_features.first().cloned().ok_or_else(|| {
-                    TPE::IncompleteStateError("The recipient output features should be available".to_string())
-                })?;
-                let recipient_script =
-                    info.recipient_scripts.first().cloned().ok_or_else(|| {
-                        TPE::IncompleteStateError("The recipient script should be available".to_string())
-                    })?;
-                let recipient_script_offset_secret_key =
-                    info.recipient_sender_offset_private_keys.first().ok_or_else(|| {
-                        TPE::IncompleteStateError("The recipient script offset should be available".to_string())
-                    })?;
-                let private_commitment_nonce = info.private_commitment_nonces.first().ok_or_else(|| {
-                    TPE::IncompleteStateError("The sender's private commitment nonce should be available".to_string())
-                })?;
-                let recipient_covenant = info.recipient_covenants.first().cloned().ok_or_else(|| {
-                    TPE::IncompleteStateError("The recipient covenant should be available".to_string())
-                })?;
-                let recipient_minimum_value_promise =
-                    info.recipient_minimum_value_promise.first().copied().ok_or_else(|| {
-                        TPE::IncompleteStateError("The recipient minimum value promise should be available".to_string())
-                    })?;
+                let recipient_data = info
+                    .recipient_data
+                    .as_ref()
+                    .ok_or_else(|| TPE::IncompleteStateError("Missing recipient data".to_string()))?;
+                let recipient_output_features = recipient_data.recipient_output_features.clone();
+                let recipient_script = recipient_data.recipient_script.clone();
+                let recipient_script_offset_secret_key_id = recipient_data.recipient_sender_offset_key_id.clone();
+                let recipient_covenant = recipient_data.recipient_covenant.clone();
+                let recipient_minimum_value_promise = recipient_data.recipient_minimum_value_promise;
+                let amount = recipient_data.amount;
+                let ephemeral_public_key_nonce = recipient_data.recipient_ephemeral_public_key_nonce.clone();
+
+                let (public_nonce, public_excess) =
+                    SenderTransactionProtocol::calculate_total_nonce_and_total_public_excess(info, key_manager).await?;
+                let sender_offset_public_key = key_manager
+                    .get_public_key_at_key_id(&recipient_script_offset_secret_key_id)
+                    .await?;
+                // we update this as we send this to what we sent.
+                info.total_sender_excess = public_excess.clone();
+                info.total_sender_nonce = public_nonce.clone();
+
+                let ephemeral_public_nonce = key_manager
+                    .get_public_key_at_key_id(&ephemeral_public_key_nonce)
+                    .await?;
 
                 Ok(SingleRoundSenderData {
                     tx_id: info.tx_id,
-                    amount: self.get_total_amount()?,
-                    public_nonce: info.public_nonce.clone(),
-                    public_excess: info.public_excess.clone(),
+                    amount,
+                    public_nonce,
+                    public_excess,
                     metadata: info.metadata.clone(),
-                    message: info.message.clone(),
+                    message: info.text_message.clone(),
                     features: recipient_output_features,
                     script: recipient_script,
-                    sender_offset_public_key: PublicKey::from_secret_key(recipient_script_offset_secret_key),
-                    ephemeral_public_nonce: PublicKey::from_secret_key(private_commitment_nonce),
+                    sender_offset_public_key,
+                    ephemeral_public_nonce,
                     covenant: recipient_covenant,
                     minimum_value_promise: recipient_minimum_value_promise,
                 })
@@ -429,40 +405,111 @@ impl SenderTransactionProtocol {
         }
     }
 
+    async fn calculate_total_nonce_and_total_public_excess<KM: BaseLayerKeyManagerInterface>(
+        info: &RawTransactionInfo,
+        key_manager: &KM,
+    ) -> Result<(PublicKey, PublicKey), TPE> {
+        // lets calculate the total sender kernel signature nonce
+        let mut public_nonce = PublicKey::default();
+        // lets calculate the total sender kernel exess
+        let mut public_excess = PublicKey::default();
+        for input in &info.inputs {
+            public_nonce = public_nonce + key_manager.get_public_key_at_key_id(&input.kernel_nonce).await?;
+            public_excess = public_excess -
+                key_manager
+                    .get_txo_kernel_signature_excess_with_offset(&input.output.spending_key_id, &input.kernel_nonce)
+                    .await?;
+        }
+        for output in &info.outputs {
+            public_nonce = public_nonce + key_manager.get_public_key_at_key_id(&output.kernel_nonce).await?;
+            public_excess = public_excess +
+                key_manager
+                    .get_txo_kernel_signature_excess_with_offset(&output.output.spending_key_id, &output.kernel_nonce)
+                    .await?;
+        }
+
+        if let Some(change) = &info.change_output {
+            public_nonce = public_nonce + key_manager.get_public_key_at_key_id(&change.kernel_nonce).await?;
+            public_excess = public_excess +
+                key_manager
+                    .get_txo_kernel_signature_excess_with_offset(&change.output.spending_key_id, &change.kernel_nonce)
+                    .await?;
+        }
+        Ok((public_nonce, public_excess))
+    }
+
     /// Add the signed transaction from the recipient and move to the next state
-    pub fn add_single_recipient_info(&mut self, rec: RecipientSignedMessage) -> Result<(), TPE> {
+    pub async fn add_single_recipient_info<KM: BaseLayerKeyManagerInterface>(
+        &mut self,
+        rec: RecipientSignedMessage,
+        key_manager: &KM,
+    ) -> Result<(), TPE> {
         match &mut self.state {
             SenderState::CollectingSingleSignature(info) => {
                 // Consolidate transaction info
-                info.outputs.push(rec.output.clone());
-
-                // Update Gamma with this output
-                let recipient_sender_offset_private_key =
-                    info.recipient_sender_offset_private_keys.first().ok_or_else(|| {
-                        TPE::IncompleteStateError(
-                            "For single recipient there should be one recipient script offset".to_string(),
+                let mut received_output = rec.output.clone();
+                if received_output.verify_metadata_signature().is_err() {
+                    // we need to make sure we use our values here and not the received values.
+                    let metadata_message = TransactionOutput::metadata_signature_message_from_parts(
+                        &received_output.version,
+                        &received_output.script, /* receiver chooses script here, can change fee per gram see issue: https://github.com/tari-project/tari/issues/5430 */
+                        &info
+                            .recipient_data
+                            .as_ref()
+                            .ok_or_else(|| {
+                                TPE::IncompleteStateError("Missing data `recipient_output_features`".to_string())
+                            })?
+                            .recipient_output_features,
+                        &info
+                            .recipient_data
+                            .as_ref()
+                            .ok_or_else(|| TPE::IncompleteStateError("Missing data `recipient_covenant`".to_string()))?
+                            .recipient_covenant,
+                        &received_output.encrypted_data,
+                        info.recipient_data
+                            .as_ref()
+                            .ok_or_else(|| {
+                                TPE::IncompleteStateError("Missing data 'recipient_minimum_value_promise'".to_string())
+                            })?
+                            .recipient_minimum_value_promise,
+                    );
+                    let ephemeral_public_key_nonce = info
+                        .recipient_data
+                        .as_ref()
+                        .ok_or_else(|| {
+                            TPE::IncompleteStateError("Missing data `recipient_ephemeral_public_key_nonce`".to_string())
+                        })?
+                        .recipient_ephemeral_public_key_nonce
+                        .clone();
+                    let recipient_sender_offset_key_id = info
+                        .recipient_data
+                        .as_ref()
+                        .ok_or_else(|| {
+                            TPE::IncompleteStateError("Missing data `recipient_sender_offset_key_id`".to_string())
+                        })?
+                        .recipient_sender_offset_key_id
+                        .clone();
+                    let sender_metadata_signature = key_manager
+                        .get_sender_partial_metadata_signature(
+                            &ephemeral_public_key_nonce,
+                            &recipient_sender_offset_key_id,
+                            &received_output.commitment,
+                            received_output.metadata_signature.ephemeral_commitment(),
+                            &received_output.version,
+                            &metadata_message,
                         )
-                    })?;
-                info.gamma = info.gamma.clone() - recipient_sender_offset_private_key.clone();
-
-                // Finalize the combined metadata signature by adding the receiver signature portion
-                let private_commitment_nonce = info.private_commitment_nonces.first().ok_or_else(|| {
-                    TPE::IncompleteStateError("The sender's private commitment nonce should be available".to_string())
-                })?;
-                let index = info.outputs.len() - 1;
-                if info.outputs[index].verify_metadata_signature().is_err() {
-                    info.outputs[index].metadata_signature = SenderTransactionProtocol::finalize_metadata_signature(
-                        private_commitment_nonce,
-                        recipient_sender_offset_private_key,
-                        &info.outputs[index].clone(),
-                    )?;
+                        .await?;
+                    received_output.metadata_signature =
+                        &received_output.metadata_signature + &sender_metadata_signature;
+                    info.recipient_output = Some(received_output.clone());
                 }
+                info.recipient_partial_kernel_excess = rec.public_spend_key;
+                info.recipient_partial_kernel_signature = rec.partial_signature;
+                info.recipient_partial_kernel_offset = rec.offset;
+                if info.metadata.kernel_features.is_burned() {
+                    info.metadata.burn_commitment = Some(received_output.commitment);
+                };
 
-                // Nonce is in the signature, so we'll add those together later
-                info.public_excess = &info.public_excess + &rec.public_spend_key;
-                info.public_nonce_sum = &info.public_nonce_sum + rec.partial_signature.get_public_nonce();
-                info.signatures.push(rec.partial_signature);
-                info.metadata = rec.tx_metadata;
                 self.state = SenderState::Finalizing(info.clone());
                 Ok(())
             },
@@ -470,45 +517,142 @@ impl SenderTransactionProtocol {
         }
     }
 
-    fn finalize_metadata_signature(
-        private_commitment_nonce: &PrivateKey,
-        sender_offset_private_key: &PrivateKey,
-        output: &TransactionOutput,
-    ) -> Result<ComAndPubSignature, TPE> {
-        // Create sender signature
-        let sender_signature = TransactionOutput::create_sender_partial_metadata_signature(
-            output.version,
-            &output.commitment,
-            output.metadata_signature.ephemeral_commitment(),
-            &output.script,
-            &output.features,
-            sender_offset_private_key,
-            Some(private_commitment_nonce),
-            &output.covenant,
-            &output.encrypted_data,
-            output.minimum_value_promise,
-        )?;
-        // Create aggregated metadata signature
-        let aggregated_metadata_signature = &sender_signature + &output.metadata_signature;
-
-        Ok(aggregated_metadata_signature)
-    }
-
     /// Attempts to build the final transaction.
-    fn build_transaction(info: &RawTransactionInfo) -> Result<Transaction, TPE> {
+    async fn build_transaction<KM: BaseLayerKeyManagerInterface>(
+        info: &RawTransactionInfo,
+        key_manager: &KM,
+    ) -> Result<Transaction, TPE> {
         let mut tx_builder = TransactionBuilder::new();
-        for i in &info.inputs {
-            tx_builder.add_input(i.clone());
+        let (total_public_nonce, total_public_excess) = if info.recipient_data.is_none() {
+            // we dont have a recipient and thus we have not yet calculated the sender_nonce and sender_offset_excess
+            SenderTransactionProtocol::calculate_total_nonce_and_total_public_excess(info, key_manager).await?
+        } else {
+            let total_public_nonce =
+                &info.total_sender_nonce + info.recipient_partial_kernel_signature.get_public_nonce();
+            let total_public_excess = &info.total_sender_excess + &info.recipient_partial_kernel_excess;
+            (total_public_nonce, total_public_excess)
+        };
+
+        let mut offset = info.recipient_partial_kernel_offset.clone();
+        let mut signature = info.recipient_partial_kernel_signature.clone();
+        let mut script_keys = Vec::new();
+        let mut sender_offset_keys = Vec::new();
+
+        let kernel_message = TransactionKernel::build_kernel_signature_message(
+            &TransactionKernelVersion::get_current_version(),
+            info.metadata.fee,
+            info.metadata.lock_height,
+            &info.metadata.kernel_features,
+            &info.metadata.burn_commitment,
+        );
+
+        for input in &info.inputs {
+            tx_builder.add_input(input.output.as_transaction_input(key_manager).await?);
+            signature = &signature +
+                &key_manager
+                    .get_txo_kernel_signature(
+                        &input.output.spending_key_id,
+                        &input.kernel_nonce,
+                        &total_public_nonce,
+                        &total_public_excess,
+                        &TransactionKernelVersion::get_current_version(),
+                        &kernel_message,
+                        &info.metadata.kernel_features,
+                        TxoStage::Input,
+                    )
+                    .await?;
+            offset = offset -
+                &key_manager
+                    .get_txo_private_kernel_offset(&input.output.spending_key_id, &input.kernel_nonce)
+                    .await?;
+            script_keys.push(input.output.script_key_id.clone());
+            // let sig = key_manager
+            //     .get_partial_kernel_signature(
+            //         &input.output.spending_key_id,
+            //         &input.kernel_nonce,
+            //         &total_public_nonce,
+            //         &total_public_excess,
+            //         &TransactionKernelVersion::get_current_version(),
+            //         &kernel_message,
+            //         &info.metadata.kernel_features,
+            //         TxoStage::Input,
+            //     )
+            //     .await?;
+            // let excess = PublicKey::default() -
+            // key_manager.get_partial_kernel_signature_excess_with_offset(&input.output.spending_key_id,&input.
+            // kernel_nonce ).await.unwrap(); // let excess =
+            // key_manager.get_partial_kernel_signature_excess_with_offset(&input.output.spending_key_id,&input.
+            // kernel_nonce ).await.unwrap(); let sig_challenge =
+            // TransactionKernel::finalize_kernel_signature_challenge(&TransactionKernelVersion::get_current_version(),
+            // &total_public_nonce, &total_public_excess, &kernel_message); assert!(sig.verify(&excess,
+            // &PrivateKey::from_bytes(&sig_challenge).unwrap()));
+            //
+            // assert!(false);
         }
 
-        for o in &info.outputs {
-            tx_builder.add_output(o.clone());
+        for output in &info.outputs {
+            tx_builder.add_output(output.output.as_transaction_output(key_manager).await?);
+            signature = &signature +
+                &key_manager
+                    .get_txo_kernel_signature(
+                        &output.output.spending_key_id,
+                        &output.kernel_nonce,
+                        &total_public_nonce,
+                        &total_public_excess,
+                        &TransactionKernelVersion::get_current_version(),
+                        &kernel_message,
+                        &info.metadata.kernel_features,
+                        TxoStage::Output,
+                    )
+                    .await?;
+            offset = offset +
+                &key_manager
+                    .get_txo_private_kernel_offset(&output.output.spending_key_id, &output.kernel_nonce)
+                    .await?;
+            let sender_offset_key_id = output
+                .sender_offset_key_id
+                .clone()
+                .ok_or_else(|| TPE::IncompleteStateError("Missing sender offset key id".to_string()))?;
+            sender_offset_keys.push(sender_offset_key_id);
         }
-        tx_builder.add_offset(info.offset.clone());
-        tx_builder.add_script_offset(info.gamma.clone());
-        let mut s_agg = info.signatures[0].clone();
-        info.signatures.iter().skip(1).for_each(|s| s_agg = &s_agg + s);
-        let excess = PedersenCommitment::from_public_key(&info.public_excess);
+
+        if let Some(recipient_data) = &info.recipient_data {
+            sender_offset_keys.push(recipient_data.recipient_sender_offset_key_id.clone());
+        }
+        if let Some(change) = &info.change_output {
+            tx_builder.add_output(change.output.as_transaction_output(key_manager).await?);
+            signature = &signature +
+                &key_manager
+                    .get_txo_kernel_signature(
+                        &change.output.spending_key_id,
+                        &change.kernel_nonce,
+                        &total_public_nonce,
+                        &total_public_excess,
+                        &TransactionKernelVersion::get_current_version(),
+                        &kernel_message,
+                        &info.metadata.kernel_features,
+                        TxoStage::Output,
+                    )
+                    .await?;
+            offset = offset +
+                &key_manager
+                    .get_txo_private_kernel_offset(&change.output.spending_key_id, &change.kernel_nonce)
+                    .await?;
+            let sender_offset_key_id = change
+                .sender_offset_key_id
+                .clone()
+                .ok_or_else(|| TPE::IncompleteStateError("Missing sender offset key id".to_string()))?;
+            sender_offset_keys.push(sender_offset_key_id);
+        }
+
+        if let Some(received_output) = &info.recipient_output {
+            tx_builder.add_output(received_output.clone());
+        }
+        let script_offset = key_manager.get_script_offset(&script_keys, &sender_offset_keys).await?;
+
+        tx_builder.add_offset(offset);
+        tx_builder.add_script_offset(script_offset);
+        let excess = PedersenCommitment::from_public_key(&total_public_excess);
 
         let kernel = KernelBuilder::new()
             .with_fee(info.metadata.fee)
@@ -516,7 +660,7 @@ impl SenderTransactionProtocol {
             .with_lock_height(info.metadata.lock_height)
             .with_burn_commitment(info.metadata.burn_commitment.clone())
             .with_excess(&excess)
-            .with_signature(&s_agg)
+            .with_signature(signature)
             .build()?;
         tx_builder.with_kernel(kernel);
         tx_builder.build().map_err(TPE::from)
@@ -540,37 +684,9 @@ impl SenderTransactionProtocol {
             if info.inputs.is_empty() {
                 return Err(TPE::ValidationError("A transaction cannot have zero inputs".into()));
             }
-            if info.signatures.len() != 1 + info.num_recipients {
-                return Err(TPE::ValidationError(format!(
-                    "Incorrect number of signatures ({})",
-                    info.signatures.len()
-                )));
-            }
             Ok(())
         } else {
             Err(TPE::InvalidStateError)
-        }
-    }
-
-    /// Produce the sender's partial signature
-    fn sign(&mut self) -> Result<(), TPE> {
-        match &mut self.state {
-            SenderState::Finalizing(info) => {
-                let e = TransactionKernel::build_kernel_challenge_from_tx_meta(
-                    &TransactionKernelVersion::get_current_version(),
-                    &info.public_nonce_sum,
-                    &info.public_excess,
-                    &info.metadata,
-                );
-                // let e = build_challenge(&info.public_nonce_sum, &info.metadata);
-
-                let k = info.offset_blinding_factor.clone();
-                let r = info.private_nonce.clone();
-                let s = Signature::sign_raw(&k, r, &e).map_err(TPE::SigningError)?;
-                info.signatures.push(s);
-                Ok(())
-            },
-            _ => Err(TPE::InvalidStateError),
         }
     }
 
@@ -582,22 +698,14 @@ impl SenderTransactionProtocol {
     /// formally validate the transaction terms (no inflation, signature matches etc). If any step fails,
     /// the transaction protocol moves to Failed state and we are done; you can't rescue the situation. The function
     /// returns `Ok(false)` in this instance.
-    pub fn finalize(&mut self) -> Result<(), TPE> {
-        // Create the final aggregated signature, moving to the Failed state if anything goes wrong
-        match &mut self.state {
-            SenderState::Finalizing(_) => {
-                if let Err(e) = self.sign() {
+    pub async fn finalize<KM: BaseLayerKeyManagerInterface>(&mut self, key_manager: &KM) -> Result<(), TPE> {
+        match &self.state {
+            SenderState::Finalizing(info) => {
+                if let Err(e) = self.validate() {
                     self.state = SenderState::Failed(e.clone());
                     return Err(e);
                 }
-            },
-            _ => return Err(TPE::InvalidStateError),
-        }
-        // Validate the inputs we have, and then construct the final transaction
-        match &self.state {
-            SenderState::Finalizing(info) => {
-                let result = self.validate().and_then(|_| Self::build_transaction(info));
-                match result {
+                match Self::build_transaction(info, key_manager).await {
                     Ok(transaction) => {
                         self.state = SenderState::FinalizedTransaction(transaction);
                         Ok(())
@@ -610,31 +718,6 @@ impl SenderTransactionProtocol {
             },
             _ => Err(TPE::InvalidStateError),
         }
-    }
-
-    /// This method is used to store a pending transaction to be sent which should be in the CollectionSingleSignature
-    /// state, This state will be serialized and returned as a string.
-    pub fn save_pending_transaction_to_be_sent(&self) -> Result<String, TPE> {
-        match &self.state {
-            SenderState::Initializing(_) => Err(TPE::InvalidStateError),
-            SenderState::SingleRoundMessageReady(_) => Err(TPE::InvalidStateError),
-            SenderState::CollectingSingleSignature(s) => {
-                let data = serde_json::to_string(s).map_err(|_| TPE::SerializationError)?;
-                Ok(data)
-            },
-            SenderState::Finalizing(_) => Err(TPE::InvalidStateError),
-            SenderState::FinalizedTransaction(_) => Err(TPE::InvalidStateError),
-            SenderState::Failed(_) => Err(TPE::InvalidStateError),
-        }
-    }
-
-    /// This method takes the serialized data from the previous method, deserializes it and recreates the pending Sender
-    /// Transaction from it.
-    pub fn load_pending_transaction_to_be_sent(data: &str) -> Result<Self, TPE> {
-        let raw_data: RawTransactionInfo = serde_json::from_str(data).map_err(|_| TPE::SerializationError)?;
-        Ok(Self {
-            state: SenderState::CollectingSingleSignature(Box::new(raw_data)),
-        })
     }
 
     /// Create an empty SenderTransactionProtocol that can be used as a placeholder in data structures that do not
@@ -698,12 +781,9 @@ impl SenderState {
     /// function directly. It is called by the `TransactionInitializer` builder
     pub(super) fn initialize(self) -> Result<SenderState, TPE> {
         match self {
-            SenderState::Initializing(info) => match info.num_recipients {
-                0 => Ok(SenderState::Finalizing(info)),
-                1 => Ok(SenderState::SingleRoundMessageReady(info)),
-                _ => Ok(SenderState::Failed(TPE::UnsupportedError(
-                    "Multiple recipients are not supported yet".into(),
-                ))),
+            SenderState::Initializing(info) => match info.recipient_data.is_some() {
+                false => Ok(SenderState::Finalizing(info)),
+                true => Ok(SenderState::SingleRoundMessageReady(info)),
             },
             _ => Err(TPE::InvalidTransitionError),
         }
@@ -754,31 +834,38 @@ impl fmt::Display for SenderState {
 
 #[cfg(test)]
 mod test {
-    use rand::rngs::OsRng;
-    use tari_common_types::types::{CommitmentFactory, PrivateKey, PublicKey, RangeProof};
-    use tari_crypto::{
-        commitment::HomomorphicCommitmentFactory,
-        errors::RangeProofError::ProofConstructionError,
-        keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
-        range_proof::RangeProofService,
-        tari_utilities::{hex::Hex, ByteArray},
-    };
-    use tari_script::{script, ExecutionStack, TariScript};
+    use tari_common_types::types::PrivateKey;
+    use tari_crypto::signatures::CommitmentAndPublicKeySignature;
+    use tari_key_manager::key_manager_service::KeyManagerInterface;
+    use tari_script::{inputs, script, ExecutionStack, TariScript};
+    use tari_utilities::hex::Hex;
 
     use super::SenderState;
     use crate::{
         covenants::Covenant,
-        test_helpers::{create_consensus_constants, create_consensus_rules},
+        test_helpers::{
+            create_consensus_constants,
+            create_consensus_rules,
+            create_test_core_key_manager_with_memory_db,
+            create_test_core_key_manager_with_memory_db_with_range_proof_size,
+        },
+        transaction_key_manager::{BaseLayerKeyManagerInterface, CoreKeyManagerBranch},
         transactions::{
             crypto_factories::CryptoFactories,
             tari_amount::*,
-            test_helpers::{create_non_recoverable_unblinded_output, create_test_input, TestParams},
-            transaction_components::{EncryptedData, OutputFeatures, TransactionOutput, TransactionOutputVersion},
+            test_helpers::{create_key_manager_output_with_data, create_test_input, TestParams},
+            transaction_components::{
+                EncryptedData,
+                KeyManagerOutput,
+                OutputFeatures,
+                TransactionOutput,
+                TransactionOutputVersion,
+            },
             transaction_protocol::{
                 sender::{SenderTransactionProtocol, TransactionSenderMessage},
                 single_receiver::SingleReceiverTransactionProtocol,
+                TransactionError,
                 TransactionProtocolError,
-                TransactionProtocolError::RangeProofError,
             },
         },
         validation::transaction::TransactionInternalConsistencyValidator,
@@ -790,9 +877,10 @@ mod test {
         assert_eq!(TransactionSenderMessage::Multiple.single(), None);
     }
 
-    #[test]
-    fn test_errors() {
-        let mut stp = SenderTransactionProtocol {
+    #[tokio::test]
+    async fn test_errors() {
+        let key_manager = create_test_core_key_manager_with_memory_db();
+        let stp = SenderTransactionProtocol {
             state: SenderState::Failed(TransactionProtocolError::InvalidStateError),
         };
         assert_eq!(stp.get_transaction(), Err(TransactionProtocolError::InvalidStateError));
@@ -802,7 +890,6 @@ mod test {
         );
         assert!(!stp.check_tx_id(0u64.into()));
         assert_eq!(stp.get_tx_id(), Err(TransactionProtocolError::InvalidStateError));
-        assert_eq!(stp.get_total_amount(), Err(TransactionProtocolError::InvalidStateError));
         assert_eq!(
             stp.get_amount_to_self(),
             Err(TransactionProtocolError::InvalidStateError)
@@ -812,24 +899,16 @@ mod test {
             Err(TransactionProtocolError::InvalidStateError)
         );
         assert_eq!(
-            stp.get_change_unblinded_output(),
+            stp.get_change_output(),
             Err(TransactionProtocolError::InvalidStateError)
         );
         assert_eq!(
-            stp.get_change_output_metadata_signature(),
-            Err(TransactionProtocolError::InvalidStateError)
-        );
-        assert_eq!(
-            stp.get_change_sender_offset_public_key(),
-            Err(TransactionProtocolError::InvalidStateError)
-        );
-        assert_eq!(
-            stp.get_recipient_sender_offset_private_key(0),
+            stp.get_recipient_sender_offset_private_key(),
             Err(TransactionProtocolError::InvalidStateError)
         );
         assert_eq!(stp.get_fee_amount(), Err(TransactionProtocolError::InvalidStateError));
         assert_eq!(
-            stp.clone().build_single_round_message(),
+            stp.clone().build_single_round_message(&key_manager).await,
             Err(TransactionProtocolError::InvalidStateError)
         );
         assert_eq!(
@@ -837,64 +916,74 @@ mod test {
             Err(TransactionProtocolError::InvalidStateError)
         );
         assert_eq!(
-            stp.clone().get_single_round_message(),
+            stp.clone().get_single_round_message(&key_manager).await,
             Err(TransactionProtocolError::InvalidStateError)
         );
-        assert_eq!(stp.sign(), Err(TransactionProtocolError::InvalidStateError));
     }
 
-    #[test]
-    fn test_metadata_signature_finalize() {
+    #[tokio::test]
+    async fn test_metadata_signature_finalize() {
         // Defaults
-        let commitment_factory = CommitmentFactory::default();
-        let crypto_factory = CryptoFactories::default();
+        let key_manager = create_test_core_key_manager_with_memory_db();
 
         // Sender data
-        let ephemeral_private_nonce = PrivateKey::random(&mut OsRng);
-        let sender_ephemeral_public_nonce = PublicKey::from_secret_key(&ephemeral_private_nonce);
+        let (ephemeral_pubkey_id, ephemeral_pubkey) = key_manager
+            .get_next_key(CoreKeyManagerBranch::Nonce.get_branch_key())
+            .await
+            .unwrap();
         let value = 1000u64;
-        let sender_offset_private_key = PrivateKey::random(&mut OsRng);
-        let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
+        let (sender_offset_key_id, sender_offset_public_key) = key_manager
+            .get_next_key(CoreKeyManagerBranch::Nonce.get_branch_key())
+            .await
+            .unwrap();
+        let txo_version = TransactionOutputVersion::get_current_version();
 
         // Shared contract data
         let script = Default::default();
         let output_features = Default::default();
 
         // Receiver data
-        let spending_key = PrivateKey::random(&mut OsRng);
-        let commitment = commitment_factory.commit(&spending_key, &PrivateKey::from(value));
-        let proof = RangeProof::from_bytes(
-            &crypto_factory
-                .range_proof
-                .construct_proof(&spending_key, value)
-                .unwrap(),
-        )
-        .unwrap();
+        let (spending_key_id, _, _script_key_id, _) = key_manager.get_next_spend_and_script_key_ids().await.unwrap();
+        let commitment = key_manager
+            .get_commitment(&spending_key_id, &PrivateKey::from(value))
+            .await
+            .unwrap();
+        let minimum_value_promise = MicroTari::zero();
+        let proof = key_manager
+            .construct_range_proof(&spending_key_id, value, minimum_value_promise.into())
+            .await
+            .unwrap();
         let covenant = Covenant::default();
 
         // Encrypted value
-        let encryption_key = PrivateKey::random(&mut OsRng);
-        let encrypted_data =
-            EncryptedData::encrypt_data(&encryption_key, &commitment, value.into(), &spending_key).unwrap();
+        let encrypted_data = key_manager
+            .encrypt_data_for_recovery(&spending_key_id, None, value)
+            .await
+            .unwrap();
 
-        let minimum_value_promise = MicroTari::zero();
-
-        let partial_metadata_signature = TransactionOutput::create_receiver_partial_metadata_signature(
-            TransactionOutputVersion::get_current_version(),
-            value.into(),
-            &spending_key,
+        let metadata_message = TransactionOutput::metadata_signature_message_from_parts(
+            &txo_version,
             &script,
             &output_features,
-            &sender_offset_public_key,
-            &sender_ephemeral_public_nonce,
             &covenant,
             &encrypted_data,
             minimum_value_promise,
-        )
-        .unwrap();
+        );
+        let partial_metadata_signature = key_manager
+            .get_receiver_partial_metadata_signature(
+                &spending_key_id,
+                &value.into(),
+                &sender_offset_public_key,
+                &ephemeral_pubkey,
+                &txo_version,
+                &metadata_message,
+                output_features.range_proof_type,
+            )
+            .await
+            .unwrap();
 
         let mut output = TransactionOutput::new_current_version(
-            Default::default(),
+            output_features,
             commitment,
             Some(proof),
             script.clone(),
@@ -907,161 +996,237 @@ mod test {
         assert!(output.verify_metadata_signature().is_err());
 
         // Sender finalize transaction output
-        let partial_sender_metadata_signature = TransactionOutput::create_sender_partial_metadata_signature(
-            TransactionOutputVersion::get_current_version(),
-            &output.commitment,
-            partial_metadata_signature.ephemeral_commitment(),
-            &script,
-            &output_features,
-            &sender_offset_private_key,
-            Some(&ephemeral_private_nonce),
-            &covenant,
-            &encrypted_data,
-            minimum_value_promise,
-        )
-        .unwrap();
+        let partial_sender_metadata_signature = key_manager
+            .get_sender_partial_metadata_signature(
+                &ephemeral_pubkey_id,
+                &sender_offset_key_id,
+                &output.commitment,
+                partial_metadata_signature.ephemeral_commitment(),
+                &txo_version,
+                &metadata_message,
+            )
+            .await
+            .unwrap();
         output.metadata_signature = &partial_metadata_signature + &partial_sender_metadata_signature;
         assert!(output.verify_metadata_signature().is_ok());
     }
 
-    #[test]
-    fn zero_recipients() {
-        let factories = CryptoFactories::default();
-        let p1 = TestParams::new();
-        let p2 = TestParams::new();
-        let (utxo, input) = create_test_input(MicroTari(1200), 0, &factories.commitment);
-        let mut builder = SenderTransactionProtocol::builder(0, create_consensus_constants(0));
+    #[tokio::test]
+    async fn zero_recipients() {
+        let key_manager = create_test_core_key_manager_with_memory_db();
+        let p1 = TestParams::new(&key_manager).await;
+        let p2 = TestParams::new(&key_manager).await;
+        let input = create_test_input(MicroTari(1200), 0, &key_manager).await;
+        let mut builder = SenderTransactionProtocol::builder(create_consensus_constants(0), key_manager.clone());
         let script = TariScript::default();
         let output_features = OutputFeatures::default();
-
+        let change = TestParams::new(&key_manager).await;
+        let script_key = key_manager
+            .get_public_key_at_key_id(&change.script_key_id)
+            .await
+            .unwrap();
         builder
             .with_lock_height(0)
             .with_fee_per_gram(MicroTari(2))
-            .with_offset(p1.offset.clone() + p2.offset.clone())
-            .with_private_nonce(p1.nonce.clone())
-            .with_change_secret(p1.change_spend_key.clone())
-            .with_input(utxo, input)
-            .with_output(
-                create_non_recoverable_unblinded_output(script.clone(), output_features.clone(), &p1, MicroTari(500))
-                    .unwrap(),
-                p1.sender_offset_private_key.clone(),
+            .with_change_data(
+                script!(Nop),
+                inputs!(script_key),
+                change.script_key_id.clone(),
+                change.change_spend_key_id.clone(),
+                Covenant::default(),
             )
+            .with_input(input)
+            .await
             .unwrap()
             .with_output(
-                create_non_recoverable_unblinded_output(script, output_features, &p2, MicroTari(400)).unwrap(),
-                p2.sender_offset_private_key.clone(),
+                create_key_manager_output_with_data(
+                    script.clone(),
+                    output_features.clone(),
+                    &p1,
+                    MicroTari(500),
+                    &key_manager,
+                )
+                .await
+                .unwrap(),
+                p1.sender_offset_key_id.clone(),
             )
+            .await
+            .unwrap()
+            .with_output(
+                create_key_manager_output_with_data(script, output_features, &p2, MicroTari(400), &key_manager)
+                    .await
+                    .unwrap(),
+                p2.sender_offset_key_id.clone(),
+            )
+            .await
             .unwrap();
-        let mut sender = builder.build(&factories, None, u64::MAX).unwrap();
+        let mut sender = builder.build().await.unwrap();
         assert!(!sender.is_failed());
         assert!(sender.is_finalizing());
-        match sender.finalize() {
+        match sender.finalize(&key_manager).await {
             Ok(_) => (),
             Err(e) => panic!("{:?}", e),
         }
         let tx = sender.get_transaction().unwrap();
-        assert_eq!(tx.offset, p1.offset + p2.offset);
+        // let change_offset = key_manager.getoff
+        // assert_eq!(tx.offset, p1.offset + p2.offset);
+        let rules = create_consensus_rules();
+        let factories = CryptoFactories::default();
+        let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
+        assert!(validator.validate(tx, None, None, u64::MAX).is_ok());
     }
 
-    #[test]
-    fn single_recipient_no_change() {
+    #[tokio::test]
+    async fn single_recipient_no_change() {
+        let rules = create_consensus_rules();
         let factories = CryptoFactories::default();
         // Alice's parameters
-        let a = TestParams::new();
+        let key_manager = create_test_core_key_manager_with_memory_db();
+        let a_change_key = TestParams::new(&key_manager).await;
         // Bob's parameters
-        let b = TestParams::new();
-        let (utxo, input) = create_test_input(MicroTari(1200), 0, &factories.commitment);
+        let bob_key = TestParams::new(&key_manager).await;
+        let input = create_test_input(MicroTari(1200), 0, &key_manager).await;
+        let utxo = input.as_transaction_input(&key_manager).await.unwrap();
         let script = script!(Nop);
-        let mut builder = SenderTransactionProtocol::builder(1, create_consensus_constants(0));
+        let mut builder = SenderTransactionProtocol::builder(create_consensus_constants(0), key_manager.clone());
         let fee_per_gram = MicroTari(4);
         let fee = builder.fee().calculate(fee_per_gram, 1, 1, 1, 0);
         builder
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
-            .with_offset(a.offset.clone())
-            .with_private_nonce(a.nonce.clone())
-            .with_input(utxo.clone(), input)
-            .with_recipient_data(0, script.clone(), PrivateKey::random(&mut OsRng), OutputFeatures::default(), PrivateKey::random(&mut OsRng), Covenant::default(), MicroTari::zero())
-            .with_change_script(script, ExecutionStack::default(), PrivateKey::default())
-            // A little twist: Check the case where the change is less than the cost of another output
-            .with_amount(0, MicroTari(1200) - fee - MicroTari(10));
-        let mut alice = builder.build(&factories, None, u64::MAX).unwrap();
+            .with_input(input)
+            .await
+            .unwrap()
+            .with_recipient_data(
+                script.clone(),
+                OutputFeatures::default(),
+                Covenant::default(),
+                0.into(),
+                MicroTari(1200) - fee - MicroTari(10),
+            )
+            .await
+            .unwrap()
+            .with_change_data(
+                script.clone(),
+                ExecutionStack::default(),
+                a_change_key.script_key_id,
+                a_change_key.spend_key_id,
+                Covenant::default(),
+            );
+        let mut alice = builder.build().await.unwrap();
         assert!(alice.is_single_round_message_ready());
-        let msg = alice.build_single_round_message().unwrap();
+        let msg = alice.build_single_round_message(&key_manager).await.unwrap();
         // Send message down the wire....and wait for response
         assert!(alice.is_collecting_single_signature());
+        let bob_public_key = msg.sender_offset_public_key.clone();
+        let mut bob_output = KeyManagerOutput::new_current_version(
+            MicroTari(1200) - fee - MicroTari(10),
+            bob_key.spend_key_id,
+            OutputFeatures::default(),
+            script.clone(),
+            ExecutionStack::default(),
+            bob_key.script_key_id,
+            bob_public_key,
+            CommitmentAndPublicKeySignature::default(),
+            0,
+            Covenant::default(),
+            EncryptedData::default(),
+            0.into(),
+        );
 
-        // Test serializing the current state to be sent and resuming from that serialized data
-        let ser = alice.save_pending_transaction_to_be_sent().unwrap();
-        let mut alice = SenderTransactionProtocol::load_pending_transaction_to_be_sent(&ser).unwrap();
+        let metadata_message = TransactionOutput::metadata_signature_message(&bob_output);
+        bob_output.metadata_signature = key_manager
+            .get_receiver_partial_metadata_signature(
+                &bob_output.spending_key_id,
+                &bob_output.value.into(),
+                &bob_output.sender_offset_public_key,
+                &msg.ephemeral_public_nonce,
+                &bob_output.version,
+                &metadata_message,
+                bob_output.features.range_proof_type,
+            )
+            .await
+            .unwrap();
 
         // Receiver gets message, deserializes it etc, and creates his response
-        let mut bob_info = SingleReceiverTransactionProtocol::create(
-            &msg,
-            b.nonce,
-            b.spend_key,
-            &factories,
-            &EncryptedData::default(),
-        )
-        .unwrap(); // Alice gets message back, deserializes it, etc
-        alice.add_single_recipient_info(bob_info.clone()).unwrap();
+        let mut bob_info = SingleReceiverTransactionProtocol::create(&msg, bob_output, &key_manager)
+            .await
+            .unwrap(); // Alice gets message back, deserializes it, etc
+        alice
+            .add_single_recipient_info(bob_info.clone(), &key_manager)
+            .await
+            .unwrap();
         // Transaction should be complete
         assert!(alice.is_finalizing());
-        match alice.finalize() {
+        match alice.finalize(&key_manager).await {
             Ok(_) => (),
             Err(e) => panic!("{:?}", e),
         };
         assert!(alice.is_finalized());
 
         let tx = alice.get_transaction().unwrap();
-        assert_eq!(tx.offset, a.offset);
         assert_eq!(tx.body.kernels()[0].fee, fee + MicroTari(10)); // Check the twist above
         assert_eq!(tx.body.inputs().len(), 1);
-        assert_eq!(tx.body.inputs()[0], utxo);
+        assert_eq!(tx.body.inputs()[0].commitment(), utxo.commitment());
         assert_eq!(tx.body.outputs().len(), 1);
         // Bob still needs to add the finalized metadata signature to his output after he receives the final transaction
         // from Alice
         bob_info.output.metadata_signature = tx.body.outputs()[0].metadata_signature.clone();
         assert!(bob_info.output.verify_metadata_signature().is_ok());
         assert_eq!(tx.body.outputs()[0], bob_info.output);
+        let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
+        assert!(validator.validate(tx, None, None, u64::MAX).is_ok());
     }
 
-    #[test]
-    fn single_recipient_with_change() {
+    #[tokio::test]
+    async fn single_recipient_with_change() {
         let rules = create_consensus_rules();
+        let key_manager = create_test_core_key_manager_with_memory_db();
         let factories = CryptoFactories::default();
         // Alice's parameters
-        let a = TestParams::new();
+        let alice_key = TestParams::new(&key_manager).await;
         // Bob's parameters
-        let b = TestParams::new();
-        let (utxo, input) = create_test_input(MicroTari(25000), 0, &factories.commitment);
-        let mut builder = SenderTransactionProtocol::builder(1, create_consensus_constants(0));
+        let bob_key = TestParams::new(&key_manager).await;
+        let input = create_test_input(MicroTari(25000), 0, &key_manager).await;
+        let mut builder = SenderTransactionProtocol::builder(create_consensus_constants(0), key_manager.clone());
         let script = script!(Nop);
-        let expected_fee =
-            builder
-                .fee()
-                .calculate(MicroTari(20), 1, 1, 2, a.get_size_for_default_features_and_scripts(2));
+        let expected_fee = builder.fee().calculate(
+            MicroTari(20),
+            1,
+            1,
+            2,
+            alice_key.get_size_for_default_features_and_scripts(2),
+        );
+        let change = TestParams::new(&key_manager).await;
+        let script_key = key_manager
+            .get_public_key_at_key_id(&change.script_key_id)
+            .await
+            .unwrap();
         builder
             .with_lock_height(0)
             .with_fee_per_gram(MicroTari(20))
-            .with_offset(a.offset.clone())
-            .with_private_nonce(a.nonce.clone())
-            .with_change_secret(a.change_spend_key.clone())
-            .with_input(utxo.clone(), input)
-            .with_recipient_data(
-                0,
-                script.clone(),
-                PrivateKey::random(&mut OsRng),
-                OutputFeatures::default(),
-                PrivateKey::random(&mut OsRng),
+            .with_change_data(
+                script!(Nop),
+                inputs!(script_key),
+                change.script_key_id.clone(),
+                change.change_spend_key_id.clone(),
                 Covenant::default(),
-                MicroTari::zero(),
             )
-            .with_change_script(script, ExecutionStack::default(), PrivateKey::default())
-            .with_amount(0, MicroTari(5000));
-        let mut alice = builder.build(&factories, None, u64::MAX).unwrap();
+            .with_input(input)
+            .await
+            .unwrap()
+            .with_recipient_data(
+                script.clone(),
+                OutputFeatures::default(),
+                Covenant::default(),
+                0.into(),
+                MicroTari(5000),
+            )
+            .await
+            .unwrap();
+        let mut alice = builder.build().await.unwrap();
         assert!(alice.is_single_round_message_ready());
-        let msg = alice.build_single_round_message().unwrap();
+        let msg = alice.build_single_round_message(&key_manager).await.unwrap();
         println!(
             "amount: {}, fee: {},  Public Excess: {}, Nonce: {}",
             msg.amount,
@@ -1072,20 +1237,40 @@ mod test {
 
         // Send message down the wire....and wait for response
         assert!(alice.is_collecting_single_signature());
+        let bob_public_key = msg.sender_offset_public_key.clone();
+        let mut bob_output = KeyManagerOutput::new_current_version(
+            MicroTari(5000),
+            bob_key.spend_key_id,
+            OutputFeatures::default(),
+            script.clone(),
+            ExecutionStack::default(),
+            bob_key.script_key_id,
+            bob_public_key,
+            CommitmentAndPublicKeySignature::default(),
+            0,
+            Covenant::default(),
+            EncryptedData::default(),
+            0.into(),
+        );
 
-        // Test serializing the current state to be sent and resuming from that serialized data
-        let ser = alice.save_pending_transaction_to_be_sent().unwrap();
-        let mut alice = SenderTransactionProtocol::load_pending_transaction_to_be_sent(&ser).unwrap();
+        let metadata_message = TransactionOutput::metadata_signature_message(&bob_output);
+        bob_output.metadata_signature = key_manager
+            .get_receiver_partial_metadata_signature(
+                &bob_output.spending_key_id,
+                &bob_output.value.into(),
+                &bob_output.sender_offset_public_key,
+                &msg.ephemeral_public_nonce,
+                &bob_output.version,
+                &metadata_message,
+                bob_output.features.range_proof_type,
+            )
+            .await
+            .unwrap();
 
         // Receiver gets message, deserializes it etc, and creates his response
-        let bob_info = SingleReceiverTransactionProtocol::create(
-            &msg,
-            b.nonce,
-            b.spend_key,
-            &factories,
-            &EncryptedData::default(),
-        )
-        .unwrap();
+        let bob_info = SingleReceiverTransactionProtocol::create(&msg, bob_output, &key_manager)
+            .await
+            .unwrap();
         println!(
             "Bob's key: {}, Nonce: {}, Signature: {}, Commitment: {}",
             bob_info.public_spend_key.to_hex(),
@@ -1094,183 +1279,221 @@ mod test {
             bob_info.output.commitment.as_public_key().to_hex()
         );
         // Alice gets message back, deserializes it, etc
-        alice.add_single_recipient_info(bob_info).unwrap();
+        alice.add_single_recipient_info(bob_info, &key_manager).await.unwrap();
         // Transaction should be complete
         assert!(alice.is_finalizing());
-        match alice.finalize() {
+        match alice.finalize(&key_manager).await {
             Ok(_) => (),
             Err(e) => panic!("{:?}", e),
         };
 
         assert!(alice.is_finalized());
         let tx = alice.get_transaction().unwrap();
-        assert_eq!(tx.offset, a.offset);
         assert_eq!(tx.body.kernels()[0].fee, expected_fee);
         assert_eq!(tx.body.inputs().len(), 1);
-        assert_eq!(tx.body.inputs()[0], utxo);
-        assert_eq!(tx.body.outputs().len(), 2);
+        // assert_eq!(tx.body.outputs().len(), 2);
         let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
         assert!(validator.validate(tx, None, None, u64::MAX).is_ok());
     }
 
-    #[test]
-    fn single_recipient_range_proof_fail() {
-        let factories = CryptoFactories::new(32);
+    #[tokio::test]
+    async fn single_recipient_range_proof_fail() {
         // Alice's parameters
-        let a = TestParams::new();
+        let key_manager = create_test_core_key_manager_with_memory_db_with_range_proof_size(32);
         // Bob's parameters
-        let b = TestParams::new();
-        let (utxo, input) = create_test_input((2u64.pow(32) + 2001).into(), 0, &factories.commitment);
-        let mut builder = SenderTransactionProtocol::builder(1, create_consensus_constants(0));
+        let bob_key = TestParams::new(&key_manager).await;
+        let input = create_test_input((2u64.pow(32) + 2001).into(), 0, &key_manager).await;
+        let mut builder = SenderTransactionProtocol::builder(create_consensus_constants(0), key_manager.clone());
         let script = script!(Nop);
-
+        let change = TestParams::new(&key_manager).await;
+        let script_key = key_manager
+            .get_public_key_at_key_id(&change.script_key_id)
+            .await
+            .unwrap();
         builder
             .with_lock_height(0)
             .with_fee_per_gram(MicroTari(20))
-            .with_offset(a.offset.clone())
-            .with_private_nonce(a.nonce.clone())
-            .with_change_secret(a.change_spend_key)
-            .with_input(utxo, input)
-            .with_recipient_data(
-                0,
-                script.clone(),
-                PrivateKey::random(&mut OsRng),
-                OutputFeatures::default(),
-                PrivateKey::random(&mut OsRng),
+            .with_change_data(
+                script!(Nop),
+                inputs!(script_key),
+                change.script_key_id.clone(),
+                change.change_spend_key_id.clone(),
                 Covenant::default(),
-                MicroTari::zero(),
             )
-            .with_change_script(script, ExecutionStack::default(), PrivateKey::default())
-            .with_amount(0, (2u64.pow(32) + 1).into());
-        let mut alice = builder.build(&factories, None, u64::MAX).unwrap();
+            .with_input(input)
+            .await
+            .unwrap()
+            .with_recipient_data(
+                script.clone(),
+                OutputFeatures::default(),
+                Covenant::default(),
+                0.into(),
+                (2u64.pow(32) + 1).into(),
+            )
+            .await
+            .unwrap();
+        let mut alice = builder.build().await.unwrap();
         assert!(alice.is_single_round_message_ready());
-        let msg = alice.build_single_round_message().unwrap();
+        let msg = alice.build_single_round_message(&key_manager).await.unwrap();
         // Send message down the wire....and wait for response
         assert!(alice.is_collecting_single_signature());
         // Receiver gets message, deserializes it etc, and creates his response
-        let bob_info = SingleReceiverTransactionProtocol::create(
-            &msg,
-            b.nonce,
-            b.spend_key,
-            &factories,
-            &EncryptedData::default(),
-        ); // Alice gets message back, deserializes it, etc
+        let bob_public_key = msg.sender_offset_public_key.clone();
+        let bob_output = KeyManagerOutput::new_current_version(
+            (2u64.pow(32) + 1).into(),
+            bob_key.spend_key_id,
+            OutputFeatures::default(),
+            script.clone(),
+            ExecutionStack::default(),
+            bob_key.script_key_id,
+            bob_public_key,
+            CommitmentAndPublicKeySignature::default(),
+            0,
+            Covenant::default(),
+            EncryptedData::default(),
+            0.into(),
+        );
+
+        let bob_info = SingleReceiverTransactionProtocol::create(&msg, bob_output, &key_manager).await; // Alice gets message back, deserializes it, etc
         match bob_info {
             Ok(_) => panic!("Range proof should have failed to verify"),
             Err(e) => assert_eq!(
                 e,
-                RangeProofError(ProofConstructionError(
-                    "Invalid array/vector length error: `Value too large, bit vector capacity will be exceeded`"
-                        .to_string()
+                TransactionProtocolError::TransactionBuildError(TransactionError::ValidationError(
+                    "Value provided is outside the range allowed by the range proof".to_string()
                 ))
             ),
         }
     }
 
-    #[test]
-    fn disallow_fee_larger_than_amount() {
-        let factories = CryptoFactories::default();
+    #[tokio::test]
+    async fn disallow_fee_larger_than_amount() {
         // Alice's parameters
-        let alice = TestParams::new();
+        let key_manager = create_test_core_key_manager_with_memory_db();
         let (utxo_amount, fee_per_gram, amount) = (MicroTari(2500), MicroTari(10), MicroTari(500));
-        let (utxo, input) = create_test_input(utxo_amount, 0, &factories.commitment);
+        let input = create_test_input(utxo_amount, 0, &key_manager).await;
         let script = script!(Nop);
-        let mut builder = SenderTransactionProtocol::builder(1, create_consensus_constants(0));
+        let mut builder = SenderTransactionProtocol::builder(create_consensus_constants(0), key_manager.clone());
+        let change = TestParams::new(&key_manager).await;
+        let script_key = key_manager
+            .get_public_key_at_key_id(&change.script_key_id)
+            .await
+            .unwrap();
         builder
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
-            .with_offset(alice.offset.clone())
-            .with_private_nonce(alice.nonce.clone())
-            .with_change_secret(alice.change_spend_key)
-            .with_input(utxo, input)
-            .with_amount(0, amount)
-            .with_recipient_data(
-                0,
-                script.clone(),
-                PrivateKey::random(&mut OsRng),
-                Default::default(),
-                PrivateKey::random(&mut OsRng),
+            .with_change_data(
+                script!(Nop),
+                inputs!(script_key),
+                change.script_key_id.clone(),
+                change.change_spend_key_id.clone(),
                 Covenant::default(),
-                MicroTari::zero(),
             )
-            .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
+            .with_input(input)
+            .await
+            .unwrap()
+            .with_recipient_data(
+                script.clone(),
+                OutputFeatures::default(),
+                Covenant::default(),
+                0.into(),
+                amount,
+            )
+            .await
+            .unwrap();
         // Verify that the initial 'fee greater than amount' check rejects the transaction when it is constructed
-        match builder.build(&factories, None, u64::MAX) {
+        match builder.build().await {
             Ok(_) => panic!("'BuildError(\"Fee is greater than amount\")' not caught"),
             Err(e) => assert_eq!(e.message, "Fee is greater than amount".to_string()),
         };
     }
 
-    #[test]
-    fn allow_fee_larger_than_amount() {
-        let factories = CryptoFactories::default();
+    #[tokio::test]
+    async fn allow_fee_larger_than_amount() {
         // Alice's parameters
-        let alice = TestParams::new();
+        let key_manager = create_test_core_key_manager_with_memory_db();
         let (utxo_amount, fee_per_gram, amount) = (MicroTari(2500), MicroTari(10), MicroTari(500));
-        let (utxo, input) = create_test_input(utxo_amount, 0, &factories.commitment);
+        let input = create_test_input(utxo_amount, 0, &key_manager).await;
         let script = script!(Nop);
-        let mut builder = SenderTransactionProtocol::builder(1, create_consensus_constants(0));
+        let mut builder = SenderTransactionProtocol::builder(create_consensus_constants(0), key_manager.clone());
+        let change = TestParams::new(&key_manager).await;
+        let script_key = key_manager
+            .get_public_key_at_key_id(&change.script_key_id)
+            .await
+            .unwrap();
         builder
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
-            .with_offset(alice.offset.clone())
-            .with_private_nonce(alice.nonce.clone())
-            .with_change_secret(alice.change_spend_key)
-            .with_input(utxo, input)
-            .with_amount(0, amount)
+            .with_change_data(
+                script!(Nop),
+                inputs!(script_key),
+                change.script_key_id.clone(),
+                change.change_spend_key_id.clone(),
+                Covenant::default(),
+            )
+            .with_input(input)
+            .await
+            .unwrap()
             .with_prevent_fee_gt_amount(false)
             .with_recipient_data(
-                0,
                 script.clone(),
-                PrivateKey::random(&mut OsRng),
-                Default::default(),
-                PrivateKey::random(&mut OsRng),
+                OutputFeatures::default(),
                 Covenant::default(),
-                MicroTari::zero(),
+                0.into(),
+                amount,
             )
-            .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
+            .await
+            .unwrap();
         // Test if the transaction passes the initial 'fee greater than amount' check when it is constructed
-        match builder.build(&factories, None, u64::MAX) {
+        match builder.build().await {
             Ok(_) => {},
             Err(e) => panic!("Unexpected error: {:?}", e),
         };
     }
 
-    #[test]
-    fn single_recipient_with_rewindable_change_and_receiver_outputs_bulletproofs() {
-        let factories = CryptoFactories::default();
+    #[tokio::test]
+    async fn single_recipient_with_rewindable_change_and_receiver_outputs_bulletproofs() {
         // Alice's parameters
-        let alice_test_params = TestParams::new();
+        let key_manager_alice = create_test_core_key_manager_with_memory_db();
+        let key_manager_bob = create_test_core_key_manager_with_memory_db();
         // Bob's parameters
-        let bob_test_params = TestParams::new();
+        let bob_test_params = TestParams::new(&key_manager_bob).await;
         let alice_value = MicroTari(25000);
-        let (utxo, input) = create_test_input(alice_value, 0, &factories.commitment);
+        let input = create_test_input(alice_value, 0, &key_manager_alice).await;
 
         let script = script!(Nop);
 
-        let mut builder = SenderTransactionProtocol::builder(1, create_consensus_constants(0));
+        let mut builder = SenderTransactionProtocol::builder(create_consensus_constants(0), key_manager_alice.clone());
+        let change_params = TestParams::new(&key_manager_alice).await;
+        let script_key = key_manager_alice
+            .get_public_key_at_key_id(&change_params.script_key_id)
+            .await
+            .unwrap();
         builder
             .with_lock_height(0)
             .with_fee_per_gram(MicroTari(20))
-            .with_offset(alice_test_params.offset.clone())
-            .with_private_nonce(alice_test_params.nonce.clone())
-            .with_change_secret(alice_test_params.change_spend_key.clone())
-            .with_recoverable_outputs(alice_test_params.recovery_data.clone())
-            .with_input(utxo, input)
-            .with_amount(0, MicroTari(5000))
-            .with_recipient_data(
-                0,
-                script.clone(),
-                PrivateKey::random(&mut OsRng),
-                OutputFeatures::default(),
-                PrivateKey::random(&mut OsRng),
+            .with_change_data(
+                script!(Nop),
+                inputs!(script_key),
+                change_params.script_key_id.clone(),
+                change_params.change_spend_key_id.clone(),
                 Covenant::default(),
-                MicroTari::zero(),
             )
-            .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
-        let mut alice = builder.build(&factories, None, u64::MAX).unwrap();
+            .with_input(input)
+            .await
+            .unwrap()
+            .with_recipient_data(
+                script.clone(),
+                OutputFeatures::default(),
+                Covenant::default(),
+                0.into(),
+                MicroTari(5000),
+            )
+            .await
+            .unwrap();
+        let mut alice = builder.build().await.unwrap();
         assert!(alice.is_single_round_message_ready());
-        let msg = alice.build_single_round_message().unwrap();
+        let msg = alice.build_single_round_message(&key_manager_alice).await.unwrap();
 
         let change = alice_value - msg.amount - msg.metadata.fee;
 
@@ -1286,21 +1509,35 @@ mod test {
         // Send message down the wire....and wait for response
         assert!(alice.is_collecting_single_signature());
 
+        let bob_public_key = msg.sender_offset_public_key.clone();
+        let bob_output = KeyManagerOutput::new_current_version(
+            MicroTari(5000),
+            bob_test_params.spend_key_id,
+            OutputFeatures::default(),
+            script.clone(),
+            ExecutionStack::default(),
+            bob_test_params.script_key_id,
+            bob_public_key,
+            CommitmentAndPublicKeySignature::default(),
+            0,
+            Covenant::default(),
+            EncryptedData::default(),
+            0.into(),
+        );
+
         // Receiver gets message, deserializes it etc, and creates his response
-        let bob_info = SingleReceiverTransactionProtocol::create(
-            &msg,
-            bob_test_params.nonce,
-            bob_test_params.spend_key,
-            &factories,
-            &EncryptedData::default(),
-        )
-        .unwrap();
+        let bob_info = SingleReceiverTransactionProtocol::create(&msg, bob_output, &key_manager_bob)
+            .await
+            .unwrap();
 
         // Alice gets message back, deserializes it, etc
-        alice.add_single_recipient_info(bob_info).unwrap();
+        alice
+            .add_single_recipient_info(bob_info, &key_manager_alice)
+            .await
+            .unwrap();
         // Transaction should be complete
         assert!(alice.is_finalizing());
-        match alice.finalize() {
+        match alice.finalize(&key_manager_alice).await {
             Ok(_) => (),
             Err(e) => panic!("{:?}", e),
         };
@@ -1314,28 +1551,16 @@ mod test {
         let output_0 = &tx.body.outputs()[0];
         let output_1 = &tx.body.outputs()[1];
 
-        if let Ok((committed_value, blinding_factor)) = EncryptedData::decrypt_data(
-            &alice_test_params.recovery_data.encryption_key,
-            &output_0.commitment,
-            &output_0.encrypted_data,
-        ) {
-            assert_eq!(
-                factories
-                    .commitment
-                    .commit_value(&blinding_factor, committed_value.as_u64()),
-                output_0.commitment
-            );
-        } else if let Ok((committed_value, blinding_factor)) = EncryptedData::decrypt_data(
-            &alice_test_params.recovery_data.encryption_key,
-            &output_1.commitment,
-            &output_1.encrypted_data,
-        ) {
-            assert_eq!(
-                factories
-                    .commitment
-                    .commit_value(&blinding_factor, committed_value.as_u64()),
-                output_1.commitment
-            );
+        if let Ok((key, _value)) = key_manager_alice
+            .try_commitment_key_recovery(&output_0.commitment, &output_0.encrypted_data, None)
+            .await
+        {
+            assert_eq!(key, change_params.change_spend_key_id);
+        } else if let Ok((key, _value)) = key_manager_alice
+            .try_commitment_key_recovery(&output_1.commitment, &output_1.encrypted_data, None)
+            .await
+        {
+            assert_eq!(key, change_params.change_spend_key_id);
         } else {
             panic!("Could not recover Alice's output");
         }

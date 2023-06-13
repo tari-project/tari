@@ -38,15 +38,11 @@ pub enum AddResult {
     AlreadyExists,
 }
 
-pub struct NextKeyResult<PK: PublicKey> {
-    pub key: PK::K,
-    pub index: u64,
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub enum KeyId<PK> {
     Managed { branch: String, index: u64 },
     Imported { key: PK },
+    Zero,
 }
 
 impl<PK> KeyId<PK>
@@ -56,6 +52,7 @@ where PK: Clone
         match self {
             KeyId::Managed { index, .. } => Some(*index),
             KeyId::Imported { .. } => None,
+            KeyId::Zero => None,
         }
     }
 
@@ -63,6 +60,7 @@ where PK: Clone
         match self {
             KeyId::Managed { branch, .. } => Some(branch.clone()),
             KeyId::Imported { .. } => None,
+            KeyId::Zero => None,
         }
     }
 
@@ -70,6 +68,7 @@ where PK: Clone
         match self {
             KeyId::Managed { .. } => None,
             KeyId::Imported { key } => Some(key.clone()),
+            KeyId::Zero => None,
         }
     }
 }
@@ -82,16 +81,14 @@ where PK: ByteArray
         match self {
             KeyId::Managed { branch: b, index: i } => write!(f, "managed.'{}'.'{}'", b, i),
             KeyId::Imported { key: public_key } => write!(f, "imported.'{}'", public_key.to_hex()),
+            KeyId::Zero => write!(f, "zero"),
         }
     }
 }
 
 impl<PK> Default for KeyId<PK> {
     fn default() -> Self {
-        KeyId::Managed {
-            branch: "".to_string(),
-            index: 0,
-        }
+        KeyId::Zero
     }
 }
 
@@ -124,6 +121,7 @@ where PK: ByteArray
                     let key = PK::from_hex(parts[1]).map_err(|_| "Invalid public key".to_string())?;
                     Ok(KeyId::Imported { key })
                 },
+                "zero" => Ok(KeyId::Zero),
                 _ => Err("Wrong format".to_string()),
             },
         }
@@ -144,24 +142,11 @@ where
     /// or in the backend, a new branch will be created and tracked the backend, `Ok(AddResult::NewEntry)`.
     async fn add_new_branch<T: Into<String> + Send>(&self, branch: T) -> Result<AddResult, KeyManagerServiceError>;
 
-    /// Gets the next key from the branch. This will auto-increment the branch key index by 1
-    async fn get_next_key<T: Into<String> + Send>(
-        &self,
-        branch: T,
-    ) -> Result<NextKeyResult<PK>, KeyManagerServiceError>;
-
     /// Gets the next key id from the branch. This will auto-increment the branch key index by 1
-    async fn get_next_key_id<T: Into<String> + Send>(&self, branch: T) -> Result<KeyId<PK>, KeyManagerServiceError>;
+    async fn get_next_key<T: Into<String> + Send>(&self, branch: T) -> Result<(KeyId<PK>, PK), KeyManagerServiceError>;
 
     /// Gets the fixed key id from the branch. This will use the branch key with index 0
-    async fn get_static_key_id<T: Into<String> + Send>(&self, branch: T) -> Result<KeyId<PK>, KeyManagerServiceError>;
-
-    /// Gets the key at the specified index
-    async fn get_key_at_index<T: Into<String> + Send>(
-        &self,
-        branch: T,
-        index: u64,
-    ) -> Result<PK::K, KeyManagerServiceError>;
+    async fn get_static_key<T: Into<String> + Send>(&self, branch: T) -> Result<KeyId<PK>, KeyManagerServiceError>;
 
     /// Gets the key id at the specified index
     async fn get_public_key_at_key_id(&self, key_id: &KeyId<PK>) -> Result<PK, KeyManagerServiceError>;

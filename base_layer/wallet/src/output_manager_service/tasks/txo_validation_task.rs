@@ -45,7 +45,7 @@ use crate::{
         handle::{OutputManagerEvent, OutputManagerEventSender},
         storage::{
             database::{OutputManagerBackend, OutputManagerDatabase},
-            models::DbUnblindedOutput,
+            models::DbKeyManagerOutput,
         },
     },
 };
@@ -511,12 +511,12 @@ where
 
     async fn query_base_node_for_outputs(
         &self,
-        batch: &[DbUnblindedOutput],
+        batch: &[DbKeyManagerOutput],
         base_node_client: &mut BaseNodeWalletRpcClient,
     ) -> Result<
         (
-            Vec<(DbUnblindedOutput, u64, BlockHash, u64, u64)>,
-            Vec<DbUnblindedOutput>,
+            Vec<(DbKeyManagerOutput, u64, BlockHash, u64, u64)>,
+            Vec<DbKeyManagerOutput>,
             u64,
         ),
         OutputManagerError,
@@ -580,7 +580,7 @@ where
     #[allow(clippy::ptr_arg)]
     async fn update_output_as_mined(
         &self,
-        tx: &DbUnblindedOutput,
+        tx: &DbKeyManagerOutput,
         mined_in_block: &BlockHash,
         mined_height: u64,
         mmr_position: u64,

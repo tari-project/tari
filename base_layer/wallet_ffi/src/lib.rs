@@ -143,7 +143,7 @@ use tari_wallet::{
         error::OutputManagerError,
         storage::{
             database::{OutputBackendQuery, OutputManagerDatabase, SortDirection},
-            models::DbUnblindedOutput,
+            models::DbKeyManagerOutput,
             OutputStatus,
         },
         UtxoSelectionCriteria,
@@ -207,7 +207,7 @@ pub type TariEncryptedOpenings = tari_core::transactions::transaction_components
 pub type TariComAndPubSignature = tari_common_types::types::ComAndPubSignature;
 pub type TariUnblindedOutput = tari_core::transactions::transaction_components::UnblindedOutput;
 
-pub struct TariUnblindedOutputs(Vec<DbUnblindedOutput>);
+pub struct TariUnblindedOutputs(Vec<DbKeyManagerOutput>);
 
 pub struct TariContacts(Vec<TariContact>);
 
@@ -295,13 +295,13 @@ pub struct TariUtxo {
     pub status: u8,
 }
 
-impl From<DbUnblindedOutput> for TariUtxo {
-    fn from(x: DbUnblindedOutput) -> Self {
+impl From<DbKeyManagerOutput> for TariUtxo {
+    fn from(x: DbKeyManagerOutput) -> Self {
         Self {
             commitment: CString::new(x.commitment.to_hex())
                 .expect("failed to obtain hex from a commitment")
                 .into_raw(),
-            value: x.unblinded_output.value.as_u64(),
+            value: x.key_manager_output.value.as_u64(),
             mined_height: x.mined_height.unwrap_or(0),
             mined_timestamp: x
                 .mined_timestamp
@@ -396,8 +396,8 @@ impl From<Vec<Commitment>> for TariVector {
     }
 }
 
-impl From<Vec<DbUnblindedOutput>> for TariVector {
-    fn from(v: Vec<DbUnblindedOutput>) -> TariVector {
+impl From<Vec<DbKeyManagerOutput>> for TariVector {
+    fn from(v: Vec<DbKeyManagerOutput>) -> TariVector {
         let mut v = ManuallyDrop::new(v.into_iter().map(TariUtxo::from).collect_vec());
 
         Self {
@@ -1884,7 +1884,7 @@ pub unsafe extern "C" fn wallet_import_external_utxo_as_non_rewindable(
     };
     match (*wallet)
         .runtime
-        .block_on((*wallet).wallet.import_unblinded_output_as_non_rewindable(
+        .block_on((*wallet).wallet.import_key_manager_output_as_non_rewindable(
             (*output).clone(),
             source_address,
             message_string,
@@ -8558,7 +8558,7 @@ mod test {
     use tari_comms::peer_manager::PeerFeatures;
     use tari_core::{
         covenant,
-        transactions::test_helpers::{create_non_recoverable_unblinded_output, create_test_input, TestParams},
+        transactions::test_helpers::{create_key_manager_output_with_data, create_test_input, TestParams},
     };
     use tari_crypto::ristretto::pedersen::extended_commitment_factory::ExtendedPedersenCommitmentFactory;
     use tari_key_manager::{mnemonic::MnemonicLanguage, mnemonic_wordlists};
@@ -10697,18 +10697,20 @@ mod test {
         }
     }
 
-    #[test]
-    pub fn test_create_external_utxo() {
+    #[tokio::test]
+    pub async fn test_create_external_utxo() {
         unsafe {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
             // Test the consistent features case
-            let utxo_1 = create_non_recoverable_unblinded_output(
+            let key_manager = create_test_core_key_manager_with_memory_db();
+            let utxo_1 = create_key_manager_output_with_data(
                 script!(Nop),
                 OutputFeatures::default(),
-                &TestParams::new(),
+                &TestParams::new(&key_manager).await,
                 MicroTari(1234u64),
-            )
+                &key_manager,
+            ).await
             .unwrap();
             let amount = utxo_1.value.as_u64();
             let spending_key_ptr = Box::into_raw(Box::new(utxo_1.spending_key.clone()));
@@ -10759,9 +10761,9 @@ mod test {
         format!("/memory/{}", port).parse().unwrap()
     }
 
-    #[test]
+    #[tokio::test]
     #[allow(clippy::too_many_lines)]
-    pub fn test_import_external_utxo() {
+    pub async fn test_import_external_utxo() {
         unsafe {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
@@ -10834,12 +10836,14 @@ mod test {
             );
 
             // Test the consistent features case
-            let utxo_1 = create_non_recoverable_unblinded_output(
+            let key_manager = create_test_core_key_manager_with_memory_db();
+            let utxo_1 = create_key_manager_output_with_data(
                 script!(Nop),
                 OutputFeatures::default(),
-                &TestParams::new(),
+                &TestParams::new(&key_manager).await,
                 MicroTari(1234u64),
-            )
+                &key_manager,
+            ).await
             .unwrap();
             let amount = utxo_1.value.as_u64();
             let spending_key_ptr = Box::into_raw(Box::new(utxo_1.spending_key.clone()));
@@ -10913,18 +10917,20 @@ mod test {
         }
     }
 
-    #[test]
-    pub fn test_utxo_json() {
+    #[tokio::test]
+    pub async fn test_utxo_json() {
         unsafe {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
 
-            let utxo_1 = create_non_recoverable_unblinded_output(
+            let key_manager = create_test_core_key_manager_with_memory_db();
+            let utxo_1 = create_key_manager_output_with_data(
                 script!(Nop),
                 OutputFeatures::default(),
-                &TestParams::new(),
+                &TestParams::new(&key_manager).await,
                 MicroTari(1234u64),
-            )
+                &key_manager,
+            ).await
             .unwrap();
             let amount = utxo_1.value.as_u64();
             let spending_key_ptr = Box::into_raw(Box::new(utxo_1.spending_key.clone()));

@@ -210,6 +210,11 @@ where
     fn insert_imported_key(&self, public_key: PK, private_key: PK::K) -> Result<(), KeyManagerStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
+        // check if we already have the key:
+        if self.get_imported_key(&public_key).is_ok() {
+            // we already have the key so we dont have to add it in
+            return Ok(());
+        }
         let acquire_lock = start.elapsed();
         let cipher = acquire_read_lock!(self.cipher);
         let key = ImportedKey {

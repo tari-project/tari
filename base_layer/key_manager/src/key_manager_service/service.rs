@@ -31,7 +31,6 @@ use crate::{
     key_manager::KeyManager,
     key_manager_service::{
         error::KeyManagerServiceError,
-        interface::NextKeyResult,
         storage::database::{KeyManagerBackend, KeyManagerDatabase, KeyManagerState},
         AddResult,
         KeyDigest,
@@ -89,22 +88,7 @@ where
         Ok(result)
     }
 
-    pub async fn get_next_key(&self, branch: &str) -> Result<NextKeyResult<PK>, KeyManagerServiceError> {
-        let mut km = self
-            .key_managers
-            .get(branch)
-            .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
-            .lock()
-            .await;
-        let derived_key = km.next_key()?;
-        self.db.increment_key_index(branch)?;
-        Ok(NextKeyResult {
-            key: derived_key.key,
-            index: km.key_index(),
-        })
-    }
-
-    pub async fn get_next_key_id(&self, branch: &str) -> Result<KeyId<PK>, KeyManagerServiceError> {
+    pub async fn get_next_key(&self, branch: &str) -> Result<(KeyId<PK>, PK), KeyManagerServiceError> {
         let mut km = self
             .key_managers
             .get(branch)
@@ -112,13 +96,18 @@ where
             .lock()
             .await;
         self.db.increment_key_index(branch)?;
-        Ok(KeyId::Managed {
-            branch: branch.to_string(),
-            index: km.increment_key_index(1),
-        })
+        let index = km.increment_key_index(1);
+        let key = km.derive_public_key(index)?.key;
+        Ok((
+            KeyId::Managed {
+                branch: branch.to_string(),
+                index,
+            },
+            key,
+        ))
     }
 
-    pub async fn get_static_key_id(&self, branch: &str) -> Result<KeyId<PK>, KeyManagerServiceError> {
+    pub async fn get_static_key(&self, branch: &str) -> Result<KeyId<PK>, KeyManagerServiceError> {
         match self.key_managers.get(branch) {
             None => Err(KeyManagerServiceError::UnknownKeyBranch),
             Some(_) => Ok(KeyId::Managed {
@@ -126,17 +115,6 @@ where
                 index: 0,
             }),
         }
-    }
-
-    pub async fn get_key_at_index(&self, branch: &str, index: u64) -> Result<PK::K, KeyManagerServiceError> {
-        let km = self
-            .key_managers
-            .get(branch)
-            .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
-            .lock()
-            .await;
-        let derived_key = km.derive_key(index)?;
-        Ok(derived_key.key)
     }
 
     /// Search the specified branch key manager key chain to find the index of the specified key.

@@ -22,7 +22,7 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use tari_common_types::types::PublicKey;
+use tari_common_types::types::{PrivateKey, PublicKey};
 use tari_utilities::ByteArray;
 
 use super::protocol as proto;
@@ -48,12 +48,15 @@ impl TryFrom<proto::RecipientSignedMessage> for RecipientSignedMessage {
             .map(TryInto::try_into)
             .ok_or_else(|| "Transaction metadata not provided".to_string())??;
 
+        let offset = PrivateKey::from_bytes(&message.offset).map_err(|err| err.to_string())?;
+
         Ok(Self {
             tx_id: message.tx_id.into(),
             output,
             public_spend_key,
             partial_signature,
             tx_metadata: metadata,
+            offset,
         })
     }
 }
@@ -68,6 +71,7 @@ impl TryFrom<RecipientSignedMessage> for proto::RecipientSignedMessage {
             public_spend_key: message.public_spend_key.to_vec(),
             partial_signature: Some(message.partial_signature.into()),
             metadata: Some(message.tx_metadata.into()),
+            offset: message.offset.to_vec(),
         })
     }
 }
