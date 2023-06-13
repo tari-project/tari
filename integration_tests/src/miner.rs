@@ -21,8 +21,8 @@
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{convert::TryInto, str::FromStr, time::Duration};
+use tari_core::transactions::transaction_components::WalletOutput;
 
-use rand::rngs::OsRng;
 use tari_app_grpc::{
     authentication::ClientAuthenticationInterceptor,
     tari_rpc::{
@@ -42,14 +42,13 @@ use tari_app_grpc::{
 use tari_app_utilities::common_cli_args::CommonCliArgs;
 use tari_base_node_grpc_client::BaseNodeGrpcClient;
 use tari_common::configuration::Network;
-use tari_common_types::{grpc_authentication::GrpcAuthentication, types::PrivateKey};
+use tari_common_types::{grpc_authentication::GrpcAuthentication};
 use tari_core::{
     consensus::ConsensusManager,
-    core_key_manager::TransactionKeyManagerInterface,
+    transactions::key_manager::TransactionKeyManagerInterface,
     test_helpers::TestKeyManager,
-    transactions::{transaction_components::UnblindedOutput, CoinbaseBuilder, CryptoFactories},
+    transactions::{ CoinbaseBuilder},
 };
-use tari_crypto::keys::SecretKey;
 use tari_miner::{run_miner, Cli};
 use tonic::{
     codegen::InterceptedService,
@@ -254,7 +253,7 @@ async fn create_block_template_with_coinbase_without_wallet(
     base_client: &mut BaseNodeClient,
     weight: u64,
     key_manager: &TestKeyManager,
-) -> (NewBlockTemplateResponse, UnblindedOutput) {
+) -> (NewBlockTemplateResponse, WalletOutput) {
     // get the block template from the base node
     let template_req = NewBlockTemplateRequest {
         algo: Some(PowAlgo {
@@ -310,7 +309,7 @@ async fn get_coinbase_outputs_and_kernels(
 async fn get_coinbase_without_wallet_client(
     template_res: NewBlockTemplateResponse,
     key_manager: &TestKeyManager,
-) -> (TransactionOutput, TransactionKernel, UnblindedOutput) {
+) -> (TransactionOutput, TransactionKernel, WalletOutput) {
     let coinbase_req = coinbase_request(&template_res);
     generate_coinbase(coinbase_req, key_manager).await
 }
@@ -318,24 +317,24 @@ async fn get_coinbase_without_wallet_client(
 async fn generate_coinbase(
     coinbase_req: GetCoinbaseRequest,
     key_manager: &TestKeyManager,
-) -> (TransactionOutput, TransactionKernel, UnblindedOutput) {
+) -> (TransactionOutput, TransactionKernel, WalletOutput) {
     let reward = coinbase_req.reward;
     let height = coinbase_req.height;
     let fee = coinbase_req.fee;
     let extra = coinbase_req.extra;
 
-    let (spending_key_id, _, script_private_key_id, _) = key_manager.get_next_spend_and_script_key_ids().await?;
+    let (spending_key_id, _, script_private_key_id, _) = key_manager.get_next_spend_and_script_key_ids().await.unwrap();
 
     let consensus_manager = ConsensusManager::builder(Network::LocalNet).build();
     let consensus_constants = consensus_manager.consensus_constants(height);
 
-    let (tx, ubutxo) = CoinbaseBuilder::new(key_manager)
+    let (tx, ubutxo) = CoinbaseBuilder::new(key_manager.clone())
         .with_block_height(height)
         .with_fees(fee.into())
         .with_spend_key_id(spending_key_id)
         .with_script_key_id(script_private_key_id)
         .with_extra(extra)
-        .build_with_reward(consensus_constants, reward.into())
+        .build_with_reward(consensus_constants, reward.into()).await
         .unwrap();
 
     let tx_out = tx.body().outputs().first().unwrap().clone();

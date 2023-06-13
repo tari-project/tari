@@ -30,7 +30,7 @@ members = [
     "applications/tari_app_utilities",
     "applications/tari_merge_mining_proxy",
     "applications/tari_miner",
-    #"integration_tests"
+    "integration_tests"
 ]
 
 # Add here until we move to edition=2021

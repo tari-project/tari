@@ -21,6 +21,7 @@
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::default::Default;
+use tari_core::test_helpers::TestKeyManager;
 
 use tari_common_types::types::{Commitment, PrivateKey, Signature};
 use tari_core::transactions::{
@@ -63,14 +64,14 @@ struct TestTransactionBuilder {
 }
 
 impl TestTransactionBuilder {
-    pub fn new() -> Self {
+    pub fn new(key_manager: &TestKeyManager) -> Self {
         Self {
             amount: MicroTari(0),
             factories: CryptoFactories::default(),
             fee: MicroTari(0),
             inputs_max_height: 0,
             inputs: vec![],
-            keys: TestParams::new(),
+            keys: TestParams::new(key_manager),
             lock_height: 0,
             output: None,
         }
