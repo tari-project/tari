@@ -106,11 +106,7 @@ use tari_crypto::{
 };
 use tari_key_manager::{
     cipher_seed::CipherSeed,
-    key_manager_service::{
-        storage::{sqlite_db::KeyManagerSqliteDatabase},
-        KeyId,
-        KeyManagerInterface,
-    },
+    key_manager_service::{storage::sqlite_db::KeyManagerSqliteDatabase, KeyId, KeyManagerInterface},
 };
 use tari_p2p::{comms_connector::pubsub_connector, domain_message::DomainMessage, Network};
 use tari_script::{inputs, one_sided_payment_script, script, ExecutionStack, TariScript};

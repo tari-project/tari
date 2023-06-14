@@ -279,7 +279,7 @@ mod test {
         let r_sum = &msg.public_nonce + &p_nonce;
         let excess = &msg.public_excess + &p_spend_key;
         let kernel_signature = key_manager
-            .get_txo_kernel_signature(
+            .get_partial_txo_kernel_signature(
                 &receiver_test_params.spend_key_id,
                 &nonce_id,
                 &r_sum,

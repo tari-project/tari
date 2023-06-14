@@ -98,7 +98,7 @@ pub async fn create_coinbase(
     );
 
     let sig = key_manager
-        .get_txo_kernel_signature(
+        .get_partial_txo_kernel_signature(
             &p.spend_key_id,
             &nonce,
             &public_nonce,

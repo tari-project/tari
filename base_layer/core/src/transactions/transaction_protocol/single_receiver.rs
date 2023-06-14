@@ -70,7 +70,7 @@ impl SingleReceiverTransactionProtocol {
             &tx_meta.burn_commitment,
         );
         let signature = key_manager
-            .get_txo_kernel_signature(
+            .get_partial_txo_kernel_signature(
                 &output.spending_key_id,
                 &nonce_id,
                 &(&sender_info.public_nonce + &public_nonce),

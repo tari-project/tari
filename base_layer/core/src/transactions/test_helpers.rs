@@ -275,7 +275,7 @@ pub async fn create_random_signature_from_secret_key(
         &tx_meta.burn_commitment,
     );
     let kernel_signature = key_manager
-        .get_txo_kernel_signature(
+        .get_partial_txo_kernel_signature(
             &secret_key_id,
             &nonce_id,
             &total_nonce,
@@ -749,7 +749,7 @@ pub async fn create_coinbase_kernel(spending_key_id: &TariKeyId, key_manager: &T
     let public_spend_key = key_manager.get_public_key_at_key_id(spending_key_id).await.unwrap();
 
     let kernel_signature = key_manager
-        .get_txo_kernel_signature(
+        .get_partial_txo_kernel_signature(
             spending_key_id,
             &public_nonce_id,
             &public_nonce,

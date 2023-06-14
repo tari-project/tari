@@ -1181,7 +1181,7 @@ async fn consensus_validation_large_tx() {
                 .await
                 .unwrap();
         let sig = key_manager
-            .get_txo_kernel_signature(
+            .get_partial_txo_kernel_signature(
                 &output.spending_key_id,
                 &nonce_id,
                 &pub_nonce,
@@ -1202,7 +1202,7 @@ async fn consensus_validation_large_tx() {
             .await
             .unwrap();
     let sig = key_manager
-        .get_txo_kernel_signature(
+        .get_partial_txo_kernel_signature(
             &input.spending_key_id,
             &input_kernel_nonce,
             &pub_nonce,

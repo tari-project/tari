@@ -217,7 +217,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
 
         let kernel_signature = self
             .key_manager
-            .get_txo_kernel_signature(
+            .get_partial_txo_kernel_signature(
                 &spending_key_id,
                 &public_nonce_id,
                 &public_nonce,
@@ -249,8 +249,6 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             minimum_value_promise,
         );
 
-        // because the coinbase does not have a spending input with a script key, we use the output spending key as
-        // replacement to calculate the script offset
         let (sender_offset_public_key_id, sender_offset_public_key) = self
             .key_manager
             .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
@@ -585,7 +583,7 @@ mod test {
             .await
             .unwrap();
         let sig = key_manager
-            .get_txo_kernel_signature(
+            .get_partial_txo_kernel_signature(
                 &output.spending_key_id,
                 &new_nonce,
                 &nonce,

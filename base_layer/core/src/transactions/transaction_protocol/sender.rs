@@ -550,7 +550,7 @@ impl SenderTransactionProtocol {
             tx_builder.add_input(input.output.as_transaction_input(key_manager).await?);
             signature = &signature +
                 &key_manager
-                    .get_txo_kernel_signature(
+                    .get_partial_txo_kernel_signature(
                         &input.output.spending_key_id,
                         &input.kernel_nonce,
                         &total_public_nonce,
@@ -594,7 +594,7 @@ impl SenderTransactionProtocol {
             tx_builder.add_output(output.output.as_transaction_output(key_manager).await?);
             signature = &signature +
                 &key_manager
-                    .get_txo_kernel_signature(
+                    .get_partial_txo_kernel_signature(
                         &output.output.spending_key_id,
                         &output.kernel_nonce,
                         &total_public_nonce,
@@ -623,7 +623,7 @@ impl SenderTransactionProtocol {
             tx_builder.add_output(change.output.as_transaction_output(key_manager).await?);
             signature = &signature +
                 &key_manager
-                    .get_txo_kernel_signature(
+                    .get_partial_txo_kernel_signature(
                         &change.output.spending_key_id,
                         &change.kernel_nonce,
                         &total_public_nonce,

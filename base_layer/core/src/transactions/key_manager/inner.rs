@@ -727,7 +727,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         })
     }
 
-    pub async fn get_txo_kernel_signature(
+    pub async fn get_partial_txo_kernel_signature(
         &self,
         spending_key_id: &TariKeyId,
         nonce_id: &TariKeyId,

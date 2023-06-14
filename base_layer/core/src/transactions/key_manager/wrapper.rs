@@ -284,7 +284,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
-    async fn get_txo_kernel_signature(
+    async fn get_partial_txo_kernel_signature(
         &self,
         spend_key_id: &TariKeyId,
         nonce_id: &TariKeyId,
@@ -298,7 +298,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         (*self.transaction_key_manager_inner)
             .read()
             .await
-            .get_txo_kernel_signature(
+            .get_partial_txo_kernel_signature(
                 spend_key_id,
                 nonce_id,
                 total_nonce,

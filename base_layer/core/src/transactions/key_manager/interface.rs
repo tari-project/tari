@@ -139,7 +139,7 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
         script_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, TransactionError>;
 
-    async fn get_txo_kernel_signature(
+    async fn get_partial_txo_kernel_signature(
         &self,
         spend_key_id: &TariKeyId,
         nonce_id: &TariKeyId,
