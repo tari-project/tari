@@ -51,4 +51,4 @@ mod interface;
 pub use interface::KeyId;
 pub mod storage;
 
-pub use interface::{AddResult, KeyManagerInterface, NextKeyResult};
+pub use interface::{AddResult, KeyManagerInterface};

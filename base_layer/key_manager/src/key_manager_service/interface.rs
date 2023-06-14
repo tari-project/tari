@@ -38,15 +38,11 @@ pub enum AddResult {
     AlreadyExists,
 }
 
-pub struct NextKeyResult<PK: PublicKey> {
-    pub key: PK::K,
-    pub index: u64,
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub enum KeyId<PK> {
     Managed { branch: String, index: u64 },
     Imported { key: PK },
+    Zero,
 }
 
 impl<PK> KeyId<PK>
@@ -56,6 +52,7 @@ where PK: Clone
         match self {
             KeyId::Managed { index, .. } => Some(*index),
             KeyId::Imported { .. } => None,
+            KeyId::Zero => None,
         }
     }
 
@@ -63,6 +60,7 @@ where PK: Clone
         match self {
             KeyId::Managed { branch, .. } => Some(branch.clone()),
             KeyId::Imported { .. } => None,
+            KeyId::Zero => None,
         }
     }
 
@@ -70,9 +68,14 @@ where PK: Clone
         match self {
             KeyId::Managed { .. } => None,
             KeyId::Imported { key } => Some(key.clone()),
+            KeyId::Zero => None,
         }
     }
 }
+
+pub const MANAGED_KEY_BRANCH: &str = "managed";
+pub const IMPORTED_KEY_BRANCH: &str = "imported";
+pub const ZERO_KEY_BRANCH: &str = "zero";
 
 impl<PK> fmt::Display for KeyId<PK>
 where PK: ByteArray
@@ -80,18 +83,16 @@ where PK: ByteArray
     // This trait requires `fmt` with this exact signature.
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            KeyId::Managed { branch: b, index: i } => write!(f, "managed.'{}'.'{}'", b, i),
-            KeyId::Imported { key: public_key } => write!(f, "imported.'{}'", public_key.to_hex()),
+            KeyId::Managed { branch: b, index: i } => write!(f, "{}.{}.{}", MANAGED_KEY_BRANCH, b, i),
+            KeyId::Imported { key: public_key } => write!(f, "{}.{}", IMPORTED_KEY_BRANCH, public_key.to_hex()),
+            KeyId::Zero => write!(f, "{}", ZERO_KEY_BRANCH),
         }
     }
 }
 
 impl<PK> Default for KeyId<PK> {
     fn default() -> Self {
-        KeyId::Managed {
-            branch: "".to_string(),
-            index: 0,
-        }
+        KeyId::Zero
     }
 }
 
@@ -105,7 +106,7 @@ where PK: ByteArray
         match parts.first() {
             None => Err("Out of bounds".to_string()),
             Some(val) => match *val {
-                "default" => {
+                MANAGED_KEY_BRANCH => {
                     if parts.len() != 3 {
                         return Err("Wrong format".to_string());
                     }
@@ -117,13 +118,14 @@ where PK: ByteArray
                         index,
                     })
                 },
-                "imported" => {
+                IMPORTED_KEY_BRANCH => {
                     if parts.len() != 2 {
                         return Err("Wrong format".to_string());
                     }
                     let key = PK::from_hex(parts[1]).map_err(|_| "Invalid public key".to_string())?;
                     Ok(KeyId::Imported { key })
                 },
+                ZERO_KEY_BRANCH => Ok(KeyId::Zero),
                 _ => Err("Wrong format".to_string()),
             },
         }
@@ -144,24 +146,11 @@ where
     /// or in the backend, a new branch will be created and tracked the backend, `Ok(AddResult::NewEntry)`.
     async fn add_new_branch<T: Into<String> + Send>(&self, branch: T) -> Result<AddResult, KeyManagerServiceError>;
 
-    /// Gets the next key from the branch. This will auto-increment the branch key index by 1
-    async fn get_next_key<T: Into<String> + Send>(
-        &self,
-        branch: T,
-    ) -> Result<NextKeyResult<PK>, KeyManagerServiceError>;
-
     /// Gets the next key id from the branch. This will auto-increment the branch key index by 1
-    async fn get_next_key_id<T: Into<String> + Send>(&self, branch: T) -> Result<KeyId<PK>, KeyManagerServiceError>;
+    async fn get_next_key<T: Into<String> + Send>(&self, branch: T) -> Result<(KeyId<PK>, PK), KeyManagerServiceError>;
 
     /// Gets the fixed key id from the branch. This will use the branch key with index 0
-    async fn get_static_key_id<T: Into<String> + Send>(&self, branch: T) -> Result<KeyId<PK>, KeyManagerServiceError>;
-
-    /// Gets the key at the specified index
-    async fn get_key_at_index<T: Into<String> + Send>(
-        &self,
-        branch: T,
-        index: u64,
-    ) -> Result<PK::K, KeyManagerServiceError>;
+    async fn get_static_key<T: Into<String> + Send>(&self, branch: T) -> Result<KeyId<PK>, KeyManagerServiceError>;
 
     /// Gets the key id at the specified index
     async fn get_public_key_at_key_id(&self, key_id: &KeyId<PK>) -> Result<PK, KeyManagerServiceError>;
@@ -178,4 +167,44 @@ where
 
     /// Add a new key to be tracked
     async fn import_key(&self, private_key: PK::K) -> Result<KeyId<PK>, KeyManagerServiceError>;
+}
+
+#[cfg(test)]
+mod test {
+    use core::iter;
+    use std::str::FromStr;
+
+    use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
+    use tari_common_types::types::{PrivateKey, PublicKey};
+    use tari_crypto::keys::{PublicKey as PK, SecretKey as SK};
+
+    use crate::key_manager_service::KeyId;
+
+    fn random_string(len: usize) -> String {
+        iter::repeat(()).map(|_| OsRng.sample(Alphanumeric)).take(len).collect()
+    }
+
+    #[test]
+    fn key_id_converts_correctly() {
+        let managed_key_id: KeyId<PublicKey> = KeyId::Managed {
+            branch: random_string(8),
+            index: {
+                let mut rng = rand::thread_rng();
+                let random_value: u64 = rng.gen();
+                random_value
+            },
+        };
+        let imported_key_id: KeyId<PublicKey> = KeyId::Imported {
+            key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        };
+        let zero_key_id: KeyId<PublicKey> = KeyId::Zero;
+
+        let managed_key_id_str = managed_key_id.to_string();
+        let imported_key_id_str = imported_key_id.to_string();
+        let zero_key_id_str = zero_key_id.to_string();
+
+        assert_eq!(managed_key_id, KeyId::from_str(&managed_key_id_str).unwrap());
+        assert_eq!(imported_key_id, KeyId::from_str(&imported_key_id_str).unwrap());
+        assert_eq!(zero_key_id, KeyId::from_str(&zero_key_id_str).unwrap());
+    }
 }

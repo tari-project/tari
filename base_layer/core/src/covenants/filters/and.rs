@@ -45,20 +45,29 @@ mod test {
     use crate::{
         covenant,
         covenants::{filters::test::setup_filter_test, test::create_input},
+        test_helpers::create_test_core_key_manager_with_memory_db,
     };
 
-    #[test]
-    fn it_filters_outputset_using_intersection() {
+    #[tokio::test]
+    async fn it_filters_outputset_using_intersection() {
+        let key_manager = create_test_core_key_manager_with_memory_db();
         let script = script!(Nop);
         let covenant =
             covenant!(and(field_eq(@field::features_maturity, @uint(42),), field_eq(@field::script, @script(script))));
-        let input = create_input();
-        let (mut context, outputs) = setup_filter_test(&covenant, &input, 0, |outputs| {
-            outputs[5].features.maturity = 42;
-            outputs[7].features.maturity = 42;
-            // Does not have maturity = 42
-            outputs[8].features.maturity = 123;
-        });
+        let input = create_input(&key_manager).await;
+        let (mut context, outputs) = setup_filter_test(
+            &covenant,
+            &input,
+            0,
+            |outputs| {
+                outputs[5].features.maturity = 42;
+                outputs[7].features.maturity = 42;
+                // Does not have maturity = 42
+                outputs[8].features.maturity = 123;
+            },
+            &key_manager,
+        )
+        .await;
 
         let mut output_set = OutputSet::new(&outputs);
         AndFilter.filter(&mut context, &mut output_set).unwrap();

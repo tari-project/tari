@@ -30,13 +30,7 @@ use tari_core::{
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
-        transaction_components::{
-            OutputFeatures,
-            Transaction,
-            TransactionOutput,
-            UnblindedOutput,
-            UnblindedOutputBuilder,
-        },
+        transaction_components::{OutputFeatures, Transaction, TransactionOutput, WalletOutput, WalletOutputBuilder},
         transaction_protocol::{sender::TransactionSenderMessage, TransactionMetadata},
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
@@ -53,7 +47,7 @@ use crate::output_manager_service::{
     service::{Balance, OutputStatusesByTxId},
     storage::{
         database::OutputBackendQuery,
-        models::{DbUnblindedOutput, KnownOneSidedPaymentScript, SpendingPriority},
+        models::{DbWalletOutput, KnownOneSidedPaymentScript, SpendingPriority},
     },
     UtxoSelectionCriteria,
 };
@@ -62,9 +56,9 @@ use crate::output_manager_service::{
 #[allow(clippy::large_enum_variant)]
 pub enum OutputManagerRequest {
     GetBalance,
-    AddOutput((Box<UnblindedOutput>, Option<SpendingPriority>)),
-    AddOutputWithTxId((TxId, Box<UnblindedOutput>, Option<SpendingPriority>)),
-    AddUnvalidatedOutput((TxId, Box<UnblindedOutput>, Option<SpendingPriority>)),
+    AddOutput((Box<WalletOutput>, Option<SpendingPriority>)),
+    AddOutputWithTxId((TxId, Box<WalletOutput>, Option<SpendingPriority>)),
+    AddUnvalidatedOutput((TxId, Box<WalletOutput>, Option<SpendingPriority>)),
     UpdateOutputMetadataSignature(Box<TransactionOutput>),
     GetRecipientTransaction(TransactionSenderMessage),
     GetCoinbaseTransaction {
@@ -96,7 +90,7 @@ pub enum OutputManagerRequest {
         lock_height: Option<u64>,
     },
     CreatePayToSelfWithOutputs {
-        outputs: Vec<UnblindedOutputBuilder>,
+        outputs: Vec<WalletOutputBuilder>,
         fee_per_gram: MicroTari,
         selection_criteria: UtxoSelectionCriteria,
     },
@@ -244,10 +238,10 @@ pub enum OutputManagerResponse {
     PayToSelfTransaction((MicroTari, Transaction)),
     TransactionToSend(SenderTransactionProtocol),
     TransactionCancelled,
-    SpentOutputs(Vec<UnblindedOutput>),
-    UnspentOutputs(Vec<DbUnblindedOutput>),
-    Outputs(Vec<UnblindedOutput>),
-    InvalidOutputs(Vec<UnblindedOutput>),
+    SpentOutputs(Vec<DbWalletOutput>),
+    UnspentOutputs(Vec<DbWalletOutput>),
+    Outputs(Vec<WalletOutput>),
+    InvalidOutputs(Vec<WalletOutput>),
     BaseNodePublicKeySet,
     TxoValidationStarted(u64),
     Transaction((TxId, Transaction, MicroTari)),
@@ -257,7 +251,7 @@ pub enum OutputManagerResponse {
     RewoundOutputs(Vec<RecoveredOutput>),
     ScanOutputs(Vec<RecoveredOutput>),
     AddKnownOneSidedPaymentScript,
-    CreateOutputWithFeatures { output: Box<UnblindedOutputBuilder> },
+    CreateOutputWithFeatures { output: Box<WalletOutputBuilder> },
     CreatePayToSelfWithOutputs { transaction: Box<Transaction>, tx_id: TxId },
     ReinstatedCancelledInboundTx,
     CoinbaseAbandonedSet,
@@ -305,7 +299,7 @@ pub struct PublicRewindKeys {
 #[derive(Debug, Clone)]
 pub struct RecoveredOutput {
     pub tx_id: TxId,
-    pub output: UnblindedOutput,
+    pub output: WalletOutput,
 }
 
 #[derive(Clone)]
@@ -331,7 +325,7 @@ impl OutputManagerHandle {
 
     pub async fn add_output(
         &mut self,
-        output: UnblindedOutput,
+        output: WalletOutput,
         spend_priority: Option<SpendingPriority>,
     ) -> Result<(), OutputManagerError> {
         match self
@@ -347,7 +341,7 @@ impl OutputManagerHandle {
     pub async fn add_output_with_tx_id(
         &mut self,
         tx_id: TxId,
-        output: UnblindedOutput,
+        output: WalletOutput,
         spend_priority: Option<SpendingPriority>,
     ) -> Result<(), OutputManagerError> {
         match self
@@ -367,7 +361,7 @@ impl OutputManagerHandle {
     pub async fn add_unvalidated_output(
         &mut self,
         tx_id: TxId,
-        output: UnblindedOutput,
+        output: WalletOutput,
         spend_priority: Option<SpendingPriority>,
     ) -> Result<(), OutputManagerError> {
         match self
@@ -388,7 +382,7 @@ impl OutputManagerHandle {
         &mut self,
         value: MicroTari,
         features: OutputFeatures,
-    ) -> Result<UnblindedOutputBuilder, OutputManagerError> {
+    ) -> Result<WalletOutputBuilder, OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::CreateOutputWithFeatures {
@@ -550,7 +544,7 @@ impl OutputManagerHandle {
         }
     }
 
-    pub async fn get_spent_outputs(&mut self) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
+    pub async fn get_spent_outputs(&mut self) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
         match self.handle.call(OutputManagerRequest::GetSpentOutputs).await?? {
             OutputManagerResponse::SpentOutputs(s) => Ok(s),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
@@ -558,7 +552,7 @@ impl OutputManagerHandle {
     }
 
     /// Sorted from lowest value to highest
-    pub async fn get_unspent_outputs(&mut self) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {
+    pub async fn get_unspent_outputs(&mut self) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
         match self.handle.call(OutputManagerRequest::GetUnspentOutputs).await?? {
             OutputManagerResponse::UnspentOutputs(s) => Ok(s),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
@@ -566,7 +560,7 @@ impl OutputManagerHandle {
     }
 
     // ToDo: This API method call could probably be removed by expanding test utils if only needed for testing
-    pub async fn get_invalid_outputs(&mut self) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
+    pub async fn get_invalid_outputs(&mut self) -> Result<Vec<WalletOutput>, OutputManagerError> {
         match self.handle.call(OutputManagerRequest::GetInvalidOutputs).await?? {
             OutputManagerResponse::InvalidOutputs(s) => Ok(s),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
@@ -749,7 +743,7 @@ impl OutputManagerHandle {
 
     pub async fn create_send_to_self_with_output(
         &mut self,
-        outputs: Vec<UnblindedOutputBuilder>,
+        outputs: Vec<WalletOutputBuilder>,
         fee_per_gram: MicroTari,
         input_selection: UtxoSelectionCriteria,
     ) -> Result<(TxId, Transaction), OutputManagerError> {

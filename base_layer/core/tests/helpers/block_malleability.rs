@@ -41,46 +41,54 @@ enum MerkleMountainRangeField {
 }
 
 #[allow(dead_code)]
-pub fn check_input_malleability(block_mod_fn: impl Fn(&mut Block)) {
-    check_block_changes_are_detected(MerkleMountainRangeField::Input, block_mod_fn);
+pub async fn check_input_malleability(block_mod_fn: impl Fn(&mut Block)) {
+    check_block_changes_are_detected(MerkleMountainRangeField::Input, block_mod_fn).await;
 }
 
 #[allow(dead_code)]
-pub fn check_output_malleability(block_mod_fn: impl Fn(&mut Block)) {
-    check_block_changes_are_detected(MerkleMountainRangeField::Output, block_mod_fn);
+pub async fn check_output_malleability(block_mod_fn: impl Fn(&mut Block)) {
+    check_block_changes_are_detected(MerkleMountainRangeField::Output, block_mod_fn).await;
 }
 
 #[allow(dead_code)]
-pub fn check_witness_malleability(block_mod_fn: impl Fn(&mut Block)) {
-    check_block_changes_are_detected(MerkleMountainRangeField::Witness, block_mod_fn);
+pub async fn check_witness_malleability(block_mod_fn: impl Fn(&mut Block)) {
+    check_block_changes_are_detected(MerkleMountainRangeField::Witness, block_mod_fn).await;
 }
 
 #[allow(dead_code)]
-pub fn check_kernel_malleability(block_mod_fn: impl Fn(&mut Block)) {
-    check_block_changes_are_detected(MerkleMountainRangeField::Kernel, block_mod_fn);
+pub async fn check_kernel_malleability(block_mod_fn: impl Fn(&mut Block)) {
+    check_block_changes_are_detected(MerkleMountainRangeField::Kernel, block_mod_fn).await;
 }
 
 #[allow(dead_code)]
-fn check_block_changes_are_detected(field: MerkleMountainRangeField, block_mod_fn: impl Fn(&mut Block)) {
+async fn check_block_changes_are_detected(field: MerkleMountainRangeField, block_mod_fn: impl Fn(&mut Block)) {
     // create a blockchain with a couple of valid blocks
-    let mut blockchain = TestBlockchain::with_genesis("GB");
+    let mut blockchain = TestBlockchain::with_genesis("GB").await;
     let blocks = blockchain.builder();
 
-    let (_, output) = blockchain.add_block(blocks.new_block("A1").child_of("GB").difficulty(1));
+    let (_, output) = blockchain
+        .add_block(blocks.new_block("A1").child_of("GB").difficulty(1))
+        .await;
 
-    let (txs, _) = schema_to_transaction(&[txn_schema!(
-        from: vec![output],
-        to: vec![50 * T],
-        input_version: TransactionInputVersion::V0,
-        output_version: TransactionOutputVersion::V0
-    )]);
-    blockchain.add_block(
-        blocks
-            .new_block("A2")
-            .child_of("A1")
-            .difficulty(1)
-            .with_transactions(txs.into_iter().map(|tx| Clone::clone(&*tx)).collect()),
-    );
+    let (txs, _) = schema_to_transaction(
+        &[txn_schema!(
+            from: vec![output],
+            to: vec![50 * T],
+            input_version: TransactionInputVersion::V0,
+            output_version: TransactionOutputVersion::V0
+        )],
+        &blockchain.key_manager,
+    )
+    .await;
+    blockchain
+        .add_block(
+            blocks
+                .new_block("A2")
+                .child_of("A1")
+                .difficulty(1)
+                .with_transactions(txs.into_iter().map(|tx| Clone::clone(&*tx)).collect()),
+        )
+        .await;
 
     // store the block metadata for later comparison
     let block = blockchain.get_block("A2").cloned().unwrap().block;

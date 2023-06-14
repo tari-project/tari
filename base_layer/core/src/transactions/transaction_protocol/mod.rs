@@ -100,6 +100,7 @@ pub mod single_receiver;
 pub mod transaction_initializer;
 use tari_common_types::types::Commitment;
 use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
+use tari_key_manager::key_manager_service::KeyManagerServiceError;
 
 use crate::transactions::transaction_components::KernelFeatures;
 
@@ -135,6 +136,14 @@ pub enum TransactionProtocolError {
     MinimumValuePromiseNotFound,
     #[error("Value encryption failed")]
     EncryptionError,
+    #[error("Key manager service error: `{0}`")]
+    KeyManagerServiceError(String),
+}
+
+impl From<KeyManagerServiceError> for TransactionProtocolError {
+    fn from(err: KeyManagerServiceError) -> Self {
+        TransactionProtocolError::KeyManagerServiceError(err.to_string())
+    }
 }
 
 /// Transaction metadata, this includes all the fields that needs to be signed on the kernel

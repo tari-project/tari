@@ -46,15 +46,15 @@ use tari_contacts::contacts_service::{
 };
 use tari_core::{
     consensus::{ConsensusManager, NetworkConsensus},
-    core_key_manager::{BaseLayerKeyManagerInterface, CoreKeyManagerInitializer},
     covenants::Covenant,
     transactions::{
+        key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInitializer},
         tari_amount::MicroTari,
         transaction_components::{EncryptedData, OutputFeatures, UnblindedOutput},
         CryptoFactories,
     },
 };
-use tari_crypto::{hash::blake2::Blake256, hash_domain, signatures::SchnorrSignatureError, tari_utilities::hex::Hex};
+use tari_crypto::{hash::blake2::Blake256, hash_domain, signatures::SchnorrSignatureError};
 use tari_key_manager::{
     cipher_seed::CipherSeed,
     key_manager::KeyManager,
@@ -73,7 +73,7 @@ use tari_p2p::{
 use tari_script::{one_sided_payment_script, ExecutionStack, TariScript};
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::ByteArray;
+use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::{
     base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
@@ -140,7 +140,7 @@ where
     U: TransactionBackend + 'static,
     V: OutputManagerBackend + 'static,
     W: ContactsBackend + 'static,
-    TKeyManagerInterface: BaseLayerKeyManagerInterface,
+    TKeyManagerInterface: SecretTransactionKeyManagerInterface,
 {
     #[allow(clippy::too_many_lines)]
     pub async fn start<TKeyManagerBackend: KeyManagerBackend<PublicKey> + 'static>(
@@ -191,9 +191,9 @@ where
                 output_manager_backend.clone(),
                 factories.clone(),
                 config.network.into(),
-                node_identity.clone(),
+                wallet_identity.clone(),
             ))
-            .add_initializer(CoreKeyManagerInitializer::new(
+            .add_initializer(TransactionKeyManagerInitializer::new(
                 key_manager_backend,
                 master_seed,
                 factories.clone(),
@@ -230,7 +230,7 @@ where
             .add_initializer(UtxoScannerServiceInitializer::new(
                 wallet_database.clone(),
                 factories.clone(),
-                wallet_identity,
+                wallet_identity.clone(),
             ));
 
         // Check if we have update config. FFI wallets don't do this, the update on mobile is done differently.
@@ -270,7 +270,7 @@ where
             None
         };
 
-        persist_one_sided_payment_script_for_node_identity(&mut output_manager_handle, comms.node_identity())
+        persist_one_sided_payment_script_for_node_identity(&mut output_manager_handle, wallet_identity.clone())
             .await
             .map_err(|e| {
                 error!(target: LOG_TARGET, "{:?}", e);
@@ -445,7 +445,8 @@ where
         encrypted_data: EncryptedData,
         minimum_value_promise: MicroTari,
     ) -> Result<TxId, WalletError> {
-        let unblinded_output = UnblindedOutput::new_current_version(
+        // lets import the private keys
+        let key_manager_output = UnblindedOutput::new_current_version(
             amount,
             spending_key.clone(),
             features.clone(),
@@ -459,14 +460,14 @@ where
             encrypted_data,
             minimum_value_promise,
         );
-        self.import_unblinded_output_as_non_rewindable(unblinded_output, source_address, message)
+        self.import_key_manager_output_as_non_rewindable(key_manager_output, source_address, message)
             .await
     }
 
     /// Import an external spendable UTXO into the wallet as a non-rewindable/non-recoverable UTXO. The output will be
     /// added to the Output Manager and made spendable. A faux incoming transaction will be created to provide a record
     /// of the event. The TxId of the generated transaction is returned.
-    pub async fn import_unblinded_output_as_non_rewindable(
+    pub async fn import_key_manager_output_as_non_rewindable(
         &mut self,
         unblinded_output: UnblindedOutput,
         source_address: TariAddress,
@@ -485,20 +486,16 @@ where
                 None,
             )
             .await?;
-
+        let wallet_output = unblinded_output.to_wallet_output(&self.key_manager_service).await?;
         // As non-rewindable
         self.output_manager_service
-            .add_unvalidated_output(tx_id, unblinded_output.clone(), None)
+            .add_unvalidated_output(tx_id, wallet_output.clone(), None)
             .await?;
-
         info!(
             target: LOG_TARGET,
-            "UTXO (Commitment: {}) imported into wallet as 'ImportStatus::Imported' and is non-rewindable",
-            unblinded_output
-                .as_transaction_input(&self.factories.commitment)?
-                .commitment()
-                .map_err(WalletError::TransactionError)?
-                .to_hex(),
+            "UTXO (Commitment: {}, value: {}) imported into wallet as 'ImportStatus::Imported' and is non-rewindable",
+            wallet_output.commitment(&self.key_manager_service).await?.to_hex(),
+            wallet_output.value,
         );
 
         Ok(tx_id)
@@ -723,15 +720,15 @@ pub fn derive_comms_secret_key(master_seed: &CipherSeed) -> Result<CommsSecretKe
 /// using old node identities.
 async fn persist_one_sided_payment_script_for_node_identity(
     output_manager_service: &mut OutputManagerHandle,
-    node_identity: Arc<NodeIdentity>,
+    wallet_identity: WalletIdentity,
 ) -> Result<(), WalletError> {
-    let script = one_sided_payment_script(node_identity.public_key());
+    let script = one_sided_payment_script(wallet_identity.node_identity.public_key());
     let known_script = KnownOneSidedPaymentScript {
         script_hash: script
             .as_hash::<Blake256>()
             .map_err(|e| WalletError::OutputManagerError(OutputManagerError::ScriptError(e)))?
             .to_vec(),
-        private_key: node_identity.secret_key().clone(),
+        script_key_id: wallet_identity.wallet_node_key_id.clone(),
         script,
         input: ExecutionStack::default(),
         script_lock_height: 0,

@@ -53,11 +53,13 @@ mod test {
             BaseLayerCovenantsDomain,
             COVENANTS_FIELD_HASHER_LABEL,
         },
+        test_helpers::create_test_core_key_manager_with_memory_db,
         transactions::transaction_components::OutputFeatures,
     };
 
-    #[test]
-    fn it_filters_outputs_with_fields_that_hash_to_given_hash() {
+    #[tokio::test]
+    async fn it_filters_outputs_with_fields_that_hash_to_given_hash() {
+        let key_manager = create_test_core_key_manager_with_memory_db();
         let features = OutputFeatures {
             maturity: 42,
             sidechain_feature: Some(make_sample_sidechain_feature()),
@@ -67,11 +69,18 @@ mod test {
         BaseLayerCovenantsDomain::add_domain_separation_tag(&mut hasher, COVENANTS_FIELD_HASHER_LABEL);
         let hash = hasher.chain(features.try_to_vec().unwrap()).finalize();
         let covenant = covenant!(fields_hashed_eq(@fields(@field::features), @hash(hash.into())));
-        let input = create_input();
-        let (mut context, outputs) = setup_filter_test(&covenant, &input, 0, |outputs| {
-            outputs[5].features = features.clone();
-            outputs[7].features = features;
-        });
+        let input = create_input(&key_manager).await;
+        let (mut context, outputs) = setup_filter_test(
+            &covenant,
+            &input,
+            0,
+            |outputs| {
+                outputs[5].features = features.clone();
+                outputs[7].features = features;
+            },
+            &key_manager,
+        )
+        .await;
         let mut output_set = OutputSet::new(&outputs);
         FieldsHashedEqFilter.filter(&mut context, &mut output_set).unwrap();
 

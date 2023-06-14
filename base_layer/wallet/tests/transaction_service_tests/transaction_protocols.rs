@@ -57,6 +57,7 @@ use tari_core::{
     transactions::{
         tari_amount::{uT, MicroTari, T},
         test_helpers::schema_to_transaction,
+        transaction_components::OutputFeatures,
         CryptoFactories,
     },
     txn_schema,
@@ -160,7 +161,7 @@ pub async fn setup() -> (
     let resources = TransactionServiceResources {
         db,
         output_manager_service: output_manager_service_handle,
-        core_key_manager_service: core_key_manager_service_handle,
+        transaction_key_manager_service: core_key_manager_service_handle,
         outbound_message_service: outbound_message_requester,
         connectivity: wallet_connectivity.clone(),
         event_publisher: ts_event_publisher,
@@ -195,9 +196,11 @@ pub async fn add_transaction_to_database(
     coinbase_block_height: Option<u64>,
     db: TransactionDatabase<TransactionServiceSqliteDatabase>,
 ) {
-    let factories = CryptoFactories::default();
-    let (_utxo, uo0) = make_non_recoverable_input(&mut OsRng, 10 * amount, &factories.commitment).await;
-    let (txs1, _uou1) = schema_to_transaction(&[txn_schema!(from: vec![uo0], to: vec![amount])]);
+    let key_manager_handle = create_test_core_key_manager_with_memory_db();
+    let uo0 =
+        make_non_recoverable_input(&mut OsRng, 10 * amount, &OutputFeatures::default(), &key_manager_handle).await;
+    let (txs1, _uou1) =
+        schema_to_transaction(&[txn_schema!(from: vec![uo0], to: vec![amount])], &key_manager_handle).await;
     let tx1 = (*txs1[0]).clone();
     let completed_tx1 = CompletedTransaction::new(
         tx_id,

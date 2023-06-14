@@ -358,19 +358,26 @@ mod test {
     use super::*;
     use crate::{
         consensus::ConsensusManagerBuilder,
-        test_helpers::create_orphan_block,
+        test_helpers::{create_orphan_block, create_test_core_key_manager_with_memory_db},
         transactions::tari_amount::MicroTari,
         tx,
     };
 
-    #[test]
-    fn test_insert_expire_by_height() {
-        let tx1 = Arc::new(tx!(MicroTari(100_000), fee: MicroTari(100), lock: 4000, inputs: 2, outputs: 1).0);
-        let tx2 = Arc::new(tx!(MicroTari(100_000), fee: MicroTari(60), lock: 3000, inputs: 2, outputs: 1).0);
-        let tx3 = Arc::new(tx!(MicroTari(100_000), fee: MicroTari(20), lock: 2500, inputs: 2, outputs: 1).0);
-        let tx4 = Arc::new(tx!(MicroTari(100_000), fee: MicroTari(40), lock: 1000, inputs: 2, outputs: 1).0);
-        let tx5 = Arc::new(tx!(MicroTari(100_000), fee: MicroTari(100), lock: 2000, inputs: 2, outputs: 1).0);
-        let tx6 = Arc::new(tx!(MicroTari(100_000), fee: MicroTari(120), lock: 5500, inputs: 2, outputs: 1).0);
+    #[tokio::test]
+    async fn test_insert_expire_by_height() {
+        let key_manager = create_test_core_key_manager_with_memory_db();
+        let tx1 =
+            Arc::new(tx!(MicroTari(100_000), fee: MicroTari(100), lock: 4000, inputs: 2, outputs: 1, &key_manager).0);
+        let tx2 =
+            Arc::new(tx!(MicroTari(100_000), fee: MicroTari(60), lock: 3000, inputs: 2, outputs: 1, &key_manager).0);
+        let tx3 =
+            Arc::new(tx!(MicroTari(100_000), fee: MicroTari(20), lock: 2500, inputs: 2, outputs: 1, &key_manager).0);
+        let tx4 =
+            Arc::new(tx!(MicroTari(100_000), fee: MicroTari(40), lock: 1000, inputs: 2, outputs: 1, &key_manager).0);
+        let tx5 =
+            Arc::new(tx!(MicroTari(100_000), fee: MicroTari(100), lock: 2000, inputs: 2, outputs: 1, &key_manager).0);
+        let tx6 =
+            Arc::new(tx!(MicroTari(100_000), fee: MicroTari(120), lock: 5500, inputs: 2, outputs: 1, &key_manager).0);
 
         let mut reorg_pool = ReorgPool::new(ReorgPoolConfig { expiry_height: 2 });
         reorg_pool.insert(1, tx1.clone());
@@ -398,11 +405,15 @@ mod test {
         assert!(reorg_pool.has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig));
     }
 
-    #[test]
-    fn test_remove_all() {
-        let tx1 = Arc::new(tx!(MicroTari(100_000), fee: MicroTari(100), lock: 4000, inputs: 2, outputs: 1).0);
-        let tx2 = Arc::new(tx!(MicroTari(100_000), fee: MicroTari(60), lock: 3000, inputs: 2, outputs: 1).0);
-        let tx3 = Arc::new(tx!(MicroTari(100_000), fee: MicroTari(20), lock: 2500, inputs: 2, outputs: 1).0);
+    #[tokio::test]
+    async fn test_remove_all() {
+        let key_manager = create_test_core_key_manager_with_memory_db();
+        let tx1 =
+            Arc::new(tx!(MicroTari(100_000), fee: MicroTari(100), lock: 4000, inputs: 2, outputs: 1, &key_manager).0);
+        let tx2 =
+            Arc::new(tx!(MicroTari(100_000), fee: MicroTari(60), lock: 3000, inputs: 2, outputs: 1, &key_manager).0);
+        let tx3 =
+            Arc::new(tx!(MicroTari(100_000), fee: MicroTari(20), lock: 2500, inputs: 2, outputs: 1, &key_manager).0);
 
         let mut reorg_pool = ReorgPool::new(ReorgPoolConfig { expiry_height: 2 });
         reorg_pool.insert(1, tx1.clone());
@@ -422,16 +433,23 @@ mod test {
         assert!(txs.contains(&tx3));
     }
 
-    #[test]
-    fn remove_scan_for_and_remove_reorged_txs() {
+    #[tokio::test]
+    async fn remove_scan_for_and_remove_reorged_txs() {
+        let key_manager = create_test_core_key_manager_with_memory_db();
         let network = Network::LocalNet;
         let consensus = ConsensusManagerBuilder::new(network).build();
-        let tx1 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(10), lock: 4000, inputs: 2, outputs: 1).0);
-        let tx2 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(6), lock: 3000, inputs: 2, outputs: 1).0);
-        let tx3 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(4), lock: 2500, inputs: 2, outputs: 1).0);
-        let tx4 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(4), lock: 1000, inputs: 2, outputs: 1).0);
-        let tx5 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(10), lock: 2000, inputs: 2, outputs: 1).0);
-        let tx6 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(12), lock: 5500, inputs: 2, outputs: 1).0);
+        let tx1 =
+            Arc::new(tx!(MicroTari(10_000), fee: MicroTari(10), lock: 4000, inputs: 2, outputs: 1, &key_manager).0);
+        let tx2 =
+            Arc::new(tx!(MicroTari(10_000), fee: MicroTari(6), lock: 3000, inputs: 2, outputs: 1, &key_manager).0);
+        let tx3 =
+            Arc::new(tx!(MicroTari(10_000), fee: MicroTari(4), lock: 2500, inputs: 2, outputs: 1, &key_manager).0);
+        let tx4 =
+            Arc::new(tx!(MicroTari(10_000), fee: MicroTari(4), lock: 1000, inputs: 2, outputs: 1, &key_manager).0);
+        let tx5 =
+            Arc::new(tx!(MicroTari(10_000), fee: MicroTari(10), lock: 2000, inputs: 2, outputs: 1, &key_manager).0);
+        let tx6 =
+            Arc::new(tx!(MicroTari(10_000), fee: MicroTari(12), lock: 5500, inputs: 2, outputs: 1, &key_manager).0);
 
         let mut reorg_pool = ReorgPool::new(ReorgPoolConfig { expiry_height: 10 });
         reorg_pool.insert_all(1, vec![

@@ -43,7 +43,7 @@ use tari_common_types::{
     emoji::EmojiId,
     tari_address::TariAddress,
     transaction::TxId,
-    types::{CommitmentFactory, FixedHash, PublicKey, Signature},
+    types::{Commitment, FixedHash, PublicKey, Signature},
 };
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
@@ -53,14 +53,12 @@ use tari_comms::{
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::transactions::{
     tari_amount::{uT, MicroTari, Tari},
-    transaction_components::{OutputFeatures, TransactionOutput, UnblindedOutput},
+    transaction_components::{OutputFeatures, TransactionOutput, WalletOutput},
 };
-use tari_crypto::{keys::PublicKey as PublicKeyTrait, ristretto::RistrettoSecretKey};
-use tari_key_manager::key_manager_service::NextKeyResult;
+use tari_crypto::ristretto::RistrettoSecretKey;
 use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
     connectivity_service::WalletConnectivityInterface,
-    error::WalletError,
     output_manager_service::{handle::OutputManagerHandle, UtxoSelectionCriteria},
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
     TransactionStage,
@@ -782,16 +780,17 @@ pub async fn command_runner(
             },
             ExportUtxos(args) => match output_service.get_unspent_outputs().await {
                 Ok(utxos) => {
-                    let utxos: Vec<UnblindedOutput> = utxos.into_iter().map(|v| v.unblinded_output).collect();
+                    let utxos: Vec<(WalletOutput, Commitment)> =
+                        utxos.into_iter().map(|v| (v.wallet_output, v.commitment)).collect();
                     let count = utxos.len();
-                    let sum: MicroTari = utxos.iter().map(|utxo| utxo.value).sum();
+                    let sum: MicroTari = utxos.iter().map(|utxo| utxo.0.value).sum();
                     if let Some(file) = args.output_file {
                         if let Err(e) = write_utxos_to_csv_file(utxos, file) {
                             eprintln!("ExportUtxos error! {}", e);
                         }
                     } else {
                         for (i, utxo) in utxos.iter().enumerate() {
-                            println!("{}. Value: {} {}", i + 1, utxo.value, utxo.features);
+                            println!("{}. Value: {} {}", i + 1, utxo.0.value, utxo.0.features);
                         }
                     }
                     println!("Total number of UTXOs: {}", count);
@@ -801,15 +800,17 @@ pub async fn command_runner(
             },
             ExportSpentUtxos(args) => match output_service.get_spent_outputs().await {
                 Ok(utxos) => {
+                    let utxos: Vec<(WalletOutput, Commitment)> =
+                        utxos.into_iter().map(|v| (v.wallet_output, v.commitment)).collect();
                     let count = utxos.len();
-                    let sum: MicroTari = utxos.iter().map(|utxo| utxo.value).sum();
+                    let sum: MicroTari = utxos.iter().map(|utxo| utxo.0.value).sum();
                     if let Some(file) = args.output_file {
                         if let Err(e) = write_utxos_to_csv_file(utxos, file) {
                             eprintln!("ExportSpentUtxos error! {}", e);
                         }
                     } else {
                         for (i, utxo) in utxos.iter().enumerate() {
-                            println!("{}. Value: {} {}", i + 1, utxo.value, utxo.features);
+                            println!("{}. Value: {} {}", i + 1, utxo.0.value, utxo.0.features);
                         }
                     }
                     println!("Total number of UTXOs: {}", count);
@@ -819,7 +820,7 @@ pub async fn command_runner(
             },
             CountUtxos => match output_service.get_unspent_outputs().await {
                 Ok(utxos) => {
-                    let utxos: Vec<UnblindedOutput> = utxos.into_iter().map(|v| v.unblinded_output).collect();
+                    let utxos: Vec<WalletOutput> = utxos.into_iter().map(|v| v.wallet_output).collect();
                     let count = utxos.len();
                     let values: Vec<MicroTari> = utxos.iter().map(|utxo| utxo.value).collect();
                     let sum: MicroTari = values.iter().sum();
@@ -1049,8 +1050,7 @@ pub async fn command_runner(
     Ok(())
 }
 
-fn write_utxos_to_csv_file(utxos: Vec<UnblindedOutput>, file_path: PathBuf) -> Result<(), CommandError> {
-    let factory = CommitmentFactory::default();
+fn write_utxos_to_csv_file(utxos: Vec<(WalletOutput, Commitment)>, file_path: PathBuf) -> Result<(), CommandError> {
     let file = File::create(file_path).map_err(|e| CommandError::CSVFile(e.to_string()))?;
     let mut csv_file = LineWriter::new(file);
     writeln!(
@@ -1058,18 +1058,15 @@ fn write_utxos_to_csv_file(utxos: Vec<UnblindedOutput>, file_path: PathBuf) -> R
         r##""index","version","value","spending_key","commitment","flags","maturity","coinbase_extra","script","covenant","input_data","script_private_key","sender_offset_public_key","ephemeral_commitment","ephemeral_nonce","signature_u_x","signature_u_a","signature_u_y","script_lock_height","encrypted_data","minimum_value_promise""##
     )
     .map_err(|e| CommandError::CSVFile(e.to_string()))?;
-    for (i, utxo) in utxos.iter().enumerate() {
+    for (i, (utxo, commitment)) in utxos.iter().enumerate() {
         writeln!(
             csv_file,
             r##""{}","V{}","{}","{}","{}","{:?}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}""##,
             i + 1,
             utxo.version.as_u8(),
             utxo.value.0,
-            utxo.spending_key.to_hex(),
-            utxo.as_transaction_input(&factory)?
-                .commitment()
-                .map_err(|e| CommandError::WalletError(WalletError::TransactionError(e)))?
-                .to_hex(),
+            utxo.spending_key_id,
+            commitment.to_hex(),
             utxo.features.output_type,
             utxo.features.maturity,
             String::from_utf8(utxo.features.coinbase_extra.clone())
@@ -1077,7 +1074,7 @@ fn write_utxos_to_csv_file(utxos: Vec<UnblindedOutput>, file_path: PathBuf) -> R
             utxo.script.to_hex(),
             utxo.covenant.to_bytes().to_hex(),
             utxo.input_data.to_hex(),
-            utxo.script_private_key.to_hex(),
+            utxo.script_key_id,
             utxo.sender_offset_public_key.to_hex(),
             utxo.metadata_signature.ephemeral_commitment().to_hex(),
             utxo.metadata_signature.ephemeral_pubkey().to_hex(),
@@ -1104,24 +1101,6 @@ fn write_json_file<P: AsRef<Path>, T: Serialize>(path: P, data: &T) -> Result<()
 fn read_json_file<P: AsRef<Path>, T: DeserializeOwned>(path: P) -> Result<T, CommandError> {
     let file = File::open(path).map_err(|e| CommandError::JsonFile(e.to_string()))?;
     serde_json::from_reader(file).map_err(|e| CommandError::JsonFile(e.to_string()))
-}
-
-#[allow(dead_code)]
-fn write_to_issuer_key_file<P: AsRef<Path>>(path: P, key_result: NextKeyResult<PublicKey>) -> Result<(), CommandError> {
-    let file_exists = path.as_ref().exists();
-    let mut root = if file_exists {
-        read_json_file::<_, Vec<serde_json::Value>>(&path).map_err(|e| CommandError::JsonFile(e.to_string()))?
-    } else {
-        vec![]
-    };
-    let json = serde_json::json!({
-        "name": format!("issuer-key-{}", key_result.index),
-        "public_key": PublicKey::from_secret_key(&key_result.key).to_hex(),
-        "secret_key": key_result.key.to_hex(),
-    });
-    root.push(json);
-    write_json_file(path, &root).map_err(|e| CommandError::JsonFile(e.to_string()))?;
-    Ok(())
 }
 
 #[allow(dead_code)]

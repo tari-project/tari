@@ -61,7 +61,7 @@ use tari_crypto::{commitment::HomomorphicCommitment, keys::PublicKey as PublicKe
 use tari_integration_tests::{
     transaction::{
         build_transaction_with_output,
-        build_transaction_with_output_and_fee,
+        build_transaction_with_output_and_fee_per_gram,
         build_transaction_with_output_and_lockheight,
     },
     wallet_process::{create_wallet_client, get_default_cli, spawn_wallet},
@@ -548,20 +548,26 @@ pub async fn create_tx_spending_coinbase(world: &mut TariWorld, transaction: Str
         .map(|i| world.utxos.get(&i.to_string()).unwrap().clone())
         .collect::<Vec<_>>();
 
-    let (tx, utxo) = build_transaction_with_output(utxos);
+    let (tx, utxo) = build_transaction_with_output(utxos, &world.key_manager).await;
     world.utxos.insert(output, utxo);
     world.transactions.insert(transaction, tx);
 }
 
-#[when(expr = "I create a custom fee transaction {word} spending {word} to {word} with fee {word}")]
-async fn create_tx_custom_fee(world: &mut TariWorld, transaction: String, inputs: String, output: String, fee: u64) {
+#[when(expr = "I create a custom fee transaction {word} spending {word} to {word} with fee per gram {word}")]
+async fn create_tx_custom_fee_per_gram(
+    world: &mut TariWorld,
+    transaction: String,
+    inputs: String,
+    output: String,
+    fee: u64,
+) {
     let inputs = inputs.split(',').collect::<Vec<&str>>();
     let utxos = inputs
         .iter()
         .map(|i| world.utxos.get(&i.to_string()).unwrap().clone())
         .collect::<Vec<_>>();
 
-    let (tx, utxo) = build_transaction_with_output_and_fee(utxos, fee);
+    let (tx, utxo) = build_transaction_with_output_and_fee_per_gram(utxos, fee, &world.key_manager).await;
     world.utxos.insert(output, utxo);
     world.transactions.insert(transaction, tx);
 }
@@ -580,7 +586,7 @@ async fn create_tx_custom_lock(
         .map(|i| world.utxos.get(&i.to_string()).unwrap().clone())
         .collect::<Vec<_>>();
 
-    let (tx, utxo) = build_transaction_with_output_and_lockheight(utxos, lockheight);
+    let (tx, utxo) = build_transaction_with_output_and_lockheight(utxos, lockheight, &world.key_manager).await;
     world.utxos.insert(output, utxo);
     world.transactions.insert(transaction, tx);
 }
@@ -2252,7 +2258,7 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
     let import_utxos_req = ImportUtxosRequest {
         outputs: outputs
             .iter()
-            .map(|o| grpc::UnblindedOutput::try_from(o.clone()).expect("Unable to make grpc conversino"))
+            .map(|o| grpc::UnblindedOutput::try_from(o.clone()).expect("Unable to make grpc conversion"))
             .collect::<Vec<grpc::UnblindedOutput>>(),
     };
 
@@ -2356,7 +2362,7 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
     let import_utxos_req = ImportUtxosRequest {
         outputs: outputs
             .iter()
-            .map(|o| grpc::UnblindedOutput::try_from(o.clone()).expect("Unable to make grpc conversino"))
+            .map(|o| grpc::UnblindedOutput::try_from(o.clone()).expect("Unable to make grpc conversion"))
             .collect::<Vec<grpc::UnblindedOutput>>(),
     };
 
@@ -2471,7 +2477,7 @@ async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: Stri
     let import_utxos_req = ImportUtxosRequest {
         outputs: outputs
             .iter()
-            .map(|o| grpc::UnblindedOutput::try_from(o.clone()).expect("Unable to make grpc conversino"))
+            .map(|o| grpc::UnblindedOutput::try_from(o.clone()).expect("Unable to make grpc conversion"))
             .collect::<Vec<grpc::UnblindedOutput>>(),
     };
 
@@ -2559,7 +2565,7 @@ async fn multi_send_txs_from_wallet(
             amount,
             fee_per_gram,
             message: format!(
-                "I send multi-transfers with amount {} from {} to {} with fee {}",
+                "I send multi-transfers with amount {} from {} to {} with fee per gram {}",
                 amount,
                 sender.as_str(),
                 receiver.as_str(),

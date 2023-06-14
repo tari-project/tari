@@ -49,11 +49,8 @@ pub mod mempool;
 #[cfg(feature = "transactions")]
 pub mod transactions;
 
-#[cfg(feature = "transactions")]
-pub mod core_key_manager;
-
 mod common;
-pub use common::borsh;
+pub use common::{borsh, one_sided, ConfidentialOutputHasher};
 
 #[allow(clippy::ptr_offset_with_cast)]
 #[allow(clippy::assign_op_pattern)]

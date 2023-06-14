@@ -143,7 +143,7 @@ use tari_wallet::{
         error::OutputManagerError,
         storage::{
             database::{OutputBackendQuery, OutputManagerDatabase, SortDirection},
-            models::DbUnblindedOutput,
+            models::DbWalletOutput,
             OutputStatus,
         },
         UtxoSelectionCriteria,
@@ -207,7 +207,7 @@ pub type TariEncryptedOpenings = tari_core::transactions::transaction_components
 pub type TariComAndPubSignature = tari_common_types::types::ComAndPubSignature;
 pub type TariUnblindedOutput = tari_core::transactions::transaction_components::UnblindedOutput;
 
-pub struct TariUnblindedOutputs(Vec<DbUnblindedOutput>);
+pub struct TariUnblindedOutputs(Vec<UnblindedOutput>);
 
 pub struct TariContacts(Vec<TariContact>);
 
@@ -295,13 +295,13 @@ pub struct TariUtxo {
     pub status: u8,
 }
 
-impl From<DbUnblindedOutput> for TariUtxo {
-    fn from(x: DbUnblindedOutput) -> Self {
+impl From<DbWalletOutput> for TariUtxo {
+    fn from(x: DbWalletOutput) -> Self {
         Self {
             commitment: CString::new(x.commitment.to_hex())
                 .expect("failed to obtain hex from a commitment")
                 .into_raw(),
-            value: x.unblinded_output.value.as_u64(),
+            value: x.wallet_output.value.as_u64(),
             mined_height: x.mined_height.unwrap_or(0),
             mined_timestamp: x
                 .mined_timestamp
@@ -396,8 +396,8 @@ impl From<Vec<Commitment>> for TariVector {
     }
 }
 
-impl From<Vec<DbUnblindedOutput>> for TariVector {
-    fn from(v: Vec<DbUnblindedOutput>) -> TariVector {
+impl From<Vec<DbWalletOutput>> for TariVector {
+    fn from(v: Vec<DbWalletOutput>) -> TariVector {
         let mut v = ManuallyDrop::new(v.into_iter().map(TariUtxo::from).collect_vec());
 
         Self {
@@ -1751,48 +1751,7 @@ pub unsafe extern "C" fn unblinded_outputs_get_at(
         ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
-    Box::into_raw(Box::new((*outputs).0[position as usize].unblinded_output.clone()))
-}
-
-/// Gets a TariUnblindedOutput from TariUnblindedOutputs at position
-///
-/// ## Arguments
-/// `outputs` - The pointer to a TariUnblindedOutputs
-/// `position` - The integer position
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter.
-///
-/// ## Returns
-/// `*mut TariUnblindedOutput` - Returns a TariUnblindedOutput, note that it returns ptr::null_mut() if
-/// TariUnblindedOutputs is null or position is invalid
-///
-/// # Safety
-/// The ```contact_destroy``` method must be called when finished with a TariContact to prevent a memory leak
-#[no_mangle]
-pub unsafe extern "C" fn unblinded_outputs_received_tx_id_get_at(
-    outputs: *mut TariUnblindedOutputs,
-    position: c_uint,
-    error_out: *mut c_int,
-) -> *mut c_ulonglong {
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-    if outputs.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("outputs".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return ptr::null_mut();
-    }
-    let len = unblinded_outputs_get_length(outputs, error_out) as c_int - 1;
-    if len < 0 || position > len as c_uint {
-        error = LibWalletError::from(InterfaceError::PositionInvalidError).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return ptr::null_mut();
-    }
-    Box::into_raw(Box::new(
-        (*outputs).0[position as usize]
-            .received_in_tx_id
-            .unwrap_or_default()
-            .as_u64(),
-    ))
+    Box::into_raw(Box::new((*outputs).0[position as usize].clone()))
 }
 
 /// Frees memory for a TariUnblindedOutputs
@@ -1884,7 +1843,7 @@ pub unsafe extern "C" fn wallet_import_external_utxo_as_non_rewindable(
     };
     match (*wallet)
         .runtime
-        .block_on((*wallet).wallet.import_unblinded_output_as_non_rewindable(
+        .block_on((*wallet).wallet.import_key_manager_output_as_non_rewindable(
             (*output).clone(),
             source_address,
             message_string,
@@ -1930,8 +1889,23 @@ pub unsafe extern "C" fn wallet_get_unspent_outputs(
         .runtime
         .block_on((*wallet).wallet.output_manager_service.get_unspent_outputs());
     match received_outputs {
-        Ok(mut output) => {
-            outputs.append(&mut output);
+        Ok(rec_outputs) => {
+            for output in rec_outputs {
+                let unblinded = (*wallet).runtime.block_on(UnblindedOutput::from_wallet_output(
+                    output.wallet_output,
+                    &(*wallet).wallet.key_manager_service,
+                ));
+                match unblinded {
+                    Ok(uo) => {
+                        outputs.push(uo);
+                    },
+                    Err(e) => {
+                        error = LibWalletError::from(WalletError::TransactionError(e)).code;
+                        ptr::swap(error_out, &mut error as *mut c_int);
+                        return ptr::null_mut();
+                    },
+                }
+            }
             Box::into_raw(Box::new(TariUnblindedOutputs(outputs)))
         },
         Err(e) => {
@@ -8558,9 +8532,12 @@ mod test {
     use tari_comms::peer_manager::PeerFeatures;
     use tari_core::{
         covenant,
-        transactions::test_helpers::{create_non_recoverable_unblinded_output, create_test_input, TestParams},
+        test_helpers::create_test_core_key_manager_with_memory_db,
+        transactions::{
+            key_manager::SecretTransactionKeyManagerInterface,
+            test_helpers::{create_test_input, create_wallet_output_with_data, TestParams},
+        },
     };
-    use tari_crypto::ristretto::pedersen::extended_commitment_factory::ExtendedPedersenCommitmentFactory;
     use tari_key_manager::{mnemonic::MnemonicLanguage, mnemonic_wordlists};
     use tari_script::script;
     use tari_test_utils::random;
@@ -9866,10 +9843,11 @@ mod test {
         }
     }
 
-    #[test]
+    #[tokio::test]
     #[allow(clippy::too_many_lines)]
-    fn test_wallet_get_utxos() {
+    async fn test_wallet_get_utxos() {
         unsafe {
+            let key_manager = create_test_core_key_manager_with_memory_db();
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
             let mut recovery_in_progress = true;
@@ -9931,13 +9909,13 @@ mod test {
             );
 
             assert_eq!(error, 0);
-            (0..10).for_each(|i| {
-                let (_, uout) = create_test_input((1000 * i).into(), 0, &ExtendedPedersenCommitmentFactory::default());
+            for i in 0..10 {
+                let uout = create_test_input((1000 * i).into(), 0, &key_manager).await;
                 (*alice_wallet)
                     .runtime
                     .block_on((*alice_wallet).wallet.output_manager_service.add_output(uout, None))
                     .unwrap();
-            });
+            }
 
             // ascending order
             let outputs = wallet_get_utxos(
@@ -10012,9 +9990,9 @@ mod test {
         }
     }
 
-    #[test]
+    #[tokio::test]
     #[allow(clippy::too_many_lines)]
-    fn test_wallet_get_all_utxos() {
+    async fn test_wallet_get_all_utxos() {
         unsafe {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
@@ -10077,13 +10055,14 @@ mod test {
             );
             assert_eq!(error, 0);
 
-            (0..10).for_each(|i| {
-                let (_, uout) = create_test_input((1000 * i).into(), 0, &ExtendedPedersenCommitmentFactory::default());
+            let key_manager = create_test_core_key_manager_with_memory_db();
+            for i in 0..10 {
+                let uout = create_test_input((1000 * i).into(), 0, &key_manager).await;
                 (*alice_wallet)
                     .runtime
                     .block_on((*alice_wallet).wallet.output_manager_service.add_output(uout, None))
                     .unwrap();
-            });
+            }
 
             let outputs = wallet_get_utxos(
                 alice_wallet,
@@ -10125,10 +10104,11 @@ mod test {
         }
     }
 
-    #[test]
+    #[tokio::test]
     #[allow(clippy::too_many_lines, clippy::needless_collect)]
-    fn test_wallet_coin_join() {
+    async fn test_wallet_coin_join() {
         unsafe {
+            let key_manager = create_test_core_key_manager_with_memory_db();
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
             let mut recovery_in_progress = true;
@@ -10190,15 +10170,17 @@ mod test {
             );
 
             assert_eq!(error, 0);
-            (1..=5).for_each(|i| {
+            for i in 1..=5 {
                 (*alice_wallet)
                     .runtime
-                    .block_on((*alice_wallet).wallet.output_manager_service.add_output(
-                        create_test_input((15000 * i).into(), 0, &ExtendedPedersenCommitmentFactory::default()).1,
-                        None,
-                    ))
+                    .block_on(
+                        (*alice_wallet)
+                            .wallet
+                            .output_manager_service
+                            .add_output(create_test_input((15000 * i).into(), 0, &key_manager).await, None),
+                    )
                     .unwrap();
-            });
+            }
 
             // ----------------------------------------------------------------------------
             // preview
@@ -10260,7 +10242,7 @@ mod test {
                 })
                 .unwrap()
                 .into_iter()
-                .map(|x| x.unblinded_output.value)
+                .map(|x| x.wallet_output.value)
                 .collect::<Vec<MicroTari>>();
 
             let new_pending_outputs = (*alice_wallet)
@@ -10272,7 +10254,7 @@ mod test {
                 })
                 .unwrap()
                 .into_iter()
-                .map(|x| x.unblinded_output.value)
+                .map(|x| x.wallet_output.value)
                 .collect::<Vec<MicroTari>>();
 
             let post_join_total_amount = new_pending_outputs.iter().fold(0u64, |acc, x| acc + x.as_u64());
@@ -10321,10 +10303,11 @@ mod test {
         }
     }
 
-    #[test]
+    #[tokio::test]
     #[allow(clippy::too_many_lines, clippy::needless_collect)]
-    fn test_wallet_coin_split() {
+    async fn test_wallet_coin_split() {
         unsafe {
+            let key_manager = create_test_core_key_manager_with_memory_db();
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
             let mut recovery_in_progress = true;
@@ -10384,15 +10367,17 @@ mod test {
                 error_ptr,
             );
             assert_eq!(error, 0);
-            (1..=5).for_each(|i| {
+            for i in 1..=5 {
                 (*alice_wallet)
                     .runtime
-                    .block_on((*alice_wallet).wallet.output_manager_service.add_output(
-                        create_test_input((15000 * i).into(), 0, &ExtendedPedersenCommitmentFactory::default()).1,
-                        None,
-                    ))
+                    .block_on(
+                        (*alice_wallet)
+                            .wallet
+                            .output_manager_service
+                            .add_output(create_test_input((15000 * i).into(), 0, &key_manager).await, None),
+                    )
                     .unwrap();
-            });
+            }
 
             // ----------------------------------------------------------------------------
             // preview
@@ -10457,7 +10442,7 @@ mod test {
                 })
                 .unwrap()
                 .into_iter()
-                .map(|x| x.unblinded_output.value)
+                .map(|x| x.wallet_output.value)
                 .collect::<Vec<_>>();
 
             let new_pending_outputs = (*alice_wallet)
@@ -10469,7 +10454,7 @@ mod test {
                 })
                 .unwrap()
                 .into_iter()
-                .map(|x| x.unblinded_output.value)
+                .map(|x| x.wallet_output.value)
                 .collect::<Vec<_>>();
 
             let post_split_total_amount = new_pending_outputs.iter().fold(0u64, |acc, x| acc + x.as_u64());
@@ -10524,9 +10509,9 @@ mod test {
         }
     }
 
-    #[test]
+    #[tokio::test]
     #[allow(clippy::too_many_lines, clippy::needless_collect)]
-    fn test_wallet_get_network_and_version() {
+    async fn test_wallet_get_network_and_version() {
         unsafe {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
@@ -10587,15 +10572,19 @@ mod test {
                 error_ptr,
             );
             assert_eq!(error, 0);
-            (1..=5).for_each(|i| {
+
+            let key_manager = create_test_core_key_manager_with_memory_db();
+            for i in 1..=5 {
                 (*alice_wallet)
                     .runtime
-                    .block_on((*alice_wallet).wallet.output_manager_service.add_output(
-                        create_test_input((15000 * i).into(), 0, &ExtendedPedersenCommitmentFactory::default()).1,
-                        None,
-                    ))
+                    .block_on(
+                        (*alice_wallet)
+                            .wallet
+                            .output_manager_service
+                            .add_output(create_test_input((15000 * i).into(), 0, &key_manager).await, None),
+                    )
                     .unwrap();
-            });
+            }
 
             // obtaining network and version
             let _ = wallet_get_last_version(alice_config, &mut error as *mut c_int);
@@ -10697,25 +10686,30 @@ mod test {
         }
     }
 
-    #[test]
-    pub fn test_create_external_utxo() {
+    #[tokio::test]
+    pub async fn test_create_external_utxo() {
         unsafe {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
             // Test the consistent features case
-            let utxo_1 = create_non_recoverable_unblinded_output(
+            let key_manager = create_test_core_key_manager_with_memory_db();
+            let utxo_1 = create_wallet_output_with_data(
                 script!(Nop),
                 OutputFeatures::default(),
-                &TestParams::new(),
+                &TestParams::new(&key_manager).await,
                 MicroTari(1234u64),
+                &key_manager,
             )
+            .await
             .unwrap();
             let amount = utxo_1.value.as_u64();
-            let spending_key_ptr = Box::into_raw(Box::new(utxo_1.spending_key.clone()));
+            let spending_key = key_manager.get_private_key(&utxo_1.spending_key_id).await.unwrap();
+            let script_private_key = key_manager.get_private_key(&utxo_1.script_key_id).await.unwrap();
+            let spending_key_ptr = Box::into_raw(Box::new(spending_key));
             let features_ptr = Box::into_raw(Box::new(utxo_1.features.clone()));
             let metadata_signature_ptr = Box::into_raw(Box::new(utxo_1.metadata_signature.clone()));
             let sender_offset_public_key_ptr = Box::into_raw(Box::new(utxo_1.sender_offset_public_key.clone()));
-            let script_private_key_ptr = Box::into_raw(Box::new(utxo_1.script_private_key.clone()));
+            let script_private_key_ptr = Box::into_raw(Box::new(script_private_key));
             let covenant_ptr = Box::into_raw(Box::new(utxo_1.covenant.clone()));
             let encrypted_data_ptr = Box::into_raw(Box::new(utxo_1.encrypted_data));
             let minimum_value_promise = utxo_1.minimum_value_promise.as_u64();
@@ -10739,7 +10733,7 @@ mod test {
             );
 
             assert_eq!(error, 0);
-            assert_eq!(*tari_utxo, utxo_1);
+            assert_eq!((*tari_utxo).sender_offset_public_key, utxo_1.sender_offset_public_key);
             tari_unblinded_output_destroy(tari_utxo);
 
             // Cleanup
@@ -10759,9 +10753,9 @@ mod test {
         format!("/memory/{}", port).parse().unwrap()
     }
 
-    #[test]
+    #[tokio::test]
     #[allow(clippy::too_many_lines)]
-    pub fn test_import_external_utxo() {
+    pub async fn test_import_external_utxo() {
         unsafe {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
@@ -10834,20 +10828,26 @@ mod test {
             );
 
             // Test the consistent features case
-            let utxo_1 = create_non_recoverable_unblinded_output(
+            let key_manager = create_test_core_key_manager_with_memory_db();
+            let utxo_1 = create_wallet_output_with_data(
                 script!(Nop),
                 OutputFeatures::default(),
-                &TestParams::new(),
+                &TestParams::new(&key_manager).await,
                 MicroTari(1234u64),
+                &key_manager,
             )
+            .await
             .unwrap();
             let amount = utxo_1.value.as_u64();
-            let spending_key_ptr = Box::into_raw(Box::new(utxo_1.spending_key.clone()));
+
+            let spending_key = key_manager.get_private_key(&utxo_1.spending_key_id).await.unwrap();
+            let script_private_key = key_manager.get_private_key(&utxo_1.script_key_id).await.unwrap();
+            let spending_key_ptr = Box::into_raw(Box::new(spending_key));
             let features_ptr = Box::into_raw(Box::new(utxo_1.features.clone()));
             let source_address_ptr = Box::into_raw(Box::default());
             let metadata_signature_ptr = Box::into_raw(Box::new(utxo_1.metadata_signature.clone()));
             let sender_offset_public_key_ptr = Box::into_raw(Box::new(utxo_1.sender_offset_public_key.clone()));
-            let script_private_key_ptr = Box::into_raw(Box::new(utxo_1.script_private_key.clone()));
+            let script_private_key_ptr = Box::into_raw(Box::new(script_private_key));
             let covenant_ptr = Box::into_raw(Box::new(utxo_1.covenant.clone()));
             let encrypted_data_ptr = Box::into_raw(Box::new(utxo_1.encrypted_data));
             let minimum_value_promise = utxo_1.minimum_value_promise.as_u64();
@@ -10913,26 +10913,31 @@ mod test {
         }
     }
 
-    #[test]
-    pub fn test_utxo_json() {
+    #[tokio::test]
+    pub async fn test_utxo_json() {
         unsafe {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
 
-            let utxo_1 = create_non_recoverable_unblinded_output(
+            let key_manager = create_test_core_key_manager_with_memory_db();
+            let utxo_1 = create_wallet_output_with_data(
                 script!(Nop),
                 OutputFeatures::default(),
-                &TestParams::new(),
+                &TestParams::new(&key_manager).await,
                 MicroTari(1234u64),
+                &key_manager,
             )
+            .await
             .unwrap();
             let amount = utxo_1.value.as_u64();
-            let spending_key_ptr = Box::into_raw(Box::new(utxo_1.spending_key.clone()));
+            let spending_key = key_manager.get_private_key(&utxo_1.spending_key_id).await.unwrap();
+            let script_private_key = key_manager.get_private_key(&utxo_1.script_key_id).await.unwrap();
+            let spending_key_ptr = Box::into_raw(Box::new(spending_key));
             let features_ptr = Box::into_raw(Box::new(utxo_1.features.clone()));
             let source_address_ptr = Box::into_raw(Box::<TariWalletAddress>::default());
             let metadata_signature_ptr = Box::into_raw(Box::new(utxo_1.metadata_signature.clone()));
             let sender_offset_public_key_ptr = Box::into_raw(Box::new(utxo_1.sender_offset_public_key.clone()));
-            let script_private_key_ptr = Box::into_raw(Box::new(utxo_1.script_private_key.clone()));
+            let script_private_key_ptr = Box::into_raw(Box::new(script_private_key));
             let covenant_ptr = Box::into_raw(Box::new(utxo_1.covenant.clone()));
             let encrypted_data_ptr = Box::into_raw(Box::new(utxo_1.encrypted_data));
             let minimum_value_promise = utxo_1.minimum_value_promise.as_u64();

@@ -35,10 +35,10 @@ use tari_key_manager::{
 };
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 
-use crate::{core_key_manager::CoreKeyManagerHandle, transactions::CryptoFactories};
+use crate::transactions::{key_manager::TransactionKeyManagerWrapper, CryptoFactories};
 
 /// Initializes the key manager service by implementing the [ServiceInitializer] trait.
-pub struct CoreKeyManagerInitializer<T>
+pub struct TransactionKeyManagerInitializer<T>
 where T: KeyManagerBackend<PublicKey>
 {
     backend: Option<T>,
@@ -46,10 +46,10 @@ where T: KeyManagerBackend<PublicKey>
     crypto_factories: CryptoFactories,
 }
 
-impl<T> CoreKeyManagerInitializer<T>
+impl<T> TransactionKeyManagerInitializer<T>
 where T: KeyManagerBackend<PublicKey> + 'static
 {
-    /// Creates a new [CoreKeyManagerInitializer] from the provided [KeyManagerBackend] and [CipherSeed]
+    /// Creates a new [TransactionKeyManagerInitializer] from the provided [KeyManagerBackend] and [CipherSeed]
     pub fn new(backend: T, master_seed: CipherSeed, crypto_factories: CryptoFactories) -> Self {
         Self {
             backend: Some(backend),
@@ -60,7 +60,7 @@ where T: KeyManagerBackend<PublicKey> + 'static
 }
 
 #[async_trait]
-impl<T> ServiceInitializer for CoreKeyManagerInitializer<T>
+impl<T> ServiceInitializer for TransactionKeyManagerInitializer<T>
 where T: KeyManagerBackend<PublicKey> + 'static
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
@@ -69,7 +69,7 @@ where T: KeyManagerBackend<PublicKey> + 'static
             .take()
             .expect("Cannot start Key Manager Service without setting a storage backend");
 
-        let key_manager: CoreKeyManagerHandle<T> = CoreKeyManagerHandle::new(
+        let key_manager: TransactionKeyManagerWrapper<T> = TransactionKeyManagerWrapper::new(
             self.master_seed.clone(),
             KeyManagerDatabase::new(backend),
             self.crypto_factories.clone(),

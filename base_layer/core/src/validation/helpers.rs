@@ -507,17 +507,24 @@ mod test {
     }
 
     mod check_coinbase_maturity {
-        use super::*;
-        use crate::transactions::{aggregated_body::AggregateBody, transaction_components::TransactionError};
+        use futures::executor::block_on;
 
-        #[test]
-        fn it_succeeds_for_valid_coinbase() {
+        use super::*;
+        use crate::{
+            test_helpers::create_test_core_key_manager_with_memory_db,
+            transactions::{aggregated_body::AggregateBody, transaction_components::TransactionError},
+        };
+
+        #[tokio::test]
+        async fn it_succeeds_for_valid_coinbase() {
             let height = 1;
-            let test_params = TestParams::new();
+            let key_manager = create_test_core_key_manager_with_memory_db();
+            let test_params = TestParams::new(&key_manager).await;
             let rules = test_helpers::create_consensus_manager();
-            let coinbase = test_helpers::create_unblinded_coinbase(&test_params, height, None);
-            let coinbase_output = coinbase.as_transaction_output(&CryptoFactories::default()).unwrap();
-            let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key);
+            let key_manager = create_test_core_key_manager_with_memory_db();
+            let coinbase = block_on(test_helpers::create_coinbase_wallet_output(&test_params, height, None));
+            let coinbase_output = coinbase.as_transaction_output(&key_manager).await.unwrap();
+            let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key_id, &key_manager).await;
 
             let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
 
@@ -527,15 +534,16 @@ mod test {
                 .unwrap();
         }
 
-        #[test]
-        fn it_returns_error_for_invalid_coinbase_maturity() {
+        #[tokio::test]
+        async fn it_returns_error_for_invalid_coinbase_maturity() {
             let height = 1;
-            let test_params = TestParams::new();
+            let key_manager = create_test_core_key_manager_with_memory_db();
+            let test_params = TestParams::new(&key_manager).await;
             let rules = test_helpers::create_consensus_manager();
-            let mut coinbase = test_helpers::create_unblinded_coinbase(&test_params, height, None);
+            let mut coinbase = test_helpers::create_coinbase_wallet_output(&test_params, height, None).await;
             coinbase.features.maturity = 0;
-            let coinbase_output = coinbase.as_transaction_output(&CryptoFactories::default()).unwrap();
-            let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key);
+            let coinbase_output = coinbase.as_transaction_output(&key_manager).await.unwrap();
+            let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key_id, &key_manager).await;
 
             let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
 
@@ -548,15 +556,16 @@ mod test {
             unpack_enum!(TransactionError::InvalidCoinbaseMaturity = err);
         }
 
-        #[test]
-        fn it_returns_error_for_invalid_coinbase_reward() {
+        #[tokio::test]
+        async fn it_returns_error_for_invalid_coinbase_reward() {
             let height = 1;
-            let test_params = TestParams::new();
+            let key_manager = create_test_core_key_manager_with_memory_db();
+            let test_params = TestParams::new(&key_manager).await;
             let rules = test_helpers::create_consensus_manager();
-            let mut coinbase = test_helpers::create_unblinded_coinbase(&test_params, height, None);
+            let mut coinbase = test_helpers::create_coinbase_wallet_output(&test_params, height, None).await;
             coinbase.value = 123.into();
-            let coinbase_output = coinbase.as_transaction_output(&CryptoFactories::default()).unwrap();
-            let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key);
+            let coinbase_output = coinbase.as_transaction_output(&key_manager).await.unwrap();
+            let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key_id, &key_manager).await;
 
             let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
             let reward = rules.calculate_coinbase_and_fees(height, body.kernels());

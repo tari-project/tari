@@ -31,8 +31,8 @@ use tari_core::{
     blocks::Block,
     chain_storage::{BlockAddResult, BlockchainDatabase, ChainStorageError},
     consensus::ConsensusManager,
-    test_helpers::blockchain::TempDatabase,
-    transactions::{transaction_components::UnblindedOutput, CryptoFactories},
+    test_helpers::{blockchain::TempDatabase, TestKeyManager},
+    transactions::transaction_components::WalletOutput,
 };
 
 use crate::helpers::{
@@ -49,14 +49,15 @@ pub struct TestBlockchain {
     blocks: HashMap<String, BlockProxy>,
     hash_to_block: HashMap<FixedHash, String>,
     consensus_manager: ConsensusManager,
-    outputs: Vec<Vec<UnblindedOutput>>,
+    outputs: Vec<Vec<WalletOutput>>,
+    pub key_manager: TestKeyManager,
 }
 
 #[allow(dead_code)]
 impl TestBlockchain {
-    pub fn with_genesis(genesis_name: &'static str) -> Self {
+    pub async fn with_genesis(genesis_name: &'static str) -> Self {
         let network = Network::LocalNet;
-        let (store, mut b, outputs, consensus_manager) = create_new_blockchain(network);
+        let (store, mut b, outputs, consensus_manager, key_manager) = create_new_blockchain(network).await;
 
         let name = genesis_name.to_string();
         let mut blocks = HashMap::new();
@@ -71,6 +72,7 @@ impl TestBlockchain {
             hash_to_block,
             consensus_manager,
             outputs,
+            key_manager,
         }
     }
 
@@ -82,7 +84,7 @@ impl TestBlockchain {
         &self.consensus_manager
     }
 
-    pub fn build_block(&self, block: TestBlockBuilderInner) -> (Block, UnblindedOutput) {
+    pub async fn build_block(&self, block: TestBlockBuilderInner) -> (Block, WalletOutput) {
         debug!(target: LOG_TARGET, "Adding block '{}' to test block chain", block.name);
         let prev_block = self.blocks.get(&block.child_of.unwrap());
         let prev_block = prev_block.map(|b| &b.block).unwrap();
@@ -90,9 +92,10 @@ impl TestBlockchain {
             prev_block,
             block.transactions,
             &self.consensus_manager,
-            &CryptoFactories::default(),
             None,
-        );
+            &self.key_manager,
+        )
+        .await;
 
         let mut new_block = self.store.prepare_new_block(template).unwrap();
         new_block.header.nonce = OsRng.next_u64();
@@ -101,9 +104,9 @@ impl TestBlockchain {
         (new_block, output)
     }
 
-    pub fn add_block(&mut self, block: TestBlockBuilderInner) -> (BlockAddResult, UnblindedOutput) {
+    pub async fn add_block(&mut self, block: TestBlockBuilderInner) -> (BlockAddResult, WalletOutput) {
         let block_name = block.name.clone();
-        let (block, output) = self.build_block(block);
+        let (block, output) = self.build_block(block).await;
         self.outputs.push(vec![output.clone()]);
         let res = self.add_raw_block(&block_name, block).unwrap();
         (res, output)
@@ -122,7 +125,7 @@ impl TestBlockchain {
         Ok(res)
     }
 
-    pub fn outputs_at(&self, height: u64) -> &[UnblindedOutput] {
+    pub fn outputs_at(&self, height: u64) -> &[WalletOutput] {
         #[allow(clippy::cast_possible_truncation)]
         self.outputs.get(height as usize).unwrap()
     }

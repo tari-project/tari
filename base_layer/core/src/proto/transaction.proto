@@ -120,7 +120,7 @@ message AggregateBody {
 // A transaction which consists of a kernel offset and an aggregate body made up of inputs, outputs and kernels.
 // This struct is used to describe single transactions only.
 message Transaction {
-    BlindingFactor offset = 1;
+    PrivateKey offset = 1;
     AggregateBody body = 2;
-    BlindingFactor script_offset = 3;
+    PrivateKey script_offset = 3;
 }
