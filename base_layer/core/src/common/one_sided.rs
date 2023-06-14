@@ -22,7 +22,7 @@
 
 use core::result::Result;
 
-use tari_common_types::types::{PrivateKey, PublicKey};
+use tari_common_types::types::{PrivateKey, PublicKey, WalletHasher};
 use tari_comms::types::CommsDHKE;
 use tari_crypto::{
     hash::blake2::Blake256,
@@ -31,8 +31,6 @@ use tari_crypto::{
     keys::PublicKey as PKtrait,
 };
 use tari_utilities::{byte_array::ByteArrayError, ByteArray};
-
-use crate::WalletHasher;
 
 hash_domain!(
     WalletOutputRewindKeysDomain,
@@ -60,16 +58,6 @@ pub fn shared_secret_to_output_encryption_key(shared_secret: &CommsDHKE) -> Resu
     PrivateKey::from_bytes(
         WalletOutputEncryptionKeysDomainHasher::new()
             .chain(shared_secret.as_bytes())
-            .finalize()
-            .as_ref(),
-    )
-}
-
-/// Generate an output encryption key from a Diffie-Hellman shared secret's bytes
-pub fn shared_secret_bytes_to_output_encryption_key(shared_secret: &[u8]) -> Result<PrivateKey, ByteArrayError> {
-    PrivateKey::from_bytes(
-        WalletOutputEncryptionKeysDomainHasher::new()
-            .chain(shared_secret)
             .finalize()
             .as_ref(),
     )

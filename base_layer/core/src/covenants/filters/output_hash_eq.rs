@@ -44,19 +44,28 @@ mod test {
             filters::test::setup_filter_test,
             test::{create_input, create_outputs},
         },
+        test_helpers::create_test_core_key_manager_with_memory_db,
     };
 
-    #[test]
-    fn it_filters_output_with_specific_hash() {
-        let output = create_outputs(1, Default::default()).remove(0);
+    #[tokio::test]
+    async fn it_filters_output_with_specific_hash() {
+        let key_manager = create_test_core_key_manager_with_memory_db();
+        let output = create_outputs(1, Default::default(), &key_manager).await.remove(0);
         let output_hash = output.hash();
         let mut hash = [0u8; 32];
         hash.copy_from_slice(output_hash.as_slice());
         let covenant = covenant!(output_hash_eq(@hash(hash.into())));
-        let input = create_input();
-        let (mut context, outputs) = setup_filter_test(&covenant, &input, 0, move |outputs| {
-            outputs.insert(5, output);
-        });
+        let input = create_input(&key_manager).await;
+        let (mut context, outputs) = setup_filter_test(
+            &covenant,
+            &input,
+            0,
+            move |outputs| {
+                outputs.insert(5, output);
+            },
+            &key_manager,
+        )
+        .await;
         let mut output_set = OutputSet::new(&outputs);
         OutputHashEqFilter.filter(&mut context, &mut output_set).unwrap();
 

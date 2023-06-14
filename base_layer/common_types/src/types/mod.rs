@@ -26,6 +26,7 @@ mod fixed_hash;
 pub use bullet_rangeproofs::BulletRangeProof;
 use tari_crypto::{
     hash::blake2::Blake256,
+    hasher,
     ristretto::{
         bulletproofs_plus::BulletproofsPlusService,
         pedersen::{extended_commitment_factory::ExtendedPedersenCommitmentFactory, PedersenCommitment},
@@ -78,6 +79,8 @@ pub type RangeProofService = BulletproofsPlusService;
 pub type RangeProof = BulletRangeProof;
 
 use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
+
+hasher!(Blake256, WalletHasher, "com.tari.base_layer.wallet", 1, wallet_hasher);
 
 hash_domain!(
     BulletRangeProofHashDomain,

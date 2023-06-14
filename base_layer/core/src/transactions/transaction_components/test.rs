@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use rand::{self, rngs::OsRng};
-use tari_common_types::types::{ComAndPubSignature, CommitmentFactory, PrivateKey, PublicKey, Signature};
+use tari_common_types::types::{ComAndPubSignature, PrivateKey, PublicKey, Signature};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::SecretKey as SecretKeyTrait,
@@ -35,10 +35,15 @@ use tari_test_utils::unpack_enum;
 use super::*;
 use crate::{
     consensus::ConsensusManager,
+    test_helpers::{
+        create_test_core_key_manager_with_memory_db,
+        create_test_core_key_manager_with_memory_db_with_range_proof_size,
+    },
     transactions::{
+        key_manager::TransactionKeyManagerInterface,
         tari_amount::{uT, MicroTari, T},
         test_helpers,
-        test_helpers::{create_sender_transaction_protocol_with, create_unblinded_txos, TestParams, UtxoTestParams},
+        test_helpers::{TestParams, UtxoTestParams},
         transaction_components::{transaction_output::batch_verify_range_proofs, EncryptedData, OutputFeatures},
         transaction_protocol::TransactionProtocolError,
         CryptoFactories,
@@ -47,76 +52,76 @@ use crate::{
     validation::{transaction::TransactionInternalConsistencyValidator, ValidationError},
 };
 
-#[test]
-fn input_and_output_and_unblinded_output_hash_match() {
-    let test_params = TestParams::new();
-    let factory = CommitmentFactory::default();
+#[tokio::test]
+async fn input_and_output_and_key_manager_output_hash_match() {
+    let key_manager = create_test_core_key_manager_with_memory_db();
+    let test_params = TestParams::new(&key_manager).await;
 
     let i = test_params
-        .create_unblinded_output_not_recoverable(Default::default())
+        .create_output(Default::default(), &key_manager)
+        .await
         .unwrap();
-    let output = i.as_transaction_output(&CryptoFactories::default()).unwrap();
-    let input = i.as_transaction_input(&factory).unwrap();
+    let output = i.as_transaction_output(&key_manager).await.unwrap();
+    let input = i.as_transaction_input(&key_manager).await.unwrap();
     assert_eq!(output.hash(), input.output_hash());
-    assert_eq!(output.hash(), i.hash(&CryptoFactories::default()));
+    assert_eq!(output.hash(), i.hash(&key_manager).await.unwrap());
 }
 
-#[test]
-fn unblinded_input() {
-    let test_params = TestParams::new();
-    let factory = CommitmentFactory::default();
+#[tokio::test]
+async fn key_manager_input() {
+    let key_manager = create_test_core_key_manager_with_memory_db();
+    let test_params = TestParams::new(&key_manager).await;
 
     let i = test_params
-        .create_unblinded_output_not_recoverable(Default::default())
+        .create_output(Default::default(), &key_manager)
+        .await
         .unwrap();
     let input = i
-        .as_transaction_input(&factory)
+        .as_transaction_input(&key_manager)
+        .await
         .expect("Should be able to create transaction input");
 
     assert_eq!(*input.features().unwrap(), OutputFeatures::default());
-    assert!(input.opened_by(&i, &factory).unwrap());
-}
-
-#[test]
-fn unblinded_input_with_recovery_data() {
-    let test_params = TestParams::new();
-    let factory = CommitmentFactory::default();
-
-    let i = test_params
-        .create_unblinded_output_with_recovery_data(Default::default())
+    let (_, value) = key_manager
+        .try_commitment_key_recovery(input.commitment().unwrap(), input.encrypted_data().unwrap(), None)
+        .await
         .unwrap();
-    let input = i
-        .as_transaction_input(&factory)
-        .expect("Should be able to create transaction input");
-
-    assert_eq!(*input.features().unwrap(), OutputFeatures::default());
-    assert!(input.opened_by(&i, &factory).unwrap());
+    assert_eq!(value, i.value);
 }
 
-#[test]
-fn range_proof_verification() {
+#[tokio::test]
+async fn range_proof_verification() {
     let factories = CryptoFactories::new(32);
+    let key_manager = create_test_core_key_manager_with_memory_db_with_range_proof_size(32);
     // Directly test the tx_output verification
-    let test_params_1 = TestParams::new();
-    let test_params_2 = TestParams::new();
+    let test_params_1 = TestParams::new(&key_manager).await;
+    let test_params_2 = TestParams::new(&key_manager).await;
 
     // For testing the max range has been limited to 2^32 so this value is too large.
-    let unblinded_output1 = test_params_1
-        .create_unblinded_output_not_recoverable(UtxoTestParams {
-            value: (2u64.pow(32) - 1u64).into(),
-            ..Default::default()
-        })
+    let key_manager_output1 = test_params_1
+        .create_output(
+            UtxoTestParams {
+                value: (2u64.pow(32) - 1u64).into(),
+                ..Default::default()
+            },
+            &key_manager,
+        )
+        .await
         .unwrap();
-    let tx_output1 = unblinded_output1.as_transaction_output(&factories).unwrap();
+    let tx_output1 = key_manager_output1.as_transaction_output(&key_manager).await.unwrap();
     tx_output1.verify_range_proof(&factories.range_proof).unwrap();
 
-    let unblinded_output2 = test_params_2
-        .create_unblinded_output_not_recoverable(UtxoTestParams {
-            value: (2u64.pow(32) + 1u64).into(),
-            ..Default::default()
-        })
+    let key_manager_output2 = test_params_2
+        .create_output(
+            UtxoTestParams {
+                value: (2u64.pow(32) + 1u64).into(),
+                ..Default::default()
+            },
+            &key_manager,
+        )
+        .await
         .unwrap();
-    let tx_output2 = unblinded_output2.as_transaction_output(&factories);
+    let tx_output2 = key_manager_output2.as_transaction_output(&key_manager).await;
     match tx_output2 {
         Ok(_) => panic!("Range proof should have failed to verify"),
         Err(e) => {
@@ -124,78 +129,92 @@ fn range_proof_verification() {
             assert_eq!(s, "Value provided is outside the range allowed by the range proof");
         },
     }
+    let key = PrivateKey::random(&mut OsRng);
 
     // Test that proofs with values encroaching on the bit length cannot be constructed
-    if factories
-        .range_proof
-        .construct_proof(&test_params_2.spend_key, 2u64.pow(32) - 1)
-        .is_err()
-    {
+    if factories.range_proof.construct_proof(&key, 2u64.pow(32) - 1).is_err() {
         panic!("Range proof construction should have succeeded")
     };
-    if factories
-        .range_proof
-        .construct_proof(&test_params_2.spend_key, 2u64.pow(32))
-        .is_ok()
-    {
+    if factories.range_proof.construct_proof(&key, 2u64.pow(32)).is_ok() {
         panic!("Range proof construction should have failed")
     };
-    if factories
-        .range_proof
-        .construct_proof(&test_params_2.spend_key, 2u64.pow(32) + 1)
-        .is_ok()
-    {
+    if factories.range_proof.construct_proof(&key, 2u64.pow(32) + 1).is_ok() {
         panic!("Range proof construction should have failed")
     };
 }
 
-#[test]
-fn range_proof_verification_batch() {
+#[tokio::test]
+async fn range_proof_verification_batch() {
     let factories = CryptoFactories::new(64);
-
-    let unblinded_output1 = TestParams::new()
-        .create_unblinded_output_not_recoverable(UtxoTestParams {
-            value: (1u64).into(),
-            ..Default::default()
-        })
+    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager_output1 = TestParams::new(&key_manager)
+        .await
+        .create_output(
+            UtxoTestParams {
+                value: (1u64).into(),
+                ..Default::default()
+            },
+            &key_manager,
+        )
+        .await
         .unwrap();
-    let tx_output1 = unblinded_output1.as_transaction_output(&factories).unwrap();
+    let tx_output1 = key_manager_output1.as_transaction_output(&key_manager).await.unwrap();
     assert!(tx_output1.verify_range_proof(&factories.range_proof).is_ok());
 
-    let unblinded_output2 = TestParams::new()
-        .create_unblinded_output_not_recoverable(UtxoTestParams {
-            value: (2u64).into(),
-            ..Default::default()
-        })
+    let key_manager_output2 = TestParams::new(&key_manager)
+        .await
+        .create_output(
+            UtxoTestParams {
+                value: (2u64).into(),
+                ..Default::default()
+            },
+            &key_manager,
+        )
+        .await
         .unwrap();
-    let tx_output2 = unblinded_output2.as_transaction_output(&factories).unwrap();
+    let tx_output2 = key_manager_output2.as_transaction_output(&key_manager).await.unwrap();
     assert!(tx_output2.verify_range_proof(&factories.range_proof).is_ok());
 
-    let unblinded_output3 = TestParams::new()
-        .create_unblinded_output_not_recoverable(UtxoTestParams {
-            value: (3u64).into(),
-            ..Default::default()
-        })
+    let key_manager_output3 = TestParams::new(&key_manager)
+        .await
+        .create_output(
+            UtxoTestParams {
+                value: (3u64).into(),
+                ..Default::default()
+            },
+            &key_manager,
+        )
+        .await
         .unwrap();
-    let tx_output3 = unblinded_output3.as_transaction_output(&factories).unwrap();
+    let tx_output3 = key_manager_output3.as_transaction_output(&key_manager).await.unwrap();
     assert!(tx_output3.verify_range_proof(&factories.range_proof).is_ok());
 
-    let unblinded_output4 = TestParams::new()
-        .create_unblinded_output_not_recoverable(UtxoTestParams {
-            value: (4u64).into(),
-            ..Default::default()
-        })
+    let key_manager_output4 = TestParams::new(&key_manager)
+        .await
+        .create_output(
+            UtxoTestParams {
+                value: (4u64).into(),
+                ..Default::default()
+            },
+            &key_manager,
+        )
+        .await
         .unwrap();
-    let tx_output4 = unblinded_output4.as_transaction_output(&factories).unwrap();
+    let tx_output4 = key_manager_output4.as_transaction_output(&key_manager).await.unwrap();
     assert!(tx_output4.verify_range_proof(&factories.range_proof).is_ok());
 
-    let unblinded_output5 = TestParams::new()
-        .create_unblinded_output_not_recoverable(UtxoTestParams {
-            value: (5u64).into(),
-            ..Default::default()
-        })
+    let key_manager_output5 = TestParams::new(&key_manager)
+        .await
+        .create_output(
+            UtxoTestParams {
+                value: (5u64).into(),
+                ..Default::default()
+            },
+            &key_manager,
+        )
+        .await
         .unwrap();
-    let mut tx_output5 = unblinded_output5.as_transaction_output(&factories).unwrap();
+    let mut tx_output5 = key_manager_output5.as_transaction_output(&key_manager).await.unwrap();
     assert!(tx_output5.verify_range_proof(&factories.range_proof).is_ok());
 
     // The batch should pass
@@ -216,25 +235,26 @@ fn range_proof_verification_batch() {
     assert!(batch_verify_range_proofs(&factories.range_proof, &outputs).is_err());
 }
 
-#[test]
-fn sender_signature_verification() {
-    let test_params = TestParams::new();
-    let factories = CryptoFactories::new(32);
-    let unblinded_output = test_params
-        .create_unblinded_output_not_recoverable(Default::default())
+#[tokio::test]
+async fn sender_signature_verification() {
+    let key_manager = create_test_core_key_manager_with_memory_db();
+    let test_params = TestParams::new(&key_manager).await;
+    let key_manager_output = test_params
+        .create_output(Default::default(), &key_manager)
+        .await
         .unwrap();
 
-    let mut tx_output = unblinded_output.as_transaction_output(&factories).unwrap();
+    let mut tx_output = key_manager_output.as_transaction_output(&key_manager).await.unwrap();
     assert!(tx_output.verify_metadata_signature().is_ok());
     tx_output.script = TariScript::default();
     assert!(tx_output.verify_metadata_signature().is_err());
 
-    tx_output = unblinded_output.as_transaction_output(&factories).unwrap();
+    tx_output = key_manager_output.as_transaction_output(&key_manager).await.unwrap();
     assert!(tx_output.verify_metadata_signature().is_ok());
     tx_output.features = OutputFeatures::create_coinbase(0, None);
     assert!(tx_output.verify_metadata_signature().is_err());
 
-    tx_output = unblinded_output.as_transaction_output(&factories).unwrap();
+    tx_output = key_manager_output.as_transaction_output(&key_manager).await.unwrap();
     assert!(tx_output.verify_metadata_signature().is_ok());
     tx_output.sender_offset_public_key = PublicKey::default();
     assert!(tx_output.verify_metadata_signature().is_err());
@@ -247,7 +267,7 @@ fn kernel_hash() {
     let sig = Signature::new(r, s);
     let excess = Commitment::from_hex("9017be5092b85856ce71061cadeb20c2d1fabdf664c4b3f082bf44cf5065e650").unwrap();
     let k = KernelBuilder::new()
-        .with_signature(&sig)
+        .with_signature(sig)
         .with_fee(100.into())
         .with_excess(&excess)
         .with_lock_height(500)
@@ -266,7 +286,7 @@ fn kernel_metadata() {
     let sig = Signature::new(r, s);
     let excess = Commitment::from_hex("e0bd3f743b566272277c357075b0584fc840d79efac49e9b3b6dbaa8a351bc0c").unwrap();
     let k = KernelBuilder::new()
-        .with_signature(&sig)
+        .with_signature(sig)
         .with_fee(100.into())
         .with_excess(&excess)
         .with_lock_height(500)
@@ -339,20 +359,23 @@ fn check_timelocks() {
     assert_eq!(tx.min_spendable_height(), 10);
 }
 
-#[test]
-fn test_validate_internal_consistency() {
+#[tokio::test]
+async fn test_validate_internal_consistency() {
     let features = OutputFeatures { ..Default::default() };
-    let (tx, _, _) = test_helpers::create_tx(5000.into(), 3.into(), 1, 2, 1, 4, features);
+    let key_manager = create_test_core_key_manager_with_memory_db();
+    let (tx, _, _) = test_helpers::create_tx(5000.into(), 3.into(), 1, 2, 1, 4, features, &key_manager).await;
     let rules = ConsensusManager::builder(Network::LocalNet).build();
     let factories = CryptoFactories::default();
     let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
     assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
 }
 
-#[test]
+#[tokio::test]
 #[allow(clippy::identity_op)]
-fn check_cut_through() {
-    let (tx, _, outputs) = test_helpers::create_tx(50000000.into(), 3.into(), 1, 2, 1, 2, Default::default());
+async fn check_cut_through() {
+    let key_manager = create_test_core_key_manager_with_memory_db();
+    let (tx, _, outputs) =
+        test_helpers::create_tx(50000000.into(), 3.into(), 1, 2, 1, 2, Default::default(), &key_manager).await;
 
     assert_eq!(tx.body.inputs().len(), 2);
     assert_eq!(tx.body.outputs().len(), 2);
@@ -364,7 +387,7 @@ fn check_cut_through() {
     validator.validate(&tx, None, None, u64::MAX).unwrap();
 
     let schema = txn_schema!(from: vec![outputs[1].clone()], to: vec![1 * T, 2 * T]);
-    let (tx2, _outputs) = test_helpers::spend_utxos(schema);
+    let (tx2, _outputs) = test_helpers::spend_utxos(schema, &key_manager).await;
 
     assert_eq!(tx2.body.inputs().len(), 1);
     assert_eq!(tx2.body.outputs().len(), 3);
@@ -400,9 +423,11 @@ fn check_cut_through() {
     validator.validate(&tx3_cut_through, None, None, u64::MAX).unwrap_err();
 }
 
-#[test]
-fn check_duplicate_inputs_outputs() {
-    let (tx, _, _outputs) = test_helpers::create_tx(50000000.into(), 3.into(), 1, 2, 1, 2, Default::default());
+#[tokio::test]
+async fn check_duplicate_inputs_outputs() {
+    let key_manager = create_test_core_key_manager_with_memory_db();
+    let (tx, _, _outputs) =
+        test_helpers::create_tx(50000000.into(), 3.into(), 1, 2, 1, 2, Default::default(), &key_manager).await;
     assert!(!tx.body.contains_duplicated_outputs());
     assert!(!tx.body.contains_duplicated_inputs());
 
@@ -419,9 +444,10 @@ fn check_duplicate_inputs_outputs() {
     assert!(broken_tx_2.body.contains_duplicated_outputs());
 }
 
-#[test]
-fn inputs_not_malleable() {
-    let (inputs, outputs) = test_helpers::create_unblinded_txos(
+#[tokio::test]
+async fn inputs_not_malleable() {
+    let key_manager = create_test_core_key_manager_with_memory_db();
+    let (inputs, outputs) = test_helpers::create_wallet_outputs(
         5000.into(),
         1,
         1,
@@ -430,9 +456,11 @@ fn inputs_not_malleable() {
         &Default::default(),
         &script![Nop],
         &Default::default(),
-    );
+        &key_manager,
+    )
+    .await;
     let mut stack = inputs[0].input_data.clone();
-    let mut tx = test_helpers::create_transaction_with(1, 15.into(), inputs, outputs);
+    let mut tx = test_helpers::create_transaction_with(1, 15.into(), inputs, outputs, &key_manager).await;
 
     stack
         .push(StackItem::Hash(*b"Pls put this on tha tari network"))
@@ -448,38 +476,30 @@ fn inputs_not_malleable() {
     unpack_enum!(ValidationError::TransactionError(_a) = err);
 }
 
-#[test]
-fn test_output_recover_openings() {
-    let test_params = TestParams::new();
-    let factories = CryptoFactories::new(32);
+#[tokio::test]
+async fn test_output_recover_openings() {
+    let key_manager = create_test_core_key_manager_with_memory_db();
+    let test_params = TestParams::new(&key_manager).await;
     let v = MicroTari::from(42);
-    let random_key = PrivateKey::random(&mut OsRng);
 
-    let unblinded_output = test_params
-        .create_unblinded_output_with_recovery_data(UtxoTestParams {
-            value: v,
-            ..Default::default()
-        })
+    let key_manager_output = test_params
+        .create_output(
+            UtxoTestParams {
+                value: v,
+                ..Default::default()
+            },
+            &key_manager,
+        )
+        .await
         .unwrap();
-    let output = unblinded_output.as_transaction_output(&factories).unwrap();
+    let output = key_manager_output.as_transaction_output(&key_manager).await.unwrap();
 
-    if let Ok((value, recovered_mask)) =
-        EncryptedData::decrypt_data(&random_key, &output.commitment, &output.encrypted_data)
-    {
-        assert!(output
-            .verify_mask(&factories.range_proof, &recovered_mask, value.as_u64())
-            .is_err());
-    }
-    let (value, recovered_mask) = EncryptedData::decrypt_data(
-        &test_params.recovery_data.encryption_key,
-        &output.commitment,
-        &output.encrypted_data,
-    )
-    .unwrap();
-    assert!(output
-        .verify_mask(&factories.range_proof, &recovered_mask, value.as_u64())
-        .is_ok());
-    assert_eq!(recovered_mask, test_params.spend_key);
+    let (mask, value) = key_manager
+        .try_commitment_key_recovery(&output.commitment, &output.encrypted_data, None)
+        .await
+        .unwrap();
+    assert_eq!(value, key_manager_output.value);
+    assert_eq!(mask, test_params.spend_key_id);
 }
 
 mod validate_internal_consistency {
@@ -490,14 +510,19 @@ mod validate_internal_consistency {
     use tari_crypto::{hash::blake2::Blake256, hashing::DomainSeparation};
 
     use super::*;
-    use crate::covenants::{BaseLayerCovenantsDomain, COVENANTS_FIELD_HASHER_LABEL};
+    use crate::{
+        covenants::{BaseLayerCovenantsDomain, COVENANTS_FIELD_HASHER_LABEL},
+        test_helpers::TestKeyManager,
+        transactions::test_helpers::{create_transaction_with, create_wallet_outputs},
+    };
 
-    fn test_case(
+    async fn test_case(
         input_params: &UtxoTestParams,
         utxo_params: &UtxoTestParams,
         height: u64,
+        key_manager: &TestKeyManager,
     ) -> Result<(), TransactionProtocolError> {
-        let (mut inputs, outputs) = create_unblinded_txos(
+        let (mut inputs, outputs) = create_wallet_outputs(
             100 * T,
             1,
             0,
@@ -506,27 +531,29 @@ mod validate_internal_consistency {
             &utxo_params.features.clone(),
             &utxo_params.script.clone(),
             &utxo_params.covenant.clone(),
-        );
+            key_manager,
+        )
+        .await;
         inputs[0].features = input_params.features.clone();
         inputs[0].covenant = input_params.covenant.clone();
         inputs[0].script = input_params.script.clone();
         // SenderTransactionProtocol::finalize() calls validate_internal_consistency
-        let stx_protocol = create_sender_transaction_protocol_with(0, 5 * uT, inputs, outputs)?;
+        let tx = create_transaction_with(0, 5 * uT, inputs, outputs, key_manager).await;
         // Otherwise if this passes check again with the height
         let rules = ConsensusManager::builder(Network::LocalNet).build();
         let validator = TransactionInternalConsistencyValidator::new(false, rules, CryptoFactories::default());
-        let tx = stx_protocol.take_transaction().unwrap();
         validator
             .validate(&tx, None, None, height)
             .map_err(|err| TransactionError::ValidationError(err.to_string()))?;
         Ok(())
     }
 
-    #[test]
-    fn it_validates_that_the_covenant_is_honoured() {
+    #[tokio::test]
+    async fn it_validates_that_the_covenant_is_honoured() {
         //---------------------------------- Case1 - PASS --------------------------------------------//
         let covenant = covenant!(fields_preserved(@fields( @field::covenant)));
         let features = OutputFeatures { ..Default::default() };
+        let key_manager = create_test_core_key_manager_with_memory_db();
         test_case(
             &UtxoTestParams {
                 features: features.clone(),
@@ -539,7 +566,9 @@ mod validate_internal_consistency {
                 ..Default::default()
             },
             0,
+            &key_manager,
         )
+        .await
         .unwrap();
 
         //---------------------------------- Case2 - PASS --------------------------------------------//
@@ -564,7 +593,9 @@ mod validate_internal_consistency {
                 ..Default::default()
             },
             0,
+            &key_manager,
         )
+        .await
         .unwrap();
 
         //---------------------------------- Case3 - FAIL --------------------------------------------//
@@ -577,7 +608,9 @@ mod validate_internal_consistency {
             },
             &UtxoTestParams::default(),
             0,
+            &key_manager,
         )
+        .await
         .unwrap_err();
 
         unpack_enum!(TransactionProtocolError::TransactionBuildError(err) = err);
@@ -598,7 +631,9 @@ mod validate_internal_consistency {
                 ..Default::default()
             },
             0,
+            &key_manager,
         )
+        .await
         .unwrap();
 
         //---------------------------------- Case5 - PASS --------------------------------------------//
@@ -610,7 +645,9 @@ mod validate_internal_consistency {
             },
             &UtxoTestParams::default(),
             100,
+            &key_manager,
         )
+        .await
         .unwrap();
     }
 }

@@ -116,37 +116,42 @@ impl Display for PrioritizedTransaction {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::transactions::{
-        tari_amount::{uT, MicroTari, T},
-        test_helpers::create_tx,
+    use crate::{
+        test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager},
+        transactions::{
+            tari_amount::{uT, MicroTari, T},
+            test_helpers::create_tx,
+        },
     };
 
-    fn create_tx_with_fee(fee_per_gram: MicroTari) -> Transaction {
-        let (tx, _, _) = create_tx(10 * T, fee_per_gram, 0, 1, 0, 1, Default::default());
+    async fn create_tx_with_fee(fee_per_gram: MicroTari, key_manager: &TestKeyManager) -> Transaction {
+        let (tx, _, _) = create_tx(10 * T, fee_per_gram, 0, 1, 0, 1, Default::default(), key_manager).await;
         tx
     }
 
-    #[test]
-    fn fee_increases_priority() {
+    #[tokio::test]
+    async fn fee_increases_priority() {
+        let key_manager = create_test_core_key_manager_with_memory_db();
         let weighting = TransactionWeight::latest();
         let epoch = u64::MAX / 2;
-        let tx = create_tx_with_fee(2 * uT);
+        let tx = create_tx_with_fee(2 * uT, &key_manager).await;
         let p1 = FeePriority::new(&tx, epoch, tx.calculate_weight(&weighting));
 
-        let tx = create_tx_with_fee(3 * uT);
+        let tx = create_tx_with_fee(3 * uT, &key_manager).await;
         let p2 = FeePriority::new(&tx, epoch, tx.calculate_weight(&weighting));
 
         assert!(p2 > p1);
     }
 
-    #[test]
-    fn age_increases_priority() {
+    #[tokio::test]
+    async fn age_increases_priority() {
+        let key_manager = create_test_core_key_manager_with_memory_db();
         let weighting = TransactionWeight::latest();
         let epoch = u64::MAX / 2;
-        let tx = create_tx_with_fee(2 * uT);
+        let tx = create_tx_with_fee(2 * uT, &key_manager).await;
         let p1 = FeePriority::new(&tx, epoch, tx.calculate_weight(&weighting));
 
-        let tx = create_tx_with_fee(2 * uT);
+        let tx = create_tx_with_fee(2 * uT, &key_manager).await;
         let p2 = FeePriority::new(&tx, epoch - 1, tx.calculate_weight(&weighting));
 
         assert!(p2 > p1);

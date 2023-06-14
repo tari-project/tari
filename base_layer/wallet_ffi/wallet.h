@@ -948,26 +948,6 @@ TariUnblindedOutput *unblinded_outputs_get_at(struct TariUnblindedOutputs *outpu
                                               int *error_out);
 
 /**
- * Gets a TariUnblindedOutput from TariUnblindedOutputs at position
- *
- * ## Arguments
- * `outputs` - The pointer to a TariUnblindedOutputs
- * `position` - The integer position
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
- *
- * ## Returns
- * `*mut TariUnblindedOutput` - Returns a TariUnblindedOutput, note that it returns ptr::null_mut() if
- * TariUnblindedOutputs is null or position is invalid
- *
- * # Safety
- * The ```contact_destroy``` method must be called when finished with a TariContact to prevent a memory leak
- */
-unsigned long long *unblinded_outputs_received_tx_id_get_at(struct TariUnblindedOutputs *outputs,
-                                                            unsigned int position,
-                                                            int *error_out);
-
-/**
  * Frees memory for a TariUnblindedOutputs
  *
  * ## Arguments
@@ -2692,11 +2672,15 @@ struct TariWallet *wallet_create(TariCommsConfig *config,
                                  void (*callback_received_finalized_transaction)(TariCompletedTransaction*),
                                  void (*callback_transaction_broadcast)(TariCompletedTransaction*),
                                  void (*callback_transaction_mined)(TariCompletedTransaction*),
-                                 void (*callback_transaction_mined_unconfirmed)(TariCompletedTransaction*, uint64_t),
+                                 void (*callback_transaction_mined_unconfirmed)(TariCompletedTransaction*,
+                                                                                uint64_t),
                                  void (*callback_faux_transaction_confirmed)(TariCompletedTransaction*),
-                                 void (*callback_faux_transaction_unconfirmed)(TariCompletedTransaction*, uint64_t),
-                                 void (*callback_transaction_send_result)(unsigned long long, TariTransactionSendStatus*),
-                                 void (*callback_transaction_cancellation)(TariCompletedTransaction*, uint64_t),
+                                 void (*callback_faux_transaction_unconfirmed)(TariCompletedTransaction*,
+                                                                               uint64_t),
+                                 void (*callback_transaction_send_result)(unsigned long long,
+                                                                          TariTransactionSendStatus*),
+                                 void (*callback_transaction_cancellation)(TariCompletedTransaction*,
+                                                                           uint64_t),
                                  void (*callback_txo_validation_complete)(uint64_t, uint64_t),
                                  void (*callback_contacts_liveness_data_updated)(TariContactsLivenessData*),
                                  void (*callback_balance_updated)(TariBalance*),

@@ -41,7 +41,7 @@ use tari_shutdown::Shutdown;
 use tokio::task;
 use tonic::transport::Channel;
 
-use crate::{get_base_dir, get_peer_addresses, get_port, wait_for_service, TariWorld};
+use crate::{get_peer_addresses, get_port, wait_for_service, TariWorld};
 
 #[derive(Clone)]
 pub struct BaseNodeProcess {

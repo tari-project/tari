@@ -116,17 +116,17 @@ impl From<HashOutput> for proto::HashOutput {
     }
 }
 
-//--------------------------------- BlindingFactor -----------------------------------------//
+//--------------------------------- PrivateKey -----------------------------------------//
 
-impl TryFrom<proto::BlindingFactor> for PrivateKey {
+impl TryFrom<proto::PrivateKey> for PrivateKey {
     type Error = ByteArrayError;
 
-    fn try_from(offset: proto::BlindingFactor) -> Result<Self, Self::Error> {
+    fn try_from(offset: proto::PrivateKey) -> Result<Self, Self::Error> {
         PrivateKey::from_bytes(&offset.data)
     }
 }
 
-impl From<PrivateKey> for proto::BlindingFactor {
+impl From<PrivateKey> for proto::PrivateKey {
     fn from(offset: PrivateKey) -> Self {
         Self { data: offset.to_vec() }
     }

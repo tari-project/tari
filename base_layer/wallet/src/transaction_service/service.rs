@@ -37,26 +37,31 @@ use tari_common_types::{
     burnt_proof::BurntProof,
     tari_address::TariAddress,
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
-    types::{CommitmentFactory, PrivateKey, PublicKey, Signature},
+    types::{PrivateKey, PublicKey, Signature},
 };
-use tari_comms::types::{CommsDHKE, CommsPublicKey};
+use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{
     consensus::ConsensusManager,
-    core_key_manager::BaseLayerKeyManagerInterface,
     covenants::Covenant,
     mempool::FeePerGramStat,
+    one_sided::{
+        diffie_hellman_stealth_domain_hasher,
+        shared_secret_to_output_encryption_key,
+        shared_secret_to_output_spending_key,
+        stealth_address_script_spending_key,
+    },
     proto::base_node as base_node_proto,
     transactions::{
+        key_manager::TransactionKeyManagerInterface,
         tari_amount::MicroTari,
         transaction_components::{
             CodeTemplateRegistration,
-            EncryptedData,
             KernelFeatures,
             OutputFeatures,
             Transaction,
             TransactionOutput,
-            UnblindedOutput,
+            WalletOutputBuilder,
         },
         transaction_protocol::{
             proto::protocol as proto,
@@ -69,9 +74,7 @@ use tari_core::{
     },
 };
 use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PKtrait, SecretKey},
-    ristretto::RistrettoComSig,
     tari_utilities::ByteArray,
 };
 use tari_key_manager::key_manager_service::KeyId;
@@ -121,17 +124,7 @@ use crate::{
         },
         utc::utc_duration_since,
     },
-    types::ConfidentialOutputHasher,
-    util::{
-        one_sided::{
-            diffie_hellman_stealth_domain_hasher,
-            shared_secret_to_output_encryption_key,
-            shared_secret_to_output_spending_key,
-            stealth_address_script_spending_key,
-        },
-        wallet_identity::WalletIdentity,
-        watch::Watch,
-    },
+    util::{wallet_identity::WalletIdentity, watch::Watch},
     utxo_scanner_service::RECOVERY_KEY,
     OperationId,
 };
@@ -218,7 +211,7 @@ where
     TBackend: TransactionBackend + 'static,
     TWalletBackend: WalletBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
-    TKeyManagerInterface: BaseLayerKeyManagerInterface,
+    TKeyManagerInterface: TransactionKeyManagerInterface,
 {
     pub fn new(
         config: TransactionServiceConfig,
@@ -249,7 +242,7 @@ where
         let resources = TransactionServiceResources {
             db: db.clone(),
             output_manager_service,
-            core_key_manager_service,
+            transaction_key_manager_service: core_key_manager_service,
             outbound_message_service,
             connectivity,
             event_publisher: event_publisher.clone(),
@@ -293,6 +286,13 @@ where
 
     #[allow(clippy::too_many_lines)]
     pub async fn start(mut self) -> Result<(), TransactionServiceError> {
+        // we need to ensure the wallet identity secret key is stored in the key manager
+        let _ = self
+            .resources
+            .transaction_key_manager_service
+            .import_key(self.resources.wallet_identity.node_identity.secret_key().clone())
+            .await?;
+
         let request_stream = self
             .request_stream
             .take()
@@ -1118,7 +1118,8 @@ where
         // This call is needed to advance the state from `SingleRoundMessageReady` to `SingleRoundMessageReady`,
         // but the returned value is not used
         let _single_round_sender_data = stp
-            .build_single_round_message()
+            .build_single_round_message(&self.resources.transaction_key_manager_service)
+            .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         self.resources
@@ -1132,65 +1133,101 @@ where
         // Diffie-Hellman shared secret `k_Ob * K_Sb = K_Ob * k_Sb` results in a public key, which is fed into
         // KDFs to produce the spending, rewind, and encryption keys
         let sender_offset_private_key = stp
-            .get_recipient_sender_offset_private_key(0)
-            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+            .get_recipient_sender_offset_private_key()
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?
+            .ok_or(TransactionServiceProtocolError::new(
+                tx_id,
+                TransactionServiceError::InvalidKeyId("Missing sender offset keyid".to_string()),
+            ))?;
 
-        let shared_secret = CommsDHKE::new(&sender_offset_private_key, destination.public_key());
+        let shared_secret = self
+            .resources
+            .transaction_key_manager_service
+            .get_diffie_hellman_shared_secret(&sender_offset_private_key, destination.public_key())
+            .await?;
         let spending_key = shared_secret_to_output_spending_key(&shared_secret)
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
-        let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
-        let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
-
-        let commitment = self
-            .resources
-            .factories
-            .commitment
-            .commit_value(&spending_key, amount.into());
-        let encrypted_data = EncryptedData::encrypt_data(&encryption_key, &commitment, amount, &spending_key)?;
-
-        let rtp = ReceiverTransactionProtocol::new_with_recoverable_output(
-            sender_message,
-            PrivateKey::random(&mut OsRng),
-            spending_key.clone(),
-            &self.resources.factories,
-            &encrypted_data,
+        let sender_message = TransactionSenderMessage::new_single_round_message(
+            stp.get_single_round_message(&self.resources.transaction_key_manager_service)
+                .await?,
         );
+        let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret)?;
+        let encryption_key = self
+            .resources
+            .transaction_key_manager_service
+            .import_key(encryption_private_key)
+            .await?;
+
+        let sender_offset_public_key = self
+            .resources
+            .transaction_key_manager_service
+            .get_public_key_at_key_id(&sender_offset_private_key)
+            .await?;
+
+        let spending_key_id = self
+            .resources
+            .transaction_key_manager_service
+            .import_key(spending_key)
+            .await?;
+
+        let minimum_value_promise = MicroTari::zero();
+        let output = WalletOutputBuilder::new(amount, spending_key_id)
+            .with_features(
+                sender_message
+                    .single()
+                    .ok_or(TransactionServiceProtocolError::new(
+                        tx_id,
+                        TransactionServiceError::InvalidMessageError("Sent invalid message type".to_string()),
+                    ))?
+                    .features
+                    .clone(),
+            )
+            .with_script(script)
+            .encrypt_data_for_recovery(&self.resources.transaction_key_manager_service, Some(&encryption_key))
+            .await?
+            .with_input_data(inputs!(PublicKey::from_secret_key(
+                self.resources.wallet_identity.node_identity.secret_key()
+            )))
+            .with_covenant(covenant)
+            .with_sender_offset_public_key(sender_offset_public_key)
+            .with_script_key(self.resources.wallet_identity.wallet_node_key_id.clone())
+            .with_minimum_value_promise(minimum_value_promise)
+            .sign_as_sender_and_receiver(
+                &self.resources.transaction_key_manager_service,
+                &sender_offset_private_key,
+            )
+            .await
+            .unwrap()
+            .try_build()
+            .unwrap();
+
+        let rtp = ReceiverTransactionProtocol::new(
+            sender_message,
+            output.clone(),
+            &self.resources.transaction_key_manager_service,
+        )
+        .await;
 
         let recipient_reply = rtp.get_signed_data()?.clone();
-        let output = recipient_reply.output.clone();
-        let minimum_value_promise = MicroTari::zero();
-        let unblinded_output = UnblindedOutput::new_current_version(
-            amount,
-            spending_key,
-            output.features.clone(),
-            script,
-            inputs!(PublicKey::from_secret_key(
-                self.resources.wallet_identity.node_identity.secret_key()
-            )),
-            self.resources.wallet_identity.node_identity.secret_key().clone(),
-            output.sender_offset_public_key.clone(),
-            output.metadata_signature.clone(),
-            height,
-            covenant,
-            encrypted_data,
-            minimum_value_promise,
-        );
 
         // Start finalizing
 
-        stp.add_single_recipient_info(recipient_reply)
+        stp.add_single_recipient_info(recipient_reply, &self.resources.transaction_key_manager_service)
+            .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         // Finalize
 
-        stp.finalize().map_err(|e| {
-            error!(
-                target: LOG_TARGET,
-                "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", tx_id, e,
-            );
-            TransactionServiceProtocolError::new(tx_id, e.into())
-        })?;
+        stp.finalize(&self.resources.transaction_key_manager_service)
+            .await
+            .map_err(|e| {
+                error!(
+                    target: LOG_TARGET,
+                    "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", tx_id, e,
+                );
+                TransactionServiceProtocolError::new(tx_id, e.into())
+            })?;
         info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", tx_id);
 
         // This event being sent is important, but not critical to the protocol being successful. Send only fails if
@@ -1209,7 +1246,7 @@ where
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         self.resources
             .output_manager_service
-            .add_output_with_tx_id(tx_id, unblinded_output, Some(SpendingPriority::HtlcSpendAsap))
+            .add_output_with_tx_id(tx_id, output.clone(), Some(SpendingPriority::HtlcSpendAsap))
             .await?;
         self.submit_transaction(
             transaction_broadcast_join_handles,
@@ -1230,7 +1267,11 @@ where
             ),
         )?;
 
-        Ok(Box::new((tx_id, pre_image, output)))
+        let tx_output = output
+            .as_transaction_output(&self.resources.transaction_key_manager_service)
+            .await?;
+
+        Ok(Box::new((tx_id, pre_image, tx_output)))
     }
 
     async fn send_one_sided_or_stealth(
@@ -1260,7 +1301,7 @@ where
                 fee_per_gram,
                 TransactionMetadata::default(),
                 message.clone(),
-                script,
+                script.clone(),
                 Covenant::default(),
                 MicroTari::zero(),
             )
@@ -1269,7 +1310,8 @@ where
         // This call is needed to advance the state from `SingleRoundMessageReady` to `SingleRoundMessageReady`,
         // but the returned value is not used
         let _single_round_sender_data = stp
-            .build_single_round_message()
+            .build_single_round_message(&self.resources.transaction_key_manager_service)
+            .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         self.resources
@@ -1283,45 +1325,96 @@ where
         // Diffie-Hellman shared secret `k_Ob * K_Sb = K_Ob * k_Sb` results in a public key, which is fed into
         // KDFs to produce the spending, rewind, and encryption keys
         let sender_offset_private_key = stp
-            .get_recipient_sender_offset_private_key(0)
-            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
-        let shared_secret = CommsDHKE::new(&sender_offset_private_key, dest_address.public_key());
+            .get_recipient_sender_offset_private_key()
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?
+            .ok_or(TransactionServiceProtocolError::new(
+                tx_id,
+                TransactionServiceError::InvalidKeyId("Missing sender offset keyid".to_string()),
+            ))?;
+
+        let shared_secret = self
+            .resources
+            .transaction_key_manager_service
+            .get_diffie_hellman_shared_secret(&sender_offset_private_key, dest_address.public_key())
+            .await?;
         let spending_key = shared_secret_to_output_spending_key(&shared_secret)
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
-        let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
-        let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
-        let encrypted_data = EncryptedData::encrypt_data(
-            &encryption_key,
-            &CommitmentFactory::default().commit_value(&spending_key, amount.into()),
-            amount,
-            &spending_key,
-        )?;
-
-        let rtp = ReceiverTransactionProtocol::new_with_recoverable_output(
-            sender_message,
-            PrivateKey::random(&mut OsRng),
-            spending_key,
-            &self.resources.factories,
-            &encrypted_data,
+        let sender_message = TransactionSenderMessage::new_single_round_message(
+            stp.get_single_round_message(&self.resources.transaction_key_manager_service)
+                .await?,
         );
+
+        let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret)?;
+        let encryption_key = self
+            .resources
+            .transaction_key_manager_service
+            .import_key(encryption_private_key)
+            .await?;
+
+        let spending_key_id = self
+            .resources
+            .transaction_key_manager_service
+            .import_key(spending_key)
+            .await?;
+
+        let sender_offset_public_key = self
+            .resources
+            .transaction_key_manager_service
+            .get_public_key_at_key_id(&sender_offset_private_key)
+            .await?;
+
+        let minimum_value_promise = MicroTari::zero();
+        let output = WalletOutputBuilder::new(amount, spending_key_id)
+            .with_features(
+                sender_message
+                    .single()
+                    .ok_or(TransactionServiceProtocolError::new(
+                        tx_id,
+                        TransactionServiceError::InvalidMessageError("Sent invalid message type".to_string()),
+                    ))?
+                    .features
+                    .clone(),
+            )
+            .with_script(script)
+            .encrypt_data_for_recovery(&self.resources.transaction_key_manager_service, Some(&encryption_key))
+            .await?
+            .with_input_data(inputs!(PublicKey::from_secret_key(
+                self.resources.wallet_identity.node_identity.secret_key()
+            )))
+            .with_sender_offset_public_key(sender_offset_public_key)
+            .with_script_key(self.resources.wallet_identity.wallet_node_key_id.clone())
+            .with_minimum_value_promise(minimum_value_promise)
+            .sign_as_sender_and_receiver(
+                &self.resources.transaction_key_manager_service,
+                &sender_offset_private_key,
+            )
+            .await?
+            .try_build()?;
+
+        let rtp =
+            ReceiverTransactionProtocol::new(sender_message, output, &self.resources.transaction_key_manager_service)
+                .await;
 
         let recipient_reply = rtp.get_signed_data()?.clone();
 
         // Start finalizing
 
-        stp.add_single_recipient_info(recipient_reply)
+        stp.add_single_recipient_info(recipient_reply, &self.resources.transaction_key_manager_service)
+            .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         // Finalize
 
-        stp.finalize().map_err(|e| {
-            error!(
-                target: LOG_TARGET,
-                "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", tx_id, e,
-            );
-            TransactionServiceProtocolError::new(tx_id, e.into())
-        })?;
+        stp.finalize(&self.resources.transaction_key_manager_service)
+            .await
+            .map_err(|e| {
+                error!(
+                    target: LOG_TARGET,
+                    "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", tx_id, e,
+                );
+                TransactionServiceProtocolError::new(tx_id, e.into())
+            })?;
         info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", tx_id);
 
         // This event being sent is important, but not critical to the protocol being successful. Send only fails if
@@ -1447,7 +1540,8 @@ where
         // This call is needed to advance the state from `SingleRoundMessageReady` to `SingleRoundMessageReady`,
         // but the returned value is not used
         let _single_round_sender_data = stp
-            .build_single_round_message()
+            .build_single_round_message(&self.resources.transaction_key_manager_service)
+            .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         self.resources
@@ -1455,28 +1549,21 @@ where
             .confirm_pending_transaction(tx_id)
             .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
-        let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
-        let (spend_key_id, _script_key_id) = self
+        let sender_message = TransactionSenderMessage::new_single_round_message(
+            stp.get_single_round_message(&self.resources.transaction_key_manager_service)
+                .await?,
+        );
+        let (spend_key_id, public_spend_key, _script_key_id, _) = self
             .resources
-            .core_key_manager_service
+            .transaction_key_manager_service
             .get_next_spend_and_script_key_ids()
             .await?;
-        let public_spend_key = self
-            .resources
-            .core_key_manager_service
-            .get_public_key_at_key_id(&spend_key_id)
-            .await?;
-        // TODO: Remove this when `core_key_manager_service` fully implemented
-        let spend_key = self
-            .resources
-            .core_key_manager_service
-            .get_key_at_index(
-                spend_key_id.managed_branch().expect("branch exists"),
-                spend_key_id.managed_index().expect("index exists"),
-            )
-            .await?;
 
-        let recovery_key_id = self.resources.core_key_manager_service.get_recovery_key_id().await?;
+        let recovery_key_id = self
+            .resources
+            .transaction_key_manager_service
+            .get_recovery_key_id()
+            .await?;
 
         let recovery_key_id = match claim_public_key {
             Some(ref claim_public_key) => {
@@ -1485,12 +1572,12 @@ where
                 // nonce/spend_key is returned back to the caller.
                 let shared_secret = self
                     .resources
-                    .core_key_manager_service
+                    .transaction_key_manager_service
                     .get_diffie_hellman_shared_secret(&spend_key_id, claim_public_key)
                     .await?;
                 let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
                 self.resources
-                    .core_key_manager_service
+                    .transaction_key_manager_service
                     .import_key(encryption_key.clone())
                     .await?;
                 KeyId::Imported {
@@ -1500,62 +1587,90 @@ where
             // No claim key provided, no shared secret or encryption key needed
             None => recovery_key_id,
         };
-        let commitment = self
-            .resources
-            .core_key_manager_service
-            .get_commitment(&spend_key_id, &PrivateKey::from(amount))
-            .await?;
-        let encrypted_data = self
-            .resources
-            .core_key_manager_service
-            .encrypt_data_for_recovery(&spend_key_id, &Some(recovery_key_id), amount.as_u64())
-            .await?;
+        let sender_offset_private_key = stp
+            .get_recipient_sender_offset_private_key()
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?
+            .ok_or(TransactionServiceProtocolError::new(
+                tx_id,
+                TransactionServiceError::InvalidKeyId("Missing sender offset keyid".to_string()),
+            ))?;
+        let output = WalletOutputBuilder::new(amount, spend_key_id.clone())
+            .with_features(
+                sender_message
+                    .single()
+                    .ok_or(TransactionServiceProtocolError::new(
+                        tx_id,
+                        TransactionServiceError::InvalidMessageError("Sent invalid message type".to_string()),
+                    ))?
+                    .features
+                    .clone(),
+            )
+            .with_script(script!(Nop))
+            .encrypt_data_for_recovery(&self.resources.transaction_key_manager_service, Some(&recovery_key_id))
+            .await?
+            .with_input_data(inputs!(PublicKey::from_secret_key(
+                self.resources.wallet_identity.node_identity.secret_key()
+            )))
+            .with_sender_offset_public_key(
+                sender_message
+                    .single()
+                    .ok_or(TransactionServiceProtocolError::new(
+                        tx_id,
+                        TransactionServiceError::InvalidMessageError("Sent invalid message type".to_string()),
+                    ))?
+                    .sender_offset_public_key
+                    .clone(),
+            )
+            .with_script_key(self.resources.wallet_identity.wallet_node_key_id.clone())
+            .with_minimum_value_promise(
+                sender_message
+                    .single()
+                    .ok_or(TransactionServiceProtocolError::new(
+                        tx_id,
+                        TransactionServiceError::InvalidMessageError("Sent invalid message type".to_string()),
+                    ))?
+                    .minimum_value_promise,
+            )
+            .sign_as_sender_and_receiver(
+                &self.resources.transaction_key_manager_service,
+                &sender_offset_private_key,
+            )
+            .await?
+            .try_build()?;
 
-        let rtp = ReceiverTransactionProtocol::new_with_recoverable_output(
-            sender_message,
-            PrivateKey::random(&mut OsRng),
-            spend_key.clone(),
-            &self.resources.factories,
-            &encrypted_data,
-        );
+        let rtp =
+            ReceiverTransactionProtocol::new(sender_message, output, &self.resources.transaction_key_manager_service)
+                .await;
 
         let recipient_reply = rtp.get_signed_data()?.clone();
         let range_proof = recipient_reply.output.proof_result()?.clone();
         let mut ownership_proof = None;
+        let commitment = recipient_reply.output.commitment.clone();
 
         if let Some(claim_public_key) = claim_public_key {
-            let nonce_a = PrivateKey::random(&mut OsRng);
-            let nonce_x = PrivateKey::random(&mut OsRng);
-            let pub_nonce = self.resources.factories.commitment.commit(&nonce_x, &nonce_a);
-
-            let challenge = ConfidentialOutputHasher::new("commitment_signature")
-                .chain(&pub_nonce)
-                .chain(&commitment)
-                .chain(&claim_public_key)
-                .finalize();
-
-            ownership_proof = Some(RistrettoComSig::sign(
-                &PrivateKey::from(amount),
-                &spend_key,
-                &nonce_a,
-                &nonce_x,
-                &challenge,
-                &*self.resources.factories.commitment,
-            )?);
+            ownership_proof = Some(
+                self.resources
+                    .transaction_key_manager_service
+                    .generate_burn_proof(&spend_key_id, &amount.into(), &claim_public_key)
+                    .await?,
+            );
         }
 
         // Start finalizing
-        stp.add_single_recipient_info(recipient_reply)
+        stp.add_single_recipient_info(recipient_reply, &self.resources.transaction_key_manager_service)
+            .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         // Finalize
-        stp.finalize().map_err(|e| {
-            error!(
-                target: LOG_TARGET,
-                "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", tx_id, e,
-            );
-            TransactionServiceProtocolError::new(tx_id, e.into())
-        })?;
+        stp.finalize(&self.resources.transaction_key_manager_service)
+            .await
+            .map_err(|e| {
+                error!(
+                    target: LOG_TARGET,
+                    "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", tx_id, e,
+                );
+                TransactionServiceProtocolError::new(tx_id, e.into())
+            })?;
         info!(target: LOG_TARGET, "Finalized burning transaction - TxId: {}", tx_id);
 
         // This event being sent is important, but not critical to the protocol being successful. Send only fails if
@@ -2840,7 +2955,7 @@ where
 pub struct TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManagerInterface> {
     pub db: TransactionDatabase<TBackend>,
     pub output_manager_service: OutputManagerHandle,
-    pub core_key_manager_service: TKeyManagerInterface,
+    pub transaction_key_manager_service: TKeyManagerInterface,
     pub outbound_message_service: OutboundMessageRequester,
     pub connectivity: TWalletConnectivity,
     pub event_publisher: TransactionEventSender,
@@ -2883,7 +2998,6 @@ mod tests {
     use tari_script::{stealth_payment_script, Opcode};
 
     use super::*;
-    use crate::util::one_sided::{diffie_hellman_stealth_domain_hasher, stealth_address_script_spending_key};
 
     #[test]
     fn test_stealth_addresses() {

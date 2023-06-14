@@ -50,6 +50,11 @@ impl KernelFeatures {
     pub fn is_burned(&self) -> bool {
         self.contains(KernelFeatures::BURN_KERNEL)
     }
+
+    /// Does this feature include the coinbase flag?
+    pub fn is_coinbase(&self) -> bool {
+        self.contains(KernelFeatures::COINBASE_KERNEL)
+    }
 }
 
 impl Default for KernelFeatures {

@@ -46,7 +46,7 @@ use tari_core::{
     proto::base_node::SyncUtxosByBlockRequest,
     transactions::{
         tari_amount::MicroTari,
-        transaction_components::{TransactionOutput, UnblindedOutput},
+        transaction_components::{TransactionOutput, WalletOutput},
     },
 };
 use tari_key_manager::get_birthday_from_unix_epoch_in_seconds;
@@ -551,8 +551,8 @@ where
     async fn scan_for_outputs(
         &mut self,
         outputs: Vec<TransactionOutput>,
-    ) -> Result<Vec<(UnblindedOutput, String, ImportStatus, TxId)>, UtxoScannerError> {
-        let mut found_outputs: Vec<(UnblindedOutput, String, ImportStatus, TxId)> = Vec::new();
+    ) -> Result<Vec<(WalletOutput, String, ImportStatus, TxId)>, UtxoScannerError> {
+        let mut found_outputs: Vec<(WalletOutput, String, ImportStatus, TxId)> = Vec::new();
         found_outputs.append(
             &mut self
                 .resources
@@ -593,7 +593,7 @@ where
 
     async fn import_utxos_to_transaction_service(
         &mut self,
-        utxos: Vec<(UnblindedOutput, String, ImportStatus, TxId)>,
+        utxos: Vec<(WalletOutput, String, ImportStatus, TxId)>,
         current_height: u64,
         mined_timestamp: NaiveDateTime,
     ) -> Result<(u64, MicroTari), UtxoScannerError> {
@@ -609,7 +609,7 @@ where
                 TariAddress::default()
             };
             match self
-                .import_unblinded_utxo_to_transaction_service(
+                .import_key_manager_utxo_to_transaction_service(
                     uo.clone(),
                     source_address,
                     message,
@@ -666,9 +666,9 @@ where
 
     /// A faux incoming transaction will be created to provide a record of the event of importing a scanned UTXO. The
     /// TxId of the generated transaction is returned.
-    pub async fn import_unblinded_utxo_to_transaction_service(
+    pub async fn import_key_manager_utxo_to_transaction_service(
         &mut self,
-        unblinded_output: UnblindedOutput,
+        key_manager_output: WalletOutput,
         source_address: TariAddress,
         message: String,
         import_status: ImportStatus,
@@ -680,10 +680,10 @@ where
             .resources
             .transaction_service
             .import_utxo_with_status(
-                unblinded_output.value,
+                key_manager_output.value,
                 source_address,
                 message,
-                Some(unblinded_output.features.maturity),
+                Some(key_manager_output.features.maturity),
                 import_status.clone(),
                 Some(tx_id),
                 Some(current_height),
@@ -693,13 +693,7 @@ where
 
         info!(
             target: LOG_TARGET,
-            "UTXO (Commitment: {}) imported into wallet as 'ImportStatus::{}'",
-            unblinded_output
-                .as_transaction_input(&self.resources.factories.commitment)?
-                .commitment()
-                .map_err(WalletError::TransactionError)?
-                .to_hex(),
-            import_status
+            "UTXO with value {},  imported into wallet as 'ImportStatus::{}'", key_manager_output.value, import_status
         );
 
         Ok(tx_id)

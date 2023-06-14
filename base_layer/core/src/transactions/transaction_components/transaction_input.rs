@@ -32,7 +32,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{ComAndPubSignature, Commitment, CommitmentFactory, FixedHash, HashOutput, PublicKey};
-use tari_crypto::{commitment::HomomorphicCommitmentFactory, tari_utilities::hex::Hex};
+use tari_crypto::tari_utilities::hex::Hex;
 use tari_script::{ExecutionStack, ScriptContext, StackItem, TariScript};
 
 use super::{TransactionInputVersion, TransactionOutputVersion};
@@ -47,7 +47,6 @@ use crate::{
             EncryptedData,
             OutputFeatures,
             TransactionError,
-            UnblindedOutput,
         },
         TransactionHashDomain,
     },
@@ -281,16 +280,6 @@ impl TransactionInput {
                 ref minimum_value_promise,
                 ..
             } => Ok(minimum_value_promise),
-        }
-    }
-
-    /// Checks if the given un-blinded input instance corresponds to this blinded Transaction Input
-    pub fn opened_by(&self, input: &UnblindedOutput, factory: &CommitmentFactory) -> Result<bool, TransactionError> {
-        match self.spent_output {
-            SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
-            SpentOutput::OutputData { ref commitment, .. } => {
-                Ok(factory.open(&input.spending_key, &input.value.into(), commitment))
-            },
         }
     }
 

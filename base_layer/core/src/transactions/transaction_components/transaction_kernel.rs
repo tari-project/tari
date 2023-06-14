@@ -118,12 +118,12 @@ impl TransactionKernel {
     }
 
     pub fn is_coinbase(&self) -> bool {
-        self.features.contains(KernelFeatures::COINBASE_KERNEL)
+        self.features.is_coinbase()
     }
 
     /// Is this a burned output kernel?
     pub fn is_burned(&self) -> bool {
-        self.features.contains(KernelFeatures::BURN_KERNEL)
+        self.features.is_burned()
     }
 
     pub fn verify_signature(&self) -> Result<(), TransactionError> {

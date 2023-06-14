@@ -20,17 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use strum::EnumIter;
-use tari_core::{
-    consensus::ConsensusConstants,
-    transactions::{transaction_protocol::RecoveryData, CryptoFactories},
-};
+use tari_core::{consensus::ConsensusConstants, transactions::CryptoFactories};
 use tari_shutdown::ShutdownSignal;
 
-use crate::output_manager_service::{
-    config::OutputManagerServiceConfig,
-    handle::OutputManagerEventSender,
-    storage::database::OutputManagerDatabase,
+use crate::{
+    output_manager_service::{
+        config::OutputManagerServiceConfig,
+        handle::OutputManagerEventSender,
+        storage::database::OutputManagerDatabase,
+    },
+    util::wallet_identity::WalletIdentity,
 };
 
 /// This struct is a collection of the common resources that a async task in the service requires.
@@ -40,34 +39,9 @@ pub(crate) struct OutputManagerResources<TBackend, TWalletConnectivity, TKeyMana
     pub db: OutputManagerDatabase<TBackend>,
     pub factories: CryptoFactories,
     pub event_publisher: OutputManagerEventSender,
-    pub master_key_manager: TKeyManagerInterface,
+    pub key_manager: TKeyManagerInterface,
     pub consensus_constants: ConsensusConstants,
     pub connectivity: TWalletConnectivity,
     pub shutdown_signal: ShutdownSignal,
-    pub recovery_data: RecoveryData,
-}
-
-#[derive(Clone, Copy, EnumIter)]
-pub enum OutputManagerKeyManagerBranch {
-    Spend,
-    SpendScript,
-    Coinbase,
-    CoinbaseScript,
-    ContractIssuer,
-    OpeningsEncryption,
-}
-
-impl OutputManagerKeyManagerBranch {
-    /// Warning: Changing these strings will affect the backwards compatibility of the wallet with older databases or
-    /// recovery.
-    pub fn get_branch_key(&self) -> String {
-        match self {
-            OutputManagerKeyManagerBranch::Spend => "".to_string(),
-            OutputManagerKeyManagerBranch::SpendScript => "script".to_string(),
-            OutputManagerKeyManagerBranch::Coinbase => "coinbase".to_string(),
-            OutputManagerKeyManagerBranch::CoinbaseScript => "coinbase_script".to_string(),
-            OutputManagerKeyManagerBranch::ContractIssuer => "contract_issuer".to_string(),
-            OutputManagerKeyManagerBranch::OpeningsEncryption => "openings_encryption".to_string(),
-        }
-    }
+    pub wallet_identity: WalletIdentity,
 }

@@ -33,15 +33,13 @@ pub mod service;
 pub mod storage;
 mod tasks;
 
-use std::{marker::PhantomData, sync::Arc};
+use std::marker::PhantomData;
 
 use futures::future;
 use log::*;
-use tari_comms::NodeIdentity;
 use tari_core::{
     consensus::NetworkConsensus,
-    core_key_manager::BaseLayerKeyManagerInterface,
-    transactions::CryptoFactories,
+    transactions::{key_manager::TransactionKeyManagerInterface, CryptoFactories},
 };
 use tari_service_framework::{
     async_trait,
@@ -61,6 +59,7 @@ use crate::{
         service::OutputManagerService,
         storage::database::{OutputManagerBackend, OutputManagerDatabase},
     },
+    util::wallet_identity::WalletIdentity,
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service::initializer";
@@ -72,7 +71,7 @@ where T: OutputManagerBackend
     backend: Option<T>,
     factories: CryptoFactories,
     network: NetworkConsensus,
-    node_identity: Arc<NodeIdentity>,
+    wallet_identity: WalletIdentity,
     phantom: PhantomData<TKeyManagerInterface>,
 }
 
@@ -84,14 +83,14 @@ where T: OutputManagerBackend + 'static
         backend: T,
         factories: CryptoFactories,
         network: NetworkConsensus,
-        node_identity: Arc<NodeIdentity>,
+        wallet_identity: WalletIdentity,
     ) -> Self {
         Self {
             config,
             backend: Some(backend),
             factories,
             network,
-            node_identity,
+            wallet_identity,
             phantom: PhantomData,
         }
     }
@@ -101,7 +100,7 @@ where T: OutputManagerBackend + 'static
 impl<T, TKeyManagerInterface> ServiceInitializer for OutputManagerServiceInitializer<T, TKeyManagerInterface>
 where
     T: OutputManagerBackend + 'static,
-    TKeyManagerInterface: BaseLayerKeyManagerInterface,
+    TKeyManagerInterface: TransactionKeyManagerInterface,
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         let (sender, receiver) = reply_channel::unbounded();
@@ -118,7 +117,7 @@ where
         let factories = self.factories.clone();
         let config = self.config.clone();
         let constants = self.network.create_consensus_constants().pop().unwrap();
-        let node_identity = self.node_identity.clone();
+        let wallet_identity = self.wallet_identity.clone();
         context.spawn_when_ready(move |handles| async move {
             let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
             let connectivity = handles.expect_handle::<WalletConnectivityHandle>();
@@ -134,7 +133,7 @@ where
                 handles.get_shutdown_signal(),
                 base_node_service_handle,
                 connectivity,
-                node_identity,
+                wallet_identity,
                 key_manager,
             )
             .await

@@ -24,6 +24,8 @@ pub use transaction_protocol::{recipient::ReceiverTransactionProtocol, sender::S
 pub mod types;
 pub mod weight;
 
+pub mod key_manager;
+
 #[macro_use]
 pub mod test_helpers;
 

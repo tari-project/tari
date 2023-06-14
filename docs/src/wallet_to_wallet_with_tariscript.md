@@ -194,7 +194,7 @@ And the receiver will need to keep track of their spendable UTXO's using the fol
 ```rust,ignore
 pub struct UnblindedOutput {
     pub value: MicroTari,
-    pub spending_key: BlindingFactor,
+    pub spending_key: PrivateKey,
     pub features: OutputFeatures,
     
     // NEW FIELDS

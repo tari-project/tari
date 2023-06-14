@@ -38,8 +38,8 @@ message ComAndPubSignature {
     bytes u_y = 5;
 }
 
-// BlindingFactor wrapper
-message BlindingFactor {
+// PrivateKey wrapper
+message PrivateKey {
     bytes data = 1;
 }
 

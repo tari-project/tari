@@ -49,19 +49,28 @@ mod test {
     use crate::{
         covenant,
         covenants::{filters::test::setup_filter_test, test::create_input},
+        test_helpers::create_test_core_key_manager_with_memory_db,
     };
 
-    #[test]
-    fn it_filters_outputset_using_symmetric_difference() {
+    #[tokio::test]
+    async fn it_filters_outputset_using_symmetric_difference() {
+        let key_manager = create_test_core_key_manager_with_memory_db();
         let script = script!(CheckHeight(100));
         let covenant = covenant!(and(field_eq(@field::features_maturity, @uint(42),), field_eq(@field::script, @script(script.clone()))));
-        let input = create_input();
-        let (mut context, outputs) = setup_filter_test(&covenant, &input, 0, |outputs| {
-            outputs[5].features.maturity = 42;
-            outputs[5].script = script.clone();
-            outputs[7].features.maturity = 42;
-            outputs[8].script = script;
-        });
+        let input = create_input(&key_manager).await;
+        let (mut context, outputs) = setup_filter_test(
+            &covenant,
+            &input,
+            0,
+            |outputs| {
+                outputs[5].features.maturity = 42;
+                outputs[5].script = script.clone();
+                outputs[7].features.maturity = 42;
+                outputs[8].script = script;
+            },
+            &key_manager,
+        )
+        .await;
         let mut output_set = OutputSet::new(&outputs);
         XorFilter.filter(&mut context, &mut output_set).unwrap();
 

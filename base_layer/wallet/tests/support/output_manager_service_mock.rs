@@ -30,7 +30,7 @@ use tari_shutdown::ShutdownSignal;
 use tari_wallet::output_manager_service::{
     error::OutputManagerError,
     handle::{OutputManagerEvent, OutputManagerHandle, OutputManagerRequest, OutputManagerResponse, RecoveredOutput},
-    storage::models::DbUnblindedOutput,
+    storage::models::DbWalletOutput,
 };
 use tokio::sync::{broadcast, broadcast::Sender, oneshot};
 
@@ -105,7 +105,7 @@ impl OutputManagerServiceMock {
                     .filter_map(|dbuo| {
                         if requested_outputs.iter().any(|ro| dbuo.commitment == ro.commitment) {
                             Some(RecoveredOutput {
-                                output: dbuo.unblinded_output,
+                                output: dbuo.wallet_output,
                                 tx_id: TxId::new_random(),
                             })
                         } else {
@@ -129,7 +129,7 @@ impl OutputManagerServiceMock {
                     .filter_map(|dbuo| {
                         if requested_outputs.iter().any(|ro| dbuo.commitment == ro.commitment) {
                             Some(RecoveredOutput {
-                                output: dbuo.unblinded_output,
+                                output: dbuo.wallet_output,
                                 tx_id: TxId::new_random(),
                             })
                         } else {
@@ -151,8 +151,8 @@ impl OutputManagerServiceMock {
 
 #[derive(Clone, Debug)]
 pub struct OutputManagerMockState {
-    pub recoverable_outputs: Arc<Mutex<Vec<DbUnblindedOutput>>>,
-    pub one_sided_payments: Arc<Mutex<Vec<DbUnblindedOutput>>>,
+    pub recoverable_outputs: Arc<Mutex<Vec<DbWalletOutput>>>,
+    pub one_sided_payments: Arc<Mutex<Vec<DbWalletOutput>>>,
 }
 
 impl OutputManagerMockState {
@@ -163,12 +163,12 @@ impl OutputManagerMockState {
         }
     }
 
-    pub fn set_recoverable_outputs(&self, outputs: Vec<DbUnblindedOutput>) {
+    pub fn set_recoverable_outputs(&self, outputs: Vec<DbWalletOutput>) {
         let mut lock = acquire_lock!(self.recoverable_outputs);
         *lock = outputs;
     }
 
-    pub fn set_one_sided_payments(&self, outputs: Vec<DbUnblindedOutput>) {
+    pub fn set_one_sided_payments(&self, outputs: Vec<DbWalletOutput>) {
         let mut lock = acquire_lock!(self.one_sided_payments);
         *lock = outputs;
     }

@@ -29,7 +29,6 @@ use crate::{
     cipher_seed::CipherSeed,
     key_manager_service::{
         error::KeyManagerServiceError,
-        interface::NextKeyResult,
         storage::database::{KeyManagerBackend, KeyManagerDatabase},
         AddResult,
         KeyId,
@@ -77,10 +76,7 @@ where
             .add_key_manager_branch(&branch.into())
     }
 
-    async fn get_next_key<T: Into<String> + Send>(
-        &self,
-        branch: T,
-    ) -> Result<NextKeyResult<PK>, KeyManagerServiceError> {
+    async fn get_next_key<T: Into<String> + Send>(&self, branch: T) -> Result<(KeyId<PK>, PK), KeyManagerServiceError> {
         (*self.key_manager_inner)
             .read()
             .await
@@ -88,31 +84,11 @@ where
             .await
     }
 
-    async fn get_next_key_id<T: Into<String> + Send>(&self, branch: T) -> Result<KeyId<PK>, KeyManagerServiceError> {
+    async fn get_static_key<T: Into<String> + Send>(&self, branch: T) -> Result<KeyId<PK>, KeyManagerServiceError> {
         (*self.key_manager_inner)
             .read()
             .await
-            .get_next_key_id(&branch.into())
-            .await
-    }
-
-    async fn get_static_key_id<T: Into<String> + Send>(&self, branch: T) -> Result<KeyId<PK>, KeyManagerServiceError> {
-        (*self.key_manager_inner)
-            .read()
-            .await
-            .get_static_key_id(&branch.into())
-            .await
-    }
-
-    async fn get_key_at_index<T: Into<String> + Send>(
-        &self,
-        branch: T,
-        index: u64,
-    ) -> Result<PK::K, KeyManagerServiceError> {
-        (*self.key_manager_inner)
-            .read()
-            .await
-            .get_key_at_index(&branch.into(), index)
+            .get_static_key(&branch.into())
             .await
     }
 
