@@ -46,7 +46,7 @@ use tari_comms::{
 use tari_contacts::contacts_service::{handle::ContactsLivenessEvent, types::Contact};
 use tari_core::transactions::{
     tari_amount::{uT, MicroTari},
-    transaction_components::OutputFeatures,
+    transaction_components::{OutputFeatures, TemplateType},
     weight::TransactionWeight,
 };
 use tari_shutdown::ShutdownSignal;
@@ -74,7 +74,12 @@ use crate::{
     ui::{
         state::{
             debouncer::BalanceEnquiryDebouncer,
-            tasks::{send_burn_transaction_task, send_one_sided_transaction_task, send_transaction_task},
+            tasks::{
+                send_burn_transaction_task,
+                send_one_sided_transaction_task,
+                send_register_template_transaction_task,
+                send_transaction_task,
+            },
             wallet_event_monitor::WalletEventMonitor,
         },
         ui_burnt_proof::UiBurntProof,
@@ -428,6 +433,41 @@ impl AppState {
             selection_criteria,
             message,
             fee_per_gram,
+            tx_service_handle,
+            inner.wallet.db.clone(),
+            result_tx,
+        )
+        .await;
+
+        Ok(())
+    }
+
+    pub async fn register_code_template(
+        &mut self,
+        template_name: String,
+        template_version: u16,
+        template_type: TemplateType,
+        binary_url: String,
+        binary_sha: String,
+        repository_url: String,
+        repository_commit_hash: String,
+        fee_per_gram: MicroTari,
+        selection_criteria: UtxoSelectionCriteria,
+        result_tx: watch::Sender<UiTransactionSendStatus>,
+    ) -> Result<(), UiError> {
+        let inner = self.inner.write().await;
+        let tx_service_handle = inner.wallet.transaction_service.clone();
+
+        send_register_template_transaction_task(
+            template_name,
+            template_version,
+            template_type,
+            repository_url,
+            repository_commit_hash,
+            binary_url,
+            binary_sha,
+            fee_per_gram,
+            selection_criteria,
             tx_service_handle,
             inner.wallet.db.clone(),
             result_tx,

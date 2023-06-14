@@ -5541,6 +5541,7 @@ dependencies = [
  "qrcode",
  "rand 0.7.3",
  "regex",
+ "reqwest",
  "rpassword",
  "rustyline",
  "serde",
@@ -5571,6 +5572,7 @@ dependencies = [
  "tui",
  "unicode-segmentation",
  "unicode-width",
+ "url 2.3.1",
  "zeroize",
  "zxcvbn",
 ]
