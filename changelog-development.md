@@ -1,3 +1,15 @@
+## [0.51.0-pre.0](https://github.com/tari-project/tari/compare/v0.50.0-pre.3...v0.51.0-pre.0) (2023-06-09)
+
+#### Bug Fixes
+
+#### Features
+
+*   ui for template registration in console wallet (#5444) ([701e3c23](https://github.com/tari-project/tari/commit/701e3c2341d1029c2711b81a66952f3bee7d8e42), breaks [#](https://github.com/tari-project/tari/issues/), [#](https://github.com/tari-project/tari/issues/), [#](https://github.com/tari-project/tari/issues/))
+
+#### Breaking Changes
+
+
+
 # Changelog
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
