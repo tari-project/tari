@@ -32,14 +32,14 @@ use crate::transactions::transaction_components::{
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq, BorshSerialize, BorshDeserialize)]
 pub enum SideChainFeature {
     ValidatorNodeRegistration(ValidatorNodeRegistration),
-    TemplateRegistration(CodeTemplateRegistration),
+    CodeTemplateRegistration(CodeTemplateRegistration),
     ConfidentialOutput(ConfidentialOutputData),
 }
 
 impl SideChainFeature {
-    pub fn template_registration(&self) -> Option<&CodeTemplateRegistration> {
+    pub fn code_template_registration(&self) -> Option<&CodeTemplateRegistration> {
         match self {
-            Self::TemplateRegistration(v) => Some(v),
+            Self::CodeTemplateRegistration(v) => Some(v),
             _ => None,
         }
     }

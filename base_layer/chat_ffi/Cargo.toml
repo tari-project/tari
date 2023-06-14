@@ -3,20 +3,19 @@ name = "tari_chat_ffi"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency chat C FFI bindings"
 license = "BSD-3-Clause"
-version = "0.50.0-pre.2"
+version = "0.51.0-pre.1"
 edition = "2018"
 
 [dependencies]
+tari_app_utilities = { path = "../../applications/tari_app_utilities" }
 tari_chat_client = { path = "../contacts/examples/chat_client" }
 tari_common = { path = "../../common" }
 tari_common_types = { path = "../common_types" }
 tari_comms = { path = "../../comms/core" }
 tari_contacts = { path = "../contacts" }
-tari_p2p = { path = "../p2p" }
 
 libc = "0.2.65"
 log = "0.4.6"
-serde_json = "1.0.64"
 thiserror = "1.0.26"
 tokio = "1.23"
 

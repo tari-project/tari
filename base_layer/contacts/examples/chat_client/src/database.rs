@@ -29,7 +29,6 @@ use tari_common_sqlite::{
 };
 use tari_contacts::contacts_service::storage::sqlite_db::ContactsServiceSqliteDatabase;
 use tari_storage::lmdb_store::{LMDBBuilder, LMDBConfig};
-use tari_test_utils::random::string;
 
 pub fn connect_to_db(db_path: PathBuf) -> Result<ContactsServiceSqliteDatabase<DbConnection>, StorageError> {
     let url: DbConnectionUrl = db_path.into_os_string().into_string().unwrap().try_into().unwrap();
@@ -37,15 +36,22 @@ pub fn connect_to_db(db_path: PathBuf) -> Result<ContactsServiceSqliteDatabase<D
     Ok(ContactsServiceSqliteDatabase::init(connection))
 }
 
-pub fn create_chat_storage(base_path: &PathBuf) -> Result<PathBuf, StorageError> {
-    std::fs::create_dir_all(base_path).unwrap();
-    let db_name = format!("{}.sqlite3", string(8).as_str());
-    let db_path = format!("{}/{}", base_path.to_str().unwrap(), db_name);
-
-    // Create the db
-    let _db = SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
-
-    Ok(PathBuf::from(db_path))
+pub fn create_chat_storage(db_file_path: &PathBuf) {
+    // Create the storage db
+    std::fs::create_dir_all(
+        db_file_path
+            .parent()
+            .expect("db file cannot be set to a root directory"),
+    )
+    .expect("db directory could not be created");
+    let _db = SqliteConnection::establish(
+        db_file_path
+            .clone()
+            .into_os_string()
+            .to_str()
+            .expect("Couldn't convert db file path to string"),
+    )
+    .unwrap_or_else(|_| panic!("Error connecting to {:?}", db_file_path));
 }
 
 pub fn create_peer_storage(base_path: &PathBuf) {

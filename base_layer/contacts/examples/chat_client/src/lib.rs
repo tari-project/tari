@@ -23,5 +23,6 @@
 mod client;
 pub use client::{ChatClient, Client};
 
+pub mod config;
 pub mod database;
 pub mod networking;

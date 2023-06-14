@@ -17,11 +17,11 @@ Only the first four applications will be discussed in this README (see [wallet-a
 ### Versions
 The recommended running versions of each network are:
 
-| Network   | Version      | 
+| Network   | Version      |
 |-----------|--------------|
-| Stagenet  | 0.48.0       |
-| Nextnet   | 0.49.0-rc.3  |
-| Esmeralda | 0.50.0-pre.2 |
+| Stagenet  | 0.49.0       |
+| Nextnet   | 0.50.0-rc.0  |
+| Esmeralda | 0.51.0-pre.0 |
 
 For more detail about versioning see [Release Ideology](https://github.com/tari-project/tari/blob/development/docs/src/branching_releases.md)
 

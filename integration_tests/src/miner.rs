@@ -49,7 +49,6 @@ use tari_core::{
 };
 use tari_crypto::keys::SecretKey;
 use tari_miner::{run_miner, Cli};
-use tempfile::tempdir;
 use tonic::{
     codegen::InterceptedService,
     transport::{Channel, Endpoint},
@@ -89,8 +88,13 @@ impl MinerProcess {
     ) {
         let node = world.get_node(&self.base_node_name).unwrap().grpc_port;
         let wallet = world.get_wallet(&self.wallet_name).unwrap().grpc_port;
-        let temp_dir = tempdir().unwrap();
-        let data_dir = temp_dir.path().join("data/miner");
+        let temp_dir = world
+            .current_base_dir
+            .as_ref()
+            .expect("Base dir on world")
+            .join("miners")
+            .join(&self.name);
+        let data_dir = temp_dir.as_path().join("data/miner");
         let data_dir_str = data_dir.clone().into_os_string().into_string().unwrap();
         let mut config_path = data_dir;
         config_path.push("config.toml");

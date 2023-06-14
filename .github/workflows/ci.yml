@@ -1,7 +1,7 @@
 ---
 name: CI
 
-"on":
+'on':
   workflow_dispatch:
   push:
     branches:
@@ -19,6 +19,7 @@ env:
   toolchain: nightly-2022-11-03
   CARGO_HTTP_MULTIPLEXING: false
   CARGO_TERM_COLOR: always
+  CARGO_UNSTABLE_SPARSE_REGISTRY: true
   PROTOC: protoc
   TERM: unkown
 
@@ -34,7 +35,7 @@ jobs:
       - name: checkout
         uses: actions/checkout@v3
       - name: toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.toolchain }}
           components: clippy, rustfmt
@@ -42,21 +43,12 @@ jobs:
         run: |
           sudo apt-get update
           sudo bash scripts/install_ubuntu_dependencies.sh
-      - name: cargo fmt
-        uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
+      - name: cargo format
+        run: cargo fmt --all -- --check
       - name: Install cargo-lints
-        uses: actions-rs/cargo@v1
-        with:
-          command: install
-          args: cargo-lints
+        run: cargo install cargo-lints
       - name: Clippy check (with lints)
-        uses: actions-rs/cargo@v1
-        with:
-          command: lints
-          args: clippy --all-targets --all-features
+        run: cargo lints clippy --all-targets --all-features
   machete:
     name: machete
     runs-on: [ubuntu-20.04]
@@ -64,7 +56,7 @@ jobs:
       - name: checkout
         uses: actions/checkout@v3
       - name: toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.toolchain }}
           components: clippy, rustfmt
@@ -72,71 +64,53 @@ jobs:
         run: |
           sudo apt-get update
           sudo bash scripts/install_ubuntu_dependencies.sh
-      - name: Install cargo-machete
-        uses: actions-rs/cargo@v1
-        with:
-          command: install
-          args: cargo-machete
-      - name: cargo machete check
-        uses: actions-rs/cargo@v1
-        with:
-          command: machete
-  build:
-    name: cargo check
+      - name: cargo machete
+        run: |
+          cargo install cargo-machete
+          cargo machete
+  build-nightly:
+    name: cargo check with nightly
     runs-on: [self-hosted, ubuntu-high-cpu]
     steps:
       - name: checkout
         uses: actions/checkout@v3
       - name: toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.toolchain }}
-          profile: minimal
-          override: true
       - name: ubuntu dependencies
         run: |
           sudo apt-get update
           sudo bash scripts/install_ubuntu_dependencies.sh
+      - name: rustup show
+        run: rustup show
       - name: cargo check
-        uses: actions-rs/cargo@v1
-        with:
-          command: check
-          args: --release --all-targets
+        run: cargo check --release --all-targets --locked
       - name: cargo check ffi separately
-        uses: actions-rs/cargo@v1
-        with:
-          command: check
-          args: --release --package tari_wallet_ffi
+        run: cargo check --release --package tari_wallet_ffi --locked
   build-stable:
-    name: cargo check stable
+    name: cargo check with stable
     runs-on: [self-hosted, ubuntu-high-cpu]
     steps:
       - name: checkout
         uses: actions/checkout@v3
+      - name: rust-toolchain.toml override by removing
+        run: rm -f rust-toolchain.toml
       - name: toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
-          profile: minimal
-          override: true
       - uses: Swatinem/rust-cache@v2
       - name: ubuntu dependencies
         run: |
           sudo apt-get update
           sudo bash scripts/install_ubuntu_dependencies.sh
       - name: rustup show
-        run: |
-          rustup show
+        run: rustup show
       - name: cargo check
-        uses: actions-rs/cargo@v1
-        with:
-          command: check
-          args: --release --all-targets --workspace --exclude tari_integration_tests --locked
+        run: cargo check --release --all-targets --workspace --exclude tari_integration_tests --locked
       - name: cargo check ffi separately
-        uses: actions-rs/cargo@v1
-        with:
-          command: check
-          args: --release --package tari_wallet_ffi
+        run: cargo check --release --package tari_wallet_ffi --locked
   licenses:
     name: file licenses
     runs-on: [ubuntu-20.04]
@@ -160,7 +134,7 @@ jobs:
       - name: checkout
         uses: actions/checkout@v3
       - name: toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.toolchain }}
       - name: ubuntu dependencies
@@ -171,29 +145,20 @@ jobs:
         run: |
           cd base_layer/key_manager
           rustup target add wasm32-unknown-unknown
+          cargo install wasm-pack
           make test
       - name: Install cargo-nextest
-        uses: actions-rs/cargo@v1
-        with:
-          command: install
-          args: cargo-nextest --locked
+        run: cargo install cargo-nextest --locked
       - name: cargo test compile
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --no-run --locked --all-features --release
+        run: cargo test --no-run --locked --all-features --release
       - name: cargo test
-        uses: actions-rs/cargo@v1
-        with:
-          command: nextest
-          args: run --all-features --release -E "not package(tari_integration_tests)" --profile ci
+        run: cargo nextest run --all-features --release -E "not package(tari_integration_tests)" --profile ci
       - name: upload artifact
-        uses: actions/upload-artifact@v2  # upload test results as artifact
+        uses: actions/upload-artifact@v3  # upload test results as artifact
         if: always()
         with:
           name: test-results
           path: ${{ github.workspace }}/target/nextest/ci/junit.xml
-
 
   # Allows other workflows to know the PR number
   artifacts:

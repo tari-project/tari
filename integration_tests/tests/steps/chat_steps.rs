@@ -34,14 +34,24 @@ use crate::steps::{HALF_SECOND, TWO_MINUTES_WITH_HALF_SECOND_SLEEP};
 async fn chat_client_connected_to_base_node(world: &mut TariWorld, name: String, seed_node_name: String) {
     let base_node = world.get_node(&seed_node_name).unwrap();
 
-    let client = spawn_chat_client(&name, vec![base_node.identity.to_peer()]).await;
+    let client = spawn_chat_client(
+        &name,
+        vec![base_node.identity.to_peer()],
+        world.current_base_dir.clone().expect("Expect a base dir on world"),
+    )
+    .await;
 
     world.chat_clients.insert(name, Box::new(client));
 }
 
 #[when(expr = "I have a chat client {word} with no peers")]
 async fn chat_client_with_no_peers(world: &mut TariWorld, name: String) {
-    let client = spawn_chat_client(&name, vec![]).await;
+    let client = spawn_chat_client(
+        &name,
+        vec![],
+        world.current_base_dir.clone().expect("Expect a base dir on world"),
+    )
+    .await;
 
     world.chat_clients.insert(name, Box::new(client));
 }
