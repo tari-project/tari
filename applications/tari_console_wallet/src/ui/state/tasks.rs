@@ -36,7 +36,8 @@ use tari_core::{
         TransactionHashDomain,
     },
 };
-use tari_crypto::{hash::blake2::Blake256, keys::PublicKey as PublicKeyTrait, ristretto::RistrettoSecretKey};
+use tari_crypto::{hash::blake2::Blake256, keys::PublicKey as PublicKeyTrait};
+use tari_crypto::ristretto::RistrettoPublicKey;
 use tari_key_manager::key_manager::KeyManager;
 use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
@@ -420,10 +421,10 @@ pub async fn send_register_template_transaction_task(
     // signing and sending code template registration request
     // ----------------------------------------------------------------------------
 
-    let mut km = KeyManager::<RistrettoSecretKey, Blake256>::new();
+    let mut km = KeyManager::<RistrettoPublicKey, Blake256>::new();
 
     let author_private_key = match km.next_key() {
-        Ok(secret_key) => secret_key.k,
+        Ok(secret_key) => secret_key.key,
         Err(e) => {
             error!(target: LOG_TARGET, "failed to generate key: {}", e);
             result_tx.send(UiTransactionSendStatus::Error(e.to_string())).unwrap();
