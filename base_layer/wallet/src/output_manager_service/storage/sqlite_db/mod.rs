@@ -1311,7 +1311,7 @@ mod test {
         test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager},
         transactions::{
             tari_amount::MicroTari,
-            test_helpers::{create_key_manager_output_with_data, TestParams as TestParamsHelpers},
+            test_helpers::{create_key_manager_output_with_data, TestParams},
             transaction_components::{OutputFeatures, TransactionInput, WalletOutput},
         },
     };
@@ -1326,7 +1326,7 @@ mod test {
     };
 
     pub async fn make_input(val: MicroTari, key_manager: &TestKeyManager) -> (TransactionInput, WalletOutput) {
-        let test_params = TestParamsHelpers::new(key_manager).await;
+        let test_params = TestParams::new(key_manager).await;
 
         let key_manager_output = create_key_manager_output_with_data(
             script!(Nop),

@@ -20,9 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::mem::size_of;
-
-use chacha20poly1305::Key;
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{transaction::TxId, types::FixedHash};
 use tari_core::{
@@ -338,21 +335,12 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
 pub async fn test_output_manager_sqlite_db() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
 
-    let mut key = [0u8; size_of::<Key>()];
-    OsRng.fill_bytes(&mut key);
-    let key_ga = Key::from_slice(&key);
-
     test_db_backend(OutputManagerSqliteDatabase::new(connection)).await;
 }
 
 #[tokio::test]
 pub async fn test_output_manager_sqlite_db_encrypted() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
-
-    let mut key = [0u8; size_of::<Key>()];
-    OsRng.fill_bytes(&mut key);
-    let key_ga = Key::from_slice(&key);
-
     test_db_backend(OutputManagerSqliteDatabase::new(connection)).await;
 }
 

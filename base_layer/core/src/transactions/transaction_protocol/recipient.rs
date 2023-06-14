@@ -215,14 +215,14 @@ mod test {
         let msg = SingleRoundSenderData {
             tx_id: 15u64.into(),
             amount,
-            public_excess: sender_test_params.spend_public_key, // any random key will do
-            public_nonce: sender_test_params.public_nonce_public_key, // any random key will do
+            public_excess: sender_test_params.spend_key_pk, // any random key will do
+            public_nonce: sender_test_params.public_nonce_key_pk, // any random key will do
             metadata: m.clone(),
             message: "".to_string(),
             features,
             script,
-            sender_offset_public_key: sender_test_params.sender_offset_public_key,
-            ephemeral_public_nonce: sender_test_params.ephemeral_public_nonce_public_key,
+            sender_offset_public_key: sender_test_params.sender_offset_key_pk,
+            ephemeral_public_nonce: sender_test_params.ephemeral_public_nonce_key_pk,
             covenant: Covenant::default(),
             minimum_value_promise: MicroTari::zero(),
         };

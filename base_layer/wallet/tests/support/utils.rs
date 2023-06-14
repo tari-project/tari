@@ -21,14 +21,13 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use rand::{CryptoRng, Rng};
-use tari_common_types::types::{PrivateKey, PublicKey};
 use tari_core::{
     covenants::Covenant,
     test_helpers::TestKeyManager,
     transactions::{
         key_manager::TransactionKeyManagerInterface,
         tari_amount::MicroTari,
-        test_helpers::{create_key_manager_output_with_data, TestParams as TestParamsHelpers},
+        test_helpers::{create_key_manager_output_with_data, TestParams},
         transaction_components::{
             OutputFeatures,
             RangeProofType,
@@ -39,29 +38,8 @@ use tari_core::{
         transaction_protocol::sender::TransactionSenderMessage,
     },
 };
-use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
 use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tari_script::{inputs, script};
-
-pub struct TestParams {
-    pub spend_key: PrivateKey,
-    pub change_spend_key: PrivateKey,
-    pub offset: PrivateKey,
-    pub nonce: PrivateKey,
-    pub public_nonce: PublicKey,
-}
-impl TestParams {
-    pub fn new<R: Rng + CryptoRng>(rng: &mut R) -> TestParams {
-        let r = PrivateKey::random(rng);
-        TestParams {
-            spend_key: PrivateKey::random(rng),
-            change_spend_key: PrivateKey::random(rng),
-            offset: PrivateKey::random(rng),
-            public_nonce: PublicKey::from_secret_key(&r),
-            nonce: r,
-        }
-    }
-}
 
 pub async fn make_non_recoverable_input<R: Rng + CryptoRng>(
     _rng: &mut R,
@@ -69,7 +47,7 @@ pub async fn make_non_recoverable_input<R: Rng + CryptoRng>(
     features: &OutputFeatures,
     key_manager: &TestKeyManager,
 ) -> WalletOutput {
-    let test_params = TestParamsHelpers::new(key_manager).await;
+    let test_params = TestParams::new(key_manager).await;
     let utxo = create_key_manager_output_with_data(script!(Nop), features.clone(), &test_params, val, key_manager)
         .await
         .unwrap();
@@ -80,7 +58,7 @@ pub async fn create_wallet_output_from_sender_data(
     info: &TransactionSenderMessage,
     key_manager: &TestKeyManager,
 ) -> WalletOutput {
-    let test_params = TestParamsHelpers::new(key_manager).await;
+    let test_params = TestParams::new(key_manager).await;
     let sender_data = info.single().unwrap();
     let public_script_key = key_manager
         .get_public_key_at_key_id(&test_params.script_key_id)
@@ -127,7 +105,7 @@ pub async fn make_input_with_features<R: Rng + CryptoRng>(
     features: OutputFeatures,
     key_manager: &TestKeyManager,
 ) -> WalletOutput {
-    let test_params = TestParamsHelpers::new(key_manager).await;
+    let test_params = TestParams::new(key_manager).await;
     let utxo = create_key_manager_output_with_data(script!(Nop), features, &test_params, value, key_manager)
         .await
         .unwrap();

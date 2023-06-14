@@ -73,15 +73,19 @@ where PK: Clone
     }
 }
 
+pub const MANAGED_KEY_BRANCH: &str = "managed";
+pub const IMPORTED_KEY_BRANCH: &str = "imported";
+pub const ZERO_KEY_BRANCH: &str = "zero";
+
 impl<PK> fmt::Display for KeyId<PK>
 where PK: ByteArray
 {
     // This trait requires `fmt` with this exact signature.
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            KeyId::Managed { branch: b, index: i } => write!(f, "managed.'{}'.'{}'", b, i),
-            KeyId::Imported { key: public_key } => write!(f, "imported.'{}'", public_key.to_hex()),
-            KeyId::Zero => write!(f, "zero"),
+            KeyId::Managed { branch: b, index: i } => write!(f, "{}.{}.{}", MANAGED_KEY_BRANCH, b, i),
+            KeyId::Imported { key: public_key } => write!(f, "{}.{}", IMPORTED_KEY_BRANCH, public_key.to_hex()),
+            KeyId::Zero => write!(f, "{}", ZERO_KEY_BRANCH),
         }
     }
 }
@@ -102,7 +106,7 @@ where PK: ByteArray
         match parts.first() {
             None => Err("Out of bounds".to_string()),
             Some(val) => match *val {
-                "default" => {
+                MANAGED_KEY_BRANCH => {
                     if parts.len() != 3 {
                         return Err("Wrong format".to_string());
                     }
@@ -114,14 +118,14 @@ where PK: ByteArray
                         index,
                     })
                 },
-                "imported" => {
+                IMPORTED_KEY_BRANCH => {
                     if parts.len() != 2 {
                         return Err("Wrong format".to_string());
                     }
                     let key = PK::from_hex(parts[1]).map_err(|_| "Invalid public key".to_string())?;
                     Ok(KeyId::Imported { key })
                 },
-                "zero" => Ok(KeyId::Zero),
+                ZERO_KEY_BRANCH => Ok(KeyId::Zero),
                 _ => Err("Wrong format".to_string()),
             },
         }

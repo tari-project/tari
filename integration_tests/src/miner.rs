@@ -21,7 +21,6 @@
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{convert::TryInto, str::FromStr, time::Duration};
-use tari_core::transactions::transaction_components::WalletOutput;
 
 use tari_app_grpc::{
     authentication::ClientAuthenticationInterceptor,
@@ -42,12 +41,15 @@ use tari_app_grpc::{
 use tari_app_utilities::common_cli_args::CommonCliArgs;
 use tari_base_node_grpc_client::BaseNodeGrpcClient;
 use tari_common::configuration::Network;
-use tari_common_types::{grpc_authentication::GrpcAuthentication};
+use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tari_core::{
     consensus::ConsensusManager,
-    transactions::key_manager::TransactionKeyManagerInterface,
     test_helpers::TestKeyManager,
-    transactions::{ CoinbaseBuilder},
+    transactions::{
+        key_manager::TransactionKeyManagerInterface,
+        transaction_components::WalletOutput,
+        CoinbaseBuilder,
+    },
 };
 use tari_miner::{run_miner, Cli};
 use tonic::{
@@ -334,7 +336,8 @@ async fn generate_coinbase(
         .with_spend_key_id(spending_key_id)
         .with_script_key_id(script_private_key_id)
         .with_extra(extra)
-        .build_with_reward(consensus_constants, reward.into()).await
+        .build_with_reward(consensus_constants, reward.into())
+        .await
         .unwrap();
 
     let tx_out = tx.body().outputs().first().unwrap().clone();

@@ -48,7 +48,6 @@ use tari_core::{
             WalletOutput,
         },
         transaction_protocol::sender::TransactionSenderMessage,
-        CryptoFactories,
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
     },
@@ -75,9 +74,7 @@ use tari_wallet::{
 use tempfile::tempdir;
 
 pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
-    let key_manager = create_test_core_key_manager_with_memory_db();
     let mut db = TransactionDatabase::new(backend);
-    let factories = CryptoFactories::default();
     let key_manager = create_test_core_key_manager_with_memory_db();
     let input = create_key_manager_output_with_data(
         TariScript::default(),
@@ -111,7 +108,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let change = TestParams::new(&key_manager).await;
     builder.with_change_data(
         script!(Nop),
-        inputs!(change.script_public_key),
+        inputs!(change.script_key_pk),
         change.script_key_id.clone(),
         change.spend_key_id.clone(),
         Covenant::default(),
@@ -520,8 +517,8 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     assert_eq!(unmined_txs.len(), 5);
 }
 
-#[test]
-pub fn test_transaction_service_sqlite_db() {
+#[tokio::test]
+pub async fn test_transaction_service_sqlite_db() {
     let db_name = format!("{}.sqlite3", random::string(8));
     let db_tempdir = tempdir().unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
@@ -533,7 +530,7 @@ pub fn test_transaction_service_sqlite_db() {
     let key_ga = Key::from_slice(&key);
     let cipher = XChaCha20Poly1305::new(key_ga);
 
-    test_db_backend(TransactionServiceSqliteDatabase::new(connection, cipher));
+    test_db_backend(TransactionServiceSqliteDatabase::new(connection, cipher)).await;
 }
 
 #[tokio::test]

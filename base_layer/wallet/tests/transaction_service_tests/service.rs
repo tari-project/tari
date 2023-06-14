@@ -83,7 +83,7 @@ use tari_core::{
         fee::Fee,
         key_manager::{TransactionKeyManagerInitializer, TransactionKeyManagerInterface},
         tari_amount::*,
-        test_helpers::{create_key_manager_output_with_data, TestParams as TestParamsHelpers},
+        test_helpers::{create_key_manager_output_with_data, TestParams},
         transaction_components::{KernelBuilder, OutputFeatures, Transaction},
         transaction_protocol::{
             proto::protocol as proto,
@@ -107,7 +107,7 @@ use tari_crypto::{
 use tari_key_manager::{
     cipher_seed::CipherSeed,
     key_manager_service::{
-        storage::{database::KeyManagerDatabase, sqlite_db::KeyManagerSqliteDatabase},
+        storage::{sqlite_db::KeyManagerSqliteDatabase},
         KeyId,
         KeyManagerInterface,
     },
@@ -170,7 +170,7 @@ use crate::support::{
     base_node_service_mock::MockBaseNodeService,
     comms_and_services::{create_dummy_message, setup_comms_services},
     comms_rpc::{connect_rpc_client, BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
-    utils::{create_wallet_output_from_sender_data, make_non_recoverable_input, TestParams},
+    utils::{create_wallet_output_from_sender_data, make_non_recoverable_input},
 };
 
 async fn setup_transaction_service<P: AsRef<Path>>(
@@ -222,7 +222,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
     OsRng.fill_bytes(&mut key);
     let key_ga = Key::from_slice(&key);
     let db_cipher = XChaCha20Poly1305::new(key_ga);
-    let kms_backend = KeyManagerDatabase::new(KeyManagerSqliteDatabase::init(connection, db_cipher));
+    let kms_backend = KeyManagerSqliteDatabase::init(connection, db_cipher);
 
     let handles = StackBuilder::new(shutdown_signal)
         .add_initializer(RegisterHandle::new(dht))
@@ -237,7 +237,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
             Network::LocalNet.into(),
             wallet_identity.clone(),
         ))
-        .add_initializer(TransactionKeyManagerInitializer::<KeyManagerDatabase<_, _>>::new(
+        .add_initializer(TransactionKeyManagerInitializer::<KeyManagerSqliteDatabase<_>>::new(
             kms_backend,
             cipher,
             factories.clone(),
@@ -535,7 +535,7 @@ async fn manage_single_transaction() {
     let (bob_connection, _tempdir) = make_wallet_database_connection(Some(database_path.clone()));
 
     let shutdown = Shutdown::new();
-    let (mut alice_ts, mut alice_oms, _alice_comms, _alice_connectivity, key_manager_handle) =
+    let (mut alice_ts, mut alice_oms, _alice_comms, _alice_connectivity, alice_key_manager_handle) =
         setup_transaction_service(
             alice_node_identity.clone(),
             vec![],
@@ -552,7 +552,7 @@ async fn manage_single_transaction() {
 
     sleep(Duration::from_secs(2)).await;
 
-    let (mut bob_ts, mut bob_oms, bob_comms, _bob_connectivity, key_manager_handle) = setup_transaction_service(
+    let (mut bob_ts, mut bob_oms, bob_comms, _bob_connectivity, _bob_key_manager_handle) = setup_transaction_service(
         bob_node_identity.clone(),
         vec![alice_node_identity.clone()],
         consensus_manager,
@@ -577,7 +577,7 @@ async fn manage_single_transaction() {
         &mut OsRng,
         MicroTari(2500),
         &OutputFeatures::default(),
-        &key_manager_handle,
+        &alice_key_manager_handle,
     )
     .await;
     let bob_address = TariAddress::new(bob_node_identity.public_key().clone(), network);
@@ -1685,7 +1685,6 @@ async fn test_accepting_unknown_tx_id_and_malformed_reply() {
         .unwrap()
         .unwrap();
 
-    let params = TestParams::new(&mut OsRng);
     let sender = sender_message.try_into().unwrap();
     let output = create_wallet_output_from_sender_data(&sender, &alice_ts_interface.key_manager_handle).await;
     let rtp = ReceiverTransactionProtocol::new(sender, output, &alice_ts_interface.key_manager_handle).await;
@@ -2490,7 +2489,7 @@ async fn test_transaction_cancellation() {
     let input = create_key_manager_output_with_data(
         TariScript::default(),
         OutputFeatures::default(),
-        &TestParamsHelpers::new(&key_manager).await,
+        &TestParams::new(&key_manager).await,
         MicroTari::from(100_000),
         &key_manager,
     )
@@ -2501,6 +2500,7 @@ async fn test_transaction_cancellation() {
     let key_manager = create_test_core_key_manager_with_memory_db();
     let mut builder = SenderTransactionProtocol::builder(constants, key_manager.clone());
     let amount = MicroTari::from(10_000);
+    let change = TestParams::new(&key_manager).await;
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroTari::from(5))
@@ -2508,17 +2508,22 @@ async fn test_transaction_cancellation() {
         .with_input(input)
         .await
         .unwrap()
-        .with_change_secret(PrivateKey::random(&mut OsRng))
-        .with_recipient_data(
-            amount,
+        .with_change_data(
             script!(Nop),
-            PrivateKey::random(&mut OsRng),
+            inputs!(change.script_key_pk),
+            change.script_key_id.clone(),
+            change.spend_key_id.clone(),
+            Covenant::default(),
+        )
+        .with_recipient_data(
+            script!(Nop),
             Default::default(),
-            PrivateKey::random(&mut OsRng),
             Covenant::default(),
             MicroTari::zero(),
+            amount,
         )
-        .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
+        .await
+        .unwrap();
 
     let mut stp = builder.build().await.unwrap();
     let tx_sender_msg = stp.build_single_round_message(&key_manager).await.unwrap();
@@ -2571,7 +2576,7 @@ async fn test_transaction_cancellation() {
     let input = create_key_manager_output_with_data(
         TariScript::default(),
         OutputFeatures::default(),
-        &TestParamsHelpers::new(&key_manager.clone()).await,
+        &TestParams::new(&key_manager.clone()).await,
         MicroTari::from(100_000),
         &key_manager.clone(),
     )
@@ -2580,6 +2585,7 @@ async fn test_transaction_cancellation() {
     let constants = create_consensus_constants(0);
     let mut builder = SenderTransactionProtocol::builder(constants, key_manager.clone());
     let amount = MicroTari::from(10_000);
+    let change = TestParams::new(&key_manager).await;
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroTari::from(5))
@@ -2587,17 +2593,22 @@ async fn test_transaction_cancellation() {
         .with_input(input)
         .await
         .unwrap()
-        .with_change_secret(PrivateKey::random(&mut OsRng))
-        .with_recipient_data(
-            amount,
+        .with_change_data(
             script!(Nop),
-            PrivateKey::random(&mut OsRng),
+            inputs!(change.script_key_pk),
+            change.script_key_id.clone(),
+            change.spend_key_id.clone(),
+            Covenant::default(),
+        )
+        .with_recipient_data(
+            script!(Nop),
             Default::default(),
-            PrivateKey::random(&mut OsRng),
             Covenant::default(),
             MicroTari::zero(),
+            amount,
         )
-        .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
+        .await
+        .unwrap();
 
     let mut stp = builder.build().await.unwrap();
     let tx_sender_msg = stp.build_single_round_message(&key_manager).await.unwrap();
@@ -3283,8 +3294,6 @@ async fn test_restarting_transaction_protocols() {
     ));
 
     // Bob is going to send a transaction to Alice
-    let alice = TestParams::new(&mut OsRng);
-    let bob = TestParams::new(&mut OsRng);
     let input = make_non_recoverable_input(
         &mut OsRng,
         MicroTari(2000),
@@ -3297,7 +3306,7 @@ async fn test_restarting_transaction_protocols() {
     let key_manager = create_test_core_key_manager_with_memory_db();
     let mut builder = SenderTransactionProtocol::builder(constants, key_manager.clone());
     let fee = fee_calc.calculate(MicroTari(4), 1, 1, 1, 0);
-    let script_private_key = PrivateKey::random(&mut OsRng);
+    let change = TestParams::new(&key_manager).await;
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroTari(4))
@@ -3305,20 +3314,20 @@ async fn test_restarting_transaction_protocols() {
         .await
         .unwrap()
         .with_recipient_data(
-            MicroTari(2000) - fee - MicroTari(10),
             script!(Nop),
-            PrivateKey::random(&mut OsRng),
             Default::default(),
-            PrivateKey::random(&mut OsRng),
             Covenant::default(),
             MicroTari::zero(),
+            MicroTari(2000) - fee - MicroTari(10),
         )
         .await
         .unwrap()
-        .with_change_script(
+        .with_change_data(
             script!(Nop),
-            inputs!(PublicKey::from_secret_key(&script_private_key)),
-            script_private_key,
+            inputs!(change.script_key_pk),
+            change.script_key_id.clone(),
+            change.spend_key_id.clone(),
+            Covenant::default(),
         );
     let mut bob_stp = builder.build().await.unwrap();
     let msg = bob_stp.build_single_round_message(&key_manager).await.unwrap();
@@ -4639,7 +4648,7 @@ async fn test_resend_on_startup() {
     let input = create_key_manager_output_with_data(
         script!(Nop),
         OutputFeatures::default(),
-        &TestParamsHelpers::new(&key_manager).await,
+        &TestParams::new(&key_manager).await,
         MicroTari::from(100_000),
         &key_manager,
     )
@@ -4649,6 +4658,7 @@ async fn test_resend_on_startup() {
     let key_manager = create_test_core_key_manager_with_memory_db();
     let mut builder = SenderTransactionProtocol::builder(constants, key_manager.clone());
     let amount = MicroTari::from(10_000);
+    let change = TestParams::new(&key_manager).await;
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroTari::from(177 / 5))
@@ -4656,17 +4666,22 @@ async fn test_resend_on_startup() {
         .with_input(input)
         .await
         .unwrap()
-        .with_change_secret(PrivateKey::random(&mut OsRng))
-        .with_recipient_data(
-            amount,
+        .with_change_data(
             script!(Nop),
-            PrivateKey::random(&mut OsRng),
+            inputs!(change.script_key_pk),
+            change.script_key_id.clone(),
+            change.spend_key_id.clone(),
+            Covenant::default(),
+        )
+        .with_recipient_data(
+            script!(Nop),
             Default::default(),
-            PrivateKey::random(&mut OsRng),
             Covenant::default(),
             MicroTari::zero(),
+            amount,
         )
-        .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
+        .await
+        .unwrap();
 
     let mut stp = builder.build().await.unwrap();
     let stp_msg = stp.build_single_round_message(&key_manager).await.unwrap();
@@ -5134,7 +5149,7 @@ async fn test_transaction_timeout_cancellation() {
     let input = create_key_manager_output_with_data(
         TariScript::default(),
         OutputFeatures::default(),
-        &TestParamsHelpers::new(&key_manager).await,
+        &TestParams::new(&key_manager).await,
         MicroTari::from(100_000),
         &key_manager,
     )
@@ -5144,6 +5159,7 @@ async fn test_transaction_timeout_cancellation() {
     let key_manager = create_test_core_key_manager_with_memory_db();
     let mut builder = SenderTransactionProtocol::builder(constants, key_manager.clone());
     let amount = MicroTari::from(10_000);
+    let change = TestParams::new(&key_manager).await;
     builder
         .with_lock_height(0)
         .with_fee_per_gram(MicroTari::from(177 / 5))
@@ -5151,17 +5167,22 @@ async fn test_transaction_timeout_cancellation() {
         .with_input(input)
         .await
         .unwrap()
-        .with_change_secret(PrivateKey::random(&mut OsRng))
-        .with_recipient_data(
-            amount,
+        .with_change_data(
             script!(Nop),
-            PrivateKey::random(&mut OsRng),
+            inputs!(change.script_key_pk),
+            change.script_key_id.clone(),
+            change.spend_key_id.clone(),
+            Covenant::default(),
+        )
+        .with_recipient_data(
+            script!(Nop),
             Default::default(),
-            PrivateKey::random(&mut OsRng),
             Covenant::default(),
             MicroTari::zero(),
+            amount,
         )
-        .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
+        .await
+        .unwrap();
 
     let mut stp = builder.build().await.unwrap();
     let stp_msg = stp.build_single_round_message(&key_manager).await.unwrap();

@@ -1021,16 +1021,12 @@ mod test {
         let script = TariScript::default();
         let output_features = OutputFeatures::default();
         let change = TestParams::new(&key_manager).await;
-        let script_key = key_manager
-            .get_public_key_at_key_id(&change.script_key_id)
-            .await
-            .unwrap();
         builder
             .with_lock_height(0)
             .with_fee_per_gram(MicroTari(2))
             .with_change_data(
                 script!(Nop),
-                inputs!(script_key),
+                inputs!(change.script_key_pk),
                 change.script_key_id.clone(),
                 change.spend_key_id.clone(),
                 Covenant::default(),
@@ -1198,16 +1194,12 @@ mod test {
             alice_key.get_size_for_default_features_and_scripts(2),
         );
         let change = TestParams::new(&key_manager).await;
-        let script_key = key_manager
-            .get_public_key_at_key_id(&change.script_key_id)
-            .await
-            .unwrap();
         builder
             .with_lock_height(0)
             .with_fee_per_gram(MicroTari(20))
             .with_change_data(
-                script!(Nop),
-                inputs!(script_key),
+                script.clone(),
+                inputs!(change.script_key_pk),
                 change.script_key_id.clone(),
                 change.spend_key_id.clone(),
                 Covenant::default(),
@@ -1306,16 +1298,12 @@ mod test {
         let mut builder = SenderTransactionProtocol::builder(create_consensus_constants(0), key_manager.clone());
         let script = script!(Nop);
         let change = TestParams::new(&key_manager).await;
-        let script_key = key_manager
-            .get_public_key_at_key_id(&change.script_key_id)
-            .await
-            .unwrap();
         builder
             .with_lock_height(0)
             .with_fee_per_gram(MicroTari(20))
             .with_change_data(
-                script!(Nop),
-                inputs!(script_key),
+                script.clone(),
+                inputs!(change.script_key_pk),
                 change.script_key_id.clone(),
                 change.spend_key_id.clone(),
                 Covenant::default(),
@@ -1379,8 +1367,8 @@ mod test {
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
             .with_change_data(
-                script!(Nop),
-                inputs!(change.script_public_key),
+                script.clone(),
+                inputs!(change.script_key_pk),
                 change.script_key_id.clone(),
                 change.spend_key_id.clone(),
                 Covenant::default(),
@@ -1417,8 +1405,8 @@ mod test {
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
             .with_change_data(
-                script!(Nop),
-                inputs!(change.script_public_key),
+                script.clone(),
+                inputs!(change.script_key_pk),
                 change.script_key_id.clone(),
                 change.spend_key_id.clone(),
                 Covenant::default(),
@@ -1462,7 +1450,7 @@ mod test {
             .with_fee_per_gram(MicroTari(20))
             .with_change_data(
                 script!(Nop),
-                inputs!(change_params.script_public_key),
+                inputs!(change_params.script_key_pk),
                 change_params.script_key_id.clone(),
                 change_params.spend_key_id.clone(),
                 Covenant::default(),

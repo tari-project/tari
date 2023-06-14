@@ -234,7 +234,6 @@ async fn generate_block_headers_and_utxos(
     birthday_offset: u64,
     only_coinbase: bool,
 ) -> TestBlockData {
-    let factories = CryptoFactories::default();
     let mut block_headers = HashMap::new();
     let mut utxos_by_block = Vec::new();
     let mut key_manager_outputs = HashMap::new();
@@ -282,7 +281,6 @@ async fn generate_block_headers_and_utxos(
 
 #[tokio::test]
 async fn test_utxo_scanner_recovery() {
-    let factories = CryptoFactories::default();
     let mut test_interface = setup(UtxoScannerMode::Recovery, None, None, None).await;
 
     let cipher_seed = CipherSeed::new();
@@ -375,7 +373,6 @@ async fn test_utxo_scanner_recovery() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn test_utxo_scanner_recovery_with_restart() {
-    let factories = CryptoFactories::default();
     let mut test_interface = setup(UtxoScannerMode::Recovery, None, None, None).await;
 
     let cipher_seed = CipherSeed::new();
@@ -549,7 +546,6 @@ async fn test_utxo_scanner_recovery_with_restart() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
-    let factories = CryptoFactories::default();
     let mut test_interface = setup(UtxoScannerMode::Recovery, None, None, None).await;
 
     let cipher_seed = CipherSeed::new();
@@ -563,7 +559,7 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
 
     let TestBlockData {
         mut block_headers,
-        key_manager_outputs: mut key_manager_outputs,
+        mut key_manager_outputs,
         utxos_by_block,
     } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false).await;
 
@@ -834,7 +830,6 @@ async fn test_utxo_scanner_scanned_block_cache_clearing() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn test_utxo_scanner_one_sided_payments() {
-    let factories = CryptoFactories::default();
     let mut test_interface = setup(
         UtxoScannerMode::Scanning,
         None,

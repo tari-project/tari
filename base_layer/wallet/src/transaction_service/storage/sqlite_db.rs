@@ -2264,7 +2264,6 @@ mod test {
     use tari_core::{
         test_helpers::create_test_core_key_manager_with_memory_db,
         transactions::{
-            key_manager::TransactionKeyManagerBranch,
             tari_amount::MicroTari,
             test_helpers::{create_key_manager_output_with_data, TestParams},
             transaction_components::{OutputFeatures, Transaction},
@@ -2274,8 +2273,7 @@ mod test {
         },
     };
     use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
-    use tari_key_manager::key_manager_service::KeyManagerInterface;
-    use tari_script::{script, ExecutionStack, TariScript};
+    use tari_script::{inputs, script, TariScript};
     use tari_test_utils::random::string;
     use tempfile::tempdir;
 
@@ -2344,14 +2342,7 @@ mod test {
         .await
         .unwrap();
         let amount = MicroTari::from(10_000);
-        let change_script_key_id = key_manager
-            .get_next_key(TransactionKeyManagerBranch::ScriptKey.get_branch_key())
-            .await
-            .unwrap();
-        let change_spending_key_id = key_manager
-            .get_next_key(TransactionKeyManagerBranch::CommitmentMask.get_branch_key())
-            .await
-            .unwrap();
+        let change = TestParams::new(&key_manager).await;
         builder
             .with_lock_height(0)
             .with_fee_per_gram(MicroTari::from(177 / 5))
@@ -2370,9 +2361,9 @@ mod test {
             .unwrap()
             .with_change_data(
                 script!(Nop),
-                ExecutionStack::default(),
-                change_script_key_id.0,
-                change_spending_key_id.0,
+                inputs!(change.script_key_pk),
+                change.script_key_id,
+                change.spend_key_id,
                 Default::default(),
             );
         let mut stp = builder.build().await.unwrap();

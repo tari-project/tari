@@ -21,25 +21,27 @@
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::default::Default;
-use tari_core::test_helpers::TestKeyManager;
 
 use tari_common_types::types::{Commitment, PrivateKey, Signature};
-use tari_core::transactions::{
-    tari_amount::MicroTari,
-    test_helpers::TestParams,
-    transaction_components::{
-        KernelBuilder,
-        Transaction,
-        TransactionBuilder,
-        TransactionInput,
-        TransactionKernel,
-        TransactionKernelVersion,
-        TransactionOutput,
-        WalletOutput,
-        WalletOutputBuilder,
+use tari_core::{
+    test_helpers::TestKeyManager,
+    transactions::{
+        tari_amount::MicroTari,
+        test_helpers::TestParams,
+        transaction_components::{
+            KernelBuilder,
+            Transaction,
+            TransactionBuilder,
+            TransactionInput,
+            TransactionKernel,
+            TransactionKernelVersion,
+            TransactionOutput,
+            WalletOutput,
+            WalletOutputBuilder,
+        },
+        transaction_protocol::TransactionMetadata,
+        CryptoFactories,
     },
-    transaction_protocol::TransactionMetadata,
-    CryptoFactories,
 };
 use tari_crypto::{
     keys::PublicKey,
@@ -175,7 +177,7 @@ impl TestTransactionBuilder {
             .with_script(script!(Nop))
             .with_script_private_key(self.keys.script_private_key.clone())
             .with_input_data(inputs!(input_data));
-        builder.with_sender_offset_public_key(self.keys.sender_offset_public_key.clone());
+        builder.with_sender_offset_public_key(self.keys.sender_offset_key_pk.clone());
         builder
             .sign_as_sender_and_receiver(&self.keys.sender_offset_private_key.clone())
             .expect("sign as sender and receiver");

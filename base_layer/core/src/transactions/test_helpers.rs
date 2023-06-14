@@ -78,60 +78,54 @@ pub async fn create_test_input(amount: MicroTari, maturity: u64, key_manager: &T
 #[derive(Clone)]
 pub struct TestParams {
     pub spend_key_id: TariKeyId,
-    pub spend_public_key: PublicKey,
+    pub spend_key_pk: PublicKey,
     pub script_key_id: TariKeyId,
-    pub script_public_key: PublicKey,
+    pub script_key_pk: PublicKey,
     pub sender_offset_key_id: TariKeyId,
-    pub sender_offset_public_key: PublicKey,
+    pub sender_offset_key_pk: PublicKey,
     pub kernel_nonce_key_id: TariKeyId,
-    pub kernel_nonce_public_key: PublicKey,
+    pub kernel_nonce_key_pk: PublicKey,
     pub public_nonce_key_id: TariKeyId,
-    pub public_nonce_public_key: PublicKey,
+    pub public_nonce_key_pk: PublicKey,
     pub ephemeral_public_nonce_key_id: TariKeyId,
-    pub ephemeral_public_nonce_public_key: PublicKey,
+    pub ephemeral_public_nonce_key_pk: PublicKey,
     pub transaction_weight: TransactionWeight,
 }
 
 impl TestParams {
     pub async fn new(key_manager: &TestKeyManager) -> TestParams {
-        let (spend_key_id, spend_public_key) = key_manager
-            .get_next_key(TransactionKeyManagerBranch::CommitmentMask.get_branch_key())
-            .await
-            .unwrap();
-        let (script_key_id, script_public_key) = key_manager
-            .get_next_key(TransactionKeyManagerBranch::ScriptKey.get_branch_key())
-            .await
-            .unwrap();
-        let (sender_offset_key_id, sender_offset_public_key) = key_manager
+        let (spend_key_id, spend_key_pk, script_key_id, script_key_pk) =
+            key_manager.get_next_spend_and_script_key_ids().await.unwrap();
+        let (sender_offset_key_id, sender_offset_key_pk) = key_manager
             .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
             .await
             .unwrap();
-        let (kernel_nonce_key_id, kernel_nonce_public_key) = key_manager
+        let (kernel_nonce_key_id, kernel_nonce_key_pk) = key_manager
             .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
             .await
             .unwrap();
-        let (public_nonce_key_id, public_nonce_public_key) = key_manager
+        let (public_nonce_key_id, public_nonce_key_pk) = key_manager
             .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
             .await
             .unwrap();
-        let (ephemeral_public_nonce_key_id, ephemeral_public_nonce_public_key) = key_manager
+        let (ephemeral_public_nonce_key_id, ephemeral_public_nonce_key_pk) = key_manager
             .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
             .await
             .unwrap();
 
         Self {
             spend_key_id,
-            spend_public_key,
+            spend_key_pk,
             script_key_id,
-            script_public_key,
+            script_key_pk,
             sender_offset_key_id,
-            sender_offset_public_key,
+            sender_offset_key_pk,
             kernel_nonce_key_id,
-            kernel_nonce_public_key,
+            kernel_nonce_key_pk,
             public_nonce_key_id,
-            public_nonce_public_key,
+            public_nonce_key_pk,
             ephemeral_public_nonce_key_id,
-            ephemeral_public_nonce_public_key,
+            ephemeral_public_nonce_key_pk,
             transaction_weight: TransactionWeight::v1(),
         }
     }
@@ -149,12 +143,7 @@ impl TestParams {
             Some(v) => v,
             None => TransactionOutputVersion::get_current_version(),
         };
-        let script_public_key = key_manager.get_public_key_at_key_id(&self.script_key_id).await.unwrap();
-        let input_data = params.input_data.unwrap_or_else(|| inputs!(script_public_key));
-        let sender_offset_public_key = key_manager
-            .get_public_key_at_key_id(&self.sender_offset_key_id)
-            .await
-            .unwrap();
+        let input_data = params.input_data.unwrap_or_else(|| inputs!(self.script_key_pk.clone()));
 
         let output = WalletOutputBuilder::new(params.value, self.spend_key_id.clone())
             .with_features(params.features)
@@ -165,7 +154,7 @@ impl TestParams {
             .with_input_data(input_data)
             .with_covenant(params.covenant)
             .with_version(version)
-            .with_sender_offset_public_key(sender_offset_public_key)
+            .with_sender_offset_public_key(self.sender_offset_key_pk.clone())
             .with_script_key(self.script_key_id.clone())
             .with_minimum_value_promise(params.minimum_value_promise)
             .sign_as_sender_and_receiver(key_manager, &self.sender_offset_key_id)
@@ -615,28 +604,17 @@ pub async fn create_sender_transaction_protocol_with(
     let rules = ConsensusManager::builder(Network::LocalNet).build();
     let constants = rules.consensus_constants(0).clone();
     let mut stx_builder = SenderTransactionProtocol::builder(constants, key_manager.clone());
-    let script = script!(Nop);
-    let (change_script_key_id, _) = key_manager
-        .get_next_key(TransactionKeyManagerBranch::ScriptKey.get_branch_key())
-        .await
-        .unwrap();
-    let (change_secret_key_id, change_public_key) = key_manager
-        .get_next_key(TransactionKeyManagerBranch::CommitmentMask.get_branch_key())
-        .await
-        .unwrap();
-    let change_covenant = Covenant::default();
-
-    let change_input_data = inputs!(change_public_key);
+    let change = TestParams::new(key_manager).await;
     stx_builder
         .with_lock_height(lock_height)
         .with_fee_per_gram(fee_per_gram)
         .with_kernel_features(KernelFeatures::empty())
         .with_change_data(
-            script,
-            change_input_data,
-            change_script_key_id,
-            change_secret_key_id,
-            change_covenant,
+            script!(Nop),
+            inputs!(change.script_key_pk),
+            change.script_key_id,
+            change.spend_key_id,
+            Covenant::default(),
         );
     for input in inputs {
         stx_builder.with_input(input).await.unwrap();
@@ -673,27 +651,16 @@ pub async fn create_stx_protocol(
         .consensus_constants(0)
         .clone();
     let mut stx_builder = SenderTransactionProtocol::builder(constants, key_manager.clone());
-    let script = script!(Nop);
-    let (change_script_key_id, change_public_key) = key_manager
-        .get_next_key(TransactionKeyManagerBranch::ScriptKey.get_branch_key())
-        .await
-        .unwrap();
-    let (change_secret_key_id, _) = key_manager
-        .get_next_key(TransactionKeyManagerBranch::CommitmentMask.get_branch_key())
-        .await
-        .unwrap();
-    let change_covenant = Covenant::default();
-    let change_input_data = inputs!(change_public_key);
-
+    let change = TestParams::new(key_manager).await;
     stx_builder
         .with_lock_height(schema.lock_height)
         .with_fee_per_gram(schema.fee)
         .with_change_data(
-            script,
-            change_input_data,
-            change_script_key_id,
-            change_secret_key_id,
-            change_covenant,
+            script!(Nop),
+            inputs!(change.script_key_pk),
+            change.script_key_id,
+            change.spend_key_id,
+            Covenant::default(),
         );
 
     for tx_input in &schema.from {

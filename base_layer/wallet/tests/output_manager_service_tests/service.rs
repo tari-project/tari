@@ -20,9 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashMap, convert::TryInto, mem::size_of, sync::Arc, time::Duration};
+use std::{collections::HashMap, convert::TryInto, sync::Arc, time::Duration};
 
-use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
 use tari_common_types::{
@@ -45,7 +44,7 @@ use tari_core::{
         fee::Fee,
         key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface},
         tari_amount::{uT, MicroTari},
-        test_helpers::{create_key_manager_output_with_data, TestParams as TestParamsHelpers},
+        test_helpers::{create_key_manager_output_with_data, TestParams},
         transaction_components::{OutputFeatures, OutputType, TransactionOutput, WalletOutput},
         transaction_protocol::{sender::TransactionSenderMessage, TransactionMetadata},
         weight::TransactionWeight,
@@ -277,13 +276,12 @@ async fn generate_sender_transaction_message(
         .await
         .unwrap();
 
-    let (change_spending_key_id, _, change_script_key_id, change_script_public_key) =
-        key_manager.get_next_spend_and_script_key_ids().await.unwrap();
+    let change = TestParams::new(&key_manager).await;
     builder.with_change_data(
         script!(Nop),
-        inputs!(change_script_public_key),
-        change_script_key_id,
-        change_spending_key_id,
+        inputs!(change.script_key_pk),
+        change.script_key_id,
+        change.spend_key_id,
         Covenant::default(),
     );
 
@@ -372,14 +370,8 @@ async fn fee_estimate() {
 #[allow(clippy::identity_op)]
 #[tokio::test]
 async fn test_utxo_selection_no_chain_metadata() {
-    let factories = CryptoFactories::default();
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
-
-    let mut key = [0u8; size_of::<Key>()];
-    OsRng.fill_bytes(&mut key);
-    let key_ga = Key::from_slice(&key);
-    let cipher = XChaCha20Poly1305::new(key_ga);
 
     // no chain metadata
     let (mut oms, _shutdown, _, _, _) =
@@ -491,13 +483,7 @@ async fn test_utxo_selection_no_chain_metadata() {
 #[allow(clippy::identity_op)]
 #[allow(clippy::too_many_lines)]
 async fn test_utxo_selection_with_chain_metadata() {
-    let factories = CryptoFactories::default();
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
-
-    let mut key = [0u8; size_of::<Key>()];
-    OsRng.fill_bytes(&mut key);
-    let key_ga = Key::from_slice(&key);
-    let cipher = XChaCha20Poly1305::new(key_ga);
 
     let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     // setup with chain metadata at a height of 6
@@ -634,15 +620,9 @@ async fn test_utxo_selection_with_chain_metadata() {
 
 #[tokio::test]
 async fn test_utxo_selection_with_tx_priority() {
-    let factories = CryptoFactories::default();
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
 
     let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
-
-    let mut key = [0u8; size_of::<Key>()];
-    OsRng.fill_bytes(&mut key);
-    let key_ga = Key::from_slice(&key);
-    let cipher = XChaCha20Poly1305::new(key_ga);
 
     // setup with chain metadata at a height of 6
     let (mut oms, _shutdown, _, _, _) = setup_oms_with_bn_state(
@@ -747,13 +727,7 @@ async fn send_not_enough_funds() {
 #[tokio::test]
 async fn send_no_change() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
-
-    let mut key = [0u8; size_of::<Key>()];
-    OsRng.fill_bytes(&mut key);
-    let key_ga = Key::from_slice(&key);
-
     let backend = OutputManagerSqliteDatabase::new(connection.clone());
-
     let mut oms = setup_output_manager_service(backend, true).await;
 
     let fee_per_gram = MicroTari::from(4);
@@ -772,7 +746,7 @@ async fn send_no_change() {
             create_key_manager_output_with_data(
                 script!(Nop),
                 OutputFeatures::default(),
-                &TestParamsHelpers::new(&key_manager).await,
+                &TestParams::new(&key_manager).await,
                 MicroTari::from(value1),
                 &key_manager,
             )
@@ -789,7 +763,7 @@ async fn send_no_change() {
             create_key_manager_output_with_data(
                 script!(Nop),
                 OutputFeatures::default(),
-                &TestParamsHelpers::new(&key_manager).await,
+                &TestParams::new(&key_manager).await,
                 MicroTari::from(value2),
                 &key_manager,
             )
@@ -831,14 +805,7 @@ async fn send_no_change() {
 #[tokio::test]
 async fn send_not_enough_for_change() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
-
-    let mut key = [0u8; size_of::<Key>()];
-    OsRng.fill_bytes(&mut key);
-    let key_ga = Key::from_slice(&key);
-    let cipher = XChaCha20Poly1305::new(key_ga);
-
     let backend = OutputManagerSqliteDatabase::new(connection.clone());
-
     let mut oms = setup_output_manager_service(backend, true).await;
 
     let fee_per_gram = MicroTari::from(4);
@@ -851,7 +818,7 @@ async fn send_not_enough_for_change() {
             create_key_manager_output_with_data(
                 TariScript::default(),
                 OutputFeatures::default(),
-                &TestParamsHelpers::new(&key_manager).await,
+                &TestParams::new(&key_manager).await,
                 value1,
                 &key_manager,
             )
@@ -867,7 +834,7 @@ async fn send_not_enough_for_change() {
             create_key_manager_output_with_data(
                 TariScript::default(),
                 OutputFeatures::default(),
-                &TestParamsHelpers::new(&key_manager).await,
+                &TestParams::new(&key_manager).await,
                 value2,
                 &key_manager,
             )
@@ -952,14 +919,7 @@ async fn cancel_transaction() {
 #[tokio::test]
 async fn cancel_transaction_and_reinstate_inbound_tx() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
-
-    let mut key = [0u8; size_of::<Key>()];
-    OsRng.fill_bytes(&mut key);
-    let key_ga = Key::from_slice(&key);
-    let cipher = XChaCha20Poly1305::new(key_ga);
-
     let backend = OutputManagerSqliteDatabase::new(connection.clone());
-
     let mut oms = setup_output_manager_service(backend, true).await;
 
     let value = MicroTari::from(5000);
@@ -1231,12 +1191,6 @@ async fn coin_split_no_change() {
 #[tokio::test]
 async fn handle_coinbase_with_bulletproofs_rewinding() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
-
-    let mut key = [0u8; size_of::<Key>()];
-    OsRng.fill_bytes(&mut key);
-    let key_ga = Key::from_slice(&key);
-    let cipher = XChaCha20Poly1305::new(key_ga);
-
     let backend = OutputManagerSqliteDatabase::new(connection.clone());
     let mut oms = setup_output_manager_service(backend, true).await;
 
@@ -1861,13 +1815,6 @@ async fn test_txo_validation() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn test_txo_revalidation() {
-    let factories = CryptoFactories::default();
-
-    let mut key = [0u8; size_of::<Key>()];
-    OsRng.fill_bytes(&mut key);
-    let key_ga = Key::from_slice(&key);
-    let cipher = XChaCha20Poly1305::new(key_ga);
-
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection.clone());
 
@@ -1886,7 +1833,7 @@ async fn test_txo_revalidation() {
     let output1 = create_key_manager_output_with_data(
         script!(Nop),
         OutputFeatures::default(),
-        &TestParamsHelpers::new(&key_manager).await,
+        &TestParams::new(&key_manager).await,
         MicroTari::from(output1_value),
         &key_manager,
     )
@@ -1902,7 +1849,7 @@ async fn test_txo_revalidation() {
     let output2 = create_key_manager_output_with_data(
         script!(Nop),
         OutputFeatures::default(),
-        &TestParamsHelpers::new(&key_manager).await,
+        &TestParams::new(&key_manager).await,
         MicroTari::from(output2_value),
         &key_manager,
     )
@@ -2082,7 +2029,6 @@ async fn test_get_status_by_tx_id() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn scan_for_recovery_test() {
-    let factories = CryptoFactories::default();
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection.clone());
     let mut oms = setup_output_manager_service(backend.clone(), true).await;
@@ -2141,7 +2087,7 @@ async fn scan_for_recovery_test() {
         non_recoverable_key_manager_outputs.push(uo)
     }
     let mut recoverable_outputs = Vec::new();
-    for output in recoverable_key_manager_outputs {
+    for output in &recoverable_key_manager_outputs {
         recoverable_outputs.push(output.as_transaction_output(&oms.key_manager_handle).await.unwrap());
     }
 
@@ -2180,7 +2126,6 @@ async fn scan_for_recovery_test() {
 
 #[tokio::test]
 async fn recovered_output_key_not_in_keychain() {
-    let factories = CryptoFactories::default();
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection.clone());
     let mut oms = setup_output_manager_service(backend.clone(), true).await;

@@ -196,7 +196,6 @@ pub async fn add_transaction_to_database(
     coinbase_block_height: Option<u64>,
     db: TransactionDatabase<TransactionServiceSqliteDatabase>,
 ) {
-    let factories = CryptoFactories::default();
     let key_manager_handle = create_test_core_key_manager_with_memory_db();
     let uo0 =
         make_non_recoverable_input(&mut OsRng, 10 * amount, &OutputFeatures::default(), &key_manager_handle).await;

@@ -635,7 +635,6 @@ impl UnconfirmedPool {
 #[cfg(test)]
 mod test {
     use tari_common::configuration::Network;
-    use tari_key_manager::key_manager_service::KeyManagerInterface;
     use tari_script::{inputs, script};
 
     use super::*;
@@ -728,18 +727,12 @@ mod test {
         let mut stx_builder = SenderTransactionProtocol::builder(create_consensus_constants(0), key_manager.clone());
 
         let change = TestParams::new(&key_manager).await;
-        let script = script!(Nop);
-        let script_key = key_manager
-            .get_public_key_at_key_id(&change.script_key_id)
-            .await
-            .unwrap();
-        let change_input_data = inputs!(script_key);
         stx_builder
             .with_lock_height(0)
             .with_fee_per_gram(5.into())
             .with_change_data(
-                script,
-                change_input_data,
+                script!(Nop),
+                inputs!(change.script_key_pk),
                 change.script_key_id.clone(),
                 change.spend_key_id.clone(),
                 Covenant::default(),

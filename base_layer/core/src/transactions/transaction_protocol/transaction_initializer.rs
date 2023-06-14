@@ -581,7 +581,6 @@ where KM: TransactionKeyManagerInterface
 
 #[cfg(test)]
 mod test {
-    use tari_key_manager::key_manager_service::KeyManagerInterface;
     use tari_script::{inputs, script, TariScript};
 
     use crate::{
@@ -638,16 +637,6 @@ mod test {
             .await;
         builder.with_input(input).await.unwrap();
         builder.with_fee_per_gram(MicroTari(20));
-        // .with_recipient_data(
-        //     script.clone(),
-        //     recp.sender_offset_private_key,
-        //     Default::default(),
-        //     Default::default(),
-        //     0.into(),
-        //     MicroTari(1000),
-        // )
-        // .await
-        // .unwrap();
         let expected_fee =
             builder
                 .fee()
@@ -831,10 +820,6 @@ mod test {
         let constants = create_consensus_constants(0);
         let mut builder = SenderTransactionInitializer::new(&constants, key_manager.clone());
         let change = TestParams::new(&key_manager).await;
-        let script_key = key_manager
-            .get_public_key_at_key_id(&change.script_key_id)
-            .await
-            .unwrap();
         builder
             .with_lock_height(0)
             .with_input(input)
@@ -842,7 +827,7 @@ mod test {
             .unwrap()
             .with_change_data(
                 script!(Nop),
-                inputs!(script_key),
+                inputs!(change.script_key_pk),
                 change.script_key_id.clone(),
                 change.spend_key_id.clone(),
                 Covenant::default(),
@@ -851,7 +836,6 @@ mod test {
             .with_recipient_data(script, Default::default(), Default::default(), 0.into(), MicroTari(500))
             .await
             .unwrap();
-        // .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
         let err = builder.build().await.unwrap_err();
         assert_eq!(err.message, "Fee is less than the minimum");
     }
@@ -876,10 +860,6 @@ mod test {
         let constants = create_consensus_constants(0);
         let mut builder = SenderTransactionInitializer::new(&constants, key_manager.clone());
         let change = TestParams::new(&key_manager).await;
-        let script_key = key_manager
-            .get_public_key_at_key_id(&change.script_key_id)
-            .await
-            .unwrap();
         builder
             .with_lock_height(0)
             .with_input(input)
@@ -890,7 +870,7 @@ mod test {
             .unwrap()
             .with_change_data(
                 script!(Nop),
-                inputs!(script_key),
+                inputs!(change.script_key_pk),
                 change.script_key_id.clone(),
                 change.spend_key_id.clone(),
                 Covenant::default(),
@@ -942,10 +922,6 @@ mod test {
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(&constants, key_manager.clone());
         let change = TestParams::new(&key_manager).await;
-        let script_key = key_manager
-            .get_public_key_at_key_id(&change.script_key_id)
-            .await
-            .unwrap();
         builder
             .with_lock_height(1234)
             .with_output(output, p.sender_offset_key_id.clone())
@@ -959,7 +935,7 @@ mod test {
             .unwrap()
             .with_change_data(
                 script!(Nop),
-                inputs!(script_key),
+                inputs!(change.script_key_pk),
                 change.script_key_id.clone(),
                 change.spend_key_id.clone(),
                 Covenant::default(),
