@@ -9,25 +9,15 @@ pub fn get_bit(data: &[u8], position: usize) -> usize {
     0
 }
 
-// /// Sets the bit at an offset from the most significant bit
-// #[inline]
-// fn set_bit_at_from_msb(data: &mut [u8], position: usize) {
-//     let mut n = data[position / 8] as usize;
-//     n |= 1 << (8 - 1 - (position % 8));
-//     data[position / 8] = n as u8;
-// }
-//
-// #[inline]
-// fn count_set_bits(data: &[u8]) -> usize {
-//     let mut count = 0;
-//     for i in 0..data.len() * 8 {
-//         if get_bit_at_from_msb(data, i) == 1 {
-//             count += 1;
-//         }
-//     }
-//     count
-// }
-//
+#[inline]
+pub fn set_bit(data: &mut [u8], position: usize, value: usize) {
+    match value {
+        0 => data[position / 8] &= !(1 << (7 - (position % 8))),
+        1 => data[position / 8] |= 1 << (7 - (position % 8)),
+        _ => panic!("Invalid bit value"),
+    }
+}
+
 #[inline]
 pub fn count_common_prefix(a: &NodeKey, b: &NodeKey) -> usize {
     let mut offset = 0;
@@ -61,6 +51,23 @@ pub fn height_key(key: &NodeKey, height: usize) -> NodeKey {
     // height % 8
     bytes[height / 8] = key[height / 8] & !(0xff >> (height % 8));
     result
+}
+
+pub fn path_matches_key(key: &NodeKey, path: &[TraverseDirection]) -> bool {
+    let height = path.len();
+
+    let prefix = path
+        .iter()
+        .enumerate()
+        .fold(NodeKey::default(), |mut prefix, (i, dir)| {
+            let bit = match dir {
+                TraverseDirection::Left => 0,
+                TraverseDirection::Right => 1,
+            };
+            set_bit(prefix.as_mut_slice(), i, bit);
+            prefix
+        });
+    count_common_prefix(key, &prefix) >= height
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

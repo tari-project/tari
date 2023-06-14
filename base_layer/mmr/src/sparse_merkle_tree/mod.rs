@@ -76,8 +76,10 @@
 mod bit_utils;
 mod error;
 mod node;
+mod proofs;
 mod tree;
 
 pub use error::SMTError;
 pub use node::{BranchNode, EmptyNode, LeafNode, Node, NodeHash, NodeKey, ValueHash, EMPTY_NODE_HASH};
+pub use proofs::MerkleProof;
 pub use tree::{SparseMerkleTree, UpdateResult};

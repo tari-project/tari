@@ -279,7 +279,7 @@ impl<H: Digest<OutputSize = U32>> LeafNode<H> {
         }
     }
 
-    fn hash_value(key: &NodeKey, value: &ValueHash) -> NodeHash {
+    pub fn hash_value(key: &NodeKey, value: &ValueHash) -> NodeHash {
         let hasher = H::new();
         let hash = hasher
             .chain(b"V")
@@ -418,17 +418,21 @@ impl<H: Digest<OutputSize = U32>> BranchNode<H> {
         &self.hash
     }
 
-    fn recalculate_hash(&mut self) {
+    pub fn branch_hash(height: usize, key: &NodeKey, left: &NodeHash, right: &NodeHash) -> NodeHash {
         let hasher = H::new();
         let hash = hasher
             .chain(b"B")
-            .chain(self.height.to_le_bytes())
-            .chain(&self.key)
-            .chain(self.left.hash())
-            .chain(self.right.hash())
+            .chain(height.to_le_bytes())
+            .chain(key)
+            .chain(left)
+            .chain(right)
             .finalize();
         // Output is guaranteed to be 32 bytes at compile time due to trait constraint on `H`
-        let hash = NodeHash::try_from(hash.as_slice()).unwrap();
+        NodeHash::try_from(hash.as_slice()).unwrap()
+    }
+
+    fn recalculate_hash(&mut self) {
+        let hash = Self::branch_hash(self.height, &self.key, self.left.hash(), self.right.hash());
         self.hash = hash;
         self.is_hash_stale = false;
     }

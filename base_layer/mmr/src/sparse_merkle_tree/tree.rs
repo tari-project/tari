@@ -1,4 +1,4 @@
-use std::mem;
+use std::{fmt::Debug, mem};
 
 use digest::{consts::U32, Digest};
 
@@ -6,6 +6,7 @@ use crate::sparse_merkle_tree::{
     bit_utils::{traverse_direction, TraverseDirection},
     EmptyNode,
     LeafNode,
+    MerkleProof,
     Node,
     Node::{Branch, Empty, Leaf},
     NodeHash,
@@ -318,6 +319,39 @@ impl<H: Digest<OutputSize = U32>> SparseMerkleTree<H> {
             empty_siblings,
         };
         Ok(terminal)
+    }
+
+    pub fn build_proof(&self, key: &NodeKey) -> Result<MerkleProof<H>, SMTError> {
+        let mut path = Vec::new();
+        let mut siblings = Vec::new();
+        let mut current_node = &self.root;
+        while current_node.is_branch() {
+            let branch = current_node.as_branch().unwrap();
+            if branch.is_stale() {
+                return Err(SMTError::StaleHash);
+            }
+            let dir = traverse_direction(branch.height(), branch.key(), key)?;
+            path.push(dir);
+            current_node = match dir {
+                TraverseDirection::Left => {
+                    siblings.push(branch.right().unsafe_hash().clone());
+                    branch.left()
+                },
+                TraverseDirection::Right => {
+                    siblings.push(branch.left().unsafe_hash().clone());
+                    branch.right()
+                },
+            };
+        }
+        println!("Terminal node hash: {:x}", current_node.unsafe_hash());
+        let (key, value) = match current_node {
+            Branch(_) => return Err(SMTError::UnexpectedNodeType),
+            Leaf(leaf) => (leaf.key().clone(), Some(leaf.value().clone())),
+            Empty(_) => (key.clone(), None),
+        };
+        siblings.iter().for_each(|s| println!("Sibling: {s:x}"));
+        let proof = MerkleProof::new(path, siblings, key, value);
+        Ok(proof)
     }
 
     fn search_node(&self, key: &NodeKey) -> Result<Option<&Node<H>>, SMTError> {

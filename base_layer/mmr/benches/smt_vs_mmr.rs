@@ -1,10 +1,10 @@
 #[cfg(feature = "native_bitmap")]
 use croaring::Bitmap;
-use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparatedHasher};
+use tari_crypto::{hash::blake2::Blake256};
 use tari_mmr::sparse_merkle_tree::{NodeKey, SparseMerkleTree, ValueHash};
 #[cfg(feature = "native_bitmap")]
 use tari_mmr::{Hash, MutableMmr};
-use tari_utilities::hex::Hex;
+
 
 #[cfg(feature = "native_bitmap")]
 hash_domain!(
@@ -37,7 +37,7 @@ fn insert_into_smt(keys: &[NodeKey], tree: &mut SparseMerkleTree<Blake256>) {
 }
 
 fn delete_from_smt(keys: &[NodeKey], tree: &mut SparseMerkleTree<Blake256>) {
-    keys.into_iter().for_each(|key| {
+    keys.iter().for_each(|key| {
         tree.delete(key).unwrap();
     });
 }

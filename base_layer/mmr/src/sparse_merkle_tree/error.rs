@@ -24,4 +24,6 @@ pub enum SMTError {
     UnexpectedNodeType,
     #[error("The key is not valid: {0}")]
     IllegalKey(String),
+    #[error("The hash for the tree needs to be recalculated before calling this function")]
+    StaleHash,
 }
