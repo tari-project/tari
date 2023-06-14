@@ -906,7 +906,6 @@ where
             input_selection.num_selected()
         );
 
-        if input_selection.requires_change_output() {
             let (change_spending_key_id, _, change_script_key_id, change_script_public_key) =
                 self.resources.key_manager.get_next_spend_and_script_key_ids().await?;
             builder.with_change_data(
@@ -916,7 +915,6 @@ where
                 change_spending_key_id,
                 Covenant::default(),
             );
-        }
 
         let stp = builder
             .build()

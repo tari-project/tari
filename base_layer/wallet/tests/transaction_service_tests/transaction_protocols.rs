@@ -161,7 +161,7 @@ pub async fn setup() -> (
     let resources = TransactionServiceResources {
         db,
         output_manager_service: output_manager_service_handle,
-        core_key_manager_service: core_key_manager_service_handle,
+        transaction_key_manager_service: core_key_manager_service_handle,
         outbound_message_service: outbound_message_requester,
         connectivity: wallet_connectivity.clone(),
         event_publisher: ts_event_publisher,

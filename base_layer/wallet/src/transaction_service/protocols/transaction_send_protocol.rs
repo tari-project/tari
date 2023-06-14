@@ -270,7 +270,7 @@ where
 
         // Build single round message and advance sender state
         let msg = sender_protocol
-            .build_single_round_message(&self.resources.core_key_manager_service)
+            .build_single_round_message(&self.resources.transaction_key_manager_service)
             .await
             .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
         let tx_id = msg.tx_id;
@@ -436,7 +436,7 @@ where
                 .send_transaction(
                     outbound_tx
                         .sender_protocol
-                        .get_single_round_message(&self.resources.core_key_manager_service)
+                        .get_single_round_message(&self.resources.transaction_key_manager_service)
                         .await
                         .map_err(|e| TransactionServiceProtocolError::new(self.id, e.into()))?,
                 )
@@ -506,7 +506,7 @@ where
                     match self.send_transaction(
                         outbound_tx
                         .sender_protocol
-                        .get_single_round_message(&self.resources.core_key_manager_service).await
+                        .get_single_round_message(&self.resources.transaction_key_manager_service).await
                         .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?
                     ).await
                     {
@@ -544,13 +544,13 @@ where
 
         outbound_tx
             .sender_protocol
-            .add_single_recipient_info(recipient_reply, &self.resources.core_key_manager_service)
+            .add_single_recipient_info(recipient_reply, &self.resources.transaction_key_manager_service)
             .await
             .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
         outbound_tx
             .sender_protocol
-            .finalize(&self.resources.core_key_manager_service)
+            .finalize(&self.resources.transaction_key_manager_service)
             .await
             .map_err(|e| {
                 error!(

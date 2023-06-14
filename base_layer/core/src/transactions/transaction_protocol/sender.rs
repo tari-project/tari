@@ -501,8 +501,8 @@ impl SenderTransactionProtocol {
                         .await?;
                     received_output.metadata_signature =
                         &received_output.metadata_signature + &sender_metadata_signature;
-                    info.recipient_output = Some(received_output.clone());
                 }
+                info.recipient_output = Some(received_output.clone());
                 info.recipient_partial_kernel_excess = rec.public_spend_key;
                 info.recipient_partial_kernel_signature = rec.partial_signature;
                 info.recipient_partial_kernel_offset = rec.offset;
@@ -1283,7 +1283,121 @@ mod test {
         let tx = alice.get_transaction().unwrap();
         assert_eq!(tx.body.kernels()[0].fee, expected_fee);
         assert_eq!(tx.body.inputs().len(), 1);
-        // assert_eq!(tx.body.outputs().len(), 2);
+        assert_eq!(tx.body.outputs().len(), 2);
+        let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
+        assert!(validator.validate(tx, None, None, u64::MAX).is_ok());
+    }
+
+    #[tokio::test]
+    async fn single_recipient_multiple_inputs_with_change() {
+        let rules = create_consensus_rules();
+        let key_manager = create_test_core_key_manager_with_memory_db();
+        let factories = CryptoFactories::default();
+        // Alice's parameters
+        let alice_key = TestParams::new(&key_manager).await;
+        // Bob's parameters
+        let bob_key = TestParams::new(&key_manager).await;
+        let input = create_test_input(MicroTari(10000), 0, &key_manager).await;
+        let input2 = create_test_input(MicroTari(2000), 0, &key_manager).await;
+        let input3 = create_test_input(MicroTari(15000), 0, &key_manager).await;
+        let mut builder = SenderTransactionProtocol::builder(create_consensus_constants(0), key_manager.clone());
+        let script = script!(Nop);
+        let change = TestParams::new(&key_manager).await;
+        builder
+            .with_lock_height(0)
+            .with_fee_per_gram(MicroTari(20))
+            .with_change_data(
+                script.clone(),
+                inputs!(change.script_key_pk),
+                change.script_key_id.clone(),
+                change.spend_key_id.clone(),
+                Covenant::default(),
+            )
+            .with_input(input)
+            .await
+            .unwrap()
+            .with_input(input2)
+            .await
+            .unwrap()
+            .with_input(input3)
+            .await
+            .unwrap()
+            .with_recipient_data(
+                script.clone(),
+                OutputFeatures::default(),
+                Covenant::default(),
+                0.into(),
+                MicroTari(5000),
+            )
+            .await
+            .unwrap();
+        let mut alice = builder.build().await.unwrap();
+        assert!(alice.is_single_round_message_ready());
+        let msg = alice.build_single_round_message(&key_manager).await.unwrap();
+        println!(
+            "amount: {}, fee: {},  Public Excess: {}, Nonce: {}",
+            msg.amount,
+            msg.metadata.fee,
+            msg.public_excess.to_hex(),
+            msg.public_nonce.to_hex()
+        );
+
+        // Send message down the wire....and wait for response
+        assert!(alice.is_collecting_single_signature());
+        let bob_public_key = msg.sender_offset_public_key.clone();
+        let mut bob_output = WalletOutput::new_current_version(
+            MicroTari(5000),
+            bob_key.spend_key_id,
+            OutputFeatures::default(),
+            script.clone(),
+            ExecutionStack::default(),
+            bob_key.script_key_id,
+            bob_public_key,
+            CommitmentAndPublicKeySignature::default(),
+            0,
+            Covenant::default(),
+            EncryptedData::default(),
+            0.into(),
+        );
+
+        let metadata_message = TransactionOutput::metadata_signature_message(&bob_output);
+        bob_output.metadata_signature = key_manager
+            .get_receiver_partial_metadata_signature(
+                &bob_output.spending_key_id,
+                &bob_output.value.into(),
+                &bob_output.sender_offset_public_key,
+                &msg.ephemeral_public_nonce,
+                &bob_output.version,
+                &metadata_message,
+                bob_output.features.range_proof_type,
+            )
+            .await
+            .unwrap();
+
+        // Receiver gets message, deserializes it etc, and creates his response
+        let bob_info = SingleReceiverTransactionProtocol::create(&msg, bob_output, &key_manager)
+            .await
+            .unwrap();
+        println!(
+            "Bob's key: {}, Nonce: {}, Signature: {}, Commitment: {}",
+            bob_info.public_spend_key.to_hex(),
+            bob_info.partial_signature.get_public_nonce().to_hex(),
+            bob_info.partial_signature.get_signature().to_hex(),
+            bob_info.output.commitment.as_public_key().to_hex()
+        );
+        // Alice gets message back, deserializes it, etc
+        alice.add_single_recipient_info(bob_info, &key_manager).await.unwrap();
+        // Transaction should be complete
+        assert!(alice.is_finalizing());
+        match alice.finalize(&key_manager).await {
+            Ok(_) => (),
+            Err(e) => panic!("{:?}", e),
+        };
+
+        assert!(alice.is_finalized());
+        let tx = alice.get_transaction().unwrap();
+        assert_eq!(tx.body.inputs().len(), 3);
+        assert_eq!(tx.body.outputs().len(), 2);
         let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
         assert!(validator.validate(tx, None, None, u64::MAX).is_ok());
     }

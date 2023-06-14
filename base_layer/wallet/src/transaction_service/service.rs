@@ -242,7 +242,7 @@ where
         let resources = TransactionServiceResources {
             db: db.clone(),
             output_manager_service,
-            core_key_manager_service,
+            transaction_key_manager_service: core_key_manager_service,
             outbound_message_service,
             connectivity,
             event_publisher: event_publisher.clone(),
@@ -289,7 +289,7 @@ where
         // we need to ensure the wallet identity secret key is stored in the key manager
         let _ = self
             .resources
-            .core_key_manager_service
+            .transaction_key_manager_service
             .import_key(self.resources.wallet_identity.node_identity.secret_key().clone())
             .await?;
 
@@ -1118,7 +1118,7 @@ where
         // This call is needed to advance the state from `SingleRoundMessageReady` to `SingleRoundMessageReady`,
         // but the returned value is not used
         let _single_round_sender_data = stp
-            .build_single_round_message(&self.resources.core_key_manager_service)
+            .build_single_round_message(&self.resources.transaction_key_manager_service)
             .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
@@ -1142,30 +1142,30 @@ where
 
         let shared_secret = self
             .resources
-            .core_key_manager_service
+            .transaction_key_manager_service
             .get_diffie_hellman_shared_secret(&sender_offset_private_key, destination.public_key())
             .await?;
         let spending_key = shared_secret_to_output_spending_key(&shared_secret)
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         let sender_message = TransactionSenderMessage::new_single_round_message(
-            stp.get_single_round_message(&self.resources.core_key_manager_service)
+            stp.get_single_round_message(&self.resources.transaction_key_manager_service)
                 .await?,
         );
         let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret)?;
         let encryption_key = self
             .resources
-            .core_key_manager_service
+            .transaction_key_manager_service
             .import_key(encryption_private_key)
             .await?;
 
         let sender_offset_public_key = self
             .resources
-            .core_key_manager_service
+            .transaction_key_manager_service
             .get_public_key_at_key_id(&sender_offset_private_key)
             .await?;
 
-        let spending_key_id = self.resources.core_key_manager_service.import_key(spending_key).await?;
+        let spending_key_id = self.resources.transaction_key_manager_service.import_key(spending_key).await?;
 
         let minimum_value_promise = MicroTari::zero();
         let output = WalletOutputBuilder::new(amount, spending_key_id)
@@ -1180,7 +1180,7 @@ where
                     .clone(),
             )
             .with_script(script)
-            .encrypt_data_for_recovery(&self.resources.core_key_manager_service, Some(&encryption_key))
+            .encrypt_data_for_recovery(&self.resources.transaction_key_manager_service, Some(&encryption_key))
             .await?
             .with_input_data(inputs!(PublicKey::from_secret_key(
                 self.resources.wallet_identity.node_identity.secret_key()
@@ -1189,27 +1189,27 @@ where
             .with_sender_offset_public_key(sender_offset_public_key)
             .with_script_key(self.resources.wallet_identity.wallet_node_key_id.clone())
             .with_minimum_value_promise(minimum_value_promise)
-            .sign_as_sender_and_receiver(&self.resources.core_key_manager_service, &sender_offset_private_key)
+            .sign_as_sender_and_receiver(&self.resources.transaction_key_manager_service, &sender_offset_private_key)
             .await
             .unwrap()
             .try_build()
             .unwrap();
 
         let rtp =
-            ReceiverTransactionProtocol::new(sender_message, output.clone(), &self.resources.core_key_manager_service)
+            ReceiverTransactionProtocol::new(sender_message, output.clone(), &self.resources.transaction_key_manager_service)
                 .await;
 
         let recipient_reply = rtp.get_signed_data()?.clone();
 
         // Start finalizing
 
-        stp.add_single_recipient_info(recipient_reply, &self.resources.core_key_manager_service)
+        stp.add_single_recipient_info(recipient_reply, &self.resources.transaction_key_manager_service)
             .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         // Finalize
 
-        stp.finalize(&self.resources.core_key_manager_service)
+        stp.finalize(&self.resources.transaction_key_manager_service)
             .await
             .map_err(|e| {
                 error!(
@@ -1258,7 +1258,7 @@ where
         )?;
 
         let tx_output = output
-            .as_transaction_output(&self.resources.core_key_manager_service)
+            .as_transaction_output(&self.resources.transaction_key_manager_service)
             .await?;
 
         Ok(Box::new((tx_id, pre_image, tx_output)))
@@ -1300,7 +1300,7 @@ where
         // This call is needed to advance the state from `SingleRoundMessageReady` to `SingleRoundMessageReady`,
         // but the returned value is not used
         let _single_round_sender_data = stp
-            .build_single_round_message(&self.resources.core_key_manager_service)
+            .build_single_round_message(&self.resources.transaction_key_manager_service)
             .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
@@ -1324,29 +1324,29 @@ where
 
         let shared_secret = self
             .resources
-            .core_key_manager_service
+            .transaction_key_manager_service
             .get_diffie_hellman_shared_secret(&sender_offset_private_key, dest_address.public_key())
             .await?;
         let spending_key = shared_secret_to_output_spending_key(&shared_secret)
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         let sender_message = TransactionSenderMessage::new_single_round_message(
-            stp.get_single_round_message(&self.resources.core_key_manager_service)
+            stp.get_single_round_message(&self.resources.transaction_key_manager_service)
                 .await?,
         );
 
         let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret)?;
         let encryption_key = self
             .resources
-            .core_key_manager_service
+            .transaction_key_manager_service
             .import_key(encryption_private_key)
             .await?;
 
-        let spending_key_id = self.resources.core_key_manager_service.import_key(spending_key).await?;
+        let spending_key_id = self.resources.transaction_key_manager_service.import_key(spending_key).await?;
 
         let sender_offset_public_key = self
             .resources
-            .core_key_manager_service
+            .transaction_key_manager_service
             .get_public_key_at_key_id(&sender_offset_private_key)
             .await?;
 
@@ -1363,7 +1363,7 @@ where
                     .clone(),
             )
             .with_script(script)
-            .encrypt_data_for_recovery(&self.resources.core_key_manager_service, Some(&encryption_key))
+            .encrypt_data_for_recovery(&self.resources.transaction_key_manager_service, Some(&encryption_key))
             .await?
             .with_input_data(inputs!(PublicKey::from_secret_key(
                 self.resources.wallet_identity.node_identity.secret_key()
@@ -1371,24 +1371,24 @@ where
             .with_sender_offset_public_key(sender_offset_public_key)
             .with_script_key(self.resources.wallet_identity.wallet_node_key_id.clone())
             .with_minimum_value_promise(minimum_value_promise)
-            .sign_as_sender_and_receiver(&self.resources.core_key_manager_service, &sender_offset_private_key)
+            .sign_as_sender_and_receiver(&self.resources.transaction_key_manager_service, &sender_offset_private_key)
             .await?
             .try_build()?;
 
         let rtp =
-            ReceiverTransactionProtocol::new(sender_message, output, &self.resources.core_key_manager_service).await;
+            ReceiverTransactionProtocol::new(sender_message, output, &self.resources.transaction_key_manager_service).await;
 
         let recipient_reply = rtp.get_signed_data()?.clone();
 
         // Start finalizing
 
-        stp.add_single_recipient_info(recipient_reply, &self.resources.core_key_manager_service)
+        stp.add_single_recipient_info(recipient_reply, &self.resources.transaction_key_manager_service)
             .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         // Finalize
 
-        stp.finalize(&self.resources.core_key_manager_service)
+        stp.finalize(&self.resources.transaction_key_manager_service)
             .await
             .map_err(|e| {
                 error!(
@@ -1522,7 +1522,7 @@ where
         // This call is needed to advance the state from `SingleRoundMessageReady` to `SingleRoundMessageReady`,
         // but the returned value is not used
         let _single_round_sender_data = stp
-            .build_single_round_message(&self.resources.core_key_manager_service)
+            .build_single_round_message(&self.resources.transaction_key_manager_service)
             .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
@@ -1532,16 +1532,16 @@ where
             .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         let sender_message = TransactionSenderMessage::new_single_round_message(
-            stp.get_single_round_message(&self.resources.core_key_manager_service)
+            stp.get_single_round_message(&self.resources.transaction_key_manager_service)
                 .await?,
         );
         let (spend_key_id, public_spend_key, _script_key_id, _) = self
             .resources
-            .core_key_manager_service
+            .transaction_key_manager_service
             .get_next_spend_and_script_key_ids()
             .await?;
 
-        let recovery_key_id = self.resources.core_key_manager_service.get_recovery_key_id().await?;
+        let recovery_key_id = self.resources.transaction_key_manager_service.get_recovery_key_id().await?;
 
         let recovery_key_id = match claim_public_key {
             Some(ref claim_public_key) => {
@@ -1550,12 +1550,12 @@ where
                 // nonce/spend_key is returned back to the caller.
                 let shared_secret = self
                     .resources
-                    .core_key_manager_service
+                    .transaction_key_manager_service
                     .get_diffie_hellman_shared_secret(&spend_key_id, claim_public_key)
                     .await?;
                 let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
                 self.resources
-                    .core_key_manager_service
+                    .transaction_key_manager_service
                     .import_key(encryption_key.clone())
                     .await?;
                 KeyId::Imported {
@@ -1584,7 +1584,7 @@ where
                     .clone(),
             )
             .with_script(script!(Nop))
-            .encrypt_data_for_recovery(&self.resources.core_key_manager_service, Some(&recovery_key_id))
+            .encrypt_data_for_recovery(&self.resources.transaction_key_manager_service, Some(&recovery_key_id))
             .await?
             .with_input_data(inputs!(PublicKey::from_secret_key(
                 self.resources.wallet_identity.node_identity.secret_key()
@@ -1609,12 +1609,12 @@ where
                     ))?
                     .minimum_value_promise,
             )
-            .sign_as_sender_and_receiver(&self.resources.core_key_manager_service, &sender_offset_private_key)
+            .sign_as_sender_and_receiver(&self.resources.transaction_key_manager_service, &sender_offset_private_key)
             .await?
             .try_build()?;
 
         let rtp =
-            ReceiverTransactionProtocol::new(sender_message, output, &self.resources.core_key_manager_service).await;
+            ReceiverTransactionProtocol::new(sender_message, output, &self.resources.transaction_key_manager_service).await;
 
         let recipient_reply = rtp.get_signed_data()?.clone();
         let range_proof = recipient_reply.output.proof_result()?.clone();
@@ -1624,19 +1624,19 @@ where
         if let Some(claim_public_key) = claim_public_key {
             ownership_proof = Some(
                 self.resources
-                    .core_key_manager_service
+                    .transaction_key_manager_service
                     .generate_burn_proof(&spend_key_id, &amount.into(), &claim_public_key)
                     .await?,
             );
         }
 
         // Start finalizing
-        stp.add_single_recipient_info(recipient_reply, &self.resources.core_key_manager_service)
+        stp.add_single_recipient_info(recipient_reply, &self.resources.transaction_key_manager_service)
             .await
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         // Finalize
-        stp.finalize(&self.resources.core_key_manager_service)
+        stp.finalize(&self.resources.transaction_key_manager_service)
             .await
             .map_err(|e| {
                 error!(
@@ -2929,7 +2929,7 @@ where
 pub struct TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManagerInterface> {
     pub db: TransactionDatabase<TBackend>,
     pub output_manager_service: OutputManagerHandle,
-    pub core_key_manager_service: TKeyManagerInterface,
+    pub transaction_key_manager_service: TKeyManagerInterface,
     pub outbound_message_service: OutboundMessageRequester,
     pub connectivity: TWalletConnectivity,
     pub event_publisher: TransactionEventSender,
