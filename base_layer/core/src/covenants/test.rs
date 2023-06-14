@@ -76,5 +76,5 @@ pub fn make_sample_sidechain_feature() -> SideChainFeature {
         binary_sha: Default::default(),
         binary_url: "https://github.com/tari-project/tari.git".try_into().unwrap(),
     };
-    SideChainFeature::TemplateRegistration(template_reg)
+    SideChainFeature::CodeTemplateRegistration(template_reg)
 }

@@ -138,7 +138,8 @@ pub async fn check_faux_transactions<TBackend: 'static + TransactionBackend>(
                 tx.tx_id,
                 mined_height,
                 mined_in_block,
-                0,
+                tx.mined_timestamp
+                    .map_or(0, |mined_timestamp| mined_timestamp.timestamp() as u64),
                 num_confirmations,
                 is_confirmed,
                 is_valid,

@@ -50,6 +50,7 @@ use tari_core::{
     transactions::{
         tari_amount::MicroTari,
         transaction_components::{
+            CodeTemplateRegistration,
             EncryptedData,
             KernelFeatures,
             OutputFeatures,
@@ -691,6 +692,39 @@ where
                     rp,
                 )
                 .await?;
+                return Ok(());
+            },
+            TransactionServiceRequest::RegisterCodeTemplate {
+                author_public_key,
+                author_signature,
+                template_name,
+                template_version,
+                template_type,
+                build_info,
+                binary_sha,
+                binary_url,
+                fee_per_gram,
+            } => {
+                self.register_code_template(
+                    fee_per_gram,
+                    CodeTemplateRegistration {
+                        author_public_key,
+                        author_signature,
+                        template_name: template_name.clone(),
+                        template_version,
+                        template_type,
+                        build_info,
+                        binary_sha,
+                        binary_url,
+                    },
+                    UtxoSelectionCriteria::default(),
+                    format!("Template Registration: {}", template_name),
+                    send_transaction_join_handles,
+                    transaction_broadcast_join_handles,
+                    reply_channel.take().expect("Reply channel is not set"),
+                )
+                .await?;
+
                 return Ok(());
             },
             TransactionServiceRequest::SendShaAtomicSwapTransaction(
@@ -1599,6 +1633,35 @@ where
         .await
     }
 
+    pub async fn register_code_template(
+        &mut self,
+        fee_per_gram: MicroTari,
+        template_registration: CodeTemplateRegistration,
+        selection_criteria: UtxoSelectionCriteria,
+        message: String,
+        join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
+        >,
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
+        >,
+        reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
+    ) -> Result<(), TransactionServiceError> {
+        self.send_transaction(
+            self.resources.wallet_identity.address.clone(),
+            0.into(),
+            selection_criteria,
+            OutputFeatures::for_template_registration(template_registration),
+            fee_per_gram,
+            message,
+            TransactionMetadata::default(),
+            join_handles,
+            transaction_broadcast_join_handles,
+            reply_channel,
+        )
+        .await
+    }
+
     /// Sends a one side payment transaction to a recipient
     /// # Arguments
     /// 'dest_pubkey': The Comms pubkey of the recipient node
@@ -2066,7 +2129,7 @@ where
                 trace!(
                     target: LOG_TARGET,
                     "Transaction (TxId: {}) has already been received, this is probably a repeated message, Trace:
-            {}.",
+                {}.",
                     data.tx_id,
                     traced_message_tag
                 );

@@ -54,7 +54,7 @@ impl From<SideChainFeature> for grpc::side_chain_feature::SideChainFeature {
             SideChainFeature::ValidatorNodeRegistration(template_reg) => {
                 grpc::side_chain_feature::SideChainFeature::ValidatorNodeRegistration(template_reg.into())
             },
-            SideChainFeature::TemplateRegistration(template_reg) => {
+            SideChainFeature::CodeTemplateRegistration(template_reg) => {
                 grpc::side_chain_feature::SideChainFeature::TemplateRegistration(template_reg.into())
             },
             SideChainFeature::ConfidentialOutput(output_data) => {
@@ -73,7 +73,7 @@ impl TryFrom<grpc::side_chain_feature::SideChainFeature> for SideChainFeature {
                 Ok(SideChainFeature::ValidatorNodeRegistration(vn_reg.try_into()?))
             },
             grpc::side_chain_feature::SideChainFeature::TemplateRegistration(template_reg) => {
-                Ok(SideChainFeature::TemplateRegistration(template_reg.try_into()?))
+                Ok(SideChainFeature::CodeTemplateRegistration(template_reg.try_into()?))
             },
             grpc::side_chain_feature::SideChainFeature::ConfidentialOutput(output_data) => {
                 Ok(SideChainFeature::ConfidentialOutput(output_data.try_into()?))

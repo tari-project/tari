@@ -27,6 +27,11 @@ use tari_integration_tests::{chat_ffi::spawn_ffi_chat_client, TariWorld};
 async fn chat_ffi_client_connected_to_base_node(world: &mut TariWorld, name: String, seed_node_name: String) {
     let base_node = world.get_node(&seed_node_name).unwrap();
 
-    let client = spawn_ffi_chat_client(&name, vec![base_node.identity.to_peer()]).await;
+    let client = spawn_ffi_chat_client(
+        &name,
+        vec![base_node.identity.to_peer()],
+        world.current_base_dir.clone().expect("Base dir on world"),
+    )
+    .await;
     world.chat_clients.insert(name, Box::new(client));
 }
