@@ -38,7 +38,7 @@ use tari_core::{
         key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface, TxoStage},
         tari_amount::{uT, MicroTari, T},
         test_helpers::{
-            create_key_manager_output_with_data,
+            create_wallet_output_with_data,
             schema_to_transaction,
             spend_utxos,
             TestParams,
@@ -1112,7 +1112,7 @@ async fn consensus_validation_large_tx() {
     );
     let amount_per_output = (amount - fee) / output_count as u64;
     let amount_for_last_output = (amount - fee) - amount_per_output * (output_count as u64 - 1);
-    let mut key_manager_outputs = Vec::with_capacity(output_count);
+    let mut wallet_outputs = Vec::with_capacity(output_count);
     let (input_kernel_nonce, mut pub_nonce) = key_manager
         .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
         .await
@@ -1131,7 +1131,7 @@ async fn consensus_validation_large_tx() {
         } else {
             amount_for_last_output
         };
-        let output = create_key_manager_output_with_data(
+        let output = create_wallet_output_with_data(
             script!(Nop),
             OutputFeatures::default(),
             &test_params,
@@ -1145,14 +1145,10 @@ async fn consensus_validation_large_tx() {
                 .get_txo_kernel_signature_excess_with_offset(&output.spending_key_id, &test_params.kernel_nonce_key_id)
                 .await
                 .unwrap();
-        pub_nonce = pub_nonce +
-            key_manager
-                .get_public_key_at_key_id(&test_params.kernel_nonce_key_id)
-                .await
-                .unwrap();
+        pub_nonce = pub_nonce + test_params.public_nonce_key_pk;
         sender_offsets.push(test_params.sender_offset_key_id.clone());
 
-        key_manager_outputs.push((output.clone(), test_params.kernel_nonce_key_id));
+        wallet_outputs.push((output.clone(), test_params.kernel_nonce_key_id));
     }
 
     // let mut sum_outputs_blinding_factors = key_manager_outputs[0].spending_key.clone();
@@ -1173,7 +1169,7 @@ async fn consensus_validation_large_tx() {
         &tx_meta.kernel_features,
         &tx_meta.burn_commitment,
     );
-    for (output, nonce_id) in key_manager_outputs {
+    for (output, nonce_id) in wallet_outputs {
         outputs.push(output.as_transaction_output(&key_manager).await.unwrap());
         offset = &offset +
             &key_manager

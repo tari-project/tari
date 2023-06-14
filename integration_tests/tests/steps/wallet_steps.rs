@@ -45,6 +45,7 @@ use tari_console_wallet::{CliCommands, ExportUtxosArgs};
 use tari_core::{
     consensus::ConsensusManager,
     covenants::Covenant,
+    test_helpers::create_test_core_key_manager_with_memory_db,
     transactions::{
         tari_amount::MicroTari,
         transaction_components::{
@@ -53,7 +54,7 @@ use tari_core::{
             OutputType,
             RangeProofType,
             TransactionOutputVersion,
-            UnblindedOutput,
+            WalletOutput,
         },
     },
 };
@@ -61,7 +62,7 @@ use tari_crypto::{commitment::HomomorphicCommitment, keys::PublicKey as PublicKe
 use tari_integration_tests::{
     transaction::{
         build_transaction_with_output,
-        build_transaction_with_output_and_fee,
+        build_transaction_with_output_and_fee_per_gram,
         build_transaction_with_output_and_lockheight,
     },
     wallet_process::{create_wallet_client, get_default_cli, spawn_wallet},
@@ -548,20 +549,28 @@ pub async fn create_tx_spending_coinbase(world: &mut TariWorld, transaction: Str
         .map(|i| world.utxos.get(&i.to_string()).unwrap().clone())
         .collect::<Vec<_>>();
 
-    let (tx, utxo) = build_transaction_with_output(utxos);
+    let key_manager = create_test_core_key_manager_with_memory_db(); // TODO: Need persistent version here
+    let (tx, utxo) = build_transaction_with_output(utxos, &key_manager).await;
     world.utxos.insert(output, utxo);
     world.transactions.insert(transaction, tx);
 }
 
-#[when(expr = "I create a custom fee transaction {word} spending {word} to {word} with fee {word}")]
-async fn create_tx_custom_fee(world: &mut TariWorld, transaction: String, inputs: String, output: String, fee: u64) {
+#[when(expr = "I create a custom fee transaction {word} spending {word} to {word} with fee per gram {word}")]
+async fn create_tx_custom_fee_per_gram(
+    world: &mut TariWorld,
+    transaction: String,
+    inputs: String,
+    output: String,
+    fee: u64,
+) {
     let inputs = inputs.split(',').collect::<Vec<&str>>();
     let utxos = inputs
         .iter()
         .map(|i| world.utxos.get(&i.to_string()).unwrap().clone())
         .collect::<Vec<_>>();
 
-    let (tx, utxo) = build_transaction_with_output_and_fee(utxos, fee);
+    let key_manager = create_test_core_key_manager_with_memory_db();
+    let (tx, utxo) = build_transaction_with_output_and_fee_per_gram(utxos, fee, &key_manager).await;
     world.utxos.insert(output, utxo);
     world.transactions.insert(transaction, tx);
 }
@@ -580,7 +589,8 @@ async fn create_tx_custom_lock(
         .map(|i| world.utxos.get(&i.to_string()).unwrap().clone())
         .collect::<Vec<_>>();
 
-    let (tx, utxo) = build_transaction_with_output_and_lockheight(utxos, lockheight);
+    let key_manager = create_test_core_key_manager_with_memory_db();
+    let (tx, utxo) = build_transaction_with_output_and_lockheight(utxos, lockheight, &key_manager).await;
     world.utxos.insert(output, utxo);
     world.transactions.insert(transaction, tx);
 }
@@ -2184,7 +2194,7 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
     let exported_outputs = std::fs::File::open(path_buf).unwrap();
     let mut reader = csv::Reader::from_reader(exported_outputs);
 
-    let mut outputs: Vec<UnblindedOutput> = vec![];
+    let mut outputs: Vec<WalletOutput> = vec![];
 
     for output in reader.records() {
         let output = output.unwrap();
@@ -2229,7 +2239,7 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
             signature_u_a,
             signature_u_y,
         );
-        let utxo = UnblindedOutput::new(
+        let utxo = WalletOutput::new(
             version,
             value,
             spending_key,
@@ -2252,7 +2262,7 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
     let import_utxos_req = ImportUtxosRequest {
         outputs: outputs
             .iter()
-            .map(|o| grpc::UnblindedOutput::try_from(o.clone()).expect("Unable to make grpc conversino"))
+            .map(|o| grpc::UnblindedOutput::try_from(o.clone()).expect("Unable to make grpc conversion"))
             .collect::<Vec<grpc::UnblindedOutput>>(),
     };
 
@@ -2288,7 +2298,7 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
     let exported_outputs = std::fs::File::open(path_buf).unwrap();
     let mut reader = csv::Reader::from_reader(exported_outputs);
 
-    let mut outputs: Vec<UnblindedOutput> = vec![];
+    let mut outputs: Vec<WalletOutput> = vec![];
 
     for output in reader.records() {
         let output = output.unwrap();
@@ -2333,7 +2343,7 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
             signature_u_a,
             signature_u_y,
         );
-        let utxo = UnblindedOutput::new(
+        let utxo = WalletOutput::new(
             version,
             value,
             spending_key,
@@ -2356,7 +2366,7 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
     let import_utxos_req = ImportUtxosRequest {
         outputs: outputs
             .iter()
-            .map(|o| grpc::UnblindedOutput::try_from(o.clone()).expect("Unable to make grpc conversino"))
+            .map(|o| grpc::UnblindedOutput::try_from(o.clone()).expect("Unable to make grpc conversion"))
             .collect::<Vec<grpc::UnblindedOutput>>(),
     };
 
@@ -2392,7 +2402,7 @@ async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: Stri
     let exported_outputs = std::fs::File::open(path_buf).unwrap();
     let mut reader = csv::Reader::from_reader(exported_outputs);
 
-    let mut outputs: Vec<UnblindedOutput> = vec![];
+    let mut outputs: Vec<WalletOutput> = vec![];
 
     for output in reader.records() {
         let output = output.unwrap();
@@ -2437,7 +2447,7 @@ async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: Stri
             signature_u_a,
             signature_u_y,
         );
-        let mut utxo = UnblindedOutput::new(
+        let mut utxo = WalletOutput::new(
             version,
             value,
             spending_key,
@@ -2471,7 +2481,7 @@ async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: Stri
     let import_utxos_req = ImportUtxosRequest {
         outputs: outputs
             .iter()
-            .map(|o| grpc::UnblindedOutput::try_from(o.clone()).expect("Unable to make grpc conversino"))
+            .map(|o| grpc::UnblindedOutput::try_from(o.clone()).expect("Unable to make grpc conversion"))
             .collect::<Vec<grpc::UnblindedOutput>>(),
     };
 
@@ -2559,7 +2569,7 @@ async fn multi_send_txs_from_wallet(
             amount,
             fee_per_gram,
             message: format!(
-                "I send multi-transfers with amount {} from {} to {} with fee {}",
+                "I send multi-transfers with amount {} from {} to {} with fee per gram {}",
                 amount,
                 sender.as_str(),
                 receiver.as_str(),

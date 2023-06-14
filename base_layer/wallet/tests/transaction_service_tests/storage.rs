@@ -38,7 +38,7 @@ use tari_core::{
     transactions::{
         key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface},
         tari_amount::{uT, MicroTari},
-        test_helpers::{create_key_manager_output_with_data, TestParams},
+        test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{
             OutputFeatures,
             RangeProofType,
@@ -76,7 +76,7 @@ use tempfile::tempdir;
 pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let mut db = TransactionDatabase::new(backend);
     let key_manager = create_test_core_key_manager_with_memory_db();
-    let input = create_key_manager_output_with_data(
+    let input = create_wallet_output_with_data(
         TariScript::default(),
         OutputFeatures::default(),
         &TestParams::new(&key_manager).await,

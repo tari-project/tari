@@ -83,7 +83,7 @@ use tari_core::{
         fee::Fee,
         key_manager::{TransactionKeyManagerInitializer, TransactionKeyManagerInterface},
         tari_amount::*,
-        test_helpers::{create_key_manager_output_with_data, TestParams},
+        test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{KernelBuilder, OutputFeatures, Transaction},
         transaction_protocol::{
             proto::protocol as proto,
@@ -2482,7 +2482,7 @@ async fn test_transaction_cancellation() {
         .is_none());
 
     let key_manager = create_test_core_key_manager_with_memory_db();
-    let input = create_key_manager_output_with_data(
+    let input = create_wallet_output_with_data(
         TariScript::default(),
         OutputFeatures::default(),
         &TestParams::new(&key_manager).await,
@@ -2569,7 +2569,7 @@ async fn test_transaction_cancellation() {
         .is_none());
 
     // Lets cancel the last one using a Comms stack message
-    let input = create_key_manager_output_with_data(
+    let input = create_wallet_output_with_data(
         TariScript::default(),
         OutputFeatures::default(),
         &TestParams::new(&key_manager.clone()).await,
@@ -4641,7 +4641,7 @@ async fn test_resend_on_startup() {
 
     // First we will check the Send Tranasction message
     let key_manager = create_test_core_key_manager_with_memory_db();
-    let input = create_key_manager_output_with_data(
+    let input = create_wallet_output_with_data(
         script!(Nop),
         OutputFeatures::default(),
         &TestParams::new(&key_manager).await,
@@ -5142,7 +5142,7 @@ async fn test_transaction_timeout_cancellation() {
     // Now to test if the timeout has elapsed during downtime and that it is honoured on startup
     // First we will check the Send Transction message
     let key_manager = create_test_core_key_manager_with_memory_db();
-    let input = create_key_manager_output_with_data(
+    let input = create_wallet_output_with_data(
         TariScript::default(),
         OutputFeatures::default(),
         &TestParams::new(&key_manager).await,

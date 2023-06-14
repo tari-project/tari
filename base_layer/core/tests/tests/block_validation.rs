@@ -46,7 +46,7 @@ use tari_core::{
         key_manager::TransactionKeyManagerInterface,
         tari_amount::{uT, T},
         test_helpers::{
-            create_key_manager_output_with_data,
+            create_wallet_output_with_data,
             schema_to_transaction,
             spend_utxos,
             TestParams,
@@ -496,7 +496,7 @@ OutputFeatures::default()),
     let test_params2 = TestParams::new(&key_manager).await;
     // We dont need proper utxo's with signatures as the post_orphan validator does not check accounting balance +
     // signatures.
-    let key_manager_utxo = create_key_manager_output_with_data(
+    let key_manager_utxo = create_wallet_output_with_data(
         script!(Nop),
         OutputFeatures::default(),
         &test_params1,
@@ -505,7 +505,7 @@ OutputFeatures::default()),
     )
     .await
     .unwrap();
-    let key_manager_utxo2 = create_key_manager_output_with_data(
+    let key_manager_utxo2 = create_wallet_output_with_data(
         script!(Nop),
         OutputFeatures::default(),
         &test_params2,
@@ -869,7 +869,7 @@ async fn test_block_sync_body_validator() {
     let test_params2 = TestParams::new(&key_manager).await;
     // We dont need proper utxo's with signatures as the post_orphan validator does not check accounting balance +
     // signatures.
-    let unblinded_utxo = create_key_manager_output_with_data(
+    let unblinded_utxo = create_wallet_output_with_data(
         script!(Nop),
         OutputFeatures::default(),
         &test_params1,
@@ -878,7 +878,7 @@ async fn test_block_sync_body_validator() {
     )
     .await
     .unwrap();
-    let unblinded_utxo2 = create_key_manager_output_with_data(
+    let unblinded_utxo2 = create_wallet_output_with_data(
         script!(Nop),
         OutputFeatures::default(),
         &test_params2,

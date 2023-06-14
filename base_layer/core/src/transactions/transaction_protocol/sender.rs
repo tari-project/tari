@@ -853,7 +853,7 @@ mod test {
             crypto_factories::CryptoFactories,
             key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface},
             tari_amount::*,
-            test_helpers::{create_key_manager_output_with_data, create_test_input, TestParams},
+            test_helpers::{create_test_input, create_wallet_output_with_data, TestParams},
             transaction_components::{
                 EncryptedData,
                 OutputFeatures,
@@ -1035,7 +1035,7 @@ mod test {
             .await
             .unwrap()
             .with_output(
-                create_key_manager_output_with_data(
+                create_wallet_output_with_data(
                     script.clone(),
                     output_features.clone(),
                     &p1,
@@ -1049,7 +1049,7 @@ mod test {
             .await
             .unwrap()
             .with_output(
-                create_key_manager_output_with_data(script, output_features, &p2, MicroTari(400), &key_manager)
+                create_wallet_output_with_data(script, output_features, &p2, MicroTari(400), &key_manager)
                     .await
                     .unwrap(),
                 p2.sender_offset_key_id.clone(),

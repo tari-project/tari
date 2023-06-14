@@ -589,7 +589,7 @@ mod test {
         transactions::{
             fee::Fee,
             tari_amount::*,
-            test_helpers::{create_key_manager_output_with_data, create_test_input, TestParams, UtxoTestParams},
+            test_helpers::{create_test_input, create_wallet_output_with_data, TestParams, UtxoTestParams},
             transaction_components::{OutputFeatures, MAX_TRANSACTION_INPUTS},
             transaction_protocol::{sender::SenderState, transaction_initializer::SenderTransactionInitializer},
         },
@@ -612,7 +612,7 @@ mod test {
         builder.with_lock_height(100);
         builder
             .with_output(
-                create_key_manager_output_with_data(
+                create_wallet_output_with_data(
                     script.clone(),
                     OutputFeatures::default(),
                     &p,
@@ -684,7 +684,7 @@ mod test {
             p.get_size_for_default_features_and_scripts(1),
         );
 
-        let output = create_key_manager_output_with_data(
+        let output = create_wallet_output_with_data(
             TariScript::default(),
             OutputFeatures::default(),
             &p,
@@ -779,7 +779,7 @@ mod test {
         let key_manager = create_test_core_key_manager_with_memory_db();
         let p = TestParams::new(&key_manager).await;
 
-        let output = create_key_manager_output_with_data(
+        let output = create_wallet_output_with_data(
             TariScript::default(),
             OutputFeatures::default(),
             &p,
@@ -847,7 +847,7 @@ mod test {
         let p = TestParams::new(&key_manager).await;
         let input = create_test_input(MicroTari(400), 0, &key_manager).await;
         let script = script!(Nop);
-        let output = create_key_manager_output_with_data(
+        let output = create_wallet_output_with_data(
             script.clone(),
             OutputFeatures::default(),
             &p,
@@ -910,7 +910,7 @@ mod test {
             3,
             p.get_size_for_default_features_and_scripts(3),
         );
-        let output = create_key_manager_output_with_data(
+        let output = create_wallet_output_with_data(
             script.clone(),
             OutputFeatures::default(),
             &p,

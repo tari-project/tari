@@ -27,7 +27,7 @@ use tari_core::{
     transactions::{
         key_manager::TransactionKeyManagerInterface,
         tari_amount::MicroTari,
-        test_helpers::{create_key_manager_output_with_data, TestParams},
+        test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{
             OutputFeatures,
             RangeProofType,
@@ -48,7 +48,7 @@ pub async fn make_non_recoverable_input<R: Rng + CryptoRng>(
     key_manager: &TestKeyManager,
 ) -> WalletOutput {
     let test_params = TestParams::new(key_manager).await;
-    let utxo = create_key_manager_output_with_data(script!(Nop), features.clone(), &test_params, val, key_manager)
+    let utxo = create_wallet_output_with_data(script!(Nop), features.clone(), &test_params, val, key_manager)
         .await
         .unwrap();
     utxo
@@ -106,7 +106,7 @@ pub async fn make_input_with_features<R: Rng + CryptoRng>(
     key_manager: &TestKeyManager,
 ) -> WalletOutput {
     let test_params = TestParams::new(key_manager).await;
-    let utxo = create_key_manager_output_with_data(script!(Nop), features, &test_params, value, key_manager)
+    let utxo = create_wallet_output_with_data(script!(Nop), features, &test_params, value, key_manager)
         .await
         .unwrap();
     utxo

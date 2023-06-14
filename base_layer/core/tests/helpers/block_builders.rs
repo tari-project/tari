@@ -43,9 +43,9 @@ use tari_core::{
         key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface, TxoStage},
         tari_amount::MicroTari,
         test_helpers::{
-            create_key_manager_output_with_data,
             create_random_signature_from_secret_key,
             create_utxo,
+            create_wallet_output_with_data,
             spend_utxos,
             TestParams,
             TransactionSchema,
@@ -117,7 +117,7 @@ pub async fn create_coinbase(
         .build()
         .unwrap();
 
-    let key_manager_output = create_key_manager_output_with_data(
+    let key_manager_output = create_wallet_output_with_data(
         script!(Nop),
         OutputFeatures::create_coinbase(maturity_height, extra),
         &p,
@@ -404,7 +404,7 @@ pub async fn create_genesis_block_with_utxos(
     for value in values {
         let p = TestParams::new(key_manager).await;
         let key_manager_output =
-            create_key_manager_output_with_data(script.clone(), output_features.clone(), &p, *value, key_manager)
+            create_wallet_output_with_data(script.clone(), output_features.clone(), &p, *value, key_manager)
                 .await
                 .unwrap();
         outputs.push(key_manager_output.clone());

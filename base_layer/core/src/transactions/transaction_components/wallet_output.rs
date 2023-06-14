@@ -176,7 +176,7 @@ impl WalletOutput {
         ))
     }
 
-    /// Commits an UnblindedOutput into a TransactionInput that only contains the hash of the spent output data
+    /// Commits an WalletOutput into a TransactionInput that only contains the hash of the spent output data
     pub async fn as_compact_transaction_input<KM: TransactionKeyManagerInterface>(
         &self,
         key_manager: &KM,

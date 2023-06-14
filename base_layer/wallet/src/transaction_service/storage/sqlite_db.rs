@@ -2265,7 +2265,7 @@ mod test {
         test_helpers::create_test_core_key_manager_with_memory_db,
         transactions::{
             tari_amount::MicroTari,
-            test_helpers::{create_key_manager_output_with_data, TestParams},
+            test_helpers::{create_wallet_output_with_data, TestParams},
             transaction_components::{OutputFeatures, Transaction},
             transaction_protocol::sender::TransactionSenderMessage,
             ReceiverTransactionProtocol,
@@ -2332,7 +2332,7 @@ mod test {
         let constants = create_consensus_constants(0);
         let mut builder = SenderTransactionProtocol::builder(constants, key_manager.clone());
         let test_params = TestParams::new(&key_manager).await;
-        let input = create_key_manager_output_with_data(
+        let input = create_wallet_output_with_data(
             TariScript::default(),
             OutputFeatures::default(),
             &test_params,
@@ -2436,7 +2436,7 @@ mod test {
                 .unwrap()
         );
 
-        let output = create_key_manager_output_with_data(
+        let output = create_wallet_output_with_data(
             TariScript::default(),
             OutputFeatures::default(),
             &test_params,

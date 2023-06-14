@@ -8535,7 +8535,7 @@ mod test {
         test_helpers::create_test_core_key_manager_with_memory_db,
         transactions::{
             key_manager::SecretTransactionKeyManagerInterface,
-            test_helpers::{create_key_manager_output_with_data, create_test_input, TestParams},
+            test_helpers::{create_test_input, create_wallet_output_with_data, TestParams},
         },
     };
     use tari_key_manager::{mnemonic::MnemonicLanguage, mnemonic_wordlists};
@@ -10693,7 +10693,7 @@ mod test {
             let error_ptr = &mut error as *mut c_int;
             // Test the consistent features case
             let key_manager = create_test_core_key_manager_with_memory_db();
-            let utxo_1 = create_key_manager_output_with_data(
+            let utxo_1 = create_wallet_output_with_data(
                 script!(Nop),
                 OutputFeatures::default(),
                 &TestParams::new(&key_manager).await,
@@ -10829,7 +10829,7 @@ mod test {
 
             // Test the consistent features case
             let key_manager = create_test_core_key_manager_with_memory_db();
-            let utxo_1 = create_key_manager_output_with_data(
+            let utxo_1 = create_wallet_output_with_data(
                 script!(Nop),
                 OutputFeatures::default(),
                 &TestParams::new(&key_manager).await,
@@ -10920,7 +10920,7 @@ mod test {
             let error_ptr = &mut error as *mut c_int;
 
             let key_manager = create_test_core_key_manager_with_memory_db();
-            let utxo_1 = create_key_manager_output_with_data(
+            let utxo_1 = create_wallet_output_with_data(
                 script!(Nop),
                 OutputFeatures::default(),
                 &TestParams::new(&key_manager).await,

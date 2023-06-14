@@ -168,3 +168,43 @@ where
     /// Add a new key to be tracked
     async fn import_key(&self, private_key: PK::K) -> Result<KeyId<PK>, KeyManagerServiceError>;
 }
+
+#[cfg(test)]
+mod test {
+    use core::iter;
+    use std::str::FromStr;
+
+    use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
+    use tari_common_types::types::{PrivateKey, PublicKey};
+    use tari_crypto::keys::{PublicKey as PK, SecretKey as SK};
+
+    use crate::key_manager_service::KeyId;
+
+    fn random_string(len: usize) -> String {
+        iter::repeat(()).map(|_| OsRng.sample(Alphanumeric)).take(len).collect()
+    }
+
+    #[test]
+    fn key_id_converts_correctly() {
+        let managed_key_id: KeyId<PublicKey> = KeyId::Managed {
+            branch: random_string(8),
+            index: {
+                let mut rng = rand::thread_rng();
+                let random_value: u64 = rng.gen();
+                random_value
+            },
+        };
+        let imported_key_id: KeyId<PublicKey> = KeyId::Imported {
+            key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+        };
+        let zero_key_id: KeyId<PublicKey> = KeyId::Zero;
+
+        let managed_key_id_str = managed_key_id.to_string();
+        let imported_key_id_str = imported_key_id.to_string();
+        let zero_key_id_str = zero_key_id.to_string();
+
+        assert_eq!(managed_key_id, KeyId::from_str(&managed_key_id_str).unwrap());
+        assert_eq!(imported_key_id, KeyId::from_str(&imported_key_id_str).unwrap());
+        assert_eq!(zero_key_id, KeyId::from_str(&zero_key_id_str).unwrap());
+    }
+}

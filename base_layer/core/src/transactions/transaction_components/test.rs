@@ -43,7 +43,7 @@ use crate::{
         key_manager::TransactionKeyManagerInterface,
         tari_amount::{uT, MicroTari, T},
         test_helpers,
-        test_helpers::{create_sender_transaction_protocol_with, TestParams, UtxoTestParams},
+        test_helpers::{TestParams, UtxoTestParams},
         transaction_components::{transaction_output::batch_verify_range_proofs, EncryptedData, OutputFeatures},
         transaction_protocol::TransactionProtocolError,
         CryptoFactories,
@@ -447,7 +447,7 @@ async fn check_duplicate_inputs_outputs() {
 #[tokio::test]
 async fn inputs_not_malleable() {
     let key_manager = create_test_core_key_manager_with_memory_db();
-    let (inputs, outputs) = test_helpers::create_key_manager_txos(
+    let (inputs, outputs) = test_helpers::create_wallet_outputs(
         5000.into(),
         1,
         1,
@@ -513,7 +513,7 @@ mod validate_internal_consistency {
     use crate::{
         covenants::{BaseLayerCovenantsDomain, COVENANTS_FIELD_HASHER_LABEL},
         test_helpers::TestKeyManager,
-        transactions::test_helpers::create_key_manager_txos,
+        transactions::test_helpers::{create_transaction_with, create_wallet_outputs},
     };
 
     async fn test_case(
@@ -522,7 +522,7 @@ mod validate_internal_consistency {
         height: u64,
         key_manager: &TestKeyManager,
     ) -> Result<(), TransactionProtocolError> {
-        let (mut inputs, outputs) = create_key_manager_txos(
+        let (mut inputs, outputs) = create_wallet_outputs(
             100 * T,
             1,
             0,
@@ -538,11 +538,10 @@ mod validate_internal_consistency {
         inputs[0].covenant = input_params.covenant.clone();
         inputs[0].script = input_params.script.clone();
         // SenderTransactionProtocol::finalize() calls validate_internal_consistency
-        let stx_protocol = create_sender_transaction_protocol_with(0, 5 * uT, inputs, outputs, key_manager).await?;
+        let tx = create_transaction_with(0, 5 * uT, inputs, outputs, key_manager).await;
         // Otherwise if this passes check again with the height
         let rules = ConsensusManager::builder(Network::LocalNet).build();
         let validator = TransactionInternalConsistencyValidator::new(false, rules, CryptoFactories::default());
-        let tx = stx_protocol.take_transaction().unwrap();
         validator
             .validate(&tx, None, None, height)
             .map_err(|err| TransactionError::ValidationError(err.to_string()))?;

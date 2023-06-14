@@ -27,7 +27,7 @@ use futures::StreamExt;
 use indexmap::IndexMap;
 use tari_app_grpc::tari_rpc::{self as grpc, GetBlocksRequest, ListHeadersRequest};
 use tari_base_node::BaseNodeConfig;
-use tari_core::blocks::Block;
+use tari_core::{blocks::Block, test_helpers::create_test_core_key_manager_with_memory_db};
 use tari_integration_tests::{
     base_node_process::{spawn_base_node, spawn_base_node_with_config},
     get_peer_addresses,
@@ -646,7 +646,8 @@ async fn no_meddling_with_data(world: &mut TariWorld, node: String) {
     // No meddling
     let chain_tip = client.get_tip_info(Empty {}).await.unwrap().into_inner();
     let current_height = chain_tip.metadata.unwrap().height_of_longest_chain;
-    let block = mine_block_before_submit(&mut client, &world.key_manager).await;
+    let key_manager = create_test_core_key_manager_with_memory_db(); // TODO: Need persistent version here
+    let block = mine_block_before_submit(&mut client, &key_manager).await;
     let _sumbmit_res = client.submit_block(block).await.unwrap();
 
     let chain_tip = client.get_tip_info(Empty {}).await.unwrap().into_inner();
@@ -661,7 +662,7 @@ async fn no_meddling_with_data(world: &mut TariWorld, node: String) {
     );
 
     // Meddle with kernal_mmr_size
-    let mut block: Block = Block::try_from(mine_block_before_submit(&mut client, &world.key_manager).await).unwrap();
+    let mut block: Block = Block::try_from(mine_block_before_submit(&mut client, &key_manager).await).unwrap();
     block.header.kernel_mmr_size += 1;
     match client.submit_block(grpc::Block::try_from(block).unwrap()).await {
         Ok(_) => panic!("The block should not have been valid"),
@@ -674,7 +675,7 @@ async fn no_meddling_with_data(world: &mut TariWorld, node: String) {
     }
 
     // Meddle with output_mmr_size
-    let mut block: Block = Block::try_from(mine_block_before_submit(&mut client, &world.key_manager).await).unwrap();
+    let mut block: Block = Block::try_from(mine_block_before_submit(&mut client, &key_manager).await).unwrap();
     block.header.output_mmr_size += 1;
     match client.submit_block(grpc::Block::try_from(block).unwrap()).await {
         Ok(_) => panic!("The block should not have been valid"),

@@ -52,7 +52,7 @@ use crate::{
             WalletOutput,
             WalletOutputBuilder,
         },
-        transaction_protocol::{TransactionMetadata, TransactionProtocolError},
+        transaction_protocol::TransactionMetadata,
         weight::TransactionWeight,
         SenderTransactionProtocol,
     },
@@ -294,7 +294,7 @@ pub fn create_consensus_manager() -> ConsensusManager {
     ConsensusManager::builder(Network::LocalNet).build()
 }
 
-pub async fn create_key_manager_coinbase(
+pub async fn create_coinbase_wallet_output(
     test_params: &TestParams,
     height: u64,
     extra: Option<Vec<u8>>,
@@ -315,7 +315,7 @@ pub async fn create_key_manager_coinbase(
         .unwrap()
 }
 
-pub async fn create_key_manager_output_with_data(
+pub async fn create_wallet_output_with_data(
     script: TariScript,
     output_features: OutputFeatures,
     test_params: &TestParams,
@@ -484,7 +484,7 @@ pub async fn create_tx(
     output_features: OutputFeatures,
     key_manager: &TestKeyManager,
 ) -> (Transaction, Vec<WalletOutput>, Vec<WalletOutput>) {
-    let (inputs, outputs) = create_key_manager_txos(
+    let (inputs, outputs) = create_wallet_outputs(
         amount,
         input_count,
         input_maturity,
@@ -500,7 +500,7 @@ pub async fn create_tx(
     (tx, inputs, outputs.into_iter().map(|(utxo, _)| utxo).collect())
 }
 
-pub async fn create_key_manager_txos(
+pub async fn create_wallet_outputs(
     amount: MicroTari,
     input_count: usize,
     input_maturity: u64,
@@ -536,7 +536,7 @@ pub async fn create_key_manager_txos(
             amount_for_last_output
         };
         let test_params = TestParams::new(key_manager).await;
-        let script_offset_pvt_key = test_params.sender_offset_key_id.clone();
+        let sender_offset_key_id = test_params.sender_offset_key_id.clone();
 
         let output = test_params
             .create_output(
@@ -551,7 +551,7 @@ pub async fn create_key_manager_txos(
             )
             .await
             .unwrap();
-        outputs.push((output, script_offset_pvt_key));
+        outputs.push((output, sender_offset_key_id));
     }
 
     let amount_per_input = amount / input_count as u64;
@@ -588,19 +588,6 @@ pub async fn create_transaction_with(
     outputs: Vec<(WalletOutput, TariKeyId)>,
     key_manager: &TestKeyManager,
 ) -> Transaction {
-    let stx_protocol = create_sender_transaction_protocol_with(lock_height, fee_per_gram, inputs, outputs, key_manager)
-        .await
-        .unwrap();
-    stx_protocol.take_transaction().unwrap()
-}
-
-pub async fn create_sender_transaction_protocol_with(
-    lock_height: u64,
-    fee_per_gram: MicroTari,
-    inputs: Vec<WalletOutput>,
-    outputs: Vec<(WalletOutput, TariKeyId)>,
-    key_manager: &TestKeyManager,
-) -> Result<SenderTransactionProtocol, TransactionProtocolError> {
     let rules = ConsensusManager::builder(Network::LocalNet).build();
     let constants = rules.consensus_constants(0).clone();
     let mut stx_builder = SenderTransactionProtocol::builder(constants, key_manager.clone());
@@ -625,9 +612,9 @@ pub async fn create_sender_transaction_protocol_with(
     }
 
     let mut stx_protocol = stx_builder.build().await.unwrap();
-    stx_protocol.finalize(key_manager).await?;
+    stx_protocol.finalize(key_manager).await.unwrap();
 
-    Ok(stx_protocol)
+    stx_protocol.take_transaction().unwrap()
 }
 
 /// Spend the provided UTXOs to the given amounts. Change will be created with any outstanding amount.
@@ -800,7 +787,7 @@ pub async fn create_utxo(
         .encrypt_data_for_recovery(&spending_key_id, None, value.into())
         .await
         .unwrap();
-    let (sender_offset_key_id, _) = key_manager
+    let (sender_offset_key_id, sender_offset_public_key) = key_manager
         .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
         .await
         .unwrap();
@@ -838,10 +825,6 @@ pub async fn create_utxo(
         None
     };
 
-    let sender_offset_public_key = key_manager
-        .get_public_key_at_key_id(&sender_offset_key_id)
-        .await
-        .unwrap();
     let utxo = TransactionOutput::new_current_version(
         features.clone(),
         commitment,

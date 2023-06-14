@@ -44,7 +44,7 @@ use tari_core::{
         fee::Fee,
         key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface},
         tari_amount::{uT, MicroTari},
-        test_helpers::{create_key_manager_output_with_data, TestParams},
+        test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{OutputFeatures, OutputType, TransactionOutput, WalletOutput},
         transaction_protocol::{sender::TransactionSenderMessage, TransactionMetadata},
         weight::TransactionWeight,
@@ -258,7 +258,7 @@ async fn generate_sender_transaction_message(
     amount: MicroTari,
     key_manager: &TestKeyManager,
 ) -> (TxId, TransactionSenderMessage) {
-    let input = make_non_recoverable_input(&mut OsRng, 2 * amount, &OutputFeatures::default(), &key_manager).await;
+    let input = make_non_recoverable_input(&mut OsRng, 2 * amount, &OutputFeatures::default(), key_manager).await;
     let mut builder = SenderTransactionProtocol::builder(create_consensus_constants(0), key_manager.clone());
     builder
         .with_lock_height(0)
@@ -276,7 +276,7 @@ async fn generate_sender_transaction_message(
         .await
         .unwrap();
 
-    let change = TestParams::new(&key_manager).await;
+    let change = TestParams::new(key_manager).await;
     builder.with_change_data(
         script!(Nop),
         inputs!(change.script_key_pk),
@@ -743,7 +743,7 @@ async fn send_no_change() {
     let key_manager = create_test_core_key_manager_with_memory_db();
     oms.output_manager_handle
         .add_output(
-            create_key_manager_output_with_data(
+            create_wallet_output_with_data(
                 script!(Nop),
                 OutputFeatures::default(),
                 &TestParams::new(&key_manager).await,
@@ -760,7 +760,7 @@ async fn send_no_change() {
     let key_manager = create_test_core_key_manager_with_memory_db();
     oms.output_manager_handle
         .add_output(
-            create_key_manager_output_with_data(
+            create_wallet_output_with_data(
                 script!(Nop),
                 OutputFeatures::default(),
                 &TestParams::new(&key_manager).await,
@@ -815,7 +815,7 @@ async fn send_not_enough_for_change() {
     let key_manager = create_test_core_key_manager_with_memory_db();
     oms.output_manager_handle
         .add_output(
-            create_key_manager_output_with_data(
+            create_wallet_output_with_data(
                 TariScript::default(),
                 OutputFeatures::default(),
                 &TestParams::new(&key_manager).await,
@@ -831,7 +831,7 @@ async fn send_not_enough_for_change() {
     let value2 = MicroTari(800);
     oms.output_manager_handle
         .add_output(
-            create_key_manager_output_with_data(
+            create_wallet_output_with_data(
                 TariScript::default(),
                 OutputFeatures::default(),
                 &TestParams::new(&key_manager).await,
@@ -1830,7 +1830,7 @@ async fn test_txo_revalidation() {
 
     let output1_value = 1_000_000;
     let key_manager = create_test_core_key_manager_with_memory_db();
-    let output1 = create_key_manager_output_with_data(
+    let output1 = create_wallet_output_with_data(
         script!(Nop),
         OutputFeatures::default(),
         &TestParams::new(&key_manager).await,
@@ -1846,7 +1846,7 @@ async fn test_txo_revalidation() {
         .unwrap();
 
     let output2_value = 2_000_000;
-    let output2 = create_key_manager_output_with_data(
+    let output2 = create_wallet_output_with_data(
         script!(Nop),
         OutputFeatures::default(),
         &TestParams::new(&key_manager).await,

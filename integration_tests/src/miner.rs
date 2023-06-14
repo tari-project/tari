@@ -44,7 +44,7 @@ use tari_common::configuration::Network;
 use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tari_core::{
     consensus::ConsensusManager,
-    test_helpers::TestKeyManager,
+    test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager},
     transactions::{
         key_manager::TransactionKeyManagerInterface,
         transaction_components::WalletOutput,
@@ -199,7 +199,7 @@ pub async fn mine_block(base_client: &mut BaseNodeClient, wallet_client: &mut Wa
 }
 
 async fn mine_block_without_wallet(base_client: &mut BaseNodeClient, weight: u64, key_manager: &TestKeyManager) {
-    let (block_template, _unblinded_output) =
+    let (block_template, _wallet_output) =
         create_block_template_with_coinbase_without_wallet(base_client, weight, key_manager).await;
     mine_block_without_wallet_with_template(base_client, block_template.new_block_template.unwrap()).await;
 }
@@ -273,8 +273,7 @@ async fn create_block_template_with_coinbase_without_wallet(
     // let mut block_template = template_res.new_block_template.clone().unwrap();
 
     // add the coinbase outputs and kernels to the block template
-    let (output, kernel, unblinded_output) =
-        get_coinbase_without_wallet_client(template_res.clone(), key_manager).await;
+    let (output, kernel, wallet_output) = get_coinbase_without_wallet_client(template_res.clone(), key_manager).await;
     // let body = block_template.body.as_mut().unwrap();
 
     template_res
@@ -296,7 +295,7 @@ async fn create_block_template_with_coinbase_without_wallet(
         .kernels
         .push(kernel);
 
-    (template_res, unblinded_output)
+    (template_res, wallet_output)
 }
 
 async fn get_coinbase_outputs_and_kernels(
@@ -375,15 +374,15 @@ pub async fn mine_block_with_coinbase_on_node(world: &mut TariWorld, base_node: 
         .get_grpc_client()
         .await
         .unwrap();
-    let (template, unblinded_output) =
-        create_block_template_with_coinbase_without_wallet(&mut client, 0, &world.key_manager).await;
-    world.utxos.insert(coinbase_name, unblinded_output);
+    let key_manager = create_test_core_key_manager_with_memory_db();
+    let (template, wallet_output) =
+        create_block_template_with_coinbase_without_wallet(&mut client, 0, &key_manager).await;
+    world.utxos.insert(coinbase_name, wallet_output);
     mine_block_without_wallet_with_template(&mut client, template.new_block_template.unwrap()).await;
 }
 
 pub async fn mine_block_before_submit(client: &mut BaseNodeClient, key_manager: &TestKeyManager) -> Block {
-    let (template, _unblinded_output) =
-        create_block_template_with_coinbase_without_wallet(client, 0, key_manager).await;
+    let (template, _wallet_output) = create_block_template_with_coinbase_without_wallet(client, 0, key_manager).await;
 
     let new_block = client
         .get_new_block(template.new_block_template.unwrap())
