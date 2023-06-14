@@ -518,6 +518,7 @@ impl SenderTransactionProtocol {
     }
 
     /// Attempts to build the final transaction.
+    #[allow(clippy::too_many_lines)]
     async fn build_transaction<KM: TransactionKeyManagerInterface>(
         info: &RawTransactionInfo,
         key_manager: &KM,
@@ -781,9 +782,12 @@ impl SenderState {
     /// function directly. It is called by the `TransactionInitializer` builder
     pub(super) fn initialize(self) -> Result<SenderState, TPE> {
         match self {
-            SenderState::Initializing(info) => match info.recipient_data.is_some() {
-                false => Ok(SenderState::Finalizing(info)),
-                true => Ok(SenderState::SingleRoundMessageReady(info)),
+            SenderState::Initializing(info) => {
+                if info.recipient_data.is_some() {
+                    Ok(SenderState::SingleRoundMessageReady(info))
+                } else {
+                    Ok(SenderState::Finalizing(info))
+                }
             },
             _ => Err(TPE::InvalidTransitionError),
         }

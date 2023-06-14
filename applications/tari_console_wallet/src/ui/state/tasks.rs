@@ -36,8 +36,7 @@ use tari_core::{
         TransactionHashDomain,
     },
 };
-use tari_crypto::{hash::blake2::Blake256, keys::PublicKey as PublicKeyTrait};
-use tari_crypto::ristretto::RistrettoPublicKey;
+use tari_crypto::{hash::blake2::Blake256, keys::PublicKey as PublicKeyTrait, ristretto::RistrettoPublicKey};
 use tari_key_manager::key_manager::KeyManager;
 use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{

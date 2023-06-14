@@ -182,6 +182,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
     ///
     /// After `build_with_reward` is called, the struct is destroyed and the
     /// memory zeroed out (by virtue of the zero_on_drop crate).
+    #[allow(clippy::too_many_lines)]
     #[allow(clippy::erasing_op)] // This is for 0 * uT
     pub async fn build_with_reward(
         self,
@@ -529,6 +530,7 @@ mod test {
     };
 
     #[tokio::test]
+    #[allow(clippy::too_many_lines)]
     #[allow(clippy::identity_op)]
     async fn invalid_coinbase_amount() {
         // We construct two txs both valid with a single coinbase. We then add a duplicate coinbase utxo to the one, and

@@ -44,7 +44,7 @@ use tari_common::configuration::Network;
 use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tari_core::{
     consensus::ConsensusManager,
-    test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager},
+    test_helpers::TestKeyManager,
     transactions::{
         key_manager::TransactionKeyManagerInterface,
         transaction_components::WalletOutput,
@@ -324,7 +324,7 @@ async fn generate_coinbase(
     let fee = coinbase_req.fee;
     let extra = coinbase_req.extra;
 
-    let (spending_key_id, _, script_private_key_id, _) = key_manager.get_next_spend_and_script_key_ids().await.unwrap();
+    let (spending_key_id, _, script_key_id, _) = key_manager.get_next_spend_and_script_key_ids().await.unwrap();
 
     let consensus_manager = ConsensusManager::builder(Network::LocalNet).build();
     let consensus_constants = consensus_manager.consensus_constants(height);
@@ -333,7 +333,7 @@ async fn generate_coinbase(
         .with_block_height(height)
         .with_fees(fee.into())
         .with_spend_key_id(spending_key_id)
-        .with_script_key_id(script_private_key_id)
+        .with_script_key_id(script_key_id)
         .with_extra(extra)
         .build_with_reward(consensus_constants, reward.into())
         .await
@@ -374,9 +374,8 @@ pub async fn mine_block_with_coinbase_on_node(world: &mut TariWorld, base_node: 
         .get_grpc_client()
         .await
         .unwrap();
-    let key_manager = create_test_core_key_manager_with_memory_db();
     let (template, wallet_output) =
-        create_block_template_with_coinbase_without_wallet(&mut client, 0, &key_manager).await;
+        create_block_template_with_coinbase_without_wallet(&mut client, 0, &world.key_manager).await;
     world.utxos.insert(coinbase_name, wallet_output);
     mine_block_without_wallet_with_template(&mut client, template.new_block_template.unwrap()).await;
 }

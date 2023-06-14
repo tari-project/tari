@@ -558,7 +558,7 @@ impl TestBlockchain {
 
     pub async fn create_chain(&self, block_specs: BlockSpecs) -> Vec<(Arc<ChainBlock>, WalletOutput)> {
         let mut result = Vec::new();
-        for spec in block_specs.into_iter() {
+        for spec in block_specs {
             result.push(self.create_chained_block(spec).await);
         }
         result

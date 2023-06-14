@@ -58,10 +58,10 @@ use tari_core::{
         transaction_components::{
             CodeTemplateRegistration,
             KernelFeatures,
-            WalletOutputBuilder,
             OutputFeatures,
             Transaction,
             TransactionOutput,
+            WalletOutputBuilder,
         },
         transaction_protocol::{
             proto::protocol as proto,

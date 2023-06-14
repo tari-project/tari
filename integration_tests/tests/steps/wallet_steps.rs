@@ -45,7 +45,6 @@ use tari_console_wallet::{CliCommands, ExportUtxosArgs};
 use tari_core::{
     consensus::ConsensusManager,
     covenants::Covenant,
-    test_helpers::create_test_core_key_manager_with_memory_db,
     transactions::{
         tari_amount::MicroTari,
         transaction_components::{
@@ -54,7 +53,7 @@ use tari_core::{
             OutputType,
             RangeProofType,
             TransactionOutputVersion,
-            WalletOutput,
+            UnblindedOutput,
         },
     },
 };
@@ -549,8 +548,7 @@ pub async fn create_tx_spending_coinbase(world: &mut TariWorld, transaction: Str
         .map(|i| world.utxos.get(&i.to_string()).unwrap().clone())
         .collect::<Vec<_>>();
 
-    let key_manager = create_test_core_key_manager_with_memory_db(); // TODO: Need persistent version here
-    let (tx, utxo) = build_transaction_with_output(utxos, &key_manager).await;
+    let (tx, utxo) = build_transaction_with_output(utxos, &world.key_manager).await;
     world.utxos.insert(output, utxo);
     world.transactions.insert(transaction, tx);
 }
@@ -569,8 +567,7 @@ async fn create_tx_custom_fee_per_gram(
         .map(|i| world.utxos.get(&i.to_string()).unwrap().clone())
         .collect::<Vec<_>>();
 
-    let key_manager = create_test_core_key_manager_with_memory_db();
-    let (tx, utxo) = build_transaction_with_output_and_fee_per_gram(utxos, fee, &key_manager).await;
+    let (tx, utxo) = build_transaction_with_output_and_fee_per_gram(utxos, fee, &world.key_manager).await;
     world.utxos.insert(output, utxo);
     world.transactions.insert(transaction, tx);
 }
@@ -589,8 +586,7 @@ async fn create_tx_custom_lock(
         .map(|i| world.utxos.get(&i.to_string()).unwrap().clone())
         .collect::<Vec<_>>();
 
-    let key_manager = create_test_core_key_manager_with_memory_db();
-    let (tx, utxo) = build_transaction_with_output_and_lockheight(utxos, lockheight, &key_manager).await;
+    let (tx, utxo) = build_transaction_with_output_and_lockheight(utxos, lockheight, &world.key_manager).await;
     world.utxos.insert(output, utxo);
     world.transactions.insert(transaction, tx);
 }
@@ -2194,7 +2190,7 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
     let exported_outputs = std::fs::File::open(path_buf).unwrap();
     let mut reader = csv::Reader::from_reader(exported_outputs);
 
-    let mut outputs: Vec<WalletOutput> = vec![];
+    let mut outputs: Vec<UnblindedOutput> = vec![];
 
     for output in reader.records() {
         let output = output.unwrap();
@@ -2239,7 +2235,7 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
             signature_u_a,
             signature_u_y,
         );
-        let utxo = WalletOutput::new(
+        let utxo = UnblindedOutput::new(
             version,
             value,
             spending_key,
@@ -2298,7 +2294,7 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
     let exported_outputs = std::fs::File::open(path_buf).unwrap();
     let mut reader = csv::Reader::from_reader(exported_outputs);
 
-    let mut outputs: Vec<WalletOutput> = vec![];
+    let mut outputs: Vec<UnblindedOutput> = vec![];
 
     for output in reader.records() {
         let output = output.unwrap();
@@ -2343,7 +2339,7 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
             signature_u_a,
             signature_u_y,
         );
-        let utxo = WalletOutput::new(
+        let utxo = UnblindedOutput::new(
             version,
             value,
             spending_key,
@@ -2402,7 +2398,7 @@ async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: Stri
     let exported_outputs = std::fs::File::open(path_buf).unwrap();
     let mut reader = csv::Reader::from_reader(exported_outputs);
 
-    let mut outputs: Vec<WalletOutput> = vec![];
+    let mut outputs: Vec<UnblindedOutput> = vec![];
 
     for output in reader.records() {
         let output = output.unwrap();
@@ -2447,7 +2443,7 @@ async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: Stri
             signature_u_a,
             signature_u_y,
         );
-        let mut utxo = WalletOutput::new(
+        let mut utxo = UnblindedOutput::new(
             version,
             value,
             spending_key,
