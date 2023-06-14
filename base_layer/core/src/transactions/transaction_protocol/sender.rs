@@ -937,7 +937,7 @@ mod test {
             .unwrap();
         let value = 1000u64;
         let (sender_offset_key_id, sender_offset_public_key) = key_manager
-            .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
+            .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
             .await
             .unwrap();
         let txo_version = TransactionOutputVersion::get_current_version();
@@ -1297,8 +1297,6 @@ mod test {
         let rules = create_consensus_rules();
         let key_manager = create_test_core_key_manager_with_memory_db();
         let factories = CryptoFactories::default();
-        // Alice's parameters
-        let alice_key = TestParams::new(&key_manager).await;
         // Bob's parameters
         let bob_key = TestParams::new(&key_manager).await;
         let input = create_test_input(MicroTari(10000), 0, &key_manager).await;

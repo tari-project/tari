@@ -238,7 +238,7 @@ mod test {
         let kmob = kmob.with_script(TariScript::new(vec![]));
         assert!(kmob.clone().try_build().is_err());
         let (sender_offset_private_key_id, sender_offset_public_key) = key_manager
-            .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
+            .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
             .await
             .unwrap();
         let kmob = kmob.with_sender_offset_public_key(sender_offset_public_key);
@@ -285,7 +285,7 @@ mod test {
         let kmob = WalletOutputBuilder::new(value, spending_key_id.clone());
         let kmob = kmob.with_script(TariScript::new(vec![]));
         let (sender_offset_private_key_id, sender_offset_public_key) = key_manager
-            .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
+            .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
             .await
             .unwrap();
         let kmob = kmob.with_sender_offset_public_key(sender_offset_public_key);

@@ -62,7 +62,9 @@ pub enum TransactionKeyManagerBranch {
     CoinbaseScript,
     CommitmentMask,
     Nonce,
+    KernelNonce,
     ScriptKey,
+    SenderOffset,
 }
 
 impl TransactionKeyManagerBranch {
@@ -75,7 +77,9 @@ impl TransactionKeyManagerBranch {
             TransactionKeyManagerBranch::CoinbaseScript => "coinbase script".to_string(),
             TransactionKeyManagerBranch::CommitmentMask => "commitment mask".to_string(),
             TransactionKeyManagerBranch::Nonce => "nonce".to_string(),
+            TransactionKeyManagerBranch::KernelNonce => "kernel nonce".to_string(),
             TransactionKeyManagerBranch::ScriptKey => "script key".to_string(),
+            TransactionKeyManagerBranch::SenderOffset => "sender offset".to_string(),
         }
     }
 }

@@ -49,7 +49,7 @@ impl SingleReceiverTransactionProtocol {
         let transaction_output = output.as_transaction_output(key_manager).await?;
 
         let (nonce_id, public_nonce) = key_manager
-            .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
+            .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
             .await?;
         let tx_meta = if output.is_burned() {
             let mut meta = sender_info.metadata.clone();

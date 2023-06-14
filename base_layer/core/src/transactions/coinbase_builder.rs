@@ -210,7 +210,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         );
         let (public_nonce_id, public_nonce) = self
             .key_manager
-            .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
+            .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
             .await?;
 
         let public_spend_key = self.key_manager.get_public_key_at_key_id(&spending_key_id).await?;
@@ -252,7 +252,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
 
         let (sender_offset_public_key_id, sender_offset_public_key) = self
             .key_manager
-            .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
+            .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
             .await?;
 
         let metadata_sig = self
@@ -570,7 +570,7 @@ mod test {
         assert!(coinbase_kernel2.is_coinbase());
         coinbase_kernel2.features = KernelFeatures::empty();
         let (new_nonce, nonce) = key_manager
-            .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
+            .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
             .await
             .unwrap();
         let kernel_message = TransactionKernel::build_kernel_signature_message(

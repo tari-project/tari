@@ -1165,7 +1165,11 @@ where
             .get_public_key_at_key_id(&sender_offset_private_key)
             .await?;
 
-        let spending_key_id = self.resources.transaction_key_manager_service.import_key(spending_key).await?;
+        let spending_key_id = self
+            .resources
+            .transaction_key_manager_service
+            .import_key(spending_key)
+            .await?;
 
         let minimum_value_promise = MicroTari::zero();
         let output = WalletOutputBuilder::new(amount, spending_key_id)
@@ -1189,15 +1193,21 @@ where
             .with_sender_offset_public_key(sender_offset_public_key)
             .with_script_key(self.resources.wallet_identity.wallet_node_key_id.clone())
             .with_minimum_value_promise(minimum_value_promise)
-            .sign_as_sender_and_receiver(&self.resources.transaction_key_manager_service, &sender_offset_private_key)
+            .sign_as_sender_and_receiver(
+                &self.resources.transaction_key_manager_service,
+                &sender_offset_private_key,
+            )
             .await
             .unwrap()
             .try_build()
             .unwrap();
 
-        let rtp =
-            ReceiverTransactionProtocol::new(sender_message, output.clone(), &self.resources.transaction_key_manager_service)
-                .await;
+        let rtp = ReceiverTransactionProtocol::new(
+            sender_message,
+            output.clone(),
+            &self.resources.transaction_key_manager_service,
+        )
+        .await;
 
         let recipient_reply = rtp.get_signed_data()?.clone();
 
@@ -1342,7 +1352,11 @@ where
             .import_key(encryption_private_key)
             .await?;
 
-        let spending_key_id = self.resources.transaction_key_manager_service.import_key(spending_key).await?;
+        let spending_key_id = self
+            .resources
+            .transaction_key_manager_service
+            .import_key(spending_key)
+            .await?;
 
         let sender_offset_public_key = self
             .resources
@@ -1371,12 +1385,16 @@ where
             .with_sender_offset_public_key(sender_offset_public_key)
             .with_script_key(self.resources.wallet_identity.wallet_node_key_id.clone())
             .with_minimum_value_promise(minimum_value_promise)
-            .sign_as_sender_and_receiver(&self.resources.transaction_key_manager_service, &sender_offset_private_key)
+            .sign_as_sender_and_receiver(
+                &self.resources.transaction_key_manager_service,
+                &sender_offset_private_key,
+            )
             .await?
             .try_build()?;
 
         let rtp =
-            ReceiverTransactionProtocol::new(sender_message, output, &self.resources.transaction_key_manager_service).await;
+            ReceiverTransactionProtocol::new(sender_message, output, &self.resources.transaction_key_manager_service)
+                .await;
 
         let recipient_reply = rtp.get_signed_data()?.clone();
 
@@ -1541,7 +1559,11 @@ where
             .get_next_spend_and_script_key_ids()
             .await?;
 
-        let recovery_key_id = self.resources.transaction_key_manager_service.get_recovery_key_id().await?;
+        let recovery_key_id = self
+            .resources
+            .transaction_key_manager_service
+            .get_recovery_key_id()
+            .await?;
 
         let recovery_key_id = match claim_public_key {
             Some(ref claim_public_key) => {
@@ -1609,12 +1631,16 @@ where
                     ))?
                     .minimum_value_promise,
             )
-            .sign_as_sender_and_receiver(&self.resources.transaction_key_manager_service, &sender_offset_private_key)
+            .sign_as_sender_and_receiver(
+                &self.resources.transaction_key_manager_service,
+                &sender_offset_private_key,
+            )
             .await?
             .try_build()?;
 
         let rtp =
-            ReceiverTransactionProtocol::new(sender_message, output, &self.resources.transaction_key_manager_service).await;
+            ReceiverTransactionProtocol::new(sender_message, output, &self.resources.transaction_key_manager_service)
+                .await;
 
         let recipient_reply = rtp.get_signed_data()?.clone();
         let range_proof = recipient_reply.output.proof_result()?.clone();

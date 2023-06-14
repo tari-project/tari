@@ -255,13 +255,13 @@ mod test {
 
         let index = key_manager
             .find_key_index(
-                TransactionKeyManagerBranch::Nonce.get_branch_key(),
+                TransactionKeyManagerBranch::KernelNonce.get_branch_key(),
                 data.partial_signature.get_public_nonce(),
             )
             .await
             .unwrap();
         let nonce_id = KeyId::Managed {
-            branch: TransactionKeyManagerBranch::Nonce.get_branch_key(),
+            branch: TransactionKeyManagerBranch::KernelNonce.get_branch_key(),
             index,
         };
         let kernel_message = TransactionKernel::build_kernel_signature_message(

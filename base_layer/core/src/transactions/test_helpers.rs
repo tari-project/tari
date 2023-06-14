@@ -97,11 +97,11 @@ impl TestParams {
         let (spend_key_id, spend_key_pk, script_key_id, script_key_pk) =
             key_manager.get_next_spend_and_script_key_ids().await.unwrap();
         let (sender_offset_key_id, sender_offset_key_pk) = key_manager
-            .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
+            .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
             .await
             .unwrap();
         let (kernel_nonce_key_id, kernel_nonce_key_pk) = key_manager
-            .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
+            .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
             .await
             .unwrap();
         let (public_nonce_key_id, public_nonce_key_pk) = key_manager
@@ -262,7 +262,7 @@ pub async fn create_random_signature_from_secret_key(
 ) -> (PublicKey, Signature) {
     let tx_meta = TransactionMetadata::new_with_features(fee, lock_height, kernel_features);
     let (nonce_id, total_nonce) = key_manager
-        .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
+        .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
         .await
         .unwrap();
     let total_excess = key_manager.get_public_key_at_key_id(&secret_key_id).await.unwrap();
@@ -660,7 +660,7 @@ pub async fn create_stx_protocol(
             .await
             .unwrap();
         let (sender_offset_key_id, sender_offset_public_key) = key_manager
-            .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
+            .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
             .await
             .unwrap();
         let (script_key_id, _) = key_manager
@@ -698,7 +698,7 @@ pub async fn create_stx_protocol(
     }
     for mut utxo in schema.to_outputs {
         let (sender_offset_key_id, _) = key_manager
-            .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
+            .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
             .await
             .unwrap();
         let metadata_message = TransactionOutput::metadata_signature_message(&utxo);
@@ -730,7 +730,7 @@ pub async fn create_coinbase_kernel(spending_key_id: &TariKeyId, key_manager: &T
     let kernel_message =
         TransactionKernel::build_kernel_signature_message(&kernel_version, 0.into(), 0, &kernel_features, &None);
     let (public_nonce_id, public_nonce) = key_manager
-        .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
+        .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
         .await
         .unwrap();
     let public_spend_key = key_manager.get_public_key_at_key_id(spending_key_id).await.unwrap();
@@ -788,7 +788,7 @@ pub async fn create_utxo(
         .await
         .unwrap();
     let (sender_offset_key_id, sender_offset_public_key) = key_manager
-        .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
+        .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
         .await
         .unwrap();
     let metadata_message = TransactionOutput::metadata_signature_message_from_parts(

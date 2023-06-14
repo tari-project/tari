@@ -83,7 +83,7 @@ pub async fn create_coinbase(
     let p = TestParams::new(key_manager).await;
     let public_exess = key_manager.get_public_key_at_key_id(&p.spend_key_id).await.unwrap();
     let (nonce, public_nonce) = key_manager
-        .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
+        .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
         .await
         .unwrap();
 

@@ -826,8 +826,7 @@ async fn test_block_sync_body_validator() {
     let err = {
         // `MutexGuard` cannot be held across an `await` point
         let txn = db.db_read_access().unwrap();
-        validator.validate_body(&*txn, &new_block).unwrap_err();
-        err
+        validator.validate_body(&*txn, &new_block).unwrap_err()
     };
     assert!(
         matches!(
@@ -953,7 +952,7 @@ async fn test_block_sync_body_validator() {
     {
         // `MutexGuard` cannot be held across an `await` point
         let txn = db.db_read_access().unwrap();
-        validator.validate_body(&*txn, &new_block).unwrap_err();
+        validator.validate_body(&*txn, &new_block).unwrap();
     }
 
     // lets break accounting

@@ -155,7 +155,7 @@ where KM: TransactionKeyManagerInterface
             .await?;
         let (recipient_sender_offset_key_id, _) = self
             .key_manager
-            .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
+            .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
             .await?;
         let recipient_details = RecipientDetails {
             recipient_output_features,
@@ -180,7 +180,7 @@ where KM: TransactionKeyManagerInterface
     pub async fn with_input(&mut self, input: WalletOutput) -> Result<&mut Self, KeyManagerServiceError> {
         let (nonce_id, _) = self
             .key_manager
-            .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
+            .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
             .await?;
         let pair = OutputPair {
             output: input,
@@ -199,7 +199,7 @@ where KM: TransactionKeyManagerInterface
     ) -> Result<&mut Self, KeyManagerServiceError> {
         let (nonce_id, _) = self
             .key_manager
-            .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
+            .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
             .await?;
         let pair = OutputPair {
             output,
@@ -360,7 +360,7 @@ where KM: TransactionKeyManagerInterface
                         let change_key_id = change_data.change_spending_key_id.clone();
                         let (sender_offset_key_id, sender_offset_public_key) = self
                             .key_manager
-                            .get_next_key(&TransactionKeyManagerBranch::Nonce.get_branch_key())
+                            .get_next_key(&TransactionKeyManagerBranch::SenderOffset.get_branch_key())
                             .await
                             .map_err(|e| e.to_string())?;
                         let input_data = change_data.change_input_data.clone();
@@ -496,7 +496,7 @@ where KM: TransactionKeyManagerInterface
                 }
                 let (nonce_id, _) = match self
                     .key_manager
-                    .get_next_key(TransactionKeyManagerBranch::Nonce.get_branch_key())
+                    .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
                     .await
                 {
                     Ok(key_id) => key_id,

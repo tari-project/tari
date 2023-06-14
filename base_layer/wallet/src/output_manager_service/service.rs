@@ -906,15 +906,15 @@ where
             input_selection.num_selected()
         );
 
-            let (change_spending_key_id, _, change_script_key_id, change_script_public_key) =
-                self.resources.key_manager.get_next_spend_and_script_key_ids().await?;
-            builder.with_change_data(
-                script!(Nop),
-                inputs!(change_script_public_key),
-                change_script_key_id,
-                change_spending_key_id,
-                Covenant::default(),
-            );
+        let (change_spending_key_id, _, change_script_key_id, change_script_public_key) =
+            self.resources.key_manager.get_next_spend_and_script_key_ids().await?;
+        builder.with_change_data(
+            script!(Nop),
+            inputs!(change_script_public_key),
+            change_script_key_id,
+            change_spending_key_id,
+            Covenant::default(),
+        );
 
         let stp = builder
             .build()
@@ -1077,7 +1077,7 @@ where
             let (sender_offset_key_id, _) = self
                 .resources
                 .key_manager
-                .get_next_key(&TransactionKeyManagerBranch::Nonce.get_branch_key())
+                .get_next_key(&TransactionKeyManagerBranch::SenderOffset.get_branch_key())
                 .await?;
             key_manager_output = key_manager_output
                 .sign_as_sender_and_receiver(&self.resources.key_manager, &sender_offset_key_id)
@@ -1874,7 +1874,7 @@ where
         let (sender_offset_key_id, sender_offset_public_key) = self
             .resources
             .key_manager
-            .get_next_key(&TransactionKeyManagerBranch::Nonce.get_branch_key())
+            .get_next_key(&TransactionKeyManagerBranch::SenderOffset.get_branch_key())
             .await?;
         let metadata_signature = self
             .resources
