@@ -9847,9 +9847,9 @@ mod test {
         }
     }
 
-    #[tokio::test]
+    #[test]
     #[allow(clippy::too_many_lines)]
-    async fn test_wallet_get_utxos() {
+    fn test_wallet_get_utxos() {
         unsafe {
             let key_manager = create_test_core_key_manager_with_memory_db();
             let mut error = 0;
@@ -9914,7 +9914,9 @@ mod test {
 
             assert_eq!(error, 0);
             for i in 0..10 {
-                let uout = create_test_input((1000 * i).into(), 0, &key_manager).await;
+                let uout = (*alice_wallet)
+                    .runtime
+                    .block_on(create_test_input((1000 * i).into(), 0, &key_manager));
                 (*alice_wallet)
                     .runtime
                     .block_on((*alice_wallet).wallet.output_manager_service.add_output(uout, None))
@@ -9994,9 +9996,9 @@ mod test {
         }
     }
 
-    #[tokio::test]
+    #[test]
     #[allow(clippy::too_many_lines)]
-    async fn test_wallet_get_all_utxos() {
+    fn test_wallet_get_all_utxos() {
         unsafe {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
@@ -10061,7 +10063,9 @@ mod test {
 
             let key_manager = create_test_core_key_manager_with_memory_db();
             for i in 0..10 {
-                let uout = create_test_input((1000 * i).into(), 0, &key_manager).await;
+                let uout = (*alice_wallet)
+                    .runtime
+                    .block_on(create_test_input((1000 * i).into(), 0, &key_manager));
                 (*alice_wallet)
                     .runtime
                     .block_on((*alice_wallet).wallet.output_manager_service.add_output(uout, None))
@@ -10108,9 +10112,9 @@ mod test {
         }
     }
 
-    #[tokio::test]
+    #[test]
     #[allow(clippy::too_many_lines, clippy::needless_collect)]
-    async fn test_wallet_coin_join() {
+    fn test_wallet_coin_join() {
         unsafe {
             let key_manager = create_test_core_key_manager_with_memory_db();
             let mut error = 0;
@@ -10178,10 +10182,12 @@ mod test {
                 (*alice_wallet)
                     .runtime
                     .block_on(
-                        (*alice_wallet)
-                            .wallet
-                            .output_manager_service
-                            .add_output(create_test_input((15000 * i).into(), 0, &key_manager).await, None),
+                        (*alice_wallet).wallet.output_manager_service.add_output(
+                            (*alice_wallet)
+                                .runtime
+                                .block_on(create_test_input((15000 * i).into(), 0, &key_manager)),
+                            None,
+                        ),
                     )
                     .unwrap();
             }
@@ -10307,9 +10313,9 @@ mod test {
         }
     }
 
-    #[tokio::test]
+    #[test]
     #[allow(clippy::too_many_lines, clippy::needless_collect)]
-    async fn test_wallet_coin_split() {
+    fn test_wallet_coin_split() {
         unsafe {
             let key_manager = create_test_core_key_manager_with_memory_db();
             let mut error = 0;
@@ -10375,10 +10381,12 @@ mod test {
                 (*alice_wallet)
                     .runtime
                     .block_on(
-                        (*alice_wallet)
-                            .wallet
-                            .output_manager_service
-                            .add_output(create_test_input((15000 * i).into(), 0, &key_manager).await, None),
+                        (*alice_wallet).wallet.output_manager_service.add_output(
+                            (*alice_wallet)
+                                .runtime
+                                .block_on(create_test_input((15000 * i).into(), 0, &key_manager)),
+                            None,
+                        ),
                     )
                     .unwrap();
             }
@@ -10513,9 +10521,9 @@ mod test {
         }
     }
 
-    #[tokio::test]
+    #[test]
     #[allow(clippy::too_many_lines, clippy::needless_collect)]
-    async fn test_wallet_get_network_and_version() {
+    fn test_wallet_get_network_and_version() {
         unsafe {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
@@ -10582,10 +10590,12 @@ mod test {
                 (*alice_wallet)
                     .runtime
                     .block_on(
-                        (*alice_wallet)
-                            .wallet
-                            .output_manager_service
-                            .add_output(create_test_input((15000 * i).into(), 0, &key_manager).await, None),
+                        (*alice_wallet).wallet.output_manager_service.add_output(
+                            (*alice_wallet)
+                                .runtime
+                                .block_on(create_test_input((15000 * i).into(), 0, &key_manager)),
+                            None,
+                        ),
                     )
                     .unwrap();
             }
@@ -10690,25 +10700,30 @@ mod test {
         }
     }
 
-    #[tokio::test]
-    pub async fn test_create_external_utxo() {
+    #[test]
+    pub fn test_create_external_utxo() {
+        let runtime = Runtime::new().unwrap();
         unsafe {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
             // Test the consistent features case
             let key_manager = create_test_core_key_manager_with_memory_db();
-            let utxo_1 = create_wallet_output_with_data(
-                script!(Nop),
-                OutputFeatures::default(),
-                &TestParams::new(&key_manager).await,
-                MicroTari(1234u64),
-                &key_manager,
-            )
-            .await
-            .unwrap();
+            let utxo_1 = runtime
+                .block_on(create_wallet_output_with_data(
+                    script!(Nop),
+                    OutputFeatures::default(),
+                    &runtime.block_on(TestParams::new(&key_manager)),
+                    MicroTari(1234u64),
+                    &key_manager,
+                ))
+                .unwrap();
             let amount = utxo_1.value.as_u64();
-            let spending_key = key_manager.get_private_key(&utxo_1.spending_key_id).await.unwrap();
-            let script_private_key = key_manager.get_private_key(&utxo_1.script_key_id).await.unwrap();
+            let spending_key = runtime
+                .block_on(key_manager.get_private_key(&utxo_1.spending_key_id))
+                .unwrap();
+            let script_private_key = runtime
+                .block_on(key_manager.get_private_key(&utxo_1.script_key_id))
+                .unwrap();
             let spending_key_ptr = Box::into_raw(Box::new(spending_key));
             let features_ptr = Box::into_raw(Box::new(utxo_1.features.clone()));
             let metadata_signature_ptr = Box::into_raw(Box::new(utxo_1.metadata_signature.clone()));
@@ -10757,9 +10772,10 @@ mod test {
         format!("/memory/{}", port).parse().unwrap()
     }
 
-    #[tokio::test]
+    #[test]
     #[allow(clippy::too_many_lines)]
-    pub async fn test_import_external_utxo() {
+    pub fn test_import_external_utxo() {
+        let runtime = Runtime::new().unwrap();
         unsafe {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
@@ -10833,19 +10849,23 @@ mod test {
 
             // Test the consistent features case
             let key_manager = create_test_core_key_manager_with_memory_db();
-            let utxo_1 = create_wallet_output_with_data(
-                script!(Nop),
-                OutputFeatures::default(),
-                &TestParams::new(&key_manager).await,
-                MicroTari(1234u64),
-                &key_manager,
-            )
-            .await
-            .unwrap();
+            let utxo_1 = runtime
+                .block_on(create_wallet_output_with_data(
+                    script!(Nop),
+                    OutputFeatures::default(),
+                    &runtime.block_on(TestParams::new(&key_manager)),
+                    MicroTari(1234u64),
+                    &key_manager,
+                ))
+                .unwrap();
             let amount = utxo_1.value.as_u64();
 
-            let spending_key = key_manager.get_private_key(&utxo_1.spending_key_id).await.unwrap();
-            let script_private_key = key_manager.get_private_key(&utxo_1.script_key_id).await.unwrap();
+            let spending_key = runtime
+                .block_on(key_manager.get_private_key(&utxo_1.spending_key_id))
+                .unwrap();
+            let script_private_key = runtime
+                .block_on(key_manager.get_private_key(&utxo_1.script_key_id))
+                .unwrap();
             let spending_key_ptr = Box::into_raw(Box::new(spending_key));
             let features_ptr = Box::into_raw(Box::new(utxo_1.features.clone()));
             let source_address_ptr = Box::into_raw(Box::default());
@@ -10917,25 +10937,30 @@ mod test {
         }
     }
 
-    #[tokio::test]
-    pub async fn test_utxo_json() {
+    #[test]
+    pub fn test_utxo_json() {
+        let runtime = Runtime::new().unwrap();
         unsafe {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
 
             let key_manager = create_test_core_key_manager_with_memory_db();
-            let utxo_1 = create_wallet_output_with_data(
-                script!(Nop),
-                OutputFeatures::default(),
-                &TestParams::new(&key_manager).await,
-                MicroTari(1234u64),
-                &key_manager,
-            )
-            .await
-            .unwrap();
+            let utxo_1 = runtime
+                .block_on(create_wallet_output_with_data(
+                    script!(Nop),
+                    OutputFeatures::default(),
+                    &runtime.block_on(TestParams::new(&key_manager)),
+                    MicroTari(1234u64),
+                    &key_manager,
+                ))
+                .unwrap();
             let amount = utxo_1.value.as_u64();
-            let spending_key = key_manager.get_private_key(&utxo_1.spending_key_id).await.unwrap();
-            let script_private_key = key_manager.get_private_key(&utxo_1.script_key_id).await.unwrap();
+            let spending_key = runtime
+                .block_on(key_manager.get_private_key(&utxo_1.spending_key_id))
+                .unwrap();
+            let script_private_key = runtime
+                .block_on(key_manager.get_private_key(&utxo_1.script_key_id))
+                .unwrap();
             let spending_key_ptr = Box::into_raw(Box::new(spending_key));
             let features_ptr = Box::into_raw(Box::new(utxo_1.features.clone()));
             let source_address_ptr = Box::into_raw(Box::<TariWalletAddress>::default());
