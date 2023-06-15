@@ -40,7 +40,7 @@ use tari_core::{
 use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tari_script::{inputs, script};
 
-pub async fn make_non_recoverable_input<R: Rng + CryptoRng>(
+pub async fn make_input<R: Rng + CryptoRng>(
     _rng: &mut R,
     val: MicroTari,
     features: &OutputFeatures,

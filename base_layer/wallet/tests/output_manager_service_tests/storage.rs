@@ -38,7 +38,7 @@ use tari_wallet::output_manager_service::{
     },
 };
 
-use crate::support::{data::get_temp_sqlite_database_connection, utils::make_non_recoverable_input};
+use crate::support::{data::get_temp_sqlite_database_connection, utils::make_input};
 
 #[allow(clippy::too_many_lines)]
 pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
@@ -48,7 +48,7 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     let mut unspent_outputs = Vec::new();
     let key_manager = create_test_core_key_manager_with_memory_db();
     for i in 0..5 {
-        let uo = make_non_recoverable_input(
+        let uo = make_input(
             &mut OsRng,
             MicroTari::from(100 + OsRng.next_u64() % 1000),
             &OutputFeatures::default(),
@@ -99,7 +99,7 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
             outputs_to_be_received: vec![],
         };
         for _ in 0..4 {
-            let kmo = make_non_recoverable_input(
+            let kmo = make_input(
                 &mut OsRng,
                 MicroTari::from(100 + OsRng.next_u64() % 1000),
                 &OutputFeatures::default(),
@@ -113,7 +113,7 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
             pending_tx.outputs_to_be_spent.push(kmo);
         }
         for _ in 0..2 {
-            let uo = make_non_recoverable_input(
+            let uo = make_input(
                 &mut OsRng,
                 MicroTari::from(100 + OsRng.next_u64() % 1000),
                 &OutputFeatures::default(),
@@ -252,7 +252,7 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     );
 
     // Add output to be received
-    let uo = make_non_recoverable_input(
+    let uo = make_input(
         &mut OsRng,
         MicroTari::from(100 + OsRng.next_u64() % 1000),
         &OutputFeatures::default(),
@@ -351,7 +351,7 @@ pub async fn test_short_term_encumberance() {
     let mut unspent_outputs = Vec::new();
     let key_manager = create_test_core_key_manager_with_memory_db();
     for i in 0..5 {
-        let kmo = make_non_recoverable_input(
+        let kmo = make_input(
             &mut OsRng,
             MicroTari::from(100 + OsRng.next_u64() % 1000),
             &OutputFeatures::default(),
@@ -410,7 +410,7 @@ pub async fn test_no_duplicate_outputs() {
 
     // create an output
     let key_manager = create_test_core_key_manager_with_memory_db();
-    let uo = make_non_recoverable_input(
+    let uo = make_input(
         &mut OsRng,
         MicroTari::from(1000),
         &OutputFeatures::default(),
@@ -452,7 +452,7 @@ pub async fn test_mark_as_unmined() {
 
     // create an output
     let key_manager = create_test_core_key_manager_with_memory_db();
-    let uo = make_non_recoverable_input(
+    let uo = make_input(
         &mut OsRng,
         MicroTari::from(1000),
         &OutputFeatures::default(),

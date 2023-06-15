@@ -170,7 +170,7 @@ use crate::support::{
     base_node_service_mock::MockBaseNodeService,
     comms_and_services::{create_dummy_message, setup_comms_services},
     comms_rpc::{connect_rpc_client, BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
-    utils::{create_wallet_output_from_sender_data, make_non_recoverable_input},
+    utils::{create_wallet_output_from_sender_data, make_input},
 };
 
 async fn setup_transaction_service<P: AsRef<Path>>(
@@ -573,7 +573,7 @@ async fn manage_single_transaction() {
         .unwrap();
 
     let value = MicroTari::from(1000);
-    let uo1 = make_non_recoverable_input(
+    let uo1 = make_input(
         &mut OsRng,
         MicroTari(2500),
         &OutputFeatures::default(),
@@ -699,7 +699,7 @@ async fn single_transaction_to_self() {
         .await;
 
     let initial_wallet_value = 25000.into();
-    let uo1 = make_non_recoverable_input(
+    let uo1 = make_input(
         &mut OsRng,
         initial_wallet_value,
         &OutputFeatures::default(),
@@ -781,7 +781,7 @@ async fn single_transaction_burn_tari() {
         .await;
 
     let initial_wallet_value = 25000.into();
-    let uo1 = make_non_recoverable_input(
+    let uo1 = make_input(
         &mut OsRng,
         initial_wallet_value,
         &OutputFeatures::default(),
@@ -932,7 +932,7 @@ async fn send_one_sided_transaction_to_other() {
     let mut alice_event_stream = alice_ts.get_event_stream();
 
     let initial_wallet_value = 25000.into();
-    let uo1 = make_non_recoverable_input(
+    let uo1 = make_input(
         &mut OsRng,
         initial_wallet_value,
         &OutputFeatures::default(),
@@ -1071,7 +1071,7 @@ async fn recover_one_sided_transaction() {
     cloned_bob_oms.add_known_script(known_script).await.unwrap();
 
     let initial_wallet_value = 25000.into();
-    let uo1 = make_non_recoverable_input(
+    let uo1 = make_input(
         &mut OsRng,
         initial_wallet_value,
         &OutputFeatures::default(),
@@ -1174,7 +1174,7 @@ async fn test_htlc_send_and_claim() {
     let mut alice_event_stream = alice_ts.get_event_stream();
 
     let initial_wallet_value = 25000.into();
-    let uo1 = make_non_recoverable_input(
+    let uo1 = make_input(
         &mut OsRng,
         initial_wallet_value,
         &OutputFeatures::default(),
@@ -1295,7 +1295,7 @@ async fn send_one_sided_transaction_to_self() {
     .await;
 
     let initial_wallet_value = 2500.into();
-    let uo1 = make_non_recoverable_input(
+    let uo1 = make_input(
         &mut OsRng,
         initial_wallet_value,
         &OutputFeatures::default(),
@@ -1435,7 +1435,7 @@ async fn manage_multiple_transactions() {
         .await
         .unwrap();
 
-    let uo2 = make_non_recoverable_input(
+    let uo2 = make_input(
         &mut OsRng,
         MicroTari(35000),
         &OutputFeatures::default(),
@@ -1443,7 +1443,7 @@ async fn manage_multiple_transactions() {
     )
     .await;
     bob_oms.add_output(uo2, None).await.unwrap();
-    let uo3 = make_non_recoverable_input(
+    let uo3 = make_input(
         &mut OsRng,
         MicroTari(45000),
         &OutputFeatures::default(),
@@ -1453,7 +1453,7 @@ async fn manage_multiple_transactions() {
     carol_oms.add_output(uo3, None).await.unwrap();
 
     // Add some funds to Alices wallet
-    let uo1a = make_non_recoverable_input(
+    let uo1a = make_input(
         &mut OsRng,
         MicroTari(55000),
         &OutputFeatures::default(),
@@ -1461,7 +1461,7 @@ async fn manage_multiple_transactions() {
     )
     .await;
     alice_oms.add_output(uo1a, None).await.unwrap();
-    let uo1b = make_non_recoverable_input(
+    let uo1b = make_input(
         &mut OsRng,
         MicroTari(30000),
         &OutputFeatures::default(),
@@ -1469,7 +1469,7 @@ async fn manage_multiple_transactions() {
     )
     .await;
     alice_oms.add_output(uo1b, None).await.unwrap();
-    let uo1c = make_non_recoverable_input(
+    let uo1c = make_input(
         &mut OsRng,
         MicroTari(30000),
         &OutputFeatures::default(),
@@ -1645,7 +1645,7 @@ async fn test_accepting_unknown_tx_id_and_malformed_reply() {
 
     let mut alice_ts_interface = setup_transaction_service_no_comms(factories.clone(), connection_alice, None).await;
 
-    let uo = make_non_recoverable_input(
+    let uo = make_input(
         &mut OsRng,
         MicroTari(250000),
         &OutputFeatures::default(),
@@ -1735,7 +1735,7 @@ async fn finalize_tx_with_incorrect_pubkey() {
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
     let mut bob_ts_interface = setup_transaction_service_no_comms(factories.clone(), connection_bob, None).await;
 
-    let uo = make_non_recoverable_input(
+    let uo = make_input(
         &mut OsRng,
         MicroTari(250000),
         &OutputFeatures::default(),
@@ -1855,7 +1855,7 @@ async fn finalize_tx_with_missing_output() {
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
     let mut bob_ts_interface = setup_transaction_service_no_comms(factories.clone(), connection_bob, None).await;
 
-    let uo = make_non_recoverable_input(
+    let uo = make_input(
         &mut OsRng,
         MicroTari(250000),
         &OutputFeatures::default(),
@@ -2032,7 +2032,7 @@ async fn discovery_async_return_test() {
         .await;
     let mut alice_event_stream = alice_ts.get_event_stream();
 
-    let uo1a = make_non_recoverable_input(
+    let uo1a = make_input(
         &mut OsRng,
         MicroTari(55000),
         &OutputFeatures::default(),
@@ -2040,7 +2040,7 @@ async fn discovery_async_return_test() {
     )
     .await;
     alice_oms.add_output(uo1a, None).await.unwrap();
-    let uo1b = make_non_recoverable_input(
+    let uo1b = make_input(
         &mut OsRng,
         MicroTari(30000),
         &OutputFeatures::default(),
@@ -2048,7 +2048,7 @@ async fn discovery_async_return_test() {
     )
     .await;
     alice_oms.add_output(uo1b, None).await.unwrap();
-    let uo1c = make_non_recoverable_input(
+    let uo1c = make_input(
         &mut OsRng,
         MicroTari(30000),
         &OutputFeatures::default(),
@@ -2375,7 +2375,7 @@ async fn test_transaction_cancellation() {
     let mut alice_event_stream = alice_ts_interface.transaction_service_handle.get_event_stream();
 
     let alice_total_available = 2500000 * uT;
-    let uo = make_non_recoverable_input(
+    let uo = make_input(
         &mut OsRng,
         alice_total_available,
         &OutputFeatures::default(),
@@ -2711,7 +2711,7 @@ async fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
     let mut alice_ts_interface = setup_transaction_service_no_comms(factories.clone(), connection, None).await;
 
     let alice_total_available = 2500000 * uT;
-    let uo = make_non_recoverable_input(
+    let uo = make_input(
         &mut OsRng,
         alice_total_available,
         &OutputFeatures::default(),
@@ -2902,7 +2902,7 @@ async fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
 
     // Now to repeat sending so we can test the SAF send of the finalize message
     let alice_total_available = 250000 * uT;
-    let uo = make_non_recoverable_input(
+    let uo = make_input(
         &mut OsRng,
         alice_total_available,
         &OutputFeatures::default(),
@@ -3016,7 +3016,7 @@ async fn test_tx_direct_send_behaviour() {
     let mut alice_ts_interface = setup_transaction_service_no_comms(factories.clone(), connection, None).await;
     let mut alice_event_stream = alice_ts_interface.transaction_service_handle.get_event_stream();
 
-    let uo = make_non_recoverable_input(
+    let uo = make_input(
         &mut OsRng,
         1000000 * uT,
         &OutputFeatures::default(),
@@ -3028,7 +3028,7 @@ async fn test_tx_direct_send_behaviour() {
         .add_output(uo, None)
         .await
         .unwrap();
-    let uo = make_non_recoverable_input(
+    let uo = make_input(
         &mut OsRng,
         1000000 * uT,
         &OutputFeatures::default(),
@@ -3040,7 +3040,7 @@ async fn test_tx_direct_send_behaviour() {
         .add_output(uo, None)
         .await
         .unwrap();
-    let uo = make_non_recoverable_input(
+    let uo = make_input(
         &mut OsRng,
         1000000 * uT,
         &OutputFeatures::default(),
@@ -3052,7 +3052,7 @@ async fn test_tx_direct_send_behaviour() {
         .add_output(uo, None)
         .await
         .unwrap();
-    let uo = make_non_recoverable_input(
+    let uo = make_input(
         &mut OsRng,
         1000000 * uT,
         &OutputFeatures::default(),
@@ -3294,7 +3294,7 @@ async fn test_restarting_transaction_protocols() {
     ));
 
     // Bob is going to send a transaction to Alice
-    let input = make_non_recoverable_input(
+    let input = make_input(
         &mut OsRng,
         MicroTari(2000),
         &OutputFeatures::default(),
@@ -4451,7 +4451,7 @@ async fn test_transaction_resending() {
 
     // Send a transaction to Bob
     let alice_total_available = 250000 * uT;
-    let uo = make_non_recoverable_input(
+    let uo = make_input(
         &mut OsRng,
         alice_total_available,
         &OutputFeatures::default(),
@@ -4955,7 +4955,7 @@ async fn test_replying_to_cancelled_tx() {
 
     // Send a transaction to Bob
     let alice_total_available = 2500000 * uT;
-    let uo = make_non_recoverable_input(
+    let uo = make_input(
         &mut OsRng,
         alice_total_available,
         &OutputFeatures::default(),
@@ -5084,7 +5084,7 @@ async fn test_transaction_timeout_cancellation() {
 
     // Send a transaction to Bob
     let alice_total_available = 250000 * uT;
-    let uo = make_non_recoverable_input(
+    let uo = make_input(
         &mut OsRng,
         alice_total_available,
         &OutputFeatures::default(),
@@ -5348,7 +5348,7 @@ async fn transaction_service_tx_broadcast() {
 
     let alice_output_value = MicroTari(250000);
 
-    let uo = make_non_recoverable_input(
+    let uo = make_input(
         &mut OsRng,
         alice_output_value,
         &OutputFeatures::default(),
@@ -5361,7 +5361,7 @@ async fn transaction_service_tx_broadcast() {
         .await
         .unwrap();
 
-    let uo2 = make_non_recoverable_input(
+    let uo2 = make_input(
         &mut OsRng,
         alice_output_value,
         &OutputFeatures::default(),
@@ -5884,21 +5884,21 @@ async fn test_update_faux_tx_on_oms_validation() {
         .await
         .unwrap();
 
-    let uo_1 = make_non_recoverable_input(
+    let uo_1 = make_input(
         &mut OsRng.clone(),
         MicroTari::from(10000),
         &OutputFeatures::default(),
         &alice_ts_interface.key_manager_handle,
     )
     .await;
-    let uo_2 = make_non_recoverable_input(
+    let uo_2 = make_input(
         &mut OsRng.clone(),
         MicroTari::from(20000),
         &OutputFeatures::default(),
         &alice_ts_interface.key_manager_handle,
     )
     .await;
-    let uo_3 = make_non_recoverable_input(
+    let uo_3 = make_input(
         &mut OsRng.clone(),
         MicroTari::from(30000),
         &OutputFeatures::default(),

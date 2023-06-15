@@ -93,7 +93,7 @@ use tokio::{sync::broadcast, task, time::sleep};
 
 use crate::support::{
     comms_rpc::{connect_rpc_client, BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
-    utils::make_non_recoverable_input,
+    utils::make_input,
 };
 
 pub async fn setup() -> (
@@ -196,8 +196,7 @@ pub async fn add_transaction_to_database(
     db: TransactionDatabase<TransactionServiceSqliteDatabase>,
 ) {
     let key_manager_handle = create_test_core_key_manager_with_memory_db();
-    let uo0 =
-        make_non_recoverable_input(&mut OsRng, 10 * amount, &OutputFeatures::default(), &key_manager_handle).await;
+    let uo0 = make_input(&mut OsRng, 10 * amount, &OutputFeatures::default(), &key_manager_handle).await;
     let (txs1, _uou1) =
         schema_to_transaction(&[txn_schema!(from: vec![uo0], to: vec![amount])], &key_manager_handle).await;
     let tx1 = (*txs1[0]).clone();

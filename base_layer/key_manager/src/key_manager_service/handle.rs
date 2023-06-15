@@ -93,7 +93,11 @@ where
     }
 
     async fn get_public_key_at_key_id(&self, key_id: &KeyId<PK>) -> Result<PK, KeyManagerServiceError> {
-        unimplemented!("KeyManagerHandle::get_public_key_at_key_id({})", key_id)
+        (*self.key_manager_inner)
+            .read()
+            .await
+            .get_public_key_at_key_id(&key_id)
+            .await
     }
 
     async fn find_key_index<T: Into<String> + Send>(&self, branch: T, key: &PK) -> Result<u64, KeyManagerServiceError> {

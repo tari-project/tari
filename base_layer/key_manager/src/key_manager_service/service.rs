@@ -117,6 +117,22 @@ where
         }
     }
 
+    pub async fn get_public_key_at_key_id(&self, key_id: &KeyId<PK>) -> Result<PK, KeyManagerServiceError> {
+        match key_id {
+            KeyId::Managed { branch, index } => {
+                let km = self
+                    .key_managers
+                    .get(branch)
+                    .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
+                    .lock()
+                    .await;
+                Ok(km.derive_public_key(*index)?.key)
+            },
+            KeyId::Imported { key } => Ok(key.clone()),
+            KeyId::Zero => Ok(PK::default()),
+        }
+    }
+
     /// Search the specified branch key manager key chain to find the index of the specified key.
     pub async fn find_key_index(&self, branch: &str, key: &PK) -> Result<u64, KeyManagerServiceError> {
         let km = self

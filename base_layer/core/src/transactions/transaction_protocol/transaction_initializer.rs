@@ -323,10 +323,8 @@ where KM: TransactionKeyManagerInterface
         );
 
         let output_features = OutputFeatures::default();
-        let change_features_and_scripts_size = match &self.recipient {
-            Some(data) => {
-                data.recipient_script.get_serialized_size() + data.recipient_output_features.get_serialized_size()
-            },
+        let change_features_and_scripts_size = match &self.change {
+            Some(data) => data.change_script.get_serialized_size() + OutputFeatures::default().get_serialized_size(),
             None => output_features.get_serialized_size(),
         };
         let change_features_and_scripts_size = self

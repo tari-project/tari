@@ -148,10 +148,6 @@ pub struct SenderTransactionProtocol {
 }
 
 impl SenderTransactionProtocol {
-    // pub fn from_state(state: SenderState) -> Self {
-    //     SenderTransactionProtocol { state }
-    // }
-
     /// Begin constructing a new transaction. All the up-front data is collected via the
     /// `SenderTransactionInitializer` builder function
     pub fn builder<KM: TransactionKeyManagerInterface>(

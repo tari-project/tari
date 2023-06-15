@@ -73,13 +73,14 @@ use tokio::{
     task,
     time,
 };
+use tari_core::transactions::test_helpers::TestKeyManager;
 
 use crate::support::{
     base_node_service_mock::MockBaseNodeService,
     comms_rpc::{BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState, UtxosByBlock},
     output_manager_service_mock::{make_output_manager_service_mock, OutputManagerMockState},
     transaction_service_mock::{make_transaction_service_mock, TransactionServiceMockState},
-    utils::make_non_recoverable_input,
+    utils::make_input,
 };
 
 pub struct UtxoScannerTestInterface {
@@ -233,11 +234,11 @@ async fn generate_block_headers_and_utxos(
     birthday_epoch_time: u64,
     birthday_offset: u64,
     only_coinbase: bool,
+    key_manager: &TestKeyManager
 ) -> TestBlockData {
     let mut block_headers = HashMap::new();
     let mut utxos_by_block = Vec::new();
     let mut wallet_outputs = HashMap::new();
-    let key_manager = create_test_core_key_manager_with_memory_db();
     for i in start_height..num_blocks + start_height {
         let mut block_header = BlockHeader::new(0);
         block_header.height = i;
@@ -248,7 +249,7 @@ async fn generate_block_headers_and_utxos(
         let mut block_outputs = Vec::new();
 
         for _j in 0..=i + 1 {
-            let uo = make_non_recoverable_input(
+            let uo = make_input(
                 &mut OsRng,
                 MicroTari::from(100 + OsRng.next_u64() % 1000),
                 &OutputFeatures::default(),
@@ -262,7 +263,7 @@ async fn generate_block_headers_and_utxos(
         }
         let mut transaction_outputs = Vec::new();
         for output in &block_outputs {
-            transaction_outputs.push(output.as_transaction_output(&key_manager).await.unwrap())
+            transaction_outputs.push(output.as_transaction_output(key_manager).await.unwrap())
         }
         let utxos = UtxosByBlock {
             height: i,
@@ -291,11 +292,12 @@ async fn test_utxo_scanner_recovery() {
     const NUM_BLOCKS: u64 = 11;
     const BIRTHDAY_OFFSET: u64 = 5;
 
+    let key_manager = create_test_core_key_manager_with_memory_db();
     let TestBlockData {
         block_headers,
         wallet_outputs,
         utxos_by_block,
-    } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false).await;
+    } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false, &key_manager).await;
 
     test_interface
         .rpc_service_state
@@ -318,7 +320,6 @@ async fn test_utxo_scanner_recovery() {
     let mut db_wallet_outputs = Vec::new();
     let mut total_outputs_to_recover = 0;
     let mut total_amount_to_recover = MicroTari::from(0);
-    let key_manager = create_test_core_key_manager_with_memory_db();
     for (h, outputs) in &wallet_outputs {
         for output in outputs.iter().skip(outputs.len() / 2) {
             let dbo = DbWalletOutput::from_wallet_output(
@@ -389,11 +390,12 @@ async fn test_utxo_scanner_recovery_with_restart() {
     const BIRTHDAY_OFFSET: u64 = 5;
     const SYNC_INTERRUPT: u64 = 6;
 
+    let key_manager = create_test_core_key_manager_with_memory_db();
     let TestBlockData {
         block_headers,
         wallet_outputs,
         utxos_by_block,
-    } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false).await;
+    } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false, &key_manager).await;
 
     test_interface
         .rpc_service_state
@@ -416,7 +418,6 @@ async fn test_utxo_scanner_recovery_with_restart() {
     let mut db_wallet_outputs = Vec::new();
     let mut total_outputs_to_recover = 0;
     let mut total_amount_to_recover = MicroTari::from(0);
-    let key_manager = create_test_core_key_manager_with_memory_db();
     for (h, outputs) in &wallet_outputs {
         for output in outputs.iter().skip(outputs.len() / 2) {
             let dbo = DbWalletOutput::from_wallet_output(
@@ -554,12 +555,12 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
     const NUM_BLOCKS: u64 = 11;
     const BIRTHDAY_OFFSET: u64 = 5;
     const SYNC_INTERRUPT: u64 = 6;
-
+    let key_manager = create_test_core_key_manager_with_memory_db();
     let TestBlockData {
         mut block_headers,
         mut wallet_outputs,
         utxos_by_block,
-    } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false).await;
+    } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false, &key_manager).await;
 
     test_interface
         .rpc_service_state
@@ -580,7 +581,6 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
 
     // Adding half the outputs of the blocks to the OMS mock
     let mut db_wallet_outputs = Vec::new();
-    let key_manager = create_test_core_key_manager_with_memory_db();
     for outputs in wallet_outputs.values() {
         for output in outputs.iter().skip(outputs.len() / 2) {
             let dbo = DbWalletOutput::from_wallet_output(
@@ -624,11 +624,12 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
         .filter(|u| u.height <= 4)
         .collect::<Vec<UtxosByBlock>>();
 
+    let key_manager = create_test_core_key_manager_with_memory_db();
     let TestBlockData {
         block_headers: new_block_headers,
         wallet_outputs: new_wallet_outputs,
         utxos_by_block: mut new_utxos_by_block,
-    } = generate_block_headers_and_utxos(5, 5, birthday_epoch_time + 500, 0, false).await;
+    } = generate_block_headers_and_utxos(5, 5, birthday_epoch_time + 500, 0, false, &key_manager).await;
 
     block_headers.extend(new_block_headers);
     utxos_by_block.append(&mut new_utxos_by_block);
@@ -658,7 +659,6 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
     let mut db_wallet_outputs = Vec::new();
     let mut total_outputs_to_recover = 0;
     let mut total_amount_to_recover = MicroTari::from(0);
-    let key_manager = create_test_core_key_manager_with_memory_db();
     for (h, outputs) in &wallet_outputs {
         for output in outputs.iter().skip(outputs.len() / 2) {
             let dbo = DbWalletOutput::from_wallet_output(
@@ -742,11 +742,12 @@ async fn test_utxo_scanner_scanned_block_cache_clearing() {
     const NUM_BLOCKS: u64 = 11;
     const BIRTHDAY_OFFSET: u64 = 5;
 
+    let key_manager = create_test_core_key_manager_with_memory_db();
     let TestBlockData {
         block_headers,
         wallet_outputs: _wallet_outputs,
         utxos_by_block,
-    } = generate_block_headers_and_utxos(800, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, true).await;
+    } = generate_block_headers_and_utxos(800, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, true, &key_manager).await;
 
     test_interface
         .rpc_service_state
@@ -844,11 +845,12 @@ async fn test_utxo_scanner_one_sided_payments() {
     const NUM_BLOCKS: u64 = 11;
     const BIRTHDAY_OFFSET: u64 = 5;
 
+    let key_manager = create_test_core_key_manager_with_memory_db();
     let TestBlockData {
         mut block_headers,
         wallet_outputs,
         mut utxos_by_block,
-    } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false).await;
+    } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false, &key_manager).await;
 
     test_interface
         .rpc_service_state
@@ -871,7 +873,6 @@ async fn test_utxo_scanner_one_sided_payments() {
     let mut db_wallet_outputs = Vec::new();
     let mut total_outputs_to_recover = 0;
     let mut total_amount_to_recover = MicroTari::from(0);
-    let key_manager = create_test_core_key_manager_with_memory_db();
     for (h, outputs) in &wallet_outputs {
         for output in outputs.iter().skip(outputs.len() / 2) {
             let dbo = DbWalletOutput::from_wallet_output(
@@ -945,7 +946,7 @@ async fn test_utxo_scanner_one_sided_payments() {
     let mut block_header11 = BlockHeader::new(0);
     block_header11.height = 11;
     block_header11.timestamp = EpochTime::from(block_headers.get(&10).unwrap().timestamp.as_u64() + 1000000u64);
-    let uo = make_non_recoverable_input(
+    let uo = make_input(
         &mut OsRng,
         MicroTari::from(666000u64),
         &OutputFeatures::default(),
@@ -1052,11 +1053,12 @@ async fn test_birthday_timestamp_over_chain() {
     const NUM_BLOCKS: u64 = 10;
     const BIRTHDAY_OFFSET: u64 = 5;
 
+    let key_manager = create_test_core_key_manager_with_memory_db();
     let TestBlockData {
         block_headers,
         utxos_by_block,
         ..
-    } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false).await;
+    } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false, &key_manager).await;
 
     test_interface.rpc_service_state.set_utxos_by_block(utxos_by_block);
     test_interface.rpc_service_state.set_blocks(block_headers.clone());
