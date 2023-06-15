@@ -23,11 +23,10 @@
 use rand::{CryptoRng, Rng};
 use tari_core::{
     covenants::Covenant,
-    test_helpers::TestKeyManager,
     transactions::{
         key_manager::TransactionKeyManagerInterface,
         tari_amount::MicroTari,
-        test_helpers::{create_wallet_output_with_data, TestParams},
+        test_helpers::{create_wallet_output_with_data, TestKeyManager, TestParams},
         transaction_components::{
             OutputFeatures,
             RangeProofType,

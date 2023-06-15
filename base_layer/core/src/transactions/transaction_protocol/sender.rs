@@ -847,17 +847,18 @@ mod test {
     use super::SenderState;
     use crate::{
         covenants::Covenant,
-        test_helpers::{
-            create_consensus_constants,
-            create_consensus_rules,
-            create_test_core_key_manager_with_memory_db,
-            create_test_core_key_manager_with_memory_db_with_range_proof_size,
-        },
+        test_helpers::{create_consensus_constants, create_consensus_rules},
         transactions::{
             crypto_factories::CryptoFactories,
             key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface},
             tari_amount::*,
-            test_helpers::{create_test_input, create_wallet_output_with_data, TestParams},
+            test_helpers::{
+                create_test_core_key_manager_with_memory_db,
+                create_test_core_key_manager_with_memory_db_with_range_proof_size,
+                create_test_input,
+                create_wallet_output_with_data,
+                TestParams,
+            },
             transaction_components::{
                 EncryptedData,
                 OutputFeatures,

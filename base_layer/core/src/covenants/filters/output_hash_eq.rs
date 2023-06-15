@@ -44,7 +44,7 @@ mod test {
             filters::test::setup_filter_test,
             test::{create_input, create_outputs},
         },
-        test_helpers::create_test_core_key_manager_with_memory_db,
+        transactions::test_helpers::create_test_core_key_manager_with_memory_db,
     };
 
     #[tokio::test]

@@ -159,8 +159,7 @@ mod test {
             test::{create_input, create_outputs},
             Covenant,
         },
-        test_helpers::create_test_core_key_manager_with_memory_db,
-        transactions::test_helpers::UtxoTestParams,
+        transactions::test_helpers::{create_test_core_key_manager_with_memory_db, UtxoTestParams},
     };
 
     #[tokio::test]

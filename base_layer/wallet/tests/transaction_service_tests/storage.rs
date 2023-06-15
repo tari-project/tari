@@ -34,11 +34,10 @@ use tari_common_types::{
 };
 use tari_core::{
     covenants::Covenant,
-    test_helpers::create_test_core_key_manager_with_memory_db,
     transactions::{
         key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface},
         tari_amount::{uT, MicroTari},
-        test_helpers::{create_wallet_output_with_data, TestParams},
+        test_helpers::{create_test_core_key_manager_with_memory_db, create_wallet_output_with_data, TestParams},
         transaction_components::{
             OutputFeatures,
             RangeProofType,

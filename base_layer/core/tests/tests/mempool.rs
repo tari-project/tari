@@ -32,12 +32,12 @@ use tari_core::{
     mempool::{Mempool, MempoolConfig, MempoolServiceConfig, TxStorageResponse},
     proof_of_work::Difficulty,
     proto,
-    test_helpers::create_test_core_key_manager_with_memory_db,
     transactions::{
         fee::Fee,
         key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface, TxoStage},
         tari_amount::{uT, MicroTari, T},
         test_helpers::{
+            create_test_core_key_manager_with_memory_db,
             create_wallet_output_with_data,
             schema_to_transaction,
             spend_utxos,

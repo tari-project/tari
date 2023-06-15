@@ -38,7 +38,8 @@ use tari_core::{
     consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder},
     mempool::MempoolServiceConfig,
     proof_of_work::randomx_factory::RandomXFactory,
-    test_helpers::{blockchain::create_test_blockchain_db, create_test_core_key_manager_with_memory_db},
+    test_helpers::blockchain::create_test_blockchain_db,
+    transactions::test_helpers::create_test_core_key_manager_with_memory_db,
     validation::mocks::MockValidator,
 };
 use tari_crypto::hash::blake2::Blake256;

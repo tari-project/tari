@@ -444,9 +444,9 @@ mod test {
     use super::*;
     use crate::{
         covenants::Covenant,
-        test_helpers::create_test_core_key_manager_with_memory_db,
         transactions::{
             test_helpers,
+            test_helpers::create_test_core_key_manager_with_memory_db,
             transaction_components::{KernelFeatures, OutputFeatures, TransactionInputVersion},
         },
     };

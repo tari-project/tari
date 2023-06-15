@@ -31,8 +31,8 @@ use tari_core::{
     blocks::Block,
     chain_storage::{BlockAddResult, BlockchainDatabase, ChainStorageError},
     consensus::ConsensusManager,
-    test_helpers::{blockchain::TempDatabase, TestKeyManager},
-    transactions::transaction_components::WalletOutput,
+    test_helpers::blockchain::TempDatabase,
+    transactions::{test_helpers::TestKeyManager, transaction_components::WalletOutput},
 };
 
 use crate::helpers::{

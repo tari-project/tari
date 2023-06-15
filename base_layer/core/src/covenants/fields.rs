@@ -344,7 +344,7 @@ mod test {
 
         mod is_eq {
             use super::*;
-            use crate::test_helpers::create_test_core_key_manager_with_memory_db;
+            use crate::transactions::test_helpers::create_test_core_key_manager_with_memory_db;
 
             #[tokio::test]
             async fn it_returns_true_if_eq() {
@@ -422,7 +422,7 @@ mod test {
 
         mod is_eq_input {
             use super::*;
-            use crate::test_helpers::create_test_core_key_manager_with_memory_db;
+            use crate::transactions::test_helpers::create_test_core_key_manager_with_memory_db;
 
             #[tokio::test]
             async fn it_returns_true_if_eq_input() {
@@ -495,7 +495,7 @@ mod test {
             use tari_crypto::hashing::DomainSeparation;
 
             use super::*;
-            use crate::test_helpers::create_test_core_key_manager_with_memory_db;
+            use crate::transactions::test_helpers::create_test_core_key_manager_with_memory_db;
 
             #[tokio::test]
             async fn it_constructs_challenge_using_consensus_encoding() {
@@ -538,7 +538,7 @@ mod test {
 
         mod get_field_value_ref {
             use super::*;
-            use crate::test_helpers::create_test_core_key_manager_with_memory_db;
+            use crate::transactions::test_helpers::create_test_core_key_manager_with_memory_db;
 
             #[tokio::test]
             async fn it_retrieves_the_value_as_ref() {

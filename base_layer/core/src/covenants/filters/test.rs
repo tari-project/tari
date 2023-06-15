@@ -26,8 +26,10 @@ use crate::{
         test::{create_context, create_outputs},
         Covenant,
     },
-    test_helpers::TestKeyManager,
-    transactions::transaction_components::{TransactionInput, TransactionOutput},
+    transactions::{
+        test_helpers::TestKeyManager,
+        transaction_components::{TransactionInput, TransactionOutput},
+    },
 };
 
 pub async fn setup_filter_test<'a, F>(

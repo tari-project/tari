@@ -82,8 +82,7 @@ mod test {
     use crate::{
         covenant,
         covenants::test::{create_context, create_input, create_outputs},
-        test_helpers::create_test_core_key_manager_with_memory_db,
-        transactions::transaction_components::OutputType,
+        transactions::{test_helpers::create_test_core_key_manager_with_memory_db, transaction_components::OutputType},
     };
 
     #[tokio::test]

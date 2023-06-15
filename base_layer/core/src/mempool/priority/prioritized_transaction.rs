@@ -116,12 +116,9 @@ impl Display for PrioritizedTransaction {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager},
-        transactions::{
-            tari_amount::{uT, MicroTari, T},
-            test_helpers::create_tx,
-        },
+    use crate::transactions::{
+        tari_amount::{uT, MicroTari, T},
+        test_helpers::{create_test_core_key_manager_with_memory_db, create_tx, TestKeyManager},
     };
 
     async fn create_tx_with_fee(fee_per_gram: MicroTari, key_manager: &TestKeyManager) -> Transaction {

@@ -1307,13 +1307,15 @@ mod test {
     use diesel::{sql_query, Connection, RunQueryDsl, SqliteConnection};
     use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
     use rand::{rngs::OsRng, RngCore};
-    use tari_core::{
-        test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager},
-        transactions::{
-            tari_amount::MicroTari,
-            test_helpers::{create_wallet_output_with_data, TestParams},
-            transaction_components::{OutputFeatures, TransactionInput, WalletOutput},
+    use tari_core::transactions::{
+        tari_amount::MicroTari,
+        test_helpers::{
+            create_test_core_key_manager_with_memory_db,
+            create_wallet_output_with_data,
+            TestKeyManager,
+            TestParams,
         },
+        transaction_components::{OutputFeatures, TransactionInput, WalletOutput},
     };
     use tari_script::script;
     use tari_test_utils::random;

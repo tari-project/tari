@@ -20,13 +20,21 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
+use std::{iter, mem::size_of, sync::Arc};
 
-use rand::rngs::OsRng;
+use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
+use rand::{distributions::Alphanumeric, rngs::OsRng, Rng, RngCore};
 use tari_common::configuration::Network;
+use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
 use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
 use tari_crypto::keys::{PublicKey as PK, SecretKey};
-use tari_key_manager::key_manager_service::KeyManagerInterface;
+use tari_key_manager::{
+    cipher_seed::CipherSeed,
+    key_manager_service::{
+        storage::{database::KeyManagerDatabase, sqlite_db::KeyManagerSqliteDatabase},
+        KeyManagerInterface,
+    },
+};
 use tari_script::{inputs, script, ExecutionStack, TariScript};
 
 use super::transaction_components::{TransactionInputVersion, TransactionOutputVersion};
@@ -34,11 +42,16 @@ use crate::{
     borsh::SerializedSize,
     consensus::ConsensusManager,
     covenants::Covenant,
-    test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager},
     transactions::{
         crypto_factories::CryptoFactories,
         fee::Fee,
-        key_manager::{TariKeyId, TransactionKeyManagerBranch, TransactionKeyManagerInterface, TxoStage},
+        key_manager::{
+            TariKeyId,
+            TransactionKeyManagerBranch,
+            TransactionKeyManagerInterface,
+            TransactionKeyManagerWrapper,
+            TxoStage,
+        },
         tari_amount::MicroTari,
         transaction_components::{
             KernelBuilder,
@@ -854,4 +867,32 @@ pub async fn schema_to_transaction(
     }
 
     (txs, utxos)
+}
+
+pub type TestKeyManager = TransactionKeyManagerWrapper<KeyManagerSqliteDatabase<DbConnection>>;
+
+fn random_string(len: usize) -> String {
+    iter::repeat(()).map(|_| OsRng.sample(Alphanumeric)).take(len).collect()
+}
+
+pub fn create_test_core_key_manager_with_memory_db_with_range_proof_size(size: usize) -> TestKeyManager {
+    let connection = DbConnection::connect_url(&DbConnectionUrl::MemoryShared(random_string(8))).unwrap();
+    let cipher = CipherSeed::new();
+
+    let mut key = [0u8; size_of::<Key>()];
+    OsRng.fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let db_cipher = XChaCha20Poly1305::new(key_ga);
+    let factory = CryptoFactories::new(size);
+
+    TransactionKeyManagerWrapper::<KeyManagerSqliteDatabase<DbConnection>>::new(
+        cipher,
+        KeyManagerDatabase::new(KeyManagerSqliteDatabase::init(connection, db_cipher)),
+        factory,
+    )
+    .unwrap()
+}
+
+pub fn create_test_core_key_manager_with_memory_db() -> TestKeyManager {
+    create_test_core_key_manager_with_memory_db_with_range_proof_size(64)
 }

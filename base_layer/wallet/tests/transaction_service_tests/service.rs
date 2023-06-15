@@ -78,12 +78,16 @@ use tari_core::{
         },
         types::Signature as SignatureProto,
     },
-    test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager},
     transactions::{
         fee::Fee,
         key_manager::{TransactionKeyManagerInitializer, TransactionKeyManagerInterface},
         tari_amount::*,
-        test_helpers::{create_wallet_output_with_data, TestParams},
+        test_helpers::{
+            create_test_core_key_manager_with_memory_db,
+            create_wallet_output_with_data,
+            TestKeyManager,
+            TestParams,
+        },
         transaction_components::{KernelBuilder, OutputFeatures, Transaction},
         transaction_protocol::{
             proto::protocol as proto,

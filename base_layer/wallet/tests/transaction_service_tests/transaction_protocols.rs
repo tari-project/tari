@@ -53,10 +53,9 @@ use tari_core::{
         },
         types::Signature as SignatureProto,
     },
-    test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager},
     transactions::{
         tari_amount::{uT, MicroTari, T},
-        test_helpers::schema_to_transaction,
+        test_helpers::{create_test_core_key_manager_with_memory_db, schema_to_transaction, TestKeyManager},
         transaction_components::OutputFeatures,
         CryptoFactories,
     },

@@ -583,15 +583,12 @@ mod test {
     use tari_crypto::errors::RangeProofError;
 
     use super::{batch_verify_range_proofs, TransactionOutput};
-    use crate::{
-        test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager},
-        transactions::{
-            key_manager::TransactionKeyManagerInterface,
-            tari_amount::MicroTari,
-            test_helpers::{TestParams, UtxoTestParams},
-            transaction_components::{OutputFeatures, RangeProofType},
-            CryptoFactories,
-        },
+    use crate::transactions::{
+        key_manager::TransactionKeyManagerInterface,
+        tari_amount::MicroTari,
+        test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager, TestParams, UtxoTestParams},
+        transaction_components::{OutputFeatures, RangeProofType},
+        CryptoFactories,
     };
 
     #[tokio::test]

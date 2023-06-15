@@ -34,10 +34,9 @@ use tari_core::{
     consensus::{ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder, NetworkConsensus},
     mempool::TxStorageResponse,
     proof_of_work::{randomx_factory::RandomXFactory, PowAlgorithm},
-    test_helpers::create_test_core_key_manager_with_memory_db,
     transactions::{
         tari_amount::{uT, T},
-        test_helpers::{schema_to_transaction, spend_utxos},
+        test_helpers::{create_test_core_key_manager_with_memory_db, schema_to_transaction, spend_utxos},
         transaction_components::OutputFeatures,
         CryptoFactories,
     },

@@ -358,8 +358,8 @@ mod test {
     use super::*;
     use crate::{
         consensus::ConsensusManagerBuilder,
-        test_helpers::{create_orphan_block, create_test_core_key_manager_with_memory_db},
-        transactions::tari_amount::MicroTari,
+        test_helpers::create_orphan_block,
+        transactions::{tari_amount::MicroTari, test_helpers::create_test_core_key_manager_with_memory_db},
         tx,
     };
 

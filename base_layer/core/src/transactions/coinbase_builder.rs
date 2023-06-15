@@ -317,7 +317,6 @@ mod test {
 
     use crate::{
         consensus::{emission::Emission, ConsensusManager, ConsensusManagerBuilder},
-        test_helpers::TestKeyManager,
         transactions::{
             coinbase_builder::CoinbaseBuildError,
             crypto_factories::CryptoFactories,
@@ -521,12 +520,10 @@ mod test {
     }
     use tari_key_manager::key_manager_service::KeyManagerInterface;
 
-    use crate::{
-        test_helpers::create_test_core_key_manager_with_memory_db,
-        transactions::{
-            key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface, TxoStage},
-            transaction_components::TransactionKernelVersion,
-        },
+    use crate::transactions::{
+        key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface, TxoStage},
+        test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager},
+        transaction_components::TransactionKernelVersion,
     };
 
     #[tokio::test]

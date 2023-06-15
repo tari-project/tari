@@ -37,15 +37,13 @@ use tari_core::{
         randomx_factory::RandomXFactory,
         PowAlgorithm,
     },
-    test_helpers::{
-        blockchain::{create_store_with_consensus_and_validators, create_test_db},
-        create_test_core_key_manager_with_memory_db,
-    },
+    test_helpers::blockchain::{create_store_with_consensus_and_validators, create_test_db},
     transactions::{
         aggregated_body::AggregateBody,
         key_manager::TransactionKeyManagerInterface,
         tari_amount::{uT, T},
         test_helpers::{
+            create_test_core_key_manager_with_memory_db,
             create_wallet_output_with_data,
             schema_to_transaction,
             spend_utxos,

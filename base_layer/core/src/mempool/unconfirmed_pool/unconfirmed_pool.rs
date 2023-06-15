@@ -641,16 +641,11 @@ mod test {
     use crate::{
         consensus::ConsensusManagerBuilder,
         covenants::Covenant,
-        test_helpers::{
-            create_consensus_constants,
-            create_consensus_rules,
-            create_orphan_block,
-            create_test_core_key_manager_with_memory_db,
-        },
+        test_helpers::{create_consensus_constants, create_consensus_rules, create_orphan_block},
         transactions::{
             fee::Fee,
             tari_amount::MicroTari,
-            test_helpers::{TestParams, UtxoTestParams},
+            test_helpers::{create_test_core_key_manager_with_memory_db, TestParams, UtxoTestParams},
             weight::TransactionWeight,
             SenderTransactionProtocol,
         },

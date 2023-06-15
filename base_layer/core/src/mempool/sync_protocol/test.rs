@@ -51,8 +51,11 @@ use crate::{
         sync_protocol::{MempoolPeerProtocol, MempoolSyncProtocol, MAX_FRAME_SIZE, MEMPOOL_SYNC_PROTOCOL},
         Mempool,
     },
-    test_helpers::create_test_core_key_manager_with_memory_db,
-    transactions::{tari_amount::uT, test_helpers::create_tx, transaction_components::Transaction},
+    transactions::{
+        tari_amount::uT,
+        test_helpers::{create_test_core_key_manager_with_memory_db, create_tx},
+        transaction_components::Transaction,
+    },
     validation::mocks::MockValidator,
 };
 

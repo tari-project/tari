@@ -585,11 +585,17 @@ mod test {
 
     use crate::{
         covenants::Covenant,
-        test_helpers::{create_consensus_constants, create_test_core_key_manager_with_memory_db},
+        test_helpers::create_consensus_constants,
         transactions::{
             fee::Fee,
             tari_amount::*,
-            test_helpers::{create_test_input, create_wallet_output_with_data, TestParams, UtxoTestParams},
+            test_helpers::{
+                create_test_core_key_manager_with_memory_db,
+                create_test_input,
+                create_wallet_output_with_data,
+                TestParams,
+                UtxoTestParams,
+            },
             transaction_components::{OutputFeatures, MAX_TRANSACTION_INPUTS},
             transaction_protocol::{sender::SenderState, transaction_initializer::SenderTransactionInitializer},
         },

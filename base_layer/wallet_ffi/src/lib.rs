@@ -8532,10 +8532,14 @@ mod test {
     use tari_comms::peer_manager::PeerFeatures;
     use tari_core::{
         covenant,
-        test_helpers::create_test_core_key_manager_with_memory_db,
         transactions::{
             key_manager::SecretTransactionKeyManagerInterface,
-            test_helpers::{create_test_input, create_wallet_output_with_data, TestParams},
+            test_helpers::{
+                create_test_core_key_manager_with_memory_db,
+                create_test_input,
+                create_wallet_output_with_data,
+                TestParams,
+            },
         },
     };
     use tari_key_manager::{mnemonic::MnemonicLanguage, mnemonic_wordlists};

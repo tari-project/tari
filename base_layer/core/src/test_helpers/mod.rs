@@ -23,23 +23,15 @@
 //! Common test helper functions that are small and useful enough to be included in the main crate, rather than the
 //! integration test folder.
 
-use std::{iter, mem::size_of, path::Path, sync::Arc};
+use std::{iter, path::Path, sync::Arc};
 
 pub use block_spec::{BlockSpec, BlockSpecs};
-use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
-use rand::{distributions::Alphanumeric, rngs::OsRng, Rng, RngCore};
+use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
 use tari_common::configuration::Network;
-use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
 use tari_common_types::types::PublicKey;
 use tari_comms::PeerManager;
 use tari_crypto::keys::PublicKey as PublicKeyT;
-use tari_key_manager::{
-    cipher_seed::CipherSeed,
-    key_manager_service::{
-        storage::{database::KeyManagerDatabase, sqlite_db::KeyManagerSqliteDatabase},
-        KeyId,
-    },
-};
+use tari_key_manager::key_manager_service::KeyId;
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
 
 use crate::{
@@ -47,43 +39,16 @@ use crate::{
     consensus::{ConsensusConstants, ConsensusManager},
     proof_of_work::{sha3x_difficulty, AchievedTargetDifficulty, Difficulty},
     transactions::{
-        key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerWrapper},
+        key_manager::TransactionKeyManagerBranch,
+        test_helpers::TestKeyManager,
         transaction_components::{Transaction, WalletOutput},
         CoinbaseBuilder,
-        CryptoFactories,
     },
 };
 
 #[macro_use]
 mod block_spec;
 pub mod blockchain;
-pub type TestKeyManager = TransactionKeyManagerWrapper<KeyManagerSqliteDatabase<DbConnection>>;
-
-fn random_string(len: usize) -> String {
-    iter::repeat(()).map(|_| OsRng.sample(Alphanumeric)).take(len).collect()
-}
-
-pub fn create_test_core_key_manager_with_memory_db_with_range_proof_size(size: usize) -> TestKeyManager {
-    let connection = DbConnection::connect_url(&DbConnectionUrl::MemoryShared(random_string(8))).unwrap();
-    let cipher = CipherSeed::new();
-
-    let mut key = [0u8; size_of::<Key>()];
-    OsRng.fill_bytes(&mut key);
-    let key_ga = Key::from_slice(&key);
-    let db_cipher = XChaCha20Poly1305::new(key_ga);
-    let factory = CryptoFactories::new(size);
-
-    TransactionKeyManagerWrapper::<KeyManagerSqliteDatabase<DbConnection>>::new(
-        cipher,
-        KeyManagerDatabase::new(KeyManagerSqliteDatabase::init(connection, db_cipher)),
-        factory,
-    )
-    .unwrap()
-}
-
-pub fn create_test_core_key_manager_with_memory_db() -> TestKeyManager {
-    create_test_core_key_manager_with_memory_db_with_range_proof_size(64)
-}
 
 pub fn create_consensus_rules() -> ConsensusManager {
     ConsensusManager::builder(Network::LocalNet).build()

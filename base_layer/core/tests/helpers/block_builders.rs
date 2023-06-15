@@ -38,15 +38,16 @@ use tari_core::{
     consensus::{emission::Emission, ConsensusConstants, ConsensusManager, ConsensusManagerBuilder},
     covenants::Covenant,
     proof_of_work::{sha3x_difficulty, AchievedTargetDifficulty, Difficulty},
-    test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager},
     transactions::{
         key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface, TxoStage},
         tari_amount::MicroTari,
         test_helpers::{
             create_random_signature_from_secret_key,
+            create_test_core_key_manager_with_memory_db,
             create_utxo,
             create_wallet_output_with_data,
             spend_utxos,
+            TestKeyManager,
             TestParams,
             TransactionSchema,
         },

@@ -32,8 +32,10 @@ use serde_json::Value;
 use tari_chat_client::ChatClient;
 use tari_core::{
     blocks::Block,
-    test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager},
-    transactions::transaction_components::{Transaction, WalletOutput},
+    transactions::{
+        test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager},
+        transaction_components::{Transaction, WalletOutput},
+    },
 };
 use tari_utilities::hex::Hex;
 use thiserror::Error;

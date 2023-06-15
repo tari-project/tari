@@ -2261,16 +2261,13 @@ mod test {
         transaction::{TransactionDirection, TransactionStatus, TxId},
         types::{PrivateKey, PublicKey, Signature},
     };
-    use tari_core::{
-        test_helpers::create_test_core_key_manager_with_memory_db,
-        transactions::{
-            tari_amount::MicroTari,
-            test_helpers::{create_wallet_output_with_data, TestParams},
-            transaction_components::{OutputFeatures, Transaction},
-            transaction_protocol::sender::TransactionSenderMessage,
-            ReceiverTransactionProtocol,
-            SenderTransactionProtocol,
-        },
+    use tari_core::transactions::{
+        tari_amount::MicroTari,
+        test_helpers::{create_test_core_key_manager_with_memory_db, create_wallet_output_with_data, TestParams},
+        transaction_components::{OutputFeatures, Transaction},
+        transaction_protocol::sender::TransactionSenderMessage,
+        ReceiverTransactionProtocol,
+        SenderTransactionProtocol,
     };
     use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
     use tari_script::{inputs, script, TariScript};

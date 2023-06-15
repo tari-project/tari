@@ -22,9 +22,10 @@
 
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{transaction::TxId, types::FixedHash};
-use tari_core::{
+use tari_core::transactions::{
+    tari_amount::MicroTari,
     test_helpers::create_test_core_key_manager_with_memory_db,
-    transactions::{tari_amount::MicroTari, transaction_components::OutputFeatures},
+    transaction_components::OutputFeatures,
 };
 use tari_wallet::output_manager_service::{
     error::OutputManagerStorageError,

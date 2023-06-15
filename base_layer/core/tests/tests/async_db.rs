@@ -26,11 +26,10 @@ use tari_common::configuration::Network;
 use tari_core::{
     blocks::Block,
     chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, PrunedOutput},
-    test_helpers::TestKeyManager,
     transactions::{
         key_manager::TransactionKeyManagerInterface,
         tari_amount::T,
-        test_helpers::schema_to_transaction,
+        test_helpers::{schema_to_transaction, TestKeyManager},
         transaction_components::{TransactionOutput, WalletOutput},
     },
     txn_schema,

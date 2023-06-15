@@ -38,9 +38,9 @@ use tari_core::{
     base_node::rpc::BaseNodeWalletRpcServer,
     blocks::BlockHeader,
     proto::base_node::{ChainMetadata, TipInfoResponse},
-    test_helpers::create_test_core_key_manager_with_memory_db,
     transactions::{
         tari_amount::MicroTari,
+        test_helpers::create_test_core_key_manager_with_memory_db,
         transaction_components::{OutputFeatures, WalletOutput},
         CryptoFactories,
     },

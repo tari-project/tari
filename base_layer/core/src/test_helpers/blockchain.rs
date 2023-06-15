@@ -72,14 +72,9 @@ use crate::{
     },
     consensus::{chain_strength_comparer::ChainStrengthComparerBuilder, ConsensusConstantsBuilder, ConsensusManager},
     proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
-    test_helpers::{
-        block_spec::BlockSpecs,
-        create_consensus_rules,
-        create_test_core_key_manager_with_memory_db,
-        BlockSpec,
-        TestKeyManager,
-    },
+    test_helpers::{block_spec::BlockSpecs, create_consensus_rules, BlockSpec},
     transactions::{
+        test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager},
         transaction_components::{TransactionInput, TransactionKernel, WalletOutput},
         CryptoFactories,
     },

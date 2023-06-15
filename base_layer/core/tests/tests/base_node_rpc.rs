@@ -46,10 +46,10 @@ use tari_core::{
         base_node::{FetchMatchingUtxos, Signatures as SignaturesProto, SyncUtxosByBlockRequest},
         types::{Signature as SignatureProto, Transaction as TransactionProto},
     },
-    test_helpers::{blockchain::TempDatabase, create_test_core_key_manager_with_memory_db, TestKeyManager},
+    test_helpers::blockchain::TempDatabase,
     transactions::{
         tari_amount::{uT, T},
-        test_helpers::schema_to_transaction,
+        test_helpers::{create_test_core_key_manager_with_memory_db, schema_to_transaction, TestKeyManager},
         transaction_components::{TransactionOutput, WalletOutput},
     },
     txn_schema,

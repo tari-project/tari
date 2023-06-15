@@ -44,9 +44,9 @@ use tari_common::configuration::Network;
 use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tari_core::{
     consensus::ConsensusManager,
-    test_helpers::TestKeyManager,
     transactions::{
         key_manager::TransactionKeyManagerInterface,
+        test_helpers::TestKeyManager,
         transaction_components::WalletOutput,
         CoinbaseBuilder,
     },

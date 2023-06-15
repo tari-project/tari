@@ -510,9 +510,10 @@ mod test {
         use futures::executor::block_on;
 
         use super::*;
-        use crate::{
+        use crate::transactions::{
+            aggregated_body::AggregateBody,
             test_helpers::create_test_core_key_manager_with_memory_db,
-            transactions::{aggregated_body::AggregateBody, transaction_components::TransactionError},
+            transaction_components::TransactionError,
         };
 
         #[tokio::test]

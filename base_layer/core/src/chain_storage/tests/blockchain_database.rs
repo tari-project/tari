@@ -29,13 +29,11 @@ use crate::{
     test_helpers::{
         blockchain::{create_new_blockchain, TempDatabase},
         create_block,
-        create_test_core_key_manager_with_memory_db,
         BlockSpec,
-        TestKeyManager,
     },
     transactions::{
         tari_amount::T,
-        test_helpers::schema_to_transaction,
+        test_helpers::{create_test_core_key_manager_with_memory_db, schema_to_transaction, TestKeyManager},
         transaction_components::{Transaction, WalletOutput},
     },
     txn_schema,

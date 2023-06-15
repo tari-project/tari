@@ -224,9 +224,10 @@ mod test {
     use tari_key_manager::key_manager_service::KeyManagerInterface;
 
     use super::*;
-    use crate::{
+    use crate::transactions::{
+        key_manager::TransactionKeyManagerBranch,
         test_helpers::create_test_core_key_manager_with_memory_db,
-        transactions::{key_manager::TransactionKeyManagerBranch, CryptoFactories},
+        CryptoFactories,
     };
 
     #[tokio::test]

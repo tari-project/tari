@@ -37,12 +37,11 @@ use tari_core::{
     test_helpers::{
         blockchain::{create_store_with_consensus_and_validators_and_config, create_test_blockchain_db},
         create_consensus_rules,
-        create_test_core_key_manager_with_memory_db,
     },
     transactions::{
         key_manager::TransactionKeyManagerInterface,
         tari_amount::MicroTari,
-        test_helpers::{create_utxo, spend_utxos},
+        test_helpers::{create_test_core_key_manager_with_memory_db, create_utxo, spend_utxos},
         transaction_components::{OutputFeatures, TransactionOutput, TransactionOutputVersion, WalletOutput},
     },
     txn_schema,

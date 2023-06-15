@@ -39,12 +39,16 @@ use tari_core::{
     borsh::SerializedSize,
     covenants::Covenant,
     proto::base_node::{QueryDeletedResponse, UtxoQueryResponse, UtxoQueryResponses},
-    test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager},
     transactions::{
         fee::Fee,
         key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface},
         tari_amount::{uT, MicroTari},
-        test_helpers::{create_wallet_output_with_data, TestParams},
+        test_helpers::{
+            create_test_core_key_manager_with_memory_db,
+            create_wallet_output_with_data,
+            TestKeyManager,
+            TestParams,
+        },
         transaction_components::{OutputFeatures, OutputType, TransactionOutput, WalletOutput},
         transaction_protocol::{sender::TransactionSenderMessage, TransactionMetadata},
         weight::TransactionWeight,

@@ -188,12 +188,11 @@ mod test {
 
     use crate::{
         covenants::Covenant,
-        test_helpers::create_test_core_key_manager_with_memory_db,
         transactions::{
             crypto_factories::CryptoFactories,
             key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface, TxoStage},
             tari_amount::*,
-            test_helpers::{TestParams, UtxoTestParams},
+            test_helpers::{create_test_core_key_manager_with_memory_db, TestParams, UtxoTestParams},
             transaction_components::{OutputFeatures, TransactionKernel, TransactionKernelVersion},
             transaction_protocol::{
                 sender::{SingleRoundSenderData, TransactionSenderMessage},

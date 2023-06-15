@@ -24,9 +24,8 @@ use std::convert::TryInto;
 
 use crate::{
     covenants::{context::CovenantContext, Covenant},
-    test_helpers::TestKeyManager,
     transactions::{
-        test_helpers::{TestParams, UtxoTestParams},
+        test_helpers::{TestKeyManager, TestParams, UtxoTestParams},
         transaction_components::{
             BuildInfo,
             CodeTemplateRegistration,

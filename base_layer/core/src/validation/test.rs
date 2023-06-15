@@ -34,15 +34,15 @@ use crate::{
     consensus::{ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder},
     covenants::Covenant,
     proof_of_work::AchievedTargetDifficulty,
-    test_helpers::{
-        blockchain::create_store_with_consensus,
-        create_chain_header,
-        create_test_core_key_manager_with_memory_db,
-    },
+    test_helpers::{blockchain::create_store_with_consensus, create_chain_header},
     transactions::{
         key_manager::TxoStage,
         tari_amount::{uT, MicroTari},
-        test_helpers::{create_random_signature_from_secret_key, create_utxo},
+        test_helpers::{
+            create_random_signature_from_secret_key,
+            create_test_core_key_manager_with_memory_db,
+            create_utxo,
+        },
         transaction_components::{KernelBuilder, KernelFeatures, OutputFeatures, TransactionKernel},
         CryptoFactories,
     },
@@ -474,8 +474,10 @@ async fn chain_balance_validation_burned() {
 mod transaction_validator {
     use super::*;
     use crate::{
-        test_helpers::create_test_core_key_manager_with_memory_db,
-        transactions::transaction_components::TransactionError,
+        transactions::{
+            test_helpers::create_test_core_key_manager_with_memory_db,
+            transaction_components::TransactionError,
+        },
         validation::transaction::TransactionInternalConsistencyValidator,
     };
 

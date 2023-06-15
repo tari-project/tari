@@ -25,8 +25,7 @@ use std::convert::TryInto;
 use tari_core::{
     blocks::{Block, BlockHeader, NewBlockTemplate},
     consensus::{emission::Emission, ConsensusManager},
-    test_helpers::TestKeyManager,
-    transactions::{tari_amount::MicroTari, transaction_components::Transaction},
+    transactions::{tari_amount::MicroTari, test_helpers::TestKeyManager, transaction_components::Transaction},
 };
 
 use crate::helpers::block_builders::create_coinbase;

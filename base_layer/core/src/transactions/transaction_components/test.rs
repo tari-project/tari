@@ -35,15 +35,16 @@ use tari_test_utils::unpack_enum;
 use super::*;
 use crate::{
     consensus::ConsensusManager,
-    test_helpers::{
-        create_test_core_key_manager_with_memory_db,
-        create_test_core_key_manager_with_memory_db_with_range_proof_size,
-    },
     transactions::{
         key_manager::TransactionKeyManagerInterface,
         tari_amount::{uT, MicroTari, T},
         test_helpers,
-        test_helpers::{TestParams, UtxoTestParams},
+        test_helpers::{
+            create_test_core_key_manager_with_memory_db,
+            create_test_core_key_manager_with_memory_db_with_range_proof_size,
+            TestParams,
+            UtxoTestParams,
+        },
         transaction_components::{transaction_output::batch_verify_range_proofs, EncryptedData, OutputFeatures},
         transaction_protocol::TransactionProtocolError,
         CryptoFactories,
@@ -512,8 +513,7 @@ mod validate_internal_consistency {
     use super::*;
     use crate::{
         covenants::{BaseLayerCovenantsDomain, COVENANTS_FIELD_HASHER_LABEL},
-        test_helpers::TestKeyManager,
-        transactions::test_helpers::{create_transaction_with, create_wallet_outputs},
+        transactions::test_helpers::{create_transaction_with, create_wallet_outputs, TestKeyManager},
     };
 
     async fn test_case(

@@ -114,11 +114,10 @@ mod test {
 
     use crate::{
         covenants::Covenant,
-        test_helpers::create_test_core_key_manager_with_memory_db,
         transactions::{
             key_manager::TransactionKeyManagerInterface,
             tari_amount::*,
-            test_helpers::TestParams,
+            test_helpers::{create_test_core_key_manager_with_memory_db, TestParams},
             transaction_components::{
                 EncryptedData,
                 OutputFeatures,

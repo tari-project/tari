@@ -25,11 +25,10 @@ use std::default::Default;
 use tari_core::{
     borsh::SerializedSize,
     covenants::Covenant,
-    test_helpers::TestKeyManager,
     transactions::{
         key_manager::TariKeyId,
         tari_amount::MicroTari,
-        test_helpers::{create_transaction_with, TestParams},
+        test_helpers::{create_transaction_with, TestKeyManager, TestParams},
         transaction_components::{
             OutputFeatures,
             Transaction,
