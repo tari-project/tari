@@ -252,7 +252,7 @@ async fn generate_block_headers_and_utxos(
                 &mut OsRng,
                 MicroTari::from(100 + OsRng.next_u64() % 1000),
                 &OutputFeatures::default(),
-                &key_manager,
+                key_manager,
             )
             .await;
             block_outputs.push(uo);
@@ -713,6 +713,7 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn test_utxo_scanner_scanned_block_cache_clearing() {
     let mut test_interface = setup(UtxoScannerMode::Recovery, None, None, None).await;
 

@@ -63,9 +63,7 @@ impl fmt::Display for RecipientState {
 /// An enum describing the types of information that a recipient can send back to the receiver
 #[derive(Debug, Clone, PartialEq)]
 pub(super) enum RecipientInfo {
-    // None,
     Single(Option<Box<RecipientSignedMessage>>),
-    // Multiple(HashMap<u64, MultiRecipientInfo>),
 }
 
 #[allow(clippy::derivable_impls)]

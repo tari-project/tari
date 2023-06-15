@@ -117,7 +117,6 @@ where
     /// hash function H which is Length attack resistant, such as Blake2b.
     pub fn derive_key(&self, key_index: u64) -> Result<DerivedKey<PK>, ByteArrayError> {
         let secret = self.derive_private_key(key_index)?;
-        // let key = PK::from_secret_key(&secret);
         Ok(DerivedKey { key: secret, key_index })
     }
 
@@ -125,7 +124,6 @@ where
     /// hash function H which is Length attack resistant, such as Blake2b.
     pub fn derive_public_key(&self, key_index: u64) -> Result<DerivedPublicKey<PK>, ByteArrayError> {
         let secret = self.derive_private_key(key_index)?;
-        // let key = PK::from_secret_key(&secret);
         Ok(DerivedPublicKey {
             key: PublicKey::from_secret_key(&secret),
             key_index,

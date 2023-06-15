@@ -272,17 +272,6 @@ where KM: TransactionKeyManagerInterface
                     recipient_data.recipient_script.get_serialized_size(),
             )
         }
-        // size += self
-        //     .recipient_scripts
-        //     .iter()
-        //     .filter_map(|script| {
-        //         script.map(|s| {
-        //             self.fee.weighting().round_up_features_and_scripts_size(
-        //                 self.get_recipient_output_features().get_serialized_size() + s.get_serialized_size(),
-        //             )
-        //         })
-        //     })
-        //     .sum::<usize>();
 
         size
     }
@@ -570,7 +559,6 @@ where KM: TransactionKeyManagerInterface
         let state = state
             .initialize()
             .expect("It should be possible to call initialize from Initializing state");
-        // let stp = SenderTransactionProtocol::from_state(state, self.key_manager.clone());
         Ok(state.into())
     }
 }

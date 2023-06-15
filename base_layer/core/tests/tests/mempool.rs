@@ -1151,12 +1151,6 @@ async fn consensus_validation_large_tx() {
         wallet_outputs.push((output.clone(), test_params.kernel_nonce_key_id));
     }
 
-    // let mut sum_outputs_blinding_factors = wallet_outputs[0].spending_key.clone();
-    // for uo in wallet_outputs.iter().skip(1) {
-    //     sum_outputs_blinding_factors = sum_outputs_blinding_factors + uo.spending_key.clone();
-    // }
-    // let excess_blinding_factor = sum_outputs_blinding_factors - sum_inputs_blinding_factors;
-
     let mut agg_sig = Signature::default();
     let mut outputs = Vec::new();
     let mut offset = PrivateKey::default();

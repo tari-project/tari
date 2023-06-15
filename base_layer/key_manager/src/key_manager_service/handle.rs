@@ -96,7 +96,7 @@ where
         (*self.key_manager_inner)
             .read()
             .await
-            .get_public_key_at_key_id(&key_id)
+            .get_public_key_at_key_id(key_id)
             .await
     }
 

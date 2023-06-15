@@ -2160,7 +2160,6 @@ async fn recovered_output_key_not_in_keychain() {
         .output_manager_handle
         .scan_for_recoverable_outputs(vec![rewindable_output])
         .await;
-    dbg!(&result);
     assert!(
         matches!(result.as_deref(), Ok([])),
         "It should not reach an error condition or return an output"

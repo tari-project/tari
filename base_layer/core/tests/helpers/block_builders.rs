@@ -413,15 +413,6 @@ pub async fn create_genesis_block_with_utxos(
         let output = wallet_output.as_transaction_output(key_manager).await.unwrap();
         template.body.add_output(output);
     }
-    // let outputs = values.iter().fold(vec![coinbase], |mut secrets, v| {
-    //     let p = TestParams::new(key_manager).await;
-    //     let unblinded_output =
-    //         create_wallet_output_with_data(script.clone(), output_features.clone(), &p, *v).await.unwrap();
-    //     secrets.push(unblinded_output.clone());
-    //     let output = unblinded_output.as_transaction_output(factories).unwrap();
-    //     template.body.add_output(output);
-    //     secrets
-    // });
     let mut block = update_genesis_block_mmr_roots(template).unwrap();
     find_header_with_achieved_difficulty(&mut block.header, Difficulty::from(1));
     let hash = block.hash();

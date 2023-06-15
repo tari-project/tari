@@ -128,7 +128,6 @@ async fn it_checks_exactly_one_coinbase() {
 
     let err = {
         // `MutexGuard` cannot be held across an `await` point
-        // `MutexGuard` cannot be held across an `await` point
         let txn = blockchain.db().db_read_access().unwrap();
         let err = validator.validate_body(&*txn, block.block()).unwrap_err();
         err

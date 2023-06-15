@@ -227,7 +227,6 @@ mod test {
     use crate::transactions::{
         key_manager::TransactionKeyManagerBranch,
         test_helpers::create_test_core_key_manager_with_memory_db,
-        CryptoFactories,
     };
 
     #[tokio::test]

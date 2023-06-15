@@ -563,28 +563,6 @@ impl SenderTransactionProtocol {
                     .get_txo_private_kernel_offset(&input.output.spending_key_id, &input.kernel_nonce)
                     .await?;
             script_keys.push(input.output.script_key_id.clone());
-            // let sig = key_manager
-            //     .get_partial_kernel_signature(
-            //         &input.output.spending_key_id,
-            //         &input.kernel_nonce,
-            //         &total_public_nonce,
-            //         &total_public_excess,
-            //         &TransactionKernelVersion::get_current_version(),
-            //         &kernel_message,
-            //         &info.metadata.kernel_features,
-            //         TxoStage::Input,
-            //     )
-            //     .await?;
-            // let excess = PublicKey::default() -
-            // key_manager.get_partial_kernel_signature_excess_with_offset(&input.output.spending_key_id,&input.
-            // kernel_nonce ).await.unwrap(); // let excess =
-            // key_manager.get_partial_kernel_signature_excess_with_offset(&input.output.spending_key_id,&input.
-            // kernel_nonce ).await.unwrap(); let sig_challenge =
-            // TransactionKernel::finalize_kernel_signature_challenge(&TransactionKernelVersion::get_current_version(),
-            // &total_public_nonce, &total_public_excess, &kernel_message); assert!(sig.verify(&excess,
-            // &PrivateKey::from_bytes(&sig_challenge).unwrap()));
-            //
-            // assert!(false);
         }
 
         for output in &info.outputs {
@@ -1065,8 +1043,6 @@ mod test {
             Err(e) => panic!("{:?}", e),
         }
         let tx = sender.get_transaction().unwrap();
-        // let change_offset = key_manager.getoff
-        // assert_eq!(tx.offset, p1.offset + p2.offset);
         let rules = create_consensus_rules();
         let factories = CryptoFactories::default();
         let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
