@@ -39,14 +39,14 @@ mod benches {
         test_helpers::blockchain::create_new_blockchain,
         transactions::{
             tari_amount::{uT, T},
+            test_helpers::create_test_core_key_manager_with_memory_db,
             transaction_components::{OutputFeatures, Transaction, MAX_TRANSACTION_OUTPUTS},
             CryptoFactories,
         },
         tx,
         validation::transaction::TransactionFullValidator,
     };
-    use tokio::{runtime::Runtime};
-    use tari_core::transactions::test_helpers::create_test_core_key_manager_with_memory_db;
+    use tokio::runtime::Runtime;
 
     async fn generate_transactions(
         num_txs: usize,
@@ -56,8 +56,9 @@ mod benches {
     ) -> Vec<Arc<Transaction>> {
         let key_manager = create_test_core_key_manager_with_memory_db();
         let mut txs = Vec::new();
-        for _ in 0..num_txs{
-            let (tx, _, _) = tx!(T, fee: uT, inputs: num_inputs, outputs: num_outputs, features: features.clone(), &key_manager);
+        for _ in 0..num_txs {
+            let (tx, _, _) =
+                tx!(T, fee: uT, inputs: num_inputs, outputs: num_outputs, features: features.clone(), &key_manager);
             txs.push(Arc::new(tx));
         }
         txs
