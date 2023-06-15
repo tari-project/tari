@@ -54,10 +54,9 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
             &key_manager,
         )
         .await;
-        let mut kmo =
-            DbWalletOutput::from_key_manager_output(uo, &key_manager, None, OutputSource::Unknown, None, None)
-                .await
-                .unwrap();
+        let mut kmo = DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Unknown, None, None)
+            .await
+            .unwrap();
         kmo.wallet_output.features.maturity = i;
         db.add_unspent_output(kmo.clone()).unwrap();
         unspent_outputs.push(kmo);
@@ -106,10 +105,9 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
                 &key_manager,
             )
             .await;
-            let kmo =
-                DbWalletOutput::from_key_manager_output(kmo, &key_manager, None, OutputSource::Unknown, None, None)
-                    .await
-                    .unwrap();
+            let kmo = DbWalletOutput::from_wallet_output(kmo, &key_manager, None, OutputSource::Unknown, None, None)
+                .await
+                .unwrap();
             db.add_unspent_output(kmo.clone()).unwrap();
             pending_tx.outputs_to_be_spent.push(kmo);
         }
@@ -121,10 +119,9 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
                 &key_manager,
             )
             .await;
-            let kmo =
-                DbWalletOutput::from_key_manager_output(uo, &key_manager, None, OutputSource::Unknown, None, None)
-                    .await
-                    .unwrap();
+            let kmo = DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Unknown, None, None)
+                .await
+                .unwrap();
             pending_tx.outputs_to_be_received.push(kmo);
         }
         db.encumber_outputs(
@@ -262,7 +259,7 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     )
     .await;
     let output_to_be_received =
-        DbWalletOutput::from_key_manager_output(uo, &key_manager, None, OutputSource::Unknown, None, None)
+        DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Unknown, None, None)
             .await
             .unwrap();
     db.add_output_to_be_received(TxId::from(11u64), output_to_be_received.clone(), None)
@@ -360,10 +357,9 @@ pub async fn test_short_term_encumberance() {
             &key_manager,
         )
         .await;
-        let mut kmo =
-            DbWalletOutput::from_key_manager_output(kmo, &key_manager, None, OutputSource::Unknown, None, None)
-                .await
-                .unwrap();
+        let mut kmo = DbWalletOutput::from_wallet_output(kmo, &key_manager, None, OutputSource::Unknown, None, None)
+            .await
+            .unwrap();
         kmo.wallet_output.features.maturity = i;
         db.add_unspent_output(kmo.clone()).unwrap();
         unspent_outputs.push(kmo);
@@ -420,7 +416,7 @@ pub async fn test_no_duplicate_outputs() {
         &key_manager,
     )
     .await;
-    let kmo = DbWalletOutput::from_key_manager_output(uo, &key_manager, None, OutputSource::Unknown, None, None)
+    let kmo = DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Unknown, None, None)
         .await
         .unwrap();
 
@@ -462,7 +458,7 @@ pub async fn test_mark_as_unmined() {
         &key_manager,
     )
     .await;
-    let kmo = DbWalletOutput::from_key_manager_output(uo, &key_manager, None, OutputSource::Unknown, None, None)
+    let kmo = DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Unknown, None, None)
         .await
         .unwrap();
 

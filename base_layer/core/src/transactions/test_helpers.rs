@@ -570,11 +570,11 @@ pub async fn create_wallet_outputs(
             params.value = amount_per_input;
         }
 
-        let key_manager_output = TestParams::new(key_manager)
+        let wallet_output = TestParams::new(key_manager)
             .await
             .create_input(params, key_manager)
             .await;
-        inputs.push(key_manager_output);
+        inputs.push(wallet_output);
     }
 
     (inputs, outputs)

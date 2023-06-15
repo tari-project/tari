@@ -844,7 +844,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         for o in &unblinded_outputs {
             tx_ids.push(
                 wallet
-                    .import_key_manager_output_as_non_rewindable(
+                    .import_unblinded_output_as_non_rewindable(
                         o.clone(),
                         TariAddress::default(),
                         "Imported via gRPC".to_string(),

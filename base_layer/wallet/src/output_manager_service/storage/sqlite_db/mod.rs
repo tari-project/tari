@@ -130,7 +130,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
         let result = match key {
             DbKey::SpentOutput(k) => match OutputSql::find_status(k, OutputStatus::Spent, &mut conn) {
-                Ok(o) => Some(DbValue::SpentOutput(Box::new(o.to_db_key_manager_output()?))),
+                Ok(o) => Some(DbValue::SpentOutput(Box::new(o.to_db_wallet_output()?))),
                 Err(e) => {
                     match e {
                         OutputManagerStorageError::DieselError(DieselError::NotFound) => (),
@@ -140,7 +140,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 },
             },
             DbKey::UnspentOutput(k) => match OutputSql::find_status(k, OutputStatus::Unspent, &mut conn) {
-                Ok(o) => Some(DbValue::UnspentOutput(Box::new(o.to_db_key_manager_output()?))),
+                Ok(o) => Some(DbValue::UnspentOutput(Box::new(o.to_db_wallet_output()?))),
                 Err(e) => {
                     match e {
                         OutputManagerStorageError::DieselError(DieselError::NotFound) => (),
@@ -151,7 +151,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             },
             DbKey::UnspentOutputHash(hash) => {
                 match OutputSql::find_by_hash(hash.as_slice(), OutputStatus::Unspent, &mut conn) {
-                    Ok(o) => Some(DbValue::UnspentOutput(Box::new(o.to_db_key_manager_output()?))),
+                    Ok(o) => Some(DbValue::UnspentOutput(Box::new(o.to_db_wallet_output()?))),
                     Err(e) => {
                         match e {
                             OutputManagerStorageError::DieselError(DieselError::NotFound) => (),
@@ -163,7 +163,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             },
             DbKey::AnyOutputByCommitment(commitment) => {
                 match OutputSql::find_by_commitment(&commitment.to_vec(), &mut conn) {
-                    Ok(o) => Some(DbValue::AnyOutput(Box::new(o.to_db_key_manager_output()?))),
+                    Ok(o) => Some(DbValue::AnyOutput(Box::new(o.to_db_wallet_output()?))),
                     Err(e) => {
                         match e {
                             OutputManagerStorageError::DieselError(DieselError::NotFound) => (),
@@ -179,7 +179,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 Some(DbValue::AnyOutputs(
                     outputs
                         .iter()
-                        .map(|o| o.clone().to_db_key_manager_output())
+                        .map(|o| o.clone().to_db_wallet_output())
                         .collect::<Result<Vec<_>, _>>()?,
                 ))
             },
@@ -192,7 +192,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 Some(DbValue::UnspentOutputs(
                     outputs
                         .iter()
-                        .map(|o| o.clone().to_db_key_manager_output())
+                        .map(|o| o.clone().to_db_wallet_output())
                         .collect::<Result<Vec<_>, _>>()?,
                 ))
             },
@@ -202,7 +202,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 Some(DbValue::SpentOutputs(
                     outputs
                         .iter()
-                        .map(|o| o.clone().to_db_key_manager_output())
+                        .map(|o| o.clone().to_db_wallet_output())
                         .collect::<Result<Vec<_>, _>>()?,
                 ))
             },
@@ -212,7 +212,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 Some(DbValue::UnspentOutputs(
                     outputs
                         .iter()
-                        .map(|o| o.clone().to_db_key_manager_output())
+                        .map(|o| o.clone().to_db_wallet_output())
                         .collect::<Result<Vec<_>, _>>()?,
                 ))
             },
@@ -222,7 +222,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 Some(DbValue::InvalidOutputs(
                     outputs
                         .iter()
-                        .map(|o| o.clone().to_db_key_manager_output())
+                        .map(|o| o.clone().to_db_wallet_output())
                         .collect::<Result<Vec<_>, _>>()?,
                 ))
             },
@@ -257,7 +257,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
         outputs
             .iter()
-            .map(|o| o.clone().to_db_key_manager_output())
+            .map(|o| o.clone().to_db_wallet_output())
             .collect::<Result<Vec<_>, _>>()
     }
 
@@ -267,7 +267,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
         outputs
             .into_iter()
-            .map(|o| o.to_db_key_manager_output())
+            .map(|o| o.to_db_wallet_output())
             .collect::<Result<Vec<_>, _>>()
     }
 
@@ -289,7 +289,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
         outputs
             .into_iter()
-            .map(|o| o.to_db_key_manager_output())
+            .map(|o| o.to_db_wallet_output())
             .collect::<Result<Vec<_>, _>>()
     }
 
@@ -311,7 +311,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
         outputs
             .into_iter()
-            .map(|o| o.to_db_key_manager_output())
+            .map(|o| o.to_db_wallet_output())
             .collect::<Result<Vec<_>, _>>()
     }
 
@@ -333,7 +333,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
         outputs
             .into_iter()
-            .map(|o| o.to_db_key_manager_output())
+            .map(|o| o.to_db_wallet_output())
             .collect::<Result<Vec<_>, _>>()
     }
 
@@ -357,7 +357,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                         match OutputSql::find_by_commitment(&commitment.to_vec(), conn) {
                             Ok(o) => {
                                 o.delete(conn)?;
-                                Ok(Some(DbValue::AnyOutput(Box::new(o.to_db_key_manager_output()?))))
+                                Ok(Some(DbValue::AnyOutput(Box::new(o.to_db_wallet_output()?))))
                             },
                             Err(e) => match e {
                                 OutputManagerStorageError::DieselError(DieselError::NotFound) => Ok(None),
@@ -416,7 +416,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         }
         outputs
             .iter()
-            .map(|o| o.clone().to_db_key_manager_output())
+            .map(|o| o.clone().to_db_wallet_output())
             .collect::<Result<Vec<_>, _>>()
     }
 
@@ -774,7 +774,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             );
         }
         match output {
-            Some(o) => Ok(Some(o.to_db_key_manager_output()?)),
+            Some(o) => Ok(Some(o.to_db_wallet_output()?)),
             None => Ok(None),
         }
     }
@@ -795,7 +795,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             );
         }
         match output {
-            Some(o) => Ok(Some(o.to_db_key_manager_output()?)),
+            Some(o) => Ok(Some(o.to_db_wallet_output()?)),
             None => Ok(None),
         }
     }
@@ -1069,7 +1069,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         );
         outputs
             .iter()
-            .map(|o| o.clone().to_db_key_manager_output())
+            .map(|o| o.clone().to_db_wallet_output())
             .collect::<Result<Vec<_>, _>>()
     }
 
@@ -1079,7 +1079,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
         outputs
             .iter()
-            .map(|o| o.clone().to_db_key_manager_output())
+            .map(|o| o.clone().to_db_wallet_output())
             .collect::<Result<Vec<_>, _>>()
     }
 
@@ -1088,7 +1088,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(OutputSql::fetch_outputs_by(q, &mut conn)?
             .into_iter()
             .filter_map(|x| {
-                x.to_db_key_manager_output()
+                x.to_db_wallet_output()
                     .map_err(|e| {
                         error!(
                             target: LOG_TARGET,
@@ -1328,13 +1328,13 @@ mod test {
     pub async fn make_input(val: MicroTari, key_manager: &TestKeyManager) -> (TransactionInput, WalletOutput) {
         let test_params = TestParams::new(key_manager).await;
 
-        let key_manager_output =
+        let wallet_output =
             create_wallet_output_with_data(script!(Nop), OutputFeatures::default(), &test_params, val, key_manager)
                 .await
                 .unwrap();
-        let input = key_manager_output.as_transaction_input(key_manager).await.unwrap();
+        let input = wallet_output.as_transaction_input(key_manager).await.unwrap();
 
-        (input, key_manager_output)
+        (input, wallet_output)
     }
 
     #[allow(clippy::too_many_lines)]
@@ -1373,7 +1373,7 @@ mod test {
         let key_manager = create_test_core_key_manager_with_memory_db();
         for _i in 0..2 {
             let (_, uo) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000), &key_manager).await;
-            let uo = DbWalletOutput::from_key_manager_output(uo, &key_manager, None, OutputSource::Unknown, None, None)
+            let uo = DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Unknown, None, None)
                 .await
                 .unwrap();
             let o = NewOutputSql::new(uo, OutputStatus::Unspent, None, None).unwrap();
@@ -1384,7 +1384,7 @@ mod test {
 
         for _i in 0..3 {
             let (_, uo) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000), &key_manager).await;
-            let uo = DbWalletOutput::from_key_manager_output(uo, &key_manager, None, OutputSource::Unknown, None, None)
+            let uo = DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Unknown, None, None)
                 .await
                 .unwrap();
             let o = NewOutputSql::new(uo, OutputStatus::Spent, None, None).unwrap();

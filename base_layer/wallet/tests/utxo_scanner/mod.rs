@@ -220,7 +220,7 @@ async fn setup(
 
 pub struct TestBlockData {
     block_headers: HashMap<u64, BlockHeader>,
-    key_manager_outputs: HashMap<u64, Vec<WalletOutput>>,
+    wallet_outputs: HashMap<u64, Vec<WalletOutput>>,
     utxos_by_block: Vec<UtxosByBlock>,
 }
 
@@ -236,7 +236,7 @@ async fn generate_block_headers_and_utxos(
 ) -> TestBlockData {
     let mut block_headers = HashMap::new();
     let mut utxos_by_block = Vec::new();
-    let mut key_manager_outputs = HashMap::new();
+    let mut wallet_outputs = HashMap::new();
     let key_manager = create_test_core_key_manager_with_memory_db();
     for i in start_height..num_blocks + start_height {
         let mut block_header = BlockHeader::new(0);
@@ -270,11 +270,11 @@ async fn generate_block_headers_and_utxos(
             utxos: transaction_outputs,
         };
         utxos_by_block.push(utxos);
-        key_manager_outputs.insert(i, block_outputs);
+        wallet_outputs.insert(i, block_outputs);
     }
     TestBlockData {
         block_headers,
-        key_manager_outputs,
+        wallet_outputs,
         utxos_by_block,
     }
 }
@@ -293,7 +293,7 @@ async fn test_utxo_scanner_recovery() {
 
     let TestBlockData {
         block_headers,
-        key_manager_outputs,
+        wallet_outputs,
         utxos_by_block,
     } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false).await;
 
@@ -315,13 +315,13 @@ async fn test_utxo_scanner_recovery() {
     });
 
     // Adding half the outputs of the blocks to the OMS mock
-    let mut db_key_manager_outputs = Vec::new();
+    let mut db_wallet_outputs = Vec::new();
     let mut total_outputs_to_recover = 0;
     let mut total_amount_to_recover = MicroTari::from(0);
     let key_manager = create_test_core_key_manager_with_memory_db();
-    for (h, outputs) in &key_manager_outputs {
+    for (h, outputs) in &wallet_outputs {
         for output in outputs.iter().skip(outputs.len() / 2) {
-            let dbo = DbWalletOutput::from_key_manager_output(
+            let dbo = DbWalletOutput::from_wallet_output(
                 output.clone(),
                 &key_manager,
                 None,
@@ -336,12 +336,10 @@ async fn test_utxo_scanner_recovery() {
                 total_outputs_to_recover += 1;
                 total_amount_to_recover += dbo.wallet_output.value;
             }
-            db_key_manager_outputs.push(dbo);
+            db_wallet_outputs.push(dbo);
         }
     }
-    test_interface
-        .oms_mock_state
-        .set_recoverable_outputs(db_key_manager_outputs);
+    test_interface.oms_mock_state.set_recoverable_outputs(db_wallet_outputs);
 
     let mut scanner_event_stream = test_interface.scanner_handle.get_event_receiver();
 
@@ -393,7 +391,7 @@ async fn test_utxo_scanner_recovery_with_restart() {
 
     let TestBlockData {
         block_headers,
-        key_manager_outputs,
+        wallet_outputs,
         utxos_by_block,
     } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false).await;
 
@@ -415,13 +413,13 @@ async fn test_utxo_scanner_recovery_with_restart() {
     });
 
     // Adding half the outputs of the blocks to the OMS mock
-    let mut db_key_manager_outputs = Vec::new();
+    let mut db_wallet_outputs = Vec::new();
     let mut total_outputs_to_recover = 0;
     let mut total_amount_to_recover = MicroTari::from(0);
     let key_manager = create_test_core_key_manager_with_memory_db();
-    for (h, outputs) in &key_manager_outputs {
+    for (h, outputs) in &wallet_outputs {
         for output in outputs.iter().skip(outputs.len() / 2) {
-            let dbo = DbWalletOutput::from_key_manager_output(
+            let dbo = DbWalletOutput::from_wallet_output(
                 output.clone(),
                 &key_manager,
                 None,
@@ -436,12 +434,12 @@ async fn test_utxo_scanner_recovery_with_restart() {
                 total_outputs_to_recover += 1;
                 total_amount_to_recover += dbo.wallet_output.value;
             }
-            db_key_manager_outputs.push(dbo);
+            db_wallet_outputs.push(dbo);
         }
     }
     test_interface
         .oms_mock_state
-        .set_recoverable_outputs(db_key_manager_outputs.clone());
+        .set_recoverable_outputs(db_wallet_outputs.clone());
 
     let (tx, rx) = mpsc::channel(100);
     test_interface.rpc_service_state.set_utxos_by_block_trigger_channel(rx);
@@ -497,7 +495,7 @@ async fn test_utxo_scanner_recovery_with_restart() {
         });
     test_interface2
         .oms_mock_state
-        .set_recoverable_outputs(db_key_manager_outputs);
+        .set_recoverable_outputs(db_wallet_outputs);
     let mut scanner_event_stream = test_interface2.scanner_handle.get_event_receiver();
     tokio::spawn(test_interface2.scanner_service.take().unwrap().run());
 
@@ -559,7 +557,7 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
 
     let TestBlockData {
         mut block_headers,
-        mut key_manager_outputs,
+        mut wallet_outputs,
         utxos_by_block,
     } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false).await;
 
@@ -581,11 +579,11 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
     });
 
     // Adding half the outputs of the blocks to the OMS mock
-    let mut db_key_manager_outputs = Vec::new();
+    let mut db_wallet_outputs = Vec::new();
     let key_manager = create_test_core_key_manager_with_memory_db();
-    for outputs in key_manager_outputs.values() {
+    for outputs in wallet_outputs.values() {
         for output in outputs.iter().skip(outputs.len() / 2) {
-            let dbo = DbWalletOutput::from_key_manager_output(
+            let dbo = DbWalletOutput::from_wallet_output(
                 output.clone(),
                 &key_manager,
                 None,
@@ -595,12 +593,12 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
             )
             .await
             .unwrap();
-            db_key_manager_outputs.push(dbo);
+            db_wallet_outputs.push(dbo);
         }
     }
     test_interface
         .oms_mock_state
-        .set_recoverable_outputs(db_key_manager_outputs.clone());
+        .set_recoverable_outputs(db_wallet_outputs.clone());
 
     let (tx, rx) = mpsc::channel(100);
     test_interface.rpc_service_state.set_utxos_by_block_trigger_channel(rx);
@@ -620,7 +618,7 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
     // So at this point we have synced to block 6. We are going to create a reorg back to block 4 so that blocks 5-10
     // are new blocks.
     block_headers.retain(|h, _| h <= &4u64);
-    key_manager_outputs.retain(|h, _| h <= &4u64);
+    wallet_outputs.retain(|h, _| h <= &4u64);
     let mut utxos_by_block = utxos_by_block
         .into_iter()
         .filter(|u| u.height <= 4)
@@ -628,13 +626,13 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
 
     let TestBlockData {
         block_headers: new_block_headers,
-        key_manager_outputs: new_key_manager_outputs,
+        wallet_outputs: new_wallet_outputs,
         utxos_by_block: mut new_utxos_by_block,
     } = generate_block_headers_and_utxos(5, 5, birthday_epoch_time + 500, 0, false).await;
 
     block_headers.extend(new_block_headers);
     utxos_by_block.append(&mut new_utxos_by_block);
-    key_manager_outputs.extend(new_key_manager_outputs);
+    wallet_outputs.extend(new_wallet_outputs);
 
     let mut test_interface2 = setup(UtxoScannerMode::Recovery, Some(test_interface.wallet_db), None, None).await;
     test_interface2
@@ -657,13 +655,13 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
 
     // calculate new recoverable outputs for the reorg
     // Adding half the outputs of the blocks to the OMS mock
-    let mut db_key_manager_outputs = Vec::new();
+    let mut db_wallet_outputs = Vec::new();
     let mut total_outputs_to_recover = 0;
     let mut total_amount_to_recover = MicroTari::from(0);
     let key_manager = create_test_core_key_manager_with_memory_db();
-    for (h, outputs) in &key_manager_outputs {
+    for (h, outputs) in &wallet_outputs {
         for output in outputs.iter().skip(outputs.len() / 2) {
-            let dbo = DbWalletOutput::from_key_manager_output(
+            let dbo = DbWalletOutput::from_wallet_output(
                 output.clone(),
                 &key_manager,
                 None,
@@ -678,13 +676,13 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
                 total_outputs_to_recover += 1;
                 total_amount_to_recover += dbo.wallet_output.value;
             }
-            db_key_manager_outputs.push(dbo);
+            db_wallet_outputs.push(dbo);
         }
     }
 
     test_interface2
         .oms_mock_state
-        .set_recoverable_outputs(db_key_manager_outputs);
+        .set_recoverable_outputs(db_wallet_outputs);
 
     let mut scanner_event_stream = test_interface2.scanner_handle.get_event_receiver();
     tokio::spawn(test_interface2.scanner_service.take().unwrap().run());
@@ -746,7 +744,7 @@ async fn test_utxo_scanner_scanned_block_cache_clearing() {
 
     let TestBlockData {
         block_headers,
-        key_manager_outputs: _key_manager_outputs,
+        wallet_outputs: _wallet_outputs,
         utxos_by_block,
     } = generate_block_headers_and_utxos(800, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, true).await;
 
@@ -848,7 +846,7 @@ async fn test_utxo_scanner_one_sided_payments() {
 
     let TestBlockData {
         mut block_headers,
-        key_manager_outputs,
+        wallet_outputs,
         mut utxos_by_block,
     } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false).await;
 
@@ -870,13 +868,13 @@ async fn test_utxo_scanner_one_sided_payments() {
     });
 
     // Adding half the outputs of the blocks to the OMS mock
-    let mut db_key_manager_outputs = Vec::new();
+    let mut db_wallet_outputs = Vec::new();
     let mut total_outputs_to_recover = 0;
     let mut total_amount_to_recover = MicroTari::from(0);
     let key_manager = create_test_core_key_manager_with_memory_db();
-    for (h, outputs) in &key_manager_outputs {
+    for (h, outputs) in &wallet_outputs {
         for output in outputs.iter().skip(outputs.len() / 2) {
-            let dbo = DbWalletOutput::from_key_manager_output(
+            let dbo = DbWalletOutput::from_wallet_output(
                 output.clone(),
                 &key_manager,
                 None,
@@ -891,12 +889,12 @@ async fn test_utxo_scanner_one_sided_payments() {
                 total_outputs_to_recover += 1;
                 total_amount_to_recover += dbo.wallet_output.value;
             }
-            db_key_manager_outputs.push(dbo);
+            db_wallet_outputs.push(dbo);
         }
     }
     test_interface
         .oms_mock_state
-        .set_one_sided_payments(db_key_manager_outputs.clone());
+        .set_one_sided_payments(db_wallet_outputs.clone());
 
     let mut scanner_event_stream = test_interface.scanner_handle.get_event_receiver();
 
@@ -964,14 +962,12 @@ async fn test_utxo_scanner_one_sided_payments() {
     utxos_by_block.push(block11);
     block_headers.insert(NUM_BLOCKS, block_header11);
 
-    db_key_manager_outputs.push(
-        DbWalletOutput::from_key_manager_output(uo, &key_manager, None, OutputSource::Unknown, None, None)
+    db_wallet_outputs.push(
+        DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Unknown, None, None)
             .await
             .unwrap(),
     );
-    test_interface
-        .oms_mock_state
-        .set_one_sided_payments(db_key_manager_outputs);
+    test_interface.oms_mock_state.set_one_sided_payments(db_wallet_outputs);
 
     test_interface.rpc_service_state.set_utxos_by_block(utxos_by_block);
     test_interface.rpc_service_state.set_blocks(block_headers.clone());

@@ -154,7 +154,7 @@ where
 
     pub async fn start(mut self) -> Result<(), OutputManagerError> {
         // we need to ensure the wallet identity secret key is stored in the key manager
-        let _ = self
+        let _key_id = self
             .resources
             .key_manager
             .import_key(self.resources.wallet_identity.node_identity.secret_key().clone())
@@ -393,9 +393,9 @@ where
                 .reinstate_cancelled_inbound_transaction_outputs(tx_id)
                 .map(|_| OutputManagerResponse::ReinstatedCancelledInboundTx),
             OutputManagerRequest::CreateOutputWithFeatures { value, features } => {
-                let key_manager_output = self.create_output_with_features(value, *features).await?;
+                let wallet_output = self.create_output_with_features(value, *features).await?;
                 Ok(OutputManagerResponse::CreateOutputWithFeatures {
-                    output: Box::new(key_manager_output),
+                    output: Box::new(wallet_output),
                 })
             },
             OutputManagerRequest::CreatePayToSelfWithOutputs {
@@ -602,7 +602,7 @@ where
             "Add output of value {} to Output Manager", output.value
         );
 
-        let output = DbWalletOutput::from_key_manager_output(
+        let output = DbWalletOutput::from_wallet_output(
             output,
             &self.resources.key_manager,
             spend_priority,
@@ -635,7 +635,7 @@ where
             target: LOG_TARGET,
             "Add unvalidated output of value {} to Output Manager", output.value
         );
-        let output = DbWalletOutput::from_key_manager_output(
+        let output = DbWalletOutput::from_wallet_output(
             output,
             &self.resources.key_manager,
             spend_priority,
@@ -744,7 +744,7 @@ where
             encrypted_data,
             minimum_value_promise,
         );
-        let output = DbWalletOutput::from_key_manager_output(
+        let output = DbWalletOutput::from_wallet_output(
             key_kanager_output.clone(),
             &self.resources.key_manager,
             None,
@@ -924,14 +924,14 @@ where
         // If a change output was created add it to the pending_outputs list.
         let mut change_output = Vec::<DbWalletOutput>::new();
         if input_selection.requires_change_output() {
-            let key_manager_output = stp.get_change_output()?.ok_or_else(|| {
+            let wallet_output = stp.get_change_output()?.ok_or_else(|| {
                 OutputManagerError::BuildError(
                     "There should be a change output metadata signature available".to_string(),
                 )
             })?;
             change_output.push(
-                DbWalletOutput::from_key_manager_output(
-                    key_manager_output,
+                DbWalletOutput::from_wallet_output(
+                    wallet_output,
                     &self.resources.key_manager,
                     None,
                     OutputSource::default(),
@@ -981,7 +981,7 @@ where
             .get_next_key(TransactionKeyManagerBranch::CoinbaseScript.get_branch_key())
             .await?;
 
-        let (tx, key_manager_output) = CoinbaseBuilder::new(self.resources.key_manager.clone())
+        let (tx, wallet_output) = CoinbaseBuilder::new(self.resources.key_manager.clone())
             .with_block_height(block_height)
             .with_fees(fees)
             .with_spend_key_id(coinbase_spending_key)
@@ -991,8 +991,8 @@ where
             .build_with_reward(&self.resources.consensus_constants, reward)
             .await?;
 
-        let output = DbWalletOutput::from_key_manager_output(
-            key_manager_output,
+        let output = DbWalletOutput::from_wallet_output(
+            wallet_output,
             &self.resources.key_manager,
             None,
             OutputSource::Coinbase,
@@ -1073,23 +1073,23 @@ where
         }
 
         let mut db_outputs = vec![];
-        for mut key_manager_output in outputs {
+        for mut wallet_output in outputs {
             let (sender_offset_key_id, _) = self
                 .resources
                 .key_manager
                 .get_next_key(&TransactionKeyManagerBranch::SenderOffset.get_branch_key())
                 .await?;
-            key_manager_output = key_manager_output
+            wallet_output = wallet_output
                 .sign_as_sender_and_receiver(&self.resources.key_manager, &sender_offset_key_id)
                 .await?;
 
-            let ub = key_manager_output.try_build()?;
+            let ub = wallet_output.try_build()?;
             builder
                 .with_output(ub.clone(), sender_offset_key_id.clone())
                 .await
                 .map_err(|e| OutputManagerError::BuildError(e.to_string()))?;
             db_outputs.push(
-                DbWalletOutput::from_key_manager_output(
+                DbWalletOutput::from_wallet_output(
                     ub,
                     &self.resources.key_manager,
                     None,
@@ -1106,10 +1106,10 @@ where
             .await
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
         let tx_id = stp.get_tx_id()?;
-        if let Some(key_manager_output) = stp.get_change_output()? {
+        if let Some(wallet_output) = stp.get_change_output()? {
             db_outputs.push(
-                DbWalletOutput::from_key_manager_output(
-                    key_manager_output,
+                DbWalletOutput::from_wallet_output(
+                    wallet_output,
                     &self.resources.key_manager,
                     None,
                     OutputSource::default(),
@@ -1199,13 +1199,13 @@ where
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
 
         if input_selection.requires_change_output() {
-            let key_manager_output = stp.get_change_output()?.ok_or_else(|| {
+            let wallet_output = stp.get_change_output()?.ok_or_else(|| {
                 OutputManagerError::BuildError(
                     "There should be a change output metadata signature available".to_string(),
                 )
             })?;
-            let change_output = DbWalletOutput::from_key_manager_output(
-                key_manager_output,
+            let change_output = DbWalletOutput::from_wallet_output(
+                wallet_output,
                 &self.resources.key_manager,
                 None,
                 OutputSource::default(),
@@ -1803,7 +1803,7 @@ where
         // again, to obtain output for leftover change
         if has_leftover_change {
             // obtaining output for the `change`
-            let key_manager_output_for_change = stp.get_change_output()?.ok_or_else(|| {
+            let wallet_output_for_change = stp.get_change_output()?.ok_or_else(|| {
                 OutputManagerError::BuildError(
                     "There should be a `change` output metadata signature available".to_string(),
                 )
@@ -1811,8 +1811,8 @@ where
 
             // appending `change` output to the result
             dest_outputs.push(
-                DbWalletOutput::from_key_manager_output(
-                    key_manager_output_for_change,
+                DbWalletOutput::from_wallet_output(
+                    wallet_output_for_change,
                     &self.resources.key_manager,
                     None,
                     OutputSource::default(),
@@ -1889,7 +1889,7 @@ where
             )
             .await?;
 
-        let output = DbWalletOutput::from_key_manager_output(
+        let output = DbWalletOutput::from_wallet_output(
             WalletOutput::new_current_version(
                 amount,
                 spending_key_id,
@@ -2117,13 +2117,13 @@ where
 
                 let tx_id = stp.get_tx_id()?;
 
-                let key_manager_output = stp.get_change_output()?.ok_or_else(|| {
+                let wallet_output = stp.get_change_output()?.ok_or_else(|| {
                     OutputManagerError::BuildError(
                         "There should be a change output metadata signature available".to_string(),
                     )
                 })?;
-                let change_output = DbWalletOutput::from_key_manager_output(
-                    key_manager_output,
+                let change_output = DbWalletOutput::from_wallet_output(
+                    wallet_output,
                     &self.resources.key_manager,
                     None,
                     OutputSource::AtomicSwap,
@@ -2200,12 +2200,12 @@ where
 
         let tx_id = stp.get_tx_id()?;
 
-        let key_manager_output = stp.get_change_output()?.ok_or_else(|| {
+        let wallet_output = stp.get_change_output()?.ok_or_else(|| {
             OutputManagerError::BuildError("There should be a change output metadata signature available".to_string())
         })?;
 
-        let change_output = DbWalletOutput::from_key_manager_output(
-            key_manager_output,
+        let change_output = DbWalletOutput::from_wallet_output(
+            wallet_output,
             &self.resources.key_manager,
             None,
             OutputSource::Refund,
@@ -2377,7 +2377,7 @@ where
                     );
 
                     let tx_id = TxId::new_random();
-                    let db_output = DbWalletOutput::from_key_manager_output(
+                    let db_output = DbWalletOutput::from_wallet_output(
                         rewound_output.clone(),
                         &self.resources.key_manager,
                         None,

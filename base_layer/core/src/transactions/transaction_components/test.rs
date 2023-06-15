@@ -53,7 +53,7 @@ use crate::{
 };
 
 #[tokio::test]
-async fn input_and_output_and_key_manager_output_hash_match() {
+async fn input_and_output_and_wallet_output_hash_match() {
     let key_manager = create_test_core_key_manager_with_memory_db();
     let test_params = TestParams::new(&key_manager).await;
 
@@ -98,7 +98,7 @@ async fn range_proof_verification() {
     let test_params_2 = TestParams::new(&key_manager).await;
 
     // For testing the max range has been limited to 2^32 so this value is too large.
-    let key_manager_output1 = test_params_1
+    let wallet_output1 = test_params_1
         .create_output(
             UtxoTestParams {
                 value: (2u64.pow(32) - 1u64).into(),
@@ -108,10 +108,10 @@ async fn range_proof_verification() {
         )
         .await
         .unwrap();
-    let tx_output1 = key_manager_output1.as_transaction_output(&key_manager).await.unwrap();
+    let tx_output1 = wallet_output1.as_transaction_output(&key_manager).await.unwrap();
     tx_output1.verify_range_proof(&factories.range_proof).unwrap();
 
-    let key_manager_output2 = test_params_2
+    let wallet_output2 = test_params_2
         .create_output(
             UtxoTestParams {
                 value: (2u64.pow(32) + 1u64).into(),
@@ -121,7 +121,7 @@ async fn range_proof_verification() {
         )
         .await
         .unwrap();
-    let tx_output2 = key_manager_output2.as_transaction_output(&key_manager).await;
+    let tx_output2 = wallet_output2.as_transaction_output(&key_manager).await;
     match tx_output2 {
         Ok(_) => panic!("Range proof should have failed to verify"),
         Err(e) => {
@@ -147,7 +147,7 @@ async fn range_proof_verification() {
 async fn range_proof_verification_batch() {
     let factories = CryptoFactories::new(64);
     let key_manager = create_test_core_key_manager_with_memory_db();
-    let key_manager_output1 = TestParams::new(&key_manager)
+    let wallet_output1 = TestParams::new(&key_manager)
         .await
         .create_output(
             UtxoTestParams {
@@ -158,10 +158,10 @@ async fn range_proof_verification_batch() {
         )
         .await
         .unwrap();
-    let tx_output1 = key_manager_output1.as_transaction_output(&key_manager).await.unwrap();
+    let tx_output1 = wallet_output1.as_transaction_output(&key_manager).await.unwrap();
     assert!(tx_output1.verify_range_proof(&factories.range_proof).is_ok());
 
-    let key_manager_output2 = TestParams::new(&key_manager)
+    let wallet_output2 = TestParams::new(&key_manager)
         .await
         .create_output(
             UtxoTestParams {
@@ -172,10 +172,10 @@ async fn range_proof_verification_batch() {
         )
         .await
         .unwrap();
-    let tx_output2 = key_manager_output2.as_transaction_output(&key_manager).await.unwrap();
+    let tx_output2 = wallet_output2.as_transaction_output(&key_manager).await.unwrap();
     assert!(tx_output2.verify_range_proof(&factories.range_proof).is_ok());
 
-    let key_manager_output3 = TestParams::new(&key_manager)
+    let wallet_output3 = TestParams::new(&key_manager)
         .await
         .create_output(
             UtxoTestParams {
@@ -186,10 +186,10 @@ async fn range_proof_verification_batch() {
         )
         .await
         .unwrap();
-    let tx_output3 = key_manager_output3.as_transaction_output(&key_manager).await.unwrap();
+    let tx_output3 = wallet_output3.as_transaction_output(&key_manager).await.unwrap();
     assert!(tx_output3.verify_range_proof(&factories.range_proof).is_ok());
 
-    let key_manager_output4 = TestParams::new(&key_manager)
+    let wallet_output4 = TestParams::new(&key_manager)
         .await
         .create_output(
             UtxoTestParams {
@@ -200,10 +200,10 @@ async fn range_proof_verification_batch() {
         )
         .await
         .unwrap();
-    let tx_output4 = key_manager_output4.as_transaction_output(&key_manager).await.unwrap();
+    let tx_output4 = wallet_output4.as_transaction_output(&key_manager).await.unwrap();
     assert!(tx_output4.verify_range_proof(&factories.range_proof).is_ok());
 
-    let key_manager_output5 = TestParams::new(&key_manager)
+    let wallet_output5 = TestParams::new(&key_manager)
         .await
         .create_output(
             UtxoTestParams {
@@ -214,7 +214,7 @@ async fn range_proof_verification_batch() {
         )
         .await
         .unwrap();
-    let mut tx_output5 = key_manager_output5.as_transaction_output(&key_manager).await.unwrap();
+    let mut tx_output5 = wallet_output5.as_transaction_output(&key_manager).await.unwrap();
     assert!(tx_output5.verify_range_proof(&factories.range_proof).is_ok());
 
     // The batch should pass
@@ -239,22 +239,22 @@ async fn range_proof_verification_batch() {
 async fn sender_signature_verification() {
     let key_manager = create_test_core_key_manager_with_memory_db();
     let test_params = TestParams::new(&key_manager).await;
-    let key_manager_output = test_params
+    let wallet_output = test_params
         .create_output(Default::default(), &key_manager)
         .await
         .unwrap();
 
-    let mut tx_output = key_manager_output.as_transaction_output(&key_manager).await.unwrap();
+    let mut tx_output = wallet_output.as_transaction_output(&key_manager).await.unwrap();
     assert!(tx_output.verify_metadata_signature().is_ok());
     tx_output.script = TariScript::default();
     assert!(tx_output.verify_metadata_signature().is_err());
 
-    tx_output = key_manager_output.as_transaction_output(&key_manager).await.unwrap();
+    tx_output = wallet_output.as_transaction_output(&key_manager).await.unwrap();
     assert!(tx_output.verify_metadata_signature().is_ok());
     tx_output.features = OutputFeatures::create_coinbase(0, None);
     assert!(tx_output.verify_metadata_signature().is_err());
 
-    tx_output = key_manager_output.as_transaction_output(&key_manager).await.unwrap();
+    tx_output = wallet_output.as_transaction_output(&key_manager).await.unwrap();
     assert!(tx_output.verify_metadata_signature().is_ok());
     tx_output.sender_offset_public_key = PublicKey::default();
     assert!(tx_output.verify_metadata_signature().is_err());
@@ -482,7 +482,7 @@ async fn test_output_recover_openings() {
     let test_params = TestParams::new(&key_manager).await;
     let v = MicroTari::from(42);
 
-    let key_manager_output = test_params
+    let wallet_output = test_params
         .create_output(
             UtxoTestParams {
                 value: v,
@@ -492,13 +492,13 @@ async fn test_output_recover_openings() {
         )
         .await
         .unwrap();
-    let output = key_manager_output.as_transaction_output(&key_manager).await.unwrap();
+    let output = wallet_output.as_transaction_output(&key_manager).await.unwrap();
 
     let (mask, value) = key_manager
         .try_commitment_key_recovery(&output.commitment, &output.encrypted_data, None)
         .await
         .unwrap();
-    assert_eq!(value, key_manager_output.value);
+    assert_eq!(value, wallet_output.value);
     assert_eq!(mask, test_params.spend_key_id);
 }
 

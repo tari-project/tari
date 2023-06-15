@@ -130,7 +130,7 @@ where
                 _ => OutputSource::RecoveredButUnrecognized,
             };
 
-            let db_output = DbWalletOutput::from_key_manager_output(
+            let db_output = DbWalletOutput::from_wallet_output(
                 output.clone(),
                 &self.master_key_manager,
                 None,

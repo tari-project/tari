@@ -324,7 +324,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         .await
         .unwrap();
 
-    let key_manager_output = WalletOutput::new_current_version(
+    let wallet_output = WalletOutput::new_current_version(
         amount,
         spending_key_id.clone(),
         output_features,
@@ -342,10 +342,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         utxo.minimum_value_promise,
     );
 
-    let txn = txn_schema!(
-        from: vec![key_manager_output],
-        to: vec![MicroTari(5_000), MicroTari(4_000)]
-    );
+    let txn = txn_schema!(from: vec![wallet_output], to: vec![MicroTari(5_000), MicroTari(4_000)]);
     let (txn, _) = spend_utxos(txn, &key_manager).await;
     let block1 = append_block(&store, &block0, vec![txn], &consensus_manager, 1.into(), &key_manager)
         .await

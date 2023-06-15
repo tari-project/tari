@@ -1099,17 +1099,17 @@ async fn recover_one_sided_transaction() {
         .expect("Could not find completed one-sided tx");
     let outputs = completed_tx.transaction.body.outputs().clone();
 
-    let key_manager_output = bob_oms
+    let recovered_outputs_1 = bob_oms
         .scan_outputs_for_one_sided_payments(outputs.clone())
         .await
         .unwrap();
     // Bob should be able to claim 1 output.
-    assert_eq!(1, key_manager_output.len());
-    assert_eq!(value, key_manager_output[0].output.value);
+    assert_eq!(1, recovered_outputs_1.len());
+    assert_eq!(value, recovered_outputs_1[0].output.value);
 
     // Should ignore already existing outputs
-    let key_manager_output = bob_oms.scan_outputs_for_one_sided_payments(outputs).await.unwrap();
-    assert!(key_manager_output.is_empty());
+    let recovered_outputs_2 = bob_oms.scan_outputs_for_one_sided_payments(outputs).await.unwrap();
+    assert!(recovered_outputs_2.is_empty());
 }
 
 #[tokio::test]

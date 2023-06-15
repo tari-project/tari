@@ -405,7 +405,7 @@ where KM: TransactionKeyManagerInterface
                             .await
                             .map_err(|e| e.to_string())?;
 
-                        let change_key_manager_output = WalletOutput::new_current_version(
+                        let change_wallet_output = WalletOutput::new_current_version(
                             v,
                             change_key_id.clone(),
                             output_features,
@@ -422,7 +422,7 @@ where KM: TransactionKeyManagerInterface
                         Ok((
                             fee_without_change + change_fee,
                             v,
-                            Some((change_key_manager_output, sender_offset_key_id)),
+                            Some((change_wallet_output, sender_offset_key_id)),
                         ))
                     },
                 }

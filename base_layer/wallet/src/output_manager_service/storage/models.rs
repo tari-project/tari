@@ -60,7 +60,7 @@ pub struct DbWalletOutput {
 }
 
 impl DbWalletOutput {
-    pub async fn from_key_manager_output<KM: TransactionKeyManagerInterface>(
+    pub async fn from_wallet_output<KM: TransactionKeyManagerInterface>(
         output: WalletOutput,
         key_manager: &KM,
         spend_priority: Option<SpendingPriority>,

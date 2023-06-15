@@ -287,7 +287,7 @@ where
     #[allow(clippy::too_many_lines)]
     pub async fn start(mut self) -> Result<(), TransactionServiceError> {
         // we need to ensure the wallet identity secret key is stored in the key manager
-        let _ = self
+        let _key_id = self
             .resources
             .transaction_key_manager_service
             .import_key(self.resources.wallet_identity.node_identity.secret_key().clone())
@@ -1274,6 +1274,7 @@ where
         Ok(Box::new((tx_id, pre_image, tx_output)))
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn send_one_sided_or_stealth(
         &mut self,
         dest_address: TariAddress,

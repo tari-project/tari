@@ -117,7 +117,7 @@ pub async fn create_coinbase(
         .build()
         .unwrap();
 
-    let key_manager_output = create_wallet_output_with_data(
+    let wallet_output = create_wallet_output_with_data(
         script!(Nop),
         OutputFeatures::create_coinbase(maturity_height, extra),
         &p,
@@ -126,9 +126,9 @@ pub async fn create_coinbase(
     )
     .await
     .unwrap();
-    let output = key_manager_output.as_transaction_output(key_manager).await.unwrap();
+    let output = wallet_output.as_transaction_output(key_manager).await.unwrap();
 
-    (output, kernel, key_manager_output)
+    (output, kernel, wallet_output)
 }
 
 async fn genesis_template(
@@ -196,6 +196,7 @@ async fn print_new_genesis_block_igor() {
     print_new_genesis_block(Network::Igor, "Hello, Igor").await;
 }
 
+#[allow(clippy::too_many_lines)]
 async fn print_new_genesis_block(network: Network, extra: &str) {
     let consensus_manager: ConsensusManager = ConsensusManagerBuilder::new(network).build();
     let mut header = BlockHeader::new(consensus_manager.consensus_constants(0).blockchain_version());
@@ -403,18 +404,18 @@ pub async fn create_genesis_block_with_utxos(
     outputs.push(coinbase);
     for value in values {
         let p = TestParams::new(key_manager).await;
-        let key_manager_output =
+        let wallet_output =
             create_wallet_output_with_data(script.clone(), output_features.clone(), &p, *value, key_manager)
                 .await
                 .unwrap();
-        outputs.push(key_manager_output.clone());
-        let output = key_manager_output.as_transaction_output(key_manager).await.unwrap();
+        outputs.push(wallet_output.clone());
+        let output = wallet_output.as_transaction_output(key_manager).await.unwrap();
         template.body.add_output(output);
     }
     // let outputs = values.iter().fold(vec![coinbase], |mut secrets, v| {
     //     let p = TestParams::new(key_manager).await;
     //     let unblinded_output =
-    //         create_key_manager_output_with_data(script.clone(), output_features.clone(), &p, *v).await.unwrap();
+    //         create_wallet_output_with_data(script.clone(), output_features.clone(), &p, *v).await.unwrap();
     //     secrets.push(unblinded_output.clone());
     //     let output = unblinded_output.as_transaction_output(factories).unwrap();
     //     template.body.add_output(output);

@@ -420,15 +420,15 @@ impl TransactionOutput {
 
     /// Convenience function to get the entire metadata signature message for the challenge. This contains all data
     /// outside of the signing keys and nonces.
-    pub fn metadata_signature_message(key_manager_output: &WalletOutput) -> [u8; 32] {
+    pub fn metadata_signature_message(wallet_output: &WalletOutput) -> [u8; 32] {
         let common = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("metadata_message")
-            .chain(&key_manager_output.version)
-            .chain(&key_manager_output.script)
-            .chain(&key_manager_output.features)
-            .chain(&key_manager_output.covenant)
-            .chain(&key_manager_output.encrypted_data)
-            .chain(&key_manager_output.minimum_value_promise);
-        match key_manager_output.version {
+            .chain(&wallet_output.version)
+            .chain(&wallet_output.script)
+            .chain(&wallet_output.features)
+            .chain(&wallet_output.covenant)
+            .chain(&wallet_output.encrypted_data)
+            .chain(&wallet_output.minimum_value_promise);
+        match wallet_output.version {
             TransactionOutputVersion::V0 | TransactionOutputVersion::V1 => common.finalize(),
         }
     }
@@ -595,7 +595,7 @@ mod test {
     };
 
     #[tokio::test]
-    async fn it_builds_correctly_from_key_manager_output() {
+    async fn it_builds_correctly() {
         let factories = CryptoFactories::default();
         let key_manager = create_test_core_key_manager_with_memory_db();
         let test_params = TestParams::new(&key_manager).await;

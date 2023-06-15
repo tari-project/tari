@@ -225,7 +225,7 @@ async fn inputs_are_not_malleable() {
         .get_public_key_at_key_id(&malicious_test_params.script_key_id)
         .await
         .unwrap();
-    let malicious_key_manager_output = malicious_test_params
+    let malicious_wallet_output = malicious_test_params
         .create_input(
             UtxoTestParams {
                 value: spent_output.value,
@@ -238,7 +238,7 @@ async fn inputs_are_not_malleable() {
         )
         .await;
 
-    let malicious_input = malicious_key_manager_output
+    let malicious_input = malicious_wallet_output
         .as_transaction_input(&blockchain.key_manager)
         .await
         .unwrap();
@@ -606,6 +606,7 @@ OutputFeatures::default()),
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn test_header_validation() {
     let factories = CryptoFactories::default();
     let key_manager = create_test_core_key_manager_with_memory_db();

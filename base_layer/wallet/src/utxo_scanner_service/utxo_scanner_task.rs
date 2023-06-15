@@ -668,7 +668,7 @@ where
     /// TxId of the generated transaction is returned.
     pub async fn import_key_manager_utxo_to_transaction_service(
         &mut self,
-        key_manager_output: WalletOutput,
+        wallet_output: WalletOutput,
         source_address: TariAddress,
         message: String,
         import_status: ImportStatus,
@@ -680,10 +680,10 @@ where
             .resources
             .transaction_service
             .import_utxo_with_status(
-                key_manager_output.value,
+                wallet_output.value,
                 source_address,
                 message,
-                Some(key_manager_output.features.maturity),
+                Some(wallet_output.features.maturity),
                 import_status.clone(),
                 Some(tx_id),
                 Some(current_height),
@@ -693,7 +693,7 @@ where
 
         info!(
             target: LOG_TARGET,
-            "UTXO with value {},  imported into wallet as 'ImportStatus::{}'", key_manager_output.value, import_status
+            "UTXO with value {},  imported into wallet as 'ImportStatus::{}'", wallet_output.value, import_status
         );
 
         Ok(tx_id)

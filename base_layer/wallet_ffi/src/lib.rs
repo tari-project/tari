@@ -1843,7 +1843,7 @@ pub unsafe extern "C" fn wallet_import_external_utxo_as_non_rewindable(
     };
     match (*wallet)
         .runtime
-        .block_on((*wallet).wallet.import_key_manager_output_as_non_rewindable(
+        .block_on((*wallet).wallet.import_unblinded_output_as_non_rewindable(
             (*output).clone(),
             source_address,
             message_string,

@@ -267,7 +267,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             )
             .await?;
 
-        let key_manager_output = WalletOutput::new(
+        let wallet_output = WalletOutput::new(
             output_version,
             total_reward,
             spending_key_id,
@@ -282,7 +282,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             encrypted_data,
             minimum_value_promise,
         );
-        let output = key_manager_output
+        let output = wallet_output
             .as_transaction_output(&self.key_manager)
             .await
             .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
@@ -305,7 +305,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         let tx = builder
             .build()
             .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
-        Ok((tx, key_manager_output))
+        Ok((tx, wallet_output))
     }
 }
 

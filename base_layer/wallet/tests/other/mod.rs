@@ -51,7 +51,7 @@ use tari_core::{
     covenants::Covenant,
     transactions::{
         tari_amount::{uT, MicroTari},
-        test_helpers::{create_key_manager_output_with_data, TestParams},
+        test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::OutputFeatures,
         CryptoFactories,
     },
@@ -736,7 +736,7 @@ async fn test_import_utxo() {
 
     let key_manager = create_test_core_key_manager_with_memory_db();
     let p = TestParams::new(&key_manager);
-    let utxo = create_key_manager_output_with_data(script.clone(), temp_features, &p, 20000 * uT, &key_manager).await.unwrap();
+    let utxo = create_wallet_output_with_data(script.clone(), temp_features, &p, 20000 * uT, &key_manager).await.unwrap();
     let output = utxo.as_transaction_output(&key_manager).unwrap();
     let expected_output_hash = output.hash();
     let node_address = TariAddress::new(node_identity.public_key().clone(), network);

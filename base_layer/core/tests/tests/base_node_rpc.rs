@@ -123,6 +123,7 @@ async fn setup() -> (
 }
 #[tokio::test]
 #[allow(clippy::identity_op)]
+#[allow(clippy::too_many_lines)]
 async fn test_base_node_wallet_rpc() {
     // Testing the submit_transaction() and transaction_query() rpc calls
     let (service, _, mut base_node, request_mock, consensus_manager, block0, utxo0, _temp_dir, key_manager) =

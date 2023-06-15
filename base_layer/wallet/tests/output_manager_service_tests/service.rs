@@ -2036,7 +2036,7 @@ async fn scan_for_recovery_test() {
     const NUM_RECOVERABLE: usize = 5;
     const NUM_NON_RECOVERABLE: usize = 3;
 
-    let mut recoverable_key_manager_outputs = Vec::new();
+    let mut recoverable_wallet_outputs = Vec::new();
 
     for i in 1..=NUM_RECOVERABLE {
         let (spending_key_result, _) = oms
@@ -2071,10 +2071,10 @@ async fn scan_for_recovery_test() {
             encrypted_data,
             MicroTari::zero(),
         );
-        recoverable_key_manager_outputs.push(uo);
+        recoverable_wallet_outputs.push(uo);
     }
 
-    let mut non_recoverable_key_manager_outputs = Vec::new();
+    let mut non_recoverable_wallet_outputs = Vec::new();
 
     for i in 1..=NUM_NON_RECOVERABLE {
         let uo = make_non_recoverable_input(
@@ -2084,20 +2084,20 @@ async fn scan_for_recovery_test() {
             &oms.key_manager_handle,
         )
         .await;
-        non_recoverable_key_manager_outputs.push(uo)
+        non_recoverable_wallet_outputs.push(uo)
     }
     let mut recoverable_outputs = Vec::new();
-    for output in &recoverable_key_manager_outputs {
+    for output in &recoverable_wallet_outputs {
         recoverable_outputs.push(output.as_transaction_output(&oms.key_manager_handle).await.unwrap());
     }
 
     let mut non_recoverable_outputs = Vec::new();
-    for output in non_recoverable_key_manager_outputs {
+    for output in non_recoverable_wallet_outputs {
         non_recoverable_outputs.push(output.as_transaction_output(&oms.key_manager_handle).await.unwrap());
     }
 
     oms.output_manager_handle
-        .add_output(recoverable_key_manager_outputs[0].clone(), None)
+        .add_output(recoverable_wallet_outputs[0].clone(), None)
         .await
         .unwrap();
 
@@ -2117,7 +2117,7 @@ async fn scan_for_recovery_test() {
     // contained in the OMS database is also not included in the returns outputs.
 
     assert_eq!(recovered_outputs.len(), NUM_RECOVERABLE - 1);
-    for o in recoverable_key_manager_outputs.iter().skip(1) {
+    for o in recoverable_wallet_outputs.iter().skip(1) {
         assert!(recovered_outputs
             .iter()
             .any(|ro| ro.output.spending_key_id == o.spending_key_id));

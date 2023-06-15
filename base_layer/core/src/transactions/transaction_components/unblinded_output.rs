@@ -160,7 +160,7 @@ impl UnblindedOutput {
     ) -> Result<Self, TransactionError> {
         let spending_key = key_manager.get_private_key(&output.spending_key_id).await?;
         let script_private_key = key_manager.get_private_key(&output.script_key_id).await?;
-        let key_manager_output = UnblindedOutput {
+        let unblinded_output = UnblindedOutput {
             version: output.version,
             value: output.value,
             spending_key,
@@ -175,7 +175,7 @@ impl UnblindedOutput {
             encrypted_data: output.encrypted_data,
             minimum_value_promise: output.minimum_value_promise,
         };
-        Ok(key_manager_output)
+        Ok(unblinded_output)
     }
 }
 

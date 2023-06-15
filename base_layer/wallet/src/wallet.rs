@@ -446,7 +446,7 @@ where
         minimum_value_promise: MicroTari,
     ) -> Result<TxId, WalletError> {
         // lets import the private keys
-        let key_manager_output = UnblindedOutput::new_current_version(
+        let unblinded_output = UnblindedOutput::new_current_version(
             amount,
             spending_key.clone(),
             features.clone(),
@@ -460,14 +460,14 @@ where
             encrypted_data,
             minimum_value_promise,
         );
-        self.import_key_manager_output_as_non_rewindable(key_manager_output, source_address, message)
+        self.import_unblinded_output_as_non_rewindable(unblinded_output, source_address, message)
             .await
     }
 
     /// Import an external spendable UTXO into the wallet as a non-rewindable/non-recoverable UTXO. The output will be
     /// added to the Output Manager and made spendable. A faux incoming transaction will be created to provide a record
     /// of the event. The TxId of the generated transaction is returned.
-    pub async fn import_key_manager_output_as_non_rewindable(
+    pub async fn import_unblinded_output_as_non_rewindable(
         &mut self,
         unblinded_output: UnblindedOutput,
         source_address: TariAddress,
