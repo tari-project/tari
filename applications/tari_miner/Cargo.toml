@@ -14,7 +14,7 @@ tari_common_types = { path = "../../base_layer/common_types" }
 tari_comms = { path = "../../comms/core" }
 tari_app_utilities = { path = "../tari_app_utilities" }
 tari_app_grpc = { path = "../tari_app_grpc" }
-tari_crypto = { version = "0.16"}
+tari_crypto = { version = "0.17" }
 tari_utilities = "0.4.10"
 
 borsh = "0.9.3"

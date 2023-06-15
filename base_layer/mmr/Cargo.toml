@@ -14,7 +14,7 @@ benches = ["criterion"]
 
 [dependencies]
 tari_utilities = "0.4"
-tari_crypto = { version = "0.16" }
+tari_crypto = { version = "0.17" }
 tari_common = { path = "../../common" }
 thiserror = "1.0"
 borsh = "0.9"
