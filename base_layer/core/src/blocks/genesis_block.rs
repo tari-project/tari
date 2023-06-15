@@ -546,7 +546,7 @@ fn get_esmeralda_genesis_block_raw() -> Block {
     let mut body = AggregateBody::new(vec![], vec![coinbase], vec![kernel]);
     body.sort();
     // set genesis timestamp
-    let genesis = DateTime::parse_from_rfc2822("31 Mar 2023 14:00:00 +0200").unwrap();
+    let genesis = DateTime::parse_from_rfc2822("15 Jun 2023 14:00:00 +0200").unwrap();
     #[allow(clippy::cast_sign_loss)]
     let timestamp = genesis.timestamp() as u64;
     Block {
