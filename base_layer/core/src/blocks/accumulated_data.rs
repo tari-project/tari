@@ -37,7 +37,7 @@ use serde::{
     Serialize,
     Serializer,
 };
-use tari_common_types::types::{BlindingFactor, Commitment, HashOutput};
+use tari_common_types::types::{Commitment, HashOutput, PrivateKey};
 use tari_mmr::{pruned_hashset::PrunedHashSet, ArrayLike};
 use tari_utilities::hex::Hex;
 
@@ -249,7 +249,7 @@ impl CompleteDeletedBitmap {
 pub struct BlockHeaderAccumulatedDataBuilder<'a> {
     previous_accum: &'a BlockHeaderAccumulatedData,
     hash: Option<HashOutput>,
-    current_total_kernel_offset: Option<BlindingFactor>,
+    current_total_kernel_offset: Option<PrivateKey>,
     current_achieved_target: Option<AchievedTargetDifficulty>,
 }
 
@@ -270,7 +270,7 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
         self
     }
 
-    pub fn with_total_kernel_offset(mut self, current_offset: BlindingFactor) -> Self {
+    pub fn with_total_kernel_offset(mut self, current_offset: PrivateKey) -> Self {
         self.current_total_kernel_offset = Some(current_offset);
         self
     }
@@ -337,7 +337,7 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
 #[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
 pub struct BlockHeaderAccumulatedData {
     pub hash: HashOutput,
-    pub total_kernel_offset: BlindingFactor,
+    pub total_kernel_offset: PrivateKey,
     pub achieved_difficulty: Difficulty,
     pub total_accumulated_difficulty: u128,
     /// The total accumulated difficulty for monero proof of work for all blocks since Genesis,

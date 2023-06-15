@@ -19,7 +19,7 @@ pub mod test_utils;
 pub mod transaction_service;
 pub mod types;
 
-pub use types::WalletHasher; // For use externally to the code base
+pub use tari_common_types::types::WalletHasher;
 pub mod util;
 pub mod wallet;
 
@@ -36,6 +36,7 @@ pub mod utxo_scanner_service;
 
 pub use config::{TransactionStage, WalletConfig};
 use tari_contacts::contacts_service::storage::sqlite_db::ContactsServiceSqliteDatabase;
+use tari_core::transactions::key_manager::TransactionKeyManagerWrapper;
 use tari_key_manager::key_manager_service::storage::sqlite_db::KeyManagerSqliteDatabase;
 pub use wallet::Wallet;
 
@@ -55,5 +56,5 @@ pub type WalletSqlite = Wallet<
     TransactionServiceSqliteDatabase,
     OutputManagerSqliteDatabase,
     ContactsServiceSqliteDatabase<WalletDbConnection>,
-    KeyManagerSqliteDatabase<WalletDbConnection>,
+    TransactionKeyManagerWrapper<KeyManagerSqliteDatabase<WalletDbConnection>>,
 >;

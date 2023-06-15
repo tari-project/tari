@@ -22,62 +22,52 @@
 
 use std::default::Default;
 
-use tari_common_types::types::{Commitment, PrivateKey, Signature};
-use tari_core::transactions::{
-    tari_amount::MicroTari,
-    test_helpers::TestParams,
-    transaction_components::{
-        KernelBuilder,
-        Transaction,
-        TransactionBuilder,
-        TransactionInput,
-        TransactionKernel,
-        TransactionKernelVersion,
-        TransactionOutput,
-        UnblindedOutput,
-        UnblindedOutputBuilder,
-    },
-    transaction_protocol::TransactionMetadata,
-    CryptoFactories,
-};
-use tari_crypto::{
-    keys::PublicKey,
-    ristretto::{
-        pedersen::extended_commitment_factory::ExtendedPedersenCommitmentFactory,
-        RistrettoPublicKey,
-        RistrettoSecretKey,
+use tari_core::{
+    borsh::SerializedSize,
+    covenants::Covenant,
+    transactions::{
+        key_manager::TariKeyId,
+        tari_amount::MicroTari,
+        test_helpers::{create_transaction_with, TestKeyManager, TestParams},
+        transaction_components::{
+            OutputFeatures,
+            Transaction,
+            TransactionInput,
+            TransactionOutput,
+            WalletOutput,
+            WalletOutputBuilder,
+        },
+        weight::TransactionWeight,
     },
 };
-use tari_script::{inputs, script};
+use tari_script::{inputs, script, TariScript};
 
 #[derive(Clone)]
 struct TestTransactionBuilder {
     amount: MicroTari,
-    factories: CryptoFactories,
-    fee: MicroTari,
+    fee_per_gram: MicroTari,
     inputs_max_height: u64,
-    inputs: Vec<(TransactionInput, UnblindedOutput)>,
+    inputs: Vec<(TransactionInput, WalletOutput)>,
     keys: TestParams,
     lock_height: u64,
-    output: Option<(TransactionOutput, UnblindedOutput)>,
+    output: Option<(TransactionOutput, WalletOutput, TariKeyId)>,
 }
 
 impl TestTransactionBuilder {
-    pub fn new() -> Self {
+    pub async fn new(key_manager: &TestKeyManager) -> Self {
         Self {
             amount: MicroTari(0),
-            factories: CryptoFactories::default(),
-            fee: MicroTari(0),
+            fee_per_gram: MicroTari(1),
             inputs_max_height: 0,
             inputs: vec![],
-            keys: TestParams::new(),
+            keys: TestParams::new(key_manager).await,
             lock_height: 0,
             output: None,
         }
     }
 
-    pub fn change_fee(&mut self, fee: MicroTari) -> &mut Self {
-        self.fee = fee;
+    pub fn fee_per_gram(&mut self, fee: MicroTari) -> &mut Self {
+        self.fee_per_gram = fee;
         self
     }
 
@@ -90,7 +80,7 @@ impl TestTransactionBuilder {
         self.amount += amount
     }
 
-    pub fn add_input(&mut self, u: UnblindedOutput) -> &mut Self {
+    pub async fn add_input(&mut self, u: WalletOutput, key_manager: &TestKeyManager) -> &mut Self {
         self.update_amount(u.value);
 
         if u.features.maturity > self.inputs_max_height {
@@ -98,123 +88,99 @@ impl TestTransactionBuilder {
         }
 
         self.inputs.push((
-            u.as_transaction_input(&ExtendedPedersenCommitmentFactory::default())
-                .expect("The Unblinded output to convert to an Input"),
+            u.as_transaction_input(key_manager)
+                .await
+                .expect("The wallet output to convert to an Input"),
             u,
         ));
 
         self
     }
 
-    pub fn build(mut self) -> (Transaction, UnblindedOutput) {
-        self.create_non_recoverable_utxo();
+    pub async fn build(mut self, key_manager: &TestKeyManager) -> (Transaction, WalletOutput) {
+        self.create_utxo(key_manager, self.inputs.len()).await;
 
-        let (script_offset_pvt, offset, kernel) = &self.build_kernel();
+        let inputs = self.inputs.iter().map(|f| f.1.clone()).collect();
+        let outputs = vec![(self.output.clone().unwrap().1, self.output.clone().unwrap().2)];
+        let tx = create_transaction_with(self.lock_height, self.fee_per_gram, inputs, outputs, key_manager).await;
 
-        let output = self.output.clone().unwrap();
-
-        let mut tx_builder = TransactionBuilder::new();
-        tx_builder
-            .add_inputs(&mut self.inputs.iter().map(|f| f.0.clone()).collect())
-            .add_output(self.output.unwrap().0)
-            .add_offset(offset.clone())
-            .add_script_offset(script_offset_pvt.clone())
-            .with_kernel(kernel.clone());
-
-        let tx = tx_builder.build().unwrap();
-        (tx, output.1)
+        (tx, self.output.clone().unwrap().1)
     }
 
-    pub fn build_kernel(&self) -> (PrivateKey, RistrettoSecretKey, TransactionKernel) {
-        let input = &self.inputs[0].1.clone();
-        let output = &self.output.clone().unwrap().1;
-
-        let fee = self.fee;
-        let nonce = PrivateKey::default() + self.keys.nonce.clone();
-        let offset = PrivateKey::default() + self.keys.offset.clone();
-
-        let script_offset_pvt = input.script_private_key.clone() - self.keys.sender_offset_private_key.clone();
-        let excess_blinding_factor = output.spending_key.clone() - input.spending_key.clone();
-
-        let tx_meta = TransactionMetadata::new(fee, self.lock_height);
-
-        let public_nonce = PublicKey::from_secret_key(&nonce);
-        let offset_blinding_factor = &excess_blinding_factor - &offset;
-        let excess = PublicKey::from_secret_key(&offset_blinding_factor);
-        let e = TransactionKernel::build_kernel_challenge_from_tx_meta(
-            &TransactionKernelVersion::get_current_version(),
-            &public_nonce,
-            &excess,
-            &tx_meta,
-        );
-        let k = offset_blinding_factor;
-        let r = nonce;
-        let s = Signature::sign_raw(&k, r, &e).unwrap();
-
-        let kernel = KernelBuilder::new()
-            .with_fee(self.fee)
-            .with_lock_height(self.lock_height)
-            .with_excess(&Commitment::from_public_key(&excess))
-            .with_signature(&s)
-            .build()
-            .unwrap();
-
-        (script_offset_pvt, offset, kernel)
-    }
-
-    fn calculate_spendable(&self) -> MicroTari {
-        MicroTari(self.amount.0 - self.fee.0)
-    }
-
-    fn create_non_recoverable_utxo(&mut self) {
-        let input_data: RistrettoPublicKey = PublicKey::from_secret_key(&self.keys.script_private_key);
-
-        let mut builder = UnblindedOutputBuilder::new(self.calculate_spendable(), self.keys.spend_key.clone())
-            .with_features(Default::default())
-            .with_script(script!(Nop))
-            .with_script_private_key(self.keys.script_private_key.clone())
-            .with_input_data(inputs!(input_data));
-        builder.with_sender_offset_public_key(self.keys.sender_offset_public_key.clone());
-        builder
-            .sign_as_sender_and_receiver(&self.keys.sender_offset_private_key.clone())
+    async fn create_utxo(&mut self, key_manager: &TestKeyManager, num_inputs: usize) {
+        let script = script!(Nop);
+        let features = OutputFeatures::default();
+        let covenant = Covenant::default();
+        let value = self.amount - self.estimate_fee(num_inputs, features.clone(), script.clone(), covenant.clone());
+        let builder = WalletOutputBuilder::new(value, self.keys.spend_key_id.clone())
+            .with_features(features)
+            .with_script(script)
+            .with_script_key(self.keys.script_key_id.clone())
+            .with_input_data(inputs!(self.keys.script_key_pk.clone()))
+            .with_sender_offset_public_key(self.keys.sender_offset_key_pk.clone())
+            .sign_as_sender_and_receiver(key_manager, &self.keys.sender_offset_key_id.clone())
+            .await
             .expect("sign as sender and receiver");
-        let unblinded = builder.try_build().expect("Get output from unblinded output");
-        let utxo = unblinded
-            .as_transaction_output(&self.factories)
-            .expect("unblinded into output");
+        let wallet_output = builder.try_build().expect("Get output from wallet output");
+        let utxo = wallet_output
+            .as_transaction_output(key_manager)
+            .await
+            .expect("wallet into output");
 
-        self.output = Some((utxo, unblinded));
+        self.output = Some((utxo, wallet_output, self.keys.sender_offset_key_id.clone()));
+    }
+
+    fn estimate_fee(
+        &self,
+        num_inputs: usize,
+        features: OutputFeatures,
+        script: TariScript,
+        covenant: Covenant,
+    ) -> MicroTari {
+        let features_and_scripts_bytes =
+            features.get_serialized_size() + script.get_serialized_size() + covenant.get_serialized_size();
+        let weights = TransactionWeight::v1();
+        let fee = self.fee_per_gram.0 * weights.calculate(1, num_inputs, 1 + 1, features_and_scripts_bytes);
+        MicroTari(fee)
     }
 }
 
-pub fn build_transaction_with_output_and_fee(utxos: Vec<UnblindedOutput>, fee: u64) -> (Transaction, UnblindedOutput) {
-    let mut builder = TestTransactionBuilder::new();
-    for unblinded_output in utxos {
-        builder.add_input(unblinded_output);
+pub async fn build_transaction_with_output_and_fee_per_gram(
+    utxos: Vec<WalletOutput>,
+    fee_per_gram: u64,
+    key_manager: &TestKeyManager,
+) -> (Transaction, WalletOutput) {
+    let mut builder = TestTransactionBuilder::new(key_manager).await;
+    for wallet_output in utxos {
+        builder.add_input(wallet_output, key_manager).await;
     }
-    builder.change_fee(MicroTari(fee));
+    builder.fee_per_gram(MicroTari(fee_per_gram));
 
-    builder.build()
+    builder.build(key_manager).await
 }
 
-pub fn build_transaction_with_output_and_lockheight(
-    utxos: Vec<UnblindedOutput>,
+pub async fn build_transaction_with_output_and_lockheight(
+    utxos: Vec<WalletOutput>,
     lockheight: u64,
-) -> (Transaction, UnblindedOutput) {
-    let mut builder = TestTransactionBuilder::new();
-    for unblinded_output in utxos {
-        builder.add_input(unblinded_output);
+    key_manager: &TestKeyManager,
+) -> (Transaction, WalletOutput) {
+    let mut builder = TestTransactionBuilder::new(key_manager).await;
+    for wallet_output in utxos {
+        builder.add_input(wallet_output, key_manager).await;
     }
     builder.lock_height = lockheight;
 
-    builder.build()
+    builder.build(key_manager).await
 }
 
-pub fn build_transaction_with_output(utxos: Vec<UnblindedOutput>) -> (Transaction, UnblindedOutput) {
-    let mut builder = TestTransactionBuilder::new();
-    for unblinded_output in utxos {
-        builder.add_input(unblinded_output);
+pub async fn build_transaction_with_output(
+    utxos: Vec<WalletOutput>,
+    key_manager: &TestKeyManager,
+) -> (Transaction, WalletOutput) {
+    let mut builder = TestTransactionBuilder::new(key_manager).await;
+    for wallet_output in utxos {
+        builder.add_input(wallet_output, key_manager).await;
     }
 
-    builder.build()
+    builder.build(key_manager).await
 }

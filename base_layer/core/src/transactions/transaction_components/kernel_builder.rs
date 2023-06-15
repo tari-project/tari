@@ -78,8 +78,8 @@ impl KernelBuilder {
     }
 
     /// Add the excess signature
-    pub fn with_signature(mut self, signature: &Signature) -> KernelBuilder {
-        self.excess_sig = Some(signature.clone());
+    pub fn with_signature(mut self, signature: Signature) -> KernelBuilder {
+        self.excess_sig = Some(signature);
         self
     }
 

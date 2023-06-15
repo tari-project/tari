@@ -22,7 +22,7 @@
 
 use std::convert::TryFrom;
 
-use tari_common_types::types::{BlindingFactor, FixedHash};
+use tari_common_types::types::{FixedHash, PrivateKey};
 use tari_core::{blocks::BlockHeader, proof_of_work::ProofOfWork};
 use tari_utilities::ByteArray;
 
@@ -62,11 +62,9 @@ impl TryFrom<grpc::BlockHeader> for BlockHeader {
     type Error = String;
 
     fn try_from(header: grpc::BlockHeader) -> Result<Self, Self::Error> {
-        let total_kernel_offset =
-            BlindingFactor::from_bytes(&header.total_kernel_offset).map_err(|err| err.to_string())?;
+        let total_kernel_offset = PrivateKey::from_bytes(&header.total_kernel_offset).map_err(|err| err.to_string())?;
 
-        let total_script_offset =
-            BlindingFactor::from_bytes(&header.total_script_offset).map_err(|err| err.to_string())?;
+        let total_script_offset = PrivateKey::from_bytes(&header.total_script_offset).map_err(|err| err.to_string())?;
 
         let timestamp = header
             .timestamp

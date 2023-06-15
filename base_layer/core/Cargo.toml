@@ -34,7 +34,10 @@ tari_shutdown = {  path = "../../infrastructure/shutdown" }
 tari_storage = {  path = "../../infrastructure/storage" }
 tari_test_utils = {  path = "../../infrastructure/test_utils" }
 tari_utilities = { version="0.4.10", features = ["borsh"] }
+tari_key_manager = {  path = "../key_manager", features = ["key_manager_service"] }
+tari_common_sqlite = { path = "../../common_sqlite" }
 
+async-trait = {version = "0.1.50"}
 bincode = "1.1.4"
 bitflags = "1.0.4"
 blake2 = "^0.9.0"
@@ -68,6 +71,7 @@ serde = { version = "1.0.106", features = ["derive"] }
 serde_json = "1.0"
 serde_repr = "0.1.8"
 sha3 = "0.9"
+strum = "0.22"
 strum_macros = "0.22"
 thiserror = "1.0.26"
 tokio = { version = "1.23", features = ["time", "sync", "macros"] }

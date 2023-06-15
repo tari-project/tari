@@ -2569,8 +2569,8 @@ mod test {
     mod get_orphan_link_main_chain {
         use super::*;
 
-        #[test]
-        fn it_gets_a_simple_link_to_genesis() {
+        #[tokio::test]
+        async fn it_gets_a_simple_link_to_genesis() {
             let db = create_new_blockchain();
             let genesis = db
                 .fetch_block(0, true)
@@ -2579,7 +2579,7 @@ mod test {
                 .map(Arc::new)
                 .unwrap();
             let (_, chain) =
-                create_orphan_chain(&db, &[("A->GB", 1, 120), ("B->A", 1, 120), ("C->B", 1, 120)], genesis);
+                create_orphan_chain(&db, &[("A->GB", 1, 120), ("B->A", 1, 120), ("C->B", 1, 120)], genesis).await;
             let access = db.db_read_access().unwrap();
             let orphan_chain = get_orphan_link_main_chain(&*access, chain.get("C").unwrap().hash()).unwrap();
             assert_eq!(orphan_chain[2].hash(), chain.get("C").unwrap().hash());
@@ -2588,8 +2588,8 @@ mod test {
             assert_eq!(orphan_chain.len(), 3);
         }
 
-        #[test]
-        fn it_selects_a_large_reorg_chain() {
+        #[tokio::test]
+        async fn it_selects_a_large_reorg_chain() {
             let db = create_new_blockchain();
             // Main chain
             let (_, mainchain) = create_main_chain(&db, &[
@@ -2597,7 +2597,8 @@ mod test {
                 ("B->A", 1, 120),
                 ("C->B", 1, 120),
                 ("D->C", 1, 120),
-            ]);
+            ])
+            .await;
             // Create reorg chain
             let fork_root = mainchain.get("B").unwrap().clone();
             let (_, reorg_chain) = create_orphan_chain(
@@ -2609,7 +2610,8 @@ mod test {
                     ("F2->E2", 1, 120),
                 ],
                 fork_root,
-            );
+            )
+            .await;
             let access = db.db_read_access().unwrap();
             let orphan_chain = get_orphan_link_main_chain(&*access, reorg_chain.get("F2").unwrap().hash()).unwrap();
 
@@ -2632,8 +2634,8 @@ mod test {
     mod insert_orphan_and_find_new_tips {
         use super::*;
 
-        #[test]
-        fn it_inserts_new_block_in_orphan_db_as_tip() {
+        #[tokio::test]
+        async fn it_inserts_new_block_in_orphan_db_as_tip() {
             let db = create_new_blockchain();
             let validator = MockValidator::new(true);
             let genesis_block = db
@@ -2642,7 +2644,7 @@ mod test {
                 .try_into_chain_block()
                 .map(Arc::new)
                 .unwrap();
-            let (_, chain) = create_chained_blocks(&[("A->GB", 1u64, 120u64)], genesis_block);
+            let (_, chain) = create_chained_blocks(&[("A->GB", 1u64, 120u64)], genesis_block).await;
             let block = chain.get("A").unwrap().clone();
             let mut access = db.db_write_access().unwrap();
             insert_orphan_and_find_new_tips(
@@ -2658,15 +2660,15 @@ mod test {
             assert_eq!(maybe_block.unwrap().header(), block.header());
         }
 
-        #[test]
-        fn it_inserts_true_orphan_chain() {
+        #[tokio::test]
+        async fn it_inserts_true_orphan_chain() {
             let db = create_new_blockchain();
             let validator = MockValidator::new(true);
-            let (_, main_chain) = create_main_chain(&db, &[("A->GB", 1, 120), ("B->A", 1, 120)]);
+            let (_, main_chain) = create_main_chain(&db, &[("A->GB", 1, 120), ("B->A", 1, 120)]).await;
 
             let block_b = main_chain.get("B").unwrap().clone();
             let (_, orphan_chain) =
-                create_chained_blocks(&[("C2->GB", 1, 120), ("D2->C2", 1, 120), ("E2->D2", 1, 120)], block_b);
+                create_chained_blocks(&[("C2->GB", 1, 120), ("D2->C2", 1, 120), ("E2->D2", 1, 120)], block_b).await;
             let mut access = db.db_write_access().unwrap();
 
             let block_d2 = orphan_chain.get("D2").unwrap().clone();
@@ -2693,14 +2695,14 @@ mod test {
             assert_eq!(maybe_block[0], *block_e2.to_arc_block());
         }
 
-        #[test]
-        fn it_correctly_handles_duplicate_blocks() {
+        #[tokio::test]
+        async fn it_correctly_handles_duplicate_blocks() {
             let db = create_new_blockchain();
             let validator = MockValidator::new(true);
-            let (_, main_chain) = create_main_chain(&db, &[("A->GB", 1, 120)]);
+            let (_, main_chain) = create_main_chain(&db, &[("A->GB", 1, 120)]).await;
 
             let fork_root = main_chain.get("A").unwrap().clone();
-            let (_, orphan_chain) = create_chained_blocks(&[("B2->GB", 2, 120)], fork_root);
+            let (_, orphan_chain) = create_chained_blocks(&[("B2->GB", 2, 120)], fork_root).await;
             let mut access = db.db_write_access().unwrap();
 
             let block = orphan_chain.get("B2").unwrap().clone();
@@ -2735,19 +2737,20 @@ mod test {
     mod handle_possible_reorg {
         use super::*;
 
-        #[test]
-        fn it_links_many_orphan_branches_to_main_chain() {
+        #[tokio::test]
+        async fn it_links_many_orphan_branches_to_main_chain() {
             let test = TestHarness::setup();
 
             let (_, main_chain) =
-                create_main_chain(&test.db, block_specs!(["1a->GB"], ["2a->1a"], ["3a->2a"], ["4a->3a"]));
+                create_main_chain(&test.db, block_specs!(["1a->GB"], ["2a->1a"], ["3a->2a"], ["4a->3a"])).await;
             let genesis = main_chain.get("GB").unwrap().clone();
 
             let fork_root = main_chain.get("1a").unwrap().clone();
             let (_, orphan_chain_b) = create_chained_blocks(
                 block_specs!(["2b->GB"], ["3b->2b"], ["4b->3b"], ["5b->4b"], ["6b->5b"]),
                 fork_root,
-            );
+            )
+            .await;
 
             // Add orphans out of height order
             for name in ["5b", "3b", "4b", "6b"] {
@@ -2759,7 +2762,7 @@ mod test {
             // Add chain c orphans branching from chain b
             let fork_root = orphan_chain_b.get("3b").unwrap().clone();
             let (_, orphan_chain_c) =
-                create_chained_blocks(block_specs!(["4c->GB"], ["5c->4c"], ["6c->5c"], ["7c->6c"]), fork_root);
+                create_chained_blocks(block_specs!(["4c->GB"], ["5c->4c"], ["6c->5c"], ["7c->6c"]), fork_root).await;
 
             for name in ["7c", "5c", "6c", "4c"] {
                 let block = orphan_chain_c.get(name).unwrap().clone();
@@ -2768,7 +2771,7 @@ mod test {
             }
 
             let fork_root = orphan_chain_c.get("6c").unwrap().clone();
-            let (_, orphan_chain_d) = create_chained_blocks(block_specs!(["7d->GB", difficulty: 10]), fork_root);
+            let (_, orphan_chain_d) = create_chained_blocks(block_specs!(["7d->GB", difficulty: 10]), fork_root).await;
 
             let block = orphan_chain_d.get("7d").unwrap().clone();
             let result = test.handle_possible_reorg(block.to_arc_block()).unwrap();
@@ -2814,28 +2817,29 @@ mod test {
             }
         }
 
-        #[test]
-        fn it_errors_if_reorging_to_an_invalid_height() {
+        #[tokio::test]
+        async fn it_errors_if_reorging_to_an_invalid_height() {
             let test = TestHarness::setup();
             let (_, main_chain) =
-                create_main_chain(&test.db, block_specs!(["1a->GB"], ["2a->1a"], ["3a->2a"], ["4a->3a"]));
+                create_main_chain(&test.db, block_specs!(["1a->GB"], ["2a->1a"], ["3a->2a"], ["4a->3a"])).await;
 
             let fork_root = main_chain.get("1a").unwrap().clone();
             let (_, orphan_chain_b) =
-                create_chained_blocks(block_specs!(["2b->GB", height: 10, difficulty: 10]), fork_root);
+                create_chained_blocks(block_specs!(["2b->GB", height: 10, difficulty: 10]), fork_root).await;
 
             let block = orphan_chain_b.get("2b").unwrap().clone();
             let err = test.handle_possible_reorg(block.to_arc_block()).unwrap_err();
             unpack_enum!(ChainStorageError::ValueNotFound { .. } = err);
         }
 
-        #[test]
-        fn it_allows_orphan_blocks_with_any_height() {
+        #[tokio::test]
+        async fn it_allows_orphan_blocks_with_any_height() {
             let test = TestHarness::setup();
-            let (_, main_chain) = create_main_chain(&test.db, block_specs!(["1a->GB", difficulty: 2]));
+            let (_, main_chain) = create_main_chain(&test.db, block_specs!(["1a->GB", difficulty: 2])).await;
 
             let fork_root = main_chain.get("GB").unwrap().clone();
-            let (_, orphan_chain_b) = create_orphan_chain(&test.db, block_specs!(["1b->GB", height: 10]), fork_root);
+            let (_, orphan_chain_b) =
+                create_orphan_chain(&test.db, block_specs!(["1b->GB", height: 10]), fork_root).await;
 
             let block = orphan_chain_b.get("1b").unwrap().clone();
             test.handle_possible_reorg(block.to_arc_block())
@@ -2844,37 +2848,43 @@ mod test {
         }
     }
 
-    #[test]
-    fn test_handle_possible_reorg_case1() {
+    #[tokio::test]
+    async fn test_handle_possible_reorg_case1() {
         // Normal chain
-        let (result, _blocks) = test_case_handle_possible_reorg(&[("A->GB", 1, 120), ("B->A", 1, 120)]).unwrap();
+        let (result, _blocks) = test_case_handle_possible_reorg(&[("A->GB", 1, 120), ("B->A", 1, 120)])
+            .await
+            .unwrap();
         result[0].assert_added();
         result[1].assert_added();
     }
 
-    #[test]
-    fn test_handle_possible_reorg_case2() {
+    #[tokio::test]
+    async fn test_handle_possible_reorg_case2() {
         let (result, blocks) =
-            test_case_handle_possible_reorg(&[("A->GB", 1, 120), ("B->A", 1, 120), ("A2->GB", 3, 120)]).unwrap();
+            test_case_handle_possible_reorg(&[("A->GB", 1, 120), ("B->A", 1, 120), ("A2->GB", 3, 120)])
+                .await
+                .unwrap();
         result[0].assert_added();
         result[1].assert_added();
         result[2].assert_reorg(1, 2);
         assert_added_hashes_eq(&result[2], vec!["A2"], &blocks);
     }
 
-    #[test]
-    fn test_handle_possible_reorg_case3() {
+    #[tokio::test]
+    async fn test_handle_possible_reorg_case3() {
         // Switch to new chain and then reorg back
         let (result, blocks) =
-            test_case_handle_possible_reorg(&[("A->GB", 1, 120), ("A2->GB", 2, 120), ("B->A", 2, 120)]).unwrap();
+            test_case_handle_possible_reorg(&[("A->GB", 1, 120), ("A2->GB", 2, 120), ("B->A", 2, 120)])
+                .await
+                .unwrap();
         result[0].assert_added();
         result[1].assert_reorg(1, 1);
         result[2].assert_reorg(2, 1);
         assert_added_hashes_eq(&result[2], vec!["A", "B"], &blocks);
     }
 
-    #[test]
-    fn test_handle_possible_reorg_case4() {
+    #[tokio::test]
+    async fn test_handle_possible_reorg_case4() {
         let (result, blocks) = test_case_handle_possible_reorg(&[
             ("A->GB", 1, 120),
             ("A2->GB", 2, 120),
@@ -2882,6 +2892,7 @@ mod test {
             ("A3->GB", 4, 120),
             ("C->B", 2, 120),
         ])
+        .await
         .unwrap();
         result[0].assert_added();
         result[1].assert_reorg(1, 1);
@@ -2892,8 +2903,8 @@ mod test {
         assert_added_hashes_eq(&result[4], vec!["A", "B", "C"], &blocks);
     }
 
-    #[test]
-    fn test_handle_possible_reorg_case5() {
+    #[tokio::test]
+    async fn test_handle_possible_reorg_case5() {
         let (result, blocks) = test_case_handle_possible_reorg(&[
             ("A->GB", 1, 120),
             ("B->A", 1, 120),
@@ -2905,6 +2916,7 @@ mod test {
             ("D3->C", 7, 120),
             ("D4->C", 8, 120),
         ])
+        .await
         .unwrap();
         result[0].assert_added();
         result[1].assert_added();
@@ -2929,17 +2941,17 @@ mod test {
         assert_difficulty_eq(&result[8], vec![12]);
     }
 
-    #[test]
-    fn test_handle_possible_reorg_case6_orphan_chain_link() {
+    #[tokio::test]
+    async fn test_handle_possible_reorg_case6_orphan_chain_link() {
         let db = create_new_blockchain();
         let (_, mainchain) = create_main_chain(&db, &[
             ("A->GB", 1, 120),
             ("B->A", 1, 120),
             ("C->B", 1, 120),
             ("D->C", 1, 120),
-        ]);
+        ])
+        .await;
 
-        let mut access = db.db_write_access().unwrap();
         let mock_validator = MockValidator::new(true);
         let chain_strength_comparer = strongest_chain().by_sha3_difficulty().build();
 
@@ -2947,9 +2959,11 @@ mod test {
         let (_, reorg_chain) = create_chained_blocks(
             &[("C2->GB", 1, 120), ("D2->C2", 1, 120), ("E2->D2", 1, 120)],
             fork_block,
-        );
+        )
+        .await;
 
         // Add true orphans
+        let mut access = db.db_write_access().unwrap();
         let result = handle_possible_reorg(
             &mut *access,
             &Default::default(),
@@ -3011,24 +3025,25 @@ mod test {
         check_whole_chain(&mut access);
     }
 
-    #[test]
-    fn test_handle_possible_reorg_case7_fail_reorg() {
+    #[tokio::test]
+    async fn test_handle_possible_reorg_case7_fail_reorg() {
         let db = create_new_blockchain();
         let (_, mainchain) = create_main_chain(&db, &[
             ("A->GB", 1, 120),
             ("B->A", 1, 120),
             ("C->B", 1, 120),
             ("D->C", 1, 120),
-        ]);
+        ])
+        .await;
 
-        let mut access = db.db_write_access().unwrap();
         let mock_validator = MockValidator::new(true);
         let chain_strength_comparer = strongest_chain().by_sha3_difficulty().build();
 
         let fork_block = mainchain.get("C").unwrap().clone();
-        let (_, reorg_chain) = create_chained_blocks(&[("D2->GB", 1, 120), ("E2->D2", 2, 120)], fork_block);
+        let (_, reorg_chain) = create_chained_blocks(&[("D2->GB", 1, 120), ("E2->D2", 2, 120)], fork_block).await;
 
         // Add true orphans
+        let mut access = db.db_write_access().unwrap();
         let result = handle_possible_reorg(
             &mut *access,
             &Default::default(),
@@ -3061,14 +3076,15 @@ mod test {
         check_whole_chain(&mut access);
     }
 
-    #[test]
-    fn test_handle_possible_reorg_target_difficulty_is_correct_case_1() {
+    #[tokio::test]
+    async fn test_handle_possible_reorg_target_difficulty_is_correct_case_1() {
         let (result, _blocks) = test_case_handle_possible_reorg(&[
             ("A->GB", 1, 12),
             ("B->A", 10, 40),
             ("C2->B", 20, 69),
             ("D2->C2", 40, 40),
         ])
+        .await
         .unwrap();
         let mut expected_target_difficulties = vec![];
         expected_target_difficulties.extend(result[0].added_blocks());
@@ -3089,6 +3105,7 @@ mod test {
             ("C2->B", 20, 69),
             ("D2->C2", 40, 40),
         ])
+        .await
         .unwrap();
 
         result[0].assert_added();
@@ -3101,8 +3118,8 @@ mod test {
         assert_target_difficulties_eq(&result[4], vec![19, 24]);
     }
 
-    #[test]
-    fn test_handle_possible_reorg_target_difficulty_is_correct_case_2() {
+    #[tokio::test]
+    async fn test_handle_possible_reorg_target_difficulty_is_correct_case_2() {
         // Test a straight chain to get the correct target difficulty. The block times must be reduced so that the
         // difficulty changes
         let (result, _blocks) = test_case_handle_possible_reorg(&[
@@ -3112,6 +3129,7 @@ mod test {
             ("D2->C2", 25, 70),
             ("E2->D2", 30, 70),
         ])
+        .await
         .unwrap();
         let mut expected_target_difficulties = vec![];
         expected_target_difficulties.extend(result[0].added_blocks());
@@ -3135,6 +3153,7 @@ mod test {
             ("D2->C2", 25, 70),
             ("E2->D2", 30, 70),
         ])
+        .await
         .unwrap();
         result[0].assert_added();
         result[1].assert_added();
@@ -3148,8 +3167,8 @@ mod test {
         assert_target_difficulties_eq(&result[6], vec![10, 19, 23, 26]);
     }
 
-    #[test]
-    fn test_handle_possible_reorg_accum_difficulty_is_correct_case_1() {
+    #[tokio::test]
+    async fn test_handle_possible_reorg_accum_difficulty_is_correct_case_1() {
         let (result, _blocks) = test_case_handle_possible_reorg(&[
             ("A0->GB", 1, 120), // Chain 0 at 2
             ("B0->A0", 1, 120), // Chain 0 at 3
@@ -3165,6 +3184,7 @@ mod test {
             ("E1->D1", 1, 120), // Chain 1 at 12
             ("E2->D2", 1, 120), // Chain 2 at 12
         ])
+        .await
         .unwrap();
 
         result[0].assert_added();
@@ -3297,7 +3317,7 @@ mod test {
     }
 
     #[allow(clippy::type_complexity)]
-    fn test_case_handle_possible_reorg<T: Into<BlockSpecs>>(
+    async fn test_case_handle_possible_reorg<T: Into<BlockSpecs>>(
         blocks: T,
     ) -> Result<(Vec<BlockAddResult>, HashMap<String, Arc<ChainBlock>>), ChainStorageError> {
         let test = TestHarness::setup();
@@ -3309,7 +3329,7 @@ mod test {
             .try_into_chain_block()
             .map(Arc::new)
             .unwrap();
-        let (block_names, chain) = create_chained_blocks(blocks, genesis_block);
+        let (block_names, chain) = create_chained_blocks(blocks, genesis_block).await;
 
         let mut results = vec![];
         for name in block_names {

@@ -2246,7 +2246,7 @@ impl UnconfirmedTransactionInfoSql {
 
 #[cfg(test)]
 mod test {
-    use std::{mem::size_of, time::Duration};
+    use std::{default::Default, mem::size_of, time::Duration};
 
     use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
     use chrono::Utc;
@@ -2261,20 +2261,16 @@ mod test {
         transaction::{TransactionDirection, TransactionStatus, TxId},
         types::{PrivateKey, PublicKey, Signature},
     };
-    use tari_core::{
-        covenants::Covenant,
-        transactions::{
-            tari_amount::MicroTari,
-            test_helpers::{create_non_recoverable_unblinded_output, TestParams},
-            transaction_components::{OutputFeatures, Transaction},
-            transaction_protocol::sender::TransactionSenderMessage,
-            CryptoFactories,
-            ReceiverTransactionProtocol,
-            SenderTransactionProtocol,
-        },
+    use tari_core::transactions::{
+        tari_amount::MicroTari,
+        test_helpers::{create_test_core_key_manager_with_memory_db, create_wallet_output_with_data, TestParams},
+        transaction_components::{OutputFeatures, Transaction},
+        transaction_protocol::sender::TransactionSenderMessage,
+        ReceiverTransactionProtocol,
+        SenderTransactionProtocol,
     };
     use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
-    use tari_script::{script, ExecutionStack, TariScript};
+    use tari_script::{inputs, script, TariScript};
     use tari_test_utils::random::string;
     use tempfile::tempdir;
 
@@ -2295,10 +2291,10 @@ mod test {
         },
     };
 
-    #[test]
+    #[tokio::test]
     #[allow(clippy::too_many_lines)]
-    fn test_crud() {
-        let factories = CryptoFactories::default();
+    async fn test_crud() {
+        let key_manager = create_test_core_key_manager_with_memory_db();
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let temp_dir = tempdir().unwrap();
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
@@ -2331,42 +2327,43 @@ mod test {
         sql_query("PRAGMA foreign_keys = ON").execute(&mut conn).unwrap();
 
         let constants = create_consensus_constants(0);
-        let mut builder = SenderTransactionProtocol::builder(1, constants);
-        let test_params = TestParams::new();
-        let input = create_non_recoverable_unblinded_output(
+        let mut builder = SenderTransactionProtocol::builder(constants, key_manager.clone());
+        let test_params = TestParams::new(&key_manager).await;
+        let input = create_wallet_output_with_data(
             TariScript::default(),
             OutputFeatures::default(),
             &test_params,
             MicroTari::from(100_000),
+            &key_manager,
         )
+        .await
         .unwrap();
         let amount = MicroTari::from(10_000);
+        let change = TestParams::new(&key_manager).await;
         builder
             .with_lock_height(0)
             .with_fee_per_gram(MicroTari::from(177 / 5))
-            .with_offset(PrivateKey::random(&mut OsRng))
-            .with_private_nonce(PrivateKey::random(&mut OsRng))
-            .with_amount(0, amount)
             .with_message("Yo!".to_string())
-            .with_input(
-                input
-                    .as_transaction_input(&factories.commitment)
-                    .expect("Should be able to make transaction input"),
-                input,
-            )
-            .with_change_secret(PrivateKey::random(&mut OsRng))
+            .with_input(input)
+            .await
+            .unwrap()
             .with_recipient_data(
-                0,
                 script!(Nop),
-                PrivateKey::random(&mut OsRng),
+                OutputFeatures::default(),
                 Default::default(),
-                PrivateKey::random(&mut OsRng),
-                Covenant::default(),
                 MicroTari::zero(),
+                amount,
             )
-            .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
-
-        let mut stp = builder.build(&factories, None, u64::MAX).unwrap();
+            .await
+            .unwrap()
+            .with_change_data(
+                script!(Nop),
+                inputs!(change.script_key_pk),
+                change.script_key_id,
+                change.spend_key_id,
+                Default::default(),
+            );
+        let mut stp = builder.build().await.unwrap();
 
         let address = TariAddress::new(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
@@ -2436,12 +2433,22 @@ mod test {
                 .unwrap()
         );
 
+        let output = create_wallet_output_with_data(
+            TariScript::default(),
+            OutputFeatures::default(),
+            &test_params,
+            MicroTari::from(100_000),
+            &key_manager,
+        )
+        .await
+        .unwrap();
+
         let rtp = ReceiverTransactionProtocol::new(
-            TransactionSenderMessage::Single(Box::new(stp.build_single_round_message().unwrap())),
-            PrivateKey::random(&mut OsRng),
-            PrivateKey::random(&mut OsRng),
-            &factories,
-        );
+            TransactionSenderMessage::Single(Box::new(stp.build_single_round_message(&key_manager).await.unwrap())),
+            output,
+            &key_manager,
+        )
+        .await;
         let address = TariAddress::new(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,

@@ -26,51 +26,19 @@
 use std::{
     cmp::Ordering,
     fmt::{Debug, Formatter},
-    ops::Shl,
 };
 
-use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{
-    BlindingFactor,
-    ComAndPubSignature,
-    CommitmentFactory,
-    FixedHash,
-    PrivateKey,
-    PublicKey,
-    RangeProof,
-};
-use tari_crypto::{
-    commitment::{ExtensionDegree, HomomorphicCommitmentFactory},
-    errors::RangeProofError,
-    extended_range_proof::ExtendedRangeProofService,
-    keys::{PublicKey as PublicKeyTrait, SecretKey},
-    range_proof::RangeProofService,
-    ristretto::{
-        bulletproofs_plus::{RistrettoExtendedMask, RistrettoExtendedWitness},
-        pedersen::PedersenCommitment,
-    },
-    tari_utilities::ByteArray,
-};
+use tari_common_types::types::{ComAndPubSignature, PrivateKey, PublicKey};
 use tari_script::{ExecutionStack, TariScript};
 
 use super::TransactionOutputVersion;
 use crate::{
-    borsh::SerializedSize,
     covenants::Covenant,
     transactions::{
+        key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface},
         tari_amount::MicroTari,
-        transaction_components,
-        transaction_components::{
-            transaction_input::{SpentOutput, TransactionInput},
-            transaction_output::TransactionOutput,
-            EncryptedData,
-            OutputFeatures,
-            RangeProofType,
-            TransactionError,
-            TransactionInputVersion,
-        },
-        CryptoFactories,
+        transaction_components::{EncryptedData, OutputFeatures, TransactionError, WalletOutput},
     },
 };
 
@@ -82,7 +50,7 @@ use crate::{
 pub struct UnblindedOutput {
     pub version: TransactionOutputVersion,
     pub value: MicroTari,
-    pub spending_key: BlindingFactor,
+    pub spending_key: PrivateKey,
     pub features: OutputFeatures,
     pub script: TariScript,
     pub covenant: Covenant,
@@ -102,7 +70,7 @@ impl UnblindedOutput {
     pub fn new(
         version: TransactionOutputVersion,
         value: MicroTari,
-        spending_key: BlindingFactor,
+        spending_key: PrivateKey,
         features: OutputFeatures,
         script: TariScript,
         input_data: ExecutionStack,
@@ -133,7 +101,7 @@ impl UnblindedOutput {
 
     pub fn new_current_version(
         value: MicroTari,
-        spending_key: BlindingFactor,
+        spending_key: PrivateKey,
         features: OutputFeatures,
         script: TariScript,
         input_data: ExecutionStack,
@@ -162,153 +130,52 @@ impl UnblindedOutput {
         )
     }
 
-    /// Commits an UnblindedOutput into a Transaction input
-    pub fn as_transaction_input(&self, factory: &CommitmentFactory) -> Result<TransactionInput, TransactionError> {
-        let commitment = factory.commit(&self.spending_key, &self.value.into());
-        let r_a = PrivateKey::random(&mut OsRng);
-        let r_x = PrivateKey::random(&mut OsRng);
-        let r_y = PrivateKey::random(&mut OsRng);
-        let ephemeral_commitment = factory.commit(&r_x, &r_a);
-        let ephemeral_pubkey = PublicKey::from_secret_key(&r_y);
-
-        let challenge = TransactionInput::build_script_signature_challenge(
-            TransactionInputVersion::get_current_version(),
-            &ephemeral_commitment,
-            &ephemeral_pubkey,
-            &self.script,
-            &self.input_data,
-            &PublicKey::from_secret_key(&self.script_private_key),
-            &commitment,
-        );
-        let script_signature = ComAndPubSignature::sign(
-            &self.value.into(),
-            &self.spending_key,
-            &self.script_private_key,
-            &r_a,
-            &r_x,
-            &r_y,
-            &challenge,
-            factory,
-        )
-        .map_err(|_| TransactionError::InvalidSignatureError("Generating script signature".to_string()))?;
-
-        Ok(TransactionInput::new_current_version(
-            SpentOutput::OutputData {
-                features: self.features.clone(),
-                commitment,
-                script: self.script.clone(),
-                sender_offset_public_key: self.sender_offset_public_key.clone(),
-                covenant: self.covenant.clone(),
-                version: self.version,
-                encrypted_data: self.encrypted_data,
-                minimum_value_promise: self.minimum_value_promise,
-            },
-            self.input_data.clone(),
-            script_signature,
-        ))
-    }
-
-    /// Commits an UnblindedOutput into a TransactionInput that only contains the hash of the spent output data
-    pub fn as_compact_transaction_input(
-        &self,
-        factory: &CommitmentFactory,
-    ) -> Result<TransactionInput, TransactionError> {
-        let input = self.as_transaction_input(factory)?;
-
-        Ok(TransactionInput::new(
-            input.version,
-            SpentOutput::OutputHash(input.output_hash()),
-            input.input_data,
-            input.script_signature,
-        ))
-    }
-
-    pub fn as_transaction_output(&self, factories: &CryptoFactories) -> Result<TransactionOutput, TransactionError> {
-        if factories.range_proof.range() < 64 && self.value >= MicroTari::from(1u64.shl(&factories.range_proof.range()))
-        {
-            return Err(TransactionError::ValidationError(
-                "Value provided is outside the range allowed by the range proof".into(),
-            ));
-        }
-        let commitment = factories.commitment.commit(&self.spending_key, &self.value.into());
-
-        let proof = if self.features.range_proof_type == RangeProofType::BulletProofPlus {
-            Some(self.construct_range_proof(factories)?)
-        } else {
-            None
+    pub async fn to_wallet_output<KM: TransactionKeyManagerInterface>(
+        self,
+        key_manager: &KM,
+    ) -> Result<WalletOutput, TransactionError> {
+        let spending_key_id = key_manager.import_key(self.spending_key).await?;
+        let script_key_id = key_manager.import_key(self.script_private_key).await?;
+        let wallet_output = WalletOutput {
+            version: self.version,
+            value: self.value,
+            spending_key_id,
+            features: self.features,
+            script: self.script,
+            covenant: self.covenant,
+            input_data: self.input_data,
+            script_key_id,
+            sender_offset_public_key: self.sender_offset_public_key,
+            metadata_signature: self.metadata_signature,
+            script_lock_height: self.script_lock_height,
+            encrypted_data: self.encrypted_data,
+            minimum_value_promise: self.minimum_value_promise,
         };
-
-        let output = TransactionOutput::new(
-            self.version,
-            self.features.clone(),
-            commitment,
-            proof,
-            self.script.clone(),
-            self.sender_offset_public_key.clone(),
-            self.metadata_signature.clone(),
-            self.covenant.clone(),
-            self.encrypted_data,
-            self.minimum_value_promise,
-        );
-
-        Ok(output)
+        Ok(wallet_output)
     }
 
-    fn construct_range_proof(&self, factories: &CryptoFactories) -> Result<RangeProof, TransactionError> {
-        let proof_bytes_result = if self.minimum_value_promise.as_u64() == 0 {
-            factories
-                .range_proof
-                .construct_proof(&self.spending_key, self.value.into())
-        } else {
-            let extended_mask =
-                RistrettoExtendedMask::assign(ExtensionDegree::DefaultPedersen, vec![self.spending_key.clone()])?;
-
-            let extended_witness = RistrettoExtendedWitness {
-                mask: extended_mask,
-                value: self.value.into(),
-                minimum_value_promise: self.minimum_value_promise.as_u64(),
-            };
-
-            factories
-                .range_proof
-                .construct_extended_proof(vec![extended_witness], None)
+    pub async fn from_wallet_output<KM: SecretTransactionKeyManagerInterface>(
+        output: WalletOutput,
+        key_manager: &KM,
+    ) -> Result<Self, TransactionError> {
+        let spending_key = key_manager.get_private_key(&output.spending_key_id).await?;
+        let script_private_key = key_manager.get_private_key(&output.script_key_id).await?;
+        let unblinded_output = UnblindedOutput {
+            version: output.version,
+            value: output.value,
+            spending_key,
+            features: output.features,
+            script: output.script,
+            covenant: output.covenant,
+            input_data: output.input_data,
+            script_private_key,
+            sender_offset_public_key: output.sender_offset_public_key,
+            metadata_signature: output.metadata_signature,
+            script_lock_height: output.script_lock_height,
+            encrypted_data: output.encrypted_data,
+            minimum_value_promise: output.minimum_value_promise,
         };
-
-        let proof_bytes = proof_bytes_result.map_err(|err| {
-            TransactionError::RangeProofError(RangeProofError::ProofConstructionError(format!(
-                "Failed to construct range proof: {}",
-                err
-            )))
-        })?;
-
-        RangeProof::from_bytes(&proof_bytes).map_err(|_| {
-            TransactionError::RangeProofError(RangeProofError::ProofConstructionError(
-                "Rangeproof factory returned invalid range proof bytes".to_string(),
-            ))
-        })
-    }
-
-    pub fn features_and_scripts_byte_size(&self) -> usize {
-        self.features.get_serialized_size() + self.script.get_serialized_size() + self.covenant.get_serialized_size()
-    }
-
-    // Note: The Hashable trait is not used here due to the dependency on `CryptoFactories`, and `commitment` is not
-    // Note: added to the struct to ensure consistency between `commitment`, `spending_key` and `value`.
-    pub fn hash(&self, factories: &CryptoFactories) -> FixedHash {
-        transaction_components::hash_output(
-            self.version,
-            &self.features,
-            &self.commitment(factories),
-            &self.script,
-            &self.covenant,
-            &self.encrypted_data,
-            &self.sender_offset_public_key,
-            self.minimum_value_promise,
-        )
-    }
-
-    pub fn commitment(&self, factories: &CryptoFactories) -> PedersenCommitment {
-        factories.commitment.commit_value(&self.spending_key, self.value.into())
+        Ok(unblinded_output)
     }
 }
 

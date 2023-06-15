@@ -20,12 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, iter::repeat_with, sync::Arc};
+use std::{convert::TryFrom, sync::Arc};
 
 use croaring::Bitmap;
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
-use tari_common_types::types::{Commitment, FixedHash, PublicKey};
+use tari_common_types::types::{Commitment, FixedHash};
 use tari_core::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, NewBlockTemplate},
     chain_storage::{
@@ -39,13 +39,15 @@ use tari_core::{
     covenants::Covenant,
     proof_of_work::{sha3x_difficulty, AchievedTargetDifficulty, Difficulty},
     transactions::{
+        key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface, TxoStage},
         tari_amount::MicroTari,
         test_helpers::{
-            create_non_recoverable_unblinded_output,
-            create_random_signature_from_s_key,
-            create_signature,
+            create_random_signature_from_secret_key,
+            create_test_core_key_manager_with_memory_db,
             create_utxo,
+            create_wallet_output_with_data,
             spend_utxos,
+            TestKeyManager,
             TestParams,
             TransactionSchema,
         },
@@ -56,8 +58,9 @@ use tari_core::{
             OutputFeatures,
             Transaction,
             TransactionKernel,
+            TransactionKernelVersion,
             TransactionOutput,
-            UnblindedOutput,
+            WalletOutput,
         },
         CryptoFactories,
     },
@@ -67,51 +70,81 @@ use tari_core::{
     WitnessMmr,
     WitnessMmrHasherBlake256,
 };
-use tari_crypto::{keys::PublicKey as PublicKeyTrait, tari_utilities::hex::Hex};
+use tari_crypto::tari_utilities::hex::Hex;
+use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tari_mmr::{Hash, MutableMmr};
 use tari_script::script;
 
-pub fn create_coinbase(
-    factories: &CryptoFactories,
+pub async fn create_coinbase(
     value: MicroTari,
     maturity_height: u64,
     extra: Option<Vec<u8>>,
-) -> (TransactionOutput, TransactionKernel, UnblindedOutput) {
-    let p = TestParams::new();
+    key_manager: &TestKeyManager,
+) -> (TransactionOutput, TransactionKernel, WalletOutput) {
+    let p = TestParams::new(key_manager).await;
+    let public_exess = key_manager.get_public_key_at_key_id(&p.spend_key_id).await.unwrap();
+    let (nonce, public_nonce) = key_manager
+        .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
+        .await
+        .unwrap();
 
-    let excess = Commitment::from_public_key(&PublicKey::from_secret_key(&p.spend_key));
-    let sig = create_signature(p.spend_key.clone(), 0.into(), 0, KernelFeatures::create_coinbase());
+    let excess = Commitment::from_public_key(&public_exess);
+    let kernel_features = KernelFeatures::create_coinbase();
+    let kernel_message = TransactionKernel::build_kernel_signature_message(
+        &TransactionKernelVersion::get_current_version(),
+        0.into(),
+        0,
+        &kernel_features,
+        &None,
+    );
+
+    let sig = key_manager
+        .get_partial_txo_kernel_signature(
+            &p.spend_key_id,
+            &nonce,
+            &public_nonce,
+            &public_exess,
+            &TransactionKernelVersion::get_current_version(),
+            &kernel_message,
+            &kernel_features,
+            TxoStage::Output,
+        )
+        .await
+        .unwrap();
     let kernel = KernelBuilder::new()
-        .with_signature(&sig)
+        .with_signature(sig)
         .with_excess(&excess)
-        .with_features(KernelFeatures::COINBASE_KERNEL)
+        .with_features(kernel_features)
         .build()
         .unwrap();
 
-    let unblinded_output = create_non_recoverable_unblinded_output(
+    let wallet_output = create_wallet_output_with_data(
         script!(Nop),
         OutputFeatures::create_coinbase(maturity_height, extra),
         &p,
         value,
+        key_manager,
     )
+    .await
     .unwrap();
-    let output = unblinded_output.as_transaction_output(factories).unwrap();
+    let output = wallet_output.as_transaction_output(key_manager).await.unwrap();
 
-    (output, kernel, unblinded_output)
+    (output, kernel, wallet_output)
 }
 
-fn genesis_template(
-    factories: &CryptoFactories,
+async fn genesis_template(
     coinbase_value: MicroTari,
     consensus_constants: &ConsensusConstants,
-) -> (NewBlockTemplate, UnblindedOutput) {
+    key_manager: &TestKeyManager,
+) -> (NewBlockTemplate, WalletOutput) {
     let header = BlockHeader::new(consensus_constants.blockchain_version());
     let (utxo, kernel, output) = create_coinbase(
-        factories,
         coinbase_value,
         consensus_constants.coinbase_lock_height(),
         Some(b"The big bang".to_vec()),
-    );
+        key_manager,
+    )
+    .await;
     let block = NewBlockTemplate::from_block(
         header.into_builder().with_coinbase_utxo(utxo, kernel).build(),
         1.into(),
@@ -126,9 +159,9 @@ fn genesis_template(
 /// --exact --nocapture`
 /// 1. The block and range proof will be printed
 /// 1. Profit!
-#[test]
-fn print_new_genesis_block_nextnet() {
-    print_new_genesis_block(Network::NextNet, "Mathematical proof that something happened");
+#[tokio::test]
+async fn print_new_genesis_block_nextnet() {
+    print_new_genesis_block(Network::NextNet, "Mathematical proof that something happened").await;
 }
 
 // #[ignore = "used to generate a new stagenet genesis block"]
@@ -137,9 +170,9 @@ fn print_new_genesis_block_nextnet() {
 /// --exact --nocapture`
 /// 1. The block and range proof will be printed
 /// 1. Profit!
-#[test]
-fn print_new_genesis_block_stagenet() {
-    print_new_genesis_block(Network::StageNet, "Tokenized and connected");
+#[tokio::test]
+async fn print_new_genesis_block_stagenet() {
+    print_new_genesis_block(Network::StageNet, "Tokenized and connected").await;
 }
 
 // #[ignore = "used to generate a new esmeralda genesis block"]
@@ -148,9 +181,9 @@ fn print_new_genesis_block_stagenet() {
 /// --exact --nocapture`
 /// 1. The block and range proof will be printed
 /// 1. Profit!
-#[test]
-fn print_new_genesis_block_esmeralda() {
-    print_new_genesis_block(Network::Esmeralda, "Queues happen to other people");
+#[tokio::test]
+async fn print_new_genesis_block_esmeralda() {
+    print_new_genesis_block(Network::Esmeralda, "Queues happen to other people").await;
 }
 
 // #[ignore = "used to generate a new igor genesis block"]
@@ -159,29 +192,39 @@ fn print_new_genesis_block_esmeralda() {
 /// --exact --nocapture`
 /// 1. The block and range proof will be printed
 /// 1. Profit!
-#[test]
-fn print_new_genesis_block_igor() {
-    print_new_genesis_block(Network::Igor, "Hello, Igor");
+#[tokio::test]
+async fn print_new_genesis_block_igor() {
+    print_new_genesis_block(Network::Igor, "Hello, Igor").await;
 }
 
-fn print_new_genesis_block(network: Network, extra: &str) {
+#[allow(clippy::too_many_lines)]
+async fn print_new_genesis_block(network: Network, extra: &str) {
     let consensus_manager: ConsensusManager = ConsensusManagerBuilder::new(network).build();
-    let factories = CryptoFactories::default();
     let mut header = BlockHeader::new(consensus_manager.consensus_constants(0).blockchain_version());
     let value = consensus_manager.emission_schedule().block_reward(0);
     let lock_height = consensus_manager.consensus_constants(0).coinbase_lock_height();
-    let (utxo, key, _) = create_utxo(
+    let key_manager = create_test_core_key_manager_with_memory_db();
+    let (utxo, spending_key_id, _) = create_utxo(
         value,
-        &factories,
+        &key_manager,
         &OutputFeatures::create_coinbase(lock_height, Some(extra.as_bytes().to_vec())),
         &script![Nop],
         &Covenant::default(),
         MicroTari::zero(),
-    );
-    let (pk, sig) = create_random_signature_from_s_key(key, 0.into(), 0, KernelFeatures::COINBASE_KERNEL);
+    )
+    .await;
+    let (pk, sig) = create_random_signature_from_secret_key(
+        &key_manager,
+        spending_key_id,
+        0.into(),
+        0,
+        KernelFeatures::COINBASE_KERNEL,
+        TxoStage::Output,
+    )
+    .await;
     let excess = Commitment::from_public_key(&pk);
     let kernel = KernelBuilder::new()
-        .with_signature(&sig)
+        .with_signature(sig)
         .with_excess(&excess)
         .with_features(KernelFeatures::COINBASE_KERNEL)
         .build()
@@ -224,7 +267,7 @@ fn print_new_genesis_block(network: Network, extra: &str) {
     println!();
     println!("{} genesis block", network);
     println!();
-    println!("extra '{}'", extra);
+    println!("extra: '{}'", extra);
     println!(
         "kernel excess_sig: public_nonce {} signature {}",
         block.body.kernels()[0].excess_sig.get_public_nonce().to_hex(),
@@ -247,6 +290,10 @@ fn print_new_genesis_block(network: Network, extra: &str) {
     println!("Genesis coinbase maturity: {}", lock_height);
     println!("UTXO commitment: {}", block.body.outputs()[0].commitment.to_hex());
     println!("UTXO range_proof: {}", block.body.outputs()[0].proof_hex_display(true));
+    println!(
+        "Encrypted data: {}",
+        block.body.outputs()[0].encrypted_data.hex_display(true)
+    );
     println!(
         "UTXO sender offset pubkey: {}",
         block.body.outputs()[0].sender_offset_public_key.to_hex()
@@ -272,11 +319,16 @@ fn print_new_genesis_block(network: Network, extra: &str) {
 ///
 /// Right now this function does not use consensus rules to generate the block. The coinbase output has an arbitrary
 /// value, and the maturity is zero.
-pub fn create_genesis_block(
-    factories: &CryptoFactories,
+pub async fn create_genesis_block(
     consensus_constants: &ConsensusConstants,
-) -> (ChainBlock, UnblindedOutput) {
-    create_genesis_block_with_coinbase_value(factories, consensus_constants.emission_amounts().0, consensus_constants)
+    key_manager: &TestKeyManager,
+) -> (ChainBlock, WalletOutput) {
+    create_genesis_block_with_coinbase_value(
+        consensus_constants.emission_amounts().0,
+        consensus_constants,
+        key_manager,
+    )
+    .await
 }
 
 // Calculate the MMR Merkle roots for the genesis block template and update the header.
@@ -314,12 +366,12 @@ fn update_genesis_block_mmr_roots(template: NewBlockTemplate) -> Result<Block, C
 }
 
 /// Create a genesis block with the specified coinbase value, returning it with the spending key for the coinbase utxo.
-pub fn create_genesis_block_with_coinbase_value(
-    factories: &CryptoFactories,
+pub async fn create_genesis_block_with_coinbase_value(
     coinbase_value: MicroTari,
     consensus_constants: &ConsensusConstants,
-) -> (ChainBlock, UnblindedOutput) {
-    let (template, output) = genesis_template(factories, coinbase_value, consensus_constants);
+    key_manager: &TestKeyManager,
+) -> (ChainBlock, WalletOutput) {
+    let (template, output) = genesis_template(coinbase_value, consensus_constants, key_manager).await;
     let mut block = update_genesis_block_mmr_roots(template).unwrap();
     find_header_with_achieved_difficulty(&mut block.header, Difficulty::from(1));
     let hash = block.hash();
@@ -341,23 +393,26 @@ pub fn create_genesis_block_with_coinbase_value(
 /// Create a Genesis block with additional utxos that are immediately available for spending. This is useful for
 /// writing tests without having to add blocks just so the coinbase output can mature.
 #[allow(dead_code)]
-pub fn create_genesis_block_with_utxos(
-    factories: &CryptoFactories,
+pub async fn create_genesis_block_with_utxos(
     values: &[MicroTari],
     consensus_constants: &ConsensusConstants,
-) -> (ChainBlock, Vec<UnblindedOutput>) {
-    let (mut template, coinbase) = genesis_template(factories, 100_000_000.into(), consensus_constants);
+    key_manager: &TestKeyManager,
+) -> (ChainBlock, Vec<WalletOutput>) {
+    let (mut template, coinbase) = genesis_template(100_000_000.into(), consensus_constants, key_manager).await;
     let script = script!(Nop);
     let output_features = OutputFeatures::default();
-    let outputs = values.iter().fold(vec![coinbase], |mut secrets, v| {
-        let p = TestParams::new();
-        let unblinded_output =
-            create_non_recoverable_unblinded_output(script.clone(), output_features.clone(), &p, *v).unwrap();
-        secrets.push(unblinded_output.clone());
-        let output = unblinded_output.as_transaction_output(factories).unwrap();
+    let mut outputs = Vec::new();
+    outputs.push(coinbase);
+    for value in values {
+        let p = TestParams::new(key_manager).await;
+        let wallet_output =
+            create_wallet_output_with_data(script.clone(), output_features.clone(), &p, *value, key_manager)
+                .await
+                .unwrap();
+        outputs.push(wallet_output.clone());
+        let output = wallet_output.as_transaction_output(key_manager).await.unwrap();
         template.body.add_output(output);
-        secrets
-    });
+    }
     let mut block = update_genesis_block_mmr_roots(template).unwrap();
     find_header_with_achieved_difficulty(&mut block.header, Difficulty::from(1));
     let hash = block.hash();
@@ -379,21 +434,23 @@ pub fn create_genesis_block_with_utxos(
 /// Create a new block using the provided transactions that adds to the blockchain given in `prev_block`.
 // This function is used, unclear why clippy says it isn't.
 #[allow(dead_code)]
-pub fn chain_block(
+pub async fn chain_block(
     prev_block: &Block,
     transactions: Vec<Transaction>,
     consensus: &ConsensusManager,
+    key_manager: &TestKeyManager,
 ) -> NewBlockTemplate {
     let mut header = BlockHeader::from_previous(&prev_block.header);
     header.version = consensus.consensus_constants(header.height).blockchain_version();
     let height = header.height;
     let reward = consensus.get_block_reward_at(height);
     let (coinbase_utxo, coinbase_kernel, _) = create_coinbase(
-        &Default::default(),
         reward,
         consensus.consensus_constants(height).coinbase_lock_height(),
         None,
-    );
+        key_manager,
+    )
+    .await;
     NewBlockTemplate::from_block(
         header
             .into_builder()
@@ -428,24 +485,25 @@ pub fn chain_block_with_coinbase(
 }
 
 /// Create a new block using the provided coinbase and transactions that adds to the blockchain given in `prev_block`.
-pub fn chain_block_with_new_coinbase(
+pub async fn chain_block_with_new_coinbase(
     prev_block: &ChainBlock,
     transactions: Vec<Transaction>,
     consensus_manager: &ConsensusManager,
-    factories: &CryptoFactories,
     extra: Option<Vec<u8>>,
-) -> (NewBlockTemplate, UnblindedOutput) {
+    key_manager: &TestKeyManager,
+) -> (NewBlockTemplate, WalletOutput) {
     let height = prev_block.height() + 1;
     let mut coinbase_value = consensus_manager.emission_schedule().block_reward(height);
     coinbase_value += transactions
         .iter()
         .fold(MicroTari(0), |acc, x| acc + x.body.get_total_fee());
     let (coinbase_utxo, coinbase_kernel, coinbase_output) = create_coinbase(
-        factories,
         coinbase_value,
         height + consensus_manager.consensus_constants(height).coinbase_lock_height(),
         extra,
-    );
+        key_manager,
+    )
+    .await;
     let mut header = BlockHeader::from_previous(prev_block.header());
     header.height = height;
     header.version = consensus_manager
@@ -466,43 +524,39 @@ pub fn chain_block_with_new_coinbase(
 
 /// Create a new block with the provided transactions. The new MMR roots are calculated, and then the new block is
 /// added to the database. The newly created block is returned as the result.
-pub fn append_block<B: BlockchainBackend>(
+pub async fn append_block<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     prev_block: &ChainBlock,
     txns: Vec<Transaction>,
     consensus: &ConsensusManager,
     achieved_difficulty: Difficulty,
+    key_manager: &TestKeyManager,
 ) -> Result<ChainBlock, ChainStorageError> {
-    append_block_with_coinbase(
-        &CryptoFactories::default(),
-        db,
-        prev_block,
-        txns,
-        consensus,
-        achieved_difficulty,
-    )
-    .map(|(b, _)| b)
+    append_block_with_coinbase(db, prev_block, txns, consensus, achieved_difficulty, key_manager)
+        .await
+        .map(|(b, _)| b)
 }
 
 /// Create a new block with the provided transactions and add a coinbase output. The new MMR roots are calculated, and
 /// then the new block is added to the database. The newly created block is returned as the result.
-pub fn append_block_with_coinbase<B: BlockchainBackend>(
-    factories: &CryptoFactories,
+pub async fn append_block_with_coinbase<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     prev_block: &ChainBlock,
     txns: Vec<Transaction>,
     consensus_manager: &ConsensusManager,
     achieved_difficulty: Difficulty,
-) -> Result<(ChainBlock, UnblindedOutput), ChainStorageError> {
+    key_manager: &TestKeyManager,
+) -> Result<(ChainBlock, WalletOutput), ChainStorageError> {
     let height = prev_block.height() + 1;
     let mut coinbase_value = consensus_manager.emission_schedule().block_reward(height);
     coinbase_value += txns.iter().fold(MicroTari(0), |acc, x| acc + x.body.get_total_fee());
     let (coinbase_utxo, coinbase_kernel, coinbase_output) = create_coinbase(
-        factories,
         coinbase_value,
         height + consensus_manager.consensus_constants(0).coinbase_lock_height(),
         None,
-    );
+        key_manager,
+    )
+    .await;
     let template = chain_block_with_coinbase(prev_block, txns, coinbase_utxo, coinbase_kernel, consensus_manager);
     let mut block = db.prepare_new_block(template)?;
     block.header.nonce = OsRng.next_u64();
@@ -520,68 +574,62 @@ pub fn append_block_with_coinbase<B: BlockchainBackend>(
 
 /// Generate a new block using the given transaction schema and add it to the provided database.
 /// The blocks and UTXO vectors are also updated with the info from the new block.
-pub fn generate_new_block<B: BlockchainBackend>(
+pub async fn generate_new_block<B: BlockchainBackend>(
     db: &mut BlockchainDatabase<B>,
     blocks: &mut Vec<ChainBlock>,
-    outputs: &mut Vec<Vec<UnblindedOutput>>,
+    outputs: &mut Vec<Vec<WalletOutput>>,
     schemas: Vec<TransactionSchema>,
     consensus: &ConsensusManager,
+    key_manager: &TestKeyManager,
 ) -> Result<BlockAddResult, ChainStorageError> {
     let coinbase_value = consensus.emission_schedule().block_reward(db.get_height().unwrap() + 1);
-    generate_new_block_with_coinbase(
-        db,
-        &CryptoFactories::default(),
-        blocks,
-        outputs,
-        schemas,
-        coinbase_value,
-        consensus,
-    )
+    generate_new_block_with_coinbase(db, blocks, outputs, schemas, coinbase_value, consensus, key_manager).await
 }
 
 #[allow(dead_code)]
-pub fn generate_new_block_with_achieved_difficulty<B: BlockchainBackend>(
+pub async fn generate_new_block_with_achieved_difficulty<B: BlockchainBackend>(
     db: &mut BlockchainDatabase<B>,
     blocks: &mut Vec<ChainBlock>,
-    outputs: &mut Vec<Vec<UnblindedOutput>>,
+    outputs: &mut Vec<Vec<WalletOutput>>,
     schemas: Vec<TransactionSchema>,
     achieved_difficulty: Difficulty,
     consensus: &ConsensusManager,
+    key_manager: &TestKeyManager,
 ) -> Result<BlockAddResult, ChainStorageError> {
     let mut txns = Vec::new();
     let mut block_utxos = Vec::new();
     for schema in schemas {
-        let (tx, mut utxos) = spend_utxos(schema);
+        let (tx, mut utxos) = spend_utxos(schema, key_manager).await;
         txns.push(tx);
         block_utxos.append(&mut utxos);
     }
     outputs.push(block_utxos);
-    generate_block_with_achieved_difficulty(db, blocks, txns, achieved_difficulty, consensus)
+    generate_block_with_achieved_difficulty(db, blocks, txns, achieved_difficulty, consensus, key_manager).await
 }
 
 /// Generate a new block using the given transaction schema and coinbase value and add it to the provided database.
 /// The blocks and UTXO vectors are also updated with the info from the new block.
-pub fn generate_new_block_with_coinbase<B: BlockchainBackend>(
+pub async fn generate_new_block_with_coinbase<B: BlockchainBackend>(
     db: &mut BlockchainDatabase<B>,
-    factories: &CryptoFactories,
     blocks: &mut Vec<ChainBlock>,
-    outputs: &mut Vec<Vec<UnblindedOutput>>,
+    outputs: &mut Vec<Vec<WalletOutput>>,
     schemas: Vec<TransactionSchema>,
     coinbase_value: MicroTari,
     consensus: &ConsensusManager,
+    key_manager: &TestKeyManager,
 ) -> Result<BlockAddResult, ChainStorageError> {
     let mut txns = Vec::new();
     let mut block_utxos = Vec::new();
     let mut fees = MicroTari(0);
     for schema in schemas {
-        let (tx, mut utxos) = spend_utxos(schema);
+        let (tx, mut utxos) = spend_utxos(schema, key_manager).await;
         fees += tx.body.get_total_fee();
         txns.push(tx);
         block_utxos.append(&mut utxos);
     }
 
     let (coinbase_utxo, coinbase_kernel, coinbase_output) =
-        create_coinbase(factories, coinbase_value + fees, 100, None);
+        create_coinbase(coinbase_value + fees, 100, None, key_manager).await;
     block_utxos.push(coinbase_output);
 
     outputs.push(block_utxos);
@@ -603,18 +651,20 @@ pub fn find_header_with_achieved_difficulty(header: &mut BlockHeader, achieved_d
 
 /// Generate a block and add it to the database using the transactions provided. The header will be updated with the
 /// correct MMR roots.
-/// This function is not able to determine the unblinded outputs of a transaction, so if you are mixing using this
+/// This function is not able to determine the wallet outputs of a transaction, so if you are mixing using this
 /// with [generate_new_block], you must update the unblinded UTXO vector yourself.
 #[allow(dead_code)]
-pub fn generate_block<B: BlockchainBackend>(
+pub async fn generate_block<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     blocks: &mut Vec<ChainBlock>,
     transactions: Vec<Transaction>,
     consensus: &ConsensusManager,
+    key_manager: &TestKeyManager,
 ) -> Result<BlockAddResult, ChainStorageError> {
     let prev_block = blocks.last().unwrap();
-    let template =
-        chain_block_with_new_coinbase(prev_block, transactions, consensus, &CryptoFactories::default(), None).0;
+    let template = chain_block_with_new_coinbase(prev_block, transactions, consensus, None, key_manager)
+        .await
+        .0;
     let new_block = db.prepare_new_block(template)?;
     let result = db.add_block(new_block.into());
     if let Ok(BlockAddResult::Ok(ref b)) = result {
@@ -624,21 +674,17 @@ pub fn generate_block<B: BlockchainBackend>(
 }
 
 #[allow(dead_code)]
-pub fn generate_block_with_achieved_difficulty<B: BlockchainBackend>(
+pub async fn generate_block_with_achieved_difficulty<B: BlockchainBackend>(
     db: &mut BlockchainDatabase<B>,
     blocks: &mut Vec<ChainBlock>,
     transactions: Vec<Transaction>,
     achieved_difficulty: Difficulty,
     consensus: &ConsensusManager,
+    key_manager: &TestKeyManager,
 ) -> Result<BlockAddResult, ChainStorageError> {
-    let template = chain_block_with_new_coinbase(
-        blocks.last().unwrap(),
-        transactions,
-        consensus,
-        &CryptoFactories::default(),
-        None,
-    )
-    .0;
+    let template = chain_block_with_new_coinbase(blocks.last().unwrap(), transactions, consensus, None, key_manager)
+        .await
+        .0;
     let mut new_block = db.prepare_new_block(template)?;
     new_block.header.nonce = OsRng.next_u64();
     find_header_with_achieved_difficulty(&mut new_block.header, achieved_difficulty);
@@ -675,21 +721,23 @@ pub fn generate_block_with_coinbase<B: BlockchainBackend>(
 }
 
 #[allow(dead_code)]
-pub fn construct_chained_blocks<B: BlockchainBackend>(
+pub async fn construct_chained_blocks<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     block0: ChainBlock,
     consensus: &ConsensusManager,
     n: usize,
+    key_manager: &TestKeyManager,
 ) -> Vec<ChainBlock> {
     let mut prev_block = block0;
-
-    repeat_with(|| {
-        let block = append_block(db, &prev_block, vec![], consensus, 1.into()).unwrap();
+    let mut blocks = Vec::new();
+    for _i in 0..n {
+        let block = append_block(db, &prev_block, vec![], consensus, 1.into(), key_manager)
+            .await
+            .unwrap();
         prev_block = block.clone();
-        block
-    })
-    .take(n)
-    .collect()
+        blocks.push(block);
+    }
+    blocks
 }
 
 #[allow(dead_code)]

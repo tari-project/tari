@@ -55,7 +55,8 @@ use tari_core::{
     },
     transactions::{
         tari_amount::{uT, MicroTari, T},
-        test_helpers::schema_to_transaction,
+        test_helpers::{create_test_core_key_manager_with_memory_db, schema_to_transaction, TestKeyManager},
+        transaction_components::OutputFeatures,
         CryptoFactories,
     },
     txn_schema,
@@ -92,11 +93,11 @@ use tokio::{sync::broadcast, task, time::sleep};
 
 use crate::support::{
     comms_rpc::{connect_rpc_client, BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
-    utils::make_non_recoverable_input,
+    utils::make_input,
 };
 
 pub async fn setup() -> (
-    TransactionServiceResources<TransactionServiceSqliteDatabase, WalletConnectivityMock>,
+    TransactionServiceResources<TransactionServiceSqliteDatabase, WalletConnectivityMock, TestKeyManager>,
     OutboundServiceMockState,
     MockRpcServer<BaseNodeWalletRpcServer<BaseNodeWalletRpcMockService>>,
     Arc<NodeIdentity>,
@@ -143,6 +144,7 @@ pub async fn setup() -> (
 
     let (oms_event_publisher, _) = broadcast::channel(200);
     let output_manager_service_handle = OutputManagerHandle::new(oms_request_sender, oms_event_publisher);
+    let core_key_manager_service_handle = create_test_core_key_manager_with_memory_db();
 
     let (outbound_message_requester, mock_outbound_service) = create_outbound_service_mock(100);
     let outbound_mock_state = mock_outbound_service.get_state();
@@ -158,6 +160,7 @@ pub async fn setup() -> (
     let resources = TransactionServiceResources {
         db,
         output_manager_service: output_manager_service_handle,
+        transaction_key_manager_service: core_key_manager_service_handle,
         outbound_message_service: outbound_message_requester,
         connectivity: wallet_connectivity.clone(),
         event_publisher: ts_event_publisher,
@@ -192,9 +195,10 @@ pub async fn add_transaction_to_database(
     coinbase_block_height: Option<u64>,
     db: TransactionDatabase<TransactionServiceSqliteDatabase>,
 ) {
-    let factories = CryptoFactories::default();
-    let (_utxo, uo0) = make_non_recoverable_input(&mut OsRng, 10 * amount, &factories.commitment).await;
-    let (txs1, _uou1) = schema_to_transaction(&[txn_schema!(from: vec![uo0], to: vec![amount])]);
+    let key_manager_handle = create_test_core_key_manager_with_memory_db();
+    let uo0 = make_input(&mut OsRng, 10 * amount, &OutputFeatures::default(), &key_manager_handle).await;
+    let (txs1, _uou1) =
+        schema_to_transaction(&[txn_schema!(from: vec![uo0], to: vec![amount])], &key_manager_handle).await;
     let tx1 = (*txs1[0]).clone();
     let completed_tx1 = CompletedTransaction::new(
         tx_id,

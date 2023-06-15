@@ -49,9 +49,8 @@ use tari_core::{
     test_helpers::blockchain::TempDatabase,
     transactions::{
         tari_amount::{uT, T},
-        test_helpers::schema_to_transaction,
-        transaction_components::{TransactionOutput, UnblindedOutput},
-        CryptoFactories,
+        test_helpers::{create_test_core_key_manager_with_memory_db, schema_to_transaction, TestKeyManager},
+        transaction_components::{TransactionOutput, WalletOutput},
     },
     txn_schema,
 };
@@ -73,17 +72,18 @@ async fn setup() -> (
     RpcRequestMock,
     ConsensusManager,
     ChainBlock,
-    UnblindedOutput,
+    WalletOutput,
     TempDir,
+    TestKeyManager,
 ) {
     let network = NetworkConsensus::from(Network::LocalNet);
     let consensus_constants = ConsensusConstantsBuilder::new(Network::LocalNet)
         .with_coinbase_lockheight(1)
         .build();
-    let factories = CryptoFactories::default();
+    let key_manager = create_test_core_key_manager_with_memory_db();
     let temp_dir = tempdir().unwrap();
     let (block0, utxo0) =
-        create_genesis_block_with_coinbase_value(&factories, 100_000_000.into(), &consensus_constants);
+        create_genesis_block_with_coinbase_value(100_000_000.into(), &consensus_constants, &key_manager).await;
     let consensus_manager = ConsensusManagerBuilder::new(network.as_network())
         .with_block(block0.clone())
         .build();
@@ -118,22 +118,33 @@ async fn setup() -> (
         block0,
         utxo0,
         temp_dir,
+        key_manager,
     )
 }
 #[tokio::test]
 #[allow(clippy::identity_op)]
+#[allow(clippy::too_many_lines)]
 async fn test_base_node_wallet_rpc() {
     // Testing the submit_transaction() and transaction_query() rpc calls
-    let (service, _, mut base_node, request_mock, consensus_manager, block0, utxo0, _temp_dir) = setup().await;
+    let (service, _, mut base_node, request_mock, consensus_manager, block0, utxo0, _temp_dir, key_manager) =
+        setup().await;
 
-    let (txs1, utxos1) = schema_to_transaction(&[txn_schema!(from: vec![utxo0.clone()], to: vec![1 * T, 1 * T])]);
+    let (txs1, utxos1) = schema_to_transaction(
+        &[txn_schema!(from: vec![utxo0.clone()], to: vec![1 * T, 1 * T])],
+        &key_manager,
+    )
+    .await;
     let tx1 = (*txs1[0]).clone();
     let tx1_sig = tx1.first_kernel_excess_sig().unwrap().clone();
 
-    let (txs2, utxos2) = schema_to_transaction(&[txn_schema!(
-        from: vec![utxos1[0].clone()],
-        to: vec![400_000 * uT, 590_000 * uT]
-    )]);
+    let (txs2, utxos2) = schema_to_transaction(
+        &[txn_schema!(
+            from: vec![utxos1[0].clone()],
+            to: vec![400_000 * uT, 590_000 * uT]
+        )],
+        &key_manager,
+    )
+    .await;
     let tx2 = (*txs2[0]).clone();
     let tx2_sig = tx2.first_kernel_excess_sig().unwrap().clone();
 
@@ -168,7 +179,7 @@ async fn test_base_node_wallet_rpc() {
     // Now submit a block with Tx1 in it so that Tx2 is no longer an orphan
     let block1 = base_node
         .blockchain_db
-        .prepare_new_block(chain_block(block0.block(), vec![tx1.clone()], &consensus_manager))
+        .prepare_new_block(chain_block(block0.block(), vec![tx1.clone()], &consensus_manager, &key_manager).await)
         .unwrap();
 
     base_node.local_nci.submit_block(block1.clone()).await.unwrap();
@@ -197,7 +208,8 @@ async fn test_base_node_wallet_rpc() {
     assert_eq!(resp.rejection_reason, TxSubmissionRejectionReason::AlreadyMined);
 
     // Now create a different tx that uses the same input as Tx1 to produce a DoubleSpend rejection
-    let (txs1b, _utxos1) = schema_to_transaction(&[txn_schema!(from: vec![utxo0], to: vec![2 * T, 1 * T])]);
+    let (txs1b, _utxos1) =
+        schema_to_transaction(&[txn_schema!(from: vec![utxo0], to: vec![2 * T, 1 * T])], &key_manager).await;
     let tx1b = (*txs1b[0]).clone();
 
     // Now if we submit Tx1 is should return as rejected as AlreadyMined
@@ -211,7 +223,7 @@ async fn test_base_node_wallet_rpc() {
     // Now we will Mine block 2 so that we can see 1 confirmation on tx1
     let mut block2 = base_node
         .blockchain_db
-        .prepare_new_block(chain_block(&block1, vec![], &consensus_manager))
+        .prepare_new_block(chain_block(&block1, vec![], &consensus_manager, &key_manager).await)
         .unwrap();
 
     block2.header.output_mmr_size += 1;
@@ -243,37 +255,42 @@ async fn test_base_node_wallet_rpc() {
             assert_eq!(response.location, TxLocation::InMempool);
         }
     }
-    let factories = CryptoFactories::default();
 
     let mut req_utxos = utxos1.clone();
     req_utxos.push(utxos2[0].clone());
 
-    let msg = FetchMatchingUtxos {
-        output_hashes: req_utxos
-            .iter()
-            .map(|uo| uo.as_transaction_output(&factories).unwrap().hash().to_vec())
-            .collect(),
-    };
+    let mut hashes = Vec::new();
+    for output in req_utxos {
+        let hash = output
+            .as_transaction_output(&key_manager)
+            .await
+            .unwrap()
+            .hash()
+            .to_vec();
+        hashes.push(hash);
+    }
+    let msg = FetchMatchingUtxos { output_hashes: hashes };
 
     let req = request_mock.request_with_context(Default::default(), msg);
 
     let response = service.fetch_matching_utxos(req).await.unwrap().into_message();
 
     assert_eq!(response.outputs.len(), utxos1.len());
+    let mut tx_outputs = Vec::new();
+    for output in utxos1 {
+        tx_outputs.push(output.as_transaction_output(&key_manager).await.unwrap())
+    }
     for output_proto in &response.outputs {
         let output = TransactionOutput::try_from(output_proto.clone()).unwrap();
 
-        assert!(utxos1
-            .iter()
-            .any(|u| u.as_transaction_output(&factories).unwrap().commitment == output.commitment));
+        assert!(tx_outputs.iter().any(|u| u.commitment == output.commitment));
     }
 }
 
 #[tokio::test]
 async fn test_get_height_at_time() {
-    let factories = CryptoFactories::default();
-
-    let (service, _, base_node, request_mock, consensus_manager, block0, _utxo0, _temp_dir) = setup().await;
+    let (service, _, base_node, request_mock, consensus_manager, block0, _utxo0, _temp_dir, key_manager) =
+        setup().await;
 
     let mut prev_block = block0.clone();
     let mut times: Vec<EpochTime> = vec![prev_block.header().timestamp];
@@ -282,7 +299,9 @@ async fn test_get_height_at_time() {
         let new_block = base_node
             .blockchain_db
             .prepare_new_block(
-                chain_block_with_new_coinbase(&prev_block, vec![], &consensus_manager, &factories, None).0,
+                chain_block_with_new_coinbase(&prev_block, vec![], &consensus_manager, None, &key_manager)
+                    .await
+                    .0,
             )
             .unwrap();
 
@@ -332,43 +351,56 @@ async fn test_get_height_at_time() {
 }
 #[tokio::test]
 async fn test_sync_utxos_by_block() {
-    let (service, _, mut base_node, request_mock, consensus_manager, block0, utxo0, _temp_dir) = setup().await;
+    let (service, _, mut base_node, request_mock, consensus_manager, block0, utxo0, _temp_dir, key_manager) =
+        setup().await;
 
-    let (txs1, utxos1) = schema_to_transaction(&[txn_schema!(
-        from: vec![utxo0.clone()],
-        to: vec![10 * T, 10 * T, 10 * T, 10 * T, 10 * T, 10 * T, 10 * T, 10 * T, 10 * T]
-    )]);
+    let (txs1, utxos1) = schema_to_transaction(
+        &[txn_schema!(
+            from: vec![utxo0.clone()],
+            to: vec![10 * T, 10 * T, 10 * T, 10 * T, 10 * T, 10 * T, 10 * T, 10 * T, 10 * T]
+        )],
+        &key_manager,
+    )
+    .await;
     let tx1 = (*txs1[0]).clone();
 
-    let (txs2, utxos2) = schema_to_transaction(&[txn_schema!(
-        from: vec![utxos1[0].clone()],
-        to: vec![2 * T, 2 * T, 2 * T, 2 * T]
-    )]);
+    let (txs2, utxos2) = schema_to_transaction(
+        &[txn_schema!(
+            from: vec![utxos1[0].clone()],
+            to: vec![2 * T, 2 * T, 2 * T, 2 * T]
+        )],
+        &key_manager,
+    )
+    .await;
     let tx2 = (*txs2[0]).clone();
 
-    let (txs3, _utxos3) = schema_to_transaction(&[txn_schema!(
-        from: vec![utxos2[0].clone(), utxos2[1].clone()],
-        to: vec![100_000 * uT, 100_000 * uT, 100_000 * uT, 100_000 * uT, 100_000 * uT]
-    )]);
+    let (txs3, _utxos3) = schema_to_transaction(
+        &[txn_schema!(
+            from: vec![utxos2[0].clone(), utxos2[1].clone()],
+            to: vec![100_000 * uT, 100_000 * uT, 100_000 * uT, 100_000 * uT, 100_000 * uT]
+        )],
+        &key_manager,
+    )
+    .await;
     let tx3 = (*txs3[0]).clone();
 
     let block1 = base_node
         .blockchain_db
-        .prepare_new_block(chain_block(block0.block(), vec![tx1.clone()], &consensus_manager))
+        .prepare_new_block(chain_block(block0.block(), vec![tx1.clone()], &consensus_manager, &key_manager).await)
         .unwrap();
 
     base_node.local_nci.submit_block(block1.clone()).await.unwrap();
 
     let block2 = base_node
         .blockchain_db
-        .prepare_new_block(chain_block(&block1, vec![tx2], &consensus_manager))
+        .prepare_new_block(chain_block(&block1, vec![tx2], &consensus_manager, &key_manager).await)
         .unwrap();
 
     base_node.local_nci.submit_block(block2.clone()).await.unwrap();
 
     let block3 = base_node
         .blockchain_db
-        .prepare_new_block(chain_block(&block2, vec![tx3], &consensus_manager))
+        .prepare_new_block(chain_block(&block2, vec![tx3], &consensus_manager, &key_manager).await)
         .unwrap();
 
     base_node.local_nci.submit_block(block3.clone()).await.unwrap();
@@ -383,7 +415,6 @@ async fn test_sync_utxos_by_block() {
     let mut streaming = service.sync_utxos_by_block(req).await.unwrap().into_inner();
 
     let responses = convert_mpsc_to_stream(&mut streaming).collect::<Vec<_>>().await;
-    // dbg!(&block0);
     assert_eq!(
         vec![
             (0, block0.header().hash().to_vec(), 0),

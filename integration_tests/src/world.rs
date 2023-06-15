@@ -32,7 +32,10 @@ use serde_json::Value;
 use tari_chat_client::ChatClient;
 use tari_core::{
     blocks::Block,
-    transactions::transaction_components::{Transaction, UnblindedOutput},
+    transactions::{
+        test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager},
+        transaction_components::{Transaction, WalletOutput},
+    },
 };
 use tari_utilities::hex::Hex;
 use thiserror::Error;
@@ -62,7 +65,7 @@ pub enum TariWorldError {
     ClientNotFound(String),
 }
 
-#[derive(Default, cucumber::World)]
+#[derive(cucumber::World)]
 pub struct TariWorld {
     pub current_scenario_name: Option<String>,
     pub current_feature_name: Option<String>,
@@ -76,7 +79,7 @@ pub struct TariWorld {
     pub merge_mining_proxies: IndexMap<String, MergeMiningProxyProcess>,
     pub transactions: IndexMap<String, Transaction>,
     pub wallet_addresses: IndexMap<String, String>, // values are strings representing tari addresses
-    pub utxos: IndexMap<String, UnblindedOutput>,
+    pub utxos: IndexMap<String, WalletOutput>,
     pub output_hash: Option<String>,
     pub pre_image: Option<String>,
     pub wallet_connected_to_base_node: IndexMap<String, String>, // wallet -> base node,
@@ -88,6 +91,37 @@ pub struct TariWorld {
     pub last_imported_tx_ids: Vec<u64>,
     // We need to store this for the merge mining proxy steps. The checks are get and check are done on separate steps.
     pub last_merge_miner_response: Value,
+    pub key_manager: TestKeyManager,
+}
+
+impl Default for TariWorld {
+    fn default() -> Self {
+        println!("\nWorld initialized - remove this line when called!\n");
+        Self {
+            current_scenario_name: None,
+            current_feature_name: None,
+            current_base_dir: None,
+            base_nodes: Default::default(),
+            blocks: Default::default(),
+            miners: Default::default(),
+            ffi_wallets: Default::default(),
+            wallets: Default::default(),
+            chat_clients: Default::default(),
+            merge_mining_proxies: Default::default(),
+            transactions: Default::default(),
+            wallet_addresses: Default::default(),
+            utxos: Default::default(),
+            output_hash: None,
+            pre_image: None,
+            wallet_connected_to_base_node: Default::default(),
+            seed_nodes: vec![],
+            wallet_tx_ids: Default::default(),
+            errors: Default::default(),
+            last_imported_tx_ids: vec![],
+            last_merge_miner_response: Default::default(),
+            key_manager: create_test_core_key_manager_with_memory_db(),
+        }
+    }
 }
 
 impl Debug for TariWorld {

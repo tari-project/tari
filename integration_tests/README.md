@@ -2,45 +2,45 @@
 
 ## Procedure to run
 
-In its simplest form you can run the tests from the project route with `cargo test --test cucumber`
+In its simplest form you can run the tests from the project route with `cargo test --release --test cucumber`
 
 - To run a specific test, add `-- --name <Test Name>` to the command line
 
   ```shell
   # Runs a specific test
-  cargo test --test cucumber -- --name "Basic connectivity between 2 nodes"
+  cargo test --release --test cucumber -- --name "Basic connectivity between 2 nodes"
 
   # You can also use the short option -n
-  cargo test --test cucumber -- -n "Basic connectivity between 2 nodes"
+  cargo test --release --test cucumber -- -n "Basic connectivity between 2 nodes"
   ```
 
 - To run tests with specific tags, e.g. `critical`, add `-- --tags @<EXPRESSION>` to the command line.
 
   ```shell
   # Runs all critical tests
-  cargo test --test cucumber -- --tags "@critical"
+  cargo test --release --test cucumber -- --tags "@critical"
 
   # Runs all critical tests base node tests
-  cargo test --test cucumber -- --tags "@critical AND @base-node"
+  cargo test --release --test cucumber -- --tags "@critical AND @base-node"
 
   # Runs all critical tests, but not @long-running and not @tbroken
-  cargo test --test cucumber -- --tags "@critical and not @long-running and not @broken"
+  cargo test --release --test cucumber -- --tags "@critical and not @long-running and not @broken"
 
   # You can also use the short option -t
-  cargo test --test cucumber -- -t "@critical"
+  cargo test --release --test cucumber -- -t "@critical"
   ```
 
 - To run a specific file or files add `-- --input glob` to the command line
 
   ```shell
   # Runs all files matching glob
-  cargo test --test cucumber -- --input "tests/features/Wallet*"
+  cargo test --release --test cucumber -- --input "tests/features/Wallet*"
 
   # If you want to run a single file make the glob specific to the filename
-  cargo test --test cucumber -- --input "tests/features/WalletTransactions*"
+  cargo test --release --test cucumber -- --input "tests/features/WalletTransactions*"
 
   # You can also use the short option -i
-  cargo test --test cucumber -- -i "tests/features/WalletTransactions*"
+  cargo test --release --test cucumber -- -i "tests/features/WalletTransactions*"
   ```
 
 ## Notes

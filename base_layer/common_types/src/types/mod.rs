@@ -26,6 +26,7 @@ mod fixed_hash;
 pub use bullet_rangeproofs::BulletRangeProof;
 use tari_crypto::{
     hash::blake2::Blake256,
+    hasher,
     ristretto::{
         bulletproofs_plus::BulletproofsPlusService,
         pedersen::{extended_commitment_factory::ExtendedPedersenCommitmentFactory, PedersenCommitment},
@@ -58,7 +59,6 @@ pub type PublicKey = RistrettoPublicKey;
 
 /// Define the explicit Secret key implementation for the Tari base layer.
 pub type PrivateKey = RistrettoSecretKey;
-pub type BlindingFactor = RistrettoSecretKey;
 
 /// Define the hash function that will be used to produce a signature challenge
 pub type SignatureHasher = Blake256;
@@ -79,6 +79,8 @@ pub type RangeProofService = BulletproofsPlusService;
 pub type RangeProof = BulletRangeProof;
 
 use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
+
+hasher!(Blake256, WalletHasher, "com.tari.base_layer.wallet", 1, wallet_hasher);
 
 hash_domain!(
     BulletRangeProofHashDomain,

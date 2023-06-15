@@ -51,7 +51,7 @@ use tari_core::{
     covenants::Covenant,
     transactions::{
         tari_amount::{uT, MicroTari},
-        test_helpers::{create_non_recoverable_unblinded_output, TestParams},
+        test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::OutputFeatures,
         CryptoFactories,
     },
@@ -102,6 +102,7 @@ use tari_wallet::{
 };
 use tempfile::tempdir;
 use tokio::{sync::mpsc, time::sleep};
+use tari_core::test_helpers::create_test_core_key_manager_with_memory_db;
 
 use crate::support::utils::make_input;
 
@@ -283,7 +284,8 @@ async fn test_wallet() {
     let mut alice_event_stream = alice_wallet.transaction_service.get_event_stream();
 
     let value = MicroTari::from(1000);
-    let (_utxo, uo1) = make_non_recoverable_input(&mut OsRng, MicroTari(2500), &factories.commitment).await;
+    let key_manager = create_test_core_key_manager_with_memory_db();
+    let (_utxo, uo1) = make_non_recoverable_input(&mut OsRng, MicroTari(2500), &OutputFeatures::default(), &key_manager).await;
 
     alice_wallet.output_manager_service.add_output(uo1, None).await.unwrap();
 
@@ -588,7 +590,8 @@ async fn test_store_and_forward_send_tx() {
         .unwrap();
 
     let value = MicroTari::from(1000);
-    let (_utxo, uo1) = make_non_recoverable_input(&mut OsRng, MicroTari(2500), &factories.commitment).await;
+    let key_manager = create_test_core_key_manager_with_memory_db();
+    let (_utxo, uo1) = make_non_recoverable_input(&mut OsRng, MicroTari(2500), &OutputFeatures::default(), &key_manager).await;
 
     alice_wallet.output_manager_service.add_output(uo1, None).await.unwrap();
 
@@ -703,7 +706,7 @@ async fn test_import_utxo() {
     let key_ga = Key::from_slice(&key);
     let cipher = XChaCha20Poly1305::new(key_ga);
 
-    let output_manager_backend = OutputManagerSqliteDatabase::new(connection.clone(), cipher.clone());
+    let output_manager_backend = OutputManagerSqliteDatabase::new(connection.clone());
 
     let mut alice_wallet = Wallet::start(
         config,
@@ -731,9 +734,10 @@ async fn test_import_utxo() {
     let input = inputs!(claim);
     let temp_features = OutputFeatures::create_coinbase(50, None);
 
-    let p = TestParams::new();
-    let utxo = create_non_recoverable_unblinded_output(script.clone(), temp_features, &p, 20000 * uT).unwrap();
-    let output = utxo.as_transaction_output(&factories).unwrap();
+    let key_manager = create_test_core_key_manager_with_memory_db();
+    let p = TestParams::new(&key_manager);
+    let utxo = create_wallet_output_with_data(script.clone(), temp_features, &p, 20000 * uT, &key_manager).await.unwrap();
+    let output = utxo.as_transaction_output(&key_manager).unwrap();
     let expected_output_hash = output.hash();
     let node_address = TariAddress::new(node_identity.public_key().clone(), network);
     alice_wallet
@@ -777,7 +781,7 @@ async fn test_import_utxo() {
 
     assert_eq!(completed_tx.amount, 20000 * uT);
     assert_eq!(completed_tx.status, TransactionStatus::Imported);
-    let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection, cipher));
+    let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection));
     let outputs = db.fetch_outputs_by_tx_id(tx_id).unwrap();
     assert!(outputs.iter().any(|o| { o.hash == expected_output_hash }));
 }

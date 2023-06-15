@@ -133,8 +133,8 @@ Feature: Reorgs
     When I mine 14 blocks on NODE1
     When I mine a block on NODE1 with coinbase CB1
     When I mine 4 blocks on NODE1
-    When I create a custom fee transaction TX1 spending CB1 to UTX1 with fee 20
-    When I create a custom fee transaction TX11 spending UTX1 to UTX11 with fee 20
+    When I create a custom fee transaction TX1 spending CB1 to UTX1 with fee per gram 20
+    When I create a custom fee transaction TX11 spending UTX1 to UTX11 with fee per gram 20
     When I submit transaction TX1 to NODE1
     When I submit transaction TX11 to NODE1
     When I mine 1 blocks on NODE1
@@ -145,8 +145,8 @@ Feature: Reorgs
     And node NODE2 is at height 20
     When I mine a block on NODE2 with coinbase CB2
     When I mine 3 blocks on NODE2
-    When I create a custom fee transaction TX2 spending CB2 to UTX2 with fee 20
-    When I create a custom fee transaction TX21 spending UTX2 to UTX21 with fee 20
+    When I create a custom fee transaction TX2 spending CB2 to UTX2 with fee per gram 20
+    When I create a custom fee transaction TX21 spending UTX2 to UTX21 with fee per gram 20
     When I submit transaction TX2 to NODE2
     When I submit transaction TX21 to NODE2
     When I mine 1 blocks on NODE2
@@ -158,8 +158,8 @@ Feature: Reorgs
     And node NODE1 is at height 20
     When I mine a block on NODE1 with coinbase CB3
     When I mine 3 blocks on NODE1
-    When I create a custom fee transaction TX3 spending CB3 to UTX3 with fee 20
-    When I create a custom fee transaction TX31 spending UTX3 to UTX31 with fee 20
+    When I create a custom fee transaction TX3 spending CB3 to UTX3 with fee per gram 20
+    When I create a custom fee transaction TX31 spending UTX3 to UTX31 with fee per gram 20
     When I submit transaction TX3 to NODE1
     When I submit transaction TX31 to NODE1
     When I mine 1 blocks on NODE1

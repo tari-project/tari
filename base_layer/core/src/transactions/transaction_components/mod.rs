@@ -46,7 +46,8 @@ pub use transaction_kernel_version::TransactionKernelVersion;
 pub use transaction_output::TransactionOutput;
 pub use transaction_output_version::TransactionOutputVersion;
 pub use unblinded_output::UnblindedOutput;
-pub use unblinded_output_builder::UnblindedOutputBuilder;
+pub use wallet_output::WalletOutput;
+pub use wallet_output_builder::WalletOutputBuilder;
 use zeroize::Zeroize;
 
 pub mod encrypted_data;
@@ -69,7 +70,8 @@ mod transaction_kernel_version;
 pub mod transaction_output;
 mod transaction_output_version;
 mod unblinded_output;
-mod unblinded_output_builder;
+mod wallet_output;
+mod wallet_output_builder;
 
 #[cfg(test)]
 mod test;
@@ -89,7 +91,7 @@ hidden_type!(EncryptedDataKey, SafeArray<u8, AEAD_KEY_LEN>);
 use super::tari_amount::MicroTari;
 use crate::{consensus::DomainSeparatedConsensusHasher, covenants::Covenant, transactions::TransactionHashDomain};
 
-/// Implement the canonical hashing function for TransactionOutput and UnblindedOutput for use in
+/// Implement the canonical hashing function for TransactionOutput and WalletOutput for use in
 /// ordering as well as for the output hash calculation for TransactionInput.
 ///
 /// We can exclude the range proof from this hash. The rationale for this is:

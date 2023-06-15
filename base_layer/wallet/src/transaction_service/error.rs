@@ -36,6 +36,7 @@ use tari_core::transactions::{
     transaction_protocol::TransactionProtocolError,
 };
 use tari_crypto::{errors::RangeProofError, signatures::CommitmentSignatureError};
+use tari_key_manager::key_manager_service::KeyManagerServiceError;
 use tari_p2p::services::liveness::error::LivenessError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use tari_utilities::ByteArrayError;
@@ -184,6 +185,10 @@ pub enum TransactionServiceError {
     CommitmentSignatureError(#[from] CommitmentSignatureError),
     #[error("Invalid data: `{0}`")]
     RangeProofError(#[from] RangeProofError),
+    #[error("Key manager error: `{0}`")]
+    InvalidKeyId(String),
+    #[error("Invalid key manager data: `{0}`")]
+    KeyManagerServiceError(#[from] KeyManagerServiceError),
 }
 
 #[derive(Debug, Error)]

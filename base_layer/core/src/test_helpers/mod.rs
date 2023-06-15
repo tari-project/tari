@@ -31,6 +31,7 @@ use tari_common::configuration::Network;
 use tari_common_types::types::PublicKey;
 use tari_comms::PeerManager;
 use tari_crypto::keys::PublicKey as PublicKeyT;
+use tari_key_manager::key_manager_service::KeyId;
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
 
 use crate::{
@@ -38,9 +39,10 @@ use crate::{
     consensus::{ConsensusConstants, ConsensusManager},
     proof_of_work::{sha3x_difficulty, AchievedTargetDifficulty, Difficulty},
     transactions::{
-        transaction_components::{Transaction, UnblindedOutput},
+        key_manager::TransactionKeyManagerBranch,
+        test_helpers::TestKeyManager,
+        transaction_components::{Transaction, WalletOutput},
         CoinbaseBuilder,
-        CryptoFactories,
     },
 };
 
@@ -64,7 +66,12 @@ pub fn create_orphan_block(block_height: u64, transactions: Vec<Transaction>, co
     header.into_builder().with_transactions(transactions).build()
 }
 
-pub fn create_block(rules: &ConsensusManager, prev_block: &Block, spec: BlockSpec) -> (Block, UnblindedOutput) {
+pub async fn create_block(
+    rules: &ConsensusManager,
+    prev_block: &Block,
+    spec: BlockSpec,
+    km: &TestKeyManager,
+) -> (Block, WalletOutput) {
     let mut header = BlockHeader::from_previous(&prev_block.header);
     let block_height = spec.height_override.unwrap_or(prev_block.header.height + 1);
     header.height = block_height;
@@ -80,12 +87,17 @@ pub fn create_block(rules: &ConsensusManager, prev_block: &Block, spec: BlockSpe
         )
     });
 
-    let (coinbase, coinbase_output) = CoinbaseBuilder::new(CryptoFactories::default())
+    let spend_key_id = KeyId::Managed {
+        branch: TransactionKeyManagerBranch::Coinbase.get_branch_key(),
+        index: block_height,
+    };
+    let (coinbase, coinbase_output) = CoinbaseBuilder::new(km.clone())
         .with_block_height(header.height)
         .with_fees(0.into())
-        .with_nonce(0.into())
-        .with_spend_key(block_height.into())
+        .with_spend_key_id(spend_key_id.clone())
+        .with_script_key_id(spend_key_id)
         .build_with_reward(rules.consensus_constants(block_height), reward)
+        .await
         .unwrap();
 
     let mut block = header

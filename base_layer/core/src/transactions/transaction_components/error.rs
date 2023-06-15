@@ -24,14 +24,19 @@
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
 use serde::{Deserialize, Serialize};
-use tari_crypto::{errors::RangeProofError, signatures::CommitmentAndPublicKeySignatureError};
+use tari_crypto::{
+    errors::RangeProofError,
+    signatures::{CommitmentAndPublicKeySignatureError, SchnorrSignatureError},
+};
+use tari_key_manager::key_manager_service::KeyManagerServiceError;
 use tari_script::ScriptError;
+use tari_utilities::ByteArrayError;
 use thiserror::Error;
 
-use crate::covenants::CovenantError;
+use crate::{covenants::CovenantError, transactions::transaction_components::EncryptedDataError};
 
 //----------------------------------------     TransactionError   ----------------------------------------------------//
-#[derive(Clone, Debug, PartialEq, Error, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Error, Deserialize, Serialize, Eq)]
 pub enum TransactionError {
     #[error("Error validating the transaction: {0}")]
     ValidationError(String),
@@ -59,6 +64,8 @@ pub enum TransactionError {
     InputMaturity,
     #[error("Tari script error : {0}")]
     ScriptError(#[from] ScriptError),
+    #[error("Schnorr signature error : {0}")]
+    SchnorrSignatureError(#[from] SchnorrSignatureError),
     #[error("Error performing conversion: {0}")]
     ConversionError(String),
     #[error("Error performing encryption: {0}")]
@@ -81,10 +88,34 @@ pub enum TransactionError {
     InvalidOutputFeaturesCoinbaseExtraSize { len: usize, max: u32 },
     #[error("Invalid revealed value : {0}")]
     InvalidRevealedValue(String),
+    #[error("KeyManager encountered an error: {0}")]
+    KeyManagerError(String),
+    #[error("EncryptedData error : {0}")]
+    EncryptedDataError(String),
+    #[error("Conversion error : {0}")]
+    ByteArrayError(String),
 }
 
 impl From<CovenantError> for TransactionError {
     fn from(err: CovenantError) -> Self {
         TransactionError::CovenantError(err.to_string())
+    }
+}
+
+impl From<KeyManagerServiceError> for TransactionError {
+    fn from(err: KeyManagerServiceError) -> Self {
+        TransactionError::KeyManagerError(err.to_string())
+    }
+}
+
+impl From<EncryptedDataError> for TransactionError {
+    fn from(err: EncryptedDataError) -> Self {
+        TransactionError::EncryptedDataError(err.to_string())
+    }
+}
+
+impl From<ByteArrayError> for TransactionError {
+    fn from(err: ByteArrayError) -> Self {
+        TransactionError::ByteArrayError(err.to_string())
     }
 }

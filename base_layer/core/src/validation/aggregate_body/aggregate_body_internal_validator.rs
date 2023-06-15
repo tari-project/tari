@@ -23,15 +23,7 @@
 use std::{collections::HashSet, convert::TryInto};
 
 use log::{trace, warn};
-use tari_common_types::types::{
-    BlindingFactor,
-    Commitment,
-    CommitmentFactory,
-    HashOutput,
-    PrivateKey,
-    PublicKey,
-    RangeProofService,
-};
+use tari_common_types::types::{Commitment, CommitmentFactory, HashOutput, PrivateKey, PublicKey, RangeProofService};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::PublicKey as PublicKeyTrait,
@@ -102,8 +94,8 @@ impl AggregateBodyInternalConsistencyValidator {
     pub fn validate(
         &self,
         body: &AggregateBody,
-        tx_offset: &BlindingFactor,
-        script_offset: &BlindingFactor,
+        tx_offset: &PrivateKey,
+        script_offset: &PrivateKey,
         total_reward: Option<MicroTari>,
         prev_header: Option<HashOutput>,
         height: u64,
@@ -454,6 +446,7 @@ mod test {
         covenants::Covenant,
         transactions::{
             test_helpers,
+            test_helpers::create_test_core_key_manager_with_memory_db,
             transaction_components::{KernelFeatures, OutputFeatures, TransactionInputVersion},
         },
     };
@@ -511,35 +504,39 @@ mod test {
         }
     }
 
-    #[test]
-    fn check_burned_succeeds_for_valid_outputs() {
+    #[tokio::test]
+    async fn check_burned_succeeds_for_valid_outputs() {
         let mut kernel1 = test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::create_burn());
         let mut kernel2 = test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::create_burn());
 
+        let key_manager = create_test_core_key_manager_with_memory_db();
         let (output1, _, _) = test_helpers::create_utxo(
             100.into(),
-            &CryptoFactories::default(),
+            &key_manager,
             &OutputFeatures::create_burn_output(),
             &TariScript::default(),
             &Covenant::default(),
             0.into(),
-        );
+        )
+        .await;
         let (output2, _, _) = test_helpers::create_utxo(
             101.into(),
-            &CryptoFactories::default(),
+            &key_manager,
             &OutputFeatures::create_burn_output(),
             &TariScript::default(),
             &Covenant::default(),
             0.into(),
-        );
+        )
+        .await;
         let (output3, _, _) = test_helpers::create_utxo(
             102.into(),
-            &CryptoFactories::default(),
+            &key_manager,
             &OutputFeatures::create_burn_output(),
             &TariScript::default(),
             &Covenant::default(),
             0.into(),
-        );
+        )
+        .await;
 
         kernel1.burn_commitment = Some(output1.commitment.clone());
         kernel2.burn_commitment = Some(output2.commitment.clone());

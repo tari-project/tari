@@ -20,10 +20,23 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_crypto::hash_domain;
+
+use crate::consensus::DomainSeparatedConsensusHasher;
+
 pub mod borsh;
 pub mod byte_counter;
 pub mod limited_reader;
+pub mod one_sided;
 #[cfg(feature = "base_node")]
 pub mod rolling_avg;
 #[cfg(feature = "base_node")]
 pub mod rolling_vec;
+
+hash_domain!(
+    ConfidentialOutputHashDomain,
+    "com.tari.layer_two.confidential_output",
+    1
+);
+/// Hasher used in the DAN to derive masks and encrypted value keys
+pub type ConfidentialOutputHasher = DomainSeparatedConsensusHasher<ConfidentialOutputHashDomain>;

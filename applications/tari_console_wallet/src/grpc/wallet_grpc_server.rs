@@ -289,7 +289,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         Ok(Response::new(GetUnspentAmountsResponse {
             amount: unspent_amounts
                 .into_iter()
-                .map(|o| o.unblinded_output.value.as_u64())
+                .map(|o| o.wallet_output.value.as_u64())
                 .filter(|&a| a > 0)
                 .collect(),
         }))

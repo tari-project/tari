@@ -22,7 +22,7 @@
 
 use core::result::Result;
 
-use tari_common_types::types::{PrivateKey, PublicKey};
+use tari_common_types::types::{PrivateKey, PublicKey, WalletHasher};
 use tari_comms::types::CommsDHKE;
 use tari_crypto::{
     hash::blake2::Blake256,
@@ -31,8 +31,6 @@ use tari_crypto::{
     keys::PublicKey as PKtrait,
 };
 use tari_utilities::{byte_array::ByteArrayError, ByteArray};
-
-use crate::WalletHasher;
 
 hash_domain!(
     WalletOutputRewindKeysDomain,

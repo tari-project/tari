@@ -1425,7 +1425,7 @@ fn test_invalid_block() {
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
-    let (block0, output) = create_genesis_block(&factories, &consensus_constants);
+    let (block0, output) = create_genesis_block( &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .add_consensus_constants(consensus_constants)
         .with_block(block0.clone())
@@ -1652,7 +1652,7 @@ fn test_orphan_cleanup_on_reorg() {
     let network = Network::LocalNet;
     let factories = CryptoFactories::default();
     let consensus_constants = ConsensusConstantsBuilder::new(network).build();
-    let (block0, output) = create_genesis_block(&factories, &consensus_constants);
+    let (block0, output) = create_genesis_block( &consensus_constants);
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .add_consensus_constants(consensus_constants)
         .with_block(block0.clone())

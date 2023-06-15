@@ -37,6 +37,7 @@ use tari_comms_dht::{
 use tari_core::{
     covenants::Covenant,
     transactions::{
+        key_manager::TransactionKeyManagerInterface,
         tari_amount::MicroTari,
         transaction_components::OutputFeatures,
         transaction_protocol::{
@@ -85,7 +86,7 @@ pub enum TransactionSendProtocolStage {
     WaitForReply,
 }
 
-pub struct TransactionSendProtocol<TBackend, TWalletConnectivity> {
+pub struct TransactionSendProtocol<TBackend, TWalletConnectivity, TKeyManagerInterface> {
     id: TxId,
     dest_address: TariAddress,
     amount: MicroTari,
@@ -93,21 +94,23 @@ pub struct TransactionSendProtocol<TBackend, TWalletConnectivity> {
     message: String,
     service_request_reply_channel: Option<oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>>,
     stage: TransactionSendProtocolStage,
-    resources: TransactionServiceResources<TBackend, TWalletConnectivity>,
+    resources: TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManagerInterface>,
     transaction_reply_receiver: Option<Receiver<(CommsPublicKey, RecipientSignedMessage)>>,
     cancellation_receiver: Option<oneshot::Receiver<()>>,
     tx_meta: TransactionMetadata,
     sender_protocol: Option<SenderTransactionProtocol>,
 }
 
-impl<TBackend, TWalletConnectivity> TransactionSendProtocol<TBackend, TWalletConnectivity>
+impl<TBackend, TWalletConnectivity, TKeyManagerInterface>
+    TransactionSendProtocol<TBackend, TWalletConnectivity, TKeyManagerInterface>
 where
     TBackend: TransactionBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
+    TKeyManagerInterface: TransactionKeyManagerInterface,
 {
     pub fn new(
         id: TxId,
-        resources: TransactionServiceResources<TBackend, TWalletConnectivity>,
+        resources: TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManagerInterface>,
         transaction_reply_receiver: Receiver<(CommsPublicKey, RecipientSignedMessage)>,
         cancellation_receiver: oneshot::Receiver<()>,
         dest_address: TariAddress,
@@ -267,7 +270,8 @@ where
 
         // Build single round message and advance sender state
         let msg = sender_protocol
-            .build_single_round_message()
+            .build_single_round_message(&self.resources.transaction_key_manager_service)
+            .await
             .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
         let tx_id = msg.tx_id;
         if tx_id != self.id {
@@ -432,7 +436,8 @@ where
                 .send_transaction(
                     outbound_tx
                         .sender_protocol
-                        .get_single_round_message()
+                        .get_single_round_message(&self.resources.transaction_key_manager_service)
+                        .await
                         .map_err(|e| TransactionServiceProtocolError::new(self.id, e.into()))?,
                 )
                 .await
@@ -501,7 +506,7 @@ where
                     match self.send_transaction(
                         outbound_tx
                         .sender_protocol
-                        .get_single_round_message()
+                        .get_single_round_message(&self.resources.transaction_key_manager_service).await
                         .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?
                     ).await
                     {
@@ -539,16 +544,21 @@ where
 
         outbound_tx
             .sender_protocol
-            .add_single_recipient_info(recipient_reply)
+            .add_single_recipient_info(recipient_reply, &self.resources.transaction_key_manager_service)
+            .await
             .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
-        outbound_tx.sender_protocol.finalize().map_err(|e| {
-            error!(
-                target: LOG_TARGET,
-                "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", self.id, e,
-            );
-            TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e))
-        })?;
+        outbound_tx
+            .sender_protocol
+            .finalize(&self.resources.transaction_key_manager_service)
+            .await
+            .map_err(|e| {
+                error!(
+                    target: LOG_TARGET,
+                    "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", self.id, e,
+                );
+                TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e))
+            })?;
 
         let tx = outbound_tx
             .sender_protocol

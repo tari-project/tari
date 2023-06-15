@@ -118,12 +118,12 @@ impl TransactionKernel {
     }
 
     pub fn is_coinbase(&self) -> bool {
-        self.features.contains(KernelFeatures::COINBASE_KERNEL)
+        self.features.is_coinbase()
     }
 
     /// Is this a burned output kernel?
     pub fn is_burned(&self) -> bool {
-        self.features.contains(KernelFeatures::BURN_KERNEL)
+        self.features.is_burned()
     }
 
     pub fn verify_signature(&self) -> Result<(), TransactionError> {
@@ -194,6 +194,16 @@ impl TransactionKernel {
         // needs to be transferred in order to sign the signature.
         let message =
             TransactionKernel::build_kernel_signature_message(version, fee, lock_height, features, burn_commitment);
+        TransactionKernel::finalize_kernel_signature_challenge(version, sum_public_nonces, total_excess, &message)
+    }
+
+    /// Helper function to finalize the kernel excess signature challenge.
+    pub fn finalize_kernel_signature_challenge(
+        version: &TransactionKernelVersion,
+        sum_public_nonces: &PublicKey,
+        total_excess: &PublicKey,
+        message: &[u8; 32],
+    ) -> [u8; 32] {
         let common = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("kernel_signature")
             .chain(sum_public_nonces)
             .chain(total_excess)

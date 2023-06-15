@@ -28,7 +28,7 @@ use std::{
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use tari_common_types::types::{BlindingFactor, BulletRangeProof, Commitment, PublicKey};
+use tari_common_types::types::{BulletRangeProof, Commitment, PrivateKey, PublicKey};
 use tari_crypto::tari_utilities::{ByteArray, ByteArrayError};
 use tari_script::{ExecutionStack, TariScript};
 use tari_utilities::convert::try_convert_all;
@@ -399,7 +399,7 @@ impl TryFrom<proto::types::Transaction> for Transaction {
     fn try_from(tx: proto::types::Transaction) -> Result<Self, Self::Error> {
         let offset = tx
             .offset
-            .map(|offset| BlindingFactor::from_bytes(&offset.data))
+            .map(|offset| PrivateKey::from_bytes(&offset.data))
             .ok_or_else(|| "Blinding factor offset not provided".to_string())?
             .map_err(|err| err.to_string())?;
         let body = tx
@@ -408,7 +408,7 @@ impl TryFrom<proto::types::Transaction> for Transaction {
             .ok_or_else(|| "Body not provided".to_string())??;
         let script_offset = tx
             .script_offset
-            .map(|script_offset| BlindingFactor::from_bytes(&script_offset.data))
+            .map(|script_offset| PrivateKey::from_bytes(&script_offset.data))
             .ok_or_else(|| "Script offset not provided".to_string())?
             .map_err(|err| err.to_string())?;
 

@@ -22,6 +22,7 @@
 
 use diesel::result::Error as DieselError;
 use tari_common_sqlite::error::SqliteStorageError;
+use tari_crypto::errors::RangeProofError;
 use tari_utilities::{hex::HexError, ByteArrayError};
 
 use crate::error::KeyManagerError as KMError;
@@ -32,6 +33,8 @@ use crate::error::KeyManagerError as KMError;
 pub enum KeyManagerServiceError {
     #[error("Branch does not exist")]
     UnknownKeyBranch,
+    #[error("Key ID without an index, most likely `Imported`")]
+    KyeIdWithoutIndex,
     #[error("Master seed does not match stored version")]
     MasterSeedMismatch,
     #[error("Could not find key in key manager")]
@@ -40,6 +43,8 @@ pub enum KeyManagerServiceError {
     KeyManagerStorageError(#[from] KeyManagerStorageError),
     #[error("Byte array error: `{0}`")]
     ByteArrayError(#[from] ByteArrayError),
+    #[error("Invalid range proof: `{0}`")]
+    RangeProofError(#[from] RangeProofError),
     #[error("Tari Key Manager error: `{0}`")]
     TariKeyManagerError(#[from] KMError),
 }

@@ -19,20 +19,22 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use std::mem::size_of;
 
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use rand::{rngs::OsRng, RngCore};
+use tari_common_types::types::PublicKey;
 use tari_key_manager::{
     cipher_seed::CipherSeed,
     key_manager_service::{
         storage::{database::KeyManagerDatabase, sqlite_db::KeyManagerSqliteDatabase},
         AddResult,
+        KeyId,
         KeyManagerHandle,
         KeyManagerInterface,
     },
 };
+use tari_wallet::storage::sqlite_utilities::WalletDbConnection;
 
 use crate::support::data::get_temp_sqlite_database_connection;
 
@@ -44,7 +46,7 @@ async fn get_key_at_test_with_encryption() {
     OsRng.fill_bytes(&mut key);
     let key_ga = Key::from_slice(&key);
     let db_cipher = XChaCha20Poly1305::new(key_ga);
-    let key_manager = KeyManagerHandle::new(
+    let key_manager = KeyManagerHandle::<KeyManagerSqliteDatabase<WalletDbConnection>, PublicKey>::new(
         cipher,
         KeyManagerDatabase::new(KeyManagerSqliteDatabase::init(connection, db_cipher)),
     );
@@ -53,13 +55,18 @@ async fn get_key_at_test_with_encryption() {
     let key_2 = key_manager.get_next_key("branch1").await.unwrap();
     let key_3 = key_manager.get_next_key("branch1").await.unwrap();
 
-    assert_ne!(key_1.key, key_2.key);
-    assert_ne!(key_1.key, key_3.key);
-    assert_ne!(key_2.key, key_3.key);
+    assert_ne!(key_1, key_2);
+    assert_ne!(key_1, key_3);
+    assert_ne!(key_2, key_3);
 
-    let key_1_2 = key_manager.get_key_at_index("branch1", 1).await.unwrap();
-
-    assert_eq!(key_1.key, key_1_2);
+    let key_1_2 = key_manager
+        .get_public_key_at_key_id(&KeyId::Managed {
+            branch: "branch1".to_string(),
+            index: 1,
+        })
+        .await
+        .unwrap();
+    assert_eq!(key_1.1, key_1_2);
 }
 
 #[tokio::test]
@@ -72,7 +79,7 @@ async fn key_manager_multiple_branches() {
     let key_ga = Key::from_slice(&key);
     let db_cipher = XChaCha20Poly1305::new(key_ga);
 
-    let key_manager = KeyManagerHandle::new(
+    let key_manager = KeyManagerHandle::<KeyManagerSqliteDatabase<WalletDbConnection>, PublicKey>::new(
         cipher,
         KeyManagerDatabase::new(KeyManagerSqliteDatabase::init(connection, db_cipher)),
     );
@@ -91,13 +98,31 @@ async fn key_manager_multiple_branches() {
     let key_3 = key_manager.get_next_key("branch3").await.unwrap();
     assert!(key_manager.get_next_key("branch4").await.is_err());
 
-    assert_ne!(key_1.key, key_2.key);
-    assert_ne!(key_1.key, key_3.key);
-    assert_ne!(key_2.key, key_3.key);
+    assert_ne!(key_1, key_2);
+    assert_ne!(key_1, key_3);
+    assert_ne!(key_2, key_3);
 
-    let key_1 = key_manager.get_key_at_index("branch1", 1).await.unwrap();
-    let key_2 = key_manager.get_key_at_index("branch2", 1).await.unwrap();
-    let key_3 = key_manager.get_key_at_index("branch3", 1).await.unwrap();
+    let key_1 = key_manager
+        .get_public_key_at_key_id(&KeyId::Managed {
+            branch: "branch1".to_string(),
+            index: 1,
+        })
+        .await
+        .unwrap();
+    let key_2 = key_manager
+        .get_public_key_at_key_id(&KeyId::Managed {
+            branch: "branch2".to_string(),
+            index: 1,
+        })
+        .await
+        .unwrap();
+    let key_3 = key_manager
+        .get_public_key_at_key_id(&KeyId::Managed {
+            branch: "branch3".to_string(),
+            index: 1,
+        })
+        .await
+        .unwrap();
 
     assert_ne!(key_1, key_2);
     assert_ne!(key_1, key_3);
@@ -114,7 +139,7 @@ async fn key_manager_find_index() {
     let key_ga = Key::from_slice(&key);
     let db_cipher = XChaCha20Poly1305::new(key_ga);
 
-    let key_manager = KeyManagerHandle::new(
+    let key_manager = KeyManagerHandle::<KeyManagerSqliteDatabase<WalletDbConnection>, PublicKey>::new(
         cipher,
         KeyManagerDatabase::new(KeyManagerSqliteDatabase::init(connection, db_cipher)),
     );
@@ -122,7 +147,7 @@ async fn key_manager_find_index() {
     let _next_key = key_manager.get_next_key("branch1").await.unwrap();
     let _next_key = key_manager.get_next_key("branch1").await.unwrap();
     let key_1 = key_manager.get_next_key("branch1").await.unwrap();
-    let index = key_manager.find_key_index("branch1", &key_1.key).await.unwrap();
+    let index = key_manager.find_key_index("branch1", &key_1.1).await.unwrap();
 
     assert_eq!(index, 3);
 }
@@ -137,7 +162,7 @@ async fn key_manager_update_current_key_index_if_higher() {
     let key_ga = Key::from_slice(&key);
     let db_cipher = XChaCha20Poly1305::new(key_ga);
 
-    let key_manager = KeyManagerHandle::new(
+    let key_manager = KeyManagerHandle::<KeyManagerSqliteDatabase<WalletDbConnection>, PublicKey>::new(
         cipher,
         KeyManagerDatabase::new(KeyManagerSqliteDatabase::init(connection, db_cipher)),
     );
@@ -145,7 +170,7 @@ async fn key_manager_update_current_key_index_if_higher() {
     let _next_key_result = key_manager.get_next_key("branch1").await.unwrap();
     let _next_key_result = key_manager.get_next_key("branch1").await.unwrap();
     let key_1 = key_manager.get_next_key("branch1").await.unwrap();
-    let index = key_manager.find_key_index("branch1", &key_1.key).await.unwrap();
+    let index = key_manager.find_key_index("branch1", &key_1.1).await.unwrap();
 
     assert_eq!(index, 3);
 
@@ -154,10 +179,16 @@ async fn key_manager_update_current_key_index_if_higher() {
         .await
         .unwrap();
     let key_1 = key_manager.get_next_key("branch1").await.unwrap();
-    let key_1_2 = key_manager.get_key_at_index("branch1", 7).await.unwrap();
-    let index = key_manager.find_key_index("branch1", &key_1.key).await.unwrap();
+    let key_1_2 = key_manager
+        .get_public_key_at_key_id(&KeyId::Managed {
+            branch: "branch1".to_string(),
+            index: 7,
+        })
+        .await
+        .unwrap();
+    let index = key_manager.find_key_index("branch1", &key_1_2).await.unwrap();
     assert_eq!(index, 7);
-    assert_eq!(key_1_2, key_1.key);
+    assert_eq!(key_1_2, key_1.1);
 }
 
 #[tokio::test]
@@ -170,7 +201,7 @@ async fn key_manager_test_index() {
     let key_ga = Key::from_slice(&key);
     let db_cipher = XChaCha20Poly1305::new(key_ga);
 
-    let key_manager = KeyManagerHandle::new(
+    let key_manager = KeyManagerHandle::<KeyManagerSqliteDatabase<WalletDbConnection>, PublicKey>::new(
         cipher,
         KeyManagerDatabase::new(KeyManagerSqliteDatabase::init(connection, db_cipher)),
     );
@@ -179,14 +210,20 @@ async fn key_manager_test_index() {
     let _next_key_result = key_manager.get_next_key("branch1").await.unwrap();
     let _next_key_result = key_manager.get_next_key("branch1").await.unwrap();
     let result = key_manager.get_next_key("branch1").await.unwrap();
-    let key_2 = key_manager.get_key_at_index("branch2", result.index).await.unwrap();
+    let key_2 = key_manager
+        .get_public_key_at_key_id(&KeyId::Managed {
+            branch: "branch2".to_string(),
+            index: result.0.managed_index().unwrap(),
+        })
+        .await
+        .unwrap();
 
     assert_eq!(
-        result.index,
-        key_manager.find_key_index("branch1", &result.key).await.unwrap()
+        result.0.managed_index().unwrap(),
+        key_manager.find_key_index("branch1", &result.1).await.unwrap()
     );
     assert_eq!(
-        result.index,
+        result.0.managed_index().unwrap(),
         key_manager.find_key_index("branch2", &key_2).await.unwrap()
     );
 }

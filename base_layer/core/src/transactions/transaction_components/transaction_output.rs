@@ -32,7 +32,6 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{
-    BlindingFactor,
     ComAndPubSignature,
     Commitment,
     CommitmentFactory,
@@ -46,7 +45,6 @@ use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     errors::RangeProofError,
     extended_range_proof::{ExtendedRangeProofService, Statement},
-    keys::{PublicKey as PublicKeyTrait, SecretKey},
     ristretto::bulletproofs_plus::RistrettoAggregatedPublicStatement,
     tari_utilities::{hex::Hex, ByteArray},
 };
@@ -67,14 +65,15 @@ use crate::{
             RangeProofType,
             TransactionError,
             TransactionInput,
+            WalletOutput,
         },
         TransactionHashDomain,
     },
 };
 
 /// Output for a transaction, defining the new ownership of coins that are being transferred. The commitment is a
-/// blinded value for the output while the range proof guarantees the commitment includes a positive value without
-/// overflow and the ownership of the private key.
+/// blinded/masked value for the output while the range proof guarantees the commitment includes a positive value
+/// without overflow and the ownership of the private key.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct TransactionOutput {
     pub version: TransactionOutputVersion,
@@ -275,7 +274,7 @@ impl TransactionOutput {
 
     fn verify_metadata_signature_internal(&self) -> Result<[u8; 32], TransactionError> {
         let challenge = TransactionOutput::build_metadata_signature_challenge(
-            self.version,
+            &self.version,
             &self.script,
             &self.features,
             &self.sender_offset_public_key,
@@ -326,13 +325,14 @@ impl TransactionOutput {
     }
 
     /// Attempt to verify a recovered mask (blinding factor) for a proof against the commitment.
+    /// TODO: Remove this method when core key manager is fully implemented
     pub fn verify_mask(
         &self,
         prover: &RangeProofService,
-        blinding_factor: &PrivateKey,
+        spending_key: &PrivateKey,
         value: u64,
     ) -> Result<bool, TransactionError> {
-        Ok(prover.verify_mask(&self.commitment, blinding_factor, value)?)
+        Ok(prover.verify_mask(&self.commitment, spending_key, value)?)
     }
 
     /// This will check if the input and the output is the same commitment by looking at the commitment and features.
@@ -354,7 +354,7 @@ impl TransactionOutput {
 
     /// Convenience function that calculates the challenge for the metadata commitment signature
     pub fn build_metadata_signature_challenge(
-        version: TransactionOutputVersion,
+        version: &TransactionOutputVersion,
         script: &TariScript,
         features: &OutputFeatures,
         sender_offset_public_key: &PublicKey,
@@ -367,7 +367,7 @@ impl TransactionOutput {
     ) -> [u8; 32] {
         // We build the message separately to help with hardware wallet support. This reduces the amount of data that
         // needs to be transferred in order to sign the signature.
-        let message = TransactionOutput::build_metadata_signature_message(
+        let message = TransactionOutput::metadata_signature_message_from_parts(
             version,
             script,
             features,
@@ -375,6 +375,24 @@ impl TransactionOutput {
             encrypted_data,
             minimum_value_promise,
         );
+        TransactionOutput::finalize_metadata_signature_challenge(
+            version,
+            sender_offset_public_key,
+            ephemeral_commitment,
+            ephemeral_pubkey,
+            commitment,
+            &message,
+        )
+    }
+
+    pub fn finalize_metadata_signature_challenge(
+        version: &TransactionOutputVersion,
+        sender_offset_public_key: &PublicKey,
+        ephemeral_commitment: &Commitment,
+        ephemeral_pubkey: &PublicKey,
+        commitment: &Commitment,
+        message: &[u8; 32],
+    ) -> [u8; 32] {
         let common = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("metadata_signature")
             .chain(ephemeral_pubkey)
             .chain(ephemeral_commitment)
@@ -386,177 +404,47 @@ impl TransactionOutput {
         }
     }
 
+    /// Convenience function to get the entire metadata signature message for the challenge. This contains all data
+    /// outside of the signing keys and nonces.
+    pub fn metadata_signature_message(wallet_output: &WalletOutput) -> [u8; 32] {
+        let common = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("metadata_message")
+            .chain(&wallet_output.version)
+            .chain(&wallet_output.script)
+            .chain(&wallet_output.features)
+            .chain(&wallet_output.covenant)
+            .chain(&wallet_output.encrypted_data)
+            .chain(&wallet_output.minimum_value_promise);
+        match wallet_output.version {
+            TransactionOutputVersion::V0 | TransactionOutputVersion::V1 => common.finalize(),
+        }
+    }
+
     /// Convenience function to create the entire metadata signature message for the challenge. This contains all data
     /// outside of the signing keys and nonces.
-    pub fn build_metadata_signature_message(
-        version: TransactionOutputVersion,
+    pub fn metadata_signature_message_from_parts(
+        version: &TransactionOutputVersion,
         script: &TariScript,
         features: &OutputFeatures,
         covenant: &Covenant,
         encrypted_data: &EncryptedData,
         minimum_value_promise: MicroTari,
     ) -> [u8; 32] {
-        let common = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("metadata_message")
-            .chain(&version)
-            .chain(script)
-            .chain(features)
-            .chain(covenant)
-            .chain(encrypted_data)
-            .chain(&minimum_value_promise);
-        match version {
-            TransactionOutputVersion::V0 | TransactionOutputVersion::V1 => common.finalize(),
-        }
-    }
-
-    // Create partial commitment signature for the metadata for the receiver
-    pub fn create_receiver_partial_metadata_signature(
-        version: TransactionOutputVersion,
-        value: MicroTari,
-        spending_key: &BlindingFactor,
-        script: &TariScript,
-        output_features: &OutputFeatures,
-        sender_offset_public_key: &PublicKey,
-        ephemeral_pubkey: &PublicKey,
-        covenant: &Covenant,
-        encrypted_data: &EncryptedData,
-        minimum_value_promise: MicroTari,
-    ) -> Result<ComAndPubSignature, TransactionError> {
-        let nonce_a = TransactionOutput::nonce_a(output_features.range_proof_type, value, minimum_value_promise)?;
-        let nonce_b = PrivateKey::random(&mut OsRng);
-        let ephemeral_commitment = CommitmentFactory::default().commit(&nonce_b, &nonce_a);
-        let pk_value = PrivateKey::from(value.as_u64());
-        let commitment = CommitmentFactory::default().commit(spending_key, &pk_value);
-        let e = TransactionOutput::build_metadata_signature_challenge(
-            version,
-            script,
-            output_features,
-            sender_offset_public_key,
-            &ephemeral_commitment,
-            ephemeral_pubkey,
-            &commitment,
-            covenant,
-            encrypted_data,
+        TransactionOutput::metadata_signature_message(&WalletOutput {
+            version: *version,
+            script: script.clone(),
+            features: features.clone(),
+            covenant: covenant.clone(),
+            encrypted_data: *encrypted_data,
             minimum_value_promise,
-        );
-        Ok(ComAndPubSignature::sign(
-            &pk_value,
-            spending_key,
-            &PrivateKey::default(),
-            &nonce_a,
-            &nonce_b,
-            &PrivateKey::default(),
-            &e,
-            &CommitmentFactory::default(),
-        )?)
-    }
-
-    // Create partial commitment signature for the metadata for the sender
-    pub fn create_sender_partial_metadata_signature(
-        version: TransactionOutputVersion,
-        commitment: &Commitment,
-        ephemeral_commitment: &Commitment,
-        script: &TariScript,
-        output_features: &OutputFeatures,
-        sender_offset_private_key: &PrivateKey,
-        ephemeral_private_key: Option<&PrivateKey>,
-        covenant: &Covenant,
-        encrypted_data: &EncryptedData,
-        minimum_value_promise: MicroTari,
-    ) -> Result<ComAndPubSignature, TransactionError> {
-        let sender_offset_public_key = PublicKey::from_secret_key(sender_offset_private_key);
-        let random_key = PrivateKey::random(&mut OsRng);
-        let nonce = match ephemeral_private_key {
-            Some(v) => v,
-            None => &random_key,
-        };
-        let ephemeral_pubkey = PublicKey::from_secret_key(nonce);
-        let e = TransactionOutput::build_metadata_signature_challenge(
-            version,
-            script,
-            output_features,
-            &sender_offset_public_key,
-            ephemeral_commitment,
-            &ephemeral_pubkey,
-            commitment,
-            covenant,
-            encrypted_data,
-            minimum_value_promise,
-        );
-        Ok(ComAndPubSignature::sign(
-            &PrivateKey::default(),
-            &PrivateKey::default(),
-            sender_offset_private_key,
-            &PrivateKey::default(),
-            &PrivateKey::default(),
-            nonce,
-            &e,
-            &CommitmentFactory::default(),
-        )?)
-    }
-
-    // With BulletProofPlus type range proofs, the nonce is a secure random value
-    // With RevealedValue type range proofs, the nonce is always 0 and the minimum value promise equal to the value
-    fn nonce_a(
-        range_proof_type: RangeProofType,
-        value: MicroTari,
-        minimum_value_promise: MicroTari,
-    ) -> Result<PrivateKey, TransactionError> {
-        match range_proof_type {
-            RangeProofType::BulletProofPlus => Ok(PrivateKey::random(&mut OsRng)),
-            RangeProofType::RevealedValue => {
-                if minimum_value_promise != value {
-                    return Err(TransactionError::InvalidRevealedValue(format!(
-                        "Expected {}, received {}",
-                        value, minimum_value_promise
-                    )));
-                }
-                Ok(PrivateKey::default())
-            },
-        }
-    }
-
-    // Create complete commitment signature if you are both the sender and receiver
-    pub fn create_metadata_signature(
-        version: TransactionOutputVersion,
-        value: MicroTari,
-        spending_key: &BlindingFactor,
-        script: &TariScript,
-        output_features: &OutputFeatures,
-        sender_offset_private_key: &PrivateKey,
-        covenant: &Covenant,
-        encrypted_data: &EncryptedData,
-        minimum_value_promise: MicroTari,
-    ) -> Result<ComAndPubSignature, TransactionError> {
-        let nonce_a = TransactionOutput::nonce_a(output_features.range_proof_type, value, minimum_value_promise)?;
-        let nonce_b = PrivateKey::random(&mut OsRng);
-        let ephemeral_commitment = CommitmentFactory::default().commit(&nonce_b, &nonce_a);
-        let nonce_x = PrivateKey::random(&mut OsRng);
-        let ephemeral_pubkey = PublicKey::from_secret_key(&nonce_x);
-        let pk_value = PrivateKey::from(value.as_u64());
-        let commitment = CommitmentFactory::default().commit(spending_key, &pk_value);
-        let sender_offset_public_key = PublicKey::from_secret_key(sender_offset_private_key);
-        let e = TransactionOutput::build_metadata_signature_challenge(
-            version,
-            script,
-            output_features,
-            &sender_offset_public_key,
-            &ephemeral_commitment,
-            &ephemeral_pubkey,
-            &commitment,
-            covenant,
-            encrypted_data,
-            minimum_value_promise,
-        );
-        Ok(ComAndPubSignature::sign(
-            &pk_value,
-            spending_key,
-            sender_offset_private_key,
-            &nonce_a,
-            &nonce_b,
-            &nonce_x,
-            &e,
-            &CommitmentFactory::default(),
-        )?)
+            // These fields are not used for the message
+            value: Default::default(),
+            input_data: Default::default(),
+            script_key_id: Default::default(),
+            sender_offset_public_key: Default::default(),
+            metadata_signature: Default::default(),
+            script_lock_height: u64::default(),
+            spending_key_id: Default::default(),
+        })
     }
 
     pub fn witness_hash(&self) -> FixedHash {
@@ -682,166 +570,186 @@ mod test {
 
     use super::{batch_verify_range_proofs, TransactionOutput};
     use crate::transactions::{
+        key_manager::TransactionKeyManagerInterface,
         tari_amount::MicroTari,
-        test_helpers::{TestParams, UtxoTestParams},
+        test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager, TestParams, UtxoTestParams},
         transaction_components::{OutputFeatures, RangeProofType},
         CryptoFactories,
     };
 
-    #[test]
-    fn it_builds_correctly_from_unblinded_output() {
+    #[tokio::test]
+    async fn it_builds_correctly() {
         let factories = CryptoFactories::default();
-        let test_params = TestParams::new();
+        let key_manager = create_test_core_key_manager_with_memory_db();
+        let test_params = TestParams::new(&key_manager).await;
 
         let value = MicroTari(10);
         let minimum_value_promise = MicroTari(10);
         let tx_output = create_output(
             &test_params,
-            &factories,
             value,
             minimum_value_promise,
             RangeProofType::BulletProofPlus,
+            &key_manager,
         )
+        .await
         .unwrap();
 
         assert!(tx_output.verify_range_proof(&factories.range_proof).is_ok());
         assert!(tx_output.verify_metadata_signature().is_ok());
-        assert!(tx_output
-            .verify_mask(&factories.range_proof, &test_params.spend_key, value.into())
-            .is_ok());
+        let (_, recovered_value) = key_manager
+            .try_commitment_key_recovery(&tx_output.commitment, &tx_output.encrypted_data, None)
+            .await
+            .unwrap();
+        assert_eq!(recovered_value, value);
     }
 
-    #[test]
-    fn it_does_not_verify_incorrect_minimum_value() {
+    #[tokio::test]
+    async fn it_does_not_verify_incorrect_minimum_value() {
         let factories = CryptoFactories::default();
-        let test_params = TestParams::new();
+        let key_manager = create_test_core_key_manager_with_memory_db();
+        let test_params = TestParams::new(&key_manager).await;
 
         let value = MicroTari(10);
         let minimum_value_promise = MicroTari(11);
         let tx_output = create_invalid_output(
             &test_params,
-            &factories,
             value,
             minimum_value_promise,
             RangeProofType::BulletProofPlus,
-        );
+            &key_manager,
+        )
+        .await;
 
         assert!(tx_output.verify_range_proof(&factories.range_proof).is_err());
     }
 
-    #[test]
-    fn it_does_batch_verify_correct_minimum_values() {
+    #[tokio::test]
+    async fn it_does_batch_verify_correct_minimum_values() {
         let factories = CryptoFactories::default();
-        let test_params = TestParams::new();
+        let key_manager = create_test_core_key_manager_with_memory_db();
+        let test_params = TestParams::new(&key_manager).await;
 
         let outputs = [
             &create_output(
                 &test_params,
-                &factories,
                 MicroTari(10),
                 MicroTari::zero(),
                 RangeProofType::BulletProofPlus,
+                &key_manager,
             )
+            .await
             .unwrap(),
             &create_output(
                 &test_params,
-                &factories,
                 MicroTari(10),
                 MicroTari(5),
                 RangeProofType::BulletProofPlus,
+                &key_manager,
             )
+            .await
             .unwrap(),
             &create_output(
                 &test_params,
-                &factories,
                 MicroTari(10),
                 MicroTari(10),
                 RangeProofType::BulletProofPlus,
+                &key_manager,
             )
+            .await
             .unwrap(),
         ];
 
         assert!(batch_verify_range_proofs(&factories.range_proof, &outputs,).is_ok());
     }
 
-    #[test]
-    fn it_does_batch_verify_with_mixed_range_proof_types() {
+    #[tokio::test]
+    async fn it_does_batch_verify_with_mixed_range_proof_types() {
+        let key_manager = create_test_core_key_manager_with_memory_db();
         let factories = CryptoFactories::default();
-        let test_params = TestParams::new();
+        let test_params = TestParams::new(&key_manager).await;
 
         let outputs = [
             &create_output(
                 &test_params,
-                &factories,
                 MicroTari(10),
                 MicroTari::zero(),
                 RangeProofType::BulletProofPlus,
+                &key_manager,
             )
+            .await
             .unwrap(),
             &create_output(
                 &test_params,
-                &factories,
                 MicroTari(10),
                 MicroTari(10),
                 RangeProofType::RevealedValue,
+                &key_manager,
             )
+            .await
             .unwrap(),
             &create_output(
                 &test_params,
-                &factories,
                 MicroTari(10),
                 MicroTari::zero(),
                 RangeProofType::BulletProofPlus,
+                &key_manager,
             )
+            .await
             .unwrap(),
             &create_output(
                 &test_params,
-                &factories,
                 MicroTari(20),
                 MicroTari(20),
                 RangeProofType::RevealedValue,
+                &key_manager,
             )
+            .await
             .unwrap(),
         ];
 
         assert!(batch_verify_range_proofs(&factories.range_proof, &outputs,).is_ok());
     }
 
-    #[test]
-    fn invalid_revealed_value_proofs_are_blocked() {
-        let factories = CryptoFactories::default();
-        let test_params = TestParams::new();
+    #[tokio::test]
+    async fn invalid_revealed_value_proofs_are_blocked() {
+        let key_manager = create_test_core_key_manager_with_memory_db();
+        let test_params = TestParams::new(&key_manager).await;
         assert!(create_output(
             &test_params,
-            &factories,
             MicroTari(20),
             MicroTari::zero(),
             RangeProofType::BulletProofPlus,
+            &key_manager
         )
+        .await
         .is_ok());
         match create_output(
             &test_params,
-            &factories,
             MicroTari(20),
             MicroTari::zero(),
             RangeProofType::RevealedValue,
-        ) {
+            &key_manager,
+        )
+        .await
+        {
             Ok(_) => panic!("Should not have been able to create output"),
-            Err(e) => assert_eq!(e, "InvalidRevealedValue(\"Expected 20 µT, received 0 µT\")"),
+            Err(e) => assert_eq!(e, "Invalid revealed value : Expected 20 µT, received 0 µT"),
         }
     }
 
-    #[test]
-    fn revealed_value_proofs_only_succeed_with_valid_metadata_signatures() {
-        let factories = CryptoFactories::default();
-        let test_params = TestParams::new();
+    #[tokio::test]
+    async fn revealed_value_proofs_only_succeed_with_valid_metadata_signatures() {
+        let key_manager = create_test_core_key_manager_with_memory_db();
+        let test_params = TestParams::new(&key_manager).await;
         let mut output = create_output(
             &test_params,
-            &factories,
             MicroTari(20),
             MicroTari(20),
             RangeProofType::RevealedValue,
+            &key_manager,
         )
+        .await
         .unwrap();
         assert!(output.verify_metadata_signature().is_ok());
         assert!(output.revealed_value_range_proof_check().is_ok());
@@ -857,61 +765,74 @@ mod test {
         }
     }
 
-    #[test]
-    fn it_does_not_batch_verify_incorrect_minimum_values() {
+    #[tokio::test]
+    async fn it_does_not_batch_verify_incorrect_minimum_values() {
         let factories = CryptoFactories::default();
-        let test_params = TestParams::new();
+        let key_manager = create_test_core_key_manager_with_memory_db();
+        let test_params = TestParams::new(&key_manager).await;
 
         let outputs = [
             &create_output(
                 &test_params,
-                &factories,
                 MicroTari(10),
                 MicroTari(10),
                 RangeProofType::BulletProofPlus,
+                &key_manager,
             )
+            .await
             .unwrap(),
             &create_invalid_output(
                 &test_params,
-                &factories,
                 MicroTari(10),
                 MicroTari(11),
                 RangeProofType::BulletProofPlus,
-            ),
+                &key_manager,
+            )
+            .await,
         ];
 
         assert!(batch_verify_range_proofs(&factories.range_proof, &outputs).is_err());
     }
 
-    fn create_output(
+    async fn create_output(
         test_params: &TestParams,
-        factories: &CryptoFactories,
         value: MicroTari,
         minimum_value_promise: MicroTari,
         range_proof_type: RangeProofType,
+        key_manager: &TestKeyManager,
     ) -> Result<TransactionOutput, String> {
-        let utxo = test_params.create_unblinded_output_with_recovery_data(UtxoTestParams {
-            value,
-            minimum_value_promise,
-            features: OutputFeatures {
-                range_proof_type,
-                ..Default::default()
-            },
-            ..Default::default()
-        });
-        utxo?.as_transaction_output(factories).map_err(|e| e.to_string())
+        let utxo = test_params
+            .create_output(
+                UtxoTestParams {
+                    value,
+                    minimum_value_promise,
+                    features: OutputFeatures {
+                        range_proof_type,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+                key_manager,
+            )
+            .await;
+        utxo?
+            .as_transaction_output(key_manager)
+            .await
+            .map_err(|e| e.to_string())
     }
 
-    fn create_invalid_output(
+    async fn create_invalid_output(
         test_params: &TestParams,
-        factories: &CryptoFactories,
         value: MicroTari,
         minimum_value_promise: MicroTari,
         range_proof_type: RangeProofType,
+        key_manager: &TestKeyManager,
     ) -> TransactionOutput {
         // we need first to create a valid minimum value, regardless of the minimum_value_promise
         // because this test function should allow creating an invalid proof for later testing
-        let mut output = create_output(test_params, factories, value, MicroTari::zero(), range_proof_type).unwrap();
+        let mut output = create_output(test_params, value, MicroTari::zero(), range_proof_type, key_manager)
+            .await
+            .unwrap();
 
         // Now we can updated the minimum value, even to an invalid value
         output.minimum_value_promise = minimum_value_promise;

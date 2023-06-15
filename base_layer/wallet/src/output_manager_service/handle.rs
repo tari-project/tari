@@ -24,20 +24,14 @@ use std::{fmt, fmt::Formatter, sync::Arc};
 
 use tari_common_types::{
     transaction::TxId,
-    types::{Commitment, HashOutput, PrivateKey, PublicKey},
+    types::{Commitment, HashOutput, PublicKey},
 };
 use tari_core::{
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
-        transaction_components::{
-            OutputFeatures,
-            Transaction,
-            TransactionOutput,
-            UnblindedOutput,
-            UnblindedOutputBuilder,
-        },
-        transaction_protocol::{sender::TransactionSenderMessage, RecoveryData, TransactionMetadata},
+        transaction_components::{OutputFeatures, Transaction, TransactionOutput, WalletOutput, WalletOutputBuilder},
+        transaction_protocol::{sender::TransactionSenderMessage, TransactionMetadata},
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
     },
@@ -53,7 +47,7 @@ use crate::output_manager_service::{
     service::{Balance, OutputStatusesByTxId},
     storage::{
         database::OutputBackendQuery,
-        models::{DbUnblindedOutput, KnownOneSidedPaymentScript, SpendingPriority},
+        models::{DbWalletOutput, KnownOneSidedPaymentScript, SpendingPriority},
     },
     UtxoSelectionCriteria,
 };
@@ -62,9 +56,9 @@ use crate::output_manager_service::{
 #[allow(clippy::large_enum_variant)]
 pub enum OutputManagerRequest {
     GetBalance,
-    AddOutput((Box<UnblindedOutput>, Option<SpendingPriority>)),
-    AddOutputWithTxId((TxId, Box<UnblindedOutput>, Option<SpendingPriority>)),
-    AddUnvalidatedOutput((TxId, Box<UnblindedOutput>, Option<SpendingPriority>)),
+    AddOutput((Box<WalletOutput>, Option<SpendingPriority>)),
+    AddOutputWithTxId((TxId, Box<WalletOutput>, Option<SpendingPriority>)),
+    AddUnvalidatedOutput((TxId, Box<WalletOutput>, Option<SpendingPriority>)),
     UpdateOutputMetadataSignature(Box<TransactionOutput>),
     GetRecipientTransaction(TransactionSenderMessage),
     GetCoinbaseTransaction {
@@ -96,7 +90,7 @@ pub enum OutputManagerRequest {
         lock_height: Option<u64>,
     },
     CreatePayToSelfWithOutputs {
-        outputs: Vec<UnblindedOutputBuilder>,
+        outputs: Vec<WalletOutputBuilder>,
         fee_per_gram: MicroTari,
         selection_criteria: UtxoSelectionCriteria,
     },
@@ -136,11 +130,10 @@ pub enum OutputManagerRequest {
     CreateClaimShaAtomicSwapTransaction(HashOutput, PublicKey, MicroTari),
     CreateHtlcRefundTransaction(HashOutput, MicroTari),
     GetOutputStatusesByTxId(TxId),
-    GetNextSpendAndScriptKeys,
-    GetRecoveryData,
 }
 
 impl fmt::Display for OutputManagerRequest {
+    #[allow(clippy::too_many_lines)]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         #[allow(clippy::enum_glob_use)]
         use OutputManagerRequest::*;
@@ -227,8 +220,6 @@ impl fmt::Display for OutputManagerRequest {
             ),
 
             GetOutputStatusesByTxId(t) => write!(f, "GetOutputStatusesByTxId: {}", t),
-            GetNextSpendAndScriptKeys => write!(f, "GetNextSpendAndScriptKeys"),
-            GetRecoveryData => write!(f, "GetRecoveryData"),
         }
     }
 }
@@ -247,10 +238,10 @@ pub enum OutputManagerResponse {
     PayToSelfTransaction((MicroTari, Transaction)),
     TransactionToSend(SenderTransactionProtocol),
     TransactionCancelled,
-    SpentOutputs(Vec<UnblindedOutput>),
-    UnspentOutputs(Vec<DbUnblindedOutput>),
-    Outputs(Vec<UnblindedOutput>),
-    InvalidOutputs(Vec<UnblindedOutput>),
+    SpentOutputs(Vec<DbWalletOutput>),
+    UnspentOutputs(Vec<DbWalletOutput>),
+    Outputs(Vec<WalletOutput>),
+    InvalidOutputs(Vec<WalletOutput>),
     BaseNodePublicKeySet,
     TxoValidationStarted(u64),
     Transaction((TxId, Transaction, MicroTari)),
@@ -260,23 +251,13 @@ pub enum OutputManagerResponse {
     RewoundOutputs(Vec<RecoveredOutput>),
     ScanOutputs(Vec<RecoveredOutput>),
     AddKnownOneSidedPaymentScript,
-    CreateOutputWithFeatures {
-        output: Box<UnblindedOutputBuilder>,
-    },
-    CreatePayToSelfWithOutputs {
-        transaction: Box<Transaction>,
-        tx_id: TxId,
-    },
+    CreateOutputWithFeatures { output: Box<WalletOutputBuilder> },
+    CreatePayToSelfWithOutputs { transaction: Box<Transaction>, tx_id: TxId },
     ReinstatedCancelledInboundTx,
     CoinbaseAbandonedSet,
     ClaimHtlcTransaction((TxId, MicroTari, MicroTari, Transaction)),
     OutputStatusesByTxId(OutputStatusesByTxId),
     CoinPreview((Vec<MicroTari>, MicroTari)),
-    NextSpendAndScriptKeys {
-        spend_key: PrivateKey,
-        script_key: PrivateKey,
-    },
-    RecoveryData(RecoveryData),
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;
@@ -318,7 +299,7 @@ pub struct PublicRewindKeys {
 #[derive(Debug, Clone)]
 pub struct RecoveredOutput {
     pub tx_id: TxId,
-    pub output: UnblindedOutput,
+    pub output: WalletOutput,
 }
 
 #[derive(Clone)]
@@ -344,7 +325,7 @@ impl OutputManagerHandle {
 
     pub async fn add_output(
         &mut self,
-        output: UnblindedOutput,
+        output: WalletOutput,
         spend_priority: Option<SpendingPriority>,
     ) -> Result<(), OutputManagerError> {
         match self
@@ -360,7 +341,7 @@ impl OutputManagerHandle {
     pub async fn add_output_with_tx_id(
         &mut self,
         tx_id: TxId,
-        output: UnblindedOutput,
+        output: WalletOutput,
         spend_priority: Option<SpendingPriority>,
     ) -> Result<(), OutputManagerError> {
         match self
@@ -380,7 +361,7 @@ impl OutputManagerHandle {
     pub async fn add_unvalidated_output(
         &mut self,
         tx_id: TxId,
-        output: UnblindedOutput,
+        output: WalletOutput,
         spend_priority: Option<SpendingPriority>,
     ) -> Result<(), OutputManagerError> {
         match self
@@ -401,7 +382,7 @@ impl OutputManagerHandle {
         &mut self,
         value: MicroTari,
         features: OutputFeatures,
-    ) -> Result<UnblindedOutputBuilder, OutputManagerError> {
+    ) -> Result<WalletOutputBuilder, OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::CreateOutputWithFeatures {
@@ -563,7 +544,7 @@ impl OutputManagerHandle {
         }
     }
 
-    pub async fn get_spent_outputs(&mut self) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
+    pub async fn get_spent_outputs(&mut self) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
         match self.handle.call(OutputManagerRequest::GetSpentOutputs).await?? {
             OutputManagerResponse::SpentOutputs(s) => Ok(s),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
@@ -571,7 +552,7 @@ impl OutputManagerHandle {
     }
 
     /// Sorted from lowest value to highest
-    pub async fn get_unspent_outputs(&mut self) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {
+    pub async fn get_unspent_outputs(&mut self) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
         match self.handle.call(OutputManagerRequest::GetUnspentOutputs).await?? {
             OutputManagerResponse::UnspentOutputs(s) => Ok(s),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
@@ -579,7 +560,7 @@ impl OutputManagerHandle {
     }
 
     // ToDo: This API method call could probably be removed by expanding test utils if only needed for testing
-    pub async fn get_invalid_outputs(&mut self) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
+    pub async fn get_invalid_outputs(&mut self) -> Result<Vec<WalletOutput>, OutputManagerError> {
         match self.handle.call(OutputManagerRequest::GetInvalidOutputs).await?? {
             OutputManagerResponse::InvalidOutputs(s) => Ok(s),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
@@ -762,7 +743,7 @@ impl OutputManagerHandle {
 
     pub async fn create_send_to_self_with_output(
         &mut self,
-        outputs: Vec<UnblindedOutputBuilder>,
+        outputs: Vec<WalletOutputBuilder>,
         fee_per_gram: MicroTari,
         input_selection: UtxoSelectionCriteria,
     ) -> Result<(TxId, Transaction), OutputManagerError> {
@@ -841,24 +822,6 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::OutputStatusesByTxId(output_statuses_by_tx_id) => Ok(output_statuses_by_tx_id),
-            _ => Err(OutputManagerError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn get_next_spend_and_script_keys(&mut self) -> Result<(PrivateKey, PrivateKey), OutputManagerError> {
-        match self
-            .handle
-            .call(OutputManagerRequest::GetNextSpendAndScriptKeys)
-            .await??
-        {
-            OutputManagerResponse::NextSpendAndScriptKeys { spend_key, script_key } => Ok((spend_key, script_key)),
-            _ => Err(OutputManagerError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn get_recovery_data(&mut self) -> Result<RecoveryData, OutputManagerError> {
-        match self.handle.call(OutputManagerRequest::GetRecoveryData).await?? {
-            OutputManagerResponse::RecoveryData(recovery_data) => Ok(recovery_data),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

@@ -78,7 +78,7 @@ mod sync_blocks {
     async fn it_sends_an_empty_response() {
         let (service, db, rpc_request_mock, _tmp) = setup();
 
-        let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"]));
+        let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"])).await;
 
         let block = chain.get("A").unwrap();
         let msg = SyncBlocksRequest {
@@ -94,7 +94,7 @@ mod sync_blocks {
     async fn it_streams_blocks_until_end() {
         let (service, db, rpc_request_mock, _tmp) = setup();
 
-        let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"], ["B->A"], ["C->B"], ["D->C"], ["E->D"]));
+        let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"], ["B->A"], ["C->B"], ["D->C"], ["E->D"])).await;
 
         let first_block = chain.get("A").unwrap();
         let last_block = chain.get("E").unwrap();
@@ -137,7 +137,7 @@ mod sync_utxos {
     #[tokio::test]
     async fn it_returns_not_found_if_index_too_large() {
         let (service, db, rpc_request_mock, _tmp) = setup();
-        let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"]));
+        let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"])).await;
         let gb = chain.get("GB").unwrap();
         let msg = SyncUtxosRequest {
             start: 100000000,
@@ -154,7 +154,7 @@ mod sync_utxos {
     async fn it_sends_an_offset_response() {
         let (service, db, rpc_request_mock, _tmp) = setup();
 
-        let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"], ["B->A"]));
+        let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"], ["B->A"])).await;
 
         let block = chain.get("B").unwrap();
         let total_outputs = block.block().header.output_mmr_size;

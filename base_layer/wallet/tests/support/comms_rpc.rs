@@ -865,7 +865,7 @@ pub struct UtxosByBlock {
 mod test {
     use std::convert::{TryFrom, TryInto};
 
-    use tari_common_types::types::BlindingFactor;
+    use tari_common_types::types::PrivateKey;
     use tari_comms::{
         peer_manager::PeerFeatures,
         protocol::rpc::{mock::MockRpcServer, NamedProtocolService},
@@ -918,13 +918,7 @@ mod test {
             is_synced: true,
         });
 
-        let tx = Transaction::new(
-            vec![],
-            vec![],
-            vec![],
-            BlindingFactor::default(),
-            BlindingFactor::default(),
-        );
+        let tx = Transaction::new(vec![], vec![], vec![], PrivateKey::default(), PrivateKey::default());
 
         let resp =
             TxSubmissionResponse::try_from(client.submit_transaction(tx.try_into().unwrap()).await.unwrap()).unwrap();

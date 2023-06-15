@@ -36,7 +36,7 @@ use crate::{
 
 type KeyDigest = Blake256;
 
-type KeyManager = GenericKeyManager<PrivateKey, KeyDigest>;
+type KeyManager = GenericKeyManager<PublicKey, KeyDigest>;
 
 #[derive(Clone, Derivative, Deserialize, Serialize, PartialEq)]
 #[derivative(Debug)]
@@ -47,9 +47,9 @@ struct DerivedKeypair {
     key_index: u64,
 }
 
-impl From<DerivedKey<PrivateKey>> for DerivedKeypair {
-    fn from(derived: DerivedKey<PrivateKey>) -> Self {
-        let private_key = derived.k;
+impl From<DerivedKey<PublicKey>> for DerivedKeypair {
+    fn from(derived: DerivedKey<PublicKey>) -> Self {
+        let private_key = derived.key;
         let public_key = PublicKey::from_secret_key(&private_key);
         let key_index = derived.key_index;
 
@@ -193,7 +193,7 @@ mod test {
         assert_eq!(response.key_manager.branch_seed, "asdf");
         let next_key = response.key_manager.next_key().unwrap();
         assert_eq!(
-            next_key.k.to_hex(),
+            next_key.key.to_hex(),
             "a3c3ea5da2c23049191a184f92f621356311e0d0ed24a073e6a6514a917c1300".to_string()
         )
     }
