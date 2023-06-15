@@ -56,7 +56,6 @@ use crate::{
     consensus::DomainSeparatedConsensusHasher,
     covenants::Covenant,
     transactions::{
-        key_manager::{TariKeyId, TransactionKeyManagerInterface},
         tari_amount::MicroTari,
         transaction_components,
         transaction_components::{
@@ -323,19 +322,6 @@ impl TransactionOutput {
             }
         }
         Ok(())
-    }
-
-    /// Attempt to verify a recovered mask (blinding factor) for a proof against the commitment.
-    pub async fn verify_mask_with_id<KM: TransactionKeyManagerInterface>(
-        &self,
-        key_manager: &KM,
-        prover: &RangeProofService,
-        spending_key_id: &TariKeyId,
-        value: u64,
-    ) -> Result<bool, TransactionError> {
-        Ok(key_manager
-            .verify_mask(prover, &self.commitment, spending_key_id, value)
-            .await?)
     }
 
     /// Attempt to verify a recovered mask (blinding factor) for a proof against the commitment.

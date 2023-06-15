@@ -25,15 +25,7 @@ use futures::lock::Mutex;
 use log::*;
 use rand::rngs::OsRng;
 use strum::IntoEnumIterator;
-use tari_common_types::types::{
-    ComAndPubSignature,
-    Commitment,
-    PrivateKey,
-    PublicKey,
-    RangeProof,
-    RangeProofService,
-    Signature,
-};
+use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature};
 use tari_comms::types::CommsDHKE;
 use tari_crypto::{
     commitment::{ExtensionDegree, HomomorphicCommitmentFactory},
@@ -311,13 +303,15 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     /// Verify that the commitment matches the value and the spending key/mask
     pub async fn verify_mask(
         &self,
-        prover: &RangeProofService,
         commitment: &Commitment,
         spending_key_id: &TariKeyId,
         value: u64,
     ) -> Result<bool, KeyManagerServiceError> {
         let spending_key = self.get_private_key(spending_key_id).await?;
-        Ok(prover.verify_mask(commitment, &spending_key, value)?)
+        Ok(self
+            .crypto_factories
+            .range_proof
+            .verify_mask(commitment, &spending_key, value)?)
     }
 
     pub async fn get_diffie_hellman_shared_secret(

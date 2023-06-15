@@ -1028,12 +1028,6 @@ mod test {
                 transactions.push(Arc::new(tx));
             }
 
-            // let mut transactions = (0u64..50)
-            //     .map(|i| {
-            //         let (tx, _, _) = tx!(MicroTari(150_000 + i), fee: MicroTari(10), inputs: 1, outputs: 1,
-            // &key_manager);         Arc::new(tx)
-            //     })
-            //     .collect::<Vec<_>>();
             let (tx1, _, _) = tx!(MicroTari(150_000), fee: MicroTari(5), inputs:1, outputs: 5, &key_manager);
             transactions.push(Arc::new(tx1));
 

@@ -21,15 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use strum_macros::EnumIter;
-use tari_common_types::types::{
-    ComAndPubSignature,
-    Commitment,
-    PrivateKey,
-    PublicKey,
-    RangeProof,
-    RangeProofService,
-    Signature,
-};
+use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature};
 use tari_comms::types::CommsDHKE;
 use tari_crypto::{hash::blake2::Blake256, hashing::DomainSeparatedHash, ristretto::RistrettoComSig};
 use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface, KeyManagerServiceError};
@@ -95,7 +87,6 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
 
     async fn verify_mask(
         &self,
-        prover: &RangeProofService,
         commitment: &Commitment,
         spend_key_id: &TariKeyId,
         value: u64,

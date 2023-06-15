@@ -258,15 +258,11 @@ mod test {
             Ok(val) => {
                 let output = val.as_transaction_output(&key_manager).await.unwrap();
                 assert!(output.verify_metadata_signature().is_ok());
-                assert!(output
-                    .verify_mask_with_id(
-                        &key_manager,
-                        &CryptoFactories::default().range_proof,
-                        &spending_key_id,
-                        value.into()
-                    )
+                assert!(key_manager
+                    .verify_mask(output.commitment(), &spending_key_id, value.into())
                     .await
                     .unwrap());
+
                 let (recovered_key_id, recovered_value) = key_manager
                     .try_commitment_key_recovery(&output.commitment, &output.encrypted_data, None)
                     .await

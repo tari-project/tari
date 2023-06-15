@@ -22,15 +22,7 @@
 
 use std::sync::Arc;
 
-use tari_common_types::types::{
-    ComAndPubSignature,
-    Commitment,
-    PrivateKey,
-    PublicKey,
-    RangeProof,
-    RangeProofService,
-    Signature,
-};
+use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature};
 use tari_comms::types::CommsDHKE;
 use tari_crypto::{hash::blake2::Blake256, hashing::DomainSeparatedHash, ristretto::RistrettoComSig};
 use tari_key_manager::{
@@ -185,7 +177,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
     async fn verify_mask(
         &self,
-        prover: &RangeProofService,
         commitment: &Commitment,
         spending_key_id: &TariKeyId,
         value: u64,
@@ -193,7 +184,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         (*self.transaction_key_manager_inner)
             .read()
             .await
-            .verify_mask(prover, commitment, spending_key_id, value)
+            .verify_mask(commitment, spending_key_id, value)
             .await
     }
 
