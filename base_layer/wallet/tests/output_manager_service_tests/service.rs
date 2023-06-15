@@ -256,7 +256,7 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
         ts_handle,
         base_node_service_handle,
         event_publisher_bns,
-        key_manager
+        key_manager,
     )
 }
 
@@ -1434,9 +1434,21 @@ async fn test_txo_validation() {
     let output6 = outputs.remove(o6_pos);
     let output4 = outputs[0].clone();
 
-    let output4_tx_output = output4.wallet_output.as_transaction_output(&oms.key_manager_handle).await.unwrap();
-    let output5_tx_output = output5.wallet_output.as_transaction_output(&oms.key_manager_handle).await.unwrap();
-    let output6_tx_output = output6.wallet_output.as_transaction_output(&oms.key_manager_handle).await.unwrap();
+    let output4_tx_output = output4
+        .wallet_output
+        .as_transaction_output(&oms.key_manager_handle)
+        .await
+        .unwrap();
+    let output5_tx_output = output5
+        .wallet_output
+        .as_transaction_output(&oms.key_manager_handle)
+        .await
+        .unwrap();
+    let output6_tx_output = output6
+        .wallet_output
+        .as_transaction_output(&oms.key_manager_handle)
+        .await
+        .unwrap();
 
     let balance = oms.output_manager_handle.get_balance().await.unwrap();
 
@@ -2080,7 +2092,6 @@ async fn scan_for_recovery_test() {
     // we need to create a new key_manager to make the outputs non recoverable
     let key_manager = create_test_core_key_manager_with_memory_db();
     for i in 1..=NUM_NON_RECOVERABLE {
-
         let uo = make_input(
             &mut OsRng,
             MicroTari::from(1000 * i as u64),

@@ -40,7 +40,7 @@ use tari_core::{
     proto::base_node::{ChainMetadata, TipInfoResponse},
     transactions::{
         tari_amount::MicroTari,
-        test_helpers::create_test_core_key_manager_with_memory_db,
+        test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager},
         transaction_components::{OutputFeatures, WalletOutput},
         CryptoFactories,
     },
@@ -73,7 +73,6 @@ use tokio::{
     task,
     time,
 };
-use tari_core::transactions::test_helpers::TestKeyManager;
 
 use crate::support::{
     base_node_service_mock::MockBaseNodeService,
@@ -234,7 +233,7 @@ async fn generate_block_headers_and_utxos(
     birthday_epoch_time: u64,
     birthday_offset: u64,
     only_coinbase: bool,
-    key_manager: &TestKeyManager
+    key_manager: &TestKeyManager,
 ) -> TestBlockData {
     let mut block_headers = HashMap::new();
     let mut utxos_by_block = Vec::new();
@@ -297,7 +296,8 @@ async fn test_utxo_scanner_recovery() {
         block_headers,
         wallet_outputs,
         utxos_by_block,
-    } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false, &key_manager).await;
+    } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false, &key_manager)
+        .await;
 
     test_interface
         .rpc_service_state
@@ -395,7 +395,8 @@ async fn test_utxo_scanner_recovery_with_restart() {
         block_headers,
         wallet_outputs,
         utxos_by_block,
-    } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false, &key_manager).await;
+    } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false, &key_manager)
+        .await;
 
     test_interface
         .rpc_service_state
@@ -560,7 +561,8 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
         mut block_headers,
         mut wallet_outputs,
         utxos_by_block,
-    } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false, &key_manager).await;
+    } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false, &key_manager)
+        .await;
 
     test_interface
         .rpc_service_state
@@ -747,7 +749,15 @@ async fn test_utxo_scanner_scanned_block_cache_clearing() {
         block_headers,
         wallet_outputs: _wallet_outputs,
         utxos_by_block,
-    } = generate_block_headers_and_utxos(800, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, true, &key_manager).await;
+    } = generate_block_headers_and_utxos(
+        800,
+        NUM_BLOCKS,
+        birthday_epoch_time,
+        BIRTHDAY_OFFSET,
+        true,
+        &key_manager,
+    )
+    .await;
 
     test_interface
         .rpc_service_state
@@ -850,7 +860,8 @@ async fn test_utxo_scanner_one_sided_payments() {
         mut block_headers,
         wallet_outputs,
         mut utxos_by_block,
-    } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false, &key_manager).await;
+    } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false, &key_manager)
+        .await;
 
     test_interface
         .rpc_service_state
@@ -1058,7 +1069,8 @@ async fn test_birthday_timestamp_over_chain() {
         block_headers,
         utxos_by_block,
         ..
-    } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false, &key_manager).await;
+    } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false, &key_manager)
+        .await;
 
     test_interface.rpc_service_state.set_utxos_by_block(utxos_by_block);
     test_interface.rpc_service_state.set_blocks(block_headers.clone());

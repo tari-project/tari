@@ -107,7 +107,30 @@ impl TestTransactionBuilder {
         (tx, self.output.clone().unwrap().1)
     }
 
-    fn estimate_spendable_amount(
+    async fn create_utxo(&mut self, key_manager: &TestKeyManager, num_inputs: usize) {
+        let script = script!(Nop);
+        let features = OutputFeatures::default();
+        let covenant = Covenant::default();
+        let value = self.amount - self.estimate_fee(num_inputs, features.clone(), script.clone(), covenant.clone());
+        let builder = WalletOutputBuilder::new(value, self.keys.spend_key_id.clone())
+            .with_features(features)
+            .with_script(script)
+            .with_script_key(self.keys.script_key_id.clone())
+            .with_input_data(inputs!(self.keys.script_key_pk.clone()))
+            .with_sender_offset_public_key(self.keys.sender_offset_key_pk.clone())
+            .sign_as_sender_and_receiver(key_manager, &self.keys.sender_offset_key_id.clone())
+            .await
+            .expect("sign as sender and receiver");
+        let wallet_output = builder.try_build().expect("Get output from wallet output");
+        let utxo = wallet_output
+            .as_transaction_output(key_manager)
+            .await
+            .expect("wallet into output");
+
+        self.output = Some((utxo, wallet_output, self.keys.sender_offset_key_id.clone()));
+    }
+
+    fn estimate_fee(
         &self,
         num_inputs: usize,
         features: OutputFeatures,
@@ -117,33 +140,8 @@ impl TestTransactionBuilder {
         let features_and_scripts_bytes =
             features.get_serialized_size() + script.get_serialized_size() + covenant.get_serialized_size();
         let weights = TransactionWeight::v1();
-        let fee = self.fee_per_gram.0 * weights.calculate(1, num_inputs, 1, features_and_scripts_bytes);
-        MicroTari(self.amount.0 - fee)
-    }
-
-    async fn create_utxo(&mut self, key_manager: &TestKeyManager, num_inputs: usize) {
-        let script = script!(Nop);
-        let features = OutputFeatures::default();
-        let covenant = Covenant::default();
-        let builder = WalletOutputBuilder::new(
-            self.estimate_spendable_amount(num_inputs, features.clone(), script.clone(), covenant.clone()),
-            self.keys.spend_key_id.clone(),
-        )
-        .with_features(features)
-        .with_script(script)
-        .with_script_key(self.keys.script_key_id.clone())
-        .with_input_data(inputs!(self.keys.script_key_pk.clone()))
-        .with_sender_offset_public_key(self.keys.sender_offset_key_pk.clone())
-        .sign_as_sender_and_receiver(key_manager, &self.keys.sender_offset_key_id.clone())
-        .await
-        .expect("sign as sender and receiver");
-        let wallet_output = builder.try_build().expect("Get output from wallet output");
-        let utxo = wallet_output
-            .as_transaction_output(key_manager)
-            .await
-            .expect("wallet into output");
-
-        self.output = Some((utxo, wallet_output, self.keys.sender_offset_key_id.clone()));
+        let fee = self.fee_per_gram.0 * weights.calculate(1, num_inputs, 1 + 1, features_and_scripts_bytes);
+        MicroTari(fee)
     }
 }
 
