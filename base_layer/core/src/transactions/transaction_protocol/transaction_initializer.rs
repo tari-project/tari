@@ -644,8 +644,7 @@ mod test {
         let expected_fee =
             builder
                 .fee()
-                .calculate(MicroTari(20), 1, 1, 2, p.get_size_for_default_features_and_scripts(2)) -
-                MicroTari(20);
+                .calculate(MicroTari(20), 1, 1, 2, p.get_size_for_default_features_and_scripts(2));
         // We needed a change input, so this should fail
         let err = builder.build().await.unwrap_err();
         assert_eq!(err.message, "Change data was not provided");
