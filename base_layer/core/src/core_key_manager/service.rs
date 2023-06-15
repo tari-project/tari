@@ -57,9 +57,19 @@ use crate::{
 
 const LOG_TARGET: &str = "key_manager::key_manager_service";
 const KEY_MANAGER_MAX_SEARCH_DEPTH: u64 = 1_000_000;
+use strum::IntoEnumIterator;
 use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
 
-use crate::transactions::transaction_components::{TransactionKernel, TransactionKernelVersion};
+use crate::{
+    core_key_manager::interface::CoreKeyManagerBranch,
+    transactions::transaction_components::{
+        EncryptedData,
+        TransactionKernel,
+        TransactionKernelVersion,
+        TransactionOutput,
+        TransactionOutputVersion,
+    },
+};
 
 hash_domain!(KeyManagerHashingDomain, "base_layer.core.key_manager");
 
@@ -77,13 +87,22 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         master_seed: CipherSeed,
         db: KeyManagerDatabase<TBackend, PublicKey>,
         crypto_factories: CryptoFactories,
-    ) -> Self {
-        CoreKeyManagerInner {
+    ) -> Result<Self, KeyManagerServiceError> {
+        let mut km = CoreKeyManagerInner {
             key_managers: HashMap::new(),
             db,
             master_seed,
             crypto_factories,
+        };
+        km.add_standard_core_branches()?;
+        Ok(km)
+    }
+
+    fn add_standard_core_branches(&mut self) -> Result<(), KeyManagerServiceError> {
+        for branch in CoreKeyManagerBranch::iter() {
+            self.add_key_manager_branch(branch.get_branch_key())?;
         }
+        Ok(())
     }
 
     pub fn add_key_manager_branch(&mut self, branch: String) -> Result<AddResult, KeyManagerServiceError> {
@@ -221,8 +240,8 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
     pub async fn get_script_signature(
         &self,
-        script_key: &KeyId,
-        spending_key: &KeyId,
+        script_key_id: &KeyId,
+        spend_key_id: &KeyId,
         value: &PrivateKey,
         tx_version: &TransactionInputVersion,
         script_message: &[u8; 32],
@@ -232,9 +251,9 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         let r_y = PrivateKey::random(&mut OsRng);
         let ephemeral_commitment = self.crypto_factories.commitment.commit(&r_x, &r_a);
         let ephemeral_pubkey = PublicKey::from_secret_key(&r_y);
-        let commitment = self.get_commitment(spending_key, value).await?;
-        let script_private_key = self.get_private_key(script_key).await?;
-        let spend_private_key = self.get_private_key(spending_key).await?;
+        let commitment = self.get_commitment(spend_key_id, value).await?;
+        let script_private_key = self.get_private_key(script_key_id).await?;
+        let spend_private_key = self.get_private_key(spend_key_id).await?;
 
         let challenge = TransactionInput::finalize_script_signature_challenge(
             tx_version,
@@ -306,11 +325,11 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         })
     }
 
-    async fn get_private_kernel_signature_nonce(&self, spending_key: &KeyId) -> Result<PrivateKey, TransactionError> {
+    async fn get_private_kernel_signature_nonce(&self, spend_key_id: &KeyId) -> Result<PrivateKey, TransactionError> {
         let hasher = DomainSeparatedHasher::<Blake256, KeyManagerHashingDomain>::new_with_label("kernel_private_nonce");
-        let spending_private_key = self.get_private_key(spending_key).await?;
-        let spending_key_hash = hasher.chain(spending_private_key.as_bytes()).finalize();
-        PrivateKey::from_bytes(spending_key_hash.as_ref()).map_err(|_| {
+        let spending_private_key = self.get_private_key(spend_key_id).await?;
+        let key_hash = hasher.chain(spending_private_key.as_bytes()).finalize();
+        PrivateKey::from_bytes(key_hash.as_ref()).map_err(|_| {
             TransactionError::ConversionError("Invalid private key for kernel signature nonce".to_string())
         })
     }
@@ -336,8 +355,200 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         Ok(signature)
     }
 
-    pub async fn get_kernel_signature_nonce(&self, spending_key: &KeyId) -> Result<PublicKey, TransactionError> {
-        let private_key = self.get_private_kernel_signature_nonce(spending_key).await?;
+    pub async fn get_kernel_signature_nonce(&self, spend_key_id: &KeyId) -> Result<PublicKey, TransactionError> {
+        let private_key = self.get_private_kernel_signature_nonce(spend_key_id).await?;
         Ok(PublicKey::from_secret_key(&private_key))
+    }
+
+    async fn get_recovery_key(&self) -> Result<PrivateKey, KeyManagerServiceError> {
+        let recovery_id = KeyId::Default {
+            branch: CoreKeyManagerBranch::DataEncryption.get_branch_key(),
+            index: 0,
+        };
+        self.get_private_key(&recovery_id).await
+    }
+
+    pub async fn encrypt_data_for_recovery(
+        &self,
+        spend_key_id: &KeyId,
+        value: u64,
+    ) -> Result<EncryptedData, TransactionError> {
+        let recovery_key = self.get_recovery_key().await?;
+        let value_key = value.into();
+        let commitment = self.get_commitment(spend_key_id, &value_key).await?;
+        let spend_key = self.get_private_key(spend_key_id).await?;
+        let data = EncryptedData::encrypt_data(&recovery_key, &commitment, value.into(), &spend_key)?;
+        Ok(data)
+    }
+
+    pub async fn try_commitment_key_recovery(
+        &self,
+        commitment: &Commitment,
+        data: &EncryptedData,
+    ) -> Result<(KeyId, u64), TransactionError> {
+        let recover_key = self.get_recovery_key().await?;
+        let (value, private_key) = EncryptedData::decrypt_data(&recover_key, commitment, data)?;
+        self.crypto_factories
+            .range_proof
+            .verify_mask(commitment, &private_key, value.into())?;
+        let public_key = PublicKey::from_secret_key(&private_key);
+        let key = match self
+            .find_key_index(CoreKeyManagerBranch::CommitmentMask.get_branch_key(), &public_key)
+            .await
+        {
+            Ok(index) => {
+                self.update_current_key_index_if_higher(CoreKeyManagerBranch::CommitmentMask.get_branch_key(), index)
+                    .await?;
+                KeyId::Default {
+                    branch: CoreKeyManagerBranch::CommitmentMask.get_branch_key(),
+                    index,
+                }
+            },
+            Err(_) => {
+                self.import_key(private_key).await?;
+                KeyId::Imported { key: public_key }
+            },
+        };
+        Ok((key, value.into()))
+    }
+
+    async fn get_sender_offset_private_key(&self, script_key_id: &KeyId) -> Result<PrivateKey, TransactionError> {
+        let hasher = DomainSeparatedHasher::<Blake256, KeyManagerHashingDomain>::new_with_label("sender_offset_key");
+        let script_private_key = self.get_private_key(script_key_id).await?;
+        let key_hash = hasher.chain(script_private_key.as_bytes()).finalize();
+        PrivateKey::from_bytes(key_hash.as_ref()).map_err(|_| {
+            TransactionError::ConversionError("Invalid private key for sender offset private key".to_string())
+        })
+    }
+
+    pub async fn get_sender_offset_public_key(&self, spend_key_id: &KeyId) -> Result<PublicKey, TransactionError> {
+        let sender_offset_private_key = self.get_sender_offset_private_key(spend_key_id).await?;
+        Ok(PublicKey::from_secret_key(&sender_offset_private_key))
+    }
+
+    async fn get_metadata_signature_ephemeral_private_key_pair(
+        &self,
+        spend_key_id: &KeyId,
+    ) -> Result<(PrivateKey, PrivateKey), TransactionError> {
+        let spending_private_key = self.get_private_key(spend_key_id).await?;
+        let hasher_a = DomainSeparatedHasher::<Blake256, KeyManagerHashingDomain>::new_with_label(
+            "metadata_signature_ephemeral_nonce_a",
+        );
+        let a_hash = hasher_a.chain(spending_private_key.as_bytes()).finalize();
+        let nonce_a = PrivateKey::from_bytes(a_hash.as_ref()).map_err(|_| {
+            TransactionError::ConversionError("Invalid private key for sender offset private key".to_string())
+        })?;
+        let hasher_b = DomainSeparatedHasher::<Blake256, KeyManagerHashingDomain>::new_with_label(
+            "metadata_signature_ephemeral_nonce_b",
+        );
+        let b_hash = hasher_b.chain(spending_private_key.as_bytes()).finalize();
+        let nonce_b = PrivateKey::from_bytes(b_hash.as_ref()).map_err(|_| {
+            TransactionError::ConversionError("Invalid private key for sender offset private key".to_string())
+        })?;
+        Ok((nonce_a, nonce_b))
+    }
+
+    pub async fn get_metadata_signature_ephemeral_commitment(
+        &self,
+        spend_key_id: &KeyId,
+    ) -> Result<Commitment, TransactionError> {
+        let (nonce_a, nonce_b) = self
+            .get_metadata_signature_ephemeral_private_key_pair(spend_key_id)
+            .await?;
+        Ok(self.crypto_factories.commitment.commit(&nonce_a, &nonce_b))
+    }
+
+    async fn get_metadata_signature_ephemeral_private_key(
+        &self,
+        script_key_id: &KeyId,
+    ) -> Result<PrivateKey, TransactionError> {
+        let hasher = DomainSeparatedHasher::<Blake256, KeyManagerHashingDomain>::new_with_label(
+            "metadata_signature_ephemeral_private_key",
+        );
+        let script_private_key = self.get_private_key(script_key_id).await?;
+        let key_hash = hasher.chain(script_private_key.as_bytes()).finalize();
+        PrivateKey::from_bytes(key_hash.as_ref()).map_err(|_| {
+            TransactionError::ConversionError("Invalid private key for sender offset private key".to_string())
+        })
+    }
+
+    pub async fn get_metadata_signature_ephemeral_public_key(
+        &self,
+        spend_key_id: &KeyId,
+    ) -> Result<PublicKey, TransactionError> {
+        let ephemeral_private_key = self.get_metadata_signature_ephemeral_private_key(spend_key_id).await?;
+        Ok(PublicKey::from_secret_key(&ephemeral_private_key))
+    }
+
+    pub async fn get_receiver_partial_metadata_signature(
+        &self,
+        spend_key_id: &KeyId,
+        value: &PrivateKey,
+        sender_offset_public_key: &PublicKey,
+        ephemeral_pubkey: &PublicKey,
+        tx_version: &TransactionOutputVersion,
+        metadata_signature_message: &[u8; 32],
+    ) -> Result<ComAndPubSignature, TransactionError> {
+        let (nonce_a, nonce_b) = self
+            .get_metadata_signature_ephemeral_private_key_pair(spend_key_id)
+            .await?;
+        let ephemeral_commitment = self.crypto_factories.commitment.commit(&nonce_a, &nonce_b);
+        let spend_private_key = self.get_private_key(spend_key_id).await?;
+        let commitment = self.crypto_factories.commitment.commit(&spend_private_key, value);
+        let challenge = TransactionOutput::finalize_metadata_signature_challenge(
+            tx_version,
+            sender_offset_public_key,
+            &ephemeral_commitment,
+            ephemeral_pubkey,
+            &commitment,
+            metadata_signature_message,
+        );
+
+        let metadata_signature = ComAndPubSignature::sign(
+            value,
+            &spend_private_key,
+            &PrivateKey::default(),
+            &nonce_a,
+            &nonce_b,
+            &PrivateKey::default(),
+            &challenge,
+            &*self.crypto_factories.commitment,
+        )?;
+        Ok(metadata_signature)
+    }
+
+    pub async fn get_sender_partial_metadata_signature(
+        &self,
+        script_key_id: &KeyId,
+        commitment: &Commitment,
+        ephemeral_commitment: &Commitment,
+        tx_version: &TransactionOutputVersion,
+        metadata_signature_message: &[u8; 32],
+    ) -> Result<ComAndPubSignature, TransactionError> {
+        let ephemeral_private_key = self.get_metadata_signature_ephemeral_private_key(script_key_id).await?;
+        let ephemeral_pubkey = PublicKey::from_secret_key(&ephemeral_private_key);
+        let sender_offset_private_key = self.get_sender_offset_private_key(script_key_id).await?;
+        let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
+
+        let challenge = TransactionOutput::finalize_metadata_signature_challenge(
+            tx_version,
+            &sender_offset_public_key,
+            ephemeral_commitment,
+            &ephemeral_pubkey,
+            commitment,
+            metadata_signature_message,
+        );
+
+        let metadata_signature = ComAndPubSignature::sign(
+            &PrivateKey::default(),
+            &PrivateKey::default(),
+            &sender_offset_private_key,
+            &PrivateKey::default(),
+            &PrivateKey::default(),
+            &ephemeral_private_key,
+            &challenge,
+            &*self.crypto_factories.commitment,
+        )?;
+        Ok(metadata_signature)
     }
 }

@@ -38,7 +38,13 @@ use tokio::sync::RwLock;
 use crate::{
     core_key_manager::{interface::KeyId, BaseLayerKeyManagerInterface, CoreKeyManagerInner},
     transactions::{
-        transaction_components::{TransactionError, TransactionInputVersion, TransactionKernelVersion},
+        transaction_components::{
+            EncryptedData,
+            TransactionError,
+            TransactionInputVersion,
+            TransactionKernelVersion,
+            TransactionOutputVersion,
+        },
         CryptoFactories,
     },
 };
@@ -63,10 +69,14 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         master_seed: CipherSeed,
         db: KeyManagerDatabase<TBackend, PublicKey>,
         crypto_factories: CryptoFactories,
-    ) -> Self {
-        CoreKeyManagerHandle {
-            core_key_manager_inner: Arc::new(RwLock::new(CoreKeyManagerInner::new(master_seed, db, crypto_factories))),
-        }
+    ) -> Result<Self, KeyManagerServiceError> {
+        Ok(CoreKeyManagerHandle {
+            core_key_manager_inner: Arc::new(RwLock::new(CoreKeyManagerInner::new(
+                master_seed,
+                db,
+                crypto_factories,
+            )?)),
+        })
     }
 }
 
@@ -143,33 +153,33 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 {
     async fn get_commitment(
         &self,
-        private_key: &KeyId,
+        spend_key_id: &KeyId,
         value: &PrivateKey,
     ) -> Result<Commitment, KeyManagerServiceError> {
         (*self.core_key_manager_inner)
             .read()
             .await
-            .get_commitment(private_key, value)
+            .get_commitment(spend_key_id, value)
             .await
     }
 
     async fn construct_range_proof(
         &self,
-        private_key: &KeyId,
+        spend_key_id: &KeyId,
         value: u64,
         min_value: u64,
     ) -> Result<RangeProof, TransactionError> {
         (*self.core_key_manager_inner)
             .read()
             .await
-            .construct_range_proof(private_key, value, min_value)
+            .construct_range_proof(spend_key_id, value, min_value)
             .await
     }
 
     async fn get_script_signature(
         &self,
-        script_key: &KeyId,
-        spending_key: &KeyId,
+        script_key_id: &KeyId,
+        spend_key_id: &KeyId,
         value: &PrivateKey,
         tx_version: &TransactionInputVersion,
         script_message: &[u8; 32],
@@ -177,13 +187,13 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         (*self.core_key_manager_inner)
             .read()
             .await
-            .get_script_signature(script_key, spending_key, value, tx_version, script_message)
+            .get_script_signature(script_key_id, spend_key_id, value, tx_version, script_message)
             .await
     }
 
     async fn get_partial_kernel_signature(
         &self,
-        spending_key: &KeyId,
+        spend_key_id: &KeyId,
         total_nonce: &PublicKey,
         total_excess: &PublicKey,
         kernel_version: &TransactionKernelVersion,
@@ -192,15 +202,113 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         (*self.core_key_manager_inner)
             .read()
             .await
-            .get_partial_kernel_signature(spending_key, total_nonce, total_excess, kernel_version, kernel_message)
+            .get_partial_kernel_signature(spend_key_id, total_nonce, total_excess, kernel_version, kernel_message)
             .await
     }
 
-    async fn get_kernel_signature_nonce(&self, spending_key: &KeyId) -> Result<PublicKey, TransactionError> {
+    async fn get_kernel_signature_nonce(&self, spend_key_id: &KeyId) -> Result<PublicKey, TransactionError> {
         (*self.core_key_manager_inner)
             .read()
             .await
-            .get_kernel_signature_nonce(spending_key)
+            .get_kernel_signature_nonce(spend_key_id)
+            .await
+    }
+
+    async fn encrypt_data_for_recovery(
+        &self,
+        spend_key_id: &KeyId,
+        value: u64,
+    ) -> Result<EncryptedData, TransactionError> {
+        (*self.core_key_manager_inner)
+            .read()
+            .await
+            .encrypt_data_for_recovery(spend_key_id, value)
+            .await
+    }
+
+    async fn try_commitment_key_recovery(
+        &self,
+        commitment: &Commitment,
+        data: &EncryptedData,
+    ) -> Result<(KeyId, u64), TransactionError> {
+        (*self.core_key_manager_inner)
+            .read()
+            .await
+            .try_commitment_key_recovery(commitment, data)
+            .await
+    }
+
+    async fn get_sender_offset_public_key(&self, script_key_id: &KeyId) -> Result<PublicKey, TransactionError> {
+        (*self.core_key_manager_inner)
+            .read()
+            .await
+            .get_sender_offset_public_key(script_key_id)
+            .await
+    }
+
+    async fn get_metadata_signature_ephemeral_commitment(
+        &self,
+        spend_key_id: &KeyId,
+    ) -> Result<Commitment, TransactionError> {
+        (*self.core_key_manager_inner)
+            .read()
+            .await
+            .get_metadata_signature_ephemeral_commitment(spend_key_id)
+            .await
+    }
+
+    async fn get_metadata_signature_ephemeral_public_key(
+        &self,
+        spend_key_id: &KeyId,
+    ) -> Result<PublicKey, TransactionError> {
+        (*self.core_key_manager_inner)
+            .read()
+            .await
+            .get_metadata_signature_ephemeral_public_key(spend_key_id)
+            .await
+    }
+
+    async fn get_receiver_partial_metadata_signature(
+        &self,
+        spend_key_id: &KeyId,
+        value: &PrivateKey,
+        sender_offset_public_key: &PublicKey,
+        ephemeral_pubkey: &PublicKey,
+        tx_version: &TransactionOutputVersion,
+        metadata_signature_message: &[u8; 32],
+    ) -> Result<ComAndPubSignature, TransactionError> {
+        (*self.core_key_manager_inner)
+            .read()
+            .await
+            .get_receiver_partial_metadata_signature(
+                spend_key_id,
+                value,
+                sender_offset_public_key,
+                ephemeral_pubkey,
+                tx_version,
+                metadata_signature_message,
+            )
+            .await
+    }
+
+    async fn get_sender_partial_metadata_signature(
+        &self,
+        script_key_id: &KeyId,
+        commitment: &Commitment,
+        ephemeral_commitment: &Commitment,
+        tx_version: &TransactionOutputVersion,
+        metadata_signature_message: &[u8; 32],
+    ) -> Result<ComAndPubSignature, TransactionError> {
+        (*self.core_key_manager_inner)
+            .read()
+            .await
+            .get_sender_partial_metadata_signature(
+                script_key_id,
+                commitment,
+                ephemeral_commitment,
+                tx_version,
+                metadata_signature_message,
+            )
             .await
     }
 }

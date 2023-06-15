@@ -73,7 +73,7 @@ where T: KeyManagerBackend<PublicKey> + 'static
             self.master_seed.clone(),
             KeyManagerDatabase::new(backend),
             self.crypto_factories.clone(),
-        );
+        )?;
         context.register_handle(key_manager);
 
         Ok(())

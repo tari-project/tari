@@ -23,14 +23,17 @@
 use std::{fmt, str::FromStr};
 
 use serde::{Deserialize, Serialize};
+use strum_macros::EnumIter;
 use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature};
 use tari_key_manager::key_manager_service::{KeyManagerInterface, KeyManagerServiceError};
 use tari_utilities::hex::Hex;
 
 use crate::transactions::transaction_components::{
+    EncryptedData,
     TransactionError,
     TransactionInputVersion,
     TransactionKernelVersion,
+    TransactionOutputVersion,
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -90,26 +93,45 @@ impl FromStr for KeyId {
     }
 }
 
+#[derive(Clone, Copy, EnumIter)]
+pub enum CoreKeyManagerBranch {
+    DataEncryption,
+    Coinbase,
+    CommitmentMask,
+}
+
+impl CoreKeyManagerBranch {
+    /// Warning: Changing these strings will affect the backwards compatibility of the wallet with older databases or
+    /// recovery.
+    pub fn get_branch_key(self) -> String {
+        match self {
+            CoreKeyManagerBranch::DataEncryption => "data encryption".to_string(),
+            CoreKeyManagerBranch::Coinbase => "coinbase".to_string(),
+            CoreKeyManagerBranch::CommitmentMask => "commitment mask".to_string(),
+        }
+    }
+}
+
 #[async_trait::async_trait]
 pub trait BaseLayerKeyManagerInterface: KeyManagerInterface<PublicKey> {
     /// Gets the pedersen commitment for the specified index
     async fn get_commitment(
         &self,
-        private_key: &KeyId,
+        spend_key_id: &KeyId,
         value: &PrivateKey,
     ) -> Result<Commitment, KeyManagerServiceError>;
 
     async fn construct_range_proof(
         &self,
-        private_key: &KeyId,
+        spend_key_id: &KeyId,
         value: u64,
         min_value: u64,
     ) -> Result<RangeProof, TransactionError>;
 
     async fn get_script_signature(
         &self,
-        script_key: &KeyId,
-        spending_key: &KeyId,
+        script_key_id: &KeyId,
+        spend_key_id: &KeyId,
         value: &PrivateKey,
         tx_version: &TransactionInputVersion,
         script_message: &[u8; 32],
@@ -117,12 +139,55 @@ pub trait BaseLayerKeyManagerInterface: KeyManagerInterface<PublicKey> {
 
     async fn get_partial_kernel_signature(
         &self,
-        spending_key: &KeyId,
+        spend_key_id: &KeyId,
         total_nonce: &PublicKey,
         total_excess: &PublicKey,
         kernel_version: &TransactionKernelVersion,
         kernel_message: &[u8; 32],
     ) -> Result<Signature, TransactionError>;
 
-    async fn get_kernel_signature_nonce(&self, spending_key: &KeyId) -> Result<PublicKey, TransactionError>;
+    async fn get_kernel_signature_nonce(&self, spend_key_id: &KeyId) -> Result<PublicKey, TransactionError>;
+
+    async fn encrypt_data_for_recovery(
+        &self,
+        spend_key_id: &KeyId,
+        value: u64,
+    ) -> Result<EncryptedData, TransactionError>;
+
+    async fn try_commitment_key_recovery(
+        &self,
+        commitment: &Commitment,
+        data: &EncryptedData,
+    ) -> Result<(KeyId, u64), TransactionError>;
+
+    async fn get_sender_offset_public_key(&self, script_key_id: &KeyId) -> Result<PublicKey, TransactionError>;
+
+    async fn get_metadata_signature_ephemeral_commitment(
+        &self,
+        spend_key_id: &KeyId,
+    ) -> Result<Commitment, TransactionError>;
+
+    async fn get_metadata_signature_ephemeral_public_key(
+        &self,
+        spend_key_id: &KeyId,
+    ) -> Result<PublicKey, TransactionError>;
+
+    async fn get_receiver_partial_metadata_signature(
+        &self,
+        spend_key_id: &KeyId,
+        value: &PrivateKey,
+        sender_offset_public_key: &PublicKey,
+        ephemeral_pubkey: &PublicKey,
+        tx_version: &TransactionOutputVersion,
+        metadata_signature_message: &[u8; 32],
+    ) -> Result<ComAndPubSignature, TransactionError>;
+
+    async fn get_sender_partial_metadata_signature(
+        &self,
+        script_key_id: &KeyId,
+        commitment: &Commitment,
+        ephemeral_commitment: &Commitment,
+        tx_version: &TransactionOutputVersion,
+        metadata_signature_message: &[u8; 32],
+    ) -> Result<ComAndPubSignature, TransactionError>;
 }

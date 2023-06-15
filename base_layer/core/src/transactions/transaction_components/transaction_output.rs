@@ -275,7 +275,7 @@ impl TransactionOutput {
 
     fn verify_metadata_signature_internal(&self) -> Result<[u8; 32], TransactionError> {
         let challenge = TransactionOutput::build_metadata_signature_challenge(
-            self.version,
+            &self.version,
             &self.script,
             &self.features,
             &self.sender_offset_public_key,
@@ -354,7 +354,7 @@ impl TransactionOutput {
 
     /// Convenience function that calculates the challenge for the metadata commitment signature
     pub fn build_metadata_signature_challenge(
-        version: TransactionOutputVersion,
+        version: &TransactionOutputVersion,
         script: &TariScript,
         features: &OutputFeatures,
         sender_offset_public_key: &PublicKey,
@@ -375,6 +375,24 @@ impl TransactionOutput {
             encrypted_data,
             minimum_value_promise,
         );
+        TransactionOutput::finalize_metadata_signature_challenge(
+            version,
+            sender_offset_public_key,
+            ephemeral_commitment,
+            ephemeral_pubkey,
+            commitment,
+            &message,
+        )
+    }
+
+    pub fn finalize_metadata_signature_challenge(
+        version: &TransactionOutputVersion,
+        sender_offset_public_key: &PublicKey,
+        ephemeral_commitment: &Commitment,
+        ephemeral_pubkey: &PublicKey,
+        commitment: &Commitment,
+        message: &[u8; 32],
+    ) -> [u8; 32] {
         let common = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("metadata_signature")
             .chain(ephemeral_pubkey)
             .chain(ephemeral_commitment)
@@ -389,7 +407,7 @@ impl TransactionOutput {
     /// Convenience function to create the entire metadata signature message for the challenge. This contains all data
     /// outside of the signing keys and nonces.
     pub fn build_metadata_signature_message(
-        version: TransactionOutputVersion,
+        version: &TransactionOutputVersion,
         script: &TariScript,
         features: &OutputFeatures,
         covenant: &Covenant,
@@ -427,7 +445,7 @@ impl TransactionOutput {
         let pk_value = PrivateKey::from(value.as_u64());
         let commitment = CommitmentFactory::default().commit(spending_key, &pk_value);
         let e = TransactionOutput::build_metadata_signature_challenge(
-            version,
+            &version,
             script,
             output_features,
             sender_offset_public_key,
@@ -471,7 +489,7 @@ impl TransactionOutput {
         };
         let ephemeral_pubkey = PublicKey::from_secret_key(nonce);
         let e = TransactionOutput::build_metadata_signature_challenge(
-            version,
+            &version,
             script,
             output_features,
             &sender_offset_public_key,
@@ -536,7 +554,7 @@ impl TransactionOutput {
         let commitment = CommitmentFactory::default().commit(spending_key, &pk_value);
         let sender_offset_public_key = PublicKey::from_secret_key(sender_offset_private_key);
         let e = TransactionOutput::build_metadata_signature_challenge(
-            version,
+            &version,
             script,
             output_features,
             &sender_offset_public_key,
