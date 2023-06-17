@@ -64,7 +64,7 @@ impl HashRateMovingAverage {
         let target_time = self
             .consensus_manager
             .consensus_constants(height)
-            .get_diff_target_block_interval(self.pow_algo);
+            .pow_target_block_interval(self.pow_algo);
 
         // remove old entries if we are at max block window
         if self.is_full() {

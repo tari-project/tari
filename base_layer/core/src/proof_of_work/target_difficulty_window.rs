@@ -33,15 +33,7 @@ pub struct TargetDifficultyWindow {
 
 impl TargetDifficultyWindow {
     /// Initialize a new `TargetDifficultyWindow`
-    ///
-    /// # Panics
-    ///
-    /// Panics if block_window is 0
     pub(crate) fn new(block_window: usize, target_time: u64, max_block_time: u64) -> Self {
-        assert!(
-            block_window > 0,
-            "TargetDifficulty::new expected block_window to be greater than 0, but 0 was given"
-        );
         Self {
             lwma: LinearWeightedMovingAverage::new(block_window, target_time, max_block_time),
         }
