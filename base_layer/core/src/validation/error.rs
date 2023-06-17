@@ -29,7 +29,7 @@ use crate::{
     blocks::{BlockHeaderValidationError, BlockValidationError},
     chain_storage::ChainStorageError,
     covenants::CovenantError,
-    proof_of_work::{monero_rx::MergeMineError, DifficultyError, PowError},
+    proof_of_work::{monero_rx::MergeMineError, LwmaError, PowError},
     transactions::{
         tari_amount::MicroTari,
         transaction_components::{OutputType, RangeProofType, TransactionError},
@@ -152,7 +152,7 @@ pub enum ValidationError {
     #[error("Not enough timestamps provided. Expected {expected}, got {actual}")]
     NotEnoughTimestamps { expected: usize, actual: usize },
     #[error("Invalid difficulty: {0}")]
-    DifficultyError(#[from] DifficultyError),
+    LwmaError(#[from] LwmaError),
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in

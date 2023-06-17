@@ -34,7 +34,7 @@ use tari_utilities::epoch_time::EpochTime;
 use crate::{
     borsh::SerializedSize,
     consensus::network::NetworkConsensus,
-    proof_of_work::{lwma_diff::LWMA_MAX_BLOCK_TIME_RATIO, Difficulty, PowAlgorithm},
+    proof_of_work::{lwma_diff::LinearWeightedMovingAverage, Difficulty, PowAlgorithm},
     transactions::{
         tari_amount::{uT, MicroTari, T},
         transaction_components::{
@@ -142,7 +142,6 @@ fn version_zero() -> (
 /// This is a convenience struct to put all the info into a hashmap for each algorithm
 #[derive(Clone, Debug)]
 pub struct PowAlgorithmConstants {
-    pub max_target_time: u64,
     pub min_difficulty: Difficulty,
     pub max_difficulty: Difficulty,
     pub target_time: u64,
@@ -245,11 +244,9 @@ impl ConsensusConstants {
 
     /// The maximum time a block is considered to take. Used by the difficulty adjustment algorithms
     /// Multiplied by the PoW algorithm block percentage.
-    pub fn pow_max_block_interval(&self, pow_algo: PowAlgorithm) -> u64 {
-        match self.proof_of_work.get(&pow_algo) {
-            Some(v) => v.max_target_time,
-            _ => 0,
-        }
+    pub fn pow_max_block_interval(&self, pow_algo: PowAlgorithm) -> Result<u64, String> {
+        LinearWeightedMovingAverage::max_block_time(self.pow_target_block_interval(pow_algo))
+            .map_err(|e| format!("Invalid max block interval for {} ({})", pow_algo, e))
     }
 
     /// This is how many blocks we use to count towards the median timestamp to ensure the block chain moves forward.
@@ -351,13 +348,11 @@ impl ConsensusConstants {
         let difficulty_block_window = 90;
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
-            max_target_time: 1800,
             min_difficulty: Difficulty::min(),
             max_difficulty: Difficulty::min(),
             target_time: 300,
         });
         algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
-            max_target_time: 1200,
             min_difficulty: Difficulty::min(),
             max_difficulty: Difficulty::min(),
             target_time: 200,
@@ -409,14 +404,12 @@ impl ConsensusConstants {
 
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
-            max_target_time: sha3_target_time * LWMA_MAX_BLOCK_TIME_RATIO,
             // (target_time x 200_000/3) ... for easy testing
             min_difficulty: Difficulty::from_u64(sha3_target_time * 67_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
             target_time: sha3_target_time,
         });
         algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
-            max_target_time: monero_target_time * LWMA_MAX_BLOCK_TIME_RATIO,
             // (target_time x 300/3)     ... for easy testing
             min_difficulty: Difficulty::from_u64(monero_target_time * 100).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
@@ -476,13 +469,11 @@ impl ConsensusConstants {
     pub fn esmeralda() -> Vec<Self> {
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
-            max_target_time: 1800,
             min_difficulty: Difficulty::from_u64(60_000_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
             target_time: 300,
         });
         algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
-            max_target_time: 1200,
             min_difficulty: Difficulty::from_u64(60_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
             target_time: 200,
@@ -531,13 +522,11 @@ impl ConsensusConstants {
     pub fn stagenet() -> Vec<Self> {
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
-            max_target_time: 1800,
             min_difficulty: Difficulty::from_u64(60_000_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
             target_time: 300,
         });
         algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
-            max_target_time: 1200,
             min_difficulty: Difficulty::from_u64(60_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
             target_time: 200,
@@ -580,13 +569,11 @@ impl ConsensusConstants {
     pub fn nextnet() -> Vec<Self> {
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
-            max_target_time: 1800,
             min_difficulty: Difficulty::from_u64(60_000_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
             target_time: 300,
         });
         algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
-            max_target_time: 1200,
             min_difficulty: Difficulty::from_u64(60_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
             target_time: 200,
@@ -630,13 +617,11 @@ impl ConsensusConstants {
         let difficulty_block_window = 90;
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
-            max_target_time: 1800,
             min_difficulty: Difficulty::from_u64(60_000_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
             target_time: 300,
         });
         algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
-            max_target_time: 1200,
             min_difficulty: Difficulty::from_u64(60_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
             target_time: 200,
@@ -763,16 +748,6 @@ fn assert_hybrid_pow_constants(
             "Overall target time is not inversely proportional to target split times"
         );
         // General LWMA dependencies
-        assert_eq!(
-            sha3_constants.max_target_time,
-            sha3_constants.target_time * LWMA_MAX_BLOCK_TIME_RATIO,
-            "SHA3 max_target_time is not 6x SHA3 target_time"
-        );
-        assert_eq!(
-            monero_constants.max_target_time,
-            monero_constants.target_time * LWMA_MAX_BLOCK_TIME_RATIO,
-            "Monero max_target_time is not 6x Monero target_time"
-        );
         assert_eq!(
             constants.future_time_limit * 20,
             target_time[i] * constants.difficulty_block_window,

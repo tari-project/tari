@@ -2514,7 +2514,7 @@ mod test {
             ConsensusConstantsBuilder,
             ConsensusManager,
         },
-        proof_of_work::{lwma_diff::LWMA_MAX_BLOCK_TIME_RATIO, Difficulty},
+        proof_of_work::Difficulty,
         test_helpers::{
             blockchain::{
                 create_chained_blocks,
@@ -3357,7 +3357,6 @@ mod test {
                 ConsensusConstantsBuilder::new(Network::LocalNet)
                     .clear_proof_of_work()
                     .add_proof_of_work(PowAlgorithm::Sha3, PowAlgorithmConstants {
-                        max_target_time: 120 * LWMA_MAX_BLOCK_TIME_RATIO,
                         min_difficulty: Difficulty::min(),
                         max_difficulty: Difficulty::from_u64(100).expect("valid difficulty"),
                         target_time: 120,

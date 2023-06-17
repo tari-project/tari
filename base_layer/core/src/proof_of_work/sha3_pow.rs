@@ -24,7 +24,7 @@ use sha3::{Digest, Sha3_256};
 
 use crate::{
     blocks::BlockHeader,
-    proof_of_work::{error::DifficultyError, Difficulty},
+    proof_of_work::{error::LwmaError, Difficulty},
 };
 
 /// The Tari Sha3X proof-of-work algorithm. This is the reference implementation of Tari's standalone mining
@@ -33,7 +33,7 @@ use crate::{
 /// In short Sha3X is a triple Keccak Sha3-256 hash of the nonce, mining hash and PoW mode byte.
 /// Mining using this CPU version of the algorithm is unlikely to be profitable, but is included for reference and
 /// can be used to mine tXTR on testnets.
-pub fn sha3x_difficulty(header: &BlockHeader) -> Result<Difficulty, DifficultyError> {
+pub fn sha3x_difficulty(header: &BlockHeader) -> Result<Difficulty, LwmaError> {
     Ok(sha3x_difficulty_with_hash(header)?.0)
 }
 
@@ -46,7 +46,7 @@ pub fn sha3_hash(header: &BlockHeader) -> Vec<u8> {
         .to_vec()
 }
 
-fn sha3x_difficulty_with_hash(header: &BlockHeader) -> Result<(Difficulty, Vec<u8>), DifficultyError> {
+fn sha3x_difficulty_with_hash(header: &BlockHeader) -> Result<(Difficulty, Vec<u8>), LwmaError> {
     let hash = sha3_hash(header);
     let hash = Sha3_256::digest(&hash);
     let hash = Sha3_256::digest(&hash);

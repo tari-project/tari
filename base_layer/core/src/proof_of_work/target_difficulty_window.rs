@@ -33,9 +33,9 @@ pub struct TargetDifficultyWindow {
 
 impl TargetDifficultyWindow {
     /// Initialize a new `TargetDifficultyWindow`
-    pub(crate) fn new(block_window: usize, target_time: u64, max_block_time: u64) -> Result<Self, String> {
+    pub(crate) fn new(block_window: usize, target_time: u64) -> Result<Self, String> {
         Ok(Self {
-            lwma: LinearWeightedMovingAverage::new(block_window, target_time, max_block_time)?,
+            lwma: LinearWeightedMovingAverage::new(block_window, target_time)?,
         })
     }
 
@@ -78,7 +78,7 @@ mod test {
 
     #[test]
     fn it_calculates_the_target_difficulty() {
-        let mut target_difficulties = TargetDifficultyWindow::new(5, 60, 60 * 6).unwrap();
+        let mut target_difficulties = TargetDifficultyWindow::new(5, 60).unwrap();
         let mut time = Difficulty::from_u64(60).unwrap().as_u64().into();
         target_difficulties.add_back(time, Difficulty::from_u64(100).unwrap());
         time += Difficulty::from_u64(60).unwrap().as_u64().into();

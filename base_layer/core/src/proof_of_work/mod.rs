@@ -30,7 +30,7 @@ pub use difficulty::{Difficulty, DifficultyAdjustment};
 #[cfg(any(feature = "base_node", feature = "transactions"))]
 mod error;
 #[cfg(any(feature = "base_node", feature = "transactions"))]
-pub use error::{DifficultyAdjustmentError, DifficultyError, PowError};
+pub use error::{DifficultyAdjustmentError, LwmaError, PowError};
 
 /// Crates for proof of work monero_rx
 #[cfg(feature = "base_node")]
