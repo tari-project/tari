@@ -264,7 +264,7 @@ impl ConsensusConstants {
     pub fn min_pow_difficulty(&self, pow_algo: PowAlgorithm) -> Difficulty {
         match self.proof_of_work.get(&pow_algo) {
             Some(v) => v.min_difficulty,
-            _ => 0.into(),
+            _ => Difficulty::min(),
         }
     }
 
@@ -276,7 +276,7 @@ impl ConsensusConstants {
     pub fn max_pow_difficulty(&self, pow_algo: PowAlgorithm) -> Difficulty {
         match self.proof_of_work.get(&pow_algo) {
             Some(v) => v.max_difficulty,
-            _ => 0.into(),
+            _ => Difficulty::min(),
         }
     }
 
@@ -350,14 +350,14 @@ impl ConsensusConstants {
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
             max_target_time: 1800,
-            min_difficulty: 1.into(),
-            max_difficulty: 1.into(),
+            min_difficulty: Difficulty::min(),
+            max_difficulty: Difficulty::min(),
             target_time: 300,
         });
         algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
             max_target_time: 1200,
-            min_difficulty: 1.into(),
-            max_difficulty: 1.into(),
+            min_difficulty: Difficulty::min(),
+            max_difficulty: Difficulty::min(),
             target_time: 200,
         });
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
@@ -408,14 +408,16 @@ impl ConsensusConstants {
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
             max_target_time: sha3_target_time * LWMA_MAX_BLOCK_TIME_RATIO,
-            min_difficulty: (sha3_target_time * 67_000).into(), // (target_time x 200_000/3) ... for easy testing
-            max_difficulty: u64::MAX.into(),
+            // (target_time x 200_000/3) ... for easy testing
+            min_difficulty: Difficulty::from_u64(sha3_target_time * 67_000).expect("valid difficulty"),
+            max_difficulty: Difficulty::max(),
             target_time: sha3_target_time,
         });
         algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
             max_target_time: monero_target_time * LWMA_MAX_BLOCK_TIME_RATIO,
-            min_difficulty: (monero_target_time * 100).into(), // (target_time x 300/3)     ... for easy testing
-            max_difficulty: u64::MAX.into(),
+            // (target_time x 300/3)     ... for easy testing
+            min_difficulty: Difficulty::from_u64(monero_target_time * 100).expect("valid difficulty"),
+            max_difficulty: Difficulty::max(),
             target_time: monero_target_time,
         });
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
@@ -473,14 +475,14 @@ impl ConsensusConstants {
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
             max_target_time: 1800,
-            min_difficulty: 60_000_000.into(),
-            max_difficulty: u64::MAX.into(),
+            min_difficulty: Difficulty::from_u64(60_000_000).expect("valid difficulty"),
+            max_difficulty: Difficulty::max(),
             target_time: 300,
         });
         algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
             max_target_time: 1200,
-            min_difficulty: 60_000.into(),
-            max_difficulty: u64::MAX.into(),
+            min_difficulty: Difficulty::from_u64(60_000).expect("valid difficulty"),
+            max_difficulty: Difficulty::max(),
             target_time: 200,
         });
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
@@ -528,14 +530,14 @@ impl ConsensusConstants {
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
             max_target_time: 1800,
-            min_difficulty: 60_000_000.into(),
-            max_difficulty: u64::MAX.into(),
+            min_difficulty: Difficulty::from_u64(60_000_000).expect("valid difficulty"),
+            max_difficulty: Difficulty::max(),
             target_time: 300,
         });
         algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
             max_target_time: 1200,
-            min_difficulty: 60_000.into(),
-            max_difficulty: u64::MAX.into(),
+            min_difficulty: Difficulty::from_u64(60_000).expect("valid difficulty"),
+            max_difficulty: Difficulty::max(),
             target_time: 200,
         });
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
@@ -577,14 +579,14 @@ impl ConsensusConstants {
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
             max_target_time: 1800,
-            min_difficulty: 60_000_000.into(),
-            max_difficulty: u64::MAX.into(),
+            min_difficulty: Difficulty::from_u64(60_000_000).expect("valid difficulty"),
+            max_difficulty: Difficulty::max(),
             target_time: 300,
         });
         algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
             max_target_time: 1200,
-            min_difficulty: 60_000.into(),
-            max_difficulty: u64::MAX.into(),
+            min_difficulty: Difficulty::from_u64(60_000).expect("valid difficulty"),
+            max_difficulty: Difficulty::max(),
             target_time: 200,
         });
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
@@ -627,14 +629,14 @@ impl ConsensusConstants {
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
             max_target_time: 1800,
-            min_difficulty: 60_000_000.into(),
-            max_difficulty: u64::MAX.into(),
+            min_difficulty: Difficulty::from_u64(60_000_000).expect("valid difficulty"),
+            max_difficulty: Difficulty::max(),
             target_time: 300,
         });
         algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
             max_target_time: 1200,
-            min_difficulty: 60_000.into(),
-            max_difficulty: u64::MAX.into(),
+            min_difficulty: Difficulty::from_u64(60_000).expect("valid difficulty"),
+            max_difficulty: Difficulty::max(),
             target_time: 200,
         });
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();

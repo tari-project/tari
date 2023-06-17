@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 use std::{
+    panic::panic_any,
     pin::Pin,
     task::{Context, Poll, Waker},
     thread,
@@ -178,13 +179,27 @@ pub fn mining_task(
     share_mode: bool,
 ) {
     let start = Instant::now();
-    let mut hasher = BlockHeaderSha3::new(header).unwrap();
+    let mut hasher = match BlockHeaderSha3::new(header) {
+        Ok(hasher) => hasher,
+        Err(err) => {
+            let err = format!("Miner {} failed to create hasher: {:?}", miner, err);
+            error!(target: LOG_TARGET, "{}", err);
+            panic_any(err);
+        },
+    };
     hasher.random_nonce();
     // We're mining over here!
     trace!(target: LOG_TARGET, "Mining thread {} started", miner);
     // Mining work
     loop {
-        let difficulty = hasher.difficulty();
+        let difficulty = match hasher.difficulty() {
+            Ok(difficulty) => difficulty,
+            Err(err) => {
+                let err = format!("Miner {} failed to calculate difficulty: {:?}", miner, err);
+                error!(target: LOG_TARGET, "{}", err);
+                panic_any(err);
+            },
+        };
         if difficulty >= target_difficulty {
             debug!(
                 target: LOG_TARGET,

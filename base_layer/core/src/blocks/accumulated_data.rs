@@ -43,7 +43,7 @@ use tari_utilities::hex::Hex;
 
 use crate::{
     blocks::{error::BlockError, Block, BlockHeader},
-    proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
+    proof_of_work::{difficulty::CheckedAdd, AchievedTargetDifficulty, Difficulty, PowAlgorithm},
     transactions::aggregated_body::AggregateBody,
 };
 
@@ -286,12 +286,18 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
 
         let (monero_diff, blake_diff) = match achieved_target.pow_algo() {
             PowAlgorithm::Monero => (
-                previous_accum.accumulated_monero_difficulty + achieved_target.achieved(),
+                previous_accum
+                    .accumulated_monero_difficulty
+                    .checked_add(achieved_target.achieved())
+                    .ok_or(BlockError::DifficultyOverflow)?,
                 previous_accum.accumulated_sha_difficulty,
             ),
             PowAlgorithm::Sha3 => (
                 previous_accum.accumulated_monero_difficulty,
-                previous_accum.accumulated_sha_difficulty + achieved_target.achieved(),
+                previous_accum
+                    .accumulated_sha_difficulty
+                    .checked_add(achieved_target.achieved())
+                    .ok_or(BlockError::DifficultyOverflow)?,
             ),
         };
 

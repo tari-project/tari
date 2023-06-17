@@ -132,7 +132,7 @@ async fn genesis_template(
     .await;
     let block = NewBlockTemplate::from_block(
         header.into_builder().with_coinbase_utxo(utxo, kernel).build(),
-        1.into(),
+        Difficulty::min(),
         coinbase_value,
     );
     (block, output)
@@ -213,17 +213,17 @@ pub async fn create_genesis_block_with_coinbase_value(
 ) -> (ChainBlock, WalletOutput) {
     let (template, output) = genesis_template(coinbase_value, consensus_constants, key_manager).await;
     let mut block = update_genesis_block_mmr_roots(template).unwrap();
-    find_header_with_achieved_difficulty(&mut block.header, Difficulty::from(1));
+    find_header_with_achieved_difficulty(&mut block.header, Difficulty::from_u64(1).unwrap());
     let hash = block.hash();
     (
         ChainBlock::try_construct(block.into(), BlockHeaderAccumulatedData {
             hash,
             total_kernel_offset: Default::default(),
-            achieved_difficulty: 1.into(),
+            achieved_difficulty: Difficulty::min(),
             total_accumulated_difficulty: 1,
-            accumulated_monero_difficulty: 1.into(),
-            accumulated_sha_difficulty: 1.into(),
-            target_difficulty: 1.into(),
+            accumulated_monero_difficulty: Difficulty::min(),
+            accumulated_sha_difficulty: Difficulty::min(),
+            target_difficulty: Difficulty::min(),
         })
         .unwrap(),
         output,
@@ -254,17 +254,17 @@ pub async fn create_genesis_block_with_utxos(
         template.body.add_output(output);
     }
     let mut block = update_genesis_block_mmr_roots(template).unwrap();
-    find_header_with_achieved_difficulty(&mut block.header, Difficulty::from(1));
+    find_header_with_achieved_difficulty(&mut block.header, Difficulty::from_u64(1).unwrap());
     let hash = block.hash();
     (
         ChainBlock::try_construct(block.into(), BlockHeaderAccumulatedData {
             hash,
             total_kernel_offset: Default::default(),
-            achieved_difficulty: 1.into(),
+            achieved_difficulty: Difficulty::min(),
             total_accumulated_difficulty: 1,
-            accumulated_monero_difficulty: 1.into(),
-            accumulated_sha_difficulty: 1.into(),
-            target_difficulty: 1.into(),
+            accumulated_monero_difficulty: Difficulty::min(),
+            accumulated_sha_difficulty: Difficulty::min(),
+            target_difficulty: Difficulty::min(),
         })
         .unwrap(),
         outputs,
@@ -297,7 +297,7 @@ pub async fn chain_block(
             .with_coinbase_utxo(coinbase_utxo, coinbase_kernel)
             .with_transactions(transactions)
             .build(),
-        1.into(),
+        Difficulty::min(),
         reward,
     )
 }
@@ -319,7 +319,7 @@ pub fn chain_block_with_coinbase(
             .with_transactions(transactions)
             .with_coinbase_utxo(coinbase_utxo, coinbase_kernel)
             .build(),
-        1.into(),
+        Difficulty::min(),
         consensus.get_block_reward_at(height),
     )
 }
@@ -356,7 +356,7 @@ pub async fn chain_block_with_new_coinbase(
             .with_transactions(transactions)
             .with_coinbase_utxo(coinbase_utxo, coinbase_kernel)
             .build(),
-        1.into(),
+        Difficulty::min(),
         reward,
     );
     (template, coinbase_output)
@@ -479,7 +479,7 @@ pub async fn generate_new_block_with_coinbase<B: BlockchainBackend>(
 pub fn find_header_with_achieved_difficulty(header: &mut BlockHeader, achieved_difficulty: Difficulty) {
     let mut num_tries = 0;
 
-    while sha3x_difficulty(header) != achieved_difficulty {
+    while sha3x_difficulty(header).unwrap() != achieved_difficulty {
         header.nonce += 1;
         num_tries += 1;
         if num_tries > 10_000_000 {
@@ -571,7 +571,7 @@ pub async fn construct_chained_blocks<B: BlockchainBackend>(
     let mut prev_block = block0;
     let mut blocks = Vec::new();
     for _i in 0..n {
-        let block = append_block(db, &prev_block, vec![], consensus, 1.into(), key_manager)
+        let block = append_block(db, &prev_block, vec![], consensus, Difficulty::min(), key_manager)
             .await
             .unwrap();
         prev_block = block.clone();
