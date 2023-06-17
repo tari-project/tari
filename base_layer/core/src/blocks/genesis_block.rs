@@ -364,11 +364,11 @@ pub fn get_igor_genesis_block() -> ChainBlock {
 
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
-            FixedHash::from_hex("85d29aac5de8574830a07b13d40159da775cd734be9db888f2f7856d3ef4ef78").unwrap();
+            FixedHash::from_hex("ad494884dabf1337a678625613d016d55c0d6a968c86a5ed57fd3099c207368b").unwrap();
         block.header.witness_mr =
-            FixedHash::from_hex("cc97e38d40355f38b849381914c92bf8eb71ea3278db6db5c91d58a2c2e07f6f").unwrap();
+            FixedHash::from_hex("a2d553743332a6af82cf40ed4a0faad89156ae62b181672634e2b90c3c759403").unwrap();
         block.header.output_mr =
-            FixedHash::from_hex("83012ae2b5d8402ee117cde0f73e02d9bfeb2997b69e6b2853c3756c1a4b694c").unwrap();
+            FixedHash::from_hex("87bf1cdcca897a3b2f77ab1051a875de5a4ceaebd740bd664ba94fe6dd6e1c00").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("e1d55f91ecc7e435080ac2641280516a355a5ecbe231158987da217b5af30047").unwrap();
     }
@@ -388,45 +388,8 @@ pub fn get_igor_genesis_block() -> ChainBlock {
 fn get_igor_genesis_block_raw() -> Block {
     // Note: Use 'print_new_genesis_block_igor' in core/tests/helpers/block_builders.rs to generate the required fields
     // below - DO THIS ONCE ONLY AS IT GENERATES NEW RANDOM FIELDS
-    let extra = "Hello, Igor";
-    let excess_sig = Signature::new(
-        PublicKey::from_hex("1c8f784c447bfcdfdf4013fc9847a2946be57f6cb4741ee22539e61a7f246307").unwrap(),
-        PrivateKey::from_hex("99d8c945f970eb725eb2ddbdd4af556ad7c7ecaffc90f9fd43f97b4d1519130e").unwrap(),
-    );
-    let coinbase_meta_sig = CommitmentAndPublicKeySignature::new(
-        Commitment::from_hex("0c95d569d26b57415306d50831c07a08f801fc14b4313784e81b05d6b73b1724").unwrap(),
-        PublicKey::from_hex("5c699f7dea3c5e654b739d30cb06232aaa027de7299263286a8dffc21a9af35c").unwrap(),
-        PrivateKey::from_hex("eef69a723ba98896b7e9c2767a27481dc4b32ab3e57bda2abd83af55650c1a00").unwrap(),
-        PrivateKey::from_hex("b5ef7f268f2691b685f4ca54ae3ced21217677aa944c74e17d0d7b1d5b07940e").unwrap(),
-        PrivateKey::from_hex("60e50f22a8eaaf7a4f87d642bda80f73685efa75b50c11de0f5e89459c5f180d").unwrap(),
-    );
 
-    let coinbase = TransactionOutput::new(
-        TransactionOutputVersion::get_current_version(),
-        OutputFeatures::create_coinbase(6, Some(extra.as_bytes().to_vec())),
-        Commitment::from_hex("b07db2ce141197a988e93e7ad8344671e05ff697d40b3a2aae931faec1d7ce05").unwrap(),
-        Some(BulletRangeProof::from_hex("01305bb60bdac24d89b6b1d958e97f14ccd91cdf7aad70dc44aed09d7338432b1460b41cf7d3d0764b3dd92d752afd514ec8f28f9db19704187695828b3f8ffc1f88a50598baf8e009f9ffb9dec2ecbbe21402e53128ad86993090973948db782182c50cc57102e5c892cce0068822d79f2e18e1e8fc4c65b524e8979092424141929c8dd50af3a695c6825cb6323a528176fe82da84f6622307d3a8eabf2ed330703890de3461d5d5ae8eafa639450758ccc2df072d37dbb678a930eaec2afb03e0b29f011a323e6ccb2a013d58fdbe7fb39a4c771a06fdf2d32ffa07df9105661e1dffb5055e78eb1d31d135baff738079199114b272c2626d980b28d44a7b3b98bf78a282e1ca67973f10caec08ffbc927ff6d4e40408f68f9dc92eae01544972e84ea009695e2ab6596ca79f676d8342540bd516cf15b9b0f16e12126fae72c4c5a2c88efac9e3d752562ec5f4db69ea6bd89c84b6d3edd569261be21733116a24bdc367787cc32758b06e69aa5466a754e4b26ce4175283aeba1c06f2a5503e8a60681ef8cfc558cc173c9cf56721b3d5725a13f4000d4487cea1e08e620b3698ef962c9d056f014f2dce5947a03319c0ddd81d785e943ca29be957bf5e5d90bc7fb4ca8fe28c99b60c24946a9640ab7fc490c456ccb4ea32a758bcb6d3737065c2a61ba3edbf7cf5b1855a543622c5b4b80801914cdd39b489924ff9be0eb1b692a5e0e93dddf0ed99e50db92fd11a53de9a11e2ad44126598b4579f230dd23f386c465f4c096bf53adf58b545d5dd3163b403c4211812f63f1129de6603").unwrap()),
-        // A default script can never be spent, intentionally
-        script!(Nop),
-        // The Sender offset public key is not checked for coinbase outputs
-        PublicKey::from_hex("fa465015a7f64cc057d6b0b185a34f97ae3496a880178bc9edc8a39cf7fe446e").unwrap(),
-        coinbase_meta_sig,
-        // Covenant
-        Covenant::default(),
-        EncryptedData::default(),
-        // Genesis blocks don't need to prove a minimum value
-        MicroTari::zero(),
-    );
-    let kernel = TransactionKernel::new(
-        TransactionKernelVersion::V0,
-        KernelFeatures::COINBASE_KERNEL,
-        MicroTari(0),
-        0,
-        Commitment::from_hex("90cbcdbe391e84f7e9fd3e871819faf183dd4a4e083a46abf8594c74da43c056").unwrap(),
-        excess_sig,
-        None,
-    );
-    let mut body = AggregateBody::new(vec![], vec![coinbase], vec![kernel]);
+    let mut body = AggregateBody::new(vec![], vec![], vec![]);
     body.sort();
     // set genesis timestamp
     let genesis = DateTime::parse_from_rfc2822("15 Jun 2023 14:00:00 +0200").unwrap();
@@ -438,12 +401,12 @@ fn get_igor_genesis_block_raw() -> Block {
             height: 0,
             prev_hash: FixedHash::zero(),
             timestamp: timestamp.into(),
-            output_mr: FixedHash::from_hex("be4e90116734c3d81ac721e00059cf1ca69745036848e4c0251784d2ad4e8886").unwrap(),
-            witness_mr: FixedHash::from_hex("c860cd9ce09362de8c4cd34f6363015907d4bd4208a6671a9773d08da68a90e2")
+            output_mr: FixedHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000").unwrap(),
+            witness_mr: FixedHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000")
                 .unwrap(),
-            output_mmr_size: 1,
-            kernel_mr: FixedHash::from_hex("ae9b21d68863c0d4017a2e1754b02f8e893b4a66df220d774dcd6da1be2670e8").unwrap(),
-            kernel_mmr_size: 1,
+            output_mmr_size: 0,
+            kernel_mr: FixedHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000").unwrap(),
+            kernel_mmr_size: 0,
             validator_node_mr: FixedHash::from_hex("e1d55f91ecc7e435080ac2641280516a355a5ecbe231158987da217b5af30047")
                 .unwrap(),
             input_mr: FixedHash::zero(),
@@ -482,11 +445,11 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
 
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
-            FixedHash::from_hex("50e53f7ab3d56bfa7a642f81e01a37ca208f8aec2fda9c017e9032417f87d40b").unwrap();
+            FixedHash::from_hex("8c93eba80af538d89004df33e6d9f52fbd542f2a0e56887bdf1e0b8397e515a3").unwrap();
         block.header.witness_mr =
-            FixedHash::from_hex("12cec847b41f47e4ddb86f76ccf7c6e42eb0ca4c451c70f259190181b8450517").unwrap();
+            FixedHash::from_hex("d45b5ce1ff99cb4ccdd38747d4dca7ac1d702224064b79f494e5430422bd7a31").unwrap();
         block.header.output_mr =
-            FixedHash::from_hex("f1298cbd89512023af522a3c889cc518b7d95d76fdaf4875405aedb32bd4e2ca").unwrap();
+            FixedHash::from_hex("961bf351744baf355c5522f2ae7890f9c1588e37c694b53742abea3c3b2d5155").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("e1d55f91ecc7e435080ac2641280516a355a5ecbe231158987da217b5af30047").unwrap();
     }
@@ -506,44 +469,7 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
 fn get_esmeralda_genesis_block_raw() -> Block {
     // Note: Use 'print_new_genesis_block_esmeralda' in core/tests/helpers/block_builders.rs to generate the required
     // fields below - DO THIS ONCE ONLY AS IT GENERATES NEW RANDOM FIELDS
-    let extra = "Queues happen to other people";
-    let excess_sig = Signature::new(
-        PublicKey::from_hex("a0b8ec8c084817409029d03329a87da70c60b48df99a259d097c1f2e7c720160").unwrap(),
-        PrivateKey::from_hex("0cb04a773543acec43a1ebde0a0b24039a8f253c8506ebd849219b2d8d814707").unwrap(),
-    );
-    let coinbase_meta_sig = CommitmentAndPublicKeySignature::new(
-        Commitment::from_hex("8476a4c5ec0d79eb4dc287c1342350efd420beddf08c20d2e3908e37b3f94b7b").unwrap(),
-        PublicKey::from_hex("1a439e12c59c457785101cfbb0bbd79bf201a5cc2da22ff0504904e9c2c4d937").unwrap(),
-        PrivateKey::from_hex("a9808a6021d0f36994ac459ad35d2ac71ce334ed42e9b09c6141ed86bbbaca0d").unwrap(),
-        PrivateKey::from_hex("e5a38b823d95d79a90a554dd5ea694d3b25b087c7958894fa4cdefb15723930a").unwrap(),
-        PrivateKey::from_hex("03759b4b07859ebdb33bddd0341071398ee4206ff334f89cd294d7a7564a7306").unwrap(),
-    );
-    let coinbase = TransactionOutput::new(
-        TransactionOutputVersion::get_current_version(),
-        OutputFeatures::create_coinbase(6, Some(extra.as_bytes().to_vec())),
-        Commitment::from_hex("1e03b3c4cdb4aa3b72228aeae2bd14421d104142080586a1c94edf0e6049f652").unwrap(),
-        Some(BulletRangeProof::from_hex("0176a380af73648c1ca11643017556caebdaa75f75ca2043bf7922569eda00ff2f301b0556cd1e90e830cb6e3523151c27c3f288e01a05d0f2190dbd5a03810c6cc6bba1f1f9c38c953b66890b28535c026295ff5beff89dd8fecebf5fe0172f5e18f9b23a2f988ccf9db41b6dd8f8b6fab15b14650030c56500d78aae3e810b237e037fa8d6b31ef5a894947027deea0abe1453024a10b1d52bb45cfb2227511ba6d13b4141c92c56cc17d3072d8210dbf3a2c0ed2790ddfaeea71ec016bda17fee56a8ce2c92336ab16496d2b4b8144080e7f984a68bb1c629120324fc47252842c9a39577fb7cf24b5b4521968c20b3e11f490de691495149be6c2fce2bd23bae9490cf3893a690c03111b1982d98cf37dc7d1b14396d35c90829c581ae875e4a1c8de31c97e12950a791eb36b5fab9dfcfba7e25ddc38fea77919790511d11702b4c2b1c29558417dd0956786c23a229d053680aa28c4562c46e8a2da31f3868a0511993106f8fdc63883b6d421079a69d40e77edce39644d14409f04814085c838dc85c71a5a0e5def4cc4349f3336d2af149539f1c92fb870613a8f2224ffef931b4ea96dba826cd15346660272b6f5ded8b1e884bd092265018bbb7604e5e64dbe06cae436b82e86902b51131a51a7795b227ccb252142a4b567e35c465d9bf3f8ebbb35c47f44ee76cef428b23ec4021332ff9959b793e53ee77f341006408d90728efae5962727c8c4ac0b226ff91824e6c53044f998da43eccf25d0132cdc05c04c28b20a1decc3880552a8495abdfd75601fbf3cee91a2eec02b604").unwrap()),
-        // A default script can never be spent, intentionally
-        script!(Nop),
-        // The Sender offset public key is not checked for coinbase outputs
-        PublicKey::from_hex("321f4dab85588753933308f40bd807e88b24db18ca2b57bf1e28004711159755").unwrap(),
-        coinbase_meta_sig,
-        // Covenant
-        Covenant::default(),
-        EncryptedData::default(),
-        // Genesis blocks don't need to prove a minimum value
-        MicroTari::zero(),
-    );
-    let kernel = TransactionKernel::new(
-        TransactionKernelVersion::V0,
-        KernelFeatures::COINBASE_KERNEL,
-        MicroTari(0),
-        0,
-        Commitment::from_hex("be2d5f3c6c3c7f355c64dff5b73e74f0af5e3567b13eed739cfdb5f7f35f5d7f").unwrap(),
-        excess_sig,
-        None,
-    );
-    let mut body = AggregateBody::new(vec![], vec![coinbase], vec![kernel]);
+    let mut body = AggregateBody::new(vec![], vec![], vec![]);
     body.sort();
     // set genesis timestamp
     let genesis = DateTime::parse_from_rfc2822("15 Jun 2023 14:00:00 +0200").unwrap();
@@ -555,12 +481,12 @@ fn get_esmeralda_genesis_block_raw() -> Block {
             height: 0,
             prev_hash: FixedHash::zero(),
             timestamp: timestamp.into(),
-            output_mr: FixedHash::from_hex("5dd7b743de0a3f1df463fb2af2fcf8fb1344f0a174dff0ef8d70125939968ee4").unwrap(),
-            witness_mr: FixedHash::from_hex("5f049bfd7f42345cf2311de02a1431d2458ee6c5311d1874ba703c984965a2ce")
+            output_mr: FixedHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000").unwrap(),
+            witness_mr: FixedHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000")
                 .unwrap(),
-            output_mmr_size: 1,
-            kernel_mr: FixedHash::from_hex("227644bc970c60647ecd5be2f62b5ed32d4910bdd5a17cb956c0b829425a469f").unwrap(),
-            kernel_mmr_size: 1,
+            output_mmr_size: 0,
+            kernel_mr: FixedHash::from_hex("0000000000000000000000000000000000000000000000000000000000000000").unwrap(),
+            kernel_mmr_size: 0,
             validator_node_mr: FixedHash::from_hex("e1d55f91ecc7e435080ac2641280516a355a5ecbe231158987da217b5af30047")
                 .unwrap(),
             input_mr: FixedHash::zero(),
@@ -591,7 +517,7 @@ mod test {
     use super::*;
     use crate::{
         chain_storage::calculate_validator_node_mr,
-        consensus::ConsensusManager,
+        consensus::{ConsensusManager, ConsensusManagerBuilder},
         test_helpers::blockchain::create_new_blockchain_with_network,
         transactions::{
             transaction_components::{transaction_output::batch_verify_range_proofs, OutputType},
@@ -624,7 +550,7 @@ mod test {
         // Note: Generate new data for `pub fn get_esmeralda_genesis_block()` and `fn get_esmeralda_genesis_block_raw()`
         // if consensus values change, e.g. new faucet or other
         let block = get_esmeralda_genesis_block();
-        check_block(Network::Esmeralda, &block, 4966, 2);
+        check_block(Network::Esmeralda, &block, 4965, 1);
     }
 
     #[test]
@@ -632,7 +558,7 @@ mod test {
         // Note: Generate new data for `pub fn get_igor_genesis_block()` and `fn get_igor_genesis_block_raw()`
         // if consensus values change, e.g. new faucet or other
         let block = get_igor_genesis_block();
-        check_block(Network::Igor, &block, 5527, 2);
+        check_block(Network::Igor, &block, 5526, 1);
     }
 
     fn check_block(network: Network, block: &ChainBlock, expected_outputs: usize, expected_kernels: usize) {
@@ -641,7 +567,13 @@ mod test {
         assert_eq!(block.block().body.outputs().len(), expected_outputs);
 
         let factories = CryptoFactories::default();
-        assert!(block.block().body.outputs().iter().any(|o| o.is_coinbase()));
+        let consensus_manager: ConsensusManager = ConsensusManagerBuilder::new(network).build();
+        let some_output_is_coinbase = block.block().body.outputs().iter().any(|o| o.is_coinbase());
+        if consensus_manager.have_genesis_coinbase() {
+            assert!(some_output_is_coinbase);
+        } else {
+            assert!(!some_output_is_coinbase);
+        }
         let outputs = block.block().body.outputs().iter().collect::<Vec<_>>();
         batch_verify_range_proofs(&factories.range_proof, &outputs).unwrap();
         // Coinbase and faucet kernel
@@ -657,12 +589,17 @@ mod test {
         for kernel in block.block().body.kernels() {
             kernel.verify_signature().unwrap();
         }
-        assert!(block
+        let some_kernel_contains_coinbase_features = block
             .block()
             .body
             .kernels()
             .iter()
-            .any(|k| k.features.contains(KernelFeatures::COINBASE_KERNEL)));
+            .any(|k| k.features.contains(KernelFeatures::COINBASE_KERNEL));
+        if consensus_manager.have_genesis_coinbase() {
+            assert!(some_kernel_contains_coinbase_features);
+        } else {
+            assert!(!some_kernel_contains_coinbase_features);
+        }
 
         // Check MMR
         let mut kernel_mmr = KernelMmr::new(Vec::new());

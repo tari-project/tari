@@ -77,6 +77,8 @@ pub struct ConsensusConstants {
     pub(in crate::consensus) emission_decay: &'static [u64],
     /// This is the emission curve tail amount
     pub(in crate::consensus) emission_tail: MicroTari,
+    /// Indicate if the genesis block has a coinbase
+    pub(in crate::consensus) have_genesis_coinbase: bool,
     /// This is the maximum age a monero merge mined seed can be reused
     /// Monero forces a change every height mod 2048 blocks
     max_randomx_seed_height: u64,
@@ -157,9 +159,14 @@ impl ConsensusConstants {
         self.effective_from_height
     }
 
-    /// This gets the emission curve values as (initial, decay, tail)
-    pub fn emission_amounts(&self) -> (MicroTari, &'static [u64], MicroTari) {
-        (self.emission_initial, self.emission_decay, self.emission_tail)
+    /// This gets the emission curve values as (initial, decay, tail, have_genesis_coinbase)
+    pub fn emission_amounts(&self) -> (MicroTari, &'static [u64], MicroTari, bool) {
+        (
+            self.emission_initial,
+            self.emission_decay,
+            self.emission_tail,
+            self.have_genesis_coinbase,
+        )
     }
 
     /// The min height maturity a coinbase utxo must have.
@@ -371,6 +378,7 @@ impl ConsensusConstants {
             emission_initial: 18_462_816_327 * uT,
             emission_decay: &ESMERALDA_DECAY_PARAMS,
             emission_tail: 800 * T,
+            have_genesis_coinbase: false,
             max_randomx_seed_height: u64::MAX,
             proof_of_work: algos,
             faucet_value: ESMERALDA_FAUCET_VALUE.into(), // The esmeralda genesis block is re-used for localnet
@@ -421,6 +429,7 @@ impl ConsensusConstants {
             emission_initial: 5_538_846_115 * uT,
             emission_decay: &EMISSION_DECAY,
             emission_tail: 100.into(),
+            have_genesis_coinbase: true,
             max_randomx_seed_height: std::u64::MAX,
             proof_of_work: algos,
             faucet_value: (5000 * 4000) * T,
@@ -478,6 +487,7 @@ impl ConsensusConstants {
             emission_initial: 5_538_846_115 * uT,
             emission_decay: &EMISSION_DECAY,
             emission_tail: 100.into(),
+            have_genesis_coinbase: false,
             max_randomx_seed_height: u64::MAX,
             proof_of_work: algos,
             faucet_value: 1_581_548_314_320_266.into(),
@@ -539,6 +549,7 @@ impl ConsensusConstants {
                 emission_initial: 18_462_816_327 * uT,
                 emission_decay: &DIBBLER_DECAY_PARAMS,
                 emission_tail: 800 * T,
+                have_genesis_coinbase: true,
                 max_randomx_seed_height: u64::MAX,
                 proof_of_work: algos.clone(),
                 faucet_value: (10 * 4000) * T,
@@ -569,6 +580,7 @@ impl ConsensusConstants {
                 emission_initial: 18_462_816_327 * uT,
                 emission_decay: &DIBBLER_DECAY_PARAMS,
                 emission_tail: 800 * T,
+                have_genesis_coinbase: true,
                 max_randomx_seed_height: u64::MAX,
                 proof_of_work: algos,
                 faucet_value: (10 * 4000) * T,
@@ -626,6 +638,7 @@ impl ConsensusConstants {
             emission_initial: 18_462_816_327 * uT,
             emission_decay: &ESMERALDA_DECAY_PARAMS,
             emission_tail: 800 * T,
+            have_genesis_coinbase: false,
             max_randomx_seed_height: 3000,
             proof_of_work: algos,
             faucet_value: ESMERALDA_FAUCET_VALUE.into(),
@@ -685,6 +698,7 @@ impl ConsensusConstants {
             emission_initial: 18_462_816_327 * uT,
             emission_decay: &EMISSION_DECAY,
             emission_tail: 800 * T,
+            have_genesis_coinbase: true,
             max_randomx_seed_height: 3000,
             proof_of_work: algos,
             faucet_value: 0.into(),
@@ -736,6 +750,7 @@ impl ConsensusConstants {
             emission_initial: 18_462_816_327 * uT,
             emission_decay: &EMISSION_DECAY,
             emission_tail: 800 * T,
+            have_genesis_coinbase: true,
             max_randomx_seed_height: 3000,
             proof_of_work: algos,
             faucet_value: 0.into(),
@@ -788,6 +803,7 @@ impl ConsensusConstants {
             emission_initial: 10_000_000.into(),
             emission_decay: &EMISSION_DECAY,
             emission_tail: 100.into(),
+            have_genesis_coinbase: false,
             max_randomx_seed_height: u64::MAX,
             proof_of_work: algos,
             faucet_value: MicroTari::from(0),
@@ -915,7 +931,7 @@ mod test {
             emission::{Emission, EmissionSchedule},
             ConsensusConstants,
         },
-        transactions::tari_amount::uT,
+        transactions::tari_amount::{uT, MicroTari},
     };
 
     #[test]
@@ -925,19 +941,66 @@ mod test {
             esmeralda[0].emission_initial,
             esmeralda[0].emission_decay,
             esmeralda[0].emission_tail,
+            esmeralda[0].have_genesis_coinbase,
         );
-        let reward = schedule.block_reward(0);
-        assert_eq!(reward, 18_462_816_327 * uT);
-        assert_eq!(schedule.supply_at_block(0), reward);
+        // No genesis block coinbase
+        assert!(!esmeralda[0].have_genesis_coinbase);
+        assert_eq!(schedule.block_reward(0), MicroTari(0));
+        // Coinbases starts at block 1
+        let coinbase_offset = 1;
+        let first_reward = schedule.block_reward(coinbase_offset);
+        assert_eq!(first_reward, esmeralda[0].emission_initial * uT);
+        assert_eq!(schedule.supply_at_block(coinbase_offset), first_reward);
         let three_years = 365 * 24 * 30 * 3;
-        assert_eq!(schedule.supply_at_block(three_years), 10_500_682_498_903_652 * uT); // Around 10.5 billion
-        let mut rewards = schedule.iter().skip(3_574_174);
-        // Tail emission starts after block 3,574,175
+        assert_eq!(
+            schedule.supply_at_block(three_years + coinbase_offset),
+            10_500_682_498_903_652 * uT
+        ); // Around 10.5 billion
+           // Tail emission starts after block 3,574,175
+        let mut rewards = schedule.iter().skip(3_574_174 + coinbase_offset as usize);
         let (block_num, reward, supply) = rewards.next().unwrap();
-        assert_eq!(block_num, 3_574_175);
+        assert_eq!(block_num, 3_574_175 + coinbase_offset);
         assert_eq!(reward, 800_000_598 * uT);
         assert_eq!(supply, 20_100_525_123_936_707 * uT); // Still 900 mil tokens to go when tail emission kicks in
         let (_, reward, _) = rewards.next().unwrap();
         assert_eq!(reward, esmeralda[0].emission_tail);
+    }
+
+    #[test]
+    fn igor_schedule() {
+        let igor = ConsensusConstants::igor();
+        let schedule = EmissionSchedule::new(
+            igor[0].emission_initial,
+            igor[0].emission_decay,
+            igor[0].emission_tail,
+            igor[0].have_genesis_coinbase,
+        );
+        // No genesis block coinbase
+        assert!(!igor[0].have_genesis_coinbase);
+        assert_eq!(schedule.block_reward(0), MicroTari(0));
+        // Coinbases starts at block 1
+        let coinbase_offset = 1;
+        let first_reward = schedule.block_reward(coinbase_offset);
+        assert_eq!(first_reward, igor[0].emission_initial * uT);
+        assert_eq!(schedule.supply_at_block(coinbase_offset), first_reward);
+        let three_years = 365 * 24 * 30 * 3;
+        assert_eq!(
+            schedule.supply_at_block(three_years + coinbase_offset),
+            3_150_642_608_358_864 * uT
+        );
+        // Tail emission starts after block 11_084_819
+        let rewards = schedule.iter().skip(11_084_819 - 25);
+        let mut previous_reward = MicroTari(0);
+        for (block_num, reward, supply) in rewards {
+            if reward == previous_reward {
+                assert_eq!(block_num, 11_084_819 + 1);
+                assert_eq!(supply, MicroTari(6_326_198_792_915_738));
+                // These set of constants does not result in a tail emission equal to the specified tail emission
+                assert_ne!(reward, igor[0].emission_tail);
+                assert_eq!(reward, MicroTari(2_097_151));
+                break;
+            }
+            previous_reward = reward;
+        }
     }
 }

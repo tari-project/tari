@@ -29,7 +29,7 @@ use crate::tari_rpc as grpc;
 impl From<ConsensusConstants> for grpc::ConsensusConstants {
     #[allow(clippy::too_many_lines)]
     fn from(cc: ConsensusConstants) -> Self {
-        let (emission_initial, emission_decay, emission_tail) = cc.emission_amounts();
+        let (emission_initial, emission_decay, emission_tail, have_genesis_coinbase) = cc.emission_amounts();
         let weight_params = cc.transaction_weight().params();
         let input_version_range = cc.input_version_range().clone().into_inner();
         let input_version_range = grpc::Range {
@@ -117,6 +117,7 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
             emission_initial: emission_initial.into(),
             emission_decay: emission_decay.to_vec(),
             emission_tail: emission_tail.into(),
+            have_genesis_coinbase,
             min_blake_pow_difficulty: cc.min_pow_difficulty(PowAlgorithm::Sha3).into(),
             block_weight_inputs: weight_params.input_weight,
             block_weight_outputs: weight_params.output_weight,

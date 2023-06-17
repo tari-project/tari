@@ -201,58 +201,63 @@ async fn print_new_genesis_block_igor() {
 async fn print_new_genesis_block(network: Network, extra: &str) {
     let consensus_manager: ConsensusManager = ConsensusManagerBuilder::new(network).build();
     let mut header = BlockHeader::new(consensus_manager.consensus_constants(0).blockchain_version());
-    let value = consensus_manager.emission_schedule().block_reward(0);
-    let lock_height = consensus_manager.consensus_constants(0).coinbase_lock_height();
-    let key_manager = create_test_core_key_manager_with_memory_db();
-    let (utxo, spending_key_id, _) = create_utxo(
-        value,
-        &key_manager,
-        &OutputFeatures::create_coinbase(lock_height, Some(extra.as_bytes().to_vec())),
-        &script![Nop],
-        &Covenant::default(),
-        MicroTari::zero(),
-    )
-    .await;
-    let (pk, sig) = create_random_signature_from_secret_key(
-        &key_manager,
-        spending_key_id,
-        0.into(),
-        0,
-        KernelFeatures::COINBASE_KERNEL,
-        TxoStage::Output,
-    )
-    .await;
-    let excess = Commitment::from_public_key(&pk);
-    let kernel = KernelBuilder::new()
-        .with_signature(sig)
-        .with_excess(&excess)
-        .with_features(KernelFeatures::COINBASE_KERNEL)
-        .build()
-        .unwrap();
-
     let mut kernel_mmr = KernelMmr::new(Vec::new());
-    kernel_mmr.push(kernel.hash().to_vec()).unwrap();
-
     let mut witness_mmr = WitnessMmr::new(Vec::new());
-    witness_mmr.push(utxo.witness_hash().to_vec()).unwrap();
     let mut output_mmr = MutableOutputMmr::new(Vec::new(), Bitmap::create()).unwrap();
-    output_mmr.push(utxo.hash().to_vec()).unwrap();
     let vn_mr = calculate_validator_node_mr(&[]);
 
-    header.kernel_mr = FixedHash::try_from(kernel_mmr.get_merkle_root().unwrap()).unwrap();
-    header.kernel_mmr_size += 1;
-    header.output_mr = FixedHash::try_from(output_mmr.get_merkle_root().unwrap()).unwrap();
-    header.witness_mr = FixedHash::try_from(witness_mmr.get_merkle_root().unwrap()).unwrap();
-    header.output_mmr_size += 1;
-    header.validator_node_mr = FixedHash::try_from(vn_mr).unwrap();
+    let block = if consensus_manager.have_genesis_coinbase() {
+        let value = consensus_manager.emission_schedule().block_reward(0);
+        let lock_height = consensus_manager.consensus_constants(0).coinbase_lock_height();
+        let key_manager = create_test_core_key_manager_with_memory_db();
+        let (utxo, spending_key_id, _) = create_utxo(
+            value,
+            &key_manager,
+            &OutputFeatures::create_coinbase(lock_height, Some(extra.as_bytes().to_vec())),
+            &script![Nop],
+            &Covenant::default(),
+            MicroTari::zero(),
+        )
+        .await;
+        let (pk, sig) = create_random_signature_from_secret_key(
+            &key_manager,
+            spending_key_id,
+            0.into(),
+            0,
+            KernelFeatures::COINBASE_KERNEL,
+            TxoStage::Output,
+        )
+        .await;
+        let excess = Commitment::from_public_key(&pk);
+        let kernel = KernelBuilder::new()
+            .with_signature(sig)
+            .with_excess(&excess)
+            .with_features(KernelFeatures::COINBASE_KERNEL)
+            .build()
+            .unwrap();
 
-    // header.kernel_mr = kernel.hash();
-    // header.kernel_mmr_size += 1;
-    // header.output_mr = utxo.hash();
-    // header.witness_mr = utxo.witness_hash();
-    // header.output_mmr_size += 1;
+        kernel_mmr.push(kernel.hash().to_vec()).unwrap();
+        witness_mmr.push(utxo.witness_hash().to_vec()).unwrap();
+        output_mmr.push(utxo.hash().to_vec()).unwrap();
 
-    let block = header.into_builder().with_coinbase_utxo(utxo, kernel).build();
+        header.kernel_mr = FixedHash::try_from(kernel_mmr.get_merkle_root().unwrap()).unwrap();
+        header.kernel_mmr_size += 1;
+        header.output_mr = FixedHash::try_from(output_mmr.get_merkle_root().unwrap()).unwrap();
+        header.witness_mr = FixedHash::try_from(witness_mmr.get_merkle_root().unwrap()).unwrap();
+        header.output_mmr_size += 1;
+
+        header.validator_node_mr = FixedHash::try_from(vn_mr).unwrap();
+
+        header.into_builder().with_coinbase_utxo(utxo, kernel).build()
+    } else {
+        header.kernel_mr = FixedHash::zero();
+        header.output_mr = FixedHash::zero();
+        header.witness_mr = FixedHash::zero();
+
+        header.validator_node_mr = FixedHash::try_from(vn_mr).unwrap();
+
+        header.into_builder().build()
+    };
 
     for kernel in block.body.kernels() {
         kernel.verify_signature().unwrap();
@@ -263,43 +268,48 @@ async fn print_new_genesis_block(network: Network, extra: &str) {
     let outputs = block.body.outputs().iter().collect::<Vec<_>>();
     batch_verify_range_proofs(&CryptoFactories::default().range_proof, &outputs).unwrap();
 
-    // Note: This is printed in the same order as needed for 'fn get_dibbler_genesis_block_raw()'
+    // Note: This is printed in the same order as needed for 'fn get_xxxx_genesis_block_raw()'
     println!();
     println!("{} genesis block", network);
     println!();
-    println!("extra: '{}'", extra);
-    println!(
-        "kernel excess_sig: public_nonce {} signature {}",
-        block.body.kernels()[0].excess_sig.get_public_nonce().to_hex(),
-        block.body.kernels()[0].excess_sig.get_signature().to_hex()
-    );
-    println!();
-    println!(
-        "Coinbase metasig: ephemeral_commitment {} ephemeral_public_key {} signature_u_a {} signature_u_x {} \
-         signature_u_y {}",
-        block.body.outputs()[0]
-            .metadata_signature
-            .ephemeral_commitment()
-            .to_hex(),
-        block.body.outputs()[0].metadata_signature.ephemeral_pubkey().to_hex(),
-        block.body.outputs()[0].metadata_signature.u_a().to_hex(),
-        block.body.outputs()[0].metadata_signature.u_x().to_hex(),
-        block.body.outputs()[0].metadata_signature.u_y().to_hex(),
-    );
-    println!();
-    println!("Genesis coinbase maturity: {}", lock_height);
-    println!("UTXO commitment: {}", block.body.outputs()[0].commitment.to_hex());
-    println!("UTXO range_proof: {}", block.body.outputs()[0].proof_hex_display(true));
-    println!(
-        "Encrypted data: {}",
-        block.body.outputs()[0].encrypted_data.hex_display(true)
-    );
-    println!(
-        "UTXO sender offset pubkey: {}",
-        block.body.outputs()[0].sender_offset_public_key.to_hex()
-    );
-    println!();
-    println!("kernel excess: {}", block.body.kernels()[0].excess.to_hex());
+    if consensus_manager.have_genesis_coinbase() {
+        println!("extra: '{}'", extra);
+        println!(
+            "kernel excess_sig: public_nonce {} signature {}",
+            block.body.kernels()[0].excess_sig.get_public_nonce().to_hex(),
+            block.body.kernels()[0].excess_sig.get_signature().to_hex()
+        );
+        println!();
+        println!(
+            "Coinbase metasig: ephemeral_commitment {} ephemeral_public_key {} signature_u_a {} signature_u_x {} \
+             signature_u_y {}",
+            block.body.outputs()[0]
+                .metadata_signature
+                .ephemeral_commitment()
+                .to_hex(),
+            block.body.outputs()[0].metadata_signature.ephemeral_pubkey().to_hex(),
+            block.body.outputs()[0].metadata_signature.u_a().to_hex(),
+            block.body.outputs()[0].metadata_signature.u_x().to_hex(),
+            block.body.outputs()[0].metadata_signature.u_y().to_hex(),
+        );
+        println!();
+        println!(
+            "Genesis coinbase maturity: {}",
+            consensus_manager.consensus_constants(0).coinbase_lock_height()
+        );
+        println!("UTXO commitment: {}", block.body.outputs()[0].commitment.to_hex());
+        println!("UTXO range_proof: {}", block.body.outputs()[0].proof_hex_display(true));
+        println!(
+            "Encrypted data: {}",
+            block.body.outputs()[0].encrypted_data.hex_display(true)
+        );
+        println!(
+            "UTXO sender offset pubkey: {}",
+            block.body.outputs()[0].sender_offset_public_key.to_hex()
+        );
+        println!();
+        println!("kernel excess: {}", block.body.kernels()[0].excess.to_hex());
+    }
     println!();
     println!("header output_mr: {}", block.header.output_mr.to_hex());
     println!("header witness_mr: {}", block.header.witness_mr.to_hex());

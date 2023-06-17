@@ -88,6 +88,11 @@ impl ConsensusManager {
         &self.inner.emission
     }
 
+    /// Indicate if the genesis block has a coinbase transaction
+    pub fn have_genesis_coinbase(&self) -> bool {
+        self.inner.consensus_constants[0].have_genesis_coinbase
+    }
+
     pub fn get_block_reward_at(&self, height: u64) -> MicroTari {
         self.emission_schedule().block_reward(height)
     }
@@ -212,6 +217,7 @@ impl ConsensusManagerBuilder {
             self.consensus_constants[0].emission_initial,
             self.consensus_constants[0].emission_decay,
             self.consensus_constants[0].emission_tail,
+            self.consensus_constants[0].have_genesis_coinbase,
         );
         let inner = ConsensusManagerInner {
             consensus_constants: self.consensus_constants,
