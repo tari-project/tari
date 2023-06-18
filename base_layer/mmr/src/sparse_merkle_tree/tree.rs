@@ -1,3 +1,6 @@
+// Copyright 2023. The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 use std::{fmt::Debug, mem};
 
 use digest::{consts::U32, Digest};
@@ -236,6 +239,8 @@ impl<H: Digest<OutputSize = U32>> SparseMerkleTree<H> {
             PathClassifier::NonTerminalBranch => {
                 let deleted_hash = path.delete()?;
                 self.size -= 1;
+                // Traverse the tree again, marking the path as stale
+                let _node = self.find_terminal_branch(key, true)?;
                 DeleteResult::Deleted(deleted_hash)
             },
         };
@@ -250,6 +255,10 @@ impl<H: Digest<OutputSize = U32>> SparseMerkleTree<H> {
             return Ok(UpdateResult::Inserted);
         }
         if self.root.is_leaf() {
+            if self.root.as_leaf().ok_or(SMTError::UnexpectedNodeType)?.key() == new_leaf.key() {
+                let old_leaf = mem::replace(&mut self.root, Leaf(new_leaf)).to_leaf()?;
+                return Ok(UpdateResult::Updated(old_leaf.to_value_hash()));
+            }
             let old_root = mem::replace(&mut self.root, Node::Empty(EmptyNode {})).to_leaf()?;
             let root = old_root.build_tree(0, new_leaf)?;
             self.root = Branch(root);
@@ -460,6 +469,22 @@ mod test {
         assert_eq!(
             tree.root().unsafe_hash().to_string(),
             "f0ba9d3fa2b32a56d356b851098a2c7cb077f56735371f98eabccd5ffb9da689"
+        );
+    }
+
+    #[test]
+    fn single_node_same_key() {
+        let mut tree = SparseMerkleTree::<Blake256>::default();
+        let key = short_key(1);
+        let value = ValueHash::from([1u8; 32]);
+        let _ = tree.upsert(key.clone(), value).unwrap();
+        let value = ValueHash::from([2u8; 32]);
+        let _res = tree.upsert(key.clone(), value.clone()).unwrap();
+        assert!(tree.contains(&key));
+        assert_eq!(tree.get(&key).unwrap().unwrap(), &value);
+        assert_eq!(
+            tree.root().unsafe_hash().to_string(),
+            "ada3a4d0ac92222371c1ec9c3b53acfea4b81c0532d5140469af6867a6610396"
         );
     }
 
@@ -732,6 +757,25 @@ mod test {
             "e693520b5ba4ff8b1e37ae4feabcb54701f32efd6bc4b78db356fa9baa64ca99"
         );
         assert_eq!(tree.size(), 3);
+    }
+
+    #[test]
+    fn delete_non_terminal_branch() {
+        let mut tree = SparseMerkleTree::<Blake256>::default();
+        tree.upsert(short_key(127), ValueHash::from([1u8; 32])).unwrap();
+        tree.upsert(short_key(128), ValueHash::from([2u8; 32])).unwrap();
+        tree.upsert(short_key(192), ValueHash::from([3u8; 32])).unwrap();
+        let hash = tree.hash().clone();
+        assert_eq!(
+            hash.to_string(),
+            "ecc68a20f30e6a1d05f75dd9b43504c409d05df5d43ab2e6243b459e2a83524b"
+        );
+        tree.delete(&short_key(127)).unwrap();
+        let hash = tree.hash().clone();
+        assert_eq!(
+            hash.to_string(),
+            "75809eedc0e809d07ddc0a0c44e6c5f50ae0554164d0260708ca668cbc44394d"
+        );
     }
 
     #[test]

@@ -1,10 +1,18 @@
+// Copyright 2023. The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 #[cfg(feature = "native_bitmap")]
 use croaring::Bitmap;
-use tari_crypto::{hash::blake2::Blake256};
+use tari_crypto::hash::blake2::Blake256;
+#[cfg(feature = "native_bitmap")]
+use tari_crypto::hash_domain;
+#[cfg(feature = "native_bitmap")]
+use tari_crypto::hashing::DomainSeparatedHasher;
+#[cfg(feature = "native_bitmap")]
+use tari_crypto::tari_utilities::hex::Hex;
 use tari_mmr::sparse_merkle_tree::{NodeKey, SparseMerkleTree, ValueHash};
 #[cfg(feature = "native_bitmap")]
 use tari_mmr::{Hash, MutableMmr};
-
 
 #[cfg(feature = "native_bitmap")]
 hash_domain!(
@@ -101,7 +109,7 @@ fn main() {
         time_function(&format!("MMR: Inserting {size} keys"), || {
             insert_into_mmr(&keys, &mut mmr);
         });
-        time_function("SMT: Calculating root hash", || {
+        time_function("MMR: Calculating root hash", || {
             let size = mmr.len();
             let hash = mmr.get_merkle_root().unwrap();
             println!("Tree size: {size}. Root hash: {}", hash.to_hex());
@@ -109,7 +117,7 @@ fn main() {
         time_function(&format!("MMR: Deleting {half_size} keys"), || {
             delete_from_mmr(0, half_size as u32, &mut mmr);
         });
-        time_function("SMT: Calculating root hash", || {
+        time_function("MMR: Calculating root hash", || {
             let size = mmr.len();
             let hash = mmr.get_merkle_root().unwrap();
             println!("Tree size: {size}. Root hash: {}", hash.to_hex());
@@ -117,7 +125,7 @@ fn main() {
         time_function(&format!("MMR: Deleting another {half_size} keys"), || {
             delete_from_mmr(half_size as u32, half_size as u32, &mut mmr);
         });
-        time_function("SMT: Calculating root hash", || {
+        time_function("MMR: Calculating root hash", || {
             let size = mmr.len();
             let hash = mmr.get_merkle_root().unwrap();
             println!("Tree size: {size}. Root hash: {}", hash.to_hex());

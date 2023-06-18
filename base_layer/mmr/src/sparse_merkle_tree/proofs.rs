@@ -1,3 +1,6 @@
+// Copyright 2023. The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 use std::marker::PhantomData;
 
 use digest::{consts::U32, Digest};
@@ -47,7 +50,7 @@ impl<H: Digest<OutputSize = U32>> MerkleProof<H> {
             node_hash,
             |current, (i, (sibling_hash, direction))| {
                 let height = n - i - 1;
-                
+
                 match direction {
                     TraverseDirection::Left => {
                         BranchNode::<H>::branch_hash(height, &height_key(&self.key, height), &current, sibling_hash)

@@ -1,3 +1,6 @@
+// Copyright 2023. The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use tari_crypto::hash::blake2::Blake256;
 use tari_mmr::sparse_merkle_tree::{NodeKey, SparseMerkleTree, ValueHash};

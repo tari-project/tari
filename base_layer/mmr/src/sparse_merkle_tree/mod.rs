@@ -72,6 +72,8 @@
 //! tree.delete(&new_key(79)).unwrap();
 //! assert!(tree.is_empty());
 //! ```
+//! Copyright 2023. The Tari Project
+//! SPDX-License-Identifier: BSD-3-Clause
 
 mod bit_utils;
 mod error;

@@ -1,16 +1,25 @@
+// Copyright 2023. The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 use crate::sparse_merkle_tree::{NodeKey, SMTError};
 
 /// Gets the bit at an offset from the most significant bit. Does NOT perform range checking
 #[inline]
-pub fn get_bit(data: &[u8], position: usize) -> usize {
+pub(crate) fn get_bit(data: &[u8], position: usize) -> usize {
     if (data[position / 8] as usize) & (1 << (8 - 1 - (position % 8))) > 0 {
         return 1;
     }
     0
 }
 
+/// Sets the n-th bit in a byte array to the given value. `position` 0 is the most significant bit.
+///
+/// # Panics
+/// `set_bit` will panic if
+/// * `position` is out of bounds
+/// * `value` is not 0 or 1
 #[inline]
-pub fn set_bit(data: &mut [u8], position: usize, value: usize) {
+pub(crate) fn set_bit(data: &mut [u8], position: usize, value: usize) {
     match value {
         0 => data[position / 8] &= !(1 << (7 - (position % 8))),
         1 => data[position / 8] |= 1 << (7 - (position % 8)),
@@ -18,8 +27,11 @@ pub fn set_bit(data: &mut [u8], position: usize, value: usize) {
     }
 }
 
+/// Given two node keys, this function returns the number of bits that are common to both keys, starting from the most
+/// significant bit. This function is used to tell you the height at which two node keys would diverge in the sparse
+/// merkle tree. For example, key 0110 and 0101 would diverge at height 2, because the first two bits are the same.
 #[inline]
-pub fn count_common_prefix(a: &NodeKey, b: &NodeKey) -> usize {
+pub(crate) fn count_common_prefix(a: &NodeKey, b: &NodeKey) -> usize {
     let mut offset = 0;
     let n = a.len().min(b.len());
     let a = a.as_slice();
@@ -207,5 +219,56 @@ mod test {
             97, 98, 99, 100, 101, 64, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         ]);
         assert_eq!(hkey, expected);
+    }
+
+    #[test]
+    fn set_bits() {
+        let mut val = [0b10101010, 0b01010101];
+        set_bit(&mut val, 0, 1);
+        assert_eq!(val, [0b10101010, 0b01010101]);
+        set_bit(&mut val, 1, 1);
+        assert_eq!(val, [0b11101010, 0b01010101]);
+        set_bit(&mut val, 2, 1);
+        assert_eq!(val, [0b11101010, 0b01010101]);
+        set_bit(&mut val, 3, 1);
+        assert_eq!(val, [0b11111010, 0b01010101]);
+        set_bit(&mut val, 4, 1);
+        assert_eq!(val, [0b11111010, 0b01010101]);
+        set_bit(&mut val, 5, 1);
+        assert_eq!(val, [0b11111110, 0b01010101]);
+        set_bit(&mut val, 6, 1);
+        assert_eq!(val, [0b11111110, 0b01010101]);
+        set_bit(&mut val, 7, 1);
+        assert_eq!(val, [0b11111111, 0b01010101]);
+        set_bit(&mut val, 8, 0);
+        assert_eq!(val, [0b11111111, 0b01010101]);
+        set_bit(&mut val, 9, 0);
+        assert_eq!(val, [0b11111111, 0b00010101]);
+        set_bit(&mut val, 10, 0);
+        assert_eq!(val, [0b11111111, 0b00010101]);
+        set_bit(&mut val, 11, 0);
+        assert_eq!(val, [0b11111111, 0b00000101]);
+        set_bit(&mut val, 12, 0);
+        assert_eq!(val, [0b11111111, 0b00000101]);
+        set_bit(&mut val, 13, 0);
+        assert_eq!(val, [0b11111111, 0b00000001]);
+        set_bit(&mut val, 14, 0);
+        assert_eq!(val, [0b11111111, 0b00000001]);
+        set_bit(&mut val, 15, 0);
+        assert_eq!(val, [0b11111111, 0b00000000]);
+    }
+
+    #[test]
+    fn get_bits() {
+        let val = [0b10101010, 0b10101010, 0b00000000, 0b11111111];
+        for i in 0..16 {
+            assert_eq!(get_bit(&val, i), (i + 1) % 2);
+        }
+        for i in 16..24 {
+            assert_eq!(get_bit(&val, i), 0);
+        }
+        for i in 24..32 {
+            assert_eq!(get_bit(&val, i), 1);
+        }
     }
 }
