@@ -85,6 +85,10 @@ const LOG_TARGET: &str = "tari::base_node::app";
 
 /// Application entry point
 fn main() {
+    // Only compile on 64bit systems
+    #[cfg(not(target_pointer_width = "64"))]
+    compile_error!("Non 64-bit systems are not supported.");
+
     // Setup a panic hook which prints the default rust panic message but also exits the process. This makes a panic in
     // any thread "crash" the system instead of silently continuing.
     let default_hook = panic::take_hook();
