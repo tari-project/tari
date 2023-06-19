@@ -11,6 +11,8 @@ Feature: Chat FFI messaging
     When I use CHAT_A to send a message 'Hey there' to CHAT_B
     Then CHAT_B will have 1 message with CHAT_A
 
+  #This is flaky, passes on local run time, but fails CI
+  @broken
   Scenario: A message is sent directly between two FFI clients
     Given I have a seed node SEED_A
     When I have a chat FFI client CHAT_A connected to seed node SEED_A

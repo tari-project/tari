@@ -20,7 +20,7 @@ anyhow = "1.0.53"
 blake2 = "0.9.1"
 config = { version = "0.13.0", default_features = false, features = ["toml"] }
 dirs-next = "1.0.2"
-git2 = { version = "0.8", default_features = false, optional = true }
+git2 = { version = "0.15", default_features = false, optional = true }
 log = "0.4.8"
 log4rs = { version = "1.2.0", default_features = false, features = ["config_parsing", "threshold_filter", "yaml_format"] }
 multiaddr = { version = "0.14.0" }
