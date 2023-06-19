@@ -3,11 +3,6 @@ name: CI
 
 'on':
   workflow_dispatch:
-  push:
-    branches:
-      - development
-      - main
-      - ci-*
   pull_request:
     types:
       - opened
