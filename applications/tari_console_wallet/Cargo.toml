@@ -30,7 +30,7 @@ tokio = { version = "1.23", features = ["signal"] }
 
 bitflags = "1.2.1"
 chrono = { version = "0.4.19", default-features = false }
-clap = { version = "3.1.1", features = ["derive", "env"] }
+clap = { version = "3.2", features = ["derive", "env"] }
 config = "0.13.0"
 crossterm = { version = "0.25.0" }
 digest = "0.9.0"
