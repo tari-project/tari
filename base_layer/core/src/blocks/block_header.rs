@@ -95,8 +95,6 @@ pub struct BlockHeader {
     /// This is the UTXO merkle root of the outputs
     /// This is calculated as Hash (txo MMR root  || roaring bitmap hash of UTXO indices)
     pub output_mr: FixedHash,
-    /// This is the MMR root of the witness proofs
-    pub witness_mr: FixedHash,
     /// The size (number  of leaves) of the output and range proof MMRs at the time of this header
     pub output_mmr_size: u64,
     /// This is the MMR root of the kernels
@@ -126,7 +124,6 @@ impl BlockHeader {
             prev_hash: FixedHash::zero(),
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
-            witness_mr: FixedHash::zero(),
             output_mmr_size: 0,
             kernel_mr: FixedHash::zero(),
             kernel_mmr_size: 0,
@@ -159,7 +156,6 @@ impl BlockHeader {
             prev_hash,
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
-            witness_mr: FixedHash::zero(),
             output_mmr_size: prev.output_mmr_size,
             kernel_mr: FixedHash::zero(),
             kernel_mmr_size: prev.kernel_mmr_size,
@@ -226,7 +222,6 @@ impl BlockHeader {
             .chain(&self.input_mr)
             .chain(&self.output_mr)
             .chain(&self.output_mmr_size)
-            .chain(&self.witness_mr)
             .chain(&self.kernel_mr)
             .chain(&self.kernel_mmr_size)
             .chain(&self.total_kernel_offset)
@@ -261,7 +256,6 @@ impl From<NewBlockHeaderTemplate> for BlockHeader {
             prev_hash: header_template.prev_hash,
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
-            witness_mr: FixedHash::zero(),
             // TODO: put  mmr sizes in template
             output_mmr_size: 0,
             kernel_mr: FixedHash::zero(),
@@ -296,11 +290,10 @@ impl Display for BlockHeader {
         )?;
         writeln!(
             fmt,
-            "Merkle roots:\nInputs: {},\nOutputs: {} ({})\nWitness: {}\nKernels: {} ({})",
+            "Merkle roots:\nInputs: {},\nOutputs: {} ({})\n\nKernels: {} ({})",
             self.input_mr.to_hex(),
             self.output_mr.to_hex(),
             self.output_mmr_size,
-            self.witness_mr.to_hex(),
             self.kernel_mr.to_hex(),
             self.kernel_mmr_size
         )?;

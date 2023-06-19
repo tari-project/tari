@@ -134,6 +134,16 @@ impl TryFrom<proto::types::TransactionInput> for TransactionInput {
             let sender_offset_public_key =
                 PublicKey::from_bytes(input.sender_offset_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
 
+            let metadata_signature = input
+                .metadata_signature
+                .ok_or_else(|| "Metadata signature not provided".to_string())?
+                .try_into()
+                .map_err(|_| "Metadata signature could not be converted".to_string())?;
+            let rangeproof_hash = input
+                .rangeproof_hash
+                .try_into()
+                .map_err(|_| "Invalid rangeproof hash")?;
+
             let mut buffer_input_covenant = input.covenant.as_bytes();
             Ok(TransactionInput::new_with_output_data(
                 TransactionInputVersion::try_from(
@@ -147,6 +157,8 @@ impl TryFrom<proto::types::TransactionInput> for TransactionInput {
                 sender_offset_public_key,
                 BorshDeserialize::deserialize(&mut buffer_input_covenant).map_err(|err| err.to_string())?,
                 EncryptedData::from_bytes(&input.encrypted_data).map_err(|err| err.to_string())?,
+                metadata_signature,
+                rangeproof_hash,
                 input.minimum_value_promise.into(),
             ))
         } else {
@@ -218,6 +230,17 @@ impl TryFrom<TransactionInput> for proto::types::TransactionInput {
                     .encrypted_data()
                     .map_err(|_| "Non-compact Transaction input should contain encrypted value".to_string())?
                     .to_byte_vec(),
+                metadata_signature: Some(
+                    input
+                        .metadata_signature()
+                        .map_err(|_| "Non-compact Transaction input should contain a metadata_signature".to_string())?
+                        .clone()
+                        .into(),
+                ),
+                rangeproof_hash: input
+                    .rangeproof_hash()
+                    .map_err(|_| "Non-compact Transaction input should contain a rangeproof hash".to_string())?
+                    .to_vec(),
                 minimum_value_promise: input
                     .minimum_value_promise()
                     .map_err(|_| "Non-compact Transaction input should contain the minimum value promise".to_string())?

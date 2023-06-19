@@ -34,7 +34,7 @@ pub use output_features_version::OutputFeaturesVersion;
 pub use output_type::OutputType;
 pub use range_proof_type::RangeProofType;
 pub use side_chain::*;
-use tari_common_types::types::{Commitment, FixedHash, PublicKey};
+use tari_common_types::types::{ComAndPubSignature, Commitment, FixedHash, PublicKey};
 use tari_script::TariScript;
 use tari_utilities::{hidden_type, safe_array::SafeArray, Hidden};
 pub use transaction::Transaction;
@@ -105,6 +105,8 @@ pub(super) fn hash_output(
     covenant: &Covenant,
     encrypted_data: &EncryptedData,
     sender_offset_public_key: &PublicKey,
+    metadata_signature: &ComAndPubSignature,
+    range_proof_hash: &FixedHash,
     minimum_value_promise: MicroTari,
 ) -> FixedHash {
     let common_hash = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("transaction_output")
@@ -115,6 +117,8 @@ pub(super) fn hash_output(
         .chain(covenant)
         .chain(encrypted_data)
         .chain(sender_offset_public_key)
+        .chain(range_proof_hash)
+        .chain(metadata_signature)
         .chain(&minimum_value_promise);
 
     match version {

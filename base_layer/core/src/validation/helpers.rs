@@ -274,16 +274,6 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
             kind: "Utxo",
         }));
     };
-    if header.witness_mr != mmr_roots.witness_mr {
-        warn!(
-            target: LOG_TARGET,
-            "Block header witness MMR roots in {} do not match calculated roots",
-            header.hash().to_hex()
-        );
-        return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots {
-            kind: "Witness",
-        }));
-    };
     if header.output_mmr_size != mmr_roots.output_mmr_size {
         warn!(
             target: LOG_TARGET,

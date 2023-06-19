@@ -53,23 +53,15 @@ const LOG_TARGET: &str = "c::bn::acc_data";
 pub struct BlockAccumulatedData {
     pub(crate) kernels: PrunedHashSet,
     pub(crate) outputs: PrunedHashSet,
-    pub(crate) witness: PrunedHashSet,
     pub(crate) deleted: DeletedBitmap,
     pub(crate) kernel_sum: Commitment,
 }
 
 impl BlockAccumulatedData {
-    pub fn new(
-        kernels: PrunedHashSet,
-        outputs: PrunedHashSet,
-        witness: PrunedHashSet,
-        deleted: Bitmap,
-        total_kernel_sum: Commitment,
-    ) -> Self {
+    pub fn new(kernels: PrunedHashSet, outputs: PrunedHashSet, deleted: Bitmap, total_kernel_sum: Commitment) -> Self {
         Self {
             kernels,
             outputs,
-            witness,
             deleted: DeletedBitmap { deleted },
             kernel_sum: total_kernel_sum,
         }
@@ -84,8 +76,8 @@ impl BlockAccumulatedData {
         self
     }
 
-    pub fn dissolve(self) -> (PrunedHashSet, PrunedHashSet, PrunedHashSet, Bitmap) {
-        (self.kernels, self.outputs, self.witness, self.deleted.deleted)
+    pub fn dissolve(self) -> (PrunedHashSet, PrunedHashSet, Bitmap) {
+        (self.kernels, self.outputs, self.deleted.deleted)
     }
 
     pub fn kernel_sum(&self) -> &Commitment {
@@ -101,7 +93,6 @@ impl Default for BlockAccumulatedData {
             deleted: DeletedBitmap {
                 deleted: Bitmap::create(),
             },
-            witness: Default::default(),
             kernel_sum: Default::default(),
         }
     }
@@ -111,11 +102,10 @@ impl Display for BlockAccumulatedData {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         write!(
             f,
-            "{} hashes in output MMR, {} spends this block, {} hashes in kernel MMR, {} hashes in witness MMR",
+            "{} hashes in output MMR, {} spends this block, {} hashes in kernel MMR,",
             self.outputs.len().unwrap_or(0),
             self.deleted.deleted.cardinality(),
-            self.kernels.len().unwrap_or(0),
-            self.witness.len().unwrap_or(0)
+            self.kernels.len().unwrap_or(0)
         )
     }
 }
@@ -124,7 +114,6 @@ impl Display for BlockAccumulatedData {
 pub struct UpdateBlockAccumulatedData {
     pub kernel_hash_set: Option<PrunedHashSet>,
     pub utxo_hash_set: Option<PrunedHashSet>,
-    pub witness_hash_set: Option<PrunedHashSet>,
     pub deleted_diff: Option<DeletedBitmap>,
     pub kernel_sum: Option<Commitment>,
 }

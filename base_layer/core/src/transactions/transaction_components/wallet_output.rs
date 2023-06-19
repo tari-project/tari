@@ -148,6 +148,18 @@ impl WalletOutput {
     ) -> Result<TransactionInput, TransactionError> {
         let value = self.value.into();
         let commitment = key_manager.get_commitment(&self.spending_key_id, &value).await?;
+        let rangeproof_hash = if self.features.range_proof_type == RangeProofType::BulletProofPlus {
+            let proof = key_manager
+                .construct_range_proof(
+                    &self.spending_key_id,
+                    self.value.into(),
+                    self.minimum_value_promise.into(),
+                )
+                .await?;
+            proof.hash()
+        } else {
+            FixedHash::zero()
+        };
         let version = TransactionInputVersion::get_current_version();
         let script_message = TransactionInput::build_script_signature_message(&version, &self.script, &self.input_data);
         let script_signature = key_manager
@@ -169,6 +181,8 @@ impl WalletOutput {
                 covenant: self.covenant.clone(),
                 version: self.version,
                 encrypted_data: self.encrypted_data,
+                metadata_signature: self.metadata_signature.clone(),
+                rangeproof_hash,
                 minimum_value_promise: self.minimum_value_promise,
             },
             self.input_data.clone(),
@@ -243,14 +257,21 @@ impl WalletOutput {
         &self,
         key_manager: &KM,
     ) -> Result<FixedHash, TransactionError> {
+        let output = self.as_transaction_output(key_manager).await?;
+        let rp_hash = match output.proof {
+            Some(rp) => rp.hash(),
+            None => FixedHash::zero(),
+        };
         Ok(transaction_components::hash_output(
             self.version,
             &self.features,
-            &self.commitment(key_manager).await?,
+            &output.commitment,
             &self.script,
             &self.covenant,
             &self.encrypted_data,
             &self.sender_offset_public_key,
+            &self.metadata_signature,
+            &rp_hash,
             self.minimum_value_promise,
         ))
     }

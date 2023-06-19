@@ -196,6 +196,10 @@ impl TransactionOutput {
     }
 
     pub fn hash(&self) -> FixedHash {
+        let rp_hash = match &self.proof {
+            Some(rp) => rp.hash(),
+            None => FixedHash::zero(),
+        };
         transaction_components::hash_output(
             self.version,
             &self.features,
@@ -204,6 +208,8 @@ impl TransactionOutput {
             &self.covenant,
             &self.encrypted_data,
             &self.sender_offset_public_key,
+            &self.metadata_signature,
+            &rp_hash,
             self.minimum_value_promise,
         )
     }
@@ -445,14 +451,6 @@ impl TransactionOutput {
             script_lock_height: u64::default(),
             spending_key_id: Default::default(),
         })
-    }
-
-    pub fn witness_hash(&self) -> FixedHash {
-        DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("transaction_output_witness")
-            .chain(&self.proof)
-            .chain(&self.metadata_signature)
-            .finalize()
-            .into()
     }
 
     pub fn get_features_and_scripts_size(&self) -> usize {

@@ -39,7 +39,7 @@ pub struct HistoricalBlock {
     block: Block,
     /// Accumulated data
     pub accumulated_data: BlockHeaderAccumulatedData,
-    pruned_outputs: Vec<(HashOutput, HashOutput)>,
+    pruned_outputs: Vec<HashOutput>,
     pruned_input_count: u64,
 }
 
@@ -48,7 +48,7 @@ impl HistoricalBlock {
         block: Block,
         confirmations: u64,
         accumulated_data: BlockHeaderAccumulatedData,
-        pruned_outputs: Vec<(HashOutput, HashOutput)>,
+        pruned_outputs: Vec<HashOutput>,
         pruned_input_count: u64,
     ) -> Self {
         HistoricalBlock {
@@ -103,7 +103,7 @@ impl HistoricalBlock {
         Ok(chain_block)
     }
 
-    pub fn pruned_outputs(&self) -> &[(HashOutput, HashOutput)] {
+    pub fn pruned_outputs(&self) -> &[HashOutput] {
         self.pruned_outputs.as_slice()
     }
 
@@ -123,8 +123,8 @@ impl Display for HistoricalBlock {
 
         if !self.pruned_outputs.is_empty() {
             writeln!(f, "Pruned outputs: ")?;
-            for (output, proof) in &self.pruned_outputs {
-                writeln!(f, "Output hash: {} Proof:{}", output.to_hex(), proof.to_hex())?;
+            for output in &self.pruned_outputs {
+                writeln!(f, "Output hash: {}", output.to_hex())?;
             }
         }
         Ok(())

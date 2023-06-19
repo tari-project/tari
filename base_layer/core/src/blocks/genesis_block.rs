@@ -73,7 +73,7 @@ fn print_mr_values(block: &mut Block, print: bool) {
 
     use croaring::Bitmap;
 
-    use crate::{chain_storage::calculate_validator_node_mr, KernelMmr, MutableOutputMmr, WitnessMmr};
+    use crate::{chain_storage::calculate_validator_node_mr, KernelMmr, MutableOutputMmr};
 
     let mut kernel_mmr = KernelMmr::new(Vec::new());
     for k in block.body.kernels() {
@@ -81,22 +81,18 @@ fn print_mr_values(block: &mut Block, print: bool) {
         kernel_mmr.push(k.hash().to_vec()).unwrap();
     }
 
-    let mut witness_mmr = WitnessMmr::new(Vec::new());
     let mut output_mmr = MutableOutputMmr::new(Vec::new(), Bitmap::create()).unwrap();
 
     for o in block.body.outputs() {
-        witness_mmr.push(o.witness_hash().to_vec()).unwrap();
         output_mmr.push(o.hash().to_vec()).unwrap();
     }
     let vn_mmr = calculate_validator_node_mr(&[]);
 
     block.header.kernel_mr = FixedHash::try_from(kernel_mmr.get_merkle_root().unwrap()).unwrap();
-    block.header.witness_mr = FixedHash::try_from(witness_mmr.get_merkle_root().unwrap()).unwrap();
     block.header.output_mr = FixedHash::try_from(output_mmr.get_merkle_root().unwrap()).unwrap();
     block.header.validator_node_mr = FixedHash::try_from(vn_mmr).unwrap();
     println!();
     println!("kernel mr: {}", block.header.kernel_mr.to_hex());
-    println!("witness mr: {}", block.header.witness_mr.to_hex());
     println!("output mr: {}", block.header.output_mr.to_hex());
     println!("vn mr: {}", block.header.validator_node_mr.to_hex());
 }
@@ -117,7 +113,6 @@ pub fn get_stagenet_genesis_block() -> ChainBlock {
 
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr = FixedHash::from_hex("TODO: Update when required").unwrap();
-        block.header.witness_mr = FixedHash::from_hex("TODO: Update when required").unwrap();
         block.header.output_mr = FixedHash::from_hex("TODO: Update when required").unwrap();
         block.header.validator_node_mr = FixedHash::from_hex("TODO: Update when required").unwrap();
     }
@@ -156,7 +151,6 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
 
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr = FixedHash::from_hex("TODO: Update when required").unwrap();
-        block.header.witness_mr = FixedHash::from_hex("TODO: Update when required").unwrap();
         block.header.output_mr = FixedHash::from_hex("TODO: Update when required").unwrap();
         block.header.validator_node_mr = FixedHash::from_hex("TODO: Update when required").unwrap();
     }
@@ -327,7 +321,6 @@ mod test {
         validation::{ChainBalanceValidator, FinalHorizonStateValidation},
         KernelMmr,
         MutableOutputMmr,
-        WitnessMmr,
     };
 
     #[test]
@@ -399,12 +392,10 @@ mod test {
             kernel_mmr.push(k.hash().to_vec()).unwrap();
         }
 
-        let mut witness_mmr = WitnessMmr::new(Vec::new());
         let mut output_mmr = MutableOutputMmr::new(Vec::new(), Bitmap::create()).unwrap();
         let mut vn_nodes = Vec::new();
         for o in block.block().body.outputs() {
             o.verify_metadata_signature().unwrap();
-            witness_mmr.push(o.witness_hash().to_vec()).unwrap();
             output_mmr.push(o.hash().to_vec()).unwrap();
             if matches!(o.features.output_type, OutputType::ValidatorNodeRegistration) {
                 let reg = o
@@ -421,7 +412,6 @@ mod test {
         }
 
         assert_eq!(kernel_mmr.get_merkle_root().unwrap(), block.header().kernel_mr,);
-        assert_eq!(witness_mmr.get_merkle_root().unwrap(), block.header().witness_mr,);
         assert_eq!(output_mmr.get_merkle_root().unwrap(), block.header().output_mr,);
         assert_eq!(calculate_validator_node_mr(&vn_nodes), block.header().validator_node_mr,);
 

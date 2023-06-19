@@ -454,14 +454,7 @@ async fn chain_balance_validation_burned() {
     mmr_leaf_index = 5;
 
     txn.insert_kernel(kernel2.clone(), *header1.hash(), mmr_position);
-    txn.insert_pruned_utxo(
-        burned.hash(),
-        burned.witness_hash(),
-        *header1.hash(),
-        header1.height(),
-        mmr_leaf_index,
-        0,
-    );
+    txn.insert_pruned_utxo(burned.hash(), *header1.hash(), header1.height(), mmr_leaf_index, 0);
 
     db.commit(txn).unwrap();
     utxo_sum = &coinbase.commitment + &utxo_sum;

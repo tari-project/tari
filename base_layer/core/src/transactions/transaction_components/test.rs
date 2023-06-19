@@ -320,6 +320,8 @@ fn check_timelocks() {
         offset_pub_key,
         Covenant::default(),
         EncryptedData::default(),
+        Default::default(),
+        Default::default(),
         MicroTari::zero(),
     );
 

@@ -147,7 +147,7 @@ where B: BlockchainBackend + 'static
                     .enumerate()
                     // Don't include pruned UTXOs
                     .filter_map(|(_, utxo)| match utxo {
-                        PrunedOutput::Pruned{output_hash: _,witness_hash:_} => None,
+                        PrunedOutput::Pruned{output_hash: _} => None,
                         PrunedOutput::NotPruned{output} => Some(output.try_into()),
                     }).collect::<Result<Vec<proto::types::TransactionOutput>, String>>().map_err(|err| RpcStatus::general(&err))?;
 

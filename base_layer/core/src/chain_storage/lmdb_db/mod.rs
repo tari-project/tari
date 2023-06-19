@@ -42,7 +42,6 @@ pub(crate) struct TransactionOutputRowData {
     pub header_hash: HashOutput,
     pub mmr_position: u32,
     pub hash: HashOutput,
-    pub witness_hash: HashOutput,
     pub mined_height: u64,
     pub mined_timestamp: u64,
 }

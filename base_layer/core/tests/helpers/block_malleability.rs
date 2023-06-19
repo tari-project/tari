@@ -36,7 +36,6 @@ use super::test_blockchain::TestBlockchain;
 enum MerkleMountainRangeField {
     Input,
     Output,
-    Witness,
     Kernel,
 }
 
@@ -48,11 +47,6 @@ pub async fn check_input_malleability(block_mod_fn: impl Fn(&mut Block)) {
 #[allow(dead_code)]
 pub async fn check_output_malleability(block_mod_fn: impl Fn(&mut Block)) {
     check_block_changes_are_detected(MerkleMountainRangeField::Output, block_mod_fn).await;
-}
-
-#[allow(dead_code)]
-pub async fn check_witness_malleability(block_mod_fn: impl Fn(&mut Block)) {
-    check_block_changes_are_detected(MerkleMountainRangeField::Witness, block_mod_fn).await;
 }
 
 #[allow(dead_code)]
@@ -112,10 +106,6 @@ async fn check_block_changes_are_detected(field: MerkleMountainRangeField, block
         MerkleMountainRangeField::Output => {
             assert_ne!(block.header().output_mr, modded_root.output_mr);
             mod_block.header.output_mr = modded_root.output_mr;
-        },
-        MerkleMountainRangeField::Witness => {
-            assert_ne!(block.header().witness_mr, modded_root.witness_mr);
-            mod_block.header.witness_mr = modded_root.witness_mr;
         },
         MerkleMountainRangeField::Kernel => {
             assert_ne!(block.header().kernel_mr, modded_root.kernel_mr);

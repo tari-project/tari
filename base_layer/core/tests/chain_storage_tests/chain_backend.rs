@@ -164,11 +164,10 @@ fn test_utxo_order() {
     };
     let chainheader = ChainHeader::try_construct(header, data).unwrap();
     let sum = block_data.kernel_sum().clone();
-    let (kernels, utxo_set, witness, deleted) = block_data.dissolve();
+    let (kernels, utxo_set, deleted) = block_data.dissolve();
     let update_data = UpdateBlockAccumulatedData {
         kernel_hash_set: Some(kernels),
         utxo_hash_set: Some(utxo_set),
-        witness_hash_set: Some(witness),
         deleted_diff: Some(deleted.into()),
         kernel_sum: Some(sum),
     };

@@ -28,13 +28,8 @@ use crate::transactions::transaction_components::TransactionOutput;
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PrunedOutput {
-    Pruned {
-        output_hash: HashOutput,
-        witness_hash: HashOutput,
-    },
-    NotPruned {
-        output: TransactionOutput,
-    },
+    Pruned { output_hash: HashOutput },
+    NotPruned { output: TransactionOutput },
 }
 
 impl PrunedOutput {
@@ -44,10 +39,7 @@ impl PrunedOutput {
 
     pub fn hash(&self) -> FixedHash {
         match self {
-            PrunedOutput::Pruned {
-                output_hash,
-                witness_hash: _,
-            } => *output_hash,
+            PrunedOutput::Pruned { output_hash } => *output_hash,
             PrunedOutput::NotPruned { output } => output.hash(),
         }
     }
@@ -75,7 +67,6 @@ mod test {
         pub fn sample() -> Self {
             Self::Pruned {
                 output_hash: FixedHash::zero(),
-                witness_hash: FixedHash::zero(),
             }
         }
     }

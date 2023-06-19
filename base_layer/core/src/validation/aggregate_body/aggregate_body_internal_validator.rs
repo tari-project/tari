@@ -486,6 +486,8 @@ mod test {
                 Default::default(),
                 Default::default(),
                 Default::default(),
+                Default::default(),
+                Default::default(),
                 MicroTari::zero(),
             );
 
