@@ -170,6 +170,4 @@ message ConsensusConstants {
     uint64 validator_node_registration_shuffle_interval_epoch = 33;
     /// An allowlist of range proof types
     repeated RangeProofType permitted_range_proof_types = 34;
-    /// Indicate if the genesis block has a coinbase
-    bool have_genesis_coinbase = 35;
 }
