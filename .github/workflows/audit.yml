@@ -26,3 +26,6 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           ignore: RUSTSEC-2020-0071
+
+#RUSTSEC-2020-0071 is vulnerability on time 0.1 which is an optional dependency used by chrono. All of our dependencies have made sure to not use it except log4rs.
+#We need to bypass this till log4rs either updates or fixes this. They have a PR open to remove the optional dependency, and they want to move away from chrono totally.
