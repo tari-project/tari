@@ -80,7 +80,7 @@ async fn main() {
         .version("0.1.0")
         .arg(
             Arg::with_name("output_dir")
-                .short("o")
+                .short('o')
                 .long("output")
                 .takes_value(true)
                 .value_name("PATH")
