@@ -22,6 +22,7 @@ env:
   toolchain: nightly-2022-11-03
   matrix-json-file: ".github/workflows/base_node_binaries.json"
   CARGO_HTTP_MULTIPLEXING: false
+  CARGO_UNSTABLE_SPARSE_REGISTRY: true
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
