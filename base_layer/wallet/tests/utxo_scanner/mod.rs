@@ -701,7 +701,9 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
                     final_height,
                     num_recovered,
                     value_recovered,
-                    time_taken: _,} = event.unwrap() {
+                    time_taken: _,
+                } = event.unwrap()
+                {
                     assert_eq!(final_height, 9);
                     assert_eq!(num_recovered, total_outputs_to_recover);
                     assert_eq!(value_recovered, total_amount_to_recover);

@@ -108,7 +108,6 @@ pub fn grpc_default_port(app_type: ApplicationType, network: Network) -> u16 {
             Network::Esmeralda => 18142u16,
             Network::Igor => 18152u16,
             Network::LocalNet => 18162u16,
-            _ => unreachable!("Network {} not supported", network),
         },
         ApplicationType::ConsoleWallet => match network {
             Network::MainNet => 18103u16,
@@ -117,7 +116,6 @@ pub fn grpc_default_port(app_type: ApplicationType, network: Network) -> u16 {
             Network::Esmeralda => 18143u16,
             Network::Igor => 18153u16,
             Network::LocalNet => 18163u16,
-            _ => unreachable!("Network {} not supported", network),
         },
         _ => unreachable!("Application {} not supported", app_type),
     }
