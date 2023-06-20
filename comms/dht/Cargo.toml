@@ -58,7 +58,7 @@ lmdb-zero = "0.4.4"
 tempfile = "3.1.0"
 tokio-stream = { version = "0.1.9", features = ["sync"] }
 petgraph = "0.5.1"
-clap = "2.33.0"
+clap = "3.2"
 
 
 [build-dependencies]

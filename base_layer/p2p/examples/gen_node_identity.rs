@@ -64,7 +64,7 @@ fn main() {
             Arg::with_name("output")
                 .value_name("FILE")
                 .long("output")
-                .short("o")
+                .short('o')
                 .help("The relative path of the file to output")
                 .takes_value(true)
                 .required(true),

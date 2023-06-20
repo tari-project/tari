@@ -390,56 +390,6 @@ impl ConsensusConstants {
         }]
     }
 
-    pub fn weatherwax() -> Vec<Self> {
-        let mut algos = HashMap::new();
-        // For SHA3/Monero to have a 40/60 split:
-        // sha3_target_time = monero_target_time * (100 - 40) / 40
-        // monero_target_time = sha3_target_time * (100 - 60) / 60
-        // target_time = monero_target_time * sha3_target_time / (monero_target_time + sha3_target_time)
-        algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
-            max_target_time: 1800,
-            min_difficulty: 60_000_000.into(),
-            max_difficulty: u64::MAX.into(),
-            target_time: 300,
-        });
-        algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
-            max_target_time: 1200,
-            min_difficulty: 60_000.into(),
-            max_difficulty: u64::MAX.into(),
-            target_time: 200,
-        });
-        let (input_version_range, output_version_range, kernel_version_range) = version_zero();
-        vec![ConsensusConstants {
-            effective_from_height: 0,
-            coinbase_lock_height: 6,
-            blockchain_version: 1,
-            valid_blockchain_version_range: 0..=3,
-            future_time_limit: 540,
-            difficulty_block_window: 90,
-            max_block_transaction_weight: 19500,
-            median_timestamp_count: 11,
-            emission_initial: 5_538_846_115 * uT,
-            emission_decay: &EMISSION_DECAY,
-            emission_tail: 100.into(),
-            max_randomx_seed_height: std::u64::MAX,
-            proof_of_work: algos,
-            faucet_value: (5000 * 4000) * T,
-            transaction_weight: TransactionWeight::v1(),
-            max_script_byte_size: 2048,
-            input_version_range,
-            output_version_range,
-            kernel_version_range,
-            permitted_output_types: Self::current_permitted_output_types(),
-            permitted_range_proof_types: Self::current_permitted_range_proof_types(),
-            vn_epoch_length: 60,
-            vn_validity_period_epochs: VnEpoch(100),
-            vn_registration_min_deposit_amount: MicroTari(0),
-            vn_registration_lock_height: 0,
-            vn_registration_shuffle_interval: VnEpoch(100),
-            coinbase_output_features_extra_max_length: 64,
-        }]
-    }
-
     pub fn igor() -> Vec<Self> {
         let mut algos = HashMap::new();
         // For SHA3/Monero to have a 40/60 split:
@@ -496,97 +446,6 @@ impl ConsensusConstants {
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 64,
         }]
-    }
-
-    /// *
-    /// Dibbler testnet has the following characteristics:
-    /// * 2 min blocks on average (5 min SHA-3, 3 min MM)
-    /// * 21 billion tXTR with a 3-year half-life
-    /// * 800 T tail emission (± 1% inflation after initial 21 billion has been mined)
-    /// * Coinbase lock height - 12 hours = 360 blocks
-    pub fn dibbler() -> Vec<Self> {
-        let mut algos = HashMap::new();
-        // For SHA3/Monero to have a 40/60 split:
-        // sha3_target_time = monero_target_time * (100 - 40) / 40
-        // monero_target_time = sha3_target_time * (100 - 60) / 60
-        // target_time = monero_target_time * sha3_target_time / (monero_target_time + sha3_target_time)
-        algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
-            max_target_time: 1800,
-            min_difficulty: 60_000_000.into(),
-            max_difficulty: u64::MAX.into(),
-            target_time: 300,
-        });
-        algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
-            max_target_time: 1200,
-            min_difficulty: 60_000.into(),
-            max_difficulty: u64::MAX.into(),
-            target_time: 200,
-        });
-        let (input_version_range, output_version_range, kernel_version_range) = version_zero();
-        vec![
-            ConsensusConstants {
-                effective_from_height: 0,
-                coinbase_lock_height: 360,
-                blockchain_version: 2,
-                valid_blockchain_version_range: 0..=3,
-                future_time_limit: 540,
-                difficulty_block_window: 90,
-                // 65536 =  target_block_size / bytes_per_gram =  (1024*1024) / 16
-                // adj. + 95% = 127,795 - this effectively targets ~2Mb blocks closely matching the previous 19500
-                // weightings
-                max_block_transaction_weight: 127_795,
-                median_timestamp_count: 11,
-                emission_initial: 18_462_816_327 * uT,
-                emission_decay: &DIBBLER_DECAY_PARAMS,
-                emission_tail: 800 * T,
-                max_randomx_seed_height: u64::MAX,
-                proof_of_work: algos.clone(),
-                faucet_value: (10 * 4000) * T,
-                transaction_weight: TransactionWeight::v1(),
-                max_script_byte_size: 2048,
-                input_version_range: input_version_range.clone(),
-                output_version_range: output_version_range.clone(),
-                kernel_version_range: kernel_version_range.clone(),
-                permitted_output_types: Self::current_permitted_output_types(),
-                permitted_range_proof_types: Self::current_permitted_range_proof_types(),
-                vn_epoch_length: 60,
-                vn_validity_period_epochs: VnEpoch(100),
-                vn_registration_min_deposit_amount: MicroTari(0),
-                vn_registration_lock_height: 0,
-                vn_registration_shuffle_interval: VnEpoch(100),
-                coinbase_output_features_extra_max_length: 64,
-            },
-            ConsensusConstants {
-                effective_from_height: 23000,
-                coinbase_lock_height: 360,
-                // CHANGE: Use v3 blocks from effective height
-                blockchain_version: 3,
-                valid_blockchain_version_range: 0..=3,
-                future_time_limit: 540,
-                difficulty_block_window: 90,
-                max_block_transaction_weight: 127_795,
-                median_timestamp_count: 11,
-                emission_initial: 18_462_816_327 * uT,
-                emission_decay: &DIBBLER_DECAY_PARAMS,
-                emission_tail: 800 * T,
-                max_randomx_seed_height: u64::MAX,
-                proof_of_work: algos,
-                faucet_value: (10 * 4000) * T,
-                transaction_weight: TransactionWeight::v1(),
-                max_script_byte_size: 2048,
-                input_version_range,
-                output_version_range,
-                kernel_version_range,
-                permitted_output_types: Self::current_permitted_output_types(),
-                permitted_range_proof_types: Self::current_permitted_range_proof_types(),
-                vn_epoch_length: 60,
-                vn_validity_period_epochs: VnEpoch(100),
-                vn_registration_min_deposit_amount: MicroTari(0),
-                vn_registration_lock_height: 0,
-                vn_registration_shuffle_interval: VnEpoch(100),
-                coinbase_output_features_extra_max_length: 64,
-            },
-        ]
     }
 
     /// *
@@ -817,7 +676,6 @@ impl ConsensusConstants {
 }
 
 static EMISSION_DECAY: [u64; 6] = [21u64, 22, 23, 25, 26, 37];
-const DIBBLER_DECAY_PARAMS: [u64; 6] = [21u64, 22, 23, 25, 26, 37]; // less significant values don't matter
 const ESMERALDA_DECAY_PARAMS: [u64; 6] = [21u64, 22, 23, 25, 26, 37]; // less significant values don't matter
 
 /// Class to create custom consensus constants
@@ -828,7 +686,6 @@ pub struct ConsensusConstantsBuilder {
 impl ConsensusConstantsBuilder {
     pub fn new(network: Network) -> Self {
         Self {
-            // TODO: Resolve this unwrap
             consensus: NetworkConsensus::from(network)
                 .create_consensus_constants()
                 .pop()
@@ -915,7 +772,7 @@ mod test {
             emission::{Emission, EmissionSchedule},
             ConsensusConstants,
         },
-        transactions::tari_amount::uT,
+        transactions::tari_amount::{uT, MicroTari},
     };
 
     #[test]
@@ -926,18 +783,57 @@ mod test {
             esmeralda[0].emission_decay,
             esmeralda[0].emission_tail,
         );
-        let reward = schedule.block_reward(0);
-        assert_eq!(reward, 18_462_816_327 * uT);
-        assert_eq!(schedule.supply_at_block(0), reward);
+        // No genesis block coinbase
+        assert_eq!(schedule.block_reward(0), MicroTari(0));
+        // Coinbases starts at block 1
+        let coinbase_offset = 1;
+        let first_reward = schedule.block_reward(coinbase_offset);
+        assert_eq!(first_reward, esmeralda[0].emission_initial * uT);
+        assert_eq!(schedule.supply_at_block(coinbase_offset), first_reward);
         let three_years = 365 * 24 * 30 * 3;
-        assert_eq!(schedule.supply_at_block(three_years), 10_500_682_498_903_652 * uT); // Around 10.5 billion
-        let mut rewards = schedule.iter().skip(3_574_174);
-        // Tail emission starts after block 3,574,175
+        assert_eq!(
+            schedule.supply_at_block(three_years + coinbase_offset),
+            10_500_682_498_903_652 * uT
+        ); // Around 10.5 billion
+           // Tail emission starts after block 3,574,175
+        let mut rewards = schedule.iter().skip(3_574_174 + coinbase_offset as usize);
         let (block_num, reward, supply) = rewards.next().unwrap();
-        assert_eq!(block_num, 3_574_175);
+        assert_eq!(block_num, 3_574_175 + coinbase_offset);
         assert_eq!(reward, 800_000_598 * uT);
         assert_eq!(supply, 20_100_525_123_936_707 * uT); // Still 900 mil tokens to go when tail emission kicks in
         let (_, reward, _) = rewards.next().unwrap();
         assert_eq!(reward, esmeralda[0].emission_tail);
+    }
+
+    #[test]
+    fn igor_schedule() {
+        let igor = ConsensusConstants::igor();
+        let schedule = EmissionSchedule::new(igor[0].emission_initial, igor[0].emission_decay, igor[0].emission_tail);
+        // No genesis block coinbase
+        assert_eq!(schedule.block_reward(0), MicroTari(0));
+        // Coinbases starts at block 1
+        let coinbase_offset = 1;
+        let first_reward = schedule.block_reward(coinbase_offset);
+        assert_eq!(first_reward, igor[0].emission_initial * uT);
+        assert_eq!(schedule.supply_at_block(coinbase_offset), first_reward);
+        let three_years = 365 * 24 * 30 * 3;
+        assert_eq!(
+            schedule.supply_at_block(three_years + coinbase_offset),
+            3_150_642_608_358_864 * uT
+        );
+        // Tail emission starts after block 11_084_819
+        let rewards = schedule.iter().skip(11_084_819 - 25);
+        let mut previous_reward = MicroTari(0);
+        for (block_num, reward, supply) in rewards {
+            if reward == previous_reward {
+                assert_eq!(block_num, 11_084_819 + 1);
+                assert_eq!(supply, MicroTari(6_326_198_792_915_738));
+                // These set of constants does not result in a tail emission equal to the specified tail emission
+                assert_ne!(reward, igor[0].emission_tail);
+                assert_eq!(reward, MicroTari(2_097_151));
+                break;
+            }
+            previous_reward = reward;
+        }
     }
 }

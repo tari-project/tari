@@ -667,7 +667,7 @@ async fn no_meddling_with_data(world: &mut TariWorld, node: String) {
         Ok(_) => panic!("The block should not have been valid"),
         Err(e) => assert_eq!(
             "Chain storage error: Validation error: Block validation error: MMR size for Kernel does not match. \
-             Expected: 4, received: 5"
+             Expected: 3, received: 4"
                 .to_string(),
             e.message()
         ),
@@ -680,7 +680,7 @@ async fn no_meddling_with_data(world: &mut TariWorld, node: String) {
         Ok(_) => panic!("The block should not have been valid"),
         Err(e) => assert_eq!(
             "Chain storage error: Validation error: Block validation error: MMR size for UTXO does not match. \
-             Expected: 4968, received: 4969"
+             Expected: 4967, received: 4968"
                 .to_string(),
             e.message()
         ),

@@ -41,11 +41,7 @@ pub enum Network {
     StageNet = 0x01,
     NextNet = 0x02,
     LocalNet = 0x10,
-    Ridcully = 0x21,
-    Stibbons = 0x22,
-    Weatherwax = 0xa3,
     Igor = 0x24,
-    Dibbler = 0x25,
     Esmeralda = 0x26,
 }
 
@@ -61,11 +57,7 @@ impl Network {
             MainNet => "mainnet",
             StageNet => "stagenet",
             NextNet => "nextnet",
-            Ridcully => "ridcully",
-            Stibbons => "stibbons",
-            Weatherwax => "weatherwax",
             Igor => "igor",
-            Dibbler => "dibbler",
             Esmeralda => "esmeralda",
             LocalNet => "localnet",
         }
@@ -98,15 +90,11 @@ impl FromStr for Network {
         #[allow(clippy::enum_glob_use)]
         use Network::*;
         match value.to_lowercase().as_str() {
-            "ridcully" => Ok(Ridcully),
-            "stibbons" => Ok(Stibbons),
-            "weatherwax" => Ok(Weatherwax),
             "mainnet" => Ok(MainNet),
             "nextnet" => Ok(NextNet),
             "stagenet" => Ok(StageNet),
             "localnet" => Ok(LocalNet),
             "igor" => Ok(Igor),
-            "dibbler" => Ok(Dibbler),
             "esmeralda" | "esme" => Ok(Esmeralda),
             invalid => Err(ConfigurationError::new(
                 "network",
@@ -139,11 +127,7 @@ impl TryFrom<u8> for Network {
             x if x == Network::StageNet as u8 => Ok(Network::StageNet),
             x if x == Network::NextNet as u8 => Ok(Network::NextNet),
             x if x == Network::LocalNet as u8 => Ok(Network::LocalNet),
-            x if x == Network::Ridcully as u8 => Ok(Network::Ridcully),
-            x if x == Network::Stibbons as u8 => Ok(Network::Stibbons),
-            x if x == Network::Weatherwax as u8 => Ok(Network::Weatherwax),
             x if x == Network::Igor as u8 => Ok(Network::Igor),
-            x if x == Network::Dibbler as u8 => Ok(Network::Dibbler),
             x if x == Network::Esmeralda as u8 => Ok(Network::Esmeralda),
             _ => Err(ConfigurationError::new(
                 "network",
@@ -171,11 +155,7 @@ mod test {
         let stagenet = Network::StageNet;
         let nextnet = Network::NextNet;
         let localnet = Network::LocalNet;
-        let ridcully = Network::Ridcully;
-        let stibbons = Network::Stibbons;
-        let weatherwas = Network::Weatherwax;
         let igor = Network::Igor;
-        let dibbler = Network::Dibbler;
         let esmeralda = Network::Esmeralda;
 
         // test .as_byte()
@@ -183,11 +163,7 @@ mod test {
         assert_eq!(stagenet.as_byte(), 0x01_u8);
         assert_eq!(nextnet.as_byte(), 0x02_u8);
         assert_eq!(localnet.as_byte(), 0x10_u8);
-        assert_eq!(ridcully.as_byte(), 0x21_u8);
-        assert_eq!(stibbons.as_byte(), 0x22_u8);
-        assert_eq!(weatherwas.as_byte(), 0xa3_u8);
         assert_eq!(igor.as_byte(), 0x24_u8);
-        assert_eq!(dibbler.as_byte(), 0x25_u8);
         assert_eq!(esmeralda.as_byte(), 0x26_u8);
 
         // test .as_key_str()
@@ -195,11 +171,7 @@ mod test {
         assert_eq!(stagenet.as_key_str(), "stagenet");
         assert_eq!(nextnet.as_key_str(), "nextnet");
         assert_eq!(localnet.as_key_str(), "localnet");
-        assert_eq!(ridcully.as_key_str(), "ridcully");
-        assert_eq!(stibbons.as_key_str(), "stibbons");
-        assert_eq!(weatherwas.as_key_str(), "weatherwax");
         assert_eq!(igor.as_key_str(), "igor");
-        assert_eq!(dibbler.as_key_str(), "dibbler");
         assert_eq!(esmeralda.as_key_str(), "esmeralda");
     }
 
@@ -216,11 +188,7 @@ mod test {
         assert_eq!(Network::from_str("stagenet").unwrap(), Network::StageNet);
         assert_eq!(Network::from_str("nextnet").unwrap(), Network::NextNet);
         assert_eq!(Network::from_str("localnet").unwrap(), Network::LocalNet);
-        assert_eq!(Network::from_str("ridcully").unwrap(), Network::Ridcully);
-        assert_eq!(Network::from_str("stibbons").unwrap(), Network::Stibbons);
-        assert_eq!(Network::from_str("weatherwax").unwrap(), Network::Weatherwax);
         assert_eq!(Network::from_str("igor").unwrap(), Network::Igor);
-        assert_eq!(Network::from_str("dibbler").unwrap(), Network::Dibbler);
         assert_eq!(Network::from_str("esmeralda").unwrap(), Network::Esmeralda);
         assert_eq!(Network::from_str("esme").unwrap(), Network::Esmeralda);
         // catch error case
@@ -234,11 +202,7 @@ mod test {
         assert_eq!(Network::try_from(0x01).unwrap(), Network::StageNet);
         assert_eq!(Network::try_from(0x02).unwrap(), Network::NextNet);
         assert_eq!(Network::try_from(0x10).unwrap(), Network::LocalNet);
-        assert_eq!(Network::try_from(0x21).unwrap(), Network::Ridcully);
-        assert_eq!(Network::try_from(0x22).unwrap(), Network::Stibbons);
-        assert_eq!(Network::try_from(0xa3).unwrap(), Network::Weatherwax);
         assert_eq!(Network::try_from(0x24).unwrap(), Network::Igor);
-        assert_eq!(Network::try_from(0x25).unwrap(), Network::Dibbler);
         assert_eq!(Network::try_from(0x26).unwrap(), Network::Esmeralda);
     }
 }

@@ -185,6 +185,14 @@ impl EmissionSchedule {
     pub fn iter(&self) -> EmissionRate {
         EmissionRate::new(self)
     }
+
+    fn inner_schedule(&self, height: u64) -> EmissionRate {
+        let mut iterator = self.iter();
+        while iterator.block_height() < height {
+            iterator.next();
+        }
+        iterator
+    }
 }
 
 pub struct EmissionRate<'a> {
@@ -198,8 +206,8 @@ impl<'a> EmissionRate<'a> {
     fn new(schedule: &'a EmissionSchedule) -> EmissionRate<'a> {
         EmissionRate {
             block_num: 0,
-            supply: schedule.initial,
-            reward: schedule.initial,
+            supply: MicroTari(0),
+            reward: MicroTari(0),
             schedule,
         }
     }
@@ -238,10 +246,15 @@ impl Iterator for EmissionRate<'_> {
     type Item = (u64, MicroTari, MicroTari);
 
     fn next(&mut self) -> Option<Self::Item> {
+        self.block_num += 1;
+        if self.block_num == 1 {
+            self.reward = self.schedule.initial;
+            self.supply = self.schedule.initial;
+            return Some((self.block_num, self.reward, self.supply));
+        }
         self.reward = self.next_reward();
         // Once we've reached max supply, the iterator is done
         self.supply = self.supply.checked_add(self.reward)?;
-        self.block_num += 1;
         Some((self.block_num, self.reward, self.supply))
     }
 }
@@ -249,10 +262,7 @@ impl Iterator for EmissionRate<'_> {
 impl Emission for EmissionSchedule {
     /// Calculate the block reward for the given block height, in µTari
     fn block_reward(&self, height: u64) -> MicroTari {
-        let mut iterator = self.iter();
-        while iterator.block_height() < height {
-            iterator.next();
-        }
+        let iterator = self.inner_schedule(height);
         iterator.block_reward()
     }
 
@@ -260,10 +270,7 @@ impl Emission for EmissionSchedule {
     /// block reward for each block, making this a very inefficient function if you wanted to call it from a loop for
     /// example. For those cases, use the `iter` function instead.
     fn supply_at_block(&self, height: u64) -> MicroTari {
-        let mut iterator = self.iter();
-        while iterator.block_height() < height {
-            iterator.next();
-        }
+        let iterator = self.inner_schedule(height);
         iterator.supply()
     }
 }
@@ -278,13 +285,13 @@ mod test {
     #[test]
     fn schedule() {
         let schedule = EmissionSchedule::new(MicroTari::from(10_000_100), &[22, 23, 24, 26, 27], MicroTari::from(100));
-        let r0 = schedule.block_reward(0);
-        assert_eq!(r0, MicroTari::from(10_000_100));
-        let s0 = schedule.supply_at_block(0);
-        assert_eq!(s0, MicroTari::from(10_000_100));
+        assert_eq!(schedule.block_reward(0), MicroTari::from(0));
+        assert_eq!(schedule.supply_at_block(0), MicroTari::from(0));
+        assert_eq!(schedule.block_reward(1), MicroTari::from(10_000_100));
+        assert_eq!(schedule.supply_at_block(1), MicroTari::from(10_000_100));
         // These values have been independently calculated
-        assert_eq!(schedule.block_reward(100), MicroTari::from(9_999_800));
-        assert_eq!(schedule.supply_at_block(100), MicroTari::from(1_009_994_950));
+        assert_eq!(schedule.block_reward(100 + 1), MicroTari::from(9_999_800));
+        assert_eq!(schedule.supply_at_block(100 + 1), MicroTari::from(1_009_994_950));
     }
 
     #[test]
@@ -297,7 +304,7 @@ mod test {
             MicroTari::from(100),
         );
         // Slow but does not overflow
-        assert_eq!(schedule.block_reward(height), MicroTari::from(4_194_303));
+        assert_eq!(schedule.block_reward(height + 1), MicroTari::from(4_194_303));
     }
 
     #[test]
@@ -308,30 +315,37 @@ mod test {
             &[2], // 0.25 decay
             MicroTari::from(100),
         );
+        assert_eq!(schedule.block_reward(0), MicroTari(0));
+        assert_eq!(schedule.supply_at_block(0), MicroTari(0));
         let values = schedule.iter().take(101).collect::<Vec<_>>();
         let (height, reward, supply) = values[0];
         assert_eq!(height, 1);
-        assert_eq!(reward, MicroTari::from(7_500_075));
-        assert_eq!(supply, MicroTari::from(17_500_175));
+        assert_eq!(reward, MicroTari::from(INITIAL));
+        assert_eq!(supply, MicroTari::from(INITIAL));
         let (height, reward, supply) = values[1];
         assert_eq!(height, 2);
+        assert_eq!(reward, MicroTari::from(7_500_075));
+        assert_eq!(supply, MicroTari::from(17_500_175));
+        let (height, reward, supply) = values[2];
+        assert_eq!(height, 3);
         assert_eq!(reward, MicroTari::from(5_625_057));
         assert_eq!(supply, MicroTari::from(23_125_232));
-        let (height, reward, supply) = values[9];
-        assert_eq!(height, 10);
+        let (height, reward, supply) = values[10];
+        assert_eq!(height, 11);
         assert_eq!(reward, MicroTari::from(563_142));
         assert_eq!(supply, MicroTari::from(38_310_986));
-        let (height, reward, supply) = values[40];
-        assert_eq!(height, 41);
+        let (height, reward, supply) = values[41];
+        assert_eq!(height, 42);
         assert_eq!(reward, MicroTari::from(100));
         assert_eq!(supply, MicroTari::from(40_000_252));
 
-        let mut tot_supply = MicroTari::from(INITIAL);
+        let mut tot_supply = MicroTari::from(0);
         for (_, reward, supply) in schedule.iter().take(1000) {
             tot_supply += reward;
             assert_eq!(tot_supply, supply);
         }
     }
+
     #[test]
     #[allow(clippy::identity_op)]
     fn emission() {
@@ -339,25 +353,26 @@ mod test {
         let mut emission = emission.iter();
         // decay is 1 - 0.25 - 0.125 = 0.625
         assert_eq!(emission.block_height(), 0);
-        assert_eq!(emission.block_reward(), 1 * T);
-        assert_eq!(emission.supply(), 1 * T);
+        assert_eq!(emission.block_reward(), MicroTari(0));
+        assert_eq!(emission.supply(), MicroTari(0));
 
-        assert_eq!(emission.next(), Some((1, 250_000 * uT, 1_250_000 * uT)));
-        assert_eq!(emission.next(), Some((2, 62_500 * uT, 1_312_500 * uT)));
-        assert_eq!(emission.next(), Some((3, 15_625 * uT, 1_328_125 * uT)));
-        assert_eq!(emission.next(), Some((4, 3_907 * uT, 1_332_032 * uT)));
-        assert_eq!(emission.next(), Some((5, 978 * uT, 1_333_010 * uT)));
-        assert_eq!(emission.next(), Some((6, 245 * uT, 1_333_255 * uT)));
+        assert_eq!(emission.next(), Some((1, 1_000_000 * uT, 1_000_000 * uT)));
+        assert_eq!(emission.next(), Some((2, 250_000 * uT, 1_250_000 * uT)));
+        assert_eq!(emission.next(), Some((3, 62_500 * uT, 1_312_500 * uT)));
+        assert_eq!(emission.next(), Some((4, 15_625 * uT, 1_328_125 * uT)));
+        assert_eq!(emission.next(), Some((5, 3_907 * uT, 1_332_032 * uT)));
+        assert_eq!(emission.next(), Some((6, 978 * uT, 1_333_010 * uT)));
+        assert_eq!(emission.next(), Some((7, 245 * uT, 1_333_255 * uT)));
         // Tail emission kicks in
-        assert_eq!(emission.next(), Some((7, 100 * uT, 1_333_355 * uT)));
-        assert_eq!(emission.next(), Some((8, 100 * uT, 1_333_455 * uT)));
+        assert_eq!(emission.next(), Some((8, 100 * uT, 1_333_355 * uT)));
+        assert_eq!(emission.next(), Some((9, 100 * uT, 1_333_455 * uT)));
 
-        assert_eq!(emission.block_height(), 8);
+        assert_eq!(emission.block_height(), 9);
         assert_eq!(emission.block_reward(), 100 * uT);
         assert_eq!(emission.supply(), 1333455 * uT);
         let schedule = EmissionSchedule::new(1 * T, &[1, 2], 100 * uT);
-        assert_eq!(emission.block_reward(), schedule.block_reward(8));
-        assert_eq!(emission.supply(), schedule.supply_at_block(8))
+        assert_eq!(emission.block_reward(), schedule.block_reward(9));
+        assert_eq!(emission.supply(), schedule.supply_at_block(9))
     }
 
     #[test]

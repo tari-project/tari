@@ -503,7 +503,7 @@ mod fetch_header_containing_kernel_mmr {
     fn it_returns_genesis() {
         let db = setup();
         let genesis = db.fetch_block(0, true).unwrap();
-        assert_eq!(genesis.block().body.kernels().len(), 2);
+        assert_eq!(genesis.block().body.kernels().len(), 1);
         let mut mmr_position = 0;
         genesis.block().body.kernels().iter().for_each(|_| {
             let header = db.fetch_header_containing_kernel_mmr(mmr_position).unwrap();
