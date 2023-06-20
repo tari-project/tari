@@ -81,10 +81,7 @@ impl NewOutputSql {
         let output = Self {
             commitment: output.commitment.to_vec(),
             spending_key: output.wallet_output.spending_key_id.to_string(),
-            rangeproof: match output.wallet_output.rangeproof {
-                Some(proof) => Some(proof.to_vec()),
-                None => None,
-            },
+            rangeproof: output.wallet_output.rangeproof.map(|proof| proof.to_vec()),
             value: output.wallet_output.value.as_u64() as i64,
             output_type: i32::from(output.wallet_output.features.output_type.as_byte()),
             maturity: output.wallet_output.features.maturity as i64,

@@ -1245,13 +1245,6 @@ mod test {
         let bob_info = SingleReceiverTransactionProtocol::create(&msg, bob_output, &key_manager)
             .await
             .unwrap();
-        println!(
-            "Bob's key: {}, Nonce: {}, Signature: {}, Commitment: {}",
-            bob_info.public_spend_key.to_hex(),
-            bob_info.partial_signature.get_public_nonce().to_hex(),
-            bob_info.partial_signature.get_signature().to_hex(),
-            bob_info.output.commitment.as_public_key().to_hex()
-        );
         // Alice gets message back, deserializes it, etc
         alice.add_single_recipient_info(bob_info, &key_manager).await.unwrap();
         // Transaction should be complete
@@ -1361,13 +1354,6 @@ mod test {
         let bob_info = SingleReceiverTransactionProtocol::create(&msg, bob_output, &key_manager)
             .await
             .unwrap();
-        println!(
-            "Bob's key: {}, Nonce: {}, Signature: {}, Commitment: {}",
-            bob_info.public_spend_key.to_hex(),
-            bob_info.partial_signature.get_public_nonce().to_hex(),
-            bob_info.partial_signature.get_signature().to_hex(),
-            bob_info.output.commitment.as_public_key().to_hex()
-        );
         // Alice gets message back, deserializes it, etc
         alice.add_single_recipient_info(bob_info, &key_manager).await.unwrap();
         // Transaction should be complete
