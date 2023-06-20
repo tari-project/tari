@@ -1174,7 +1174,7 @@ where
             builder.with_input(kmo.wallet_output.clone()).await?;
         }
 
-        let (output, sender_offset_key_id) = self.output_to_self(amount, &covenant, &script).await?;
+        let (output, sender_offset_key_id) = self.output_to_self(output_features, amount, covenant, script).await?;
 
         builder
             .with_output(output.wallet_output.clone(), sender_offset_key_id.clone())
@@ -1606,7 +1606,12 @@ where
             };
 
             let (output, sender_offset_key_id) = self
-                .output_to_self(amount_per_split, &Covenant::default(), &script!(Nop))
+                .output_to_self(
+                    OutputFeatures::default(),
+                    amount_per_split,
+                    Covenant::default(),
+                    script!(Nop),
+                )
                 .await?;
 
             tx_builder
@@ -1759,7 +1764,12 @@ where
 
         for _ in 0..number_of_splits {
             let (output, sender_offset_key_id) = self
-                .output_to_self(amount_per_split, &Covenant::default(), &script!(Nop))
+                .output_to_self(
+                    OutputFeatures::default(),
+                    amount_per_split,
+                    Covenant::default(),
+                    script!(Nop),
+                )
                 .await?;
 
             tx_builder
@@ -1849,13 +1859,13 @@ where
 
     async fn output_to_self(
         &mut self,
+        output_features: OutputFeatures,
         amount: MicroTari,
-        covenant: &Covenant,
-        script: &TariScript,
+        covenant: Covenant,
+        script: TariScript,
     ) -> Result<(DbWalletOutput, TariKeyId), OutputManagerError> {
         let (spending_key_id, _, script_key_id, script_public_key) =
             self.resources.key_manager.get_next_spend_and_script_key_ids().await?;
-        let output_features = OutputFeatures::default();
 
         let encrypted_data = self
             .resources
@@ -1865,9 +1875,9 @@ where
         let minimum_value_promise = MicroTari::zero();
         let metadata_message = TransactionOutput::metadata_signature_message_from_parts(
             &TransactionOutputVersion::get_current_version(),
-            script,
+            &script,
             &output_features,
-            covenant,
+            &covenant,
             &encrypted_data,
             minimum_value_promise,
         );
@@ -1894,13 +1904,13 @@ where
                 amount,
                 spending_key_id,
                 output_features,
-                script.clone(),
+                script,
                 inputs!(script_public_key),
                 script_key_id,
                 sender_offset_public_key,
                 metadata_signature,
                 0,
-                covenant.clone(),
+                covenant,
                 encrypted_data,
                 minimum_value_promise,
             ),
@@ -1975,7 +1985,12 @@ where
         }
 
         let (output, sender_offset_key_id) = self
-            .output_to_self(accumulated_amount, &Covenant::default(), &script!(Nop))
+            .output_to_self(
+                OutputFeatures::default(),
+                accumulated_amount,
+                Covenant::default(),
+                script!(Nop),
+            )
             .await?;
 
         tx_builder
