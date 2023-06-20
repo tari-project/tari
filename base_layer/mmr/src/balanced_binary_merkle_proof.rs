@@ -145,10 +145,6 @@ where D: Digest + DomainDigest
             .max()
             .ok_or(BalancedBinaryMerkleProofError::CantMergeZeroProofs)?;
 
-        if max_height == 0 {
-            return Err(BalancedBinaryMerkleProofError::BadProofSemantics);
-        }
-
         let mut indices = proofs.iter().map(|proof| proof.node_index).collect::<Vec<_>>();
         let mut paths = vec![Vec::new(); proofs.len()];
         let mut join_indices = vec![false; proofs.len()];
@@ -443,5 +439,22 @@ mod test {
 
         let merged = MergedBalancedBinaryMerkleProof::create_from_proofs(&proofs).unwrap();
         assert!(merged.verify_consume(&root, leaf_hashes).unwrap());
+    }
+
+    #[test]
+    fn test_single_node_proof() {
+        let leaves = vec![vec![1 as u8; 32]];
+        let bmt = BalancedBinaryMerkleTree::<TestHasher>::create(leaves.clone());
+
+        assert_eq!(bmt.num_nodes(), 1);
+        assert_eq!(bmt.num_leaf_nodes(), 1);
+        let root = bmt.get_merkle_root();
+        assert_eq!(root, leaves[0]);
+        let proof = BalancedBinaryMerkleProof::generate_proof(&bmt, 0).unwrap();
+        assert!(proof.verify(&root, leaves[0].clone()));
+        assert!(proof.path.is_empty());
+
+        let merged = MergedBalancedBinaryMerkleProof::create_from_proofs(&[proof]).unwrap();
+        assert!(merged.verify_consume(&root, vec![leaves[0].clone()]).unwrap());
     }
 }
