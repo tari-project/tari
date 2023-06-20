@@ -24,7 +24,6 @@ use std::{convert::TryFrom, sync::Arc};
 
 use croaring::Bitmap;
 use rand::{rngs::OsRng, RngCore};
-use tari_common::configuration::Network;
 use tari_common_types::types::{Commitment, FixedHash};
 use tari_core::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, NewBlockTemplate},
@@ -35,24 +34,13 @@ use tari_core::{
         BlockchainDatabase,
         ChainStorageError,
     },
-    consensus::{emission::Emission, ConsensusConstants, ConsensusManager, ConsensusManagerBuilder},
-    covenants::Covenant,
+    consensus::{emission::Emission, ConsensusConstants, ConsensusManager},
     proof_of_work::{sha3x_difficulty, AchievedTargetDifficulty, Difficulty},
     transactions::{
         key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface, TxoStage},
         tari_amount::MicroTari,
-        test_helpers::{
-            create_random_signature_from_secret_key,
-            create_test_core_key_manager_with_memory_db,
-            create_utxo,
-            create_wallet_output_with_data,
-            spend_utxos,
-            TestKeyManager,
-            TestParams,
-            TransactionSchema,
-        },
+        test_helpers::{create_wallet_output_with_data, spend_utxos, TestKeyManager, TestParams, TransactionSchema},
         transaction_components::{
-            transaction_output::batch_verify_range_proofs,
             KernelBuilder,
             KernelFeatures,
             OutputFeatures,
@@ -62,7 +50,6 @@ use tari_core::{
             TransactionOutput,
             WalletOutput,
         },
-        CryptoFactories,
     },
     KernelMmr,
     KernelMmrHasherBlake256,
@@ -153,166 +140,31 @@ async fn genesis_template(
     (block, output)
 }
 
-// #[ignore = "used to generate a new nextnet genesis block"]
-/// This is a helper function to generate and print out a block that can be used as the genesis block.
-/// 1. Run `cargo test --package tari_core --test mempool -- helpers::block_builders::print_new_genesis_block_nextnet
-/// --exact --nocapture`
-/// 1. The block and range proof will be printed
-/// 1. Profit!
-#[tokio::test]
-async fn print_new_genesis_block_nextnet() {
-    print_new_genesis_block(Network::NextNet, "Mathematical proof that something happened").await;
-}
+#[test]
+fn print_new_genesis_block_values() {
+    let vn_mr = calculate_validator_node_mr(&[]);
+    let validator_node_mr = FixedHash::try_from(vn_mr).unwrap();
 
-// #[ignore = "used to generate a new stagenet genesis block"]
-/// This is a helper function to generate and print out a block that can be used as the genesis block.
-/// 1. Run `cargo test --package tari_core --test mempool -- helpers::block_builders::print_new_genesis_block_stagenet
-/// --exact --nocapture`
-/// 1. The block and range proof will be printed
-/// 1. Profit!
-#[tokio::test]
-async fn print_new_genesis_block_stagenet() {
-    print_new_genesis_block(Network::StageNet, "Tokenized and connected").await;
-}
-
-// #[ignore = "used to generate a new esmeralda genesis block"]
-/// This is a helper function to generate and print out a block that can be used as the genesis block.
-/// 1. Run `cargo test --package tari_core --test mempool -- helpers::block_builders::print_new_genesis_block_esmeralda
-/// --exact --nocapture`
-/// 1. The block and range proof will be printed
-/// 1. Profit!
-#[tokio::test]
-async fn print_new_genesis_block_esmeralda() {
-    print_new_genesis_block(Network::Esmeralda, "Queues happen to other people").await;
-}
-
-// #[ignore = "used to generate a new igor genesis block"]
-/// This is a helper function to generate and print out a block that can be used as the genesis block.
-/// 1. Run `cargo test --package tari_core --test mempool -- helpers::block_builders::print_new_genesis_block_igor
-/// --exact --nocapture`
-/// 1. The block and range proof will be printed
-/// 1. Profit!
-#[tokio::test]
-async fn print_new_genesis_block_igor() {
-    print_new_genesis_block(Network::Igor, "Hello, Igor").await;
-}
-
-#[allow(clippy::too_many_lines)]
-async fn print_new_genesis_block(network: Network, extra: &str) {
-    let consensus_manager: ConsensusManager = ConsensusManagerBuilder::new(network).build();
-    let mut header = BlockHeader::new(consensus_manager.consensus_constants(0).blockchain_version());
-    let value = consensus_manager.emission_schedule().block_reward(0);
-    let lock_height = consensus_manager.consensus_constants(0).coinbase_min_maturity();
-    let key_manager = create_test_core_key_manager_with_memory_db();
-    let (utxo, spending_key_id, _) = create_utxo(
-        value,
-        &key_manager,
-        &OutputFeatures::create_coinbase(lock_height, Some(extra.as_bytes().to_vec())),
-        &script![Nop],
-        &Covenant::default(),
-        MicroTari::zero(),
-    )
-    .await;
-    let (pk, sig) = create_random_signature_from_secret_key(
-        &key_manager,
-        spending_key_id,
-        0.into(),
-        0,
-        KernelFeatures::COINBASE_KERNEL,
-        TxoStage::Output,
-    )
-    .await;
-    let excess = Commitment::from_public_key(&pk);
-    let kernel = KernelBuilder::new()
-        .with_signature(sig)
-        .with_excess(&excess)
-        .with_features(KernelFeatures::COINBASE_KERNEL)
-        .build()
+    // Note: An em empty MMR will have a root of `MerkleMountainRange::<D, B>::null_hash()`
+    let kernel_mr = KernelMmr::new(Vec::new()).get_merkle_root().unwrap();
+    let witness_mr = WitnessMmr::new(Vec::new()).get_merkle_root().unwrap();
+    let output_mr = MutableOutputMmr::new(Vec::new(), Bitmap::create())
+        .unwrap()
+        .get_merkle_root()
         .unwrap();
 
-    let mut kernel_mmr = KernelMmr::new(Vec::new());
-    kernel_mmr.push(kernel.hash().to_vec()).unwrap();
-
-    let mut witness_mmr = WitnessMmr::new(Vec::new());
-    witness_mmr.push(utxo.witness_hash().to_vec()).unwrap();
-    let mut output_mmr = MutableOutputMmr::new(Vec::new(), Bitmap::create()).unwrap();
-    output_mmr.push(utxo.hash().to_vec()).unwrap();
-    let vn_mr = calculate_validator_node_mr(&[]);
-
-    header.kernel_mr = FixedHash::try_from(kernel_mmr.get_merkle_root().unwrap()).unwrap();
-    header.kernel_mmr_size += 1;
-    header.output_mr = FixedHash::try_from(output_mmr.get_merkle_root().unwrap()).unwrap();
-    header.witness_mr = FixedHash::try_from(witness_mmr.get_merkle_root().unwrap()).unwrap();
-    header.output_mmr_size += 1;
-    header.validator_node_mr = FixedHash::try_from(vn_mr).unwrap();
-
-    // header.kernel_mr = kernel.hash();
-    // header.kernel_mmr_size += 1;
-    // header.output_mr = utxo.hash();
-    // header.witness_mr = utxo.witness_hash();
-    // header.output_mmr_size += 1;
-
-    let block = header.into_builder().with_coinbase_utxo(utxo, kernel).build();
-
-    for kernel in block.body.kernels() {
-        kernel.verify_signature().unwrap();
-    }
-    for output in block.body.outputs() {
-        output.verify_metadata_signature().unwrap();
-    }
-    let outputs = block.body.outputs().iter().collect::<Vec<_>>();
-    batch_verify_range_proofs(&CryptoFactories::default().range_proof, &outputs).unwrap();
-
-    // Note: This is printed in the same order as needed for 'fn get_dibbler_genesis_block_raw()'
+    // Note: This is printed in the same order as needed for 'fn get_xxxx_genesis_block_raw()'
     println!();
-    println!("{} genesis block", network);
+    println!("Genesis block constants");
     println!();
-    println!("extra: '{}'", extra);
-    println!(
-        "kernel excess_sig: public_nonce {} signature {}",
-        block.body.kernels()[0].excess_sig.get_public_nonce().to_hex(),
-        block.body.kernels()[0].excess_sig.get_signature().to_hex()
-    );
-    println!();
-    println!(
-        "Coinbase metasig: ephemeral_commitment {} ephemeral_public_key {} signature_u_a {} signature_u_x {} \
-         signature_u_y {}",
-        block.body.outputs()[0]
-            .metadata_signature
-            .ephemeral_commitment()
-            .to_hex(),
-        block.body.outputs()[0].metadata_signature.ephemeral_pubkey().to_hex(),
-        block.body.outputs()[0].metadata_signature.u_a().to_hex(),
-        block.body.outputs()[0].metadata_signature.u_x().to_hex(),
-        block.body.outputs()[0].metadata_signature.u_y().to_hex(),
-    );
-    println!();
-    println!("Genesis coinbase maturity: {}", lock_height);
-    println!("UTXO commitment: {}", block.body.outputs()[0].commitment.to_hex());
-    println!("UTXO range_proof: {}", block.body.outputs()[0].proof_hex_display(true));
-    println!(
-        "Encrypted data: {}",
-        block.body.outputs()[0].encrypted_data.hex_display(true)
-    );
-    println!(
-        "UTXO sender offset pubkey: {}",
-        block.body.outputs()[0].sender_offset_public_key.to_hex()
-    );
-    println!();
-    println!("kernel excess: {}", block.body.kernels()[0].excess.to_hex());
-    println!();
-    println!("header output_mr: {}", block.header.output_mr.to_hex());
-    println!("header witness_mr: {}", block.header.witness_mr.to_hex());
-    println!("header kernel_mr: {}", block.header.kernel_mr.to_hex());
-    println!("header validator_node_mr: {}", block.header.validator_node_mr.to_hex());
-    println!(
-        "header total_kernel_offset: {}",
-        block.header.total_kernel_offset.to_hex()
-    );
-    println!(
-        "header total_script_offset: {}",
-        block.header.total_script_offset.to_hex()
-    );
+    println!("header output_mr:           {}", output_mr.to_hex());
+    println!("header output_mmr_size:     0");
+    println!("header witness_mr:          {}", witness_mr.to_hex());
+    println!("header kernel_mr:           {}", kernel_mr.to_hex());
+    println!("header kernel_mmr_size:     0");
+    println!("header validator_node_mr:   {}", validator_node_mr.to_hex());
+    println!("header total_kernel_offset: {}", FixedHash::zero().to_hex());
+    println!("header total_script_offset: {}", FixedHash::zero().to_hex());
 }
 
 /// Create a genesis block returning it with the spending key for the coinbase utxo

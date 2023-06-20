@@ -8,9 +8,6 @@ name: Integration tests
       - reopened
       - synchronize
   merge_group:
-  push:
-    paths-ignore:
-      - '**/*.md'
   schedule:
     - cron: '0 2 * * *'   # daily @ 02h00 (non-critical)
     - cron: '0 12 * * 6'  # weekly - Saturday @ noon (long-running)

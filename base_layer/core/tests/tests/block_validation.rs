@@ -261,7 +261,7 @@ async fn inputs_are_not_malleable() {
 async fn test_orphan_validator() {
     let factories = CryptoFactories::default();
     let key_manager = create_test_core_key_manager_with_memory_db();
-    let network = Network::Weatherwax;
+    let network = Network::Igor;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_max_block_transaction_weight(321)
         .build();
@@ -394,7 +394,7 @@ async fn test_orphan_validator() {
 #[allow(clippy::too_many_lines)]
 async fn test_orphan_body_validation() {
     let factories = CryptoFactories::default();
-    let network = Network::Weatherwax;
+    let network = Network::Igor;
     // we dont want localnet's 1 difficulty or the full mined difficulty of weather wax but we want some.
     let sha3_constants = PowAlgorithmConstants {
         max_target_time: 1800,
@@ -608,7 +608,7 @@ OutputFeatures::default()),
 async fn test_header_validation() {
     let factories = CryptoFactories::default();
     let key_manager = create_test_core_key_manager_with_memory_db();
-    let network = Network::Weatherwax;
+    let network = Network::Igor;
     // we dont want localnet's 1 difficulty or the full mined difficulty of weather wax but we want some.
     let sha3_constants = PowAlgorithmConstants {
         max_target_time: 1800,
@@ -723,7 +723,7 @@ OutputFeatures::default()),
 #[allow(clippy::too_many_lines)]
 async fn test_block_sync_body_validator() {
     let factories = CryptoFactories::default();
-    let network = Network::Weatherwax;
+    let network = Network::Igor;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_max_block_transaction_weight(400)
         .build();

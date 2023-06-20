@@ -8785,7 +8785,7 @@ mod test {
         // assert!(true); //optimized out by compiler
     }
 
-    const NETWORK_STRING: &str = "dibbler";
+    const NETWORK_STRING: &str = "localnet";
 
     #[test]
     fn test_bytevector() {

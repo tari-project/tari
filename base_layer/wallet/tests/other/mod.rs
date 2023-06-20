@@ -657,7 +657,7 @@ async fn test_store_and_forward_send_tx() {
 #[allow(clippy::too_many_lines)]
 #[tokio::test]
 async fn test_import_utxo() {
-    let network = Network::Weatherwax;
+    let network = Network::LocalNet;
     let consensus_manager = ConsensusManager::builder(network).build();
     let factories = CryptoFactories::default();
     let shutdown = Shutdown::new();

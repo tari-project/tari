@@ -30,12 +30,12 @@ tokio = { version = "1.23", features = ["signal"] }
 
 bitflags = "1.2.1"
 chrono = { version = "0.4.19", default-features = false }
-clap = { version = "3.1.1", features = ["derive", "env"] }
+clap = { version = "3.2", features = ["derive", "env"] }
 config = "0.13.0"
 crossterm = { version = "0.25.0" }
 digest = "0.9.0"
 futures = { version = "^0.3.16", default-features = false, features = ["alloc"] }
-log4rs = { version = "1.2.0", default_features = false, features = ["config_parsing", "threshold_filter", "yaml_format", "console_appender", "rolling_file_appender", "compound_policy", "size_trigger", "fixed_window_roller"] }
+log4rs = { version = "1.2.0", default_features = false, features = ["config_parsing", "threshold_filter", "yaml_format", "console_appender", "rolling_file_appender", "compound_policy", "size_trigger", "fixed_window_roller", "delete_roller"] }
 log = { version = "0.4.8", features = ["std"] }
 qrcode = { version = "0.12" }
 rand = "0.7.3"
