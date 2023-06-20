@@ -106,7 +106,7 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
         let proof_of_work = HashMap::from_iter([(0u32, monero_pow), (1u32, sha3_pow)]);
 
         Self {
-            coinbase_lock_height: cc.coinbase_lock_height(),
+            coinbase_min_maturity: cc.coinbase_min_maturity(),
             blockchain_version: cc.blockchain_version().into(),
             future_time_limit: cc.ftl().as_u64(),
             difficulty_block_window: cc.get_difficulty_block_window(),

@@ -84,7 +84,6 @@ impl CommandContext {
         let constants = self
             .consensus_rules
             .consensus_constants(metadata.height_of_longest_chain());
-        // TODO: This code enables a status line display even if the mempool stats times out
         let fut = self.mempool_service.get_mempool_stats();
         if let Ok(mempool_stats) = time::timeout(Duration::from_secs(5), fut).await? {
             status_line.add_field(
@@ -96,7 +95,7 @@ impl CommandContext {
                     if mempool_stats.unconfirmed_weight == 0 {
                         0
                     } else {
-                        1 + mempool_stats.unconfirmed_weight / constants.get_max_block_transaction_weight()
+                        1 + mempool_stats.unconfirmed_weight / constants.get_max_block_weight_excluding_coinbase()
                     },
                 ),
             );

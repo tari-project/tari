@@ -258,7 +258,7 @@ impl AggregateBody {
     pub fn check_coinbase_output(
         &self,
         reward: MicroTari,
-        coinbase_lock_height: u64,
+        coinbase_min_maturity: u64,
         factories: &CryptoFactories,
         height: u64,
     ) -> Result<(), TransactionError> {
@@ -268,7 +268,7 @@ impl AggregateBody {
         for utxo in self.outputs() {
             if utxo.features.output_type == OutputType::Coinbase {
                 coinbase_counter += 1;
-                if utxo.features.maturity < (height + coinbase_lock_height) {
+                if utxo.features.maturity < (height + coinbase_min_maturity) {
                     warn!(target: LOG_TARGET, "Coinbase {} found with maturity set too low", utxo);
                     return Err(TransactionError::InvalidCoinbaseMaturity);
                 }

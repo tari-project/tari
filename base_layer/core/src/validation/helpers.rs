@@ -530,7 +530,7 @@ mod test {
             let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
 
             let reward = rules.calculate_coinbase_and_fees(height, body.kernels());
-            let coinbase_lock_height = rules.consensus_constants(height).coinbase_lock_height();
+            let coinbase_lock_height = rules.consensus_constants(height).coinbase_min_maturity();
             body.check_coinbase_output(reward, coinbase_lock_height, &CryptoFactories::default(), height)
                 .unwrap();
         }
@@ -549,7 +549,7 @@ mod test {
             let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
 
             let reward = rules.calculate_coinbase_and_fees(height, body.kernels());
-            let coinbase_lock_height = rules.consensus_constants(height).coinbase_lock_height();
+            let coinbase_lock_height = rules.consensus_constants(height).coinbase_min_maturity();
 
             let err = body
                 .check_coinbase_output(reward, coinbase_lock_height, &CryptoFactories::default(), height)
@@ -570,7 +570,7 @@ mod test {
 
             let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
             let reward = rules.calculate_coinbase_and_fees(height, body.kernels());
-            let coinbase_lock_height = rules.consensus_constants(height).coinbase_lock_height();
+            let coinbase_lock_height = rules.consensus_constants(height).coinbase_min_maturity();
 
             let err = body
                 .check_coinbase_output(reward, coinbase_lock_height, &CryptoFactories::default(), height)

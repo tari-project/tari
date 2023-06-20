@@ -233,7 +233,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         let excess = Commitment::from_public_key(&public_spend_key);
         // generate tx details
         let value: u64 = total_reward.into();
-        let output_features = OutputFeatures::create_coinbase(height + constants.coinbase_lock_height(), self.extra);
+        let output_features = OutputFeatures::create_coinbase(height + constants.coinbase_min_maturity(), self.extra);
         let encrypted_data = self
             .key_manager
             .encrypt_data_for_recovery(&spending_key_id, None, total_reward.into())
@@ -408,7 +408,7 @@ mod test {
         tx.body
             .check_coinbase_output(
                 block_reward,
-                rules.consensus_constants(0).coinbase_lock_height(),
+                rules.consensus_constants(0).coinbase_min_maturity(),
                 &factories,
                 42,
             )
@@ -512,7 +512,7 @@ mod test {
             .body
             .check_coinbase_output(
                 block_reward,
-                rules.consensus_constants(0).coinbase_lock_height(),
+                rules.consensus_constants(0).coinbase_min_maturity(),
                 &factories,
                 42
             )
