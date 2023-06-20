@@ -145,7 +145,6 @@ fn print_new_genesis_block_values() {
 
     // Note: An em empty MMR will have a root of `MerkleMountainRange::<D, B>::null_hash()`
     let kernel_mr = KernelMmr::new(Vec::new()).get_merkle_root().unwrap();
-    let witness_mr = WitnessMmr::new(Vec::new()).get_merkle_root().unwrap();
     let output_mr = MutableOutputMmr::new(Vec::new(), Bitmap::create())
         .unwrap()
         .get_merkle_root()
@@ -157,7 +156,6 @@ fn print_new_genesis_block_values() {
     println!();
     println!("header output_mr:           {}", output_mr.to_hex());
     println!("header output_mmr_size:     0");
-    println!("header witness_mr:          {}", witness_mr.to_hex());
     println!("header kernel_mr:           {}", kernel_mr.to_hex());
     println!("header kernel_mmr_size:     0");
     println!("header validator_node_mr:   {}", validator_node_mr.to_hex());
