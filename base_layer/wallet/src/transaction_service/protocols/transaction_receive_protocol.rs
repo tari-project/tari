@@ -379,7 +379,7 @@ where
             // Update output metadata signature if not valid (typically the receiver after the sender finalized)
             match finalized_outputs
                 .iter()
-                .find(|output| output.hash() == rtp_output.hash())
+                .find(|output| output.commitment() == rtp_output.commitment())
             {
                 Some(v) => {
                     if rtp_output.verify_metadata_signature().is_err() {

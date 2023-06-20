@@ -843,11 +843,11 @@ mod test {
             transaction_protocol::{
                 sender::{SenderTransactionProtocol, TransactionSenderMessage},
                 single_receiver::SingleReceiverTransactionProtocol,
+                TransactionProtocolError,
             },
         },
         validation::transaction::TransactionInternalConsistencyValidator,
     };
-    use crate::transactions::transaction_protocol::TransactionProtocolError;
 
     #[test]
     fn test_not_single() {
