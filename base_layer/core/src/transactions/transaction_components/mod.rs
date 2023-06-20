@@ -106,7 +106,7 @@ pub(super) fn hash_output(
     encrypted_data: &EncryptedData,
     sender_offset_public_key: &PublicKey,
     metadata_signature: &ComAndPubSignature,
-    range_proof_hash: &FixedHash,
+    rangeproof_hash: &FixedHash,
     minimum_value_promise: MicroTari,
 ) -> FixedHash {
     let common_hash = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("transaction_output")
@@ -117,7 +117,7 @@ pub(super) fn hash_output(
         .chain(covenant)
         .chain(encrypted_data)
         .chain(sender_offset_public_key)
-        .chain(range_proof_hash)
+        .chain(rangeproof_hash)
         .chain(metadata_signature)
         .chain(&minimum_value_promise);
 

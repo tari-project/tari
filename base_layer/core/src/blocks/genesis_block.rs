@@ -195,10 +195,8 @@ pub fn get_igor_genesis_block() -> ChainBlock {
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
             FixedHash::from_hex("ad494884dabf1337a678625613d016d55c0d6a968c86a5ed57fd3099c207368b").unwrap();
-        block.header.witness_mr =
-            FixedHash::from_hex("a2d553743332a6af82cf40ed4a0faad89156ae62b181672634e2b90c3c759403").unwrap();
         block.header.output_mr =
-            FixedHash::from_hex("87bf1cdcca897a3b2f77ab1051a875de5a4ceaebd740bd664ba94fe6dd6e1c00").unwrap();
+            FixedHash::from_hex("15c8730dfcc1414cae73a4614d5c2a8b95f32a8db80f5d2602b6b3e7419cd34e").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("e1d55f91ecc7e435080ac2641280516a355a5ecbe231158987da217b5af30047").unwrap();
     }
@@ -239,10 +237,8 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
             FixedHash::from_hex("8c93eba80af538d89004df33e6d9f52fbd542f2a0e56887bdf1e0b8397e515a3").unwrap();
-        block.header.witness_mr =
-            FixedHash::from_hex("d45b5ce1ff99cb4ccdd38747d4dca7ac1d702224064b79f494e5430422bd7a31").unwrap();
         block.header.output_mr =
-            FixedHash::from_hex("961bf351744baf355c5522f2ae7890f9c1588e37c694b53742abea3c3b2d5155").unwrap();
+            FixedHash::from_hex("da2723bf3b44acd4b8809433ea5208ca4699603b31f9983cd7a461f92050e8c0").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("e1d55f91ecc7e435080ac2641280516a355a5ecbe231158987da217b5af30047").unwrap();
     }
@@ -278,8 +274,6 @@ fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>) -> Block {
             timestamp: timestamp.into(),
             output_mr: FixedHash::from_hex("7319ca29721731cebf9725b7b3b1a5abb8e721d30b11aaa84e10556da4d80acf").unwrap(),
             output_mmr_size: 0,
-            witness_mr: FixedHash::from_hex("a6b1400c0a97b99efbe420366dce5ed8ae827ba407d26c2cc8e4d4a877391fd1")
-                .unwrap(),
             kernel_mr: FixedHash::from_hex("e7ab4ea97d3410a402b1f18c7f6b347ee368259a50353c105c0303ab4420a809").unwrap(),
             kernel_mmr_size: 0,
             validator_node_mr: FixedHash::from_hex("e1d55f91ecc7e435080ac2641280516a355a5ecbe231158987da217b5af30047")
