@@ -173,7 +173,8 @@ impl TestParams {
             .sign_as_sender_and_receiver(key_manager, &self.sender_offset_key_id)
             .await
             .unwrap()
-            .try_build()
+            .try_build(key_manager)
+            .await
             .unwrap();
 
         Ok(output)
@@ -703,7 +704,8 @@ pub async fn create_stx_protocol(
             .sign_as_sender_and_receiver(key_manager, &sender_offset_key_id)
             .await
             .unwrap()
-            .try_build()
+            .try_build(key_manager)
+            .await
             .unwrap();
 
         outputs.push(output.clone());
@@ -810,7 +812,7 @@ pub async fn create_utxo(
         features,
         covenant,
         &encrypted_data,
-        minimum_value_promise,
+        &minimum_value_promise,
     );
     let metadata_sig = key_manager
         .get_metadata_signature(

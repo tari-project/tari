@@ -247,7 +247,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             &output_features,
             &covenant,
             &encrypted_data,
-            minimum_value_promise,
+            &minimum_value_promise,
         );
 
         let (sender_offset_public_key_id, sender_offset_public_key) = self
@@ -281,7 +281,9 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             covenant,
             encrypted_data,
             minimum_value_promise,
-        );
+            &self.key_manager,
+        )
+        .await?;
         let output = wallet_output
             .as_transaction_output(&self.key_manager)
             .await

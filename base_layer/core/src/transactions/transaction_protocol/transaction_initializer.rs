@@ -376,7 +376,7 @@ where KM: TransactionKeyManagerInterface
                             &features,
                             &covenant,
                             &encrypted_data,
-                            minimum_value_promise,
+                            &minimum_value_promise,
                         );
 
                         let metadata_sig = self
@@ -405,7 +405,10 @@ where KM: TransactionKeyManagerInterface
                             covenant,
                             encrypted_data,
                             minimum_value_promise,
-                        );
+                            &self.key_manager,
+                        )
+                        .await
+                        .map_err(|e| e.to_string())?;
                         Ok((
                             fee_without_change + change_fee,
                             v,

@@ -183,21 +183,24 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         .encrypt_data_for_recovery(&spending_key_id, None, sender.amount.as_u64())
         .await
         .unwrap();
-    let mut output = WalletOutput {
-        version: TransactionOutputVersion::get_current_version(),
-        value: sender.amount,
-        spending_key_id: spending_key_id.clone(),
-        features: sender.features.clone(),
-        script: sender.script.clone(),
-        covenant: Covenant::default(),
-        input_data: inputs!(public_script_key),
+    let mut output = WalletOutput::new(
+        TransactionOutputVersion::get_current_version(),
+        sender.amount,
+        spending_key_id.clone(),
+        sender.features.clone(),
+        sender.script.clone(),
+        inputs!(public_script_key),
         script_key_id,
-        sender_offset_public_key: sender.sender_offset_public_key.clone(),
-        metadata_signature: Default::default(),
-        script_lock_height: 0,
+        sender.sender_offset_public_key.clone(),
+        Default::default(),
+        0,
+        Covenant::default(),
         encrypted_data,
-        minimum_value_promise: MicroTari::zero(),
-    };
+        MicroTari::zero(),
+        &key_manager,
+    )
+    .await
+    .unwrap();
     let output_message = TransactionOutput::metadata_signature_message(&output);
     output.metadata_signature = key_manager
         .get_receiver_partial_metadata_signature(

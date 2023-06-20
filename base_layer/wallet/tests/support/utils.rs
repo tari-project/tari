@@ -67,21 +67,24 @@ pub async fn create_wallet_output_from_sender_data(
         .encrypt_data_for_recovery(&test_params.spend_key_id, None, sender_data.amount.as_u64())
         .await
         .unwrap();
-    let mut utxo = WalletOutput {
-        version: TransactionOutputVersion::get_current_version(),
-        value: sender_data.amount,
-        spending_key_id: test_params.spend_key_id.clone(),
-        features: sender_data.features.clone(),
-        script: sender_data.script.clone(),
-        covenant: Covenant::default(),
-        input_data: inputs!(public_script_key),
-        script_key_id: test_params.script_key_id.clone(),
-        sender_offset_public_key: sender_data.sender_offset_public_key.clone(),
-        metadata_signature: Default::default(),
-        script_lock_height: 0,
+    let mut utxo = WalletOutput::new(
+        TransactionOutputVersion::get_current_version(),
+        sender_data.amount,
+        test_params.spend_key_id.clone(),
+        sender_data.features.clone(),
+        sender_data.script.clone(),
+        inputs!(public_script_key),
+        test_params.script_key_id.clone(),
+        sender_data.sender_offset_public_key.clone(),
+        Default::default(),
+        0,
+        Covenant::default(),
         encrypted_data,
-        minimum_value_promise: MicroTari::zero(),
-    };
+        MicroTari::zero(),
+        key_manager,
+    )
+    .await
+    .unwrap();
     let output_message = TransactionOutput::metadata_signature_message(&utxo);
     utxo.metadata_signature = key_manager
         .get_receiver_partial_metadata_signature(

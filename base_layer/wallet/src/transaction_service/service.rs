@@ -1199,7 +1199,8 @@ where
             )
             .await
             .unwrap()
-            .try_build()
+            .try_build(&self.resources.transaction_key_manager_service)
+            .await
             .unwrap();
 
         let rtp = ReceiverTransactionProtocol::new(
@@ -1391,7 +1392,8 @@ where
                 &sender_offset_private_key,
             )
             .await?
-            .try_build()?;
+            .try_build(&self.resources.transaction_key_manager_service)
+            .await?;
 
         let rtp =
             ReceiverTransactionProtocol::new(sender_message, output, &self.resources.transaction_key_manager_service)
@@ -1637,7 +1639,8 @@ where
                 &sender_offset_private_key,
             )
             .await?
-            .try_build()?;
+            .try_build(&self.resources.transaction_key_manager_service)
+            .await?;
 
         let rtp =
             ReceiverTransactionProtocol::new(sender_message, output, &self.resources.transaction_key_manager_service)

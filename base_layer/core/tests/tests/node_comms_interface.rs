@@ -21,7 +21,6 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_common::configuration::Network;
-use tari_common_types::types::PrivateKey;
 use tari_comms::test_utils::mocks::create_connectivity_mock;
 use tari_core::{
     base_node::comms_interface::{
@@ -39,10 +38,9 @@ use tari_core::{
         create_consensus_rules,
     },
     transactions::{
-        key_manager::TransactionKeyManagerInterface,
         tari_amount::MicroTari,
         test_helpers::{create_test_core_key_manager_with_memory_db, create_utxo, spend_utxos},
-        transaction_components::{OutputFeatures, TransactionOutput, TransactionOutputVersion, WalletOutput},
+        transaction_components::{OutputFeatures, TransactionOutputVersion, WalletOutput},
     },
     txn_schema,
     validation::{mocks::MockValidator, transaction::TransactionChainLinkedValidator},
@@ -302,28 +300,8 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         panic!("{}", e);
     }
 
-    let metadata_message = TransactionOutput::metadata_signature_message_from_parts(
-        &TransactionOutputVersion::get_current_version(),
-        &script,
-        &output_features,
-        &covenant,
-        &utxo.encrypted_data,
-        utxo.minimum_value_promise,
-    );
-    let txo_version = TransactionOutputVersion::get_current_version();
-    let metadata_signature = key_manager
-        .get_metadata_signature(
-            &spending_key_id,
-            &PrivateKey::from(amount),
-            &sender_offset_key_id,
-            &txo_version,
-            &metadata_message,
-            output_features.range_proof_type,
-        )
-        .await
-        .unwrap();
-
-    let wallet_output = WalletOutput::new_current_version(
+    let wallet_output = WalletOutput::new_with_rangeproof(
+        TransactionOutputVersion::get_current_version(),
         amount,
         spending_key_id.clone(),
         output_features,
@@ -334,11 +312,12 @@ async fn inbound_fetch_blocks_before_horizon_height() {
             .get_public_key_at_key_id(&sender_offset_key_id)
             .await
             .unwrap(),
-        metadata_signature,
+        utxo.metadata_signature,
         0,
         covenant,
         utxo.encrypted_data,
         utxo.minimum_value_promise,
+        utxo.proof,
     );
 
     let txn = txn_schema!(from: vec![wallet_output], to: vec![MicroTari(5_000), MicroTari(4_000)]);

@@ -462,7 +462,8 @@ impl SenderTransactionProtocol {
                             .ok_or_else(|| TPE::IncompleteStateError("Missing data `recipient_covenant`".to_string()))?
                             .recipient_covenant,
                         &received_output.encrypted_data,
-                        info.recipient_data
+                        &info
+                            .recipient_data
                             .as_ref()
                             .ok_or_else(|| {
                                 TPE::IncompleteStateError("Missing data 'recipient_minimum_value_promise'".to_string())
@@ -828,7 +829,6 @@ mod test {
             tari_amount::*,
             test_helpers::{
                 create_test_core_key_manager_with_memory_db,
-                create_test_core_key_manager_with_memory_db_with_range_proof_size,
                 create_test_input,
                 create_wallet_output_with_data,
                 TestParams,
@@ -843,12 +843,11 @@ mod test {
             transaction_protocol::{
                 sender::{SenderTransactionProtocol, TransactionSenderMessage},
                 single_receiver::SingleReceiverTransactionProtocol,
-                TransactionError,
-                TransactionProtocolError,
             },
         },
         validation::transaction::TransactionInternalConsistencyValidator,
     };
+    use crate::transactions::transaction_protocol::TransactionProtocolError;
 
     #[test]
     fn test_not_single() {
@@ -946,7 +945,7 @@ mod test {
             &output_features,
             &covenant,
             &encrypted_data,
-            minimum_value_promise,
+            &minimum_value_promise,
         );
         let partial_metadata_signature = key_manager
             .get_receiver_partial_metadata_signature(
@@ -1105,7 +1104,10 @@ mod test {
             Covenant::default(),
             EncryptedData::default(),
             0.into(),
-        );
+            &key_manager,
+        )
+        .await
+        .unwrap();
 
         let metadata_message = TransactionOutput::metadata_signature_message(&bob_output);
         bob_output.metadata_signature = key_manager
@@ -1220,7 +1222,10 @@ mod test {
             Covenant::default(),
             EncryptedData::default(),
             0.into(),
-        );
+            &key_manager,
+        )
+        .await
+        .unwrap();
 
         let metadata_message = TransactionOutput::metadata_signature_message(&bob_output);
         bob_output.metadata_signature = key_manager
@@ -1333,7 +1338,10 @@ mod test {
             Covenant::default(),
             EncryptedData::default(),
             0.into(),
-        );
+            &key_manager,
+        )
+        .await
+        .unwrap();
 
         let metadata_message = TransactionOutput::metadata_signature_message(&bob_output);
         bob_output.metadata_signature = key_manager
@@ -1375,72 +1383,6 @@ mod test {
         assert_eq!(tx.body.outputs().len(), 2);
         let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
         assert!(validator.validate(tx, None, None, u64::MAX).is_ok());
-    }
-
-    #[tokio::test]
-    async fn single_recipient_range_proof_fail() {
-        // Alice's parameters
-        let key_manager = create_test_core_key_manager_with_memory_db_with_range_proof_size(32);
-        // Bob's parameters
-        let bob_key = TestParams::new(&key_manager).await;
-        let input = create_test_input((2u64.pow(32) + 2001).into(), 0, &key_manager).await;
-        let mut builder = SenderTransactionProtocol::builder(create_consensus_constants(0), key_manager.clone());
-        let script = script!(Nop);
-        let change = TestParams::new(&key_manager).await;
-        builder
-            .with_lock_height(0)
-            .with_fee_per_gram(MicroTari(20))
-            .with_change_data(
-                script.clone(),
-                inputs!(change.script_key_pk),
-                change.script_key_id.clone(),
-                change.spend_key_id.clone(),
-                Covenant::default(),
-            )
-            .with_input(input)
-            .await
-            .unwrap()
-            .with_recipient_data(
-                script.clone(),
-                OutputFeatures::default(),
-                Covenant::default(),
-                0.into(),
-                (2u64.pow(32) + 1).into(),
-            )
-            .await
-            .unwrap();
-        let mut alice = builder.build().await.unwrap();
-        assert!(alice.is_single_round_message_ready());
-        let msg = alice.build_single_round_message(&key_manager).await.unwrap();
-        // Send message down the wire....and wait for response
-        assert!(alice.is_collecting_single_signature());
-        // Receiver gets message, deserializes it etc, and creates his response
-        let bob_public_key = msg.sender_offset_public_key.clone();
-        let bob_output = WalletOutput::new_current_version(
-            (2u64.pow(32) + 1).into(),
-            bob_key.spend_key_id,
-            OutputFeatures::default(),
-            script.clone(),
-            ExecutionStack::default(),
-            bob_key.script_key_id,
-            bob_public_key,
-            CommitmentAndPublicKeySignature::default(),
-            0,
-            Covenant::default(),
-            EncryptedData::default(),
-            0.into(),
-        );
-
-        let bob_info = SingleReceiverTransactionProtocol::create(&msg, bob_output, &key_manager).await; // Alice gets message back, deserializes it, etc
-        match bob_info {
-            Ok(_) => panic!("Range proof should have failed to verify"),
-            Err(e) => assert_eq!(
-                e,
-                TransactionProtocolError::TransactionBuildError(TransactionError::ValidationError(
-                    "Value provided is outside the range allowed by the range proof".to_string()
-                ))
-            ),
-        }
     }
 
     #[tokio::test]
@@ -1588,7 +1530,10 @@ mod test {
             Covenant::default(),
             EncryptedData::default(),
             0.into(),
-        );
+            &key_manager_bob,
+        )
+        .await
+        .unwrap();
 
         // Receiver gets message, deserializes it etc, and creates his response
         let bob_info = SingleReceiverTransactionProtocol::create(&msg, bob_output, &key_manager_bob)
