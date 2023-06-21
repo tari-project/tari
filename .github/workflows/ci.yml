@@ -139,6 +139,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo bash scripts/install_ubuntu_dependencies.sh
+      - uses: Swatinem/rust-cache@v2
       - name: test key manager wasm
         run: |
           cd base_layer/key_manager
