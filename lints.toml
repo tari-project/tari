@@ -66,5 +66,7 @@ allow = [
     'clippy::default_trait_access',
     # Generally when developers fix this, it can lead to leaky abstractions or worse, so
     # too many arguments is generally the lesser of two evils
-    'clippy::too_many_arguments'
+    'clippy::too_many_arguments',
+    # `assert!(!foo(bar))` is misread the majority of the time, while `assert_eq!(foo(bar), false)` is crystal clear
+    'clippy::bool-assert-comparison',
 ]

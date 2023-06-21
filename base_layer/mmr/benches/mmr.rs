@@ -20,38 +20,29 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[cfg(not(feature = "benches"))]
-mod benches {
-    pub fn main() {
-        println!("Enable the `benches` feature to run benches");
-    }
+use blake2::Blake2b;
+use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
+use digest::Digest;
+use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparatedHasher};
+use tari_mmr::{Hash, MerkleMountainRange};
+
+hash_domain!(
+    MmrBenchTestHashDomain,
+    "com.tari.tari_project.base_layer.mmr.benches",
+    1
+);
+pub type MmrTestHasherBlake256 = DomainSeparatedHasher<Blake256, MmrBenchTestHashDomain>;
+pub type TestMmr = MerkleMountainRange<MmrTestHasherBlake256, Vec<Hash>>;
+
+fn get_hashes(n: usize) -> Vec<Vec<u8>> {
+    (0..n).map(|i| Blake2b::digest(&i.to_le_bytes()).to_vec()).collect()
 }
 
-#[cfg(feature = "benches")]
-mod benches {
-    use std::time::Duration;
-
-    use blake2::Blake2b;
-    use criterion::{criterion_group, BatchSize, Criterion};
-    use digest::Digest;
-    use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparatedHasher};
-    use tari_mmr::{Hash, MerkleMountainRange};
-
-    hash_domain!(
-        MmrBenchTestHashDomain,
-        "com.tari.tari_project.base_layer.mmr.benches",
-        1
-    );
-    pub type MmrTestHasherBlake256 = DomainSeparatedHasher<Blake256, MmrBenchTestHashDomain>;
-    pub type TestMmr = MerkleMountainRange<MmrTestHasherBlake256, Vec<Hash>>;
-
-    fn get_hashes(n: usize) -> Vec<Vec<u8>> {
-        (0..n).map(|i| Blake2b::digest(&i.to_le_bytes()).to_vec()).collect()
-    }
-
-    fn build_mmr(c: &mut Criterion) {
-        c.bench_function("Build MMR", move |b| {
-            let hashes = get_hashes(1000);
+fn build_mmr(c: &mut Criterion) {
+    let sizes = [100, 10_000];
+    for size in sizes {
+        c.bench_function(&format!("MMR: {size} hashes"), move |b| {
+            let hashes = get_hashes(size);
             let mut mmr = TestMmr::new(Vec::default());
             b.iter_batched(
                 || hashes.clone(),
@@ -64,19 +55,7 @@ mod benches {
             );
         });
     }
-
-    criterion_group!(
-        name = mmr;
-        config= Criterion::default().warm_up_time(Duration::from_millis(500)).sample_size(10);
-        targets= build_mmr
-    );
-
-    pub fn main() {
-        mmr();
-        criterion::Criterion::default().configure_from_args().final_summary();
-    }
 }
 
-fn main() {
-    benches::main();
-}
+criterion_group!(mmr, build_mmr);
+criterion_main!(mmr);
