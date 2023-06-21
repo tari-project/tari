@@ -39,30 +39,34 @@ pub struct LinearWeightedMovingAverage {
 
 impl LinearWeightedMovingAverage {
     /// Initialize a new `LinearWeightedMovingAverage`
-    ///
-    /// # Panics
-    /// - Panics if block_window is 0
-    /// - Panics if `target_time * LWMA_MAX_BLOCK_TIME_RATIO != max_block_time`
-    pub fn new(block_window: usize, target_time: u64, max_block_time: u64) -> Self {
-        assert!(
-            block_window > 0,
-            "TargetDifficulty::new expected block_window to be greater than 0, but 0 was given"
-        );
-        assert_eq!(
-            target_time * LWMA_MAX_BLOCK_TIME_RATIO,
-            max_block_time,
-            "LinearWeightedMovingAverage::new(...) expected max_block_time to be {} times greater than target_time, \
-             off by {}s",
-            LWMA_MAX_BLOCK_TIME_RATIO,
-            max(target_time * LWMA_MAX_BLOCK_TIME_RATIO, max_block_time) -
-                min(target_time * LWMA_MAX_BLOCK_TIME_RATIO, max_block_time)
-        );
-        Self {
+    pub fn new(block_window: usize, target_time: u64, max_block_time: u64) -> Result<Self, String> {
+        if target_time == 0 {
+            return Err(
+                "LinearWeightedMovingAverage::new(...) expected target_time to be greater than 0, but 0 was given"
+                    .into(),
+            );
+        }
+        if block_window == 0 {
+            return Err(
+                "LinearWeightedMovingAverage::new(...) expected block_window to be greater than 0, but 0 was given"
+                    .into(),
+            );
+        }
+        if target_time * LWMA_MAX_BLOCK_TIME_RATIO != max_block_time {
+            return Err(format!(
+                "LinearWeightedMovingAverage::new(...) expected max_block_time to be {} times greater than \
+                 target_time, off by {}s",
+                LWMA_MAX_BLOCK_TIME_RATIO,
+                max(target_time * LWMA_MAX_BLOCK_TIME_RATIO, max_block_time) -
+                    min(target_time * LWMA_MAX_BLOCK_TIME_RATIO, max_block_time)
+            ));
+        }
+        Ok(Self {
             target_difficulties: VecDeque::with_capacity(block_window + 1),
             block_window,
             target_time: u128::from(target_time),
             max_block_time,
-        }
+        })
     }
 
     fn calculate(&self) -> Option<Difficulty> {
@@ -172,7 +176,7 @@ mod test {
 
     #[test]
     fn lwma_zero_len() {
-        let dif = LinearWeightedMovingAverage::new(90, 120, 120 * LWMA_MAX_BLOCK_TIME_RATIO);
+        let dif = LinearWeightedMovingAverage::new(90, 120, 120 * LWMA_MAX_BLOCK_TIME_RATIO).unwrap();
         assert_eq!(dif.get_difficulty(), None);
     }
 
@@ -183,8 +187,8 @@ mod test {
         // assert_eq!(v.capacity(), 11);
         // A Vec was chosen because it ended up being simpler to use
         let dif = LinearWeightedMovingAverage::new(0, 120, 120 * LWMA_MAX_BLOCK_TIME_RATIO);
-        assert!(!dif.is_full());
-        let mut dif = LinearWeightedMovingAverage::new(1, 120, 120 * LWMA_MAX_BLOCK_TIME_RATIO);
+        assert!(dif.is_err());
+        let mut dif = LinearWeightedMovingAverage::new(1, 120, 120 * LWMA_MAX_BLOCK_TIME_RATIO).unwrap();
         dif.add_front(60.into(), 100.into());
         assert!(!dif.is_full());
         assert_eq!(dif.num_samples(), 1);
@@ -198,7 +202,7 @@ mod test {
 
     #[test]
     fn lwma_negative_solve_times() {
-        let mut dif = LinearWeightedMovingAverage::new(90, 120, 120 * LWMA_MAX_BLOCK_TIME_RATIO);
+        let mut dif = LinearWeightedMovingAverage::new(90, 120, 120 * LWMA_MAX_BLOCK_TIME_RATIO).unwrap();
         let mut timestamp = 60.into();
         let cum_diff = Difficulty::from(100);
         let _ = dif.add(timestamp, cum_diff);
@@ -223,7 +227,7 @@ mod test {
 
     #[test]
     fn lwma_limit_difficulty_change() {
-        let mut dif = LinearWeightedMovingAverage::new(5, 60, 60 * LWMA_MAX_BLOCK_TIME_RATIO);
+        let mut dif = LinearWeightedMovingAverage::new(5, 60, 60 * LWMA_MAX_BLOCK_TIME_RATIO).unwrap();
         let _ = dif.add(60.into(), 100.into());
         let _ = dif.add(10_000_000.into(), 100.into());
         assert_eq!(dif.get_difficulty().unwrap(), 16.into());
@@ -240,7 +244,7 @@ mod test {
     // These values where calculated in excel to confirm they are correct
     #[test]
     fn lwma_calculate() {
-        let mut dif = LinearWeightedMovingAverage::new(5, 60, 60 * LWMA_MAX_BLOCK_TIME_RATIO);
+        let mut dif = LinearWeightedMovingAverage::new(5, 60, 60 * LWMA_MAX_BLOCK_TIME_RATIO).unwrap();
         let _ = dif.add(60.into(), 100.into());
         assert_eq!(dif.get_difficulty(), None);
         let _ = dif.add(120.into(), 100.into());
@@ -275,7 +279,7 @@ mod test {
 
     #[test]
     fn ensure_calculate_does_not_overflow_with_large_block_window() {
-        let mut dif = LinearWeightedMovingAverage::new(6000, 60, 60 * LWMA_MAX_BLOCK_TIME_RATIO);
+        let mut dif = LinearWeightedMovingAverage::new(6000, 60, 60 * LWMA_MAX_BLOCK_TIME_RATIO).unwrap();
         for _i in 0..6000 {
             let _ = dif.add(60.into(), u64::MAX.into());
         }

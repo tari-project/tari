@@ -387,30 +387,33 @@ impl ConsensusConstants {
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 64,
         }];
-        assert_hybrid_pow_constants(
-            &consensus_constants,
-            &[120],
-            &[60],
-            &[40],
-            CheckDifficultyRatio::No,
-            CheckLwmaRatios::Yes,
-        );
+        #[cfg(any(test, debug_assertions))]
+        assert_hybrid_pow_constants(&consensus_constants, &[120], &[60], &[40], CheckDifficultyRatio::No);
         consensus_constants
     }
 
     pub fn igor() -> Vec<Self> {
+        // `igor` is a test network, so calculating these constants are allowed rather than being hardcoded.
+        let monero_split: u64 = 60;
+        let sha3_split: u64 = 100 - monero_split;
+        let monero_target_time = 20;
+        let sha3_target_time = monero_target_time * (100 - sha3_split) / sha3_split;
+        let target_time: u64 = (monero_target_time * sha3_target_time) / (monero_target_time + sha3_target_time);
+        let difficulty_block_window = 90;
+        let future_time_limit = target_time * difficulty_block_window / 20;
+
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
-            max_target_time: 30 * LWMA_MAX_BLOCK_TIME_RATIO, // target_time x 6
-            min_difficulty: (30 * 200_000).into(),           // target_time x 200_000
+            max_target_time: sha3_target_time * LWMA_MAX_BLOCK_TIME_RATIO,
+            min_difficulty: (sha3_target_time * 67_000).into(), // (target_time x 200_000/3) ... for easy testing
             max_difficulty: u64::MAX.into(),
-            target_time: 30, // (monero_target_time x 1.5)
+            target_time: sha3_target_time,
         });
         algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
-            max_target_time: 20 * LWMA_MAX_BLOCK_TIME_RATIO, // target_time x 6
-            min_difficulty: (20 * 300).into(),               // target_time x 300
+            max_target_time: monero_target_time * LWMA_MAX_BLOCK_TIME_RATIO,
+            min_difficulty: (monero_target_time * 100).into(), // (target_time x 300/3)     ... for easy testing
             max_difficulty: u64::MAX.into(),
-            target_time: 20,
+            target_time: monero_target_time,
         });
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
         let consensus_constants = vec![ConsensusConstants {
@@ -418,8 +421,8 @@ impl ConsensusConstants {
             coinbase_min_maturity: 6,
             blockchain_version: 0,
             valid_blockchain_version_range: 0..=0,
-            future_time_limit: 540,
-            difficulty_block_window: 90,
+            future_time_limit,
+            difficulty_block_window,
             // 65536 =  target_block_size / bytes_per_gram =  (1024*1024) / 16
             // adj. + 95% = 127,795 - this effectively targets ~2Mb blocks closely matching the previous 19500
             // weightings
@@ -446,13 +449,13 @@ impl ConsensusConstants {
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 64,
         }];
+        #[cfg(any(test, debug_assertions))]
         assert_hybrid_pow_constants(
             &consensus_constants,
-            &[12],
-            &[60],
-            &[40],
-            CheckDifficultyRatio::Yes,
-            CheckLwmaRatios::No,
+            &[target_time],
+            &[monero_split],
+            &[sha3_split],
+            CheckDifficultyRatio::No,
         );
         consensus_constants
     }
@@ -507,14 +510,8 @@ impl ConsensusConstants {
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 64,
         }];
-        assert_hybrid_pow_constants(
-            &consensus_constants,
-            &[120],
-            &[60],
-            &[40],
-            CheckDifficultyRatio::Yes,
-            CheckLwmaRatios::Yes,
-        );
+        #[cfg(any(test, debug_assertions))]
+        assert_hybrid_pow_constants(&consensus_constants, &[120], &[60], &[40], CheckDifficultyRatio::Yes);
         consensus_constants
     }
 
@@ -568,14 +565,8 @@ impl ConsensusConstants {
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 64,
         }];
-        assert_hybrid_pow_constants(
-            &consensus_constants,
-            &[120],
-            &[60],
-            &[40],
-            CheckDifficultyRatio::Yes,
-            CheckLwmaRatios::Yes,
-        );
+        #[cfg(any(test, debug_assertions))]
+        assert_hybrid_pow_constants(&consensus_constants, &[120], &[60], &[40], CheckDifficultyRatio::Yes);
         consensus_constants
     }
 
@@ -623,14 +614,8 @@ impl ConsensusConstants {
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 64,
         }];
-        assert_hybrid_pow_constants(
-            &consensus_constants,
-            &[120],
-            &[60],
-            &[40],
-            CheckDifficultyRatio::Yes,
-            CheckLwmaRatios::Yes,
-        );
+        #[cfg(any(test, debug_assertions))]
+        assert_hybrid_pow_constants(&consensus_constants, &[120], &[60], &[40], CheckDifficultyRatio::Yes);
         consensus_constants
     }
 
@@ -679,14 +664,8 @@ impl ConsensusConstants {
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 64,
         }];
-        assert_hybrid_pow_constants(
-            &consensus_constants,
-            &[120],
-            &[60],
-            &[40],
-            CheckDifficultyRatio::Yes,
-            CheckLwmaRatios::Yes,
-        );
+        #[cfg(any(test, debug_assertions))]
+        assert_hybrid_pow_constants(&consensus_constants, &[120], &[60], &[40], CheckDifficultyRatio::Yes);
         consensus_constants
     }
 
@@ -700,13 +679,8 @@ impl ConsensusConstants {
 }
 
 #[derive(PartialEq)]
+#[cfg(any(test, debug_assertions))]
 enum CheckDifficultyRatio {
-    Yes,
-    No,
-}
-
-#[derive(PartialEq)]
-enum CheckLwmaRatios {
     Yes,
     No,
 }
@@ -718,14 +692,14 @@ enum CheckLwmaRatios {
 //   > sha3_target_time = monero_target_time * (100 - 40) / 40
 //   > monero_target_time = sha3_target_time * (100 - 60) / 60
 //   > target_time = monero_target_time * sha3_target_time / (monero_target_time + sha3_target_time)
-// `CheckDifficultyRatio` and `CheckLwmaRatios` are optional for internal testing (Network::LocalNet and Network::Igor).
+// `CheckDifficultyRatio` is optional for internal testing (Network::LocalNet and Network::Igor).
+#[cfg(any(test, debug_assertions))]
 fn assert_hybrid_pow_constants(
     consensus_constants: &[ConsensusConstants],
     target_time: &[u64],
     monero_split: &[u64], // RamdomX
     sha3_split: &[u64],
     check_difficulty_ratio: CheckDifficultyRatio,
-    check_lwma_ratios: CheckLwmaRatios,
 ) {
     assert_eq!(consensus_constants.len(), target_time.len());
     assert_eq!(consensus_constants.len(), monero_split.len());
@@ -792,13 +766,11 @@ fn assert_hybrid_pow_constants(
             monero_constants.target_time * LWMA_MAX_BLOCK_TIME_RATIO,
             "Monero max_target_time is not 6x Monero target_time"
         );
-        if check_lwma_ratios == CheckLwmaRatios::Yes {
-            assert_eq!(
-                constants.future_time_limit * 20,
-                target_time[i] * constants.difficulty_block_window,
-                "20x future_time_limit is not target_time * difficulty_block_window"
-            );
-        }
+        assert_eq!(
+            constants.future_time_limit * 20,
+            target_time[i] * constants.difficulty_block_window,
+            "20x future_time_limit is not target_time * difficulty_block_window"
+        );
     }
 }
 

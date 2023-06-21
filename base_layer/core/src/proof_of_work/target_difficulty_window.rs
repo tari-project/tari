@@ -33,10 +33,10 @@ pub struct TargetDifficultyWindow {
 
 impl TargetDifficultyWindow {
     /// Initialize a new `TargetDifficultyWindow`
-    pub(crate) fn new(block_window: usize, target_time: u64, max_block_time: u64) -> Self {
-        Self {
-            lwma: LinearWeightedMovingAverage::new(block_window, target_time, max_block_time),
-        }
+    pub(crate) fn new(block_window: usize, target_time: u64, max_block_time: u64) -> Result<Self, String> {
+        Ok(Self {
+            lwma: LinearWeightedMovingAverage::new(block_window, target_time, max_block_time)?,
+        })
     }
 
     /// Appends a target difficulty. If the number of stored difficulties exceeds the block window, the oldest block
@@ -78,7 +78,7 @@ mod test {
 
     #[test]
     fn it_calculates_the_target_difficulty() {
-        let mut target_difficulties = TargetDifficultyWindow::new(5, 60, 60 * 6);
+        let mut target_difficulties = TargetDifficultyWindow::new(5, 60, 60 * 6).unwrap();
         let mut time = 60.into();
         target_difficulties.add_back(time, 100.into());
         time += 60.into();

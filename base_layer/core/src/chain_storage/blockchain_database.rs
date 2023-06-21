@@ -722,7 +722,8 @@ where B: BlockchainBackend
     ) -> Result<TargetDifficulties, ChainStorageError> {
         let db = self.db_read_access()?;
         let mut current_header = db.fetch_chain_header_in_all_chains(&current_block_hash)?;
-        let mut targets = TargetDifficulties::new(&self.consensus_manager, current_header.height() + 1);
+        let mut targets = TargetDifficulties::new(&self.consensus_manager, current_header.height() + 1)
+            .map_err(ChainStorageError::UnexpectedResult)?;
         // Add start header since we have it on hand
         targets.add_front(
             current_header.header(),
@@ -1538,7 +1539,9 @@ pub fn fetch_target_difficulty_for_next_block<T: BlockchainBackend>(
 ) -> Result<TargetDifficultyWindow, ChainStorageError> {
     // The block may be in the chained orphan pool or in the main chain
     let mut header = db.fetch_chain_header_in_all_chains(current_block_hash)?;
-    let mut target_difficulties = consensus_manager.new_target_difficulty(pow_algo, header.height() + 1);
+    let mut target_difficulties = consensus_manager
+        .new_target_difficulty(pow_algo, header.height() + 1)
+        .map_err(ChainStorageError::UnexpectedResult)?;
     if header.header().pow.pow_algo == pow_algo {
         target_difficulties.add_front(header.header().timestamp(), header.accumulated_data().target_difficulty);
     }
@@ -2512,6 +2515,7 @@ mod test {
             ConsensusConstantsBuilder,
             ConsensusManager,
         },
+        proof_of_work::lwma_diff::LWMA_MAX_BLOCK_TIME_RATIO,
         test_helpers::{
             blockchain::{
                 create_chained_blocks,
@@ -3342,7 +3346,7 @@ mod test {
                 ConsensusConstantsBuilder::new(Network::LocalNet)
                     .clear_proof_of_work()
                     .add_proof_of_work(PowAlgorithm::Sha3, PowAlgorithmConstants {
-                        max_target_time: 1200,
+                        max_target_time: 120 * LWMA_MAX_BLOCK_TIME_RATIO,
                         min_difficulty: 1.into(),
                         max_difficulty: 100.into(),
                         target_time: 120,
