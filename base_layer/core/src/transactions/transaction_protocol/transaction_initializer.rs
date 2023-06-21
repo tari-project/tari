@@ -56,6 +56,7 @@ use crate::{
 };
 
 pub const LOG_TARGET: &str = "c::tx::tx_protocol::tx_initializer";
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub(super) struct ChangeDetails {
     change_spending_key_id: TariKeyId,
@@ -64,6 +65,7 @@ pub(super) struct ChangeDetails {
     change_script_key_id: TariKeyId,
     change_covenant: Covenant,
 }
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub(super) struct RecipientDetails {
     pub amount: MicroTari,
@@ -791,10 +793,9 @@ mod test {
             .await
             .unwrap()
             .with_fee_per_gram(MicroTari(2));
-
+        let input_base = create_test_input(MicroTari(50), 0, &key_manager).await;
         for _ in 0..=MAX_TRANSACTION_INPUTS {
-            let input = create_test_input(MicroTari(50), 0, &key_manager).await;
-            builder.with_input(input).await.unwrap();
+            builder.with_input(input_base.clone()).await.unwrap();
         }
         let err = builder.build().await.unwrap_err();
         assert_eq!(err.message, "Too many inputs in transaction");
