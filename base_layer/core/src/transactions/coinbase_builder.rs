@@ -445,7 +445,7 @@ mod test {
         assert!(matches!(
             tx.body.check_coinbase_output(
                 block_reward,
-                rules.consensus_constants(0).coinbase_lock_height(),
+                rules.consensus_constants(0).coinbase_min_maturity(),
                 &factories,
                 42
             ),
@@ -491,7 +491,7 @@ mod test {
         assert!(matches!(
             tx.body.check_coinbase_output(
                 block_reward,
-                rules.consensus_constants(0).coinbase_lock_height(),
+                rules.consensus_constants(0).coinbase_min_maturity(),
                 &factories,
                 42
             ),
@@ -629,7 +629,7 @@ mod test {
         assert!(matches!(
             tx.body.check_coinbase_output(
                 block_reward,
-                rules.consensus_constants(0).coinbase_lock_height(),
+                rules.consensus_constants(0).coinbase_min_maturity(),
                 &factories,
                 42
             ),
@@ -639,7 +639,7 @@ mod test {
         assert!(matches!(
             tx_kernel_test.body.check_coinbase_output(
                 block_reward,
-                rules.consensus_constants(0).coinbase_lock_height(),
+                rules.consensus_constants(0).coinbase_min_maturity(),
                 &factories,
                 42
             ),
