@@ -588,7 +588,7 @@ async fn local_get_new_block_with_zero_conf() {
     let coinbase_value = rules.get_block_reward_at(1) + block_template.body.get_total_fee();
     let (output, kernel, _) = create_coinbase(
         coinbase_value,
-        rules.consensus_constants(1).coinbase_lock_height() + 1,
+        rules.consensus_constants(1).coinbase_min_maturity() + 1,
         None,
         &key_manager,
     )
@@ -668,7 +668,7 @@ async fn local_get_new_block_with_combined_transaction() {
     let coinbase_value = rules.get_block_reward_at(1) + block_template.body.get_total_fee();
     let (output, kernel, _) = create_coinbase(
         coinbase_value,
-        rules.consensus_constants(1).coinbase_lock_height() + 1,
+        rules.consensus_constants(1).coinbase_min_maturity() + 1,
         None,
         &key_manager,
     )

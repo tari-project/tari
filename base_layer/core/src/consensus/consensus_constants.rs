@@ -55,25 +55,27 @@ use crate::{
 pub struct ConsensusConstants {
     /// The height at which these constants become effective
     effective_from_height: u64,
-    /// The min absolute height maturity a coinbase utxo must have
-    coinbase_lock_height: u64,
+    /// The minimum maturity a coinbase utxo must have, in number of blocks
+    coinbase_min_maturity: u64,
     /// Current version of the blockchain
     blockchain_version: u16,
-    /// Current version of the blockchain
+    /// The blockchain version that are accepted. Values outside of this range will be rejected.
     valid_blockchain_version_range: RangeInclusive<u16>,
-    /// The Future Time Limit (FTL) of the blockchain in seconds. This is the max allowable timestamp that is excepted.
-    /// We use T*N/20 where T = desired chain target time, and N = block_window
+    /// The Future Time Limit (FTL) of the blockchain in seconds. This is the max allowable timestamp that is accepted.
+    /// We suggest using T*N/20 where T = desired chain target time, and N = block_window
     future_time_limit: u64,
     /// When doing difficulty adjustments and FTL calculations this is the amount of blocks we look at
     /// <https://github.com/zawy12/difficulty-algorithms/issues/14>
     difficulty_block_window: u64,
     /// Maximum transaction weight used for the construction of new blocks.
     max_block_transaction_weight: u64,
-    /// This is how many blocks we use to count towards the median timestamp to ensure the block chain moves forward
+    /// This is how many blocks we use to count towards the median timestamp to ensure the block chain timestamp moves
+    /// forward
     median_timestamp_count: usize,
     /// This is the initial emission curve amount
     pub(in crate::consensus) emission_initial: MicroTari,
-    /// This is the emission curve delay for the int
+    /// This is the emission curve decay factor as a sum of fraction powers of two. e.g. [1,2] would be 1/2 + 1/4. [2]
+    /// would be 1/4
     pub(in crate::consensus) emission_decay: &'static [u64],
     /// This is the emission curve tail amount
     pub(in crate::consensus) emission_tail: MicroTari,
@@ -163,8 +165,8 @@ impl ConsensusConstants {
     }
 
     /// The min height maturity a coinbase utxo must have.
-    pub fn coinbase_lock_height(&self) -> u64 {
-        self.coinbase_lock_height
+    pub fn coinbase_min_maturity(&self) -> u64 {
+        self.coinbase_min_maturity
     }
 
     /// Current version of the blockchain.
@@ -361,7 +363,7 @@ impl ConsensusConstants {
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
         vec![ConsensusConstants {
             effective_from_height: 0,
-            coinbase_lock_height: 2,
+            coinbase_min_maturity: 2,
             blockchain_version: 0,
             valid_blockchain_version_range: 0..=0,
             future_time_limit: 540,
@@ -415,7 +417,7 @@ impl ConsensusConstants {
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
         vec![ConsensusConstants {
             effective_from_height: 0,
-            coinbase_lock_height: 6,
+            coinbase_min_maturity: 6,
             blockchain_version: 0,
             valid_blockchain_version_range: 0..=0,
             future_time_limit: 540,
@@ -475,7 +477,7 @@ impl ConsensusConstants {
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
         let consensus_constants_1 = ConsensusConstants {
             effective_from_height: 0,
-            coinbase_lock_height: 6,
+            coinbase_min_maturity: 6,
             blockchain_version: 0,
             valid_blockchain_version_range: 0..=0,
             future_time_limit: 540,
@@ -534,7 +536,7 @@ impl ConsensusConstants {
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
         vec![ConsensusConstants {
             effective_from_height: 0,
-            coinbase_lock_height: 360,
+            coinbase_min_maturity: 360,
             blockchain_version: 0,
             valid_blockchain_version_range: 0..=0,
             future_time_limit: 540,
@@ -585,7 +587,7 @@ impl ConsensusConstants {
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
         vec![ConsensusConstants {
             effective_from_height: 0,
-            coinbase_lock_height: 360,
+            coinbase_min_maturity: 360,
             blockchain_version: 0,
             valid_blockchain_version_range: 0..=0,
             future_time_limit: 540,
@@ -637,7 +639,7 @@ impl ConsensusConstants {
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
         vec![ConsensusConstants {
             effective_from_height: 0,
-            coinbase_lock_height: 1,
+            coinbase_min_maturity: 1,
             blockchain_version: 1,
             valid_blockchain_version_range: 0..=0,
             future_time_limit: 540,
@@ -704,7 +706,7 @@ impl ConsensusConstantsBuilder {
     }
 
     pub fn with_coinbase_lockheight(mut self, height: u64) -> Self {
-        self.consensus.coinbase_lock_height = height;
+        self.consensus.coinbase_min_maturity = height;
         self
     }
 

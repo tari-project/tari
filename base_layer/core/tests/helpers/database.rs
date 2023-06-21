@@ -40,7 +40,7 @@ pub async fn create_orphan_block(
     key_manager: &TestKeyManager,
 ) -> Block {
     let mut coinbase_value = consensus.emission_schedule().block_reward(block_height);
-    let lock_height = consensus.consensus_constants(block_height).coinbase_lock_height();
+    let lock_height = consensus.consensus_constants(block_height).coinbase_min_maturity();
     coinbase_value += transactions
         .iter()
         .fold(MicroTari(0), |acc, x| acc + x.body.get_total_fee());

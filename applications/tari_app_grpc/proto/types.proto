@@ -24,7 +24,7 @@ syntax = "proto3";
 package tari.rpc;
 
 /// An unsigned range interface to more accurately represent Rust native Range's
-message Range { 
+message Range {
     uint64 min = 1;
     uint64 max = 2;
 }
@@ -106,68 +106,36 @@ message RangeProof {
 
 /// Consensus Constants response
 message ConsensusConstants {
-    /// The min height maturity a coinbase utxo must have
-    uint64 coinbase_lock_height = 1;
-    /// Current version of the blockchain
+    uint64 coinbase_min_maturity = 1;
     uint32 blockchain_version = 2;
-    /// The Future Time Limit (FTL) of the blockchain in seconds. This is the max allowable timestamp that is excepted.
-    /// We use TxN/20 where T = target time = 60 seconds, and N = block_window = 150
     uint64 future_time_limit = 3;
-
-    /// When doing difficulty adjustments and FTL calculations this is the amount of blocks we look at
     uint64 difficulty_block_window = 5;
-    /// When doing difficulty adjustments, this is the maximum block time allowed
     uint64 difficulty_max_block_interval = 6;
-    /// Maximum transaction weight used for the construction of new blocks.
     uint64 max_block_transaction_weight = 7;
-    /// The amount of PoW algorithms used by the Tari chain.
     uint64 pow_algo_count = 8;
-    /// This is how many blocks we use to count towards the median timestamp to ensure the block chain moves forward
     uint64 median_timestamp_count = 9;
-    /// This is the initial emission curve amount
     uint64 emission_initial = 10;
-    /// This is the emission curve delay
     repeated uint64 emission_decay = 11;
-    /// This is the emission curve tail amount
     uint64 emission_tail = 12;
-    /// This is the initial min difficulty for the difficulty adjustment
     uint64 min_blake_pow_difficulty = 13;
-    /// Block weight for inputs
     uint64 block_weight_inputs = 14;
-    /// Block weight for output
     uint64 block_weight_outputs = 15;
-    /// Block weight for kernels
     uint64 block_weight_kernels = 16;
-    /// This is to keep track of the value inside of the genesis block
     uint64 faucet_value = 17;
-    /// Maximum byte size of TariScript
     uint64 max_script_byte_size = 18;
-    /// How long does it take to timeout validator node registration
     uint64 validator_node_validity_period = 19;
-    /// The height at which these constants become effective
     uint64 effective_from_height = 20;
-    /// Current version of the blockchain
     Range valid_blockchain_version_range = 21;
-    /// This is the maximum age a monero merge mined seed can be reused
     uint64 max_randomx_seed_height = 22;
-    /// This keeps track of the block split targets and which algo is accepted
     map<uint32, PowAlgorithmConstants> proof_of_work = 23;
-    /// Transaction Weight params
     WeightParams transaction_weight = 24;
-    /// Range of valid transaction input versions
     Range input_version_range = 26;
-    /// Range of valid transaction output (and features) versions
     OutputsVersion output_version_range = 27;
-    /// Range of valid transaction kernel versions
     Range kernel_version_range = 28;
-    /// An allowlist of output types
     repeated OutputType permitted_output_types = 29;
-    /// The length of an epoch
     uint64 epoch_length = 30;
-    // The minimum deposit amount for a validator node registration
     uint64 validator_node_registration_min_deposit_amount = 31;
     uint64 validator_node_registration_min_lock_height = 32;
     uint64 validator_node_registration_shuffle_interval_epoch = 33;
-    /// An allowlist of range proof types
     repeated RangeProofType permitted_range_proof_types = 34;
 }

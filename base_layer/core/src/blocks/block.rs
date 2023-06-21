@@ -110,7 +110,7 @@ impl Block {
     ) -> Result<(), BlockValidationError> {
         self.body.check_coinbase_output(
             reward,
-            consensus_constants.coinbase_lock_height(),
+            consensus_constants.coinbase_min_maturity(),
             factories,
             self.header.height,
         )?;

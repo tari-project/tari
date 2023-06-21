@@ -125,7 +125,7 @@ async fn genesis_template(
     let header = BlockHeader::new(consensus_constants.blockchain_version());
     let (utxo, kernel, output) = create_coinbase(
         coinbase_value,
-        consensus_constants.coinbase_lock_height(),
+        consensus_constants.coinbase_min_maturity(),
         Some(b"The big bang".to_vec()),
         key_manager,
     )
@@ -286,7 +286,7 @@ pub async fn chain_block(
     let reward = consensus.get_block_reward_at(height);
     let (coinbase_utxo, coinbase_kernel, _) = create_coinbase(
         reward,
-        consensus.consensus_constants(height).coinbase_lock_height(),
+        consensus.consensus_constants(height).coinbase_min_maturity(),
         None,
         key_manager,
     )
@@ -339,7 +339,7 @@ pub async fn chain_block_with_new_coinbase(
         .fold(MicroTari(0), |acc, x| acc + x.body.get_total_fee());
     let (coinbase_utxo, coinbase_kernel, coinbase_output) = create_coinbase(
         coinbase_value,
-        height + consensus_manager.consensus_constants(height).coinbase_lock_height(),
+        height + consensus_manager.consensus_constants(height).coinbase_min_maturity(),
         extra,
         key_manager,
     )
@@ -392,7 +392,7 @@ pub async fn append_block_with_coinbase<B: BlockchainBackend>(
     coinbase_value += txns.iter().fold(MicroTari(0), |acc, x| acc + x.body.get_total_fee());
     let (coinbase_utxo, coinbase_kernel, coinbase_output) = create_coinbase(
         coinbase_value,
-        height + consensus_manager.consensus_constants(0).coinbase_lock_height(),
+        height + consensus_manager.consensus_constants(0).coinbase_min_maturity(),
         None,
         key_manager,
     )

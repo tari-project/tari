@@ -320,7 +320,7 @@ pub async fn create_coinbase_wallet_output(
         .create_output(
             UtxoTestParams {
                 value: rules.get_block_reward_at(height),
-                features: OutputFeatures::create_coinbase(height + constants.coinbase_lock_height(), extra),
+                features: OutputFeatures::create_coinbase(height + constants.coinbase_min_maturity(), extra),
                 ..Default::default()
             },
             &key_manager,
