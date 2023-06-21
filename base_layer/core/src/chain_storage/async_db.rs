@@ -355,20 +355,13 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
     pub fn insert_pruned_output_via_horizon_sync(
         &mut self,
         output_hash: HashOutput,
-        witness_hash: HashOutput,
         header_hash: HashOutput,
         header_height: u64,
         mmr_position: u32,
         timestamp: u64,
     ) -> &mut Self {
-        self.transaction.insert_pruned_utxo(
-            output_hash,
-            witness_hash,
-            header_hash,
-            header_height,
-            mmr_position,
-            timestamp,
-        );
+        self.transaction
+            .insert_pruned_utxo(output_hash, header_hash, header_height, mmr_position, timestamp);
         self
     }
 

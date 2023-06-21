@@ -54,8 +54,6 @@ use tari_core::{
     KernelMmr,
     KernelMmrHasherBlake256,
     MutableOutputMmr,
-    WitnessMmr,
-    WitnessMmrHasherBlake256,
 };
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_key_manager::key_manager_service::KeyManagerInterface;
@@ -147,7 +145,6 @@ fn print_new_genesis_block_values() {
 
     // Note: An em empty MMR will have a root of `MerkleMountainRange::<D, B>::null_hash()`
     let kernel_mr = KernelMmr::new(Vec::new()).get_merkle_root().unwrap();
-    let witness_mr = WitnessMmr::new(Vec::new()).get_merkle_root().unwrap();
     let output_mr = MutableOutputMmr::new(Vec::new(), Bitmap::create())
         .unwrap()
         .get_merkle_root()
@@ -159,7 +156,6 @@ fn print_new_genesis_block_values() {
     println!();
     println!("header output_mr:           {}", output_mr.to_hex());
     println!("header output_mmr_size:     0");
-    println!("header witness_mr:          {}", witness_mr.to_hex());
     println!("header kernel_mr:           {}", kernel_mr.to_hex());
     println!("header kernel_mmr_size:     0");
     println!("header validator_node_mr:   {}", validator_node_mr.to_hex());
@@ -186,14 +182,12 @@ pub async fn create_genesis_block(
 // Calculate the MMR Merkle roots for the genesis block template and update the header.
 fn update_genesis_block_mmr_roots(template: NewBlockTemplate) -> Result<Block, ChainStorageError> {
     type BaseLayerKernelMutableMmr = MutableMmr<KernelMmrHasherBlake256, Vec<Hash>>;
-    type BaseLayerWitnessMutableMmr = MutableMmr<WitnessMmrHasherBlake256, Vec<Hash>>;
 
     let NewBlockTemplate { header, mut body, .. } = template;
     // Make sure the body components are sorted. If they already are, this is a very cheap call.
     body.sort();
     let kernel_hashes: Vec<Vec<u8>> = body.kernels().iter().map(|k| k.hash().to_vec()).collect();
     let out_hashes: Vec<Vec<u8>> = body.outputs().iter().map(|out| out.hash().to_vec()).collect();
-    let rp_hashes: Vec<Vec<u8>> = body.outputs().iter().map(|out| out.witness_hash().to_vec()).collect();
 
     let mut header = BlockHeader::from(header);
     header.kernel_mr = FixedHash::try_from(
@@ -204,12 +198,6 @@ fn update_genesis_block_mmr_roots(template: NewBlockTemplate) -> Result<Block, C
     .unwrap();
     header.output_mr = FixedHash::try_from(
         MutableOutputMmr::new(out_hashes, Bitmap::create())
-            .unwrap()
-            .get_merkle_root()?,
-    )
-    .unwrap();
-    header.witness_mr = FixedHash::try_from(
-        BaseLayerWitnessMutableMmr::new(rp_hashes, Bitmap::create())
             .unwrap()
             .get_merkle_root()?,
     )

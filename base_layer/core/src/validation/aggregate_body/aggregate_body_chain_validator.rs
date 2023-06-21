@@ -23,6 +23,7 @@
 use std::collections::HashSet;
 
 use log::warn;
+use tari_common_types::types::FixedHash;
 use tari_utilities::hex::Hex;
 
 use crate::{
@@ -119,6 +120,10 @@ fn validate_input_not_pruned<B: BlockchainBackend>(
                     return Err(ValidationError::TransactionInputSpendsPrunedOutput);
                 },
                 PrunedOutput::NotPruned { output } => {
+                    let rp_hash = match output.proof {
+                        Some(proof) => proof.hash(),
+                        None => FixedHash::zero(),
+                    };
                     input.add_output_data(
                         output.version,
                         output.features,
@@ -127,6 +132,8 @@ fn validate_input_not_pruned<B: BlockchainBackend>(
                         output.sender_offset_public_key,
                         output.covenant,
                         output.encrypted_data,
+                        output.metadata_signature,
+                        rp_hash,
                         output.minimum_value_promise,
                     );
                 },

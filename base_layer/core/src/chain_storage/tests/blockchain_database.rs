@@ -66,7 +66,6 @@ async fn create_next_block(
 fn apply_mmr_to_block(db: &BlockchainDatabase<TempDatabase>, block: Block) -> Block {
     let (mut block, mmr_roots) = db.calculate_mmr_roots(block).unwrap();
     block.header.input_mr = mmr_roots.input_mr;
-    block.header.witness_mr = mmr_roots.witness_mr;
     block.header.output_mr = mmr_roots.output_mr;
     block.header.output_mmr_size = mmr_roots.output_mmr_size;
     block.header.kernel_mr = mmr_roots.kernel_mr;

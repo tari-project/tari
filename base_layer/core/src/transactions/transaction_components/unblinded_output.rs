@@ -136,21 +136,23 @@ impl UnblindedOutput {
     ) -> Result<WalletOutput, TransactionError> {
         let spending_key_id = key_manager.import_key(self.spending_key).await?;
         let script_key_id = key_manager.import_key(self.script_private_key).await?;
-        let wallet_output = WalletOutput {
-            version: self.version,
-            value: self.value,
+        let wallet_output = WalletOutput::new(
+            self.version,
+            self.value,
             spending_key_id,
-            features: self.features,
-            script: self.script,
-            covenant: self.covenant,
-            input_data: self.input_data,
+            self.features,
+            self.script,
+            self.input_data,
             script_key_id,
-            sender_offset_public_key: self.sender_offset_public_key,
-            metadata_signature: self.metadata_signature,
-            script_lock_height: self.script_lock_height,
-            encrypted_data: self.encrypted_data,
-            minimum_value_promise: self.minimum_value_promise,
-        };
+            self.sender_offset_public_key,
+            self.metadata_signature,
+            self.script_lock_height,
+            self.covenant,
+            self.encrypted_data,
+            self.minimum_value_promise,
+            key_manager,
+        )
+        .await?;
         Ok(wallet_output)
     }
 

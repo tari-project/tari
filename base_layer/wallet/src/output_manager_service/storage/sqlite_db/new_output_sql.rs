@@ -42,6 +42,7 @@ use crate::{
 pub struct NewOutputSql {
     pub commitment: Vec<u8>,
     pub spending_key: String,
+    pub rangeproof: Option<Vec<u8>>,
     pub value: i64,
     pub output_type: i32,
     pub maturity: i64,
@@ -80,6 +81,7 @@ impl NewOutputSql {
         let output = Self {
             commitment: output.commitment.to_vec(),
             spending_key: output.wallet_output.spending_key_id.to_string(),
+            rangeproof: output.wallet_output.rangeproof.map(|proof| proof.to_vec()),
             value: output.wallet_output.value.as_u64() as i64,
             output_type: i32::from(output.wallet_output.features.output_type.as_byte()),
             maturity: output.wallet_output.features.maturity as i64,

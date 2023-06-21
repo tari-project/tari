@@ -121,7 +121,10 @@ impl TestTransactionBuilder {
             .sign_as_sender_and_receiver(key_manager, &self.keys.sender_offset_key_id.clone())
             .await
             .expect("sign as sender and receiver");
-        let wallet_output = builder.try_build().expect("Get output from wallet output");
+        let wallet_output = builder
+            .try_build(key_manager)
+            .await
+            .expect("Get output from wallet output");
         let utxo = wallet_output
             .as_transaction_output(key_manager)
             .await

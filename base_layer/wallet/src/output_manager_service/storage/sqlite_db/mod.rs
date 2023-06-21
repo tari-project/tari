@@ -906,6 +906,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 UpdateOutput {
                     metadata_signature_ephemeral_pubkey: Some(output.metadata_signature.ephemeral_pubkey().to_vec()),
                     metadata_signature_u_y: Some(output.metadata_signature.u_y().to_vec()),
+                    hash: Some(output.hash().to_vec()),
                     ..Default::default()
                 },
                 conn,
@@ -1126,6 +1127,7 @@ fn update_outputs_with_tx_id_and_status_to_new_status(
 #[derive(Clone, Default)]
 pub struct UpdateOutput {
     status: Option<OutputStatus>,
+    hash: Option<Vec<u8>>,
     received_in_tx_id: Option<Option<TxId>>,
     spent_in_tx_id: Option<Option<TxId>>,
     metadata_signature_ephemeral_commitment: Option<Vec<u8>>,
@@ -1142,6 +1144,7 @@ pub struct UpdateOutput {
 #[diesel(table_name = outputs)]
 pub struct UpdateOutputSql {
     status: Option<i32>,
+    hash: Option<Vec<u8>>,
     received_in_tx_id: Option<Option<i64>>,
     spent_in_tx_id: Option<Option<i64>>,
     metadata_signature_ephemeral_commitment: Option<Vec<u8>>,
@@ -1159,6 +1162,7 @@ impl From<UpdateOutput> for UpdateOutputSql {
     fn from(u: UpdateOutput) -> Self {
         Self {
             status: u.status.map(|t| t as i32),
+            hash: u.hash,
             metadata_signature_ephemeral_commitment: u.metadata_signature_ephemeral_commitment,
             metadata_signature_ephemeral_pubkey: u.metadata_signature_ephemeral_pubkey,
             metadata_signature_u_a: u.metadata_signature_u_a,

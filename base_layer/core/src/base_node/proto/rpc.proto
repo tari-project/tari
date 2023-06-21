@@ -83,7 +83,6 @@ message SyncUtxo {
 
 message PrunedOutput {
   bytes hash = 1;
-  bytes witness_hash = 2;
 }
 
 message SyncUtxosByBlockRequest {

@@ -86,6 +86,7 @@ diesel::table! {
     outputs (id) {
         id -> Integer,
         commitment -> Binary,
+        rangeproof -> Nullable<Binary>,
         spending_key -> Text,
         value -> BigInt,
         output_type -> Integer,

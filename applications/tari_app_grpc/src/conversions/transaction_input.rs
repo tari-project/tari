@@ -70,7 +70,15 @@ impl TryFrom<grpc::TransactionInput> for TransactionInput {
 
             let encrypted_data = EncryptedData::from_bytes(&input.encrypted_data).map_err(|err| err.to_string())?;
             let minimum_value_promise = input.minimum_value_promise.into();
-
+            let metadata_signature = input
+                .metadata_signature
+                .ok_or_else(|| "Metadata signature not provided".to_string())?
+                .try_into()
+                .map_err(|_| "Metadata signature could not be converted".to_string())?;
+            let rangeproof_hash = input
+                .rangeproof_hash
+                .try_into()
+                .map_err(|_| "Invalid rangeproof hash")?;
             Ok(TransactionInput::new_with_output_data(
                 TransactionInputVersion::try_from(
                     u8::try_from(input.version).map_err(|_| "Invalid version: overflowed u8")?,
@@ -83,6 +91,8 @@ impl TryFrom<grpc::TransactionInput> for TransactionInput {
                 sender_offset_public_key,
                 Covenant::borsh_from_bytes(&mut input.covenant.as_bytes()).map_err(|err| err.to_string())?,
                 encrypted_data,
+                metadata_signature,
+                rangeproof_hash,
                 minimum_value_promise,
             ))
         }
@@ -111,7 +121,10 @@ impl TryFrom<TransactionInput> for grpc::TransactionInput {
             let features = input
                 .features()
                 .map_err(|_| "Non-compact Transaction input should contain features".to_string())?;
-
+            let metadata_signature = input
+                .metadata_signature()
+                .map_err(|_| "Non-compact Transaction input should contain a metadata_signature".to_string())?
+                .clone();
             Ok(Self {
                 features: Some(features.clone().into()),
                 commitment: input
@@ -141,6 +154,17 @@ impl TryFrom<TransactionInput> for grpc::TransactionInput {
                     .encrypted_data()
                     .map_err(|_| "Non-compact Transaction input should contain encrypted value".to_string())?
                     .to_byte_vec(),
+                metadata_signature: Some(grpc::ComAndPubSignature {
+                    ephemeral_commitment: Vec::from(metadata_signature.ephemeral_commitment().as_bytes()),
+                    ephemeral_pubkey: Vec::from(metadata_signature.ephemeral_pubkey().as_bytes()),
+                    u_a: Vec::from(metadata_signature.u_a().as_bytes()),
+                    u_x: Vec::from(metadata_signature.u_x().as_bytes()),
+                    u_y: Vec::from(metadata_signature.u_y().as_bytes()),
+                }),
+                rangeproof_hash: input
+                    .rangeproof_hash()
+                    .map_err(|_| "Non-compact Transaction input should contain a rangeproof hash".to_string())?
+                    .to_vec(),
                 minimum_value_promise: input
                     .minimum_value_promise()
                     .map_err(|_| "Non-compact Transaction input should contain the minimum value promise".to_string())?

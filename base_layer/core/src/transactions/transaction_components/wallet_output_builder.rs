@@ -165,7 +165,7 @@ impl WalletOutputBuilder {
             &self.features,
             &self.covenant,
             &self.encrypted_data,
-            self.minimum_value_promise,
+            &self.minimum_value_promise,
         );
         let metadata_signature = key_manager
             .get_metadata_signature(
@@ -184,7 +184,10 @@ impl WalletOutputBuilder {
         Ok(self)
     }
 
-    pub fn try_build(self) -> Result<WalletOutput, TransactionError> {
+    pub async fn try_build<KM: TransactionKeyManagerInterface>(
+        self,
+        key_manager: &KM,
+    ) -> Result<WalletOutput, TransactionError> {
         if !self.metadata_signed_by_receiver {
             return Err(TransactionError::ValidationError(
                 "Cannot build output because it has not been signed by the receiver".to_string(),
@@ -214,7 +217,9 @@ impl WalletOutputBuilder {
             self.covenant,
             self.encrypted_data,
             self.minimum_value_promise,
-        );
+            key_manager,
+        )
+        .await?;
         Ok(ub)
     }
 }
@@ -236,13 +241,13 @@ mod test {
         let value = MicroTari(100);
         let kmob = WalletOutputBuilder::new(value, spending_key_id.clone());
         let kmob = kmob.with_script(TariScript::new(vec![]));
-        assert!(kmob.clone().try_build().is_err());
+        assert!(kmob.clone().try_build(&key_manager).await.is_err());
         let (sender_offset_private_key_id, sender_offset_public_key) = key_manager
             .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
             .await
             .unwrap();
         let kmob = kmob.with_sender_offset_public_key(sender_offset_public_key);
-        assert!(kmob.clone().try_build().is_err());
+        assert!(kmob.clone().try_build(&key_manager).await.is_err());
         let kmob = kmob.with_input_data(ExecutionStack::new(vec![]));
         let kmob = kmob.with_script_key(script_key_id);
         let kmob = kmob.with_features(OutputFeatures::default());
@@ -253,7 +258,7 @@ mod test {
             .sign_as_sender_and_receiver(&key_manager, &sender_offset_private_key_id)
             .await
             .unwrap();
-        match kmob.clone().try_build() {
+        match kmob.clone().try_build(&key_manager).await {
             Ok(val) => {
                 let output = val.as_transaction_output(&key_manager).await.unwrap();
                 assert!(output.verify_metadata_signature().is_ok());
@@ -295,7 +300,7 @@ mod test {
             .sign_as_sender_and_receiver(&key_manager, &sender_offset_private_key_id)
             .await
             .unwrap();
-        match kmob.clone().try_build() {
+        match kmob.clone().try_build(&key_manager).await {
             Ok(wallet_output) => {
                 let mut output = wallet_output.as_transaction_output(&key_manager).await.unwrap();
                 assert!(output.verify_metadata_signature().is_ok());

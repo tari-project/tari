@@ -42,8 +42,6 @@ message BlockHeader {
     // This is the UTXO merkle root of the outputs
     // This is calculated as Hash (txo MMR root  || roaring bitmap hash of UTXO indices)
     bytes output_mr = 6;
-    // This is the MMR root of the the output witness data
-    bytes witness_mr = 7;
     // This is the MMR root of the kernels
     bytes kernel_mr = 8;
     // This is the Merkle root of the inputs in this block

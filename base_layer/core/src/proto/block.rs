@@ -83,18 +83,12 @@ impl TryFrom<proto::HistoricalBlock> for HistoricalBlock {
             .into_iter()
             .map(|hash| hash.try_into().map_err(|_| "Malformed pruned hash".to_string()))
             .collect::<Result<_, _>>()?;
-        let witness_hashes: Vec<FixedHash> = historical_block
-            .pruned_witness_hash
-            .into_iter()
-            .map(|hash| hash.try_into().map_err(|_| "Malformed witness hash".to_string()))
-            .collect::<Result<_, _>>()?;
-        let pruned = output_hashes.into_iter().zip(witness_hashes).collect();
 
         Ok(HistoricalBlock::new(
             block,
             historical_block.confirmations,
             accumulated_data,
-            pruned,
+            output_hashes,
             historical_block.pruned_input_count,
         ))
     }
@@ -104,15 +98,13 @@ impl TryFrom<HistoricalBlock> for proto::HistoricalBlock {
     type Error = String;
 
     fn try_from(block: HistoricalBlock) -> Result<Self, Self::Error> {
-        let pruned_output_hashes = block.pruned_outputs().iter().map(|x| x.0.to_vec()).collect();
-        let pruned_witness_hash = block.pruned_outputs().iter().map(|x| x.1.to_vec()).collect();
+        let pruned_output_hashes = block.pruned_outputs().iter().map(|x| x.to_vec()).collect();
         let (block, accumulated_data, confirmations, pruned_input_count) = block.dissolve();
         Ok(Self {
             confirmations,
             accumulated_data: Some(accumulated_data.into()),
             block: Some(block.try_into()?),
             pruned_output_hashes,
-            pruned_witness_hash,
             pruned_input_count,
         })
     }
@@ -139,10 +131,7 @@ impl TryFrom<proto::BlockHeaderAccumulatedData> for BlockHeaderAccumulatedData {
         let mut acc_diff = [0; 16];
         acc_diff.copy_from_slice(&source.total_accumulated_difficulty[0..16]);
         let accumulated_difficulty = u128::from_le_bytes(acc_diff);
-        let hash = source
-            .hash
-            .try_into()
-            .map_err(|_| "Malformed witness hash".to_string())?;
+        let hash = source.hash.try_into().map_err(|_| "Malformed hash".to_string())?;
         Ok(Self {
             hash,
             achieved_difficulty: source.achieved_difficulty.into(),

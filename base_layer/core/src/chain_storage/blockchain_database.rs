@@ -99,7 +99,6 @@ use crate::{
     MutablePrunedOutputMmr,
     PrunedInputMmr,
     PrunedKernelMmr,
-    PrunedWitnessMmr,
     ValidatorNodeBMT,
 };
 
@@ -819,7 +818,6 @@ where B: BlockchainBackend
         block.header.kernel_mmr_size = roots.kernel_mmr_size;
         block.header.input_mr = roots.input_mr;
         block.header.output_mr = roots.output_mr;
-        block.header.witness_mr = roots.witness_mr;
         block.header.output_mmr_size = roots.output_mmr_size;
         block.header.validator_node_mr = roots.validator_node_mr;
         Ok(block)
@@ -1236,7 +1234,6 @@ pub struct MmrRoots {
     pub kernel_mmr_size: u64,
     pub input_mr: FixedHash,
     pub output_mr: FixedHash,
-    pub witness_mr: FixedHash,
     pub output_mmr_size: u64,
     pub validator_node_mr: FixedHash,
 }
@@ -1245,7 +1242,6 @@ impl std::fmt::Display for MmrRoots {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "MMR Roots")?;
         writeln!(f, "Input MR        : {}", self.input_mr)?;
-        writeln!(f, "Witness MR      : {}", self.witness_mr)?;
         writeln!(f, "Kernel MR       : {}", self.kernel_mr)?;
         writeln!(f, "Kernel MMR Size : {}", self.kernel_mmr_size)?;
         writeln!(f, "Output MR       : {}", self.output_mr)?;
@@ -1277,12 +1273,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
     }
     let deleted = db.fetch_deleted_bitmap()?.into_bitmap();
 
-    let BlockAccumulatedData {
-        kernels,
-        outputs,
-        witness: range_proofs,
-        ..
-    } = db
+    let BlockAccumulatedData { kernels, outputs, .. } = db
         .fetch_block_accumulated_data(&header.prev_hash)?
         .ok_or_else(|| ChainStorageError::ValueNotFound {
             entity: "BlockAccumulatedData",
@@ -1292,7 +1283,6 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
 
     let mut kernel_mmr = PrunedKernelMmr::new(kernels);
     let mut output_mmr = MutablePrunedOutputMmr::new(outputs, deleted)?;
-    let mut witness_mmr = PrunedWitnessMmr::new(range_proofs);
     let mut input_mmr = PrunedInputMmr::new(PrunedHashSet::default());
     let mut deleted_outputs = Vec::new();
 
@@ -1303,7 +1293,6 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
     for output in body.outputs().iter() {
         let output_hash = output.hash().to_vec();
         output_mmr.push(output_hash.clone())?;
-        witness_mmr.push(output.witness_hash().to_vec())?;
         if output.is_burned() {
             let index = output_mmr
                 .find_leaf_index(&output_hash)?
@@ -1378,7 +1367,6 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
         input_mr: FixedHash::try_from(input_mmr.get_merkle_root()?)?,
         output_mr: FixedHash::try_from(output_mmr.get_merkle_root()?)?,
         output_mmr_size: output_mmr.get_leaf_count() as u64,
-        witness_mr: FixedHash::try_from(witness_mmr.get_merkle_root()?)?,
         validator_node_mr,
     };
     Ok(mmr_roots)
@@ -1593,6 +1581,10 @@ fn fetch_block<T: BlockchainBackend>(db: &T, height: u64, compact: bool) -> Resu
             match utxo_mined_info.output {
                 PrunedOutput::Pruned { .. } => Ok(compact_input),
                 PrunedOutput::NotPruned { output } => {
+                    let rp_hash = match output.proof {
+                        Some(proof) => proof.hash(),
+                        None => FixedHash::zero(),
+                    };
                     compact_input.add_output_data(
                         output.version,
                         output.features,
@@ -1601,6 +1593,8 @@ fn fetch_block<T: BlockchainBackend>(db: &T, height: u64, compact: bool) -> Resu
                         output.sender_offset_public_key,
                         output.covenant,
                         output.encrypted_data,
+                        output.metadata_signature,
+                        rp_hash,
                         output.minimum_value_promise,
                     );
                     Ok(compact_input)
@@ -1613,11 +1607,8 @@ fn fetch_block<T: BlockchainBackend>(db: &T, height: u64, compact: bool) -> Resu
     let mut pruned = vec![];
     for output in outputs {
         match output {
-            PrunedOutput::Pruned {
-                output_hash,
-                witness_hash,
-            } => {
-                pruned.push((output_hash, witness_hash));
+            PrunedOutput::Pruned { output_hash } => {
+                pruned.push(output_hash);
             },
             PrunedOutput::NotPruned { output } => unpruned.push(output),
         }

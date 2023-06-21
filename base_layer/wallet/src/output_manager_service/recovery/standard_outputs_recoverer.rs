@@ -93,7 +93,7 @@ where
                     .await?;
                 (inputs!(public_key), key)
             };
-            let uo = WalletOutput::new(
+            let uo = WalletOutput::new_with_rangeproof(
                 output.version,
                 committed_value,
                 spending_key,
@@ -107,6 +107,7 @@ where
                 output.covenant,
                 output.encrypted_data,
                 output.minimum_value_promise,
+                output.proof.clone(),
             );
 
             rewound_outputs.push(uo);

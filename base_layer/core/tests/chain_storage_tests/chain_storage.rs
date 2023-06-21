@@ -2084,7 +2084,7 @@ mod malleability {
 
         #[test]
         fn test_proof() {
-            check_witness_malleability(|block: &mut Block| {
+            check_output_malleability(|block: &mut Block| {
                 let output = &mut block.body.outputs_mut()[0];
                 let mod_proof = RangeProof::from_hex(&(output.proof.as_ref().unwrap().to_hex() + "00")).unwrap();
                 output.proof = Some(mod_proof);
@@ -2117,7 +2117,7 @@ mod malleability {
 
         #[test]
         fn test_metadata_signature() {
-            check_witness_malleability(|block: &mut Block| {
+            check_output_malleability(|block: &mut Block| {
                 let output = &mut block.body.outputs_mut()[0];
                 output.metadata_signature = ComAndPubSignature::default();
             });

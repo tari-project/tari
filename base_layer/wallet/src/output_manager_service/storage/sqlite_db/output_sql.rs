@@ -33,11 +33,11 @@ use log::*;
 use tari_common_sqlite::util::diesel_ext::ExpectedRowsExtension;
 use tari_common_types::{
     transaction::TxId,
-    types::{ComAndPubSignature, Commitment, FixedHash, PrivateKey, PublicKey},
+    types::{ComAndPubSignature, Commitment, FixedHash, PrivateKey, PublicKey, RangeProof},
 };
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction_components::{EncryptedData, OutputFeatures, OutputType, WalletOutput},
+    transaction_components::{EncryptedData, OutputFeatures, OutputType, TransactionOutputVersion, WalletOutput},
 };
 use tari_crypto::tari_utilities::ByteArray;
 use tari_key_manager::key_manager_service::KeyId;
@@ -68,6 +68,7 @@ const LOG_TARGET: &str = "wallet::output_manager_service::database::wallet";
 pub struct OutputSql {
     pub id: i32, // Auto inc primary key
     pub commitment: Vec<u8>,
+    pub rangeproof: Option<Vec<u8>>,
     pub spending_key: String,
     pub value: i64,
     pub output_type: i32,
@@ -651,7 +652,8 @@ impl OutputSql {
         })?;
 
         let encrypted_data = EncryptedData::from_bytes(&self.encrypted_data)?;
-        let wallet_output = WalletOutput::new_current_version(
+        let wallet_output = WalletOutput::new_with_rangeproof(
+            TransactionOutputVersion::get_current_version(),
             MicroTari::from(self.value as u64),
             KeyId::from_str(&self.spending_key).map_err(|e| {
                 error!(
@@ -734,6 +736,10 @@ impl OutputSql {
             covenant,
             encrypted_data,
             MicroTari::from(self.minimum_value_promise as u64),
+            match self.rangeproof {
+                Some(bytes) => Some(RangeProof::from_bytes(&bytes)?),
+                None => None,
+            },
         );
 
         let commitment = Commitment::from_vec(&self.commitment)?;

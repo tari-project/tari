@@ -82,6 +82,10 @@ message TransactionInput {
     bytes encrypted_data = 12;
     // The minimum value of the commitment that is proven by the range proof (in MicroTari)
     uint64 minimum_value_promise = 13;
+    // The metadata signature for output this input is spending
+    ComAndPubSignature metadata_signature = 14;
+    // The rangeproof hash for output this input is spending
+    bytes rangeproof_hash = 15;
 }
 
 // Output for a transaction, defining the new ownership of coins that are being transferred. The commitment is a

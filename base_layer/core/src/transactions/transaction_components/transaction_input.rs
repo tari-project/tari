@@ -115,6 +115,8 @@ impl TransactionInput {
         sender_offset_public_key: PublicKey,
         covenant: Covenant,
         encrypted_data: EncryptedData,
+        metadata_signature: ComAndPubSignature,
+        rangeproof_hash: FixedHash,
         minimum_value_promise: MicroTari,
     ) -> TransactionInput {
         TransactionInput::new(
@@ -127,6 +129,8 @@ impl TransactionInput {
                 covenant,
                 version: TransactionOutputVersion::get_current_version(),
                 encrypted_data,
+                metadata_signature,
+                rangeproof_hash,
                 minimum_value_promise,
             },
             input_data,
@@ -144,6 +148,8 @@ impl TransactionInput {
         sender_offset_public_key: PublicKey,
         covenant: Covenant,
         encrypted_data: EncryptedData,
+        metadata_signature: ComAndPubSignature,
+        rangeproof_hash: FixedHash,
         minimum_value_promise: MicroTari,
     ) {
         self.spent_output = SpentOutput::OutputData {
@@ -154,6 +160,8 @@ impl TransactionInput {
             sender_offset_public_key,
             covenant,
             encrypted_data,
+            metadata_signature,
+            rangeproof_hash,
             minimum_value_promise,
         };
     }
@@ -273,6 +281,24 @@ impl TransactionInput {
         }
     }
 
+    pub fn metadata_signature(&self) -> Result<&ComAndPubSignature, TransactionError> {
+        match self.spent_output {
+            SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
+            SpentOutput::OutputData {
+                ref metadata_signature, ..
+            } => Ok(metadata_signature),
+        }
+    }
+
+    pub fn rangeproof_hash(&self) -> Result<&FixedHash, TransactionError> {
+        match self.spent_output {
+            SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
+            SpentOutput::OutputData {
+                ref rangeproof_hash, ..
+            } => Ok(rangeproof_hash),
+        }
+    }
+
     pub fn minimum_value_promise(&self) -> Result<&MicroTari, TransactionError> {
         match self.spent_output {
             SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
@@ -380,6 +406,8 @@ impl TransactionInput {
                 covenant,
                 encrypted_data,
                 sender_offset_public_key,
+                metadata_signature,
+                rangeproof_hash,
                 minimum_value_promise,
                 ..
             } => transaction_components::hash_output(
@@ -390,6 +418,8 @@ impl TransactionInput {
                 covenant,
                 encrypted_data,
                 sender_offset_public_key,
+                metadata_signature,
+                rangeproof_hash,
                 *minimum_value_promise,
             ),
         }
@@ -503,6 +533,8 @@ pub enum SpentOutput {
         /// The transaction covenant
         covenant: Covenant,
         encrypted_data: EncryptedData,
+        metadata_signature: ComAndPubSignature,
+        rangeproof_hash: FixedHash,
         minimum_value_promise: MicroTari,
     },
 }

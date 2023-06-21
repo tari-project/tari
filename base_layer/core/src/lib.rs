@@ -85,15 +85,6 @@ mod domain_hashing {
     pub type PrunedKernelMmr = MerkleMountainRange<KernelMmrHasherBlake256, PrunedHashSet>;
 
     hash_domain!(
-        WitnessMmrHashDomain,
-        "com.tari.tari_project.base_layer.core.witness_mmr",
-        1
-    );
-    pub type WitnessMmrHasherBlake256 = DomainSeparatedHasher<Blake256, WitnessMmrHashDomain>;
-    pub type WitnessMmr = MerkleMountainRange<WitnessMmrHasherBlake256, Vec<Hash>>;
-    pub type PrunedWitnessMmr = MerkleMountainRange<WitnessMmrHasherBlake256, PrunedHashSet>;
-
-    hash_domain!(
         OutputMmrHashDomain,
         "com.tari.tari_project.base_layer.core.output_mmr",
         1

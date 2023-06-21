@@ -2084,7 +2084,10 @@ async fn scan_for_recovery_test() {
             Covenant::new(),
             encrypted_data,
             MicroTari::zero(),
-        );
+            &oms.key_manager_handle,
+        )
+        .await
+        .unwrap();
         recoverable_wallet_outputs.push(uo);
     }
 

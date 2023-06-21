@@ -196,6 +196,10 @@ impl TransactionOutput {
     }
 
     pub fn hash(&self) -> FixedHash {
+        let rp_hash = match &self.proof {
+            Some(rp) => rp.hash(),
+            None => FixedHash::zero(),
+        };
         transaction_components::hash_output(
             self.version,
             &self.features,
@@ -204,6 +208,8 @@ impl TransactionOutput {
             &self.covenant,
             &self.encrypted_data,
             &self.sender_offset_public_key,
+            &self.metadata_signature,
+            &rp_hash,
             self.minimum_value_promise,
         )
     }
@@ -373,7 +379,7 @@ impl TransactionOutput {
             features,
             covenant,
             encrypted_data,
-            minimum_value_promise,
+            &minimum_value_promise,
         );
         TransactionOutput::finalize_metadata_signature_challenge(
             version,
@@ -407,16 +413,14 @@ impl TransactionOutput {
     /// Convenience function to get the entire metadata signature message for the challenge. This contains all data
     /// outside of the signing keys and nonces.
     pub fn metadata_signature_message(wallet_output: &WalletOutput) -> [u8; 32] {
-        let common = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("metadata_message")
-            .chain(&wallet_output.version)
-            .chain(&wallet_output.script)
-            .chain(&wallet_output.features)
-            .chain(&wallet_output.covenant)
-            .chain(&wallet_output.encrypted_data)
-            .chain(&wallet_output.minimum_value_promise);
-        match wallet_output.version {
-            TransactionOutputVersion::V0 | TransactionOutputVersion::V1 => common.finalize(),
-        }
+        TransactionOutput::metadata_signature_message_from_parts(
+            &wallet_output.version,
+            &wallet_output.script,
+            &wallet_output.features,
+            &wallet_output.covenant,
+            &wallet_output.encrypted_data,
+            &wallet_output.minimum_value_promise,
+        )
     }
 
     /// Convenience function to create the entire metadata signature message for the challenge. This contains all data
@@ -427,32 +431,18 @@ impl TransactionOutput {
         features: &OutputFeatures,
         covenant: &Covenant,
         encrypted_data: &EncryptedData,
-        minimum_value_promise: MicroTari,
+        minimum_value_promise: &MicroTari,
     ) -> [u8; 32] {
-        TransactionOutput::metadata_signature_message(&WalletOutput {
-            version: *version,
-            script: script.clone(),
-            features: features.clone(),
-            covenant: covenant.clone(),
-            encrypted_data: *encrypted_data,
-            minimum_value_promise,
-            // These fields are not used for the message
-            value: Default::default(),
-            input_data: Default::default(),
-            script_key_id: Default::default(),
-            sender_offset_public_key: Default::default(),
-            metadata_signature: Default::default(),
-            script_lock_height: u64::default(),
-            spending_key_id: Default::default(),
-        })
-    }
-
-    pub fn witness_hash(&self) -> FixedHash {
-        DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("transaction_output_witness")
-            .chain(&self.proof)
-            .chain(&self.metadata_signature)
-            .finalize()
-            .into()
+        let common = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("metadata_message")
+            .chain(version)
+            .chain(script)
+            .chain(features)
+            .chain(covenant)
+            .chain(encrypted_data)
+            .chain(minimum_value_promise);
+        match version {
+            TransactionOutputVersion::V0 | TransactionOutputVersion::V1 => common.finalize(),
+        }
     }
 
     pub fn get_features_and_scripts_size(&self) -> usize {

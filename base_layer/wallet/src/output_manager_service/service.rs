@@ -712,7 +712,7 @@ where
             &single_round_sender_data.features.clone(),
             &single_round_sender_data.covenant,
             &encrypted_data,
-            minimum_value_promise,
+            &minimum_value_promise,
         );
         let metadata_signature = self
             .resources
@@ -743,7 +743,9 @@ where
             single_round_sender_data.covenant.clone(),
             encrypted_data,
             minimum_value_promise,
-        );
+            &self.resources.key_manager,
+        )
+        .await?;
         let output = DbWalletOutput::from_wallet_output(
             key_kanager_output.clone(),
             &self.resources.key_manager,
@@ -1083,7 +1085,7 @@ where
                 .sign_as_sender_and_receiver(&self.resources.key_manager, &sender_offset_key_id)
                 .await?;
 
-            let ub = wallet_output.try_build()?;
+            let ub = wallet_output.try_build(&self.resources.key_manager).await?;
             builder
                 .with_output(ub.clone(), sender_offset_key_id.clone())
                 .await
@@ -1879,7 +1881,7 @@ where
             &output_features,
             &covenant,
             &encrypted_data,
-            minimum_value_promise,
+            &minimum_value_promise,
         );
         let (sender_offset_key_id, sender_offset_public_key) = self
             .resources
@@ -1913,7 +1915,9 @@ where
                 covenant,
                 encrypted_data,
                 minimum_value_promise,
-            ),
+                &self.resources.key_manager,
+            )
+            .await?,
             &self.resources.key_manager,
             None,
             OutputSource::default(),
@@ -2095,7 +2099,9 @@ where
                     output.covenant,
                     output.encrypted_data,
                     output.minimum_value_promise,
-                );
+                    &self.resources.key_manager,
+                )
+                .await?;
 
                 let message = "SHA-XTR atomic swap".to_string();
 
@@ -2375,7 +2381,7 @@ where
                     committed_value.into(),
                 )? {
                     let spending_key_id = self.resources.key_manager.import_key(spending_key).await?;
-                    let rewound_output = WalletOutput::new(
+                    let rewound_output = WalletOutput::new_with_rangeproof(
                         output.version,
                         committed_value,
                         spending_key_id,
@@ -2389,6 +2395,7 @@ where
                         output.covenant,
                         output.encrypted_data,
                         output.minimum_value_promise,
+                        output.proof,
                     );
 
                     let tx_id = TxId::new_random();

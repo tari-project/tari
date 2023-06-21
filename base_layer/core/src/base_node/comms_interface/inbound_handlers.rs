@@ -28,7 +28,7 @@ use std::{
 
 use log::*;
 use strum_macros::Display;
-use tari_common_types::types::{BlockHash, HashOutput};
+use tari_common_types::types::{BlockHash, FixedHash, HashOutput};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
 use tari_utilities::hex::Hex;
 use tokio::sync::Semaphore;
@@ -777,6 +777,10 @@ where B: BlockchainBackend + 'static
                     });
                 },
                 PrunedOutput::NotPruned { output } => {
+                    let rp_hash = match output.proof {
+                        Some(proof) => proof.hash(),
+                        None => FixedHash::zero(),
+                    };
                     input.add_output_data(
                         output.version,
                         output.features,
@@ -785,6 +789,8 @@ where B: BlockchainBackend + 'static
                         output.sender_offset_public_key,
                         output.covenant,
                         output.encrypted_data,
+                        output.metadata_signature,
+                        rp_hash,
                         output.minimum_value_promise,
                     );
                 },

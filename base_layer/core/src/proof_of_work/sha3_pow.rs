@@ -96,8 +96,8 @@ pub mod test {
     #[test]
     fn validate_max_target() {
         let mut header = get_header();
-        header.nonce = 14;
+        header.nonce = 6;
         println!("{:?}", header);
-        assert_eq!(sha3x_difficulty(&header), Difficulty::from(6));
+        assert_eq!(sha3x_difficulty(&header), Difficulty::from(899));
     }
 }

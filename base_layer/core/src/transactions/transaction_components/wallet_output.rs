@@ -29,7 +29,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{ComAndPubSignature, Commitment, FixedHash, PublicKey};
+use tari_common_types::types::{ComAndPubSignature, Commitment, FixedHash, PublicKey, RangeProof};
 use tari_script::{ExecutionStack, TariScript};
 
 use super::TransactionOutputVersion;
@@ -72,13 +72,14 @@ pub struct WalletOutput {
     pub script_lock_height: u64,
     pub encrypted_data: EncryptedData,
     pub minimum_value_promise: MicroTari,
+    pub rangeproof: Option<RangeProof>,
 }
 
 impl WalletOutput {
     /// Creates a new wallet output
 
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
+    pub async fn new<KM: TransactionKeyManagerInterface>(
         version: TransactionOutputVersion,
         value: MicroTari,
         spending_key_id: TariKeyId,
@@ -92,6 +93,51 @@ impl WalletOutput {
         covenant: Covenant,
         encrypted_data: EncryptedData,
         minimum_value_promise: MicroTari,
+        key_manager: &KM,
+    ) -> Result<Self, TransactionError> {
+        let rangeproof = if features.range_proof_type == RangeProofType::BulletProofPlus {
+            Some(
+                key_manager
+                    .construct_range_proof(&spending_key_id, value.into(), minimum_value_promise.into())
+                    .await?,
+            )
+        } else {
+            None
+        };
+        Ok(Self {
+            version,
+            value,
+            spending_key_id,
+            features,
+            script,
+            input_data,
+            script_key_id,
+            sender_offset_public_key,
+            metadata_signature,
+            script_lock_height,
+            covenant,
+            encrypted_data,
+            minimum_value_promise,
+            rangeproof,
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_rangeproof(
+        version: TransactionOutputVersion,
+        value: MicroTari,
+        spending_key_id: TariKeyId,
+        features: OutputFeatures,
+        script: TariScript,
+        input_data: ExecutionStack,
+        script_key_id: TariKeyId,
+        sender_offset_public_key: PublicKey,
+        metadata_signature: ComAndPubSignature,
+        script_lock_height: u64,
+        covenant: Covenant,
+        encrypted_data: EncryptedData,
+        minimum_value_promise: MicroTari,
+        rangeproof: Option<RangeProof>,
     ) -> Self {
         Self {
             version,
@@ -107,10 +153,11 @@ impl WalletOutput {
             covenant,
             encrypted_data,
             minimum_value_promise,
+            rangeproof,
         }
     }
 
-    pub fn new_current_version(
+    pub async fn new_current_version<KM: TransactionKeyManagerInterface>(
         value: MicroTari,
         spending_key_id: TariKeyId,
         features: OutputFeatures,
@@ -123,7 +170,8 @@ impl WalletOutput {
         covenant: Covenant,
         encrypted_data: EncryptedData,
         minimum_value_promise: MicroTari,
-    ) -> Self {
+        key_manager: &KM,
+    ) -> Result<Self, TransactionError> {
         Self::new(
             TransactionOutputVersion::get_current_version(),
             value,
@@ -138,7 +186,9 @@ impl WalletOutput {
             covenant,
             encrypted_data,
             minimum_value_promise,
+            key_manager,
         )
+        .await
     }
 
     /// Commits an KeyManagerOutput into a Transaction input
@@ -148,6 +198,10 @@ impl WalletOutput {
     ) -> Result<TransactionInput, TransactionError> {
         let value = self.value.into();
         let commitment = key_manager.get_commitment(&self.spending_key_id, &value).await?;
+        let rangeproof_hash = match &self.rangeproof {
+            Some(rp) => rp.hash(),
+            None => FixedHash::zero(),
+        };
         let version = TransactionInputVersion::get_current_version();
         let script_message = TransactionInput::build_script_signature_message(&version, &self.script, &self.input_data);
         let script_signature = key_manager
@@ -169,6 +223,8 @@ impl WalletOutput {
                 covenant: self.covenant.clone(),
                 version: self.version,
                 encrypted_data: self.encrypted_data,
+                metadata_signature: self.metadata_signature.clone(),
+                rangeproof_hash,
                 minimum_value_promise: self.minimum_value_promise,
             },
             self.input_data.clone(),
@@ -203,25 +259,12 @@ impl WalletOutput {
         }
         let value = self.value.into();
         let commitment = key_manager.get_commitment(&self.spending_key_id, &value).await?;
-        let proof = if self.features.range_proof_type == RangeProofType::BulletProofPlus {
-            Some(
-                key_manager
-                    .construct_range_proof(
-                        &self.spending_key_id,
-                        self.value.into(),
-                        self.minimum_value_promise.into(),
-                    )
-                    .await?,
-            )
-        } else {
-            None
-        };
 
         let output = TransactionOutput::new(
             self.version,
             self.features.clone(),
             commitment,
-            proof,
+            self.rangeproof.clone(),
             self.script.clone(),
             self.sender_offset_public_key.clone(),
             self.metadata_signature.clone(),
@@ -243,14 +286,21 @@ impl WalletOutput {
         &self,
         key_manager: &KM,
     ) -> Result<FixedHash, TransactionError> {
+        let output = self.as_transaction_output(key_manager).await?;
+        let rp_hash = match output.proof {
+            Some(rp) => rp.hash(),
+            None => FixedHash::zero(),
+        };
         Ok(transaction_components::hash_output(
             self.version,
             &self.features,
-            &self.commitment(key_manager).await?,
+            &output.commitment,
             &self.script,
             &self.covenant,
             &self.encrypted_data,
             &self.sender_offset_public_key,
+            &self.metadata_signature,
+            &rp_hash,
             self.minimum_value_promise,
         ))
     }

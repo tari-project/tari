@@ -153,7 +153,10 @@ mod test {
             Covenant::default(),
             EncryptedData::default(),
             0.into(),
-        );
+            &key_manager,
+        )
+        .await
+        .unwrap();
 
         #[allow(clippy::match_wild_err_arm)]
         match SingleReceiverTransactionProtocol::create(&info, bob_output, &key_manager).await {
@@ -217,7 +220,10 @@ mod test {
             Covenant::default(),
             EncryptedData::default(),
             0.into(),
-        );
+            &key_manager,
+        )
+        .await
+        .unwrap();
         let metadata_message = TransactionOutput::metadata_signature_message(&bob_output);
         bob_output.metadata_signature = key_manager
             .get_receiver_partial_metadata_signature(

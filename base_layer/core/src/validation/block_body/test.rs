@@ -74,7 +74,6 @@ async fn it_passes_if_block_is_valid() {
         .calculate_mmr_roots(chain_block.block().clone())
         .unwrap();
     block.header.input_mr = mmr_roots.input_mr;
-    block.header.witness_mr = mmr_roots.witness_mr;
     block.header.output_mr = mmr_roots.output_mr;
     block.header.output_mmr_size = mmr_roots.output_mmr_size;
     block.header.kernel_mr = mmr_roots.kernel_mr;
