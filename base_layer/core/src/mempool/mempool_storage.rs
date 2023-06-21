@@ -134,7 +134,7 @@ impl MempoolStorage {
     }
 
     fn get_transaction_weighting(&self, height: u64) -> TransactionWeight {
-        *self.rules.consensus_constants(height).transaction_weight()
+        *self.rules.consensus_constants(height).transaction_weight_params()
     }
 
     // Insert a set of new transactions into the UTxPool.

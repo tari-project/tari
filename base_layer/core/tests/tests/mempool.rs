@@ -197,14 +197,17 @@ async fn test_insert_and_process_published_block() {
     let stats = mempool.stats().await.unwrap();
     assert_eq!(stats.unconfirmed_txs, 1);
     assert_eq!(stats.reorg_txs, 0);
-    let expected_weight = consensus_manager.consensus_constants(0).transaction_weight().calculate(
-        1,
-        1,
-        2,
-        TestParams::new(&key_manager)
-            .await
-            .get_size_for_default_features_and_scripts(2),
-    );
+    let expected_weight = consensus_manager
+        .consensus_constants(0)
+        .transaction_weight_params()
+        .calculate(
+            1,
+            1,
+            2,
+            TestParams::new(&key_manager)
+                .await
+                .get_size_for_default_features_and_scripts(2),
+        );
     assert_eq!(stats.unconfirmed_weight, expected_weight);
 
     // Spend tx2, so it goes in Reorg pool
@@ -395,7 +398,7 @@ async fn test_retrieve() {
         mempool.insert(t.clone()).await.unwrap();
     }
     // 1-block, 8 UTXOs, 7 txs in mempool
-    let weighting = consensus_manager.consensus_constants(0).transaction_weight();
+    let weighting = consensus_manager.consensus_constants(0).transaction_weight_params();
     let weight =
         tx[6].calculate_weight(weighting) + tx[2].calculate_weight(weighting) + tx[3].calculate_weight(weighting);
     let retrieved_txs = mempool.retrieve(weight).await.unwrap();
@@ -950,7 +953,8 @@ async fn receive_and_propagate_transaction() {
     let consensus_manager = ConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants)
         .with_block(block0)
-        .build();
+        .build()
+        .unwrap();
     let (mut alice_node, mut bob_node, mut carol_node, _consensus_manager) =
         create_network_with_3_base_nodes_with_config(
             MempoolServiceConfig::default(),
@@ -1103,7 +1107,7 @@ async fn consensus_validation_large_tx() {
     let inputs = vec![input.as_transaction_input(&key_manager).await.unwrap()];
     let input_script_keys = vec![input.script_key_id];
 
-    let fee = Fee::new(*consensus_manager.consensus_constants(0).transaction_weight()).calculate(
+    let fee = Fee::new(*consensus_manager.consensus_constants(0).transaction_weight_params()).calculate(
         fee_per_gram.into(),
         1,
         input_count,
@@ -1231,7 +1235,7 @@ async fn consensus_validation_large_tx() {
     let err = validator.validate(&tx, None, None, u64::MAX).unwrap_err();
     assert!(matches!(err, ValidationError::BlockTooLarge { .. }));
 
-    let weighting = constants.transaction_weight();
+    let weighting = constants.transaction_weight_params();
     let weight = tx.calculate_weight(weighting);
 
     // check the tx weight is more than the max for 1 block
@@ -1466,7 +1470,8 @@ async fn block_event_and_reorg_event_handling() {
     let consensus_manager = ConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants.clone())
         .with_block(block0.clone())
-        .build();
+        .build()
+        .unwrap();
     let (mut alice, mut bob, consensus_manager) = create_network_with_2_base_nodes_with_config(
         MempoolServiceConfig::default(),
         LivenessConfig::default(),

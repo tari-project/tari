@@ -347,7 +347,7 @@ async fn setup_transaction_service_no_comms(
     wallet_connectivity_service_mock.set_base_node(node_identity.to_peer());
     wallet_connectivity_service_mock.base_node_changed().await;
 
-    let consensus_manager = ConsensusManager::builder(Network::LocalNet).build();
+    let consensus_manager = ConsensusManager::builder(Network::LocalNet).build().unwrap();
     let constants = ConsensusConstantsBuilder::new(Network::LocalNet).build();
 
     let shutdown = Shutdown::new();
@@ -501,7 +501,7 @@ fn try_decode_transaction_cancelled_message(bytes: Vec<u8>) -> Option<proto::Tra
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn manage_single_transaction() {
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build();
+    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
     let factories = CryptoFactories::default();
     // Alice's parameters
     let alice_node_identity = Arc::new(NodeIdentity::random(
@@ -658,7 +658,7 @@ async fn manage_single_transaction() {
 #[tokio::test]
 async fn single_transaction_to_self() {
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build();
+    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
     let factories = CryptoFactories::default();
     // Alice's parameters
     let alice_node_identity = Arc::new(NodeIdentity::random(
@@ -740,7 +740,7 @@ async fn single_transaction_to_self() {
 async fn single_transaction_burn_tari() {
     // let _ = env_logger::builder().is_test(true).try_init(); // Need `$env:RUST_LOG = "trace"` for this to work
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build();
+    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
     let factories = CryptoFactories::default();
     // Alice's parameters
     let alice_node_identity = Arc::new(NodeIdentity::random(
@@ -881,7 +881,7 @@ async fn single_transaction_burn_tari() {
 #[tokio::test]
 async fn send_one_sided_transaction_to_other() {
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build();
+    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
     let factories = CryptoFactories::default();
     // Alice's parameters
     let alice_node_identity = Arc::new(NodeIdentity::random(
@@ -994,7 +994,7 @@ async fn send_one_sided_transaction_to_other() {
 #[tokio::test]
 async fn recover_one_sided_transaction() {
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build();
+    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
     let factories = CryptoFactories::default();
     // Alice's parameters
     let alice_node_identity = Arc::new(NodeIdentity::random(
@@ -1119,7 +1119,7 @@ async fn recover_one_sided_transaction() {
 #[tokio::test]
 async fn test_htlc_send_and_claim() {
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build();
+    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
     let factories = CryptoFactories::default();
     // Alice's parameters
     let alice_node_identity = Arc::new(NodeIdentity::random(
@@ -1255,7 +1255,7 @@ async fn test_htlc_send_and_claim() {
 #[tokio::test]
 async fn send_one_sided_transaction_to_self() {
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build();
+    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
     let factories = CryptoFactories::default();
     // Alice's parameters
     let alice_node_identity = Arc::new(NodeIdentity::random(
@@ -1332,7 +1332,7 @@ async fn send_one_sided_transaction_to_self() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 3)]
 async fn manage_multiple_transactions() {
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build();
+    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
     let factories = CryptoFactories::default();
     // Alice's parameters
     let alice_node_identity = Arc::new(NodeIdentity::random(
@@ -1970,7 +1970,7 @@ async fn discovery_async_return_test() {
     let db_tempdir = tempdir().unwrap();
     let db_folder = db_tempdir.path();
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build();
+    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
     let factories = CryptoFactories::default();
 
     // Alice's parameters
@@ -3302,7 +3302,7 @@ async fn test_restarting_transaction_protocols() {
     )
     .await;
     let constants = create_consensus_constants(0);
-    let fee_calc = Fee::new(*constants.transaction_weight());
+    let fee_calc = Fee::new(*constants.transaction_weight_params());
     let key_manager = create_test_core_key_manager_with_memory_db();
     let mut builder = SenderTransactionProtocol::builder(constants, key_manager.clone());
     let fee = fee_calc.calculate(MicroTari(4), 1, 1, 1, 0);

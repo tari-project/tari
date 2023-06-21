@@ -3350,5 +3350,6 @@ mod test {
                     .build(),
             )
             .build()
+            .unwrap()
     }
 }

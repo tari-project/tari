@@ -86,7 +86,8 @@ async fn setup() -> (
         create_genesis_block_with_coinbase_value(100_000_000.into(), &consensus_constants, &key_manager).await;
     let consensus_manager = ConsensusManagerBuilder::new(network.as_network())
         .with_block(block0.clone())
-        .build();
+        .build()
+        .unwrap();
     let (mut base_node, _consensus_manager) = BaseNodeBuilder::new(network)
         .with_consensus_manager(consensus_manager.clone())
         .start(temp_dir.path().to_str().unwrap())

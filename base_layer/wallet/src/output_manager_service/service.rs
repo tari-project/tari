@@ -790,7 +790,7 @@ where
         let features_and_scripts_byte_size = self
             .resources
             .consensus_constants
-            .transaction_weight()
+            .transaction_weight_params()
             .round_up_features_and_scripts_size(
                 OutputFeatures::default().get_serialized_size() +
                     script![Nop].get_serialized_size() +
@@ -861,7 +861,7 @@ where
         let features_and_scripts_byte_size = self
             .resources
             .consensus_constants
-            .transaction_weight()
+            .transaction_weight_params()
             .round_up_features_and_scripts_size(
                 recipient_output_features.get_serialized_size() +
                     recipient_script.get_serialized_size() +
@@ -1027,7 +1027,7 @@ where
     ) -> Result<(TxId, Transaction), OutputManagerError> {
         let total_value = outputs.iter().map(|o| o.value()).sum();
         let nop_script = script![Nop];
-        let weighting = self.resources.consensus_constants.transaction_weight();
+        let weighting = self.resources.consensus_constants.transaction_weight_params();
         let features_and_scripts_byte_size = outputs.iter().fold(0usize, |total, output| {
             total +
                 weighting.round_up_features_and_scripts_size({
@@ -1145,7 +1145,7 @@ where
         let features_and_scripts_byte_size = self
             .resources
             .consensus_constants
-            .transaction_weight()
+            .transaction_weight_params()
             .round_up_features_and_scripts_size(
                 output_features.get_serialized_size() + script.get_serialized_size() + covenant.get_serialized_size(),
             );
@@ -1402,7 +1402,7 @@ where
     fn default_features_and_scripts_size(&self) -> usize {
         self.resources
             .consensus_constants
-            .transaction_weight()
+            .transaction_weight_params()
             .round_up_features_and_scripts_size(
                 script!(Nop).get_serialized_size() + OutputFeatures::default().get_serialized_size(),
             )
@@ -2442,7 +2442,7 @@ where
     }
 
     fn get_fee_calc(&self) -> Fee {
-        Fee::new(*self.resources.consensus_constants.transaction_weight())
+        Fee::new(*self.resources.consensus_constants.transaction_weight_params())
     }
 }
 

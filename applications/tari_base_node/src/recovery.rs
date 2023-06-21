@@ -74,7 +74,10 @@ pub fn initiate_recover_db(config: &BaseNodeConfig) -> Result<(), ExitError> {
 
 pub async fn run_recovery(node_config: &BaseNodeConfig) -> Result<(), anyhow::Error> {
     println!("Starting recovery mode");
-    let rules = ConsensusManager::builder(node_config.network).build();
+    let rules = ConsensusManager::builder(node_config.network).build().map_err(|e| {
+        error!(target: LOG_TARGET, "Error configuring consensus manager: {}", e);
+        anyhow!("Could not configure consensus manager: {}", e)
+    })?;
     let (temp_db, main_db, temp_path) = match &node_config.db_type {
         DatabaseType::Lmdb => {
             let backend = create_lmdb_database(&node_config.lmdb_path, node_config.lmdb.clone(), rules.clone())
@@ -130,7 +133,10 @@ async fn do_recovery<D: BlockchainBackend + 'static>(
     source_backend: D,
 ) -> Result<(), anyhow::Error> {
     // We dont care about the values, here, so we just use mock validators, and a mainnet CM.
-    let rules = ConsensusManager::builder(Network::LocalNet).build();
+    let rules = ConsensusManager::builder(Network::LocalNet).build().map_err(|e| {
+        error!(target: LOG_TARGET, "Error creating consensus manager: {}", e);
+        anyhow!("Error creating consensus manager: {}", e)
+    })?;
     let validators = Validators::new(
         MockValidator::new(true),
         MockValidator::new(true),

@@ -144,9 +144,9 @@ pub struct WalletGrpcServer {
 }
 
 impl WalletGrpcServer {
-    pub fn new(wallet: WalletSqlite) -> Self {
-        let rules = ConsensusManager::builder(wallet.network.as_network()).build();
-        Self { wallet, rules }
+    pub fn new(wallet: WalletSqlite) -> Result<Self, String> {
+        let rules = ConsensusManager::builder(wallet.network.as_network()).build()?;
+        Ok(Self { wallet, rules })
     }
 
     fn get_transaction_service(&self) -> TransactionServiceHandle {

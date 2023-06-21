@@ -418,7 +418,7 @@ mod test {
         let db = create_new_blockchain_with_network(Network::Igor);
 
         let lock = db.db_read_access().unwrap();
-        ChainBalanceValidator::new(ConsensusManager::builder(network).build(), Default::default())
+        ChainBalanceValidator::new(ConsensusManager::builder(network).build().unwrap(), Default::default())
             .validate(&*lock, 0, &utxo_sum, &kernel_sum, &Commitment::default())
             .unwrap();
     }

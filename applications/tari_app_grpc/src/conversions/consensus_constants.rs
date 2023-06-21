@@ -30,7 +30,7 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
     #[allow(clippy::too_many_lines)]
     fn from(cc: ConsensusConstants) -> Self {
         let (emission_initial, emission_decay, emission_tail) = cc.emission_amounts();
-        let weight_params = cc.transaction_weight().params();
+        let weight_params = cc.transaction_weight_params().params();
         let input_version_range = cc.input_version_range().clone().into_inner();
         let input_version_range = grpc::Range {
             min: u64::from(input_version_range.0.as_u8()),
@@ -46,7 +46,7 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
             min: u64::from(valid_blockchain_version_range.0),
             max: u64::from(valid_blockchain_version_range.1),
         };
-        let transaction_weight = cc.transaction_weight();
+        let transaction_weight = cc.transaction_weight_params();
         let features_and_scripts_bytes_per_gram =
             if let Some(val) = transaction_weight.params().features_and_scripts_bytes_per_gram {
                 u64::from(val)
@@ -54,9 +54,9 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
                 0u64
             };
         let transaction_weight = grpc::WeightParams {
-            kernel_weight: cc.transaction_weight().params().kernel_weight,
-            input_weight: cc.transaction_weight().params().input_weight,
-            output_weight: cc.transaction_weight().params().output_weight,
+            kernel_weight: cc.transaction_weight_params().params().kernel_weight,
+            input_weight: cc.transaction_weight_params().params().input_weight,
+            output_weight: cc.transaction_weight_params().params().output_weight,
             features_and_scripts_bytes_per_gram,
         };
         let output_version_range = cc.output_version_range();
