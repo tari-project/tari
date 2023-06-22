@@ -345,27 +345,27 @@ fn check_timelocks() {
     ));
     tx.body.check_utxo_rules(5).unwrap();
 
-    assert_eq!(tx.max_input_maturity(), 5);
+    assert_eq!(tx.max_input_maturity().unwrap(), 5);
     assert_eq!(tx.max_kernel_timelock(), 2);
-    assert_eq!(tx.min_spendable_height(), 5);
+    assert_eq!(tx.min_spendable_height().unwrap(), 5);
 
     input.set_maturity(4).unwrap();
     kernel.lock_height = 3;
     tx.body.add_input(input.clone());
     tx.body.add_kernel(kernel.clone());
 
-    assert_eq!(tx.max_input_maturity(), 5);
+    assert_eq!(tx.max_input_maturity().unwrap(), 5);
     assert_eq!(tx.max_kernel_timelock(), 3);
-    assert_eq!(tx.min_spendable_height(), 5);
+    assert_eq!(tx.min_spendable_height().unwrap(), 5);
 
     input.set_maturity(2).unwrap();
     kernel.lock_height = 10;
     tx.body.add_input(input);
     tx.body.add_kernel(kernel);
 
-    assert_eq!(tx.max_input_maturity(), 5);
+    assert_eq!(tx.max_input_maturity().unwrap(), 5);
     assert_eq!(tx.max_kernel_timelock(), 10);
-    assert_eq!(tx.min_spendable_height(), 10);
+    assert_eq!(tx.min_spendable_height().unwrap(), 10);
 }
 
 #[tokio::test]

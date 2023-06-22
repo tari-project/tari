@@ -34,7 +34,7 @@ use tari_utilities::hex::Hex;
 
 use crate::transactions::{
     aggregated_body::AggregateBody,
-    transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
+    transaction_components::{TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
     weight::TransactionWeight,
 };
 
@@ -81,7 +81,7 @@ impl Transaction {
     }
 
     /// Returns the maximum maturity of the input UTXOs
-    pub fn max_input_maturity(&self) -> u64 {
+    pub fn max_input_maturity(&self) -> Result<u64, TransactionError> {
         self.body.max_input_maturity()
     }
 
@@ -92,7 +92,7 @@ impl Transaction {
 
     /// Returns the height of the minimum height where the transaction is spendable. This is calculated from the
     /// transaction kernel lock_heights and the maturity of the input UTXOs.
-    pub fn min_spendable_height(&self) -> u64 {
+    pub fn min_spendable_height(&self) -> Result<u64, TransactionError> {
         self.body.min_spendable_height()
     }
 

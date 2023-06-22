@@ -48,9 +48,11 @@ use crate::transactions::{
 pub const LOG_TARGET: &str = "c::tx::aggregated_body";
 
 /// The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,
-/// cut-through means that blocks and transactions have the same structure.
+/// blocks consist of inputs, outputs and kernels, rather than transactions.
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct AggregateBody {
+    /// This flag indicates if the inputs, outputs and kernels have been sorted internally, that is, the sort() method
+    /// has been called. This may be false even if all components are sorted.
     #[borsh_skip]
     sorted: bool,
     /// List of inputs spent by the transaction.
@@ -374,20 +376,13 @@ impl AggregateBody {
         )
     }
 
-    /// Returns the maximum maturity of the input UTXOs
-    pub fn max_input_maturity(&self) -> u64 {
-        self.inputs().iter().fold(0, |max_maturity, input| {
-            max(
-                max_maturity,
-                input
-                    .features()
-                    .unwrap_or(&OutputFeatures {
-                        maturity: 0,
-                        ..Default::default()
-                    })
-                    .maturity,
-            )
-        })
+    /// Returns the maximum maturity of the input UTXOs.
+    /// This function panics if any of the inputs are compact.
+    pub fn max_input_maturity(&self) -> Result<u64, TransactionError> {
+        self.inputs()
+            .iter()
+            .map(|i| i.features())
+            .try_fold(0, |max_maturity, features| Ok(max(max_maturity, features?.maturity)))
     }
 
     pub fn max_kernel_timelock(&self) -> u64 {
@@ -398,8 +393,8 @@ impl AggregateBody {
 
     /// Returns the height of the minimum height where the body is spendable. This is calculated from the
     /// kernel lock_heights and the maturity of the input UTXOs.
-    pub fn min_spendable_height(&self) -> u64 {
-        max(self.max_kernel_timelock(), self.max_input_maturity())
+    pub fn min_spendable_height(&self) -> Result<u64, TransactionError> {
+        Ok(max(self.max_kernel_timelock(), self.max_input_maturity()?))
     }
 
     /// Return a cloned version of self with TransactionInputs in their compact form
