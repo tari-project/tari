@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use std::{
-    cmp::{max, min},
+    cmp::max,
     fmt::{Display, Error, Formatter},
 };
 
@@ -30,7 +30,6 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::types::PrivateKey;
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
 
-use super::transaction_components::OutputFeatures;
 use crate::transactions::{
     crypto_factories::CryptoFactories,
     tari_amount::MicroTari,
@@ -373,22 +372,6 @@ impl AggregateBody {
             self.outputs.len(),
             self.kernels.len()
         )
-    }
-
-    /// Returns the minimum maturity of the input UTXOs
-    pub fn min_input_maturity(&self) -> u64 {
-        self.inputs().iter().fold(u64::MAX, |min_maturity, input| {
-            min(
-                min_maturity,
-                input
-                    .features()
-                    .unwrap_or(&OutputFeatures {
-                        maturity: u64::MAX,
-                        ..Default::default()
-                    })
-                    .maturity,
-            )
-        })
     }
 
     /// Returns the maximum maturity of the input UTXOs

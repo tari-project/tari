@@ -80,11 +80,6 @@ impl Transaction {
         self.body.calculate_weight(transaction_weight)
     }
 
-    /// Returns the minimum maturity of the input UTXOs
-    pub fn min_input_maturity(&self) -> u64 {
-        self.body.min_input_maturity()
-    }
-
     /// Returns the maximum maturity of the input UTXOs
     pub fn max_input_maturity(&self) -> u64 {
         self.body.max_input_maturity()
