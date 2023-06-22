@@ -29,7 +29,7 @@ use tari_utilities::epoch_time::EpochTime;
 
 use crate::proof_of_work::error::DifficultyAdjustmentError;
 
-/// Minimum difficulty, enforced in diff retargetting
+/// Minimum difficulty, enforced in diff retargeting
 /// avoids getting stuck when trying to increase difficulty subject to dampening
 pub const MIN_DIFFICULTY: u64 = 1;
 
@@ -53,6 +53,7 @@ impl Difficulty {
         self.0
     }
 
+    /// Subtract difficulty without overflowing
     pub fn checked_sub(self, other: Difficulty) -> Option<Difficulty> {
         self.0.checked_sub(other.0).map(Difficulty)
     }

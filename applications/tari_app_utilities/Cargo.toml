@@ -1,6 +1,6 @@
 [package]
 name = "tari_app_utilities"
-version = "0.51.0-pre.1"
+version = "0.51.0-pre.2"
 authors = ["The Tari Development Community"]
 edition = "2018"
 license = "BSD-3-Clause"
@@ -9,7 +9,7 @@ license = "BSD-3-Clause"
 tari_common = { path = "../../common" }
 tari_common_types = { path = "../../base_layer/common_types" }
 tari_comms = { path = "../../comms/core" }
-tari_features = { version = "0.51.0-pre.1", path = "../../common/tari_features"}
+tari_features = { version = "0.51.0-pre.2", path = "../../common/tari_features"}
 tari_utilities = { version = "0.4.10"}
 
 clap = { version = "3.2", features = ["derive", "env"] }
@@ -23,4 +23,4 @@ thiserror = "^1.0.26"
 
 [build-dependencies]
 tari_common = { path = "../../common", features = ["build", "static-application-info"] }
-tari_features = { version = "0.51.0-pre.1", path = "../../common/tari_features"}
+tari_features = { version = "0.51.0-pre.2", path = "../../common/tari_features"}

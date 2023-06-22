@@ -1,18 +1,29 @@
-## [0.51.0-pre.0](https://github.com/tari-project/tari/compare/v0.50.0-pre.3...v0.51.0-pre.0) (2023-06-09)
+# Changelog
+
+All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
+
+## 0.51.0-pre.2 (2023-06-22)
+
+
+#### Features
+
+*   sparse merkle trees (#5457) ([f536d219](https://github.com/tari-project/tari/commit/f536d21929e4eeb11cc185c013eef0b336def216)
+
+#### Performance
+
+*   speed up slow test (#5481) ([589ea3e2](https://github.com/tari-project/tari/commit/589ea3e2df45668bbb493411191d0cb9837c5eec)
 
 #### Bug Fixes
+
+* **mmr:**  support zero sized balanced merkle proof (#5474) ([ef984823](https://github.com/tari-project/tari/commit/ef98482313c9b9480ac663709162ae62e9c26978)
+* **wallet:**  use correct output features for send to self (#5472) ([ce1f0686](https://github.com/tari-project/tari/commit/ce1f0686f56367ff094bf28cfd0388b2ea94a8c9)
+
+## [0.51.0-pre.0](https://github.com/tari-project/tari/compare/v0.50.0-pre.3...v0.51.0-pre.0) (2023-06-09)
+
 
 #### Features
 
 *   ui for template registration in console wallet (#5444) ([701e3c23](https://github.com/tari-project/tari/commit/701e3c2341d1029c2711b81a66952f3bee7d8e42), breaks [#](https://github.com/tari-project/tari/issues/), [#](https://github.com/tari-project/tari/issues/), [#](https://github.com/tari-project/tari/issues/))
-
-#### Breaking Changes
-
-
-
-# Changelog
-
-All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
 ## [0.50.0-pre.3](https://github.com/tari-project/tari/compare/v0.50.0-pre.2...v0.50.0-pre.3) (2023-06-09)
 

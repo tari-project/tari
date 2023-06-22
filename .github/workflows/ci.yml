@@ -38,6 +38,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo bash scripts/install_ubuntu_dependencies.sh
+      - uses: Swatinem/rust-cache@v2
       - name: cargo format
         run: cargo fmt --all -- --check
       - name: Install cargo-lints
@@ -59,6 +60,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo bash scripts/install_ubuntu_dependencies.sh
+      - uses: Swatinem/rust-cache@v2
       - name: cargo machete
         run: |
           cargo install cargo-machete
@@ -73,6 +75,7 @@ jobs:
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.toolchain }}
+      - uses: Swatinem/rust-cache@v2
       - name: ubuntu dependencies
         run: |
           sudo apt-get update
@@ -136,6 +139,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo bash scripts/install_ubuntu_dependencies.sh
+      - uses: Swatinem/rust-cache@v2
       - name: test key manager wasm
         run: |
           cd base_layer/key_manager

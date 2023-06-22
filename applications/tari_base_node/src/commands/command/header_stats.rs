@@ -121,7 +121,7 @@ impl CommandContext {
                 u64::try_from(cmp::max(solve_time, 1)).unwrap(),
                 self.consensus_rules
                     .consensus_constants(height)
-                    .get_difficulty_max_block_interval(pow_algo),
+                    .pow_max_block_interval(pow_algo),
             );
             let acc_sha3 = header.accumulated_data().accumulated_sha_difficulty;
             let acc_monero = header.accumulated_data().accumulated_monero_difficulty;
