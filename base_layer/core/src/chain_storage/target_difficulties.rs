@@ -33,11 +33,11 @@ pub struct TargetDifficulties {
 }
 
 impl TargetDifficulties {
-    pub fn new(consensus_rules: &ConsensusManager, height: u64) -> Self {
-        Self {
-            monero: consensus_rules.new_target_difficulty(PowAlgorithm::Monero, height),
-            sha3: consensus_rules.new_target_difficulty(PowAlgorithm::Sha3, height),
-        }
+    pub fn new(consensus_rules: &ConsensusManager, height: u64) -> Result<Self, String> {
+        Ok(Self {
+            monero: consensus_rules.new_target_difficulty(PowAlgorithm::Monero, height)?,
+            sha3: consensus_rules.new_target_difficulty(PowAlgorithm::Sha3, height)?,
+        })
     }
 
     pub fn add_back(&mut self, header: &BlockHeader, target_difficulty: Difficulty) {
