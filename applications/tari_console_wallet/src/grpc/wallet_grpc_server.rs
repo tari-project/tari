@@ -89,7 +89,7 @@ use tari_common_types::{
 };
 use tari_comms::{multiaddr::Multiaddr, types::CommsPublicKey, CommsNode};
 use tari_core::{
-    consensus::{ConsensusConstants, ConsensusManager},
+    consensus::{ConsensusBuilderError, ConsensusConstants, ConsensusManager},
     transactions::{
         tari_amount::{MicroTari, T},
         transaction_components::{
@@ -144,7 +144,7 @@ pub struct WalletGrpcServer {
 }
 
 impl WalletGrpcServer {
-    pub fn new(wallet: WalletSqlite) -> Result<Self, String> {
+    pub fn new(wallet: WalletSqlite) -> Result<Self, ConsensusBuilderError> {
         let rules = ConsensusManager::builder(wallet.network.as_network()).build()?;
         Ok(Self { wallet, rules })
     }

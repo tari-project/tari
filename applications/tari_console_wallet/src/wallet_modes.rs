@@ -272,7 +272,7 @@ pub fn tui_mode(
         if let Some(address) = config.grpc_address.clone() {
             let grpc = WalletGrpcServer::new(wallet.clone()).map_err(|e| ExitError {
                 exit_code: ExitCode::UnknownError,
-                details: Some(e),
+                details: Some(e.to_string()),
             })?;
             handle.spawn(run_grpc(
                 grpc,
@@ -379,7 +379,7 @@ pub fn grpc_mode(handle: Handle, config: &WalletConfig, wallet: WalletSqlite) ->
     if let Some(address) = config.grpc_address.as_ref().filter(|_| config.grpc_enabled).cloned() {
         let grpc = WalletGrpcServer::new(wallet.clone()).map_err(|e| ExitError {
             exit_code: ExitCode::UnknownError,
-            details: Some(e),
+            details: Some(e.to_string()),
         })?;
         let auth = config.grpc_authentication.clone();
         handle

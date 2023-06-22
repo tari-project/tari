@@ -295,7 +295,9 @@ where B: BlockchainBackend + 'static
                     target: LOG_TARGET,
                     "New block template requested at height {}, weight: {}",
                     block_template.header.height,
-                    block_template.body.calculate_weight(constants.transaction_weight_params())
+                    block_template
+                        .body
+                        .calculate_weight(constants.transaction_weight_params())
                 );
                 trace!(target: LOG_TARGET, "{}", block_template);
                 Ok(NodeCommsResponse::NewBlockTemplate(block_template))

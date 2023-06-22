@@ -206,10 +206,10 @@ impl ConsensusManagerBuilder {
     }
 
     /// Builds a consensus manager
-    pub fn build(mut self) -> Result<ConsensusManager, String> {
+    pub fn build(mut self) -> Result<ConsensusManager, ConsensusBuilderError> {
         // should not be allowed to set the gen block and have the network type anything else than LocalNet
         if self.network.as_network() != Network::LocalNet && self.gen_block.is_some() {
-            return Err("Cannot set a genesis block with a network other than LocalNet".to_string());
+            return Err(ConsensusBuilderError::CannotSetGenesisBlock);
         }
 
         if self.consensus_constants.is_empty() {
@@ -242,4 +242,10 @@ impl ConsensusManagerBuilder {
         };
         Ok(ConsensusManager { inner: Arc::new(inner) })
     }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ConsensusBuilderError {
+    #[error("Cannot set a genesis block with a network other than LocalNet")]
+    CannotSetGenesisBlock,
 }
