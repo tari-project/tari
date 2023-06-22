@@ -173,11 +173,7 @@ where
         &self,
         output: &TransactionOutput,
     ) -> Result<Option<(TariKeyId, MicroTari)>, OutputManagerError> {
-        let (key, committed_value) = match self
-            .master_key_manager
-            .try_commitment_key_recovery(&output.commitment, &output.encrypted_data, None)
-            .await
-        {
+        let (key, committed_value) = match self.master_key_manager.try_output_key_recovery(&output, None).await {
             Ok(value) => value,
             Err(_) => return Ok(None),
         };

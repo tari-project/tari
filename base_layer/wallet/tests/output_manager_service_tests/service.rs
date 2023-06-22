@@ -1254,7 +1254,7 @@ async fn handle_coinbase_with_bulletproofs_rewinding() {
 
     let (_, decrypted_value) = oms
         .key_manager_handle
-        .try_commitment_key_recovery(&output.commitment, &output.encrypted_data, None)
+        .try_output_key_recovery(&output, None)
         .await
         .unwrap();
     assert_eq!(decrypted_value, value3);
