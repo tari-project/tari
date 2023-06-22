@@ -1127,7 +1127,7 @@ where
             .encumber_outputs(tx_id, input_selection.into_selected(), db_outputs)?;
         stp.finalize(&self.resources.key_manager).await?;
 
-        Ok((tx_id, stp.take_transaction()?))
+        Ok((tx_id, stp.into_transaction()?))
     }
 
     async fn create_pay_to_self_transaction(
@@ -1230,7 +1230,7 @@ where
         let fee = stp.get_fee_amount()?;
         trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", tx_id);
         stp.finalize(&self.resources.key_manager).await?;
-        let tx = stp.take_transaction()?;
+        let tx = stp.into_transaction()?;
 
         Ok((fee, tx))
     }
@@ -1654,7 +1654,7 @@ where
         // finalizing transaction
         stp.finalize(&self.resources.key_manager).await?;
 
-        Ok((tx_id, stp.take_transaction()?, accumulated_amount + fee))
+        Ok((tx_id, stp.into_transaction()?, accumulated_amount + fee))
     }
 
     #[allow(clippy::too_many_lines)]
@@ -1856,7 +1856,7 @@ where
             total_split_amount + final_fee
         };
 
-        Ok((tx_id, stp.take_transaction()?, value))
+        Ok((tx_id, stp.into_transaction()?, value))
     }
 
     async fn output_to_self(
@@ -2031,7 +2031,7 @@ where
         // finalizing transaction
         stp.finalize(&self.resources.key_manager).await?;
 
-        Ok((tx_id, stp.take_transaction()?, accumulated_amount + fee))
+        Ok((tx_id, stp.into_transaction()?, accumulated_amount + fee))
     }
 
     async fn fetch_outputs_from_node(
@@ -2160,7 +2160,7 @@ where
                 let fee = stp.get_fee_amount()?;
                 trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", tx_id);
                 stp.finalize(&self.resources.key_manager).await?;
-                let tx = stp.take_transaction()?;
+                let tx = stp.into_transaction()?;
 
                 Ok((tx_id, fee, amount - fee, tx))
             } else {
@@ -2242,7 +2242,7 @@ where
 
         stp.finalize(&self.resources.key_manager).await?;
 
-        let tx = stp.take_transaction()?;
+        let tx = stp.into_transaction()?;
 
         self.resources.db.encumber_outputs(tx_id, Vec::new(), outputs)?;
         self.confirm_encumberance(tx_id)?;

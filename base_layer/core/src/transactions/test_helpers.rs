@@ -628,7 +628,7 @@ pub async fn create_transaction_with(
     let mut stx_protocol = stx_builder.build().await.unwrap();
     stx_protocol.finalize(key_manager).await.unwrap();
 
-    stx_protocol.take_transaction().unwrap()
+    stx_protocol.into_transaction().unwrap()
 }
 
 /// Spend the provided UTXOs to the given amounts. Change will be created with any outstanding amount.
