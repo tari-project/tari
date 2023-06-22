@@ -101,15 +101,15 @@ impl Transaction {
         self.body.min_spendable_height()
     }
 
-    /// This function adds two transactions together. It does not do cut-through. Calling Tx1 + Tx2 will result in
-    /// vut-through being applied.
+    /// This function adds two transactions together. It does not do cut-through but simply sums up the offsets and
+    /// extends all inputs, outputs and kernels.
     pub fn add_no_cut_through(mut self, other: Self) -> Self {
         self.offset = self.offset + other.offset;
         self.script_offset = self.script_offset + other.script_offset;
-        let (mut inputs, mut outputs, mut kernels) = other.body.dissolve();
-        self.body.add_inputs(&mut inputs);
-        self.body.add_outputs(&mut outputs);
-        self.body.add_kernels(&mut kernels);
+        let (inputs, outputs, kernels) = other.body.dissolve();
+        self.body.add_inputs(inputs);
+        self.body.add_outputs(outputs);
+        self.body.add_kernels(kernels);
         self
     }
 

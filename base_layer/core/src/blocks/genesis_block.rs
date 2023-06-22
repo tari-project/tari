@@ -61,7 +61,7 @@ fn add_faucet_utxos_to_genesis_block(file: &str, block: &mut Block) {
         counter += 1;
     }
     block.header.output_mmr_size += utxos.len() as u64;
-    block.body.add_outputs(&mut utxos);
+    block.body.add_outputs(utxos);
     block.body.sort();
 }
 

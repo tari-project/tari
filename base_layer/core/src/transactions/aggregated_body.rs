@@ -135,8 +135,8 @@ impl AggregateBody {
     }
 
     /// Add a series of inputs to the existing aggregate body
-    pub fn add_inputs(&mut self, inputs: &mut Vec<TransactionInput>) {
-        self.inputs.append(inputs);
+    pub fn add_inputs<I: IntoIterator<Item = TransactionInput>>(&mut self, inputs: I) {
+        self.inputs.extend(inputs);
         self.sorted = false;
     }
 
@@ -146,9 +146,9 @@ impl AggregateBody {
         self.sorted = false;
     }
 
-    /// Add an output to the existing aggregate body
-    pub fn add_outputs(&mut self, outputs: &mut Vec<TransactionOutput>) {
-        self.outputs.append(outputs);
+    /// Add a series of outputs to the existing aggregate body
+    pub fn add_outputs<I: IntoIterator<Item = TransactionOutput>>(&mut self, outputs: I) {
+        self.outputs.extend(outputs);
         self.sorted = false;
     }
 
@@ -157,9 +157,9 @@ impl AggregateBody {
         self.kernels.push(kernel);
     }
 
-    /// Add a kernels to the existing aggregate body
-    pub fn add_kernels(&mut self, new_kernels: &mut Vec<TransactionKernel>) {
-        self.kernels.append(new_kernels);
+    /// Add a series of kernels to the existing aggregate body
+    pub fn add_kernels<I: IntoIterator<Item = TransactionKernel>>(&mut self, new_kernels: I) {
+        self.kernels.extend(new_kernels);
         self.sorted = false;
     }
 

@@ -550,10 +550,10 @@ mod test {
         ]);
         assert!(check_total_burned(&body).is_ok());
         // lets add an extra kernel
-        body.add_kernels(&mut vec![kernel3]);
+        body.add_kernels([kernel3]);
         assert!(check_total_burned(&body).is_err());
         // lets add a kernel commitment mismatch
-        body.add_outputs(&mut vec![output3.clone()]);
+        body.add_outputs(vec![output3.clone()]);
         assert!(check_total_burned(&body).is_err());
         // Lets try one with a commitment with no kernel
         let body2 = AggregateBody::new(Vec::new(), vec![output1, output2, output3], vec![kernel1, kernel2]);

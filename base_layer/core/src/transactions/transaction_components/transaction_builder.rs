@@ -70,13 +70,13 @@ impl TransactionBuilder {
     }
 
     /// Moves a series of inputs to an existing transaction, leaving `inputs` empty
-    pub fn add_inputs(&mut self, inputs: &mut Vec<TransactionInput>) -> &mut Self {
+    pub fn add_inputs<I: IntoIterator<Item = TransactionInput>>(&mut self, inputs: I) -> &mut Self {
         self.body.add_inputs(inputs);
         self
     }
 
     /// Moves a series of outputs to an existing transaction, leaving `outputs` empty
-    pub fn add_outputs(&mut self, outputs: &mut Vec<TransactionOutput>) -> &mut Self {
+    pub fn add_outputs<I: IntoIterator<Item = TransactionOutput>>(&mut self, outputs: I) -> &mut Self {
         self.body.add_outputs(outputs);
         self
     }
