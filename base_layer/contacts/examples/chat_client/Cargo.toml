@@ -3,7 +3,7 @@ name = "tari_chat_client"
 authors = ["The Tari Development Community"]
 description = "Tari cucumber chat client"
 license = "BSD-3-Clause"
-version = "0.51.0-pre.1"
+version = "0.51.0-pre.2"
 
 edition = "2018"
 
