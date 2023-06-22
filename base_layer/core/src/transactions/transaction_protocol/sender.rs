@@ -1547,9 +1547,9 @@ mod test {
         let output_0 = &tx.body.outputs()[0];
         let output_1 = &tx.body.outputs()[1];
 
-        if let Ok((key, _value)) = key_manager_alice.try_output_key_recovery(&output_0, None).await {
+        if let Ok((key, _value)) = key_manager_alice.try_output_key_recovery(output_0, None).await {
             assert_eq!(key, change_params.spend_key_id);
-        } else if let Ok((key, _value)) = key_manager_alice.try_output_key_recovery(&output_1, None).await {
+        } else if let Ok((key, _value)) = key_manager_alice.try_output_key_recovery(output_1, None).await {
             assert_eq!(key, change_params.spend_key_id);
         } else {
             panic!("Could not recover Alice's output");
