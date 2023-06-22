@@ -91,6 +91,7 @@ impl AggregateBodyChainLinkedValidator {
         // inputs may be "slim", only containing references to outputs
         // so we need to resolve those references, creating a new body in the process
         let inputs = validate_input_not_pruned(body, db)?;
+        // UNCHECKED: sorting has been checked by the AggregateBodyInternalConsistencyValidator
         let body = AggregateBody::new_sorted_unchecked(inputs, body.outputs().to_vec(), body.kernels().to_vec());
 
         validate_input_maturity(&body, height)?;
