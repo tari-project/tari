@@ -758,8 +758,6 @@ where B: BlockchainBackend
 
         body.sort();
         let mut header = BlockHeader::from(header);
-        // If someone advanced the median timestamp such that the local time is less than the median timestamp, we need
-        // to increase the timestamp to be greater than the median timestamp
         let prev_block_height = header.height - 1;
         let min_height = header.height.saturating_sub(
             self.consensus_manager
@@ -810,6 +808,9 @@ where B: BlockchainBackend
         }
 
         let median_timestamp = calc_median_timestamp(&timestamps);
+        // If someone advanced the median timestamp such that the local time is less than the median timestamp, we need
+        // to increase the timestamp to be greater than the median timestamp otherwise the block wont be accepted by
+        // nodes
         if median_timestamp > header.timestamp {
             header.timestamp = median_timestamp.increase(1);
         }
