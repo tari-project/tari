@@ -253,8 +253,8 @@ impl AggregateBody {
 
     /// Run through the outputs of the block and check that
     /// 1. There is exactly ONE coinbase output
-    /// 1. The output's maturity is correctly set
-    /// 1. The amount is correct.
+    /// 1. The coinbase output's maturity is correctly set
+    /// 1. The reward amount is correct.
     pub fn check_coinbase_output(
         &self,
         reward: MicroTari,
@@ -272,7 +272,7 @@ impl AggregateBody {
                     warn!(target: LOG_TARGET, "Coinbase {} found with maturity set too low", utxo);
                     return Err(TransactionError::InvalidCoinbaseMaturity);
                 }
-                coinbase_utxo = Some(utxo.clone());
+                coinbase_utxo = Some(utxo);
             }
         }
         if coinbase_counter > 1 {
@@ -283,31 +283,35 @@ impl AggregateBody {
             return Err(TransactionError::MoreThanOneCoinbase);
         }
 
-        if coinbase_counter == 0 {
+        if coinbase_utxo.is_none() || coinbase_counter == 0 {
             return Err(TransactionError::NoCoinbase);
         }
+
+        let coinbase_utxo = coinbase_utxo.expect("coinbase_utxo: none checked");
 
         let mut coinbase_counter = 0; // there should be exactly 1 coinbase kernel as well
         for kernel in self.kernels() {
             if kernel.features.contains(KernelFeatures::COINBASE_KERNEL) {
                 coinbase_counter += 1;
-                coinbase_kernel = Some(kernel.clone());
+                coinbase_kernel = Some(kernel);
             }
         }
-        if coinbase_counter != 1 {
+        if coinbase_kernel.is_none() || coinbase_counter != 1 {
             warn!(
                 target: LOG_TARGET,
                 "{} coinbase kernels found in body. Only a single coinbase kernel is permitted.", coinbase_counter,
             );
             return Err(TransactionError::MoreThanOneCoinbase);
         }
-        // Unwrap used here are fine as they should have an amount in them by here. If the coinbase's are missing the
-        // counters should be 0 and the fn should have returned an error by now.
-        let utxo = coinbase_utxo.unwrap();
-        let rhs =
-            &coinbase_kernel.unwrap().excess + &factories.commitment.commit_value(&PrivateKey::default(), reward.0);
-        if rhs != utxo.commitment {
-            warn!(target: LOG_TARGET, "Coinbase {} amount validation failed", utxo);
+
+        let coinbase_kernel = coinbase_kernel.expect("coinbase_kernel: none checked");
+
+        let rhs = &coinbase_kernel.excess + &factories.commitment.commit_value(&PrivateKey::default(), reward.0);
+        if rhs != coinbase_utxo.commitment {
+            warn!(
+                target: LOG_TARGET,
+                "Coinbase {} amount validation failed", coinbase_utxo
+            );
             return Err(TransactionError::InvalidCoinbase);
         }
         Ok(())
