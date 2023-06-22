@@ -21,7 +21,6 @@ pub use format_currency::format_currency;
 pub mod transaction_protocol;
 pub use transaction_protocol::{recipient::ReceiverTransactionProtocol, sender::SenderTransactionProtocol};
 
-pub mod types;
 pub mod weight;
 
 pub mod key_manager;
