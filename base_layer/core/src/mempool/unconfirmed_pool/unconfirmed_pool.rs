@@ -70,7 +70,7 @@ impl Default for UnconfirmedPoolConfig {
 /// transactions included in blocks with transactions stored in the pool. The txs_by_priority BTreeMap prioritise the
 /// transactions in the pool according to TXPriority, it allows transactions to be inserted in sorted order by their
 /// priority. The txs_by_priority BTreeMap makes it easier to select the set of highest priority transactions that can
-/// be included in a block. The excess_sig of a transaction is used a key to uniquely identify a specific transaction in
+/// be included in a block. The excess_sig of a transaction is used as a key to uniquely identify a specific transaction in
 /// these containers.
 pub struct UnconfirmedPool {
     config: UnconfirmedPoolConfig,
@@ -145,7 +145,7 @@ impl UnconfirmedPool {
         self.tx_by_key.insert(new_key, prioritized_tx);
     }
 
-    /// TThis will search the unconfirmed pool for the set of outputs and return true if all of them are found
+    /// This will search the unconfirmed pool for the set of outputs and return true if all of them are found
     pub fn contains_all_outputs(&mut self, outputs: &[HashOutput]) -> bool {
         outputs.iter().all(|hash| self.txs_by_output.contains_key(hash))
     }
@@ -289,8 +289,7 @@ impl UnconfirmedPool {
                 },
                 None => {
                     // this transactions requires an output, that the mempool does not currently have, but did have at
-                    // some point. This means that we need to remove this transaction and re
-                    // validate it
+                    // some point. This means that we need to remove this transaction and revalidate it
                     transactions_to_recheck.push((transaction.key, transaction.transaction.clone()));
                     break;
                 },
@@ -620,7 +619,7 @@ impl UnconfirmedPool {
         shrink_hashmap(&mut self.txs_by_output);
         shrink_hashmap(&mut self.txs_by_unique_id);
 
-        if old - new > 0 {
+        if old > new {
             debug!(
                 target: LOG_TARGET,
                 "Shrunk reorg mempool memory usage ({}/{}) ~{}%",
