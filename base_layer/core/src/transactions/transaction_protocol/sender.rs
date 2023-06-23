@@ -1466,7 +1466,8 @@ mod test {
             .with_lock_height(0)
             .with_fee_per_gram(MicroTari(20))
             .with_change_data(
-                script!(Nop),
+                // "colour" this output so that we can find it later
+                script!(PushInt(1) Drop Nop),
                 inputs!(change_params.script_key_pk),
                 change_params.script_key_id.clone(),
                 change_params.spend_key_id.clone(),
@@ -1542,17 +1543,9 @@ mod test {
         let tx = alice.get_transaction().unwrap();
         assert_eq!(tx.body.outputs().len(), 2);
 
-        // If the first output isn't alice's then the second must be
-        // TODO: Fix this logic when 'encrypted_data.todo_decrypt()' is fixed only one of these will be possible
-        let output_0 = &tx.body.outputs()[0];
-        let output_1 = &tx.body.outputs()[1];
+        let output = tx.body.outputs().iter().find(|o| o.script.size() > 1).unwrap();
 
-        if let Ok((key, _value)) = key_manager_alice.try_output_key_recovery(output_0, None).await {
-            assert_eq!(key, change_params.spend_key_id);
-        } else if let Ok((key, _value)) = key_manager_alice.try_output_key_recovery(output_1, None).await {
-            assert_eq!(key, change_params.spend_key_id);
-        } else {
-            panic!("Could not recover Alice's output");
-        }
+        let (key, _value) = key_manager_alice.try_output_key_recovery(output, None).await.unwrap();
+        assert_eq!(key, change_params.spend_key_id);
     }
 }
