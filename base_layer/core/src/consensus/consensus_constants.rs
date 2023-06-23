@@ -210,9 +210,11 @@ impl ConsensusConstants {
     }
 
     /// Maximum transaction weight used for the construction of new blocks. It leaves place for 1 kernel and 1 output
-    /// with default features
+    /// with default features, as well as the maximum possible value of the `coinbase_extra` field
     pub fn get_max_block_weight_excluding_coinbase(&self) -> u64 {
-        self.max_block_transaction_weight - self.calculate_1_output_kernel_weight()
+        self.max_block_transaction_weight -
+            self.calculate_1_output_kernel_weight() -
+            u64::from(self.coinbase_output_features_extra_max_length())
     }
 
     fn calculate_1_output_kernel_weight(&self) -> u64 {
