@@ -26,6 +26,7 @@ pub mod weight;
 pub mod key_manager;
 
 #[macro_use]
+#[cfg(feature = "base_node")]
 pub mod test_helpers;
 
 // Hash domain for all transaction-related hashes, including the script signature challenge, transaction hash and kernel
