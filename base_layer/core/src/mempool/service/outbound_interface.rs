@@ -49,12 +49,9 @@ impl OutboundMempoolServiceInterface {
         transaction: Arc<Transaction>,
         exclude_peers: Vec<NodeId>,
     ) -> Result<(), MempoolServiceError> {
-        self.tx_sender.send((transaction, exclude_peers)).or_else(|e| {
-            {
-                error!(target: LOG_TARGET, "Could not broadcast transaction. {:?}", e);
-                Err(e)
-            }
-            .map_err(|_| MempoolServiceError::BroadcastFailed)
+        self.tx_sender.send((transaction, exclude_peers)).map_err(|e| {
+            error!(target: LOG_TARGET, "Could not broadcast transaction. {:?}", e);
+            MempoolServiceError::BroadcastFailed
         })
     }
 }

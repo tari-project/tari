@@ -171,7 +171,7 @@ impl ReorgPool {
         self.txs_by_signature.contains_key(excess_sig.get_signature())
     }
 
-    /// Remove the transactions from the ReorgPoolthat were used in provided removed blocks. The transactions
+    /// Remove the transactions from the ReorgPool that were used in provided removed blocks. The transactions
     /// can be resubmitted to the Unconfirmed Pool.
     pub fn remove_reorged_txs_and_discard_double_spends(
         &mut self,
@@ -287,13 +287,6 @@ impl ReorgPool {
             None => return,
         };
 
-        // let heights_to_remove = self
-        //     .txs_by_height
-        //     .keys()
-        //     .filter(|h| **h <= height)
-        //     .copied()
-        //     .collect::<Vec<_>>();
-        // for height in heights_to_remove {
         if let Some(tx_ids) = self.txs_by_height.remove(&height) {
             debug!(
                 target: LOG_TARGET,
@@ -338,7 +331,7 @@ impl ReorgPool {
         shrink_hashmap(&mut self.txs_by_signature);
         shrink_hashmap(&mut self.txs_by_height);
 
-        if old - new > 0 {
+        if old > new {
             debug!(
                 target: LOG_TARGET,
                 "Shrunk reorg mempool memory usage ({}/{}) ~{}%",
