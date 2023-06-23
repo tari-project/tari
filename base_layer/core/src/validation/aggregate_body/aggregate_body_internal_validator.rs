@@ -606,7 +606,7 @@ mod test {
             let body = AggregateBody::new_sorted_unchecked(Vec::new(), outputs, kernels);
             let err = AggregateBodyInternalConsistencyValidator::new(
                 true,
-                ConsensusManager::builder(Network::LocalNet).build(),
+                ConsensusManager::builder(Network::LocalNet).build().unwrap(),
                 CryptoFactories::new(RANGE_PROOF_AGGREGATION_FACTOR),
             )
             .validate(&body, &Default::default(), &Default::default(), None, None, u64::MAX)

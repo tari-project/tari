@@ -83,7 +83,7 @@ async fn key_manager_input() {
         .expect("Should be able to create transaction input");
 
     let output = i
-        .as_transaction_output(&key_manager)
+        .to_transaction_output(&key_manager)
         .await
         .expect("Should be able to create transaction output");
 
