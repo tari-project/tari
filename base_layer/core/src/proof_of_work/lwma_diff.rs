@@ -15,6 +15,7 @@ use std::{
     cmp,
     cmp::{max, min},
     collections::VecDeque,
+    convert::TryFrom,
 };
 
 use log::*;
@@ -108,8 +109,7 @@ impl LinearWeightedMovingAverage {
         }
         // k is the sum of weights (1+2+..+n) * target_time
         let k = n * (n + 1) * self.target_time / 2;
-        #[allow(clippy::cast_possible_truncation)]
-        let target = (ave_difficulty * k / weighted_times) as u64;
+        let target = u64::try_from(ave_difficulty * k / weighted_times).unwrap_or(u64::MAX);
         trace!(
             target: LOG_TARGET,
             "DiffCalc; t={}; bw={}; n={}; ts[0]={}; ts[n]={}; weighted_ts={}; k={}; diff[0]={}; diff[n]={}; \
