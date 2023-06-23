@@ -190,7 +190,8 @@ pub async fn create_new_blockchain(
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .add_consensus_constants(consensus_constants)
         .with_block(block0.clone())
-        .build();
+        .build()
+        .unwrap();
     (
         create_store_with_consensus(consensus_manager.clone()),
         vec![block0],
@@ -217,7 +218,8 @@ pub async fn create_new_blockchain_with_constants(
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .add_consensus_constants(constants)
         .with_block(block0.clone())
-        .build();
+        .build()
+        .unwrap();
     (
         create_store_with_consensus(consensus_manager.clone()),
         vec![block0],
@@ -249,7 +251,8 @@ pub async fn create_new_blockchain_lmdb(
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .add_consensus_constants(consensus_constants)
         .with_block(block0.clone())
-        .build();
+        .build()
+        .unwrap();
     let db = TempDatabase::new();
     let db = BlockchainDatabase::new(
         db,

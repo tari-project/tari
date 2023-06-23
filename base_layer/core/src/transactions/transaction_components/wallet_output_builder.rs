@@ -267,10 +267,8 @@ mod test {
                     .await
                     .unwrap());
 
-                let (recovered_key_id, recovered_value) = key_manager
-                    .try_commitment_key_recovery(&output.commitment, &output.encrypted_data, None)
-                    .await
-                    .unwrap();
+                let (recovered_key_id, recovered_value) =
+                    key_manager.try_output_key_recovery(&output, None).await.unwrap();
                 assert_eq!(recovered_key_id, spending_key_id);
                 assert_eq!(recovered_value, value);
             },

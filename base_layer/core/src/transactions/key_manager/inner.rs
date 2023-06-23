@@ -236,6 +236,28 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         Err(KeyManagerServiceError::KeyNotFoundInKeyChain)
     }
 
+    /// Search the specified branch key manager key chain to find the index of the specified private key.
+    async fn find_private_key_index(&self, branch: &str, key: &PrivateKey) -> Result<u64, KeyManagerServiceError> {
+        let km = self
+            .key_managers
+            .get(branch)
+            .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
+            .lock()
+            .await;
+
+        let current_index = km.key_index();
+
+        for i in 0u64..current_index + KEY_MANAGER_MAX_SEARCH_DEPTH {
+            let private_key = &km.derive_key(i)?.key;
+            if private_key == key {
+                trace!(target: LOG_TARGET, "Key found in {} Key Chain at index {}", branch, i);
+                return Ok(i);
+            }
+        }
+
+        Err(KeyManagerServiceError::KeyNotFoundInKeyChain)
+    }
+
     /// If the supplied index is higher than the current UTXO key chain indices then they will be updated.
     pub async fn update_current_key_index_if_higher(
         &self,
@@ -804,10 +826,9 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         Ok(data)
     }
 
-    pub async fn try_commitment_key_recovery(
+    pub async fn try_output_key_recovery(
         &self,
-        commitment: &Commitment,
-        encrypted_data: &EncryptedData,
+        output: &TransactionOutput,
         custom_recovery_key_id: Option<&TariKeyId>,
     ) -> Result<(TariKeyId, MicroTari), TransactionError> {
         let recovery_key = if let Some(key_id) = custom_recovery_key_id {
@@ -815,30 +836,24 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         } else {
             self.get_recovery_key().await?
         };
-        let (value, private_key) = EncryptedData::decrypt_data(&recovery_key, commitment, encrypted_data)?;
+        let (value, private_key) =
+            EncryptedData::decrypt_data(&recovery_key, output.commitment(), output.encrypted_data())?;
         self.crypto_factories
             .range_proof
-            .verify_mask(commitment, &private_key, value.into())?;
-        let public_key = PublicKey::from_secret_key(&private_key);
-        let key = match self
-            .find_key_index(
-                &TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
-                &public_key,
-            )
-            .await
-        {
+            .verify_mask(output.commitment(), &private_key, value.into())?;
+        // Detect the branch we need to scan on for the key.
+        let branch = if output.is_coinbase() {
+            TransactionKeyManagerBranch::Coinbase.get_branch_key()
+        } else {
+            TransactionKeyManagerBranch::CommitmentMask.get_branch_key()
+        };
+        let key = match self.find_private_key_index(&branch, &private_key).await {
             Ok(index) => {
-                self.update_current_key_index_if_higher(
-                    &TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
-                    index,
-                )
-                .await?;
-                KeyId::Managed {
-                    branch: TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
-                    index,
-                }
+                self.update_current_key_index_if_higher(&branch, index).await?;
+                KeyId::Managed { branch, index }
             },
             Err(_) => {
+                let public_key = PublicKey::from_secret_key(&private_key);
                 self.import_key(private_key).await?;
                 KeyId::Imported { key: public_key }
             },

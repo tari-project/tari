@@ -313,7 +313,7 @@ async fn fee_estimate() {
     )
     .await;
     oms.output_manager_handle.add_output(uo, None).await.unwrap();
-    let fee_calc = Fee::new(*create_consensus_constants(0).transaction_weight());
+    let fee_calc = Fee::new(*create_consensus_constants(0).transaction_weight_params());
     // minimum fpg
     let fee_per_gram = MicroTari::from(1);
     let fee = oms
@@ -383,7 +383,7 @@ async fn test_utxo_selection_no_chain_metadata() {
     let (mut oms, _shutdown, _, _, _, key_manager) =
         setup_oms_with_bn_state(OutputManagerSqliteDatabase::new(connection), None, server_node_identity).await;
 
-    let fee_calc = Fee::new(*create_consensus_constants(0).transaction_weight());
+    let fee_calc = Fee::new(*create_consensus_constants(0).transaction_weight_params());
     // no utxos - not enough funds
     let amount = MicroTari::from(1000);
     let fee_per_gram = MicroTari::from(2);
@@ -498,7 +498,7 @@ async fn test_utxo_selection_with_chain_metadata() {
         server_node_identity,
     )
     .await;
-    let fee_calc = Fee::new(*create_consensus_constants(0).transaction_weight());
+    let fee_calc = Fee::new(*create_consensus_constants(0).transaction_weight_params());
 
     // no utxos - not enough funds
     let amount = MicroTari::from(1000);
@@ -735,7 +735,7 @@ async fn send_no_change() {
 
     let fee_per_gram = MicroTari::from(4);
     let constants = create_consensus_constants(0);
-    let fee_without_change = Fee::new(*constants.transaction_weight()).calculate(
+    let fee_without_change = Fee::new(*constants.transaction_weight_params()).calculate(
         fee_per_gram,
         1,
         2,
@@ -813,7 +813,7 @@ async fn send_not_enough_for_change() {
 
     let fee_per_gram = MicroTari::from(4);
     let constants = create_consensus_constants(0);
-    let fee_without_change = Fee::new(*constants.transaction_weight()).calculate(fee_per_gram, 1, 2, 1, 0);
+    let fee_without_change = Fee::new(*constants.transaction_weight_params()).calculate(fee_per_gram, 1, 2, 1, 0);
     let value1 = MicroTari(500);
     let key_manager = create_test_core_key_manager_with_memory_db();
     oms.output_manager_handle
@@ -1139,7 +1139,7 @@ async fn coin_split_with_change() {
         .unwrap();
     assert_eq!(coin_split_tx.body.inputs().len(), 2);
     assert_eq!(coin_split_tx.body.outputs().len(), split_count + 1);
-    let fee_calc = Fee::new(*create_consensus_constants(0).transaction_weight());
+    let fee_calc = Fee::new(*create_consensus_constants(0).transaction_weight_params());
     let expected_fee = fee_calc.calculate(
         fee_per_gram,
         1,
@@ -1161,7 +1161,7 @@ async fn coin_split_no_change() {
     let fee_per_gram = MicroTari::from(4);
     let split_count = 15;
     let constants = create_consensus_constants(0);
-    let fee_calc = Fee::new(*constants.transaction_weight());
+    let fee_calc = Fee::new(*constants.transaction_weight_params());
     let expected_fee = fee_calc.calculate(
         fee_per_gram,
         1,
@@ -1254,7 +1254,7 @@ async fn handle_coinbase_with_bulletproofs_rewinding() {
 
     let (_, decrypted_value) = oms
         .key_manager_handle
-        .try_commitment_key_recovery(&output.commitment, &output.encrypted_data, None)
+        .try_output_key_recovery(&output, None)
         .await
         .unwrap();
     assert_eq!(decrypted_value, value3);

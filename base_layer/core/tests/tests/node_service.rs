@@ -95,7 +95,8 @@ async fn propagate_and_forward_many_valid_blocks() {
     let rules = ConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants)
         .with_block(block0.clone())
-        .build();
+        .build()
+        .unwrap();
     let (mut alice_node, rules) = BaseNodeBuilder::new(network.into())
         .with_node_identity(alice_node_identity.clone())
         .with_consensus_manager(rules)
@@ -224,7 +225,8 @@ async fn propagate_and_forward_invalid_block_hash() {
     let rules = ConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants)
         .with_block(block0.clone())
-        .build();
+        .build()
+        .unwrap();
     let (mut alice_node, rules) = BaseNodeBuilder::new(network.into())
         .with_node_identity(alice_node_identity.clone())
         .with_consensus_manager(rules)
@@ -340,7 +342,8 @@ async fn propagate_and_forward_invalid_block() {
     let rules = ConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants)
         .with_block(block0.clone())
-        .build();
+        .build()
+        .unwrap();
     let stateless_block_validator = BlockBodyInternalConsistencyValidator::new(rules.clone(), true, factories);
 
     let mock_validator = MockValidator::new(false);
@@ -490,7 +493,8 @@ async fn local_get_new_block_template_and_get_new_block() {
     let rules = ConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants[0].clone())
         .with_block(block0)
-        .build();
+        .build()
+        .unwrap();
     let (mut node, _rules) = BaseNodeBuilder::new(network.into())
         .with_consensus_manager(rules)
         .start(temp_dir.path().to_str().unwrap())
@@ -532,7 +536,8 @@ async fn local_get_new_block_with_zero_conf() {
     let rules = ConsensusManagerBuilder::new(network)
         .add_consensus_constants(consensus_constants[0].clone())
         .with_block(block0)
-        .build();
+        .build()
+        .unwrap();
     let difficulty_calculator = DifficultyCalculator::new(rules.clone(), RandomXFactory::default());
     let (mut node, rules) = BaseNodeBuilder::new(network.into())
         .with_consensus_manager(rules.clone())
@@ -617,7 +622,8 @@ async fn local_get_new_block_with_combined_transaction() {
     let rules = ConsensusManagerBuilder::new(network)
         .add_consensus_constants(consensus_constants[0].clone())
         .with_block(block0)
-        .build();
+        .build()
+        .unwrap();
     let difficulty_calculator = DifficultyCalculator::new(rules.clone(), RandomXFactory::default());
     let (mut node, rules) = BaseNodeBuilder::new(network.into())
         .with_consensus_manager(rules.clone())

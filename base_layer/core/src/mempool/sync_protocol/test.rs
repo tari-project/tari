@@ -72,7 +72,7 @@ pub async fn create_transactions(n: usize) -> Vec<Transaction> {
 async fn new_mempool_with_transactions(n: usize) -> (Mempool, Vec<Transaction>) {
     let mempool = Mempool::new(
         Default::default(),
-        ConsensusManager::builder(Network::LocalNet).build(),
+        ConsensusManager::builder(Network::LocalNet).build().unwrap(),
         Box::new(MockValidator::new(true)),
     );
 

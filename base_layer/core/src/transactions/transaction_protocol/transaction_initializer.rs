@@ -118,7 +118,7 @@ where KM: TransactionKeyManagerInterface
 {
     pub fn new(consensus_constants: &ConsensusConstants, key_manager: KM) -> Self {
         Self {
-            fee: Fee::new(*consensus_constants.transaction_weight()),
+            fee: Fee::new(*consensus_constants.transaction_weight_params()),
             lock_height: None,
             fee_per_gram: None,
             inputs: Vec::new(),
@@ -672,7 +672,7 @@ mod test {
         let p = TestParams::new(&key_manager).await;
         let input = create_test_input(MicroTari(5000), 0, &key_manager).await;
         let constants = create_consensus_constants(0);
-        let expected_fee = Fee::from(*constants.transaction_weight()).calculate(
+        let expected_fee = Fee::from(*constants.transaction_weight_params()).calculate(
             MicroTari(4),
             1,
             1,
@@ -721,7 +721,7 @@ mod test {
         let key_manager = create_test_core_key_manager_with_memory_db();
         let p = TestParams::new(&key_manager).await;
         let constants = create_consensus_constants(0);
-        let weighting = constants.transaction_weight();
+        let weighting = constants.transaction_weight_params();
         let tx_fee = Fee::new(*weighting).calculate(1.into(), 1, 1, 1, 0);
         let fee_for_change_output = weighting.params().output_weight * uT;
         // fee == 340, output = 80
@@ -898,7 +898,7 @@ mod test {
 
         let script = script!(Nop);
         let constants = create_consensus_constants(0);
-        let expected_fee = Fee::from(*constants.transaction_weight()).calculate(
+        let expected_fee = Fee::from(*constants.transaction_weight_params()).calculate(
             fee_per_gram,
             1,
             2,

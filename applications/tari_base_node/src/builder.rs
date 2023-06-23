@@ -167,7 +167,9 @@ pub async fn configure_and_initialize_node(
 ) -> Result<BaseNodeContext, ExitError> {
     let result = match &app_config.base_node.db_type {
         DatabaseType::Lmdb => {
-            let rules = ConsensusManager::builder(app_config.base_node.network).build();
+            let rules = ConsensusManager::builder(app_config.base_node.network)
+                .build()
+                .map_err(|e| ExitError::new(ExitCode::UnknownError, e))?;
             let backend = create_lmdb_database(
                 app_config.base_node.lmdb_path.as_path(),
                 app_config.base_node.lmdb.clone(),
@@ -202,7 +204,9 @@ async fn build_node_context(
         target: LOG_TARGET,
         "Building base node context for {}  network", app_config.base_node.network
     );
-    let rules = ConsensusManager::builder(app_config.base_node.network).build();
+    let rules = ConsensusManager::builder(app_config.base_node.network)
+        .build()
+        .map_err(|e| ExitError::new(ExitCode::UnknownError, e))?;
     let factories = CryptoFactories::default();
     let randomx_factory = RandomXFactory::new(app_config.base_node.max_randomx_vms);
     let difficulty_calculator = DifficultyCalculator::new(rules.clone(), randomx_factory.clone());

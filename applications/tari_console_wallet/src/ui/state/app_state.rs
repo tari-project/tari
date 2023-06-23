@@ -746,7 +746,7 @@ impl AppStateInner {
             .create_consensus_constants()
             .last()
             .unwrap()
-            .transaction_weight()
+            .transaction_weight_params()
     }
 
     pub async fn refresh_full_transaction_state(&mut self) -> Result<(), UiError> {
