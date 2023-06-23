@@ -320,7 +320,7 @@ impl WalletOutput {
     }
 }
 
-// These implementations are used for order these outputs for UTXO selection which will be done by comparing the values
+// These implementations are used for order these outputs for UTXO selection which is done by comparing the values
 impl Eq for WalletOutput {}
 
 impl PartialEq for WalletOutput {
