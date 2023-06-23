@@ -55,8 +55,6 @@ use crate::{
 
 /// A wallet output is one where the value and spending key (blinding factor) are known. This can be used to
 /// build both inputs and outputs (every input comes from an output)
-// TODO: Try to get rid of 'Serialize' and 'Deserialize' traits here; see related comment at 'struct RawTransactionInfo'
-// #LOGGED
 #[derive(Clone, Serialize, Deserialize)]
 pub struct WalletOutput {
     pub version: TransactionOutputVersion,
