@@ -25,7 +25,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     transaction::TxId,
-    types::{PrivateKey, PublicKey, Signature},
+    types::{ComAndPubSignature, PrivateKey, PublicKey, Signature},
 };
 use tari_crypto::{ristretto::pedersen::PedersenCommitment, tari_utilities::ByteArray};
 pub use tari_key_manager::key_manager_service::KeyId;
@@ -91,6 +91,20 @@ pub(super) struct RawTransactionInfo {
 
     pub metadata: TransactionMetadata,
     pub text_message: String,
+}
+
+impl RawTransactionInfo {
+    pub fn add_recipient_signed_message(&mut self, msg: RecipientSignedMessage) {
+        let received_output = msg.output;
+        self.recipient_partial_kernel_excess = msg.public_spend_key;
+        self.recipient_partial_kernel_signature = msg.partial_signature;
+        self.recipient_partial_kernel_offset = msg.offset;
+        if self.metadata.kernel_features.is_burned() {
+            self.metadata.burn_commitment = Some(received_output.commitment.clone());
+        }
+
+        self.recipient_output = Some(received_output);
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -434,84 +448,98 @@ impl SenderTransactionProtocol {
         Ok((public_nonce, public_excess))
     }
 
-    /// Add the signed transaction from the recipient and move to the next state
+    /// Add partial signatures, add the the recipient info to sender state and move to the Finalizing state
     pub async fn add_single_recipient_info<KM: TransactionKeyManagerInterface>(
         &mut self,
-        rec: RecipientSignedMessage,
+        mut rec: RecipientSignedMessage,
         key_manager: &KM,
     ) -> Result<(), TPE> {
-        match &mut self.state {
-            SenderState::CollectingSingleSignature(info) => {
+        match self.state {
+            SenderState::CollectingSingleSignature(ref info) => {
+                let mut info = info.clone();
+                // Add sender signature to recipient partial signature
+                rec.output.metadata_signature = self.add_sender_partial_signature(&rec, &info, key_manager).await?;
                 // Consolidate transaction info
-                let mut received_output = rec.output.clone();
-                if received_output.verify_metadata_signature().is_err() {
-                    // we need to make sure we use our values here and not the received values.
-                    let metadata_message = TransactionOutput::metadata_signature_message_from_parts(
-                        &received_output.version,
-                        &received_output.script, /* receiver chooses script here, can change fee per gram see issue: https://github.com/tari-project/tari/issues/5430 */
-                        &info
-                            .recipient_data
-                            .as_ref()
-                            .ok_or_else(|| {
-                                TPE::IncompleteStateError("Missing data `recipient_output_features`".to_string())
-                            })?
-                            .recipient_output_features,
-                        &info
-                            .recipient_data
-                            .as_ref()
-                            .ok_or_else(|| TPE::IncompleteStateError("Missing data `recipient_covenant`".to_string()))?
-                            .recipient_covenant,
-                        &received_output.encrypted_data,
-                        &info
-                            .recipient_data
-                            .as_ref()
-                            .ok_or_else(|| {
-                                TPE::IncompleteStateError("Missing data 'recipient_minimum_value_promise'".to_string())
-                            })?
-                            .recipient_minimum_value_promise,
-                    );
-                    let ephemeral_public_key_nonce = info
-                        .recipient_data
-                        .as_ref()
-                        .ok_or_else(|| {
-                            TPE::IncompleteStateError("Missing data `recipient_ephemeral_public_key_nonce`".to_string())
-                        })?
-                        .recipient_ephemeral_public_key_nonce
-                        .clone();
-                    let recipient_sender_offset_key_id = info
-                        .recipient_data
-                        .as_ref()
-                        .ok_or_else(|| {
-                            TPE::IncompleteStateError("Missing data `recipient_sender_offset_key_id`".to_string())
-                        })?
-                        .recipient_sender_offset_key_id
-                        .clone();
-                    let sender_metadata_signature = key_manager
-                        .get_sender_partial_metadata_signature(
-                            &ephemeral_public_key_nonce,
-                            &recipient_sender_offset_key_id,
-                            &received_output.commitment,
-                            received_output.metadata_signature.ephemeral_commitment(),
-                            &received_output.version,
-                            &metadata_message,
-                        )
-                        .await?;
-                    received_output.metadata_signature =
-                        &received_output.metadata_signature + &sender_metadata_signature;
-                }
-                info.recipient_output = Some(received_output.clone());
-                info.recipient_partial_kernel_excess = rec.public_spend_key;
-                info.recipient_partial_kernel_signature = rec.partial_signature;
-                info.recipient_partial_kernel_offset = rec.offset;
-                if info.metadata.kernel_features.is_burned() {
-                    info.metadata.burn_commitment = Some(received_output.commitment);
-                };
-
-                self.state = SenderState::Finalizing(info.clone());
+                info.add_recipient_signed_message(rec);
+                self.state = SenderState::Finalizing(info);
                 Ok(())
             },
             _ => Err(TPE::InvalidStateError),
         }
+    }
+
+    /// Add the recipient info to sender state and move to the Finalizing state. This method does not add the sender
+    /// partial signature to the final signature. Use this if the sender and receiver are the same party and the
+    /// signature is already complete.
+    pub fn add_presigned_recipient_info(&mut self, rec: RecipientSignedMessage) -> Result<(), TPE> {
+        match self.state {
+            SenderState::CollectingSingleSignature(ref info) => {
+                let mut info = info.clone();
+                // Consolidate transaction info
+                info.add_recipient_signed_message(rec);
+
+                self.state = SenderState::Finalizing(info);
+                Ok(())
+            },
+            _ => Err(TPE::InvalidStateError),
+        }
+    }
+
+    async fn add_sender_partial_signature<KM: TransactionKeyManagerInterface>(
+        &self,
+        rec: &RecipientSignedMessage,
+        info: &RawTransactionInfo,
+        key_manager: &KM,
+    ) -> Result<ComAndPubSignature, TPE> {
+        let received_output = &rec.output;
+        // we need to make sure we use our values here and not the received values.
+        let metadata_message = TransactionOutput::metadata_signature_message_from_parts(
+            &received_output.version,
+            &received_output.script, /* receiver chooses script here, can change fee per gram see issue: https://github.com/tari-project/tari/issues/5430 */
+            &info
+                .recipient_data
+                .as_ref()
+                .ok_or_else(|| TPE::IncompleteStateError("Missing data `recipient_output_features`".to_string()))?
+                .recipient_output_features,
+            &info
+                .recipient_data
+                .as_ref()
+                .ok_or_else(|| TPE::IncompleteStateError("Missing data `recipient_covenant`".to_string()))?
+                .recipient_covenant,
+            &received_output.encrypted_data,
+            &info
+                .recipient_data
+                .as_ref()
+                .ok_or_else(|| TPE::IncompleteStateError("Missing data 'recipient_minimum_value_promise'".to_string()))?
+                .recipient_minimum_value_promise,
+        );
+        let ephemeral_public_key_nonce = info
+            .recipient_data
+            .as_ref()
+            .ok_or_else(|| {
+                TPE::IncompleteStateError("Missing data `recipient_ephemeral_public_key_nonce`".to_string())
+            })?
+            .recipient_ephemeral_public_key_nonce
+            .clone();
+        let recipient_sender_offset_key_id = info
+            .recipient_data
+            .as_ref()
+            .ok_or_else(|| TPE::IncompleteStateError("Missing data `recipient_sender_offset_key_id`".to_string()))?
+            .recipient_sender_offset_key_id
+            .clone();
+        let sender_metadata_signature = key_manager
+            .get_sender_partial_metadata_signature(
+                &ephemeral_public_key_nonce,
+                &recipient_sender_offset_key_id,
+                &received_output.commitment,
+                received_output.metadata_signature.ephemeral_commitment(),
+                &received_output.version,
+                &metadata_message,
+            )
+            .await?;
+
+        let metadata_signature = &received_output.metadata_signature + &sender_metadata_signature;
+        Ok(metadata_signature)
     }
 
     /// Attempts to build the final transaction.
