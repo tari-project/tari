@@ -33,7 +33,7 @@ use crate::transactions::{
 /// SingleReceiverTransactionProtocol represents the actions taken by the single receiver in the one-round Tari
 /// transaction protocol. The procedure is straightforward. Upon receiving the sender's information, the receiver:
 /// * Checks the input for validity
-/// * Constructs his output, range proof and signature
+/// * Constructs his output, range proof and partial signature
 /// * Constructs the reply
 /// If any step fails, an error is returned.
 pub struct SingleReceiverTransactionProtocol {}
@@ -46,7 +46,7 @@ impl SingleReceiverTransactionProtocol {
     ) -> Result<RecipientSignedMessage, TPE> {
         // output.fill in metadata
         SingleReceiverTransactionProtocol::validate_sender_data(sender_info)?;
-        let transaction_output = output.as_transaction_output(key_manager).await?;
+        let transaction_output = output.to_transaction_output(key_manager).await?;
 
         let (nonce_id, public_nonce) = key_manager
             .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())

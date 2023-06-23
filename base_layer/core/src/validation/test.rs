@@ -154,7 +154,7 @@ async fn chain_balance_validation() {
         TransactionKernel::new_current_version(KernelFeatures::empty(), MicroTari::from(0), 0, excess, sig, None);
     let mut gen_block = genesis.block().clone();
     gen_block.body.add_output(faucet_utxo);
-    gen_block.body.add_kernels(&mut vec![kernel]);
+    gen_block.body.add_kernels([kernel]);
     let mut utxo_sum = HomomorphicCommitment::default();
     let mut kernel_sum = HomomorphicCommitment::default();
     let burned_sum = HomomorphicCommitment::default();
@@ -339,7 +339,7 @@ async fn chain_balance_validation_burned() {
         TransactionKernel::new_current_version(KernelFeatures::empty(), MicroTari::from(0), 0, excess, sig, None);
     let mut gen_block = genesis.block().clone();
     gen_block.body.add_output(faucet_utxo);
-    gen_block.body.add_kernels(&mut vec![kernel]);
+    gen_block.body.add_kernels([kernel]);
     let mut utxo_sum = HomomorphicCommitment::default();
     let mut kernel_sum = HomomorphicCommitment::default();
     let mut burned_sum = HomomorphicCommitment::default();

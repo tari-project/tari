@@ -1104,7 +1104,7 @@ async fn consensus_validation_large_tx() {
     let amount = MicroTari::from(5_000_000);
 
     let input = outputs[1][0].clone();
-    let inputs = vec![input.as_transaction_input(&key_manager).await.unwrap()];
+    let inputs = vec![input.to_transaction_input(&key_manager).await.unwrap()];
     let input_script_keys = vec![input.script_key_id];
 
     let fee = Fee::new(*consensus_manager.consensus_constants(0).transaction_weight_params()).calculate(
@@ -1168,7 +1168,7 @@ async fn consensus_validation_large_tx() {
         &tx_meta.burn_commitment,
     );
     for (output, nonce_id) in wallet_outputs {
-        outputs.push(output.as_transaction_output(&key_manager).await.unwrap());
+        outputs.push(output.to_transaction_output(&key_manager).await.unwrap());
         offset = &offset +
             &key_manager
                 .get_txo_private_kernel_offset(&output.spending_key_id, &nonce_id)

@@ -21,7 +21,6 @@ pub use format_currency::format_currency;
 pub mod transaction_protocol;
 pub use transaction_protocol::{recipient::ReceiverTransactionProtocol, sender::SenderTransactionProtocol};
 
-pub mod types;
 pub mod weight;
 
 pub mod key_manager;
@@ -30,12 +29,11 @@ pub mod key_manager;
 #[cfg(feature = "base_node")]
 pub mod test_helpers;
 
+// Hash domain for all transaction-related hashes, including the script signature challenge, transaction hash and kernel
+// signature challenge
 hash_domain!(TransactionHashDomain, "com.tari.base_layer.core.transactions", 0);
-hash_domain!(
-    TransactionFixedNonceKdfDomain,
-    "com.tari.base_layer.core.transactions.fixed_nonce_kdf",
-    0
-);
+
+// Hash domain used to derive the final AEAD encryption key for encrypted data in UTXOs
 hash_domain!(
     TransactionSecureNonceKdfDomain,
     "com.tari.base_layer.core.transactions.secure_nonce_kdf",

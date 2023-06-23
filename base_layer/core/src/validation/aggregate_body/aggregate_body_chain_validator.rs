@@ -91,6 +91,7 @@ impl AggregateBodyChainLinkedValidator {
         // inputs may be "slim", only containing references to outputs
         // so we need to resolve those references, creating a new body in the process
         let inputs = validate_input_not_pruned(body, db)?;
+        // UNCHECKED: sorting has been checked by the AggregateBodyInternalConsistencyValidator
         let body = AggregateBody::new_sorted_unchecked(inputs, body.outputs().to_vec(), body.kernels().to_vec());
 
         validate_input_maturity(&body, height)?;
@@ -302,7 +303,7 @@ fn check_total_burned(body: &AggregateBody) -> Result<(), ValidationError> {
 // This function checks that all the timelocks in the provided transaction pass. It checks kernel lock heights and
 // input maturities
 fn verify_timelocks(body: &AggregateBody, current_height: u64) -> Result<(), ValidationError> {
-    if body.min_spendable_height() > current_height + 1 {
+    if body.min_spendable_height()? > current_height + 1 {
         warn!(
             target: LOG_TARGET,
             "AggregateBody has a min spend height higher than the current tip"

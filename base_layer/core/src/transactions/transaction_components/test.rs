@@ -62,8 +62,8 @@ async fn input_and_output_and_wallet_output_hash_match() {
         .create_output(Default::default(), &key_manager)
         .await
         .unwrap();
-    let output = i.as_transaction_output(&key_manager).await.unwrap();
-    let input = i.as_transaction_input(&key_manager).await.unwrap();
+    let output = i.to_transaction_output(&key_manager).await.unwrap();
+    let input = i.to_transaction_input(&key_manager).await.unwrap();
     assert_eq!(output.hash(), input.output_hash());
     assert_eq!(output.hash(), i.hash(&key_manager).await.unwrap());
 }
@@ -78,12 +78,12 @@ async fn key_manager_input() {
         .await
         .unwrap();
     let input = i
-        .as_transaction_input(&key_manager)
+        .to_transaction_input(&key_manager)
         .await
         .expect("Should be able to create transaction input");
 
     let output = i
-        .as_transaction_output(&key_manager)
+        .to_transaction_output(&key_manager)
         .await
         .expect("Should be able to create transaction output");
 
@@ -111,7 +111,7 @@ async fn range_proof_verification() {
         )
         .await
         .unwrap();
-    let tx_output1 = wallet_output1.as_transaction_output(&key_manager).await.unwrap();
+    let tx_output1 = wallet_output1.to_transaction_output(&key_manager).await.unwrap();
     tx_output1.verify_range_proof(&factories.range_proof).unwrap();
     let input_data = inputs!(test_params_2.script_key_pk.clone());
     let wallet_output2 = WalletOutputBuilder::new((2u64.pow(32) + 1u64).into(), test_params_2.spend_key_id.clone())
@@ -167,7 +167,7 @@ async fn range_proof_verification_batch() {
         )
         .await
         .unwrap();
-    let tx_output1 = wallet_output1.as_transaction_output(&key_manager).await.unwrap();
+    let tx_output1 = wallet_output1.to_transaction_output(&key_manager).await.unwrap();
     assert!(tx_output1.verify_range_proof(&factories.range_proof).is_ok());
 
     let wallet_output2 = TestParams::new(&key_manager)
@@ -181,7 +181,7 @@ async fn range_proof_verification_batch() {
         )
         .await
         .unwrap();
-    let tx_output2 = wallet_output2.as_transaction_output(&key_manager).await.unwrap();
+    let tx_output2 = wallet_output2.to_transaction_output(&key_manager).await.unwrap();
     assert!(tx_output2.verify_range_proof(&factories.range_proof).is_ok());
 
     let wallet_output3 = TestParams::new(&key_manager)
@@ -195,7 +195,7 @@ async fn range_proof_verification_batch() {
         )
         .await
         .unwrap();
-    let tx_output3 = wallet_output3.as_transaction_output(&key_manager).await.unwrap();
+    let tx_output3 = wallet_output3.to_transaction_output(&key_manager).await.unwrap();
     assert!(tx_output3.verify_range_proof(&factories.range_proof).is_ok());
 
     let wallet_output4 = TestParams::new(&key_manager)
@@ -209,7 +209,7 @@ async fn range_proof_verification_batch() {
         )
         .await
         .unwrap();
-    let tx_output4 = wallet_output4.as_transaction_output(&key_manager).await.unwrap();
+    let tx_output4 = wallet_output4.to_transaction_output(&key_manager).await.unwrap();
     assert!(tx_output4.verify_range_proof(&factories.range_proof).is_ok());
 
     let wallet_output5 = TestParams::new(&key_manager)
@@ -223,7 +223,7 @@ async fn range_proof_verification_batch() {
         )
         .await
         .unwrap();
-    let mut tx_output5 = wallet_output5.as_transaction_output(&key_manager).await.unwrap();
+    let mut tx_output5 = wallet_output5.to_transaction_output(&key_manager).await.unwrap();
     assert!(tx_output5.verify_range_proof(&factories.range_proof).is_ok());
 
     // The batch should pass
@@ -253,17 +253,17 @@ async fn sender_signature_verification() {
         .await
         .unwrap();
 
-    let mut tx_output = wallet_output.as_transaction_output(&key_manager).await.unwrap();
+    let mut tx_output = wallet_output.to_transaction_output(&key_manager).await.unwrap();
     assert!(tx_output.verify_metadata_signature().is_ok());
     tx_output.script = TariScript::default();
     assert!(tx_output.verify_metadata_signature().is_err());
 
-    tx_output = wallet_output.as_transaction_output(&key_manager).await.unwrap();
+    tx_output = wallet_output.to_transaction_output(&key_manager).await.unwrap();
     assert!(tx_output.verify_metadata_signature().is_ok());
     tx_output.features = OutputFeatures::create_coinbase(0, None);
     assert!(tx_output.verify_metadata_signature().is_err());
 
-    tx_output = wallet_output.as_transaction_output(&key_manager).await.unwrap();
+    tx_output = wallet_output.to_transaction_output(&key_manager).await.unwrap();
     assert!(tx_output.verify_metadata_signature().is_ok());
     tx_output.sender_offset_public_key = PublicKey::default();
     assert!(tx_output.verify_metadata_signature().is_err());
@@ -347,27 +347,27 @@ fn check_timelocks() {
     ));
     tx.body.check_utxo_rules(5).unwrap();
 
-    assert_eq!(tx.max_input_maturity(), 5);
+    assert_eq!(tx.max_input_maturity().unwrap(), 5);
     assert_eq!(tx.max_kernel_timelock(), 2);
-    assert_eq!(tx.min_spendable_height(), 5);
+    assert_eq!(tx.min_spendable_height().unwrap(), 5);
 
     input.set_maturity(4).unwrap();
     kernel.lock_height = 3;
     tx.body.add_input(input.clone());
     tx.body.add_kernel(kernel.clone());
 
-    assert_eq!(tx.max_input_maturity(), 5);
+    assert_eq!(tx.max_input_maturity().unwrap(), 5);
     assert_eq!(tx.max_kernel_timelock(), 3);
-    assert_eq!(tx.min_spendable_height(), 5);
+    assert_eq!(tx.min_spendable_height().unwrap(), 5);
 
     input.set_maturity(2).unwrap();
     kernel.lock_height = 10;
     tx.body.add_input(input);
     tx.body.add_kernel(kernel);
 
-    assert_eq!(tx.max_input_maturity(), 5);
+    assert_eq!(tx.max_input_maturity().unwrap(), 5);
     assert_eq!(tx.max_kernel_timelock(), 10);
-    assert_eq!(tx.min_spendable_height(), 10);
+    assert_eq!(tx.min_spendable_height().unwrap(), 10);
 }
 
 #[tokio::test]
@@ -503,7 +503,7 @@ async fn test_output_recover_openings() {
         )
         .await
         .unwrap();
-    let output = wallet_output.as_transaction_output(&key_manager).await.unwrap();
+    let output = wallet_output.to_transaction_output(&key_manager).await.unwrap();
 
     let (mask, value) = key_manager.try_output_key_recovery(&output, None).await.unwrap();
     assert_eq!(value, wallet_output.value);
