@@ -70,8 +70,8 @@ impl Default for UnconfirmedPoolConfig {
 /// transactions included in blocks with transactions stored in the pool. The txs_by_priority BTreeMap prioritise the
 /// transactions in the pool according to TXPriority, it allows transactions to be inserted in sorted order by their
 /// priority. The txs_by_priority BTreeMap makes it easier to select the set of highest priority transactions that can
-/// be included in a block. The excess_sig of a transaction is used as a key to uniquely identify a specific transaction in
-/// these containers.
+/// be included in a block. The excess_sig of a transaction is used as a key to uniquely identify a specific transaction
+/// in these containers.
 pub struct UnconfirmedPool {
     config: UnconfirmedPoolConfig,
     key_counter: usize,
