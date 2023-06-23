@@ -96,18 +96,6 @@ impl Transaction {
         self.body.min_spendable_height()
     }
 
-    /// This function adds two transactions together. It does not do cut-through but simply sums up the offsets and
-    /// extends all inputs, outputs and kernels.
-    pub fn add_no_cut_through(mut self, other: Self) -> Self {
-        self.offset = self.offset + other.offset;
-        self.script_offset = self.script_offset + other.script_offset;
-        let (inputs, outputs, kernels) = other.body.dissolve();
-        self.body.add_inputs(inputs);
-        self.body.add_outputs(outputs);
-        self.body.add_kernels(kernels);
-        self
-    }
-
     pub fn first_kernel_excess_sig(&self) -> Option<&Signature> {
         Some(&self.body.kernels().first()?.excess_sig)
     }
@@ -116,8 +104,15 @@ impl Transaction {
 impl Add for Transaction {
     type Output = Self;
 
+    /// This function adds two transactions together by summing up the offset, script offset and
+    /// extending inputs, outputs and kernels.
     fn add(mut self, other: Self) -> Self {
-        self = self.add_no_cut_through(other);
+        self.offset = self.offset + other.offset;
+        self.script_offset = self.script_offset + other.script_offset;
+        let (inputs, outputs, kernels) = other.body.dissolve();
+        self.body.add_inputs(inputs);
+        self.body.add_outputs(outputs);
+        self.body.add_kernels(kernels);
         self
     }
 }
