@@ -63,7 +63,7 @@ async fn input_and_output_and_wallet_output_hash_match() {
         .await
         .unwrap();
     let output = i.to_transaction_output(&key_manager).await.unwrap();
-    let input = i.as_transaction_input(&key_manager).await.unwrap();
+    let input = i.to_transaction_input(&key_manager).await.unwrap();
     assert_eq!(output.hash(), input.output_hash());
     assert_eq!(output.hash(), i.hash(&key_manager).await.unwrap());
 }
@@ -78,7 +78,7 @@ async fn key_manager_input() {
         .await
         .unwrap();
     let input = i
-        .as_transaction_input(&key_manager)
+        .to_transaction_input(&key_manager)
         .await
         .expect("Should be able to create transaction input");
 

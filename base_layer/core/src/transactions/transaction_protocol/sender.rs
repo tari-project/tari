@@ -559,7 +559,7 @@ impl SenderTransactionProtocol {
         );
 
         for input in &info.inputs {
-            tx_builder.add_input(input.output.as_transaction_input(key_manager).await?);
+            tx_builder.add_input(input.output.to_transaction_input(key_manager).await?);
             signature = &signature +
                 &key_manager
                     .get_partial_txo_kernel_signature(
@@ -1072,7 +1072,7 @@ mod test {
         // Bob's parameters
         let bob_key = TestParams::new(&key_manager).await;
         let input = create_test_input(MicroTari(1200), 0, &key_manager).await;
-        let utxo = input.as_transaction_input(&key_manager).await.unwrap();
+        let utxo = input.to_transaction_input(&key_manager).await.unwrap();
         let script = script!(Nop);
         let mut builder = SenderTransactionProtocol::builder(create_consensus_constants(0), key_manager.clone());
         let fee_per_gram = MicroTari(4);

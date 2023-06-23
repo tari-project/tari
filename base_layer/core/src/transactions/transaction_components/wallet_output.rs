@@ -192,7 +192,7 @@ impl WalletOutput {
     }
 
     /// Commits an KeyManagerOutput into a Transaction input
-    pub async fn as_transaction_input<KM: TransactionKeyManagerInterface>(
+    pub async fn to_transaction_input<KM: TransactionKeyManagerInterface>(
         &self,
         key_manager: &KM,
     ) -> Result<TransactionInput, TransactionError> {
@@ -233,11 +233,11 @@ impl WalletOutput {
     }
 
     /// Commits an WalletOutput into a TransactionInput that only contains the hash of the spent output data
-    pub async fn as_compact_transaction_input<KM: TransactionKeyManagerInterface>(
+    pub async fn to_compact_transaction_input<KM: TransactionKeyManagerInterface>(
         &self,
         key_manager: &KM,
     ) -> Result<TransactionInput, TransactionError> {
-        let input = self.as_transaction_input(key_manager).await?;
+        let input = self.to_transaction_input(key_manager).await?;
 
         Ok(TransactionInput::new(
             input.version,

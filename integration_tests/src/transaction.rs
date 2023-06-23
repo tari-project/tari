@@ -88,7 +88,7 @@ impl TestTransactionBuilder {
         }
 
         self.inputs.push((
-            u.as_transaction_input(key_manager)
+            u.to_transaction_input(key_manager)
                 .await
                 .expect("The wallet output to convert to an Input"),
             u,

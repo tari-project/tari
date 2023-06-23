@@ -54,7 +54,7 @@ pub async fn create_outputs(
 pub async fn create_input(key_manager: &TestKeyManager) -> TransactionInput {
     let params = TestParams::new(key_manager).await;
     let output = params.create_output(Default::default(), key_manager).await.unwrap();
-    output.as_transaction_input(key_manager).await.unwrap()
+    output.to_transaction_input(key_manager).await.unwrap()
 }
 
 pub fn create_context<'a>(covenant: &Covenant, input: &'a TransactionInput, block_height: u64) -> CovenantContext<'a> {
