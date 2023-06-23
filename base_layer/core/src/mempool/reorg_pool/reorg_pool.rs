@@ -77,16 +77,16 @@ impl ReorgPool {
     /// Insert a new transaction into the ReorgPool. Published transactions will be discarded once they are
     /// `config.expiry_height` blocks old.
     fn insert(&mut self, height: u64, tx: Arc<Transaction>) {
-        let excess_hex = tx
-            .first_kernel_excess_sig()
-            .map(|s| s.get_signature().to_hex())
-            .unwrap_or_else(|| "no kernel!".to_string());
         if tx
             .body
             .kernels()
             .iter()
             .all(|k| self.txs_by_signature.contains_key(k.excess_sig.get_signature()))
         {
+            let excess_hex = tx
+                .first_kernel_excess_sig()
+                .map(|s| s.get_signature().to_hex())
+                .unwrap_or_else(|| "no kernel!".to_string());
             debug!(
                 target: LOG_TARGET,
                 "Transaction {} already found in reorg pool", excess_hex
