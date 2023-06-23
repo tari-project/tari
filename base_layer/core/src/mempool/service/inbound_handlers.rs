@@ -45,13 +45,16 @@ pub const LOG_TARGET: &str = "c::mp::service::inbound_handlers";
 #[derive(Clone)]
 pub struct MempoolInboundHandlers {
     mempool: Mempool,
-    outbound_nmi: OutboundMempoolServiceInterface,
+    outbound_service: OutboundMempoolServiceInterface,
 }
 
 impl MempoolInboundHandlers {
     /// Construct the MempoolInboundHandlers.
-    pub fn new(mempool: Mempool, outbound_nmi: OutboundMempoolServiceInterface) -> Self {
-        Self { mempool, outbound_nmi }
+    pub fn new(mempool: Mempool, outbound_service: OutboundMempoolServiceInterface) -> Self {
+        Self {
+            mempool,
+            outbound_service,
+        }
     }
 
     /// Handle inbound Mempool service requests from remote nodes and local services.
@@ -139,7 +142,7 @@ impl MempoolInboundHandlers {
                         target: LOG_TARGET,
                         "Propagate transaction ({}) to network.", kernel_excess_sig,
                     );
-                    self.outbound_nmi
+                    self.outbound_service
                         .propagate_tx(tx, source_peer.into_iter().collect())
                         .await?;
                 }
