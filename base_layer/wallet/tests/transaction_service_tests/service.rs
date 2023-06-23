@@ -860,11 +860,7 @@ async fn single_transaction_burn_tari() {
         if output.is_burned() {
             found_burned_output = true;
             match key_manager_handle
-                .try_commitment_key_recovery(
-                    &output.clone().commitment,
-                    &output.clone().encrypted_data,
-                    Some(&recovery_key_id),
-                )
+                .try_output_key_recovery(output, Some(&recovery_key_id))
                 .await
             {
                 Ok((spending_key_id, value)) => {

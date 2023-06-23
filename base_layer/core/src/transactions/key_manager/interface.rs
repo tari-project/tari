@@ -35,6 +35,7 @@ use crate::transactions::{
         TransactionError,
         TransactionInputVersion,
         TransactionKernelVersion,
+        TransactionOutput,
         TransactionOutputVersion,
     },
 };
@@ -165,10 +166,9 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
         value: u64,
     ) -> Result<EncryptedData, TransactionError>;
 
-    async fn try_commitment_key_recovery(
+    async fn try_output_key_recovery(
         &self,
-        commitment: &Commitment,
-        data: &EncryptedData,
+        output: &TransactionOutput,
         custom_recovery_key_id: Option<&TariKeyId>,
     ) -> Result<(TariKeyId, MicroTari), TransactionError>;
 
