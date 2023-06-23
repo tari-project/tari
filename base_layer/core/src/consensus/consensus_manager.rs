@@ -212,6 +212,8 @@ impl ConsensusManagerBuilder {
     /// Builds a consensus manager
     pub fn build(mut self) -> Result<ConsensusManager, ConsensusBuilderError> {
         // should not be allowed to set the gen block and have the network type anything else than LocalNet
+        // If feature != base_node, gen_block is not available
+        #[cfg(feature = "base_node")]
         if self.network.as_network() != Network::LocalNet && self.gen_block.is_some() {
             return Err(ConsensusBuilderError::CannotSetGenesisBlock);
         }
