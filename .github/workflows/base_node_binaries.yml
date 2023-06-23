@@ -154,7 +154,6 @@ jobs:
           echo "SHARUN=shasum --algorithm 256" >> $GITHUB_ENV
           echo "CC=gcc" >> $GITHUB_ENV
           echo "TBN_EXT=" >> $GITHUB_ENV
-          echo "LIB_PRE=lib" >> $GITHUB_ENV
           echo "SHELL_EXT=.sh" >> $GITHUB_ENV
           echo "PLATFORM_SPECIFIC_DIR=linux" >> $GITHUB_ENV
           echo "TBN_DIST=/dist" >> $GITHUB_ENV
@@ -186,7 +185,6 @@ jobs:
           echo "SHARUN=pwsh C:\ProgramData\chocolatey\lib\psutils\tools\psutils-master\shasum.ps1 --algorithm 256" >> $GITHUB_ENV
           echo "TBN_EXT=.exe" >> $GITHUB_ENV
           echo "LIB_EXT=.dll" >> $GITHUB_ENV
-          echo "LIB_PRE=" >> $GITHUB_ENV
           echo "SHELL_EXT=.bat" >> $GITHUB_ENV
           echo "TBN_DIST=\dist" >> $GITHUB_ENV
           echo "PLATFORM_SPECIFIC_DIR=windows" >> $GITHUB_ENV
@@ -245,9 +243,6 @@ jobs:
               cp -v "$GITHUB_WORKSPACE/target/${{ matrix.builds.target }}/release/${FILE}${TBN_EXT}" .
             fi
           done
-          if [ -f "$GITHUB_WORKSPACE/target/${{ matrix.builds.target }}/release/${LIB_PRE}tari_mining_helper_ffi${LIB_EXT}" ]; then
-            cp -v "$GITHUB_WORKSPACE/target/${{ matrix.builds.target }}/release/${LIB_PRE}tari_mining_helper_ffi${LIB_EXT}" .
-          fi
           if [ -f "$GITHUB_WORKSPACE/applications/tari_base_node/${PLATFORM_SPECIFIC_DIR}/runtime/start_tor${SHELL_EXT}" ]; then
             cp -v "$GITHUB_WORKSPACE/applications/tari_base_node/${PLATFORM_SPECIFIC_DIR}/runtime/start_tor${SHELL_EXT}" .
           fi

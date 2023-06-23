@@ -115,15 +115,19 @@ impl ConsensusManager {
     /// Create a new TargetDifficulty for the given proof of work using constants that are effective from the given
     /// height
     #[cfg(feature = "base_node")]
-    pub(crate) fn new_target_difficulty(&self, pow_algo: PowAlgorithm, height: u64) -> TargetDifficultyWindow {
+    pub(crate) fn new_target_difficulty(
+        &self,
+        pow_algo: PowAlgorithm,
+        height: u64,
+    ) -> Result<TargetDifficultyWindow, String> {
         use std::convert::TryFrom;
         let constants = self.consensus_constants(height);
         let block_window = constants.get_difficulty_block_window();
 
         TargetDifficultyWindow::new(
             usize::try_from(block_window).expect("difficulty block window exceeds usize::MAX"),
-            constants.get_diff_target_block_interval(pow_algo),
-            constants.get_difficulty_max_block_interval(pow_algo),
+            constants.pow_target_block_interval(pow_algo),
+            constants.pow_max_block_interval(pow_algo),
         )
     }
 
