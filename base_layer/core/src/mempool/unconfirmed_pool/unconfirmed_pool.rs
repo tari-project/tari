@@ -40,6 +40,8 @@ use crate::{
     },
     transactions::{tari_amount::MicroTari, transaction_components::Transaction, weight::TransactionWeight},
 };
+use crate::mempool::shrink_hashmap::shrink_hashmap;
+
 pub const LOG_TARGET: &str = "c::mp::unconfirmed_pool::unconfirmed_pool_storage";
 
 type TransactionKey = usize;
@@ -604,16 +606,6 @@ impl UnconfirmedPool {
     #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::cast_sign_loss)]
     pub fn compact(&mut self) {
-        fn shrink_hashmap<K: Eq + Hash, V>(map: &mut HashMap<K, V>) -> (usize, usize) {
-            let cap = map.capacity();
-            let extra_cap = cap - map.len();
-            if extra_cap > 100 {
-                map.shrink_to(map.len() + (extra_cap / 2));
-            }
-
-            (cap, map.capacity())
-        }
-
         let (old, new) = shrink_hashmap(&mut self.tx_by_key);
         shrink_hashmap(&mut self.txs_by_signature);
         shrink_hashmap(&mut self.txs_by_output);
