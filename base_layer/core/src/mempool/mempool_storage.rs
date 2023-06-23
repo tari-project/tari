@@ -243,7 +243,6 @@ impl MempoolStorage {
     }
 
     /// Returns all unconfirmed transaction stored in the Mempool, except the transactions stored in the ReOrgPool.
-    // TODO: Investigate returning an iterator rather than a large vector of transactions
     pub fn snapshot(&self) -> Vec<Arc<Transaction>> {
         self.unconfirmed_pool.snapshot()
     }

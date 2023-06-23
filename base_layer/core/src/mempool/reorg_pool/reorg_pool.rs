@@ -77,16 +77,16 @@ impl ReorgPool {
     /// Insert a new transaction into the ReorgPool. Published transactions will be discarded once they are
     /// `config.expiry_height` blocks old.
     fn insert(&mut self, height: u64, tx: Arc<Transaction>) {
-        let excess_hex = tx
-            .first_kernel_excess_sig()
-            .map(|s| s.get_signature().to_hex())
-            .unwrap_or_else(|| "no kernel!".to_string());
         if tx
             .body
             .kernels()
             .iter()
             .all(|k| self.txs_by_signature.contains_key(k.excess_sig.get_signature()))
         {
+            let excess_hex = tx
+                .first_kernel_excess_sig()
+                .map(|s| s.get_signature().to_hex())
+                .unwrap_or_else(|| "no kernel!".to_string());
             debug!(
                 target: LOG_TARGET,
                 "Transaction {} already found in reorg pool", excess_hex
@@ -287,13 +287,6 @@ impl ReorgPool {
             None => return,
         };
 
-        // let heights_to_remove = self
-        //     .txs_by_height
-        //     .keys()
-        //     .filter(|h| **h <= height)
-        //     .copied()
-        //     .collect::<Vec<_>>();
-        // for height in heights_to_remove {
         if let Some(tx_ids) = self.txs_by_height.remove(&height) {
             debug!(
                 target: LOG_TARGET,
@@ -338,7 +331,7 @@ impl ReorgPool {
         shrink_hashmap(&mut self.txs_by_signature);
         shrink_hashmap(&mut self.txs_by_height);
 
-        if old - new > 0 {
+        if old > new {
             debug!(
                 target: LOG_TARGET,
                 "Shrunk reorg mempool memory usage ({}/{}) ~{}%",
