@@ -112,7 +112,7 @@ pub async fn create_coinbase(
     )
     .await
     .unwrap();
-    let output = wallet_output.as_transaction_output(key_manager).await.unwrap();
+    let output = wallet_output.to_transaction_output(key_manager).await.unwrap();
 
     (output, kernel, wallet_output)
 }
@@ -250,7 +250,7 @@ pub async fn create_genesis_block_with_utxos(
                 .await
                 .unwrap();
         outputs.push(wallet_output.clone());
-        let output = wallet_output.as_transaction_output(key_manager).await.unwrap();
+        let output = wallet_output.to_transaction_output(key_manager).await.unwrap();
         template.body.add_output(output);
     }
     let mut block = update_genesis_block_mmr_roots(template).unwrap();

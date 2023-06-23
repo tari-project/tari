@@ -99,7 +99,7 @@ impl<TKeyManagerInterface> CoinbaseBuilder<TKeyManagerInterface>
 where TKeyManagerInterface: TransactionKeyManagerInterface
 {
     /// Start building a new Coinbase transaction. From here you can build the transaction piecemeal with the builder
-    /// methods, or pass in a block to `using_block` to determine most of the coinbase parameters automatically.
+    /// methods.
     pub fn new(key_manager: TKeyManagerInterface) -> Self {
         CoinbaseBuilder {
             key_manager,
@@ -113,7 +113,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         }
     }
 
-    /// Assign the block height. This is used to determine the lock height of the transaction.
+    /// Assign the block height. This is used to determine the coinbase maturity and reward.
     pub fn with_block_height(mut self, height: u64) -> Self {
         self.block_height = Some(height);
         self
@@ -161,10 +161,6 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
     /// block height. The other parameters (keys, nonces etc.) are provided by the caller. Other data is
     /// automatically set: Coinbase transactions have an offset of zero, no fees, the `COINBASE_OUTPUT` flags are set
     /// on the output and kernel, and the maturity schedule is set from the consensus rules.
-    ///
-    /// After `build` is called, the struct is destroyed and the memory zeroed
-    /// out (by virtue of the zero_on_drop crate).
-
     pub async fn build(
         self,
         constants: &ConsensusConstants,
@@ -179,9 +175,6 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
     /// etc.) are provided by the caller. Other data is automatically set: Coinbase transactions have an offset of
     /// zero, no fees, the `COINBASE_OUTPUT` flags are set on the output and kernel, and the maturity schedule is
     /// set from the consensus rules.
-    ///
-    /// After `build_with_reward` is called, the struct is destroyed and the
-    /// memory zeroed out (by virtue of the zero_on_drop crate).
     #[allow(clippy::too_many_lines)]
     #[allow(clippy::erasing_op)] // This is for 0 * uT
     pub async fn build_with_reward(
@@ -199,7 +192,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
 
         let kernel_features = KernelFeatures::create_coinbase();
         let metadata = TransactionMetadata::new_with_features(0.into(), 0, kernel_features);
-        // generate kernel siganture
+        // generate kernel signature
         let kernel_version = TransactionKernelVersion::get_current_version();
         let kernel_message = TransactionKernel::build_kernel_signature_message(
             &kernel_version,
@@ -285,7 +278,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         )
         .await?;
         let output = wallet_output
-            .as_transaction_output(&self.key_manager)
+            .to_transaction_output(&self.key_manager)
             .await
             .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
         let kernel = KernelBuilder::new()
@@ -300,7 +293,9 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         let mut builder = TransactionBuilder::new();
         builder
             .add_output(output)
+            // A coinbase must have 0 offset or the reward balance check will fail.
             .add_offset(PrivateKey::default())
+            // Coinbase has no script offset https://rfc.tari.com/RFC-0201_TariScript.html#script-offset
             .add_script_offset(PrivateKey::default())
             .with_reward(total_reward)
             .with_kernel(kernel);

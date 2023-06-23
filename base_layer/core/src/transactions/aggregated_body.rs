@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use std::{
-    cmp::{max, min},
+    cmp::max,
     fmt::{Display, Error, Formatter},
 };
 
@@ -30,7 +30,6 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::types::PrivateKey;
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
 
-use super::transaction_components::OutputFeatures;
 use crate::transactions::{
     crypto_factories::CryptoFactories,
     tari_amount::MicroTari,
@@ -49,9 +48,11 @@ use crate::transactions::{
 pub const LOG_TARGET: &str = "c::tx::aggregated_body";
 
 /// The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,
-/// cut-through means that blocks and transactions have the same structure.
+/// blocks consist of inputs, outputs and kernels, rather than transactions.
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct AggregateBody {
+    /// This flag indicates if the inputs, outputs and kernels have been sorted internally, that is, the sort() method
+    /// has been called. This may be false even if all components are sorted.
     #[borsh_skip]
     sorted: bool,
     /// List of inputs spent by the transaction.
@@ -135,8 +136,8 @@ impl AggregateBody {
     }
 
     /// Add a series of inputs to the existing aggregate body
-    pub fn add_inputs(&mut self, inputs: &mut Vec<TransactionInput>) {
-        self.inputs.append(inputs);
+    pub fn add_inputs<I: IntoIterator<Item = TransactionInput>>(&mut self, inputs: I) {
+        self.inputs.extend(inputs);
         self.sorted = false;
     }
 
@@ -146,9 +147,9 @@ impl AggregateBody {
         self.sorted = false;
     }
 
-    /// Add an output to the existing aggregate body
-    pub fn add_outputs(&mut self, outputs: &mut Vec<TransactionOutput>) {
-        self.outputs.append(outputs);
+    /// Add a series of outputs to the existing aggregate body
+    pub fn add_outputs<I: IntoIterator<Item = TransactionOutput>>(&mut self, outputs: I) {
+        self.outputs.extend(outputs);
         self.sorted = false;
     }
 
@@ -157,9 +158,9 @@ impl AggregateBody {
         self.kernels.push(kernel);
     }
 
-    /// Add a kernels to the existing aggregate body
-    pub fn add_kernels(&mut self, new_kernels: &mut Vec<TransactionKernel>) {
-        self.kernels.append(new_kernels);
+    /// Add a series of kernels to the existing aggregate body
+    pub fn add_kernels<I: IntoIterator<Item = TransactionKernel>>(&mut self, new_kernels: I) {
+        self.kernels.extend(new_kernels);
         self.sorted = false;
     }
 
@@ -253,8 +254,8 @@ impl AggregateBody {
 
     /// Run through the outputs of the block and check that
     /// 1. There is exactly ONE coinbase output
-    /// 1. The output's maturity is correctly set
-    /// 1. The amount is correct.
+    /// 1. The coinbase output's maturity is correctly set
+    /// 1. The reward amount is correct.
     pub fn check_coinbase_output(
         &self,
         reward: MicroTari,
@@ -272,7 +273,7 @@ impl AggregateBody {
                     warn!(target: LOG_TARGET, "Coinbase {} found with maturity set too low", utxo);
                     return Err(TransactionError::InvalidCoinbaseMaturity);
                 }
-                coinbase_utxo = Some(utxo.clone());
+                coinbase_utxo = Some(utxo);
             }
         }
         if coinbase_counter > 1 {
@@ -283,31 +284,35 @@ impl AggregateBody {
             return Err(TransactionError::MoreThanOneCoinbase);
         }
 
-        if coinbase_counter == 0 {
+        if coinbase_utxo.is_none() || coinbase_counter == 0 {
             return Err(TransactionError::NoCoinbase);
         }
+
+        let coinbase_utxo = coinbase_utxo.expect("coinbase_utxo: none checked");
 
         let mut coinbase_counter = 0; // there should be exactly 1 coinbase kernel as well
         for kernel in self.kernels() {
             if kernel.features.contains(KernelFeatures::COINBASE_KERNEL) {
                 coinbase_counter += 1;
-                coinbase_kernel = Some(kernel.clone());
+                coinbase_kernel = Some(kernel);
             }
         }
-        if coinbase_counter != 1 {
+        if coinbase_kernel.is_none() || coinbase_counter != 1 {
             warn!(
                 target: LOG_TARGET,
                 "{} coinbase kernels found in body. Only a single coinbase kernel is permitted.", coinbase_counter,
             );
             return Err(TransactionError::MoreThanOneCoinbase);
         }
-        // Unwrap used here are fine as they should have an amount in them by here. If the coinbase's are missing the
-        // counters should be 0 and the fn should have returned an error by now.
-        let utxo = coinbase_utxo.unwrap();
-        let rhs =
-            &coinbase_kernel.unwrap().excess + &factories.commitment.commit_value(&PrivateKey::default(), reward.0);
-        if rhs != utxo.commitment {
-            warn!(target: LOG_TARGET, "Coinbase {} amount validation failed", utxo);
+
+        let coinbase_kernel = coinbase_kernel.expect("coinbase_kernel: none checked");
+
+        let rhs = &coinbase_kernel.excess + &factories.commitment.commit_value(&PrivateKey::default(), reward.0);
+        if rhs != coinbase_utxo.commitment {
+            warn!(
+                target: LOG_TARGET,
+                "Coinbase {} amount validation failed", coinbase_utxo
+            );
             return Err(TransactionError::InvalidCoinbase);
         }
         Ok(())
@@ -371,36 +376,13 @@ impl AggregateBody {
         )
     }
 
-    /// Returns the minimum maturity of the input UTXOs
-    pub fn min_input_maturity(&self) -> u64 {
-        self.inputs().iter().fold(u64::MAX, |min_maturity, input| {
-            min(
-                min_maturity,
-                input
-                    .features()
-                    .unwrap_or(&OutputFeatures {
-                        maturity: u64::MAX,
-                        ..Default::default()
-                    })
-                    .maturity,
-            )
-        })
-    }
-
-    /// Returns the maximum maturity of the input UTXOs
-    pub fn max_input_maturity(&self) -> u64 {
-        self.inputs().iter().fold(0, |max_maturity, input| {
-            max(
-                max_maturity,
-                input
-                    .features()
-                    .unwrap_or(&OutputFeatures {
-                        maturity: 0,
-                        ..Default::default()
-                    })
-                    .maturity,
-            )
-        })
+    /// Returns the maximum maturity of the input UTXOs.
+    /// This function panics if any of the inputs are compact.
+    pub fn max_input_maturity(&self) -> Result<u64, TransactionError> {
+        self.inputs()
+            .iter()
+            .map(|i| i.features())
+            .try_fold(0, |max_maturity, features| Ok(max(max_maturity, features?.maturity)))
     }
 
     pub fn max_kernel_timelock(&self) -> u64 {
@@ -411,8 +393,8 @@ impl AggregateBody {
 
     /// Returns the height of the minimum height where the body is spendable. This is calculated from the
     /// kernel lock_heights and the maturity of the input UTXOs.
-    pub fn min_spendable_height(&self) -> u64 {
-        max(self.max_kernel_timelock(), self.max_input_maturity())
+    pub fn min_spendable_height(&self) -> Result<u64, TransactionError> {
+        Ok(max(self.max_kernel_timelock(), self.max_input_maturity()?))
     }
 
     /// Return a cloned version of self with TransactionInputs in their compact form

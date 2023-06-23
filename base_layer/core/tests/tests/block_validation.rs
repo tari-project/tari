@@ -241,7 +241,7 @@ async fn inputs_are_not_malleable() {
         .await;
 
     let malicious_input = malicious_wallet_output
-        .as_transaction_input(&blockchain.key_manager)
+        .to_transaction_input(&blockchain.key_manager)
         .await
         .unwrap();
 
@@ -519,8 +519,8 @@ OutputFeatures::default()),
     .await
     .unwrap();
     let inputs = vec![
-        key_manager_utxo.as_transaction_input(&key_manager).await.unwrap(),
-        key_manager_utxo2.as_transaction_input(&key_manager).await.unwrap(),
+        key_manager_utxo.to_transaction_input(&key_manager).await.unwrap(),
+        key_manager_utxo2.to_transaction_input(&key_manager).await.unwrap(),
     ];
     new_block.body = AggregateBody::new(inputs, template.body.outputs().clone(), template.body.kernels().clone());
     new_block.header.nonce = OsRng.next_u64();
@@ -894,8 +894,8 @@ async fn test_block_sync_body_validator() {
     .await
     .unwrap();
     let inputs = vec![
-        unblinded_utxo.as_transaction_input(&key_manager).await.unwrap(),
-        unblinded_utxo2.as_transaction_input(&key_manager).await.unwrap(),
+        unblinded_utxo.to_transaction_input(&key_manager).await.unwrap(),
+        unblinded_utxo2.to_transaction_input(&key_manager).await.unwrap(),
     ];
     new_block.body = AggregateBody::new(inputs, template.body.outputs().clone(), template.body.kernels().clone());
     {

@@ -33,13 +33,13 @@ impl TryFrom<proto::TransactionMetadata> for TransactionMetadata {
 
     fn try_from(metadata: proto::TransactionMetadata) -> Result<Self, Self::Error> {
         let kernel_features =
-            u8::try_from(metadata.kernel_features).map_err(|_| "Kernel features must be a single byte")?;
-        let commitment = match metadata.burned_commitment {
-            Some(burned_commitment) => {
-                Some(Commitment::from_bytes(&burned_commitment.data).map_err(|e| e.to_string())?)
-            },
-            None => None,
-        };
+            u8::try_from(metadata.kernel_features).map_err(|_| "kernel_features must be less than 256")?;
+        let commitment = metadata
+            .burned_commitment
+            .map(|burned_commitment| {
+                Commitment::from_bytes(&burned_commitment.data).map_err(|e| format!("burned_commitment.data: {}", e))
+            })
+            .transpose()?;
         Ok(Self {
             fee: metadata.fee.into(),
             lock_height: metadata.lock_height,
