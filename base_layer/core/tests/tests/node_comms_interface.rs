@@ -64,7 +64,7 @@ async fn inbound_get_metadata() {
     let mempool = new_mempool();
 
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build();
+    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
     let (block_event_sender, _) = broadcast::channel(50);
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = mpsc::unbounded_channel();
@@ -98,7 +98,7 @@ async fn inbound_fetch_kernel_by_excess_sig() {
     let mempool = new_mempool();
 
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build();
+    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
     let (block_event_sender, _) = broadcast::channel(50);
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = mpsc::unbounded_channel();
@@ -131,7 +131,7 @@ async fn inbound_fetch_headers() {
     let store = create_test_blockchain_db();
     let mempool = new_mempool();
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build();
+    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
     let (block_event_sender, _) = broadcast::channel(50);
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = mpsc::unbounded_channel();
@@ -162,7 +162,7 @@ async fn inbound_fetch_utxos() {
     let store = create_test_blockchain_db();
     let mempool = new_mempool();
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build();
+    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
     let (block_event_sender, _) = broadcast::channel(50);
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = mpsc::unbounded_channel();
@@ -210,7 +210,7 @@ async fn inbound_fetch_blocks() {
     let mempool = new_mempool();
     let (block_event_sender, _) = broadcast::channel(50);
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build();
+    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = mpsc::unbounded_channel();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
@@ -242,7 +242,7 @@ async fn inbound_fetch_blocks() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn inbound_fetch_blocks_before_horizon_height() {
-    let consensus_manager = ConsensusManager::builder(Network::LocalNet).build();
+    let consensus_manager = ConsensusManager::builder(Network::LocalNet).build().unwrap();
     let block0 = consensus_manager.get_genesis_block();
     let key_manager = create_test_core_key_manager_with_memory_db();
     let validators = Validators::new(

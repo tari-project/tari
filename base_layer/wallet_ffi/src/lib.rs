@@ -5388,7 +5388,14 @@ pub unsafe extern "C" fn wallet_create(
     };
 
     let auto_update = AutoUpdateConfig::default();
-    let consensus_manager = ConsensusManager::builder(network).build();
+    let consensus_manager = match ConsensusManager::builder(network).build() {
+        Ok(cm) => cm,
+        Err(_) => {
+            error = 10;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    };
 
     let w = runtime.block_on(Wallet::start(
         wallet_config,

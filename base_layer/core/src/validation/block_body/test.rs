@@ -58,7 +58,8 @@ fn setup() -> (TestBlockchain, BlockBodyFullValidator) {
                 .with_coinbase_lockheight(0)
                 .build(),
         )
-        .build();
+        .build()
+        .unwrap();
     setup_with_rules(rules)
 }
 
@@ -233,7 +234,8 @@ async fn it_limits_the_script_byte_size() {
                 .with_max_script_byte_size(2)
                 .build(),
         )
-        .build();
+        .build()
+        .unwrap();
     let (mut blockchain, validator) = setup_with_rules(rules);
 
     let (_, coinbase_a) = blockchain.add_next_tip(block_spec!("A")).await.unwrap();
@@ -257,7 +259,8 @@ async fn it_rejects_invalid_input_metadata() {
                 .with_coinbase_lockheight(0)
                 .build(),
         )
-        .build();
+        .build()
+        .unwrap();
     let (mut blockchain, validator) = setup_with_rules(rules);
 
     let (_, coinbase_a) = blockchain.add_next_tip(block_spec!("A")).await.unwrap();
@@ -314,7 +317,8 @@ mod body_only {
                     .with_coinbase_lockheight(0)
                     .build(),
             )
-            .build();
+            .build()
+            .unwrap();
         let mut blockchain = TestBlockchain::create(rules.clone());
         let validator = BlockBodyFullValidator::new(rules, true);
 
@@ -352,7 +356,8 @@ mod orphan_validator {
                     .with_coinbase_lockheight(0)
                     .build(),
             )
-            .build();
+            .build()
+            .unwrap();
         let mut blockchain = TestBlockchain::create(rules.clone());
         let validator = BlockBodyInternalConsistencyValidator::new(rules, false, CryptoFactories::default());
         let (_, coinbase) = blockchain.append(block_spec!("1", parent: "GB")).await.unwrap();
@@ -389,7 +394,8 @@ mod orphan_validator {
                     .with_coinbase_lockheight(0)
                     .build(),
             )
-            .build();
+            .build()
+            .unwrap();
         let mut blockchain = TestBlockchain::create(rules.clone());
         let validator = BlockBodyInternalConsistencyValidator::new(rules, false, CryptoFactories::default());
         let (_, coinbase) = blockchain.append(block_spec!("1", parent: "GB")).await.unwrap();
@@ -416,7 +422,8 @@ mod orphan_validator {
                     .with_coinbase_lockheight(0)
                     .build(),
             )
-            .build();
+            .build()
+            .unwrap();
         let mut blockchain = TestBlockchain::create(rules.clone());
         let validator = BlockBodyInternalConsistencyValidator::new(rules, false, CryptoFactories::default());
         let (_, coinbase) = blockchain.append(block_spec!("1", parent: "GB")).await.unwrap();

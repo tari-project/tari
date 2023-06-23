@@ -62,6 +62,7 @@ pub struct ConsensusManager {
 }
 
 impl ConsensusManager {
+    /// Start a builder for specified network
     pub fn builder(network: Network) -> ConsensusManagerBuilder {
         ConsensusManagerBuilder::new(network)
     }
@@ -88,6 +89,7 @@ impl ConsensusManager {
         &self.inner.emission
     }
 
+    /// Gets the block reward for the height
     pub fn get_block_reward_at(&self, height: u64) -> MicroTari {
         self.emission_schedule().block_reward(height)
     }
@@ -135,6 +137,7 @@ impl ConsensusManager {
         kernels.iter().fold(coinbase, |total, k| total + k.fee)
     }
 
+    /// Returns a ref to the chain strength comparer
     #[cfg(feature = "base_node")]
     pub fn chain_strength_comparer(&self) -> &dyn ChainStrengthComparer {
         self.inner.chain_strength_comparer.as_ref()
@@ -167,6 +170,7 @@ struct ConsensusManagerInner {
 pub struct ConsensusManagerBuilder {
     consensus_constants: Vec<ConsensusConstants>,
     network: NetworkConsensus,
+    /// This is can only used be used if the network is localnet
     #[cfg(feature = "base_node")]
     gen_block: Option<ChainBlock>,
     #[cfg(feature = "base_node")]
@@ -206,11 +210,15 @@ impl ConsensusManagerBuilder {
     }
 
     /// Builds a consensus manager
-    pub fn build(mut self) -> ConsensusManager {
+    pub fn build(mut self) -> Result<ConsensusManager, ConsensusBuilderError> {
+        // should not be allowed to set the gen block and have the network type anything else than LocalNet
+        if self.network.as_network() != Network::LocalNet && self.gen_block.is_some() {
+            return Err(ConsensusBuilderError::CannotSetGenesisBlock);
+        }
+
         if self.consensus_constants.is_empty() {
             self.consensus_constants = self.network.create_consensus_constants();
         }
-        // TODO: Check that constants is not empty
 
         let emission = EmissionSchedule::new(
             self.consensus_constants[0].emission_initial,
@@ -236,6 +244,12 @@ impl ConsensusManagerBuilder {
                     .build()
             }),
         };
-        ConsensusManager { inner: Arc::new(inner) }
+        Ok(ConsensusManager { inner: Arc::new(inner) })
     }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ConsensusBuilderError {
+    #[error("Cannot set a genesis block with a network other than LocalNet")]
+    CannotSetGenesisBlock,
 }

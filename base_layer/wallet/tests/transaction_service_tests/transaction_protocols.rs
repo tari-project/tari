@@ -155,7 +155,7 @@ pub async fn setup() -> (
 
     let shutdown = Shutdown::new();
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build();
+    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
     let wallet_identity = WalletIdentity::new(client_node_identity, network);
     let resources = TransactionServiceResources {
         db,

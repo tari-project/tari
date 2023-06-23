@@ -375,7 +375,7 @@ async fn test_validate_internal_consistency() {
     let features = OutputFeatures { ..Default::default() };
     let key_manager = create_test_core_key_manager_with_memory_db();
     let (tx, _, _) = test_helpers::create_tx(5000.into(), 3.into(), 1, 2, 1, 4, features, &key_manager).await;
-    let rules = ConsensusManager::builder(Network::LocalNet).build();
+    let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
     let factories = CryptoFactories::default();
     let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
     assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
@@ -392,7 +392,7 @@ async fn check_cut_through() {
     assert_eq!(tx.body.outputs().len(), 2);
     assert_eq!(tx.body.kernels().len(), 1);
 
-    let rules = ConsensusManager::builder(Network::LocalNet).build();
+    let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
     let factories = CryptoFactories::default();
     let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
     validator.validate(&tx, None, None, u64::MAX).unwrap();
@@ -480,7 +480,7 @@ async fn inputs_not_malleable() {
     tx.body.inputs_mut()[0].set_script(script![Drop]).unwrap();
     tx.body.inputs_mut()[0].input_data = stack;
 
-    let rules = ConsensusManager::builder(Network::LocalNet).build();
+    let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
     let factories = CryptoFactories::default();
     let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
     let err = validator.validate(&tx, None, None, u64::MAX).unwrap_err();
@@ -547,7 +547,7 @@ mod validate_internal_consistency {
         // SenderTransactionProtocol::finalize() calls validate_internal_consistency
         let tx = create_transaction_with(0, 5 * uT, inputs, outputs, key_manager).await;
         // Otherwise if this passes check again with the height
-        let rules = ConsensusManager::builder(Network::LocalNet).build();
+        let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
         let validator = TransactionInternalConsistencyValidator::new(false, rules, CryptoFactories::default());
         validator
             .validate(&tx, None, None, height)

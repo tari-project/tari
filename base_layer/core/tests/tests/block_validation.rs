@@ -108,7 +108,10 @@ async fn test_monero_blocks() {
         })
         .with_blockchain_version(0)
         .build();
-    let cm = ConsensusManager::builder(network).add_consensus_constants(cc).build();
+    let cm = ConsensusManager::builder(network)
+        .add_consensus_constants(cc)
+        .build()
+        .unwrap();
     let difficulty_calculator = DifficultyCalculator::new(cm.clone(), RandomXFactory::default());
     let header_validator = HeaderFullValidator::new(cm.clone(), difficulty_calculator, false);
     let db = create_store_with_consensus_and_validators(
@@ -271,7 +274,8 @@ async fn test_orphan_validator() {
     let rules = ConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants)
         .with_block(genesis.clone())
-        .build();
+        .build()
+        .unwrap();
     let backend = create_test_db();
     let orphan_validator = BlockBodyInternalConsistencyValidator::new(rules.clone(), false, factories.clone());
     let difficulty_calculator = DifficultyCalculator::new(rules.clone(), Default::default());
@@ -413,7 +417,8 @@ async fn test_orphan_body_validation() {
     let rules = ConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants)
         .with_block(genesis.clone())
-        .build();
+        .build()
+        .unwrap();
     let backend = create_test_db();
     let difficulty_calculator = DifficultyCalculator::new(rules.clone(), Default::default());
     let body_only_validator = BlockBodyFullValidator::new(rules.clone(), true);
@@ -626,7 +631,8 @@ async fn test_header_validation() {
     let rules = ConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants)
         .with_block(genesis.clone())
-        .build();
+        .build()
+        .unwrap();
     let backend = create_test_db();
     let difficulty_calculator = DifficultyCalculator::new(rules.clone(), Default::default());
     let header_validator = HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone(), true);
@@ -734,7 +740,8 @@ async fn test_block_sync_body_validator() {
     let rules = ConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants.clone())
         .with_block(genesis.clone())
-        .build();
+        .build()
+        .unwrap();
     let backend = create_test_db();
     let difficulty_calculator = DifficultyCalculator::new(rules.clone(), Default::default());
     let validators = Validators::new(
@@ -819,7 +826,7 @@ async fn test_block_sync_body_validator() {
     assert!(
         new_block
             .body
-            .calculate_weight(consensus_constants.transaction_weight()) >
+            .calculate_weight(consensus_constants.transaction_weight_params()) >
             400,
         "If this is not more than 400, then the next line should fail"
     );

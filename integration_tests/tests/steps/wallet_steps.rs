@@ -1530,7 +1530,7 @@ async fn wallet_with_tari_connected_to_base_node(
     let mut num_blocks = 0;
     let mut reward = 0;
 
-    let consensus_manager = ConsensusManager::builder(Network::LocalNet).build();
+    let consensus_manager = ConsensusManager::builder(Network::LocalNet).build().unwrap();
 
     while reward < amount {
         current_height += 1;

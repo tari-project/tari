@@ -437,7 +437,7 @@ mod test {
     async fn remove_scan_for_and_remove_reorged_txs() {
         let key_manager = create_test_core_key_manager_with_memory_db();
         let network = Network::LocalNet;
-        let consensus = ConsensusManagerBuilder::new(network).build();
+        let consensus = ConsensusManagerBuilder::new(network).build().unwrap();
         let tx1 =
             Arc::new(tx!(MicroTari(10_000), fee: MicroTari(10), lock: 4000, inputs: 2, outputs: 1, &key_manager).0);
         let tx2 =

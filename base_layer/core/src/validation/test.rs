@@ -56,7 +56,7 @@ mod header_validators {
 
     #[test]
     fn header_iter_empty_and_invalid_height() {
-        let consensus_manager = ConsensusManager::builder(Network::LocalNet).build();
+        let consensus_manager = ConsensusManager::builder(Network::LocalNet).build().unwrap();
         let genesis = consensus_manager.get_genesis_block();
         let db = create_store_with_consensus(consensus_manager);
 
@@ -74,7 +74,7 @@ mod header_validators {
 
     #[test]
     fn header_iter_fetch_in_chunks() {
-        let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build();
+        let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build().unwrap();
         let db = create_store_with_consensus(consensus_manager.clone());
         let headers = (1..=15).fold(vec![db.fetch_chain_header(0).unwrap()], |mut acc, i| {
             let prev = acc.last().unwrap();
@@ -104,7 +104,7 @@ mod header_validators {
 
     #[test]
     fn it_validates_that_version_is_in_range() {
-        let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build();
+        let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build().unwrap();
         let db = create_store_with_consensus(consensus_manager.clone());
 
         let genesis = db.fetch_chain_header(0).unwrap();
@@ -127,7 +127,7 @@ mod header_validators {
 #[allow(clippy::too_many_lines)]
 async fn chain_balance_validation() {
     let factories = CryptoFactories::default();
-    let consensus_manager = ConsensusManagerBuilder::new(Network::Esmeralda).build();
+    let consensus_manager = ConsensusManagerBuilder::new(Network::Esmeralda).build().unwrap();
     let genesis = consensus_manager.get_genesis_block();
     let faucet_value = 5000 * uT;
     let key_manager = create_test_core_key_manager_with_memory_db();
@@ -175,7 +175,8 @@ async fn chain_balance_validation() {
     let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet)
         .with_block(genesis.clone())
         .add_consensus_constants(constants)
-        .build();
+        .build()
+        .unwrap();
 
     let db = create_store_with_consensus(consensus_manager.clone());
 
@@ -311,7 +312,7 @@ async fn chain_balance_validation() {
 #[allow(clippy::too_many_lines)]
 async fn chain_balance_validation_burned() {
     let factories = CryptoFactories::default();
-    let consensus_manager = ConsensusManagerBuilder::new(Network::Esmeralda).build();
+    let consensus_manager = ConsensusManagerBuilder::new(Network::Esmeralda).build().unwrap();
     let genesis = consensus_manager.get_genesis_block();
     let faucet_value = 5000 * uT;
     let key_manager = create_test_core_key_manager_with_memory_db();
@@ -359,7 +360,8 @@ async fn chain_balance_validation_burned() {
     let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet)
         .with_block(genesis.clone())
         .add_consensus_constants(constants)
-        .build();
+        .build()
+        .unwrap();
 
     let db = create_store_with_consensus(consensus_manager.clone());
 
@@ -477,7 +479,7 @@ mod transaction_validator {
     #[tokio::test]
     async fn it_rejects_coinbase_outputs() {
         let key_manager = create_test_core_key_manager_with_memory_db();
-        let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build();
+        let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build().unwrap();
         let db = create_store_with_consensus(consensus_manager.clone());
         let factories = CryptoFactories::default();
         let validator = TransactionInternalConsistencyValidator::new(true, consensus_manager, factories);
@@ -492,7 +494,7 @@ mod transaction_validator {
     #[tokio::test]
     async fn coinbase_extra_must_be_empty() {
         let key_manager = create_test_core_key_manager_with_memory_db();
-        let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build();
+        let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build().unwrap();
         let db = create_store_with_consensus(consensus_manager.clone());
         let factories = CryptoFactories::default();
         let validator = TransactionInternalConsistencyValidator::new(true, consensus_manager, factories);

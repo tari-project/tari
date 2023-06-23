@@ -73,7 +73,8 @@ async fn test_listening_lagging() {
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .add_consensus_constants(consensus_constants)
         .with_block(prev_block.clone())
-        .build();
+        .build()
+        .unwrap();
     let (alice_node, bob_node, consensus_manager) = create_network_with_2_base_nodes_with_config(
         MempoolServiceConfig::default(),
         LivenessConfig {

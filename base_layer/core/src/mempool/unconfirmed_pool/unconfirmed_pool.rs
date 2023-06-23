@@ -796,7 +796,7 @@ mod test {
     async fn test_remove_reorg_txs() {
         let key_manager = create_test_core_key_manager_with_memory_db();
         let network = Network::LocalNet;
-        let consensus = ConsensusManagerBuilder::new(network).build();
+        let consensus = ConsensusManagerBuilder::new(network).build().unwrap();
         let tx1 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(50), inputs:2, outputs: 1, &key_manager).0);
         let tx2 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(20), inputs:3, outputs: 1, &key_manager).0);
         let tx3 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(100), inputs:2, outputs: 1, &key_manager).0);

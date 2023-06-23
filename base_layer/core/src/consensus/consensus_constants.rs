@@ -107,12 +107,14 @@ pub struct ConsensusConstants {
     vn_epoch_length: u64,
     /// The number of Epochs that a validator node registration is valid
     vn_validity_period_epochs: VnEpoch,
+    /// The min amount of microTari to deposit for a registration transaction to be allowed onto the blockchain
     vn_registration_min_deposit_amount: MicroTari,
+    /// The period that the registration funds are required to be locked up.
     vn_registration_lock_height: u64,
+    /// The period after which the VNs will be reshuffled.
     vn_registration_shuffle_interval: VnEpoch,
 }
 
-// todo: remove this once OutputFeaturesVersion is removed in favor of just TransactionOutputVersion
 #[derive(Debug, Clone)]
 pub struct OutputVersionRange {
     pub outputs: RangeInclusive<TransactionOutputVersion>,
@@ -208,12 +210,12 @@ impl ConsensusConstants {
     }
 
     /// Maximum transaction weight used for the construction of new blocks. It leaves place for 1 kernel and 1 output
+    /// with default features
     pub fn get_max_block_weight_excluding_coinbase(&self) -> u64 {
-        self.max_block_transaction_weight - self.coinbase_weight()
+        self.max_block_transaction_weight - self.calculate_1_output_kernel_weight()
     }
 
-    pub fn coinbase_weight(&self) -> u64 {
-        // TODO: We do not know what script, features etc a coinbase has - this should be max coinbase size?
+    fn calculate_1_output_kernel_weight(&self) -> u64 {
         let output_features = OutputFeatures { ..Default::default() };
         let features_and_scripts_size = self.transaction_weight.round_up_features_and_scripts_size(
             output_features.get_serialized_size() + script![Nop].get_serialized_size(),
@@ -283,7 +285,8 @@ impl ConsensusConstants {
         self.max_randomx_seed_height
     }
 
-    pub fn transaction_weight(&self) -> &TransactionWeight {
+    /// Gets the transaction weight parameters to calculate the weight of a transaction
+    pub fn transaction_weight_params(&self) -> &TransactionWeight {
         &self.transaction_weight
     }
 
