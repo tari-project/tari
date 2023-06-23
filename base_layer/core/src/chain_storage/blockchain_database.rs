@@ -1875,8 +1875,6 @@ fn rewind_to_hash<T: BlockchainBackend>(
 
 // Checks whether we should add the block as an orphan. If it is the case, the orphan block is added and the chain
 // is reorganised if necessary.
-// TODO: Reduce LOC in this function
-#[allow(clippy::too_many_lines)]
 fn handle_possible_reorg<T: BlockchainBackend>(
     db: &mut T,
     config: &BlockchainDatabaseConfig,
