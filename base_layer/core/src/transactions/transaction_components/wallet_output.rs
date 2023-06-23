@@ -247,7 +247,7 @@ impl WalletOutput {
         ))
     }
 
-    pub async fn as_transaction_output<KM: TransactionKeyManagerInterface>(
+    pub async fn to_transaction_output<KM: TransactionKeyManagerInterface>(
         &self,
         key_manager: &KM,
     ) -> Result<TransactionOutput, TransactionError> {
@@ -286,7 +286,7 @@ impl WalletOutput {
         &self,
         key_manager: &KM,
     ) -> Result<FixedHash, TransactionError> {
-        let output = self.as_transaction_output(key_manager).await?;
+        let output = self.to_transaction_output(key_manager).await?;
         let rp_hash = match output.proof {
             Some(rp) => rp.hash(),
             None => FixedHash::zero(),

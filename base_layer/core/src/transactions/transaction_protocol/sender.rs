@@ -581,7 +581,7 @@ impl SenderTransactionProtocol {
         }
 
         for output in &info.outputs {
-            tx_builder.add_output(output.output.as_transaction_output(key_manager).await?);
+            tx_builder.add_output(output.output.to_transaction_output(key_manager).await?);
             signature = &signature +
                 &key_manager
                     .get_partial_txo_kernel_signature(
@@ -610,7 +610,7 @@ impl SenderTransactionProtocol {
             sender_offset_keys.push(recipient_data.recipient_sender_offset_key_id.clone());
         }
         if let Some(change) = &info.change_output {
-            tx_builder.add_output(change.output.as_transaction_output(key_manager).await?);
+            tx_builder.add_output(change.output.to_transaction_output(key_manager).await?);
             signature = &signature +
                 &key_manager
                     .get_partial_txo_kernel_signature(

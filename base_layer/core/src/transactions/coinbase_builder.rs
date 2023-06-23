@@ -278,7 +278,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         )
         .await?;
         let output = wallet_output
-            .as_transaction_output(&self.key_manager)
+            .to_transaction_output(&self.key_manager)
             .await
             .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
         let kernel = KernelBuilder::new()

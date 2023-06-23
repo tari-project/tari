@@ -262,7 +262,7 @@ async fn test_base_node_wallet_rpc() {
     let mut hashes = Vec::new();
     for output in req_utxos {
         let hash = output
-            .as_transaction_output(&key_manager)
+            .to_transaction_output(&key_manager)
             .await
             .unwrap()
             .hash()
@@ -278,7 +278,7 @@ async fn test_base_node_wallet_rpc() {
     assert_eq!(response.outputs.len(), utxos1.len());
     let mut tx_outputs = Vec::new();
     for output in utxos1 {
-        tx_outputs.push(output.as_transaction_output(&key_manager).await.unwrap())
+        tx_outputs.push(output.to_transaction_output(&key_manager).await.unwrap())
     }
     for output_proto in &response.outputs {
         let output = TransactionOutput::try_from(output_proto.clone()).unwrap();

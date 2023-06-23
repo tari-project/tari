@@ -1284,7 +1284,7 @@ async fn test_txo_validation() {
         &oms.key_manager_handle,
     )
     .await;
-    let output1_tx_output = output1.as_transaction_output(&oms.key_manager_handle).await.unwrap();
+    let output1_tx_output = output1.to_transaction_output(&oms.key_manager_handle).await.unwrap();
 
     oms.output_manager_handle
         .add_output_with_tx_id(TxId::from(1u64), output1.clone(), None)
@@ -1299,7 +1299,7 @@ async fn test_txo_validation() {
         &oms.key_manager_handle,
     )
     .await;
-    let output2_tx_output = output2.as_transaction_output(&oms.key_manager_handle).await.unwrap();
+    let output2_tx_output = output2.to_transaction_output(&oms.key_manager_handle).await.unwrap();
 
     oms.output_manager_handle
         .add_output_with_tx_id(TxId::from(2u64), output2.clone(), None)
@@ -1436,17 +1436,17 @@ async fn test_txo_validation() {
 
     let output4_tx_output = output4
         .wallet_output
-        .as_transaction_output(&oms.key_manager_handle)
+        .to_transaction_output(&oms.key_manager_handle)
         .await
         .unwrap();
     let output5_tx_output = output5
         .wallet_output
-        .as_transaction_output(&oms.key_manager_handle)
+        .to_transaction_output(&oms.key_manager_handle)
         .await
         .unwrap();
     let output6_tx_output = output6
         .wallet_output
-        .as_transaction_output(&oms.key_manager_handle)
+        .to_transaction_output(&oms.key_manager_handle)
         .await
         .unwrap();
 
@@ -1633,7 +1633,7 @@ async fn test_txo_validation() {
     assert_eq!(
         utxo_query_calls[0][0],
         output3
-            .as_transaction_output(&oms.key_manager_handle)
+            .to_transaction_output(&oms.key_manager_handle)
             .await
             .unwrap()
             .hash()
@@ -1853,7 +1853,7 @@ async fn test_txo_revalidation() {
     )
     .await
     .unwrap();
-    let output1_tx_output = output1.as_transaction_output(&oms.key_manager_handle).await.unwrap();
+    let output1_tx_output = output1.to_transaction_output(&oms.key_manager_handle).await.unwrap();
     oms.output_manager_handle
         .add_output_with_tx_id(TxId::from(1u64), output1.clone(), None)
         .await
@@ -1869,7 +1869,7 @@ async fn test_txo_revalidation() {
     )
     .await
     .unwrap();
-    let output2_tx_output = output2.as_transaction_output(&oms.key_manager_handle).await.unwrap();
+    let output2_tx_output = output2.to_transaction_output(&oms.key_manager_handle).await.unwrap();
 
     oms.output_manager_handle
         .add_output_with_tx_id(TxId::from(2u64), output2.clone(), None)
@@ -2106,12 +2106,12 @@ async fn scan_for_recovery_test() {
     }
     let mut recoverable_outputs = Vec::new();
     for output in &recoverable_wallet_outputs {
-        recoverable_outputs.push(output.as_transaction_output(&oms.key_manager_handle).await.unwrap());
+        recoverable_outputs.push(output.to_transaction_output(&oms.key_manager_handle).await.unwrap());
     }
 
     let mut non_recoverable_outputs = Vec::new();
     for output in non_recoverable_wallet_outputs {
-        non_recoverable_outputs.push(output.as_transaction_output(&oms.key_manager_handle).await.unwrap());
+        non_recoverable_outputs.push(output.to_transaction_output(&oms.key_manager_handle).await.unwrap());
     }
 
     oms.output_manager_handle
@@ -2157,7 +2157,7 @@ async fn recovered_output_key_not_in_keychain() {
     )
     .await;
 
-    let rewindable_output = uo.as_transaction_output(&oms.key_manager_handle).await.unwrap();
+    let rewindable_output = uo.to_transaction_output(&oms.key_manager_handle).await.unwrap();
 
     let result = oms
         .output_manager_handle

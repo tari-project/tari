@@ -262,7 +262,7 @@ async fn generate_block_headers_and_utxos(
         }
         let mut transaction_outputs = Vec::new();
         for output in &block_outputs {
-            transaction_outputs.push(output.as_transaction_output(key_manager).await.unwrap())
+            transaction_outputs.push(output.to_transaction_output(key_manager).await.unwrap())
         }
         let utxos = UtxosByBlock {
             height: i,
@@ -971,7 +971,7 @@ async fn test_utxo_scanner_one_sided_payments() {
     let block11 = UtxosByBlock {
         height: NUM_BLOCKS,
         header_hash: block_header11.hash().to_vec(),
-        utxos: vec![uo.as_transaction_output(&key_manager).await.unwrap()],
+        utxos: vec![uo.to_transaction_output(&key_manager).await.unwrap()],
     };
 
     utxos_by_block.push(block11);

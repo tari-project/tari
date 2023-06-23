@@ -806,7 +806,7 @@ mod test {
             )
             .await;
         utxo?
-            .as_transaction_output(key_manager)
+            .to_transaction_output(key_manager)
             .await
             .map_err(|e| e.to_string())
     }

@@ -1164,7 +1164,7 @@ async fn consensus_validation_large_tx() {
         &tx_meta.burn_commitment,
     );
     for (output, nonce_id) in wallet_outputs {
-        outputs.push(output.as_transaction_output(&key_manager).await.unwrap());
+        outputs.push(output.to_transaction_output(&key_manager).await.unwrap());
         offset = &offset +
             &key_manager
                 .get_txo_private_kernel_offset(&output.spending_key_id, &nonce_id)

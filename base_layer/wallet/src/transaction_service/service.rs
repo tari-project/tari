@@ -1269,7 +1269,7 @@ where
         )?;
 
         let tx_output = output
-            .as_transaction_output(&self.resources.transaction_key_manager_service)
+            .to_transaction_output(&self.resources.transaction_key_manager_service)
             .await?;
 
         Ok(Box::new((tx_id, pre_image, tx_output)))

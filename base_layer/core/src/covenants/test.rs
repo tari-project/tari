@@ -46,7 +46,7 @@ pub async fn create_outputs(
     for _i in 0..n {
         let params = TestParams::new(key_manager).await;
         let output = params.create_output(utxo_params.clone(), key_manager).await.unwrap();
-        outputs.push(output.as_transaction_output(key_manager).await.unwrap());
+        outputs.push(output.to_transaction_output(key_manager).await.unwrap());
     }
     outputs
 }
