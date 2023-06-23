@@ -217,10 +217,10 @@ impl ConsensusConstants {
 
     fn calculate_1_output_kernel_weight(&self) -> u64 {
         let output_features = OutputFeatures { ..Default::default() };
+        let max_extra_size = self.coinbase_output_features_extra_max_length() as usize;
+
         let features_and_scripts_size = self.transaction_weight.round_up_features_and_scripts_size(
-            output_features.get_serialized_size() +
-                self.coinbase_output_features_extra_max_length().get_serialized_size() +
-                script![Nop].get_serialized_size(),
+            output_features.get_serialized_size() + max_extra_size + script![Nop].get_serialized_size(),
         );
         self.transaction_weight.calculate(1, 0, 1, features_and_scripts_size)
     }
