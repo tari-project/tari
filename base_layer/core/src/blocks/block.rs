@@ -100,8 +100,8 @@ impl Block {
 
     /// Run through the outputs of the block and check that
     /// 1. There is exactly ONE coinbase output
-    /// 1. The output's maturity is correctly set
-    /// 1. The amount is correct.
+    /// 2. The output's maturity is correctly set
+    /// 3. The amount is correct.
     pub fn check_coinbase_output(
         &self,
         reward: MicroTari,
@@ -119,7 +119,7 @@ impl Block {
 
     /// Run through the outputs of the block and check that
     /// 1. only coinbase outputs may have metadata set,
-    /// 1. coinbase metadata length does not exceed its limit
+    /// 2. coinbase metadata length does not exceed its limit
     pub fn check_output_features(&self, consensus_constants: &ConsensusConstants) -> Result<(), BlockValidationError> {
         self.body
             .check_output_features(consensus_constants.coinbase_output_features_extra_max_length())?;
@@ -136,8 +136,8 @@ impl Block {
         Vec<TransactionOutput>,
         Vec<TransactionKernel>,
     ) {
-        let (i, o, k) = self.body.dissolve();
-        (self.header, i, o, k)
+        let (inputs, outputs, kernels) = self.body.dissolve();
+        (self.header, inputs, outputs, kernels)
     }
 
     /// Destroys the block and returns the pieces of the block: header, body
