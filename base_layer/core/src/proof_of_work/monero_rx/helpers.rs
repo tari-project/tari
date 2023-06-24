@@ -39,7 +39,6 @@ use super::{
 use crate::{
     blocks::BlockHeader,
     proof_of_work::{
-        difficulty::util::little_endian_difficulty,
         randomx_factory::{RandomXFactory, RandomXVMInstance},
         Difficulty,
     },
@@ -59,7 +58,7 @@ pub fn monero_difficulty(header: &BlockHeader, randomx_factory: &RandomXFactory)
 fn get_random_x_difficulty(input: &[u8], vm: &RandomXVMInstance) -> Result<(Difficulty, Vec<u8>), MergeMineError> {
     let hash = vm.calculate_hash(input)?;
     debug!(target: LOG_TARGET, "RandomX Hash: {:?}", hash);
-    let difficulty = little_endian_difficulty(&hash).map_err(|e| MergeMineError::DeserializeError(e.to_string()))?;
+    let difficulty = Difficulty::little_endian_difficulty(&hash)?;
     Ok((difficulty, hash))
 }
 

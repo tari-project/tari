@@ -24,7 +24,7 @@ use sha3::{Digest, Sha3_256};
 
 use crate::{
     blocks::BlockHeader,
-    proof_of_work::{difficulty::util::big_endian_difficulty, error::DifficultyError, Difficulty},
+    proof_of_work::{error::DifficultyError, Difficulty},
 };
 
 /// The Tari Sha3X proof-of-work algorithm. This is the reference implementation of Tari's standalone mining
@@ -50,7 +50,7 @@ fn sha3x_difficulty_with_hash(header: &BlockHeader) -> Result<(Difficulty, Vec<u
     let hash = sha3_hash(header);
     let hash = Sha3_256::digest(&hash);
     let hash = Sha3_256::digest(&hash);
-    let difficulty = big_endian_difficulty(&hash)?;
+    let difficulty = Difficulty::big_endian_difficulty(&hash)?;
     Ok((difficulty, hash.to_vec()))
 }
 
