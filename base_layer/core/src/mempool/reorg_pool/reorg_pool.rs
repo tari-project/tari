@@ -22,7 +22,6 @@
 
 use std::{
     collections::{HashMap, HashSet},
-    hash::Hash,
     sync::Arc,
 };
 
@@ -31,8 +30,11 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::types::{PrivateKey, Signature};
 use tari_utilities::hex::Hex;
 
-use crate::{blocks::Block, transactions::transaction_components::Transaction};
-use crate::mempool::shrink_hashmap::shrink_hashmap;
+use crate::{
+    blocks::Block,
+    mempool::shrink_hashmap::shrink_hashmap,
+    transactions::transaction_components::Transaction,
+};
 
 pub const LOG_TARGET: &str = "c::mp::reorg_pool::reorg_pool_storage";
 

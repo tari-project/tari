@@ -44,9 +44,9 @@ pub use rpc::create_mempool_rpc_service;
 pub use rpc::{MempoolRpcClient, MempoolRpcServer, MempoolRpcService, MempoolService};
 #[cfg(feature = "base_node")]
 mod metrics;
+mod shrink_hashmap;
 #[cfg(feature = "base_node")]
 mod unconfirmed_pool;
-mod shrink_hashmap;
 
 // Public re-exports
 #[cfg(feature = "base_node")]

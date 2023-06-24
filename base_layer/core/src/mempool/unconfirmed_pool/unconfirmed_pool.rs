@@ -22,7 +22,6 @@
 
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
-    hash::Hash,
     sync::Arc,
 };
 
@@ -35,12 +34,12 @@ use crate::{
     blocks::Block,
     mempool::{
         priority::{FeePriority, PrioritizedTransaction},
+        shrink_hashmap::shrink_hashmap,
         unconfirmed_pool::UnconfirmedPoolError,
         FeePerGramStat,
     },
     transactions::{tari_amount::MicroTari, transaction_components::Transaction, weight::TransactionWeight},
 };
-use crate::mempool::shrink_hashmap::shrink_hashmap;
 
 pub const LOG_TARGET: &str = "c::mp::unconfirmed_pool::unconfirmed_pool_storage";
 
