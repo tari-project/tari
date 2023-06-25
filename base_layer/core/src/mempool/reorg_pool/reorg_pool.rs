@@ -22,7 +22,6 @@
 
 use std::{
     collections::{HashMap, HashSet},
-    hash::Hash,
     sync::Arc,
 };
 
@@ -31,7 +30,11 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::types::{PrivateKey, Signature};
 use tari_utilities::hex::Hex;
 
-use crate::{blocks::Block, transactions::transaction_components::Transaction};
+use crate::{
+    blocks::Block,
+    mempool::shrink_hashmap::shrink_hashmap,
+    transactions::transaction_components::Transaction,
+};
 
 pub const LOG_TARGET: &str = "c::mp::reorg_pool::reorg_pool_storage";
 
@@ -317,16 +320,6 @@ impl ReorgPool {
     #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::cast_sign_loss)]
     pub fn compact(&mut self) {
-        fn shrink_hashmap<K: Eq + Hash, V>(map: &mut HashMap<K, V>) -> (usize, usize) {
-            let cap = map.capacity();
-            let extra_cap = cap - map.len();
-            if extra_cap > 100 {
-                map.shrink_to(map.len() + (extra_cap / 2));
-            }
-
-            (cap, map.capacity())
-        }
-
         let (old, new) = shrink_hashmap(&mut self.tx_by_key);
         shrink_hashmap(&mut self.txs_by_signature);
         shrink_hashmap(&mut self.txs_by_height);
