@@ -47,12 +47,7 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
             max: u64::from(valid_blockchain_version_range.1),
         };
         let transaction_weight = cc.transaction_weight_params();
-        let features_and_scripts_bytes_per_gram =
-            if let Some(val) = transaction_weight.params().features_and_scripts_bytes_per_gram {
-                u64::from(val)
-            } else {
-                0u64
-            };
+        let features_and_scripts_bytes_per_gram = transaction_weight.params().features_and_scripts_bytes_per_gram.get();
         let transaction_weight = grpc::WeightParams {
             kernel_weight: cc.transaction_weight_params().params().kernel_weight,
             input_weight: cc.transaction_weight_params().params().input_weight,

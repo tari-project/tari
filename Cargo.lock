@@ -2418,12 +2418,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7ebdb29d2ea9ed0083cd8cece49bbd968021bd99b0849edb4a9a7ee0fdf6a4e0"
 
 [[package]]
-name = "hex-literal"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6fe2267d4ed49bc07b63801559be28c718ea06c4738b7a03c94df7386d2cde46"
-
-[[package]]
 name = "http"
 version = "0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3112,14 +3106,15 @@ dependencies = [
 [[package]]
 name = "monero"
 version = "0.18.2"
-source = "git+https://github.com/monero-rs/monero-rs.git#8991d092483f1d2b4b87265bd03ac6e266e5effe"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5a8965a7510c5d9389e2086e406c292d6bbecac099eef195be55a2d2043448b9"
 dependencies = [
  "base58-monero 1.0.0",
  "curve25519-dalek 3.2.0",
  "fixed-hash",
  "hex",
- "hex-literal 0.4.1",
- "sealed 0.5.0",
+ "hex-literal",
+ "sealed 0.4.0",
  "serde",
  "serde-big-array",
  "thiserror",
@@ -4560,18 +4555,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sealed"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f4a8caec23b7800fb97971a1c6ae365b6239aaeddfb934d6265f8505e795699d"
-dependencies = [
- "heck 0.4.1",
- "proc-macro2",
- "quote",
- "syn 2.0.18",
-]
-
-[[package]]
 name = "security-framework"
 version = "2.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4611,9 +4594,9 @@ dependencies = [
 
 [[package]]
 name = "serde-big-array"
-version = "0.5.1"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11fc7cc2c76d73e0f27ee52abbd64eec84d46f370c88371120433196934e4b7f"
+checksum = "3323f09a748af288c3dc2474ea6803ee81f118321775bffa3ac8f7e65c5e90e7"
 dependencies = [
  "serde",
 ]
@@ -6454,7 +6437,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b83cd43a176c0c19d5db4401283e8f5c296b9c6c7fa29029de15cc445f26e12"
 dependencies = [
  "hex",
- "hex-literal 0.3.4",
+ "hex-literal",
  "rand 0.8.5",
  "sha1 0.6.0",
  "thiserror",

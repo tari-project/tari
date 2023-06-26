@@ -582,7 +582,12 @@ mod clear_all_pending_headers {
                 let accum = BlockHeaderAccumulatedData::builder(&prev_accum)
                     .with_hash(header.hash())
                     .with_achieved_target_difficulty(
-                        AchievedTargetDifficulty::try_construct(PowAlgorithm::Sha3, 0.into(), 0.into()).unwrap(),
+                        AchievedTargetDifficulty::try_construct(
+                            PowAlgorithm::Sha3,
+                            Difficulty::min(),
+                            Difficulty::min(),
+                        )
+                        .unwrap(),
                     )
                     .with_total_kernel_offset(Default::default())
                     .build()

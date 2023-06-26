@@ -23,6 +23,8 @@
 use randomx_rs::RandomXError;
 use tari_utilities::hex::HexError;
 
+use crate::proof_of_work::DifficultyError;
+
 #[derive(Debug, thiserror::Error)]
 pub enum MergeMineError {
     #[error("Serialization error: {0}")]
@@ -39,4 +41,6 @@ pub enum MergeMineError {
     HexError(#[from] HexError),
     #[error("Monero PoW data did not contain a valid merkle root")]
     InvalidMerkleRoot,
+    #[error("Invalid difficulty: {0}")]
+    DifficultyError(#[from] DifficultyError),
 }

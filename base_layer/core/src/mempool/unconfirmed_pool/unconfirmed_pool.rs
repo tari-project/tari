@@ -22,7 +22,6 @@
 
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
-    hash::Hash,
     sync::Arc,
 };
 
@@ -35,11 +34,13 @@ use crate::{
     blocks::Block,
     mempool::{
         priority::{FeePriority, PrioritizedTransaction},
+        shrink_hashmap::shrink_hashmap,
         unconfirmed_pool::UnconfirmedPoolError,
         FeePerGramStat,
     },
     transactions::{tari_amount::MicroTari, transaction_components::Transaction, weight::TransactionWeight},
 };
+
 pub const LOG_TARGET: &str = "c::mp::unconfirmed_pool::unconfirmed_pool_storage";
 
 type TransactionKey = usize;
@@ -70,8 +71,8 @@ impl Default for UnconfirmedPoolConfig {
 /// transactions included in blocks with transactions stored in the pool. The txs_by_priority BTreeMap prioritise the
 /// transactions in the pool according to TXPriority, it allows transactions to be inserted in sorted order by their
 /// priority. The txs_by_priority BTreeMap makes it easier to select the set of highest priority transactions that can
-/// be included in a block. The excess_sig of a transaction is used a key to uniquely identify a specific transaction in
-/// these containers.
+/// be included in a block. The excess_sig of a transaction is used as a key to uniquely identify a specific transaction
+/// in these containers.
 pub struct UnconfirmedPool {
     config: UnconfirmedPoolConfig,
     key_counter: usize,
@@ -145,7 +146,7 @@ impl UnconfirmedPool {
         self.tx_by_key.insert(new_key, prioritized_tx);
     }
 
-    /// TThis will search the unconfirmed pool for the set of outputs and return true if all of them are found
+    /// This will search the unconfirmed pool for the set of outputs and return true if all of them are found
     pub fn contains_all_outputs(&mut self, outputs: &[HashOutput]) -> bool {
         outputs.iter().all(|hash| self.txs_by_output.contains_key(hash))
     }
@@ -289,8 +290,7 @@ impl UnconfirmedPool {
                 },
                 None => {
                     // this transactions requires an output, that the mempool does not currently have, but did have at
-                    // some point. This means that we need to remove this transaction and re
-                    // validate it
+                    // some point. This means that we need to remove this transaction and revalidate it
                     transactions_to_recheck.push((transaction.key, transaction.transaction.clone()));
                     break;
                 },
@@ -605,22 +605,12 @@ impl UnconfirmedPool {
     #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::cast_sign_loss)]
     pub fn compact(&mut self) {
-        fn shrink_hashmap<K: Eq + Hash, V>(map: &mut HashMap<K, V>) -> (usize, usize) {
-            let cap = map.capacity();
-            let extra_cap = cap - map.len();
-            if extra_cap > 100 {
-                map.shrink_to(map.len() + (extra_cap / 2));
-            }
-
-            (cap, map.capacity())
-        }
-
         let (old, new) = shrink_hashmap(&mut self.tx_by_key);
         shrink_hashmap(&mut self.txs_by_signature);
         shrink_hashmap(&mut self.txs_by_output);
         shrink_hashmap(&mut self.txs_by_unique_id);
 
-        if old - new > 0 {
+        if old > new {
             debug!(
                 target: LOG_TARGET,
                 "Shrunk reorg mempool memory usage ({}/{}) ~{}%",

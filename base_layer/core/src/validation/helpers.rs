@@ -111,7 +111,7 @@ pub fn check_target_difficulty(
 ) -> Result<AchievedTargetDifficulty, ValidationError> {
     let achieved = match block_header.pow_algo() {
         PowAlgorithm::Monero => monero_difficulty(block_header, randomx_factory)?,
-        PowAlgorithm::Sha3 => sha3x_difficulty(block_header),
+        PowAlgorithm::Sha3 => sha3x_difficulty(block_header)?,
     };
 
     match AchievedTargetDifficulty::try_construct(block_header.pow_algo(), target, achieved) {
@@ -514,7 +514,7 @@ mod test {
             let rules = test_helpers::create_consensus_manager();
             let key_manager = create_test_core_key_manager_with_memory_db();
             let coinbase = block_on(test_helpers::create_coinbase_wallet_output(&test_params, height, None));
-            let coinbase_output = coinbase.as_transaction_output(&key_manager).await.unwrap();
+            let coinbase_output = coinbase.to_transaction_output(&key_manager).await.unwrap();
             let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key_id, &key_manager).await;
 
             let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
@@ -533,7 +533,7 @@ mod test {
             let rules = test_helpers::create_consensus_manager();
             let mut coinbase = test_helpers::create_coinbase_wallet_output(&test_params, height, None).await;
             coinbase.features.maturity = 0;
-            let coinbase_output = coinbase.as_transaction_output(&key_manager).await.unwrap();
+            let coinbase_output = coinbase.to_transaction_output(&key_manager).await.unwrap();
             let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key_id, &key_manager).await;
 
             let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
@@ -555,7 +555,7 @@ mod test {
             let rules = test_helpers::create_consensus_manager();
             let mut coinbase = test_helpers::create_coinbase_wallet_output(&test_params, height, None).await;
             coinbase.value = 123.into();
-            let coinbase_output = coinbase.as_transaction_output(&key_manager).await.unwrap();
+            let coinbase_output = coinbase.to_transaction_output(&key_manager).await.unwrap();
             let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key_id, &key_manager).await;
 
             let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
