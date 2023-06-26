@@ -33,7 +33,7 @@ use tari_core::{
     blocks::{ChainBlock, NewBlock},
     consensus::{ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder, NetworkConsensus},
     mempool::TxStorageResponse,
-    proof_of_work::{randomx_factory::RandomXFactory, PowAlgorithm},
+    proof_of_work::{randomx_factory::RandomXFactory, Difficulty, PowAlgorithm},
     transactions::{
         tari_amount::{uT, T},
         test_helpers::{create_test_core_key_manager_with_memory_db, schema_to_transaction, spend_utxos},
@@ -95,7 +95,8 @@ async fn propagate_and_forward_many_valid_blocks() {
     let rules = ConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants)
         .with_block(block0.clone())
-        .build();
+        .build()
+        .unwrap();
     let (mut alice_node, rules) = BaseNodeBuilder::new(network.into())
         .with_node_identity(alice_node_identity.clone())
         .with_consensus_manager(rules)
@@ -157,7 +158,7 @@ async fn propagate_and_forward_many_valid_blocks() {
             &block0,
             vec![tx01],
             &rules,
-            1.into(),
+            Difficulty::min(),
             &key_manager,
         )
         .await
@@ -224,7 +225,8 @@ async fn propagate_and_forward_invalid_block_hash() {
     let rules = ConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants)
         .with_block(block0.clone())
-        .build();
+        .build()
+        .unwrap();
     let (mut alice_node, rules) = BaseNodeBuilder::new(network.into())
         .with_node_identity(alice_node_identity.clone())
         .with_consensus_manager(rules)
@@ -270,9 +272,16 @@ async fn propagate_and_forward_invalid_block_hash() {
     )
     .await;
     let txs = txs.into_iter().map(|tx| (*tx).clone()).collect();
-    let block1 = append_block(&alice_node.blockchain_db, &block0, txs, &rules, 1.into(), &key_manager)
-        .await
-        .unwrap();
+    let block1 = append_block(
+        &alice_node.blockchain_db,
+        &block0,
+        txs,
+        &rules,
+        Difficulty::min(),
+        &key_manager,
+    )
+    .await
+    .unwrap();
     let block1 = {
         // Create unknown block hash
         let mut block = block1.block().clone();
@@ -340,7 +349,8 @@ async fn propagate_and_forward_invalid_block() {
     let rules = ConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants)
         .with_block(block0.clone())
-        .build();
+        .build()
+        .unwrap();
     let stateless_block_validator = BlockBodyInternalConsistencyValidator::new(rules.clone(), true, factories);
 
     let mock_validator = MockValidator::new(false);
@@ -414,7 +424,7 @@ async fn propagate_and_forward_invalid_block() {
         &block0,
         vec![],
         &rules,
-        1.into(),
+        Difficulty::min(),
         &key_manager,
     )
     .await
@@ -466,10 +476,10 @@ async fn local_get_metadata() {
         .await;
     let db = &node.blockchain_db;
     let block0 = db.fetch_block(0, true).unwrap().try_into_chain_block().unwrap();
-    let block1 = append_block(db, &block0, vec![], &consensus_manager, 1.into(), &key_manager)
+    let block1 = append_block(db, &block0, vec![], &consensus_manager, Difficulty::min(), &key_manager)
         .await
         .unwrap();
-    let block2 = append_block(db, &block1, vec![], &consensus_manager, 1.into(), &key_manager)
+    let block2 = append_block(db, &block1, vec![], &consensus_manager, Difficulty::min(), &key_manager)
         .await
         .unwrap();
 
@@ -490,7 +500,8 @@ async fn local_get_new_block_template_and_get_new_block() {
     let rules = ConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants[0].clone())
         .with_block(block0)
-        .build();
+        .build()
+        .unwrap();
     let (mut node, _rules) = BaseNodeBuilder::new(network.into())
         .with_consensus_manager(rules)
         .start(temp_dir.path().to_str().unwrap())
@@ -532,7 +543,8 @@ async fn local_get_new_block_with_zero_conf() {
     let rules = ConsensusManagerBuilder::new(network)
         .add_consensus_constants(consensus_constants[0].clone())
         .with_block(block0)
-        .build();
+        .build()
+        .unwrap();
     let difficulty_calculator = DifficultyCalculator::new(rules.clone(), RandomXFactory::default());
     let (mut node, rules) = BaseNodeBuilder::new(network.into())
         .with_consensus_manager(rules.clone())
@@ -617,7 +629,8 @@ async fn local_get_new_block_with_combined_transaction() {
     let rules = ConsensusManagerBuilder::new(network)
         .add_consensus_constants(consensus_constants[0].clone())
         .with_block(block0)
-        .build();
+        .build()
+        .unwrap();
     let difficulty_calculator = DifficultyCalculator::new(rules.clone(), RandomXFactory::default());
     let (mut node, rules) = BaseNodeBuilder::new(network.into())
         .with_consensus_manager(rules.clone())

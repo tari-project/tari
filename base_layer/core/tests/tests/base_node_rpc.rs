@@ -86,7 +86,8 @@ async fn setup() -> (
         create_genesis_block_with_coinbase_value(100_000_000.into(), &consensus_constants, &key_manager).await;
     let consensus_manager = ConsensusManagerBuilder::new(network.as_network())
         .with_block(block0.clone())
-        .build();
+        .build()
+        .unwrap();
     let (mut base_node, _consensus_manager) = BaseNodeBuilder::new(network)
         .with_consensus_manager(consensus_manager.clone())
         .start(temp_dir.path().to_str().unwrap())
@@ -262,7 +263,7 @@ async fn test_base_node_wallet_rpc() {
     let mut hashes = Vec::new();
     for output in req_utxos {
         let hash = output
-            .as_transaction_output(&key_manager)
+            .to_transaction_output(&key_manager)
             .await
             .unwrap()
             .hash()
@@ -278,7 +279,7 @@ async fn test_base_node_wallet_rpc() {
     assert_eq!(response.outputs.len(), utxos1.len());
     let mut tx_outputs = Vec::new();
     for output in utxos1 {
-        tx_outputs.push(output.as_transaction_output(&key_manager).await.unwrap())
+        tx_outputs.push(output.to_transaction_output(&key_manager).await.unwrap())
     }
     for output_proto in &response.outputs {
         let output = TransactionOutput::try_from(output_proto.clone()).unwrap();

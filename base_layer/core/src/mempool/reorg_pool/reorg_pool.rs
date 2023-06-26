@@ -22,7 +22,6 @@
 
 use std::{
     collections::{HashMap, HashSet},
-    hash::Hash,
     sync::Arc,
 };
 
@@ -31,7 +30,11 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::types::{PrivateKey, Signature};
 use tari_utilities::hex::Hex;
 
-use crate::{blocks::Block, transactions::transaction_components::Transaction};
+use crate::{
+    blocks::Block,
+    mempool::shrink_hashmap::shrink_hashmap,
+    transactions::transaction_components::Transaction,
+};
 
 pub const LOG_TARGET: &str = "c::mp::reorg_pool::reorg_pool_storage";
 
@@ -77,16 +80,16 @@ impl ReorgPool {
     /// Insert a new transaction into the ReorgPool. Published transactions will be discarded once they are
     /// `config.expiry_height` blocks old.
     fn insert(&mut self, height: u64, tx: Arc<Transaction>) {
-        let excess_hex = tx
-            .first_kernel_excess_sig()
-            .map(|s| s.get_signature().to_hex())
-            .unwrap_or_else(|| "no kernel!".to_string());
         if tx
             .body
             .kernels()
             .iter()
             .all(|k| self.txs_by_signature.contains_key(k.excess_sig.get_signature()))
         {
+            let excess_hex = tx
+                .first_kernel_excess_sig()
+                .map(|s| s.get_signature().to_hex())
+                .unwrap_or_else(|| "no kernel!".to_string());
             debug!(
                 target: LOG_TARGET,
                 "Transaction {} already found in reorg pool", excess_hex
@@ -171,7 +174,7 @@ impl ReorgPool {
         self.txs_by_signature.contains_key(excess_sig.get_signature())
     }
 
-    /// Remove the transactions from the ReorgPoolthat were used in provided removed blocks. The transactions
+    /// Remove the transactions from the ReorgPool that were used in provided removed blocks. The transactions
     /// can be resubmitted to the Unconfirmed Pool.
     pub fn remove_reorged_txs_and_discard_double_spends(
         &mut self,
@@ -287,13 +290,6 @@ impl ReorgPool {
             None => return,
         };
 
-        // let heights_to_remove = self
-        //     .txs_by_height
-        //     .keys()
-        //     .filter(|h| **h <= height)
-        //     .copied()
-        //     .collect::<Vec<_>>();
-        // for height in heights_to_remove {
         if let Some(tx_ids) = self.txs_by_height.remove(&height) {
             debug!(
                 target: LOG_TARGET,
@@ -324,21 +320,11 @@ impl ReorgPool {
     #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::cast_sign_loss)]
     pub fn compact(&mut self) {
-        fn shrink_hashmap<K: Eq + Hash, V>(map: &mut HashMap<K, V>) -> (usize, usize) {
-            let cap = map.capacity();
-            let extra_cap = cap - map.len();
-            if extra_cap > 100 {
-                map.shrink_to(map.len() + (extra_cap / 2));
-            }
-
-            (cap, map.capacity())
-        }
-
         let (old, new) = shrink_hashmap(&mut self.tx_by_key);
         shrink_hashmap(&mut self.txs_by_signature);
         shrink_hashmap(&mut self.txs_by_height);
 
-        if old - new > 0 {
+        if old > new {
             debug!(
                 target: LOG_TARGET,
                 "Shrunk reorg mempool memory usage ({}/{}) ~{}%",
@@ -437,7 +423,7 @@ mod test {
     async fn remove_scan_for_and_remove_reorged_txs() {
         let key_manager = create_test_core_key_manager_with_memory_db();
         let network = Network::LocalNet;
-        let consensus = ConsensusManagerBuilder::new(network).build();
+        let consensus = ConsensusManagerBuilder::new(network).build().unwrap();
         let tx1 =
             Arc::new(tx!(MicroTari(10_000), fee: MicroTari(10), lock: 4000, inputs: 2, outputs: 1, &key_manager).0);
         let tx2 =

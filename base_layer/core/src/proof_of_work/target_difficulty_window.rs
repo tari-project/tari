@@ -79,15 +79,18 @@ mod test {
     #[test]
     fn it_calculates_the_target_difficulty() {
         let mut target_difficulties = TargetDifficultyWindow::new(5, 60, 60 * 6).unwrap();
-        let mut time = 60.into();
-        target_difficulties.add_back(time, 100.into());
-        time += 60.into();
-        target_difficulties.add_back(time, 100.into());
-        time += 60.into();
-        target_difficulties.add_back(time, 100.into());
-        time += 60.into();
-        target_difficulties.add_back(time, 100.into());
+        let mut time = Difficulty::from_u64(60).unwrap().as_u64().into();
+        target_difficulties.add_back(time, Difficulty::from_u64(100).unwrap());
+        time += Difficulty::from_u64(60).unwrap().as_u64().into();
+        target_difficulties.add_back(time, Difficulty::from_u64(100).unwrap());
+        time += Difficulty::from_u64(60).unwrap().as_u64().into();
+        target_difficulties.add_back(time, Difficulty::from_u64(100).unwrap());
+        time += Difficulty::from_u64(60).unwrap().as_u64().into();
+        target_difficulties.add_back(time, Difficulty::from_u64(100).unwrap());
 
-        assert_eq!(target_difficulties.calculate(1.into(), 400.into()), 100.into());
+        assert_eq!(
+            target_difficulties.calculate(Difficulty::from_u64(1).unwrap(), Difficulty::from_u64(400).unwrap()),
+            Difficulty::from_u64(100).unwrap()
+        );
     }
 }

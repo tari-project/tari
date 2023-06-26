@@ -229,6 +229,7 @@ impl TransactionInput {
         }
     }
 
+    /// Returns the Commitment of this input. An error is returned if this is a compact input.
     pub fn commitment(&self) -> Result<&Commitment, TransactionError> {
         match self.spent_output {
             SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
@@ -236,6 +237,7 @@ impl TransactionInput {
         }
     }
 
+    /// Returns the OutputFeatures of this input. An error is returned if this is a compact input.
     pub fn features(&self) -> Result<&OutputFeatures, TransactionError> {
         match self.spent_output {
             SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
@@ -243,6 +245,9 @@ impl TransactionInput {
         }
     }
 
+    /// Returns a mutable reference OutputFeatures of this input. An error is returned if this is a compact input.
+    /// This is only available for unit tests.
+    #[cfg(test)]
     pub fn features_mut(&mut self) -> Result<&mut OutputFeatures, TransactionError> {
         match self.spent_output {
             SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
@@ -250,6 +255,7 @@ impl TransactionInput {
         }
     }
 
+    /// Returns a reference to the TariScript of this input. An error is returned if this is a compact input.
     pub fn script(&self) -> Result<&TariScript, TransactionError> {
         match self.spent_output {
             SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
@@ -257,6 +263,8 @@ impl TransactionInput {
         }
     }
 
+    /// Returns a reference to the sender offset public key of this input. An error is returned if this is a compact
+    /// input.
     pub fn sender_offset_public_key(&self) -> Result<&PublicKey, TransactionError> {
         match self.spent_output {
             SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
@@ -267,6 +275,7 @@ impl TransactionInput {
         }
     }
 
+    /// Returns a reference to the covenant of this input. An error is returned if this is a compact input.
     pub fn covenant(&self) -> Result<&Covenant, TransactionError> {
         match self.spent_output {
             SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
@@ -274,6 +283,7 @@ impl TransactionInput {
         }
     }
 
+    /// Returns a reference to the EncryptedData of this input. An error is returned if this is a compact input.
     pub fn encrypted_data(&self) -> Result<&EncryptedData, TransactionError> {
         match self.spent_output {
             SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
@@ -281,6 +291,7 @@ impl TransactionInput {
         }
     }
 
+    /// Returns a reference to the metadata signature of this input. An error is returned if this is a compact input.
     pub fn metadata_signature(&self) -> Result<&ComAndPubSignature, TransactionError> {
         match self.spent_output {
             SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
@@ -290,6 +301,7 @@ impl TransactionInput {
         }
     }
 
+    /// Returns a reference to the rangeproof hash of this input. An error is returned if this is a compact input.
     pub fn rangeproof_hash(&self) -> Result<&FixedHash, TransactionError> {
         match self.spent_output {
             SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
@@ -299,6 +311,7 @@ impl TransactionInput {
         }
     }
 
+    /// Returns a reference to the minimum value promise of this input. An error is returned if this is a compact input.
     pub fn minimum_value_promise(&self) -> Result<&MicroTari, TransactionError> {
         match self.spent_output {
             SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
@@ -315,8 +328,8 @@ impl TransactionInput {
         self.output_hash() == output.hash()
     }
 
-    /// This will run the script contained in the TransactionInput, returning either a script error or the resulting
-    /// public key.
+    /// This will run the script contained in the TransactionInput, returning the resulting
+    /// public key if execution succeeds, or otherwise a script error. An error is returned if this is a compact input.
     pub fn run_script(&self, context: Option<ScriptContext>) -> Result<PublicKey, TransactionError> {
         let context = context.unwrap_or_default();
 
@@ -335,6 +348,8 @@ impl TransactionInput {
         }
     }
 
+    /// Validates the script signature. An error is returned if the script signature is invalid or this is a compact
+    /// input.
     pub fn validate_script_signature(
         &self,
         script_public_key: &PublicKey,
@@ -374,7 +389,7 @@ impl TransactionInput {
     }
 
     /// This will run the script and verify the script signature. If its valid, it will return the resulting public key
-    /// from the script.
+    /// from the script. An error is always returned if this is a compact input.
     pub fn run_and_verify_script(
         &self,
         factory: &CommitmentFactory,
@@ -386,6 +401,7 @@ impl TransactionInput {
     }
 
     /// Returns true if this input is mature at the given height, otherwise false
+    /// An error is returned if this is a compact input.
     pub fn is_mature_at(&self, block_height: u64) -> Result<bool, TransactionError> {
         match self.spent_output {
             SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
@@ -425,6 +441,7 @@ impl TransactionInput {
         }
     }
 
+    /// Returns true if this is a compact input, otherwise false.
     pub fn is_compact(&self) -> bool {
         matches!(self.spent_output, SpentOutput::OutputHash(_))
     }
@@ -440,6 +457,9 @@ impl TransactionInput {
         writer.finalize().into()
     }
 
+    /// Sets the input maturity. Only available in unit tests.
+    /// An error is returned if this is a compact input.
+    #[cfg(test)]
     pub fn set_maturity(&mut self, maturity: u64) -> Result<(), TransactionError> {
         if let SpentOutput::OutputData { ref mut features, .. } = self.spent_output {
             features.maturity = maturity;
@@ -450,6 +470,7 @@ impl TransactionInput {
     }
 
     /// Sets the input's Tari script. Only useful in tests.
+    /// An error is returned if this is a compact input.
     #[cfg(test)]
     pub fn set_script(&mut self, new_script: TariScript) -> Result<(), TransactionError> {
         if let SpentOutput::OutputData { ref mut script, .. } = self.spent_output {
@@ -460,7 +481,7 @@ impl TransactionInput {
         }
     }
 
-    /// Return a clone of this Input into its compact form
+    /// Return a copy of this TransactionInput in its compact form.
     pub fn to_compact(&self) -> Self {
         Self::new(
             self.version,

@@ -305,7 +305,7 @@ pub async fn create_random_signature_from_secret_key(
 }
 
 pub fn create_consensus_manager() -> ConsensusManager {
-    ConsensusManager::builder(Network::LocalNet).build()
+    ConsensusManager::builder(Network::LocalNet).build().unwrap()
 }
 
 pub async fn create_coinbase_wallet_output(
@@ -602,7 +602,7 @@ pub async fn create_transaction_with(
     outputs: Vec<(WalletOutput, TariKeyId)>,
     key_manager: &TestKeyManager,
 ) -> Transaction {
-    let rules = ConsensusManager::builder(Network::LocalNet).build();
+    let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
     let constants = rules.consensus_constants(0).clone();
     let mut stx_builder = SenderTransactionProtocol::builder(constants, key_manager.clone());
     let change = TestParams::new(key_manager).await;
@@ -628,7 +628,7 @@ pub async fn create_transaction_with(
     let mut stx_protocol = stx_builder.build().await.unwrap();
     stx_protocol.finalize(key_manager).await.unwrap();
 
-    stx_protocol.take_transaction().unwrap()
+    stx_protocol.into_transaction().unwrap()
 }
 
 /// Spend the provided UTXOs to the given amounts. Change will be created with any outstanding amount.
@@ -649,6 +649,7 @@ pub async fn create_stx_protocol(
 ) -> (SenderTransactionProtocol, Vec<WalletOutput>) {
     let constants = ConsensusManager::builder(Network::LocalNet)
         .build()
+        .unwrap()
         .consensus_constants(0)
         .clone();
     let mut stx_builder = SenderTransactionProtocol::builder(constants, key_manager.clone());

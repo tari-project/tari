@@ -175,8 +175,8 @@ fn check_script_size(body: &AggregateBody, max_script_size: usize) -> Result<(),
     Ok(())
 }
 
-// This function checks for duplicate inputs and outputs. There should be no duplicate inputs or outputs in a aggregated
-// body
+/// This function checks for duplicate inputs and outputs. There should be no duplicate inputs or outputs in a
+/// aggregated body
 fn check_sorting_and_duplicates(body: &AggregateBody) -> Result<(), ValidationError> {
     if !is_all_unique_and_sorted(body.inputs()) {
         return Err(ValidationError::UnsortedOrDuplicateInput);
@@ -312,7 +312,7 @@ fn check_weight(
     height: u64,
     consensus_constants: &ConsensusConstants,
 ) -> Result<(), ValidationError> {
-    let block_weight = body.calculate_weight(consensus_constants.transaction_weight());
+    let block_weight = body.calculate_weight(consensus_constants.transaction_weight_params());
     let max_weight = consensus_constants.get_max_block_transaction_weight();
     if block_weight <= max_weight {
         trace!(
@@ -439,6 +439,12 @@ fn validate_versions(body: &AggregateBody, consensus_constants: &ConsensusConsta
 
 #[cfg(test)]
 mod test {
+    use std::iter;
+
+    use futures::StreamExt;
+    use rand::seq::SliceRandom;
+    use tari_common::configuration::Network;
+    use tari_common_types::types::RANGE_PROOF_AGGREGATION_FACTOR;
     use tari_script::TariScript;
 
     use super::*;
@@ -550,13 +556,63 @@ mod test {
         ]);
         assert!(check_total_burned(&body).is_ok());
         // lets add an extra kernel
-        body.add_kernels(&mut vec![kernel3]);
+        body.add_kernels([kernel3]);
         assert!(check_total_burned(&body).is_err());
         // lets add a kernel commitment mismatch
-        body.add_outputs(&mut vec![output3.clone()]);
+        body.add_outputs(vec![output3.clone()]);
         assert!(check_total_burned(&body).is_err());
         // Lets try one with a commitment with no kernel
         let body2 = AggregateBody::new(Vec::new(), vec![output1, output2, output3], vec![kernel1, kernel2]);
         assert!(check_total_burned(&body2).is_err());
+    }
+
+    mod transaction_ordering {
+        use super::*;
+
+        #[tokio::test]
+        async fn it_rejects_unordered_bodies() {
+            let mut kernels =
+                iter::repeat_with(|| test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::default()))
+                    .take(10)
+                    .collect::<Vec<_>>();
+
+            // Sort the kernels, we'll check that the outputs fail the sorting check
+            kernels.sort();
+
+            let key_manager = create_test_core_key_manager_with_memory_db();
+            let mut outputs = futures::stream::unfold((), |_| async {
+                let (o, _, _) = test_helpers::create_utxo(
+                    100.into(),
+                    &key_manager,
+                    &OutputFeatures::create_burn_output(),
+                    &TariScript::default(),
+                    &Covenant::default(),
+                    0.into(),
+                )
+                .await;
+                Some((o, ()))
+            })
+            .take(10)
+            .collect::<Vec<_>>()
+            .await;
+
+            while is_all_unique_and_sorted(&outputs) {
+                // Shuffle the outputs until they are not sorted
+                outputs.shuffle(&mut rand::thread_rng());
+            }
+
+            // Break the contract of new_unsorted_unchecked by calling it with unsorted outputs. The validator must not
+            // rely on the sorted flag.
+            let body = AggregateBody::new_sorted_unchecked(Vec::new(), outputs, kernels);
+            let err = AggregateBodyInternalConsistencyValidator::new(
+                true,
+                ConsensusManager::builder(Network::LocalNet).build().unwrap(),
+                CryptoFactories::new(RANGE_PROOF_AGGREGATION_FACTOR),
+            )
+            .validate(&body, &Default::default(), &Default::default(), None, None, u64::MAX)
+            .unwrap_err();
+
+            assert!(matches!(err, ValidationError::UnsortedOrDuplicateOutput));
+        }
     }
 }

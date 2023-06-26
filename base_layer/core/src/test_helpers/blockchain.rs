@@ -40,7 +40,6 @@ use tari_test_utils::paths::create_temporary_data_path;
 use super::{create_block, mine_to_difficulty};
 use crate::{
     blocks::{
-        genesis_block::get_genesis_block,
         Block,
         BlockAccumulatedData,
         BlockHeader,
@@ -92,12 +91,11 @@ pub fn create_new_blockchain() -> BlockchainDatabase<TempDatabase> {
 
 pub fn create_new_blockchain_with_network(network: Network) -> BlockchainDatabase<TempDatabase> {
     let consensus_constants = ConsensusConstantsBuilder::new(network).build();
-    let genesis = get_genesis_block(network);
     let consensus_manager = ConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants)
-        .with_block(genesis)
         .on_ties(ChainStrengthComparerBuilder::new().by_height().build())
-        .build();
+        .build()
+        .unwrap();
     create_custom_blockchain(consensus_manager)
 }
 
@@ -442,7 +440,7 @@ pub async fn create_chained_blocks<T: Into<BlockSpecs>>(
 ) -> (Vec<String>, HashMap<String, Arc<ChainBlock>>) {
     let mut block_hashes = HashMap::new();
     block_hashes.insert("GB".to_string(), genesis_block);
-    let rules = ConsensusManager::builder(Network::LocalNet).build();
+    let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
     let km = create_test_core_key_manager_with_memory_db();
     let blocks: BlockSpecs = blocks.into();
     let mut block_names = Vec::with_capacity(blocks.len());
@@ -465,8 +463,7 @@ fn mine_block(block: Block, prev_block_accum: &BlockHeaderAccumulatedData, diffi
     let accum = BlockHeaderAccumulatedData::builder(prev_block_accum)
         .with_hash(block.hash())
         .with_achieved_target_difficulty(
-            AchievedTargetDifficulty::try_construct(PowAlgorithm::Sha3, (difficulty.as_u64() - 1).into(), difficulty)
-                .unwrap(),
+            AchievedTargetDifficulty::try_construct(PowAlgorithm::Sha3, difficulty, difficulty).unwrap(),
         )
         .with_total_kernel_offset(block.header.total_kernel_offset.clone())
         .build()
@@ -568,7 +565,7 @@ impl TestBlockchain {
     }
 
     pub fn with_validators(validators: Validators<TempDatabase>) -> Self {
-        let rules = ConsensusManager::builder(Network::LocalNet).build();
+        let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
         let db = create_store_with_consensus_and_validators(rules.clone(), validators);
         Self::new(db, rules)
     }
@@ -674,7 +671,7 @@ impl TestBlockchain {
 
 impl Default for TestBlockchain {
     fn default() -> Self {
-        let rules = ConsensusManager::builder(Network::LocalNet).build();
+        let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
         TestBlockchain::create(rules)
     }
 }

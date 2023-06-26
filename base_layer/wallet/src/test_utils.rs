@@ -56,7 +56,7 @@ pub fn make_wallet_database_connection(path: Option<String>) -> (WalletDbConnect
 }
 
 pub fn create_consensus_rules() -> ConsensusManager {
-    ConsensusManager::builder(Network::LocalNet).build()
+    ConsensusManager::builder(Network::LocalNet).build().unwrap()
 }
 
 pub fn create_consensus_constants(height: u64) -> ConsensusConstants {

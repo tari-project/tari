@@ -159,6 +159,11 @@ impl TransactionOutput {
         &self.commitment
     }
 
+    /// Accessor method for the encrypted_data contained in an output
+    pub fn encrypted_data(&self) -> &EncryptedData {
+        &self.encrypted_data
+    }
+
     /// Accessor method for the range proof contained in an output
     pub fn proof_result(&self) -> Result<&RangeProof, RangeProofError> {
         if let Some(proof) = self.proof.as_ref() {
@@ -331,7 +336,6 @@ impl TransactionOutput {
     }
 
     /// Attempt to verify a recovered mask (blinding factor) for a proof against the commitment.
-    /// TODO: Remove this method when core key manager is fully implemented
     pub fn verify_mask(
         &self,
         prover: &RangeProofService,
@@ -587,10 +591,7 @@ mod test {
 
         assert!(tx_output.verify_range_proof(&factories.range_proof).is_ok());
         assert!(tx_output.verify_metadata_signature().is_ok());
-        let (_, recovered_value) = key_manager
-            .try_commitment_key_recovery(&tx_output.commitment, &tx_output.encrypted_data, None)
-            .await
-            .unwrap();
+        let (_, recovered_value) = key_manager.try_output_key_recovery(&tx_output, None).await.unwrap();
         assert_eq!(recovered_value, value);
     }
 
@@ -806,7 +807,7 @@ mod test {
             )
             .await;
         utxo?
-            .as_transaction_output(key_manager)
+            .to_transaction_output(key_manager)
             .await
             .map_err(|e| e.to_string())
     }

@@ -197,14 +197,17 @@ async fn test_insert_and_process_published_block() {
     let stats = mempool.stats().await.unwrap();
     assert_eq!(stats.unconfirmed_txs, 1);
     assert_eq!(stats.reorg_txs, 0);
-    let expected_weight = consensus_manager.consensus_constants(0).transaction_weight().calculate(
-        1,
-        1,
-        2,
-        TestParams::new(&key_manager)
-            .await
-            .get_size_for_default_features_and_scripts(2),
-    );
+    let expected_weight = consensus_manager
+        .consensus_constants(0)
+        .transaction_weight_params()
+        .calculate(
+            1,
+            1,
+            2,
+            TestParams::new(&key_manager)
+                .await
+                .get_size_for_default_features_and_scripts(2),
+        );
     assert_eq!(stats.unconfirmed_weight, expected_weight);
 
     // Spend tx2, so it goes in Reorg pool
@@ -395,7 +398,7 @@ async fn test_retrieve() {
         mempool.insert(t.clone()).await.unwrap();
     }
     // 1-block, 8 UTXOs, 7 txs in mempool
-    let weighting = consensus_manager.consensus_constants(0).transaction_weight();
+    let weighting = consensus_manager.consensus_constants(0).transaction_weight_params();
     let weight =
         tx[6].calculate_weight(weighting) + tx[2].calculate_weight(weighting) + tx[3].calculate_weight(weighting);
     let retrieved_txs = mempool.retrieve(weight).await.unwrap();
@@ -950,7 +953,8 @@ async fn receive_and_propagate_transaction() {
     let consensus_manager = ConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants)
         .with_block(block0)
-        .build();
+        .build()
+        .unwrap();
     let (mut alice_node, mut bob_node, mut carol_node, _consensus_manager) =
         create_network_with_3_base_nodes_with_config(
             MempoolServiceConfig::default(),
@@ -1100,10 +1104,10 @@ async fn consensus_validation_large_tx() {
     let amount = MicroTari::from(5_000_000);
 
     let input = outputs[1][0].clone();
-    let inputs = vec![input.as_transaction_input(&key_manager).await.unwrap()];
+    let inputs = vec![input.to_transaction_input(&key_manager).await.unwrap()];
     let input_script_keys = vec![input.script_key_id];
 
-    let fee = Fee::new(*consensus_manager.consensus_constants(0).transaction_weight()).calculate(
+    let fee = Fee::new(*consensus_manager.consensus_constants(0).transaction_weight_params()).calculate(
         fee_per_gram.into(),
         1,
         input_count,
@@ -1164,7 +1168,7 @@ async fn consensus_validation_large_tx() {
         &tx_meta.burn_commitment,
     );
     for (output, nonce_id) in wallet_outputs {
-        outputs.push(output.as_transaction_output(&key_manager).await.unwrap());
+        outputs.push(output.to_transaction_output(&key_manager).await.unwrap());
         offset = &offset +
             &key_manager
                 .get_txo_private_kernel_offset(&output.spending_key_id, &nonce_id)
@@ -1231,7 +1235,7 @@ async fn consensus_validation_large_tx() {
     let err = validator.validate(&tx, None, None, u64::MAX).unwrap_err();
     assert!(matches!(err, ValidationError::BlockTooLarge { .. }));
 
-    let weighting = constants.transaction_weight();
+    let weighting = constants.transaction_weight_params();
     let weight = tx.calculate_weight(weighting);
 
     // check the tx weight is more than the max for 1 block
@@ -1466,7 +1470,8 @@ async fn block_event_and_reorg_event_handling() {
     let consensus_manager = ConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants.clone())
         .with_block(block0.clone())
-        .build();
+        .build()
+        .unwrap();
     let (mut alice, mut bob, consensus_manager) = create_network_with_2_base_nodes_with_config(
         MempoolServiceConfig::default(),
         LivenessConfig::default(),
@@ -1527,7 +1532,7 @@ async fn block_event_and_reorg_event_handling() {
         .blockchain_db
         .prepare_new_block(chain_block(&empty_block, vec![tx1], &consensus_manager, &key_manager).await)
         .unwrap();
-    find_header_with_achieved_difficulty(&mut block1.header, Difficulty::from(1));
+    find_header_with_achieved_difficulty(&mut block1.header, Difficulty::from_u64(1).unwrap());
     // Add Block1 - tx1 will be moved to the ReorgPool.
     assert!(bob.local_nci.submit_block(block1.clone(),).await.is_ok());
     async_assert_eventually!(
@@ -1553,13 +1558,13 @@ async fn block_event_and_reorg_event_handling() {
         .blockchain_db
         .prepare_new_block(chain_block(&block1, vec![tx2a, tx3a], &consensus_manager, &key_manager).await)
         .unwrap();
-    find_header_with_achieved_difficulty(&mut block2a.header, Difficulty::from(1));
+    find_header_with_achieved_difficulty(&mut block2a.header, Difficulty::from_u64(1).unwrap());
     // Block2b also builds on Block1 but has a stronger PoW
     let mut block2b = bob
         .blockchain_db
         .prepare_new_block(chain_block(&block1, vec![tx2b, tx3b], &consensus_manager, &key_manager).await)
         .unwrap();
-    find_header_with_achieved_difficulty(&mut block2b.header, Difficulty::from(10));
+    find_header_with_achieved_difficulty(&mut block2b.header, Difficulty::from_u64(10).unwrap());
 
     // Add Block2a - tx2b and tx3b will be discarded as double spends.
     assert!(bob.local_nci.submit_block(block2a.clone(),).await.is_ok());

@@ -253,7 +253,7 @@ impl BlockTemplateProtocol<'_> {
         );
         Ok(FinalBlockTemplateData {
             template: block_template_data,
-            target_difficulty: mining_difficulty.into(),
+            target_difficulty: Difficulty::from_u64(mining_difficulty)?,
             blockhashing_blob,
             blocktemplate_blob,
             merge_mining_hash: tari_block.merge_mining_hash,

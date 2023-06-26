@@ -46,3 +46,9 @@ pub enum DifficultyAdjustmentError {
     #[error("Other difficulty algorithm error")]
     Other,
 }
+
+#[derive(Debug, Error)]
+pub enum DifficultyError {
+    #[error("Difficulty conversion less than the minimum difficulty")]
+    InvalidDifficulty,
+}

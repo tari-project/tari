@@ -435,7 +435,9 @@ pub async fn init_wallet(
         wallet_config.p2p.transport.tor.identity = wallet_db.get_tor_id()?;
     }
 
-    let consensus_manager = ConsensusManager::builder(config.wallet.network).build();
+    let consensus_manager = ConsensusManager::builder(config.wallet.network)
+        .build()
+        .map_err(|e| ExitError::new(ExitCode::WalletError, format!("Error consensus manager. {}", e)))?;
     let factories = CryptoFactories::default();
 
     let mut wallet = Wallet::start(

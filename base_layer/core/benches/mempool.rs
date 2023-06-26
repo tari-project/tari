@@ -67,7 +67,7 @@ mod benches {
     pub fn mempool_perf_test(c: &mut Criterion) {
         let runtime = Runtime::new().unwrap();
         let config = MempoolConfig::default();
-        let rules = ConsensusManager::builder(Network::LocalNet).build();
+        let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
         let db = create_new_blockchain();
 
         let mempool_validator = TransactionFullValidator::new(CryptoFactories::default(), false, db, rules.clone());

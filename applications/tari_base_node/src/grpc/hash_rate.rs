@@ -125,13 +125,13 @@ mod test {
 
         // we check that the window is not full when we insert less items than the window size
         for _ in 0..window_size - 1 {
-            hash_rate_ma.add(0, Difficulty::from(0));
+            hash_rate_ma.add(0, Difficulty::min());
             assert!(!hash_rate_ma.is_full());
         }
 
         // from this point onwards, the window should be always full
         for _ in 0..10 {
-            hash_rate_ma.add(0, Difficulty::from(0));
+            hash_rate_ma.add(0, Difficulty::min());
             assert!(hash_rate_ma.is_full());
         }
     }
@@ -175,14 +175,15 @@ mod test {
         let window_size = hash_rate_ma.window_size;
 
         for _ in 0..window_size {
-            hash_rate_ma.add(0, Difficulty::from(u64::MAX));
+            hash_rate_ma.add(0, Difficulty::max());
         }
     }
 
     fn create_hash_rate_ma(pow_algo: PowAlgorithm) -> HashRateMovingAverage {
         let consensus_manager = ConsensusManagerBuilder::new(Network::Esmeralda)
             .add_consensus_constants(ConsensusConstants::esmeralda()[0].clone())
-            .build();
+            .build()
+            .unwrap();
         HashRateMovingAverage::new(pow_algo, consensus_manager)
     }
 
@@ -192,7 +193,7 @@ mod test {
         difficulty: u64,
         expected_hash_rate: u64,
     ) {
-        moving_average.add(height, Difficulty::from(difficulty));
+        moving_average.add(height, Difficulty::from_u64(difficulty).unwrap());
         assert_eq!(moving_average.average(), expected_hash_rate);
     }
 }

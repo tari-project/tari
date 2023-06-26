@@ -25,7 +25,6 @@ use serde::{Deserialize, Serialize};
 
 bitflags! {
     /// Options for a kernel's structure or use.
-    /// TODO:  expand to accommodate Tari DAN transaction types, such as namespace and validator node registrations
     #[derive(Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
     pub struct KernelFeatures: u8 {
         /// Coinbase transaction

@@ -185,7 +185,7 @@ impl BaseNodeBuilder {
         let network = self.network.as_network();
         let consensus_manager = self
             .consensus_manager
-            .unwrap_or_else(|| ConsensusManagerBuilder::new(network).build());
+            .unwrap_or_else(|| ConsensusManagerBuilder::new(network).build().unwrap());
         let blockchain_db = create_store_with_consensus_and_validators(consensus_manager.clone(), validators);
         let mempool_validator = TransactionChainLinkedValidator::new(blockchain_db.clone(), consensus_manager.clone());
         let mempool = Mempool::new(
@@ -283,7 +283,7 @@ pub async fn create_network_with_3_base_nodes(
     data_path: &str,
 ) -> (NodeInterfaces, NodeInterfaces, NodeInterfaces, ConsensusManager) {
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManagerBuilder::new(network).build();
+    let consensus_manager = ConsensusManagerBuilder::new(network).build().unwrap();
     create_network_with_3_base_nodes_with_config(
         MempoolServiceConfig::default(),
         LivenessConfig::default(),

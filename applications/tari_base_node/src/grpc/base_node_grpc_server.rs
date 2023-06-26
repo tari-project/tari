@@ -1141,7 +1141,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let block_height = request.into_inner().block_height;
 
-        let consensus_manager = ConsensusManager::builder(self.network.as_network()).build();
+        let consensus_manager = ConsensusManager::builder(self.network.as_network())
+            .build()
+            .map_err(|_| Status::unknown("Could not retrieve consensus manager".to_string()))?;
         let consensus_constants = consensus_manager.consensus_constants(block_height);
 
         Ok(Response::new(tari_rpc::ConsensusConstants::from(
@@ -1207,7 +1209,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         heights = heights
             .drain(..cmp::min(heights.len(), GET_TOKENS_IN_CIRCULATION_MAX_HEIGHTS))
             .collect();
-        let consensus_manager = ConsensusManager::builder(self.network.as_network()).build();
+        let consensus_manager = ConsensusManager::builder(self.network.as_network())
+            .build()
+            .map_err(|_| Status::unknown("Could not retrieve consensus manager".to_string()))?;
 
         let (mut tx, rx) = mpsc::channel(GET_TOKENS_IN_CIRCULATION_PAGE_SIZE);
         task::spawn(async move {

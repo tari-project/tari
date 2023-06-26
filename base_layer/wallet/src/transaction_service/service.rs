@@ -1214,8 +1214,7 @@ where
 
         // Start finalizing
 
-        stp.add_single_recipient_info(recipient_reply, &self.resources.transaction_key_manager_service)
-            .await
+        stp.add_presigned_recipient_info(recipient_reply)
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         // Finalize
@@ -1269,7 +1268,7 @@ where
         )?;
 
         let tx_output = output
-            .as_transaction_output(&self.resources.transaction_key_manager_service)
+            .to_transaction_output(&self.resources.transaction_key_manager_service)
             .await?;
 
         Ok(Box::new((tx_id, pre_image, tx_output)))
@@ -1402,9 +1401,7 @@ where
         let recipient_reply = rtp.get_signed_data()?.clone();
 
         // Start finalizing
-
-        stp.add_single_recipient_info(recipient_reply, &self.resources.transaction_key_manager_service)
-            .await
+        stp.add_presigned_recipient_info(recipient_reply)
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         // Finalize
@@ -1661,8 +1658,7 @@ where
         }
 
         // Start finalizing
-        stp.add_single_recipient_info(recipient_reply, &self.resources.transaction_key_manager_service)
-            .await
+        stp.add_presigned_recipient_info(recipient_reply)
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         // Finalize

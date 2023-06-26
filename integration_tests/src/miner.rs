@@ -326,7 +326,7 @@ async fn generate_coinbase(
 
     let (spending_key_id, _, script_key_id, _) = key_manager.get_next_spend_and_script_key_ids().await.unwrap();
 
-    let consensus_manager = ConsensusManager::builder(Network::LocalNet).build();
+    let consensus_manager = ConsensusManager::builder(Network::LocalNet).build().unwrap();
     let consensus_constants = consensus_manager.consensus_constants(height);
 
     let (tx, ubutxo) = CoinbaseBuilder::new(key_manager.clone())
