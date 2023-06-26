@@ -38,7 +38,7 @@ pub fn sha3x_difficulty(header: &BlockHeader) -> Result<Difficulty, DifficultyEr
 }
 
 /// Calculate the Tari Sha3 mining hash
-pub fn sha3x_hash(header: &BlockHeader) -> Vec<u8> {
+pub fn sha3_hash(header: &BlockHeader) -> Vec<u8> {
     Sha3_256::new()
         .chain(header.nonce.to_le_bytes())
         .chain(header.mining_hash())
@@ -47,9 +47,9 @@ pub fn sha3x_hash(header: &BlockHeader) -> Vec<u8> {
         .to_vec()
 }
 
-/// Calculate the Tari Sha3 mining hash and achieved difficulty
+/// Calculate the Tari Sha3X mining hash and achieved difficulty
 fn sha3x_difficulty_with_hash(header: &BlockHeader) -> Result<(Difficulty, Vec<u8>), DifficultyError> {
-    let hash = sha3x_hash(header);
+    let hash = sha3_hash(header);
     let hash = Sha3_256::digest(&hash);
     let hash = Sha3_256::digest(&hash);
     let difficulty = Difficulty::big_endian_difficulty(&hash)?;

@@ -290,12 +290,12 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
                     .accumulated_randomx_difficulty
                     .checked_add(achieved_target.achieved())
                     .ok_or(BlockError::DifficultyOverflow)?,
-                previous_accum.accumulated_sha_difficulty,
+                previous_accum.accumulated_sha3x_difficulty,
             ),
             PowAlgorithm::Sha3x => (
                 previous_accum.accumulated_randomx_difficulty,
                 previous_accum
-                    .accumulated_sha_difficulty
+                    .accumulated_sha3x_difficulty
                     .checked_add(achieved_target.achieved())
                     .ok_or(BlockError::DifficultyOverflow)?,
             ),
@@ -314,7 +314,7 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
             achieved_difficulty: achieved_target.achieved(),
             total_accumulated_difficulty: u128::from(randomx_diff.as_u64()) * u128::from(sha3x_diff.as_u64()),
             accumulated_randomx_difficulty: randomx_diff,
-            accumulated_sha_difficulty: sha3x_diff,
+            accumulated_sha3x_difficulty: sha3x_diff,
             target_difficulty: achieved_target.target(),
         };
         trace!(
@@ -322,7 +322,7 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
             "Calculated: Tot_acc_diff {}, RandomX {}, SHA3 {}",
             result.total_accumulated_difficulty.to_formatted_string(&Locale::en),
             result.accumulated_randomx_difficulty,
-            result.accumulated_sha_difficulty,
+            result.accumulated_sha3x_difficulty,
         );
         Ok(result)
     }
@@ -340,7 +340,7 @@ pub struct BlockHeaderAccumulatedData {
     pub accumulated_randomx_difficulty: Difficulty,
     /// The total accumulated difficulty for SHA3 proof of work for all blocks since Genesis,
     /// but not including this block, tracked separately.
-    pub accumulated_sha_difficulty: Difficulty,
+    pub accumulated_sha3x_difficulty: Difficulty,
     /// The target difficulty for solving the current block using the specified proof of work algorithm.
     pub target_difficulty: Difficulty,
 }
@@ -361,7 +361,7 @@ impl Display for BlockHeaderAccumulatedData {
             "Accumulated RandomX difficulty: {}",
             self.accumulated_randomx_difficulty
         )?;
-        writeln!(f, "Accumulated sha3 difficulty: {}", self.accumulated_sha_difficulty)?;
+        writeln!(f, "Accumulated sha3 difficulty: {}", self.accumulated_sha3x_difficulty)?;
         writeln!(f, "Target difficulty: {}", self.target_difficulty)?;
         Ok(())
     }

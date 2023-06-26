@@ -123,7 +123,7 @@ pub fn get_stagenet_genesis_block() -> ChainBlock {
         achieved_difficulty: Difficulty::min(),
         total_accumulated_difficulty: 1,
         accumulated_randomx_difficulty: Difficulty::min(),
-        accumulated_sha_difficulty: Difficulty::min(),
+        accumulated_sha3x_difficulty: Difficulty::min(),
         target_difficulty: Difficulty::min(),
     };
     ChainBlock::try_construct(Arc::new(block), accumulated_data).unwrap()
@@ -161,7 +161,7 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
         achieved_difficulty: Difficulty::min(),
         total_accumulated_difficulty: 1,
         accumulated_randomx_difficulty: Difficulty::min(),
-        accumulated_sha_difficulty: Difficulty::min(),
+        accumulated_sha3x_difficulty: Difficulty::min(),
         target_difficulty: Difficulty::min(),
     };
     ChainBlock::try_construct(Arc::new(block), accumulated_data).unwrap()
@@ -207,7 +207,7 @@ pub fn get_igor_genesis_block() -> ChainBlock {
         achieved_difficulty: Difficulty::min(),
         total_accumulated_difficulty: 1,
         accumulated_randomx_difficulty: Difficulty::min(),
-        accumulated_sha_difficulty: Difficulty::min(),
+        accumulated_sha3x_difficulty: Difficulty::min(),
         target_difficulty: Difficulty::min(),
     };
     ChainBlock::try_construct(Arc::new(block), accumulated_data).unwrap()
@@ -249,7 +249,7 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
         achieved_difficulty: Difficulty::min(),
         total_accumulated_difficulty: 1,
         accumulated_randomx_difficulty: Difficulty::min(),
-        accumulated_sha_difficulty: Difficulty::min(),
+        accumulated_sha3x_difficulty: Difficulty::min(),
         target_difficulty: Difficulty::min(),
     };
     ChainBlock::try_construct(Arc::new(block), accumulated_data).unwrap()

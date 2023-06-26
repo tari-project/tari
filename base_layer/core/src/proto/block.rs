@@ -115,7 +115,7 @@ impl From<BlockHeaderAccumulatedData> for proto::BlockHeaderAccumulatedData {
         Self {
             achieved_difficulty: source.achieved_difficulty.into(),
             accumulated_randomx_difficulty: source.accumulated_randomx_difficulty.into(),
-            accumulated_sha_difficulty: source.accumulated_sha_difficulty.into(),
+            accumulated_sha3x_difficulty: source.accumulated_sha3x_difficulty.into(),
             target_difficulty: source.target_difficulty.into(),
             total_kernel_offset: source.total_kernel_offset.to_vec(),
             hash: source.hash.to_vec(),
@@ -138,7 +138,7 @@ impl TryFrom<proto::BlockHeaderAccumulatedData> for BlockHeaderAccumulatedData {
             total_accumulated_difficulty: accumulated_difficulty,
             accumulated_randomx_difficulty: Difficulty::from_u64(source.accumulated_randomx_difficulty)
                 .map_err(|e| e.to_string())?,
-            accumulated_sha_difficulty: Difficulty::from_u64(source.accumulated_sha_difficulty)
+            accumulated_sha3x_difficulty: Difficulty::from_u64(source.accumulated_sha3x_difficulty)
                 .map_err(|e| e.to_string())?,
             target_difficulty: Difficulty::from_u64(source.target_difficulty).map_err(|e| e.to_string())?,
             total_kernel_offset: PrivateKey::from_bytes(source.total_kernel_offset.as_slice())

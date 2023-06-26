@@ -66,10 +66,10 @@ message BlockHeader {
 // Metadata required for validating the Proof of Work calculation
 message ProofOfWork {
     // 0 = Monero
-    // 1 = Blake
+    // 1 = Sha3X
     uint64 pow_algo = 1;
 //    uint64 accumulated_randomx_difficulty = 2;
-//    uint64 accumulated_sha_difficulty = 3;
+//    uint64 accumulated_sha3x_difficulty = 3;
     bytes pow_data = 4;
    // uint64 target_difficulty = 5;
 }
@@ -78,7 +78,7 @@ message ProofOfWork {
 message PowAlgo {
     enum PowAlgos {
         POW_ALGOS_RANDOMX = 0;
-        POW_ALGOS_SHA3 = 1;
+        POW_ALGOS_SHA3X = 1;
     }
     PowAlgos pow_algo = 1;
 }
