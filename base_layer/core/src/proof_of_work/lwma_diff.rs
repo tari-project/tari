@@ -87,7 +87,15 @@ impl LinearWeightedMovingAverage {
             .skip(1)
             .fold(0u128, |difficulty, (_, d)| difficulty + u128::from(d.as_u64()));
 
-        let ave_difficulty = difficulty / n;
+        let ave_difficulty = if let Some(ave) = difficulty.checked_div(n) {
+            ave
+        } else {
+            trace!(
+                target: LOG_TARGET,
+                "DiffCalc; failed to compute average difficutly (division by zero)"
+            );
+            return None;
+        };
 
         let (mut previous_timestamp, _) = self.target_difficulties[0];
         let mut this_timestamp;
