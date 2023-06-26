@@ -34,7 +34,7 @@ use tari_utilities::epoch_time::EpochTime;
 use crate::{
     borsh::SerializedSize,
     consensus::network::NetworkConsensus,
-    proof_of_work::{lwma_diff::LinearWeightedMovingAverage, Difficulty, PowAlgorithm},
+    proof_of_work::{Difficulty, PowAlgorithm},
     transactions::{
         tari_amount::{uT, MicroTari, T},
         transaction_components::{
@@ -240,14 +240,6 @@ impl ConsensusConstants {
             Some(v) => v.target_time,
             _ => 0,
         }
-    }
-
-    /// The maximum time/interval a block is considered to take. This is used by the difficulty adjustment algorithms,
-    /// and multiplied by the PoW algorithm block percentage. For LWMA-1, `max_block_time` is a fixed multiple of
-    /// `target_block_time`, determined by `LinearWeightedMovingAverage`.
-    pub fn pow_max_block_interval(&self, pow_algo: PowAlgorithm) -> Result<u64, String> {
-        LinearWeightedMovingAverage::max_block_time(self.pow_target_block_interval(pow_algo))
-            .map_err(|e| format!("Invalid max block interval for {} ({})", pow_algo, e))
     }
 
     /// This is how many blocks we use to count towards the median timestamp to ensure the block chain moves forward.
