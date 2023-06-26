@@ -15,8 +15,9 @@ env:
   CARGO_HTTP_MULTIPLEXING: false
   CARGO_TERM_COLOR: always
   CARGO_UNSTABLE_SPARSE_REGISTRY: true
+  CARGO_INCREMENTAL: 0
   PROTOC: protoc
-  TERM: unkown
+  TERM: unknown
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -38,7 +39,23 @@ jobs:
         run: |
           sudo apt-get update
           sudo bash scripts/install_ubuntu_dependencies.sh
-      - uses: Swatinem/rust-cache@v2
+      - name: caching (nightly)
+        # Don't use rust-cache.
+        # Rust-cache disables a key feature of actions/cache: restoreKeys.
+        # Without restore keys, we lose the ability to get partial matches on caches, and end
+        # up with too many cache misses.
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/CACHEDIR.TAG
+            ~/.cargo/git
+            target
+          key: tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly
       - name: cargo format
         run: cargo fmt --all -- --check
       - name: Install cargo-lints
@@ -46,6 +63,7 @@ jobs:
       - name: Clippy check (with lints)
         run: cargo lints clippy --all-targets --all-features
   machete:
+    # Checks for unused dependencies.
     name: machete
     runs-on: [ubuntu-20.04]
     steps:
@@ -60,45 +78,59 @@ jobs:
         run: |
           sudo apt-get update
           sudo bash scripts/install_ubuntu_dependencies.sh
-      - uses: Swatinem/rust-cache@v2
+      - name: caching (nightly)
+        # Don't use rust-cache.
+        # Rust-cache disables a key feature of actions/cache: restoreKeys.
+        # Without restore keys, we lose the ability to get partial matches on caches, and end
+        # up with too many cache misses.
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/CACHEDIR.TAG
+            ~/.cargo/git
+            target
+          key: tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly
       - name: cargo machete
         run: |
           cargo install cargo-machete
           cargo machete
-  build-nightly:
-    name: cargo check with nightly
-    runs-on: [self-hosted, ubuntu-high-cpu]
-    steps:
-      - name: checkout
-        uses: actions/checkout@v3
-      - name: toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: ${{ env.toolchain }}
-      - uses: Swatinem/rust-cache@v2
-      - name: ubuntu dependencies
-        run: |
-          sudo apt-get update
-          sudo bash scripts/install_ubuntu_dependencies.sh
-      - name: rustup show
-        run: rustup show
-      - name: cargo check
-        run: cargo check --release --all-targets --locked
-      - name: cargo check ffi separately
-        run: cargo check --release --package tari_wallet_ffi --locked
   build-stable:
+    # Runs cargo check with stable toolchain to determine whether the codebase is likely to build
+    #  on stable Rust.
     name: cargo check with stable
     runs-on: [self-hosted, ubuntu-high-cpu]
     steps:
       - name: checkout
         uses: actions/checkout@v3
+      - name: caching (stable)
+        # Don't use rust-cache.
+        # Rust-cache disables a key feature of actions/cache: restoreKeys.
+        # Without restore keys, we lose the ability to get partial matches on caches, and end
+        # up with too many cache misses.
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/CACHEDIR.TAG
+            ~/.cargo/git
+            target
+          key: tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable-${{ hashFiles('**/Cargo.lock') }}
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}
       - name: rust-toolchain.toml override by removing
         run: rm -f rust-toolchain.toml
       - name: toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
-      - uses: Swatinem/rust-cache@v2
       - name: ubuntu dependencies
         run: |
           sudo apt-get update
@@ -139,7 +171,23 @@ jobs:
         run: |
           sudo apt-get update
           sudo bash scripts/install_ubuntu_dependencies.sh
-      - uses: Swatinem/rust-cache@v2
+      - name: caching (nightly)
+        # Don't use rust-cache.
+        # Rust-cache disables a key feature of actions/cache: restoreKeys.
+        # Without restore keys, we lose the ability to get partial matches on caches, and end
+        # up with too many cache misses.
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/CACHEDIR.TAG
+            ~/.cargo/git
+            target
+          key: tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly
       - name: test key manager wasm
         run: |
           cd base_layer/key_manager
