@@ -85,14 +85,12 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
         let sha3_pow = PowAlgorithm::Sha3;
 
         let monero_pow = grpc::PowAlgorithmConstants {
-            max_target_time: cc.pow_max_block_interval(monero_pow),
             max_difficulty: cc.max_pow_difficulty(monero_pow).as_u64(),
             min_difficulty: cc.min_pow_difficulty(monero_pow).as_u64(),
             target_time: cc.pow_target_block_interval(monero_pow),
         };
 
         let sha3_pow = grpc::PowAlgorithmConstants {
-            max_target_time: cc.pow_max_block_interval(sha3_pow),
             max_difficulty: cc.max_pow_difficulty(sha3_pow).as_u64(),
             min_difficulty: cc.min_pow_difficulty(sha3_pow).as_u64(),
             target_time: cc.pow_target_block_interval(sha3_pow),
@@ -105,7 +103,6 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
             blockchain_version: cc.blockchain_version().into(),
             future_time_limit: cc.ftl().as_u64(),
             difficulty_block_window: cc.get_difficulty_block_window(),
-            difficulty_max_block_interval: cc.pow_max_block_interval(PowAlgorithm::Sha3),
             max_block_transaction_weight: cc.get_max_block_transaction_weight(),
             pow_algo_count: cc.get_pow_algo_count(),
             median_timestamp_count: u64::try_from(cc.get_median_timestamp_count()).unwrap_or(0),

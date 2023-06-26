@@ -26,7 +26,7 @@ use anyhow::Error;
 use async_trait::async_trait;
 use chrono::{NaiveDateTime, Utc};
 use clap::Parser;
-use tari_core::proof_of_work::PowAlgorithm;
+use tari_core::proof_of_work::{lwma_diff::LinearWeightedMovingAverage, PowAlgorithm};
 use tari_utilities::hex::Hex;
 use tokio::{
     fs::File,
@@ -119,9 +119,12 @@ impl CommandContext {
             let solve_time = header.header().timestamp.as_u64() as i64 - prev_header.header().timestamp.as_u64() as i64;
             let normalized_solve_time = cmp::min(
                 u64::try_from(cmp::max(solve_time, 1)).unwrap(),
-                self.consensus_rules
-                    .consensus_constants(height)
-                    .pow_max_block_interval(pow_algo),
+                LinearWeightedMovingAverage::max_block_time(
+                    self.consensus_rules
+                        .consensus_constants(height)
+                        .pow_target_block_interval(pow_algo),
+                )
+                .map_err(Error::msg)?,
             );
             let acc_sha3 = header.accumulated_data().accumulated_sha_difficulty;
             let acc_monero = header.accumulated_data().accumulated_monero_difficulty;

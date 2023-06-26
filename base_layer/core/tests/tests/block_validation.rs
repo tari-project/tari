@@ -32,7 +32,6 @@ use tari_core::{
     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, ChainStorageError, Validators},
     consensus::{consensus_constants::PowAlgorithmConstants, ConsensusConstantsBuilder, ConsensusManager},
     proof_of_work::{
-        lwma_diff::LWMA_MAX_BLOCK_TIME_RATIO,
         monero_rx,
         monero_rx::{FixedByteArray, MoneroPowData},
         randomx_factory::RandomXFactory,
@@ -96,13 +95,11 @@ async fn test_monero_blocks() {
         .with_max_randomx_seed_height(1)
         .clear_proof_of_work()
         .add_proof_of_work(PowAlgorithm::Sha3, PowAlgorithmConstants {
-            max_target_time: 300 * LWMA_MAX_BLOCK_TIME_RATIO,
             min_difficulty: Difficulty::min(),
             max_difficulty: Difficulty::min(),
             target_time: 300,
         })
         .add_proof_of_work(PowAlgorithm::Monero, PowAlgorithmConstants {
-            max_target_time: 200 * LWMA_MAX_BLOCK_TIME_RATIO,
             min_difficulty: Difficulty::min(),
             max_difficulty: Difficulty::min(),
             target_time: 200,
@@ -403,7 +400,6 @@ async fn test_orphan_body_validation() {
     let network = Network::Igor;
     // we dont want localnet's 1 difficulty or the full mined difficulty of weather wax but we want some.
     let sha3_constants = PowAlgorithmConstants {
-        max_target_time: 300 * LWMA_MAX_BLOCK_TIME_RATIO,
         min_difficulty: Difficulty::from_u64(10).expect("valid difficulty"),
         max_difficulty: Difficulty::max(),
         target_time: 300,
@@ -618,7 +614,6 @@ async fn test_header_validation() {
     let network = Network::Igor;
     // we dont want localnet's 1 difficulty or the full mined difficulty of weather wax but we want some.
     let sha3_constants = PowAlgorithmConstants {
-        max_target_time: 300 * LWMA_MAX_BLOCK_TIME_RATIO,
         min_difficulty: Difficulty::from_u64(20).expect("valid difficulty"),
         max_difficulty: Difficulty::max(),
         target_time: 300,

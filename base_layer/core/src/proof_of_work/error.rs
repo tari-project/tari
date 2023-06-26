@@ -51,4 +51,6 @@ pub enum DifficultyAdjustmentError {
 pub enum DifficultyError {
     #[error("Difficulty conversion less than the minimum difficulty")]
     InvalidDifficulty,
+    #[error("Maximum block time overflowed u64")]
+    MaxBlockTimeOverflow,
 }
