@@ -22,10 +22,7 @@
 
 use std::{collections::HashMap, convert::TryFrom, iter::FromIterator};
 
-use tari_core::{
-    consensus::ConsensusConstants,
-    proof_of_work::{lwma_diff::LinearWeightedMovingAverage, PowAlgorithm},
-};
+use tari_core::{consensus::ConsensusConstants, proof_of_work::PowAlgorithm};
 
 use crate::tari_rpc as grpc;
 
@@ -88,16 +85,12 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
         let sha3_pow = PowAlgorithm::Sha3;
 
         let monero_pow = grpc::PowAlgorithmConstants {
-            max_target_time: LinearWeightedMovingAverage::max_block_time(cc.pow_target_block_interval(monero_pow))
-                .unwrap_or(u64::MAX),
             max_difficulty: cc.max_pow_difficulty(monero_pow).as_u64(),
             min_difficulty: cc.min_pow_difficulty(monero_pow).as_u64(),
             target_time: cc.pow_target_block_interval(monero_pow),
         };
 
         let sha3_pow = grpc::PowAlgorithmConstants {
-            max_target_time: LinearWeightedMovingAverage::max_block_time(cc.pow_target_block_interval(sha3_pow))
-                .unwrap_or(u64::MAX),
             max_difficulty: cc.max_pow_difficulty(sha3_pow).as_u64(),
             min_difficulty: cc.min_pow_difficulty(sha3_pow).as_u64(),
             target_time: cc.pow_target_block_interval(sha3_pow),
