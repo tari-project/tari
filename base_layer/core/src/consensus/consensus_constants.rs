@@ -103,6 +103,8 @@ pub struct ConsensusConstants {
     permitted_range_proof_types: &'static [RangeProofType],
     /// Coinbase outputs are allowed to have metadata, but it has the following length limit
     coinbase_output_features_extra_max_length: u32,
+    /// Maximum number of token elements permitted in covenants
+    max_covenant_length: u32,
     /// Epoch duration in blocks
     vn_epoch_length: u64,
     /// The number of Epochs that a validator node registration is valid
@@ -307,6 +309,11 @@ impl ConsensusConstants {
         self.permitted_range_proof_types
     }
 
+    /// The maximum permitted token length of all covenants. A value of 0 is equivalent to disabling covenants.
+    pub fn max_covenant_length(&self) -> u32 {
+        self.max_covenant_length
+    }
+
     pub fn validator_node_validity_period_epochs(&self) -> VnEpoch {
         self.vn_validity_period_epochs
     }
@@ -373,6 +380,7 @@ impl ConsensusConstants {
             kernel_version_range,
             permitted_output_types: OutputType::all(),
             permitted_range_proof_types: RangeProofType::all(),
+            max_covenant_length: 100,
             vn_epoch_length: 10,
             vn_validity_period_epochs: VnEpoch(100),
             vn_registration_min_deposit_amount: MicroTari(0),
@@ -435,6 +443,7 @@ impl ConsensusConstants {
             // igor is the first network to support the new output types
             permitted_output_types: OutputType::all(),
             permitted_range_proof_types: RangeProofType::all(),
+            max_covenant_length: 100,
             vn_epoch_length: 10,
             vn_validity_period_epochs: VnEpoch(3),
             vn_registration_min_deposit_amount: MicroTari(0),
@@ -494,6 +503,7 @@ impl ConsensusConstants {
             kernel_version_range,
             permitted_output_types: Self::current_permitted_output_types(),
             permitted_range_proof_types: Self::current_permitted_range_proof_types(),
+            max_covenant_length: 0,
             vn_epoch_length: 60,
             vn_validity_period_epochs: VnEpoch(100),
             vn_registration_min_deposit_amount: MicroTari(0),
@@ -547,6 +557,7 @@ impl ConsensusConstants {
             kernel_version_range,
             permitted_output_types: Self::current_permitted_output_types(),
             permitted_range_proof_types: Self::current_permitted_range_proof_types(),
+            max_covenant_length: 0,
             vn_epoch_length: 60,
             vn_validity_period_epochs: VnEpoch(100),
             vn_registration_min_deposit_amount: MicroTari(0),
@@ -594,6 +605,7 @@ impl ConsensusConstants {
             kernel_version_range,
             permitted_output_types: Self::current_permitted_output_types(),
             permitted_range_proof_types: Self::current_permitted_range_proof_types(),
+            max_covenant_length: 0,
             vn_epoch_length: 60,
             vn_validity_period_epochs: VnEpoch(100),
             vn_registration_min_deposit_amount: MicroTari(0),
@@ -642,6 +654,7 @@ impl ConsensusConstants {
             kernel_version_range,
             permitted_output_types: Self::current_permitted_output_types(),
             permitted_range_proof_types: Self::current_permitted_range_proof_types(),
+            max_covenant_length: 0,
             vn_epoch_length: 60,
             vn_validity_period_epochs: VnEpoch(100),
             vn_registration_min_deposit_amount: MicroTari(0),

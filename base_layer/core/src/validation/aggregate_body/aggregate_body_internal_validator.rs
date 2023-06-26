@@ -49,6 +49,7 @@ use crate::{
     },
     validation::{
         helpers::{
+            check_covenant_length,
             check_permitted_output_types,
             check_permitted_range_proof_types,
             check_tari_script_byte_size,
@@ -105,14 +106,24 @@ impl AggregateBodyInternalConsistencyValidator {
         // old internal validator
         verify_kernel_signatures(body)?;
 
-        check_script_size(
-            body,
-            self.consensus_manager
-                .consensus_constants(height)
-                .get_max_script_byte_size(),
-        )?;
+        let constants = self.consensus_manager.consensus_constants(height);
 
+        validate_versions(body, constants)?;
+
+        for output in body.outputs() {
+            check_permitted_output_types(constants, output)?;
+            check_script_size(output, constants.get_max_script_byte_size())?;
+            check_covenant_length(&output.covenant, constants.max_covenant_length())?;
+            check_permitted_range_proof_types(constants, output)?;
+            check_validator_node_registration_utxo(constants, output)?;
+        }
+
+        check_weight(body, height, constants)?;
         check_sorting_and_duplicates(body)?;
+
+        // Check that the inputs are are allowed to be spent
+        check_maturity(height, body.inputs())?;
+        check_kernel_lock_height(height, body.kernels())?;
 
         let total_offset = self.factories.commitment.commit_value(tx_offset, total_reward.0);
         validate_kernel_sum(body, total_offset, &self.factories.commitment)?;
@@ -126,23 +137,7 @@ impl AggregateBodyInternalConsistencyValidator {
         validate_script_and_script_offset(body, script_offset_g, &self.factories.commitment, prev_header, height)?;
         validate_covenants(body, height)?;
 
-        // orphan candidate block validator
-        let constants = self.consensus_manager.consensus_constants(height);
-
-        validate_versions(body, constants)?;
-        check_weight(body, height, constants)?;
-        // check_sorting_and_duplicates(body)?;
-        for output in body.outputs() {
-            check_permitted_output_types(constants, output)?;
-            check_permitted_range_proof_types(constants, output)?;
-            check_validator_node_registration_utxo(constants, output)?;
-        }
         check_total_burned(body)?;
-
-        // Check that the inputs are are allowed to be spent
-        check_maturity(height, body.inputs())?;
-        check_kernel_lock_height(height, body.kernels())?;
-        // check_output_features(body, constants)?;
 
         Ok(())
     }
@@ -162,17 +157,14 @@ fn verify_kernel_signatures(body: &AggregateBody) -> Result<(), ValidationError>
 }
 
 /// Verify that the TariScript is not larger than the max size
-fn check_script_size(body: &AggregateBody, max_script_size: usize) -> Result<(), ValidationError> {
-    for output in body.outputs() {
-        check_tari_script_byte_size(output.script(), max_script_size).map_err(|e| {
-            warn!(
-                target: LOG_TARGET,
-                "output ({}) script size exceeded max size {:?}.", output, e
-            );
-            e
-        })?;
-    }
-    Ok(())
+fn check_script_size(output: &TransactionOutput, max_script_size: usize) -> Result<(), ValidationError> {
+    check_tari_script_byte_size(output.script(), max_script_size).map_err(|e| {
+        warn!(
+            target: LOG_TARGET,
+            "output ({}) script size exceeded max size {:?}.", output, e
+        );
+        e
+    })
 }
 
 /// This function checks for duplicate inputs and outputs. There should be no duplicate inputs or outputs in a
@@ -342,24 +334,15 @@ fn check_kernel_lock_height(height: u64, kernels: &[TransactionKernel]) -> Resul
 
 /// Checks that all inputs have matured at the given height
 fn check_maturity(height: u64, inputs: &[TransactionInput]) -> Result<(), TransactionError> {
-    inputs
-        .iter()
-        .map(|input| match input.is_mature_at(height) {
-            Ok(mature) => {
-                if mature {
-                    Ok(0)
-                } else {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Input found that has not yet matured to spending height: {}", input
-                    );
-                    Err(TransactionError::InputMaturity)
-                }
-            },
-            Err(e) => Err(e),
-        })
-        .sum::<Result<usize, TransactionError>>()?;
-
+    for input in inputs {
+        if !input.is_mature_at(height)? {
+            warn!(
+                target: LOG_TARGET,
+                "Input found that has not yet matured to spending height: {}", input
+            );
+            return Err(TransactionError::InputMaturity);
+        }
+    }
     Ok(())
 }
 
