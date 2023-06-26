@@ -72,7 +72,7 @@ jobs:
           sudo apt-get update
           sudo bash scripts/install_ubuntu_dependencies.sh
 
-            - name: caching (nightly)
+      - name: caching (nightly)
         # Don't use rust-cache.
         # Rust-cache disables a key feature of actions/cache: restoreKeys.
         # Without restore keys, we lose the ability to get partial matches on caches, and end
