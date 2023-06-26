@@ -155,6 +155,7 @@ impl WalletOutput {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn new_current_version<KM: TransactionKeyManagerInterface>(
         value: MicroTari,
         spending_key_id: TariKeyId,

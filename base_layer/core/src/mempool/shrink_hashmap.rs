@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2019 The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,16 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[derive(Debug, thiserror::Error)]
-pub enum BlockError {
-    #[error("{field} not provided")]
-    BuilderMissingField { field: &'static str },
-    #[error("{field} contained an invalid value: {details}")]
-    BuilderInvalidValue { field: &'static str, details: String },
-    #[error("A full block cannot be constructed from the historical block because it contains pruned TXOs")]
-    HistoricalBlockContainsPrunedTxos,
-    #[error("Chain block invariant error: {0}")]
-    ChainBlockInvariantError(String),
-    #[error("Adding difficulties overflowed")]
-    DifficultyOverflow,
+use std::{collections::HashMap, hash::Hash};
+
+pub fn shrink_hashmap<K: Eq + Hash, V>(map: &mut HashMap<K, V>) -> (usize, usize) {
+    let cap = map.capacity();
+    let extra_cap = cap - map.len();
+    if extra_cap > 100 {
+        map.shrink_to(map.len() + 100);
+    }
+
+    (cap, map.capacity())
 }

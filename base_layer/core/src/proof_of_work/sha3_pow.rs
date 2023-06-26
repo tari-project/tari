@@ -24,7 +24,7 @@ use sha3::{Digest, Sha3_256};
 
 use crate::{
     blocks::BlockHeader,
-    proof_of_work::{difficulty::util::big_endian_difficulty, Difficulty},
+    proof_of_work::{error::DifficultyError, Difficulty},
 };
 
 /// The Tari Sha3X proof-of-work algorithm. This is the reference implementation of Tari's standalone mining
@@ -33,8 +33,8 @@ use crate::{
 /// In short Sha3X is a triple Keccak Sha3-256 hash of the nonce, mining hash and PoW mode byte.
 /// Mining using this CPU version of the algorithm is unlikely to be profitable, but is included for reference and
 /// can be used to mine tXTR on testnets.
-pub fn sha3x_difficulty(header: &BlockHeader) -> Difficulty {
-    sha3x_difficulty_with_hash(header).0
+pub fn sha3x_difficulty(header: &BlockHeader) -> Result<Difficulty, DifficultyError> {
+    Ok(sha3x_difficulty_with_hash(header)?.0)
 }
 
 pub fn sha3_hash(header: &BlockHeader) -> Vec<u8> {
@@ -46,12 +46,12 @@ pub fn sha3_hash(header: &BlockHeader) -> Vec<u8> {
         .to_vec()
 }
 
-fn sha3x_difficulty_with_hash(header: &BlockHeader) -> (Difficulty, Vec<u8>) {
+fn sha3x_difficulty_with_hash(header: &BlockHeader) -> Result<(Difficulty, Vec<u8>), DifficultyError> {
     let hash = sha3_hash(header);
     let hash = Sha3_256::digest(&hash);
     let hash = Sha3_256::digest(&hash);
-    let difficulty = big_endian_difficulty(&hash);
-    (difficulty, hash.to_vec())
+    let difficulty = Difficulty::big_endian_difficulty(&hash)?;
+    Ok((difficulty, hash.to_vec()))
 }
 
 #[cfg(test)]
@@ -70,7 +70,7 @@ pub mod test {
     fn mine_sha3(target_difficulty: Difficulty, header: &mut BlockHeader) -> u64 {
         header.nonce = 0;
         // We're mining over here!
-        while sha3x_difficulty(header) < target_difficulty {
+        while sha3x_difficulty(header).unwrap() < target_difficulty {
             header.nonce += 1;
         }
         header.nonce
@@ -98,6 +98,6 @@ pub mod test {
         let mut header = get_header();
         header.nonce = 6;
         println!("{:?}", header);
-        assert_eq!(sha3x_difficulty(&header), Difficulty::from(899));
+        assert_eq!(sha3x_difficulty(&header).unwrap(), Difficulty::from_u64(899).unwrap());
     }
 }

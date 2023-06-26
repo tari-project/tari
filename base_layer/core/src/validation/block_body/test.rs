@@ -31,6 +31,7 @@ use crate::{
     block_spec,
     blocks::BlockValidationError,
     consensus::{ConsensusConstantsBuilder, ConsensusManager},
+    proof_of_work::Difficulty,
     test_helpers::{blockchain::TestBlockchain, BlockSpec},
     transactions::{
         aggregated_body::AggregateBody,
@@ -125,7 +126,7 @@ async fn it_checks_exactly_one_coinbase() {
         .body
         .add_output(coinbase_output.to_transaction_output(&blockchain.km).await.unwrap());
     block.body.sort();
-    let block = blockchain.mine_block("GB", block, 1.into());
+    let block = blockchain.mine_block("GB", block, Difficulty::min());
 
     let err = {
         // `MutexGuard` cannot be held across an `await` point
@@ -143,7 +144,7 @@ async fn it_checks_exactly_one_coinbase() {
     let (block, _) = blockchain
         .create_unmined_block(block_spec!("A2", parent: "GB", skip_coinbase: true,))
         .await;
-    let block = blockchain.mine_block("GB", block, 1.into());
+    let block = blockchain.mine_block("GB", block, Difficulty::min());
 
     let txn = blockchain.db().db_read_access().unwrap();
     let err = validator.validate_body(&*txn, block.block()).unwrap_err();
@@ -219,7 +220,7 @@ async fn it_checks_txo_sort_order() {
     let inputs = block.body.inputs().clone();
     let kernels = block.body.kernels().clone();
     block.body = AggregateBody::new_sorted_unchecked(inputs, outputs, kernels);
-    let block = blockchain.mine_block("A", block, 1.into());
+    let block = blockchain.mine_block("A", block, Difficulty::min());
 
     let txn = blockchain.db().db_read_access().unwrap();
     let err = validator.validate_body(&*txn, block.block()).unwrap_err();
