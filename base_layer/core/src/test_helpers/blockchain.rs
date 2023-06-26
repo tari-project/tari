@@ -463,8 +463,7 @@ fn mine_block(block: Block, prev_block_accum: &BlockHeaderAccumulatedData, diffi
     let accum = BlockHeaderAccumulatedData::builder(prev_block_accum)
         .with_hash(block.hash())
         .with_achieved_target_difficulty(
-            AchievedTargetDifficulty::try_construct(PowAlgorithm::Sha3, (difficulty.as_u64() - 1).into(), difficulty)
-                .unwrap(),
+            AchievedTargetDifficulty::try_construct(PowAlgorithm::Sha3, difficulty, difficulty).unwrap(),
         )
         .with_total_kernel_offset(block.header.total_kernel_offset.clone())
         .build()

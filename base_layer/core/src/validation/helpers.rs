@@ -111,7 +111,7 @@ pub fn check_target_difficulty(
 ) -> Result<AchievedTargetDifficulty, ValidationError> {
     let achieved = match block_header.pow_algo() {
         PowAlgorithm::Monero => monero_difficulty(block_header, randomx_factory)?,
-        PowAlgorithm::Sha3 => sha3x_difficulty(block_header),
+        PowAlgorithm::Sha3 => sha3x_difficulty(block_header)?,
     };
 
     match AchievedTargetDifficulty::try_construct(block_header.pow_algo(), target, achieved) {
