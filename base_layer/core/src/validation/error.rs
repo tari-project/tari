@@ -153,6 +153,8 @@ pub enum ValidationError {
     NotEnoughTimestamps { expected: usize, actual: usize },
     #[error("Invalid difficulty: {0}")]
     DifficultyError(#[from] DifficultyError),
+    #[error("Covenant too large. Max size: {max_size}, Actual size: {actual_size}")]
+    CovenantTooLarge { max_size: usize, actual_size: usize },
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in
