@@ -160,7 +160,7 @@ fn test_add_multiple_blocks() {
         &block0.try_into_chain_block().unwrap(),
         vec![],
         &consensus_manager,
-        1.into(),
+        Difficulty::min(),
     )
     .unwrap();
     let metadata = store.get_chain_metadata().unwrap();
@@ -188,7 +188,7 @@ fn test_checkpoints() {
         to: vec![MicroTari(5_000), MicroTari(6_000)]
     );
     let (txn, _) = spend_utxos(txn);
-    let block1 = append_block(&db, &blocks[0], vec![txn], &consensus_manager, 1.into()).unwrap();
+    let block1 = append_block(&db, &blocks[0], vec![txn], &consensus_manager, Difficulty::min()).unwrap();
     // Get the checkpoint
     let block_a = db.fetch_block(0, false).unwrap();
     assert_eq!(block_a.confirmations(), 2);
@@ -265,7 +265,7 @@ fn test_coverage_chain_storage() {
         &block0.clone().try_into_chain_block().unwrap(),
         vec![],
         &rules,
-        1.into(),
+        Difficulty::min(),
     )
     .unwrap();
     assert_eq!(store.fetch_all_reorgs().unwrap(), vec![]);
@@ -303,10 +303,10 @@ fn test_rewind_past_horizon_height() {
     )
     .unwrap();
 
-    let block1 = append_block(&store, &block0, vec![], &consensus_manager, 1.into()).unwrap();
-    let block2 = append_block(&store, &block1, vec![], &consensus_manager, 1.into()).unwrap();
-    let block3 = append_block(&store, &block2, vec![], &consensus_manager, 1.into()).unwrap();
-    let _block4 = append_block(&store, &block3, vec![], &consensus_manager, 1.into()).unwrap();
+    let block1 = append_block(&store, &block0, vec![], &consensus_manager, Difficulty::min()).unwrap();
+    let block2 = append_block(&store, &block1, vec![], &consensus_manager, Difficulty::min()).unwrap();
+    let block3 = append_block(&store, &block2, vec![], &consensus_manager, Difficulty::min()).unwrap();
+    let _block4 = append_block(&store, &block3, vec![], &consensus_manager, Difficulty::min()).unwrap();
 
     let metadata = store.get_chain_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain(), 4);
@@ -1223,7 +1223,7 @@ fn test_handle_reorg_failure_recovery() {
         let mut block = orphan1_store.prepare_new_block(template).unwrap();
         block.header.nonce = OsRng.next_u64();
         block.header.height += 1;
-        find_header_with_achieved_difficulty(&mut block.header, Difficulty::from(2));
+        find_header_with_achieved_difficulty(&mut block.header, Difficulty::from_u64(2).unwrap());
         block
     };
 
@@ -1268,10 +1268,10 @@ fn test_store_and_retrieve_blocks() {
         &block0.clone().try_into_chain_block().unwrap(),
         vec![],
         &rules,
-        1.into(),
+        Difficulty::min(),
     )
     .unwrap();
-    let block2 = append_block(&store, &block1, vec![], &rules, 1.into()).unwrap();
+    let block2 = append_block(&store, &block1, vec![], &rules, Difficulty::min()).unwrap();
     assert_eq!(
         store.fetch_block(0, true).unwrap().try_into_chain_block().unwrap(),
         block0.clone().try_into_chain_block().unwrap()
@@ -1285,7 +1285,7 @@ fn test_store_and_retrieve_blocks() {
         block2
     );
 
-    let block3 = append_block(&store, &block2, vec![], &rules, 1.into()).unwrap();
+    let block3 = append_block(&store, &block2, vec![], &rules, Difficulty::min()).unwrap();
     assert_eq!(
         store.fetch_block(0, true).unwrap().try_into_chain_block().unwrap(),
         block0.try_into_chain_block().unwrap()
@@ -1370,7 +1370,7 @@ fn test_restore_metadata_and_pruning_horizon_update() {
         )
         .unwrap();
 
-        let block1 = append_block(&db, &block0, vec![], &rules, 1.into()).unwrap();
+        let block1 = append_block(&db, &block0, vec![], &rules, Difficulty::min()).unwrap();
         db.add_block(block1.to_arc_block()).unwrap();
         block_hash = *block1.hash();
         let metadata = db.get_chain_metadata().unwrap();
@@ -1627,10 +1627,10 @@ fn test_horizon_height_orphan_cleanup() {
     assert_eq!(store.add_block(orphan3.into()).unwrap(), BlockAddResult::OrphanBlock);
     assert_eq!(store.db_read_access().unwrap().orphan_count().unwrap(), 3);
 
-    let block1 = append_block(&store, &block0, vec![], &consensus_manager, 1.into()).unwrap();
-    let block2 = append_block(&store, &block1, vec![], &consensus_manager, 1.into()).unwrap();
-    let block3 = append_block(&store, &block2, vec![], &consensus_manager, 1.into()).unwrap();
-    let _block4 = append_block(&store, &block3, vec![], &consensus_manager, 1.into()).unwrap();
+    let block1 = append_block(&store, &block0, vec![], &consensus_manager, Difficulty::min()).unwrap();
+    let block2 = append_block(&store, &block1, vec![], &consensus_manager, Difficulty::min()).unwrap();
+    let block3 = append_block(&store, &block2, vec![], &consensus_manager, Difficulty::min()).unwrap();
+    let _block4 = append_block(&store, &block3, vec![], &consensus_manager, Difficulty::min()).unwrap();
 
     // Adding another orphan block will trigger the orphan cleanup as the storage limit was reached
     assert_eq!(
@@ -1962,15 +1962,15 @@ fn pruned_mode_cleanup_and_fetch_block() {
         DifficultyCalculator::new(consensus_manager.clone(), Default::default()),
     )
     .unwrap();
-    let block1 = append_block(&store, &block0, vec![], &consensus_manager, 1.into()).unwrap();
-    let block2 = append_block(&store, &block1, vec![], &consensus_manager, 1.into()).unwrap();
-    let block3 = append_block(&store, &block2, vec![], &consensus_manager, 1.into()).unwrap();
+    let block1 = append_block(&store, &block0, vec![], &consensus_manager, Difficulty::min()).unwrap();
+    let block2 = append_block(&store, &block1, vec![], &consensus_manager, Difficulty::min()).unwrap();
+    let block3 = append_block(&store, &block2, vec![], &consensus_manager, Difficulty::min()).unwrap();
 
     let metadata = store.get_chain_metadata().unwrap();
     assert_eq!(metadata.pruned_height(), 0);
 
-    let block4 = append_block(&store, &block3, vec![], &consensus_manager, 1.into()).unwrap();
-    let _block5 = append_block(&store, &block4, vec![], &consensus_manager, 1.into()).unwrap();
+    let block4 = append_block(&store, &block3, vec![], &consensus_manager, Difficulty::min()).unwrap();
+    let _block5 = append_block(&store, &block4, vec![], &consensus_manager, Difficulty::min()).unwrap();
 
     let metadata = store.get_chain_metadata().unwrap();
     assert_eq!(metadata.pruned_height(), 2);

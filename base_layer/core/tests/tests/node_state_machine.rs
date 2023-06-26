@@ -37,7 +37,7 @@ use tari_core::{
     },
     consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder},
     mempool::MempoolServiceConfig,
-    proof_of_work::randomx_factory::RandomXFactory,
+    proof_of_work::{randomx_factory::RandomXFactory, Difficulty},
     test_helpers::blockchain::create_test_blockchain_db,
     transactions::test_helpers::create_test_core_key_manager_with_memory_db,
     validation::mocks::MockValidator,
@@ -110,9 +110,16 @@ async fn test_listening_lagging() {
     let mut bob_local_nci = bob_node.local_nci;
 
     // Bob Block 1 - no block event
-    let prev_block = append_block(&bob_db, &prev_block, vec![], &consensus_manager, 3.into(), &key_manager)
-        .await
-        .unwrap();
+    let prev_block = append_block(
+        &bob_db,
+        &prev_block,
+        vec![],
+        &consensus_manager,
+        Difficulty::from_u64(3).unwrap(),
+        &key_manager,
+    )
+    .await
+    .unwrap();
     // Bob Block 2 - with block event and liveness service metadata update
     let mut prev_block = bob_db
         .prepare_new_block(chain_block(prev_block.block(), vec![], &consensus_manager, &key_manager).await)

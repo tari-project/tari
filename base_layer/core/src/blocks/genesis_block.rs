@@ -29,7 +29,7 @@ use tari_crypto::tari_utilities::hex::*;
 
 use crate::{
     blocks::{block::Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock},
-    proof_of_work::{PowAlgorithm, ProofOfWork},
+    proof_of_work::{Difficulty, PowAlgorithm, ProofOfWork},
     transactions::{aggregated_body::AggregateBody, transaction_components::TransactionOutput},
 };
 
@@ -120,11 +120,11 @@ pub fn get_stagenet_genesis_block() -> ChainBlock {
     let accumulated_data = BlockHeaderAccumulatedData {
         hash: block.hash(),
         total_kernel_offset: block.header.total_kernel_offset.clone(),
-        achieved_difficulty: 1.into(),
+        achieved_difficulty: Difficulty::min(),
         total_accumulated_difficulty: 1,
-        accumulated_monero_difficulty: 1.into(),
-        accumulated_sha_difficulty: 1.into(),
-        target_difficulty: 1.into(),
+        accumulated_monero_difficulty: Difficulty::min(),
+        accumulated_sha_difficulty: Difficulty::min(),
+        target_difficulty: Difficulty::min(),
     };
     ChainBlock::try_construct(Arc::new(block), accumulated_data).unwrap()
 }
@@ -158,11 +158,11 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
     let accumulated_data = BlockHeaderAccumulatedData {
         hash: block.hash(),
         total_kernel_offset: block.header.total_kernel_offset.clone(),
-        achieved_difficulty: 1.into(),
+        achieved_difficulty: Difficulty::min(),
         total_accumulated_difficulty: 1,
-        accumulated_monero_difficulty: 1.into(),
-        accumulated_sha_difficulty: 1.into(),
-        target_difficulty: 1.into(),
+        accumulated_monero_difficulty: Difficulty::min(),
+        accumulated_sha_difficulty: Difficulty::min(),
+        target_difficulty: Difficulty::min(),
     };
     ChainBlock::try_construct(Arc::new(block), accumulated_data).unwrap()
 }
@@ -204,11 +204,11 @@ pub fn get_igor_genesis_block() -> ChainBlock {
     let accumulated_data = BlockHeaderAccumulatedData {
         hash: block.hash(),
         total_kernel_offset: block.header.total_kernel_offset.clone(),
-        achieved_difficulty: 1.into(),
+        achieved_difficulty: Difficulty::min(),
         total_accumulated_difficulty: 1,
-        accumulated_monero_difficulty: 1.into(),
-        accumulated_sha_difficulty: 1.into(),
-        target_difficulty: 1.into(),
+        accumulated_monero_difficulty: Difficulty::min(),
+        accumulated_sha_difficulty: Difficulty::min(),
+        target_difficulty: Difficulty::min(),
     };
     ChainBlock::try_construct(Arc::new(block), accumulated_data).unwrap()
 }
@@ -246,11 +246,11 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
     let accumulated_data = BlockHeaderAccumulatedData {
         hash: block.hash(),
         total_kernel_offset: block.header.total_kernel_offset.clone(),
-        achieved_difficulty: 1.into(),
+        achieved_difficulty: Difficulty::min(),
         total_accumulated_difficulty: 1,
-        accumulated_monero_difficulty: 1.into(),
-        accumulated_sha_difficulty: 1.into(),
-        target_difficulty: 1.into(),
+        accumulated_monero_difficulty: Difficulty::min(),
+        accumulated_sha_difficulty: Difficulty::min(),
+        target_difficulty: Difficulty::min(),
     };
     ChainBlock::try_construct(Arc::new(block), accumulated_data).unwrap()
 }
