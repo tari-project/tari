@@ -69,7 +69,6 @@ message ProofOfWork {
     // 1 = Sha3X
     uint64 pow_algo = 1;
     bytes pow_data = 4;
-   // uint64 target_difficulty = 5;
 }
 
 //This is used to request the which pow algo should be used with the block template
