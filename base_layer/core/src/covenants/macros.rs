@@ -24,7 +24,7 @@
 ///
 /// ```rust,ignore
 /// // Before height 42, this may only be spent into an output with flag 8 (NON_FUNGIBLE)
-/// let covenant = covenant!(or(absolute_height(@uint(42)), field_eq(@field::features_flags, @uint(8)));
+/// let covenant = covenant!(or(absolute_height(@uint(42)), field_eq(@field::features_flags, @uint(8))));
 /// covenant.execute(...)?;
 /// ```
 #[macro_export]
