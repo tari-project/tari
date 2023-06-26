@@ -74,7 +74,11 @@ pub enum BlockValidationError {
 /// A Tari block. Blocks are linked together into a blockchain.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
 pub struct Block {
+    /// The BlockHeader contains all the metadata for the block, including proof of work, a link to the previous block
+    /// and the transaction kernels.
     pub header: BlockHeader,
+    /// The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,
+    /// blocks consist of inputs, outputs and kernels, rather than transactions.
     pub body: AggregateBody,
 }
 
@@ -268,6 +272,7 @@ pub struct NewBlock {
     pub header: BlockHeader,
     /// Coinbase kernel of the block
     pub coinbase_kernel: TransactionKernel,
+    /// Coinbase output of the block
     pub coinbase_output: TransactionOutput,
     /// The scalar `s` component of the kernel excess signatures of the transactions contained in the block.
     pub kernel_excess_sigs: Vec<PrivateKey>,

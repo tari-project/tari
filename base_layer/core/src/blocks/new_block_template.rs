@@ -34,10 +34,17 @@ use crate::{
 /// a final step the Base node to add the MMR roots to the header.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NewBlockTemplate {
+    /// The NewBlockHeaderTemplate is used for the construction of a new mineable block. It contains all the metadata
+    /// for the block that the Base Node is able to complete on behalf of a Miner.
     pub header: NewBlockHeaderTemplate,
+    /// This flag indicates if the inputs, outputs and kernels have been sorted internally, that is, the sort() method
+    /// has been called. This may be false even if all components are sorted.
     pub body: AggregateBody,
+    /// The difficulty is defined as the maximum target divided by the block hash.
     pub target_difficulty: Difficulty,
+    /// The reward is the sum of the coinbase utxo and the total fees.
     pub reward: MicroTari,
+    /// The total fees is the sum of all the fees in the block.
     pub total_fees: MicroTari,
 }
 

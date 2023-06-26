@@ -38,7 +38,7 @@ pub trait AchievedDifficulty {}
 pub struct ProofOfWork {
     /// The algorithm used to mine this block
     pub pow_algo: PowAlgorithm,
-    /// Supplemental proof of work data. For example for Sha3, this would be empty (only the block header is
+    /// Supplemental proof of work data. For example for Sha3x, this would be empty (only the block header is
     /// required), but for Monero merge mining we need the Monero block header and RandomX seed hash.
     pub pow_data: Vec<u8>,
 }

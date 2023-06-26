@@ -328,12 +328,18 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
     }
 }
 
+/// Accumulated and other pertinent data in the block header acting as a "condensed blockchain snapshot" for the block
 // TODO: Find a better name and move into `core::blocks` mod
 #[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
 pub struct BlockHeaderAccumulatedData {
+    /// The block hash.
     pub hash: HashOutput,
+    /// The total accumulated offset for all kernels in the block.
     pub total_kernel_offset: PrivateKey,
+    /// The achieved difficulty for solving the current block using the specified proof of work algorithm.
     pub achieved_difficulty: Difficulty,
+    /// The total accumulated difficulty for all blocks since Genesis, but not including this block, tracked
+    /// separately.
     pub total_accumulated_difficulty: u128,
     /// The total accumulated difficulty for RandomX proof of work for all blocks since Genesis,
     /// but not including this block, tracked separately.
