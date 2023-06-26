@@ -68,8 +68,6 @@ message ProofOfWork {
     // 0 = Monero
     // 1 = Sha3X
     uint64 pow_algo = 1;
-//    uint64 accumulated_randomx_difficulty = 2;
-//    uint64 accumulated_sha3x_difficulty = 3;
     bytes pow_data = 4;
    // uint64 target_difficulty = 5;
 }
