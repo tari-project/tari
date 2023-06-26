@@ -29,6 +29,7 @@ use crate::{
     borsh::SerializedSize,
     chain_storage::{BlockchainBackend, MmrRoots, MmrTree},
     consensus::ConsensusConstants,
+    covenants::Covenant,
     proof_of_work::{
         randomx_difficulty,
         randomx_factory::RandomXFactory,
@@ -326,6 +327,17 @@ pub fn check_permitted_output_types(
     {
         return Err(ValidationError::OutputTypeNotPermitted {
             output_type: output.features.output_type,
+        });
+    }
+
+    Ok(())
+}
+
+pub fn check_covenant_length(covenant: &Covenant, max_token_len: u32) -> Result<(), ValidationError> {
+    if covenant.num_tokens() > max_token_len as usize {
+        return Err(ValidationError::CovenantTooLarge {
+            max_size: max_token_len as usize,
+            actual_size: covenant.num_tokens(),
         });
     }
 

@@ -139,6 +139,14 @@ impl Covenant {
     pub(super) fn tokens(&self) -> &[CovenantToken] {
         &self.tokens
     }
+
+    pub fn num_tokens(&self) -> usize {
+        self.tokens.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.tokens.is_empty()
+    }
 }
 
 impl FromIterator<CovenantToken> for Covenant {
