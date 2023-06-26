@@ -44,6 +44,7 @@ jobs:
         # Rust-cache disables a key feature of actions/cache: restoreKeys.
         # Without restore keys, we lose the ability to get partial matches on caches, and end
         # up with too many cache misses.
+        # Use a "small" suffix to use the build caches where possible, but build caches won't use this
         uses: actions/cache@v3
         with:
           path: |
@@ -52,8 +53,9 @@ jobs:
             ~/.cargo/registry/CACHEDIR.TAG
             ~/.cargo/git
             target
-          key: tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}
+          key: tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}-small
           restore-keys: |
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}-small
             tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}
             tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly
       - name: cargo format
@@ -78,7 +80,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo bash scripts/install_ubuntu_dependencies.sh
-      - name: caching (nightly)
+      - name: caching (machete)
         # Don't use rust-cache.
         # Rust-cache disables a key feature of actions/cache: restoreKeys.
         # Without restore keys, we lose the ability to get partial matches on caches, and end
@@ -91,8 +93,9 @@ jobs:
             ~/.cargo/registry/CACHEDIR.TAG
             ~/.cargo/git
             target
-          key: tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}
+          key: tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}-small
           restore-keys: |
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}-small
             tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}
             tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly
       - name: cargo machete
@@ -120,8 +123,9 @@ jobs:
             ~/.cargo/registry/CACHEDIR.TAG
             ~/.cargo/git
             target
-          key: tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable-${{ hashFiles('**/Cargo.lock') }}
+          key: tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable-${{ hashFiles('**/Cargo.lock') }}-small
           restore-keys: |
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable-${{ hashFiles('**/Cargo.lock') }}-small
             tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable-${{ hashFiles('**/Cargo.lock') }}
             tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable
             tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}
