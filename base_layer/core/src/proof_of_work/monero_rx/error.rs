@@ -23,7 +23,7 @@
 use randomx_rs::RandomXError;
 use tari_utilities::hex::HexError;
 
-use crate::proof_of_work::LwmaError;
+use crate::proof_of_work::DifficultyError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum MergeMineError {
@@ -42,5 +42,5 @@ pub enum MergeMineError {
     #[error("Monero PoW data did not contain a valid merkle root")]
     InvalidMerkleRoot,
     #[error("Invalid difficulty: {0}")]
-    LwmaError(#[from] LwmaError),
+    DifficultyError(#[from] DifficultyError),
 }

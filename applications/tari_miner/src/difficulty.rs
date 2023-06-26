@@ -25,7 +25,7 @@ use std::convert::TryInto;
 use tari_app_grpc::tari_rpc::BlockHeader as grpc_header;
 use tari_core::{
     blocks::BlockHeader,
-    proof_of_work::{sha3x_difficulty, LwmaError},
+    proof_of_work::{sha3x_difficulty, DifficultyError},
 };
 use tari_utilities::epoch_time::EpochTime;
 
@@ -68,7 +68,7 @@ impl BlockHeaderSha3 {
     }
 
     #[inline]
-    pub fn difficulty(&mut self) -> Result<Difficulty, LwmaError> {
+    pub fn difficulty(&mut self) -> Result<Difficulty, DifficultyError> {
         self.hashes = self.hashes.saturating_add(1);
         Ok(sha3x_difficulty(&self.header)?.as_u64())
     }

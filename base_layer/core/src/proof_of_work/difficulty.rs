@@ -27,7 +27,7 @@ use serde::{Deserialize, Serialize};
 use tari_utilities::epoch_time::EpochTime;
 
 use crate::{
-    proof_of_work::{error::LwmaError, DifficultyAdjustmentError},
+    proof_of_work::{error::DifficultyError, DifficultyAdjustmentError},
     U256,
 };
 
@@ -41,9 +41,9 @@ pub struct Difficulty(u64);
 
 impl Difficulty {
     /// A const constructor for Difficulty
-    pub const fn from_u64(d: u64) -> Result<Self, LwmaError> {
+    pub const fn from_u64(d: u64) -> Result<Self, DifficultyError> {
         if d < MIN_DIFFICULTY {
-            return Err(LwmaError::InvalidDifficulty);
+            return Err(DifficultyError::InvalidDifficulty);
         }
         Ok(Self(d))
     }
@@ -64,18 +64,18 @@ impl Difficulty {
     }
 
     /// Helper function to provide the difficulty of the hash assuming the hash is big_endian
-    pub fn big_endian_difficulty(hash: &[u8]) -> Result<Difficulty, LwmaError> {
+    pub fn big_endian_difficulty(hash: &[u8]) -> Result<Difficulty, DifficultyError> {
         let scalar = U256::from_big_endian(hash); // Big endian so the hash has leading zeroes
         Difficulty::u256_scalar_to_difficulty(scalar)
     }
 
     /// Helper function to provide the difficulty of the hash assuming the hash is little_endian
-    pub fn little_endian_difficulty(hash: &[u8]) -> Result<Difficulty, LwmaError> {
+    pub fn little_endian_difficulty(hash: &[u8]) -> Result<Difficulty, DifficultyError> {
         let scalar = U256::from_little_endian(hash); // Little endian so the hash has trailing zeroes
         Difficulty::u256_scalar_to_difficulty(scalar)
     }
 
-    fn u256_scalar_to_difficulty(scalar: U256) -> Result<Difficulty, LwmaError> {
+    fn u256_scalar_to_difficulty(scalar: U256) -> Result<Difficulty, DifficultyError> {
         let result = U256::MAX / scalar;
         let result = result.min(u64::MAX.into());
         Difficulty::from_u64(result.low_u64())

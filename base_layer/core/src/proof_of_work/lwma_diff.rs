@@ -19,7 +19,7 @@ use tari_utilities::epoch_time::EpochTime;
 use crate::proof_of_work::{
     difficulty::{Difficulty, DifficultyAdjustment},
     error::DifficultyAdjustmentError,
-    LwmaError,
+    DifficultyError,
 };
 
 /// This is the recommended maximum block time ratio for LWMA-1
@@ -68,10 +68,10 @@ impl LinearWeightedMovingAverage {
     }
 
     /// Helper function to calculate the maximum block time for a given target time
-    pub fn max_block_time(target_time: u64) -> Result<u64, LwmaError> {
+    pub fn max_block_time(target_time: u64) -> Result<u64, DifficultyError> {
         target_time
             .checked_mul(LWMA_MAX_BLOCK_TIME_RATIO)
-            .ok_or(LwmaError::MaxBlockTimeOverflow)
+            .ok_or(DifficultyError::MaxBlockTimeOverflow)
     }
 
     fn calculate(&self) -> Option<Difficulty> {

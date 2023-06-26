@@ -48,7 +48,7 @@ pub enum DifficultyAdjustmentError {
 }
 
 #[derive(Debug, Error)]
-pub enum LwmaError {
+pub enum DifficultyError {
     #[error("Difficulty conversion less than the minimum difficulty")]
     InvalidDifficulty,
     #[error("Maximum block time overflowed u64")]

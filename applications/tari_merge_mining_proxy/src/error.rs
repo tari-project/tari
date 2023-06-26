@@ -29,7 +29,7 @@ use hyper::header::InvalidHeaderValue;
 // use tari_app_grpc::authentication::BasicAuthError;
 use tari_common::{ConfigError, ConfigurationError};
 use tari_core::{
-    proof_of_work::{monero_rx::MergeMineError, LwmaError},
+    proof_of_work::{monero_rx::MergeMineError, DifficultyError},
     transactions::CoinbaseBuildError,
 };
 use tari_wallet_grpc_client::BasicAuthError;
@@ -96,7 +96,7 @@ pub enum MmProxyError {
     #[error("No reachable servers in configuration")]
     ServersUnavailable,
     #[error("Invalid difficulty: {0}")]
-    LwmaError(#[from] LwmaError),
+    DifficultyError(#[from] DifficultyError),
 }
 
 impl From<tonic::Status> for MmProxyError {
