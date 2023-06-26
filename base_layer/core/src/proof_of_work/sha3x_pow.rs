@@ -37,7 +37,8 @@ pub fn sha3x_difficulty(header: &BlockHeader) -> Result<Difficulty, DifficultyEr
     Ok(sha3x_difficulty_with_hash(header)?.0)
 }
 
-pub fn sha3_hash(header: &BlockHeader) -> Vec<u8> {
+/// Calculate the Tari Sha3 mining hash
+pub fn sha3x_hash(header: &BlockHeader) -> Vec<u8> {
     Sha3_256::new()
         .chain(header.nonce.to_le_bytes())
         .chain(header.mining_hash())
@@ -46,8 +47,9 @@ pub fn sha3_hash(header: &BlockHeader) -> Vec<u8> {
         .to_vec()
 }
 
+/// Calculate the Tari Sha3 mining hash and achieved difficulty
 fn sha3x_difficulty_with_hash(header: &BlockHeader) -> Result<(Difficulty, Vec<u8>), DifficultyError> {
-    let hash = sha3_hash(header);
+    let hash = sha3x_hash(header);
     let hash = Sha3_256::digest(&hash);
     let hash = Sha3_256::digest(&hash);
     let difficulty = Difficulty::big_endian_difficulty(&hash)?;
@@ -61,7 +63,7 @@ pub mod test {
 
     use crate::{
         blocks::BlockHeader,
-        proof_of_work::{sha3_pow::sha3x_difficulty, Difficulty, PowAlgorithm},
+        proof_of_work::{sha3x_pow::sha3x_difficulty, Difficulty, PowAlgorithm},
     };
 
     /// A simple example miner. It starts at nonce = 0 and iterates until it finds a header hash that meets the desired
@@ -89,7 +91,7 @@ pub mod test {
         )
         .timestamp() as u64;
         header.timestamp = EpochTime::from_secs_since_epoch(epoch_secs);
-        header.pow.pow_algo = PowAlgorithm::Sha3;
+        header.pow.pow_algo = PowAlgorithm::Sha3x;
         header
     }
 

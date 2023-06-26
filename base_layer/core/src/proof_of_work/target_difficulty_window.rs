@@ -26,6 +26,7 @@ use tari_utilities::epoch_time::EpochTime;
 
 use crate::proof_of_work::{difficulty::DifficultyAdjustment, lwma_diff::LinearWeightedMovingAverage, Difficulty};
 
+/// A window of target difficulties
 #[derive(Debug, Clone)]
 pub struct TargetDifficultyWindow {
     lwma: LinearWeightedMovingAverage,
@@ -39,13 +40,15 @@ impl TargetDifficultyWindow {
         })
     }
 
-    /// Appends a target difficulty. If the number of stored difficulties exceeds the block window, the oldest block
-    /// window is removed keeping the size of the stored difficulties equal to the block window.
+    /// Appends a target difficulty. If the number of stored difficulties exceeds the block window, the stored
+    /// difficulty at the front is removed keeping the size of the stored difficulties equal to the block window.
     #[inline]
     pub fn add_back(&mut self, time: EpochTime, difficulty: Difficulty) {
         self.lwma.add_back(time, difficulty);
     }
 
+    /// Prepends a target difficulty. If the number of stored difficulties exceeds the block window, the stored
+    /// difficulty at the back is removed keeping the size of the stored difficulties equal to the block window.
     #[inline]
     pub fn add_front(&mut self, time: EpochTime, difficulty: Difficulty) {
         self.lwma.add_front(time, difficulty);
@@ -57,10 +60,12 @@ impl TargetDifficultyWindow {
         self.lwma.is_full()
     }
 
+    /// Returns the number of target difficulties in the window
     pub fn len(&self) -> usize {
         self.lwma.num_samples()
     }
 
+    /// Returns true if the window is empty
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.lwma.num_samples() == 0

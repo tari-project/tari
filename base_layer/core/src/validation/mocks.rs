@@ -117,9 +117,12 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for MockValidator {
         if self.is_valid.load(Ordering::SeqCst) {
             let achieved = sha3x_difficulty(header)?;
 
-            let achieved_target =
-                AchievedTargetDifficulty::try_construct(PowAlgorithm::Sha3, achieved, achieved.checked_add(1).unwrap())
-                    .unwrap();
+            let achieved_target = AchievedTargetDifficulty::try_construct(
+                PowAlgorithm::Sha3x,
+                achieved,
+                achieved.checked_add(1).unwrap(),
+            )
+            .unwrap();
             Ok(achieved_target)
         } else {
             Err(ValidationError::custom_error(

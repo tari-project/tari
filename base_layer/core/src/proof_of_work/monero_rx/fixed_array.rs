@@ -27,6 +27,7 @@ use tari_utilities::{ByteArray, ByteArrayError};
 
 const MAX_ARR_SIZE: usize = 63;
 
+/// A fixed size byte array for RandomX that can be serialized and deserialized using Borsh.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FixedByteArray {
     elems: [u8; MAX_ARR_SIZE],
@@ -63,24 +64,29 @@ impl BorshDeserialize for FixedByteArray {
 }
 
 impl FixedByteArray {
+    /// Create a new FixedByteArray with the preset length. The array will be zeroed.
     pub fn new() -> Self {
         Default::default()
     }
 
+    /// Returns the array as a slice of bytes.
     pub fn as_slice(&self) -> &[u8] {
         &self[..self.len()]
     }
 
+    /// Returns true if the array is full.
     #[inline]
     pub fn is_full(&self) -> bool {
         self.len() == MAX_ARR_SIZE
     }
 
+    /// Returns the length of the array.
     #[inline]
     pub fn len(&self) -> usize {
         self.len as usize
     }
 
+    /// Returns true if the array is empty.
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.len == 0

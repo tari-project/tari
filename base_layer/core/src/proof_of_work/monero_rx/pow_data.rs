@@ -91,6 +91,7 @@ impl BorshDeserialize for MoneroPowData {
 }
 
 impl MoneroPowData {
+    /// Create a new MoneroPowData struct from the given header
     pub fn from_header(tari_header: &BlockHeader) -> Result<MoneroPowData, MergeMineError> {
         let mut v = tari_header.pow.pow_data.as_slice();
         BorshDeserialize::deserialize(&mut v).map_err(|e| MergeMineError::DeserializeError(format!("{:?}", e)))
@@ -103,10 +104,12 @@ impl MoneroPowData {
         self.merkle_root == merkle_root
     }
 
+    /// Returns the blockhashing_blob for the Monero block
     pub fn to_blockhashing_blob(&self) -> Vec<u8> {
         create_block_hashing_blob(&self.header, &self.merkle_root, u64::from(self.transaction_count))
     }
 
+    /// Returns the RandomX vm key
     pub fn randomx_key(&self) -> &[u8] {
         self.randomx_key.as_slice()
     }

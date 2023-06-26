@@ -87,7 +87,7 @@ impl BlockHeaderSha3 {
 #[cfg(test)]
 pub mod test {
     use chrono::{DateTime, NaiveDate, Utc};
-    use tari_core::proof_of_work::sha3x_difficulty as core_sha3_difficulty;
+    use tari_core::proof_of_work::sha3x_difficulty as core_sha3x_difficulty;
 
     use super::*;
 
@@ -103,7 +103,7 @@ pub mod test {
         )
         .timestamp() as u64)
             .into();
-        header.pow.pow_algo = tari_core::proof_of_work::PowAlgorithm::Sha3;
+        header.pow.pow_algo = tari_core::proof_of_work::PowAlgorithm::Sha3x;
         (header.clone().into(), header)
     }
 
@@ -116,7 +116,7 @@ pub mod test {
         for _ in 0..1000 {
             assert_eq!(
                 hasher.difficulty().unwrap(),
-                core_sha3_difficulty(&core_header).unwrap().as_u64(),
+                core_sha3x_difficulty(&core_header).unwrap().as_u64(),
                 "with nonces = {}:{}",
                 hasher.header.nonce,
                 core_header.nonce
@@ -136,7 +136,7 @@ pub mod test {
         for _ in 0..1000 {
             assert_eq!(
                 hasher.difficulty().unwrap(),
-                core_sha3_difficulty(&core_header).unwrap().as_u64(),
+                core_sha3x_difficulty(&core_header).unwrap().as_u64(),
                 "with timestamp = {}",
                 timestamp
             );

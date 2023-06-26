@@ -68,7 +68,7 @@ message ProofOfWork {
     // 0 = Monero
     // 1 = Blake
     uint64 pow_algo = 1;
-//    uint64 accumulated_monero_difficulty = 2;
+//    uint64 accumulated_randomx_difficulty = 2;
 //    uint64 accumulated_sha_difficulty = 3;
     bytes pow_data = 4;
    // uint64 target_difficulty = 5;
@@ -77,7 +77,7 @@ message ProofOfWork {
 //This is used to request the which pow algo should be used with the block template
 message PowAlgo {
     enum PowAlgos {
-        POW_ALGOS_MONERO = 0;
+        POW_ALGOS_RANDOMX = 0;
         POW_ALGOS_SHA3 = 1;
     }
     PowAlgos pow_algo = 1;

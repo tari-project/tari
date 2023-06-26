@@ -239,9 +239,9 @@ impl ConsensusManagerBuilder {
                     .then()
                     .by_height()
                     .then()
-                    .by_monero_difficulty()
+                    .by_randomx_difficulty()
                     .then()
-                    .by_sha3_difficulty()
+                    .by_sha3x_difficulty()
                     .build()
             }),
         };

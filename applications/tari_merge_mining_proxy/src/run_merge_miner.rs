@@ -80,7 +80,7 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
         WalletGrpcClient::connect_with_auth(&wallet_addr, &config.console_wallet_grpc_authentication).await?;
     let listen_addr = multiaddr_to_socketaddr(&config.listener_address)?;
     let randomx_factory = RandomXFactory::new(config.max_randomx_vms);
-    let xmrig_service = MergeMiningProxyService::new(
+    let randomx_service = MergeMiningProxyService::new(
         config,
         client,
         base_node_client,
@@ -88,7 +88,7 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
         BlockTemplateRepository::new(),
         randomx_factory,
     );
-    let service = make_service_fn(|_conn| future::ready(Result::<_, Infallible>::Ok(xmrig_service.clone())));
+    let service = make_service_fn(|_conn| future::ready(Result::<_, Infallible>::Ok(randomx_service.clone())));
 
     match Server::try_bind(&listen_addr) {
         Ok(builder) => {
@@ -101,7 +101,7 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
             error!(target: LOG_TARGET, "Fatal: Cannot bind to '{}'.", listen_addr);
             println!("Fatal: Cannot bind to '{}'.", listen_addr);
             println!("It may be part of a Port Exclusion Range. Please try to use another port for the");
-            println!("'proxy_host_address' in 'config/config.toml' and for the applicable XMRig '[pools][url]' or");
+            println!("'proxy_host_address' in 'config/config.toml' and for the applicable RandomX '[pools][url]' or");
             println!("[pools][self-select]' config setting that can be found  in 'config/xmrig_config_***.json' or");
             println!("'<xmrig folder>/config.json'.");
             println!();

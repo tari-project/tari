@@ -26,6 +26,7 @@ use thiserror::Error;
 use crate::proof_of_work::monero_rx::MergeMineError;
 use crate::proof_of_work::Difficulty;
 
+/// Errors that can occur when validating a proof of work
 #[derive(Debug, Error)]
 pub enum PowError {
     #[error("ProofOfWorkFailed")]
@@ -39,6 +40,7 @@ pub enum PowError {
     MergeMineError(#[from] MergeMineError),
 }
 
+/// Errors that can occur when adjusting the difficulty
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum DifficultyAdjustmentError {
     #[error("Accumulated difficulty values can only strictly increase")]
@@ -47,6 +49,7 @@ pub enum DifficultyAdjustmentError {
     Other,
 }
 
+/// Errors that can occur when converting a difficulty
 #[derive(Debug, Error)]
 pub enum DifficultyError {
     #[error("Difficulty conversion less than the minimum difficulty")]

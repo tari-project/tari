@@ -30,7 +30,7 @@ pub use helpers::{
     create_ordered_transaction_hashes_from_block,
     deserialize_monero_block_from_hex,
     extract_tari_hash,
-    monero_difficulty,
+    randomx_difficulty,
     serialize_monero_block_to_hex,
 };
 

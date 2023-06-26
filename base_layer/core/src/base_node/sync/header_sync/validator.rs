@@ -87,10 +87,10 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
             })?;
         debug!(
             target: LOG_TARGET,
-            "Setting header validator state ({} timestamp(s), target difficulties: {} SHA3, {} Monero)",
+            "Setting header validator state ({} timestamp(s), target difficulties: {} SHA3, {} RandomX)",
             timestamps.len(),
-            target_difficulties.get(PowAlgorithm::Sha3).len(),
-            target_difficulties.get(PowAlgorithm::Monero).len(),
+            target_difficulties.get(PowAlgorithm::Sha3x).len(),
+            target_difficulties.get(PowAlgorithm::RandomX).len(),
         );
         self.state = Some(State {
             current_height: start_header.height,
@@ -270,8 +270,8 @@ mod test {
             validator.initialize_state(&tip.header().hash()).await.unwrap();
             let state = validator.state();
             assert!(state.valid_headers.is_empty());
-            assert_eq!(state.target_difficulties.get(PowAlgorithm::Sha3).len(), 2);
-            assert!(state.target_difficulties.get(PowAlgorithm::Monero).is_empty());
+            assert_eq!(state.target_difficulties.get(PowAlgorithm::Sha3x).len(), 2);
+            assert!(state.target_difficulties.get(PowAlgorithm::RandomX).is_empty());
             assert_eq!(state.timestamps.len(), 2);
             assert_eq!(state.current_height, 1);
         }

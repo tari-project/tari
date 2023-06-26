@@ -12,7 +12,7 @@ package tari.core;
 
 // Metadata required for validating the Proof of Work calculation
 message ProofOfWork {
-    // 0 = Monero
+    // 0 = RandomX
     // 1 = Blake
     uint64 pow_algo = 1;
     bytes pow_data = 4;
@@ -84,7 +84,7 @@ message HistoricalBlock {
 
 message BlockHeaderAccumulatedData {
     uint64 achieved_difficulty = 1;
-    uint64 accumulated_monero_difficulty = 2;
+    uint64 accumulated_randomx_difficulty = 2;
     uint64 accumulated_sha_difficulty = 3;
     uint64 target_difficulty = 4;
     bytes total_kernel_offset = 5;

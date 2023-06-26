@@ -43,9 +43,9 @@ use reqwest::{ResponseBuilderExt, Url};
 use serde_json as json;
 use tari_base_node_grpc_client::{grpc, BaseNodeGrpcClient};
 use tari_core::proof_of_work::{
-    monero_difficulty,
     monero_rx,
     monero_rx::FixedByteArray,
+    randomx_difficulty,
     randomx_factory::RandomXFactory,
 };
 use tari_utilities::hex::Hex;
@@ -277,7 +277,7 @@ impl InnerService {
             let start = Instant::now();
             let achieved_target = if self.config.check_tari_difficulty_before_submit {
                 trace!(target: LOG_TARGET, "Starting calculate achieved Tari difficultly");
-                let diff = monero_difficulty(&tari_header, &self.randomx_factory)?;
+                let diff = randomx_difficulty(&tari_header, &self.randomx_factory)?;
                 trace!(
                     target: LOG_TARGET,
                     "Finished calculate achieved Tari difficultly - achieved {} vs. target {}",

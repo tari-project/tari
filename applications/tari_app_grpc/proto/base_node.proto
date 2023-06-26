@@ -189,8 +189,8 @@ message NetworkDifficultyResponse {
     uint64 height = 3;
     uint64 timestamp = 4;
     uint64 pow_algo = 5;
-    uint64 sha3_estimated_hash_rate = 6;
-    uint64 monero_estimated_hash_rate = 7;
+    uint64 sha3x_estimated_hash_rate = 6;
+    uint64 randomx_estimated_hash_rate = 7;
 }
 
 // A generic single value response for a specific height

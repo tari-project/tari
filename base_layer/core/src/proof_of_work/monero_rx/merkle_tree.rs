@@ -121,6 +121,7 @@ pub fn tree_hash(hashes: &[Hash]) -> Result<Hash, MergeMineError> {
     }
 }
 
+/// The Monero merkle proof
 #[derive(Debug, Clone)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct MerkleProof {
@@ -174,11 +175,13 @@ impl MerkleProof {
         })
     }
 
+    /// Returns the merkle proof branch as a list of Monero hashes
     #[inline]
     pub fn branch(&self) -> &[Hash] {
         &self.branch
     }
 
+    /// Calculates the merkle root hash from the provide Monero hash
     pub fn calculate_root(&self, hash: &Hash) -> Hash {
         if self.depth == 0 {
             return self.branch[0];
