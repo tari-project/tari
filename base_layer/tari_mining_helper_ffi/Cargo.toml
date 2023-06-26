@@ -3,7 +3,7 @@ name = "tari_mining_helper_ffi"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency miningcore C FFI bindings"
 license = "BSD-3-Clause"
-version = "0.51.0-pre.2"
+version = "0.51.0-pre.3"
 edition = "2018"
 
 [dependencies]
