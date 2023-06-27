@@ -50,7 +50,7 @@ pub const ARG_BYTES: u8 = 0x09;
 pub const ARG_OUTPUT_TYPE: u8 = 0x0a;
 
 //---------------------------------- FILTER byte codes --------------------------------------------//
-
+/// Checks if a byte value results in a valid argument byte code
 pub(super) fn is_valid_filter_code(code: u8) -> bool {
     ALL_FILTERS.contains(&code)
 }

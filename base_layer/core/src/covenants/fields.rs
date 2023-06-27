@@ -45,6 +45,7 @@ use crate::{
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
 #[repr(u8)]
+/// Output field
 pub enum OutputField {
     Commitment = byte_codes::FIELD_COMMITMENT,
     Script = byte_codes::FIELD_SCRIPT,
@@ -79,6 +80,7 @@ impl OutputField {
         self as u8
     }
 
+    /// Gets a reference for the field value
     pub(super) fn get_field_value_ref<T: 'static + std::fmt::Debug>(self, output: &TransactionOutput) -> Option<&T> {
         #[allow(clippy::enum_glob_use)]
         use OutputField::*;
@@ -95,6 +97,7 @@ impl OutputField {
         val.downcast_ref::<T>()
     }
 
+    /// Borsh serializes self to field value bytes
     pub fn get_field_value_bytes(self, output: &TransactionOutput) -> Vec<u8> {
         #[allow(clippy::enum_glob_use)]
         use OutputField::*;
@@ -114,6 +117,8 @@ impl OutputField {
         writer
     }
 
+    /// Given an `OutputField` instance, it checks if the corresponding input field value
+    /// matches that of the output
     pub fn is_eq_input(self, input: &TransactionInput, output: &TransactionOutput) -> bool {
         #[allow(clippy::enum_glob_use)]
         use OutputField::*;
@@ -150,6 +155,8 @@ impl OutputField {
         }
     }
 
+    /// Given an `OutputField` instance, it checks if the corresponding `transaction output`
+    /// field value matches that of `val`
     pub fn is_eq<T: PartialEq + std::fmt::Debug + 'static>(
         self,
         output: &TransactionOutput,
@@ -247,6 +254,7 @@ impl Display for OutputField {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, BorshSerialize, BorshDeserialize)]
+/// Wraps a collection of `OutputField`
 pub struct OutputFields {
     fields: Vec<OutputField>,
 }
@@ -296,6 +304,8 @@ impl OutputFields {
         self.fields.is_empty()
     }
 
+    /// Given a `TransactionOutput` it iteratively hashes the field value for a
+    /// `TransactionOutput`, over the underlying list of field values
     pub fn construct_challenge_from(&self, output: &TransactionOutput) -> Blake256 {
         let mut challenge = Blake256::new();
         BaseLayerCovenantsDomain::add_domain_separation_tag(&mut challenge, COVENANTS_FIELD_HASHER_LABEL);

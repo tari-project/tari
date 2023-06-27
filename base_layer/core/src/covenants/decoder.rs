@@ -87,6 +87,7 @@ pub(super) trait CovenantReadExt: io::Read {
 }
 
 impl<R: io::Read> CovenantReadExt for R {
+    /// Reads next byte code
     fn read_next_byte_code(&mut self) -> Result<Option<u8>, io::Error> {
         let mut buf = [0u8; 1];
         loop {
@@ -102,6 +103,7 @@ impl<R: io::Read> CovenantReadExt for R {
         }
     }
 
+    /// Reads a variable length byte array
     fn read_variable_length_bytes(&mut self, max_size: usize) -> Result<Vec<u8>, io::Error> {
         let len = self.read_varint::<u16>()? as usize;
         if len > max_size {

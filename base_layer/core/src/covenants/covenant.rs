@@ -46,6 +46,7 @@ use crate::{
 const MAX_COVENANT_BYTES: usize = 4096;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
+/// `Covenant` structure, it wraps a vector of `CovenantToken`
 pub struct Covenant {
     tokens: Vec<CovenantToken>,
 }
@@ -105,6 +106,9 @@ impl Covenant {
         counter.get()
     }
 
+    /// Given a block height, a transaction input and a slice of transaction outputs, it
+    /// executes a `CovenantFilter` on the given transaction outputs. If no underlying tokens
+    /// are available then it always passes
     pub fn execute<'a>(
         &self,
         block_height: u64,

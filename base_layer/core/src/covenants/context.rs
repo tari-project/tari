@@ -30,6 +30,7 @@ use crate::{
     transactions::transaction_components::TransactionInput,
 };
 
+/// A covenant context for future transactions
 pub struct CovenantContext<'a> {
     input: &'a TransactionInput,
     tokens: CovenantTokenCollection,
@@ -45,10 +46,12 @@ impl<'a> CovenantContext<'a> {
         }
     }
 
+    /// Checks if it has a non-empty number of underlying tokens
     pub fn has_more_tokens(&self) -> bool {
         !self.tokens.is_empty()
     }
 
+    /// Outputs the next token argument
     pub fn next_arg(&mut self) -> Result<CovenantArg, CovenantError> {
         match self.tokens.next().ok_or(CovenantError::UnexpectedEndOfTokens)? {
             CovenantToken::Arg(arg) => Ok(*arg),
@@ -65,6 +68,8 @@ impl<'a> CovenantContext<'a> {
         }
     }
 
+    /// Outputs next `CovenantFilter`, if it happens to be the next token in the current instance,
+    /// otherwise it errors
     pub fn require_next_filter(&mut self) -> Result<CovenantFilter, CovenantError> {
         match self.tokens.next().ok_or(CovenantError::UnexpectedEndOfTokens)? {
             CovenantToken::Filter(filter) => Ok(filter),
@@ -72,10 +77,12 @@ impl<'a> CovenantContext<'a> {
         }
     }
 
+    /// Block height
     pub fn block_height(&self) -> u64 {
         self.block_height
     }
 
+    /// Transaction input
     pub fn input(&self) -> &TransactionInput {
         self.input
     }

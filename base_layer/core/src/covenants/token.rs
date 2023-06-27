@@ -49,6 +49,7 @@ use crate::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Covenant token. Either a filter covenant or a an argument covenant.
 pub enum CovenantToken {
     Filter(CovenantFilter),
     Arg(Box<CovenantArg>),
@@ -211,6 +212,7 @@ impl From<CovenantFilter> for CovenantToken {
 }
 
 #[derive(Debug, Clone, Default)]
+/// `CovenantTokenCollection` structure. It wraps a collection of `CovenantToken`'s.
 pub struct CovenantTokenCollection {
     tokens: VecDeque<CovenantToken>,
 }

@@ -52,6 +52,7 @@ const MAX_COVENANT_ARG_SIZE: usize = 4096;
 const MAX_BYTES_ARG_SIZE: usize = 4096;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Covenant arguments
 pub enum CovenantArg {
     Hash(FixedHash),
     PublicKey(PublicKey),
@@ -66,6 +67,7 @@ pub enum CovenantArg {
 }
 
 impl CovenantArg {
+    /// Checks if a stream of bytes results in valid argument code
     pub fn is_valid_code(code: u8) -> bool {
         byte_codes::is_valid_arg_code(code)
     }
@@ -183,6 +185,8 @@ impl CovenantArg {
 macro_rules! require_x_impl {
     ($name:ident, $output:ident, $expected: expr, $output_type:ident) => {
         #[allow(dead_code)]
+        /// Given a Covenant argument instance, outpus the underlying type instance
+        /// that it unwraps to
         pub(super) fn $name(self) -> Result<$output_type, CovenantError> {
             match self {
                 CovenantArg::$output(obj) => Ok(obj),

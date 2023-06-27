@@ -51,6 +51,8 @@ impl<'a> OutputSet<'a> {
         *self = new_set;
     }
 
+    /// Given a functional that returns a bool on a transaction output,
+    /// it filters the underlying set of `TransactionOutput`s.
     pub fn retain<F>(&mut self, mut f: F) -> Result<(), CovenantError>
     where F: FnMut(&'a TransactionOutput) -> Result<bool, CovenantError> {
         let mut err = None;
@@ -80,6 +82,9 @@ impl<'a> OutputSet<'a> {
         self.0.symmetric_difference(&other.0).copied().collect()
     }
 
+    /// Given a predicate on `TransactionOutput`, it finds a present instance, in place.
+    /// If no `TransactionOutput` is found, it clears the underlying set, in place. Otherwise,
+    /// it keeps this sole `TransactionOutput` instance.
     pub fn find_inplace<F>(&mut self, mut pred: F)
     where F: FnMut(&TransactionOutput) -> bool {
         match self.0.iter().find(|indexed| pred(indexed)) {
