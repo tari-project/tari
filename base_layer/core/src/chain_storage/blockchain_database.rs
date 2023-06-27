@@ -1498,7 +1498,7 @@ fn insert_best_block(txn: &mut DbTransaction, block: Arc<ChainBlock>) -> Result<
         block.header().height,
         block_hash.to_hex()
     );
-    if block.header().pow_algo() == PowAlgorithm::Monero {
+    if block.header().pow_algo() == PowAlgorithm::RandomX {
         let monero_header =
             MoneroPowData::from_header(block.header()).map_err(|e| ChainStorageError::InvalidArguments {
                 func: "insert_best_block",
@@ -2959,7 +2959,7 @@ mod test {
         .await;
 
         let mock_validator = MockValidator::new(true);
-        let chain_strength_comparer = strongest_chain().by_sha3_difficulty().build();
+        let chain_strength_comparer = strongest_chain().by_sha3x_difficulty().build();
 
         let fork_block = mainchain.get("B").unwrap().clone();
         let (_, reorg_chain) = create_chained_blocks(
@@ -3043,7 +3043,7 @@ mod test {
         .await;
 
         let mock_validator = MockValidator::new(true);
-        let chain_strength_comparer = strongest_chain().by_sha3_difficulty().build();
+        let chain_strength_comparer = strongest_chain().by_sha3x_difficulty().build();
 
         let fork_block = mainchain.get("C").unwrap().clone();
         let (_, reorg_chain) = create_chained_blocks(&[("D2->GB", 1, 120), ("E2->D2", 2, 120)], fork_block).await;
@@ -3291,7 +3291,7 @@ mod test {
                 false,
             ));
             let post_orphan_body_validator = Box::new(MockValidator::new(true));
-            let chain_strength_comparer = strongest_chain().by_sha3_difficulty().build();
+            let chain_strength_comparer = strongest_chain().by_sha3x_difficulty().build();
             Self {
                 db,
                 config: Default::default(),
@@ -3356,7 +3356,7 @@ mod test {
             .add_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
                     .clear_proof_of_work()
-                    .add_proof_of_work(PowAlgorithm::Sha3, PowAlgorithmConstants {
+                    .add_proof_of_work(PowAlgorithm::Sha3x, PowAlgorithmConstants {
                         min_difficulty: Difficulty::min(),
                         max_difficulty: Difficulty::from_u64(100).expect("valid difficulty"),
                         target_time: 120,

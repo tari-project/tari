@@ -15,6 +15,7 @@ use crate::proof_of_work::monero_rx::MergeMineError;
 
 const LOG_TARGET: &str = "c::pow::randomx_factory";
 
+/// The RandomX virtual machine instance used for to verify mining.
 #[derive(Clone)]
 pub struct RandomXVMInstance {
     // Note: If a cache and dataset (if assigned) allocated to the VM drops, the VM will crash.
@@ -30,7 +31,7 @@ impl RandomXVMInstance {
             Err(err) => {
                 warn!(
                     target: LOG_TARGET,
-                    "Error initializing randomx cache with flags {:?}. {:?}. Fallback to default flags", flags, err
+                    "Error initializing RandomX cache with flags {:?}. {:?}. Fallback to default flags", flags, err
                 );
                 // This is informed by how RandomX falls back on any cache allocation failure
                 // https://github.com/xmrig/xmrig/blob/02b2b87bb685ab83b132267aa3c2de0766f16b8b/src/crypto/rx/RxCache.cpp#L88
@@ -54,6 +55,7 @@ impl RandomXVMInstance {
         Ok(Self { instance: Arc::new(vm) })
     }
 
+    /// Calculate the RandomX mining hash
     pub fn calculate_hash(&self, input: &[u8]) -> Result<Vec<u8>, RandomXError> {
         self.instance.calculate_hash(input)
     }
@@ -66,9 +68,10 @@ impl RandomXVMInstance {
 unsafe impl Send for RandomXVMInstance {}
 unsafe impl Sync for RandomXVMInstance {}
 
-// Thread safe impl of the inner impl
+/// The RandomX factory that manages the creation of RandomX VMs.
 #[derive(Clone, Debug)]
 pub struct RandomXFactory {
+    // Thread safe impl of the inner impl
     inner: Arc<RwLock<RandomXFactoryInner>>,
 }
 
@@ -79,12 +82,14 @@ impl Default for RandomXFactory {
 }
 
 impl RandomXFactory {
+    /// Create a new RandomX factory with the specified maximum number of VMs
     pub fn new(max_vms: usize) -> Self {
         Self {
             inner: Arc::new(RwLock::new(RandomXFactoryInner::new(max_vms))),
         }
     }
 
+    /// Create a new RandomX VM instance with the specified key
     pub fn create(&self, key: &[u8]) -> Result<RandomXVMInstance, MergeMineError> {
         let res;
         {
@@ -94,11 +99,13 @@ impl RandomXFactory {
         Ok(res)
     }
 
+    /// Get the number of VMs currently allocated
     pub fn get_count(&self) -> usize {
         let inner = self.inner.read().unwrap();
         inner.get_count()
     }
 
+    /// Get the flags used to create the VMs
     pub fn get_flags(&self) -> RandomXFlag {
         let inner = self.inner.read().unwrap();
         inner.get_flags()
@@ -111,6 +118,7 @@ struct RandomXFactoryInner {
 }
 
 impl RandomXFactoryInner {
+    /// Create a new RandomXFactoryInner
     pub fn new(max_vms: usize) -> Self {
         let flags = RandomXFlag::get_recommended_flags();
         debug!(
@@ -124,6 +132,7 @@ impl RandomXFactoryInner {
         }
     }
 
+    /// Create a new RandomXVMInstance
     pub fn create(&mut self, key: &[u8]) -> Result<RandomXVMInstance, MergeMineError> {
         if let Some(entry) = self.vms.get_mut(key) {
             let vm = entry.1.clone();
@@ -152,10 +161,12 @@ impl RandomXFactoryInner {
         Ok(vm)
     }
 
+    /// Get the number of VMs currently allocated
     pub fn get_count(&self) -> usize {
         self.vms.len()
     }
 
+    /// Get the flags used to create the VMs
     pub fn get_flags(&self) -> RandomXFlag {
         self.flags
     }

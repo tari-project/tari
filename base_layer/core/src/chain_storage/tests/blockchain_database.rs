@@ -583,7 +583,7 @@ mod clear_all_pending_headers {
                     .with_hash(header.hash())
                     .with_achieved_target_difficulty(
                         AchievedTargetDifficulty::try_construct(
-                            PowAlgorithm::Sha3,
+                            PowAlgorithm::Sha3x,
                             Difficulty::min(),
                             Difficulty::min(),
                         )

@@ -25,6 +25,7 @@ use tari_utilities::hex::HexError;
 
 use crate::proof_of_work::DifficultyError;
 
+/// Errors that can occur when merging Monero PoW data with Tari PoW data
 #[derive(Debug, thiserror::Error)]
 pub enum MergeMineError {
     #[error("Serialization error: {0}")]

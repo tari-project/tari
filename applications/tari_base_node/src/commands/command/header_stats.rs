@@ -126,8 +126,8 @@ impl CommandContext {
                 )
                 .map_err(Error::msg)?,
             );
-            let acc_sha3 = header.accumulated_data().accumulated_sha_difficulty;
-            let acc_monero = header.accumulated_data().accumulated_monero_difficulty;
+            let acc_sha3 = header.accumulated_data().accumulated_sha3x_difficulty;
+            let acc_monero = header.accumulated_data().accumulated_randomx_difficulty;
 
             buff.clear();
             writeln!(

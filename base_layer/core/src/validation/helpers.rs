@@ -31,7 +31,7 @@ use crate::{
     consensus::ConsensusConstants,
     covenants::Covenant,
     proof_of_work::{
-        monero_difficulty,
+        randomx_difficulty,
         randomx_factory::RandomXFactory,
         sha3x_difficulty,
         AchievedTargetDifficulty,
@@ -111,8 +111,8 @@ pub fn check_target_difficulty(
     randomx_factory: &RandomXFactory,
 ) -> Result<AchievedTargetDifficulty, ValidationError> {
     let achieved = match block_header.pow_algo() {
-        PowAlgorithm::Monero => monero_difficulty(block_header, randomx_factory)?,
-        PowAlgorithm::Sha3 => sha3x_difficulty(block_header)?,
+        PowAlgorithm::RandomX => randomx_difficulty(block_header, randomx_factory)?,
+        PowAlgorithm::Sha3x => sha3x_difficulty(block_header)?,
     };
 
     match AchievedTargetDifficulty::try_construct(block_header.pow_algo(), target, achieved) {

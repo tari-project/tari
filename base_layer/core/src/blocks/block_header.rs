@@ -315,7 +315,7 @@ mod test {
 
     #[test]
     fn from_previous() {
-        let mut h1 = crate::proof_of_work::sha3_test::get_header();
+        let mut h1 = crate::proof_of_work::sha3x_test::get_header();
         h1.nonce = 7600;
         assert_eq!(h1.height, 0, "Default block height");
         let hash1 = h1.hash();

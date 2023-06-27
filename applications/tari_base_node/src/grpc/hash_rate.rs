@@ -29,8 +29,8 @@ use tari_core::{
 
 /// The number of past blocks to be used on moving averages for (smooth) estimated hashrate
 /// We consider a 60 minute time window reasonable, that means 12 SHA3 blocks and 18 Monero blocks
-const SHA3_HASH_RATE_MOVING_AVERAGE_WINDOW: usize = 12;
-const MONERO_HASH_RATE_MOVING_AVERAGE_WINDOW: usize = 18;
+const SHA3X_HASH_RATE_MOVING_AVERAGE_WINDOW: usize = 12;
+const RANDOMX_HASH_RATE_MOVING_AVERAGE_WINDOW: usize = 18;
 
 /// Calculates a linear weighted moving average for hash rate calculations
 pub struct HashRateMovingAverage {
@@ -44,8 +44,8 @@ pub struct HashRateMovingAverage {
 impl HashRateMovingAverage {
     pub fn new(pow_algo: PowAlgorithm, consensus_manager: ConsensusManager) -> Self {
         let window_size = match pow_algo {
-            PowAlgorithm::Monero => MONERO_HASH_RATE_MOVING_AVERAGE_WINDOW,
-            PowAlgorithm::Sha3 => SHA3_HASH_RATE_MOVING_AVERAGE_WINDOW,
+            PowAlgorithm::RandomX => RANDOMX_HASH_RATE_MOVING_AVERAGE_WINDOW,
+            PowAlgorithm::Sha3x => SHA3X_HASH_RATE_MOVING_AVERAGE_WINDOW,
         };
         let hash_rates = VecDeque::with_capacity(window_size);
 
@@ -112,7 +112,7 @@ mod test {
 
     #[test]
     fn window_is_empty() {
-        let hash_rate_ma = create_hash_rate_ma(PowAlgorithm::Sha3);
+        let hash_rate_ma = create_hash_rate_ma(PowAlgorithm::Sha3x);
         assert!(!hash_rate_ma.is_full());
         assert_eq!(hash_rate_ma.calculate_average(), 0);
         assert_eq!(hash_rate_ma.average(), 0);
@@ -120,7 +120,7 @@ mod test {
 
     #[test]
     fn window_is_full() {
-        let mut hash_rate_ma = create_hash_rate_ma(PowAlgorithm::Sha3);
+        let mut hash_rate_ma = create_hash_rate_ma(PowAlgorithm::Sha3x);
         let window_size = hash_rate_ma.window_size;
 
         // we check that the window is not full when we insert less items than the window size
@@ -142,7 +142,7 @@ mod test {
     // These expected hash rate values where calculated in a spreadsheet
     #[test]
     fn correct_moving_average_calculation() {
-        let mut hash_rate_ma = create_hash_rate_ma(PowAlgorithm::Sha3);
+        let mut hash_rate_ma = create_hash_rate_ma(PowAlgorithm::Sha3x);
 
         assert_hash_rate(&mut hash_rate_ma, 0, 100_000, 333);
         assert_hash_rate(&mut hash_rate_ma, 1, 120_100, 366);
@@ -165,10 +165,10 @@ mod test {
     // Anyways, just in case we go with huge windows in the future, this test should fail with a panic due to overflow
     #[test]
     fn should_not_overflow() {
-        let mut sha3_hash_rate_ma = create_hash_rate_ma(PowAlgorithm::Sha3);
-        let mut monero_hash_rate_ma = create_hash_rate_ma(PowAlgorithm::Monero);
-        try_to_overflow(&mut sha3_hash_rate_ma);
-        try_to_overflow(&mut monero_hash_rate_ma);
+        let mut sha3x_hash_rate_ma = create_hash_rate_ma(PowAlgorithm::Sha3x);
+        let mut randomx_hash_rate_ma = create_hash_rate_ma(PowAlgorithm::RandomX);
+        try_to_overflow(&mut sha3x_hash_rate_ma);
+        try_to_overflow(&mut randomx_hash_rate_ma);
     }
 
     fn try_to_overflow(hash_rate_ma: &mut HashRateMovingAverage) {

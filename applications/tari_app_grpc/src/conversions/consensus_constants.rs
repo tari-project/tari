@@ -81,22 +81,19 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
             .map(|rpt| i32::from(rpt.as_byte()))
             .collect::<Vec<i32>>();
 
-        let monero_pow = PowAlgorithm::Monero;
-        let sha3_pow = PowAlgorithm::Sha3;
-
-        let monero_pow = grpc::PowAlgorithmConstants {
-            max_difficulty: cc.max_pow_difficulty(monero_pow).as_u64(),
-            min_difficulty: cc.min_pow_difficulty(monero_pow).as_u64(),
-            target_time: cc.pow_target_block_interval(monero_pow),
+        let randomx_pow = grpc::PowAlgorithmConstants {
+            max_difficulty: cc.max_pow_difficulty(PowAlgorithm::RandomX).as_u64(),
+            min_difficulty: cc.min_pow_difficulty(PowAlgorithm::RandomX).as_u64(),
+            target_time: cc.pow_target_block_interval(PowAlgorithm::RandomX),
         };
 
-        let sha3_pow = grpc::PowAlgorithmConstants {
-            max_difficulty: cc.max_pow_difficulty(sha3_pow).as_u64(),
-            min_difficulty: cc.min_pow_difficulty(sha3_pow).as_u64(),
-            target_time: cc.pow_target_block_interval(sha3_pow),
+        let sha3x_pow = grpc::PowAlgorithmConstants {
+            max_difficulty: cc.max_pow_difficulty(PowAlgorithm::Sha3x).as_u64(),
+            min_difficulty: cc.min_pow_difficulty(PowAlgorithm::Sha3x).as_u64(),
+            target_time: cc.pow_target_block_interval(PowAlgorithm::Sha3x),
         };
 
-        let proof_of_work = HashMap::from_iter([(0u32, monero_pow), (1u32, sha3_pow)]);
+        let proof_of_work = HashMap::from_iter([(0u32, randomx_pow), (1u32, sha3x_pow)]);
 
         Self {
             coinbase_min_maturity: cc.coinbase_min_maturity(),
@@ -109,7 +106,7 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
             emission_initial: emission_initial.into(),
             emission_decay: emission_decay.to_vec(),
             emission_tail: emission_tail.into(),
-            min_blake_pow_difficulty: cc.min_pow_difficulty(PowAlgorithm::Sha3).into(),
+            min_sha3x_pow_difficulty: cc.min_pow_difficulty(PowAlgorithm::Sha3x).into(),
             block_weight_inputs: weight_params.input_weight,
             block_weight_outputs: weight_params.output_weight,
             block_weight_kernels: weight_params.kernel_weight,

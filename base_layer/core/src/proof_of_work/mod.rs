@@ -36,7 +36,7 @@ pub use error::{DifficultyAdjustmentError, DifficultyError, PowError};
 #[cfg(feature = "base_node")]
 pub mod monero_rx;
 #[cfg(feature = "base_node")]
-pub use monero_rx::monero_difficulty;
+pub use monero_rx::randomx_difficulty;
 
 /// Crate for proof of work itself
 #[cfg(any(feature = "base_node", feature = "transactions"))]
@@ -53,11 +53,11 @@ pub use proof_of_work_algorithm::PowAlgorithm;
 
 /// Crates for proof of work sha3_pow
 #[cfg(feature = "base_node")]
-mod sha3_pow;
+mod sha3x_pow;
 #[cfg(feature = "base_node")]
-pub use sha3_pow::sha3x_difficulty;
+pub use sha3x_pow::sha3x_difficulty;
 #[cfg(all(test, feature = "base_node"))]
-pub use sha3_pow::test as sha3_test;
+pub use sha3x_pow::test as sha3x_test;
 
 /// Crates for proof of work target_difficulty
 mod target_difficulty;

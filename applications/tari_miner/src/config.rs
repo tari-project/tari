@@ -115,7 +115,7 @@ impl MinerConfig {
     pub fn pow_algo_request(&self) -> NewBlockTemplateRequest {
         let algo = match self.proof_of_work_algo {
             ProofOfWork::Sha3 => Some(PowAlgo {
-                pow_algo: PowAlgos::Sha3.into(),
+                pow_algo: PowAlgos::Sha3x.into(),
             }),
         };
         NewBlockTemplateRequest { algo, max_weight: 0 }

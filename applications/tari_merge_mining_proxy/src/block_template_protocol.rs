@@ -136,7 +136,7 @@ impl BlockTemplateProtocol<'_> {
             .base_node_client
             .get_new_block_template(grpc::NewBlockTemplateRequest {
                 algo: Some(grpc::PowAlgo {
-                    pow_algo: grpc::pow_algo::PowAlgos::Monero.into(),
+                    pow_algo: grpc::pow_algo::PowAlgos::Randomx.into(),
                 }),
                 max_weight: 0,
             })

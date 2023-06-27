@@ -94,12 +94,12 @@ async fn test_monero_blocks() {
     let cc = ConsensusConstantsBuilder::new(network)
         .with_max_randomx_seed_height(1)
         .clear_proof_of_work()
-        .add_proof_of_work(PowAlgorithm::Sha3, PowAlgorithmConstants {
+        .add_proof_of_work(PowAlgorithm::Sha3x, PowAlgorithmConstants {
             min_difficulty: Difficulty::min(),
             max_difficulty: Difficulty::min(),
             target_time: 300,
         })
-        .add_proof_of_work(PowAlgorithm::Monero, PowAlgorithmConstants {
+        .add_proof_of_work(PowAlgorithm::RandomX, PowAlgorithmConstants {
             min_difficulty: Difficulty::min(),
             max_difficulty: Difficulty::min(),
             target_time: 200,
@@ -173,7 +173,7 @@ fn add_monero_data(tblock: &mut Block, seed_key: &str) {
     };
     let mut serialized = Vec::new();
     BorshSerialize::serialize(&monero_data, &mut serialized).unwrap();
-    tblock.header.pow.pow_algo = PowAlgorithm::Monero;
+    tblock.header.pow.pow_algo = PowAlgorithm::RandomX;
     tblock.header.pow.pow_data = serialized;
 }
 
@@ -399,14 +399,14 @@ async fn test_orphan_body_validation() {
     let factories = CryptoFactories::default();
     let network = Network::Igor;
     // we dont want localnet's 1 difficulty or the full mined difficulty of weather wax but we want some.
-    let sha3_constants = PowAlgorithmConstants {
+    let sha3x_constants = PowAlgorithmConstants {
         min_difficulty: Difficulty::from_u64(10).expect("valid difficulty"),
         max_difficulty: Difficulty::max(),
         target_time: 300,
     };
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .clear_proof_of_work()
-        .add_proof_of_work(PowAlgorithm::Sha3, sha3_constants)
+        .add_proof_of_work(PowAlgorithm::Sha3x, sha3x_constants)
         .build();
     let key_manager = create_test_core_key_manager_with_memory_db();
     let (genesis, outputs) = create_genesis_block_with_utxos(&[T, T, T], &consensus_constants, &key_manager).await;
@@ -613,14 +613,14 @@ async fn test_header_validation() {
     let key_manager = create_test_core_key_manager_with_memory_db();
     let network = Network::Igor;
     // we dont want localnet's 1 difficulty or the full mined difficulty of weather wax but we want some.
-    let sha3_constants = PowAlgorithmConstants {
+    let sha3x_constants = PowAlgorithmConstants {
         min_difficulty: Difficulty::from_u64(20).expect("valid difficulty"),
         max_difficulty: Difficulty::max(),
         target_time: 300,
     };
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .clear_proof_of_work()
-        .add_proof_of_work(PowAlgorithm::Sha3, sha3_constants)
+        .add_proof_of_work(PowAlgorithm::Sha3x, sha3x_constants)
         .build();
     let (genesis, outputs) = create_genesis_block_with_utxos(&[T, T, T], &consensus_constants, &key_manager).await;
     let network = Network::LocalNet;
