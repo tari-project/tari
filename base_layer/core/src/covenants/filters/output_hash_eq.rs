@@ -22,10 +22,13 @@
 
 use crate::covenants::{context::CovenantContext, error::CovenantError, filters::Filter, output_set::OutputSet};
 
+/// Holding struct for the "output hash equal" filter
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OutputHashEqFilter;
 
 impl Filter for OutputHashEqFilter {
+    // The output hash equal filter searches for the hashed output field equal to the specified hash value
+    // based on the covenant context; either returning the output or nothing
     fn filter(&self, context: &mut CovenantContext<'_>, output_set: &mut OutputSet<'_>) -> Result<(), CovenantError> {
         let hash = context.next_arg()?.require_hash()?;
         // An output's hash is unique so the output set is either 1 or 0 outputs will match
