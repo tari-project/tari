@@ -72,15 +72,18 @@ use tari_script::{inputs, script};
 use tari_test_utils::unpack_enum;
 use tari_utilities::hex::Hex;
 
-use crate::helpers::{
-    block_builders::{
-        chain_block_with_coinbase,
-        chain_block_with_new_coinbase,
-        create_coinbase,
-        create_genesis_block_with_utxos,
-        find_header_with_achieved_difficulty,
+use crate::{
+    helpers::{
+        block_builders::{
+            chain_block_with_coinbase,
+            chain_block_with_new_coinbase,
+            create_coinbase,
+            create_genesis_block_with_utxos,
+            find_header_with_achieved_difficulty,
+        },
+        test_blockchain::TestBlockchain,
     },
-    test_blockchain::TestBlockchain,
+    tests::assert_block_add_result_added,
 };
 
 #[tokio::test]
@@ -122,13 +125,13 @@ async fn test_monero_blocks() {
 
     // Now we have block 1, lets add monero data to it
     add_monero_data(&mut block_1, seed1);
-    let cb_1 = db.add_block(Arc::new(block_1)).unwrap().assert_added();
+    let cb_1 = assert_block_add_result_added(&db.add_block(Arc::new(block_1)).unwrap());
     // Now lets add a second faulty block using the same seed hash
     let (block_2_t, _) = chain_block_with_new_coinbase(&cb_1, vec![], &cm, None, &key_manager).await;
     let mut block_2 = db.prepare_new_block(block_2_t).unwrap();
 
     add_monero_data(&mut block_2, seed1);
-    let cb_2 = db.add_block(Arc::new(block_2)).unwrap().assert_added();
+    let cb_2 = assert_block_add_result_added(&db.add_block(Arc::new(block_2)).unwrap());
     // Now lets add a third faulty block using the same seed hash. This should fail.
     let (block_3_t, _) = chain_block_with_new_coinbase(&cb_2, vec![], &cm, None, &key_manager).await;
     let mut block_3 = db.prepare_new_block(block_3_t).unwrap();
@@ -148,7 +151,7 @@ async fn test_monero_blocks() {
 
     // now lets fix the seed, and try again
     add_monero_data(&mut block_3, seed2);
-    db.add_block(Arc::new(block_3)).unwrap().assert_added();
+    assert_block_add_result_added(&db.add_block(Arc::new(block_3)).unwrap());
 }
 
 fn add_monero_data(tblock: &mut Block, seed_key: &str) {

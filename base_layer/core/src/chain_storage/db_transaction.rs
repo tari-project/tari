@@ -66,6 +66,7 @@ impl DbTransaction {
         DbTransaction::default()
     }
 
+    /// deletes the orphan, and if it was a tip will delete the orphan tip and make its prev header the new tip. This will not fail if the orphan does not exist.
     pub fn delete_orphan(&mut self, hash: HashOutput) -> &mut Self {
         self.operations.push(WriteOperation::DeleteOrphan(hash));
         self
