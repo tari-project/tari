@@ -627,17 +627,21 @@ where B: BlockchainBackend
         }
     }
 
-    /// Returns the header at the tip
+    /// Returns the header at the tip of the chain according to local chain metadata
     pub fn fetch_tip_header(&self) -> Result<ChainHeader, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_tip_header()
     }
 
+    /// Fetches the last  header that was added, might be past the tip, as the block body between this last  header and
+    /// actual tip might not have been added yet
     pub fn fetch_last_header(&self) -> Result<BlockHeader, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_last_header()
     }
 
+    /// Fetches the last chain header that was added, might be past the tip, as the block body between this last chain
+    /// header and actual tip might not have been added yet
     pub fn fetch_last_chain_header(&self) -> Result<ChainHeader, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_last_chain_header()
@@ -826,15 +830,13 @@ where B: BlockchainBackend
     }
 
     /// `calculate_mmr_roots` takes a _pre-sorted_ block body and calculates the MMR roots for it.
-    ///
-    /// ## Panic
-    /// This function will panic if the block body is not sorted
     pub fn calculate_mmr_roots(&self, block: Block) -> Result<(Block, MmrRoots), ChainStorageError> {
         let db = self.db_read_access()?;
-        assert!(
-            block.body.is_sorted(),
-            "calculate_mmr_roots expected a sorted block body, however the block body was not sorted"
-        );
+        if !block.body.is_sorted() {
+            return Err(ChainStorageError::InvalidBlock(
+                "calculate_mmr_roots expected a sorted block body, however the block body was not sorted".to_string(),
+            ));
+        };
         let mmr_roots = calculate_mmr_roots(&*db, self.rules(), &block)?;
         Ok((block, mmr_roots))
     }
@@ -1549,6 +1551,8 @@ pub fn fetch_target_difficulty_for_next_block<T: BlockchainBackend>(
     while header.height() > 0 && !target_difficulties.is_full() {
         header = db.fetch_chain_header_in_all_chains(&header.header().prev_hash)?;
 
+        // LWMA works with the "newest" value being at the back of the array, so we need to keep pushing to the front as
+        // we keep adding "older" values
         if header.header().pow.pow_algo == pow_algo {
             target_difficulties.add_front(header.header().timestamp(), header.accumulated_data().target_difficulty);
         }
