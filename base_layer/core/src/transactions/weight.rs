@@ -105,7 +105,9 @@ impl TransactionWeight {
         body.outputs()
             .iter()
             .map(|o| {
-                let actual_size = o.get_features_and_scripts_size();
+                let actual_size = o
+                    .get_features_and_scripts_size()
+                    .expect("Failed to get serialized size");
                 // round up each output to nearest multiple of features_and_scripts_byte_per_gram
                 self.round_up_features_and_scripts_size(actual_size)
             })

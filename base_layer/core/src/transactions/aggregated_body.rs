@@ -359,7 +359,10 @@ impl AggregateBody {
     }
 
     pub fn sum_features_and_scripts_size(&self) -> usize {
-        self.outputs.iter().map(|o| o.get_features_and_scripts_size()).sum()
+        self.outputs
+            .iter()
+            .map(|o| o.get_features_and_scripts_size().expect("Failed to serialize size"))
+            .sum()
     }
 
     pub fn is_sorted(&self) -> bool {

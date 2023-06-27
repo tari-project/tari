@@ -257,25 +257,27 @@ where KM: TransactionKeyManagerInterface
         self
     }
 
-    fn get_total_features_and_scripts_size_for_outputs(&self) -> usize {
+    fn get_total_features_and_scripts_size_for_outputs(&self) -> std::io::Result<usize> {
         let mut size = 0;
         size += self
             .sender_custom_outputs
             .iter()
             .map(|o| {
-                self.fee
-                    .weighting()
-                    .round_up_features_and_scripts_size(o.output.features_and_scripts_byte_size())
+                self.fee.weighting().round_up_features_and_scripts_size(
+                    o.output
+                        .features_and_scripts_byte_size()
+                        .expect("Invalid serialized size"),
+                )
             })
             .sum::<usize>();
         if let Some(recipient_data) = &self.recipient {
             size += self.fee.weighting().round_up_features_and_scripts_size(
-                self.get_recipient_output_features().get_serialized_size() +
-                    recipient_data.recipient_script.get_serialized_size(),
+                self.get_recipient_output_features().get_serialized_size()? +
+                    recipient_data.recipient_script.get_serialized_size()?,
             )
         }
 
-        size
+        Ok(size)
     }
 
     fn get_recipient_output_features(&self) -> OutputFeatures {
@@ -304,7 +306,9 @@ where KM: TransactionKeyManagerInterface
         };
         let fee_per_gram = self.fee_per_gram.ok_or("Fee per gram was not provided")?;
 
-        let features_and_scripts_size_without_change = self.get_total_features_and_scripts_size_for_outputs();
+        let features_and_scripts_size_without_change = self
+            .get_total_features_and_scripts_size_for_outputs()
+            .map_err(|e| e.to_string())?;
         let fee_without_change = self.fee().calculate(
             fee_per_gram,
             1,
@@ -315,8 +319,13 @@ where KM: TransactionKeyManagerInterface
 
         let output_features = OutputFeatures::default();
         let change_features_and_scripts_size = match &self.change {
-            Some(data) => data.change_script.get_serialized_size() + OutputFeatures::default().get_serialized_size(),
-            None => output_features.get_serialized_size(),
+            Some(data) => {
+                data.change_script.get_serialized_size().map_err(|e| e.to_string())? +
+                    OutputFeatures::default()
+                        .get_serialized_size()
+                        .map_err(|e| e.to_string())?
+            },
+            None => output_features.get_serialized_size().map_err(|e| e.to_string())?,
         };
         let change_features_and_scripts_size = self
             .fee()

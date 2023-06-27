@@ -337,7 +337,8 @@ impl MempoolStorage {
         let target_weight = self
             .rules
             .consensus_constants(tip_height)
-            .max_block_weight_excluding_coinbase();
+            .max_block_weight_excluding_coinbase()
+            .map_err(|e| MempoolError::InternalError(e.to_string()))?;
         let stats = self.unconfirmed_pool.get_fee_per_gram_stats(count, target_weight)?;
         Ok(stats)
     }

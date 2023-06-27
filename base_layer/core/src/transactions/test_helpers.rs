@@ -189,7 +189,12 @@ impl TestParams {
     pub fn get_size_for_default_features_and_scripts(&self, num_outputs: usize) -> usize {
         let output_features = OutputFeatures { ..Default::default() };
         self.fee().weighting().round_up_features_and_scripts_size(
-            script![Nop].get_serialized_size() + output_features.get_serialized_size(),
+            script![Nop]
+                .get_serialized_size()
+                .expect("Failed to get serialized size") +
+                output_features
+                    .get_serialized_size()
+                    .expect("Failed to get serialized size"),
         ) * num_outputs
     }
 }
@@ -528,9 +533,15 @@ pub async fn create_wallet_outputs(
     let weighting = TransactionWeight::latest();
     // This is a best guess to not underestimate metadata size
     let output_features_and_scripts_size = weighting.round_up_features_and_scripts_size(
-        output_features.get_serialized_size() +
-            output_script.get_serialized_size() +
-            output_covenant.get_serialized_size(),
+        output_features
+            .get_serialized_size()
+            .expect("Failed to get serialized size") +
+            output_script
+                .get_serialized_size()
+                .expect("Failed to get serialized size") +
+            output_covenant
+                .get_serialized_size()
+                .expect("Failed to get serialized size"),
     ) * output_count;
     let estimated_fee = Fee::new(weighting).calculate(
         fee_per_gram,

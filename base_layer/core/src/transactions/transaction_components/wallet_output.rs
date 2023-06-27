@@ -275,8 +275,10 @@ impl WalletOutput {
         Ok(output)
     }
 
-    pub fn features_and_scripts_byte_size(&self) -> usize {
-        self.features.get_serialized_size() + self.script.get_serialized_size() + self.covenant.get_serialized_size()
+    pub fn features_and_scripts_byte_size(&self) -> std::io::Result<usize> {
+        Ok(self.features.get_serialized_size()? +
+            self.script.get_serialized_size()? +
+            self.covenant.get_serialized_size()?)
     }
 
     // Note: The Hashable trait is not used here due to the dependency on `CryptoFactories`, and `commitment` is not
