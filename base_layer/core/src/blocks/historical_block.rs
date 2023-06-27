@@ -37,7 +37,7 @@ pub struct HistoricalBlock {
     pub confirmations: u64,
     /// The underlying block
     block: Block,
-    /// Accumulated data
+    /// Accumulated data in the block header
     pub accumulated_data: BlockHeaderAccumulatedData,
     pruned_outputs: Vec<HashOutput>,
     pruned_input_count: u64,

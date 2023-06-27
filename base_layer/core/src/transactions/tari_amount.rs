@@ -62,6 +62,8 @@ use super::format_currency;
     BorshSerialize,
     BorshDeserialize,
 )]
+
+/// The minimum spendable unit Tari token amount
 pub struct MicroTari(pub u64);
 
 #[derive(Debug, Clone, ThisError, PartialEq, Eq)]
