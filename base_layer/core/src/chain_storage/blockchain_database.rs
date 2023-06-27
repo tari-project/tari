@@ -1875,8 +1875,6 @@ fn rewind_to_hash<T: BlockchainBackend>(
 
 // Checks whether we should add the block as an orphan. If it is the case, the orphan block is added and the chain
 // is reorganised if necessary.
-// TODO: Reduce LOC in this function
-#[allow(clippy::too_many_lines)]
 fn handle_possible_reorg<T: BlockchainBackend>(
     db: &mut T,
     config: &BlockchainDatabaseConfig,
@@ -2191,24 +2189,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
     txn.set_accumulated_data_for_orphan(chain_block.accumulated_data().clone());
     db.write(txn)?;
 
-    let prev_timestamps_count = cmp::min(
-        rules
-            .consensus_constants(chain_header.height())
-            .get_median_timestamp_count(),
-        chain_header.height() as usize - 1,
-    );
-
-    let mut prev_timestamps = Vec::with_capacity(prev_timestamps_count);
-    prev_timestamps.push(EpochTime::from(chain_header.timestamp()));
-    let mut curr_header = *chain_header.hash();
-    for _ in 0..prev_timestamps_count {
-        let h = db.fetch_chain_header_in_all_chains(&curr_header)?;
-        curr_header = h.header().prev_hash;
-        let timestamp = EpochTime::from(h.timestamp());
-        prev_timestamps.push(timestamp);
-    }
     let tips = find_orphan_descendant_tips_of(db, chain_header, &prev_timestamps, validator)?;
-
     debug!(target: LOG_TARGET, "Found {} new orphan tips", tips.len());
     let mut txn = DbTransaction::new();
     for new_tip in &tips {
