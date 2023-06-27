@@ -46,7 +46,7 @@ impl<B: BlockchainBackend> TransactionValidator for TransactionChainLinkedValida
         let consensus_constants = self.db.consensus_constants()?;
         // validate maximum tx weight
         if tx.calculate_weight(consensus_constants.transaction_weight_params()) >
-            consensus_constants.get_max_block_weight_excluding_coinbase()
+            consensus_constants.max_block_weight_excluding_coinbase()
         {
             return Err(ValidationError::MaxTransactionWeightExceeded);
         }

@@ -244,7 +244,7 @@ pub fn check_outputs<B: BlockchainBackend>(
     constants: &ConsensusConstants,
     body: &AggregateBody,
 ) -> Result<(), ValidationError> {
-    let max_script_size = constants.get_max_script_byte_size();
+    let max_script_size = constants.max_script_byte_size();
     for output in body.outputs() {
         check_tari_script_byte_size(&output.script, max_script_size)?;
         check_not_duplicate_txo(db, output)?;

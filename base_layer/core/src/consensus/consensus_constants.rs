@@ -200,18 +200,18 @@ impl ConsensusConstants {
     }
 
     /// When doing difficulty adjustments and FTL calculations this is the amount of blocks we look at.
-    pub fn get_difficulty_block_window(&self) -> u64 {
+    pub fn difficulty_block_window(&self) -> u64 {
         self.difficulty_block_window
     }
 
     /// Maximum transaction weight used for the construction of new blocks.
-    pub fn get_max_block_transaction_weight(&self) -> u64 {
+    pub fn max_block_transaction_weight(&self) -> u64 {
         self.max_block_transaction_weight
     }
 
     /// Maximum transaction weight used for the construction of new blocks. It leaves place for 1 kernel and 1 output
     /// with default features
-    pub fn get_max_block_weight_excluding_coinbase(&self) -> u64 {
+    pub fn max_block_weight_excluding_coinbase(&self) -> u64 {
         self.max_block_transaction_weight - self.calculate_1_output_kernel_weight()
     }
 
@@ -228,7 +228,7 @@ impl ConsensusConstants {
     }
 
     /// The amount of PoW algorithms used by the Tari chain.
-    pub fn get_pow_algo_count(&self) -> u64 {
+    pub fn pow_algo_count(&self) -> u64 {
         self.proof_of_work.len() as u64
     }
 
@@ -251,12 +251,12 @@ impl ConsensusConstants {
     }
 
     /// This is how many blocks we use to count towards the median timestamp to ensure the block chain moves forward.
-    pub fn get_median_timestamp_count(&self) -> usize {
+    pub fn median_timestamp_count(&self) -> usize {
         self.median_timestamp_count
     }
 
     /// The maximum serialized byte size of TariScript
-    pub fn get_max_script_byte_size(&self) -> usize {
+    pub fn max_script_byte_size(&self) -> usize {
         self.max_script_byte_size
     }
 

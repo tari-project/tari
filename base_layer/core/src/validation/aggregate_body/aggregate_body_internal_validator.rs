@@ -109,7 +109,7 @@ impl AggregateBodyInternalConsistencyValidator {
             body,
             self.consensus_manager
                 .consensus_constants(height)
-                .get_max_script_byte_size(),
+                .max_script_byte_size(),
         )?;
 
         check_sorting_and_duplicates(body)?;
@@ -313,7 +313,7 @@ fn check_weight(
     consensus_constants: &ConsensusConstants,
 ) -> Result<(), ValidationError> {
     let block_weight = body.calculate_weight(consensus_constants.transaction_weight_params());
-    let max_weight = consensus_constants.get_max_block_transaction_weight();
+    let max_weight = consensus_constants.max_block_transaction_weight();
     if block_weight <= max_weight {
         trace!(
             target: LOG_TARGET,

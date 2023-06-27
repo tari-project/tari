@@ -1239,7 +1239,7 @@ async fn consensus_validation_large_tx() {
     let weight = tx.calculate_weight(weighting);
 
     // check the tx weight is more than the max for 1 block
-    assert!(weight > constants.get_max_block_transaction_weight());
+    assert!(weight > constants.max_block_transaction_weight());
 
     let response = mempool.insert(Arc::new(tx)).await.unwrap();
     // make sure the tx was not accepted into the mempool
