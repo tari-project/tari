@@ -82,37 +82,28 @@ impl<'a, H: Digest<OutputSize = U32>> TerminalBranch<'a, H> {
     /// Returns the terminal node of the branch
     pub fn terminal(&self) -> &Node<H> {
         let branch = self.parent.as_branch().unwrap();
-        match &self.direction {
-            TraverseDirection::Left => branch.left(),
-            TraverseDirection::Right => branch.right(),
-        }
+        branch.child(self.direction)
     }
 
-    /// When inserting a new leaf node, there might be a slew of branch nodes to create depending on where the keys
-    /// of the existing leaf and new leaf node diverge. E.g. if a leaf node of key `1101` is being inserted into a
-    /// tree with a single leaf node of key `1100` then we must create branches at `1...`, `11..`, and `110.` with
-    /// the leaf nodes `1100` and `1101` being the left and right branches at height 4 respectively.
-    ///
-    /// This function handles this case, as well the simple update case, and the simple insert case, where the target
-    /// node is empty.
+    // When inserting a new leaf node, there might be a slew of branch nodes to create depending on where the keys
+    // of the existing leaf and new leaf node diverge. E.g. if a leaf node of key `1101` is being inserted into a
+    // tree with a single leaf node of key `1100` then we must create branches at `1...`, `11..`, and `110.` with
+    // the leaf nodes `1100` and `1101` being the left and right branches at height 4 respectively.
+    //
+    // This function handles this case, as well the simple update case, and the simple insert case, where the target
+    // node is empty.
     fn insert_or_update_leaf(&mut self, leaf: LeafNode<H>) -> Result<UpdateResult, SMTError> {
-        let height = self.parent.as_branch().ok_or(SMTError::UnexpectedNodeType)?.height();
-        self.parent
-            .as_branch_mut()
-            .ok_or(SMTError::UnexpectedNodeType)?
-            .mark_as_stale();
-        let terminal = match self.direction {
-            TraverseDirection::Left => self.parent.as_branch_mut().unwrap().left_mut(),
-            TraverseDirection::Right => self.parent.as_branch_mut().unwrap().right_mut(),
-        };
+        let branch = self.parent.as_branch_mut().ok_or(SMTError::UnexpectedNodeType)?;
+        let height = branch.height();
+        let terminal = branch.child_mut(self.direction);
         match terminal {
             Empty(_) => {
                 *terminal = Node::Leaf(leaf);
                 Ok(UpdateResult::Inserted)
             },
             Leaf(old_leaf) if old_leaf.key() == leaf.key() => {
-                let old_value = old_leaf.value().clone();
-                *terminal = Node::Leaf(leaf);
+                let old = mem::replace(old_leaf, leaf);
+                let old_value = old.to_value_hash();
                 Ok(UpdateResult::Updated(old_value))
             },
             Leaf(_) => {
@@ -125,17 +116,15 @@ impl<'a, H: Digest<OutputSize = U32>> TerminalBranch<'a, H> {
         }
     }
 
-    /// Classifies the type of deletion that should be performed on the terminal node. If the key is not in the tree,
-    /// there is nothing to delete and we return `KeyDoesNotExist`. If the key does exist, we need to know whether the
-    /// sibling node is a leaf (i.e. the parent is a `TerminalBranch`) or a branch (the parent is a
-    /// `NonTerminalBranch`). For terminal branches, the deletion logic is more complex as it is a reverse of the
-    /// `insert_or_update_leaf` logic for insertion.
-    fn exists(&self, key: &NodeKey) -> Result<PathClassifier, SMTError> {
+    // Classifies the type of deletion that should be performed on the terminal node. If the key is not in the tree,
+    // there is nothing to delete and we return `KeyDoesNotExist`. If the key does exist, we need to know whether the
+    // sibling node is a leaf (i.e. the parent is a `TerminalBranch`) or a branch (the parent is a
+    // `NonTerminalBranch`). For terminal branches, the deletion logic is more complex as it is a reverse of the
+    // `insert_or_update_leaf` logic for insertion.
+    fn classify_deletion(&self, key: &NodeKey) -> Result<PathClassifier, SMTError> {
         let branch = self.parent.as_branch().ok_or(SMTError::UnexpectedNodeType)?;
-        let (terminal, other_is_branch) = match self.direction {
-            TraverseDirection::Left => (branch.left(), branch.right().is_branch()),
-            TraverseDirection::Right => (branch.right(), branch.left().is_branch()),
-        };
+        let terminal = branch.child(self.direction);
+        let other_is_branch = branch.child(!self.direction).is_branch();
         if terminal.is_empty() {
             Ok(PathClassifier::KeyDoesNotExist)
         } else if terminal.is_branch() {
@@ -150,9 +139,10 @@ impl<'a, H: Digest<OutputSize = U32>> TerminalBranch<'a, H> {
         }
     }
 
-    /// When deleting a leaf node, there might be a slew of branch nodes to delete if the sibling node
-    /// of the deleted node is also a leaf node. It's essentially the reverse of the `insert_or_update_leaf` function
-    /// above.
+    // When deleting a node with a non-empty sibling, that node is an orphan and needs to be inserted higher up
+    // in the tree at the highest spot where it would have a non-empty sibling.
+    //
+    // This function prunes that node and returns the height that it needs to be inserted into.
     fn prune(&mut self) -> Result<(Node<H>, usize), SMTError> {
         let branches_to_prune = self.empty_siblings.iter()
             .rev()
@@ -161,37 +151,19 @@ impl<'a, H: Digest<OutputSize = U32>> TerminalBranch<'a, H> {
             .take_while(|b| **b)
             .count() +
             1; // Account for the last branch
-        let depth = (self.parent.as_branch().ok_or(SMTError::UnexpectedNodeType)?.height() + 1)
+        let parent = self.parent.as_branch_mut().ok_or(SMTError::UnexpectedNodeType)?;
+        let depth = (parent.height() + 1)
             .checked_sub(branches_to_prune)
-            .ok_or_else(|| SMTError::InvalidBranch("Logic error: Trying to brune beyond root".into()))?;
-        let orphan_node = match self.direction {
-            TraverseDirection::Left => {
-                let terminal = self
-                    .parent
-                    .as_branch_mut()
-                    .ok_or(SMTError::InvalidTerminalNode)?
-                    .right_mut();
-                mem::replace(terminal, Node::Empty(EmptyNode {}))
-            },
-            TraverseDirection::Right => {
-                let terminal = self
-                    .parent
-                    .as_branch_mut()
-                    .ok_or(SMTError::InvalidTerminalNode)?
-                    .left_mut();
-                mem::replace(terminal, Node::Empty(EmptyNode {}))
-            },
-        };
+            .ok_or_else(|| SMTError::InvalidBranch("Logic error: Trying to prune beyond root".into()))?;
+        let terminal = parent.child_mut(!self.direction);
+        let orphan_node = mem::replace(terminal, Node::Empty(EmptyNode {}));
         Ok((orphan_node, depth))
     }
 
-    /// Replaces the terminal node with an Empty node, returning the deleted node
+    // Replaces the terminal node with an Empty node, returning the deleted node
     fn delete(&mut self) -> Result<ValueHash, SMTError> {
         let branch = self.parent.as_branch_mut().ok_or(SMTError::UnexpectedNodeType)?;
-        let terminal = match &self.direction {
-            TraverseDirection::Left => branch.left_mut(),
-            TraverseDirection::Right => branch.right_mut(),
-        };
+        let terminal = branch.child_mut(self.direction);
         let old = mem::replace(terminal, Node::Empty(EmptyNode {}));
         let hash = old.to_leaf()?.to_value_hash();
         Ok(hash)
@@ -199,30 +171,36 @@ impl<'a, H: Digest<OutputSize = U32>> TerminalBranch<'a, H> {
 }
 
 impl<H: Digest<OutputSize = U32>> SparseMerkleTree<H> {
+    /// Lazily returns the hash of the Sparse Merkle tree. This function requires a mutable reference to `self` in
+    /// case the root node needs to be updated. If you are absolutely sure that the merkle root is correct and want a
+    /// non-mutable reference, use [`SparseMerkleTree::unsafe_hash()`] instead.
     pub fn hash(&mut self) -> &NodeHash {
         self.root.hash()
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.size == 0
+    /// Returns the hash of the Sparse Merkle tree. This function does not require a mutable reference to `self` but
+    /// should only be used if you are absolutely sure that the merkle root is correct. Otherwise, use
+    /// [`SparseMerkleTree::hash()`] instead.
+    pub fn unsafe_hash(&self) -> &NodeHash {
+        self.root.unsafe_hash()
     }
 
+    /// Returns true if the entire Merkle tree is empty.
+    pub fn is_empty(&self) -> bool {
+        self.root.is_empty()
+    }
+
+    /// Attempts to delete the value at the location `key`. If the tree contains the key, the deleted value hash is
+    /// returned. Otherwise, `KeyNotFound` is returned.
     pub fn delete(&mut self, key: &NodeKey) -> Result<DeleteResult, SMTError> {
-        if self.root.is_empty() {
+        if self.is_empty() {
             return Ok(DeleteResult::KeyNotFound);
         }
         if self.root.is_leaf() {
-            let leaf = self.root.as_leaf().ok_or(SMTError::UnexpectedNodeType)?;
-            if leaf.key() == key {
-                let leaf = mem::replace(&mut self.root, Node::Empty(EmptyNode {}));
-                let leaf_hash = leaf.to_leaf()?.to_value_hash();
-                self.size -= 1;
-                return Ok(DeleteResult::Deleted(leaf_hash));
-            }
-            return Ok(DeleteResult::KeyNotFound);
+            return self.delete_root(key);
         }
         let mut path = self.find_terminal_branch(key, false)?;
-        let result = match path.exists(key)? {
+        let result = match path.classify_deletion(key)? {
             PathClassifier::KeyDoesNotExist => DeleteResult::KeyNotFound,
             PathClassifier::TerminalBranch => {
                 let deleted = path
@@ -247,23 +225,24 @@ impl<H: Digest<OutputSize = U32>> SparseMerkleTree<H> {
         Ok(result)
     }
 
+    /// Update and existing node at location `key` in the tree, or, if the key does not exist, insert a new node at
+    /// location `key` instead. Returns `Ok(UpdateResult::Updated)` if the node was updated, or
+    /// `Ok(UpdateResult::Inserted)` if the node was inserted.
+    ///
+    /// `upsert` takes care of extending the tree if necessary, creating new branches until the new key can be inserted
+    /// as a leaf node.
+    ///
+    /// The hash will be stale after a successful call to `upsert`. Do not call `unsafe_hash` directly after updating
+    /// the tree.
     pub fn upsert(&mut self, key: NodeKey, value: ValueHash) -> Result<UpdateResult, SMTError> {
         let new_leaf = LeafNode::new(key, value);
-        if self.root.is_empty() {
+        if self.is_empty() {
             self.root = Node::Leaf(new_leaf);
             self.size += 1;
             return Ok(UpdateResult::Inserted);
         }
         if self.root.is_leaf() {
-            if self.root.as_leaf().ok_or(SMTError::UnexpectedNodeType)?.key() == new_leaf.key() {
-                let old_leaf = mem::replace(&mut self.root, Leaf(new_leaf)).to_leaf()?;
-                return Ok(UpdateResult::Updated(old_leaf.to_value_hash()));
-            }
-            let old_root = mem::replace(&mut self.root, Node::Empty(EmptyNode {})).to_leaf()?;
-            let root = old_root.build_tree(0, new_leaf)?;
-            self.root = Branch(root);
-            self.size += 1;
-            return Ok(UpdateResult::Inserted);
+            return self.upsert_root(new_leaf);
         }
         // Traverse the tree until we find either an empty node or a leaf node.
         let mut terminal_node = self.find_terminal_branch(new_leaf.key(), true)?;
@@ -274,17 +253,52 @@ impl<H: Digest<OutputSize = U32>> SparseMerkleTree<H> {
         Ok(result)
     }
 
+    /// Returns true if the tree contains the key `key`.
     pub fn contains(&self, key: &NodeKey) -> bool {
         self.search_node(key).ok().is_some()
     }
 
+    /// Returns the value at location `key` if it exists, or `None` otherwise.
     pub fn get(&self, key: &NodeKey) -> Result<Option<&ValueHash>, SMTError> {
         let node = self.search_node(key)?;
         Ok(node.map(|n| n.as_leaf().unwrap().value()))
     }
 
-    /// Finds the branch node above the terminal node. The case of "no parent" is already covered, so there will
-    /// always be a branch node
+    /// Constructs a Merkle proof for the value at location `key`.
+    pub fn build_proof(&self, key: &NodeKey) -> Result<MerkleProof<H>, SMTError> {
+        let mut path = Vec::new();
+        let mut siblings = Vec::new();
+        let mut current_node = &self.root;
+        while current_node.is_branch() {
+            let branch = current_node.as_branch().unwrap();
+            if branch.is_stale() {
+                return Err(SMTError::StaleHash);
+            }
+            let dir = traverse_direction(branch.height(), branch.key(), key)?;
+            path.push(dir);
+            current_node = match dir {
+                TraverseDirection::Left => {
+                    siblings.push(branch.right().unsafe_hash().clone());
+                    branch.left()
+                },
+                TraverseDirection::Right => {
+                    siblings.push(branch.left().unsafe_hash().clone());
+                    branch.right()
+                },
+            };
+        }
+        let (key, value) = match current_node {
+            Branch(_) => return Err(SMTError::UnexpectedNodeType),
+            Leaf(leaf) => (leaf.key().clone(), Some(leaf.value().clone())),
+            Empty(_) => (key.clone(), None),
+        };
+        siblings.iter().for_each(|s| println!("Sibling: {s:x}"));
+        let proof = MerkleProof::new(path, siblings, key, value);
+        Ok(proof)
+    }
+
+    // Finds the branch node above the terminal node. The case of "no parent" is already covered, so there will
+    // always be a branch node
     fn find_terminal_branch(
         &mut self,
         child_key: &NodeKey,
@@ -330,49 +344,14 @@ impl<H: Digest<OutputSize = U32>> SparseMerkleTree<H> {
         Ok(terminal)
     }
 
-    pub fn build_proof(&self, key: &NodeKey) -> Result<MerkleProof<H>, SMTError> {
-        let mut path = Vec::new();
-        let mut siblings = Vec::new();
-        let mut current_node = &self.root;
-        while current_node.is_branch() {
-            let branch = current_node.as_branch().unwrap();
-            if branch.is_stale() {
-                return Err(SMTError::StaleHash);
-            }
-            let dir = traverse_direction(branch.height(), branch.key(), key)?;
-            path.push(dir);
-            current_node = match dir {
-                TraverseDirection::Left => {
-                    siblings.push(branch.right().unsafe_hash().clone());
-                    branch.left()
-                },
-                TraverseDirection::Right => {
-                    siblings.push(branch.left().unsafe_hash().clone());
-                    branch.right()
-                },
-            };
-        }
-        println!("Terminal node hash: {:x}", current_node.unsafe_hash());
-        let (key, value) = match current_node {
-            Branch(_) => return Err(SMTError::UnexpectedNodeType),
-            Leaf(leaf) => (leaf.key().clone(), Some(leaf.value().clone())),
-            Empty(_) => (key.clone(), None),
-        };
-        siblings.iter().for_each(|s| println!("Sibling: {s:x}"));
-        let proof = MerkleProof::new(path, siblings, key, value);
-        Ok(proof)
-    }
-
+    // Similar to `find_terminal_branch`, but does not require a mutable reference to self.
     fn search_node(&self, key: &NodeKey) -> Result<Option<&Node<H>>, SMTError> {
         let mut node = &self.root;
         loop {
             match node {
                 Branch(branch) => {
                     let traverse_dir = traverse_direction(branch.height(), branch.key(), key)?;
-                    node = match traverse_dir {
-                        TraverseDirection::Left => branch.left(),
-                        TraverseDirection::Right => branch.right(),
-                    };
+                    node = branch.child(traverse_dir)
                 },
                 Leaf(leaf) => {
                     return if leaf.key() == key { Ok(Some(node)) } else { Ok(None) };
@@ -384,6 +363,34 @@ impl<H: Digest<OutputSize = U32>> SparseMerkleTree<H> {
         }
     }
 
+    // Handles the case of deletion when the root is a leaf. If the keys match, the old hash value is returned.
+    // Otherwise, the key is not in the tree and `KeyNotFound` is returned.
+    fn delete_root(&mut self, key: &NodeKey) -> Result<DeleteResult, SMTError> {
+        let leaf = self.root.as_leaf().ok_or(SMTError::UnexpectedNodeType)?;
+        if leaf.key() == key {
+            let leaf = mem::replace(&mut self.root, Node::Empty(EmptyNode {}));
+            let leaf_hash = leaf.to_leaf()?.to_value_hash();
+            self.size -= 1;
+            return Ok(DeleteResult::Deleted(leaf_hash));
+        }
+        return Ok(DeleteResult::KeyNotFound);
+    }
+
+    // Performs an update or insert if the root is a leaf.
+    fn upsert_root(&mut self, new_leaf: LeafNode<H>) -> Result<UpdateResult, SMTError> {
+        let leaf = self.root.as_leaf().ok_or(SMTError::UnexpectedNodeType)?;
+        if leaf.key() == new_leaf.key() {
+            let old_leaf = mem::replace(&mut self.root, Leaf(new_leaf)).to_leaf()?;
+            return Ok(UpdateResult::Updated(old_leaf.to_value_hash()));
+        }
+        let old_root = mem::replace(&mut self.root, Empty(EmptyNode {})).to_leaf()?;
+        let root = old_root.build_tree(0, new_leaf)?;
+        self.root = Branch(root);
+        self.size += 1;
+        return Ok(UpdateResult::Inserted);
+    }
+
+    // This function attaches a node to the branch at the specified height.
     fn attach_orphan_at_depth(&mut self, key: &NodeKey, height: usize, orphan: Node<H>) -> Result<(), SMTError> {
         if height == 0 {
             self.root = orphan;
@@ -394,10 +401,7 @@ impl<H: Digest<OutputSize = U32>> SparseMerkleTree<H> {
             let branch = node.as_branch_mut().ok_or(SMTError::UnexpectedNodeType)?;
             branch.mark_as_stale();
             let traverse_dir = traverse_direction(branch.height(), branch.key(), key)?;
-            node = match traverse_dir {
-                TraverseDirection::Left => branch.left_mut(),
-                TraverseDirection::Right => branch.right_mut(),
-            };
+            node = branch.child_mut(traverse_dir);
         }
         *node = orphan;
         Ok(())
