@@ -64,7 +64,7 @@ impl<'a> From<&'a [(&'static str, u64, u64)]> for BlockSpecs {
                     BlockSpec::builder()
                         .with_name(name)
                         .with_block_time(*time)
-                        .with_difficulty((*diff).into())
+                        .with_difficulty(Difficulty::from_u64(*diff).unwrap())
                         .finish()
                 })
                 .collect(),
@@ -237,7 +237,7 @@ impl Default for BlockSpec {
         Self {
             name: "<unnamed>",
             parent: "",
-            difficulty: 1.into(),
+            difficulty: Difficulty::min(),
             block_time: 120,
             height_override: None,
             reward_override: None,

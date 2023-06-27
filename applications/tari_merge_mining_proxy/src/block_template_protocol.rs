@@ -136,7 +136,7 @@ impl BlockTemplateProtocol<'_> {
             .base_node_client
             .get_new_block_template(grpc::NewBlockTemplateRequest {
                 algo: Some(grpc::PowAlgo {
-                    pow_algo: grpc::pow_algo::PowAlgos::Monero.into(),
+                    pow_algo: grpc::pow_algo::PowAlgos::Randomx.into(),
                 }),
                 max_weight: 0,
             })
@@ -253,7 +253,7 @@ impl BlockTemplateProtocol<'_> {
         );
         Ok(FinalBlockTemplateData {
             template: block_template_data,
-            target_difficulty: mining_difficulty.into(),
+            target_difficulty: Difficulty::from_u64(mining_difficulty)?,
             blockhashing_blob,
             blocktemplate_blob,
             merge_mining_hash: tari_block.merge_mining_hash,

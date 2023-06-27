@@ -319,11 +319,11 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
             kernel_hashes.push(kernel.hash());
 
-            // TODO: We mix u32 and u64 for the mmr length. This comes down to the use of a 32-bit croaring Bitmap.
-            //       Suggest should use u64 externally (u64 is in the header) and error on the database calls if they
-            //       are > u32::MAX. Remove the clippy exception once fixed.
-            #[allow(clippy::cast_possible_truncation)]
-            txn.insert_kernel_via_horizon_sync(kernel, *current_header.hash(), mmr_position as u32);
+            let mmr_position_u32 = u32::try_from(mmr_position).map_err(|_| HorizonSyncError::InvalidMmrPosition {
+                at_height: current_header.height(),
+                mmr_position,
+            })?;
+            txn.insert_kernel_via_horizon_sync(kernel, *current_header.hash(), mmr_position_u32);
             if mmr_position == current_header.header().kernel_mmr_size - 1 {
                 let num_kernels = kernel_hashes.len();
                 debug!(
@@ -532,7 +532,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     );
                     height_utxo_counter += 1;
                     let output = TransactionOutput::try_from(output).map_err(HorizonSyncError::ConversionError)?;
-                    helpers::check_tari_script_byte_size(&output.script, constants.get_max_script_byte_size())?;
+                    helpers::check_tari_script_byte_size(&output.script, constants.max_script_byte_size())?;
                     unpruned_outputs.push(output.clone());
 
                     output_mmr.push(output.hash().to_vec())?;

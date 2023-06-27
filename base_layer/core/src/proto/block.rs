@@ -28,7 +28,7 @@ use tari_utilities::ByteArray;
 use super::core as proto;
 use crate::{
     blocks::{Block, BlockHeaderAccumulatedData, HistoricalBlock, NewBlock, NewBlockHeaderTemplate, NewBlockTemplate},
-    proof_of_work::ProofOfWork,
+    proof_of_work::{Difficulty, ProofOfWork},
 };
 
 //---------------------------------- Block --------------------------------------------//
@@ -114,8 +114,8 @@ impl From<BlockHeaderAccumulatedData> for proto::BlockHeaderAccumulatedData {
     fn from(source: BlockHeaderAccumulatedData) -> Self {
         Self {
             achieved_difficulty: source.achieved_difficulty.into(),
-            accumulated_monero_difficulty: source.accumulated_monero_difficulty.into(),
-            accumulated_sha_difficulty: source.accumulated_sha_difficulty.into(),
+            accumulated_randomx_difficulty: source.accumulated_randomx_difficulty.into(),
+            accumulated_sha3x_difficulty: source.accumulated_sha3x_difficulty.into(),
             target_difficulty: source.target_difficulty.into(),
             total_kernel_offset: source.total_kernel_offset.to_vec(),
             hash: source.hash.to_vec(),
@@ -134,11 +134,13 @@ impl TryFrom<proto::BlockHeaderAccumulatedData> for BlockHeaderAccumulatedData {
         let hash = source.hash.try_into().map_err(|_| "Malformed hash".to_string())?;
         Ok(Self {
             hash,
-            achieved_difficulty: source.achieved_difficulty.into(),
+            achieved_difficulty: Difficulty::from_u64(source.achieved_difficulty).map_err(|e| e.to_string())?,
             total_accumulated_difficulty: accumulated_difficulty,
-            accumulated_monero_difficulty: source.accumulated_monero_difficulty.into(),
-            accumulated_sha_difficulty: source.accumulated_sha_difficulty.into(),
-            target_difficulty: source.target_difficulty.into(),
+            accumulated_randomx_difficulty: Difficulty::from_u64(source.accumulated_randomx_difficulty)
+                .map_err(|e| e.to_string())?,
+            accumulated_sha3x_difficulty: Difficulty::from_u64(source.accumulated_sha3x_difficulty)
+                .map_err(|e| e.to_string())?,
+            target_difficulty: Difficulty::from_u64(source.target_difficulty).map_err(|e| e.to_string())?,
             total_kernel_offset: PrivateKey::from_bytes(source.total_kernel_offset.as_slice())
                 .map_err(|err| format!("Invalid value for total_kernel_offset: {}", err))?,
         })
@@ -164,7 +166,7 @@ impl TryFrom<proto::NewBlockTemplate> for NewBlockTemplate {
         Ok(Self {
             header,
             body,
-            target_difficulty: block_template.target_difficulty.into(),
+            target_difficulty: Difficulty::from_u64(block_template.target_difficulty).map_err(|e| e.to_string())?,
             reward: block_template.reward.into(),
             total_fees: block_template.total_fees.into(),
         })

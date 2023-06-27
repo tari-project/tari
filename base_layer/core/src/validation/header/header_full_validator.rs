@@ -102,10 +102,7 @@ fn check_timestamp_count(
     prev_timestamps: &[EpochTime],
     consensus_constants: &ConsensusConstants,
 ) -> Result<(), ValidationError> {
-    let expected_timestamp_count = cmp::min(
-        consensus_constants.get_median_timestamp_count(),
-        header.height as usize - 1,
-    );
+    let expected_timestamp_count = cmp::min(consensus_constants.median_timestamp_count(), header.height as usize - 1);
     let timestamps: Vec<EpochTime> = prev_timestamps.iter().take(expected_timestamp_count).copied().collect();
     if timestamps.len() < expected_timestamp_count {
         return Err(ValidationError::NotEnoughTimestamps {
@@ -182,9 +179,9 @@ fn check_pow_data<B: BlockchainBackend>(
     rules: &ConsensusManager,
     db: &B,
 ) -> Result<(), ValidationError> {
-    use PowAlgorithm::{Monero, Sha3};
+    use PowAlgorithm::{RandomX, Sha3x};
     match block_header.pow.pow_algo {
-        Monero => {
+        RandomX => {
             let monero_data =
                 MoneroPowData::from_header(block_header).map_err(|e| ValidationError::CustomError(e.to_string()))?;
             let seed_height = db.fetch_monero_seed_first_seen_height(&monero_data.randomx_key)?;
@@ -200,7 +197,7 @@ fn check_pow_data<B: BlockchainBackend>(
 
             Ok(())
         },
-        Sha3 => {
+        Sha3x => {
             if !block_header.pow.pow_data.is_empty() {
                 return Err(ValidationError::CustomError(
                     "Proof of work data must be empty for Sha3 blocks".to_string(),

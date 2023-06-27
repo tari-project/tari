@@ -64,7 +64,6 @@ message CommitmentSignature {
 
 /// PoW Algorithm constants
 message PowAlgorithmConstants {
-    uint64 max_target_time = 1;
     uint64 min_difficulty = 2;
     uint64 max_difficulty = 3;
     uint64 target_time = 4;
@@ -110,14 +109,13 @@ message ConsensusConstants {
     uint32 blockchain_version = 2;
     uint64 future_time_limit = 3;
     uint64 difficulty_block_window = 5;
-    uint64 difficulty_max_block_interval = 6;
     uint64 max_block_transaction_weight = 7;
     uint64 pow_algo_count = 8;
     uint64 median_timestamp_count = 9;
     uint64 emission_initial = 10;
     repeated uint64 emission_decay = 11;
     uint64 emission_tail = 12;
-    uint64 min_blake_pow_difficulty = 13;
+    uint64 min_sha3x_pow_difficulty = 13;
     uint64 block_weight_inputs = 14;
     uint64 block_weight_outputs = 15;
     uint64 block_weight_kernels = 16;

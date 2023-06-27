@@ -207,7 +207,7 @@ impl TransactionKernel {
         let common = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("kernel_signature")
             .chain(sum_public_nonces)
             .chain(total_excess)
-            .chain(&message);
+            .chain(message);
         match version {
             TransactionKernelVersion::V0 => common.finalize(),
         }
@@ -223,7 +223,7 @@ impl TransactionKernel {
         burn_commitment: &Option<Commitment>,
     ) -> [u8; 32] {
         let common = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("kernel_message")
-            .chain(&version)
+            .chain(version)
             .chain(&fee)
             .chain(&lock_height)
             .chain(features)

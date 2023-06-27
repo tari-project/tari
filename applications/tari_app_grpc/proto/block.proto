@@ -63,30 +63,36 @@ message BlockHeader {
     bytes validator_node_mr = 16;
 }
 
-// Metadata required for validating the Proof of Work calculation
+// The proof of work data structure that is included in the block header.
 message ProofOfWork {
-    // 0 = Monero
-    // 1 = Blake
+    // The algorithm used to mine this block
+    //   0 = Monero
+    //   1 = Sha3X
     uint64 pow_algo = 1;
-//    uint64 accumulated_monero_difficulty = 2;
-//    uint64 accumulated_sha_difficulty = 3;
+    // Supplemental proof of work data. For example for Sha3x, this would be empty (only the block header is
+    // required), but for Monero merge mining we need the Monero block header and RandomX seed hash.
     bytes pow_data = 4;
-   // uint64 target_difficulty = 5;
 }
 
 //This is used to request the which pow algo should be used with the block template
 message PowAlgo {
+    // The permitted pow algorithms
     enum PowAlgos {
-        POW_ALGOS_MONERO = 0;
-        POW_ALGOS_SHA3 = 1;
+        POW_ALGOS_RANDOMX = 0;    // Accessible as `grpc::pow_algo::PowAlgos::Randomx`
+        POW_ALGOS_SHA3X = 1;      // Accessible as `grpc::pow_algo::PowAlgos::Sha3x`
     }
+    // The pow algo to use
     PowAlgos pow_algo = 1;
 }
 
 
 // A Tari block. Blocks are linked together into a blockchain.
 message Block {
+    // The BlockHeader contains all the metadata for the block, including proof of work, a link to the previous block
+    // and the transaction kernels.
     BlockHeader header = 1;
+    // The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,
+    // blocks consist of inputs, outputs and kernels, rather than transactions.
     AggregateBody body = 2;
 }
 
@@ -121,7 +127,11 @@ message NewBlockHeaderTemplate {
 
 // The new block template is used constructing a new partial block, allowing a miner to added the coinbase utxo and as a final step the Base node to add the MMR roots to the header.
 message NewBlockTemplate {
+    // The NewBlockHeaderTemplate is used for the construction of a new mineable block. It contains all the metadata for
+    // the block that the Base Node is able to complete on behalf of a Miner.
     NewBlockHeaderTemplate header = 1;
+    // This flag indicates if the inputs, outputs and kernels have been sorted internally, that is, the sort() method
+    // has been called. This may be false even if all components are sorted.
     AggregateBody body = 2;
 }
 

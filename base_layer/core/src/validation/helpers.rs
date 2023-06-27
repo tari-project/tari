@@ -29,8 +29,9 @@ use crate::{
     borsh::SerializedSize,
     chain_storage::{BlockchainBackend, MmrRoots, MmrTree},
     consensus::ConsensusConstants,
+    covenants::Covenant,
     proof_of_work::{
-        monero_difficulty,
+        randomx_difficulty,
         randomx_factory::RandomXFactory,
         sha3x_difficulty,
         AchievedTargetDifficulty,
@@ -110,8 +111,8 @@ pub fn check_target_difficulty(
     randomx_factory: &RandomXFactory,
 ) -> Result<AchievedTargetDifficulty, ValidationError> {
     let achieved = match block_header.pow_algo() {
-        PowAlgorithm::Monero => monero_difficulty(block_header, randomx_factory)?,
-        PowAlgorithm::Sha3 => sha3x_difficulty(block_header),
+        PowAlgorithm::RandomX => randomx_difficulty(block_header, randomx_factory)?,
+        PowAlgorithm::Sha3x => sha3x_difficulty(block_header)?,
     };
 
     match AchievedTargetDifficulty::try_construct(block_header.pow_algo(), target, achieved) {
@@ -332,6 +333,17 @@ pub fn check_permitted_output_types(
     Ok(())
 }
 
+pub fn check_covenant_length(covenant: &Covenant, max_token_len: u32) -> Result<(), ValidationError> {
+    if covenant.num_tokens() > max_token_len as usize {
+        return Err(ValidationError::CovenantTooLarge {
+            max_size: max_token_len as usize,
+            actual_size: covenant.num_tokens(),
+        });
+    }
+
+    Ok(())
+}
+
 pub fn check_permitted_range_proof_types(
     constants: &ConsensusConstants,
     output: &TransactionOutput,
@@ -514,7 +526,7 @@ mod test {
             let rules = test_helpers::create_consensus_manager();
             let key_manager = create_test_core_key_manager_with_memory_db();
             let coinbase = block_on(test_helpers::create_coinbase_wallet_output(&test_params, height, None));
-            let coinbase_output = coinbase.as_transaction_output(&key_manager).await.unwrap();
+            let coinbase_output = coinbase.to_transaction_output(&key_manager).await.unwrap();
             let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key_id, &key_manager).await;
 
             let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
@@ -533,7 +545,7 @@ mod test {
             let rules = test_helpers::create_consensus_manager();
             let mut coinbase = test_helpers::create_coinbase_wallet_output(&test_params, height, None).await;
             coinbase.features.maturity = 0;
-            let coinbase_output = coinbase.as_transaction_output(&key_manager).await.unwrap();
+            let coinbase_output = coinbase.to_transaction_output(&key_manager).await.unwrap();
             let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key_id, &key_manager).await;
 
             let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
@@ -555,7 +567,7 @@ mod test {
             let rules = test_helpers::create_consensus_manager();
             let mut coinbase = test_helpers::create_coinbase_wallet_output(&test_params, height, None).await;
             coinbase.value = 123.into();
-            let coinbase_output = coinbase.as_transaction_output(&key_manager).await.unwrap();
+            let coinbase_output = coinbase.to_transaction_output(&key_manager).await.unwrap();
             let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key_id, &key_manager).await;
 
             let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);

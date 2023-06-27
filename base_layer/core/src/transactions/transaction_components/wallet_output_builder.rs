@@ -260,7 +260,7 @@ mod test {
             .unwrap();
         match kmob.clone().try_build(&key_manager).await {
             Ok(val) => {
-                let output = val.as_transaction_output(&key_manager).await.unwrap();
+                let output = val.to_transaction_output(&key_manager).await.unwrap();
                 assert!(output.verify_metadata_signature().is_ok());
                 assert!(key_manager
                     .verify_mask(output.commitment(), &spending_key_id, value.into())
@@ -300,7 +300,7 @@ mod test {
             .unwrap();
         match kmob.clone().try_build(&key_manager).await {
             Ok(wallet_output) => {
-                let mut output = wallet_output.as_transaction_output(&key_manager).await.unwrap();
+                let mut output = wallet_output.to_transaction_output(&key_manager).await.unwrap();
                 assert!(output.verify_metadata_signature().is_ok());
 
                 // Now we can swap out the metadata signature for one built from partial sender and receiver signatures

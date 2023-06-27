@@ -131,7 +131,6 @@ impl MempoolService {
     }
 
     async fn handle_request(&mut self, request: MempoolRequest) -> Result<MempoolResponse, MempoolServiceError> {
-        // TODO: Move db calls into MempoolService
         self.inbound_handlers.handle_request(request).await
     }
 

@@ -2,7 +2,31 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
-## 0.51.0-pre.2 (2023-06-22)
+## [0.51.0-pre.3](https://github.com/tari-project/tari/compare/v0.51.0-pre.2...v0.51.0-pre.3) (2023-06-26)
+
+
+#### Features
+
+* proof of work audit part 2 (#5495) ([af32f96f](https://github.com/tari-project/tari/commit/af32f96f36a32235daf7e3b1d9694af7edcf5f8e)
+* improve recovery speed (#5489) ([d128f850](https://github.com/tari-project/tari/commit/d128f850356ff18bfd394f6c3bfe78f5bd0607e1))
+
+#### Bug Fixes
+
+*   covenant nit picking (#5506) ([301ca495](https://github.com/tari-project/tari/commit/301ca49513948e84bc972e5d75e16f6882d8fb8b)
+*   overflow of target difficulty (#5493) ([822dac60](https://github.com/tari-project/tari/commit/822dac609a4d148227c1bac61d9d81bc1a5925ac)
+*   coinbase recovery (#5487) ([48dd157a](https://github.com/tari-project/tari/commit/48dd157a82c4459021a1a02d14f7a3e95e24ebd3))
+* **core:**
+  *  minor audit improvements (#5486) ([8756e0b3](https://github.com/tari-project/tari/commit/8756e0b3c0030700a2409e7d29c4822f8e75aacb)
+  *  remove implicit change in protocol for partial/full signatures (#5488) ([fef701ef](https://github.com/tari-project/tari/commit/fef701efbd07eb769dbe11b5a0cb74c807d7d88c)
+  *  compile error in wallet/FFI (#5497) ([49610736](https://github.com/tari-project/tari/commit/49610736b839c1067820ad841d4730ae8032eb2b)
+* **core/base_node:**  safe `mmr_position` cast in horizon sync (#5503) ([fb3ac60b](https://github.com/tari-project/tari/commit/fb3ac60b163184f89b2d69b0b9ce3d9b2cfdeeee)
+* **core/consensus:**  include `coinbase_extra` max size into coinbase weight calculation (#5501) ([4554cc5f](https://github.com/tari-project/tari/commit/4554cc5f075bf9392c75fedb7576753612b374ee)
+* **core/keymanager:**  use tokio rwlock for keymanagers (#5494) ([229aee02](https://github.com/tari-project/tari/commit/229aee029dbb8d401feb74be51caa4f26dd93be1)
+* **core/transactions:**  resolve or remove TODOs (#5500) ([4a9f73c7](https://github.com/tari-project/tari/commit/4a9f73c79b98298e61115744b3e467622dd4945b)
+* **core/weighting:**  remove optional and define correct rounding for usize::MAX (#5490) ([38c399a2](https://github.com/tari-project/tari/commit/38c399a2e5ee28878e0238e2b8e13c15f658ffbc)
+* **mempool:**  remove TODOs and other minor changes (#5498) ([a1f24417](https://github.com/tari-project/tari/commit/a1f244179390d9a4845bce96e3c6a506a59e4b16)
+
+## [0.51.0-pre.2](https://github.com/tari-project/tari/compare/v0.51.0-pre.1...v0.51.0-pre.2) (2023-06-22)
 
 
 #### Features

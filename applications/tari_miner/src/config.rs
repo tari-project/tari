@@ -79,10 +79,11 @@ pub struct MinerConfig {
     pub wait_timeout_on_error: u64,
 }
 
+/// The proof of work data structure that is included in the block header. For the Tari miner only `Sha3x` is allowed.
 #[derive(Serialize, Deserialize, Debug, Default)]
 pub enum ProofOfWork {
     #[default]
-    Sha3,
+    Sha3x,
 }
 
 impl SubConfigPath for MinerConfig {
@@ -99,7 +100,7 @@ impl Default for MinerConfig {
             wallet_grpc_authentication: GrpcAuthentication::default(),
             num_mining_threads: num_cpus::get(),
             mine_on_tip_only: true,
-            proof_of_work_algo: ProofOfWork::Sha3,
+            proof_of_work_algo: ProofOfWork::Sha3x,
             validate_tip_timeout_sec: 30,
             mining_pool_address: String::new(),
             mining_wallet_address: String::new(),
@@ -114,8 +115,8 @@ impl Default for MinerConfig {
 impl MinerConfig {
     pub fn pow_algo_request(&self) -> NewBlockTemplateRequest {
         let algo = match self.proof_of_work_algo {
-            ProofOfWork::Sha3 => Some(PowAlgo {
-                pow_algo: PowAlgos::Sha3.into(),
+            ProofOfWork::Sha3x => Some(PowAlgo {
+                pow_algo: PowAlgos::Sha3x.into(),
             }),
         };
         NewBlockTemplateRequest { algo, max_weight: 0 }

@@ -74,7 +74,11 @@ pub enum BlockValidationError {
 /// A Tari block. Blocks are linked together into a blockchain.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
 pub struct Block {
+    /// The BlockHeader contains all the metadata for the block, including proof of work, a link to the previous block
+    /// and the transaction kernels.
     pub header: BlockHeader,
+    /// The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,
+    /// blocks consist of inputs, outputs and kernels, rather than transactions.
     pub body: AggregateBody,
 }
 
@@ -100,8 +104,8 @@ impl Block {
 
     /// Run through the outputs of the block and check that
     /// 1. There is exactly ONE coinbase output
-    /// 1. The output's maturity is correctly set
-    /// 1. The amount is correct.
+    /// 2. The output's maturity is correctly set
+    /// 3. The amount is correct.
     pub fn check_coinbase_output(
         &self,
         reward: MicroTari,
@@ -119,7 +123,7 @@ impl Block {
 
     /// Run through the outputs of the block and check that
     /// 1. only coinbase outputs may have metadata set,
-    /// 1. coinbase metadata length does not exceed its limit
+    /// 2. coinbase metadata length does not exceed its limit
     pub fn check_output_features(&self, consensus_constants: &ConsensusConstants) -> Result<(), BlockValidationError> {
         self.body
             .check_output_features(consensus_constants.coinbase_output_features_extra_max_length())?;
@@ -136,8 +140,8 @@ impl Block {
         Vec<TransactionOutput>,
         Vec<TransactionKernel>,
     ) {
-        let (i, o, k) = self.body.dissolve();
-        (self.header, i, o, k)
+        let (inputs, outputs, kernels) = self.body.dissolve();
+        (self.header, inputs, outputs, kernels)
     }
 
     /// Destroys the block and returns the pieces of the block: header, body
@@ -268,6 +272,7 @@ pub struct NewBlock {
     pub header: BlockHeader,
     /// Coinbase kernel of the block
     pub coinbase_kernel: TransactionKernel,
+    /// Coinbase output of the block
     pub coinbase_output: TransactionOutput,
     /// The scalar `s` component of the kernel excess signatures of the transactions contained in the block.
     pub kernel_excess_sigs: Vec<PrivateKey>,

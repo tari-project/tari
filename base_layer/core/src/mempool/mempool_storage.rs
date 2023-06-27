@@ -67,7 +67,7 @@ impl MempoolStorage {
     }
 
     /// Insert an unconfirmed transaction into the Mempool. The transaction *MUST* have passed through the validation
-    /// pipeline already and will thus always be internally consistent by this stage
+    /// pipeline already and will thus always be internally consistent at this stage
     pub fn insert(&mut self, tx: Arc<Transaction>) -> TxStorageResponse {
         let tx_id = tx
             .body
@@ -243,7 +243,6 @@ impl MempoolStorage {
     }
 
     /// Returns all unconfirmed transaction stored in the Mempool, except the transactions stored in the ReOrgPool.
-    // TODO: Investigate returning an iterator rather than a large vector of transactions
     pub fn snapshot(&self) -> Vec<Arc<Transaction>> {
         self.unconfirmed_pool.snapshot()
     }
@@ -338,7 +337,7 @@ impl MempoolStorage {
         let target_weight = self
             .rules
             .consensus_constants(tip_height)
-            .get_max_block_weight_excluding_coinbase();
+            .max_block_weight_excluding_coinbase();
         let stats = self.unconfirmed_pool.get_fee_per_gram_stats(count, target_weight)?;
         Ok(stats)
     }

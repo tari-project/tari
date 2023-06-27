@@ -192,7 +192,7 @@ impl BlockHeader {
             let last_ts = headers.first().unwrap().timestamp;
             let first_ts = headers.last().unwrap().timestamp;
 
-            let (max, min) = headers.windows(2).fold((0u64, std::u64::MAX), |(max, min), next| {
+            let (max, min) = headers.windows(2).fold((0u64, u64::MAX), |(max, min), next| {
                 let dt = match next[0].timestamp.checked_sub(next[1].timestamp) {
                     Some(delta) => delta.as_u64(),
                     None => 0u64,
@@ -315,7 +315,7 @@ mod test {
 
     #[test]
     fn from_previous() {
-        let mut h1 = crate::proof_of_work::sha3_test::get_header();
+        let mut h1 = crate::proof_of_work::sha3x_test::get_header();
         h1.nonce = 7600;
         assert_eq!(h1.height, 0, "Default block height");
         let hash1 = h1.hash();

@@ -255,7 +255,7 @@ where B: BlockchainBackend + 'static
                 header.version = constants.blockchain_version();
                 header.pow.pow_algo = request.algo;
 
-                let constants_weight = constants.get_max_block_weight_excluding_coinbase();
+                let constants_weight = constants.max_block_weight_excluding_coinbase();
                 let asking_weight = if request.max_weight > constants_weight || request.max_weight == 0 {
                     constants_weight
                 } else {
@@ -819,12 +819,12 @@ where B: BlockchainBackend + 'static
     async fn update_block_result_metrics(&self, block_add_result: &BlockAddResult) -> Result<(), CommsInterfaceError> {
         fn update_target_difficulty(block: &ChainBlock) {
             match block.header().pow_algo() {
-                PowAlgorithm::Sha3 => {
+                PowAlgorithm::Sha3x => {
                     metrics::target_difficulty_sha()
                         .set(i64::try_from(block.accumulated_data().target_difficulty.as_u64()).unwrap_or(i64::MAX));
                 },
-                PowAlgorithm::Monero => {
-                    metrics::target_difficulty_monero()
+                PowAlgorithm::RandomX => {
+                    metrics::target_difficulty_randomx()
                         .set(i64::try_from(block.accumulated_data().target_difficulty.as_u64()).unwrap_or(i64::MAX));
                 },
             }

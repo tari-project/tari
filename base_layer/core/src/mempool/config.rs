@@ -66,9 +66,6 @@ impl Default for MempoolServiceConfig {
 
 #[cfg(test)]
 mod test {
-    // TODO: Use new Config api - seems that you need to use the builder each time you want to change a value which
-    //       isn't great, there must be a better way.
-    #![allow(deprecated)]
     use config::Config;
     use tari_common::DefaultConfigLoader;
 
@@ -77,11 +74,12 @@ mod test {
 
     #[test]
     pub fn test_mempool_config() {
-        let mut config = Config::builder().build().unwrap();
+        let config = Config::builder()
+            .set_override("mempool.unconfirmed_pool.storage_capacity", 3)
+            .unwrap()
+            .build()
+            .unwrap();
 
-        config
-            .set("mempool.unconfirmed_pool.storage_capacity", 3)
-            .expect("Could not set ''");
         let my_config = MempoolConfig::load_from(&config).expect("Could not load configuration");
         // [ ] mempool.mainnet, [X]  mempool = 3, [X] Default
         assert_eq!(my_config.unconfirmed_pool.storage_capacity, 3);
@@ -92,13 +90,15 @@ mod test {
             ReorgPoolConfig::default().expiry_height
         );
 
-        config
-            .set("mainnet.mempool.unconfirmed_pool.storage_capacity", 20)
-            .expect("Could not set ''");
+        let config = Config::builder()
+            .add_source(config)
+            .set_override("mainnet.mempool.unconfirmed_pool.storage_capacity", 20)
+            .unwrap()
+            .set_override("mempool.override_from", "mainnet")
+            .unwrap()
+            .build()
+            .unwrap();
 
-        config
-            .set("mempool.override_from", "mainnet")
-            .expect("Could not set 'override_from'");
         // use_network = mainnet
         let my_config = MempoolConfig::load_from(&config).expect("Could not load configuration");
         // [ ] mempool.mainnet, [X]  mempool = 3, [X] Default

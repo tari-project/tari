@@ -55,8 +55,6 @@ use crate::{
 
 /// A wallet output is one where the value and spending key (blinding factor) are known. This can be used to
 /// build both inputs and outputs (every input comes from an output)
-// TODO: Try to get rid of 'Serialize' and 'Deserialize' traits here; see related comment at 'struct RawTransactionInfo'
-// #LOGGED
 #[derive(Clone, Serialize, Deserialize)]
 pub struct WalletOutput {
     pub version: TransactionOutputVersion,
@@ -157,6 +155,7 @@ impl WalletOutput {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn new_current_version<KM: TransactionKeyManagerInterface>(
         value: MicroTari,
         spending_key_id: TariKeyId,
@@ -192,7 +191,7 @@ impl WalletOutput {
     }
 
     /// Commits an KeyManagerOutput into a Transaction input
-    pub async fn as_transaction_input<KM: TransactionKeyManagerInterface>(
+    pub async fn to_transaction_input<KM: TransactionKeyManagerInterface>(
         &self,
         key_manager: &KM,
     ) -> Result<TransactionInput, TransactionError> {
@@ -233,11 +232,11 @@ impl WalletOutput {
     }
 
     /// Commits an WalletOutput into a TransactionInput that only contains the hash of the spent output data
-    pub async fn as_compact_transaction_input<KM: TransactionKeyManagerInterface>(
+    pub async fn to_compact_transaction_input<KM: TransactionKeyManagerInterface>(
         &self,
         key_manager: &KM,
     ) -> Result<TransactionInput, TransactionError> {
-        let input = self.as_transaction_input(key_manager).await?;
+        let input = self.to_transaction_input(key_manager).await?;
 
         Ok(TransactionInput::new(
             input.version,
@@ -247,7 +246,7 @@ impl WalletOutput {
         ))
     }
 
-    pub async fn as_transaction_output<KM: TransactionKeyManagerInterface>(
+    pub async fn to_transaction_output<KM: TransactionKeyManagerInterface>(
         &self,
         key_manager: &KM,
     ) -> Result<TransactionOutput, TransactionError> {
@@ -286,7 +285,7 @@ impl WalletOutput {
         &self,
         key_manager: &KM,
     ) -> Result<FixedHash, TransactionError> {
-        let output = self.as_transaction_output(key_manager).await?;
+        let output = self.to_transaction_output(key_manager).await?;
         let rp_hash = match output.proof {
             Some(rp) => rp.hash(),
             None => FixedHash::zero(),
@@ -320,7 +319,7 @@ impl WalletOutput {
     }
 }
 
-// These implementations are used for order these outputs for UTXO selection which will be done by comparing the values
+// These implementations are used for order these outputs for UTXO selection which is done by comparing the values
 impl Eq for WalletOutput {}
 
 impl PartialEq for WalletOutput {

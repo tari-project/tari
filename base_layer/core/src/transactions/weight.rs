@@ -33,7 +33,7 @@ pub struct WeightParams {
     /// Weight in grams per output, excl. TariScript and OutputFeatures
     pub output_weight: u64,
     /// Features and scripts per byte weight
-    pub features_and_scripts_bytes_per_gram: Option<NonZeroU64>, // Why is this defined like this? Seems very hacky
+    pub features_and_scripts_bytes_per_gram: NonZeroU64,
 }
 
 impl WeightParams {
@@ -43,7 +43,7 @@ impl WeightParams {
             input_weight: 8,
             output_weight: 53,
             // SAFETY: the value isn't 0. NonZeroU64::new(x).expect(...) is not const so cannot be used in const fn
-            features_and_scripts_bytes_per_gram: Some(unsafe { NonZeroU64::new_unchecked(16) }),
+            features_and_scripts_bytes_per_gram: unsafe { NonZeroU64::new_unchecked(16) },
         }
     }
 }
@@ -81,10 +81,7 @@ impl TransactionWeight {
         params.kernel_weight * num_kernels as u64 +
             params.input_weight * num_inputs as u64 +
             params.output_weight * num_outputs as u64 +
-            params
-                .features_and_scripts_bytes_per_gram
-                .map(|per_gram| rounded_up_features_and_scripts_byte_size as u64 / per_gram.get())
-                .unwrap_or(0)
+            rounded_up_features_and_scripts_byte_size as u64 / params.features_and_scripts_bytes_per_gram.get()
     }
 
     pub fn calculate_body(&self, body: &AggregateBody) -> u64 {
@@ -116,18 +113,18 @@ impl TransactionWeight {
     }
 
     pub fn round_up_features_and_scripts_size(&self, features_and_scripts_size: usize) -> usize {
-        self.params()
-            .features_and_scripts_bytes_per_gram
-            .and_then(|per_gram| {
-                let per_gram = usize::try_from(per_gram.get()).unwrap();
-                let rem = features_and_scripts_size % per_gram;
-                if rem == 0 {
-                    Some(features_and_scripts_size)
-                } else {
-                    features_and_scripts_size.checked_add(per_gram - rem)
-                }
-            })
-            .unwrap_or(features_and_scripts_size)
+        // EXPECT: consensus constant should not be set incorrectly
+        let per_gram = usize::try_from(self.params().features_and_scripts_bytes_per_gram.get())
+            .expect("features_and_scripts_bytes_per_gram exceeds usize::MAX");
+        let rem = features_and_scripts_size % per_gram;
+        if rem == 0 {
+            features_and_scripts_size
+        } else {
+            features_and_scripts_size
+                .checked_add(per_gram - rem)
+                // The maximum rounded value possible is usize::MAX - usize::MAX % per_gram
+                .unwrap_or(usize::MAX - usize::MAX % per_gram)
+        }
     }
 
     pub fn params(&self) -> &WeightParams {
@@ -152,6 +149,14 @@ mod test {
         assert_eq!(weighting.round_up_features_and_scripts_size(1), 16);
         assert_eq!(weighting.round_up_features_and_scripts_size(16), 16);
         assert_eq!(weighting.round_up_features_and_scripts_size(17), 32);
-        assert_eq!(weighting.round_up_features_and_scripts_size(usize::MAX), usize::MAX);
+        if usize::MAX % weighting.params().features_and_scripts_bytes_per_gram.get() as usize == 0 {
+            assert_eq!(weighting.round_up_features_and_scripts_size(usize::MAX), usize::MAX);
+        } else {
+            assert_eq!(
+                weighting.round_up_features_and_scripts_size(usize::MAX) %
+                    weighting.params().features_and_scripts_bytes_per_gram.get() as usize,
+                0
+            );
+        }
     }
 }

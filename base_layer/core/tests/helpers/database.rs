@@ -25,6 +25,7 @@ use std::convert::TryInto;
 use tari_core::{
     blocks::{Block, BlockHeader, NewBlockTemplate},
     consensus::{emission::Emission, ConsensusManager},
+    proof_of_work::Difficulty,
     transactions::{tari_amount::MicroTari, test_helpers::TestKeyManager, transaction_components::Transaction},
 };
 
@@ -56,7 +57,7 @@ pub async fn create_orphan_block(
             .with_transactions(transactions)
             .with_coinbase_utxo(coinbase_utxo, coinbase_kernel)
             .build(),
-        1.into(),
+        Difficulty::min(),
         coinbase_value,
     );
     Block::new(template.header.into(), template.body)

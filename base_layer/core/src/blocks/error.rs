@@ -30,4 +30,6 @@ pub enum BlockError {
     HistoricalBlockContainsPrunedTxos,
     #[error("Chain block invariant error: {0}")]
     ChainBlockInvariantError(String),
+    #[error("Adding difficulties overflowed")]
+    DifficultyOverflow,
 }

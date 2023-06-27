@@ -6,7 +6,7 @@ repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version = "0.51.0-pre.2"
+version = "0.51.0-pre.3"
 edition = "2018"
 
 [features]
@@ -57,7 +57,7 @@ integer-encoding = "3.0.2"
 lmdb-zero = "0.4.4"
 log = "0.4"
 log-mdc = "0.1.0"
-monero = { git = "https://github.com/monero-rs/monero-rs.git", version = "0.18" , features = ["serde"], optional = true }
+monero = { version = "0.18.2" , features = ["serde"], optional = true }
 newtype-ops = "0.1.4"
 num-traits = "0.2.15"
 num-derive = "0.3.3"
