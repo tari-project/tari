@@ -122,7 +122,7 @@ impl ConsensusManager {
     ) -> Result<TargetDifficultyWindow, String> {
         use std::convert::TryFrom;
         let constants = self.consensus_constants(height);
-        let block_window = constants.get_difficulty_block_window();
+        let block_window = constants.difficulty_block_window();
 
         TargetDifficultyWindow::new(
             usize::try_from(block_window).expect("difficulty block window exceeds usize::MAX"),

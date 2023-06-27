@@ -530,7 +530,7 @@ where B: BlockchainBackend
                     value: start_hash.to_hex(),
                 })?;
         let constants = self.consensus_manager.consensus_constants(start_header.height);
-        let timestamp_window = constants.get_median_timestamp_count();
+        let timestamp_window = constants.median_timestamp_count();
         let start_window = start_header.height.saturating_sub(timestamp_window as u64);
 
         let timestamps = self
@@ -762,7 +762,7 @@ where B: BlockchainBackend
         let min_height = header.height.saturating_sub(
             self.consensus_manager
                 .consensus_constants(header.height)
-                .get_median_timestamp_count() as u64,
+                .median_timestamp_count() as u64,
         );
 
         let db = self.db_read_access()?;
@@ -2154,9 +2154,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
 
     // validate the block header
     let prev_timestamps_count = cmp::min(
-        rules
-            .consensus_constants(block.header.height)
-            .get_median_timestamp_count(),
+        rules.consensus_constants(block.header.height).median_timestamp_count(),
         block.header.height as usize - 1,
     );
     let mut prev_timestamps = Vec::with_capacity(prev_timestamps_count);
@@ -2192,7 +2190,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
     let prev_timestamps_count = cmp::min(
         rules
             .consensus_constants(chain_header.height())
-            .get_median_timestamp_count(),
+            .median_timestamp_count(),
         chain_header.height() as usize - 1,
     );
 

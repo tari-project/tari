@@ -112,7 +112,7 @@ impl AggregateBodyInternalConsistencyValidator {
 
         for output in body.outputs() {
             check_permitted_output_types(constants, output)?;
-            check_script_size(output, constants.get_max_script_byte_size())?;
+            check_script_size(output, constants.max_script_byte_size())?;
             check_covenant_length(&output.covenant, constants.max_covenant_length())?;
             check_permitted_range_proof_types(constants, output)?;
             check_validator_node_registration_utxo(constants, output)?;
@@ -305,7 +305,7 @@ fn check_weight(
     consensus_constants: &ConsensusConstants,
 ) -> Result<(), ValidationError> {
     let block_weight = body.calculate_weight(consensus_constants.transaction_weight_params());
-    let max_weight = consensus_constants.get_max_block_transaction_weight();
+    let max_weight = consensus_constants.max_block_transaction_weight();
     if block_weight <= max_weight {
         trace!(
             target: LOG_TARGET,
