@@ -38,7 +38,7 @@ use super::{
 use crate::{
     blocks::{Block, BlockHeader, ChainBlock},
     chain_storage::BlockchainBackend,
-    proof_of_work::{sha3x_difficulty, AchievedTargetDifficulty, Difficulty, PowAlgorithm},
+    proof_of_work::{difficulty::CheckedAdd, sha3x_difficulty, AchievedTargetDifficulty, Difficulty, PowAlgorithm},
     transactions::transaction_components::Transaction,
     validation::{error::ValidationError, FinalHorizonStateValidation},
 };
@@ -115,11 +115,14 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for MockValidator {
         _: Option<Difficulty>,
     ) -> Result<AchievedTargetDifficulty, ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
-            let achieved = sha3x_difficulty(header);
+            let achieved = sha3x_difficulty(header)?;
 
-            let achieved_target =
-                AchievedTargetDifficulty::try_construct(PowAlgorithm::Sha3, achieved - Difficulty::from(1), achieved)
-                    .unwrap();
+            let achieved_target = AchievedTargetDifficulty::try_construct(
+                PowAlgorithm::Sha3x,
+                achieved,
+                achieved.checked_add(1).unwrap(),
+            )
+            .unwrap();
             Ok(achieved_target)
         } else {
             Err(ValidationError::custom_error(

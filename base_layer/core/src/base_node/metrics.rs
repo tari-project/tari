@@ -45,7 +45,7 @@ pub fn target_difficulty_sha() -> &'static IntGauge {
     &METER
 }
 
-pub fn target_difficulty_monero() -> &'static IntGauge {
+pub fn target_difficulty_randomx() -> &'static IntGauge {
     static METER: Lazy<IntGauge> = Lazy::new(|| {
         tari_metrics::register_int_gauge(
             "base_node::blockchain::target_difficulty_monero",

@@ -1498,7 +1498,7 @@ fn insert_best_block(txn: &mut DbTransaction, block: Arc<ChainBlock>) -> Result<
         block.header().height,
         block_hash.to_hex()
     );
-    if block.header().pow_algo() == PowAlgorithm::Monero {
+    if block.header().pow_algo() == PowAlgorithm::RandomX {
         let monero_header =
             MoneroPowData::from_header(block.header()).map_err(|e| ChainStorageError::InvalidArguments {
                 func: "insert_best_block",
@@ -1875,8 +1875,6 @@ fn rewind_to_hash<T: BlockchainBackend>(
 
 // Checks whether we should add the block as an orphan. If it is the case, the orphan block is added and the chain
 // is reorganised if necessary.
-// TODO: Reduce LOC in this function
-#[allow(clippy::too_many_lines)]
 fn handle_possible_reorg<T: BlockchainBackend>(
     db: &mut T,
     config: &BlockchainDatabaseConfig,
@@ -2514,7 +2512,7 @@ mod test {
             ConsensusConstantsBuilder,
             ConsensusManager,
         },
-        proof_of_work::lwma_diff::LWMA_MAX_BLOCK_TIME_RATIO,
+        proof_of_work::Difficulty,
         test_helpers::{
             blockchain::{
                 create_chained_blocks,
@@ -2696,7 +2694,7 @@ mod test {
             let (_, main_chain) = create_main_chain(&db, &[("A->GB", 1, 120)]).await;
 
             let fork_root = main_chain.get("A").unwrap().clone();
-            let (_, orphan_chain) = create_chained_blocks(&[("B2->GB", 2, 120)], fork_root).await;
+            let (_, orphan_chain) = create_chained_blocks(&[("B2->GB", 1, 120)], fork_root).await;
             let mut access = db.db_write_access().unwrap();
 
             let block = orphan_chain.get("B2").unwrap().clone();
@@ -2710,7 +2708,7 @@ mod test {
             .unwrap();
             let fork_tip = access.fetch_orphan_chain_tip_by_hash(block.hash()).unwrap().unwrap();
             assert_eq!(fork_tip, block.to_chain_header());
-            assert_eq!(fork_tip.accumulated_data().total_accumulated_difficulty, 4);
+            assert_eq!(fork_tip.accumulated_data().total_accumulated_difficulty, 3);
             let all_tips = access.fetch_all_orphan_chain_tips().unwrap().len();
             assert_eq!(all_tips, 1);
 
@@ -2730,6 +2728,7 @@ mod test {
 
     mod handle_possible_reorg {
         use super::*;
+        use crate::proof_of_work::Difficulty;
 
         #[tokio::test]
         async fn it_links_many_orphan_branches_to_main_chain() {
@@ -2765,7 +2764,11 @@ mod test {
             }
 
             let fork_root = orphan_chain_c.get("6c").unwrap().clone();
-            let (_, orphan_chain_d) = create_chained_blocks(block_specs!(["7d->GB", difficulty: 10]), fork_root).await;
+            let (_, orphan_chain_d) = create_chained_blocks(
+                block_specs!(["7d->GB", difficulty: Difficulty::from_u64(10).unwrap()]),
+                fork_root,
+            )
+            .await;
 
             let block = orphan_chain_d.get("7d").unwrap().clone();
             let result = test.handle_possible_reorg(block.to_arc_block()).unwrap();
@@ -2818,8 +2821,11 @@ mod test {
                 create_main_chain(&test.db, block_specs!(["1a->GB"], ["2a->1a"], ["3a->2a"], ["4a->3a"])).await;
 
             let fork_root = main_chain.get("1a").unwrap().clone();
-            let (_, orphan_chain_b) =
-                create_chained_blocks(block_specs!(["2b->GB", height: 10, difficulty: 10]), fork_root).await;
+            let (_, orphan_chain_b) = create_chained_blocks(
+                block_specs!(["2b->GB", height: 10, difficulty: Difficulty::from_u64(10).unwrap()]),
+                fork_root,
+            )
+            .await;
 
             let block = orphan_chain_b.get("2b").unwrap().clone();
             let err = test.handle_possible_reorg(block.to_arc_block()).unwrap_err();
@@ -2829,7 +2835,11 @@ mod test {
         #[tokio::test]
         async fn it_allows_orphan_blocks_with_any_height() {
             let test = TestHarness::setup();
-            let (_, main_chain) = create_main_chain(&test.db, block_specs!(["1a->GB", difficulty: 2])).await;
+            let (_, main_chain) = create_main_chain(
+                &test.db,
+                block_specs!(["1a->GB", difficulty: Difficulty::from_u64(2).unwrap()]),
+            )
+            .await;
 
             let fork_root = main_chain.get("GB").unwrap().clone();
             let (_, orphan_chain_b) =
@@ -2947,7 +2957,7 @@ mod test {
         .await;
 
         let mock_validator = MockValidator::new(true);
-        let chain_strength_comparer = strongest_chain().by_sha3_difficulty().build();
+        let chain_strength_comparer = strongest_chain().by_sha3x_difficulty().build();
 
         let fork_block = mainchain.get("B").unwrap().clone();
         let (_, reorg_chain) = create_chained_blocks(
@@ -3031,7 +3041,7 @@ mod test {
         .await;
 
         let mock_validator = MockValidator::new(true);
-        let chain_strength_comparer = strongest_chain().by_sha3_difficulty().build();
+        let chain_strength_comparer = strongest_chain().by_sha3x_difficulty().build();
 
         let fork_block = mainchain.get("C").unwrap().clone();
         let (_, reorg_chain) = create_chained_blocks(&[("D2->GB", 1, 120), ("E2->D2", 2, 120)], fork_block).await;
@@ -3279,7 +3289,7 @@ mod test {
                 false,
             ));
             let post_orphan_body_validator = Box::new(MockValidator::new(true));
-            let chain_strength_comparer = strongest_chain().by_sha3_difficulty().build();
+            let chain_strength_comparer = strongest_chain().by_sha3x_difficulty().build();
             Self {
                 db,
                 config: Default::default(),
@@ -3344,10 +3354,9 @@ mod test {
             .add_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
                     .clear_proof_of_work()
-                    .add_proof_of_work(PowAlgorithm::Sha3, PowAlgorithmConstants {
-                        max_target_time: 120 * LWMA_MAX_BLOCK_TIME_RATIO,
-                        min_difficulty: 1.into(),
-                        max_difficulty: 100.into(),
+                    .add_proof_of_work(PowAlgorithm::Sha3x, PowAlgorithmConstants {
+                        min_difficulty: Difficulty::min(),
+                        max_difficulty: Difficulty::from_u64(100).expect("valid difficulty"),
                         target_time: 120,
                     })
                     .build(),

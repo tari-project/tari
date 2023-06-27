@@ -228,7 +228,7 @@ async fn create_block_template_with_coinbase(
     // get the block template from the base node
     let template_req = NewBlockTemplateRequest {
         algo: Some(PowAlgo {
-            pow_algo: PowAlgos::Sha3.into(),
+            pow_algo: PowAlgos::Sha3x.into(),
         }),
         max_weight: 0,
     };
@@ -259,7 +259,7 @@ async fn create_block_template_with_coinbase_without_wallet(
     // get the block template from the base node
     let template_req = NewBlockTemplateRequest {
         algo: Some(PowAlgo {
-            pow_algo: PowAlgos::Sha3.into(),
+            pow_algo: PowAlgos::Sha3x.into(),
         }),
         max_weight: weight,
     };

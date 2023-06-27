@@ -23,7 +23,10 @@
 use std::convert::TryInto;
 
 use tari_app_grpc::tari_rpc::BlockHeader as grpc_header;
-use tari_core::{blocks::BlockHeader, proof_of_work::sha3x_difficulty};
+use tari_core::{
+    blocks::BlockHeader,
+    proof_of_work::{sha3x_difficulty, DifficultyError},
+};
 use tari_utilities::epoch_time::EpochTime;
 
 use crate::errors::MinerError;
@@ -65,9 +68,9 @@ impl BlockHeaderSha3 {
     }
 
     #[inline]
-    pub fn difficulty(&mut self) -> Difficulty {
+    pub fn difficulty(&mut self) -> Result<Difficulty, DifficultyError> {
         self.hashes = self.hashes.saturating_add(1);
-        sha3x_difficulty(&self.header).into()
+        Ok(sha3x_difficulty(&self.header)?.as_u64())
     }
 
     #[allow(clippy::cast_possible_wrap)]
@@ -84,7 +87,7 @@ impl BlockHeaderSha3 {
 #[cfg(test)]
 pub mod test {
     use chrono::{DateTime, NaiveDate, Utc};
-    use tari_core::proof_of_work::sha3x_difficulty as core_sha3_difficulty;
+    use tari_core::proof_of_work::sha3x_difficulty as core_sha3x_difficulty;
 
     use super::*;
 
@@ -100,7 +103,7 @@ pub mod test {
         )
         .timestamp() as u64)
             .into();
-        header.pow.pow_algo = tari_core::proof_of_work::PowAlgorithm::Sha3;
+        header.pow.pow_algo = tari_core::proof_of_work::PowAlgorithm::Sha3x;
         (header.clone().into(), header)
     }
 
@@ -112,8 +115,8 @@ pub mod test {
         let mut hasher = BlockHeaderSha3::new(header).unwrap();
         for _ in 0..1000 {
             assert_eq!(
-                hasher.difficulty(),
-                core_sha3_difficulty(&core_header).as_u64(),
+                hasher.difficulty().unwrap(),
+                core_sha3x_difficulty(&core_header).unwrap().as_u64(),
                 "with nonces = {}:{}",
                 hasher.header.nonce,
                 core_header.nonce
@@ -132,8 +135,8 @@ pub mod test {
         let mut timestamp = core_header.timestamp;
         for _ in 0..1000 {
             assert_eq!(
-                hasher.difficulty(),
-                core_sha3_difficulty(&core_header).as_u64(),
+                hasher.difficulty().unwrap(),
+                core_sha3x_difficulty(&core_header).unwrap().as_u64(),
                 "with timestamp = {}",
                 timestamp
             );

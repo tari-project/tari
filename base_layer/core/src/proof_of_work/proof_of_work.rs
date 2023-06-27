@@ -47,7 +47,7 @@ impl Default for ProofOfWork {
     #[allow(deprecated)]
     fn default() -> Self {
         Self {
-            pow_algo: PowAlgorithm::Sha3,
+            pow_algo: PowAlgorithm::Sha3x,
             pow_data: vec![],
         }
     }
@@ -93,7 +93,7 @@ mod test {
     #[test]
     fn to_bytes() {
         let pow = ProofOfWork {
-            pow_algo: PowAlgorithm::Sha3,
+            pow_algo: PowAlgorithm::Sha3x,
             ..Default::default()
         };
         assert_eq!(pow.to_bytes(), vec![1]);

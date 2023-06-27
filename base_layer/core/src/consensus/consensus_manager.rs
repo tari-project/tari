@@ -127,7 +127,6 @@ impl ConsensusManager {
         TargetDifficultyWindow::new(
             usize::try_from(block_window).expect("difficulty block window exceeds usize::MAX"),
             constants.pow_target_block_interval(pow_algo),
-            constants.pow_max_block_interval(pow_algo),
         )
     }
 
@@ -212,6 +211,8 @@ impl ConsensusManagerBuilder {
     /// Builds a consensus manager
     pub fn build(mut self) -> Result<ConsensusManager, ConsensusBuilderError> {
         // should not be allowed to set the gen block and have the network type anything else than LocalNet
+        // If feature != base_node, gen_block is not available
+        #[cfg(feature = "base_node")]
         if self.network.as_network() != Network::LocalNet && self.gen_block.is_some() {
             return Err(ConsensusBuilderError::CannotSetGenesisBlock);
         }
@@ -238,9 +239,9 @@ impl ConsensusManagerBuilder {
                     .then()
                     .by_height()
                     .then()
-                    .by_monero_difficulty()
+                    .by_randomx_difficulty()
                     .then()
-                    .by_sha3_difficulty()
+                    .by_sha3x_difficulty()
                     .build()
             }),
         };

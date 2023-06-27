@@ -27,7 +27,7 @@ use tari_common_types::transaction::TxId;
 use tari_core::transactions::{
     key_manager::{TariKeyId, TransactionKeyManagerBranch, TransactionKeyManagerInterface},
     tari_amount::MicroTari,
-    transaction_components::{TransactionOutput, WalletOutput},
+    transaction_components::{TransactionError, TransactionOutput, WalletOutput},
 };
 use tari_script::{inputs, script, Opcode};
 use tari_utilities::hex::Hex;
@@ -173,8 +173,17 @@ where
         &self,
         output: &TransactionOutput,
     ) -> Result<Option<(TariKeyId, MicroTari)>, OutputManagerError> {
+        // lets first check if the output exists in the db, if it does we dont have to try recovery as we already know
+        // about the output.
+        match self.db.fetch_by_commitment(output.commitment().clone()) {
+            Ok(_) => return Ok(None),
+            Err(OutputManagerStorageError::ValueNotFound) => {},
+            Err(e) => return Err(e.into()),
+        };
         let (key, committed_value) = match self.master_key_manager.try_output_key_recovery(output, None).await {
             Ok(value) => value,
+            // Key manager errors here are actual errors and should not be suppressed.
+            Err(TransactionError::KeyManagerError(e)) => return Err(TransactionError::KeyManagerError(e).into()),
             Err(_) => return Ok(None),
         };
 

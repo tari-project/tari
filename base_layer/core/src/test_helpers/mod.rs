@@ -37,7 +37,7 @@ use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainHeader},
     consensus::{ConsensusConstants, ConsensusManager},
-    proof_of_work::{sha3x_difficulty, AchievedTargetDifficulty, Difficulty},
+    proof_of_work::{difficulty::CheckedAdd, sha3x_difficulty, AchievedTargetDifficulty, Difficulty},
     transactions::{
         key_manager::TransactionKeyManagerBranch,
         test_helpers::TestKeyManager,
@@ -124,7 +124,7 @@ pub fn mine_to_difficulty(mut block: Block, difficulty: Difficulty) -> Result<Bl
     // hash changing. This introduces the required entropy
     block.header.nonce = rand::thread_rng().gen();
     for _i in 0..20000 {
-        if sha3x_difficulty(&block.header) == difficulty {
+        if sha3x_difficulty(&block.header).map_err(|e| e.to_string())? == difficulty {
             return Ok(block);
         }
         block.header.nonce += 1;
@@ -153,7 +153,12 @@ pub fn create_peer_manager<P: AsRef<Path>>(data_path: P) -> Arc<PeerManager> {
 }
 
 pub fn create_chain_header(header: BlockHeader, prev_accum: &BlockHeaderAccumulatedData) -> ChainHeader {
-    let achieved_target_diff = AchievedTargetDifficulty::try_construct(header.pow_algo(), 1.into(), 1.into()).unwrap();
+    let achieved_target_diff = AchievedTargetDifficulty::try_construct(
+        header.pow_algo(),
+        Difficulty::min().checked_add(1).unwrap(),
+        Difficulty::min().checked_add(1).unwrap(),
+    )
+    .unwrap();
     let accumulated_data = BlockHeaderAccumulatedData::builder(prev_accum)
         .with_hash(header.hash())
         .with_achieved_target_difficulty(achieved_target_diff)

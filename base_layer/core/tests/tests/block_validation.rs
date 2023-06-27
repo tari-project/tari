@@ -32,10 +32,10 @@ use tari_core::{
     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, ChainStorageError, Validators},
     consensus::{consensus_constants::PowAlgorithmConstants, ConsensusConstantsBuilder, ConsensusManager},
     proof_of_work::{
-        lwma_diff::LWMA_MAX_BLOCK_TIME_RATIO,
         monero_rx,
         monero_rx::{FixedByteArray, MoneroPowData},
         randomx_factory::RandomXFactory,
+        Difficulty,
         PowAlgorithm,
     },
     test_helpers::blockchain::{create_store_with_consensus_and_validators, create_test_db},
@@ -94,16 +94,14 @@ async fn test_monero_blocks() {
     let cc = ConsensusConstantsBuilder::new(network)
         .with_max_randomx_seed_height(1)
         .clear_proof_of_work()
-        .add_proof_of_work(PowAlgorithm::Sha3, PowAlgorithmConstants {
-            max_target_time: 300 * LWMA_MAX_BLOCK_TIME_RATIO,
-            min_difficulty: 1.into(),
-            max_difficulty: 1.into(),
+        .add_proof_of_work(PowAlgorithm::Sha3x, PowAlgorithmConstants {
+            min_difficulty: Difficulty::min(),
+            max_difficulty: Difficulty::min(),
             target_time: 300,
         })
-        .add_proof_of_work(PowAlgorithm::Monero, PowAlgorithmConstants {
-            max_target_time: 200 * LWMA_MAX_BLOCK_TIME_RATIO,
-            min_difficulty: 1.into(),
-            max_difficulty: 1.into(),
+        .add_proof_of_work(PowAlgorithm::RandomX, PowAlgorithmConstants {
+            min_difficulty: Difficulty::min(),
+            max_difficulty: Difficulty::min(),
             target_time: 200,
         })
         .with_blockchain_version(0)
@@ -175,7 +173,7 @@ fn add_monero_data(tblock: &mut Block, seed_key: &str) {
     };
     let mut serialized = Vec::new();
     BorshSerialize::serialize(&monero_data, &mut serialized).unwrap();
-    tblock.header.pow.pow_algo = PowAlgorithm::Monero;
+    tblock.header.pow.pow_algo = PowAlgorithm::RandomX;
     tblock.header.pow.pow_data = serialized;
 }
 
@@ -241,7 +239,7 @@ async fn inputs_are_not_malleable() {
         .await;
 
     let malicious_input = malicious_wallet_output
-        .as_transaction_input(&blockchain.key_manager)
+        .to_transaction_input(&blockchain.key_manager)
         .await
         .unwrap();
 
@@ -401,15 +399,14 @@ async fn test_orphan_body_validation() {
     let factories = CryptoFactories::default();
     let network = Network::Igor;
     // we dont want localnet's 1 difficulty or the full mined difficulty of weather wax but we want some.
-    let sha3_constants = PowAlgorithmConstants {
-        max_target_time: 300 * LWMA_MAX_BLOCK_TIME_RATIO,
-        min_difficulty: 10.into(),
-        max_difficulty: u64::MAX.into(),
+    let sha3x_constants = PowAlgorithmConstants {
+        min_difficulty: Difficulty::from_u64(10).expect("valid difficulty"),
+        max_difficulty: Difficulty::max(),
         target_time: 300,
     };
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .clear_proof_of_work()
-        .add_proof_of_work(PowAlgorithm::Sha3, sha3_constants)
+        .add_proof_of_work(PowAlgorithm::Sha3x, sha3x_constants)
         .build();
     let key_manager = create_test_core_key_manager_with_memory_db();
     let (genesis, outputs) = create_genesis_block_with_utxos(&[T, T, T], &consensus_constants, &key_manager).await;
@@ -454,7 +451,7 @@ OutputFeatures::default()),
     let mut new_block = db.prepare_new_block(template.clone()).unwrap();
     new_block.header.nonce = OsRng.next_u64();
 
-    find_header_with_achieved_difficulty(&mut new_block.header, 10.into());
+    find_header_with_achieved_difficulty(&mut new_block.header, Difficulty::from_u64(10).unwrap());
     let achieved_target_diff = header_validator
         .validate(
             &*db.db_read_access().unwrap(),
@@ -482,7 +479,7 @@ OutputFeatures::default()),
     let mut new_block = db.prepare_new_block(template.clone()).unwrap();
     new_block.header.nonce = OsRng.next_u64();
     new_block.header.height = 3;
-    find_header_with_achieved_difficulty(&mut new_block.header, 10.into());
+    find_header_with_achieved_difficulty(&mut new_block.header, Difficulty::from_u64(10).unwrap());
     assert!(header_validator
         .validate(
             &*db.db_read_access().unwrap(),
@@ -519,13 +516,13 @@ OutputFeatures::default()),
     .await
     .unwrap();
     let inputs = vec![
-        key_manager_utxo.as_transaction_input(&key_manager).await.unwrap(),
-        key_manager_utxo2.as_transaction_input(&key_manager).await.unwrap(),
+        key_manager_utxo.to_transaction_input(&key_manager).await.unwrap(),
+        key_manager_utxo2.to_transaction_input(&key_manager).await.unwrap(),
     ];
     new_block.body = AggregateBody::new(inputs, template.body.outputs().clone(), template.body.kernels().clone());
     new_block.header.nonce = OsRng.next_u64();
 
-    find_header_with_achieved_difficulty(&mut new_block.header, 10.into());
+    find_header_with_achieved_difficulty(&mut new_block.header, Difficulty::from_u64(10).unwrap());
     let achieved_target_diff = header_validator
         .validate(
             &*db.db_read_access().unwrap(),
@@ -556,7 +553,7 @@ OutputFeatures::default()),
     new_block.body = AggregateBody::new(inputs, template.body.outputs().clone(), template.body.kernels().clone());
     new_block.header.nonce = OsRng.next_u64();
 
-    find_header_with_achieved_difficulty(&mut new_block.header, 10.into());
+    find_header_with_achieved_difficulty(&mut new_block.header, Difficulty::from_u64(10).unwrap());
     let achieved_target_diff = header_validator
         .validate(
             &*db.db_read_access().unwrap(),
@@ -585,7 +582,7 @@ OutputFeatures::default()),
     new_block.header.output_mr = FixedHash::zero();
     new_block.header.nonce = OsRng.next_u64();
 
-    find_header_with_achieved_difficulty(&mut new_block.header, 10.into());
+    find_header_with_achieved_difficulty(&mut new_block.header, Difficulty::from_u64(10).unwrap());
     let achieved_target_diff = header_validator
         .validate(
             &*db.db_read_access().unwrap(),
@@ -616,15 +613,14 @@ async fn test_header_validation() {
     let key_manager = create_test_core_key_manager_with_memory_db();
     let network = Network::Igor;
     // we dont want localnet's 1 difficulty or the full mined difficulty of weather wax but we want some.
-    let sha3_constants = PowAlgorithmConstants {
-        max_target_time: 300 * LWMA_MAX_BLOCK_TIME_RATIO,
-        min_difficulty: 20.into(),
-        max_difficulty: u64::MAX.into(),
+    let sha3x_constants = PowAlgorithmConstants {
+        min_difficulty: Difficulty::from_u64(20).expect("valid difficulty"),
+        max_difficulty: Difficulty::max(),
         target_time: 300,
     };
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .clear_proof_of_work()
-        .add_proof_of_work(PowAlgorithm::Sha3, sha3_constants)
+        .add_proof_of_work(PowAlgorithm::Sha3x, sha3x_constants)
         .build();
     let (genesis, outputs) = create_genesis_block_with_utxos(&[T, T, T], &consensus_constants, &key_manager).await;
     let network = Network::LocalNet;
@@ -667,7 +663,7 @@ OutputFeatures::default()),
     let mut new_block = db.prepare_new_block(template.clone()).unwrap();
     new_block.header.nonce = OsRng.next_u64();
 
-    find_header_with_achieved_difficulty(&mut new_block.header, 20.into());
+    find_header_with_achieved_difficulty(&mut new_block.header, Difficulty::from_u64(20).unwrap());
     assert!(header_validator
         .validate(
             &*db.db_read_access().unwrap(),
@@ -683,7 +679,7 @@ OutputFeatures::default()),
     new_block.header.nonce = OsRng.next_u64();
     // we take the max ftl time and give 10 seconds for mining then check it, it should still be more than the ftl
     new_block.header.timestamp = rules.consensus_constants(0).ftl().increase(10);
-    find_header_with_achieved_difficulty(&mut new_block.header, 20.into());
+    find_header_with_achieved_difficulty(&mut new_block.header, Difficulty::from_u64(20).unwrap());
     assert!(header_validator
         .validate(
             &*db.db_read_access().unwrap(),
@@ -697,7 +693,7 @@ OutputFeatures::default()),
     // lets break difficulty
     let mut new_block = db.prepare_new_block(template).unwrap();
     new_block.header.nonce = OsRng.next_u64();
-    find_header_with_achieved_difficulty(&mut new_block.header, 10.into());
+    find_header_with_achieved_difficulty(&mut new_block.header, Difficulty::from_u64(10).unwrap());
     let mut result = header_validator
         .validate(
             &*db.db_read_access().unwrap(),
@@ -712,7 +708,7 @@ OutputFeatures::default()),
     while counter < 10 && !result {
         counter += 1;
         new_block.header.nonce = OsRng.next_u64();
-        find_header_with_achieved_difficulty(&mut new_block.header, 10.into());
+        find_header_with_achieved_difficulty(&mut new_block.header, Difficulty::from_u64(10).unwrap());
         result = header_validator
             .validate(
                 &*db.db_read_access().unwrap(),
@@ -894,8 +890,8 @@ async fn test_block_sync_body_validator() {
     .await
     .unwrap();
     let inputs = vec![
-        unblinded_utxo.as_transaction_input(&key_manager).await.unwrap(),
-        unblinded_utxo2.as_transaction_input(&key_manager).await.unwrap(),
+        unblinded_utxo.to_transaction_input(&key_manager).await.unwrap(),
+        unblinded_utxo2.to_transaction_input(&key_manager).await.unwrap(),
     ];
     new_block.body = AggregateBody::new(inputs, template.body.outputs().clone(), template.body.kernels().clone());
     {

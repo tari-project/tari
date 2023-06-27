@@ -193,8 +193,7 @@ jobs:
           echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $GITHUB_ENV
           echo "C:\Strawberry\perl\bin" >> $GITHUB_PATH
 
-      - name: Cache cargo files and outputs
-        uses: Swatinem/rust-cache@v2
+      # Don't use caches for binary builds. Start from a clean slate.
 
       - name: Build rust binaries
         env:

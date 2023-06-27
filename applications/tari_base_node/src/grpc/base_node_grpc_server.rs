@@ -173,10 +173,10 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         }
         let (mut tx, rx) = mpsc::channel(cmp::min(num_requested as usize, GET_DIFFICULTY_PAGE_SIZE));
 
-        let mut sha3_hash_rate_moving_average =
-            HashRateMovingAverage::new(PowAlgorithm::Sha3, self.consensus_rules.clone());
-        let mut monero_hash_rate_moving_average =
-            HashRateMovingAverage::new(PowAlgorithm::Monero, self.consensus_rules.clone());
+        let mut sha3x_hash_rate_moving_average =
+            HashRateMovingAverage::new(PowAlgorithm::Sha3x, self.consensus_rules.clone());
+        let mut randomx_hash_rate_moving_average =
+            HashRateMovingAverage::new(PowAlgorithm::RandomX, self.consensus_rules.clone());
 
         task::spawn(async move {
             let page_iter = NonOverlappingIntegerPairIter::new(start_height, end_height + 1, GET_DIFFICULTY_PAGE_SIZE);
@@ -212,20 +212,20 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
                     // update the moving average calculation with the header data
                     let current_hash_rate_moving_average = match pow_algo {
-                        PowAlgorithm::Monero => &mut monero_hash_rate_moving_average,
-                        PowAlgorithm::Sha3 => &mut sha3_hash_rate_moving_average,
+                        PowAlgorithm::RandomX => &mut randomx_hash_rate_moving_average,
+                        PowAlgorithm::Sha3x => &mut sha3x_hash_rate_moving_average,
                     };
                     current_hash_rate_moving_average.add(current_height, current_difficulty);
 
-                    let sha3_estimated_hash_rate = sha3_hash_rate_moving_average.average();
-                    let monero_estimated_hash_rate = monero_hash_rate_moving_average.average();
-                    let estimated_hash_rate = sha3_estimated_hash_rate + monero_estimated_hash_rate;
+                    let sha3x_estimated_hash_rate = sha3x_hash_rate_moving_average.average();
+                    let randomx_estimated_hash_rate = randomx_hash_rate_moving_average.average();
+                    let estimated_hash_rate = sha3x_estimated_hash_rate + randomx_estimated_hash_rate;
 
                     let difficulty = tari_rpc::NetworkDifficultyResponse {
                         difficulty: current_difficulty.as_u64(),
                         estimated_hash_rate,
-                        sha3_estimated_hash_rate,
-                        monero_estimated_hash_rate,
+                        sha3x_estimated_hash_rate,
+                        randomx_estimated_hash_rate,
                         height: current_height,
                         timestamp: current_timestamp.as_u64(),
                         pow_algo: pow_algo.as_u64(),

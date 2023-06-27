@@ -34,7 +34,7 @@ use tari_utilities::epoch_time::EpochTime;
 use crate::{
     borsh::SerializedSize,
     consensus::network::NetworkConsensus,
-    proof_of_work::{lwma_diff::LWMA_MAX_BLOCK_TIME_RATIO, Difficulty, PowAlgorithm},
+    proof_of_work::{Difficulty, PowAlgorithm},
     transactions::{
         tari_amount::{uT, MicroTari, T},
         transaction_components::{
@@ -79,7 +79,7 @@ pub struct ConsensusConstants {
     pub(in crate::consensus) emission_decay: &'static [u64],
     /// This is the emission curve tail amount
     pub(in crate::consensus) emission_tail: MicroTari,
-    /// This is the maximum age a monero merge mined seed can be reused
+    /// This is the maximum age a Monero merge mined seed can be reused
     /// Monero forces a change every height mod 2048 blocks
     max_randomx_seed_height: u64,
     /// This keeps track of the block split targets and which algo is accepted
@@ -103,6 +103,8 @@ pub struct ConsensusConstants {
     permitted_range_proof_types: &'static [RangeProofType],
     /// Coinbase outputs are allowed to have metadata, but it has the following length limit
     coinbase_output_features_extra_max_length: u32,
+    /// Maximum number of token elements permitted in covenants
+    max_covenant_length: u32,
     /// Epoch duration in blocks
     vn_epoch_length: u64,
     /// The number of Epochs that a validator node registration is valid
@@ -142,7 +144,6 @@ fn version_zero() -> (
 /// This is a convenience struct to put all the info into a hashmap for each algorithm
 #[derive(Clone, Debug)]
 pub struct PowAlgorithmConstants {
-    pub max_target_time: u64,
     pub min_difficulty: Difficulty,
     pub max_difficulty: Difficulty,
     pub target_time: u64,
@@ -210,15 +211,17 @@ impl ConsensusConstants {
     }
 
     /// Maximum transaction weight used for the construction of new blocks. It leaves place for 1 kernel and 1 output
-    /// with default features
+    /// with default features, as well as the maximum possible value of the `coinbase_extra` field
     pub fn max_block_weight_excluding_coinbase(&self) -> u64 {
         self.max_block_transaction_weight - self.calculate_1_output_kernel_weight()
     }
 
     fn calculate_1_output_kernel_weight(&self) -> u64 {
         let output_features = OutputFeatures { ..Default::default() };
+        let max_extra_size = self.coinbase_output_features_extra_max_length() as usize;
+
         let features_and_scripts_size = self.transaction_weight.round_up_features_and_scripts_size(
-            output_features.get_serialized_size() + script![Nop].get_serialized_size(),
+            output_features.get_serialized_size() + max_extra_size + script![Nop].get_serialized_size(),
         );
         self.transaction_weight.calculate(1, 0, 1, features_and_scripts_size)
     }
@@ -241,15 +244,6 @@ impl ConsensusConstants {
         }
     }
 
-    /// The maximum time a block is considered to take. Used by the difficulty adjustment algorithms
-    /// Multiplied by the PoW algorithm block percentage.
-    pub fn pow_max_block_interval(&self, pow_algo: PowAlgorithm) -> u64 {
-        match self.proof_of_work.get(&pow_algo) {
-            Some(v) => v.max_target_time,
-            _ => 0,
-        }
-    }
-
     /// This is how many blocks we use to count towards the median timestamp to ensure the block chain moves forward.
     pub fn median_timestamp_count(&self) -> usize {
         self.median_timestamp_count
@@ -264,7 +258,7 @@ impl ConsensusConstants {
     pub fn min_pow_difficulty(&self, pow_algo: PowAlgorithm) -> Difficulty {
         match self.proof_of_work.get(&pow_algo) {
             Some(v) => v.min_difficulty,
-            _ => 0.into(),
+            _ => Difficulty::min(),
         }
     }
 
@@ -276,11 +270,11 @@ impl ConsensusConstants {
     pub fn max_pow_difficulty(&self, pow_algo: PowAlgorithm) -> Difficulty {
         match self.proof_of_work.get(&pow_algo) {
             Some(v) => v.max_difficulty,
-            _ => 0.into(),
+            _ => Difficulty::min(),
         }
     }
 
-    /// The maximum age a monero merge mined seed can be reused
+    /// The maximum age a Monero merge mined seed can be reused
     pub fn max_randomx_seed_height(&self) -> u64 {
         self.max_randomx_seed_height
     }
@@ -313,6 +307,11 @@ impl ConsensusConstants {
     /// Returns the permitted range proof types
     pub fn permitted_range_proof_types(&self) -> &[RangeProofType] {
         self.permitted_range_proof_types
+    }
+
+    /// The maximum permitted token length of all covenants. A value of 0 is equivalent to disabling covenants.
+    pub fn max_covenant_length(&self) -> u32 {
+        self.max_covenant_length
     }
 
     pub fn validator_node_validity_period_epochs(&self) -> VnEpoch {
@@ -348,16 +347,14 @@ impl ConsensusConstants {
     pub fn localnet() -> Vec<Self> {
         let difficulty_block_window = 90;
         let mut algos = HashMap::new();
-        algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
-            max_target_time: 1800,
-            min_difficulty: 1.into(),
-            max_difficulty: 1.into(),
+        algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
+            min_difficulty: Difficulty::min(),
+            max_difficulty: Difficulty::min(),
             target_time: 300,
         });
-        algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
-            max_target_time: 1200,
-            min_difficulty: 1.into(),
-            max_difficulty: 1.into(),
+        algos.insert(PowAlgorithm::RandomX, PowAlgorithmConstants {
+            min_difficulty: Difficulty::min(),
+            max_difficulty: Difficulty::min(),
             target_time: 200,
         });
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
@@ -383,6 +380,7 @@ impl ConsensusConstants {
             kernel_version_range,
             permitted_output_types: OutputType::all(),
             permitted_range_proof_types: RangeProofType::all(),
+            max_covenant_length: 100,
             vn_epoch_length: 10,
             vn_validity_period_epochs: VnEpoch(100),
             vn_registration_min_deposit_amount: MicroTari(0),
@@ -397,26 +395,26 @@ impl ConsensusConstants {
 
     pub fn igor() -> Vec<Self> {
         // `igor` is a test network, so calculating these constants are allowed rather than being hardcoded.
-        let monero_split: u64 = 60;
-        let sha3_split: u64 = 100 - monero_split;
-        let monero_target_time = 20;
-        let sha3_target_time = monero_target_time * (100 - sha3_split) / sha3_split;
-        let target_time: u64 = (monero_target_time * sha3_target_time) / (monero_target_time + sha3_target_time);
+        let randomx_split: u64 = 60;
+        let sha3x_split: u64 = 100 - randomx_split;
+        let randomx_target_time = 20;
+        let sha3x_target_time = randomx_target_time * (100 - sha3x_split) / sha3x_split;
+        let target_time: u64 = (randomx_target_time * sha3x_target_time) / (randomx_target_time + sha3x_target_time);
         let difficulty_block_window = 90;
         let future_time_limit = target_time * difficulty_block_window / 20;
 
         let mut algos = HashMap::new();
-        algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
-            max_target_time: sha3_target_time * LWMA_MAX_BLOCK_TIME_RATIO,
-            min_difficulty: (sha3_target_time * 67_000).into(), // (target_time x 200_000/3) ... for easy testing
-            max_difficulty: u64::MAX.into(),
-            target_time: sha3_target_time,
+        algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
+            // (target_time x 200_000/3) ... for easy testing
+            min_difficulty: Difficulty::from_u64(sha3x_target_time * 67_000).expect("valid difficulty"),
+            max_difficulty: Difficulty::max(),
+            target_time: sha3x_target_time,
         });
-        algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
-            max_target_time: monero_target_time * LWMA_MAX_BLOCK_TIME_RATIO,
-            min_difficulty: (monero_target_time * 100).into(), // (target_time x 300/3)     ... for easy testing
-            max_difficulty: u64::MAX.into(),
-            target_time: monero_target_time,
+        algos.insert(PowAlgorithm::RandomX, PowAlgorithmConstants {
+            // (target_time x 300/3)     ... for easy testing
+            min_difficulty: Difficulty::from_u64(randomx_target_time * 100).expect("valid difficulty"),
+            max_difficulty: Difficulty::max(),
+            target_time: randomx_target_time,
         });
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
         let consensus_constants = vec![ConsensusConstants {
@@ -445,6 +443,7 @@ impl ConsensusConstants {
             // igor is the first network to support the new output types
             permitted_output_types: OutputType::all(),
             permitted_range_proof_types: RangeProofType::all(),
+            max_covenant_length: 100,
             vn_epoch_length: 10,
             vn_validity_period_epochs: VnEpoch(3),
             vn_registration_min_deposit_amount: MicroTari(0),
@@ -456,8 +455,8 @@ impl ConsensusConstants {
         assert_hybrid_pow_constants(
             &consensus_constants,
             &[target_time],
-            &[monero_split],
-            &[sha3_split],
+            &[randomx_split],
+            &[sha3x_split],
             CheckDifficultyRatio::No,
         );
         consensus_constants
@@ -471,16 +470,14 @@ impl ConsensusConstants {
     /// * Coinbase lock height - 12 hours = 360 blocks
     pub fn esmeralda() -> Vec<Self> {
         let mut algos = HashMap::new();
-        algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
-            max_target_time: 1800,
-            min_difficulty: 60_000_000.into(),
-            max_difficulty: u64::MAX.into(),
+        algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
+            min_difficulty: Difficulty::from_u64(60_000_000).expect("valid difficulty"),
+            max_difficulty: Difficulty::max(),
             target_time: 300,
         });
-        algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
-            max_target_time: 1200,
-            min_difficulty: 60_000.into(),
-            max_difficulty: u64::MAX.into(),
+        algos.insert(PowAlgorithm::RandomX, PowAlgorithmConstants {
+            min_difficulty: Difficulty::from_u64(60_000).expect("valid difficulty"),
+            max_difficulty: Difficulty::max(),
             target_time: 200,
         });
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
@@ -506,6 +503,7 @@ impl ConsensusConstants {
             kernel_version_range,
             permitted_output_types: Self::current_permitted_output_types(),
             permitted_range_proof_types: Self::current_permitted_range_proof_types(),
+            max_covenant_length: 0,
             vn_epoch_length: 60,
             vn_validity_period_epochs: VnEpoch(100),
             vn_registration_min_deposit_amount: MicroTari(0),
@@ -526,16 +524,14 @@ impl ConsensusConstants {
     /// * Coinbase lock height - 12 hours = 360 blocks
     pub fn stagenet() -> Vec<Self> {
         let mut algos = HashMap::new();
-        algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
-            max_target_time: 1800,
-            min_difficulty: 60_000_000.into(),
-            max_difficulty: u64::MAX.into(),
+        algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
+            min_difficulty: Difficulty::from_u64(60_000_000).expect("valid difficulty"),
+            max_difficulty: Difficulty::max(),
             target_time: 300,
         });
-        algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
-            max_target_time: 1200,
-            min_difficulty: 60_000.into(),
-            max_difficulty: u64::MAX.into(),
+        algos.insert(PowAlgorithm::RandomX, PowAlgorithmConstants {
+            min_difficulty: Difficulty::from_u64(60_000).expect("valid difficulty"),
+            max_difficulty: Difficulty::max(),
             target_time: 200,
         });
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
@@ -561,6 +557,7 @@ impl ConsensusConstants {
             kernel_version_range,
             permitted_output_types: Self::current_permitted_output_types(),
             permitted_range_proof_types: Self::current_permitted_range_proof_types(),
+            max_covenant_length: 0,
             vn_epoch_length: 60,
             vn_validity_period_epochs: VnEpoch(100),
             vn_registration_min_deposit_amount: MicroTari(0),
@@ -575,16 +572,14 @@ impl ConsensusConstants {
 
     pub fn nextnet() -> Vec<Self> {
         let mut algos = HashMap::new();
-        algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
-            max_target_time: 1800,
-            min_difficulty: 60_000_000.into(),
-            max_difficulty: u64::MAX.into(),
+        algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
+            min_difficulty: Difficulty::from_u64(60_000_000).expect("valid difficulty"),
+            max_difficulty: Difficulty::max(),
             target_time: 300,
         });
-        algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
-            max_target_time: 1200,
-            min_difficulty: 60_000.into(),
-            max_difficulty: u64::MAX.into(),
+        algos.insert(PowAlgorithm::RandomX, PowAlgorithmConstants {
+            min_difficulty: Difficulty::from_u64(60_000).expect("valid difficulty"),
+            max_difficulty: Difficulty::max(),
             target_time: 200,
         });
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
@@ -610,6 +605,7 @@ impl ConsensusConstants {
             kernel_version_range,
             permitted_output_types: Self::current_permitted_output_types(),
             permitted_range_proof_types: Self::current_permitted_range_proof_types(),
+            max_covenant_length: 0,
             vn_epoch_length: 60,
             vn_validity_period_epochs: VnEpoch(100),
             vn_registration_min_deposit_amount: MicroTari(0),
@@ -625,16 +621,14 @@ impl ConsensusConstants {
     pub fn mainnet() -> Vec<Self> {
         let difficulty_block_window = 90;
         let mut algos = HashMap::new();
-        algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
-            max_target_time: 1800,
-            min_difficulty: 60_000_000.into(),
-            max_difficulty: u64::MAX.into(),
+        algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
+            min_difficulty: Difficulty::from_u64(60_000_000).expect("valid difficulty"),
+            max_difficulty: Difficulty::max(),
             target_time: 300,
         });
-        algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
-            max_target_time: 1200,
-            min_difficulty: 60_000.into(),
-            max_difficulty: u64::MAX.into(),
+        algos.insert(PowAlgorithm::RandomX, PowAlgorithmConstants {
+            min_difficulty: Difficulty::from_u64(60_000).expect("valid difficulty"),
+            max_difficulty: Difficulty::max(),
             target_time: 200,
         });
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
@@ -660,6 +654,7 @@ impl ConsensusConstants {
             kernel_version_range,
             permitted_output_types: Self::current_permitted_output_types(),
             permitted_range_proof_types: Self::current_permitted_range_proof_types(),
+            max_covenant_length: 0,
             vn_epoch_length: 60,
             vn_validity_period_epochs: VnEpoch(100),
             vn_registration_min_deposit_amount: MicroTari(0),
@@ -692,83 +687,73 @@ enum CheckDifficultyRatio {
 // Note: The math and constants in this function should not be changed without ample consideration that should include
 //       discussion with the Tari community, modelling and system level tests.
 // For SHA3/Monero to have a 40/60 split:
-//   > sha3_target_time = monero_target_time * (100 - 40) / 40
-//   > monero_target_time = sha3_target_time * (100 - 60) / 60
-//   > target_time = monero_target_time * sha3_target_time / (monero_target_time + sha3_target_time)
+//   > sha3x_target_time = randomx_target_time * (100 - 40) / 40
+//   > randomx_target_time = sha3x_target_time * (100 - 60) / 60
+//   > target_time = randomx_target_time * sha3x_target_time / (ramdomx_target_time + sha3x_target_time)
 // `CheckDifficultyRatio` is optional for internal testing (Network::LocalNet and Network::Igor).
 #[cfg(any(test, debug_assertions))]
 fn assert_hybrid_pow_constants(
     consensus_constants: &[ConsensusConstants],
     target_time: &[u64],
-    monero_split: &[u64], // RamdomX
-    sha3_split: &[u64],
+    randomx_split: &[u64], // RamdomX
+    sha3x_split: &[u64],
     check_difficulty_ratio: CheckDifficultyRatio,
 ) {
     assert_eq!(consensus_constants.len(), target_time.len());
-    assert_eq!(consensus_constants.len(), monero_split.len());
-    assert_eq!(consensus_constants.len(), sha3_split.len());
+    assert_eq!(consensus_constants.len(), randomx_split.len());
+    assert_eq!(consensus_constants.len(), sha3x_split.len());
 
     for (i, constants) in consensus_constants.iter().enumerate() {
-        let sha3_constants = constants
+        let sha3x_constants = constants
             .proof_of_work
-            .get(&PowAlgorithm::Sha3)
+            .get(&PowAlgorithm::Sha3x)
             .expect("Sha3 constants not found");
-        let monero_constants = constants
+        let randomx_constants = constants
             .proof_of_work
-            .get(&PowAlgorithm::Monero)
-            .expect("Monero constants not found");
+            .get(&PowAlgorithm::RandomX)
+            .expect("RandomX constants not found");
 
         // POW algorithm dependencies
         // - Basics
         assert!(
-            sha3_constants.min_difficulty <= sha3_constants.max_difficulty,
-            "SHA3 min_difficulty > max_difficulty"
+            sha3x_constants.min_difficulty <= sha3x_constants.max_difficulty,
+            "SHA3X min_difficulty > max_difficulty"
         );
         assert!(
-            monero_constants.min_difficulty <= monero_constants.max_difficulty,
-            "Monero min_difficulty > max_difficulty"
+            randomx_constants.min_difficulty <= randomx_constants.max_difficulty,
+            "RandomX min_difficulty > max_difficulty"
         );
         // - Starting difficulty (these should enable an average home use miner to mine a block in 2 minutes)
         if check_difficulty_ratio == CheckDifficultyRatio::Yes {
             assert_eq!(
-                sha3_constants.min_difficulty.as_u64(),
-                sha3_constants.target_time * 200_000,
-                "SHA3 min_difficulty is not 200,000x SHA3 target_time"
+                sha3x_constants.min_difficulty.as_u64(),
+                sha3x_constants.target_time * 200_000,
+                "SHA3X min_difficulty is not 200,000x SHA3X target_time"
             );
             assert_eq!(
-                monero_constants.min_difficulty.as_u64(),
-                monero_constants.target_time * 300,
-                "Monero min_difficulty is not 300x Monero target_time"
+                randomx_constants.min_difficulty.as_u64(),
+                randomx_constants.target_time * 300,
+                "RandomX min_difficulty is not 300x RandomX target_time"
             );
         }
         // - Target time (the ratios here are important to determine the SHA3/Monero split and overall block time)
-        assert_eq!(monero_split[i] + sha3_split[i], 100, "Split must add up to 100");
+        assert_eq!(randomx_split[i] + sha3x_split[i], 100, "Split must add up to 100");
         assert_eq!(
-            sha3_constants.target_time * sha3_split[i],
-            monero_constants.target_time * (100 - sha3_split[i]),
+            sha3x_constants.target_time * sha3x_split[i],
+            randomx_constants.target_time * (100 - sha3x_split[i]),
             "SHA3 target times are not inversely proportional to SHA3 split"
         );
         assert_eq!(
-            monero_constants.target_time * monero_split[i],
-            sha3_constants.target_time * (100 - monero_split[i]),
+            randomx_constants.target_time * randomx_split[i],
+            sha3x_constants.target_time * (100 - randomx_split[i]),
             "Monero target times are not inversely proportional to Monero split"
         );
         assert_eq!(
-            target_time[i] * (monero_constants.target_time + sha3_constants.target_time),
-            monero_constants.target_time * sha3_constants.target_time,
+            target_time[i] * (randomx_constants.target_time + sha3x_constants.target_time),
+            randomx_constants.target_time * sha3x_constants.target_time,
             "Overall target time is not inversely proportional to target split times"
         );
         // General LWMA dependencies
-        assert_eq!(
-            sha3_constants.max_target_time,
-            sha3_constants.target_time * LWMA_MAX_BLOCK_TIME_RATIO,
-            "SHA3 max_target_time is not 6x SHA3 target_time"
-        );
-        assert_eq!(
-            monero_constants.max_target_time,
-            monero_constants.target_time * LWMA_MAX_BLOCK_TIME_RATIO,
-            "Monero max_target_time is not 6x Monero target_time"
-        );
         assert_eq!(
             constants.future_time_limit * 20,
             target_time[i] * constants.difficulty_block_window,

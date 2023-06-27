@@ -21,7 +21,6 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use std::{collections::HashMap, ops::Shl};
 
-use futures::lock::Mutex;
 use log::*;
 use rand::rngs::OsRng;
 use strum::IntoEnumIterator;
@@ -53,6 +52,7 @@ use tari_key_manager::{
     },
 };
 use tari_utilities::{hex::Hex, ByteArray};
+use tokio::sync::RwLock;
 
 use crate::{
     one_sided::diffie_hellman_stealth_domain_hasher,
@@ -87,7 +87,7 @@ use crate::{
 hash_domain!(KeyManagerHashingDomain, "base_layer.core.key_manager");
 
 pub struct TransactionKeyManagerInner<TBackend> {
-    key_managers: HashMap<String, Mutex<KeyManager<PublicKey, KeyDigest>>>,
+    key_managers: HashMap<String, RwLock<KeyManager<PublicKey, KeyDigest>>>,
     db: KeyManagerDatabase<TBackend, PublicKey>,
     master_seed: CipherSeed,
     crypto_factories: CryptoFactories,
@@ -141,7 +141,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         };
         self.key_managers.insert(
             branch.to_string(),
-            Mutex::new(KeyManager::<PublicKey, KeyDigest>::from(
+            RwLock::new(KeyManager::<PublicKey, KeyDigest>::from(
                 self.master_seed.clone(),
                 state.branch_seed,
                 state.primary_key_index,
@@ -155,7 +155,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .key_managers
             .get(branch)
             .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
-            .lock()
+            .write()
             .await;
         self.db.increment_key_index(branch)?;
         let index = km.increment_key_index(1);
@@ -186,7 +186,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                     .key_managers
                     .get(branch)
                     .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
-                    .lock()
+                    .read()
                     .await;
                 Ok(km.derive_public_key(*index)?.key)
             },
@@ -220,7 +220,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .key_managers
             .get(branch)
             .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
-            .lock()
+            .read()
             .await;
 
         let current_index = km.key_index();
@@ -242,7 +242,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .key_managers
             .get(branch)
             .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
-            .lock()
+            .read()
             .await;
 
         let current_index = km.key_index();
@@ -268,7 +268,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .key_managers
             .get(branch)
             .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
-            .lock()
+            .write()
             .await;
         let current_index = km.key_index();
         if index > current_index {
@@ -296,7 +296,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                     .key_managers
                     .get(branch)
                     .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
-                    .lock()
+                    .read()
                     .await;
                 let key = km.get_private_key(*index)?;
                 Ok(key)

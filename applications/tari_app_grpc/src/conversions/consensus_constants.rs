@@ -47,12 +47,7 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
             max: u64::from(valid_blockchain_version_range.1),
         };
         let transaction_weight = cc.transaction_weight_params();
-        let features_and_scripts_bytes_per_gram =
-            if let Some(val) = transaction_weight.params().features_and_scripts_bytes_per_gram {
-                u64::from(val)
-            } else {
-                0u64
-            };
+        let features_and_scripts_bytes_per_gram = transaction_weight.params().features_and_scripts_bytes_per_gram.get();
         let transaction_weight = grpc::WeightParams {
             kernel_weight: cc.transaction_weight_params().params().kernel_weight,
             input_weight: cc.transaction_weight_params().params().input_weight,
@@ -86,38 +81,32 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
             .map(|rpt| i32::from(rpt.as_byte()))
             .collect::<Vec<i32>>();
 
-        let monero_pow = PowAlgorithm::Monero;
-        let sha3_pow = PowAlgorithm::Sha3;
-
-        let monero_pow = grpc::PowAlgorithmConstants {
-            max_target_time: cc.pow_max_block_interval(monero_pow),
-            max_difficulty: cc.max_pow_difficulty(monero_pow).as_u64(),
-            min_difficulty: cc.min_pow_difficulty(monero_pow).as_u64(),
-            target_time: cc.pow_target_block_interval(monero_pow),
+        let randomx_pow = grpc::PowAlgorithmConstants {
+            max_difficulty: cc.max_pow_difficulty(PowAlgorithm::RandomX).as_u64(),
+            min_difficulty: cc.min_pow_difficulty(PowAlgorithm::RandomX).as_u64(),
+            target_time: cc.pow_target_block_interval(PowAlgorithm::RandomX),
         };
 
-        let sha3_pow = grpc::PowAlgorithmConstants {
-            max_target_time: cc.pow_max_block_interval(sha3_pow),
-            max_difficulty: cc.max_pow_difficulty(sha3_pow).as_u64(),
-            min_difficulty: cc.min_pow_difficulty(sha3_pow).as_u64(),
-            target_time: cc.pow_target_block_interval(sha3_pow),
+        let sha3x_pow = grpc::PowAlgorithmConstants {
+            max_difficulty: cc.max_pow_difficulty(PowAlgorithm::Sha3x).as_u64(),
+            min_difficulty: cc.min_pow_difficulty(PowAlgorithm::Sha3x).as_u64(),
+            target_time: cc.pow_target_block_interval(PowAlgorithm::Sha3x),
         };
 
-        let proof_of_work = HashMap::from_iter([(0u32, monero_pow), (1u32, sha3_pow)]);
+        let proof_of_work = HashMap::from_iter([(0u32, randomx_pow), (1u32, sha3x_pow)]);
 
         Self {
             coinbase_min_maturity: cc.coinbase_min_maturity(),
             blockchain_version: cc.blockchain_version().into(),
             future_time_limit: cc.ftl().as_u64(),
             difficulty_block_window: cc.difficulty_block_window(),
-            difficulty_max_block_interval: cc.pow_max_block_interval(PowAlgorithm::Sha3),
             max_block_transaction_weight: cc.max_block_transaction_weight(),
             pow_algo_count: cc.pow_algo_count(),
             median_timestamp_count: u64::try_from(cc.median_timestamp_count()).unwrap_or(0),
             emission_initial: emission_initial.into(),
             emission_decay: emission_decay.to_vec(),
             emission_tail: emission_tail.into(),
-            min_blake_pow_difficulty: cc.min_pow_difficulty(PowAlgorithm::Sha3).into(),
+            min_sha3x_pow_difficulty: cc.min_pow_difficulty(PowAlgorithm::Sha3x).into(),
             block_weight_inputs: weight_params.input_weight,
             block_weight_outputs: weight_params.output_weight,
             block_weight_kernels: weight_params.kernel_weight,

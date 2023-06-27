@@ -33,6 +33,7 @@ use tari_core::{
     consensus::ConsensusManager,
     covenants::Covenant,
     mempool::{Mempool, MempoolConfig},
+    proof_of_work::Difficulty,
     test_helpers::{
         blockchain::{create_store_with_consensus_and_validators_and_config, create_test_blockchain_db},
         create_consensus_rules,
@@ -322,21 +323,56 @@ async fn inbound_fetch_blocks_before_horizon_height() {
 
     let txn = txn_schema!(from: vec![wallet_output], to: vec![MicroTari(5_000), MicroTari(4_000)]);
     let (txn, _) = spend_utxos(txn, &key_manager).await;
-    let block1 = append_block(&store, &block0, vec![txn], &consensus_manager, 1.into(), &key_manager)
-        .await
-        .unwrap();
-    let block2 = append_block(&store, &block1, vec![], &consensus_manager, 1.into(), &key_manager)
-        .await
-        .unwrap();
-    let block3 = append_block(&store, &block2, vec![], &consensus_manager, 1.into(), &key_manager)
-        .await
-        .unwrap();
-    let block4 = append_block(&store, &block3, vec![], &consensus_manager, 1.into(), &key_manager)
-        .await
-        .unwrap();
-    let _block5 = append_block(&store, &block4, vec![], &consensus_manager, 1.into(), &key_manager)
-        .await
-        .unwrap();
+    let block1 = append_block(
+        &store,
+        &block0,
+        vec![txn],
+        &consensus_manager,
+        Difficulty::min(),
+        &key_manager,
+    )
+    .await
+    .unwrap();
+    let block2 = append_block(
+        &store,
+        &block1,
+        vec![],
+        &consensus_manager,
+        Difficulty::min(),
+        &key_manager,
+    )
+    .await
+    .unwrap();
+    let block3 = append_block(
+        &store,
+        &block2,
+        vec![],
+        &consensus_manager,
+        Difficulty::min(),
+        &key_manager,
+    )
+    .await
+    .unwrap();
+    let block4 = append_block(
+        &store,
+        &block3,
+        vec![],
+        &consensus_manager,
+        Difficulty::min(),
+        &key_manager,
+    )
+    .await
+    .unwrap();
+    let _block5 = append_block(
+        &store,
+        &block4,
+        vec![],
+        &consensus_manager,
+        Difficulty::min(),
+        &key_manager,
+    )
+    .await
+    .unwrap();
 
     if let Ok(NodeCommsResponse::HistoricalBlocks(received_blocks)) = inbound_nch
         .handle_request(NodeCommsRequest::FetchMatchingBlocks {

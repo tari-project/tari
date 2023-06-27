@@ -126,7 +126,7 @@ mod test {
         let hash = tree.hash().clone();
         let proof = tree.build_proof(&key).unwrap();
 
-        assert_eq!(proof.validate_inclusion_proof(&key, &value, &hash), false);
+        assert!(!proof.validate_inclusion_proof(&key, &value, &hash));
         assert!(proof.validate_exclusion_proof(&key, &hash));
 
         tree.upsert(key.clone(), value.clone()).unwrap();
@@ -134,11 +134,8 @@ mod test {
         let proof = tree.build_proof(&key).unwrap();
 
         assert!(proof.validate_inclusion_proof(&key, &value, &hash));
-        assert_eq!(
-            proof.validate_inclusion_proof(&key, &ValueHash::from([1u8; 32]), &hash),
-            false
-        );
-        assert_eq!(proof.validate_exclusion_proof(&key, &hash), false);
+        assert!(!proof.validate_inclusion_proof(&key, &ValueHash::from([1u8; 32]), &hash),);
+        assert!(!proof.validate_exclusion_proof(&key, &hash));
     }
 
     #[test]
@@ -156,22 +153,16 @@ mod test {
             // Validate the proof with correct key / value
             assert!(proof.validate_inclusion_proof(&keys[i], &values[i], &root_hash));
             // Show that incorrect value for existing key fails
-            assert_eq!(
-                proof.validate_inclusion_proof(&keys[i], &values[(i + 3) % n], &root_hash),
-                false
-            );
+            assert!(!proof.validate_inclusion_proof(&keys[i], &values[(i + 3) % n], &root_hash),);
             // Exclusion proof fails
-            assert_eq!(proof.validate_exclusion_proof(&keys[i], &root_hash), false);
+            assert!(!proof.validate_exclusion_proof(&keys[i], &root_hash));
         });
         // Test exclusion proof
         let unused_keys = random_keys(n, 72);
         (0..n).for_each(|i| {
             let proof = tree.build_proof(&unused_keys[i]).unwrap();
             assert!(proof.validate_exclusion_proof(&unused_keys[i], &root_hash));
-            assert_eq!(
-                proof.validate_inclusion_proof(&unused_keys[i], &values[i], &root_hash),
-                false
-            );
+            assert!(!proof.validate_inclusion_proof(&unused_keys[i], &values[i], &root_hash),);
         });
     }
 }

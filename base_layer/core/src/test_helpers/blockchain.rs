@@ -40,7 +40,6 @@ use tari_test_utils::paths::create_temporary_data_path;
 use super::{create_block, mine_to_difficulty};
 use crate::{
     blocks::{
-        genesis_block::get_genesis_block,
         Block,
         BlockAccumulatedData,
         BlockHeader,
@@ -92,10 +91,8 @@ pub fn create_new_blockchain() -> BlockchainDatabase<TempDatabase> {
 
 pub fn create_new_blockchain_with_network(network: Network) -> BlockchainDatabase<TempDatabase> {
     let consensus_constants = ConsensusConstantsBuilder::new(network).build();
-    let genesis = get_genesis_block(network);
     let consensus_manager = ConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants)
-        .with_block(genesis)
         .on_ties(ChainStrengthComparerBuilder::new().by_height().build())
         .build()
         .unwrap();
@@ -466,8 +463,7 @@ fn mine_block(block: Block, prev_block_accum: &BlockHeaderAccumulatedData, diffi
     let accum = BlockHeaderAccumulatedData::builder(prev_block_accum)
         .with_hash(block.hash())
         .with_achieved_target_difficulty(
-            AchievedTargetDifficulty::try_construct(PowAlgorithm::Sha3, (difficulty.as_u64() - 1).into(), difficulty)
-                .unwrap(),
+            AchievedTargetDifficulty::try_construct(PowAlgorithm::Sha3x, difficulty, difficulty).unwrap(),
         )
         .with_total_kernel_offset(block.header.total_kernel_offset.clone())
         .build()

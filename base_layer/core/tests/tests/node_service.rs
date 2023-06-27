@@ -33,7 +33,7 @@ use tari_core::{
     blocks::{ChainBlock, NewBlock},
     consensus::{ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder, NetworkConsensus},
     mempool::TxStorageResponse,
-    proof_of_work::{randomx_factory::RandomXFactory, PowAlgorithm},
+    proof_of_work::{randomx_factory::RandomXFactory, Difficulty, PowAlgorithm},
     transactions::{
         tari_amount::{uT, T},
         test_helpers::{create_test_core_key_manager_with_memory_db, schema_to_transaction, spend_utxos},
@@ -158,7 +158,7 @@ async fn propagate_and_forward_many_valid_blocks() {
             &block0,
             vec![tx01],
             &rules,
-            1.into(),
+            Difficulty::min(),
             &key_manager,
         )
         .await
@@ -272,9 +272,16 @@ async fn propagate_and_forward_invalid_block_hash() {
     )
     .await;
     let txs = txs.into_iter().map(|tx| (*tx).clone()).collect();
-    let block1 = append_block(&alice_node.blockchain_db, &block0, txs, &rules, 1.into(), &key_manager)
-        .await
-        .unwrap();
+    let block1 = append_block(
+        &alice_node.blockchain_db,
+        &block0,
+        txs,
+        &rules,
+        Difficulty::min(),
+        &key_manager,
+    )
+    .await
+    .unwrap();
     let block1 = {
         // Create unknown block hash
         let mut block = block1.block().clone();
@@ -417,7 +424,7 @@ async fn propagate_and_forward_invalid_block() {
         &block0,
         vec![],
         &rules,
-        1.into(),
+        Difficulty::min(),
         &key_manager,
     )
     .await
@@ -469,10 +476,10 @@ async fn local_get_metadata() {
         .await;
     let db = &node.blockchain_db;
     let block0 = db.fetch_block(0, true).unwrap().try_into_chain_block().unwrap();
-    let block1 = append_block(db, &block0, vec![], &consensus_manager, 1.into(), &key_manager)
+    let block1 = append_block(db, &block0, vec![], &consensus_manager, Difficulty::min(), &key_manager)
         .await
         .unwrap();
-    let block2 = append_block(db, &block1, vec![], &consensus_manager, 1.into(), &key_manager)
+    let block2 = append_block(db, &block1, vec![], &consensus_manager, Difficulty::min(), &key_manager)
         .await
         .unwrap();
 
@@ -510,7 +517,7 @@ async fn local_get_new_block_template_and_get_new_block() {
 
     let block_template = node
         .local_nci
-        .get_new_block_template(PowAlgorithm::Sha3, 0)
+        .get_new_block_template(PowAlgorithm::Sha3x, 0)
         .await
         .unwrap();
     assert_eq!(block_template.header.height, 1);
@@ -585,7 +592,7 @@ async fn local_get_new_block_with_zero_conf() {
 
     let mut block_template = node
         .local_nci
-        .get_new_block_template(PowAlgorithm::Sha3, 0)
+        .get_new_block_template(PowAlgorithm::Sha3x, 0)
         .await
         .unwrap();
     assert_eq!(block_template.header.height, 1);
@@ -666,7 +673,7 @@ async fn local_get_new_block_with_combined_transaction() {
 
     let mut block_template = node
         .local_nci
-        .get_new_block_template(PowAlgorithm::Sha3, 0)
+        .get_new_block_template(PowAlgorithm::Sha3x, 0)
         .await
         .unwrap();
     assert_eq!(block_template.header.height, 1);

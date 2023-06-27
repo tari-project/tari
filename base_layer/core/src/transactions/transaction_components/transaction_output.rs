@@ -336,7 +336,6 @@ impl TransactionOutput {
     }
 
     /// Attempt to verify a recovered mask (blinding factor) for a proof against the commitment.
-    /// TODO: Remove this method when core key manager is fully implemented
     pub fn verify_mask(
         &self,
         prover: &RangeProofService,
@@ -808,7 +807,7 @@ mod test {
             )
             .await;
         utxo?
-            .as_transaction_output(key_manager)
+            .to_transaction_output(key_manager)
             .await
             .map_err(|e| e.to_string())
     }

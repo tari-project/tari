@@ -54,8 +54,7 @@ jobs:
           toolchain: ${{ inputs.toolchain }}
           targets: ${{ matrix.build }}
 
-      - name: Cache cargo files and outputs
-        uses: Swatinem/rust-cache@v2
+      # Don't use caches for binary builds. Start from a clean slate.
 
       - name: Build libwallet libraries
         env:
@@ -134,8 +133,7 @@ jobs:
       - name: Install macOS dependencies
         run: brew install cmake coreutils
 
-      - name: Cache cargo files and outputs
-        uses: Swatinem/rust-cache@v2
+      # Don't use caches for binary builds. Start from a clean slate.
 
       - name: Build libwallet libraries
         shell: bash
