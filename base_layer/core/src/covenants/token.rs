@@ -49,7 +49,7 @@ use crate::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-/// Covenant token. Either a filter covenant or a an argument covenant.
+/// Covenant token. Either a filter covenant or an argument covenant.
 pub enum CovenantToken {
     Filter(CovenantFilter),
     Arg(Box<CovenantArg>),
