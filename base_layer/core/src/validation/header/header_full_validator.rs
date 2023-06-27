@@ -102,10 +102,7 @@ fn check_timestamp_count(
     prev_timestamps: &[EpochTime],
     consensus_constants: &ConsensusConstants,
 ) -> Result<(), ValidationError> {
-    let expected_timestamp_count = cmp::min(
-        consensus_constants.get_median_timestamp_count(),
-        header.height as usize - 1,
-    );
+    let expected_timestamp_count = cmp::min(consensus_constants.median_timestamp_count(), header.height as usize - 1);
     let timestamps: Vec<EpochTime> = prev_timestamps.iter().take(expected_timestamp_count).copied().collect();
     if timestamps.len() < expected_timestamp_count {
         return Err(ValidationError::NotEnoughTimestamps {

@@ -532,7 +532,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     );
                     height_utxo_counter += 1;
                     let output = TransactionOutput::try_from(output).map_err(HorizonSyncError::ConversionError)?;
-                    helpers::check_tari_script_byte_size(&output.script, constants.get_max_script_byte_size())?;
+                    helpers::check_tari_script_byte_size(&output.script, constants.max_script_byte_size())?;
                     unpruned_outputs.push(output.clone());
 
                     output_mmr.push(output.hash().to_vec())?;
