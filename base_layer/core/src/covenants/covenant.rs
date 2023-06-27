@@ -46,7 +46,8 @@ use crate::{
 const MAX_COVENANT_BYTES: usize = 4096;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-/// `Covenant` structure, it wraps a vector of `CovenantToken`
+/// A covenant allows a UTXO to specify some restrictions on how it is spent in a future transaction.
+/// See https://rfc.tari.com/RFC-0250_Covenants.html for details.
 pub struct Covenant {
     tokens: Vec<CovenantToken>,
 }
@@ -106,9 +107,8 @@ impl Covenant {
         counter.get()
     }
 
-    /// Given a block height, a transaction input and a slice of transaction outputs, it
-    /// executes a `CovenantFilter` on the given transaction outputs. If no underlying tokens
-    /// are available then it always passes
+    /// It executes the covenant on the transaction input being spent, it filters the transaction outputs which should
+    /// generate at least one match. An empty covenant is an identity and matches all outputs.
     pub fn execute<'a>(
         &self,
         block_height: u64,

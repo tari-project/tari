@@ -129,7 +129,7 @@ impl CovenantArg {
         }
     }
 
-    /// Parses the `CovenantArg` data to bytes and writes it to a buffer
+    /// Parses the `CovenantArg` data to bytes and writes it to an IO writer
     pub fn write_to<W: io::Write>(&self, writer: &mut W) -> Result<(), io::Error> {
         use byte_codes::*;
         #[allow(clippy::enum_glob_use)]
@@ -184,18 +184,18 @@ impl CovenantArg {
     }
 }
 
+/// `require_x_impl!` is a helper macro that generates an implementation of a function with a specific signature
+/// based on the provided input parameters. Functionality:
+/// The macro expects to receive either three or four arguments.
+///     $name, represents the name of the function to be generated.
+///     $output, represents the name of the enum variant that the function will match against.
+///     $expected, represents an expression that will be used in the error message when the provided argument
+///         does not match the expected variant.
+///     (optional) $output_type, represents the type that the function will return. If
+///         not provided, it defaults to the same as $output.
 macro_rules! require_x_impl {
     ($name:ident, $output:ident, $expected: expr, $output_type:ident) => {
         #[allow(dead_code)]
-        /// `require_x_impl!` is a helper macro that generates an implementation of a function with a specific signature
-        /// based on the provided input parameters. Functionality:
-        /// The macro expects to receive either three or four arguments.
-        ///     $name, represents the name of the function to be generated.
-        ///     $output, represents the name of the enum variant that the function will match against.
-        ///     $expected, represents an expression that will be used in the error message when the provided argument
-        ///         does not match the expected variant.
-        ///     (optional) $output_type, represents the type that the function will return. If
-        ///         not provided, it defaults to the same as $output.
         pub(super) fn $name(self) -> Result<$output_type, CovenantError> {
             match self {
                 CovenantArg::$output(obj) => Ok(obj),

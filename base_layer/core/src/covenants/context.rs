@@ -30,7 +30,8 @@ use crate::{
     transactions::transaction_components::TransactionInput,
 };
 
-/// A covenant context for future transactions
+/// The covenant execution context provides a reference to the transaction input being verified, the tokenized covenant
+/// and other relevant context e.g current block height
 pub struct CovenantContext<'a> {
     input: &'a TransactionInput,
     tokens: CovenantTokenCollection,
@@ -46,7 +47,7 @@ impl<'a> CovenantContext<'a> {
         }
     }
 
-    /// Checks if it has a non-empty number of underlying tokens
+    /// Returns true if there are more tokens to consume, otherwise false
     pub fn has_more_tokens(&self) -> bool {
         !self.tokens.is_empty()
     }

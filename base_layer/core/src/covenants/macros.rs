@@ -80,9 +80,7 @@ macro_rules! covenant {
 ///          generating the CovenantToken::fields vector and recursively calling __covenant_inner! with the remaining
 ///          tokens.
 ///
-///     The macro also includes other pattern matching rules for different types of tokens such as @covenant_lit,
-///     @output_type, and @arg. These rules generate the corresponding CovenantToken variants and invoke methods on the
-///     covenant object.
+///     This macro pattern is called a tt-muncher (tee hee)
 macro_rules! __covenant_inner {
     (@ { $covenant:ident }) => {};
 
