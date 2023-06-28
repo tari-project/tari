@@ -330,10 +330,10 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         value: u64,
     ) -> Result<bool, KeyManagerServiceError> {
         let spending_key = self.get_private_key(spending_key_id).await?;
-        Ok(self
-            .crypto_factories
+        self.crypto_factories
             .range_proof
-            .verify_mask(commitment, &spending_key, value)?)
+            .verify_mask(commitment, &spending_key, value)
+            .map_err(|e| e.into())
     }
 
     pub async fn get_diffie_hellman_shared_secret(
@@ -384,7 +384,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
 
         let spend_key = self.get_private_key(spending_key).await?;
 
-        let sig = RistrettoComSig::sign(
+        RistrettoComSig::sign(
             amount,
             &spend_key,
             &nonce_a,
@@ -392,8 +392,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             &challenge,
             &*self.crypto_factories.commitment,
         )
-        .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))?;
-        Ok(sig)
+        .map_err(|e| TransactionError::InvalidSignatureError(e.to_string()))
     }
 
     // -----------------------------------------------------------------------------------------------------------------
