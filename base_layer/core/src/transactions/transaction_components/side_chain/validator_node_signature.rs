@@ -44,7 +44,6 @@ impl ValidatorNodeSignature {
         Self { public_key, signature }
     }
 
-    // TODO: pass in commitment instead of arbitrary message
     pub fn sign(private_key: &PrivateKey, msg: &[u8]) -> Self {
         let (secret_nonce, public_nonce) = PublicKey::random_keypair(&mut OsRng);
         let public_key = PublicKey::from_secret_key(private_key);
