@@ -40,6 +40,8 @@ pub enum MerkleMountainRangeError {
     InvalidConfig,
     #[error("Invalid Merkle Mountain Range size")]
     InvalidMmrSize,
+    #[error("Invalid leaf index")]
+    InvalidLeafIndex,
 }
 
 impl MerkleMountainRangeError {
