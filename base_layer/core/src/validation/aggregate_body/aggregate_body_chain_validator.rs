@@ -254,7 +254,7 @@ pub fn check_outputs<B: BlockchainBackend>(
     Ok(())
 }
 
-/// This function checks the at the body contains no duplicated inputs or outputs.
+/// This function checks the body contains no duplicated inputs or outputs.
 fn verify_no_duplicated_inputs_outputs(body: &AggregateBody) -> Result<(), ValidationError> {
     if body.contains_duplicated_inputs() {
         warn!(
@@ -273,7 +273,7 @@ fn verify_no_duplicated_inputs_outputs(body: &AggregateBody) -> Result<(), Valid
     Ok(())
 }
 
-/// THis function checks the total burned sum in the header ensuring that every burned output is counted in the total
+/// This function checks the total burned sum in the header ensuring that every burned output is counted in the total
 /// sum.
 #[allow(clippy::mutable_key_type)]
 fn check_total_burned(body: &AggregateBody) -> Result<(), ValidationError> {

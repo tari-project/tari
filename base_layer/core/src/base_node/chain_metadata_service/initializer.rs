@@ -36,7 +36,6 @@ pub struct ChainMetadataServiceInitializer;
 impl ServiceInitializer for ChainMetadataServiceInitializer {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         debug!(target: LOG_TARGET, "Initializing Chain Metadata Service");
-        // Buffer size set to 1 because only the most recent metadata is applicable
         let (publisher, _) = broadcast::channel(20);
 
         let handle = ChainMetadataHandle::new(publisher.clone());

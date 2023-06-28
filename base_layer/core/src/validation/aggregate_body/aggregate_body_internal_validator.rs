@@ -346,7 +346,7 @@ fn check_maturity(height: u64, inputs: &[TransactionInput]) -> Result<(), Transa
     Ok(())
 }
 
-/// THis function checks the total burned sum in the header ensuring that every burned output is counted in the total
+/// This function checks the total burned sum in the header ensuring that every burned output is counted in the total
 /// sum.
 #[allow(clippy::mutable_key_type)]
 fn check_total_burned(body: &AggregateBody) -> Result<(), ValidationError> {
