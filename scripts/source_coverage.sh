@@ -16,11 +16,6 @@ tari_base_node
 tari_base_node_grpc_client
 tari_chat_client
 tari_chat_ffi
-tari_common_sqlite
-tari_common_types
-tari_comms
-tari_comms_dht
-tari_comms_rpc_macros
 tari_console_wallet
 tari_contacts
 tari_features
@@ -30,17 +25,24 @@ tari_merge_mining_proxy
 tari_metrics
 tari_miner
 tari_mining_helper_ffi
-tari_p2p
-tari_service_framework
 tari_test_utils
 tari_wallet_ffi
 tari_wallet_grpc_client
-tari_common
-tari_comms
-tari_core
-tari_storage
-tari_wallet
 )
+
+# Included:
+# tari_common
+# tari_comms
+# tari_core
+# tari_common_sqlite
+# tari_common_types
+# tari_comms
+# tari_comms_dht
+# tari_comms_rpc_macros
+# tari_p2p
+# tari_service_framework
+# tari_storage
+# tari_wallet
 
 echo "Check for cargo-llvm-cov"
 if [ "$(cargo llvm-cov --version)" ]
