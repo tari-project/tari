@@ -191,7 +191,12 @@ mod test {
             key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface, TxoStage},
             tari_amount::*,
             test_helpers::{create_test_core_key_manager_with_memory_db, TestParams, UtxoTestParams},
-            transaction_components::{OutputFeatures, TransactionKernel, TransactionKernelVersion},
+            transaction_components::{
+                OutputFeatures,
+                TransactionKernel,
+                TransactionKernelVersion,
+                TransactionOutputVersion,
+            },
             transaction_protocol::{
                 sender::{SingleRoundSenderData, TransactionSenderMessage},
                 TransactionMetadata,
@@ -222,6 +227,8 @@ mod test {
             ephemeral_public_nonce: sender_test_params.ephemeral_public_nonce_key_pk,
             covenant: Covenant::default(),
             minimum_value_promise: MicroTari::zero(),
+            transaction_output_version: TransactionOutputVersion::get_current_version(),
+            transaction_kernel_version: TransactionKernelVersion::get_current_version(),
         };
         let sender_info = TransactionSenderMessage::Single(Box::new(msg.clone()));
         let params = UtxoTestParams {

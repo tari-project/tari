@@ -124,6 +124,7 @@ mod test {
                 TransactionKernel,
                 TransactionKernelVersion,
                 TransactionOutput,
+                TransactionOutputVersion,
                 WalletOutput,
             },
             transaction_protocol::{
@@ -202,6 +203,8 @@ mod test {
             ephemeral_public_nonce: ephemeral_public_nonce.clone(),
             covenant: Default::default(),
             minimum_value_promise: MicroTari::zero(),
+            transaction_output_version: TransactionOutputVersion::get_current_version(),
+            transaction_kernel_version: TransactionKernelVersion::get_current_version(),
         };
         let bob_public_key = key_manager
             .get_public_key_at_key_id(&test_params.sender_offset_key_id)
