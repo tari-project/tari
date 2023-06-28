@@ -5114,7 +5114,7 @@ dependencies = [
 
 [[package]]
 name = "tari_app_grpc"
-version = "0.49.1"
+version = "0.49.2"
 dependencies = [
  "argon2",
  "base64 0.13.1",
@@ -5138,7 +5138,7 @@ dependencies = [
 
 [[package]]
 name = "tari_app_utilities"
-version = "0.49.1"
+version = "0.49.2"
 dependencies = [
  "clap 3.2.25",
  "futures 0.3.28",
@@ -5157,7 +5157,7 @@ dependencies = [
 
 [[package]]
 name = "tari_base_node"
-version = "0.49.1"
+version = "0.49.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5253,7 +5253,7 @@ dependencies = [
 
 [[package]]
 name = "tari_common"
-version = "0.49.1"
+version = "0.49.2"
 dependencies = [
  "anyhow",
  "blake2 0.9.2",
@@ -5280,7 +5280,7 @@ dependencies = [
 
 [[package]]
 name = "tari_common_sqlite"
-version = "0.49.1"
+version = "0.49.2"
 dependencies = [
  "diesel",
  "diesel_migrations",
@@ -5294,7 +5294,7 @@ dependencies = [
 
 [[package]]
 name = "tari_common_types"
-version = "0.49.1"
+version = "0.49.2"
 dependencies = [
  "borsh",
  "chacha20poly1305 0.10.1",
@@ -5312,7 +5312,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms"
-version = "0.49.1"
+version = "0.49.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5361,7 +5361,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms_dht"
-version = "0.49.1"
+version = "0.49.2"
 dependencies = [
  "anyhow",
  "bitflags 1.3.2",
@@ -5405,7 +5405,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms_rpc_macros"
-version = "0.49.1"
+version = "0.49.2"
 dependencies = [
  "futures 0.3.28",
  "proc-macro2",
@@ -5420,7 +5420,7 @@ dependencies = [
 
 [[package]]
 name = "tari_console_wallet"
-version = "0.49.1"
+version = "0.49.2"
 dependencies = [
  "bitflags 1.3.2",
  "chrono",
@@ -5469,7 +5469,7 @@ dependencies = [
 
 [[package]]
 name = "tari_contacts"
-version = "0.49.1"
+version = "0.49.2"
 dependencies = [
  "chrono",
  "diesel",
@@ -5497,7 +5497,7 @@ dependencies = [
 
 [[package]]
 name = "tari_core"
-version = "0.49.1"
+version = "0.49.2"
 dependencies = [
  "bincode",
  "bitflags 1.3.2",
@@ -5593,7 +5593,7 @@ dependencies = [
 
 [[package]]
 name = "tari_features"
-version = "0.49.1"
+version = "0.49.2"
 
 [[package]]
 name = "tari_integration_tests"
@@ -5641,7 +5641,7 @@ dependencies = [
 
 [[package]]
 name = "tari_key_manager"
-version = "0.49.1"
+version = "0.49.2"
 dependencies = [
  "argon2",
  "async-trait",
@@ -5695,7 +5695,7 @@ dependencies = [
 
 [[package]]
 name = "tari_merge_mining_proxy"
-version = "0.49.1"
+version = "0.49.2"
 dependencies = [
  "anyhow",
  "bincode",
@@ -5745,7 +5745,7 @@ dependencies = [
 
 [[package]]
 name = "tari_miner"
-version = "0.49.1"
+version = "0.49.2"
 dependencies = [
  "base64 0.13.1",
  "borsh",
@@ -5780,7 +5780,7 @@ dependencies = [
 
 [[package]]
 name = "tari_mining_helper_ffi"
-version = "0.49.1"
+version = "0.49.2"
 dependencies = [
  "borsh",
  "hex",
@@ -5796,7 +5796,7 @@ dependencies = [
 
 [[package]]
 name = "tari_mmr"
-version = "0.49.1"
+version = "0.49.2"
 dependencies = [
  "bincode",
  "blake2 0.9.2",
@@ -5816,7 +5816,7 @@ dependencies = [
 
 [[package]]
 name = "tari_p2p"
-version = "0.49.1"
+version = "0.49.2"
 dependencies = [
  "anyhow",
  "clap 2.34.0",
@@ -5870,7 +5870,7 @@ dependencies = [
 
 [[package]]
 name = "tari_service_framework"
-version = "0.49.1"
+version = "0.49.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5887,7 +5887,7 @@ dependencies = [
 
 [[package]]
 name = "tari_shutdown"
-version = "0.49.1"
+version = "0.49.2"
 dependencies = [
  "futures 0.3.28",
  "tokio",
@@ -5895,7 +5895,7 @@ dependencies = [
 
 [[package]]
 name = "tari_storage"
-version = "0.49.1"
+version = "0.49.2"
 dependencies = [
  "bincode",
  "lmdb-zero",
@@ -5908,7 +5908,7 @@ dependencies = [
 
 [[package]]
 name = "tari_test_utils"
-version = "0.49.1"
+version = "0.49.2"
 dependencies = [
  "futures 0.3.28",
  "futures-test",
@@ -5940,7 +5940,7 @@ dependencies = [
 
 [[package]]
 name = "tari_wallet"
-version = "0.49.1"
+version = "0.49.2"
 dependencies = [
  "argon2",
  "async-trait",
@@ -5990,7 +5990,7 @@ dependencies = [
 
 [[package]]
 name = "tari_wallet_ffi"
-version = "0.49.1"
+version = "0.49.2"
 dependencies = [
  "borsh",
  "cbindgen 0.24.3",

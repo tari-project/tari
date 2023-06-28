@@ -2,14 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.49.2](https://github.com/tari-project/tari/compare/v0.49.1...v0.49.2) (2023-06-28)
+
+### Features
+
+* **wallet-ffi:** prevent blocking on start
+
 ### [0.49.1](https://github.com/tari-project/tari/compare/v0.49.0...v0.49.1) (2023-06-12)
 
 ### ⚠ BREAKING CHANGES
 
 * set gen block time to now (#5454)
   
-* ### Features
-
 ### Bug Fixes
 
 * set gen block time to now ([4ba4280](https://github.com/tari-project/tari/commit/4ba4280e614a2984a570c54da533e55441603412))
