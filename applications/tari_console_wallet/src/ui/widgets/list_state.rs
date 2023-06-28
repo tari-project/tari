@@ -123,7 +123,7 @@ impl WindowedListState {
     }
 
     pub fn select_first(&mut self) {
-        if !self.num_items == 0 {
+        if self.num_items == 0 {
             self.selected = None;
         } else {
             self.selected = Some(0);
@@ -157,6 +157,38 @@ mod test {
     use std::convert::TryFrom;
 
     use crate::ui::widgets::WindowedListState;
+
+    #[test]
+    fn test_zero_items() {
+        let mut list_state = WindowedListState::new();
+        list_state.previous();
+        assert_eq!(list_state.selected(), None);
+        list_state.next();
+        assert_eq!(list_state.selected(), None);
+        list_state.get_list_state(5);
+        assert_eq!(list_state.selected(), None);
+        assert_eq!(list_state.get_start_end(), (0, 0));
+
+        list_state.set_num_items(5);
+        list_state.set_num_items(0);
+        list_state.previous();
+        assert_eq!(list_state.selected(), None);
+        list_state.next();
+        assert_eq!(list_state.selected(), None);
+        list_state.get_list_state(5);
+        assert_eq!(list_state.selected(), None);
+        assert_eq!(list_state.get_start_end(), (0, 0));
+    }
+
+    #[test]
+    fn test_select_first() {
+        let mut list_state = WindowedListState::new();
+        list_state.set_num_items(0);
+        list_state.select_first();
+        list_state.get_list_state(5);
+        assert_eq!(list_state.selected(), None);
+    }
+
     #[test]
     fn test_list_offset_update() {
         let slist = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
