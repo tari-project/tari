@@ -371,9 +371,10 @@ impl<H: Digest<OutputSize = U32>> SparseMerkleTree<H> {
             let leaf = mem::replace(&mut self.root, Node::Empty(EmptyNode {}));
             let leaf_hash = leaf.to_leaf()?.to_value_hash();
             self.size -= 1;
-            return Ok(DeleteResult::Deleted(leaf_hash));
+            Ok(DeleteResult::Deleted(leaf_hash))
+        } else {
+            Ok(DeleteResult::KeyNotFound)
         }
-        return Ok(DeleteResult::KeyNotFound);
     }
 
     // Performs an update or insert if the root is a leaf.
@@ -387,7 +388,7 @@ impl<H: Digest<OutputSize = U32>> SparseMerkleTree<H> {
         let root = old_root.build_tree(0, new_leaf)?;
         self.root = Branch(root);
         self.size += 1;
-        return Ok(UpdateResult::Inserted);
+        Ok(UpdateResult::Inserted)
     }
 
     // This function attaches a node to the branch at the specified height.
