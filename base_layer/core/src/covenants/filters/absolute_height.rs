@@ -44,10 +44,13 @@
 
 use crate::covenants::{context::CovenantContext, error::CovenantError, filters::Filter, output_set::OutputSet};
 
+/// Holding struct for the "absolute height" filter
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AbsoluteHeightFilter;
 
 impl Filter for AbsoluteHeightFilter {
+    // The absolute height filter removes all outputs in the mutable output set if the current block height is less than
+    // the absolute height provided in the covenant context.
     fn filter(&self, context: &mut CovenantContext<'_>, output_set: &mut OutputSet<'_>) -> Result<(), CovenantError> {
         let abs_height = context.next_arg()?.require_uint()?;
         let current_height = context.block_height();

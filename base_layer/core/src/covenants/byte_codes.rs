@@ -118,7 +118,11 @@ pub const FIELD_FEATURES_OUTPUT_TYPE: u8 = 0x05;
 /// Field features maturity.
 pub const FIELD_FEATURES_MATURITY: u8 = 0x06;
 /// Field features side chain features.
-pub const FIELD_FEATURES_SIDE_CHAIN_FEATURES: u8 = 0x08;
+pub const FIELD_FEATURES_SIDE_CHAIN_FEATURES: u8 = 0x07;
+/// Field features range proof type.
+pub const FIELD_FEATURES_RANGE_PROOF_TYPE: u8 = 0x08;
+/// Field minimum value promise.
+pub const MINIMUM_VALUE_PROMISE: u8 = 0x09;
 
 #[cfg(test)]
 mod tests {
