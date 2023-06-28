@@ -1037,6 +1037,7 @@ where
         Ok(tx)
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn create_pay_to_self_containing_outputs(
         &mut self,
         outputs: Vec<WalletOutputBuilder>,
