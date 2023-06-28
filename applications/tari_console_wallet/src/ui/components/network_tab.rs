@@ -113,7 +113,7 @@ impl NetworkTab {
         self.base_node_list_state.set_num_items(capacity);
         let mut base_node_list_state = self
             .base_node_list_state
-            .get_list_state((areas[1].height as usize).saturating_sub(3));
+            .update_list_state((areas[1].height as usize).saturating_sub(3));
 
         let column_list = MultiColumnList::new()
             .highlight_style(Style::default().add_modifier(Modifier::BOLD).fg(Color::Magenta))
