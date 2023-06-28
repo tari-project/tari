@@ -45,6 +45,7 @@ use crate::{
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
 #[repr(u8)]
+/// Output field
 pub enum OutputField {
     Commitment = byte_codes::FIELD_COMMITMENT,
     Script = byte_codes::FIELD_SCRIPT,
@@ -83,6 +84,7 @@ impl OutputField {
         self as u8
     }
 
+    /// Gets a reference for the field value
     pub(super) fn get_field_value_ref<T: 'static + std::fmt::Debug>(self, output: &TransactionOutput) -> Option<&T> {
         #[allow(clippy::enum_glob_use)]
         use OutputField::*;
@@ -101,6 +103,7 @@ impl OutputField {
         val.downcast_ref::<T>()
     }
 
+    /// Borsh serializes self to field value bytes
     pub fn get_field_value_bytes(self, output: &TransactionOutput) -> Vec<u8> {
         #[allow(clippy::enum_glob_use)]
         use OutputField::*;
@@ -122,6 +125,8 @@ impl OutputField {
         writer
     }
 
+    /// Given an `OutputField` instance, it checks if the corresponding input field value
+    /// matches that of the output
     pub fn is_eq_input(self, input: &TransactionInput, output: &TransactionOutput) -> bool {
         #[allow(clippy::enum_glob_use)]
         use OutputField::*;
@@ -166,6 +171,8 @@ impl OutputField {
         }
     }
 
+    /// Given an `OutputField` instance, it checks if the corresponding `transaction output`
+    /// field value matches that of `val`
     pub fn is_eq<T: PartialEq + std::fmt::Debug + 'static>(
         self,
         output: &TransactionOutput,
@@ -274,6 +281,7 @@ impl Display for OutputField {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, BorshSerialize, BorshDeserialize)]
+/// Wraps a collection of `OutputField`
 pub struct OutputFields {
     fields: Vec<OutputField>,
 }
@@ -282,20 +290,24 @@ impl OutputFields {
     /// The number of unique fields available. This always matches the number of variants in `OutputField`.
     pub const NUM_FIELDS: usize = 10;
 
+    /// Returns a new empty instance of `OutputFields`.
     pub fn new() -> Self {
         Default::default()
     }
 
+    /// Pushes a new output field to the underlying `OutputFields` data.
     pub fn push(&mut self, field: OutputField) {
         self.fields.push(field);
     }
 
+    /// Reads from a read buffer. Errors if the reader has too many field elements.
     pub fn read_from<R: io::Read>(reader: &mut R) -> Result<Self, CovenantDecodeError> {
         // Each field is a byte
         let buf = reader.read_variable_length_bytes(Self::NUM_FIELDS)?;
         buf.iter().map(|byte| OutputField::from_byte(*byte)).collect()
     }
 
+    /// Writes an instance `OutputFields` data to a new writer.
     pub fn write_to<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
         let len = self.fields.len();
         if len > Self::NUM_FIELDS {
@@ -311,18 +323,23 @@ impl OutputFields {
         Ok(written)
     }
 
+    /// Returns the underlying iterator of `OutputFields`.
     pub fn iter(&self) -> impl Iterator<Item = &OutputField> + '_ {
         self.fields.iter()
     }
 
+    /// Returns the length of the underlying `OutputFields` length.
     pub fn len(&self) -> usize {
         self.fields.len()
     }
 
+    /// Checks if `OutputFields` fields is empty.
     pub fn is_empty(&self) -> bool {
         self.fields.is_empty()
     }
 
+    /// Given a `TransactionOutput` it iteratively hashes the field value for a
+    /// `TransactionOutput`, over the underlying list of field values
     pub fn construct_challenge_from(&self, output: &TransactionOutput) -> Blake256 {
         let mut challenge = Blake256::new();
         BaseLayerCovenantsDomain::add_domain_separation_tag(&mut challenge, COVENANTS_FIELD_HASHER_LABEL);
@@ -332,17 +349,20 @@ impl OutputFields {
         challenge
     }
 
+    /// Produces a slice of the underlying fields of `OutputFields`.
     pub fn fields(&self) -> &[OutputField] {
         &self.fields
     }
 }
 
 impl From<Vec<OutputField>> for OutputFields {
+    /// Produces a new `OutputFields` instance out of a vector of `OutputField`.
     fn from(fields: Vec<OutputField>) -> Self {
         OutputFields { fields }
     }
 }
 impl FromIterator<OutputField> for OutputFields {
+    /// Produces a new `OutputFields` instance out of an iterator of `OutputField`.
     fn from_iter<T: IntoIterator<Item = OutputField>>(iter: T) -> Self {
         Self {
             fields: iter.into_iter().collect(),
