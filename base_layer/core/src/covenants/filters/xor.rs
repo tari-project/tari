@@ -22,10 +22,14 @@
 
 use crate::covenants::{context::CovenantContext, error::CovenantError, filters::Filter, output_set::OutputSet};
 
+/// Holding struct for the "xor" filter
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct XorFilter;
 
 impl Filter for XorFilter {
+    // The xor filter removes outputs in the mutable output set that are removed when applying both filters in the
+    // covenant context independently from each other, but only returns outputs that are in either of the two sets (not
+    // in both). The  symmetric difference of the two filtered sets are returned.
     fn filter(&self, context: &mut CovenantContext<'_>, output_set: &mut OutputSet<'_>) -> Result<(), CovenantError> {
         let a = context.require_next_filter()?;
         let mut output_set_a = output_set.clone();

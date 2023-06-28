@@ -32,6 +32,9 @@ use crate::{
     },
 };
 
+/// Create a covenant context and outputs for testing a filter with a given covenant, input and block height. The
+/// outputs are default random and modified by closure parameter `output_mod: F` (anonymous function) before it is
+/// returned.
 pub async fn setup_filter_test<'a, F>(
     covenant: &Covenant,
     input: &'a TransactionInput,

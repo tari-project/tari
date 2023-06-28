@@ -23,10 +23,14 @@
 use digest::Digest;
 
 use crate::covenants::{context::CovenantContext, error::CovenantError, filters::Filter, output_set::OutputSet};
+
+/// Holding struct for the "output fields that hash to a given hash" filter
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FieldsHashedEqFilter;
 
 impl Filter for FieldsHashedEqFilter {
+    // Filters out all outputs that do not have the hashed output field equal to the specified hash value
+    // based on the next two arguments in the covenant context.
     fn filter(&self, context: &mut CovenantContext<'_>, output_set: &mut OutputSet<'_>) -> Result<(), CovenantError> {
         let fields = context.next_arg()?.require_outputfields()?;
         let hash = context.next_arg()?.require_hash()?;
@@ -78,6 +82,11 @@ mod test {
             0,
             |outputs| {
                 outputs[5].features = features.clone();
+                outputs[6].features = OutputFeatures {
+                    maturity: 41,
+                    sidechain_feature: Some(make_sample_sidechain_feature()),
+                    ..Default::default()
+                };
                 outputs[7].features = features;
             },
             &key_manager,

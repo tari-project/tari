@@ -28,10 +28,13 @@ use crate::covenants::{
     output_set::OutputSet,
 };
 
+/// Holding struct for the "fields equal" filter
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FieldEqFilter;
 
 impl Filter for FieldEqFilter {
+    // Filters out all outputs that do not have the specified output field equal to the specified value based on the
+    // next two arguments in the covenant context.
     fn filter(&self, context: &mut CovenantContext<'_>, output_set: &mut OutputSet<'_>) -> Result<(), CovenantError> {
         let field = context.next_arg()?.require_outputfield()?;
         let arg = context.next_arg()?;

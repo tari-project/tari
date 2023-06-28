@@ -22,10 +22,13 @@
 
 use crate::covenants::{context::CovenantContext, error::CovenantError, filters::Filter, output_set::OutputSet};
 
+/// Holding struct for the "and" filter
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AndFilter;
 
 impl Filter for AndFilter {
+    // The and filter removes all outputs in the mutable output set based on the next two filters in the covenant
+    // context - the filters are applied in order.
     fn filter(&self, context: &mut CovenantContext<'_>, output_set: &mut OutputSet<'_>) -> Result<(), CovenantError> {
         let a = context.require_next_filter()?;
         a.filter(context, output_set)?;
@@ -51,19 +54,26 @@ mod test {
     #[tokio::test]
     async fn it_filters_outputset_using_intersection() {
         let key_manager = create_test_core_key_manager_with_memory_db();
-        let script = script!(Nop);
-        let covenant =
-            covenant!(and(field_eq(@field::features_maturity, @uint(42),), field_eq(@field::script, @script(script))));
+        let script = script!(CheckHeight(101));
+        let covenant = covenant!(and(field_eq(@field::features_maturity, @uint(42),), field_eq(@field::script, @script(script.clone()))));
         let input = create_input(&key_manager).await;
         let (mut context, outputs) = setup_filter_test(
             &covenant,
             &input,
             0,
             |outputs| {
+                // output satisfying maturity only
+                outputs[2].features.maturity = 42;
+                outputs[2].script = script!(CheckHeight(102));
+                // output satisfying maturity and script
                 outputs[5].features.maturity = 42;
+                outputs[5].script = script.clone();
+                // output satisfying maturity and script
                 outputs[7].features.maturity = 42;
-                // Does not have maturity = 42
+                outputs[7].script = script.clone();
+                // output satisfying script only
                 outputs[8].features.maturity = 123;
+                outputs[8].script = script.clone();
             },
             &key_manager,
         )

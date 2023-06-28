@@ -22,10 +22,13 @@
 
 use crate::covenants::{context::CovenantContext, error::CovenantError, filters::Filter, output_set::OutputSet};
 
+/// Holding struct for the "output fields preserved" filter
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FieldsPreservedFilter;
 
 impl Filter for FieldsPreservedFilter {
+    // Filters out all outputs that do not duplicate the specified input field in the covenant context for each output
+    // in the set.
     fn filter(&self, context: &mut CovenantContext<'_>, output_set: &mut OutputSet<'_>) -> Result<(), CovenantError> {
         let fields = context.next_arg()?.require_outputfields()?;
         let input = context.input();
@@ -50,16 +53,16 @@ mod test {
         let key_manager = create_test_core_key_manager_with_memory_db();
         let mut input = create_input(&key_manager).await;
         input.set_maturity(42).unwrap();
-        input.features_mut().unwrap().output_type = OutputType::Standard;
+        input.features_mut().unwrap().output_type = OutputType::ValidatorNodeRegistration;
         let (mut context, outputs) = setup_filter_test(
             &covenant,
             &input,
             0,
             |outputs| {
                 outputs[5].features.maturity = 42;
-                outputs[5].features.output_type = OutputType::Standard;
+                outputs[5].features.output_type = OutputType::ValidatorNodeRegistration;
                 outputs[7].features.maturity = 42;
-                outputs[7].features.output_type = OutputType::Standard;
+                outputs[7].features.output_type = OutputType::ValidatorNodeRegistration;
                 outputs[8].features.maturity = 42;
                 outputs[8].features.output_type = OutputType::Coinbase;
             },

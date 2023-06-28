@@ -234,7 +234,7 @@ impl BurnTab {
 
         let mut list_state = self
             .proofs_list_state
-            .get_list_state((list_areas[1].height as usize).saturating_sub(3));
+            .update_list_state((list_areas[1].height as usize).saturating_sub(3));
 
         let window = self.proofs_list_state.get_start_end();
         let windowed_view = app_state.get_burnt_proofs_slice(window.0, window.1);
