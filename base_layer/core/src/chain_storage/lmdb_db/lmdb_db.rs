@@ -1146,15 +1146,6 @@ impl LMDBDatabase {
                 "orphan_header_accumulated_data_db",
             )?;
         }
-
-        if lmdb_exists(txn, &self.orphan_header_accumulated_data_db, hash.as_slice())? {
-            lmdb_delete(
-                txn,
-                &self.orphan_header_accumulated_data_db,
-                hash.as_slice(),
-                "orphan_header_accumulated_data_db",
-            )?;
-        }
         lmdb_delete(txn, &self.orphans_db, hash.as_slice(), "orphans_db")?;
         Ok(())
     }
