@@ -41,7 +41,7 @@ impl WindowedListState {
         }
     }
 
-    pub fn get_list_state(&mut self, height: usize) -> ListState {
+    pub fn update_list_state(&mut self, height: usize) -> ListState {
         // Update the offset based on current offset, selected value and height
         self.start = self.offset;
         let view_height = height.min(self.num_items);
@@ -136,8 +136,7 @@ impl WindowedListState {
 
     pub fn set_num_items(&mut self, num_items: usize) {
         if num_items < self.num_items {
-            let new_offset = self.offset.saturating_sub(self.num_items - num_items);
-            self.offset = new_offset;
+            self.offset = self.offset.saturating_sub(self.num_items - num_items);
         }
         self.num_items = num_items;
         if num_items > 0 {
@@ -165,7 +164,7 @@ mod test {
         assert_eq!(list_state.selected(), None);
         list_state.next();
         assert_eq!(list_state.selected(), None);
-        list_state.get_list_state(5);
+        list_state.update_list_state(5);
         assert_eq!(list_state.selected(), None);
         assert_eq!(list_state.get_start_end(), (0, 0));
 
@@ -175,7 +174,7 @@ mod test {
         assert_eq!(list_state.selected(), None);
         list_state.next();
         assert_eq!(list_state.selected(), None);
-        list_state.get_list_state(5);
+        list_state.update_list_state(5);
         assert_eq!(list_state.selected(), None);
         assert_eq!(list_state.get_start_end(), (0, 0));
     }
@@ -185,7 +184,7 @@ mod test {
         let mut list_state = WindowedListState::new();
         list_state.set_num_items(0);
         list_state.select_first();
-        list_state.get_list_state(5);
+        list_state.update_list_state(5);
         assert_eq!(list_state.selected(), None);
     }
 
@@ -197,24 +196,24 @@ mod test {
         let height = 4;
         for i in 0..6 {
             list_state.next();
-            let state = list_state.get_list_state(height);
+            let state = list_state.update_list_state(height);
             assert_eq!(state.selected(), Some(i.min(height - 1)));
         }
-        list_state.get_list_state(height);
+        list_state.update_list_state(height);
         let window = list_state.get_start_end();
         assert_eq!(slist[window.0..window.1], [2, 3, 4, 5]);
 
         for i in (0..5).rev() {
             list_state.previous();
-            let state = list_state.get_list_state(height);
+            let state = list_state.update_list_state(height);
             assert_eq!(state.selected(), Some(usize::try_from((i - 2i32).max(0)).unwrap()));
         }
-        list_state.get_list_state(height);
+        list_state.update_list_state(height);
         let window = list_state.get_start_end();
         assert_eq!(slist[window.0..window.1], [0, 1, 2, 3]);
 
         list_state.previous();
-        let state = list_state.get_list_state(height);
+        let state = list_state.update_list_state(height);
         assert_eq!(state.selected(), Some(height - 1));
         let window = list_state.get_start_end();
         assert_eq!(slist[window.0..window.1], [7, 8, 9, 10]);
@@ -226,12 +225,12 @@ mod test {
         list_state.set_num_items(11);
         for _ in 0..11 {
             list_state.next();
-            let _state = list_state.get_list_state(4);
+            let _state = list_state.update_list_state(4);
         }
 
         list_state.set_num_items(9);
 
-        let _state = list_state.get_list_state(4);
+        let _state = list_state.update_list_state(4);
         let window = list_state.get_start_end();
         assert_eq!(window, (5, 9));
     }
@@ -244,13 +243,13 @@ mod test {
         // Go to the last item (2 times previous).
         list_state.previous();
         list_state.previous();
-        list_state.get_list_state(5);
+        list_state.update_list_state(5);
         assert_eq!(list_state.get_start_end(), (15, 20));
         // Resize to 10.
-        list_state.get_list_state(10);
+        list_state.update_list_state(10);
         assert_eq!(list_state.get_start_end(), (10, 20));
         // Resize to 50.
-        list_state.get_list_state(50);
+        list_state.update_list_state(50);
         assert_eq!(list_state.get_start_end(), (0, 20));
     }
 }
