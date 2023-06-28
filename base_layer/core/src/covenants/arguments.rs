@@ -230,17 +230,7 @@ impl CovenantArg {
 
     require_x_impl!(require_bytes, Bytes, "bytes", Vec<u8>);
 
-    /// Require that the given `CovenantArg` instance is of the form
-    /// `CovenantArg::Uint` and extracts the underlying value.
-    pub fn require_uint(self) -> Result<u64, CovenantError> {
-        match self {
-            CovenantArg::Uint(val) => Ok(val),
-            got => Err(CovenantError::UnexpectedArgument {
-                expected: "uint",
-                got: got.to_string(),
-            }),
-        }
-    }
+    require_x_impl!(require_uint, Uint, "u64", u64);
 }
 
 impl Display for CovenantArg {
