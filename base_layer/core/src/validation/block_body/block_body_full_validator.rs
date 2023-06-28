@@ -63,10 +63,9 @@ impl BlockBodyFullValidator {
         block: &Block,
         metadata_option: Option<&ChainMetadata>,
     ) -> Result<Block, ValidationError> {
-        // but some of the test break without it
-        // if let Some(metadata) = metadata_option {
-        //     validate_block_metadata(block, metadata)?;
-        // }
+        if let Some(metadata) = metadata_option {
+            validate_block_metadata(block, metadata)?;
+        }
 
         // validate the block body against the current db
         let body = &block.body;
@@ -103,4 +102,21 @@ impl<B: BlockchainBackend> BlockBodyValidator<B> for BlockBodyFullValidator {
     fn validate_body(&self, backend: &B, block: &Block) -> Result<Block, ValidationError> {
         self.validate(backend, block, None)
     }
+}
+
+fn validate_block_metadata(block: &Block, metadata: &ChainMetadata) -> Result<(), ValidationError> {
+    if block.header.prev_hash != *metadata.best_block() {
+        return Err(ValidationError::IncorrectPreviousHash {
+            expected: metadata.best_block().to_hex(),
+            block_hash: block.hash().to_hex(),
+        });
+    }
+    if block.header.height != metadata.height_of_longest_chain() + 1 {
+        return Err(ValidationError::IncorrectHeight {
+            expected: metadata.height_of_longest_chain() + 1,
+            block_height: block.header.height,
+        });
+    }
+
+    Ok(())
 }
