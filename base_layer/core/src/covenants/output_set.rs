@@ -30,23 +30,28 @@ use std::{
 use crate::{covenants::error::CovenantError, transactions::transaction_components::TransactionOutput};
 
 #[derive(Debug, Clone)]
+/// Structure wrapping a set of `TransactionOutput` references.
 pub struct OutputSet<'a>(BTreeSet<Indexed<&'a TransactionOutput>>);
 
 impl<'a> OutputSet<'a> {
+    /// Produces a new `OutputSet` from a slice of `TransactionOutput`.
     pub fn new(outputs: &'a [TransactionOutput]) -> Self {
         // This sets the internal index for each output
         // Note there is no publicly accessible way to modify the indexes
         outputs.iter().enumerate().collect()
     }
 
+    /// Returns the length of the underlying data slice of `OutputSet`.
     pub fn len(&self) -> usize {
         self.0.len()
     }
 
+    /// Checks if the underlying data slice is empty.
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 
+    /// Sets the current instance data of another instance.
     pub fn set(&mut self, new_set: Self) {
         *self = new_set;
     }
@@ -69,14 +74,17 @@ impl<'a> OutputSet<'a> {
         }
     }
 
+    /// Union of two instances.
     pub fn union(&self, other: &Self) -> Self {
         self.0.union(&other.0).copied().collect()
     }
 
+    /// Difference of two instances.
     pub fn difference(&self, other: &Self) -> Self {
         self.0.difference(&other.0).copied().collect()
     }
 
+    /// Symmetric difference of two instances.
     pub fn symmetric_difference(&self, other: &Self) -> Self {
         self.0.symmetric_difference(&other.0).copied().collect()
     }
@@ -97,11 +105,13 @@ impl<'a> OutputSet<'a> {
         }
     }
 
+    /// Clears an instance.
     pub fn clear(&mut self) {
         self.0.clear();
     }
 
     #[cfg(test)]
+    /// Get the `TransactionOutput` at `index`. Returns `None`, if there is none such `TransactionOutput`.
     pub(super) fn get(&self, index: usize) -> Option<&TransactionOutput> {
         self.0
             .iter()
@@ -110,18 +120,21 @@ impl<'a> OutputSet<'a> {
     }
 
     #[cfg(test)]
+    /// Gets vector of corresponding indexes.
     pub(super) fn get_selected_indexes(&self) -> Vec<usize> {
         self.0.iter().map(|idx| idx.index).collect()
     }
 }
 
 impl<'a> FromIterator<(usize, &'a TransactionOutput)> for OutputSet<'a> {
+    /// Produces a new `OutputSet` out of an appropriate iterator.
     fn from_iter<T: IntoIterator<Item = (usize, &'a TransactionOutput)>>(iter: T) -> Self {
         iter.into_iter().map(|(i, output)| Indexed::new(i, output)).collect()
     }
 }
 
 impl<'a> FromIterator<Indexed<&'a TransactionOutput>> for OutputSet<'a> {
+    /// Produces a new `OutputSet` out of an appropriate iterator.
     fn from_iter<T: IntoIterator<Item = Indexed<&'a TransactionOutput>>>(iter: T) -> Self {
         Self(iter.into_iter().collect())
     }

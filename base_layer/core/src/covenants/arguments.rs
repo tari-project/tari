@@ -194,7 +194,7 @@ impl CovenantArg {
 ///     (optional) $output_type, represents the type that the function will return. If
 ///         not provided, it defaults to the same as $output.
 macro_rules! require_x_impl {
-    ($name:ident, $output:ident, $expected: expr, $output_type:ident) => {
+    ($name:ident, $output:ident, $expected: expr, $output_type:ty) => {
         #[allow(dead_code)]
         pub(super) fn $name(self) -> Result<$output_type, CovenantError> {
             match self {
@@ -228,17 +228,7 @@ impl CovenantArg {
 
     require_x_impl!(require_outputfields, OutputFields, "outputfields");
 
-    /// Require that the given `CovenantArg` instance is of the form
-    /// `CovenantArg::Bytes` and extracts the underlying value.
-    pub fn require_bytes(self) -> Result<Vec<u8>, CovenantError> {
-        match self {
-            CovenantArg::Bytes(val) => Ok(val),
-            got => Err(CovenantError::UnexpectedArgument {
-                expected: "bytes",
-                got: got.to_string(),
-            }),
-        }
-    }
+    require_x_impl!(require_bytes, Bytes, "bytes", Vec<u8>);
 
     /// Require that the given `CovenantArg` instance is of the form
     /// `CovenantArg::Uint` and extracts the underlying value.

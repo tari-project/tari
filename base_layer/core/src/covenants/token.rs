@@ -56,6 +56,7 @@ pub enum CovenantToken {
 }
 
 impl CovenantToken {
+    /// Reads from a byte buffer.
     pub fn read_from(reader: &mut &[u8]) -> Result<Option<Self>, CovenantDecodeError> {
         let code = match reader.read_next_byte_code()? {
             Some(c) => c,
@@ -75,6 +76,7 @@ impl CovenantToken {
         }
     }
 
+    /// Writes instance data content to a `W: io::Write` instance.
     pub fn write_to<W: io::Write>(&self, writer: &mut W) -> Result<(), io::Error> {
         match self {
             CovenantToken::Filter(filter) => filter.write_to(writer),
@@ -82,6 +84,7 @@ impl CovenantToken {
         }
     }
 
+    /// Outputs the underlying `CovenantFilter`, if appropriate. Otherwise, outputs `None`.
     pub fn as_filter(&self) -> Option<&CovenantFilter> {
         match self {
             CovenantToken::Filter(filter) => Some(filter),
@@ -89,6 +92,7 @@ impl CovenantToken {
         }
     }
 
+    /// Outputs the underlying `CovenantArg`, if appropriate. Otherwise, outputs `None`.
     pub fn as_arg(&self) -> Option<&CovenantArg> {
         match self {
             CovenantToken::Filter(_) => None,
@@ -99,101 +103,121 @@ impl CovenantToken {
     //---------------------------------- Macro helper functions --------------------------------------------//
 
     #[allow(dead_code)]
+    /// Helper for creating a new instance wrapping an `IdentityFilter`.
     pub fn identity() -> Self {
         CovenantFilter::Identity(IdentityFilter).into()
     }
 
     #[allow(dead_code)]
+    /// Helper for creating a new instance wrapping an `AndFilter`.
     pub fn and() -> Self {
         CovenantFilter::And(AndFilter).into()
     }
 
     #[allow(dead_code)]
+    /// Helper for creating a new instance wrapping an `OrFilter`.
     pub fn or() -> Self {
         CovenantFilter::Or(OrFilter).into()
     }
 
     #[allow(dead_code)]
+    /// Helper for creating a new instance wrapping an `XorFilter`.
     pub fn xor() -> Self {
         CovenantFilter::Xor(XorFilter).into()
     }
 
     #[allow(dead_code)]
+    /// Helper for creating a new instance wrapping an `NotFilter`.
     pub fn not() -> Self {
         CovenantFilter::Not(NotFilter).into()
     }
 
     #[allow(dead_code)]
+    /// Helper for creating a new instance wrapping an `OutputHashEqFilter`.
     pub fn output_hash_eq() -> Self {
         CovenantFilter::OutputHashEq(OutputHashEqFilter).into()
     }
 
     #[allow(dead_code)]
+    /// Helper for creating a new instance wrapping an `FieldsPreservedFilter`.
     pub fn fields_preserved() -> Self {
         CovenantFilter::FieldsPreserved(FieldsPreservedFilter).into()
     }
 
     #[allow(dead_code)]
+    /// Helper for creating a new instance wrapping an `FieldEqFilter`.
     pub fn field_eq() -> Self {
         CovenantFilter::FieldEq(FieldEqFilter).into()
     }
 
     #[allow(dead_code)]
+    /// Helper for creating a new instance wrapping an `FieldsHashedEqFilter`.
     pub fn fields_hashed_eq() -> Self {
         CovenantFilter::FieldsHashedEq(FieldsHashedEqFilter).into()
     }
 
     #[allow(dead_code)]
+    /// Helper for creating a new instance wrapping an `AbsoluteHeightFilter`.
     pub fn absolute_height() -> Self {
         CovenantFilter::AbsoluteHeight(AbsoluteHeightFilter).into()
     }
 
     #[allow(dead_code)]
+    /// Helper for creating a new instance wrapping an `HashFilter`.
     pub fn hash(hash: FixedHash) -> Self {
         CovenantArg::Hash(hash).into()
     }
 
     #[allow(dead_code)]
+    /// Helper for creating a new instance wrapping an `PublicKeyFilter`.
     pub fn public_key(public_key: PublicKey) -> Self {
         CovenantArg::PublicKey(public_key).into()
     }
 
     #[allow(dead_code)]
+    /// Helper for creating a new instance wrapping an `CommitmentFilter`.
     pub fn commitment(commitment: Commitment) -> Self {
         CovenantArg::Commitment(commitment).into()
     }
 
     #[allow(dead_code)]
+    /// Helper for creating a new instance wrapping an `ScriptFilter`.
     pub fn script(script: TariScript) -> Self {
         CovenantArg::TariScript(script).into()
     }
 
     #[allow(dead_code)]
+    /// Helper for creating a new instance wrapping an `CovenantFilter`.
     pub fn covenant(covenant: Covenant) -> Self {
         CovenantArg::Covenant(covenant).into()
     }
 
     #[allow(dead_code)]
+    /// Helper for creating a new instance wrapping an `UintFilter`.
     pub fn uint(val: u64) -> Self {
         CovenantArg::Uint(val).into()
     }
 
     #[allow(dead_code)]
+    /// Helper for creating a new instance wrapping an `OutputTypeFilter`.
     pub fn output_type(output_type: OutputType) -> Self {
         CovenantArg::OutputType(output_type).into()
     }
 
     #[allow(dead_code)]
+    /// Helper for creating a new instance wrapping an `FieldFilter`.
     pub fn field(field: OutputField) -> Self {
         CovenantArg::OutputField(field).into()
     }
 
     #[allow(dead_code)]
+    /// Helper for creating a new instance wrapping an `FieldsFilter`.
     pub fn fields(fields: Vec<OutputField>) -> Self {
         CovenantArg::OutputFields(fields.into()).into()
     }
 
     #[allow(dead_code)]
+    /// Helper for creating a new instance wrapping an `BytesFilter`.
     pub fn bytes(bytes: Vec<u8>) -> Self {
         CovenantArg::Bytes(bytes).into()
     }
@@ -218,10 +242,12 @@ pub struct CovenantTokenCollection {
 }
 
 impl CovenantTokenCollection {
+    /// Checks if `CovenantTokenCollection` underlying data is empty.
     pub fn is_empty(&self) -> bool {
         self.tokens.is_empty()
     }
 
+    /// Outputs the front value in the underlying data of current instance.
     pub fn next(&mut self) -> Option<CovenantToken> {
         self.tokens.pop_front()
     }

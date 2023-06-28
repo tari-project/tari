@@ -27,12 +27,14 @@ use tari_script::ScriptError;
 
 use crate::covenants::token::CovenantToken;
 
+/// Covenant Token decoder.
 pub struct CovenantTokenDecoder<'a, R> {
     buf: &'a mut R,
     is_complete: bool,
 }
 
 impl<'a, R: io::Read> CovenantTokenDecoder<'a, R> {
+    /// Given a read buffer, it creates a new instance of `CovenantTokenDecoder`.
     pub fn new(buf: &'a mut R) -> Self {
         Self {
             buf,
@@ -44,6 +46,8 @@ impl<'a, R: io::Read> CovenantTokenDecoder<'a, R> {
 impl Iterator for CovenantTokenDecoder<'_, &[u8]> {
     type Item = Result<CovenantToken, CovenantDecodeError>;
 
+    /// Returns the next item in `CovenantTokenDecoder`'s buffer. If it is complete,
+    /// it returns `None`.
     fn next(&mut self) -> Option<Self::Item> {
         if self.is_complete {
             return None;
@@ -64,6 +68,7 @@ impl Iterator for CovenantTokenDecoder<'_, &[u8]> {
 }
 
 #[derive(Debug, thiserror::Error)]
+/// Error enum for covenant decoding possible failure scenarios.
 pub enum CovenantDecodeError {
     #[error("Unknown filter byte code {code}")]
     UnknownFilterByteCode { code: u8 },
@@ -81,6 +86,8 @@ pub enum CovenantDecodeError {
     Io(#[from] io::Error),
 }
 
+/// Trait `CovenantReadExt`. Contains two interface methods, `read_next_byte_code`
+/// and `read_variable_length_bytes`.
 pub(super) trait CovenantReadExt: io::Read {
     fn read_next_byte_code(&mut self) -> Result<Option<u8>, io::Error>;
     fn read_variable_length_bytes(&mut self, size: usize) -> Result<Vec<u8>, io::Error>;

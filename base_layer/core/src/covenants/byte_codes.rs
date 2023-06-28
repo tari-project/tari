@@ -25,6 +25,7 @@ pub(super) fn is_valid_arg_code(code: u8) -> bool {
     ALL_ARGS.contains(&code)
 }
 
+/// Array with all possible covenant arg byte codes.
 pub(super) const ALL_ARGS: [u8; 10] = [
     ARG_HASH,
     ARG_PUBLIC_KEY,
@@ -38,15 +39,25 @@ pub(super) const ALL_ARGS: [u8; 10] = [
     ARG_OUTPUT_TYPE,
 ];
 
+/// Covenant arg hash byte code.
 pub const ARG_HASH: u8 = 0x01;
+/// Covenant arg public key byte code.
 pub const ARG_PUBLIC_KEY: u8 = 0x02;
+/// Covenant arg commitment byte code.
 pub const ARG_COMMITMENT: u8 = 0x03;
+/// Covenant arg tari script byte code.
 pub const ARG_TARI_SCRIPT: u8 = 0x04;
+/// Covenant arg covenant byte code.
 pub const ARG_COVENANT: u8 = 0x05;
+/// Covenant arg uint byte code.
 pub const ARG_UINT: u8 = 0x06;
+/// Covenant arg output field byte code.
 pub const ARG_OUTPUT_FIELD: u8 = 0x07;
+/// Covenant arg output fields byte code.
 pub const ARG_OUTPUT_FIELDS: u8 = 0x08;
+/// Covenant arg bytes byte code.
 pub const ARG_BYTES: u8 = 0x09;
+/// Covenant arg output type byte code.
 pub const ARG_OUTPUT_TYPE: u8 = 0x0a;
 
 //---------------------------------- FILTER byte codes --------------------------------------------//
@@ -55,6 +66,7 @@ pub(super) fn is_valid_filter_code(code: u8) -> bool {
     ALL_FILTERS.contains(&code)
 }
 
+/// Array with all possible covenant filter bytecodes.
 pub(super) const ALL_FILTERS: [u8; 10] = [
     FILTER_IDENTITY,
     FILTER_AND,
@@ -68,26 +80,44 @@ pub(super) const ALL_FILTERS: [u8; 10] = [
     FILTER_ABSOLUTE_HEIGHT,
 ];
 
+/// Identity filter.
 pub const FILTER_IDENTITY: u8 = 0x20;
+/// And filter.
 pub const FILTER_AND: u8 = 0x21;
+/// Or filter.
 pub const FILTER_OR: u8 = 0x22;
+/// Xor Filter.
 pub const FILTER_XOR: u8 = 0x23;
+/// Not filter.
 pub const FILTER_NOT: u8 = 0x24;
 
+/// Output hash equality filter.
 pub const FILTER_OUTPUT_HASH_EQ: u8 = 0x30;
+/// Fields preserved filter.
 pub const FILTER_FIELDS_PRESERVED: u8 = 0x31;
+/// Fields hashed equality filter.
 pub const FILTER_FIELDS_HASHED_EQ: u8 = 0x32;
+/// Field equality filter.
 pub const FILTER_FIELD_EQ: u8 = 0x33;
+/// Absolute height filter.
 pub const FILTER_ABSOLUTE_HEIGHT: u8 = 0x34;
 
 //---------------------------------- FIELD byte codes --------------------------------------------//
+/// Field commitment.
 pub const FIELD_COMMITMENT: u8 = 0x00;
+/// Field script.
 pub const FIELD_SCRIPT: u8 = 0x01;
+/// Field sender offset public key.
 pub const FIELD_SENDER_OFFSET_PUBLIC_KEY: u8 = 0x02;
+/// Field covenant.
 pub const FIELD_COVENANT: u8 = 0x03;
+/// Field features.
 pub const FIELD_FEATURES: u8 = 0x04;
+/// Field features output type.
 pub const FIELD_FEATURES_OUTPUT_TYPE: u8 = 0x05;
+/// Field features maturity.
 pub const FIELD_FEATURES_MATURITY: u8 = 0x06;
+/// Field features side chain features.
 pub const FIELD_FEATURES_SIDE_CHAIN_FEATURES: u8 = 0x08;
 
 #[cfg(test)]

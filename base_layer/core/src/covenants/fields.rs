@@ -263,20 +263,24 @@ impl OutputFields {
     /// The number of unique fields available. This always matches the number of variants in `OutputField`.
     pub const NUM_FIELDS: usize = 10;
 
+    /// Returns a new empty instance of `OutputFields`.
     pub fn new() -> Self {
         Default::default()
     }
 
+    /// Pushes a new output field to the underlying `OutputFields` data.
     pub fn push(&mut self, field: OutputField) {
         self.fields.push(field);
     }
 
+    /// Reads from a read buffer. Errors if the reader has too many field elements.
     pub fn read_from<R: io::Read>(reader: &mut R) -> Result<Self, CovenantDecodeError> {
         // Each field is a byte
         let buf = reader.read_variable_length_bytes(Self::NUM_FIELDS)?;
         buf.iter().map(|byte| OutputField::from_byte(*byte)).collect()
     }
 
+    /// Writes an instance `OutputFields` data to a new writer.
     pub fn write_to<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
         let len = self.fields.len();
         if len > Self::NUM_FIELDS {
@@ -292,14 +296,17 @@ impl OutputFields {
         Ok(written)
     }
 
+    /// Returns the underlying iterator of `OutputFields`.
     pub fn iter(&self) -> impl Iterator<Item = &OutputField> + '_ {
         self.fields.iter()
     }
 
+    /// Returns the length of the underlying `OutputFields` length.
     pub fn len(&self) -> usize {
         self.fields.len()
     }
 
+    /// Checks if `OutputFields` fields is empty.
     pub fn is_empty(&self) -> bool {
         self.fields.is_empty()
     }
@@ -315,17 +322,20 @@ impl OutputFields {
         challenge
     }
 
+    /// Produces a slice of the underlying fields of `OutputFields`.
     pub fn fields(&self) -> &[OutputField] {
         &self.fields
     }
 }
 
 impl From<Vec<OutputField>> for OutputFields {
+    /// Produces a new `OutputFields` instance out of a vector of `OutputField`.
     fn from(fields: Vec<OutputField>) -> Self {
         OutputFields { fields }
     }
 }
 impl FromIterator<OutputField> for OutputFields {
+    /// Produces a new `OutputFields` instance out of an iterator of `OutputField`.
     fn from_iter<T: IntoIterator<Item = OutputField>>(iter: T) -> Self {
         Self {
             fields: iter.into_iter().collect(),
