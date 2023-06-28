@@ -4,6 +4,7 @@
 use std::{
     cmp,
     cmp::{Ord, Ordering},
+    convert::{TryFrom, TryInto},
     fmt,
     fmt::{Display, Formatter},
     hash::{Hash, Hasher},
@@ -253,16 +254,18 @@ impl MultiaddrWithStats {
 
         let mut score_self = 0;
 
-        score_self += cmp::max(0, 100 - (self.avg_latency.as_millis() as i32 / 100));
+        // explicitly truncate the latency to avoid casting problems
+        let avg_latency_millis = i32::try_from(self.avg_latency.as_millis()).unwrap_or(i32::MAX);
+        score_self += cmp::max(0, 100 - (avg_latency_millis / 100));
 
-        score_self += cmp::max(
-            0,
-            100 - self
-                .last_seen
-                .map(|x| Utc::now().naive_utc() - x)
-                .map(|x| x.num_seconds())
-                .unwrap_or(0) as i32,
-        );
+        let last_seen_seconds: i32 = self
+            .last_seen
+            .map(|x| Utc::now().naive_utc() - x)
+            .map(|x| x.num_seconds())
+            .unwrap_or(0)
+            .try_into()
+            .unwrap_or(i32::MAX);
+        score_self += cmp::max(0, 100 - last_seen_seconds);
 
         if self.last_failed_reason.is_some() {
             score_self -= 100;

@@ -1,4 +1,4 @@
-[![Build](https://circleci.com/gh/tari-project/tari/tree/development.svg?style=svg)](https://circleci.com/gh/tari-project/tari/tree/development)
+[![Coverage Status](https://coveralls.io/repos/github/tari-project/tari/badge.svg?branch=development)](https://coveralls.io/github/tari-project/tari?branch=development)
 
 # The Tari protocol
 

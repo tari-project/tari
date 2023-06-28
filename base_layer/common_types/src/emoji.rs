@@ -22,6 +22,7 @@
 
 use std::{
     collections::HashMap,
+    convert::TryFrom,
     fmt::{Display, Error, Formatter},
     iter,
 };
@@ -97,7 +98,7 @@ lazy_static! {
     pub static ref REVERSE_EMOJI: HashMap<char, u8> = {
         let mut m = HashMap::with_capacity(DICT_SIZE);
         EMOJI.iter().enumerate().for_each(|(i, c)| {
-            m.insert(*c, i as u8);
+            m.insert(*c, u8::try_from(i).expect("Invalid emoji"));
         });
         m
     };

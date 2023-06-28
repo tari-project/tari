@@ -36,7 +36,7 @@ pub use validator_node_signature::{ValidatorNodeHashDomain, ValidatorNodeSignatu
 
 hash_domain!(
     ContractAcceptanceHashDomain,
-    "com.tari.tari-project.base_layer.core.transactions.side_chain.contract_acceptance_challenge",
+    "com.tari.base_layer.core.transactions.side_chain.contract_acceptance_challenge",
     1
 );
 
@@ -44,7 +44,7 @@ pub type ContractAcceptanceHasherBlake256 = DomainSeparatedHasher<Blake256, Cont
 
 hash_domain!(
     SignerSignatureHashDomain,
-    "com.tari.tari-project.base_layer.core.transactions.side_chain.signer_signature",
+    "com.tari.base_layer.core.transactions.side_chain.signer_signature",
     1
 );
 

@@ -25,6 +25,7 @@ book/
 
 # Ignore Code Coverage Report files
 report
+lcov.info
 
 # On development branch only. This should be removed for point releases
 *.log

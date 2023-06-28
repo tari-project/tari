@@ -188,7 +188,7 @@ pub struct RecoveryData {
 // hash domain
 hash_domain!(
     CalculateTxIdTransactionProtocolHashDomain,
-    "com.tari.tari-project.base_layer.core.transactions.transaction_protocol.calculate_tx_id",
+    "com.tari.base_layer.core.transactions.transaction_protocol.calculate_tx_id",
     1
 );
 

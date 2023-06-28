@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+## DEPRECATION NOTICE ##
+#
+# This script is deprecated and will be removed in a future release.
+# Use the source_coverage.sh script for code coverage tests instead.
+#
 
 # Get package to test
 package_arg="--workspace --exclude tari_integration_tests"
