@@ -54,6 +54,8 @@ pub enum OutputField {
     FeaturesOutputType = byte_codes::FIELD_FEATURES_OUTPUT_TYPE,
     FeaturesMaturity = byte_codes::FIELD_FEATURES_MATURITY,
     FeaturesSideChainFeatures = byte_codes::FIELD_FEATURES_SIDE_CHAIN_FEATURES,
+    FeaturesRangeProofType = byte_codes::FIELD_FEATURES_RANGE_PROOF_TYPE,
+    MinimumValuePromise = byte_codes::MINIMUM_VALUE_PROMISE,
 }
 
 impl OutputField {
@@ -70,6 +72,8 @@ impl OutputField {
             FIELD_FEATURES_OUTPUT_TYPE => Ok(FeaturesOutputType),
             FIELD_FEATURES_MATURITY => Ok(FeaturesMaturity),
             FIELD_FEATURES_SIDE_CHAIN_FEATURES => Ok(FeaturesSideChainFeatures),
+            FIELD_FEATURES_RANGE_PROOF_TYPE => Ok(FeaturesRangeProofType),
+            MINIMUM_VALUE_PROMISE => Ok(MinimumValuePromise),
 
             _ => Err(CovenantDecodeError::UnknownByteCode { code: byte }),
         }
@@ -91,6 +95,8 @@ impl OutputField {
             FeaturesOutputType => &output.features.output_type as &dyn Any,
             FeaturesMaturity => &output.features.maturity as &dyn Any,
             FeaturesSideChainFeatures => &output.features.sidechain_feature as &dyn Any,
+            FeaturesRangeProofType => &output.features.range_proof_type as &dyn Any,
+            MinimumValuePromise => &output.minimum_value_promise as &dyn Any,
         };
         val.downcast_ref::<T>()
     }
@@ -109,6 +115,8 @@ impl OutputField {
             FeaturesOutputType => BorshSerialize::serialize(&output.features.output_type, &mut writer),
             FeaturesMaturity => BorshSerialize::serialize(&output.features.maturity, &mut writer),
             FeaturesSideChainFeatures => BorshSerialize::serialize(&output.features.sidechain_feature, &mut writer),
+            FeaturesRangeProofType => BorshSerialize::serialize(&output.features.range_proof_type, &mut writer),
+            MinimumValuePromise => BorshSerialize::serialize(&output.minimum_value_promise, &mut writer),
         }
         .unwrap();
         writer
@@ -146,6 +154,14 @@ impl OutputField {
             FeaturesSideChainFeatures => input
                 .features()
                 .map(|features| features.sidechain_feature == output.features.sidechain_feature)
+                .unwrap_or(false),
+            FeaturesRangeProofType => input
+                .features()
+                .map(|features| features.range_proof_type == output.features.range_proof_type)
+                .unwrap_or(false),
+            MinimumValuePromise => input
+                .minimum_value_promise()
+                .map(|minimum_value_promise| *minimum_value_promise == output.minimum_value_promise)
                 .unwrap_or(false),
         }
     }
@@ -223,9 +239,18 @@ impl OutputField {
     }
 
     #[allow(dead_code)]
-    #[allow(dead_code)]
     pub fn features_sidechain_feature() -> Self {
         OutputField::FeaturesSideChainFeatures
+    }
+
+    #[allow(dead_code)]
+    pub fn features_range_proof_type() -> Self {
+        OutputField::FeaturesRangeProofType
+    }
+
+    #[allow(dead_code)]
+    pub fn minimum_value_promise() -> Self {
+        OutputField::MinimumValuePromise
     }
 }
 
@@ -242,6 +267,8 @@ impl Display for OutputField {
             FeaturesOutputType => write!(f, "field::features_flags"),
             FeaturesSideChainFeatures => write!(f, "field::features_sidechain_feature"),
             FeaturesMaturity => write!(f, "field::features_maturity"),
+            FeaturesRangeProofType => write!(f, "field::features_range_proof_type"),
+            MinimumValuePromise => write!(f, "field::minimum_value_promise"),
         }
     }
 }
@@ -344,7 +371,11 @@ mod test {
 
         mod is_eq {
             use super::*;
-            use crate::transactions::test_helpers::create_test_core_key_manager_with_memory_db;
+            use crate::transactions::{
+                tari_amount::MicroTari,
+                test_helpers::create_test_core_key_manager_with_memory_db,
+                transaction_components::RangeProofType,
+            };
 
             #[tokio::test]
             async fn it_returns_true_if_eq() {
@@ -366,20 +397,26 @@ mod test {
                 .remove(0);
 
                 assert!(OutputField::Commitment.is_eq(&output, &output.commitment).unwrap());
-                assert!(OutputField::Features.is_eq(&output, &output.features).unwrap());
                 assert!(OutputField::Script.is_eq(&output, &output.script).unwrap());
-                assert!(OutputField::Covenant.is_eq(&output, &output.covenant).unwrap());
-                assert!(OutputField::FeaturesMaturity
-                    .is_eq(&output, &output.features.maturity)
+                assert!(OutputField::SenderOffsetPublicKey
+                    .is_eq(&output, &output.sender_offset_public_key)
                     .unwrap());
+                assert!(OutputField::Covenant.is_eq(&output, &output.covenant).unwrap());
+                assert!(OutputField::Features.is_eq(&output, &output.features).unwrap());
                 assert!(OutputField::FeaturesOutputType
                     .is_eq(&output, &output.features.output_type)
+                    .unwrap());
+                assert!(OutputField::FeaturesMaturity
+                    .is_eq(&output, &output.features.maturity)
                     .unwrap());
                 assert!(OutputField::FeaturesSideChainFeatures
                     .is_eq(&output, output.features.sidechain_feature.as_ref().unwrap())
                     .unwrap());
-                assert!(OutputField::SenderOffsetPublicKey
-                    .is_eq(&output, &output.sender_offset_public_key)
+                assert!(OutputField::FeaturesRangeProofType
+                    .is_eq(&output, &output.features.range_proof_type)
+                    .unwrap());
+                assert!(OutputField::MinimumValuePromise
+                    .is_eq(&output, &output.minimum_value_promise)
                     .unwrap());
             }
 
@@ -392,9 +429,13 @@ mod test {
                     UtxoTestParams {
                         features: OutputFeatures {
                             sidechain_feature: Some(side_chain_features),
+                            range_proof_type: RangeProofType::RevealedValue,
+                            output_type: OutputType::Burn,
                             ..Default::default()
                         },
                         script: script![Drop Nop],
+                        minimum_value_promise: MicroTari(123456),
+                        value: MicroTari(123456),
                         ..Default::default()
                     },
                     &key_manager,
@@ -403,19 +444,25 @@ mod test {
                 .remove(0);
 
                 assert!(!OutputField::Commitment.is_eq(&output, &Commitment::default()).unwrap());
-                assert!(!OutputField::Features
-                    .is_eq(&output, &OutputFeatures::default())
-                    .unwrap());
                 assert!(!OutputField::Script.is_eq(&output, &script![Nop Drop]).unwrap());
+                assert!(!OutputField::SenderOffsetPublicKey
+                    .is_eq(&output, &PublicKey::default())
+                    .unwrap());
                 assert!(!OutputField::Covenant
                     .is_eq(&output, &covenant!(and(identity(), identity())))
+                    .unwrap());
+                assert!(!OutputField::Features
+                    .is_eq(&output, &OutputFeatures::default())
                     .unwrap());
                 assert!(!OutputField::FeaturesMaturity.is_eq(&output, &123u64).unwrap());
                 assert!(!OutputField::FeaturesOutputType
                     .is_eq(&output, &OutputType::Coinbase)
                     .unwrap());
-                assert!(!OutputField::SenderOffsetPublicKey
-                    .is_eq(&output, &PublicKey::default())
+                assert!(!OutputField::FeaturesRangeProofType
+                    .is_eq(&output, &RangeProofType::BulletProofPlus)
+                    .unwrap());
+                assert!(!OutputField::MinimumValuePromise
+                    .is_eq(&output, &MicroTari::default())
                     .unwrap());
             }
         }
@@ -459,13 +506,15 @@ mod test {
                 }
 
                 assert!(OutputField::Commitment.is_eq_input(&input, &output));
-                assert!(OutputField::Features.is_eq_input(&input, &output));
                 assert!(OutputField::Script.is_eq_input(&input, &output));
+                assert!(OutputField::SenderOffsetPublicKey.is_eq_input(&input, &output));
                 assert!(OutputField::Covenant.is_eq_input(&input, &output));
+                assert!(OutputField::Features.is_eq_input(&input, &output));
                 assert!(OutputField::FeaturesMaturity.is_eq_input(&input, &output));
                 assert!(OutputField::FeaturesOutputType.is_eq_input(&input, &output));
                 assert!(OutputField::FeaturesSideChainFeatures.is_eq_input(&input, &output));
-                assert!(OutputField::SenderOffsetPublicKey.is_eq_input(&input, &output));
+                assert!(OutputField::FeaturesRangeProofType.is_eq_input(&input, &output));
+                assert!(OutputField::MinimumValuePromise.is_eq_input(&input, &output));
             }
         }
 
@@ -473,13 +522,15 @@ mod test {
         fn display() {
             let output_fields = [
                 OutputField::Commitment,
+                OutputField::Script,
+                OutputField::SenderOffsetPublicKey,
+                OutputField::Covenant,
                 OutputField::Features,
+                OutputField::FeaturesMaturity,
                 OutputField::FeaturesOutputType,
                 OutputField::FeaturesSideChainFeatures,
-                OutputField::FeaturesMaturity,
-                OutputField::SenderOffsetPublicKey,
-                OutputField::Script,
-                OutputField::Covenant,
+                OutputField::FeaturesRangeProofType,
+                OutputField::MinimumValuePromise,
             ];
             output_fields.iter().for_each(|f| {
                 assert!(f.to_string().starts_with("field::"));
@@ -495,7 +546,11 @@ mod test {
             use tari_crypto::hashing::DomainSeparation;
 
             use super::*;
-            use crate::transactions::test_helpers::create_test_core_key_manager_with_memory_db;
+            use crate::transactions::{
+                tari_amount::MicroTari,
+                test_helpers::create_test_core_key_manager_with_memory_db,
+                transaction_components::RangeProofType,
+            };
 
             #[tokio::test]
             async fn it_constructs_challenge_using_consensus_encoding() {
@@ -503,6 +558,7 @@ mod test {
                 let features = OutputFeatures {
                     maturity: 42,
                     output_type: OutputType::Coinbase,
+                    range_proof_type: RangeProofType::RevealedValue,
                     ..Default::default()
                 };
                 let output = create_outputs(
@@ -510,6 +566,8 @@ mod test {
                     UtxoTestParams {
                         features,
                         script: script![Drop Nop],
+                        minimum_value_promise: MicroTari(123456),
+                        value: MicroTari(123456),
                         ..Default::default()
                     },
                     &key_manager,
@@ -521,6 +579,7 @@ mod test {
                 fields.push(OutputField::Features);
                 fields.push(OutputField::Commitment);
                 fields.push(OutputField::Script);
+                fields.push(OutputField::MinimumValuePromise);
                 let hash = fields.construct_challenge_from(&output).finalize();
                 let hash = hash.to_vec();
 
@@ -530,6 +589,7 @@ mod test {
                     .chain(output.features.try_to_vec().unwrap())
                     .chain(output.commitment.try_to_vec().unwrap())
                     .chain(output.script.try_to_vec().unwrap())
+                    .chain(output.minimum_value_promise.try_to_vec().unwrap())
                     .finalize()
                     .to_vec();
                 assert_eq!(hash, expected_hash);
@@ -538,19 +598,26 @@ mod test {
 
         mod get_field_value_ref {
             use super::*;
-            use crate::transactions::test_helpers::create_test_core_key_manager_with_memory_db;
+            use crate::transactions::{
+                tari_amount::MicroTari,
+                test_helpers::create_test_core_key_manager_with_memory_db,
+                transaction_components::RangeProofType,
+            };
 
             #[tokio::test]
             async fn it_retrieves_the_value_as_ref() {
                 let key_manager = create_test_core_key_manager_with_memory_db();
                 let features = OutputFeatures {
                     maturity: 42,
+                    range_proof_type: RangeProofType::RevealedValue,
                     ..Default::default()
                 };
                 let output = create_outputs(
                     1,
                     UtxoTestParams {
                         features: features.clone(),
+                        minimum_value_promise: MicroTari(123456),
+                        value: MicroTari(123456),
                         ..Default::default()
                     },
                     &key_manager,
@@ -560,6 +627,8 @@ mod test {
                 .unwrap();
                 let r = OutputField::Features.get_field_value_ref::<OutputFeatures>(&output);
                 assert_eq!(*r.unwrap(), features);
+                let r = OutputField::MinimumValuePromise.get_field_value_ref::<MicroTari>(&output);
+                assert_eq!(*r.unwrap(), MicroTari(123456));
             }
         }
     }

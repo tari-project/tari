@@ -22,10 +22,12 @@
 
 use crate::covenants::{context::CovenantContext, error::CovenantError, filters::Filter, output_set::OutputSet};
 
+/// Holding struct for the "not" filter
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NotFilter;
 
 impl Filter for NotFilter {
+    /// The not filter removes all outputs in the covenant context that are not in the compliment of the filter.
     fn filter(&self, context: &mut CovenantContext<'_>, output_set: &mut OutputSet<'_>) -> Result<(), CovenantError> {
         let filter = context.require_next_filter()?;
         let mut output_set_copy = output_set.clone();

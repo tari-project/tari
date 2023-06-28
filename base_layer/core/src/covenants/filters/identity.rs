@@ -22,10 +22,12 @@
 
 use crate::covenants::{context::CovenantContext, error::CovenantError, filters::Filter, output_set::OutputSet};
 
+/// Holding struct for the "identity" filter
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IdentityFilter;
 
 impl Filter for IdentityFilter {
+    /// The identity filter does not filter the output set.
     fn filter(&self, _: &mut CovenantContext<'_>, _: &mut OutputSet<'_>) -> Result<(), CovenantError> {
         Ok(())
     }

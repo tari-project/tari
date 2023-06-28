@@ -43,10 +43,12 @@ use crate::covenants::{
     output_set::OutputSet,
 };
 
+/// The filter trait is implemented by all covenant filters.
 pub trait Filter {
     fn filter(&self, context: &mut CovenantContext<'_>, output_set: &mut OutputSet<'_>) -> Result<(), CovenantError>;
 }
 
+/// A covenant filter is a filter that can be used in a covenant.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CovenantFilter {
     Identity(IdentityFilter),
@@ -62,10 +64,12 @@ pub enum CovenantFilter {
 }
 
 impl CovenantFilter {
+    /// Determine if the given byte code is a valid filter code.
     pub fn is_valid_code(code: u8) -> bool {
         byte_codes::is_valid_filter_code(code)
     }
 
+    /// Write the filter to the given writer as byte code.
     pub fn write_to<W: io::Write>(&self, writer: &mut W) -> Result<(), io::Error> {
         writer.write_u8_fixed(self.as_byte_code())?;
         Ok(())
@@ -90,6 +94,7 @@ impl CovenantFilter {
         }
     }
 
+    /// Try to create a covenant filter from the given byte code.
     pub fn try_from_byte_code(code: u8) -> Result<Self, CovenantDecodeError> {
         use byte_codes::*;
         match code {
@@ -107,48 +112,59 @@ impl CovenantFilter {
         }
     }
 
+    /// Return the "identity" covenant filter.
     pub fn identity() -> Self {
         CovenantFilter::Identity(IdentityFilter)
     }
 
+    /// Return the "and" covenant filter.
     pub fn and() -> Self {
         CovenantFilter::And(AndFilter)
     }
 
+    /// Return the "or" covenant filter.
     pub fn or() -> Self {
         CovenantFilter::Or(OrFilter)
     }
 
+    /// Return the "xor" covenant filter.
     pub fn xor() -> Self {
         CovenantFilter::Xor(XorFilter)
     }
 
+    /// Return the "not" covenant filter.
     pub fn not() -> Self {
         CovenantFilter::Not(NotFilter)
     }
 
+    /// Return the "output hash eq" covenant filter.
     pub fn output_hash_eq() -> Self {
         CovenantFilter::OutputHashEq(OutputHashEqFilter)
     }
 
+    /// Return the "fields preserved" covenant filter.
     pub fn fields_preserved() -> Self {
         CovenantFilter::FieldsPreserved(FieldsPreservedFilter)
     }
 
+    /// Return the "field eq" covenant filter.
     pub fn field_eq() -> Self {
         CovenantFilter::FieldEq(FieldEqFilter)
     }
 
+    /// Return the "fields hashed eq" covenant filter.
     pub fn fields_hashed_eq() -> Self {
         CovenantFilter::FieldsHashedEq(FieldsHashedEqFilter)
     }
 
+    /// Return the "absolute height" covenant filter.
     pub fn absolute_height() -> Self {
         CovenantFilter::AbsoluteHeight(AbsoluteHeightFilter)
     }
 }
 
 impl Filter for CovenantFilter {
+    // Filter the given output set using the filter specified by the covenant context.
     fn filter(&self, context: &mut CovenantContext<'_>, output_set: &mut OutputSet<'_>) -> Result<(), CovenantError> {
         #[allow(clippy::enum_glob_use)]
         use CovenantFilter::*;
