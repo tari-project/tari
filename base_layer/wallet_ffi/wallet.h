@@ -72,6 +72,10 @@ struct Contact;
 
 struct ContactsLivenessData;
 
+/**
+ * A covenant allows a UTXO to specify some restrictions on how it is spent in a future transaction.
+ * See https://rfc.tari.com/RFC-0250_Covenants.html for details.
+ */
 struct Covenant;
 
 struct EmojiSet;
