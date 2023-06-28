@@ -67,7 +67,7 @@ pub enum HorizonSyncError {
     },
     #[error("Invalid MMR position {mmr_position} at height {at_height}")]
     InvalidMmrPosition { at_height: u64, mmr_position: u64 },
-    #[error("Invalid range proof for output:{0} : {1}")]
+    #[error("Invalid range proof for output: {0} : {1}")]
     InvalidRangeProof(String, String),
     #[error("RPC error: {0}")]
     RpcError(#[from] RpcError),

@@ -135,7 +135,7 @@ impl SendTab {
             .split(vert_chunks[2]);
 
         let amount_input = Paragraph::new(match &self.selected_unique_id {
-            Some(token) => format!("Token selected : {}", token.to_hex()),
+            Some(token) => format!("Token selected: {}", token.to_hex()),
             None => self.amount_field.to_string(),
         })
         .style(match self.send_input_mode {

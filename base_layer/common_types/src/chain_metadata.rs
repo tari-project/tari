@@ -146,11 +146,11 @@ impl Display for ChainMetadata {
         let height = self.height_of_longest_chain;
         let best_block = self.best_block.to_hex();
         let accumulated_difficulty = self.accumulated_difficulty;
-        writeln!(f, "Height of longest chain : {}", height)?;
+        writeln!(f, "Height of longest chain: {}", height)?;
         writeln!(f, "Total accumulated difficulty: {}", accumulated_difficulty)?;
-        writeln!(f, "Best block : {}", best_block)?;
-        writeln!(f, "Pruning horizon : {}", self.pruning_horizon)?;
-        writeln!(f, "Effective pruned height : {}", self.pruned_height)?;
+        writeln!(f, "Best block: {}", best_block)?;
+        writeln!(f, "Pruning horizon: {}", self.pruning_horizon)?;
+        writeln!(f, "Effective pruned height: {}", self.pruned_height)?;
         Ok(())
     }
 }
