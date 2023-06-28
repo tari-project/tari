@@ -38,6 +38,10 @@ use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::paths::create_temporary_data_path;
 
 use super::{create_block, mine_to_difficulty};
+#[cfg(any(test))]
+use crate::consensus::chain_strength_comparer::ChainStrengthComparerBuilder;
+#[cfg(any(test))]
+use crate::consensus::test_helpers::TestConsensusConstantsBuilder;
 use crate::{
     blocks::{
         Block,
@@ -69,7 +73,7 @@ use crate::{
         UtxoMinedInfo,
         Validators,
     },
-    consensus::{chain_strength_comparer::ChainStrengthComparerBuilder, ConsensusConstantsBuilder, ConsensusManager},
+    consensus::ConsensusManager,
     proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
     test_helpers::{block_spec::BlockSpecs, create_consensus_rules, BlockSpec},
     transactions::{
@@ -85,12 +89,16 @@ use crate::{
 };
 
 /// Create a new blockchain database containing the genesis block
-pub fn create_new_blockchain() -> BlockchainDatabase<TempDatabase> {
+#[cfg(any(test))]
+pub fn create_new_blockchain() -> Result<BlockchainDatabase<TempDatabase>, ChainStorageError> {
     create_new_blockchain_with_network(Network::LocalNet)
 }
 
-pub fn create_new_blockchain_with_network(network: Network) -> BlockchainDatabase<TempDatabase> {
-    let consensus_constants = ConsensusConstantsBuilder::new(network).build();
+#[cfg(any(test))]
+pub fn create_new_blockchain_with_network(
+    network: Network,
+) -> Result<BlockchainDatabase<TempDatabase>, ChainStorageError> {
+    let consensus_constants = TestConsensusConstantsBuilder::new(network).build();
     let consensus_manager = ConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants)
         .on_ties(ChainStrengthComparerBuilder::new().by_height().build())
@@ -100,7 +108,9 @@ pub fn create_new_blockchain_with_network(network: Network) -> BlockchainDatabas
 }
 
 /// Create a new custom blockchain database containing no blocks.
-pub fn create_custom_blockchain(rules: ConsensusManager) -> BlockchainDatabase<TempDatabase> {
+pub fn create_custom_blockchain(
+    rules: ConsensusManager,
+) -> Result<BlockchainDatabase<TempDatabase>, ChainStorageError> {
     let validators = Validators::new(
         MockValidator::new(true),
         MockValidator::new(true),
@@ -112,7 +122,7 @@ pub fn create_custom_blockchain(rules: ConsensusManager) -> BlockchainDatabase<T
 pub fn create_store_with_consensus_and_validators(
     rules: ConsensusManager,
     validators: Validators<TempDatabase>,
-) -> BlockchainDatabase<TempDatabase> {
+) -> Result<BlockchainDatabase<TempDatabase>, ChainStorageError> {
     create_store_with_consensus_and_validators_and_config(rules, validators, BlockchainDatabaseConfig::default())
 }
 
@@ -120,7 +130,7 @@ pub fn create_store_with_consensus_and_validators_and_config(
     rules: ConsensusManager,
     validators: Validators<TempDatabase>,
     config: BlockchainDatabaseConfig,
-) -> BlockchainDatabase<TempDatabase> {
+) -> Result<BlockchainDatabase<TempDatabase>, ChainStorageError> {
     let backend = create_test_db();
     BlockchainDatabase::new(
         backend,
@@ -129,10 +139,11 @@ pub fn create_store_with_consensus_and_validators_and_config(
         config,
         DifficultyCalculator::new(rules, Default::default()),
     )
-    .unwrap()
 }
 
-pub fn create_store_with_consensus(rules: ConsensusManager) -> BlockchainDatabase<TempDatabase> {
+pub fn create_store_with_consensus(
+    rules: ConsensusManager,
+) -> Result<BlockchainDatabase<TempDatabase>, ChainStorageError> {
     let factories = CryptoFactories::default();
     let validators = Validators::new(
         BlockBodyFullValidator::new(rules.clone(), true),
@@ -141,7 +152,8 @@ pub fn create_store_with_consensus(rules: ConsensusManager) -> BlockchainDatabas
     );
     create_store_with_consensus_and_validators(rules, validators)
 }
-pub fn create_test_blockchain_db() -> BlockchainDatabase<TempDatabase> {
+
+pub fn create_test_blockchain_db() -> Result<BlockchainDatabase<TempDatabase>, ChainStorageError> {
     let rules = create_consensus_rules();
     create_store_with_consensus(rules)
 }
@@ -534,7 +546,7 @@ impl TestBlockchain {
     }
 
     pub fn create(rules: ConsensusManager) -> Self {
-        Self::new(create_custom_blockchain(rules.clone()), rules)
+        Self::new(create_custom_blockchain(rules.clone()).unwrap(), rules)
     }
 
     pub async fn append_chain(
@@ -566,7 +578,7 @@ impl TestBlockchain {
 
     pub fn with_validators(validators: Validators<TempDatabase>) -> Self {
         let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
-        let db = create_store_with_consensus_and_validators(rules.clone(), validators);
+        let db = create_store_with_consensus_and_validators(rules.clone(), validators).unwrap();
         Self::new(db, rules)
     }
 

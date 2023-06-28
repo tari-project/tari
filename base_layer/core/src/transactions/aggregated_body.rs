@@ -258,7 +258,7 @@ impl AggregateBody {
     /// 1. The reward amount is correct.
     pub fn check_coinbase_output(
         &self,
-        reward: MicroTari,
+        reward: MicroTari, // emission + fees
         coinbase_min_maturity: u64,
         factories: &CryptoFactories,
         height: u64,

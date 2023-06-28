@@ -30,6 +30,7 @@ use tokio::task;
 use crate::{
     blocks::BlockError,
     chain_storage::MmrTree,
+    consensus::ConsensusManagerError,
     proof_of_work::PowError,
     transactions::transaction_components::TransactionError,
     validation::ValidationError,
@@ -138,6 +139,8 @@ pub enum ChainStorageError {
     CompositeKeyLengthExceeded,
     #[error("Failed to decode key bytes: {0}")]
     FromKeyBytesFailed(String),
+    #[error("ConsensusManager Error: {0}")]
+    ConsensusManagerError(#[from] ConsensusManagerError),
 }
 
 impl ChainStorageError {

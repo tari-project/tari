@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, ops::Deref, panic, sync::Arc, time::Duration};
+use std::{convert::TryFrom, ops::Deref, sync::Arc, time::Duration};
 
 use randomx_rs::RandomXFlag;
 use tari_common::configuration::Network;
@@ -28,7 +28,7 @@ use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
 use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_core::{
     base_node::state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
-    consensus::{ConsensusConstantsBuilder, ConsensusManager},
+    consensus::test_helpers::TestConsensusConstantsBuilder,
     mempool::{Mempool, MempoolConfig, MempoolServiceConfig, TxStorageResponse},
     proof_of_work::Difficulty,
     proto,
@@ -77,8 +77,7 @@ use tempfile::tempdir;
 use crate::helpers::{
     block_builders::{
         chain_block,
-        create_genesis_block,
-        create_genesis_block_with_coinbase_value,
+        create_blockchain_with_spendable_coinbase,
         find_header_with_achieved_difficulty,
         generate_block,
         generate_new_block,
@@ -1046,24 +1045,16 @@ static EMISSION: [u64; 2] = [10, 10];
 #[allow(clippy::identity_op)]
 async fn receive_and_propagate_transaction() {
     let temp_dir = tempdir().unwrap();
-    let network = Network::LocalNet;
-    let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_coinbase_lockheight(100)
-        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
-        .build();
     let key_manager = create_test_core_key_manager_with_memory_db();
-    let (block0, utxo) = create_genesis_block(&consensus_constants, &key_manager).await;
-    let consensus_manager = ConsensusManager::builder(network)
-        .add_consensus_constants(consensus_constants)
-        .with_block(block0)
-        .build()
-        .unwrap();
+    let (_block0, utxo0, consensus_manager, blockchain_db) =
+        create_blockchain_with_spendable_coinbase(&key_manager, Network::LocalNet, &None).await;
     let (mut alice_node, mut bob_node, mut carol_node, _consensus_manager) =
         create_network_with_3_base_nodes_with_config(
             MempoolServiceConfig::default(),
             LivenessConfig::default(),
             consensus_manager,
             temp_dir.path().to_str().unwrap(),
+            Some(blockchain_db),
         )
         .await;
     alice_node.mock_base_node_state_machine.publish_status(StatusInfo {
@@ -1086,7 +1077,7 @@ async fn receive_and_propagate_transaction() {
     });
 
     let (tx, _) = spend_utxos(
-        txn_schema!(from: vec![utxo], to: vec![2 * T, 2 * T, 2 * T]),
+        txn_schema!(from: vec![utxo0], to: vec![2 * T, 2 * T, 2 * T]),
         &key_manager,
     )
     .await;
@@ -1169,13 +1160,14 @@ async fn receive_and_propagate_transaction() {
 async fn consensus_validation_large_tx() {
     let network = Network::LocalNet;
     // We dont want to compute the 19500 limit of local net, so we create smaller blocks
-    let consensus_constants = ConsensusConstantsBuilder::new(network)
+    let consensus_constants = TestConsensusConstantsBuilder::new(network)
         .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .with_coinbase_lockheight(1)
         .with_max_block_transaction_weight(500)
         .build();
-    let (mut store, mut blocks, mut outputs, consensus_manager, key_manager) =
-        create_new_blockchain_with_constants(network, consensus_constants).await;
+    let key_manager = create_test_core_key_manager_with_memory_db();
+    let (mut store, mut blocks, mut outputs, consensus_manager) =
+        create_new_blockchain_with_constants(network, consensus_constants, &key_manager).await;
     let mempool_validator = TransactionFullValidator::new(
         CryptoFactories::default(),
         true,
@@ -1561,27 +1553,22 @@ async fn block_event_and_reorg_event_handling() {
     // Both nodes have all transactions in their mempools
     // When block B2A is submitted, then both nodes have TX2A and TX3A in their reorg pools
     // When block B2B is submitted with TX2B, TX3B, then TX2A, TX3A are discarded (Not Stored)
-    let network = Network::LocalNet;
+    // let network = Network::LocalNet;
     let key_manager = create_test_core_key_manager_with_memory_db();
-    let consensus_constants = ConsensusConstantsBuilder::new(Network::LocalNet)
-        .with_coinbase_lockheight(1)
-        .build();
 
     let temp_dir = tempdir().unwrap();
-    let (block0, utxos0) =
-        create_genesis_block_with_coinbase_value(100_000_000.into(), &consensus_constants, &key_manager).await;
-    let consensus_manager = ConsensusManager::builder(network)
-        .add_consensus_constants(consensus_constants.clone())
-        .with_block(block0.clone())
-        .build()
-        .unwrap();
+    let (initial_block, initial_utxo, consensus_manager, blockchain_db) =
+        create_blockchain_with_spendable_coinbase(&key_manager, Network::LocalNet, &None).await;
     let (mut alice, mut bob, consensus_manager) = create_network_with_2_base_nodes_with_config(
         MempoolServiceConfig::default(),
         LivenessConfig::default(),
         consensus_manager,
         temp_dir.path().to_str().unwrap(),
+        Some(blockchain_db.clone()),
     )
     .await;
+    println!("Block height: {}", initial_block.height());
+
     alice.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
         state_info: StateInfo::Listening(ListeningInfo::new(true)),
@@ -1589,10 +1576,98 @@ async fn block_event_and_reorg_event_handling() {
         randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
 
+    // These blocks are manually constructed to allow the block event system to be used.
+
+    async_assert_eventually!(
+        alice.blockchain_db.fetch_tip_header().unwrap().height() ==
+            bob.blockchain_db.fetch_tip_header().unwrap().height() &&
+            alice.blockchain_db.fetch_tip_header().unwrap().height() == initial_block.block().header.height,
+        expect = true,
+        max_attempts = 5,
+        interval = Duration::from_millis(1000)
+    );
+
     // Bob creates Block 1 and sends it to Alice. Alice adds it to her chain and creates a block event that the Mempool
     // service will receive.
-    let (tx1, utxos1) =
-        schema_to_transaction(&[txn_schema!(from: vec![utxos0], to: vec![1 * T, 1 * T])], &key_manager).await;
+    let (tx1, utxos1) = schema_to_transaction(
+        &[txn_schema!(from: vec![initial_utxo], to: vec![1 * T, 1 * T])],
+        &key_manager,
+    )
+    .await;
+    let tx1 = (*tx1[0]).clone();
+    let tx1_excess_sig = tx1.body.kernels()[0].excess_sig.clone();
+
+    alice.mempool.insert(Arc::new(tx1.clone())).await.unwrap();
+    bob.mempool.insert(Arc::new(tx1.clone())).await.unwrap();
+    println!(
+        "Mempool response Alice: {:?}",
+        alice
+            .mempool
+            .has_tx_with_excess_sig(tx1_excess_sig.clone())
+            .await
+            .unwrap()
+    );
+    println!(
+        "Mempool response Bob  : {:?}",
+        bob.mempool
+            .has_tx_with_excess_sig(tx1_excess_sig.clone())
+            .await
+            .unwrap()
+    );
+    let mut block1 = bob
+        .blockchain_db
+        .prepare_new_block(chain_block(initial_block.block(), vec![tx1], &consensus_manager, &key_manager).await)
+        .unwrap();
+    find_header_with_achieved_difficulty(&mut block1.header, Difficulty::from_u64(1).unwrap());
+    // Add Block1 - tx1 will be moved to the ReorgPool.
+    // TODO: Fix - if Alice submits the block and propagates it to Bob, the transaction will stay in Bob's
+    // TODO:   'UnconfirmedPool', even if Bob then also tries to submit the block, and vice versa.
+    alice.local_nci.submit_block(block1.clone()).await.unwrap();
+    // bob.local_nci.submit_block(block1.clone()).await.unwrap();
+    println!("Block height: {}", block1.header.height);
+    async_assert_eventually!(
+        alice.blockchain_db.fetch_tip_header().unwrap() == bob.blockchain_db.fetch_tip_header().unwrap(),
+        expect = true,
+        max_attempts = 5,
+        interval = Duration::from_millis(1000)
+    );
+    println!(
+        "Mempool response Alice: {:?}",
+        alice
+            .mempool
+            .has_tx_with_excess_sig(tx1_excess_sig.clone())
+            .await
+            .unwrap()
+    );
+    println!(
+        "Mempool response Bob  : {:?}",
+        bob.mempool
+            .has_tx_with_excess_sig(tx1_excess_sig.clone())
+            .await
+            .unwrap()
+    );
+    async_assert_eventually!(
+        bob.mempool
+            .has_tx_with_excess_sig(tx1_excess_sig.clone())
+            .await
+            .unwrap(),
+        expect = TxStorageResponse::ReorgPool,
+        max_attempts = 5,
+        interval = Duration::from_millis(1000)
+    );
+    async_assert_eventually!(
+        alice
+            .mempool
+            .has_tx_with_excess_sig(tx1_excess_sig.clone())
+            .await
+            .unwrap(),
+        expect = TxStorageResponse::ReorgPool,
+        max_attempts = 5,
+        interval = Duration::from_millis(1000)
+    );
+
+    // Double spends
+
     let (txs_a, _utxos2) = schema_to_transaction(
         &[
             txn_schema!(from: vec![utxos1[0].clone()], to: vec![400_000 * uT, 590_000 * uT]),
@@ -1609,45 +1684,15 @@ async fn block_event_and_reorg_event_handling() {
         &key_manager,
     )
     .await;
-    let tx1 = (*tx1[0]).clone();
     let tx2a = (*txs_a[0]).clone();
     let tx3a = (*txs_a[1]).clone();
     let tx2b = (*txs_b[0]).clone();
     let tx3b = (*txs_b[1]).clone();
-    let tx1_excess_sig = tx1.body.kernels()[0].excess_sig.clone();
     let tx2a_excess_sig = tx2a.body.kernels()[0].excess_sig.clone();
     let tx3a_excess_sig = tx3a.body.kernels()[0].excess_sig.clone();
     let tx2b_excess_sig = tx2b.body.kernels()[0].excess_sig.clone();
     let tx3b_excess_sig = tx3b.body.kernels()[0].excess_sig.clone();
 
-    // These blocks are manually constructed to allow the block event system to be used.
-    let empty_block = bob
-        .blockchain_db
-        .prepare_new_block(chain_block(block0.block(), vec![], &consensus_manager, &key_manager).await)
-        .unwrap();
-
-    // Add one empty block, so the coinbase UTXO is no longer time-locked.
-    assert!(bob.local_nci.submit_block(empty_block.clone(),).await.is_ok());
-    assert!(alice.local_nci.submit_block(empty_block.clone(),).await.is_ok());
-    alice.mempool.insert(Arc::new(tx1.clone())).await.unwrap();
-    bob.mempool.insert(Arc::new(tx1.clone())).await.unwrap();
-    let mut block1 = bob
-        .blockchain_db
-        .prepare_new_block(chain_block(&empty_block, vec![tx1], &consensus_manager, &key_manager).await)
-        .unwrap();
-    find_header_with_achieved_difficulty(&mut block1.header, Difficulty::from_u64(1).unwrap());
-    // Add Block1 - tx1 will be moved to the ReorgPool.
-    assert!(bob.local_nci.submit_block(block1.clone(),).await.is_ok());
-    async_assert_eventually!(
-        alice
-            .mempool
-            .has_tx_with_excess_sig(tx1_excess_sig.clone())
-            .await
-            .unwrap(),
-        expect = TxStorageResponse::ReorgPool,
-        max_attempts = 20,
-        interval = Duration::from_millis(1000)
-    );
     alice.mempool.insert(Arc::new(tx2a.clone())).await.unwrap();
     alice.mempool.insert(Arc::new(tx3a.clone())).await.unwrap();
     alice.mempool.insert(Arc::new(tx2b.clone())).await.unwrap();
@@ -1657,20 +1702,20 @@ async fn block_event_and_reorg_event_handling() {
     bob.mempool.insert(Arc::new(tx2b.clone())).await.unwrap();
     bob.mempool.insert(Arc::new(tx3b.clone())).await.unwrap();
 
-    let mut block2a = bob
+    let mut block3a = bob
         .blockchain_db
         .prepare_new_block(chain_block(&block1, vec![tx2a, tx3a], &consensus_manager, &key_manager).await)
         .unwrap();
-    find_header_with_achieved_difficulty(&mut block2a.header, Difficulty::from_u64(1).unwrap());
+    find_header_with_achieved_difficulty(&mut block3a.header, Difficulty::from_u64(1).unwrap());
     // Block2b also builds on Block1 but has a stronger PoW
-    let mut block2b = bob
+    let mut block3b = bob
         .blockchain_db
         .prepare_new_block(chain_block(&block1, vec![tx2b, tx3b], &consensus_manager, &key_manager).await)
         .unwrap();
-    find_header_with_achieved_difficulty(&mut block2b.header, Difficulty::from_u64(10).unwrap());
+    find_header_with_achieved_difficulty(&mut block3b.header, Difficulty::from_u64(10).unwrap());
 
     // Add Block2a - tx2b and tx3b will be discarded as double spends.
-    assert!(bob.local_nci.submit_block(block2a.clone(),).await.is_ok());
+    assert!(bob.local_nci.submit_block(block3a.clone(),).await.is_ok());
 
     async_assert_eventually!(
         bob.mempool

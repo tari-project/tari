@@ -319,7 +319,7 @@ pub async fn create_coinbase_wallet_output(
     test_params
         .create_output(
             UtxoTestParams {
-                value: rules.get_block_reward_at(height),
+                value: rules.get_block_emission_at(height),
                 features: OutputFeatures::create_coinbase(height + constants.coinbase_min_maturity(), extra),
                 ..Default::default()
             },

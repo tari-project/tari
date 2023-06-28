@@ -48,7 +48,7 @@ fn setup() -> (
     let peer_manager = create_peer_manager(&tmp);
     let request_mock = RpcRequestMock::new(peer_manager);
 
-    let db = create_new_blockchain();
+    let db = create_new_blockchain().unwrap();
     let (req_tx, _) = reply_channel::unbounded();
     let (block_tx, _) = reply_channel::unbounded();
     let (block_event_tx, _) = broadcast::channel(1);

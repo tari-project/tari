@@ -79,7 +79,7 @@ use crate::helpers::{
 fn test_fetch_nonexistent_header() {
     let network = Network::LocalNet;
     let _consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let store = create_test_blockchain_db();
+    let store = create_test_blockchain_db().unwrap();
 
     assert_eq!(store.fetch_header(1).unwrap(), None);
 }
@@ -88,7 +88,7 @@ fn test_fetch_nonexistent_header() {
 fn test_insert_and_fetch_header() {
     let network = Network::LocalNet;
     let _consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let store = create_test_blockchain_db();
+    let store = create_test_blockchain_db().unwrap();
     let genesis_block = store.fetch_tip_header().unwrap();
     let mut header1 = BlockHeader::from_previous(genesis_block.header());
 
@@ -114,7 +114,7 @@ fn test_insert_and_fetch_header() {
 fn test_insert_and_fetch_orphan() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let store = create_test_blockchain_db();
+    let store = create_test_blockchain_db().unwrap();
     let txs = vec![
         (tx!(1000.into(), fee: 4.into(), inputs: 2, outputs: 1)).0,
         (tx!(2000.into(), fee: 6.into(), inputs: 1, outputs: 1)).0,
@@ -149,7 +149,7 @@ fn test_add_multiple_blocks() {
     // Create new database with genesis block
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
-    let store = create_store_with_consensus(consensus_manager.clone());
+    let store = create_store_with_consensus(consensus_manager.clone()).unwrap();
     let metadata = store.get_chain_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain(), 0);
     let block0 = store.fetch_block(0, true).unwrap();
@@ -370,7 +370,7 @@ fn test_handle_tip_reorg_with_zero_conf() {
 
     // Create Forked Chain
 
-    let mut orphan_store = create_store_with_consensus(consensus_manager.clone());
+    let mut orphan_store = create_store_with_consensus(consensus_manager.clone()).unwrap();
     orphan_store.add_block(blocks[1].to_arc_block()).unwrap();
     let mut orphan_blocks = vec![blocks[0].clone(), blocks[1].clone()];
     let mut orphan_outputs = vec![outputs[0].clone(), outputs[1].clone()];
@@ -511,7 +511,7 @@ fn test_handle_tip_reorg() {
 
     // Create Forked Chain
 
-    let mut orphan_store = create_store_with_consensus(consensus_manager.clone());
+    let mut orphan_store = create_store_with_consensus(consensus_manager.clone()).unwrap();
     orphan_store.add_block(blocks[1].to_arc_block()).unwrap();
     let mut orphan_blocks = vec![blocks[0].clone(), blocks[1].clone()];
     let mut orphan_outputs = vec![outputs[0].clone(), outputs[1].clone()];
@@ -577,7 +577,7 @@ fn test_handle_tip_reset() {
 
     // Create Forked Chain
 
-    let mut orphan_store = create_store_with_consensus(consensus_manager.clone());
+    let mut orphan_store = create_store_with_consensus(consensus_manager.clone()).unwrap();
     orphan_store.add_block(blocks[1].to_arc_block()).unwrap();
     let mut orphan_blocks = vec![blocks[0].clone(), blocks[1].clone()];
     let mut orphan_outputs = vec![outputs[0].clone(), outputs[1].clone()];
@@ -689,7 +689,7 @@ fn test_handle_reorg() {
     .is_ok());
 
     // Create Forked Chain 1
-    let mut orphan1_store = create_store_with_consensus(consensus_manager.clone());
+    let mut orphan1_store = create_store_with_consensus(consensus_manager.clone()).unwrap();
     orphan1_store
         .add_block(blocks[1].to_arc_block())
         .unwrap()
@@ -734,7 +734,7 @@ fn test_handle_reorg() {
     .is_ok());
 
     // Create Forked Chain 2
-    let mut orphan2_store = create_store_with_consensus(consensus_manager.clone());
+    let mut orphan2_store = create_store_with_consensus(consensus_manager.clone()).unwrap();
     orphan2_store
         .add_block(blocks[1].to_arc_block())
         .unwrap()
@@ -819,7 +819,7 @@ fn test_reorgs_should_update_orphan_tips() {
     let (store, blocks, outputs, consensus_manager) = create_new_blockchain(network);
 
     // Create "A" Chain
-    let mut a_store = create_store_with_consensus(consensus_manager.clone());
+    let mut a_store = create_store_with_consensus(consensus_manager.clone()).unwrap();
     let mut a_blocks = vec![blocks[0].clone()];
     let mut a_outputs = vec![outputs[0].clone()];
 
@@ -853,7 +853,7 @@ fn test_reorgs_should_update_orphan_tips() {
     let a2_hash = *a_blocks[2].hash();
 
     // Create "B" Chain
-    let mut b_store = create_store_with_consensus(consensus_manager.clone());
+    let mut b_store = create_store_with_consensus(consensus_manager.clone()).unwrap();
     let mut b_blocks = vec![blocks[0].clone()];
     let mut b_outputs = vec![outputs[0].clone()];
 
@@ -1078,7 +1078,7 @@ fn test_handle_reorg_with_no_removed_blocks() {
     .unwrap();
 
     // Create Forked Chain 1
-    let mut orphan1_store = create_store_with_consensus(consensus_manager.clone());
+    let mut orphan1_store = create_store_with_consensus(consensus_manager.clone()).unwrap();
     orphan1_store.add_block(blocks[1].to_arc_block()).unwrap(); // A1
     let mut orphan1_blocks = vec![blocks[0].clone(), blocks[1].clone()];
     let mut orphan1_outputs = vec![outputs[0].clone(), outputs[1].clone()];
@@ -1188,7 +1188,7 @@ fn test_handle_reorg_failure_recovery() {
     .unwrap();
 
     // Create Forked Chain 1
-    let mut orphan1_store = create_store_with_consensus(consensus_manager.clone());
+    let mut orphan1_store = create_store_with_consensus(consensus_manager.clone()).unwrap();
     orphan1_store.add_block(blocks[1].to_arc_block()).unwrap(); // A1
     let mut orphan1_blocks = vec![blocks[0].clone(), blocks[1].clone()];
     let mut orphan1_outputs = vec![outputs[0].clone(), outputs[1].clone()];
@@ -1433,7 +1433,7 @@ fn test_invalid_block() {
     let validator = MockValidator::new(true);
     let is_valid = validator.shared_flag();
     let validators = Validators::new(MockValidator::new(true), MockValidator::new(true), validator);
-    let mut store = create_store_with_consensus_and_validators(consensus_manager.clone(), validators);
+    let mut store = create_store_with_consensus_and_validators(consensus_manager.clone(), validators).unwrap();
 
     let mut blocks = vec![block0];
     let mut outputs = vec![vec![output]];
@@ -1722,7 +1722,7 @@ fn test_orphan_cleanup_on_reorg() {
     .unwrap();
 
     // Create Forked Chain
-    let mut orphan_store = create_store_with_consensus(consensus_manager.clone());
+    let mut orphan_store = create_store_with_consensus(consensus_manager.clone()).unwrap();
     let mut orphan_blocks = vec![blocks[0].clone()];
     let mut orphan_outputs = vec![outputs[0].clone()];
     // Block B1

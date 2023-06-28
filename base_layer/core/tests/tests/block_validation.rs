@@ -30,7 +30,11 @@ use tari_common_types::types::FixedHash;
 use tari_core::{
     blocks::{Block, BlockHeaderAccumulatedData, BlockHeaderValidationError, BlockValidationError, ChainBlock},
     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, ChainStorageError, Validators},
-    consensus::{consensus_constants::PowAlgorithmConstants, ConsensusConstantsBuilder, ConsensusManager},
+    consensus::{
+        consensus_constants::PowAlgorithmConstants,
+        test_helpers::TestConsensusConstantsBuilder,
+        ConsensusManager,
+    },
     proof_of_work::{
         monero_rx,
         monero_rx::{FixedByteArray, MoneroPowData},
@@ -77,7 +81,7 @@ use crate::{
         block_builders::{
             chain_block_with_coinbase,
             chain_block_with_new_coinbase,
-            create_coinbase,
+            create_coinbase_with_coinbase_builder,
             create_genesis_block_with_utxos,
             find_header_with_achieved_difficulty,
         },
@@ -94,7 +98,7 @@ async fn test_monero_blocks() {
 
     let key_manager = create_test_core_key_manager_with_memory_db();
     let network = Network::Esmeralda;
-    let cc = ConsensusConstantsBuilder::new(network)
+    let cc = TestConsensusConstantsBuilder::new(network)
         .with_max_randomx_seed_height(1)
         .clear_proof_of_work()
         .add_proof_of_work(PowAlgorithm::Sha3x, PowAlgorithmConstants {
@@ -118,7 +122,8 @@ async fn test_monero_blocks() {
     let db = create_store_with_consensus_and_validators(
         cm.clone(),
         Validators::new(MockValidator::new(true), header_validator, MockValidator::new(true)),
-    );
+    )
+    .unwrap();
     let block_0 = db.fetch_block(0, true).unwrap().try_into_chain_block().unwrap();
     let (block_1_t, _) = chain_block_with_new_coinbase(&block_0, vec![], &cm, None, &key_manager).await;
     let mut block_1 = db.prepare_new_block(block_1_t).unwrap();
@@ -267,7 +272,7 @@ async fn test_orphan_validator() {
     let factories = CryptoFactories::default();
     let key_manager = create_test_core_key_manager_with_memory_db();
     let network = Network::Igor;
-    let consensus_constants = ConsensusConstantsBuilder::new(network)
+    let consensus_constants = TestConsensusConstantsBuilder::new(network)
         .with_max_block_transaction_weight(321)
         .build();
     let (genesis, outputs) = create_genesis_block_with_utxos(&[T, T, T], &consensus_constants, &key_manager).await;
@@ -352,10 +357,12 @@ async fn test_orphan_validator() {
     let new_block = db.prepare_new_block(template).unwrap();
     assert!(orphan_validator.validate_internal_consistency(&new_block).is_err());
 
-    // let break coinbase value
-    let (coinbase_utxo, coinbase_kernel, _) = create_coinbase(
+    // lets break coinbase value
+    let (coinbase_utxo, coinbase_kernel, _) = create_coinbase_with_coinbase_builder(
+        rules.consensus_constants(0),
         10000000.into(),
         1 + rules.consensus_constants(0).coinbase_min_maturity(),
+        0.into(),
         None,
         &key_manager,
     )
@@ -371,9 +378,11 @@ async fn test_orphan_validator() {
     assert!(orphan_validator.validate_internal_consistency(&new_block).is_err());
 
     // let break coinbase lock height
-    let (coinbase_utxo, coinbase_kernel, _) = create_coinbase(
-        rules.get_block_reward_at(1) + tx01.body.get_total_fee() + tx02.body.get_total_fee(),
-        1,
+    let (coinbase_utxo, coinbase_kernel, _) = create_coinbase_with_coinbase_builder(
+        rules.consensus_constants(1),
+        rules.get_block_emission_at(1),
+        1 + rules.consensus_constants(1).coinbase_min_maturity(),
+        tx01.body.get_total_fee() + tx02.body.get_total_fee(),
         None,
         &key_manager,
     )
@@ -407,7 +416,7 @@ async fn test_orphan_body_validation() {
         max_difficulty: Difficulty::max(),
         target_time: 300,
     };
-    let consensus_constants = ConsensusConstantsBuilder::new(network)
+    let consensus_constants = TestConsensusConstantsBuilder::new(network)
         .clear_proof_of_work()
         .add_proof_of_work(PowAlgorithm::Sha3x, sha3x_constants)
         .build();
@@ -624,7 +633,7 @@ async fn test_header_validation() {
         max_difficulty: Difficulty::max(),
         target_time: 300,
     };
-    let consensus_constants = ConsensusConstantsBuilder::new(network)
+    let consensus_constants = TestConsensusConstantsBuilder::new(network)
         .clear_proof_of_work()
         .add_proof_of_work(PowAlgorithm::Sha3x, sha3x_constants)
         .build();
@@ -734,7 +743,7 @@ OutputFeatures::default()),
 async fn test_block_sync_body_validator() {
     let factories = CryptoFactories::default();
     let network = Network::Igor;
-    let consensus_constants = ConsensusConstantsBuilder::new(network)
+    let consensus_constants = TestConsensusConstantsBuilder::new(network)
         .with_max_block_transaction_weight(400)
         .build();
     let key_manager = create_test_core_key_manager_with_memory_db();
@@ -923,9 +932,11 @@ async fn test_block_sync_body_validator() {
     }
 
     // let break coinbase value
-    let (coinbase_utxo, coinbase_kernel, _) = create_coinbase(
+    let (coinbase_utxo, coinbase_kernel, _) = create_coinbase_with_coinbase_builder(
+        rules.consensus_constants(0),
         10000000.into(),
         1 + rules.consensus_constants(0).coinbase_min_maturity(),
+        0.into(),
         None,
         &key_manager,
     )
@@ -945,9 +956,11 @@ async fn test_block_sync_body_validator() {
     }
 
     // let break coinbase lock height
-    let (coinbase_utxo, coinbase_kernel, _) = create_coinbase(
-        rules.get_block_reward_at(1) + tx01.body.get_total_fee() + tx02.body.get_total_fee(),
+    let (coinbase_utxo, coinbase_kernel, _) = create_coinbase_with_coinbase_builder(
+        rules.consensus_constants(1),
+        rules.get_block_emission_at(1),
         1 + rules.consensus_constants(1).coinbase_min_maturity(),
+        tx01.body.get_total_fee() + tx02.body.get_total_fee(),
         None,
         &key_manager,
     )

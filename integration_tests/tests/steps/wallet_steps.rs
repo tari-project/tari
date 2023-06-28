@@ -1535,7 +1535,7 @@ async fn wallet_with_tari_connected_to_base_node(
     while reward < amount {
         current_height += 1;
         num_blocks += 1;
-        reward += consensus_manager.get_block_reward_at(current_height).as_u64() / 1_000_000; // 1 T = 1_000_000 uT
+        reward += consensus_manager.get_block_emission_at(current_height).as_u64() / 1_000_000; // 1 T = 1_000_000 uT
     }
 
     println!("Creating miner...");

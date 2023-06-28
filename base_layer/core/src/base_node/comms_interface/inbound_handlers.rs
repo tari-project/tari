@@ -288,7 +288,7 @@ where B: BlockchainBackend + 'static
                     header.into_builder().with_transactions(transactions).build(),
                     self.get_target_difficulty_for_next_block(request.algo, constants, prev_hash)
                         .await?,
-                    self.consensus_manager.get_block_reward_at(height),
+                    self.consensus_manager.get_block_emission_at(height),
                 );
 
                 debug!(target: LOG_TARGET, "New template block: {}", block_template);
@@ -670,6 +670,15 @@ where B: BlockchainBackend + 'static
                 .map(|p| format!("remote peer: {}", p))
                 .unwrap_or_else(|| "local services".to_string())
         );
+        println!(
+            "Block #{} ({}) received from {}",
+            block_height,
+            block_hash.to_hex(),
+            source_peer
+                .as_ref()
+                .map(|p| format!("remote peer: {}", p))
+                .unwrap_or_else(|| "local services".to_string())
+        );
         debug!(target: LOG_TARGET, "Incoming block: {}", block);
         let timer = Instant::now();
         let block = self.hydrate_block(block).await?;
@@ -680,6 +689,13 @@ where B: BlockchainBackend + 'static
             Ok(block_add_result) => {
                 debug!(
                     target: LOG_TARGET,
+                    "Block #{} ({}) added ({}) to blockchain in {:.2?}",
+                    block_height,
+                    block_hash.to_hex(),
+                    block_add_result,
+                    timer.elapsed()
+                );
+                println!(
                     "Block #{} ({}) added ({}) to blockchain in {:.2?}",
                     block_height,
                     block_hash.to_hex(),
@@ -703,6 +719,7 @@ where B: BlockchainBackend + 'static
                         "Propagate block ({}) to network.",
                         block_hash.to_hex()
                     );
+                    println!("Propagate block ({}) to network.", block_hash.to_hex());
                     let exclude_peers = source_peer.into_iter().collect();
                     let new_block_msg = NewBlock::from(&*block);
                     self.outbound_nci.propagate_block(new_block_msg, exclude_peers).await?;
@@ -715,6 +732,14 @@ where B: BlockchainBackend + 'static
                 metrics::rejected_blocks(block.header.height, &block_hash).inc();
                 warn!(
                     target: LOG_TARGET,
+                    "Peer {} sent an invalid block: {}",
+                    source_peer
+                        .as_ref()
+                        .map(ToString::to_string)
+                        .unwrap_or_else(|| "<local request>".to_string()),
+                    e
+                );
+                println!(
                     "Peer {} sent an invalid block: {}",
                     source_peer
                         .as_ref()

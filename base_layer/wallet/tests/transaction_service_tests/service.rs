@@ -66,7 +66,7 @@ use tari_core::{
         rpc::BaseNodeWalletRpcServer,
     },
     blocks::BlockHeader,
-    consensus::{ConsensusConstantsBuilder, ConsensusManager},
+    consensus::{test_helpers::TestConsensusConstantsBuilder, ConsensusManager},
     covenants::Covenant,
     one_sided::shared_secret_to_output_encryption_key,
     proto::{
@@ -348,7 +348,7 @@ async fn setup_transaction_service_no_comms(
     wallet_connectivity_service_mock.base_node_changed().await;
 
     let consensus_manager = ConsensusManager::builder(Network::LocalNet).build().unwrap();
-    let constants = ConsensusConstantsBuilder::new(Network::LocalNet).build();
+    let constants = TestConsensusConstantsBuilder::new(Network::LocalNet).build();
 
     let shutdown = Shutdown::new();
 

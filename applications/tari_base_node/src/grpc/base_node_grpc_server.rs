@@ -494,7 +494,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let pow = algo as i32;
         let response = tari_rpc::NewBlockTemplateResponse {
             miner_data: Some(tari_rpc::MinerData {
-                reward: new_template.reward.into(),
+                reward: new_template.emission.into(),
                 target_difficulty: new_template.target_difficulty.as_u64(),
                 total_fees: new_template.total_fees.into(),
                 algo: Some(tari_rpc::PowAlgo { pow_algo: pow }),

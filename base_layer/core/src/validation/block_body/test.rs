@@ -30,7 +30,7 @@ use super::BlockBodyFullValidator;
 use crate::{
     block_spec,
     blocks::BlockValidationError,
-    consensus::{ConsensusConstantsBuilder, ConsensusManager},
+    consensus::{test_helpers::TestConsensusConstantsBuilder, ConsensusManager},
     proof_of_work::Difficulty,
     test_helpers::{blockchain::TestBlockchain, BlockSpec},
     transactions::{
@@ -55,7 +55,7 @@ fn setup_with_rules(rules: ConsensusManager) -> (TestBlockchain, BlockBodyFullVa
 fn setup() -> (TestBlockchain, BlockBodyFullValidator) {
     let rules = ConsensusManager::builder(Network::LocalNet)
         .add_consensus_constants(
-            ConsensusConstantsBuilder::new(Network::LocalNet)
+            TestConsensusConstantsBuilder::new(Network::LocalNet)
                 .with_coinbase_lockheight(0)
                 .build(),
         )
@@ -117,7 +117,7 @@ async fn it_checks_exactly_one_coinbase() {
         .with_fees(0.into())
         .with_spend_key_id(spend_key_id.clone())
         .with_script_key_id(spend_key_id)
-        .build_with_reward(blockchain.rules().consensus_constants(1), coinbase.value)
+        .build_with_emission(blockchain.rules().consensus_constants(1), coinbase.value)
         .await
         .unwrap();
 
@@ -230,7 +230,7 @@ async fn it_checks_txo_sort_order() {
 async fn it_limits_the_script_byte_size() {
     let rules = ConsensusManager::builder(Network::LocalNet)
         .add_consensus_constants(
-            ConsensusConstantsBuilder::new(Network::LocalNet)
+            TestConsensusConstantsBuilder::new(Network::LocalNet)
                 .with_coinbase_lockheight(0)
                 .with_max_script_byte_size(2)
                 .build(),
@@ -256,7 +256,7 @@ async fn it_limits_the_script_byte_size() {
 async fn it_rejects_invalid_input_metadata() {
     let rules = ConsensusManager::builder(Network::LocalNet)
         .add_consensus_constants(
-            ConsensusConstantsBuilder::new(Network::LocalNet)
+            TestConsensusConstantsBuilder::new(Network::LocalNet)
                 .with_coinbase_lockheight(0)
                 .build(),
         )
@@ -314,7 +314,7 @@ mod body_only {
     async fn it_rejects_invalid_input_metadata() {
         let rules = ConsensusManager::builder(Network::LocalNet)
             .add_consensus_constants(
-                ConsensusConstantsBuilder::new(Network::LocalNet)
+                TestConsensusConstantsBuilder::new(Network::LocalNet)
                     .with_coinbase_lockheight(0)
                     .build(),
             )
@@ -353,7 +353,7 @@ mod orphan_validator {
     async fn it_rejects_zero_conf_double_spends() {
         let rules = ConsensusManager::builder(Network::LocalNet)
             .add_consensus_constants(
-                ConsensusConstantsBuilder::new(Network::LocalNet)
+                TestConsensusConstantsBuilder::new(Network::LocalNet)
                     .with_coinbase_lockheight(0)
                     .build(),
             )
@@ -390,7 +390,7 @@ mod orphan_validator {
     async fn it_rejects_unpermitted_output_types() {
         let rules = ConsensusManager::builder(Network::LocalNet)
             .add_consensus_constants(
-                ConsensusConstantsBuilder::new(Network::LocalNet)
+                TestConsensusConstantsBuilder::new(Network::LocalNet)
                     .with_permitted_output_types(&[OutputType::Coinbase])
                     .with_coinbase_lockheight(0)
                     .build(),
@@ -418,7 +418,7 @@ mod orphan_validator {
     async fn it_rejects_unpermitted_range_proof_types() {
         let rules = ConsensusManager::builder(Network::LocalNet)
             .add_consensus_constants(
-                ConsensusConstantsBuilder::new(Network::LocalNet)
+                TestConsensusConstantsBuilder::new(Network::LocalNet)
                     .with_permitted_range_proof_types(&[RangeProofType::RevealedValue])
                     .with_coinbase_lockheight(0)
                     .build(),

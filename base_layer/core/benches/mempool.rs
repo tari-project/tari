@@ -68,7 +68,7 @@ mod benches {
         let runtime = Runtime::new().unwrap();
         let config = MempoolConfig::default();
         let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
-        let db = create_new_blockchain();
+        let db = create_new_blockchain().unwrap();
 
         let mempool_validator = TransactionFullValidator::new(CryptoFactories::default(), false, db, rules.clone());
         let mempool = Mempool::new(config, rules, Box::new(mempool_validator));

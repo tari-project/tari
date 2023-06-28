@@ -174,7 +174,11 @@ impl BaseNodeBuilder {
 
     /// Build the test base node and start its services.
     #[allow(clippy::redundant_closure)]
-    pub async fn start(self, data_path: &str) -> (NodeInterfaces, ConsensusManager) {
+    pub async fn start(
+        self,
+        data_path: &str,
+        blockchain_db: Option<BlockchainDatabase<TempDatabase>>,
+    ) -> (NodeInterfaces, ConsensusManager) {
         let validators = self.validators.unwrap_or_else(|| {
             Validators::new(
                 MockValidator::new(true),
@@ -186,7 +190,11 @@ impl BaseNodeBuilder {
         let consensus_manager = self
             .consensus_manager
             .unwrap_or_else(|| ConsensusManagerBuilder::new(network).build().unwrap());
-        let blockchain_db = create_store_with_consensus_and_validators(consensus_manager.clone(), validators);
+        let blockchain_db = if let Some(db) = blockchain_db {
+            db
+        } else {
+            create_store_with_consensus_and_validators(consensus_manager.clone(), validators).unwrap()
+        };
         let mempool_validator = TransactionChainLinkedValidator::new(blockchain_db.clone(), consensus_manager.clone());
         let mempool = Mempool::new(
             self.mempool_config.unwrap_or_default(),
@@ -231,13 +239,13 @@ pub async fn create_network_with_2_base_nodes(data_path: &str) -> (NodeInterface
     let (alice_node, consensus_manager) = BaseNodeBuilder::new(network.into())
         .with_node_identity(alice_node_identity.clone())
         .with_peers(vec![bob_node_identity.clone()])
-        .start(data_path)
+        .start(data_path, None)
         .await;
     let (bob_node, consensus_manager) = BaseNodeBuilder::new(network.into())
         .with_node_identity(bob_node_identity)
         .with_peers(vec![alice_node_identity])
         .with_consensus_manager(consensus_manager)
-        .start(data_path)
+        .start(data_path, None)
         .await;
 
     wait_until_online(&[&alice_node, &bob_node]).await;
@@ -252,24 +260,31 @@ pub async fn create_network_with_2_base_nodes_with_config<P: AsRef<Path>>(
     liveness_service_config: LivenessConfig,
     consensus_manager: ConsensusManager,
     data_path: P,
+    blockchain_db: Option<BlockchainDatabase<TempDatabase>>,
 ) -> (NodeInterfaces, NodeInterfaces, ConsensusManager) {
     let alice_node_identity = random_node_identity();
     let bob_node_identity = random_node_identity();
     let network = Network::LocalNet;
-    let (alice_node, consensus_manager) = BaseNodeBuilder::new(network.into())
+    let (alice_node, _consensus_manager) = BaseNodeBuilder::new(network.into())
         .with_node_identity(alice_node_identity.clone())
         .with_mempool_service_config(mempool_service_config.clone())
         .with_liveness_service_config(liveness_service_config.clone())
-        .with_consensus_manager(consensus_manager)
-        .start(data_path.as_ref().join("alice").as_os_str().to_str().unwrap())
+        .with_consensus_manager(consensus_manager.clone())
+        .start(
+            data_path.as_ref().join("alice").as_os_str().to_str().unwrap(),
+            blockchain_db.clone(),
+        )
         .await;
-    let (bob_node, consensus_manager) = BaseNodeBuilder::new(network.into())
+    let (bob_node, _consensus_manager) = BaseNodeBuilder::new(network.into())
         .with_node_identity(bob_node_identity)
         .with_peers(vec![alice_node_identity])
         .with_mempool_service_config(mempool_service_config)
         .with_liveness_service_config(liveness_service_config)
-        .with_consensus_manager(consensus_manager)
-        .start(data_path.as_ref().join("bob").as_os_str().to_str().unwrap())
+        .with_consensus_manager(consensus_manager.clone())
+        .start(
+            data_path.as_ref().join("bob").as_os_str().to_str().unwrap(),
+            blockchain_db,
+        )
         .await;
 
     wait_until_online(&[&alice_node, &bob_node]).await;
@@ -281,6 +296,7 @@ pub async fn create_network_with_2_base_nodes_with_config<P: AsRef<Path>>(
 #[allow(dead_code)]
 pub async fn create_network_with_3_base_nodes(
     data_path: &str,
+    blockchain_db: Option<BlockchainDatabase<TempDatabase>>,
 ) -> (NodeInterfaces, NodeInterfaces, NodeInterfaces, ConsensusManager) {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build().unwrap();
@@ -289,6 +305,7 @@ pub async fn create_network_with_3_base_nodes(
         LivenessConfig::default(),
         consensus_manager,
         data_path,
+        blockchain_db,
     )
     .await
 }
@@ -300,6 +317,7 @@ pub async fn create_network_with_3_base_nodes_with_config<P: AsRef<Path>>(
     liveness_service_config: LivenessConfig,
     consensus_manager: ConsensusManager,
     data_path: P,
+    blockchain_db: Option<BlockchainDatabase<TempDatabase>>,
 ) -> (NodeInterfaces, NodeInterfaces, NodeInterfaces, ConsensusManager) {
     let alice_node_identity = random_node_identity();
     let bob_node_identity = random_node_identity();
@@ -317,7 +335,10 @@ pub async fn create_network_with_3_base_nodes_with_config<P: AsRef<Path>>(
         .with_mempool_service_config(mempool_service_config.clone())
         .with_liveness_service_config(liveness_service_config.clone())
         .with_consensus_manager(consensus_manager)
-        .start(data_path.as_ref().join("carol").as_os_str().to_str().unwrap())
+        .start(
+            data_path.as_ref().join("carol").as_os_str().to_str().unwrap(),
+            blockchain_db.clone(),
+        )
         .await;
     let (bob_node, consensus_manager) = BaseNodeBuilder::new(network.into())
         .with_node_identity(bob_node_identity.clone())
@@ -325,7 +346,10 @@ pub async fn create_network_with_3_base_nodes_with_config<P: AsRef<Path>>(
         .with_mempool_service_config(mempool_service_config.clone())
         .with_liveness_service_config(liveness_service_config.clone())
         .with_consensus_manager(consensus_manager)
-        .start(data_path.as_ref().join("bob").as_os_str().to_str().unwrap())
+        .start(
+            data_path.as_ref().join("bob").as_os_str().to_str().unwrap(),
+            blockchain_db.clone(),
+        )
         .await;
     let (alice_node, consensus_manager) = BaseNodeBuilder::new(network.into())
         .with_node_identity(alice_node_identity)
@@ -333,7 +357,10 @@ pub async fn create_network_with_3_base_nodes_with_config<P: AsRef<Path>>(
         .with_mempool_service_config(mempool_service_config)
         .with_liveness_service_config(liveness_service_config)
         .with_consensus_manager(consensus_manager)
-        .start(data_path.as_ref().join("alice").as_os_str().to_str().unwrap())
+        .start(
+            data_path.as_ref().join("alice").as_os_str().to_str().unwrap(),
+            blockchain_db,
+        )
         .await;
 
     wait_until_online(&[&alice_node, &bob_node, &carol_node]).await;

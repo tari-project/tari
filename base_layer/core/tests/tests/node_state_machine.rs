@@ -35,7 +35,6 @@ use tari_core::{
         },
         SyncValidators,
     },
-    consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder},
     mempool::MempoolServiceConfig,
     proof_of_work::{randomx_factory::RandomXFactory, Difficulty},
     test_helpers::blockchain::create_test_blockchain_db,
@@ -55,26 +54,17 @@ use tokio::{
 };
 
 use crate::helpers::{
-    block_builders::{append_block, chain_block, create_genesis_block},
+    block_builders::{append_block, chain_block, create_blockchain_with_spendable_coinbase},
     chain_metadata::MockChainMetadata,
     nodes::{create_network_with_2_base_nodes_with_config, random_node_identity, wait_until_online, BaseNodeBuilder},
 };
 
-static EMISSION: [u64; 2] = [10, 10];
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_listening_lagging() {
-    let network = Network::LocalNet;
     let temp_dir = tempdir().unwrap();
     let key_manager = create_test_core_key_manager_with_memory_db();
-    let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
-        .build();
-    let (prev_block, _) = create_genesis_block(&consensus_constants, &key_manager).await;
-    let consensus_manager = ConsensusManagerBuilder::new(network)
-        .add_consensus_constants(consensus_constants)
-        .with_block(prev_block.clone())
-        .build()
-        .unwrap();
+    let (prev_block, _utxo0, consensus_manager, blockchain_db) =
+        create_blockchain_with_spendable_coinbase(&key_manager, Network::LocalNet, &None).await;
     let (alice_node, bob_node, consensus_manager) = create_network_with_2_base_nodes_with_config(
         MempoolServiceConfig::default(),
         LivenessConfig {
@@ -83,6 +73,7 @@ async fn test_listening_lagging() {
         },
         consensus_manager,
         temp_dir.path().to_str().unwrap(),
+        Some(blockchain_db),
     )
     .await;
     let shutdown = Shutdown::new();
@@ -141,10 +132,10 @@ async fn test_listening_lagging() {
 async fn test_event_channel() {
     let temp_dir = tempdir().unwrap();
     let (node, consensus_manager) = BaseNodeBuilder::new(Network::Esmeralda.into())
-        .start(temp_dir.path().to_str().unwrap())
+        .start(temp_dir.path().to_str().unwrap(), None)
         .await;
     // let shutdown = Shutdown::new();
-    let db = create_test_blockchain_db();
+    let db = create_test_blockchain_db().unwrap();
     let shutdown = Shutdown::new();
     let mut mock = MockChainMetadata::new();
     let (state_change_event_publisher, mut state_change_event_subscriber) = broadcast::channel(10);
