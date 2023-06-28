@@ -43,7 +43,8 @@ use crate::{
 };
 
 /// An unblinded output is one where the value and spending key (blinding factor) are known. This can be used to
-/// build both inputs and outputs (every input comes from an output). This is only used for import and export where serialization is important.
+/// build both inputs and outputs (every input comes from an output). This is only used for import and export where
+/// serialization is important.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct UnblindedOutput {
     pub version: TransactionOutputVersion,

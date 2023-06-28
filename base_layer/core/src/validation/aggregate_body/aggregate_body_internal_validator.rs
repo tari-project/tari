@@ -391,7 +391,6 @@ fn check_validator_node_registration_utxo(
             });
         }
 
-
         if !reg.is_valid_signature_for(&[]) {
             return Err(ValidationError::InvalidValidatorNodeSignature);
         }

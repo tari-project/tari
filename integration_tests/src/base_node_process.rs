@@ -208,7 +208,6 @@ pub async fn spawn_base_node_with_config(
     wait_for_service(grpc_port).await;
 }
 
-
 impl BaseNodeProcess {
     pub async fn get_grpc_client(&self) -> anyhow::Result<BaseNodeGrpcClient<Channel>> {
         Ok(BaseNodeGrpcClient::connect(format!("http://127.0.0.1:{}", self.grpc_port)).await?)

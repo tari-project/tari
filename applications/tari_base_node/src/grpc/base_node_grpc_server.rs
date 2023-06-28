@@ -862,9 +862,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         );
                         return;
                     },
-                    Ok(data) => {
-                        data.into_iter().filter(|b| heights.contains(&b.header().height))
-                    },
+                    Ok(data) => data.into_iter().filter(|b| heights.contains(&b.header().height)),
                 };
 
                 for block in blocks {

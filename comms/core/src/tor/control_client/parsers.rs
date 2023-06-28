@@ -93,9 +93,7 @@ pub fn key_value(line: &str) -> Result<(Cow<'_, str>, Vec<Cow<'_, str>>), ParseE
     let lines = rest.lines();
     let parts = lines
         .filter(|s| !s.is_empty())
-        .flat_map(|line| {
-            line.split('"').filter(|part| !part.trim().is_empty()).map(Cow::from)
-        })
+        .flat_map(|line| line.split('"').filter(|part| !part.trim().is_empty()).map(Cow::from))
         .collect();
     Ok((identifier.trim().into(), parts))
 }
