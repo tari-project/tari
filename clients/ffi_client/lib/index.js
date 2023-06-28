@@ -25,7 +25,6 @@ const {
   strArrayPtr,
 } = require("./types");
 
-// todo: check if the lib exists first
 
 console.log("Set up library...");
 const libWallet = ffi.Library("./libtari_wallet_ffi.dylib", {

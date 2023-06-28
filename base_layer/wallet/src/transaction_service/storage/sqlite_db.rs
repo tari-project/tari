@@ -2217,7 +2217,6 @@ impl UnconfirmedTransactionInfoSql {
     pub fn fetch_unconfirmed_transactions_info(
         conn: &mut SqliteConnection,
     ) -> Result<Vec<UnconfirmedTransactionInfoSql>, TransactionStorageError> {
-        // TODO: Should we not return cancelled transactions as well and handle it upstream? It could be mined. #LOGGED
         let query_result = completed_transactions::table
             .select((
                 completed_transactions::tx_id,

@@ -667,7 +667,6 @@ pub async fn command_runner(
                         println!("Burnt {} Tari in tx_id: {}", args.amount, tx_id);
                         println!("The following can be used to claim the burnt funds:");
                         println!();
-                        // TODO: Define and use a standard format (e.g. json w/ base64)
                         println!("claim_public_key: {}", proof.reciprocal_claim_public_key);
                         println!("commitment: {}", proof.commitment.as_public_key());
                         println!("ownership_proof: {:?}", proof.ownership_proof);

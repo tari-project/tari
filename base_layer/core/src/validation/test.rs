@@ -511,7 +511,6 @@ mod transaction_validator {
     }
 }
 
-// TODO: This is probably generally useful and should be included in the BlockchainDatabase
 /// Iterator that emits BlockHeaders until a given height. This iterator loads headers in chunks of size `chunk_size`
 /// for a low memory footprint. The chunk buffer is allocated once and reused.
 pub struct HeaderIter<'a, B> {

@@ -121,7 +121,6 @@ impl OutputSql {
     }
 
     /// Retrieves UTXOs by a set of given rules
-    // TODO: maybe use a shorthand macros
     #[allow(clippy::cast_sign_loss)]
     pub fn fetch_outputs_by(
         q: OutputBackendQuery,

@@ -382,10 +382,6 @@ async fn simultaneous_dial_events() {
 
     let _events1 = collect_try_recv!(subscription1, timeout = Duration::from_secs(5));
     let _events2 = collect_try_recv!(subscription2, timeout = Duration::from_secs(5));
-
-    // TODO: Investigate why two PeerDisconnected events are sometimes received
-    // assert!(count_string_occurrences(&events1, &["PeerDisconnected"]) >= 1);
-    // assert!(count_string_occurrences(&events2, &["PeerDisconnected"]) >= 1);
 }
 
 #[tokio::test]

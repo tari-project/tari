@@ -9,7 +9,6 @@ edition = "2018"
 [dependencies]
 tari_crypto = { version = "0.17" }
 tari_utilities = "0.4.10"
-# TODO: remove this dependency and move Network into tari_common_types
 tari_common = {  path = "../../common" }
 
 

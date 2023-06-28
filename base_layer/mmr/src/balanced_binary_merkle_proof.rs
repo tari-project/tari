@@ -379,7 +379,7 @@ mod test {
             heights: vec![0, 0],
             _phantom: PhantomData,
         };
-        // TODO: This should fail but does not
+        // This should fail but does not
         // proof .verify_consume(&vec![5u8; 32], vec![vec![5u8; 32], vec![2u8; 32]]) .unwrap_err();
         assert!(proof
             .verify_consume(&vec![5u8; 32], vec![vec![5u8; 32], vec![2u8; 32]])

@@ -733,7 +733,6 @@ where
             spending_key_id.clone(),
             single_round_sender_data.features.clone(),
             single_round_sender_data.script.clone(),
-            // TODO: The input data should be variable; this will only work for a Nop script #LOGGED
             inputs!(script_public_key),
             script_key_id,
             single_round_sender_data.sender_offset_public_key.clone(),
@@ -785,7 +784,6 @@ where
             num_kernels,
             num_outputs
         );
-        // TODO: Include asset metadata here if required
         // We assume that default OutputFeatures and Nop TariScript is used
         let features_and_scripts_byte_size = self
             .resources

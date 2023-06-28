@@ -421,7 +421,6 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         Ok(())
     }
 
-    // TODO: Split this function into smaller pieces
     #[allow(clippy::too_many_lines)]
     async fn synchronize_outputs(
         &mut self,

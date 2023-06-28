@@ -890,9 +890,6 @@ impl LMDBDatabase {
             )));
         }
 
-        // TODO: This can maybe be removed for performance if the check for block_accumulated_data existing is
-        // sufficient
-
         let hash = header.hash();
 
         // Check that there are no utxos or kernels linked to this.
@@ -1605,9 +1602,6 @@ impl LMDBDatabase {
         hash: &HashOutput,
         height: u64,
     ) -> Result<(), ChainStorageError> {
-        // TODO: Any idea how to improve that?
-        // As an alternative we could add "ignored" test
-        // that will generate blocks equals to this const.
         #[cfg(test)]
         const CLEAN_BAD_BLOCKS_BEFORE_REL_HEIGHT: u64 = 10000;
         #[cfg(not(test))]
@@ -1946,7 +1940,6 @@ impl BlockchainBackend for LMDBDatabase {
         Ok(chain_header)
     }
 
-    // TODO: Can be merged with the method above
     fn fetch_header_containing_utxo_mmr(&self, mmr_position: u64) -> Result<ChainHeader, ChainStorageError> {
         let txn = self.read_transaction()?;
         // LMDB returns the height at the position, so we have to offset the position by 1 so that the mmr_position arg

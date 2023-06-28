@@ -3852,7 +3852,6 @@ async fn test_coinbase_generation_and_monitoring() {
 
     let _tx_batch_query_calls = alice_ts_interface
         .base_node_rpc_mock_state
-        // TODO: This is a flaky test; changing the pop count = 3 below makes the test fail often
         .wait_pop_transaction_batch_query_calls(2, Duration::from_secs(30))
         .await
         .unwrap();

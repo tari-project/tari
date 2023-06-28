@@ -321,7 +321,6 @@ pub async fn send_burn_transaction_task(
                     }
                 } else {
                     warn!(target: LOG_TARGET, "Encountered an unexpected event");
-                    todo!()
                 }
             },
 
@@ -492,7 +491,6 @@ pub async fn send_register_template_transaction_task(
                     }
                 } else {
                     warn!(target: LOG_TARGET, "Encountered an unexpected event");
-                    todo!()
                 }
             },
 

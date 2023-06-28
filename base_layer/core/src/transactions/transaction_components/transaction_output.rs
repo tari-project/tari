@@ -323,9 +323,6 @@ impl TransactionOutput {
             .as_ref()
             .and_then(|f| f.validator_node_registration())
         {
-            // TODO(SECURITY): Signing this with a blank msg allows the signature to be replayed. Using the commitment
-            //                 is ideal as uniqueness is enforced. However, because the VN and wallet have different
-            //                 keys this becomes difficult. Fix this once we have decided on a solution.
             if !validator_node_reg.is_valid_signature_for(&[]) {
                 return Err(TransactionError::InvalidSignatureError(
                     "Validator node signature is not valid!".to_string(),

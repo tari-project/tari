@@ -813,7 +813,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         let tx_id = wallet
             .coin_split(
-                vec![], // TODO: refactor grpc to accept and use commitments
+                vec![],
                 MicroTari::from(message.amount_per_split),
                 message.split_count as usize,
                 MicroTari::from(message.fee_per_gram),
@@ -1016,7 +1016,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
             Status::internal("failed to fetch consensus constants")
         })?;
 
-        // TODO: we need to set the output maturity
         let response = match transaction_service
             .register_validator_node(
                 constants.validator_node_registration_min_deposit_amount(),
