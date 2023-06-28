@@ -27,7 +27,11 @@ use tari_common_types::types::{FixedHash, PrivateKey, PublicKey, Signature};
 use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparatedHasher, keys::PublicKey as PublicKeyT};
 use tari_utilities::ByteArray;
 
-hash_domain!(ValidatorNodeHashDomain, "com.tari.dan_layer.validator_node", 0);
+hash_domain!(
+    ValidatorNodeHashDomain,
+    "com.tari.base_layer.core.transactions.side_chain.validator_node",
+    0
+);
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub struct ValidatorNodeSignature {

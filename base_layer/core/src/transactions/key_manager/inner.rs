@@ -84,7 +84,10 @@ use crate::{
     },
 };
 
-hash_domain!(KeyManagerHashingDomain, "base_layer.core.key_manager");
+hash_domain!(
+    KeyManagerHashingDomain,
+    "com.tari.base_layer.core.transactions.key_manager"
+);
 
 pub struct TransactionKeyManagerInner<TBackend> {
     key_managers: HashMap<String, RwLock<KeyManager<PublicKey, KeyDigest>>>,
