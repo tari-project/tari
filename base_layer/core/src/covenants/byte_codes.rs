@@ -88,7 +88,9 @@ pub const FIELD_COVENANT: u8 = 0x03;
 pub const FIELD_FEATURES: u8 = 0x04;
 pub const FIELD_FEATURES_OUTPUT_TYPE: u8 = 0x05;
 pub const FIELD_FEATURES_MATURITY: u8 = 0x06;
-pub const FIELD_FEATURES_SIDE_CHAIN_FEATURES: u8 = 0x08;
+pub const FIELD_FEATURES_SIDE_CHAIN_FEATURES: u8 = 0x07;
+pub const FIELD_FEATURES_RANGE_PROOF_TYPE: u8 = 0x08;
+pub const MINIMUM_VALUE_PROMISE: u8 = 0x09;
 
 #[cfg(test)]
 mod tests {
