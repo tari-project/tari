@@ -67,7 +67,7 @@ impl SingleReceiverTransactionProtocol {
             .await?;
 
         let kernel_message = TransactionKernel::build_kernel_signature_message(
-            &sender_info.transaction_kernel_version,
+            &sender_info.kernel_version,
             tx_meta.fee,
             tx_meta.lock_height,
             &tx_meta.kernel_features,
@@ -79,7 +79,7 @@ impl SingleReceiverTransactionProtocol {
                 &nonce_id,
                 &(&sender_info.public_nonce + &public_nonce),
                 &(&sender_info.public_excess + &public_excess),
-                &sender_info.transaction_kernel_version,
+                &sender_info.kernel_version,
                 &kernel_message,
                 &tx_meta.kernel_features,
                 TxoStage::Output,
@@ -113,11 +113,11 @@ impl SingleReceiverTransactionProtocol {
         // validate kernel version
         if !consensus_constants
             .kernel_version_range()
-            .contains(&sender_info.transaction_kernel_version)
+            .contains(&sender_info.kernel_version)
         {
             let msg = format!(
                 "Transaction kernel version is not allowed by consensus ({:?})",
-                &sender_info.transaction_kernel_version
+                &sender_info.kernel_version
             );
             return Err(TPE::ValidationError(msg));
         }
@@ -126,11 +126,11 @@ impl SingleReceiverTransactionProtocol {
         if !consensus_constants
             .output_version_range()
             .outputs
-            .contains(&sender_info.transaction_output_version)
+            .contains(&sender_info.output_version)
         {
             let msg = format!(
                 "Transaction output version is not allowed by consensus ({:?})",
-                &sender_info.transaction_output_version
+                &sender_info.output_version
             );
             return Err(TPE::ValidationError(msg));
         }
@@ -244,8 +244,8 @@ mod test {
             ephemeral_public_nonce: ephemeral_public_nonce.clone(),
             covenant: Default::default(),
             minimum_value_promise: MicroTari::zero(),
-            transaction_output_version: TransactionOutputVersion::get_current_version(),
-            transaction_kernel_version: TransactionKernelVersion::get_current_version(),
+            output_version: TransactionOutputVersion::get_current_version(),
+            kernel_version: TransactionKernelVersion::get_current_version(),
         };
         let bob_public_key = key_manager
             .get_public_key_at_key_id(&test_params.sender_offset_key_id)

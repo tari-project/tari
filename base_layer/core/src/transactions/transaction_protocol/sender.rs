@@ -146,9 +146,9 @@ pub struct SingleRoundSenderData {
     /// The minimum value of the commitment that is proven by the range proof
     pub minimum_value_promise: MicroTari,
     /// The version of this transaction output
-    pub transaction_output_version: TransactionOutputVersion,
+    pub output_version: TransactionOutputVersion,
     /// The version of this transaction kernel
-    pub transaction_kernel_version: TransactionKernelVersion,
+    pub kernel_version: TransactionKernelVersion,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -415,8 +415,8 @@ impl SenderTransactionProtocol {
                     .get_public_key_at_key_id(&ephemeral_public_key_nonce)
                     .await?;
 
-                let transaction_output_version = TransactionOutputVersion::get_current_version();
-                let transaction_kernel_version = TransactionKernelVersion::get_current_version();
+                let output_version = TransactionOutputVersion::get_current_version();
+                let kernel_version = TransactionKernelVersion::get_current_version();
 
                 Ok(SingleRoundSenderData {
                     tx_id: info.tx_id,
@@ -431,8 +431,8 @@ impl SenderTransactionProtocol {
                     ephemeral_public_nonce,
                     covenant: recipient_covenant,
                     minimum_value_promise: recipient_minimum_value_promise,
-                    transaction_output_version,
-                    transaction_kernel_version,
+                    output_version,
+                    kernel_version,
                 })
             },
             _ => Err(TPE::InvalidStateError),

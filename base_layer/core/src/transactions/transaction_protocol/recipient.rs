@@ -233,8 +233,8 @@ mod test {
             ephemeral_public_nonce: sender_test_params.ephemeral_public_nonce_key_pk,
             covenant: Covenant::default(),
             minimum_value_promise: MicroTari::zero(),
-            transaction_output_version: TransactionOutputVersion::get_current_version(),
-            transaction_kernel_version: TransactionKernelVersion::get_current_version(),
+            output_version: TransactionOutputVersion::get_current_version(),
+            kernel_version: TransactionKernelVersion::get_current_version(),
         };
         let sender_info = TransactionSenderMessage::Single(Box::new(msg.clone()));
         let params = UtxoTestParams {
