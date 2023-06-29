@@ -1227,7 +1227,9 @@ mod test {
             1,
             1,
             2,
-            alice_key.get_size_for_default_features_and_scripts(2),
+            alice_key
+                .get_size_for_default_features_and_scripts(2)
+                .expect("Failed to get size for default features and scripts"),
         );
         let change = TestParams::new(&key_manager).await;
         builder

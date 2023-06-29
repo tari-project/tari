@@ -56,4 +56,6 @@ pub enum UiError {
     BurntProofFileExists,
     #[error("Channel send error: `{0}`")]
     SendError(String),
+    #[error("Transaction error: `{0}`")]
+    TransactionError(String),
 }

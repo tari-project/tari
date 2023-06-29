@@ -55,9 +55,9 @@ impl Fee {
         MicroTari::from(weight) * fee_per_gram
     }
 
-    pub fn calculate_body(&self, fee_per_gram: MicroTari, body: &AggregateBody) -> MicroTari {
-        let weight = self.weighting().calculate_body(body);
-        MicroTari::from(weight) * fee_per_gram
+    pub fn calculate_body(&self, fee_per_gram: MicroTari, body: &AggregateBody) -> std::io::Result<MicroTari> {
+        let weight = self.weighting().calculate_body(body)?;
+        Ok(MicroTari::from(weight) * fee_per_gram)
     }
 
     /// Normalizes the given fee returning a fee that is equal to or above the minimum fee
@@ -120,7 +120,8 @@ mod test {
         let aggregate_body = AggregateBody::new(vec![input], vec![], vec![]);
         let fee = Fee::new(TransactionWeight::latest());
         assert_eq!(
-            fee.calculate_body(100.into(), &aggregate_body),
+            fee.calculate_body(100.into(), &aggregate_body)
+                .unwrap_or_else(|e| panic!("Failed with error: {}", e)),
             fee.calculate(100.into(), 0, 1, 0, 0)
         )
     }

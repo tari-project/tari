@@ -95,7 +95,7 @@ impl CommandContext {
                     if mempool_stats.unconfirmed_weight == 0 {
                         0
                     } else {
-                        1 + mempool_stats.unconfirmed_weight / constants.max_block_weight_excluding_coinbase()
+                        1 + mempool_stats.unconfirmed_weight / constants.max_block_weight_excluding_coinbase()?
                     },
                 ),
             );

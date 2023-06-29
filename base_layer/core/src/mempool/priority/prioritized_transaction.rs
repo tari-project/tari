@@ -86,19 +86,19 @@ impl PrioritizedTransaction {
         weighting: &TransactionWeight,
         transaction: Arc<Transaction>,
         dependent_outputs: Option<Vec<HashOutput>>,
-    ) -> PrioritizedTransaction {
-        let weight = transaction.calculate_weight(weighting);
+    ) -> std::io::Result<PrioritizedTransaction> {
+        let weight = transaction.calculate_weight(weighting)?;
         let insert_epoch = match SystemTime::now().duration_since(UNIX_EPOCH) {
             Ok(n) => n.as_secs(),
             Err(_) => 0,
         };
-        Self {
+        Ok(Self {
             key,
             priority: FeePriority::new(&transaction, insert_epoch, weight),
             weight,
             transaction,
             dependent_output_hashes: dependent_outputs.unwrap_or_default(),
-        }
+        })
     }
 }
 
@@ -122,7 +122,9 @@ mod tests {
     };
 
     async fn create_tx_with_fee(fee_per_gram: MicroTari, key_manager: &TestKeyManager) -> Transaction {
-        let (tx, _, _) = create_tx(10 * T, fee_per_gram, 0, 1, 0, 1, Default::default(), key_manager).await;
+        let (tx, _, _) = create_tx(10 * T, fee_per_gram, 0, 1, 0, 1, Default::default(), key_manager)
+            .await
+            .expect("Failed to get tx");
         tx
     }
 
@@ -132,10 +134,10 @@ mod tests {
         let weighting = TransactionWeight::latest();
         let epoch = u64::MAX / 2;
         let tx = create_tx_with_fee(2 * uT, &key_manager).await;
-        let p1 = FeePriority::new(&tx, epoch, tx.calculate_weight(&weighting));
+        let p1 = FeePriority::new(&tx, epoch, tx.calculate_weight(&weighting).expect("Failed to get tx"));
 
         let tx = create_tx_with_fee(3 * uT, &key_manager).await;
-        let p2 = FeePriority::new(&tx, epoch, tx.calculate_weight(&weighting));
+        let p2 = FeePriority::new(&tx, epoch, tx.calculate_weight(&weighting).expect("Failed to get tx"));
 
         assert!(p2 > p1);
     }
@@ -146,10 +148,14 @@ mod tests {
         let weighting = TransactionWeight::latest();
         let epoch = u64::MAX / 2;
         let tx = create_tx_with_fee(2 * uT, &key_manager).await;
-        let p1 = FeePriority::new(&tx, epoch, tx.calculate_weight(&weighting));
+        let p1 = FeePriority::new(&tx, epoch, tx.calculate_weight(&weighting).expect("Failed to get tx"));
 
         let tx = create_tx_with_fee(2 * uT, &key_manager).await;
-        let p2 = FeePriority::new(&tx, epoch - 1, tx.calculate_weight(&weighting));
+        let p2 = FeePriority::new(
+            &tx,
+            epoch - 1,
+            tx.calculate_weight(&weighting).expect("Failed to get tx"),
+        );
 
         assert!(p2 > p1);
     }

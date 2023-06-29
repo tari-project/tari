@@ -304,7 +304,9 @@ fn check_weight(
     height: u64,
     consensus_constants: &ConsensusConstants,
 ) -> Result<(), ValidationError> {
-    let block_weight = body.calculate_weight(consensus_constants.transaction_weight_params());
+    let block_weight = body
+        .calculate_weight(consensus_constants.transaction_weight_params())
+        .map_err(|e| ValidationError::CustomError(e.to_string()))?;
     let max_weight = consensus_constants.max_block_transaction_weight();
     if block_weight <= max_weight {
         trace!(

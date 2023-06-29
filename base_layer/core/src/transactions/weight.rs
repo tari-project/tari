@@ -84,32 +84,35 @@ impl TransactionWeight {
             rounded_up_features_and_scripts_byte_size as u64 / params.features_and_scripts_bytes_per_gram.get()
     }
 
-    pub fn calculate_body(&self, body: &AggregateBody) -> u64 {
+    pub fn calculate_body(&self, body: &AggregateBody) -> std::io::Result<u64> {
         let rounded_up_features_and_scripts_bytes_size =
-            self.calculate_normalised_total_features_and_scripts_size(body);
-        self.calculate(
+            self.calculate_normalised_total_features_and_scripts_size(body)?;
+        Ok(self.calculate(
             body.kernels().len(),
             body.inputs().len(),
             body.outputs().len(),
             rounded_up_features_and_scripts_bytes_size,
-        )
+        ))
     }
 
-    fn calculate_normalised_total_features_and_scripts_size(&self, body: &AggregateBody) -> usize {
+    fn calculate_normalised_total_features_and_scripts_size(&self, body: &AggregateBody) -> std::io::Result<usize> {
         // When calculating the total block size vs each individual transaction the div operator in `calculate` above
         // will yield a different result due to integer rounding.
         // Where s_n is the features_and_scripts size for the nth output, p is per_gram
         // (∑s_i) / p != (s_1/p) + (s_2/p) +....(s_n / p)
         // We round up each output to the nearest p here to account for this
 
-        body.outputs()
+        Ok(body
+            .outputs()
             .iter()
-            .map(|o| {
-                let actual_size = o.get_features_and_scripts_size();
-                // round up each output to nearest multiple of features_and_scripts_byte_per_gram
-                self.round_up_features_and_scripts_size(actual_size)
-            })
-            .sum()
+            .map(|o| o.get_features_and_scripts_size())
+            .collect::<Result<Vec<_>, _>>()?
+            .iter()
+            .map(
+                |actual_size| // round up each output to nearest multiple of features_and_scripts_byte_per_gram
+                self.round_up_features_and_scripts_size(*actual_size),
+            )
+            .sum())
     }
 
     pub fn round_up_features_and_scripts_size(&self, features_and_scripts_size: usize) -> usize {
