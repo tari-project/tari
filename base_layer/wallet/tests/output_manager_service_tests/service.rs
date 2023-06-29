@@ -335,7 +335,7 @@ async fn fee_estimate() {
             1,
             2,
             2 * default_features_and_scripts_size_byte_size()
-                .expect("Failed to get default features and scripts size byte size")
+                .expect("Failed to obtain default features and scripts size byte size")
         )
     );
 
@@ -361,7 +361,7 @@ async fn fee_estimate() {
                 1,
                 outputs + 1,
                 default_features_and_scripts_size_byte_size()
-                    .expect("Failed to get default features and scripts size byte size") *
+                    .expect("Failed to obtain default features and scripts size byte size") *
                     (outputs + 1)
             )
         );
@@ -467,7 +467,7 @@ async fn test_utxo_selection_no_chain_metadata() {
         1,
         3,
         default_features_and_scripts_size_byte_size()
-            .expect("Failed to get default features and scripts size byte size") *
+            .expect("Failed to obtain default features and scripts size byte size") *
             3,
     );
     assert_eq!(fee, expected_fee);
@@ -494,7 +494,7 @@ async fn test_utxo_selection_no_chain_metadata() {
         1,
         6,
         default_features_and_scripts_size_byte_size()
-            .expect("Failed to get default features and scripts size byte size") *
+            .expect("Failed to obtain default features and scripts size byte size") *
             6,
     );
     assert_eq!(tx.body.get_total_fee(), expected_fee);
@@ -575,7 +575,7 @@ async fn test_utxo_selection_with_chain_metadata() {
         2,
         3,
         default_features_and_scripts_size_byte_size()
-            .expect("Failed to get default features and scripts size byte size") *
+            .expect("Failed to obtain default features and scripts size byte size") *
             3,
     );
     assert_eq!(fee, expected_fee);
@@ -596,7 +596,7 @@ async fn test_utxo_selection_with_chain_metadata() {
         1,
         6,
         default_features_and_scripts_size_byte_size()
-            .expect("Failed to get default features and scripts size byte size") *
+            .expect("Failed to obtain default features and scripts size byte size") *
             6,
     );
     assert_eq!(tx.body.get_total_fee(), expected_fee);
@@ -783,7 +783,7 @@ async fn send_no_change() {
         2,
         1,
         default_features_and_scripts_size_byte_size()
-            .expect("Failed to get default features and scripts size byte size"),
+            .expect("Failed to obtain default features and scripts size byte size"),
     );
     let value1 = 5000;
     let key_manager = create_test_core_key_manager_with_memory_db();
@@ -1190,7 +1190,7 @@ async fn coin_split_with_change() {
         split_count + 1,
         (split_count + 1) *
             default_features_and_scripts_size_byte_size()
-                .expect("Failed to get default features and scripts size byte size"),
+                .expect("Failed to obtain default features and scripts size byte size"),
     );
     assert_eq!(coin_split_tx.body.get_total_fee(), expected_fee);
     // NOTE: assuming the LargestFirst strategy is used
@@ -1214,7 +1214,7 @@ async fn coin_split_no_change() {
         split_count,
         split_count *
             default_features_and_scripts_size_byte_size()
-                .expect("Failed to get default features and scripts size byte size"),
+                .expect("Failed to obtain default features and scripts size byte size"),
     );
 
     let val1 = 4_000 * uT;
