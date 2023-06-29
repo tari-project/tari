@@ -553,7 +553,7 @@ async fn local_get_new_block_with_zero_conf() {
         .with_consensus_manager(rules.clone())
         .with_validators(
             BlockBodyFullValidator::new(rules.clone(), true),
-            HeaderFullValidator::new(rules.clone(), difficulty_calculator, false),
+            HeaderFullValidator::new(rules.clone(), difficulty_calculator),
             BlockBodyInternalConsistencyValidator::new(rules, true, factories.clone()),
         )
         .start(temp_dir.path().to_str().unwrap())
@@ -639,7 +639,7 @@ async fn local_get_new_block_with_combined_transaction() {
         .with_consensus_manager(rules.clone())
         .with_validators(
             BlockBodyFullValidator::new(rules.clone(), true),
-            HeaderFullValidator::new(rules.clone(), difficulty_calculator, false),
+            HeaderFullValidator::new(rules.clone(), difficulty_calculator),
             BlockBodyInternalConsistencyValidator::new(rules, true, factories.clone()),
         )
         .start(temp_dir.path().to_str().unwrap())

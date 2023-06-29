@@ -3273,7 +3273,6 @@ mod test {
             let header_validator = Box::new(HeaderFullValidator::new(
                 consensus.clone(),
                 difficulty_calculator.clone(),
-                false,
             ));
             let post_orphan_body_validator = Box::new(MockValidator::new(true));
             let chain_strength_comparer = strongest_chain().by_sha3x_difficulty().build();

@@ -58,7 +58,7 @@ struct State {
 impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
     pub fn new(db: AsyncBlockchainDb<B>, consensus_rules: ConsensusManager, randomx_factory: RandomXFactory) -> Self {
         let difficulty_calculator = DifficultyCalculator::new(consensus_rules.clone(), randomx_factory);
-        let validator = HeaderFullValidator::new(consensus_rules.clone(), difficulty_calculator, true);
+        let validator = HeaderFullValidator::new(consensus_rules.clone(), difficulty_calculator);
         Self {
             db,
             state: None,
@@ -309,16 +309,16 @@ mod test {
 
         #[tokio::test]
         async fn it_fails_if_height_is_not_serial() {
-            let (mut validator, _, tip) = setup_with_headers(2).await;
+            let (mut validator, _, tip) = setup_with_headers(12).await;
             validator.initialize_state(tip.hash()).await.unwrap();
             let mut next = BlockHeader::from_previous(tip.header());
-            next.height = 10;
+            next.height = 14;
             let err = validator.validate(next).unwrap_err();
             unpack_enum!(BlockHeaderSyncError::ValidationFailed(val_err) = err);
             unpack_enum!(ValidationError::BlockHeaderError(header_err) = val_err);
             unpack_enum!(BlockHeaderValidationError::InvalidHeight { actual, expected } = header_err);
-            assert_eq!(actual, 10);
-            assert_eq!(expected, 3);
+            assert_eq!(actual, 14);
+            assert_eq!(expected, 13);
         }
     }
 }
