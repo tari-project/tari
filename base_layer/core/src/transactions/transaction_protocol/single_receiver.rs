@@ -20,13 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::transactions::{
-    key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface, TxoStage},
-    transaction_components::{TransactionKernel, TransactionKernelVersion, WalletOutput},
-    transaction_protocol::{
-        recipient::RecipientSignedMessage,
-        sender::SingleRoundSenderData,
-        TransactionProtocolError as TPE,
+use crate::{
+    consensus::ConsensusConstants,
+    transactions::{
+        key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface, TxoStage},
+        transaction_components::{TransactionKernel, WalletOutput},
+        transaction_protocol::{
+            recipient::RecipientSignedMessage,
+            sender::SingleRoundSenderData,
+            TransactionProtocolError as TPE,
+        },
     },
 };
 
@@ -43,9 +46,10 @@ impl SingleReceiverTransactionProtocol {
         sender_info: &SingleRoundSenderData,
         output: WalletOutput,
         key_manager: &KM,
+        consensus_constants: &ConsensusConstants,
     ) -> Result<RecipientSignedMessage, TPE> {
         // output.fill in metadata
-        SingleReceiverTransactionProtocol::validate_sender_data(sender_info)?;
+        SingleReceiverTransactionProtocol::validate_sender_data(sender_info, consensus_constants)?;
         let transaction_output = output.to_transaction_output(key_manager).await?;
 
         let (nonce_id, public_nonce) = key_manager
@@ -63,7 +67,7 @@ impl SingleReceiverTransactionProtocol {
             .await?;
 
         let kernel_message = TransactionKernel::build_kernel_signature_message(
-            &TransactionKernelVersion::get_current_version(),
+            &sender_info.transaction_kernel_version,
             tx_meta.fee,
             tx_meta.lock_height,
             &tx_meta.kernel_features,
@@ -75,7 +79,7 @@ impl SingleReceiverTransactionProtocol {
                 &nonce_id,
                 &(&sender_info.public_nonce + &public_nonce),
                 &(&sender_info.public_excess + &public_excess),
-                &TransactionKernelVersion::get_current_version(),
+                &sender_info.transaction_kernel_version,
                 &kernel_message,
                 &tx_meta.kernel_features,
                 TxoStage::Output,
@@ -97,10 +101,40 @@ impl SingleReceiverTransactionProtocol {
     }
 
     /// Validates the sender info
-    fn validate_sender_data(sender_info: &SingleRoundSenderData) -> Result<(), TPE> {
+    fn validate_sender_data(
+        sender_info: &SingleRoundSenderData,
+        consensus_constants: &ConsensusConstants,
+    ) -> Result<(), TPE> {
+        // validate amount
         if sender_info.amount == 0.into() {
             return Err(TPE::ValidationError("Cannot send zero microTari".into()));
         }
+
+        // validate kernel version
+        if !consensus_constants
+            .kernel_version_range()
+            .contains(&sender_info.transaction_kernel_version)
+        {
+            let msg = format!(
+                "Transaction kernel version is not allowed by consensus ({:?})",
+                &sender_info.transaction_kernel_version
+            );
+            return Err(TPE::ValidationError(msg));
+        }
+
+        // validate output version
+        if !consensus_constants
+            .output_version_range()
+            .outputs
+            .contains(&sender_info.transaction_output_version)
+        {
+            let msg = format!(
+                "Transaction output version is not allowed by consensus ({:?})",
+                &sender_info.transaction_output_version
+            );
+            return Err(TPE::ValidationError(msg));
+        }
+
         Ok(())
     }
 }
@@ -114,6 +148,7 @@ mod test {
 
     use crate::{
         covenants::Covenant,
+        test_helpers::create_consensus_constants,
         transactions::{
             key_manager::TransactionKeyManagerInterface,
             tari_amount::*,
@@ -140,6 +175,7 @@ mod test {
     async fn zero_amount_fails() {
         let key_manager = create_test_core_key_manager_with_memory_db();
         let test_params = TestParams::new(&key_manager).await;
+        let consensus_constants = create_consensus_constants(0);
         let info = SingleRoundSenderData::default();
         let bob_output = WalletOutput::new_current_version(
             MicroTari(5000),
@@ -160,7 +196,7 @@ mod test {
         .unwrap();
 
         #[allow(clippy::match_wild_err_arm)]
-        match SingleReceiverTransactionProtocol::create(&info, bob_output, &key_manager).await {
+        match SingleReceiverTransactionProtocol::create(&info, bob_output, &key_manager, &consensus_constants).await {
             Ok(_) => panic!("Zero amounts should fail"),
             Err(TransactionProtocolError::ValidationError(s)) => assert_eq!(s, "Cannot send zero microTari"),
             Err(_) => panic!("Protocol fails for the wrong reason"),
@@ -169,7 +205,12 @@ mod test {
 
     #[tokio::test]
     async fn valid_request() {
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager: crate::transactions::key_manager::TransactionKeyManagerWrapper<
+            tari_key_manager::key_manager_service::storage::sqlite_db::KeyManagerSqliteDatabase<
+                tari_common_sqlite::connection::DbConnection,
+            >,
+        > = create_test_core_key_manager_with_memory_db();
+        let consensus_constants = create_consensus_constants(0);
         let m = TransactionMetadata::new(MicroTari(100), 0);
         let test_params = TestParams::new(&key_manager).await;
         let test_params2 = TestParams::new(&key_manager).await;
@@ -241,7 +282,7 @@ mod test {
             .await
             .unwrap();
 
-        let prot = SingleReceiverTransactionProtocol::create(&info, bob_output, &key_manager)
+        let prot = SingleReceiverTransactionProtocol::create(&info, bob_output, &key_manager, &consensus_constants)
             .await
             .unwrap();
         assert_eq!(prot.tx_id.as_u64(), 500, "tx_id is incorrect");
