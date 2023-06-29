@@ -48,7 +48,6 @@ impl SingleReceiverTransactionProtocol {
         key_manager: &KM,
         consensus_constants: &ConsensusConstants,
     ) -> Result<RecipientSignedMessage, TPE> {
-        // output.fill in metadata
         SingleReceiverTransactionProtocol::validate_sender_data(sender_info, consensus_constants)?;
         let transaction_output = output.to_transaction_output(key_manager).await?;
 
