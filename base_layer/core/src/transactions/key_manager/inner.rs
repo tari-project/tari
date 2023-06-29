@@ -84,7 +84,10 @@ use crate::{
     },
 };
 
-hash_domain!(KeyManagerHashingDomain, "base_layer.core.key_manager");
+hash_domain!(
+    KeyManagerHashingDomain,
+    "com.tari.base_layer.core.transactions.key_manager"
+);
 
 pub struct TransactionKeyManagerInner<TBackend> {
     key_managers: HashMap<String, RwLock<KeyManager<PublicKey, KeyDigest>>>,
@@ -288,8 +291,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         Ok(key_id)
     }
 
-    // Note!: This method may not be made public
-    pub async fn get_private_key(&self, key_id: &TariKeyId) -> Result<PrivateKey, KeyManagerServiceError> {
+    pub(crate) async fn get_private_key(&self, key_id: &TariKeyId) -> Result<PrivateKey, KeyManagerServiceError> {
         match key_id {
             KeyId::Managed { branch, index } => {
                 let km = self
@@ -523,7 +525,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         Ok(script_offset)
     }
 
-    // Note!: This method may not be made public
     async fn get_metadata_signature_ephemeral_private_key_pair(
         &self,
         nonce_id: &TariKeyId,
@@ -764,7 +765,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             private_key - &self.get_txo_private_kernel_offset(spending_key_id, nonce_id).await?
         };
 
-        // We need to check if its in put or output for which we are singing. Signing with an input, we need to sign
+        // We need to check if its input or output for which we are singing. Signing with an input, we need to sign
         // with `-k` while outputs are `k`
         let final_signing_key = if txo_type == TxoStage::Output {
             private_signing_key
@@ -799,7 +800,6 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     // Encrypted data section (transactions > transaction_components > encrypted_data)
     // -----------------------------------------------------------------------------------------------------------------
 
-    // Note!: This method may not be made public
     async fn get_recovery_key(&self) -> Result<PrivateKey, KeyManagerServiceError> {
         let recovery_id = KeyId::Managed {
             branch: TransactionKeyManagerBranch::DataEncryption.get_branch_key(),
