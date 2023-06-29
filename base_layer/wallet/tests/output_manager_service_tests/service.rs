@@ -383,6 +383,7 @@ async fn fee_estimate() {
 }
 
 #[allow(clippy::identity_op)]
+#[allow(clippy::too_many_lines)]
 #[tokio::test]
 async fn test_utxo_selection_no_chain_metadata() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
