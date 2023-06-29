@@ -1170,18 +1170,21 @@ pub struct CompletedTransactionInfo {
 }
 
 impl CompletedTransactionInfo {
-    pub fn from_completed_transaction(tx: CompletedTransaction, transaction_weighting: &TransactionWeight) -> Self {
+    pub fn from_completed_transaction(
+        tx: CompletedTransaction,
+        transaction_weighting: &TransactionWeight,
+    ) -> std::io::Result<Self> {
         let excess_signature = tx
             .transaction
             .first_kernel_excess_sig()
             .map(|s| s.get_signature().to_hex())
             .unwrap_or_default();
         let is_coinbase = tx.is_coinbase();
-        let weight = tx.transaction.calculate_weight(transaction_weighting);
+        let weight = tx.transaction.calculate_weight(transaction_weighting)?;
         let inputs_count = tx.transaction.body.inputs().len();
         let outputs_count = tx.transaction.body.outputs().len();
 
-        Self {
+        Ok(Self {
             tx_id: tx.tx_id,
             source_address: tx.source_address.clone(),
             destination_address: tx.destination_address.clone(),
@@ -1206,7 +1209,7 @@ impl CompletedTransactionInfo {
             weight,
             inputs_count,
             outputs_count,
-        }
+        })
     }
 }
 

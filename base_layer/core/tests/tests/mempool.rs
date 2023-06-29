@@ -115,7 +115,7 @@ async fn test_insert_and_process_published_block() {
     .await
     .unwrap();
     // Create 6 new transactions to add to the mempool
-    let (orphan, _, _) = tx!(1*T, fee: 100*uT, &key_manager);
+    let (orphan, _, _) = tx!(1*T, fee: 100*uT, &key_manager).expect("Failed to get tx");
     let orphan = Arc::new(orphan);
 
     let tx2 = txn_schema!(from: vec![outputs[1][0].clone()], to: vec![1*T], fee: 20*uT, lock: 0, features: OutputFeatures::default());
@@ -206,7 +206,8 @@ async fn test_insert_and_process_published_block() {
             2,
             TestParams::new(&key_manager)
                 .await
-                .get_size_for_default_features_and_scripts(2),
+                .get_size_for_default_features_and_scripts(2)
+                .expect("Failed to get size for default features and scripts"),
         );
     assert_eq!(stats.unconfirmed_weight, expected_weight);
 
@@ -399,8 +400,9 @@ async fn test_retrieve() {
     }
     // 1-block, 8 UTXOs, 7 txs in mempool
     let weighting = consensus_manager.consensus_constants(0).transaction_weight_params();
-    let weight =
-        tx[6].calculate_weight(weighting) + tx[2].calculate_weight(weighting) + tx[3].calculate_weight(weighting);
+    let weight = tx[6].calculate_weight(weighting).expect("Failed to calculate weight") +
+        tx[2].calculate_weight(weighting).expect("Failed to calculate weight") +
+        tx[3].calculate_weight(weighting).expect("Failed to calculate weight");
     let retrieved_txs = mempool.retrieve(weight).await.unwrap();
     assert_eq!(retrieved_txs.len(), 3);
     assert!(retrieved_txs.contains(&tx[6]));
@@ -441,7 +443,8 @@ async fn test_retrieve() {
     }
 
     // Top 2 txs are tx[3] (fee/g = 50) and tx2[1] (fee/g = 40). tx2[0] (fee/g = 80) is still not matured.
-    let weight = tx[3].calculate_weight(weighting) + tx2[1].calculate_weight(weighting);
+    let weight = tx[3].calculate_weight(weighting).expect("Failed to calculate weight") +
+        tx2[1].calculate_weight(weighting).expect("Failed to calculate weight");
     let retrieved_txs = mempool.retrieve(weight).await.unwrap();
     let stats = mempool.stats().await.unwrap();
 
@@ -987,7 +990,7 @@ async fn receive_and_propagate_transaction() {
         &key_manager,
     )
     .await;
-    let (orphan, _, _) = tx!(1*T, fee: 100*uT, &key_manager);
+    let (orphan, _, _) = tx!(1*T, fee: 100*uT, &key_manager).expect("Failed to get tx");
     let tx_excess_sig = tx.body.kernels()[0].excess_sig.clone();
     let orphan_excess_sig = orphan.body.kernels()[0].excess_sig.clone();
     assert!(alice_node.mempool.insert(Arc::new(tx.clone())).await.is_ok());
@@ -1236,7 +1239,7 @@ async fn consensus_validation_large_tx() {
     assert!(matches!(err, ValidationError::BlockTooLarge { .. }));
 
     let weighting = constants.transaction_weight_params();
-    let weight = tx.calculate_weight(weighting);
+    let weight = tx.calculate_weight(weighting).expect("Failed to calculate weight");
 
     // check the tx weight is more than the max for 1 block
     assert!(weight > constants.max_block_transaction_weight());

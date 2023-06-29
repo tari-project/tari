@@ -1047,24 +1047,25 @@ where
         let total_value = outputs.iter().map(|o| o.value()).sum();
         let nop_script = script![Nop];
         let weighting = self.resources.consensus_constants.transaction_weight_params();
-        let features_and_scripts_byte_size = outputs.iter().fold(0usize, |total, output| {
-            total +
-                weighting.round_up_features_and_scripts_size({
-                    output
-                        .features()
-                        .get_serialized_size()
-                        .expect("Failed to get serialized size") +
-                        output
-                            .covenant()
-                            .get_serialized_size()
-                            .expect("Failed to get serialized size") +
-                        output
-                            .script()
-                            .unwrap_or(&nop_script)
-                            .get_serialized_size()
-                            .expect("Failed to get serialized size")
-                })
-        });
+        let mut features_and_scripts_byte_size = 0;
+        for output in outputs.iter() {
+            let (features, covenant, script) = (
+                output
+                    .features()
+                    .get_serialized_size()
+                    .map_err(|e| OutputManagerError::ServiceError(e.to_string()))?,
+                output
+                    .covenant()
+                    .get_serialized_size()
+                    .map_err(|e| OutputManagerError::ServiceError(e.to_string()))?,
+                output
+                    .script()
+                    .get_serialized_size()
+                    .map_err(|e| OutputManagerError::ServiceError(e.to_string()))?,
+            );
+
+            features_and_scripts_byte_size += weighting.round_up_features_and_scripts_size(features + covenant + script)
+        }
 
         let input_selection = self
             .select_utxos(

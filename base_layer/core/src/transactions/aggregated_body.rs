@@ -354,15 +354,18 @@ impl AggregateBody {
     }
 
     /// Returns the weight in grams of a body
-    pub fn calculate_weight(&self, transaction_weight: &TransactionWeight) -> u64 {
+    pub fn calculate_weight(&self, transaction_weight: &TransactionWeight) -> std::io::Result<u64> {
         transaction_weight.calculate_body(self)
     }
 
-    pub fn sum_features_and_scripts_size(&self) -> usize {
-        self.outputs
+    pub fn sum_features_and_scripts_size(&self) -> std::io::Result<usize> {
+        Ok(self
+            .outputs
             .iter()
-            .map(|o| o.get_features_and_scripts_size().expect("Failed to serialize size"))
-            .sum()
+            .map(|o| o.get_features_and_scripts_size())
+            .collect::<Result<Vec<_>, _>>()?
+            .iter()
+            .sum())
     }
 
     pub fn is_sorted(&self) -> bool {

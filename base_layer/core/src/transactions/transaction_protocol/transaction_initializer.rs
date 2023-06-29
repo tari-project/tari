@@ -603,7 +603,7 @@ mod test {
 
     /// One input, 2 outputs
     #[tokio::test]
-    async fn no_receivers() {
+    async fn no_receivers() -> std::io::Result<()> {
         // Create some inputs
         let key_manager = create_test_core_key_manager_with_memory_db();
         let p = TestParams::new(&key_manager).await;
@@ -646,7 +646,7 @@ mod test {
         let expected_fee =
             builder
                 .fee()
-                .calculate(MicroTari(20), 1, 1, 2, p.get_size_for_default_features_and_scripts(2));
+                .calculate(MicroTari(20), 1, 1, 2, p.get_size_for_default_features_and_scripts(2)?);
         // We needed a change input, so this should fail
         let err = builder.build().await.unwrap_err();
         assert_eq!(err.message, "Change data was not provided");
@@ -671,6 +671,8 @@ mod test {
         } else {
             panic!("There were no recipients, so we should be finalizing");
         }
+
+        Ok(())
     }
 
     /// One output, one input
@@ -686,7 +688,8 @@ mod test {
             1,
             1,
             1,
-            p.get_size_for_default_features_and_scripts(1),
+            p.get_size_for_default_features_and_scripts(1)
+                .expect("Failed to serialized size"),
         );
 
         let output = create_wallet_output_with_data(
@@ -815,9 +818,14 @@ mod test {
         // Create some inputs
         let key_manager = create_test_core_key_manager_with_memory_db();
         let p = TestParams::new(&key_manager).await;
-        let tx_fee = p
-            .fee()
-            .calculate(MicroTari(1), 1, 1, 1, p.get_size_for_default_features_and_scripts(1));
+        let tx_fee = p.fee().calculate(
+            MicroTari(1),
+            1,
+            1,
+            1,
+            p.get_size_for_default_features_and_scripts(1)
+                .expect("Failed to borsh serialized size"),
+        );
         let input = create_test_input(500 * uT + tx_fee, 0, &key_manager).await;
         let script = script!(Nop);
         // Start the builder
@@ -912,7 +920,8 @@ mod test {
             1,
             2,
             3,
-            p.get_size_for_default_features_and_scripts(3),
+            p.get_size_for_default_features_and_scripts(3)
+                .expect("Failed to borsh serialized size"),
         );
         let output = create_wallet_output_with_data(
             script.clone(),

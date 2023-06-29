@@ -186,16 +186,11 @@ impl TestParams {
         self.create_output(params, key_manager).await.unwrap()
     }
 
-    pub fn get_size_for_default_features_and_scripts(&self, num_outputs: usize) -> usize {
+    pub fn get_size_for_default_features_and_scripts(&self, num_outputs: usize) -> std::io::Result<usize> {
         let output_features = OutputFeatures { ..Default::default() };
-        self.fee().weighting().round_up_features_and_scripts_size(
-            script![Nop]
-                .get_serialized_size()
-                .expect("Failed to get serialized size") +
-                output_features
-                    .get_serialized_size()
-                    .expect("Failed to get serialized size"),
-        ) * num_outputs
+        Ok(self.fee().weighting().round_up_features_and_scripts_size(
+            script![Nop].get_serialized_size()? + output_features.get_serialized_size()?,
+        ) * num_outputs)
     }
 }
 
@@ -502,7 +497,7 @@ pub async fn create_tx(
     output_count: usize,
     output_features: OutputFeatures,
     key_manager: &TestKeyManager,
-) -> (Transaction, Vec<WalletOutput>, Vec<WalletOutput>) {
+) -> std::io::Result<(Transaction, Vec<WalletOutput>, Vec<WalletOutput>)> {
     let (inputs, outputs) = create_wallet_outputs(
         amount,
         input_count,
@@ -514,9 +509,9 @@ pub async fn create_tx(
         &Default::default(),
         key_manager,
     )
-    .await;
+    .await?;
     let tx = create_transaction_with(lock_height, fee_per_gram, inputs.clone(), outputs.clone(), key_manager).await;
-    (tx, inputs, outputs.into_iter().map(|(utxo, _)| utxo).collect())
+    Ok((tx, inputs, outputs.into_iter().map(|(utxo, _)| utxo).collect()))
 }
 
 pub async fn create_wallet_outputs(
@@ -529,19 +524,13 @@ pub async fn create_wallet_outputs(
     output_script: &TariScript,
     output_covenant: &Covenant,
     key_manager: &TestKeyManager,
-) -> (Vec<WalletOutput>, Vec<(WalletOutput, TariKeyId)>) {
+) -> std::io::Result<(Vec<WalletOutput>, Vec<(WalletOutput, TariKeyId)>)> {
     let weighting = TransactionWeight::latest();
     // This is a best guess to not underestimate metadata size
     let output_features_and_scripts_size = weighting.round_up_features_and_scripts_size(
-        output_features
-            .get_serialized_size()
-            .expect("Failed to get serialized size") +
-            output_script
-                .get_serialized_size()
-                .expect("Failed to get serialized size") +
-            output_covenant
-                .get_serialized_size()
-                .expect("Failed to get serialized size"),
+        output_features.get_serialized_size()? +
+            output_script.get_serialized_size()? +
+            output_covenant.get_serialized_size()?,
     ) * output_count;
     let estimated_fee = Fee::new(weighting).calculate(
         fee_per_gram,
@@ -602,7 +591,7 @@ pub async fn create_wallet_outputs(
         inputs.push(wallet_output);
     }
 
-    (inputs, outputs)
+    Ok((inputs, outputs))
 }
 /// Create an unconfirmed transaction for testing with a valid fee, unique excess_sig, random inputs and outputs, the
 /// transaction is only partially constructed

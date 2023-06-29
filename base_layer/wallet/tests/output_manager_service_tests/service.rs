@@ -93,15 +93,10 @@ use crate::support::{
     utils::{make_input, make_input_with_features},
 };
 
-fn default_features_and_scripts_size_byte_size() -> usize {
-    TransactionWeight::latest().round_up_features_and_scripts_size(
-        OutputFeatures::default()
-            .get_serialized_size()
-            .expect("Failed to get serialized size") +
-            script![Nop]
-                .get_serialized_size()
-                .expect("Failed to get serialized size"),
-    )
+fn default_features_and_scripts_size_byte_size() -> std::io::Result<usize> {
+    Ok(TransactionWeight::latest().round_up_features_and_scripts_size(
+        OutputFeatures::default().get_serialized_size()? + script![Nop].get_serialized_size()?,
+    ))
 }
 
 struct TestOmsService {

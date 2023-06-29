@@ -825,7 +825,8 @@ async fn test_block_sync_body_validator() {
     assert!(
         new_block
             .body
-            .calculate_weight(consensus_constants.transaction_weight_params()) >
+            .calculate_weight(consensus_constants.transaction_weight_params())
+            .expect("Failed to calculate weight") >
             400,
         "If this is not more than 400, then the next line should fail"
     );

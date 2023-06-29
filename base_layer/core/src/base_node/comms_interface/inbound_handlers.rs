@@ -300,6 +300,7 @@ where B: BlockchainBackend + 'static
                     block_template
                         .body
                         .calculate_weight(constants.transaction_weight_params())
+                        .map_err(|e| CommsInterfaceError::InternalError(e.to_string()))?
                 );
                 trace!(target: LOG_TARGET, "{}", block_template);
                 Ok(NodeCommsResponse::NewBlockTemplate(block_template))
@@ -312,7 +313,10 @@ where B: BlockchainBackend + 'static
                     target: LOG_TARGET,
                     "Prepared new block from template (hash: {}, weight: {}, {})",
                     block.hash().to_hex(),
-                    block.body.calculate_weight(constants.transaction_weight_params()),
+                    block
+                        .body
+                        .calculate_weight(constants.transaction_weight_params())
+                        .map_err(|e| CommsInterfaceError::InternalError(e.to_string()))?,
                     block.body.to_counts_string()
                 );
                 Ok(NodeCommsResponse::NewBlock {

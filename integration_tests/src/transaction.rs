@@ -139,13 +139,12 @@ impl TestTransactionBuilder {
         features: OutputFeatures,
         script: TariScript,
         covenant: Covenant,
-    ) -> MicroTari {
-        let features_and_scripts_bytes = features.get_serialized_size().expect("Failed to get serialized size") +
-            script.get_serialized_size().expect("Failed to get serialized size") +
-            covenant.get_serialized_size().expect("Failed to get serialized size");
+    ) -> std::io::Result<MicroTari> {
+        let features_and_scripts_bytes =
+            features.get_serialized_size()? + script.get_serialized_size()? + covenant.get_serialized_size()?;
         let weights = TransactionWeight::v1();
         let fee = self.fee_per_gram.0 * weights.calculate(1, num_inputs, 1 + 1, features_and_scripts_bytes);
-        MicroTari(fee)
+        Ok(MicroTari(fee))
     }
 }
 

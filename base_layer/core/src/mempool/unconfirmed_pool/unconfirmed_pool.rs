@@ -111,21 +111,21 @@ impl UnconfirmedPool {
         tx: Arc<Transaction>,
         dependent_outputs: Option<Vec<HashOutput>>,
         transaction_weighting: &TransactionWeight,
-    ) {
+    ) -> std::io::Result<()> {
         if tx
             .body
             .kernels()
             .iter()
             .all(|k| self.txs_by_signature.contains_key(k.excess_sig.get_signature()))
         {
-            return;
+            return Ok(());
         }
 
         let new_key = self.get_next_key();
-        let prioritized_tx = PrioritizedTransaction::new(new_key, transaction_weighting, tx, dependent_outputs);
+        let prioritized_tx = PrioritizedTransaction::new(new_key, transaction_weighting, tx, dependent_outputs)?;
         if self.tx_by_key.len() >= self.config.storage_capacity {
             if prioritized_tx.priority < *self.lowest_priority() {
-                return;
+                return Ok(());
             }
             self.remove_lowest_priority_tx();
         }
@@ -144,6 +144,8 @@ impl UnconfirmedPool {
             "Inserted transaction {} into unconfirmed pool:", prioritized_tx
         );
         self.tx_by_key.insert(new_key, prioritized_tx);
+
+        Ok(())
     }
 
     /// This will search the unconfirmed pool for the set of outputs and return true if all of them are found
@@ -157,10 +159,11 @@ impl UnconfirmedPool {
         &mut self,
         txs: I,
         transaction_weighting: &TransactionWeight,
-    ) {
+    ) -> std::io::Result<()> {
         for tx in txs {
-            self.insert(tx, None, transaction_weighting);
+            self.insert(tx, None, transaction_weighting)?;
         }
+        Ok(())
     }
 
     /// Check if a transaction is available in the UnconfirmedPool
@@ -521,10 +524,14 @@ impl UnconfirmedPool {
     }
 
     /// Returns the total weight of all transactions stored in the pool.
-    pub fn calculate_weight(&self, transaction_weight: &TransactionWeight) -> u64 {
-        self.tx_by_key.values().fold(0, |weight, ptx| {
-            weight + ptx.transaction.calculate_weight(transaction_weight)
-        })
+    pub fn calculate_weight(&self, transaction_weight: &TransactionWeight) -> std::io::Result<u64> {
+        Ok(self
+            .tx_by_key
+            .values()
+            .map(|ptx| ptx.transaction.calculate_weight(transaction_weight))
+            .collect::<Result<Vec<_>, _>>()?
+            .iter()
+            .fold(0, |weight, tx_weight| weight + tx_weight))
     }
 
     pub fn get_fee_per_gram_stats(
@@ -645,8 +652,16 @@ mod test {
     #[tokio::test]
     async fn test_find_duplicate_input() {
         let key_manager = create_test_core_key_manager_with_memory_db();
-        let tx1 = Arc::new(tx!(MicroTari(5000), fee: MicroTari(50), inputs: 2, outputs: 1, &key_manager).0);
-        let tx2 = Arc::new(tx!(MicroTari(5000), fee: MicroTari(50), inputs: 2, outputs: 1, &key_manager).0);
+        let tx1 = Arc::new(
+            tx!(MicroTari(5000), fee: MicroTari(50), inputs: 2, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let tx2 = Arc::new(
+            tx!(MicroTari(5000), fee: MicroTari(50), inputs: 2, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
         let mut tx_pool = HashMap::new();
         let mut tx1_pool = HashMap::new();
         let mut tx2_pool = HashMap::new();
@@ -666,11 +681,31 @@ mod test {
     #[tokio::test]
     async fn test_insert_and_retrieve_highest_priority_txs() {
         let key_manager = create_test_core_key_manager_with_memory_db();
-        let tx1 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(5), inputs: 2, outputs: 1, &key_manager).0);
-        let tx2 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(4), inputs: 4, outputs: 1, &key_manager).0);
-        let tx3 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(20), inputs: 5, outputs: 1, &key_manager).0);
-        let tx4 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(6), inputs: 3, outputs: 1, &key_manager).0);
-        let tx5 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(11), inputs: 5, outputs: 1, &key_manager).0);
+        let tx1 = Arc::new(
+            tx!(MicroTari(5_000), fee: MicroTari(5), inputs: 2, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let tx2 = Arc::new(
+            tx!(MicroTari(5_000), fee: MicroTari(4), inputs: 4, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let tx3 = Arc::new(
+            tx!(MicroTari(5_000), fee: MicroTari(20), inputs: 5, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let tx4 = Arc::new(
+            tx!(MicroTari(5_000), fee: MicroTari(6), inputs: 3, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let tx5 = Arc::new(
+            tx!(MicroTari(5_000), fee: MicroTari(11), inputs: 5, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
 
         let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
             storage_capacity: 4,
@@ -678,10 +713,12 @@ mod test {
         });
 
         let tx_weight = TransactionWeight::latest();
-        unconfirmed_pool.insert_many(
-            [tx1.clone(), tx2.clone(), tx3.clone(), tx4.clone(), tx5.clone()],
-            &tx_weight,
-        );
+        unconfirmed_pool
+            .insert_many(
+                [tx1.clone(), tx2.clone(), tx3.clone(), tx4.clone(), tx5.clone()],
+                &tx_weight,
+            )
+            .expect("Failed to insert many");
         // Check that lowest priority tx was removed to make room for new incoming transactions
         assert!(unconfirmed_pool.has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig));
         assert!(!unconfirmed_pool.has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig));
@@ -689,8 +726,9 @@ mod test {
         assert!(unconfirmed_pool.has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig));
         assert!(unconfirmed_pool.has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig));
         // Retrieve the set of highest priority unspent transactions
-        let desired_weight =
-            tx1.calculate_weight(&tx_weight) + tx3.calculate_weight(&tx_weight) + tx5.calculate_weight(&tx_weight);
+        let desired_weight = tx1.calculate_weight(&tx_weight).expect("Failed to get tx") +
+            tx3.calculate_weight(&tx_weight).expect("Failed to get tx") +
+            tx5.calculate_weight(&tx_weight).expect("Failed to get tx");
         let results = unconfirmed_pool.fetch_highest_priority_txs(desired_weight).unwrap();
         assert_eq!(results.retrieved_transactions.len(), 3);
         assert!(results.retrieved_transactions.contains(&tx1));
@@ -705,9 +743,11 @@ mod test {
     #[tokio::test]
     async fn test_double_spend_inputs() {
         let key_manager = create_test_core_key_manager_with_memory_db();
-        let (tx1, _, _) = tx!(MicroTari(5_000), fee: MicroTari(10), inputs: 1, outputs: 1, &key_manager);
+        let (tx1, _, _) =
+            tx!(MicroTari(5_000), fee: MicroTari(10), inputs: 1, outputs: 1, &key_manager).expect("Failed to get tx");
         const INPUT_AMOUNT: MicroTari = MicroTari(5_000);
-        let (tx2, inputs, _) = tx!(INPUT_AMOUNT, fee: MicroTari(5), inputs: 1, outputs: 1, &key_manager);
+        let (tx2, inputs, _) =
+            tx!(INPUT_AMOUNT, fee: MicroTari(5), inputs: 1, outputs: 1, &key_manager).expect("Failed to get tx");
 
         let mut stx_builder = SenderTransactionProtocol::builder(create_consensus_constants(0), key_manager.clone());
 
@@ -732,7 +772,9 @@ mod test {
             1,
             1,
             1,
-            test_params.get_size_for_default_features_and_scripts(1),
+            test_params
+                .get_size_for_default_features_and_scripts(1)
+                .expect("Failed to get size for default features and scripts"),
         );
 
         let utxo = test_params
@@ -768,12 +810,14 @@ mod test {
         });
 
         let tx_weight = TransactionWeight::latest();
-        unconfirmed_pool.insert_many(vec![tx1.clone(), tx2.clone(), tx3.clone()], &tx_weight);
+        unconfirmed_pool
+            .insert_many(vec![tx1.clone(), tx2.clone(), tx3.clone()], &tx_weight)
+            .expect("Failed to insert many");
         assert_eq!(unconfirmed_pool.len(), 3);
 
-        let desired_weight = tx1.calculate_weight(&tx_weight) +
-            tx2.calculate_weight(&tx_weight) +
-            tx3.calculate_weight(&tx_weight) +
+        let desired_weight = tx1.calculate_weight(&tx_weight).expect("Failed to get tx") +
+            tx2.calculate_weight(&tx_weight).expect("Failed to get tx") +
+            tx3.calculate_weight(&tx_weight).expect("Failed to get tx") +
             1000;
         let results = unconfirmed_pool.fetch_highest_priority_txs(desired_weight).unwrap();
         assert!(results.retrieved_transactions.contains(&tx1));
@@ -787,22 +831,48 @@ mod test {
         let key_manager = create_test_core_key_manager_with_memory_db();
         let network = Network::LocalNet;
         let consensus = ConsensusManagerBuilder::new(network).build().unwrap();
-        let tx1 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(50), inputs:2, outputs: 1, &key_manager).0);
-        let tx2 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(20), inputs:3, outputs: 1, &key_manager).0);
-        let tx3 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(100), inputs:2, outputs: 1, &key_manager).0);
-        let tx4 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(30), inputs:4, outputs: 1, &key_manager).0);
-        let tx5 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(50), inputs:3, outputs: 1, &key_manager).0);
-        let tx6 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(75), inputs:2, outputs: 1, &key_manager).0);
+        let tx1 = Arc::new(
+            tx!(MicroTari(10_000), fee: MicroTari(50), inputs:2, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let tx2 = Arc::new(
+            tx!(MicroTari(10_000), fee: MicroTari(20), inputs:3, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let tx3 = Arc::new(
+            tx!(MicroTari(10_000), fee: MicroTari(100), inputs:2, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let tx4 = Arc::new(
+            tx!(MicroTari(10_000), fee: MicroTari(30), inputs:4, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let tx5 = Arc::new(
+            tx!(MicroTari(10_000), fee: MicroTari(50), inputs:3, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let tx6 = Arc::new(
+            tx!(MicroTari(10_000), fee: MicroTari(75), inputs:2, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
 
         let tx_weight = TransactionWeight::latest();
         let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
             storage_capacity: 10,
             weight_tx_skip_count: 3,
         });
-        unconfirmed_pool.insert_many(
-            vec![tx1.clone(), tx2.clone(), tx3.clone(), tx4.clone(), tx5.clone()],
-            &tx_weight,
-        );
+        unconfirmed_pool
+            .insert_many(
+                vec![tx1.clone(), tx2.clone(), tx3.clone(), tx4.clone(), tx5.clone()],
+                &tx_weight,
+            )
+            .expect("Failed to insert many");
         // utx6 should not be added to unconfirmed_pool as it is an unknown transactions that was included in the block
         // by another node
 
@@ -831,12 +901,32 @@ mod test {
     async fn test_discard_double_spend_txs() {
         let key_manager = create_test_core_key_manager_with_memory_db();
         let consensus = create_consensus_rules();
-        let tx1 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(5), inputs:2, outputs:1, &key_manager).0);
-        let tx2 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(4), inputs:3, outputs:1, &key_manager).0);
-        let tx3 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(5), inputs:2, outputs:1, &key_manager).0);
-        let tx4 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(6), inputs:2, outputs:1, &key_manager).0);
-        let mut tx5 = tx!(MicroTari(5_000), fee:MicroTari(5), inputs:3, outputs:1, &key_manager).0;
-        let mut tx6 = tx!(MicroTari(5_000), fee:MicroTari(13), inputs: 2, outputs: 1, &key_manager).0;
+        let tx1 = Arc::new(
+            tx!(MicroTari(5_000), fee: MicroTari(5), inputs:2, outputs:1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let tx2 = Arc::new(
+            tx!(MicroTari(5_000), fee: MicroTari(4), inputs:3, outputs:1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let tx3 = Arc::new(
+            tx!(MicroTari(5_000), fee: MicroTari(5), inputs:2, outputs:1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let tx4 = Arc::new(
+            tx!(MicroTari(5_000), fee: MicroTari(6), inputs:2, outputs:1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let mut tx5 = tx!(MicroTari(5_000), fee:MicroTari(5), inputs:3, outputs:1, &key_manager)
+            .expect("Failed to get tx")
+            .0;
+        let mut tx6 = tx!(MicroTari(5_000), fee:MicroTari(13), inputs: 2, outputs: 1, &key_manager)
+            .expect("Failed to get tx")
+            .0;
         // tx1 and tx5 have a shared input. Also, tx3 and tx6 have a shared input
         tx5.body.inputs_mut()[0] = tx1.body.inputs()[0].clone();
         tx6.body.inputs_mut()[1] = tx3.body.inputs()[1].clone();
@@ -848,17 +938,19 @@ mod test {
             storage_capacity: 10,
             weight_tx_skip_count: 3,
         });
-        unconfirmed_pool.insert_many(
-            vec![
-                tx1.clone(),
-                tx2.clone(),
-                tx3.clone(),
-                tx4.clone(),
-                tx5.clone(),
-                tx6.clone(),
-            ],
-            &tx_weight,
-        );
+        unconfirmed_pool
+            .insert_many(
+                vec![
+                    tx1.clone(),
+                    tx2.clone(),
+                    tx3.clone(),
+                    tx4.clone(),
+                    tx5.clone(),
+                    tx6.clone(),
+                ],
+                &tx_weight,
+            )
+            .expect("Failed to insert many");
 
         // The publishing of tx1 and tx3 will be double-spends and orphan tx5 and tx6
         let published_block = create_orphan_block(0, vec![(*tx1).clone(), (*tx2).clone(), (*tx3).clone()], &consensus);
@@ -878,14 +970,18 @@ mod test {
     #[tokio::test]
     async fn test_multiple_transactions_with_same_outputs_in_mempool() {
         let key_manager = create_test_core_key_manager_with_memory_db();
-        let (tx1, _, _) = tx!(MicroTari(150_000), fee: MicroTari(50), inputs:5, outputs:5, &key_manager);
-        let (tx2, _, _) = tx!(MicroTari(250_000), fee: MicroTari(50), inputs:5, outputs:5, &key_manager);
+        let (tx1, _, _) =
+            tx!(MicroTari(150_000), fee: MicroTari(50), inputs:5, outputs:5, &key_manager).expect("Failed to get tx");
+        let (tx2, _, _) =
+            tx!(MicroTari(250_000), fee: MicroTari(50), inputs:5, outputs:5, &key_manager).expect("Failed to get tx");
 
         // Create transactions with duplicate kernels (will not pass internal validation, but that is ok)
         let mut tx3 = tx1.clone();
         let mut tx4 = tx2.clone();
-        let (tx5, _, _) = tx!(MicroTari(350_000), fee: MicroTari(50), inputs:5, outputs:5, &key_manager);
-        let (tx6, _, _) = tx!(MicroTari(450_000), fee: MicroTari(50), inputs:5, outputs:5, &key_manager);
+        let (tx5, _, _) =
+            tx!(MicroTari(350_000), fee: MicroTari(50), inputs:5, outputs:5, &key_manager).expect("Failed to get tx");
+        let (tx6, _, _) =
+            tx!(MicroTari(450_000), fee: MicroTari(50), inputs:5, outputs:5, &key_manager).expect("Failed to get tx");
         tx3.body.set_kernel(tx5.body.kernels()[0].clone());
         tx4.body.set_kernel(tx6.body.kernels()[0].clone());
 
@@ -903,7 +999,9 @@ mod test {
             Arc::new(tx3.clone()),
             Arc::new(tx4.clone()),
         ];
-        unconfirmed_pool.insert_many(txns.clone(), &tx_weight);
+        unconfirmed_pool
+            .insert_many(txns.clone(), &tx_weight)
+            .expect("Failed to insert many");
 
         for txn in txns {
             for output in txn.as_ref().body.outputs() {
@@ -974,10 +1072,14 @@ mod test {
         #[tokio::test]
         async fn it_compiles_correct_stats_for_single_block() {
             let key_manager = create_test_core_key_manager_with_memory_db();
-            let (tx1, _, _) = tx!(MicroTari(150_000), fee: MicroTari(5), inputs:5, outputs:1, &key_manager);
-            let (tx2, _, _) = tx!(MicroTari(250_000), fee: MicroTari(5), inputs:5, outputs:5, &key_manager);
-            let (tx3, _, _) = tx!(MicroTari(350_000), fee: MicroTari(4), inputs:2, outputs:1, &key_manager);
-            let (tx4, _, _) = tx!(MicroTari(450_000), fee: MicroTari(4), inputs:4, outputs:5, &key_manager);
+            let (tx1, _, _) = tx!(MicroTari(150_000), fee: MicroTari(5), inputs:5, outputs:1, &key_manager)
+                .expect("Failed to get tx");
+            let (tx2, _, _) = tx!(MicroTari(250_000), fee: MicroTari(5), inputs:5, outputs:5, &key_manager)
+                .expect("Failed to get tx");
+            let (tx3, _, _) = tx!(MicroTari(350_000), fee: MicroTari(4), inputs:2, outputs:1, &key_manager)
+                .expect("Failed to get tx");
+            let (tx4, _, _) = tx!(MicroTari(450_000), fee: MicroTari(4), inputs:4, outputs:5, &key_manager)
+                .expect("Failed to get tx");
 
             let tx_weight = TransactionWeight::latest();
             let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig::default());
@@ -986,7 +1088,9 @@ mod test {
             let tx2 = Arc::new(tx2);
             let tx3 = Arc::new(tx3);
             let tx4 = Arc::new(tx4);
-            unconfirmed_pool.insert_many(vec![tx1, tx2, tx3, tx4], &tx_weight);
+            unconfirmed_pool
+                .insert_many(vec![tx1, tx2, tx3, tx4], &tx_weight)
+                .expect("Failed to insert many");
 
             let stats = unconfirmed_pool.get_fee_per_gram_stats(1, 19500).unwrap();
             assert_eq!(stats[0].order, 0);
@@ -1014,17 +1118,21 @@ mod test {
             ];
             let mut transactions = Vec::new();
             for i in 0..50 {
-                let (tx, _, _) = tx!(MicroTari(150_000 + i), fee: MicroTari(10), inputs: 1, outputs: 1, &key_manager);
+                let (tx, _, _) = tx!(MicroTari(150_000 + i), fee: MicroTari(10), inputs: 1, outputs: 1, &key_manager)
+                    .expect("Failed to get tx");
                 transactions.push(Arc::new(tx));
             }
 
-            let (tx1, _, _) = tx!(MicroTari(150_000), fee: MicroTari(5), inputs:1, outputs: 5, &key_manager);
+            let (tx1, _, _) = tx!(MicroTari(150_000), fee: MicroTari(5), inputs:1, outputs: 5, &key_manager)
+                .expect("Failed to get tx");
             transactions.push(Arc::new(tx1));
 
             let tx_weight = TransactionWeight::latest();
             let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig::default());
 
-            unconfirmed_pool.insert_many(transactions, &tx_weight);
+            unconfirmed_pool
+                .insert_many(transactions, &tx_weight)
+                .expect("Failed to insert many");
 
             let stats = unconfirmed_pool.get_fee_per_gram_stats(2, 2000).unwrap();
             assert_eq!(stats, expected_stats);
