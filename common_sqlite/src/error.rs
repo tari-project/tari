@@ -51,7 +51,7 @@ pub enum SqliteStorageError {
 pub enum StorageError {
     #[error("ConnectionError: {0}")]
     ConnectionError(#[from] diesel::ConnectionError),
-    #[error("Error when joining to tokio task : {0}")]
+    #[error("Error when joining to tokio task: {0}")]
     JoinError(#[from] task::JoinError),
     #[error("DatabaseMigrationFailed: {0}")]
     DatabaseMigrationFailed(String),
