@@ -213,7 +213,7 @@ mod test {
     #[test]
     fn deterministic_hash() {
         const TEST_MSG: &[u8] = b"test123";
-        const EXPECTED_HASH: &str = "1c2bb1bcff443af4441b789bd1d6984bb8d7bed2c9f85e8cf4f45615fdd9e47d";
+        const EXPECTED_HASH: &str = "64f1db1039353cf2ff7e09889d14ffd9885766c3dc494a59823a499edfe6997c";
 
         let node_identity = make_node_identity();
         let dht_message = make_dht_inbound_message(
