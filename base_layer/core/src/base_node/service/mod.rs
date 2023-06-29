@@ -32,5 +32,3 @@ pub use service_response::BaseNodeServiceResponse;
 
 mod service_request;
 mod service_response;
-
-// pub mod blockchain_state;

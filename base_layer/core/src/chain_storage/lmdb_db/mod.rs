@@ -27,7 +27,6 @@ use tari_crypto::hash_domain;
 
 use crate::transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput};
 
-// mod composite_key;
 mod composite_key;
 pub(crate) mod cursors;
 pub(crate) mod helpers;
