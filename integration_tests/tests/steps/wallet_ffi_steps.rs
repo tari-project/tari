@@ -263,7 +263,7 @@ async fn ffi_check_number_of_outbound_transactions(world: &mut TariWorld, wallet
 async fn ffi_check_contacts(world: &mut TariWorld, wallet: String, cnt: u64, status: String) {
     assert!(
         vec!["Online", "Offline", "NeverSeen"].contains(&status.as_str()),
-        "Unknown status : {}",
+        "Unknown status: {}",
         status
     );
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();

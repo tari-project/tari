@@ -438,7 +438,7 @@ impl fmt::Display for WriteOperation {
                 timestamp,
             } => write!(
                 f,
-                "Update best block to height:{} ({}) with difficulty: {} and timestamp : {}",
+                "Update best block to height:{} ({}) with difficulty: {} and timestamp: {}",
                 height,
                 hash.to_hex(),
                 accumulated_difficulty,
