@@ -47,6 +47,7 @@ use crate::{
             TransactionKernel,
             TransactionKernelVersion,
             TransactionOutput,
+            TransactionOutputVersion,
             WalletOutput,
             MAX_TRANSACTION_INPUTS,
             MAX_TRANSACTION_OUTPUTS,
@@ -144,6 +145,10 @@ pub struct SingleRoundSenderData {
     pub covenant: Covenant,
     /// The minimum value of the commitment that is proven by the range proof
     pub minimum_value_promise: MicroTari,
+    /// The version of this transaction output
+    pub output_version: TransactionOutputVersion,
+    /// The version of this transaction kernel
+    pub kernel_version: TransactionKernelVersion,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -410,6 +415,9 @@ impl SenderTransactionProtocol {
                     .get_public_key_at_key_id(&ephemeral_public_key_nonce)
                     .await?;
 
+                let output_version = TransactionOutputVersion::get_current_version();
+                let kernel_version = TransactionKernelVersion::get_current_version();
+
                 Ok(SingleRoundSenderData {
                     tx_id: info.tx_id,
                     amount,
@@ -423,6 +431,8 @@ impl SenderTransactionProtocol {
                     ephemeral_public_nonce,
                     covenant: recipient_covenant,
                     minimum_value_promise: recipient_minimum_value_promise,
+                    output_version,
+                    kernel_version,
                 })
             },
             _ => Err(TPE::InvalidStateError),
@@ -506,9 +516,10 @@ impl SenderTransactionProtocol {
         key_manager: &KM,
     ) -> Result<ComAndPubSignature, TPE> {
         let received_output = &rec.output;
+        let version = TransactionOutputVersion::get_current_version();
         // we need to make sure we use our values here and not the received values.
         let metadata_message = TransactionOutput::metadata_signature_message_from_parts(
-            &received_output.version,
+            &version,
             &received_output.script, /* receiver chooses script here, can change fee per gram see issue: https://github.com/tari-project/tari/issues/5430 */
             &info
                 .recipient_data
@@ -547,7 +558,7 @@ impl SenderTransactionProtocol {
                 &recipient_sender_offset_key_id,
                 &received_output.commitment,
                 received_output.metadata_signature.ephemeral_commitment(),
-                &received_output.version,
+                &version,
                 &metadata_message,
             )
             .await?;
@@ -577,6 +588,7 @@ impl SenderTransactionProtocol {
         let mut signature = info.recipient_partial_kernel_signature.clone();
         let mut script_keys = Vec::new();
         let mut sender_offset_keys = Vec::new();
+        let kernel_version = TransactionKernelVersion::get_current_version();
 
         let kernel_message = TransactionKernel::build_kernel_signature_message(
             &TransactionKernelVersion::get_current_version(),
@@ -595,7 +607,7 @@ impl SenderTransactionProtocol {
                         &input.kernel_nonce,
                         &total_public_nonce,
                         &total_public_excess,
-                        &TransactionKernelVersion::get_current_version(),
+                        &kernel_version,
                         &kernel_message,
                         &info.metadata.kernel_features,
                         TxoStage::Input,
@@ -617,7 +629,7 @@ impl SenderTransactionProtocol {
                         &output.kernel_nonce,
                         &total_public_nonce,
                         &total_public_excess,
-                        &TransactionKernelVersion::get_current_version(),
+                        &kernel_version,
                         &kernel_message,
                         &info.metadata.kernel_features,
                         TxoStage::Output,
@@ -646,7 +658,7 @@ impl SenderTransactionProtocol {
                         &change.kernel_nonce,
                         &total_public_nonce,
                         &total_public_excess,
-                        &TransactionKernelVersion::get_current_version(),
+                        &kernel_version,
                         &kernel_message,
                         &info.metadata.kernel_features,
                         TxoStage::Output,
@@ -1102,7 +1114,8 @@ mod test {
         let input = create_test_input(MicroTari(1200), 0, &key_manager).await;
         let utxo = input.to_transaction_input(&key_manager).await.unwrap();
         let script = script!(Nop);
-        let mut builder = SenderTransactionProtocol::builder(create_consensus_constants(0), key_manager.clone());
+        let consensus_constants = create_consensus_constants(0);
+        let mut builder = SenderTransactionProtocol::builder(consensus_constants.clone(), key_manager.clone());
         let fee_per_gram = MicroTari(4);
         let fee = builder.fee().calculate(fee_per_gram, 1, 1, 1, 0);
         builder
@@ -1166,9 +1179,10 @@ mod test {
             .unwrap();
 
         // Receiver gets message, deserializes it etc, and creates his response
-        let mut bob_info = SingleReceiverTransactionProtocol::create(&msg, bob_output, &key_manager)
-            .await
-            .unwrap(); // Alice gets message back, deserializes it, etc
+        let mut bob_info =
+            SingleReceiverTransactionProtocol::create(&msg, bob_output, &key_manager, &consensus_constants)
+                .await
+                .unwrap(); // Alice gets message back, deserializes it, etc
         alice
             .add_single_recipient_info(bob_info.clone(), &key_manager)
             .await
@@ -1205,7 +1219,8 @@ mod test {
         // Bob's parameters
         let bob_key = TestParams::new(&key_manager).await;
         let input = create_test_input(MicroTari(25000), 0, &key_manager).await;
-        let mut builder = SenderTransactionProtocol::builder(create_consensus_constants(0), key_manager.clone());
+        let consensus_constants = create_consensus_constants(0);
+        let mut builder = SenderTransactionProtocol::builder(consensus_constants.clone(), key_manager.clone());
         let script = script!(Nop);
         let expected_fee = builder.fee().calculate(
             MicroTari(20),
@@ -1284,7 +1299,7 @@ mod test {
             .unwrap();
 
         // Receiver gets message, deserializes it etc, and creates his response
-        let bob_info = SingleReceiverTransactionProtocol::create(&msg, bob_output, &key_manager)
+        let bob_info = SingleReceiverTransactionProtocol::create(&msg, bob_output, &key_manager, &consensus_constants)
             .await
             .unwrap();
         // Alice gets message back, deserializes it, etc
@@ -1315,7 +1330,8 @@ mod test {
         let input = create_test_input(MicroTari(10000), 0, &key_manager).await;
         let input2 = create_test_input(MicroTari(2000), 0, &key_manager).await;
         let input3 = create_test_input(MicroTari(15000), 0, &key_manager).await;
-        let mut builder = SenderTransactionProtocol::builder(create_consensus_constants(0), key_manager.clone());
+        let consensus_constants = create_consensus_constants(0);
+        let mut builder = SenderTransactionProtocol::builder(consensus_constants.clone(), key_manager.clone());
         let script = script!(Nop);
         let change = TestParams::new(&key_manager).await;
         builder
@@ -1393,7 +1409,7 @@ mod test {
             .unwrap();
 
         // Receiver gets message, deserializes it etc, and creates his response
-        let bob_info = SingleReceiverTransactionProtocol::create(&msg, bob_output, &key_manager)
+        let bob_info = SingleReceiverTransactionProtocol::create(&msg, bob_output, &key_manager, &consensus_constants)
             .await
             .unwrap();
         // Alice gets message back, deserializes it, etc
@@ -1499,10 +1515,10 @@ mod test {
         let bob_test_params = TestParams::new(&key_manager_bob).await;
         let alice_value = MicroTari(25000);
         let input = create_test_input(alice_value, 0, &key_manager_alice).await;
-
         let script = script!(Nop);
+        let consensus_constants = create_consensus_constants(0);
 
-        let mut builder = SenderTransactionProtocol::builder(create_consensus_constants(0), key_manager_alice.clone());
+        let mut builder = SenderTransactionProtocol::builder(consensus_constants.clone(), key_manager_alice.clone());
         let change_params = TestParams::new(&key_manager_alice).await;
         builder
             .with_lock_height(0)
@@ -1565,9 +1581,10 @@ mod test {
         .unwrap();
 
         // Receiver gets message, deserializes it etc, and creates his response
-        let bob_info = SingleReceiverTransactionProtocol::create(&msg, bob_output, &key_manager_bob)
-            .await
-            .unwrap();
+        let bob_info =
+            SingleReceiverTransactionProtocol::create(&msg, bob_output, &key_manager_bob, &consensus_constants)
+                .await
+                .unwrap();
 
         // Alice gets message back, deserializes it, etc
         alice

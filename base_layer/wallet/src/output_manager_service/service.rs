@@ -760,9 +760,13 @@ where
             .db
             .add_output_to_be_received(single_round_sender_data.tx_id, output, None)?;
 
-        let rtp =
-            ReceiverTransactionProtocol::new(sender_message.clone(), key_kanager_output, &self.resources.key_manager)
-                .await;
+        let rtp = ReceiverTransactionProtocol::new(
+            sender_message.clone(),
+            key_kanager_output,
+            &self.resources.key_manager,
+            &self.resources.consensus_constants,
+        )
+        .await;
 
         Ok(rtp)
     }
