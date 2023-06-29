@@ -89,6 +89,8 @@ pub struct RetrieveResults {
     pub transactions_to_insert: Vec<Arc<Transaction>>,
 }
 
+pub type CompleteTransactionBranch = HashMap<TransactionKey, (HashMap<TransactionKey, Arc<Transaction>>, u64, u64)>;
+
 impl UnconfirmedPool {
     /// Create a new UnconfirmedPool with the specified configuration
     pub fn new(config: UnconfirmedPoolConfig) -> Self {
@@ -169,6 +171,7 @@ impl UnconfirmedPool {
     }
 
     /// Returns a set of the highest priority unconfirmed transactions, that can be included in a block
+    #[allow(clippy::too_many_lines)]
     pub fn fetch_highest_priority_txs(&mut self, total_weight: u64) -> Result<RetrieveResults, UnconfirmedPoolError> {
         // The process of selection is as follows:
         // Assume that all transaction have the same weight for simplicity. A(20)->B(2) means A depends on B and A has
@@ -193,8 +196,7 @@ impl UnconfirmedPool {
         let mut curr_skip_count = 0;
         let mut transactions_to_remove_and_recheck = Vec::new();
         let mut unique_ids = HashSet::new();
-        let mut complete_transaction_branch =
-            HashMap::<TransactionKey, (HashMap<TransactionKey, Arc<Transaction>>, u64, u64)>::new();
+        let mut complete_transaction_branch = CompleteTransactionBranch::new();
         let mut potentional_to_add = BinaryHeap::<(u64, TransactionKey)>::new();
         // For each transaction we store transactions that depends on it. So when we process it, we can mark all of them
         // for recomputing.
@@ -238,13 +240,13 @@ impl UnconfirmedPool {
             let total_weight_after_candidates = curr_weight + total_transaction_weight;
             if total_weight_after_candidates <= total_weight && potential_transactions_to_remove_and_recheck.is_empty()
             {
-                for (dependend_on_tx_key, _transaction) in &candidate_transactions_to_select {
+                for dependend_on_tx_key in candidate_transactions_to_select.keys() {
                     if dependend_on_tx_key != tx_key {
                         // Transaction is not depended on itself.
                         depended_on
-                            .entry(dependend_on_tx_key.clone())
+                            .entry(*dependend_on_tx_key)
                             .and_modify(|v| v.push(tx_key))
-                            .or_insert(vec![tx_key]);
+                            .or_insert_with(|| vec![tx_key]);
                     }
                 }
                 let fee_per_byte = (total_transaction_fees as f64 / total_transaction_weight as f64 * 1000.0) as u64;
@@ -307,10 +309,7 @@ impl UnconfirmedPool {
         selected_txs: &mut HashMap<TransactionKey, Arc<Transaction>>,
         curr_weight: &mut u64,
         curr_skip_count: &mut usize,
-        complete_transaction_branch: &mut HashMap<
-            TransactionKey,
-            (HashMap<TransactionKey, Arc<Transaction>>, u64, u64),
-        >,
+        complete_transaction_branch: &mut CompleteTransactionBranch,
         potentional_to_add: &mut BinaryHeap<(u64, TransactionKey)>,
         depended_on: &mut HashMap<TransactionKey, Vec<&'a TransactionKey>>,
         recompute: &mut HashSet<&'a TransactionKey>,
@@ -338,7 +337,7 @@ impl UnconfirmedPool {
 
             let total_weight_after_candidates = *curr_weight + total_transaction_weight;
             if total_weight_after_candidates <= total_weight {
-                if !UnconfirmedPool::find_duplicate_input(&selected_txs, &candidate_transactions_to_select) {
+                if !UnconfirmedPool::find_duplicate_input(selected_txs, &candidate_transactions_to_select) {
                     *curr_weight += total_transaction_weight;
                     // So we processed the transaction, let's mark the dependents to be recomputed.
                     if let Some(txs) = depended_on.remove(&tx_key) {
@@ -347,9 +346,9 @@ impl UnconfirmedPool {
                                 update_candidate_transactions_to_select,
                                 update_total_transaction_weight,
                                 update_total_transaction_fees,
-                            ) = complete_transaction_branch.get_mut(&tx).unwrap();
+                            ) = complete_transaction_branch.get_mut(tx).unwrap();
                             // We remove all of the added ones.
-                            for (selected_tx_key, _) in &candidate_transactions_to_select {
+                            for selected_tx_key in candidate_transactions_to_select.keys() {
                                 update_candidate_transactions_to_select.remove(selected_tx_key);
                             }
                             // We don't need the fees/weights from all the selected ones, we have the totals.
