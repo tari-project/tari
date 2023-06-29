@@ -1048,7 +1048,7 @@ where
         let nop_script = script![Nop];
         let weighting = self.resources.consensus_constants.transaction_weight_params();
         let mut features_and_scripts_byte_size = 0;
-        for output in outputs.iter() {
+        for output in &outputs {
             let (features, covenant, script) = (
                 output
                     .features()
