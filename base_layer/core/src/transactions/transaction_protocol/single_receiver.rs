@@ -204,6 +204,48 @@ mod test {
     }
 
     #[tokio::test]
+    async fn invalid_version_fails() {
+        let key_manager = create_test_core_key_manager_with_memory_db();
+        let test_params = TestParams::new(&key_manager).await;
+        let consensus_constants = create_consensus_constants(0);
+
+        // let's use a sender's output version (V1) outside of the allowed range used by the receiver (V0..V0 by
+        // default)
+        let info = SingleRoundSenderData {
+            amount: MicroTari(5000),
+            output_version: TransactionOutputVersion::V1,
+            ..Default::default()
+        };
+
+        let bob_output = WalletOutput::new_current_version(
+            MicroTari(5000),
+            test_params.spend_key_id,
+            OutputFeatures::default(),
+            script!(Nop),
+            ExecutionStack::default(),
+            test_params.script_key_id,
+            PublicKey::default(),
+            CommitmentAndPublicKeySignature::default(),
+            0,
+            Covenant::default(),
+            EncryptedData::default(),
+            0.into(),
+            &key_manager,
+        )
+        .await
+        .unwrap();
+
+        #[allow(clippy::match_wild_err_arm)]
+        match SingleReceiverTransactionProtocol::create(&info, bob_output, &key_manager, &consensus_constants).await {
+            Ok(_) => panic!("Invalid version should fail"),
+            Err(TransactionProtocolError::ValidationError(s)) => {
+                assert_eq!(s, "Transaction output version is not allowed by consensus (V1)")
+            },
+            Err(_) => panic!("Protocol fails for the wrong reason"),
+        };
+    }
+
+    #[tokio::test]
     async fn valid_request() {
         let key_manager: crate::transactions::key_manager::TransactionKeyManagerWrapper<
             tari_key_manager::key_manager_service::storage::sqlite_db::KeyManagerSqliteDatabase<
