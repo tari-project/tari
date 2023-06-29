@@ -1148,10 +1148,6 @@ impl AppStateInner {
         self.data.new_notification_count = 0;
         self.updated = true;
     }
-
-    // pub fn get_software_updater(&self) -> Option<SoftwareUpdaterHandle> {
-    //     self.wallet.get_software_updater()
-    // }
 }
 
 #[derive(Clone)]

@@ -198,7 +198,7 @@ async fn chain_balance_validation() {
         MicroTari::zero(),
     )
     .await;
-    // let _coinbase_hash = coinbase.hash();
+
     let (pk, sig) = create_random_signature_from_secret_key(
         &key_manager,
         coinbase_key_id,

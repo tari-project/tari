@@ -290,8 +290,6 @@ async fn transaction_in_state(
 
         let inner = resp.into_inner();
 
-        // panic!("{:?}", inner);
-
         last_state = match inner.result {
             0 => "UNKNOWN",
             1 => "MEMPOOL",
