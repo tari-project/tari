@@ -238,18 +238,14 @@ impl MempoolStorage {
         self.insert_txs(removed_txs)
             .map_err(|e| MempoolError::InternalError(e.to_string()))?;
         if !new_blocks.is_empty() {
-            self.last_seen_height = new_blocks
-                .last()
-                .and_then(|block| Some(block.header.height))
-                .unwrap_or(0 as u64);
+            self.last_seen_height = new_blocks.last().map(|block| block.header.height).unwrap_or(0 as u64);
+        } else if !removed_blocks.is_empty() {
+            self.last_seen_height = removed_blocks
+                .first()
+                .map(|block| block.header.height)
+                .unwrap_or(1 as u64) -
+                1;
         } else {
-            if !removed_blocks.is_empty() {
-                self.last_seen_height = removed_blocks
-                    .first()
-                    .and_then(|block| Some(block.header.height))
-                    .unwrap_or(1 as u64) -
-                    1;
-            }
         }
         Ok(())
     }
