@@ -95,8 +95,6 @@ mod benches {
                 idx = (idx + 1) % NUM_TXNS;
             });
         });
-
-        Ok(())
     }
 
     criterion_group!(
