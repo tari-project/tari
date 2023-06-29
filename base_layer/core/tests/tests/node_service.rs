@@ -51,17 +51,20 @@ use tari_core::{
 use tari_test_utils::unpack_enum;
 use tempfile::tempdir;
 
-use crate::helpers::{
-    block_builders::{
-        append_block,
-        chain_block,
-        construct_chained_blocks,
-        create_coinbase,
-        create_genesis_block,
-        create_genesis_block_with_utxos,
+use crate::{
+    helpers::{
+        block_builders::{
+            append_block,
+            chain_block,
+            construct_chained_blocks,
+            create_coinbase,
+            create_genesis_block,
+            create_genesis_block_with_utxos,
+        },
+        event_stream::event_stream_next,
+        nodes::{random_node_identity, wait_until_online, BaseNodeBuilder},
     },
-    event_stream::event_stream_next,
-    nodes::{random_node_identity, wait_until_online, BaseNodeBuilder},
+    tests::assert_block_add_result_added,
 };
 
 #[allow(clippy::too_many_lines)]
@@ -721,7 +724,7 @@ async fn local_submit_block() {
     let event = event_stream_next(&mut event_stream, Duration::from_millis(20000)).await;
     if let BlockEvent::ValidBlockAdded(received_block, result) = &*event.unwrap() {
         assert_eq!(received_block.hash(), block1.hash());
-        result.assert_added();
+        assert_block_add_result_added(result);
     } else {
         panic!("Block validation failed");
     }

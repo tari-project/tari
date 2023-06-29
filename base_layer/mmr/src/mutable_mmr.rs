@@ -97,7 +97,8 @@ where
     /// This function returns the hash of the leaf index provided, indexed from 0. If the hash does not exist, or if it
     /// has been marked for deletion, `None` is returned.
     pub fn get_leaf_hash(&self, leaf_index: LeafIndex) -> Result<Option<Hash>, MerkleMountainRangeError> {
-        if self.deleted.contains(leaf_index.0 as u32) {
+        let leaf_index_value = u32::try_from(leaf_index.0).map_err(|_| MerkleMountainRangeError::InvalidLeafIndex)?;
+        if self.deleted.contains(leaf_index_value) {
             return Ok(None);
         }
         self.mmr.get_node_hash(node_index(leaf_index))
@@ -107,7 +108,8 @@ where
     /// deletion if the boolean value is true.
     pub fn get_leaf_status(&self, leaf_index: LeafIndex) -> Result<(Option<Hash>, bool), MerkleMountainRangeError> {
         let hash = self.mmr.get_node_hash(node_index(leaf_index))?;
-        let deleted = self.deleted.contains(leaf_index.0 as u32);
+        let leaf_index_value = u32::try_from(leaf_index.0).map_err(|_| MerkleMountainRangeError::InvalidLeafIndex)?;
+        let deleted = self.deleted.contains(leaf_index_value);
         Ok((hash, deleted))
     }
 

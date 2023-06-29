@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_core::{blocks::ChainBlock, chain_storage::BlockAddResult};
+
 mod async_db;
 mod base_node_rpc;
 mod block_validation;
@@ -27,3 +29,16 @@ mod mempool;
 mod node_comms_interface;
 mod node_service;
 mod node_state_machine;
+
+pub fn assert_block_add_result_added(result: &BlockAddResult) -> ChainBlock {
+    match result {
+        BlockAddResult::ChainReorg { added, removed } => panic!(
+            "Expected added result, but was reorg ({} added, {} removed)",
+            added.len(),
+            removed.len()
+        ),
+        BlockAddResult::Ok(b) => b.as_ref().clone(),
+        BlockAddResult::BlockExists => panic!("Expected added result, but was BlockExists"),
+        BlockAddResult::OrphanBlock => panic!("Expected added result, but was OrphanBlock"),
+    }
+}

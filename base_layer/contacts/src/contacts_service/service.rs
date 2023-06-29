@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    convert::TryFrom,
     fmt::{Display, Error, Formatter},
     ops::Sub,
     sync::Arc,
@@ -470,7 +471,9 @@ where T: ContactsBackend + 'static
             let last_seen = Utc::now();
             // Do not overwrite measured latency with value 'None' if this is a ping from a neighbouring node
             if event.latency.is_some() {
-                latency = event.latency.map(|val| val.as_millis() as u32);
+                latency = event
+                    .latency
+                    .map(|val| u32::try_from(val.as_millis()).unwrap_or(u32::MAX));
             }
             let this_public_key = self
                 .db

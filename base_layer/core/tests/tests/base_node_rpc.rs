@@ -60,9 +60,12 @@ use tari_utilities::epoch_time::EpochTime;
 use tempfile::{tempdir, TempDir};
 use tokio::sync::broadcast;
 
-use crate::helpers::{
-    block_builders::{chain_block, chain_block_with_new_coinbase, create_genesis_block_with_coinbase_value},
-    nodes::{BaseNodeBuilder, NodeInterfaces},
+use crate::{
+    helpers::{
+        block_builders::{chain_block, chain_block_with_new_coinbase, create_genesis_block_with_coinbase_value},
+        nodes::{BaseNodeBuilder, NodeInterfaces},
+    },
+    tests::assert_block_add_result_added,
 };
 
 async fn setup() -> (
@@ -306,11 +309,7 @@ async fn test_get_height_at_time() {
             )
             .unwrap();
 
-        prev_block = base_node
-            .blockchain_db
-            .add_block(Arc::new(new_block))
-            .unwrap()
-            .assert_added();
+        prev_block = assert_block_add_result_added(&base_node.blockchain_db.add_block(Arc::new(new_block)).unwrap());
         times.push(prev_block.header().timestamp);
     }
 

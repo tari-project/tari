@@ -48,7 +48,7 @@ pub enum TransactionError {
     RangeProofError(#[from] RangeProofError),
     #[error("An error occurred while performing a commitment signature: {0}")]
     SigningError(#[from] CommitmentAndPublicKeySignatureError),
-    #[error("Invalid kernel in body : {0}")]
+    #[error("Invalid kernel in body: {0}")]
     InvalidKernel(String),
     #[error("Invalid coinbase in body")]
     InvalidCoinbase,
@@ -62,9 +62,9 @@ pub enum TransactionError {
     MissingRangeProof,
     #[error("Input maturity not reached")]
     InputMaturity,
-    #[error("Tari script error : {0}")]
+    #[error("Tari script error: {0}")]
     ScriptError(#[from] ScriptError),
-    #[error("Schnorr signature error : {0}")]
+    #[error("Schnorr signature error: {0}")]
     SchnorrSignatureError(#[from] SchnorrSignatureError),
     #[error("Error performing conversion: {0}")]
     ConversionError(String),
@@ -86,13 +86,13 @@ pub enum TransactionError {
     NonCoinbaseHasOutputFeaturesCoinbaseExtra,
     #[error("Coinbase extra size is {len} but the maximum is {max}")]
     InvalidOutputFeaturesCoinbaseExtraSize { len: usize, max: u32 },
-    #[error("Invalid revealed value : {0}")]
+    #[error("Invalid revealed value: {0}")]
     InvalidRevealedValue(String),
     #[error("KeyManager encountered an error: {0}")]
     KeyManagerError(String),
-    #[error("EncryptedData error : {0}")]
+    #[error("EncryptedData error: {0}")]
     EncryptedDataError(String),
-    #[error("Conversion error : {0}")]
+    #[error("Conversion error: {0}")]
     ByteArrayError(String),
 }
 

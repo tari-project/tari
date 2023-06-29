@@ -116,7 +116,7 @@ pub enum OutputManagerError {
     NodeIdError(#[from] NodeIdError),
     #[error("Script hash does not match expected script")]
     InvalidScriptHash,
-    #[error("Tari script error : {0}")]
+    #[error("Tari script error: {0}")]
     ScriptError(#[from] ScriptError),
     #[error("Master secret key does not match persisted key manager state")]
     MasterSeedMismatch,
@@ -129,9 +129,9 @@ pub enum OutputManagerError {
         #[from]
         source: ConnectivityError,
     },
-    #[error("Invalid message received:{0}")]
+    #[error("Invalid message received: {0}")]
     InvalidMessageError(String),
-    #[error("Key manager service error : {0}")]
+    #[error("Key manager service error: {0}")]
     KeyManagerServiceError(#[from] KeyManagerServiceError),
     #[error("Value can't be encrypted/decrypted")]
     ValueEncryptionError(#[from] EncryptedDataError),
@@ -189,7 +189,7 @@ pub enum OutputManagerStorageError {
     AeadError(String),
     #[error("Tried to insert a script that already exists in the database")]
     DuplicateScript,
-    #[error("Tari script error : {0}")]
+    #[error("Tari script error: {0}")]
     ScriptError(#[from] ScriptError),
     #[error("Binary not stored as valid hex:{0}")]
     HexError(#[from] HexError),

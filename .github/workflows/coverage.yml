@@ -34,42 +34,15 @@ jobs:
         with:
           toolchain: nightly
 
-      - name: cargo test
+      - name: run tests with coverage
         # Prepare the coverage data, even if some tests fail
         continue-on-error: true
-        env:
-          RUSTFLAGS: "-C instrument-coverage"
-          RUSTDOCFLAGS: "-C instrument-coverage"
-          LLVM_PROFILE_FILE: "coverage_data-%p-%m.profraw"
-          CARGO_UNSTABLE_SPARSE_REGISTRY: true
-        run: |
-          rustup component add llvm-tools-preview
-          cargo test --all-features --no-fail-fast --workspace --exclude tari_integration_tests
-
-      - name: prepare coverage data
-        env:
-          COVERALLS_REPO_TOKEN: ${{ secrets.COVERALLS_REPO_TOKEN }}
-        run: |
-          cargo install grcov
-          grcov . -s . --binary-path ./target/debug -t coveralls --branch --ignore-not-existing \
-             -o ./target/coveralls_coverage.json \
-             --token $COVERALLS_REPO_TOKEN \
-             --ignore target/**/*.rs \
-             --ignore **/.cargo/**/*.rs \
-             --vcs-branch $GITHUB_REF_NAME \
-             --service-name github \
-             --service-job-id ${GITHUB_RUN_ID}
-
-      - name: archive coverage data
-        uses: actions/upload-artifact@v3
-        with:
-          path: target/coveralls_coverage.json
-          name: coveralls-coverage
+        run: bash -c ./scripts/source_coverage.sh
 
       - name: Coveralls upload
-        continue-on-error: true
-        uses: toshke/github-action@master
+        uses: coverallsapp/github-action@v2
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          path-to-lcov: ./target/coveralls_coverage.json
-          file-format: coveralls
+          format: lcov
+          file: lcov.info
+

@@ -1992,7 +1992,7 @@ where
                         Err(e) => {
                             error!(
                                 target: LOG_TARGET,
-                                "Error starting Broadcast Protocol after completed Send Transaction Protocol : {:?}", e
+                                "Error starting Broadcast Protocol after completed Send Transaction Protocol: {:?}", e
                             );
                             return;
                         },
@@ -2002,7 +2002,7 @@ where
                         .map_err(|resp| {
                             error!(
                                 target: LOG_TARGET,
-                                "Error starting Broadcast Protocol after completed Send Transaction Protocol : {:?}",
+                                "Error starting Broadcast Protocol after completed Send Transaction Protocol: {:?}",
                                 resp
                             );
                             resp

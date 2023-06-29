@@ -725,7 +725,7 @@ mod test {
         .await
         {
             Ok(_) => panic!("Should not have been able to create output"),
-            Err(e) => assert_eq!(e, "Invalid revealed value : Expected 20 µT, received 0 µT"),
+            Err(e) => assert_eq!(e, "Invalid revealed value: Expected 20 µT, received 0 µT"),
         }
     }
 
