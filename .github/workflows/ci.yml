@@ -197,8 +197,6 @@ jobs:
           cd base_layer/key_manager
           rustup target add wasm32-unknown-unknown
           make test
-      - name: Install cargo-nextest
-        run: cargo install cargo-nextest --locked
       - name: cargo test compile
         run: cargo test --no-run --locked --all-features --release
       - name: cargo test
