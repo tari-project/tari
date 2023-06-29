@@ -923,7 +923,6 @@ TariUnblindedOutput *create_tari_unblinded_output_from_json(const char *output_j
  *
  * # Safety
  * None
- *
  */
 unsigned int unblinded_outputs_get_length(struct TariUnblindedOutputs *outputs,
                                           int *error_out);
@@ -1515,8 +1514,8 @@ TariWalletAddress *liveness_data_get_public_key(TariContactsLivenessData *livene
  * The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
  * memory leak
  */
-int liveness_data_get_latency(TariContactsLivenessData *liveness_data,
-                              int *error_out);
+unsigned int liveness_data_get_latency(TariContactsLivenessData *liveness_data,
+                                       int *error_out);
 
 /**
  * Gets the last_seen time (in local time) from a TariContactsLivenessData

@@ -48,6 +48,8 @@ impl HandleCommand<Args> for CommandContext {
 }
 
 impl CommandContext {
+    // converting u64 to i64 is okay as the this is only for viewing timestamps.
+    #[allow(clippy::cast_possible_wrap)]
     #[allow(clippy::too_many_lines)]
     pub async fn status(&mut self, output: StatusLineOutput) -> Result<(), Error> {
         let mut full_log = false;

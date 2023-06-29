@@ -813,6 +813,8 @@ pub unsafe extern "C" fn byte_vector_destroy(bytes: *mut ByteVector) {
 ///
 /// # Safety
 /// None
+// converting between here is fine as its used to clamp the the array to length
+#[allow(clippy::cast_possible_wrap)]
 #[no_mangle]
 pub unsafe extern "C" fn byte_vector_get_at(ptr: *mut ByteVector, position: c_uint, error_out: *mut c_int) -> c_uchar {
     let mut error = 0;
@@ -1739,6 +1741,8 @@ pub unsafe extern "C" fn unblinded_outputs_get_length(
 ///
 /// # Safety
 /// The ```contact_destroy``` method must be called when finished with a TariContact to prevent a memory leak
+// converting between here is fine as its used to clamp the the array to length
+#[allow(clippy::cast_possible_wrap)]
 #[no_mangle]
 pub unsafe extern "C" fn unblinded_outputs_get_at(
     outputs: *mut TariUnblindedOutputs,
@@ -2843,6 +2847,8 @@ pub unsafe extern "C" fn contacts_get_length(contacts: *mut TariContacts, error_
 ///
 /// # Safety
 /// The ```contact_destroy``` method must be called when finished with a TariContact to prevent a memory leak
+// converting between here is fine as its used to clamp the the array to length
+#[allow(clippy::cast_possible_wrap)]
 #[no_mangle]
 pub unsafe extern "C" fn contacts_get_at(
     contacts: *mut TariContacts,
@@ -2929,22 +2935,23 @@ pub unsafe extern "C" fn liveness_data_get_public_key(
 /// # Safety
 /// The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
 /// memory leak
+
 #[no_mangle]
 pub unsafe extern "C" fn liveness_data_get_latency(
     liveness_data: *mut TariContactsLivenessData,
     error_out: *mut c_int,
-) -> c_int {
+) -> c_uint {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if liveness_data.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("liveness_data".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
-        return -1;
+        return 0;
     }
     if let Some(latency) = (*liveness_data).latency() {
-        latency as c_int
+        latency as c_uint
     } else {
-        -1
+        0
     }
 }
 
@@ -3140,6 +3147,8 @@ pub unsafe extern "C" fn completed_transactions_get_length(
 /// # Safety
 /// The ```completed_transaction_destroy``` method must be called when finished with a TariCompletedTransaction to
 /// prevent a memory leak
+// converting between here is fine as its used to clamp the the array to length
+#[allow(clippy::cast_possible_wrap)]
 #[no_mangle]
 pub unsafe extern "C" fn completed_transactions_get_at(
     transactions: *mut TariCompletedTransactions,
@@ -3231,6 +3240,8 @@ pub unsafe extern "C" fn pending_outbound_transactions_get_length(
 /// # Safety
 /// The ```pending_outbound_transaction_destroy``` method must be called when finished with a
 /// TariPendingOutboundTransaction to prevent a memory leak
+// converting between here is fine as its used to clamp the the array to length
+#[allow(clippy::cast_possible_wrap)]
 #[no_mangle]
 pub unsafe extern "C" fn pending_outbound_transactions_get_at(
     transactions: *mut TariPendingOutboundTransactions,
@@ -3321,6 +3332,8 @@ pub unsafe extern "C" fn pending_inbound_transactions_get_length(
 /// # Safety
 /// The ```pending_inbound_transaction_destroy``` method must be called when finished with a
 /// TariPendingOutboundTransaction to prevent a memory leak
+// converting between here is fine as its used to clamp the the array to length
+#[allow(clippy::cast_possible_wrap)]
 #[no_mangle]
 pub unsafe extern "C" fn pending_inbound_transactions_get_at(
     transactions: *mut TariPendingInboundTransactions,
