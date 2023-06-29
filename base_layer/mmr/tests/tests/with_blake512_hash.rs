@@ -27,7 +27,11 @@ use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
 use tari_mmr::MerkleMountainRange;
 use tari_utilities::hex::Hex;
 
-hash_domain!(Blake512TestMmrHashDomain, "mmr.tests.with_blake512_hash", 1);
+hash_domain!(
+    Blake512TestMmrHashDomain,
+    "com.tari.test.mmr.tests.with_blake512_hash",
+    1
+);
 pub type Blake512TestMmrHasherBlake2b = DomainSeparatedHasher<Blake2b, Blake512TestMmrHashDomain>;
 
 #[allow(clippy::vec_init_then_push)]

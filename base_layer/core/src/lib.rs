@@ -86,7 +86,7 @@ mod domain_hashing {
     pub type PrunedOutputMmr = MerkleMountainRange<OutputMmrHasherBlake256, PrunedHashSet>;
     pub type MutablePrunedOutputMmr = MutableMmr<OutputMmrHasherBlake256, PrunedHashSet>;
 
-    hash_domain!(InputMmrHashDomain, "com.tari.base_layer.core.output_mmr", 1);
+    hash_domain!(InputMmrHashDomain, "com.tari.base_layer.core.input_mmr", 1);
     pub type InputMmrHasherBlake256 = DomainSeparatedHasher<Blake256, InputMmrHashDomain>;
     pub type PrunedInputMmr = MerkleMountainRange<InputMmrHasherBlake256, PrunedHashSet>;
 

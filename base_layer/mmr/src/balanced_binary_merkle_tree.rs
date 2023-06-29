@@ -132,7 +132,7 @@ mod test {
     use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparatedHasher};
 
     use crate::{balanced_binary_merkle_tree::BalancedBinaryMerkleTreeError, BalancedBinaryMerkleTree};
-    hash_domain!(TestDomain, "testing", 0);
+    hash_domain!(TestDomain, "com.tari.test.testing", 0);
 
     #[test]
     fn test_empty_tree() {

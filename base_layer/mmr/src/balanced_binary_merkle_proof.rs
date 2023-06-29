@@ -247,7 +247,7 @@ mod test {
 
     use super::*;
 
-    hash_domain!(TestDomain, "testing", 0);
+    hash_domain!(TestDomain, "com.tari.test.testing", 0);
 
     type TestHasher = DomainSeparatedHasher<Blake256, TestDomain>;
 
@@ -402,7 +402,7 @@ mod test {
     fn test_real_world_example() {
         hash_domain!(
             ValidatorNodeBmtHashDomain,
-            "com.tari.base_layer.core.validator_node_mmr",
+            "com.tari.test.base_layer.core.validator_node_mmr",
             1
         );
         pub type ValidatorNodeBmtHasherBlake256 = DomainSeparatedHasher<Blake256, ValidatorNodeBmtHashDomain>;
