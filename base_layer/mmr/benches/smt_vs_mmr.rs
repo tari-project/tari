@@ -17,11 +17,7 @@ use tari_mmr::sparse_merkle_tree::{NodeKey, SparseMerkleTree, ValueHash};
 use tari_mmr::{Hash, MutableMmr};
 
 #[cfg(feature = "native_bitmap")]
-hash_domain!(
-    MmrBenchTestHashDomain,
-    "com.tari.tari_project.base_layer.mmr.benches",
-    1
-);
+hash_domain!(MmrBenchTestHashDomain, "com.tari.base_layer.mmr.benches", 1);
 #[cfg(feature = "native_bitmap")]
 pub type MmrTestHasherBlake256 = DomainSeparatedHasher<Blake256, MmrBenchTestHashDomain>;
 #[cfg(feature = "native_bitmap")]

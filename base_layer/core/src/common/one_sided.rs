@@ -34,19 +34,19 @@ use tari_utilities::{byte_array::ByteArrayError, ByteArray};
 
 hash_domain!(
     WalletOutputRewindKeysDomain,
-    "com.tari.tari_project.base_layer.wallet.output_rewind_keys",
+    "com.tari.base_layer.wallet.output_rewind_keys",
     1
 );
 
 hash_domain!(
     WalletOutputEncryptionKeysDomain,
-    "com.tari.tari_project.base_layer.wallet.output_encryption_keys",
+    "com.tari.base_layer.wallet.output_encryption_keys",
     1
 );
 
 hash_domain!(
     WalletOutputSpendingKeysDomain,
-    "com.tari.tari_project.base_layer.wallet.output_spending_keys",
+    "com.tari.base_layer.wallet.output_spending_keys",
     1
 );
 

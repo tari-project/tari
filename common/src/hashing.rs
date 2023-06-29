@@ -51,7 +51,7 @@ mod test {
 
     use crate::{hashing::mac_domain_hasher, DomainDigest};
 
-    hash_domain!(HashDomain, "com.tari.tari_project.hash_domain", 1);
+    hash_domain!(HashDomain, "com.tari.hash_domain", 1);
     type DomainHasher<D> = DomainSeparatedHasher<D, HashDomain>;
 
     fn use_as_digest_function<D>(data: &[u8]) -> Output<DomainHasher<D>>
@@ -93,7 +93,7 @@ mod test {
 
     #[test]
     fn test_mac_domain_digest() {
-        hash_domain!(MacDomain, "com.tari.tari_project.mac_domain.my_function", 1);
+        hash_domain!(MacDomain, "com.tari.mac_domain.my_function", 1);
         let some_data = b"some data";
 
         // The 'mac_domain_hasher' introduce specific trait bounds

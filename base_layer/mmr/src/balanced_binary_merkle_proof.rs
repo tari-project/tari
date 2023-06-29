@@ -402,7 +402,7 @@ mod test {
     fn test_real_world_example() {
         hash_domain!(
             ValidatorNodeBmtHashDomain,
-            "com.tari.tari_project.base_layer.core.validator_node_mmr",
+            "com.tari.base_layer.core.validator_node_mmr",
             1
         );
         pub type ValidatorNodeBmtHasherBlake256 = DomainSeparatedHasher<Blake256, ValidatorNodeBmtHashDomain>;

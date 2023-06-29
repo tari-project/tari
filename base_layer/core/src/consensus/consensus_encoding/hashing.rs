@@ -105,7 +105,7 @@ mod tests {
 
     use super::*;
 
-    hash_domain!(TestHashDomain, "tari.test", 0);
+    hash_domain!(TestHashDomain, "com.tari.test", 0);
 
     #[test]
     fn it_hashes_using_the_domain_hasher() {

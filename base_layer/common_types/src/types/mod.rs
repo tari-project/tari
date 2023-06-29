@@ -84,7 +84,7 @@ hasher!(Blake256, WalletHasher, "com.tari.base_layer.wallet", 1, wallet_hasher);
 
 hash_domain!(
     BulletRangeProofHashDomain,
-    "com.tari.tari-project.base_layer.common_types.bullet_rangeproofs"
+    "com.tari.base_layer.common_types.bullet_rangeproofs"
 );
 
 pub type BulletRangeProofHasherBlake256 = DomainSeparatedHasher<Blake256, BulletRangeProofHashDomain>;

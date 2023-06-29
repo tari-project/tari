@@ -48,7 +48,7 @@ use crate::{
 const LOG_TARGET: &str = "comms::dht::dedup";
 const DEDUP_MESSAGE_HASH_LABEL: &str = "dedup.meesage_hash";
 
-hash_domain!(CommsDhtDedupDomain, "com.tari.tari_project.comms.dht", 1);
+hash_domain!(CommsDhtDedupDomain, "com.tari.comms.dht", 1);
 
 fn comms_dht_dedup_message_hash<D: Digest + LengthExtensionAttackResistant>(
     label: &'static str,
