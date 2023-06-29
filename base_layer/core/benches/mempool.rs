@@ -64,7 +64,7 @@ mod benches {
         Ok(txs)
     }
 
-    pub fn mempool_perf_test(c: &mut Criterion) -> std::io::Result<()> {
+    pub fn mempool_perf_test(c: &mut Criterion) {
         let runtime = Runtime::new().unwrap();
         let config = MempoolConfig::default();
         let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
@@ -80,12 +80,14 @@ mod benches {
             NUM_TXNS * 1000,
             NUM_TXNS * MAX_TRANSACTION_OUTPUTS
         );
-        let transactions = runtime.block_on(generate_transactions(
-            NUM_TXNS,
-            1000,
-            MAX_TRANSACTION_OUTPUTS,
-            OutputFeatures::default(),
-        ))?;
+        let transactions = runtime
+            .block_on(generate_transactions(
+                NUM_TXNS,
+                1000,
+                MAX_TRANSACTION_OUTPUTS,
+                OutputFeatures::default(),
+            ))
+            .expect("Failed to get transactions");
         c.bench_function("Mempool Insert", move |b| {
             let mut idx = 0;
             b.iter(|| {
