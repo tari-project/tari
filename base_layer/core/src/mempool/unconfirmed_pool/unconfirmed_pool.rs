@@ -525,13 +525,12 @@ impl UnconfirmedPool {
 
     /// Returns the total weight of all transactions stored in the pool.
     pub fn calculate_weight(&self, transaction_weight: &TransactionWeight) -> std::io::Result<u64> {
-        Ok(self
+        let weights = self
             .tx_by_key
             .values()
             .map(|ptx| ptx.transaction.calculate_weight(transaction_weight))
-            .collect::<Result<Vec<_>, _>>()?
-            .iter()
-            .fold(0, |weight, tx_weight| weight + tx_weight))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(weights.iter().sum())
     }
 
     pub fn get_fee_per_gram_stats(

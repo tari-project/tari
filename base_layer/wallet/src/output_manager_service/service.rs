@@ -1060,6 +1060,7 @@ where
                     .map_err(|e| OutputManagerError::ServiceError(e.to_string()))?,
                 output
                     .script()
+                    .unwrap_or(&nop_script)
                     .get_serialized_size()
                     .map_err(|e| OutputManagerError::ServiceError(e.to_string()))?,
             );

@@ -775,8 +775,11 @@ impl AppStateInner {
         });
         self.data.pending_txs = pending_transactions
             .iter()
-            .map(|tx| CompletedTransactionInfo::from_completed_transaction(tx.clone(), &self.get_transaction_weight()))
-            .collect();
+            .map(|tx| {
+                CompletedTransactionInfo::from_completed_transaction(tx.clone(), &self.get_transaction_weight())
+                    .map_err(|e| UiError::TransactionError(e.to_string()))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
 
         let mut completed_transactions: Vec<CompletedTransaction> = Vec::new();
         completed_transactions.extend(
@@ -807,8 +810,11 @@ impl AppStateInner {
 
         self.data.completed_txs = completed_transactions
             .iter()
-            .map(|tx| CompletedTransactionInfo::from_completed_transaction(tx.clone(), &self.get_transaction_weight()))
-            .collect();
+            .map(|tx| {
+                CompletedTransactionInfo::from_completed_transaction(tx.clone(), &self.get_transaction_weight())
+                    .map_err(|e| UiError::TransactionError(e.to_string()))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         self.updated = true;
         Ok(())
     }
@@ -851,7 +857,8 @@ impl AppStateInner {
             },
             Some(tx) => {
                 let tx =
-                    CompletedTransactionInfo::from_completed_transaction(tx.into(), &self.get_transaction_weight());
+                    CompletedTransactionInfo::from_completed_transaction(tx.into(), &self.get_transaction_weight())
+                        .map_err(|e| UiError::TransactionError(e.to_string()))?;
                 if let Some(index) = self.data.pending_txs.iter().position(|i| i.tx_id == tx_id) {
                     if tx.status == TransactionStatus::Pending && tx.cancelled.is_none() {
                         self.data.pending_txs[index] = tx;
