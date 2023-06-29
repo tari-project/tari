@@ -85,7 +85,7 @@ mod benches {
             1000,
             MAX_TRANSACTION_OUTPUTS,
             OutputFeatures::default(),
-        )?);
+        ))?;
         c.bench_function("Mempool Insert", move |b| {
             let mut idx = 0;
             b.iter(|| {
