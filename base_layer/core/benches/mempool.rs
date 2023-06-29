@@ -64,7 +64,7 @@ mod benches {
         Ok(txs)
     }
 
-    pub fn mempool_perf_test(c: &mut Criterion) {
+    pub fn mempool_perf_test(c: &mut Criterion) -> std::io::Result<()> {
         let runtime = Runtime::new().unwrap();
         let config = MempoolConfig::default();
         let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
@@ -85,7 +85,7 @@ mod benches {
             1000,
             MAX_TRANSACTION_OUTPUTS,
             OutputFeatures::default(),
-        ));
+        )?);
         c.bench_function("Mempool Insert", move |b| {
             let mut idx = 0;
             b.iter(|| {
@@ -93,6 +93,8 @@ mod benches {
                 idx = (idx + 1) % NUM_TXNS;
             });
         });
+
+        Ok(())
     }
 
     criterion_group!(
