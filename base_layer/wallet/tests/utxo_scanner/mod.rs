@@ -20,7 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashMap, convert::TryInto, sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    convert::{TryFrom, TryInto},
+    sync::Arc,
+    time::Duration,
+};
 
 use chrono::{Duration as ChronoDuration, Utc};
 use rand::{rngs::OsRng, RngCore};
@@ -448,7 +453,7 @@ async fn test_utxo_scanner_recovery_with_restart() {
 
     tokio::spawn(test_interface.scanner_service.take().unwrap().run());
 
-    tx.send(SYNC_INTERRUPT as usize).await.unwrap();
+    tx.send(usize::try_from(SYNC_INTERRUPT).unwrap()).await.unwrap();
 
     let _result = test_interface
         .rpc_service_state
@@ -607,7 +612,7 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
 
     tokio::spawn(test_interface.scanner_service.take().unwrap().run());
 
-    tx.send(SYNC_INTERRUPT as usize).await.unwrap();
+    tx.send(usize::try_from(SYNC_INTERRUPT).unwrap()).await.unwrap();
 
     let _result = test_interface
         .rpc_service_state

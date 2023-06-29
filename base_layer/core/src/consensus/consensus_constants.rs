@@ -850,6 +850,8 @@ impl ConsensusConstantsBuilder {
 
 #[cfg(test)]
 mod test {
+    use std::convert::TryFrom;
+
     use crate::{
         consensus::{
             emission::{Emission, EmissionSchedule},
@@ -889,7 +891,9 @@ mod test {
             10_500_682_498_903_652 * uT
         ); // Around 10.5 billion
            // Tail emission starts after block 3,574,175
-        let mut rewards = schedule.iter().skip(3_574_174 + coinbase_offset as usize);
+        let mut rewards = schedule
+            .iter()
+            .skip(3_574_174 + usize::try_from(coinbase_offset).unwrap());
         let (block_num, reward, supply) = rewards.next().unwrap();
         assert_eq!(block_num, 3_574_175 + coinbase_offset);
         assert_eq!(reward, 800_000_598 * uT);

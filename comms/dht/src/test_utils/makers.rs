@@ -210,11 +210,11 @@ pub fn make_dht_envelope<T: prost::Message>(
         let key_message = crypt::generate_key_message(&shared_secret);
         let mask = crypt::generate_key_mask(&shared_secret).unwrap();
         let masked_public_key = mask * node_identity.public_key();
-        let mut message = prepare_message(true, message);
+        let mut message = prepare_message(true, message).unwrap();
         crypt::encrypt_message(&key_message, &mut message, masked_public_key.as_bytes()).unwrap();
         message.freeze()
     } else {
-        prepare_message(false, message).freeze()
+        prepare_message(false, message).unwrap().freeze()
     };
     let header = make_dht_header(
         node_identity,

@@ -48,8 +48,8 @@ deny = [
     'clippy::trivially_copy_pass_by_ref',
     # Highlights potential casting mistakes
     'clippy::cast_lossless',
-#    'clippy::cast_possible_truncation',
-#    'clippy::cast_possible_wrap',
+    'clippy::cast_possible_truncation',
+    #'clippy::cast_possible_wrap',
     # Precision loss is almost always competely fine and is only useful as a sanity check.
     # https://rust-lang.github.io/rust-clippy/master/index.html#cast_precision_loss
     # 'clippy::cast_precision_loss',

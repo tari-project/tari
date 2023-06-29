@@ -145,16 +145,17 @@ mod test {
     #[test]
     fn round_up_features_and_scripts_size() {
         let weighting = TransactionWeight::latest();
+        let features_and_scripts_bytes_per_gram =
+            usize::try_from(weighting.params().features_and_scripts_bytes_per_gram.get()).unwrap();
         assert_eq!(weighting.round_up_features_and_scripts_size(0), 0);
         assert_eq!(weighting.round_up_features_and_scripts_size(1), 16);
         assert_eq!(weighting.round_up_features_and_scripts_size(16), 16);
         assert_eq!(weighting.round_up_features_and_scripts_size(17), 32);
-        if usize::MAX % weighting.params().features_and_scripts_bytes_per_gram.get() as usize == 0 {
+        if usize::MAX % features_and_scripts_bytes_per_gram == 0 {
             assert_eq!(weighting.round_up_features_and_scripts_size(usize::MAX), usize::MAX);
         } else {
             assert_eq!(
-                weighting.round_up_features_and_scripts_size(usize::MAX) %
-                    weighting.params().features_and_scripts_bytes_per_gram.get() as usize,
+                weighting.round_up_features_and_scripts_size(usize::MAX) % features_and_scripts_bytes_per_gram,
                 0
             );
         }

@@ -2159,7 +2159,8 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
     // validate the block header
     let prev_timestamps_count = cmp::min(
         rules.consensus_constants(block.header.height).median_timestamp_count(),
-        block.header.height as usize - 1,
+        usize::try_from(block.header.height - 1)
+            .map_err(|_| ChainStorageError::ConversionError("u64 to usize".to_string()))?,
     );
     let mut prev_timestamps = Vec::with_capacity(prev_timestamps_count);
     prev_timestamps.push(block.header.timestamp());

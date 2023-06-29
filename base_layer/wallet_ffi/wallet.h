@@ -923,6 +923,7 @@ TariUnblindedOutput *create_tari_unblinded_output_from_json(const char *output_j
  *
  * # Safety
  * None
+ *
  */
 unsigned int unblinded_outputs_get_length(struct TariUnblindedOutputs *outputs,
                                           int *error_out);
@@ -3133,8 +3134,8 @@ unsigned long long wallet_get_fee_estimate(struct TariWallet *wallet,
                                            unsigned long long amount,
                                            struct TariVector *commitments,
                                            unsigned long long fee_per_gram,
-                                           unsigned long long num_kernels,
-                                           unsigned long long num_outputs,
+                                           unsigned int num_kernels,
+                                           unsigned int num_outputs,
                                            int *error_out);
 
 /**

@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::convert::TryFrom;
+
 use tari_common::configuration::Network;
 use tari_comms::test_utils::mocks::create_connectivity_mock;
 use tari_core::{
@@ -294,7 +296,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         utxo.clone(),
         *block0.hash(),
         0,
-        block0.header().output_mmr_size as u32,
+        u32::try_from(block0.header().output_mmr_size).unwrap(),
         0,
     );
     if let Err(e) = store.commit(txn) {

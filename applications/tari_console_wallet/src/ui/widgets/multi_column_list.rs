@@ -73,6 +73,8 @@ where T: Into<Vec<ListItem<'a>>>
         self
     }
 
+    // casting here is okay as we only use it draw the header length
+    #[allow(clippy::cast_possible_truncation)]
     pub fn render<B: Backend>(mut self, f: &mut Frame<B>, area: Rect, state: &mut ListState) {
         // This accounts for the box border
         let mut constraints = vec![Constraint::Length(1)];

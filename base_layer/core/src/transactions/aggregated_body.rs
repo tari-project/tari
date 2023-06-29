@@ -324,7 +324,7 @@ impl AggregateBody {
                 return Err(TransactionError::NonCoinbaseHasOutputFeaturesCoinbaseExtra);
             }
 
-            if output.is_coinbase() && output.features.coinbase_extra.len() as u32 > max_coinbase_metadata_size {
+            if output.is_coinbase() && output.features.coinbase_extra.len() > max_coinbase_metadata_size as usize {
                 return Err(TransactionError::InvalidOutputFeaturesCoinbaseExtraSize {
                     len: output.features.coinbase_extra.len(),
                     max: max_coinbase_metadata_size,

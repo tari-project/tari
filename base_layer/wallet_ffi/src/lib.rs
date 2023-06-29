@@ -844,6 +844,8 @@ pub unsafe extern "C" fn byte_vector_get_at(ptr: *mut ByteVector, position: c_ui
 ///
 /// # Safety
 /// None
+// casting here is okay a byte vector wont go larger than u32
+#[allow(clippy::cast_possible_truncation)]
 #[no_mangle]
 pub unsafe extern "C" fn byte_vector_get_length(vec: *const ByteVector, error_out: *mut c_int) -> c_uint {
     let mut error = 0;
@@ -853,6 +855,7 @@ pub unsafe extern "C" fn byte_vector_get_length(vec: *const ByteVector, error_ou
         ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     }
+
     (*vec).0.len() as c_uint
 }
 
@@ -1128,6 +1131,8 @@ pub unsafe extern "C" fn tari_address_get_bytes(
 ///
 /// # Safety
 /// The ```private_key_destroy``` method must be called when finished with a private key to prevent a memory leak
+// casting here is network is a u8
+#[allow(clippy::cast_possible_truncation)]
 #[no_mangle]
 pub unsafe extern "C" fn tari_address_from_private_key(
     secret_key: *mut TariPrivateKey,
@@ -1701,6 +1706,8 @@ pub unsafe extern "C" fn create_tari_unblinded_output_from_json(
 ///
 /// # Safety
 /// None
+// casting here is okay the length of the array wont go over u32
+#[allow(clippy::cast_possible_truncation)]
 #[no_mangle]
 pub unsafe extern "C" fn unblinded_outputs_get_length(
     outputs: *mut TariUnblindedOutputs,
@@ -2416,6 +2423,8 @@ pub unsafe extern "C" fn seed_words_get_mnemonic_word_list_for_language(
 ///
 /// # Safety
 /// None
+// casting here is okay as we wont get more than u32 seed words
+#[allow(clippy::cast_possible_truncation)]
 #[no_mangle]
 pub unsafe extern "C" fn seed_words_get_length(seed_words: *const TariSeedWords, error_out: *mut c_int) -> c_uint {
     let mut error = 0;
@@ -2444,6 +2453,8 @@ pub unsafe extern "C" fn seed_words_get_length(seed_words: *const TariSeedWords,
 ///
 /// # Safety
 /// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
+// casting here is okay as there aint more as u32 seed words
+#[allow(clippy::cast_possible_truncation)]
 #[no_mangle]
 pub unsafe extern "C" fn seed_words_get_at(
     seed_words: *mut TariSeedWords,
@@ -2802,6 +2813,8 @@ pub unsafe extern "C" fn contact_destroy(contact: *mut TariContact) {
 ///
 /// # Safety
 /// None
+// casting here is okay as we dont have more thant u32 contacts
+#[allow(clippy::cast_possible_truncation)]
 #[no_mangle]
 pub unsafe extern "C" fn contacts_get_length(contacts: *mut TariContacts, error_out: *mut c_int) -> c_uint {
     let mut error = 0;
@@ -3093,6 +3106,8 @@ pub unsafe extern "C" fn liveness_data_destroy(liveness_data: *mut TariContactsL
 ///
 /// # Safety
 /// None
+// casting here is okay as we wont have more than u32 transctions
+#[allow(clippy::cast_possible_truncation)]
 #[no_mangle]
 pub unsafe extern "C" fn completed_transactions_get_length(
     transactions: *mut TariCompletedTransactions,
@@ -3181,6 +3196,8 @@ pub unsafe extern "C" fn completed_transactions_destroy(transactions: *mut TariC
 ///
 /// # Safety
 /// None
+// casting here is we wont have more than u32 transctions
+#[allow(clippy::cast_possible_truncation)]
 #[no_mangle]
 pub unsafe extern "C" fn pending_outbound_transactions_get_length(
     transactions: *mut TariPendingOutboundTransactions,
@@ -3270,6 +3287,8 @@ pub unsafe extern "C" fn pending_outbound_transactions_destroy(transactions: *mu
 ///
 /// # Safety
 /// None
+// casting here is okay as we wont have mroe than u32 tranasctions
+#[allow(clippy::cast_possible_truncation)]
 #[no_mangle]
 pub unsafe extern "C" fn pending_inbound_transactions_get_length(
     transactions: *mut TariPendingInboundTransactions,
@@ -4887,6 +4906,8 @@ pub unsafe extern "C" fn comms_list_connected_public_keys(
 ///
 /// # Safety
 /// None
+// casting here is okay as we wont have more than u32 public keys
+#[allow(clippy::cast_possible_truncation)]
 #[no_mangle]
 pub unsafe extern "C" fn public_keys_get_length(public_keys: *const TariPublicKeys, error_out: *mut c_int) -> c_uint {
     let mut error = 0;
@@ -5614,6 +5635,8 @@ pub unsafe extern "C" fn wallet_get_balance(wallet: *mut TariWallet, error_out: 
 /// `destroy_tari_vector()` must be called after use.
 /// Items that fail to produce `.as_transaction_output()` are omitted from the list and a `warn!()` message is logged to
 /// LOG_TARGET.
+// casting here is okay as we wont have more than u32 utxos
+#[allow(clippy::cast_possible_truncation)]
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_utxos(
     wallet: *mut TariWallet,
@@ -6653,8 +6676,8 @@ pub unsafe extern "C" fn wallet_get_fee_estimate(
     amount: c_ulonglong,
     commitments: *mut TariVector,
     fee_per_gram: c_ulonglong,
-    num_kernels: c_ulonglong,
-    num_outputs: c_ulonglong,
+    num_kernels: c_uint,
+    num_outputs: c_uint,
     error_out: *mut c_int,
 ) -> c_ulonglong {
     let mut error = 0;
@@ -8137,6 +8160,8 @@ pub unsafe extern "C" fn get_emoji_set() -> *mut EmojiSet {
 ///
 /// # Safety
 /// None
+// casting here is okay as emoji set wont get larger than u32
+#[allow(clippy::cast_possible_truncation)]
 #[no_mangle]
 pub unsafe extern "C" fn emoji_set_get_length(emoji_set: *const EmojiSet, error_out: *mut c_int) -> c_uint {
     let mut error = 0;
@@ -8312,6 +8337,8 @@ pub unsafe extern "C" fn wallet_get_fee_per_gram_stats(
 ///
 /// # Safety
 /// None
+// casting here is okay as fee per gram stats cannot get larger than u32
+#[allow(clippy::cast_possible_truncation)]
 #[no_mangle]
 pub unsafe extern "C" fn fee_per_gram_stats_get_length(
     fee_per_gram_stats: *mut TariFeePerGramStats,
@@ -8795,6 +8822,8 @@ mod test {
     const NETWORK_STRING: &str = "localnet";
 
     #[test]
+    // casting is okay in tests
+    #[allow(clippy::cast_possible_truncation)]
     fn test_bytevector() {
         unsafe {
             let mut error = 0;
@@ -9132,6 +9161,8 @@ mod test {
     }
 
     #[test]
+    // casting is okay in tests
+    #[allow(clippy::cast_possible_truncation)]
     fn test_output_features_create_empty() {
         unsafe {
             let mut error = 0;
