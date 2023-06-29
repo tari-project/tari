@@ -10,7 +10,7 @@ use std::{
 use digest::{consts::U32, Digest};
 
 use crate::sparse_merkle_tree::{
-    bit_utils::{count_common_prefix, get_bit, height_key},
+    bit_utils::{count_common_prefix, get_bit, height_key, TraverseDirection},
     Node::*,
     SMTError,
 };
@@ -361,6 +361,20 @@ impl<H> BranchNode<H> {
 
     pub fn key(&self) -> &NodeKey {
         &self.key
+    }
+
+    pub fn child(&self, direction: TraverseDirection) -> &Node<H> {
+        match direction {
+            TraverseDirection::Left => &self.left,
+            TraverseDirection::Right => &self.right,
+        }
+    }
+
+    pub fn child_mut(&mut self, direction: TraverseDirection) -> &mut Node<H> {
+        match direction {
+            TraverseDirection::Left => &mut self.left,
+            TraverseDirection::Right => &mut self.right,
+        }
     }
 
     pub fn left(&self) -> &Node<H> {

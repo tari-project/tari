@@ -1,6 +1,8 @@
 // Copyright 2023. The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
+use std::ops::Not;
+
 use crate::sparse_merkle_tree::{NodeKey, SMTError};
 
 /// Gets the bit at an offset from the most significant bit. Does NOT perform range checking
@@ -86,6 +88,17 @@ pub fn path_matches_key(key: &NodeKey, path: &[TraverseDirection]) -> bool {
 pub enum TraverseDirection {
     Left,
     Right,
+}
+
+impl Not for TraverseDirection {
+    type Output = Self;
+
+    fn not(self) -> Self::Output {
+        match self {
+            TraverseDirection::Left => TraverseDirection::Right,
+            TraverseDirection::Right => TraverseDirection::Left,
+        }
+    }
 }
 
 /// Checks whether the `child_key` would be a left or right child of the `parent_key` at the given height
