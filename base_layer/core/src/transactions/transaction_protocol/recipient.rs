@@ -28,14 +28,17 @@ use tari_common_types::{
     types::{FixedHash, PrivateKey, PublicKey, Signature},
 };
 
-use crate::transactions::{
-    key_manager::TransactionKeyManagerInterface,
-    transaction_components::{TransactionOutput, WalletOutput},
-    transaction_protocol::{
-        sender::{SingleRoundSenderData, TransactionSenderMessage},
-        single_receiver::SingleReceiverTransactionProtocol,
-        TransactionMetadata,
-        TransactionProtocolError,
+use crate::{
+    consensus::ConsensusConstants,
+    transactions::{
+        key_manager::TransactionKeyManagerInterface,
+        transaction_components::{TransactionOutput, WalletOutput},
+        transaction_protocol::{
+            sender::{SingleRoundSenderData, TransactionSenderMessage},
+            single_receiver::SingleReceiverTransactionProtocol,
+            TransactionMetadata,
+            TransactionProtocolError,
+        },
     },
 };
 
@@ -110,11 +113,12 @@ impl ReceiverTransactionProtocol {
         info: TransactionSenderMessage,
         output: WalletOutput,
         key_manager: &KM,
+        consensus_constants: &ConsensusConstants,
     ) -> ReceiverTransactionProtocol {
         let state = match info {
             TransactionSenderMessage::None => RecipientState::Failed(TransactionProtocolError::InvalidStateError),
             TransactionSenderMessage::Single(v) => {
-                ReceiverTransactionProtocol::single_round(output, &v, key_manager).await
+                ReceiverTransactionProtocol::single_round(output, &v, key_manager, consensus_constants).await
             },
             TransactionSenderMessage::Multiple => Self::multi_round(),
         };
@@ -152,8 +156,9 @@ impl ReceiverTransactionProtocol {
         output: WalletOutput,
         data: &SingleRoundSenderData,
         key_manager: &KM,
+        consensus_constants: &ConsensusConstants,
     ) -> RecipientState {
-        let signer = SingleReceiverTransactionProtocol::create(data, output, key_manager).await;
+        let signer = SingleReceiverTransactionProtocol::create(data, output, key_manager, consensus_constants).await;
         match signer {
             Ok(signed_data) => RecipientState::Finalized(Box::new(signed_data)),
             Err(e) => RecipientState::Failed(e),
@@ -186,12 +191,18 @@ mod test {
 
     use crate::{
         covenants::Covenant,
+        test_helpers::create_consensus_constants,
         transactions::{
             crypto_factories::CryptoFactories,
             key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface, TxoStage},
             tari_amount::*,
             test_helpers::{create_test_core_key_manager_with_memory_db, TestParams, UtxoTestParams},
-            transaction_components::{OutputFeatures, TransactionKernel, TransactionKernelVersion},
+            transaction_components::{
+                OutputFeatures,
+                TransactionKernel,
+                TransactionKernelVersion,
+                TransactionOutputVersion,
+            },
             transaction_protocol::{
                 sender::{SingleRoundSenderData, TransactionSenderMessage},
                 TransactionMetadata,
@@ -222,6 +233,8 @@ mod test {
             ephemeral_public_nonce: sender_test_params.ephemeral_public_nonce_key_pk,
             covenant: Covenant::default(),
             minimum_value_promise: MicroTari::zero(),
+            output_version: TransactionOutputVersion::get_current_version(),
+            kernel_version: TransactionKernelVersion::get_current_version(),
         };
         let sender_info = TransactionSenderMessage::Single(Box::new(msg.clone()));
         let params = UtxoTestParams {
@@ -230,7 +243,9 @@ mod test {
         };
         let receiver_test_params = TestParams::new(&key_manager).await;
         let output = receiver_test_params.create_output(params, &key_manager).await.unwrap();
-        let receiver = ReceiverTransactionProtocol::new(sender_info, output.clone(), &key_manager).await;
+        let consensus_constants = create_consensus_constants(0);
+        let receiver =
+            ReceiverTransactionProtocol::new(sender_info, output.clone(), &key_manager, &consensus_constants).await;
 
         assert!(receiver.is_finalized());
         let data = receiver.get_signed_data().unwrap();

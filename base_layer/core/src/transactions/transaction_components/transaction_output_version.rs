@@ -46,6 +46,12 @@ impl TransactionOutputVersion {
     }
 }
 
+impl Default for TransactionOutputVersion {
+    fn default() -> Self {
+        Self::get_current_version()
+    }
+}
+
 impl TryFrom<u8> for TransactionOutputVersion {
     type Error = String;
 
