@@ -26,11 +26,7 @@ use digest::Digest;
 use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparatedHasher};
 use tari_mmr::{Hash, MerkleMountainRange};
 
-hash_domain!(
-    MmrBenchTestHashDomain,
-    "com.tari.tari_project.base_layer.mmr.benches",
-    1
-);
+hash_domain!(MmrBenchTestHashDomain, "com.tari.base_layer.mmr.benches", 1);
 pub type MmrTestHasherBlake256 = DomainSeparatedHasher<Blake256, MmrBenchTestHashDomain>;
 pub type TestMmr = MerkleMountainRange<MmrTestHasherBlake256, Vec<Hash>>;
 

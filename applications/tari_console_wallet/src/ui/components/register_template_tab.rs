@@ -531,7 +531,7 @@ impl RegisterTemplateTab {
                                     StatusCode::OK => match data.bytes().await {
                                         Ok(bytes) => {
                                             let mut hasher = Blake256::new();
-                                            hash_domain!(TariEngineHashDomain, "tari.dan.engine", 0);
+                                            hash_domain!(TariEngineHashDomain, "com.tari.dan.engine", 0);
                                             TariEngineHashDomain::add_domain_separation_tag(&mut hasher, "Template");
                                             let hash: [u8; 32] = hasher.chain(bytes).finalize().into();
                                             hex_string = hash.to_hex();

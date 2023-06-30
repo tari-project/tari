@@ -33,10 +33,6 @@ pub mod rolling_avg;
 #[cfg(feature = "base_node")]
 pub mod rolling_vec;
 
-hash_domain!(
-    ConfidentialOutputHashDomain,
-    "com.tari.layer_two.confidential_output",
-    1
-);
+hash_domain!(ConfidentialOutputHashDomain, "com.tari.dan.confidential_output", 1);
 /// Hasher used in the DAN to derive masks and encrypted value keys
 pub type ConfidentialOutputHasher = DomainSeparatedConsensusHasher<ConfidentialOutputHashDomain>;

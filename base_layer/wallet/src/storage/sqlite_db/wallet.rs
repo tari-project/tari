@@ -88,14 +88,10 @@ hidden_type!(WalletSecondaryEncryptionKey, SafeArray<u8, { size_of::<Key>() }>);
 const MAIN_KEY_AAD_PREFIX: &str = "wallet_main_key_encryption_v";
 
 // Hash domains for secondary key derivation
-hash_domain!(
-    SecondaryKeyDomain,
-    "com.tari.tari_project.base_layer.wallet.secondary_key",
-    0
-);
+hash_domain!(SecondaryKeyDomain, "com.tari.base_layer.wallet.secondary_key", 0);
 hash_domain!(
     SecondaryKeyHashDomain,
-    "com.tari.tari_project.base_layer.wallet.secondary_key_hash_commitment",
+    "com.tari.base_layer.wallet.secondary_key_hash_commitment",
     0
 );
 

@@ -221,11 +221,11 @@ pub fn get_igor_genesis_block() -> ChainBlock {
 
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
-            FixedHash::from_hex("ad494884dabf1337a678625613d016d55c0d6a968c86a5ed57fd3099c207368b").unwrap();
+            FixedHash::from_hex("c71386fe8d30e1dbc5e9729ba6375630b78ae0fc8d1c26d6c4e02d250426d9a5").unwrap();
         block.header.output_mr =
-            FixedHash::from_hex("15c8730dfcc1414cae73a4614d5c2a8b95f32a8db80f5d2602b6b3e7419cd34e").unwrap();
+            FixedHash::from_hex("4d0e15c79d49c2cb4758cb7cb5a1d6ca28acf45ca87720ff2224e2340f171c1b").unwrap();
         block.header.validator_node_mr =
-            FixedHash::from_hex("e1d55f91ecc7e435080ac2641280516a355a5ecbe231158987da217b5af30047").unwrap();
+            FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
     }
 
     let accumulated_data = BlockHeaderAccumulatedData {
@@ -275,11 +275,11 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
 
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
-            FixedHash::from_hex("8c93eba80af538d89004df33e6d9f52fbd542f2a0e56887bdf1e0b8397e515a3").unwrap();
+            FixedHash::from_hex("f81830934480825e9289e00e45de3ce8e21744e629a2b49e12f1963a8e53d542").unwrap();
         block.header.output_mr =
-            FixedHash::from_hex("da2723bf3b44acd4b8809433ea5208ca4699603b31f9983cd7a461f92050e8c0").unwrap();
+            FixedHash::from_hex("9a2172068cedda92629111c0a76250900cba9b3c553943536f9e388df35effba").unwrap();
         block.header.validator_node_mr =
-            FixedHash::from_hex("e1d55f91ecc7e435080ac2641280516a355a5ecbe231158987da217b5af30047").unwrap();
+            FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
     }
 
     let accumulated_data = BlockHeaderAccumulatedData {
@@ -328,11 +328,11 @@ fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &[
             height: 0,
             prev_hash: FixedHash::zero(),
             timestamp: timestamp.into(),
-            output_mr: FixedHash::from_hex("7319ca29721731cebf9725b7b3b1a5abb8e721d30b11aaa84e10556da4d80acf").unwrap(),
+            output_mr: FixedHash::from_hex("daab077d6dadb830bf506cc55c82abc6c3563bec6ff1d5699806f8b13059b4c3").unwrap(),
             output_mmr_size: 0,
-            kernel_mr: FixedHash::from_hex("e7ab4ea97d3410a402b1f18c7f6b347ee368259a50353c105c0303ab4420a809").unwrap(),
+            kernel_mr: FixedHash::from_hex("c14803066909d6d22abf0d2d2782e8936afc3f713f2af3a4ef5c42e8400c1303").unwrap(),
             kernel_mmr_size: 0,
-            validator_node_mr: FixedHash::from_hex("e1d55f91ecc7e435080ac2641280516a355a5ecbe231158987da217b5af30047")
+            validator_node_mr: FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc")
                 .unwrap(),
             input_mr: FixedHash::zero(),
             total_kernel_offset: PrivateKey::from_hex(

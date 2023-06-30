@@ -25,7 +25,7 @@ use croaring::Bitmap;
 use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparatedHasher};
 use tari_mmr::{Hash, HashSlice, MerkleMountainRange, MutableMmr};
 
-hash_domain!(MmrTestHashDomain, "com.tari.tari_project.base_layer.core.kernel_mmr", 1);
+hash_domain!(MmrTestHashDomain, "com.tari.test.base_layer.core.kernel_mmr", 1);
 pub type MmrTestHasherBlake256 = DomainSeparatedHasher<Blake256, MmrTestHashDomain>;
 pub type TestMmr = MerkleMountainRange<MmrTestHasherBlake256, Vec<Hash>>;
 pub type MutableTestMmr = MutableMmr<MmrTestHasherBlake256, Vec<Hash>>;
