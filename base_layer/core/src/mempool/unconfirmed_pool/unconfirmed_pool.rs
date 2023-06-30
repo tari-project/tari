@@ -89,8 +89,7 @@ pub struct RetrieveResults {
     pub transactions_to_insert: Vec<Arc<Transaction>>,
 }
 
-pub type CompleteTransactionBranch =
-    HashMap<TransactionKey, (HashMap<TransactionKey, Arc<Transaction>>, u64, u64)>;
+pub type CompleteTransactionBranch = HashMap<TransactionKey, (HashMap<TransactionKey, Arc<Transaction>>, u64, u64)>;
 
 impl UnconfirmedPool {
     /// Create a new UnconfirmedPool with the specified configuration

@@ -477,8 +477,8 @@ async fn test_zero_conf_no_piggyback() {
         &consensus_manager,
         &key_manager,
     )
-        .await
-        .unwrap();
+    .await
+    .unwrap();
     mempool.process_published_block(blocks[1].to_arc_block()).await.unwrap();
 
     // Create 4 original transactions, only submit 3 (hold back tx02)
@@ -492,7 +492,7 @@ async fn test_zero_conf_no_piggyback() {
         ),
         &key_manager,
     )
-        .await;
+    .await;
     assert_eq!(
         mempool.insert(Arc::new(tx_d.clone())).await.unwrap(),
         TxStorageResponse::UnconfirmedPool
@@ -507,7 +507,7 @@ async fn test_zero_conf_no_piggyback() {
         ),
         &key_manager,
     )
-        .await;
+    .await;
     assert_eq!(
         mempool.insert(Arc::new(tx_c.clone())).await.unwrap(),
         TxStorageResponse::UnconfirmedPool
@@ -523,7 +523,7 @@ async fn test_zero_conf_no_piggyback() {
         ),
         &key_manager,
     )
-        .await;
+    .await;
     assert_eq!(
         mempool.insert(Arc::new(tx_b.clone())).await.unwrap(),
         TxStorageResponse::UnconfirmedPool
@@ -538,7 +538,7 @@ async fn test_zero_conf_no_piggyback() {
         ),
         &key_manager,
     )
-        .await;
+    .await;
 
     assert_eq!(
         mempool.insert(Arc::new(tx_a.clone())).await.unwrap(),
