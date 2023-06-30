@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.51.0-pre.4](https://github.com/tari-project/tari/compare/v0.51.0-pre.3...v0.51.0-pre.4) (2023-06-30)
+
+#### Breaking Changes
+
+* hash domain consistency (#5556) ([64443c6f](https://github.com/tari-project/tari/commit/64443c6f428fa84f8ab3e4b86949be6faef35aeb))
+* consistent output/kernel versions between sender and receiver (#5553) ([74f9c35f](https://github.com/tari-project/tari/commit/74f9c35f6a34c1cf731274b7febb245734ae7032))
+
+#### Bug Fixes
+
+*   mempool should use the correct version of the consensus constant (#5549) ([46ab3ef0](https://github.com/tari-project/tari/commit/46ab3ef07e41b091b869ef59376d0709a24e7437))
+*   mempool fetch_highest_priority_txs (#5551) ([f7f749c4](https://github.com/tari-project/tari/commit/f7f749c4c476f489f9e30afb87461780d1996834)
+*   remove optional timestamp verification bypass (#5552) ([b5a5bed2](https://github.com/tari-project/tari/commit/b5a5bed2c23c273d3787afa1c845f62badec1a46))
+*   update code coverage approach (#5540) ([7a9830ed](https://github.com/tari-project/tari/commit/7a9830edb66b6be3edc40b84ae8a1a9c3f4ef525)
+*   use correct TOML field for console wallet network address (#5531) ([70763dde](https://github.com/tari-project/tari/commit/70763dde25c1569013e489a0798540fd66dfa571)
+*   llvm-tools installed correctly (#5534) ([4ab4b965](https://github.com/tari-project/tari/commit/4ab4b965e5f0556d508ec071a152deb5ad8ea8cc))
+*   push test coverage even if some tests fail (#5533) ([053c748d](https://github.com/tari-project/tari/commit/053c748d3d7aee674bada24609612bde9ba1420e)
+* **console-wallet:**  fix possible subtract underflow panic in list (#5535) ([8d5e8e6e](https://github.com/tari-project/tari/commit/8d5e8e6eac45b11867cee6104c207f6559851405)
+* **core:**  disable covenants for all networks except igor and localnet (#5505) ([308f5299](https://github.com/tari-project/tari/commit/308f5299007a67df8fb9fe73763809264005e35c)
+*   add a not before proof (#5560) ([11f42fb0](https://github.com/tari-project/tari/commit/11f42fb0942da3bd64db8ad203b75c364dbe0926)
+*   borsh sized serialization should be fallible   (#5537) ([53058ce2](https://github.com/tari-project/tari/commit/53058ce299cb89f118017ccec5e98a991a7fcbcc)
+*   add documentation to covenant crate (#5524) ([442d75b0](https://github.com/tari-project/tari/commit/442d75b09f439e4bc81919fc42eaf43846b2c8ca)
+*   covenants audit (#5526) ([dbb59758](https://github.com/tari-project/tari/commit/dbb59758a92cdf4483574dc6e7c719efa94eedfd)
+
+
 ## [0.51.0-pre.3](https://github.com/tari-project/tari/compare/v0.51.0-pre.2...v0.51.0-pre.3) (2023-06-26)
 
 
