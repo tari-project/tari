@@ -232,8 +232,8 @@ pub struct TestBlockData {
 /// Generates a set of block headers and key manager outputs for each header. The `birthday_offset` specifies at which
 /// block in the `num_block` the birthday timestamp will have passed i.e. it occured during the previous block period.
 /// e.g. with `num_blocks` = 10 and `birthday_offset` = 5 the birthday timestamp will occur between block 4 and 5
-
-// casting wrap around here is okay
+// casting wrap around here is okay as this is all tests. Here its used to calculate the birthday offsets, they wont be
+// large enough in the test to actually wrap around
 #[allow(clippy::cast_possible_wrap)]
 async fn generate_block_headers_and_utxos(
     start_height: u64,
