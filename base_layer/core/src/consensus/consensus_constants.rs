@@ -614,6 +614,7 @@ impl ConsensusConstants {
         consensus_constants
     }
 
+    // These values are mainly place holder till the final decision has been made about their values.
     pub fn mainnet() -> Vec<Self> {
         let difficulty_block_window = 90;
         let mut algos = HashMap::new();
