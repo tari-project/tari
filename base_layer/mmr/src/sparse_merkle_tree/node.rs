@@ -10,7 +10,7 @@ use std::{
 use digest::{consts::U32, Digest};
 
 use crate::sparse_merkle_tree::{
-    bit_utils::{count_common_prefix, get_bit, height_key, TraverseDirection},
+    bit_utils::{bit_to_dir, count_common_prefix, get_bit, height_key, TraverseDirection},
     Node::*,
     SMTError,
 };
@@ -110,7 +110,74 @@ hash_type!(NodeHash);
 hash_type!(ValueHash);
 hash_type!(NodeKey);
 
+impl NodeKey {
+    pub fn as_directions(&self) -> PathIterator {
+        PathIterator::new(self)
+    }
+}
+
 pub const EMPTY_NODE_HASH: NodeHash = NodeHash([0; 32]);
+
+pub struct PathIterator<'a> {
+    cursor_front: usize,
+    // position *after* next bit when going backwards
+    cursor_back: usize,
+    key: &'a NodeKey,
+}
+
+impl PathIterator<'_> {
+    pub fn new(key: &NodeKey) -> PathIterator {
+        PathIterator {
+            cursor_front: 0,
+            cursor_back: key.len() * 8,
+            key,
+        }
+    }
+}
+
+impl<'a> Iterator for PathIterator<'a> {
+    type Item = TraverseDirection;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.cursor_front >= self.cursor_back {
+            return None;
+        }
+        let bit = get_bit(self.key.as_slice(), self.cursor_front);
+        self.cursor_front += 1;
+        Some(bit_to_dir(bit))
+    }
+
+    // This must be overridden, otherwise iterator connectors don't work
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self.cursor_back.saturating_sub(self.cursor_front);
+        (len, Some(len))
+    }
+}
+
+impl<'a> DoubleEndedIterator for PathIterator<'a> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.cursor_front >= self.cursor_back {
+            return None;
+        }
+        self.cursor_back -= 1;
+        let bit = get_bit(self.key.as_slice(), self.cursor_back);
+        Some(bit_to_dir(bit))
+    }
+
+    fn nth_back(&mut self, n: usize) -> Option<Self::Item> {
+        if self.cursor_front >= self.cursor_back {
+            return None;
+        }
+        self.cursor_back -= n;
+        self.next_back()
+    }
+}
+
+impl<'a> ExactSizeIterator for PathIterator<'a> {
+    fn len(&self) -> usize {
+        self.cursor_back - self.cursor_front
+    }
+}
 
 #[derive(Debug)]
 pub enum Node<H> {
@@ -462,6 +529,7 @@ mod test {
     use rand::{self, RngCore};
 
     use super::*;
+    use crate::sparse_merkle_tree::bit_utils::TraverseDirection::{Left, Right};
 
     fn random_arr() -> [u8; 32] {
         let mut result = [0; 32];
@@ -526,5 +594,44 @@ mod test {
             .chain_update(r_hash)
             .finalize();
         assert_eq!(branch.hash().as_slice(), expected.as_slice());
+    }
+
+    #[test]
+    fn path_iterator_default() {
+        let key = NodeKey::from(&[0; 32]);
+        let path = key.as_directions().collect::<Vec<_>>();
+        assert_eq!(path.len(), 256);
+        assert_eq!(path, [TraverseDirection::Left; 256]);
+    }
+
+    #[test]
+    fn path_iterator_connectors() {
+        let key = NodeKey::from(&[0; 32]);
+        let iter = key.as_directions();
+        assert_eq!(iter.len(), 256);
+        assert_eq!(iter.take(14).len(), 14);
+        let iter = key.as_directions();
+        assert_eq!(iter.rev().take(18).len(), 18);
+    }
+
+    #[test]
+    fn path_iterator() {
+        let mut key = [0u8; 32];
+        key[0] = 0b1101_1011;
+        let key = NodeKey::from(key);
+        let dirs = key.as_directions().take(8).collect::<Vec<_>>();
+        assert_eq!(dirs, [Right, Right, Left, Right, Right, Left, Right, Right]);
+    }
+
+    #[test]
+    fn path_iterator_rev() {
+        let mut key = [0u8; 32];
+        key[0] = 0b0011_1000;
+        key[31] = 0b1110_0011;
+        let key = NodeKey::from(key);
+        let dirs = key.as_directions().rev().take(8).collect::<Vec<_>>();
+        assert_eq!(dirs, [Right, Right, Left, Left, Left, Right, Right, Right]);
+        let dirs = key.as_directions().take(8).rev().collect::<Vec<_>>();
+        assert_eq!(dirs, [Left, Left, Left, Right, Right, Right, Left, Left]);
     }
 }
