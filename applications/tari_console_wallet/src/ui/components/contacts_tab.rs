@@ -119,6 +119,8 @@ impl ContactsTab {
         column_list
     }
 
+    // casting here is okay as we only use it to draw widths
+    #[allow(clippy::cast_possible_truncation)]
     fn draw_edit_contact<B>(&mut self, f: &mut Frame<B>, area: Rect, _app_state: &AppState)
     where B: Backend {
         let popup_area = centered_rect_absolute(120, 10, area);

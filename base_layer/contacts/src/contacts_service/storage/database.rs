@@ -126,6 +126,8 @@ where T: ContactsBackend + 'static
         Ok(())
     }
 
+    // converting u32 to i32 is okay here as its just the latency which wont reach u32 max.
+    #[allow(clippy::cast_possible_wrap)]
     pub fn update_contact_last_seen(
         &self,
         node_id: &NodeId,

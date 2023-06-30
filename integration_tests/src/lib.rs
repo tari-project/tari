@@ -20,7 +20,7 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{net::TcpListener, ops::Range, path::PathBuf, process, time::Duration};
+use std::{convert::TryFrom, net::TcpListener, ops::Range, path::PathBuf, process, time::Duration};
 
 use rand::Rng;
 
@@ -63,7 +63,7 @@ pub async fn wait_for_service(port: u64) {
     let mut attempts = 0;
 
     loop {
-        if TcpListener::bind(("127.0.0.1", port as u16)).is_err() {
+        if TcpListener::bind(("127.0.0.1", u16::try_from(port).unwrap())).is_err() {
             return;
         }
 

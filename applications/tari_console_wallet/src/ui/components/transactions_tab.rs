@@ -49,6 +49,8 @@ impl TransactionsTab {
         }
     }
 
+    // casting here is okay the max value is 7
+    #[allow(clippy::cast_possible_truncation)]
     fn draw_transaction_lists<B>(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
     where B: Backend {
         let (pending_constraint, completed_constraint) = if app_state.get_pending_txs().is_empty() {

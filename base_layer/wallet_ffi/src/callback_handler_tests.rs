@@ -242,6 +242,8 @@ mod test {
         drop(Box::from_raw(balance));
     }
 
+    // casting is okay in tests
+    #[allow(clippy::cast_possible_truncation)]
     unsafe extern "C" fn transaction_validation_complete_callback(request_key: u64, result: u64) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.callback_transaction_validation_complete += request_key as u32 + result as u32;
@@ -262,6 +264,8 @@ mod test {
     }
 
     #[test]
+    // casting casting is okay in tests
+    #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::too_many_lines)]
     fn test_callback_handler() {
         let runtime = Runtime::new().unwrap();

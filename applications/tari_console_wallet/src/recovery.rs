@@ -141,7 +141,7 @@ pub async fn wallet_recovery(
                 current_height,
                 tip_height,
             }) => {
-                let percentage_progress = ((current_height as f32) * 100f32 / (tip_height as f32)).round() as u32;
+                let percentage_progress = (current_height * 100) / tip_height;
                 debug!(
                     target: LOG_TARGET,
                     "{}: Recovery process {}% complete (Block {} of {}).",

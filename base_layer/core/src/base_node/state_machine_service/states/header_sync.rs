@@ -70,6 +70,8 @@ impl HeaderSyncState {
         self.sync_peers
     }
 
+    // converting u64 to i64 is okay as the future time limit is the hundreds so way below u32 even
+    #[allow(clippy::cast_possible_wrap)]
     pub async fn next_event<B: BlockchainBackend + 'static>(
         &mut self,
         shared: &mut BaseNodeStateMachine<B>,

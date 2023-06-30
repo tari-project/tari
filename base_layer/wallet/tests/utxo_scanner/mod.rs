@@ -20,7 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashMap, convert::TryInto, sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    convert::{TryFrom, TryInto},
+    sync::Arc,
+    time::Duration,
+};
 
 use chrono::{Duration as ChronoDuration, Utc};
 use rand::{rngs::OsRng, RngCore};
@@ -227,6 +232,9 @@ pub struct TestBlockData {
 /// Generates a set of block headers and key manager outputs for each header. The `birthday_offset` specifies at which
 /// block in the `num_block` the birthday timestamp will have passed i.e. it occured during the previous block period.
 /// e.g. with `num_blocks` = 10 and `birthday_offset` = 5 the birthday timestamp will occur between block 4 and 5
+// casting wrap around here is okay as this is all tests. Here its used to calculate the birthday offsets, they wont be
+// large enough in the test to actually wrap around
+#[allow(clippy::cast_possible_wrap)]
 async fn generate_block_headers_and_utxos(
     start_height: u64,
     num_blocks: u64,
@@ -448,7 +456,7 @@ async fn test_utxo_scanner_recovery_with_restart() {
 
     tokio::spawn(test_interface.scanner_service.take().unwrap().run());
 
-    tx.send(SYNC_INTERRUPT as usize).await.unwrap();
+    tx.send(usize::try_from(SYNC_INTERRUPT).unwrap()).await.unwrap();
 
     let _result = test_interface
         .rpc_service_state
@@ -607,7 +615,7 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
 
     tokio::spawn(test_interface.scanner_service.take().unwrap().run());
 
-    tx.send(SYNC_INTERRUPT as usize).await.unwrap();
+    tx.send(usize::try_from(SYNC_INTERRUPT).unwrap()).await.unwrap();
 
     let _result = test_interface
         .rpc_service_state

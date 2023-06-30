@@ -88,8 +88,10 @@ impl TryFrom<MessagesSql> for Message {
         let address = TariAddress::from_bytes(&o.address).map_err(|_| ContactsServiceStorageError::ConversionError)?;
         Ok(Self {
             address,
-            direction: Direction::from_byte(o.direction as u8)
-                .unwrap_or_else(|| panic!("Direction from byte {}", o.direction)),
+            direction: Direction::from_byte(
+                u8::try_from(o.direction).map_err(|_| ContactsServiceStorageError::ConversionError)?,
+            )
+            .unwrap_or_else(|| panic!("Direction from byte {}", o.direction)),
             stored_at: o.stored_at.timestamp() as u64,
             body: o.body,
             message_id: o.message_id,
