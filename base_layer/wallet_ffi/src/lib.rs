@@ -5241,7 +5241,7 @@ pub unsafe extern "C" fn wallet_create(
             .to_str()
             .expect("A non-null network should be able to be converted to string");
         info!(target: LOG_TARGET, "network set to {}", network);
-        // eprintln!("network set to {}", network);
+
         match Network::from_str(network) {
             Ok(n) => n,
             Err(_) => {

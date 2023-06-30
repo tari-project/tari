@@ -76,7 +76,7 @@ impl Transaction {
     }
 
     /// Returns the byte size or weight of a transaction
-    pub fn calculate_weight(&self, transaction_weight: &TransactionWeight) -> u64 {
+    pub fn calculate_weight(&self, transaction_weight: &TransactionWeight) -> std::io::Result<u64> {
         self.body.calculate_weight(transaction_weight)
     }
 

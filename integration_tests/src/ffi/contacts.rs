@@ -66,5 +66,3 @@ impl Contacts {
         Contact::from_ptr(ptr)
     }
 }
-
-// pub fn contacts_get_at(contacts: *mut TariContacts, position: c_uint, error_out: *mut c_int) -> *mut TariContact;

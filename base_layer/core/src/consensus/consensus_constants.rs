@@ -208,18 +208,18 @@ impl ConsensusConstants {
 
     /// Maximum transaction weight used for the construction of new blocks. It leaves place for 1 kernel and 1 output
     /// with default features, as well as the maximum possible value of the `coinbase_extra` field
-    pub fn max_block_weight_excluding_coinbase(&self) -> u64 {
-        self.max_block_transaction_weight - self.calculate_1_output_kernel_weight()
+    pub fn max_block_weight_excluding_coinbase(&self) -> std::io::Result<u64> {
+        Ok(self.max_block_transaction_weight - self.calculate_1_output_kernel_weight()?)
     }
 
-    fn calculate_1_output_kernel_weight(&self) -> u64 {
+    fn calculate_1_output_kernel_weight(&self) -> std::io::Result<u64> {
         let output_features = OutputFeatures { ..Default::default() };
         let max_extra_size = self.coinbase_output_features_extra_max_length() as usize;
 
         let features_and_scripts_size = self.transaction_weight.round_up_features_and_scripts_size(
-            output_features.get_serialized_size() + max_extra_size + script![Nop].get_serialized_size(),
+            output_features.get_serialized_size()? + max_extra_size + script![Nop].get_serialized_size()?,
         );
-        self.transaction_weight.calculate(1, 0, 1, features_and_scripts_size)
+        Ok(self.transaction_weight.calculate(1, 0, 1, features_and_scripts_size))
     }
 
     pub fn coinbase_output_features_extra_max_length(&self) -> u32 {
@@ -614,6 +614,7 @@ impl ConsensusConstants {
         consensus_constants
     }
 
+    // These values are mainly place holder till the final decision has been made about their values.
     pub fn mainnet() -> Vec<Self> {
         let difficulty_block_window = 90;
         let mut algos = HashMap::new();

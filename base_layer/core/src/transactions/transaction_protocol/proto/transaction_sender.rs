@@ -108,6 +108,14 @@ impl TryFrom<proto::SingleRoundSenderData> for SingleRoundSenderData {
             .ok_or_else(|| "Transaction output features not provided".to_string())??;
         let mut buffer = data.covenant.as_slice();
         let covenant = BorshDeserialize::deserialize(&mut buffer).map_err(|err| err.to_string())?;
+        let output_version = u8::try_from(data.output_version)
+            .map_err(|_| "Transaction output version overflow")?
+            .try_into()
+            .map_err(|_| "Invalid transaction output version")?;
+        let kernel_version = u8::try_from(data.kernel_version)
+            .map_err(|_| "Transaction kernel version overflow")?
+            .try_into()
+            .map_err(|_| "Invalid transaction kernel version")?;
 
         Ok(Self {
             tx_id: data.tx_id.into(),
@@ -122,6 +130,8 @@ impl TryFrom<proto::SingleRoundSenderData> for SingleRoundSenderData {
             ephemeral_public_nonce,
             covenant,
             minimum_value_promise: data.minimum_value_promise.into(),
+            output_version,
+            kernel_version,
         })
     }
 }
@@ -147,6 +157,8 @@ impl TryFrom<SingleRoundSenderData> for proto::SingleRoundSenderData {
             ephemeral_public_nonce: sender_data.ephemeral_public_nonce.to_vec(),
             covenant,
             minimum_value_promise: sender_data.minimum_value_promise.into(),
+            output_version: sender_data.output_version.as_u8().into(),
+            kernel_version: sender_data.kernel_version.as_u8().into(),
         })
     }
 }

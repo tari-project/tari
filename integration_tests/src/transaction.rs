@@ -111,7 +111,9 @@ impl TestTransactionBuilder {
         let script = script!(Nop);
         let features = OutputFeatures::default();
         let covenant = Covenant::default();
-        let value = self.amount - self.estimate_fee(num_inputs, features.clone(), script.clone(), covenant.clone());
+        let value = self.amount -
+            self.estimate_fee(num_inputs, features.clone(), script.clone(), covenant.clone())
+                .expect("Failed to estimate fee");
         let builder = WalletOutputBuilder::new(value, self.keys.spend_key_id.clone())
             .with_features(features)
             .with_script(script)
@@ -139,12 +141,12 @@ impl TestTransactionBuilder {
         features: OutputFeatures,
         script: TariScript,
         covenant: Covenant,
-    ) -> MicroTari {
+    ) -> std::io::Result<MicroTari> {
         let features_and_scripts_bytes =
-            features.get_serialized_size() + script.get_serialized_size() + covenant.get_serialized_size();
+            features.get_serialized_size()? + script.get_serialized_size()? + covenant.get_serialized_size()?;
         let weights = TransactionWeight::v1();
         let fee = self.fee_per_gram.0 * weights.calculate(1, num_inputs, 1 + 1, features_and_scripts_bytes);
-        MicroTari(fee)
+        Ok(MicroTari(fee))
     }
 }
 

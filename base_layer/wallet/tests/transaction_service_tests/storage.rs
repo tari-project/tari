@@ -86,7 +86,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     .unwrap();
     let constants = create_consensus_constants(0);
     let key_manager = create_test_core_key_manager_with_memory_db();
-    let mut builder = SenderTransactionProtocol::builder(constants, key_manager.clone());
+    let mut builder = SenderTransactionProtocol::builder(constants.clone(), key_manager.clone());
     let amount = MicroTari::from(10_000);
     builder
         .with_lock_height(0)
@@ -215,9 +215,13 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         .await
         .unwrap();
 
-    let rtp =
-        ReceiverTransactionProtocol::new(TransactionSenderMessage::Single(Box::new(sender)), output, &key_manager)
-            .await;
+    let rtp = ReceiverTransactionProtocol::new(
+        TransactionSenderMessage::Single(Box::new(sender)),
+        output,
+        &key_manager,
+        &constants,
+    )
+    .await;
 
     let mut inbound_txs = Vec::new();
 

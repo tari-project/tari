@@ -76,7 +76,7 @@ impl CommandContext {
                     tx.body.outputs().len(),
                     tx.body.kernels().len(),
                     tx.body.inputs().len(),
-                    tx.body.sum_features_and_scripts_size(),
+                    tx.body.sum_features_and_scripts_size()?,
                 );
             }
         }

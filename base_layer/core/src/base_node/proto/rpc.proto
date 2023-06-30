@@ -49,7 +49,7 @@ message FindChainSplitResponse {
   // `FindChainSplitRequest::block_hashes`. This value could also be used to
   // know how far back a split occurs.
   uint64 fork_hash_index = 2;
-  /// The current header height of this node
+  // The current header height of this node
   uint64 tip_height = 3;
 }
 
