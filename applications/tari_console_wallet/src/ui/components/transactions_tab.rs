@@ -49,6 +49,8 @@ impl TransactionsTab {
         }
     }
 
+    // casting here is okay the max value is 7
+    #[allow(clippy::cast_possible_truncation)]
     fn draw_transaction_lists<B>(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
     where B: Backend {
         let (pending_constraint, completed_constraint) = if app_state.get_pending_txs().is_empty() {
@@ -86,7 +88,7 @@ impl TransactionsTab {
         self.pending_list_state.set_num_items(app_state.get_pending_txs().len());
         let mut pending_list_state = self
             .pending_list_state
-            .get_list_state((area.height as usize).saturating_sub(3));
+            .update_list_state((area.height as usize).saturating_sub(3));
         let window = self.pending_list_state.get_start_end();
         let windowed_view = app_state.get_pending_txs_slice(window.0, window.1);
 
@@ -186,7 +188,7 @@ impl TransactionsTab {
         }
         let mut completed_list_state = self
             .completed_list_state
-            .get_list_state((area.height as usize).saturating_sub(3));
+            .update_list_state((area.height as usize).saturating_sub(3));
         let (start, end) = self.completed_list_state.get_start_end();
         let windowed_view = &completed_txs[start..end];
 

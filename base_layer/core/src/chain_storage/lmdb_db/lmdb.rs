@@ -50,6 +50,7 @@ use crate::chain_storage::{
 
 pub const LOG_TARGET: &str = "c::cs::lmdb_db::lmdb";
 
+/// Makes an insertion into the lmdb table, will error if the key already exists
 pub fn lmdb_insert<K, V>(
     txn: &WriteTransaction<'_>,
     db: &Database,
@@ -150,6 +151,7 @@ where
     Ok(())
 }
 
+/// Deletes the given key value pair. An error is returned if the key and value does not exist
 pub fn lmdb_delete_key_value<K, V>(
     txn: &WriteTransaction<'_>,
     db: &Database,
@@ -164,6 +166,7 @@ where
     Ok(())
 }
 
+/// Deletes all keys matching the key
 pub fn lmdb_delete_keys_starting_with<V>(
     txn: &WriteTransaction<'_>,
     db: &Database,
@@ -196,6 +199,7 @@ where
     Ok(result)
 }
 
+/// retrieves the given key value pair
 pub fn lmdb_get<K, V>(txn: &ConstTransaction<'_>, db: &Database, key: &K) -> Result<Option<V>, ChainStorageError>
 where
     K: AsLmdbBytes + ?Sized,
@@ -221,6 +225,7 @@ where
     }
 }
 
+/// retrieves the multiple values matching the key
 pub fn lmdb_get_multiple<K, V>(txn: &ConstTransaction<'_>, db: &Database, key: &K) -> Result<Vec<V>, ChainStorageError>
 where
     K: AsLmdbBytes + FromLmdbBytes + ?Sized,
@@ -250,6 +255,7 @@ where
     Ok(result)
 }
 
+/// Retrieves the last value stored in the database
 pub fn lmdb_last<V>(txn: &ConstTransaction<'_>, db: &Database) -> Result<Option<V>, ChainStorageError>
 where V: DeserializeOwned {
     let mut cursor = txn.cursor(db)?;
@@ -270,6 +276,7 @@ where V: DeserializeOwned {
     }
 }
 
+/// Checks if the key exists in the database
 pub fn lmdb_exists<K>(txn: &ConstTransaction<'_>, db: &Database, key: &K) -> Result<bool, ChainStorageError>
 where K: AsLmdbBytes + ?Sized {
     let access = txn.access();
@@ -283,6 +290,7 @@ where K: AsLmdbBytes + ?Sized {
     }
 }
 
+/// Returns the amount of entries of the database table
 pub fn lmdb_len(txn: &ConstTransaction<'_>, db: &Database) -> Result<usize, ChainStorageError> {
     let stats = txn.db_stat(db).map_err(|e| {
         error!(target: LOG_TARGET, "Could not read length from lmdb: {:?}", e);
@@ -310,6 +318,7 @@ where
     Ok(KeyPrefixCursor::new(cursor, access, prefix_key))
 }
 
+/// Fetches values the key prefix
 pub fn lmdb_fetch_matching_after<V>(
     txn: &ConstTransaction<'_>,
     db: &Database,
@@ -326,6 +335,7 @@ where
     Ok(result)
 }
 
+/// Fetches first value the key prefix
 pub fn lmdb_first_after<K, V>(
     txn: &ConstTransaction<'_>,
     db: &Database,
@@ -350,6 +360,7 @@ where
     }
 }
 
+/// Filter the values matching the fn
 pub fn lmdb_filter_map_values<F, V, R>(
     txn: &ConstTransaction<'_>,
     db: &Database,
@@ -398,6 +409,7 @@ pub fn fetch_db_entry_sizes(txn: &ConstTransaction<'_>, db: &Database) -> Result
     Ok((num_entries, total_key_size, total_value_size))
 }
 
+/// deletes entries using the filter Fn
 pub fn lmdb_delete_each_where<K, V, F>(
     txn: &WriteTransaction<'_>,
     db: &Database,
@@ -435,6 +447,7 @@ where
     Ok(num_deleted)
 }
 
+/// Deletes the entire database
 pub fn lmdb_clear(txn: &WriteTransaction<'_>, db: &Database) -> Result<usize, ChainStorageError> {
     let mut cursor = txn.cursor(db)?;
     let mut access = txn.access();

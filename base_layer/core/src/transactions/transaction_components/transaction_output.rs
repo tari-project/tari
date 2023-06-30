@@ -446,8 +446,10 @@ impl TransactionOutput {
         }
     }
 
-    pub fn get_features_and_scripts_size(&self) -> usize {
-        self.features.get_serialized_size() + self.script.get_serialized_size() + self.covenant.get_serialized_size()
+    pub fn get_features_and_scripts_size(&self) -> std::io::Result<usize> {
+        Ok(self.features.get_serialized_size()? +
+            self.script.get_serialized_size()? +
+            self.covenant.get_serialized_size()?)
     }
 }
 
@@ -722,7 +724,7 @@ mod test {
         .await
         {
             Ok(_) => panic!("Should not have been able to create output"),
-            Err(e) => assert_eq!(e, "Invalid revealed value : Expected 20 µT, received 0 µT"),
+            Err(e) => assert_eq!(e, "Invalid revealed value: Expected 20 µT, received 0 µT"),
         }
     }
 

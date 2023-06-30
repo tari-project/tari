@@ -63,6 +63,8 @@ impl SendTab {
         }
     }
 
+    // casting here is okay as we only use it here for draw widths
+    #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::too_many_lines)]
     fn draw_send_form<B>(&self, f: &mut Frame<B>, area: Rect, _app_state: &AppState)
     where B: Backend {
@@ -135,7 +137,7 @@ impl SendTab {
             .split(vert_chunks[2]);
 
         let amount_input = Paragraph::new(match &self.selected_unique_id {
-            Some(token) => format!("Token selected : {}", token.to_hex()),
+            Some(token) => format!("Token selected: {}", token.to_hex()),
             None => self.amount_field.to_string(),
         })
         .style(match self.send_input_mode {
@@ -198,7 +200,6 @@ impl SendTab {
         }
     }
 
-    #[allow(dead_code)]
     fn draw_contacts<B>(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
     where B: Backend {
         let block = Block::default().borders(Borders::ALL).title(Span::styled(
@@ -223,7 +224,7 @@ impl SendTab {
         self.contacts_list_state.set_num_items(app_state.get_contacts().len());
         let mut list_state = self
             .contacts_list_state
-            .get_list_state((list_areas[1].height as usize).saturating_sub(3));
+            .update_list_state((list_areas[1].height as usize).saturating_sub(3));
         let window = self.contacts_list_state.get_start_end();
         let windowed_view = app_state.get_contacts_slice(window.0, window.1);
 

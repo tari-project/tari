@@ -64,6 +64,8 @@ impl BurnTab {
         }
     }
 
+    // casting here is okay as we only use it for draw widths
+    #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::too_many_lines)]
     fn draw_burn_form<B>(&self, f: &mut Frame<B>, area: Rect, _app_state: &AppState)
     where B: Backend {
@@ -234,7 +236,7 @@ impl BurnTab {
 
         let mut list_state = self
             .proofs_list_state
-            .get_list_state((list_areas[1].height as usize).saturating_sub(3));
+            .update_list_state((list_areas[1].height as usize).saturating_sub(3));
 
         let window = self.proofs_list_state.get_start_end();
         let windowed_view = app_state.get_burnt_proofs_slice(window.0, window.1);

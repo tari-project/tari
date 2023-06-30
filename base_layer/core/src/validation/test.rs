@@ -112,7 +112,7 @@ mod header_validators {
         let mut header = BlockHeader::from_previous(genesis.header());
         header.version = u16::MAX;
         let difficulty_calculator = DifficultyCalculator::new(consensus_manager.clone(), Default::default());
-        let validator = HeaderFullValidator::new(consensus_manager, difficulty_calculator, false);
+        let validator = HeaderFullValidator::new(consensus_manager, difficulty_calculator);
 
         let err = validator
             .validate(&*db.db_read_access().unwrap(), &header, genesis.header(), &[], None)
@@ -198,7 +198,7 @@ async fn chain_balance_validation() {
         MicroTari::zero(),
     )
     .await;
-    // let _coinbase_hash = coinbase.hash();
+
     let (pk, sig) = create_random_signature_from_secret_key(
         &key_manager,
         coinbase_key_id,
@@ -484,8 +484,11 @@ mod transaction_validator {
         let factories = CryptoFactories::default();
         let validator = TransactionInternalConsistencyValidator::new(true, consensus_manager, factories);
         let features = OutputFeatures::create_coinbase(0, None);
-        let (tx, _, _) =
-            tx!(MicroTari(100_000), fee: MicroTari(5), inputs: 1, outputs: 1, features: features, &key_manager);
+        let tx = match tx!(MicroTari(100_000), fee: MicroTari(5), inputs: 1, outputs: 1, features: features, &key_manager)
+        {
+            Ok((tx, _, _)) => tx,
+            Err(e) => panic!("Error found: {}", e),
+        };
         let tip = db.get_chain_metadata().unwrap();
         let err = validator.validate_with_current_tip(&tx, tip).unwrap_err();
         unpack_enum!(ValidationError::ErroneousCoinbaseOutput = err);
@@ -500,8 +503,11 @@ mod transaction_validator {
         let validator = TransactionInternalConsistencyValidator::new(true, consensus_manager, factories);
         let mut features = OutputFeatures { ..Default::default() };
         features.coinbase_extra = b"deadbeef".to_vec();
-        let (tx, _, _) =
-            tx!(MicroTari(100_000), fee: MicroTari(5), inputs: 1, outputs: 1, features: features, &key_manager);
+        let tx = match tx!(MicroTari(100_000), fee: MicroTari(5), inputs: 1, outputs: 1, features: features, &key_manager)
+        {
+            Ok((tx, _, _)) => tx,
+            Err(e) => panic!("Error found: {}", e),
+        };
         let tip = db.get_chain_metadata().unwrap();
         let err = validator.validate_with_current_tip(&tx, tip).unwrap_err();
         assert!(matches!(

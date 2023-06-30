@@ -171,7 +171,10 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 GET_DIFFICULTY_MAX_HEIGHTS, num_requested
             )));
         }
-        let (mut tx, rx) = mpsc::channel(cmp::min(num_requested as usize, GET_DIFFICULTY_PAGE_SIZE));
+        let (mut tx, rx) = mpsc::channel(cmp::min(
+            usize::try_from(num_requested).map_err(|_| Status::internal("Error converting u64 to usize"))?,
+            GET_DIFFICULTY_PAGE_SIZE,
+        ));
 
         let mut sha3x_hash_rate_moving_average =
             HashRateMovingAverage::new(PowAlgorithm::Sha3x, self.consensus_rules.clone());
@@ -303,6 +306,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         Ok(Response::new(rx))
     }
 
+    // casting here is okay as a block cannot have more than u32 kernels
+    #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::too_many_lines)]
     async fn list_headers(
         &self,
@@ -1314,6 +1319,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         Ok(Response::new(response))
     }
 
+    // casting here is okay as we cannot have more than u32 kernels in a block
+    #[allow(clippy::cast_possible_truncation)]
     async fn get_header_by_hash(
         &self,
         request: Request<tari_rpc::GetHeaderByHashRequest>,
@@ -1380,7 +1387,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             avg_latency_ms: latency
                 .map(|l| u32::try_from(l.as_millis()).unwrap_or(u32::MAX))
                 .unwrap_or(0),
-            num_node_connections: status.num_connected_nodes() as u32,
+            num_node_connections: u32::try_from(status.num_connected_nodes())
+                .map_err(|_| Status::internal("Error converting usize to u32"))?,
         };
 
         Ok(Response::new(resp))

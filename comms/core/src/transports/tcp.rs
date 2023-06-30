@@ -94,14 +94,6 @@ impl TcpTransport {
             socket.set_nodelay(nodelay)?;
         }
 
-        // if let Some(recv_buffer_size) = self.recv_buffer_size {
-        //     socket.set_recv_buffer_size(recv_buffer_size)?;
-        // }
-        //
-        // if let Some(send_buffer_size) = self.send_buffer_size {
-        //     socket.set_send_buffer_size(send_buffer_size)?;
-        // }
-
         Ok(())
     }
 }
@@ -109,10 +101,7 @@ impl TcpTransport {
 impl Default for TcpTransport {
     fn default() -> Self {
         Self {
-            // recv_buffer_size: None,
-            // send_buffer_size: None,
             ttl: None,
-            // keepalive: None,
             nodelay: None,
             dns_resolver: Arc::new(SystemDnsResolver),
         }
@@ -203,15 +192,9 @@ mod test {
     #[test]
     fn configure() {
         let mut tcp = TcpTransport::new();
-        // tcp.set_send_buffer_size(123)
-        //     .set_recv_buffer_size(456)
         tcp.set_nodelay(true).set_ttl(789);
-        // .set_keepalive(Some(Duration::from_millis(100)));
 
-        // assert_eq!(tcp.send_buffer_size, Some(123));
-        // assert_eq!(tcp.recv_buffer_size, Some(456));
         assert_eq!(tcp.nodelay, Some(true));
         assert_eq!(tcp.ttl, Some(789));
-        // assert_eq!(tcp.keepalive, Some(Some(Duration::from_millis(100))));
     }
 }

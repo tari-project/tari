@@ -774,8 +774,11 @@ impl AppStateInner {
         });
         self.data.pending_txs = pending_transactions
             .iter()
-            .map(|tx| CompletedTransactionInfo::from_completed_transaction(tx.clone(), &self.get_transaction_weight()))
-            .collect();
+            .map(|tx| {
+                CompletedTransactionInfo::from_completed_transaction(tx.clone(), &self.get_transaction_weight())
+                    .map_err(|e| UiError::TransactionError(e.to_string()))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
 
         let mut completed_transactions: Vec<CompletedTransaction> = Vec::new();
         completed_transactions.extend(
@@ -806,8 +809,11 @@ impl AppStateInner {
 
         self.data.completed_txs = completed_transactions
             .iter()
-            .map(|tx| CompletedTransactionInfo::from_completed_transaction(tx.clone(), &self.get_transaction_weight()))
-            .collect();
+            .map(|tx| {
+                CompletedTransactionInfo::from_completed_transaction(tx.clone(), &self.get_transaction_weight())
+                    .map_err(|e| UiError::TransactionError(e.to_string()))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         self.updated = true;
         Ok(())
     }
@@ -850,7 +856,8 @@ impl AppStateInner {
             },
             Some(tx) => {
                 let tx =
-                    CompletedTransactionInfo::from_completed_transaction(tx.into(), &self.get_transaction_weight());
+                    CompletedTransactionInfo::from_completed_transaction(tx.into(), &self.get_transaction_weight())
+                        .map_err(|e| UiError::TransactionError(e.to_string()))?;
                 if let Some(index) = self.data.pending_txs.iter().position(|i| i.tx_id == tx_id) {
                     if tx.status == TransactionStatus::Pending && tx.cancelled.is_none() {
                         self.data.pending_txs[index] = tx;
@@ -1140,10 +1147,6 @@ impl AppStateInner {
         self.data.new_notification_count = 0;
         self.updated = true;
     }
-
-    // pub fn get_software_updater(&self) -> Option<SoftwareUpdaterHandle> {
-    //     self.wallet.get_software_updater()
-    // }
 }
 
 #[derive(Clone)]
@@ -1169,18 +1172,21 @@ pub struct CompletedTransactionInfo {
 }
 
 impl CompletedTransactionInfo {
-    pub fn from_completed_transaction(tx: CompletedTransaction, transaction_weighting: &TransactionWeight) -> Self {
+    pub fn from_completed_transaction(
+        tx: CompletedTransaction,
+        transaction_weighting: &TransactionWeight,
+    ) -> std::io::Result<Self> {
         let excess_signature = tx
             .transaction
             .first_kernel_excess_sig()
             .map(|s| s.get_signature().to_hex())
             .unwrap_or_default();
         let is_coinbase = tx.is_coinbase();
-        let weight = tx.transaction.calculate_weight(transaction_weighting);
+        let weight = tx.transaction.calculate_weight(transaction_weighting)?;
         let inputs_count = tx.transaction.body.inputs().len();
         let outputs_count = tx.transaction.body.outputs().len();
 
-        Self {
+        Ok(Self {
             tx_id: tx.tx_id,
             source_address: tx.source_address.clone(),
             destination_address: tx.destination_address.clone(),
@@ -1205,7 +1211,7 @@ impl CompletedTransactionInfo {
             weight,
             inputs_count,
             outputs_count,
-        }
+        })
     }
 }
 

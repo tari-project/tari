@@ -197,7 +197,9 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
 
 /// Checks the byte size of TariScript is less than or equal to the given size, otherwise returns an error.
 pub fn check_tari_script_byte_size(script: &TariScript, max_script_size: usize) -> Result<(), ValidationError> {
-    let script_size = script.get_serialized_size();
+    let script_size = script
+        .get_serialized_size()
+        .map_err(|e| ValidationError::CustomError(e.to_string()))?;
     if script_size > max_script_size {
         return Err(ValidationError::TariScriptExceedsMaxSize {
             max_script_size,

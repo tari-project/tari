@@ -2294,6 +2294,7 @@ mod test {
     #[allow(clippy::too_many_lines)]
     async fn test_crud() {
         let key_manager = create_test_core_key_manager_with_memory_db();
+        let consensus_constants = create_consensus_constants(0);
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let temp_dir = tempdir().unwrap();
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
@@ -2446,6 +2447,7 @@ mod test {
             TransactionSenderMessage::Single(Box::new(stp.build_single_round_message(&key_manager).await.unwrap())),
             output,
             &key_manager,
+            &consensus_constants,
         )
         .await;
         let address = TariAddress::new(

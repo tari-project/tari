@@ -759,9 +759,13 @@ where
             .db
             .add_output_to_be_received(single_round_sender_data.tx_id, output, None)?;
 
-        let rtp =
-            ReceiverTransactionProtocol::new(sender_message.clone(), key_kanager_output, &self.resources.key_manager)
-                .await;
+        let rtp = ReceiverTransactionProtocol::new(
+            sender_message.clone(),
+            key_kanager_output,
+            &self.resources.key_manager,
+            &self.resources.consensus_constants,
+        )
+        .await;
 
         Ok(rtp)
     }
@@ -790,9 +794,15 @@ where
             .consensus_constants
             .transaction_weight_params()
             .round_up_features_and_scripts_size(
-                OutputFeatures::default().get_serialized_size() +
-                    script![Nop].get_serialized_size() +
-                    Covenant::new().get_serialized_size(),
+                OutputFeatures::default()
+                    .get_serialized_size()
+                    .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+                    script![Nop]
+                        .get_serialized_size()
+                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+                    Covenant::new()
+                        .get_serialized_size()
+                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
             );
 
         let utxo_selection = match self
@@ -815,9 +825,15 @@ where
                 let output_features_estimate = OutputFeatures::default();
 
                 let default_features_and_scripts_size = fee_calc.weighting().round_up_features_and_scripts_size(
-                    output_features_estimate.get_serialized_size() +
-                        script![Nop].get_serialized_size() +
-                        Covenant::new().get_serialized_size(),
+                    output_features_estimate
+                        .get_serialized_size()
+                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+                        script![Nop]
+                            .get_serialized_size()
+                            .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+                        Covenant::new()
+                            .get_serialized_size()
+                            .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
                 );
                 let fee = fee_calc.calculate(fee_per_gram, 1, 1, num_outputs, default_features_and_scripts_size);
                 return Ok(Fee::normalize(fee));
@@ -861,9 +877,15 @@ where
             .consensus_constants
             .transaction_weight_params()
             .round_up_features_and_scripts_size(
-                recipient_output_features.get_serialized_size() +
-                    recipient_script.get_serialized_size() +
-                    recipient_covenant.get_serialized_size(),
+                recipient_output_features
+                    .get_serialized_size()
+                    .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+                    recipient_script
+                        .get_serialized_size()
+                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+                    recipient_covenant
+                        .get_serialized_size()
+                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
             );
 
         let input_selection = self
@@ -1017,6 +1039,7 @@ where
         Ok(tx)
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn create_pay_to_self_containing_outputs(
         &mut self,
         outputs: Vec<WalletOutputBuilder>,
@@ -1026,14 +1049,26 @@ where
         let total_value = outputs.iter().map(|o| o.value()).sum();
         let nop_script = script![Nop];
         let weighting = self.resources.consensus_constants.transaction_weight_params();
-        let features_and_scripts_byte_size = outputs.iter().fold(0usize, |total, output| {
-            total +
-                weighting.round_up_features_and_scripts_size({
-                    output.features().get_serialized_size() +
-                        output.covenant().get_serialized_size() +
-                        output.script().unwrap_or(&nop_script).get_serialized_size()
-                })
-        });
+        let mut features_and_scripts_byte_size = 0;
+        for output in &outputs {
+            let (features, covenant, script) = (
+                output
+                    .features()
+                    .get_serialized_size()
+                    .map_err(|e| OutputManagerError::ServiceError(e.to_string()))?,
+                output
+                    .covenant()
+                    .get_serialized_size()
+                    .map_err(|e| OutputManagerError::ServiceError(e.to_string()))?,
+                output
+                    .script()
+                    .unwrap_or(&nop_script)
+                    .get_serialized_size()
+                    .map_err(|e| OutputManagerError::ServiceError(e.to_string()))?,
+            );
+
+            features_and_scripts_byte_size += weighting.round_up_features_and_scripts_size(features + covenant + script)
+        }
 
         let input_selection = self
             .select_utxos(
@@ -1145,7 +1180,15 @@ where
             .consensus_constants
             .transaction_weight_params()
             .round_up_features_and_scripts_size(
-                output_features.get_serialized_size() + script.get_serialized_size() + covenant.get_serialized_size(),
+                output_features
+                    .get_serialized_size()
+                    .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+                    script
+                        .get_serialized_size()
+                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+                    covenant
+                        .get_serialized_size()
+                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
             );
 
         let input_selection = self
@@ -1311,9 +1354,15 @@ where
         // Assumes that default Outputfeatures are used for change utxo
         let output_features_estimate = OutputFeatures::default();
         let default_features_and_scripts_size = fee_calc.weighting().round_up_features_and_scripts_size(
-            output_features_estimate.get_serialized_size() +
-                Covenant::new().get_serialized_size() +
-                script![Nop].get_serialized_size(),
+            output_features_estimate
+                .get_serialized_size()
+                .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+                Covenant::new()
+                    .get_serialized_size()
+                    .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+                script![Nop]
+                    .get_serialized_size()
+                    .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
         );
 
         trace!(target: LOG_TARGET, "We found {} UTXOs to select from", uo.len());
@@ -1397,13 +1446,19 @@ where
         Ok(())
     }
 
-    fn default_features_and_scripts_size(&self) -> usize {
-        self.resources
+    fn default_features_and_scripts_size(&self) -> Result<usize, OutputManagerError> {
+        Ok(self
+            .resources
             .consensus_constants
             .transaction_weight_params()
             .round_up_features_and_scripts_size(
-                script!(Nop).get_serialized_size() + OutputFeatures::default().get_serialized_size(),
-            )
+                script!(Nop)
+                    .get_serialized_size()
+                    .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
+                    OutputFeatures::default()
+                        .get_serialized_size()
+                        .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
+            ))
     }
 
     pub async fn preview_coin_join_with_commitments(
@@ -1426,7 +1481,8 @@ where
             1,
             src_outputs.len(),
             1,
-            self.default_features_and_scripts_size(),
+            self.default_features_and_scripts_size()
+                .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
         );
 
         Ok((vec![accumulated_amount.saturating_sub(fee)], fee))
@@ -1459,7 +1515,9 @@ where
             1,
             src_outputs.len(),
             number_of_splits,
-            self.default_features_and_scripts_size() * number_of_splits,
+            self.default_features_and_scripts_size()
+                .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? *
+                number_of_splits,
         );
 
         let accumulated_amount = src_outputs
@@ -1528,7 +1586,9 @@ where
                         UtxoSelectionCriteria::largest_first(),
                         fee_per_gram,
                         number_of_splits,
-                        self.default_features_and_scripts_size() * number_of_splits,
+                        self.default_features_and_scripts_size()
+                            .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? *
+                            number_of_splits,
                     )
                     .await?;
 
@@ -1564,7 +1624,8 @@ where
             1,
             src_outputs.len(),
             number_of_splits,
-            default_features_and_scripts_size * number_of_splits,
+            default_features_and_scripts_size.map_err(|e| OutputManagerError::ConversionError(e.to_string()))? *
+                number_of_splits,
         );
 
         let accumulated_amount = accumulated_amount_with_fee.saturating_sub(fee);
@@ -1675,7 +1736,9 @@ where
             ));
         }
 
-        let default_features_and_scripts_size = self.default_features_and_scripts_size();
+        let default_features_and_scripts_size = self
+            .default_features_and_scripts_size()
+            .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?;
         let mut dest_outputs = Vec::with_capacity(number_of_splits + 1);
         let total_split_amount = MicroTari::from(amount_per_split.as_u64() * number_of_splits as u64);
 
@@ -1933,7 +1996,9 @@ where
         commitments: Vec<Commitment>,
         fee_per_gram: MicroTari,
     ) -> Result<(TxId, Transaction, MicroTari), OutputManagerError> {
-        let default_features_and_scripts_size = self.default_features_and_scripts_size();
+        let default_features_and_scripts_size = self
+            .default_features_and_scripts_size()
+            .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?;
 
         let src_outputs = self.resources.db.fetch_unspent_outputs_for_spending(
             &UtxoSelectionCriteria::specific(commitments),

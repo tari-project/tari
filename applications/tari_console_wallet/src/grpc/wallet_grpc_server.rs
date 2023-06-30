@@ -815,7 +815,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .coin_split(
                 vec![],
                 MicroTari::from(message.amount_per_split),
-                message.split_count as usize,
+                usize::try_from(message.split_count)
+                    .map_err(|_| Status::internal("Count not convert u64 to usize".to_string()))?,
                 MicroTari::from(message.fee_per_gram),
                 message.message,
             )
@@ -878,7 +879,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 .map_err(|err| Status::internal(err.to_string()))?
                 .map(|d| u32::try_from(d.as_millis()).unwrap_or(u32::MAX))
                 .unwrap_or_default(),
-            num_node_connections: status.num_connected_nodes() as u32,
+            num_node_connections: u32::try_from(status.num_connected_nodes())
+                .map_err(|_| Status::internal("Count not convert u64 to usize".to_string()))?,
         };
 
         Ok(Response::new(resp))

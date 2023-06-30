@@ -76,7 +76,7 @@ impl ContactsTab {
         self.contacts_list_state.set_num_items(app_state.get_contacts().len());
         let mut list_state = self
             .contacts_list_state
-            .get_list_state((list_areas[1].height as usize).saturating_sub(3));
+            .update_list_state((list_areas[1].height as usize).saturating_sub(3));
         let window = self.contacts_list_state.get_start_end();
         let windowed_view = app_state.get_contacts_slice(window.0, window.1);
 
@@ -119,6 +119,8 @@ impl ContactsTab {
         column_list
     }
 
+    // casting here is okay as we only use it to draw widths
+    #[allow(clippy::cast_possible_truncation)]
     fn draw_edit_contact<B>(&mut self, f: &mut Frame<B>, area: Rect, _app_state: &AppState)
     where B: Backend {
         let popup_area = centered_rect_absolute(120, 10, area);

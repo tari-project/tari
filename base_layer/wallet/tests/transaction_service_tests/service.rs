@@ -1629,7 +1629,7 @@ async fn manage_multiple_transactions() {
 #[tokio::test]
 async fn test_accepting_unknown_tx_id_and_malformed_reply() {
     let factories = CryptoFactories::default();
-
+    let consensus_constants = create_consensus_constants(0);
     let temp_dir = tempdir().unwrap();
     let path_string = temp_dir.path().to_str().unwrap().to_string();
     let alice_db_name = format!("{}.sqlite3", random::string(8).as_str());
@@ -1683,7 +1683,13 @@ async fn test_accepting_unknown_tx_id_and_malformed_reply() {
 
     let sender = sender_message.try_into().unwrap();
     let output = create_wallet_output_from_sender_data(&sender, &alice_ts_interface.key_manager_handle).await;
-    let rtp = ReceiverTransactionProtocol::new(sender, output, &alice_ts_interface.key_manager_handle).await;
+    let rtp = ReceiverTransactionProtocol::new(
+        sender,
+        output,
+        &alice_ts_interface.key_manager_handle,
+        &consensus_constants,
+    )
+    .await;
 
     let mut tx_reply = rtp.get_signed_data().unwrap().clone();
     let mut wrong_tx_id = tx_reply.clone();
@@ -3300,7 +3306,7 @@ async fn test_restarting_transaction_protocols() {
     let constants = create_consensus_constants(0);
     let fee_calc = Fee::new(*constants.transaction_weight_params());
     let key_manager = create_test_core_key_manager_with_memory_db();
-    let mut builder = SenderTransactionProtocol::builder(constants, key_manager.clone());
+    let mut builder = SenderTransactionProtocol::builder(constants.clone(), key_manager.clone());
     let fee = fee_calc.calculate(MicroTari(4), 1, 1, 1, 0);
     let change = TestParams::new(&key_manager).await;
     builder
@@ -3334,7 +3340,7 @@ async fn test_restarting_transaction_protocols() {
     let sender_info = TransactionSenderMessage::Single(Box::new(msg.clone()));
 
     let output = create_wallet_output_from_sender_data(&sender_info, &key_manager).await;
-    let receiver_protocol = ReceiverTransactionProtocol::new(sender_info, output, &key_manager).await;
+    let receiver_protocol = ReceiverTransactionProtocol::new(sender_info, output, &key_manager, &constants).await;
 
     let alice_reply = receiver_protocol.get_signed_data().unwrap().clone();
 
@@ -4652,7 +4658,7 @@ async fn test_resend_on_startup() {
     .unwrap();
     let constants = create_consensus_constants(0);
     let key_manager = create_test_core_key_manager_with_memory_db();
-    let mut builder = SenderTransactionProtocol::builder(constants, key_manager.clone());
+    let mut builder = SenderTransactionProtocol::builder(constants.clone(), key_manager.clone());
     let amount = MicroTari::from(10_000);
     let change = TestParams::new(&key_manager).await;
     builder
@@ -4810,7 +4816,13 @@ async fn test_resend_on_startup() {
 
     // Now we do this for the Transaction Reply
     let output = create_wallet_output_from_sender_data(&tx_sender_msg, &alice2_ts_interface.key_manager_handle).await;
-    let rtp = ReceiverTransactionProtocol::new(tx_sender_msg, output, &alice2_ts_interface.key_manager_handle).await;
+    let rtp = ReceiverTransactionProtocol::new(
+        tx_sender_msg,
+        output,
+        &alice2_ts_interface.key_manager_handle,
+        &constants,
+    )
+    .await;
     let address = TariAddress::new(
         PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,

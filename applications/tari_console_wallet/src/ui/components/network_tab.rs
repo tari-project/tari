@@ -113,7 +113,7 @@ impl NetworkTab {
         self.base_node_list_state.set_num_items(capacity);
         let mut base_node_list_state = self
             .base_node_list_state
-            .get_list_state((areas[1].height as usize).saturating_sub(3));
+            .update_list_state((areas[1].height as usize).saturating_sub(3));
 
         let column_list = MultiColumnList::new()
             .highlight_style(Style::default().add_modifier(Modifier::BOLD).fg(Color::Magenta))
@@ -357,6 +357,8 @@ impl NetworkTab {
 }
 
 impl<B: Backend> Component<B> for NetworkTab {
+    // casting here is okay as wont have more than u16 base nodes
+    #[allow(clippy::cast_possible_truncation)]
     fn draw(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState) {
         let areas = Layout::default()
             .constraints(

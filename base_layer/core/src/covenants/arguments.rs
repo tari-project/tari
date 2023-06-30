@@ -52,6 +52,7 @@ const MAX_COVENANT_ARG_SIZE: usize = 4096;
 const MAX_BYTES_ARG_SIZE: usize = 4096;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Covenant arguments
 pub enum CovenantArg {
     Hash(FixedHash),
     PublicKey(PublicKey),
@@ -66,10 +67,12 @@ pub enum CovenantArg {
 }
 
 impl CovenantArg {
+    /// Checks if a stream of bytes results in valid argument code
     pub fn is_valid_code(code: u8) -> bool {
         byte_codes::is_valid_arg_code(code)
     }
 
+    /// Reads a `CovenantArg` from a buffer of bytes
     pub fn read_from(reader: &mut &[u8], code: u8) -> Result<Self, CovenantDecodeError> {
         use byte_codes::*;
         match code {
@@ -125,6 +128,7 @@ impl CovenantArg {
         }
     }
 
+    /// Parses the `CovenantArg` data to bytes and writes it to an IO writer
     pub fn write_to<W: io::Write>(&self, writer: &mut W) -> Result<(), io::Error> {
         use byte_codes::*;
         #[allow(clippy::enum_glob_use)]
@@ -179,8 +183,17 @@ impl CovenantArg {
     }
 }
 
+/// `require_x_impl!` is a helper macro that generates an implementation of a function with a specific signature
+/// based on the provided input parameters. Functionality:
+/// The macro expects to receive either three or four arguments.
+///     $name, represents the name of the function to be generated.
+///     $output, represents the name of the enum variant that the function will match against.
+///     $expected, represents an expression that will be used in the error message when the provided argument
+///         does not match the expected variant.
+///     (optional) $output_type, represents the type that the function will return. If
+///         not provided, it defaults to the same as $output.
 macro_rules! require_x_impl {
-    ($name:ident, $output:ident, $expected: expr, $output_type:ident) => {
+    ($name:ident, $output:ident, $expected: expr, $output_type:ty) => {
         #[allow(dead_code)]
         pub(super) fn $name(self) -> Result<$output_type, CovenantError> {
             match self {
@@ -214,25 +227,9 @@ impl CovenantArg {
 
     require_x_impl!(require_outputfields, OutputFields, "outputfields");
 
-    pub fn require_bytes(self) -> Result<Vec<u8>, CovenantError> {
-        match self {
-            CovenantArg::Bytes(val) => Ok(val),
-            got => Err(CovenantError::UnexpectedArgument {
-                expected: "bytes",
-                got: got.to_string(),
-            }),
-        }
-    }
+    require_x_impl!(require_bytes, Bytes, "bytes", Vec<u8>);
 
-    pub fn require_uint(self) -> Result<u64, CovenantError> {
-        match self {
-            CovenantArg::Uint(val) => Ok(val),
-            got => Err(CovenantError::UnexpectedArgument {
-                expected: "uint",
-                got: got.to_string(),
-            }),
-        }
-    }
+    require_x_impl!(require_uint, Uint, "u64", u64);
 }
 
 impl Display for CovenantArg {

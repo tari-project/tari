@@ -304,7 +304,9 @@ fn check_weight(
     height: u64,
     consensus_constants: &ConsensusConstants,
 ) -> Result<(), ValidationError> {
-    let block_weight = body.calculate_weight(consensus_constants.transaction_weight_params());
+    let block_weight = body
+        .calculate_weight(consensus_constants.transaction_weight_params())
+        .map_err(|e| ValidationError::CustomError(e.to_string()))?;
     let max_weight = consensus_constants.max_block_transaction_weight();
     if block_weight <= max_weight {
         trace!(
@@ -346,7 +348,7 @@ fn check_maturity(height: u64, inputs: &[TransactionInput]) -> Result<(), Transa
     Ok(())
 }
 
-/// THis function checks the total burned sum in the header ensuring that every burned output is counted in the total
+/// This function checks the total burned sum in the header ensuring that every burned output is counted in the total
 /// sum.
 #[allow(clippy::mutable_key_type)]
 fn check_total_burned(body: &AggregateBody) -> Result<(), ValidationError> {

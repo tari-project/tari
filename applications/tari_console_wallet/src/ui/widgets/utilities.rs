@@ -58,6 +58,8 @@ pub fn centered_rect_absolute(width: u16, height: u16, r: Rect) -> Rect {
         .split(popup_layout[1])[1]
 }
 
+// casting here is okay as we only use to draw
+#[allow(clippy::cast_possible_truncation)]
 pub fn draw_dialog<B>(
     f: &mut Frame<B>,
     full_area: Rect,

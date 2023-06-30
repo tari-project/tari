@@ -178,6 +178,7 @@ pub struct TransactionService<
     base_node_service: BaseNodeServiceHandle,
     last_seen_tip_height: Option<u64>,
     validation_in_progress: Arc<Mutex<()>>,
+    consensus_manager: ConsensusManager,
 }
 
 impl<
@@ -250,7 +251,7 @@ where
             factories,
             config: config.clone(),
             shutdown_signal,
-            consensus_manager,
+            consensus_manager: consensus_manager.clone(),
         };
         let power_mode = PowerMode::default();
         let timeout = match power_mode {
@@ -281,6 +282,7 @@ where
             wallet_db,
             last_seen_tip_height: None,
             validation_in_progress: Arc::new(Mutex::new(())),
+            consensus_manager,
         }
     }
 
@@ -1074,7 +1076,8 @@ where
         let hash: [u8; 32] = Sha256::digest(pre_image.as_bytes()).into();
 
         // lets make the unlock height a day from now, 2 min blocks which gives us 30 blocks per hour * 24 hours
-        let height = self.last_seen_tip_height.unwrap_or(0) + (24 * 30);
+        let tip_height = self.last_seen_tip_height.unwrap_or(0);
+        let height = tip_height + (24 * 30);
 
         // lets create the HTLC script
         let script = script!(
@@ -1197,10 +1200,12 @@ where
             .await
             .unwrap();
 
+        let consensus_constants = self.consensus_manager.consensus_constants(tip_height);
         let rtp = ReceiverTransactionProtocol::new(
             sender_message,
             output.clone(),
             &self.resources.transaction_key_manager_service,
+            consensus_constants,
         )
         .await;
 
@@ -1388,9 +1393,15 @@ where
             .try_build(&self.resources.transaction_key_manager_service)
             .await?;
 
-        let rtp =
-            ReceiverTransactionProtocol::new(sender_message, output, &self.resources.transaction_key_manager_service)
-                .await;
+        let tip_height = self.last_seen_tip_height.unwrap_or(0);
+        let consensus_constants = self.consensus_manager.consensus_constants(tip_height);
+        let rtp = ReceiverTransactionProtocol::new(
+            sender_message,
+            output,
+            &self.resources.transaction_key_manager_service,
+            consensus_constants,
+        )
+        .await;
 
         let recipient_reply = rtp.get_signed_data()?.clone();
 
@@ -1633,9 +1644,15 @@ where
             .try_build(&self.resources.transaction_key_manager_service)
             .await?;
 
-        let rtp =
-            ReceiverTransactionProtocol::new(sender_message, output, &self.resources.transaction_key_manager_service)
-                .await;
+        let tip_height = self.last_seen_tip_height.unwrap_or(0);
+        let consensus_constants = self.consensus_manager.consensus_constants(tip_height);
+        let rtp = ReceiverTransactionProtocol::new(
+            sender_message,
+            output,
+            &self.resources.transaction_key_manager_service,
+            consensus_constants,
+        )
+        .await;
 
         let recipient_reply = rtp.get_signed_data()?.clone();
         let range_proof = recipient_reply.output.proof_result()?.clone();
@@ -1969,7 +1986,7 @@ where
                         Err(e) => {
                             error!(
                                 target: LOG_TARGET,
-                                "Error starting Broadcast Protocol after completed Send Transaction Protocol : {:?}", e
+                                "Error starting Broadcast Protocol after completed Send Transaction Protocol: {:?}", e
                             );
                             return;
                         },
@@ -1979,7 +1996,7 @@ where
                         .map_err(|resp| {
                             error!(
                                 target: LOG_TARGET,
-                                "Error starting Broadcast Protocol after completed Send Transaction Protocol : {:?}",
+                                "Error starting Broadcast Protocol after completed Send Transaction Protocol: {:?}",
                                 resp
                             );
                             resp

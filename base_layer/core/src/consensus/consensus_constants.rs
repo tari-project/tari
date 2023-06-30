@@ -181,6 +181,8 @@ impl ConsensusConstants {
 
     /// This returns the FTL (Future Time Limit) for blocks.
     /// Any block with a timestamp greater than this is rejected.
+    // converting u64 to i64 is okay as the future time limit is the hundreds so way below u32 even
+    #[allow(clippy::cast_possible_wrap)]
     pub fn ftl(&self) -> EpochTime {
         // Timestamp never negative
         (Utc::now()
@@ -192,6 +194,8 @@ impl ConsensusConstants {
     /// This returns the FTL(Future Time Limit) for blocks
     /// Any block with a timestamp greater than this is rejected.
     /// This function returns the FTL as a UTC datetime
+    // converting u64 to i64 is okay as the future time limit is the hundreds so way below u32 even
+    #[allow(clippy::cast_possible_wrap)]
     pub fn ftl_as_time(&self) -> DateTime<Utc> {
         Utc::now().add(Duration::seconds(self.future_time_limit as i64))
     }
@@ -208,18 +212,18 @@ impl ConsensusConstants {
 
     /// Maximum transaction weight used for the construction of new blocks. It leaves place for 1 kernel and 1 output
     /// with default features, as well as the maximum possible value of the `coinbase_extra` field
-    pub fn max_block_weight_excluding_coinbase(&self) -> u64 {
-        self.max_block_transaction_weight - self.calculate_1_output_kernel_weight()
+    pub fn max_block_weight_excluding_coinbase(&self) -> std::io::Result<u64> {
+        Ok(self.max_block_transaction_weight - self.calculate_1_output_kernel_weight()?)
     }
 
-    fn calculate_1_output_kernel_weight(&self) -> u64 {
+    fn calculate_1_output_kernel_weight(&self) -> std::io::Result<u64> {
         let output_features = OutputFeatures { ..Default::default() };
         let max_extra_size = self.coinbase_output_features_extra_max_length() as usize;
 
         let features_and_scripts_size = self.transaction_weight.round_up_features_and_scripts_size(
-            output_features.get_serialized_size() + max_extra_size + script![Nop].get_serialized_size(),
+            output_features.get_serialized_size()? + max_extra_size + script![Nop].get_serialized_size()?,
         );
-        self.transaction_weight.calculate(1, 0, 1, features_and_scripts_size)
+        Ok(self.transaction_weight.calculate(1, 0, 1, features_and_scripts_size))
     }
 
     pub fn coinbase_output_features_extra_max_length(&self) -> u32 {
@@ -614,6 +618,7 @@ impl ConsensusConstants {
         consensus_constants
     }
 
+    // These values are mainly place holder till the final decision has been made about their values.
     pub fn mainnet() -> Vec<Self> {
         let difficulty_block_window = 90;
         let mut algos = HashMap::new();
@@ -850,6 +855,8 @@ impl ConsensusConstantsBuilder {
 
 #[cfg(test)]
 mod test {
+    use std::convert::TryFrom;
+
     use crate::{
         consensus::{
             emission::{Emission, EmissionSchedule},
@@ -889,7 +896,9 @@ mod test {
             10_500_682_498_903_652 * uT
         ); // Around 10.5 billion
            // Tail emission starts after block 3,574,175
-        let mut rewards = schedule.iter().skip(3_574_174 + coinbase_offset as usize);
+        let mut rewards = schedule
+            .iter()
+            .skip(3_574_174 + usize::try_from(coinbase_offset).unwrap());
         let (block_num, reward, supply) = rewards.next().unwrap();
         assert_eq!(block_num, 3_574_175 + coinbase_offset);
         assert_eq!(reward, 800_000_598 * uT);
