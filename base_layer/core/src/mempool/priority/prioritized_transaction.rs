@@ -76,6 +76,7 @@ pub struct PrioritizedTransaction {
     pub key: usize,
     pub transaction: Arc<Transaction>,
     pub priority: FeePriority,
+    pub fee_per_byte: u64,
     pub weight: u64,
     pub dependent_output_hashes: Vec<HashOutput>,
 }
@@ -95,6 +96,7 @@ impl PrioritizedTransaction {
         Ok(Self {
             key,
             priority: FeePriority::new(&transaction, insert_epoch, weight),
+            fee_per_byte: ((f64::from(transaction.body.get_total_fee()) / weight as f64) * 1000.0) as u64,
             weight,
             transaction,
             dependent_output_hashes: dependent_outputs.unwrap_or_default(),
