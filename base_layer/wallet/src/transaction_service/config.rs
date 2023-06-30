@@ -59,7 +59,6 @@ pub struct TransactionServiceConfig {
     /// confirmed
     pub num_confirmations_required: u64,
     /// The number of batches the unconfirmed transactions will be divided into before being queried from the base node
-    // TODO: Fix this logic; it should more directly determine the msg size not the number of batches
     pub max_tx_query_batch_size: usize,
     /// This option specifies the transaction routing mechanism as being directly between wallets, making use of store
     /// and forward or using any combination of these.

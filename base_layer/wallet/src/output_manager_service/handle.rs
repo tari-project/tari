@@ -559,7 +559,6 @@ impl OutputManagerHandle {
         }
     }
 
-    // ToDo: This API method call could probably be removed by expanding test utils if only needed for testing
     pub async fn get_invalid_outputs(&mut self) -> Result<Vec<WalletOutput>, OutputManagerError> {
         match self.handle.call(OutputManagerRequest::GetInvalidOutputs).await?? {
             OutputManagerResponse::InvalidOutputs(s) => Ok(s),

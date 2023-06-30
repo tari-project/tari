@@ -32,7 +32,6 @@ use crate::{
     rpc::DhtRpcService,
 };
 
-// TODO: This mock can be generated
 #[derive(Debug, Clone, Default)]
 pub struct DhtRpcServiceMock {
     pub get_closer_peers: RpcMockMethodState<GetCloserPeersRequest, Vec<GetPeersResponse>>,

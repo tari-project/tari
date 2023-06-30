@@ -4824,8 +4824,6 @@ pub unsafe extern "C" fn comms_config_create(
                     },
                     ..Default::default()
                 },
-                // TODO: This should be set to false for non-test wallets. See the `allow_test_addresses` field
-                //       docstring for more info. #LOGGED
                 allow_test_addresses: true,
                 listener_liveness_allowlist_cidrs: StringList::new(),
                 listener_liveness_max_sessions: 0,
@@ -9894,7 +9892,6 @@ mod test {
 
             assert_eq!(*seed_words, *recovered_seed_words);
             assert_eq!(*public_address, *recovered_address);
-            // TODO: Clean up memory leaks please
         }
     }
 

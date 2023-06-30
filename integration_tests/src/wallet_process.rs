@@ -188,7 +188,6 @@ pub async fn spawn_wallet(
     wait_for_service(port).await;
     wait_for_service(grpc_port).await;
 
-    // TODO: fix the wallet configuration so the base node is correctly setted on startup insted of afterwards
     if let Some((_, _, hacky_request)) = base_node {
         let mut wallet_client = create_wallet_client(world, wallet_name)
             .await

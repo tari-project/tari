@@ -36,7 +36,6 @@ pub type ProtocolExtensionError = anyhow::Error;
 
 /// Implement this trait to install custom protocols.
 pub trait ProtocolExtension: Send {
-    // TODO: The Box<Self> is easier to do for now at the cost of ProtocolExtension being less generic.
     fn install(self: Box<Self>, context: &mut ProtocolExtensionContext) -> Result<(), ProtocolExtensionError>;
 }
 

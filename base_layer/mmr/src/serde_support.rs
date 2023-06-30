@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-// TODO - move all the to_hex serde stuff into a common module
 pub mod hash {
     use std::fmt;
 

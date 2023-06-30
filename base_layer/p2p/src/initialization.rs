@@ -371,7 +371,6 @@ async fn configure_comms_and_dht(
         )
         .build();
 
-    // TODO: messaging events should be optional
     let (messaging_events_sender, _) = broadcast::channel(1);
     comms = comms.add_protocol_extension(MessagingProtocolExtension::new(
         messaging_events_sender,
@@ -578,7 +577,6 @@ impl ServiceInitializer for P2pInitializer {
         };
         add_seed_peers(&peer_manager, &node_identity, peers).await?;
 
-        // TODO: Use serde
         let peers = Self::try_parse_seed_peers(&self.seed_config.peer_seeds)?;
 
         add_seed_peers(&peer_manager, &node_identity, peers).await?;

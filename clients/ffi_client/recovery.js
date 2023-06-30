@@ -44,7 +44,6 @@ try {
     err
   );
 
-  // todo: error handling
 
   console.log("Create Comms config...");
   let comms = lib.comms_config_create(

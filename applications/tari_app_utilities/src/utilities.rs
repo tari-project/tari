@@ -57,7 +57,6 @@ pub fn parse_hash(hash_string: &str) -> Option<BlockHash> {
     BlockHash::from_hex(hash_string).ok()
 }
 
-// TODO: Use `UniNodeId` instead
 /// Returns a CommsPublicKey from either a emoji id, a public key or node id
 pub fn parse_emoji_id_or_public_key_or_node_id(key: &str) -> Option<Either<CommsPublicKey, NodeId>> {
     parse_emoji_id_or_public_key(key)
@@ -65,7 +64,6 @@ pub fn parse_emoji_id_or_public_key_or_node_id(key: &str) -> Option<Either<Comms
         .or_else(|| NodeId::from_hex(key).ok().map(Either::Right))
 }
 
-// TODO: Use `UniNodeId` instead
 pub fn either_to_node_id(either: Either<CommsPublicKey, NodeId>) -> NodeId {
     match either {
         Either::Left(pk) => NodeId::from_public_key(&pk),

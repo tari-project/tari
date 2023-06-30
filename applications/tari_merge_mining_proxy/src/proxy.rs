@@ -516,7 +516,6 @@ impl InnerService {
                 .unwrap_or(false)
         {
             debug!(target: LOG_TARGET, "monerod found block `{}`.", hash.to_hex());
-            // TODO: add aux data for corresponding tari header, if it exists.
             return Ok(proxy::into_response(parts, &monero_resp));
         }
 
@@ -928,7 +927,7 @@ fn try_into_json_block_header(header: grpc::BlockHeaderResponse) -> Result<json:
     })?;
 
     Ok(json!({
-        "block_size": 0, // TODO
+        "block_size": 0,
         "depth": confirmations,
         "difficulty": difficulty,
         "hash": header.hash.to_hex(),

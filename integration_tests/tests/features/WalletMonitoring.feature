@@ -109,11 +109,11 @@ Feature: Wallet Monitoring
     # Then wallet WALLET_B1 detects exactly 17 coinbase transactions as Mined_Confirmed
     # And I list all NORMAL transactions for wallet WALLET_A1
     # And I list all NORMAL transactions for wallet WALLET_B1
-    # # TODO: Uncomment this step when wallets can handle reorg
+    # #  Uncomment this step when wallets can handle reorg
 #   #  Then all NORMAL transactions for wallet WALLET_A1 and wallet WALLET_B1 have consistent but opposing cancellation
     # And I list all NORMAL transactions for wallet WALLET_A2
     # And I list all NORMAL transactions for wallet WALLET_B2
-    # # TODO: Uncomment this step when wallets can handle reorg
+    # # Uncomment this step when wallets can handle reorg
 #   #  Then all NORMAL transactions for wallet WALLET_A2 and wallet WALLET_B2 have consistent but opposing cancellation
     When I wait 1 seconds
 

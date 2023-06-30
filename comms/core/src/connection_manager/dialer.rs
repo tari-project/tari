@@ -581,7 +581,6 @@ where
                     .await
                     .map_err(|_| ConnectionManagerError::WireFormatSendFailed)?;
 
-                // todo!("40 seconds?");
                 let noise_socket = time::timeout(
                     Duration::from_secs(40),
                     noise_config.upgrade_socket(socket, ConnectionDirection::Outbound),

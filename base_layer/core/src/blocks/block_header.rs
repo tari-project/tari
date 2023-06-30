@@ -256,7 +256,6 @@ impl From<NewBlockHeaderTemplate> for BlockHeader {
             prev_hash: header_template.prev_hash,
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
-            // TODO: put  mmr sizes in template
             output_mmr_size: 0,
             kernel_mr: FixedHash::zero(),
             kernel_mmr_size: 0,

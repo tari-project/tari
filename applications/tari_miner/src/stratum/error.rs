@@ -38,8 +38,6 @@ pub enum Error {
     Time(#[from] std::time::SystemTimeError),
     #[error("Client Tx is not set")]
     ClientTxNotSet,
-
-    // TODO: Group to the separate error
     #[error("Io error: {0}")]
     Io(#[from] std::io::Error),
     #[error("Can't create TLS connector: {0}")]

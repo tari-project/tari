@@ -105,7 +105,7 @@ pub fn get_stagenet_genesis_block() -> ChainBlock {
     if add_faucet_utxos {
         // NB! Update 'consensus_constants.rs/pub fn igor()/ConsensusConstants {faucet_value: ?}' with total value
         // NB: `stagenet_genesis_sanity_check` must pass
-        let file_contents = include_str!("faucets/esmeralda_faucet.json"); // TODO: Update when required
+        let file_contents = include_str!("faucets/esmeralda_faucet.json");
         add_faucet_utxos_to_genesis_block(file_contents, &mut block);
         // Enable print only if you need to generate new Merkle roots, then disable it again
         let print_values = false;
@@ -143,7 +143,7 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
     if add_faucet_utxos {
         // NB! Update 'consensus_constants.rs/pub fn igor()/ConsensusConstants {faucet_value: ?}' with total value
         // NB: `nextnet_genesis_sanity_check` must pass
-        let file_contents = include_str!("faucets/esmeralda_faucet.json"); // TODO: Update when required
+        let file_contents = include_str!("faucets/esmeralda_faucet.json");
         add_faucet_utxos_to_genesis_block(file_contents, &mut block);
         // Enable print only if you need to generate new Merkle roots, then disable it again
         let print_values = false;
