@@ -237,15 +237,12 @@ impl MempoolStorage {
             .remove_reorged_txs_and_discard_double_spends(removed_blocks, new_blocks);
         self.insert_txs(removed_txs)
             .map_err(|e| MempoolError::InternalError(e.to_string()))?;
-        if !new_blocks.is_empty() {
-            self.last_seen_height = new_blocks.last().map(|block| block.header.height).unwrap_or(0 as u64);
-        } else if !removed_blocks.is_empty() {
-            self.last_seen_height = removed_blocks
-                .first()
-                .map(|block| block.header.height)
-                .unwrap_or(1 as u64) -
-                1;
-        } else {
+        if let Some(height) = new_blocks
+            .last()
+            .or(removed_blocks.first())
+            .map(|block| block.header.height)
+        {
+            self.last_seen_height = height;
         }
         Ok(())
     }
