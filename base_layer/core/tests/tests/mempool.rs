@@ -481,7 +481,6 @@ async fn test_zero_conf_no_piggyback() {
     .unwrap();
     mempool.process_published_block(blocks[1].to_arc_block()).await.unwrap();
 
-    // Create 4 original transactions, only submit 3 (hold back tx02)
     let (tx_d, _tx_d_out) = spend_utxos(
         txn_schema!(
             from: vec![outputs[1][1].clone()],
@@ -513,7 +512,6 @@ async fn test_zero_conf_no_piggyback() {
         TxStorageResponse::UnconfirmedPool
     );
 
-    // Create 4 zero-conf level 1 transactions, try to submit all
     let (tx_b, tx_b_out) = spend_utxos(
         txn_schema!(
             from: vec![tx_c_out[0].clone()],
