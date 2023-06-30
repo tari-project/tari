@@ -93,8 +93,8 @@ fn for_leaf_node() {
         .is_ok())
 }
 
-const JSON_PROOF: &str = r#"{"mmr_size":8,"path":["8343a0e3122b3a82cbfb0ff8c7aabd6ea48580d0aa14b9e9a0f4b78a4852efa9","f7010ddf7881e9fcd2c51a1f2bc66448dba431c1661fa4bb0de5f842bd30ef79"],"peaks":["f5e19d13dbd76ecb10544dd434620169a7d2cddf516aa8e1a15a2b66f0b5022e"]}"#;
-const BINCODE_PROOF: &str = "0800000000000000020000000000000020000000000000008343a0e3122b3a82cbfb0ff8c7aabd6ea48580d0aa14b9e9a0f4b78a4852efa92000000000000000f7010ddf7881e9fcd2c51a1f2bc66448dba431c1661fa4bb0de5f842bd30ef7901000000000000002000000000000000f5e19d13dbd76ecb10544dd434620169a7d2cddf516aa8e1a15a2b66f0b5022e";
+const JSON_PROOF: &str = r#"{"mmr_size":8,"path":["2e53af27cab59e217386f5138cbac4f0ee53087e8fd1500b8ef836d7e80fd9a8","aa72bf6d136aac5df8faec94246439f7045487a1bd9984101f46fa926f527e8d"],"peaks":["fd11974cff85dcac247817c33efaf3f7b8c9bc43e980dd80553af84231389088"]}"#;
+const BINCODE_PROOF: &str = "0800000000000000020000000000000020000000000000002e53af27cab59e217386f5138cbac4f0ee53087e8fd1500b8ef836d7e80fd9a82000000000000000aa72bf6d136aac5df8faec94246439f7045487a1bd9984101f46fa926f527e8d01000000000000002000000000000000fd11974cff85dcac247817c33efaf3f7b8c9bc43e980dd80553af84231389088";
 
 #[test]
 fn serialisation() {
@@ -113,7 +113,7 @@ fn deserialization() {
     let mmr = create_mmr(5);
     println!("\nNew root: {}\n", mmr.get_merkle_root().unwrap().to_hex());
 
-    let root = hex::from_hex("3835a5f6c170d671c9306cca3bb035d701970d541c0365c15d51550e051bf57d").unwrap();
+    let root = hex::from_hex("95644732dfe67fb86beedead8b9f8676b1cd5399429fc4b09daa1138708abc92").unwrap();
     // Verify JSON-derived proof
     let proof: MerkleProof = serde_json::from_str(JSON_PROOF).unwrap();
     println!("{}", proof);
