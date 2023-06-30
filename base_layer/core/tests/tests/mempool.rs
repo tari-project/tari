@@ -454,6 +454,108 @@ async fn test_retrieve() {
 
 #[tokio::test]
 #[allow(clippy::identity_op)]
+async fn test_zero_conf_no_piggyback() {
+    // This is the scenario described in fetch_highest_priority_txs function.
+    let network = Network::LocalNet;
+    let (mut store, mut blocks, mut outputs, consensus_manager, key_manager) = create_new_blockchain(network).await;
+    let mempool_validator = TransactionChainLinkedValidator::new(store.clone(), consensus_manager.clone());
+    let mempool = Mempool::new(
+        MempoolConfig::default(),
+        consensus_manager.clone(),
+        Box::new(mempool_validator),
+    );
+    let txs = vec![txn_schema!(
+        from: vec![outputs[0][0].clone()],
+        to: vec![21 * T, 11 * T, 11 * T, 16 * T]
+    )];
+    // "Mine" Block 1
+    generate_new_block(
+        &mut store,
+        &mut blocks,
+        &mut outputs,
+        txs,
+        &consensus_manager,
+        &key_manager,
+    )
+        .await
+        .unwrap();
+    mempool.process_published_block(blocks[1].to_arc_block()).await.unwrap();
+
+    // Create 4 original transactions, only submit 3 (hold back tx02)
+    let (tx_d, _tx_d_out) = spend_utxos(
+        txn_schema!(
+            from: vec![outputs[1][1].clone()],
+            to: vec![5 * T, 5 * T],
+            fee: 12*uT,
+            lock: 0,
+            features: OutputFeatures::default()
+        ),
+        &key_manager,
+    )
+        .await;
+    assert_eq!(
+        mempool.insert(Arc::new(tx_d.clone())).await.unwrap(),
+        TxStorageResponse::UnconfirmedPool
+    );
+    let (tx_c, tx_c_out) = spend_utxos(
+        txn_schema!(
+            from: vec![outputs[1][0].clone()],
+            to: vec![15 * T, 5 * T],
+            fee: 14*uT,
+            lock: 0,
+            features: OutputFeatures::default()
+        ),
+        &key_manager,
+    )
+        .await;
+    assert_eq!(
+        mempool.insert(Arc::new(tx_c.clone())).await.unwrap(),
+        TxStorageResponse::UnconfirmedPool
+    );
+
+    // Create 4 zero-conf level 1 transactions, try to submit all
+    let (tx_b, tx_b_out) = spend_utxos(
+        txn_schema!(
+            from: vec![tx_c_out[0].clone()],
+            to: vec![7 * T, 4 * T],
+            fee: 2*uT, lock: 0,
+            features: OutputFeatures::default()
+        ),
+        &key_manager,
+    )
+        .await;
+    assert_eq!(
+        mempool.insert(Arc::new(tx_b.clone())).await.unwrap(),
+        TxStorageResponse::UnconfirmedPool
+    );
+    let (tx_a, _tx_a_out) = spend_utxos(
+        txn_schema!(
+            from: vec![tx_b_out[1].clone()],
+            to: vec![2 * T, 1 * T],
+            fee: 20*uT,
+            lock: 0,
+            features: OutputFeatures::default()
+        ),
+        &key_manager,
+    )
+        .await;
+
+    assert_eq!(
+        mempool.insert(Arc::new(tx_a.clone())).await.unwrap(),
+        TxStorageResponse::UnconfirmedPool
+    );
+
+    let weight = mempool.stats().await.unwrap().unconfirmed_weight - 1;
+    let retrieved_txs = mempool.retrieve(weight).await.unwrap();
+    assert_eq!(retrieved_txs.len(), 3);
+    assert!(retrieved_txs.contains(&Arc::new(tx_d)));
+    assert!(retrieved_txs.contains(&Arc::new(tx_c)));
+    assert!(retrieved_txs.contains(&Arc::new(tx_b)));
+    assert!(!retrieved_txs.contains(&Arc::new(tx_a)));
+}
+
+#[tokio::test]
+#[allow(clippy::identity_op)]
 #[allow(clippy::too_many_lines)]
 async fn test_zero_conf() {
     let network = Network::LocalNet;
@@ -831,8 +933,8 @@ async fn test_zero_conf() {
     assert!(retrieved_txs.contains(&Arc::new(tx22)));
     assert!(retrieved_txs.contains(&Arc::new(tx23)));
     assert!(retrieved_txs.contains(&Arc::new(tx24)));
-    assert!(!retrieved_txs.contains(&Arc::new(tx31))); // Missing
-    assert!(retrieved_txs.contains(&Arc::new(tx32)));
+    assert!(retrieved_txs.contains(&Arc::new(tx31)));
+    assert!(!retrieved_txs.contains(&Arc::new(tx32))); // Missing
     assert!(retrieved_txs.contains(&Arc::new(tx33)));
     assert!(retrieved_txs.contains(&Arc::new(tx34)));
 }

@@ -89,7 +89,8 @@ pub struct RetrieveResults {
     pub transactions_to_insert: Vec<Arc<Transaction>>,
 }
 
-pub type CompleteTransactionBranch = HashMap<TransactionKey, (HashMap<TransactionKey, Arc<Transaction>>, u64, u64)>;
+pub type CompleteTransactionBranch =
+    HashMap<TransactionKey, (HashMap<TransactionKey, Arc<Transaction>>, u64, u64)>;
 
 impl UnconfirmedPool {
     /// Create a new UnconfirmedPool with the specified configuration
@@ -321,7 +322,9 @@ impl UnconfirmedPool {
         } {
             // If the current TXs has lower fee than the ones we already processed, we can add some.
             let (_fee_per_byte, tx_key) = potentional_to_add.pop().unwrap(); // Safe, we already checked we have some.
-
+            if selected_txs.contains_key(&tx_key) {
+                continue;
+            }
             // Before we do anything with the top transaction we need to know if needs to be recomputed.
             if recompute.contains(&tx_key) {
                 recompute.remove(&tx_key);
@@ -332,7 +335,7 @@ impl UnconfirmedPool {
                 potentional_to_add.push((fee_per_byte, tx_key));
                 continue;
             }
-            let (candidate_transactions_to_select, total_transaction_weight, total_transaction_fees) =
+            let (candidate_transactions_to_select, total_transaction_weight, _total_transaction_fees) =
                 complete_transaction_branch.remove(&tx_key).unwrap();
 
             let total_weight_after_candidates = *curr_weight + total_transaction_weight;
@@ -340,24 +343,13 @@ impl UnconfirmedPool {
                 if !UnconfirmedPool::find_duplicate_input(selected_txs, &candidate_transactions_to_select) {
                     *curr_weight += total_transaction_weight;
                     // So we processed the transaction, let's mark the dependents to be recomputed.
-                    if let Some(txs) = depended_on.remove(&tx_key) {
-                        for tx in txs {
-                            let (
-                                update_candidate_transactions_to_select,
-                                update_total_transaction_weight,
-                                update_total_transaction_fees,
-                            ) = complete_transaction_branch.get_mut(tx).unwrap();
-                            // We remove all of the added ones.
-                            for selected_tx_key in candidate_transactions_to_select.keys() {
-                                update_candidate_transactions_to_select.remove(selected_tx_key);
-                            }
-                            // We don't need the fees/weights from all the selected ones, we have the totals.
-                            *update_total_transaction_fees -= total_transaction_fees;
-                            *update_total_transaction_weight -= total_transaction_weight;
-                            // We mark it as recompute, we don't have to update the Heap, because it will never be
-                            // better as it was (see the note at the top of the function).
-                            recompute.insert(tx);
-                        }
+                    for tx_key in candidate_transactions_to_select.keys() {
+                        self.remove_transaction_from_the_dependants(
+                            *tx_key,
+                            complete_transaction_branch,
+                            depended_on,
+                            recompute,
+                        );
                     }
                     selected_txs.extend(candidate_transactions_to_select);
                 }
@@ -370,6 +362,37 @@ impl UnconfirmedPool {
             // Some cleanup of what we don't need anymore
             complete_transaction_branch.remove(&tx_key);
             depended_on.remove(&tx_key);
+        }
+    }
+
+    pub fn remove_transaction_from_the_dependants<'a>(
+        &self,
+        tx_key: TransactionKey,
+        complete_transaction_branch: &mut CompleteTransactionBranch,
+        depended_on: &mut HashMap<TransactionKey, Vec<&'a TransactionKey>>,
+        recompute: &mut HashSet<&'a TransactionKey>,
+    ) {
+        if let Some(txs) = depended_on.remove(&tx_key) {
+            let prioritized_transaction = self
+                .tx_by_key
+                .get(&tx_key)
+                .ok_or(UnconfirmedPoolError::StorageOutofSync)
+                .unwrap();
+            for tx in txs {
+                if let Some((
+                    update_candidate_transactions_to_select,
+                    update_total_transaction_weight,
+                    update_total_transaction_fees,
+                )) = complete_transaction_branch.get_mut(tx)
+                {
+                    update_candidate_transactions_to_select.remove(&tx_key);
+                    *update_total_transaction_weight -= prioritized_transaction.weight;
+                    *update_total_transaction_fees -= prioritized_transaction.transaction.body.get_total_fee().0;
+                    // We mark it as recompute, we don't have to update the Heap, because it will never be
+                    // better as it was (see the note at the top of the function).
+                    recompute.insert(tx);
+                }
+            }
         }
     }
 
