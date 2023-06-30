@@ -14,21 +14,6 @@ pub(crate) fn get_bit(data: &[u8], position: usize) -> usize {
     0
 }
 
-/// Sets the n-th bit in a byte array to the given value. `position` 0 is the most significant bit.
-///
-/// # Panics
-/// `set_bit` will panic if
-/// * `position` is out of bounds
-/// * `value` is not 0 or 1
-#[inline]
-pub(crate) fn set_bit(data: &mut [u8], position: usize, value: usize) {
-    match value {
-        0 => data[position / 8] &= !(1 << (7 - (position % 8))),
-        1 => data[position / 8] |= 1 << (7 - (position % 8)),
-        _ => panic!("Invalid bit value"),
-    }
-}
-
 /// Given two node keys, this function returns the number of bits that are common to both keys, starting from the most
 /// significant bit. This function is used to tell you the height at which two node keys would diverge in the sparse
 /// merkle tree. For example, key 0110 and 0101 would diverge at height 2, because the first two bits are the same.
@@ -67,21 +52,12 @@ pub fn height_key(key: &NodeKey, height: usize) -> NodeKey {
     result
 }
 
-pub fn path_matches_key(key: &NodeKey, path: &[TraverseDirection]) -> bool {
-    let height = path.len();
-
-    let prefix = path
-        .iter()
-        .enumerate()
-        .fold(NodeKey::default(), |mut prefix, (i, dir)| {
-            let bit = match dir {
-                TraverseDirection::Left => 0,
-                TraverseDirection::Right => 1,
-            };
-            set_bit(prefix.as_mut_slice(), i, bit);
-            prefix
-        });
-    count_common_prefix(key, &prefix) >= height
+pub const fn bit_to_dir(bit: usize) -> TraverseDirection {
+    match bit {
+        0 => TraverseDirection::Left,
+        1 => TraverseDirection::Right,
+        _ => panic!("Invalid bit"),
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -116,11 +92,8 @@ pub fn traverse_direction(
         });
     }
 
-    match get_bit(child_key.as_slice(), parent_height) {
-        0 => Ok(TraverseDirection::Left),
-        1 => Ok(TraverseDirection::Right),
-        _ => unreachable!(),
-    }
+    let dir = bit_to_dir(get_bit(child_key.as_slice(), parent_height));
+    Ok(dir)
 }
 
 #[cfg(test)]
@@ -232,43 +205,6 @@ mod test {
             97, 98, 99, 100, 101, 64, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         ]);
         assert_eq!(hkey, expected);
-    }
-
-    #[test]
-    fn set_bits() {
-        let mut val = [0b10101010, 0b01010101];
-        set_bit(&mut val, 0, 1);
-        assert_eq!(val, [0b10101010, 0b01010101]);
-        set_bit(&mut val, 1, 1);
-        assert_eq!(val, [0b11101010, 0b01010101]);
-        set_bit(&mut val, 2, 1);
-        assert_eq!(val, [0b11101010, 0b01010101]);
-        set_bit(&mut val, 3, 1);
-        assert_eq!(val, [0b11111010, 0b01010101]);
-        set_bit(&mut val, 4, 1);
-        assert_eq!(val, [0b11111010, 0b01010101]);
-        set_bit(&mut val, 5, 1);
-        assert_eq!(val, [0b11111110, 0b01010101]);
-        set_bit(&mut val, 6, 1);
-        assert_eq!(val, [0b11111110, 0b01010101]);
-        set_bit(&mut val, 7, 1);
-        assert_eq!(val, [0b11111111, 0b01010101]);
-        set_bit(&mut val, 8, 0);
-        assert_eq!(val, [0b11111111, 0b01010101]);
-        set_bit(&mut val, 9, 0);
-        assert_eq!(val, [0b11111111, 0b00010101]);
-        set_bit(&mut val, 10, 0);
-        assert_eq!(val, [0b11111111, 0b00010101]);
-        set_bit(&mut val, 11, 0);
-        assert_eq!(val, [0b11111111, 0b00000101]);
-        set_bit(&mut val, 12, 0);
-        assert_eq!(val, [0b11111111, 0b00000101]);
-        set_bit(&mut val, 13, 0);
-        assert_eq!(val, [0b11111111, 0b00000001]);
-        set_bit(&mut val, 14, 0);
-        assert_eq!(val, [0b11111111, 0b00000001]);
-        set_bit(&mut val, 15, 0);
-        assert_eq!(val, [0b11111111, 0b00000000]);
     }
 
     #[test]

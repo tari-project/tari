@@ -8,8 +8,8 @@ use digest::{consts::U32, Digest};
 use crate::sparse_merkle_tree::{
     bit_utils::{traverse_direction, TraverseDirection},
     EmptyNode,
+    ExclusionProof,
     LeafNode,
-    MerkleProof,
     Node,
     Node::{Branch, Empty, Leaf},
     NodeHash,
@@ -271,9 +271,10 @@ impl<H: Digest<OutputSize = U32>> SparseMerkleTree<H> {
         Ok(node.map(|n| n.as_leaf().unwrap().value()))
     }
 
-    /// Constructs a Merkle proof for the value at location `key`.
-    pub fn build_proof(&self, key: &NodeKey) -> Result<MerkleProof<H>, SMTError> {
-        let mut path = Vec::new();
+    /// Construct the data structures needed to generate the merkle proofs. Although this function returns a struct
+    /// of type `ExclusionProof` it is not really a valid (exclusion) proof. The constructors do additional
+    /// validation before passing the structure on. For this reason, this method is `private` outside of the module.
+    pub(crate) fn non_failing_exclusion_proof(&self, key: &NodeKey) -> Result<ExclusionProof<H>, SMTError> {
         let mut siblings = Vec::new();
         let mut current_node = &self.root;
         while current_node.is_branch() {
@@ -282,7 +283,6 @@ impl<H: Digest<OutputSize = U32>> SparseMerkleTree<H> {
                 return Err(SMTError::StaleHash);
             }
             let dir = traverse_direction(branch.height(), branch.key(), key)?;
-            path.push(dir);
             current_node = match dir {
                 TraverseDirection::Left => {
                     siblings.push(branch.right().unsafe_hash().clone());
@@ -294,13 +294,8 @@ impl<H: Digest<OutputSize = U32>> SparseMerkleTree<H> {
                 },
             };
         }
-        let (key, value) = match current_node {
-            Branch(_) => return Err(SMTError::UnexpectedNodeType),
-            Leaf(leaf) => (leaf.key().clone(), Some(leaf.value().clone())),
-            Empty(_) => (key.clone(), None),
-        };
-        siblings.iter().for_each(|s| println!("Sibling: {s:x}"));
-        let proof = MerkleProof::new(path, siblings, key, value);
+        let leaf = current_node.as_leaf().cloned();
+        let proof = ExclusionProof::new(siblings, leaf);
         Ok(proof)
     }
 
