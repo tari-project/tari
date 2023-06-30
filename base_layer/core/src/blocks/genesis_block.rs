@@ -26,12 +26,16 @@ use chrono::{DateTime, FixedOffset};
 use tari_common::configuration::Network;
 use tari_common_types::types::{FixedHash, PrivateKey};
 use tari_crypto::tari_utilities::hex::*;
+use tari_utilities::ByteArray;
 
 use crate::{
     blocks::{block::Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock},
     proof_of_work::{Difficulty, PowAlgorithm, ProofOfWork},
     transactions::{aggregated_body::AggregateBody, transaction_components::TransactionOutput},
 };
+
+// This can be adjusted as required, but must be limited
+const NOT_BEFORE_PROOF_BYTES_SIZE: usize = u16::MAX as usize;
 
 /// Returns the genesis block for the selected network.
 pub fn get_genesis_block(network: Network) -> ChainBlock {
@@ -132,7 +136,18 @@ pub fn get_stagenet_genesis_block() -> ChainBlock {
 fn get_stagenet_genesis_block_raw() -> Block {
     // Set genesis timestamp
     let genesis_timestamp = DateTime::parse_from_rfc2822("15 Jun 2023 14:00:00 +0200").expect("parse may not fail");
-    get_raw_block(&genesis_timestamp)
+    let not_before_proof = b"i am the stagenet genesis block, watch out, here i come \
+        \
+        The New York Times , 2000/01/01 \
+        \
+        Lorem Ipsum \
+        \
+        Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore \
+        magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo \
+        consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla \
+        pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id \
+        est laborum.";
+    get_raw_block(&genesis_timestamp, &not_before_proof.to_vec())
 }
 
 pub fn get_nextnet_genesis_block() -> ChainBlock {
@@ -170,7 +185,19 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
 fn get_nextnet_genesis_block_raw() -> Block {
     // Set genesis timestamp
     let genesis_timestamp = DateTime::parse_from_rfc2822("15 Jun 2023 14:00:00 +0200").expect("parse may not fail");
-    get_raw_block(&genesis_timestamp)
+    // Let us add a "not before" proof to the genesis block
+    let not_before_proof = b"nextnet has a blast, its prowess echoed in every gust \
+        \
+        The New York Times , 2000/01/01 \
+        \
+        Lorem Ipsum \
+        \
+        Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore \
+        magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo \
+        consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla \
+        pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id \
+        est laborum.";
+    get_raw_block(&genesis_timestamp, &not_before_proof.to_vec())
 }
 
 pub fn get_mainnet_genesis_block() -> ChainBlock {
@@ -216,7 +243,19 @@ pub fn get_igor_genesis_block() -> ChainBlock {
 fn get_igor_genesis_block_raw() -> Block {
     // Set genesis timestamp
     let genesis_timestamp = DateTime::parse_from_rfc2822("15 Jun 2023 14:00:00 +0200").expect("parse may not fail");
-    get_raw_block(&genesis_timestamp)
+    // Let us add a "not before" proof to the genesis block
+    let not_before_proof = b"but igor is the best, it is whispered in the wind \
+        \
+        The New York Times , 2000/01/01 \
+        \
+        Lorem Ipsum \
+        \
+        Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore \
+        magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo \
+        consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla \
+        pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id \
+        est laborum.";
+    get_raw_block(&genesis_timestamp, &not_before_proof.to_vec())
 }
 
 pub fn get_esmeralda_genesis_block() -> ChainBlock {
@@ -258,12 +297,29 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
 fn get_esmeralda_genesis_block_raw() -> Block {
     // Set genesis timestamp
     let genesis_timestamp = DateTime::parse_from_rfc2822("15 Jun 2023 14:00:00 +0200").expect("parse may not fail");
-    get_raw_block(&genesis_timestamp)
+    // Let us add a "not before" proof to the genesis block
+    let not_before_proof =
+        b"as I sip my drink, thoughts of esmeralda consume my mind, like a refreshing nourishing draught \
+        \
+        The New York Times , 2000/01/01 \
+        \
+        Lorem Ipsum \
+        \
+        Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore \
+        magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo \
+        consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla \
+        pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id \
+        est laborum.";
+    get_raw_block(&genesis_timestamp, &not_before_proof.to_vec())
 }
 
-fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>) -> Block {
+fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &[u8]) -> Block {
     // Note: Use 'print_new_genesis_block_values' in core/tests/helpers/block_builders.rs to generate the required
     // fields below
+
+    let mut not_before_proof = not_before_proof.to_vec();
+    not_before_proof.truncate(NOT_BEFORE_PROOF_BYTES_SIZE);
+
     #[allow(clippy::cast_sign_loss)]
     let timestamp = genesis_timestamp.timestamp() as u64;
     Block {
@@ -290,7 +346,7 @@ fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>) -> Block {
             nonce: 0,
             pow: ProofOfWork {
                 pow_algo: PowAlgorithm::Sha3x,
-                pow_data: vec![],
+                pow_data: not_before_proof,
             },
         },
         body: AggregateBody::new(vec![], vec![], vec![]),
