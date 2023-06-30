@@ -422,7 +422,7 @@ mod tests {
             let error_ptr = &mut error as *mut c_int;
             let block = create_test_block();
             let header_bytes = block.header.try_to_vec().unwrap();
-            let len = header_bytes.len() as u32;
+            let len = u32::try_from(header_bytes.len()).unwrap();
             let byte_vec = byte_vector_create(header_bytes.as_ptr(), len, error_ptr);
             inject_nonce(byte_vec, nonce, error_ptr);
             assert_eq!(error, 0);

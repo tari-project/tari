@@ -51,8 +51,6 @@ pub mod types;
 #[macro_use]
 pub mod utils;
 
-// TODO: Test utils should be part of a `tari_comms_test` crate
-// #[cfg(test)]
 pub mod test_utils;
 pub mod traits;
 

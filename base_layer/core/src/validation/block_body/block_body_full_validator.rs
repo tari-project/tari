@@ -63,8 +63,6 @@ impl BlockBodyFullValidator {
         block: &Block,
         metadata_option: Option<&ChainMetadata>,
     ) -> Result<Block, ValidationError> {
-        // TODO: this validation should not be neccesary, as it's overlaps with header validation
-        // but some of the test break without it
         if let Some(metadata) = metadata_option {
             validate_block_metadata(block, metadata)?;
         }

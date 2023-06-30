@@ -54,7 +54,6 @@ impl DiscoveryReady {
         }
     }
 
-    // TODO: Reduce LOC for this function
     #[allow(clippy::too_many_lines)]
     async fn process(&mut self) -> Result<StateEvent, NetworkDiscoveryError> {
         let num_peers = self.context.peer_manager.count().await;

@@ -107,11 +107,6 @@ where B: BlockchainBackend + 'static
         let tor_identity = load_from_json(&base_node_config.tor_identity_file)
             .map_err(|e| ExitError::new(ExitCode::ConfigError, e))?;
         p2p_config.transport.tor.identity = tor_identity;
-
-        // TODO: This should probably be disabled in future and have it optionally set/unset in the config - this check
-        //       does allow MITM/ISP/tor router to connect this node's IP to a destination IP/onion address.
-        //       Specifically, "pingpong" text is periodically sent on an unencrypted socket allowing anyone observing
-        //       the traffic to recognise the sending IP address as almost certainly a tari node.
         p2p_config.listener_liveness_check_interval = Some(Duration::from_secs(15));
 
         let mut handles = StackBuilder::new(self.interrupt_signal)

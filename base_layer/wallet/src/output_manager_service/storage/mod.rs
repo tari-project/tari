@@ -24,6 +24,9 @@ pub mod database;
 pub mod models;
 pub mod output_source;
 pub mod output_status;
+
+// converting between unsigned and signed is okay here as we do it both ways
+#[allow(clippy::cast_possible_wrap)]
 pub mod sqlite_db;
 
 pub use output_source::OutputSource;

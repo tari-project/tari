@@ -62,7 +62,6 @@ impl BlockBodyInternalConsistencyValidator {
     }
 
     pub fn validate(&self, block: &Block) -> Result<(), ValidationError> {
-        // TODO: this validation should not be needed, and only use the aggregate_body validator
         validate_block_specific_checks(block, &self.consensus_manager, &self.factories)?;
         validate_block_aggregate_body(block, &self.aggregate_body_validator, &self.consensus_manager)?;
 
@@ -76,8 +75,6 @@ impl InternalConsistencyValidator for BlockBodyInternalConsistencyValidator {
     }
 }
 
-// TODO: maybe some/all of these validations should be moved to AggregateBodyInternalConsistencyValidator
-// but many test fails in that case, we need to take a deeper look
 fn validate_block_specific_checks(
     block: &Block,
     consensus_manager: &ConsensusManager,
@@ -90,12 +87,12 @@ fn validate_block_specific_checks(
     }
 
     check_coinbase_output(block, consensus_manager, factories)?;
-    check_output_features(&block.body, constants)?;
+    check_coinbase_output_features(&block.body, constants)?;
 
     Ok(())
 }
 
-fn check_output_features(
+fn check_coinbase_output_features(
     body: &AggregateBody,
     consensus_constants: &ConsensusConstants,
 ) -> Result<(), ValidationError> {

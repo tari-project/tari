@@ -20,5 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+// converting between unsigned and signed is okay here as we do it both ways
+#[allow(clippy::cast_possible_wrap)]
 pub mod scanned_blocks;
+// converting between unsigned and signed is okay here as we do it both ways
+#[allow(clippy::cast_possible_wrap)]
 pub mod wallet;

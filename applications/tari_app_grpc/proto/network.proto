@@ -64,11 +64,6 @@ message NetworkStatusResponse {
     ConnectivityStatus status = 1;
     uint32 avg_latency_ms = 2;
     uint32 num_node_connections = 3;
-    // TODO: Implement these
-    //    uint32 incoming_bps = 4;
-    //    uint32 outgoing_bps = 5;
-    //    uint64 total_bytes_read = 6;
-    //    uint64 total_bytes_written = 7;
 }
 
 message Address{

@@ -56,7 +56,6 @@ impl CommandContext {
             .into_iter()
             .filter(|family| family.get_name().starts_with("tari_comms"));
 
-        // TODO: Make this useful
         let mut table = Table::new();
         table.set_titles(vec!["name", "type", "value"]);
         for family in metric_family_iter {

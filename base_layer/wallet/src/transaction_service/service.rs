@@ -371,7 +371,6 @@ where
                 },
                 //Incoming request
                 Some(request_context) = request_stream.next() => {
-                    // TODO: Remove time measurements; this is to aid in system testing only #LOGGED
                     let start = Instant::now();
                     let (request, reply_tx) = request_context.split();
                     let event = format!("Handling Service API Request ({})", request);
@@ -394,7 +393,6 @@ where
                 },
                 // Incoming Transaction messages from the Comms layer
                 Some(msg) = transaction_stream.next() => {
-                    // TODO: Remove time measurements; this is to aid in system testing only #LOGGED
                     let start = Instant::now();
                     let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
                     trace!(target: LOG_TARGET, "Handling Transaction Message, Trace: {}", msg.dht_header.message_tag);
@@ -423,7 +421,6 @@ where
                 },
                  // Incoming Transaction Reply messages from the Comms layer
                 Some(msg) = transaction_reply_stream.next() => {
-                    // TODO: Remove time measurements; this is to aid in system testing only  #LOGGED
                     let start = Instant::now();
                     let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
                     trace!(target: LOG_TARGET, "Handling Transaction Reply Message, Trace: {}", msg.dht_header.message_tag);
@@ -453,7 +450,6 @@ where
                 },
                // Incoming Finalized Transaction messages from the Comms layer
                 Some(msg) = transaction_finalized_stream.next() => {
-                    // TODO: Remove time measurements; this is to aid in system testing only  #LOGGED
                     let start = Instant::now();
                     let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
                     trace!(target: LOG_TARGET,
@@ -490,7 +486,6 @@ where
                 },
                 // Incoming messages from the Comms layer
                 Some(msg) = base_node_response_stream.next() => {
-                    // TODO: Remove time measurements; this is to aid in system testing only  #LOGGED
                     let start = Instant::now();
                     let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
                     trace!(target: LOG_TARGET, "Handling Base Node Response, Trace: {}", msg.dht_header.message_tag);
@@ -508,7 +503,6 @@ where
                 }
                 // Incoming messages from the Comms layer
                 Some(msg) = transaction_cancelled_stream.next() => {
-                    // TODO: Remove time measurements; this is to aid in system testing only #LOGGED
                     let start = Instant::now();
                     let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
                     trace!(target: LOG_TARGET, "Handling Transaction Cancelled message, Trace: {}", msg.dht_header.message_tag);

@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::cmp;
+use std::{cmp, convert::TryFrom};
 
 use log::warn;
 use tari_common_types::types::FixedHash;
@@ -45,19 +45,13 @@ pub const LOG_TARGET: &str = "c::val::header_full_validator";
 pub struct HeaderFullValidator {
     rules: ConsensusManager,
     difficulty_calculator: DifficultyCalculator,
-    bypass_prev_timestamp_verification: bool,
 }
 
 impl HeaderFullValidator {
-    pub fn new(
-        rules: ConsensusManager,
-        difficulty_calculator: DifficultyCalculator,
-        bypass_prev_timestamp_verification: bool,
-    ) -> Self {
+    pub fn new(rules: ConsensusManager, difficulty_calculator: DifficultyCalculator) -> Self {
         Self {
             rules,
             difficulty_calculator,
-            bypass_prev_timestamp_verification,
         }
     }
 }
@@ -75,10 +69,8 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for HeaderFullValidator
 
         check_blockchain_version(constants, header.version)?;
 
-        if !self.bypass_prev_timestamp_verification {
-            check_timestamp_count(header, prev_timestamps, constants)?;
-            check_header_timestamp_greater_than_median(header, prev_timestamps)?;
-        }
+        check_timestamp_count(header, prev_timestamps, constants)?;
+        check_header_timestamp_greater_than_median(header, prev_timestamps)?;
 
         check_height(header, prev_header)?;
         check_prev_hash(header, prev_header)?;
@@ -102,7 +94,11 @@ fn check_timestamp_count(
     prev_timestamps: &[EpochTime],
     consensus_constants: &ConsensusConstants,
 ) -> Result<(), ValidationError> {
-    let expected_timestamp_count = cmp::min(consensus_constants.median_timestamp_count(), header.height as usize - 1);
+    let expected_timestamp_count = cmp::min(
+        consensus_constants.median_timestamp_count(),
+        usize::try_from(header.height - 1)
+            .map_err(|_| ValidationError::CustomError("Invalid conversion u64 to uszie".to_string()))?,
+    );
     let timestamps: Vec<EpochTime> = prev_timestamps.iter().take(expected_timestamp_count).copied().collect();
     if timestamps.len() < expected_timestamp_count {
         return Err(ValidationError::NotEnoughTimestamps {

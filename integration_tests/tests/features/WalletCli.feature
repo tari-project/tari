@@ -34,8 +34,6 @@ Feature: Wallet CLI
         When I have mining node MINE connected to base node BASE and wallet SENDER
         When mining node MINE mines 5 blocks
         Then I wait for wallet SENDER to have at least 1100000 uT
-        # # TODO: Remove this wait when the wallet CLI commands involving transactions will only commence with a valid
-        # # TODO: base node connection.
         When I wait 30 seconds
         When I send 1000000 uT from SENDER to RECEIVER via command line
         Then wallet SENDER has at least 1 transactions that are all TRANSACTION_STATUS_BROADCAST and not cancelled
@@ -58,7 +56,6 @@ Feature: Wallet CLI
         When I mine 5 blocks on BASE
         Then all nodes are at height 20
         Then I get balance of wallet WALLET is at least 20000000000 uT via command line
-        # # TODO: verify the actual burned kernel
         #
     @long-running
     Scenario: As a user I want to send one-sided via command line
@@ -69,8 +66,6 @@ Feature: Wallet CLI
         When I have mining node MINE connected to base node BASE and wallet SENDER
         When mining node MINE mines 5 blocks
         Then I wait for wallet SENDER to have at least 1100000 uT
-        # # TODO: Remove this wait when the wallet CLI commands involving transactions will only commence with a valid
-        # # TODO: base node connection.
         When I wait 30 seconds
         Then I stop wallet SENDER
         Then I send one-sided 1000000 uT from SENDER to RECEIVER via command line
@@ -87,8 +82,6 @@ Feature: Wallet CLI
         When I have mining node MINE connected to base node BASE and wallet SENDER
         When mining node MINE mines 15 blocks
         Then wallets SENDER should have AT_LEAST 12 spendable coinbase outputs
-        # # TODO: Remove this wait when the wallet CLI commands involving transactions will only commence with a valid
-        # # TODO: base node connection.
         When I wait 30 seconds
         Then I stop wallet SENDER
         When I make it rain from wallet SENDER 1 tx per sec 10 sec 8000 uT 100 increment to RECEIVER via command line
@@ -105,8 +98,6 @@ Feature: Wallet CLI
         When I have mining node MINE connected to base node BASE and wallet WALLET
         When mining node MINE mines 4 blocks
         Then I wait for wallet WALLET to have at least 1100000 uT
-        # # TODO: Remove this wait when the wallet CLI commands involving transactions will only commence with a valid
-        # # TODO: base node connection.
         When I wait 30 seconds
         When I do coin split on wallet WALLET to 10000 uT 10 coins via command line
         Then wallet WALLET has at least 1 transactions that are all TRANSACTION_STATUS_BROADCAST and not cancelled

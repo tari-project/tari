@@ -88,7 +88,7 @@ async fn add_many_chained_blocks(
         .unwrap();
     let mut blocks = Vec::with_capacity(size);
     let mut outputs = Vec::with_capacity(size);
-    for _ in 1..=size as u64 {
+    for _ in 1..=size {
         let (block, coinbase_utxo) = create_next_block(db, &prev_block, vec![], key_manager).await;
 
         db.add_block(block.clone()).unwrap().assert_added();
@@ -611,6 +611,8 @@ mod clear_all_pending_headers {
 }
 
 mod validator_node_merkle_root {
+    use std::convert::TryFrom;
+
     use rand::rngs::OsRng;
     use tari_common_types::types::PublicKey;
     use tari_crypto::keys::PublicKey as PublicKeyTrait;
@@ -654,7 +656,7 @@ mod validator_node_merkle_root {
         db.add_block(block).unwrap().assert_added();
 
         let consts = db.consensus_constants().unwrap();
-        let (_, _) = add_many_chained_blocks(consts.epoch_length() as usize, &db, &key_manager).await;
+        let (_, _) = add_many_chained_blocks(usize::try_from(consts.epoch_length()).unwrap(), &db, &key_manager).await;
 
         let shard_key = db
             .get_shard_key(consts.epoch_length(), public_key.clone())

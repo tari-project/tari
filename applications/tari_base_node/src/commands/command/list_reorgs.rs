@@ -60,7 +60,6 @@ impl CommandContext {
             }
             table.enable_row_count().print_stdout();
         } else {
-            // TODO: Return error/report
             println!(
                 "Reorg tracking is turned off. Add `track_reorgs = true` to the [base_node] section of your config to \
                  turn it on."

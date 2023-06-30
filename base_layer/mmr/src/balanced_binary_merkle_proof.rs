@@ -253,7 +253,9 @@ mod test {
 
     #[test]
     fn test_small_tree() {
-        let leaves = (0..4usize).map(|i| vec![i as u8; 32]).collect::<Vec<_>>();
+        let leaves = (0..4usize)
+            .map(|i| vec![u8::try_from(i).unwrap(); 32])
+            .collect::<Vec<_>>();
         let bmt = BalancedBinaryMerkleTree::<TestHasher>::create(leaves.clone());
 
         assert_eq!(bmt.num_nodes(), (4 << 1) - 1);
@@ -379,7 +381,7 @@ mod test {
             heights: vec![0, 0],
             _phantom: PhantomData,
         };
-        // TODO: This should fail but does not
+        // This should fail but does not
         // proof .verify_consume(&vec![5u8; 32], vec![vec![5u8; 32], vec![2u8; 32]]) .unwrap_err();
         assert!(proof
             .verify_consume(&vec![5u8; 32], vec![vec![5u8; 32], vec![2u8; 32]])

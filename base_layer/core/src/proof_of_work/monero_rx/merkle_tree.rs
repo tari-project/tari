@@ -212,7 +212,6 @@ impl Default for MerkleProof {
 
 /// Creates a merkle proof for the given hash within the set of hashes. This function returns None if the hash is not in
 /// hashes. This is a port of Monero's tree_branch function
-// TODO: Reduce the cognitive complexity of this function
 #[allow(clippy::cognitive_complexity)]
 pub fn create_merkle_proof(hashes: &[Hash], hash: &Hash) -> Option<MerkleProof> {
     match hashes.len() {

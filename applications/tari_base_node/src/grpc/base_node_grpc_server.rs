@@ -171,7 +171,10 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 GET_DIFFICULTY_MAX_HEIGHTS, num_requested
             )));
         }
-        let (mut tx, rx) = mpsc::channel(cmp::min(num_requested as usize, GET_DIFFICULTY_PAGE_SIZE));
+        let (mut tx, rx) = mpsc::channel(cmp::min(
+            usize::try_from(num_requested).map_err(|_| Status::internal("Error converting u64 to usize"))?,
+            GET_DIFFICULTY_PAGE_SIZE,
+        ));
 
         let mut sha3x_hash_rate_moving_average =
             HashRateMovingAverage::new(PowAlgorithm::Sha3x, self.consensus_rules.clone());
@@ -303,6 +306,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         Ok(Response::new(rx))
     }
 
+    // casting here is okay as a block cannot have more than u32 kernels
+    #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::too_many_lines)]
     async fn list_headers(
         &self,
@@ -387,7 +392,6 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             };
             for (start, end) in page_iter {
                 debug!(target: LOG_TARGET, "Page: {}-{}", start, end);
-                // TODO: Better error handling
                 let result_data = match handler.get_blocks(start..=end, true).await {
                     Err(err) => {
                         warn!(target: LOG_TARGET, "Internal base node service error: {}", err);
@@ -863,11 +867,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         );
                         return;
                     },
-                    Ok(data) => {
-                        // TODO: Change this interface to a start-end ranged one (clients like the block explorer
-                        // convert start end ranges to integer lists anyway)
-                        data.into_iter().filter(|b| heights.contains(&b.header().height))
-                    },
+                    Ok(data) => data.into_iter().filter(|b| heights.contains(&b.header().height)),
                 };
 
                 for block in blocks {
@@ -1219,11 +1219,6 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 .drain(..cmp::min(heights.len(), GET_TOKENS_IN_CIRCULATION_PAGE_SIZE))
                 .collect();
             while !page.is_empty() {
-                // TODO: This is not ideal. The main issue here is the interface to get_tokens_in_circulation includes
-                // blocks at any height to be selected instead of a more coherent start - end range. This means we
-                // cannot use the Emission iterator as intended and instead, must query the supply at a
-                // given height for each block (the docs mention to use the iterator instead of supply_at_block in a
-                // loop, however the Iterator was not exposed at the time this handler was written).
                 let values: Vec<tari_rpc::ValueAtHeightResponse> = page
                     .clone()
                     .into_iter()
@@ -1324,6 +1319,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         Ok(Response::new(response))
     }
 
+    // casting here is okay as we cannot have more than u32 kernels in a block
+    #[allow(clippy::cast_possible_truncation)]
     async fn get_header_by_hash(
         &self,
         request: Request<tari_rpc::GetHeaderByHashRequest>,
@@ -1390,7 +1387,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             avg_latency_ms: latency
                 .map(|l| u32::try_from(l.as_millis()).unwrap_or(u32::MAX))
                 .unwrap_or(0),
-            num_node_connections: status.num_connected_nodes() as u32,
+            num_node_connections: u32::try_from(status.num_connected_nodes())
+                .map_err(|_| Status::internal("Error converting usize to u32"))?,
         };
 
         Ok(Response::new(resp))

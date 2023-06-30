@@ -61,7 +61,6 @@ impl RandomXVMInstance {
     }
 }
 
-// TODO: Find a better way of marking this Send and Sync
 // This type should be Send and Sync since it is wrapped in an Arc RwLock, but
 // for some reason Rust and clippy don't see it automatically.
 #[allow(clippy::non_send_fields_in_send_ty)]

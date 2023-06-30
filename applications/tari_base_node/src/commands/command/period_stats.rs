@@ -109,14 +109,14 @@ impl CommandContext {
             period_tx_count += block.block().body.kernels().len() - 1;
             period_block_count += 1;
             let st = if prev_block.header().timestamp.as_u64() >= block.header().timestamp.as_u64() {
-                1.0
+                1
             } else {
-                (block.header().timestamp.as_u64() - prev_block.header().timestamp.as_u64()) as f64
+                block.header().timestamp.as_u64() - prev_block.header().timestamp.as_u64()
             };
             let diff = block.accumulated_data.target_difficulty.as_u64();
             period_difficulty += diff;
-            period_solvetime += st as u64;
-            period_hash += diff as f64 / st / 1_000_000.0;
+            period_solvetime += st;
+            period_hash += diff as f64 / st as f64 / 1_000_000.0;
             if period_ticker_end <= period_end {
                 break;
             }

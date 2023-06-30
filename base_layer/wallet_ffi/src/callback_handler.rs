@@ -651,6 +651,8 @@ where TBackend: TransactionBackend + 'static
         }
     }
 
+    // casting here is okay as we dont care about the super high latency
+    #[allow(clippy::cast_possible_truncation)]
     fn base_node_state_changed(&mut self, state: BaseNodeState) {
         debug!(target: LOG_TARGET, "Calling Base Node State changed callback function");
 

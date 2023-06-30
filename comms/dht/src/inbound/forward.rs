@@ -177,7 +177,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         } = message;
 
         if self.destination_matches_source(&dht_header.destination, source_peer) {
-            // TODO: #banheuristic - the origin of this message was the destination. Two things are wrong here:
+            //       #banheuristic - the origin of this message was the destination. Two things are wrong here:
             //       1. The origin/destination should not have forwarded this (the destination node didnt do
             //          this destination_matches_source check)
             //       1. The source sent a message that the destination could not decrypt

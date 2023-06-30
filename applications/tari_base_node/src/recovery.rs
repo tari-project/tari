@@ -99,7 +99,7 @@ pub async fn run_recovery(node_config: &BaseNodeConfig) -> Result<(), anyhow::Er
     let difficulty_calculator = DifficultyCalculator::new(rules.clone(), randomx_factory);
     let validators = Validators::new(
         BlockBodyFullValidator::new(rules.clone(), true),
-        HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone(), false),
+        HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone()),
         BlockBodyInternalConsistencyValidator::new(
             rules.clone(),
             node_config.bypass_range_proof_verification,

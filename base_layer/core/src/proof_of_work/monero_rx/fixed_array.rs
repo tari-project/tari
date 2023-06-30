@@ -166,7 +166,7 @@ mod test {
 
     #[test]
     fn length_check() {
-        let mut buf = [MAX_ARR_SIZE as u8; MAX_ARR_SIZE + 1];
+        let mut buf = [u8::try_from(MAX_ARR_SIZE).unwrap(); MAX_ARR_SIZE + 1];
         let fixed_byte_array = FixedByteArray::deserialize(&mut buf.as_slice()).unwrap();
         assert_eq!(fixed_byte_array.len(), MAX_ARR_SIZE);
         buf[0] += 1;

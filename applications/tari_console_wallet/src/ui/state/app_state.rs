@@ -654,7 +654,6 @@ impl AppState {
     }
 
     pub fn get_required_confirmations(&self) -> u64 {
-        // TODO: this is not guaranteed to be correct
         self.wallet_config.num_required_confirmations
     }
 

@@ -652,8 +652,6 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 latency
             );
             let existing_header = self.db.fetch_header_by_block_hash(header.hash()).await?;
-            // TODO: Due to a bug in a previous version of base node sync RPC, the duplicate headers can be sent. We
-            //       should be a little more strict about this in future.
             if let Some(h) = existing_header {
                 warn!(
                     target: LOG_TARGET,

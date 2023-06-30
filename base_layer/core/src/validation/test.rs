@@ -112,7 +112,7 @@ mod header_validators {
         let mut header = BlockHeader::from_previous(genesis.header());
         header.version = u16::MAX;
         let difficulty_calculator = DifficultyCalculator::new(consensus_manager.clone(), Default::default());
-        let validator = HeaderFullValidator::new(consensus_manager, difficulty_calculator, false);
+        let validator = HeaderFullValidator::new(consensus_manager, difficulty_calculator);
 
         let err = validator
             .validate(&*db.db_read_access().unwrap(), &header, genesis.header(), &[], None)
@@ -517,7 +517,6 @@ mod transaction_validator {
     }
 }
 
-// TODO: This is probably generally useful and should be included in the BlockchainDatabase
 /// Iterator that emits BlockHeaders until a given height. This iterator loads headers in chunks of size `chunk_size`
 /// for a low memory footprint. The chunk buffer is allocated once and reused.
 pub struct HeaderIter<'a, B> {

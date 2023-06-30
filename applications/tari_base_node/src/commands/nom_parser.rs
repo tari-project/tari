@@ -116,6 +116,5 @@ mod tests {
             "a different ",
             "format"
         ]);
-        // TODO: Support emojis
     }
 }
