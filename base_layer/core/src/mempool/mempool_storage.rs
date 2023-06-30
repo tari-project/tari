@@ -53,6 +53,7 @@ pub struct MempoolStorage {
     reorg_pool: ReorgPool,
     validator: Box<dyn TransactionValidator>,
     rules: ConsensusManager,
+    last_seen_height: u64,
 }
 
 impl MempoolStorage {
@@ -63,11 +64,11 @@ impl MempoolStorage {
             reorg_pool: ReorgPool::new(config.reorg_pool),
             validator,
             rules,
+            last_seen_height: 0,
         }
     }
 
-    /// Insert an unconfirmed transaction into the Mempool. The transaction *MUST* have passed through the validation
-    /// pipeline already and will thus always be internally consistent at this stage
+    /// Insert an unconfirmed transaction into the Mempool.
     pub fn insert(&mut self, tx: Arc<Transaction>) -> std::io::Result<TxStorageResponse> {
         let tx_id = tx
             .body
@@ -86,7 +87,7 @@ impl MempoolStorage {
                     timer.elapsed()
                 );
                 let timer = Instant::now();
-                let weight = self.get_transaction_weighting(0);
+                let weight = self.get_transaction_weighting();
                 self.unconfirmed_pool.insert(tx, None, &weight)?;
                 debug!(
                     target: LOG_TARGET,
@@ -98,7 +99,7 @@ impl MempoolStorage {
             },
             Err(ValidationError::UnknownInputs(dependent_outputs)) => {
                 if self.unconfirmed_pool.contains_all_outputs(&dependent_outputs) {
-                    let weight = self.get_transaction_weighting(0);
+                    let weight = self.get_transaction_weighting();
                     self.unconfirmed_pool.insert(tx, Some(dependent_outputs), &weight)?;
                     Ok(TxStorageResponse::UnconfirmedPool)
                 } else {
@@ -133,8 +134,11 @@ impl MempoolStorage {
         }
     }
 
-    fn get_transaction_weighting(&self, height: u64) -> TransactionWeight {
-        *self.rules.consensus_constants(height).transaction_weight_params()
+    fn get_transaction_weighting(&self) -> TransactionWeight {
+        *self
+            .rules
+            .consensus_constants(self.last_seen_height)
+            .transaction_weight_params()
     }
 
     // Insert a set of new transactions into the UTxPool.
@@ -183,6 +187,7 @@ impl MempoolStorage {
         self.unconfirmed_pool.compact();
         self.reorg_pool.compact();
 
+        self.last_seen_height = published_block.header.height;
         debug!(target: LOG_TARGET, "Compaction took {:.2?}", timer.elapsed());
         match self.stats() {
             Ok(stats) => debug!(target: LOG_TARGET, "{}", stats),
@@ -232,6 +237,13 @@ impl MempoolStorage {
             .remove_reorged_txs_and_discard_double_spends(removed_blocks, new_blocks);
         self.insert_txs(removed_txs)
             .map_err(|e| MempoolError::InternalError(e.to_string()))?;
+        if let Some(height) = new_blocks
+            .last()
+            .or(removed_blocks.first())
+            .map(|block| block.header.height)
+        {
+            self.last_seen_height = height;
+        }
         Ok(())
     }
 
@@ -320,7 +332,7 @@ impl MempoolStorage {
 
     /// Gathers and returns the stats of the Mempool.
     pub fn stats(&self) -> std::io::Result<StatsResponse> {
-        let weighting = self.get_transaction_weighting(0);
+        let weighting = self.get_transaction_weighting();
         Ok(StatsResponse {
             unconfirmed_txs: self.unconfirmed_pool.len() as u64,
             reorg_txs: self.reorg_pool.len() as u64,
