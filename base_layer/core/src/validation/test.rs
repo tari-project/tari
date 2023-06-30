@@ -112,7 +112,7 @@ mod header_validators {
         let mut header = BlockHeader::from_previous(genesis.header());
         header.version = u16::MAX;
         let difficulty_calculator = DifficultyCalculator::new(consensus_manager.clone(), Default::default());
-        let validator = HeaderFullValidator::new(consensus_manager, difficulty_calculator, false);
+        let validator = HeaderFullValidator::new(consensus_manager, difficulty_calculator);
 
         let err = validator
             .validate(&*db.db_read_access().unwrap(), &header, genesis.header(), &[], None)
