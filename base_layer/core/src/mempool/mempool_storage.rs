@@ -239,7 +239,7 @@ impl MempoolStorage {
             .map_err(|e| MempoolError::InternalError(e.to_string()))?;
         if let Some(height) = new_blocks
             .last()
-            .or(removed_blocks.first())
+            .or_else(|| removed_blocks.first())
             .map(|block| block.header.height)
         {
             self.last_seen_height = height;

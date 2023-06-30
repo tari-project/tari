@@ -252,7 +252,7 @@ impl UnconfirmedPool {
                             .or_insert_with(|| vec![tx_key]);
                     }
                 }
-                let fee_per_byte = (total_transaction_fees as f64 / total_transaction_weight as f64 * 1000.0) as u64;
+                let fee_per_byte = (total_transaction_fees * 1000) / total_transaction_weight;
                 complete_transaction_branch.insert(
                     *tx_key,
                     (
@@ -333,7 +333,7 @@ impl UnconfirmedPool {
                 // So we recompute the total fees based on updated weights and fees.
                 let (_, total_transaction_weight, total_transaction_fees) =
                     complete_transaction_branch.get(&tx_key).unwrap();
-                let fee_per_byte = (*total_transaction_fees as f64 / *total_transaction_weight as f64 * 1000.0) as u64;
+                let fee_per_byte = (*total_transaction_fees * 1000) / *total_transaction_weight;
                 potentional_to_add.push((fee_per_byte, tx_key));
                 continue;
             }

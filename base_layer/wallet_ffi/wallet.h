@@ -1509,7 +1509,7 @@ TariWalletAddress *liveness_data_get_public_key(TariContactsLivenessData *livene
  *
  * ## Returns
  * `*mut c_int` - Returns a pointer to a c_int if the optional latency data (in milli-seconds (ms)) exists, with a
- * value of '-1' if it is None. Note that it also returns '-1' if liveness_data is null.
+ * value of '0' if it is None. Note that it also returns '0' if liveness_data is null.
  *
  * # Safety
  * The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
