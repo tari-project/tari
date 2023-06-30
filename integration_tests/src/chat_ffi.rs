@@ -21,6 +21,7 @@
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    convert::TryFrom,
     ffi::{c_void, CString},
     path::PathBuf,
     str::FromStr,
@@ -89,7 +90,7 @@ impl ChatClient for ChatFFI {
         let out_error = Box::into_raw(Box::new(0));
         unsafe { result = check_online_status(client.0, address_ptr, out_error) }
 
-        ContactOnlineStatus::from_byte(result as u8).expect("A valid u8 from FFI status")
+        ContactOnlineStatus::from_byte(u8::try_from(result).unwrap()).expect("A valid u8 from FFI status")
     }
 
     async fn send_message(&self, receiver: TariAddress, message: String) {

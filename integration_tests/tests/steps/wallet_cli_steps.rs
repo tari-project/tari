@@ -20,7 +20,7 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{path::PathBuf, str::FromStr, time::Duration};
+use std::{convert::TryFrom, path::PathBuf, str::FromStr, time::Duration};
 
 use cucumber::{then, when};
 use tari_app_grpc::tari_rpc::Empty;
@@ -248,7 +248,7 @@ async fn make_it_rain(
 
     let args = MakeItRainArgs {
         start_amount: MicroTari(start_amount),
-        transactions_per_second: txs_per_second as u32,
+        transactions_per_second: u32::try_from(txs_per_second).unwrap(),
         duration: Duration::from_secs(duration),
         message: format!(
             "Make it raing amount {} from {} to {}",
@@ -281,7 +281,7 @@ async fn coin_split_via_cli(world: &mut TariWorld, wallet: String, amount: u64, 
 
     let args = CoinSplitArgs {
         amount_per_split: MicroTari(amount),
-        num_splits: splits as usize,
+        num_splits: usize::try_from(splits).unwrap(),
         fee_per_gram: MicroTari(20),
         message: format!("coin split amount {} with splits {}", amount, splits),
     };

@@ -339,7 +339,8 @@ async fn base_node_has_unconfirmed_transaction_in_mempool(world: &mut TariWorld,
 async fn tx_in_state_all_nodes(world: &mut TariWorld, tx_name: String, pool: String) -> anyhow::Result<()> {
     tx_in_state_all_nodes_with_allowed_failure(world, tx_name, pool, 0).await
 }
-
+// casting is okay in tests
+#[allow(clippy::cast_possible_truncation)]
 #[then(expr = "{word} is in the {word} of all nodes, where {int}% can fail")]
 async fn tx_in_state_all_nodes_with_allowed_failure(
     world: &mut TariWorld,
@@ -754,7 +755,7 @@ async fn has_at_least_num_peers(world: &mut TariWorld, node: String, num_peers: 
             }
         }
 
-        if last_num_of_peers >= num_peers as usize {
+        if last_num_of_peers >= usize::try_from(num_peers).unwrap() {
             return;
         }
 

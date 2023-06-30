@@ -64,6 +64,8 @@ impl BurnTab {
         }
     }
 
+    // casting here is okay as we only use it for draw widths
+    #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::too_many_lines)]
     fn draw_burn_form<B>(&self, f: &mut Frame<B>, area: Rect, _app_state: &AppState)
     where B: Backend {
