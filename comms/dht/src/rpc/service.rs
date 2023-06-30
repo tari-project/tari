@@ -164,11 +164,11 @@ impl DhtRpcService for DhtRpcServiceImpl {
             query = query.limit(message.n as usize);
         }
 
-        // TODO: This result set can/will be large
-        //       Ideally, we'd need a lazy-loaded iterator, however that requires a long-lived read transaction and
-        //       the lifetime of that transaction is proportional on the time it takes to send the peers.
-        //       Either we should not need to return all peers, or we can find a way to do an iterator which does not
-        //       require a long-lived read transaction (we don't strictly care about read consistency in this case).
+        // This result set can/will be large
+        // Ideally, we'd need a lazy-loaded iterator, however that requires a long-lived read transaction and
+        // the lifetime of that transaction is proportional on the time it takes to send the peers.
+        // Either we should not need to return all peers, or we can find a way to do an iterator which does not
+        // require a long-lived read transaction (we don't strictly care about read consistency in this case).
         let peers = self.peer_manager.perform_query(query).await.map_err(RpcError::from)?;
 
         let node_id = request.context().peer_node_id();

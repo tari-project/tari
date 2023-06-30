@@ -61,8 +61,6 @@ impl TorControlPortClient {
         event_tx: broadcast::Sender<TorControlEvent>,
     ) -> Result<Self, TorClientError> {
         let tcp = TcpTransport::new();
-        // TODO: Probably don't need nodelay
-        // tcp.set_nodelay(true);
         let socket = tcp.dial(&addr).await?;
         Ok(Self::new(socket, event_tx))
     }

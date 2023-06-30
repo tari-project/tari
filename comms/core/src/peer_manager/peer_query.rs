@@ -95,7 +95,6 @@ impl<'a> PeerQuery<'a> {
 
     /// Returns true if the specified select predicate returns true. If the
     /// select predicate was not specified, this always returns true.
-    // TODO: This mut is incorrect and can be removed
     #[allow(clippy::wrong_self_convention)]
     fn is_selected(&mut self, peer: &Peer) -> bool {
         self.select_predicate

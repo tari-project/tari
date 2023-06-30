@@ -2289,7 +2289,6 @@ fn remove_orphan<T: BlockchainBackend>(db: &mut T, hash: HashOutput) -> Result<(
 }
 
 /// Gets all blocks ordered from the the block that connects (via prev_hash) to the main chain, to the orphan tip.
-// TODO: this would probably perform better if it reused the db transaction
 #[allow(clippy::ptr_arg)]
 fn get_orphan_link_main_chain<T: BlockchainBackend>(
     db: &T,

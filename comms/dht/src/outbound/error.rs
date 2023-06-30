@@ -60,7 +60,7 @@ pub enum DhtOutboundError {
     #[error("Cipher error: `{0}`")]
     CipherError(String),
     #[error("Padding error: `{0}`")]
-    PaddingError(String), // TODO: clean up these errors
+    PaddingError(String),
 }
 
 impl From<SendFailure> for DhtOutboundError {

@@ -85,7 +85,6 @@ impl CliLoop {
         if self.non_interactive {
             self.watch_loop_non_interactive().await;
         } else {
-            // TODO: Check for a new version here
             while !self.done {
                 self.watch_loop().await;
                 self.execute_command().await;
@@ -145,7 +144,6 @@ impl CliLoop {
                                 break;
                             }
                         }
-                        // TODO: Is that good idea? Or add a separate command?
                         Ok(_) = software_update_notif.changed() => {
                             if let Some(ref update) = *software_update_notif.borrow() {
                                 println!(
@@ -235,8 +233,6 @@ impl CliLoop {
                             self.done = true;
                         }
                         Err(err) => {
-                            // TODO: Not sure we have to break here
-                            // This happens when the node is shutting down.
                             log::debug!(target:  LOG_TARGET, "Could not read line from rustyline:{}", err);
                             self.done = true;
                         }

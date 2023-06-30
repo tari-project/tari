@@ -28,7 +28,6 @@ mod sync_utxos_task;
 #[cfg(feature = "base_node")]
 pub use service::BaseNodeSyncRpcService;
 
-// TODO: Tests need to be rewritten
 #[cfg(test)]
 mod tests;
 

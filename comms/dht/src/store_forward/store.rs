@@ -289,7 +289,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Se
             // This node could not decrypt the message
             None => {
                 if !message.has_message_signature() {
-                    // TODO: #banheuristic - the source peer should not have propagated this message
+                    // #banheuristic - the source peer should not have propagated this message
                     debug!(
                         target: LOG_TARGET,
                         "Store task received an encrypted message with no message signature. This message {} is \
@@ -331,7 +331,6 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Se
             return Ok(None);
         }
 
-        // TODO: Remove this once we have a layer that filters out all messages to/from banned peers
         if let Some(origin_pk) = message.authenticated_origin() {
             if let Ok(Some(peer)) = self.peer_manager.find_by_public_key(origin_pk).await {
                 if peer.is_banned() {

@@ -70,7 +70,6 @@ async fn it_passes_if_block_is_valid() {
 
     let (chain_block, _) = blockchain.create_next_tip(BlockSpec::default()).await;
 
-    // TODO: the correct mmr roots should probably be calculated on the test helper functions to create blocks
     let (mut block, mmr_roots) = blockchain
         .db()
         .calculate_mmr_roots(chain_block.block().clone())

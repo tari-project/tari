@@ -49,7 +49,6 @@ impl From<Peer> for PeerInfo {
                 .addresses()
                 .iter()
                 .filter_map(|addr| {
-                    // TODO: find the source of the empty addresses
                     if addr.address().is_empty() {
                         return None;
                     }

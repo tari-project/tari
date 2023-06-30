@@ -68,7 +68,6 @@ impl Network {
 impl Default for Network {
     #[cfg(tari_network_mainnet)]
     fn default() -> Self {
-        // TODO: set the default network to mainnet
         Network::StageNet
     }
 

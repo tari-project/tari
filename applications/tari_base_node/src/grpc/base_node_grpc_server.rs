@@ -392,7 +392,6 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             };
             for (start, end) in page_iter {
                 debug!(target: LOG_TARGET, "Page: {}-{}", start, end);
-                // TODO: Better error handling
                 let result_data = match handler.get_blocks(start..=end, true).await {
                     Err(err) => {
                         warn!(target: LOG_TARGET, "Internal base node service error: {}", err);
@@ -868,11 +867,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         );
                         return;
                     },
-                    Ok(data) => {
-                        // TODO: Change this interface to a start-end ranged one (clients like the block explorer
-                        // convert start end ranges to integer lists anyway)
-                        data.into_iter().filter(|b| heights.contains(&b.header().height))
-                    },
+                    Ok(data) => data.into_iter().filter(|b| heights.contains(&b.header().height)),
                 };
 
                 for block in blocks {
@@ -1224,11 +1219,6 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 .drain(..cmp::min(heights.len(), GET_TOKENS_IN_CIRCULATION_PAGE_SIZE))
                 .collect();
             while !page.is_empty() {
-                // TODO: This is not ideal. The main issue here is the interface to get_tokens_in_circulation includes
-                // blocks at any height to be selected instead of a more coherent start - end range. This means we
-                // cannot use the Emission iterator as intended and instead, must query the supply at a
-                // given height for each block (the docs mention to use the iterator instead of supply_at_block in a
-                // loop, however the Iterator was not exposed at the time this handler was written).
                 let values: Vec<tari_rpc::ValueAtHeightResponse> = page
                     .clone()
                     .into_iter()

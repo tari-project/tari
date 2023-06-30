@@ -35,7 +35,6 @@ pub struct Cli {
     #[clap(long)]
     pub init: bool,
     /// This will rebuild the db, adding block for block in
-    // TODO: Should be a command rather
     #[clap(long, alias = "rebuild_db")]
     pub rebuild_db: bool,
     /// Run in non-interactive mode, with no UI.

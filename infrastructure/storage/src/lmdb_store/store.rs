@@ -497,8 +497,6 @@ impl LMDBDatabase {
                         target: LOG_TARGET,
                         "Failed to obtain write transaction because the database needs to be resized"
                     );
-                    // SAFETY: We know that there are no open transactions at this point because ...
-                    // TODO: we don't guarantee this here but it works because the caller does this.
                     unsafe {
                         LMDBStore::resize(&self.env, &self.env_config)?;
                     }

@@ -110,7 +110,6 @@ where B: BlockchainBackend + 'static
     }
 
     /// Handle inbound node comms requests from remote nodes and local services.
-    // TODO: Break this function up into smaller pieces
     #[allow(clippy::too_many_lines)]
     pub async fn handle_request(&self, request: NodeCommsRequest) -> Result<NodeCommsResponse, CommsInterfaceError> {
         debug!(target: LOG_TARGET, "Handling remote request {}", request);

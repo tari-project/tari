@@ -112,7 +112,6 @@ impl Listening {
         Default::default()
     }
 
-    // TODO: Break up into smaller functions
     #[allow(clippy::too_many_lines)]
     pub async fn next_event<B: BlockchainBackend + 'static>(
         &mut self,
