@@ -42,14 +42,6 @@ impl<B: Backend> Component<B> for Menu {
             Span::styled(" Version: ", Style::default().fg(Color::White)),
             Span::styled(consts::APP_VERSION_NUMBER, Style::default().fg(Color::Magenta)),
             Span::raw(" "),
-            // In the event this is needed in future, should be put into its' own span
-            // match cfg!(feature = "avx2") {
-            // true => Span::styled("Avx2", Style::default().fg(Color::LightGreen)),
-            // false => Span::styled(
-            // "Avx2",
-            // Style::default().fg(Color::LightRed).add_modifier(Modifier::CROSSED_OUT),
-            // ),
-            // },
         ]);
 
         let network = Spans::from(vec![

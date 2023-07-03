@@ -374,7 +374,9 @@ fn check_timelocks() {
 async fn test_validate_internal_consistency() {
     let features = OutputFeatures { ..Default::default() };
     let key_manager = create_test_core_key_manager_with_memory_db();
-    let (tx, _, _) = test_helpers::create_tx(5000.into(), 3.into(), 1, 2, 1, 4, features, &key_manager).await;
+    let (tx, _, _) = test_helpers::create_tx(5000.into(), 3.into(), 1, 2, 1, 4, features, &key_manager)
+        .await
+        .expect("Failed to create tx");
     let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
     let factories = CryptoFactories::default();
     let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
@@ -386,7 +388,9 @@ async fn test_validate_internal_consistency() {
 async fn check_cut_through() {
     let key_manager = create_test_core_key_manager_with_memory_db();
     let (tx, _, outputs) =
-        test_helpers::create_tx(50000000.into(), 3.into(), 1, 2, 1, 2, Default::default(), &key_manager).await;
+        test_helpers::create_tx(50000000.into(), 3.into(), 1, 2, 1, 2, Default::default(), &key_manager)
+            .await
+            .expect("Failed to create tx");
 
     assert_eq!(tx.body.inputs().len(), 2);
     assert_eq!(tx.body.outputs().len(), 2);
@@ -438,7 +442,9 @@ async fn check_cut_through() {
 async fn check_duplicate_inputs_outputs() {
     let key_manager = create_test_core_key_manager_with_memory_db();
     let (tx, _, _outputs) =
-        test_helpers::create_tx(50000000.into(), 3.into(), 1, 2, 1, 2, Default::default(), &key_manager).await;
+        test_helpers::create_tx(50000000.into(), 3.into(), 1, 2, 1, 2, Default::default(), &key_manager)
+            .await
+            .expect("Failed to create tx");
     assert!(!tx.body.contains_duplicated_outputs());
     assert!(!tx.body.contains_duplicated_inputs());
 
@@ -469,7 +475,8 @@ async fn inputs_not_malleable() {
         &Default::default(),
         &key_manager,
     )
-    .await;
+    .await
+    .expect("Failed to create wallet outputs");
     let mut stack = inputs[0].input_data.clone();
     let mut tx = test_helpers::create_transaction_with(1, 15.into(), inputs, outputs, &key_manager).await;
 
@@ -540,7 +547,8 @@ mod validate_internal_consistency {
             &utxo_params.covenant.clone(),
             key_manager,
         )
-        .await;
+        .await
+        .expect("Failed to create wallet outputs");
         inputs[0].features = input_params.features.clone();
         inputs[0].covenant = input_params.covenant.clone();
         inputs[0].script = input_params.script.clone();

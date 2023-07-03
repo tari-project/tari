@@ -115,7 +115,7 @@ async fn test_insert_and_process_published_block() {
     .await
     .unwrap();
     // Create 6 new transactions to add to the mempool
-    let (orphan, _, _) = tx!(1*T, fee: 100*uT, &key_manager);
+    let (orphan, _, _) = tx!(1*T, fee: 100*uT, &key_manager).expect("Failed to get tx");
     let orphan = Arc::new(orphan);
 
     let tx2 = txn_schema!(from: vec![outputs[1][0].clone()], to: vec![1*T], fee: 20*uT, lock: 0, features: OutputFeatures::default());
@@ -206,7 +206,8 @@ async fn test_insert_and_process_published_block() {
             2,
             TestParams::new(&key_manager)
                 .await
-                .get_size_for_default_features_and_scripts(2),
+                .get_size_for_default_features_and_scripts(2)
+                .expect("Failed to get size for default features and scripts"),
         );
     assert_eq!(stats.unconfirmed_weight, expected_weight);
 
@@ -399,8 +400,9 @@ async fn test_retrieve() {
     }
     // 1-block, 8 UTXOs, 7 txs in mempool
     let weighting = consensus_manager.consensus_constants(0).transaction_weight_params();
-    let weight =
-        tx[6].calculate_weight(weighting) + tx[2].calculate_weight(weighting) + tx[3].calculate_weight(weighting);
+    let weight = tx[6].calculate_weight(weighting).expect("Failed to calculate weight") +
+        tx[2].calculate_weight(weighting).expect("Failed to calculate weight") +
+        tx[3].calculate_weight(weighting).expect("Failed to calculate weight");
     let retrieved_txs = mempool.retrieve(weight).await.unwrap();
     assert_eq!(retrieved_txs.len(), 3);
     assert!(retrieved_txs.contains(&tx[6]));
@@ -441,7 +443,8 @@ async fn test_retrieve() {
     }
 
     // Top 2 txs are tx[3] (fee/g = 50) and tx2[1] (fee/g = 40). tx2[0] (fee/g = 80) is still not matured.
-    let weight = tx[3].calculate_weight(weighting) + tx2[1].calculate_weight(weighting);
+    let weight = tx[3].calculate_weight(weighting).expect("Failed to calculate weight") +
+        tx2[1].calculate_weight(weighting).expect("Failed to calculate weight");
     let retrieved_txs = mempool.retrieve(weight).await.unwrap();
     let stats = mempool.stats().await.unwrap();
 
@@ -450,6 +453,106 @@ async fn test_retrieve() {
     assert_eq!(retrieved_txs.len(), 2);
     assert!(retrieved_txs.contains(&tx[3]));
     assert!(retrieved_txs.contains(&tx2[1]));
+}
+
+#[tokio::test]
+#[allow(clippy::identity_op)]
+async fn test_zero_conf_no_piggyback() {
+    // This is the scenario described in fetch_highest_priority_txs function.
+    let network = Network::LocalNet;
+    let (mut store, mut blocks, mut outputs, consensus_manager, key_manager) = create_new_blockchain(network).await;
+    let mempool_validator = TransactionChainLinkedValidator::new(store.clone(), consensus_manager.clone());
+    let mempool = Mempool::new(
+        MempoolConfig::default(),
+        consensus_manager.clone(),
+        Box::new(mempool_validator),
+    );
+    let txs = vec![txn_schema!(
+        from: vec![outputs[0][0].clone()],
+        to: vec![21 * T, 11 * T, 11 * T, 16 * T]
+    )];
+    // "Mine" Block 1
+    generate_new_block(
+        &mut store,
+        &mut blocks,
+        &mut outputs,
+        txs,
+        &consensus_manager,
+        &key_manager,
+    )
+    .await
+    .unwrap();
+    mempool.process_published_block(blocks[1].to_arc_block()).await.unwrap();
+
+    let (tx_d, _tx_d_out) = spend_utxos(
+        txn_schema!(
+            from: vec![outputs[1][1].clone()],
+            to: vec![5 * T, 5 * T],
+            fee: 12*uT,
+            lock: 0,
+            features: OutputFeatures::default()
+        ),
+        &key_manager,
+    )
+    .await;
+    assert_eq!(
+        mempool.insert(Arc::new(tx_d.clone())).await.unwrap(),
+        TxStorageResponse::UnconfirmedPool
+    );
+    let (tx_c, tx_c_out) = spend_utxos(
+        txn_schema!(
+            from: vec![outputs[1][0].clone()],
+            to: vec![15 * T, 5 * T],
+            fee: 14*uT,
+            lock: 0,
+            features: OutputFeatures::default()
+        ),
+        &key_manager,
+    )
+    .await;
+    assert_eq!(
+        mempool.insert(Arc::new(tx_c.clone())).await.unwrap(),
+        TxStorageResponse::UnconfirmedPool
+    );
+
+    let (tx_b, tx_b_out) = spend_utxos(
+        txn_schema!(
+            from: vec![tx_c_out[0].clone()],
+            to: vec![7 * T, 4 * T],
+            fee: 2*uT, lock: 0,
+            features: OutputFeatures::default()
+        ),
+        &key_manager,
+    )
+    .await;
+    assert_eq!(
+        mempool.insert(Arc::new(tx_b.clone())).await.unwrap(),
+        TxStorageResponse::UnconfirmedPool
+    );
+    let (tx_a, _tx_a_out) = spend_utxos(
+        txn_schema!(
+            from: vec![tx_b_out[1].clone()],
+            to: vec![2 * T, 1 * T],
+            fee: 20*uT,
+            lock: 0,
+            features: OutputFeatures::default()
+        ),
+        &key_manager,
+    )
+    .await;
+
+    assert_eq!(
+        mempool.insert(Arc::new(tx_a.clone())).await.unwrap(),
+        TxStorageResponse::UnconfirmedPool
+    );
+
+    let weight = mempool.stats().await.unwrap().unconfirmed_weight - 1;
+    let retrieved_txs = mempool.retrieve(weight).await.unwrap();
+    assert_eq!(retrieved_txs.len(), 3);
+    assert!(retrieved_txs.contains(&Arc::new(tx_d)));
+    assert!(retrieved_txs.contains(&Arc::new(tx_c)));
+    assert!(retrieved_txs.contains(&Arc::new(tx_b)));
+    assert!(!retrieved_txs.contains(&Arc::new(tx_a)));
 }
 
 #[tokio::test]
@@ -831,8 +934,8 @@ async fn test_zero_conf() {
     assert!(retrieved_txs.contains(&Arc::new(tx22)));
     assert!(retrieved_txs.contains(&Arc::new(tx23)));
     assert!(retrieved_txs.contains(&Arc::new(tx24)));
-    assert!(!retrieved_txs.contains(&Arc::new(tx31))); // Missing
-    assert!(retrieved_txs.contains(&Arc::new(tx32)));
+    assert!(retrieved_txs.contains(&Arc::new(tx31)));
+    assert!(!retrieved_txs.contains(&Arc::new(tx32))); // Missing
     assert!(retrieved_txs.contains(&Arc::new(tx33)));
     assert!(retrieved_txs.contains(&Arc::new(tx34)));
 }
@@ -987,7 +1090,7 @@ async fn receive_and_propagate_transaction() {
         &key_manager,
     )
     .await;
-    let (orphan, _, _) = tx!(1*T, fee: 100*uT, &key_manager);
+    let (orphan, _, _) = tx!(1*T, fee: 100*uT, &key_manager).expect("Failed to get tx");
     let tx_excess_sig = tx.body.kernels()[0].excess_sig.clone();
     let orphan_excess_sig = orphan.body.kernels()[0].excess_sig.clone();
     assert!(alice_node.mempool.insert(Arc::new(tx.clone())).await.is_ok());
@@ -1236,7 +1339,7 @@ async fn consensus_validation_large_tx() {
     assert!(matches!(err, ValidationError::BlockTooLarge { .. }));
 
     let weighting = constants.transaction_weight_params();
-    let weight = tx.calculate_weight(weighting);
+    let weight = tx.calculate_weight(weighting).expect("Failed to calculate weight");
 
     // check the tx weight is more than the max for 1 block
     assert!(weight > constants.max_block_transaction_weight());

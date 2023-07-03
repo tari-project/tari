@@ -94,7 +94,6 @@ impl CovenantArg {
                 let buf = reader.read_variable_length_bytes(MAX_COVENANT_ARG_SIZE)?;
                 // Do not use consensus_decoding here because the compiler infinitely recurses to resolve the R generic,
                 // R becomes the reader of this call and so on. This impl has an arg limit anyway and so is safe
-                // TODO: Impose a limit on depth of covenants within covenants
                 let covenant = Covenant::from_bytes(&mut buf.as_bytes())?;
                 Ok(CovenantArg::Covenant(covenant))
             },

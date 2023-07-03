@@ -20,7 +20,7 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::ptr::null_mut;
+use std::{convert::TryFrom, ptr::null_mut};
 
 use libc::c_void;
 use tari_utilities::{hex, ByteArray};
@@ -70,7 +70,7 @@ impl FFIBytes {
     pub fn get_vec(&self) -> Vec<u8> {
         let mut data = Vec::with_capacity(self.get_length());
         for i in 0..self.get_length() {
-            data.push(self.get_at(i as u32));
+            data.push(self.get_at(u32::try_from(i).unwrap()));
         }
         data
     }

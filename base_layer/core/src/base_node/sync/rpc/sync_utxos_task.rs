@@ -147,7 +147,6 @@ where B: BlockchainBackend + 'static
         Ok(())
     }
 
-    // TODO: Split into smaller functions
     #[allow(clippy::too_many_lines)]
     async fn start_streaming(
         &self,

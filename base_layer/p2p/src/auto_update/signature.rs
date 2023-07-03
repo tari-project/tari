@@ -53,7 +53,6 @@ impl SignedMessageVerifier {
     }
 
     fn verify_signature(&self, signature: &pgp::StandaloneSignature, message: &str) -> Option<&pgp::SignedPublicKey> {
-        // TODO: When pgp has SignedMessage support, implement that here
         self.maintainers
             .iter()
             .find(|pk| signature.verify(pk, message.as_bytes()).is_ok())

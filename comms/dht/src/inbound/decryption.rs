@@ -404,7 +404,6 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             },
             Err(err) => {
                 // Message was not encrypted but failed to deserialize - immediately discard
-                // TODO: Bad node behaviour?
                 debug!(
                     target: LOG_TARGET,
                     "Unable to deserialize message {}: {}. Message will be discarded. (Trace: {})",

@@ -54,33 +54,33 @@ macro_rules! covenant {
 }
 
 #[macro_export]
-/// Macro for different pattern matching rules:
-///
-///     1. @ { $covenant:ident } => {}: This rule matches an empty input and does nothing.
-///
-///     2. @ { $covenant:ident } $token:ident() $(,)? => { ... }: This rule matches a token followed by empty
-///         parentheses. It invokes a method push_token on the covenant object with the generated
-///         CovenantToken::$token().
-///
-///     3. @ { $covenant:ident } @field::$field:ident, $($tail:tt)* => { ... }: This rule matches a token @field::$field
-///         followed by a comma-separated list of tokens. It invokes a method push_token on the covenant object with the
-///         generated CovenantToken::field($crate::covenants::OutputField::$field()). Then it recursively calls
-///         __covenant_inner! with the remaining tokens.
-///
-///     4. @ { $covenant:ident } @field::$field:ident $(,)? => { ... }: This rule matches a single @field::$field token
-///         followed by an optional comma. It delegates to the previous rule to handle the token.
-///
-///     5. @ { $covenant:ident } @fields($(@field::$field:ident),+ $(,)?)) => { ... }: This rule matches @fields
-///          followed by a comma-separated list of @field::$field tokens wrapped in parentheses. It invokes a method
-///          push_token on the covenant object with the generated CovenantToken::fields vector containing
-///          OutputField::$field instances. It then recursively calls __covenant_inner! with the remaining tokens.
-///
-///     6. @ { $covenant:ident } @fields($(@field::$field:ident),+ $(,)?), $($tail:tt)* => { ... }: This rule is similar
-///          to the previous one but allows for additional tokens after the @fields list. It behaves similarly by
-///          generating the CovenantToken::fields vector and recursively calling __covenant_inner! with the remaining
-///          tokens.
-///
-///     This macro pattern is called a tt-muncher (tee hee)
+// Macro for different pattern matching rules:
+//
+//     1. @ { $covenant:ident } => {}: This rule matches an empty input and does nothing.
+//
+//     2. @ { $covenant:ident } $token:ident() $(,)? => { ... }: This rule matches a token followed by empty
+//         parentheses. It invokes a method push_token on the covenant object with the generated
+//         CovenantToken::$token().
+//
+//     3. @ { $covenant:ident } @field::$field:ident, $($tail:tt)* => { ... }: This rule matches a token @field::$field
+//         followed by a comma-separated list of tokens. It invokes a method push_token on the covenant object with the
+//         generated CovenantToken::field($crate::covenants::OutputField::$field()). Then it recursively calls
+//         __covenant_inner! with the remaining tokens.
+//
+//     4. @ { $covenant:ident } @field::$field:ident $(,)? => { ... }: This rule matches a single @field::$field token
+//         followed by an optional comma. It delegates to the previous rule to handle the token.
+//
+//     5. @ { $covenant:ident } @fields($(@field::$field:ident),+ $(,)?)) => { ... }: This rule matches @fields
+//          followed by a comma-separated list of @field::$field tokens wrapped in parentheses. It invokes a method
+//          push_token on the covenant object with the generated CovenantToken::fields vector containing
+//          OutputField::$field instances. It then recursively calls __covenant_inner! with the remaining tokens.
+//
+//     6. @ { $covenant:ident } @fields($(@field::$field:ident),+ $(,)?), $($tail:tt)* => { ... }: This rule is similar
+//          to the previous one but allows for additional tokens after the @fields list. It behaves similarly by
+//          generating the CovenantToken::fields vector and recursively calling __covenant_inner! with the remaining
+//          tokens.
+//
+//     This macro pattern is called a tt-muncher (tee hee)
 macro_rules! __covenant_inner {
     (@ { $covenant:ident }) => {};
 

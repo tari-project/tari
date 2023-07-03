@@ -125,7 +125,7 @@ pub mod store_forward;
 use tari_comms::types::CommsChallenge;
 use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
 
-hash_domain!(DHTCommsHashDomain, "comms.dht");
+hash_domain!(DHTCommsHashDomain, "com.tari.comms.dht");
 
 pub fn comms_dht_hash_domain_challenge() -> DomainSeparatedHasher<CommsChallenge, DHTCommsHashDomain> {
     DomainSeparatedHasher::<CommsChallenge, DHTCommsHashDomain>::new_with_label("challenge")

@@ -813,9 +813,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         let tx_id = wallet
             .coin_split(
-                vec![], // TODO: refactor grpc to accept and use commitments
+                vec![],
                 MicroTari::from(message.amount_per_split),
-                message.split_count as usize,
+                usize::try_from(message.split_count)
+                    .map_err(|_| Status::internal("Count not convert u64 to usize".to_string()))?,
                 MicroTari::from(message.fee_per_gram),
                 message.message,
             )
@@ -878,7 +879,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 .map_err(|err| Status::internal(err.to_string()))?
                 .map(|d| u32::try_from(d.as_millis()).unwrap_or(u32::MAX))
                 .unwrap_or_default(),
-            num_node_connections: status.num_connected_nodes() as u32,
+            num_node_connections: u32::try_from(status.num_connected_nodes())
+                .map_err(|_| Status::internal("Count not convert u64 to usize".to_string()))?,
         };
 
         Ok(Response::new(resp))
@@ -1016,7 +1018,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
             Status::internal("failed to fetch consensus constants")
         })?;
 
-        // TODO: we need to set the output maturity
         let response = match transaction_service
             .register_validator_node(
                 constants.validator_node_registration_min_deposit_amount(),

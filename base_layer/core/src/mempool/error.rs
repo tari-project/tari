@@ -40,4 +40,6 @@ pub enum MempoolError {
     RwLockPoisonError,
     #[error(transparent)]
     BlockingTaskError(#[from] JoinError),
+    #[error("Internal error: {0}")]
+    InternalError(String),
 }

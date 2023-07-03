@@ -429,6 +429,8 @@ where
     }
 
     #[allow(clippy::too_many_lines)]
+    // converting u64 to i64 is its only used for timestamps
+    #[allow(clippy::cast_possible_wrap)]
     async fn scan_utxos(
         &mut self,
         client: &mut BaseNodeWalletRpcClient,

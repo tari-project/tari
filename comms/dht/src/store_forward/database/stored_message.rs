@@ -48,6 +48,9 @@ pub struct NewStoredMessage {
 }
 
 impl NewStoredMessage {
+    // converting u32 to i32 is okay here as it will get converted back, and is super unlikely to ever reach u32 as a
+    // version.
+    #[allow(clippy::cast_possible_wrap)]
     pub fn new(message: DecryptedDhtMessage, priority: StoredMessagePriority) -> Self {
         let DecryptedDhtMessage {
             authenticated_origin,

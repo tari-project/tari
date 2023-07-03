@@ -2159,7 +2159,8 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
     // validate the block header
     let prev_timestamps_count = cmp::min(
         rules.consensus_constants(block.header.height).median_timestamp_count(),
-        block.header.height as usize - 1,
+        usize::try_from(block.header.height - 1)
+            .map_err(|_| ChainStorageError::ConversionError("u64 to usize".to_string()))?,
     );
     let mut prev_timestamps = Vec::with_capacity(prev_timestamps_count);
     prev_timestamps.push(block.header.timestamp());
@@ -2288,7 +2289,6 @@ fn remove_orphan<T: BlockchainBackend>(db: &mut T, hash: HashOutput) -> Result<(
 }
 
 /// Gets all blocks ordered from the the block that connects (via prev_hash) to the main chain, to the orphan tip.
-// TODO: this would probably perform better if it reused the db transaction
 #[allow(clippy::ptr_arg)]
 fn get_orphan_link_main_chain<T: BlockchainBackend>(
     db: &T,
@@ -3273,7 +3273,6 @@ mod test {
             let header_validator = Box::new(HeaderFullValidator::new(
                 consensus.clone(),
                 difficulty_calculator.clone(),
-                false,
             ));
             let post_orphan_body_validator = Box::new(MockValidator::new(true));
             let chain_strength_comparer = strongest_chain().by_sha3x_difficulty().build();

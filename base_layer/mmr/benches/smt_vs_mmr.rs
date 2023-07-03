@@ -1,6 +1,8 @@
 // Copyright 2023. The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
+use std::convert::TryFrom;
+
 #[cfg(feature = "native_bitmap")]
 use croaring::Bitmap;
 use tari_crypto::hash::blake2::Blake256;
@@ -15,11 +17,7 @@ use tari_mmr::sparse_merkle_tree::{NodeKey, SparseMerkleTree, ValueHash};
 use tari_mmr::{Hash, MutableMmr};
 
 #[cfg(feature = "native_bitmap")]
-hash_domain!(
-    MmrBenchTestHashDomain,
-    "com.tari.tari_project.base_layer.mmr.benches",
-    1
-);
+hash_domain!(MmrBenchTestHashDomain, "com.tari.base_layer.mmr.benches", 1);
 #[cfg(feature = "native_bitmap")]
 pub type MmrTestHasherBlake256 = DomainSeparatedHasher<Blake256, MmrBenchTestHashDomain>;
 #[cfg(feature = "native_bitmap")]
@@ -115,7 +113,7 @@ fn main() {
             println!("Tree size: {size}. Root hash: {}", hash.to_hex());
         });
         time_function(&format!("MMR: Deleting {half_size} keys"), || {
-            delete_from_mmr(0, half_size as u32, &mut mmr);
+            delete_from_mmr(0, u32::try_from(half_size).unwrap(), &mut mmr);
         });
         time_function("MMR: Calculating root hash", || {
             let size = mmr.len();
@@ -123,7 +121,11 @@ fn main() {
             println!("Tree size: {size}. Root hash: {}", hash.to_hex());
         });
         time_function(&format!("MMR: Deleting another {half_size} keys"), || {
-            delete_from_mmr(half_size as u32, half_size as u32, &mut mmr);
+            delete_from_mmr(
+                u32::try_from(half_size).unwrap(),
+                u32::try_from(half_size).unwrap(),
+                &mut mmr,
+            );
         });
         time_function("MMR: Calculating root hash", || {
             let size = mmr.len();

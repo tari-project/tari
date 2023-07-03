@@ -123,7 +123,6 @@ impl LivenessMock {
         let (req, reply) = req.split();
         trace!(target: LOG_TARGET, "LivenessMock received request {:?}", req);
         self.mock_state.add_request_call(req.clone());
-        // TODO: Make these responses configurable
         match req {
             SendPing(_) => {
                 reply.send(Ok(LivenessResponse::Ok)).unwrap();

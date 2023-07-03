@@ -3,13 +3,12 @@ name = "tari_common_types"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency common types"
 license = "BSD-3-Clause"
-version = "0.51.0-pre.3"
+version = "0.51.0-pre.4"
 edition = "2018"
 
 [dependencies]
 tari_crypto = { version = "0.17" }
 tari_utilities = "0.4.10"
-# TODO: remove this dependency and move Network into tari_common_types
 tari_common = {  path = "../../common" }
 
 

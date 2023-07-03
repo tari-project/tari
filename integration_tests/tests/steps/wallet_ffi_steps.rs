@@ -20,7 +20,7 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{io::BufRead, ptr::null, time::Duration};
+use std::{convert::TryFrom, io::BufRead, ptr::null, time::Duration};
 
 use cucumber::{given, then, when};
 use tari_integration_tests::{
@@ -94,7 +94,7 @@ async fn ffi_retrieve_mnemonic_words(_world: &mut TariWorld, language: String) {
     println!("Mnemonic words for language {}:", language);
     let words = get_mnemonic_word_list_for_language(language);
     for i in 0..words.get_length() {
-        print!("{} ", words.get_at(i as u32).as_string());
+        print!("{} ", words.get_at(u32::try_from(i).unwrap()).as_string());
     }
     println!();
     assert_eq!(words.get_length(), 2048);
@@ -107,7 +107,7 @@ async fn ffi_wait_wallet_to_connect(world: &mut TariWorld, wallet: String, node:
     for _ in 0..10 {
         let public_keys = ffi_wallet.connected_public_keys();
         for i in 0..public_keys.get_length() {
-            let public_key = public_keys.get_public_key_at(i as u32);
+            let public_key = public_keys.get_public_key_at(u32::try_from(i).unwrap());
             if public_key.get_bytes().get_as_hex() == node.to_hex() {
                 return;
             }

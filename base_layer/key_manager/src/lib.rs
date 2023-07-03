@@ -32,7 +32,7 @@ pub mod schema;
 #[cfg(feature = "wasm")]
 pub mod wasm;
 
-hash_domain!(KeyManagerDomain, "com.tari.tari_project.base_layer.key_manager", 1);
+hash_domain!(KeyManagerDomain, "com.tari.base_layer.key_manager", 1);
 
 const LABEL_ARGON_ENCODING: &str = "argon2_encoding";
 const LABEL_CHACHA20_ENCODING: &str = "chacha20_encoding";

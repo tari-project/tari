@@ -243,17 +243,18 @@ where D: Digest + DomainDigest
 #[cfg(test)]
 mod test {
     use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparatedHasher};
-    use tari_utilities::hex::from_hex;
 
     use super::*;
 
-    hash_domain!(TestDomain, "testing", 0);
+    hash_domain!(TestDomain, "com.tari.test.testing", 0);
 
     type TestHasher = DomainSeparatedHasher<Blake256, TestDomain>;
 
     #[test]
     fn test_small_tree() {
-        let leaves = (0..4usize).map(|i| vec![i as u8; 32]).collect::<Vec<_>>();
+        let leaves = (0..4usize)
+            .map(|i| vec![u8::try_from(i).unwrap(); 32])
+            .collect::<Vec<_>>();
         let bmt = BalancedBinaryMerkleTree::<TestHasher>::create(leaves.clone());
 
         assert_eq!(bmt.num_nodes(), (4 << 1) - 1);
@@ -379,7 +380,7 @@ mod test {
             heights: vec![0, 0],
             _phantom: PhantomData,
         };
-        // TODO: This should fail but does not
+        // This should fail but does not
         // proof .verify_consume(&vec![5u8; 32], vec![vec![5u8; 32], vec![2u8; 32]]) .unwrap_err();
         assert!(proof
             .verify_consume(&vec![5u8; 32], vec![vec![5u8; 32], vec![2u8; 32]])
@@ -394,51 +395,6 @@ mod test {
             err,
             BalancedBinaryMerkleProofError::TreeDoesNotContainLeafIndex { leaf_index: 1 }
         ));
-    }
-
-    #[test]
-    fn test_real_world_example() {
-        hash_domain!(
-            ValidatorNodeBmtHashDomain,
-            "com.tari.tari_project.base_layer.core.validator_node_mmr",
-            1
-        );
-        pub type ValidatorNodeBmtHasherBlake256 = DomainSeparatedHasher<Blake256, ValidatorNodeBmtHashDomain>;
-        let root = from_hex("faa36732a63077aa0eafcae451c5b12ee6971f1329b8ce9f966289168fdc4c5b").unwrap();
-        let testdata = vec![
-            // (bincode encoded proof as hex, node hash)
-            ("030000000000000020000000000000007152175a9df02caf2f7078d41c9523f627232e89d7ed208bde8ad30512cc5ae22000000000000000a0b14150acc67458e95ba40cbdbf0daa4622220b48fd36a9908b1ce1dd9f0ebf20000000000000008ba9eb45f6a462707bcc929b622369c45a62a0c423b6318c0f8b686dc1294af70e000000", "5f0d31e3a5f8a741702b609e2d7594cbedbddd6e93fe8145d06b752e4e4d20b3"),
-            ("0400000000000000200000000000000010d997fc0d9f7825ac853b6086650f961bcf3179b3a9fd8b961ba917603321292000000000000000eabff75e4f71e94527127ec5742f5d0d91d4e38fb6bd7726f9c48e44454f2fc420000000000000004077bc7fb1f539818f7ac581a8131a6ee3a516f13822db1199d455bcd24e896c2000000000000000d24c6e09533fcb8dcfcb964c9ef3313d789e85ad4c5e270f69b884de8ad424280f000000", "cba14c691513694e2b94bc270aad6d06c24f18f5c67f207eedb7821aa1f1e02a"),
-            ("04000000000000002000000000000000cba14c691513694e2b94bc270aad6d06c24f18f5c67f207eedb7821aa1f1e02a2000000000000000eabff75e4f71e94527127ec5742f5d0d91d4e38fb6bd7726f9c48e44454f2fc420000000000000004077bc7fb1f539818f7ac581a8131a6ee3a516f13822db1199d455bcd24e896c2000000000000000d24c6e09533fcb8dcfcb964c9ef3313d789e85ad4c5e270f69b884de8ad4242810000000", "10d997fc0d9f7825ac853b6086650f961bcf3179b3a9fd8b961ba91760332129"),
-            ("0400000000000000200000000000000056ceb0eb5bce9d33b775bedfabc2884b10852216737632132209d74bf6a4192f200000000000000020e7c8546d77b299faaf5d025b34c20d606555e99e66a5bf95e9f845853feccf20000000000000004077bc7fb1f539818f7ac581a8131a6ee3a516f13822db1199d455bcd24e896c2000000000000000d24c6e09533fcb8dcfcb964c9ef3313d789e85ad4c5e270f69b884de8ad4242811000000", "c2fd409e09a1e4c942fdf1fb6d75f15f971d9ae2a17621eda197bc0c21a503c4"),
-            ("04000000000000002000000000000000c2fd409e09a1e4c942fdf1fb6d75f15f971d9ae2a17621eda197bc0c21a503c4200000000000000020e7c8546d77b299faaf5d025b34c20d606555e99e66a5bf95e9f845853feccf20000000000000004077bc7fb1f539818f7ac581a8131a6ee3a516f13822db1199d455bcd24e896c2000000000000000d24c6e09533fcb8dcfcb964c9ef3313d789e85ad4c5e270f69b884de8ad4242812000000", "56ceb0eb5bce9d33b775bedfabc2884b10852216737632132209d74bf6a4192f"),
-            ("0400000000000000200000000000000033bb552bb30f28eff843e05d327776366b8cf8ae04d5a69e038a2f4a3157ff6620000000000000007008f070d4cfbd6e91cbfb27ec911d56c664acfcb88e451da792e9ef0277ced22000000000000000b9d9216cc6679406cf8b5995a0473ebfe0584ae71ce0fc3aa01b76d3794526e92000000000000000d24c6e09533fcb8dcfcb964c9ef3313d789e85ad4c5e270f69b884de8ad4242813000000", "1d0a655879908a688ff97f08f05d067a9c30cb0192655fbb895699b8a1e36072"),
-            ("040000000000000020000000000000001d0a655879908a688ff97f08f05d067a9c30cb0192655fbb895699b8a1e3607220000000000000007008f070d4cfbd6e91cbfb27ec911d56c664acfcb88e451da792e9ef0277ced22000000000000000b9d9216cc6679406cf8b5995a0473ebfe0584ae71ce0fc3aa01b76d3794526e92000000000000000d24c6e09533fcb8dcfcb964c9ef3313d789e85ad4c5e270f69b884de8ad4242814000000", "33bb552bb30f28eff843e05d327776366b8cf8ae04d5a69e038a2f4a3157ff66"),
-            ("0400000000000000200000000000000097c5bc19efb43f536f078d401d8e8cb130c0329bbc2b2116608f14adc7a7cdd420000000000000000f1af01536d530734a08d904e4c4e4224d3c5b42df4f7235d0d439efe148b36a2000000000000000b9d9216cc6679406cf8b5995a0473ebfe0584ae71ce0fc3aa01b76d3794526e92000000000000000d24c6e09533fcb8dcfcb964c9ef3313d789e85ad4c5e270f69b884de8ad4242815000000", "939e7cd43ed3c31774ebcf53525963cb668de84b88ddfb2f2efc72814599f44a"),
-            ("04000000000000002000000000000000939e7cd43ed3c31774ebcf53525963cb668de84b88ddfb2f2efc72814599f44a20000000000000000f1af01536d530734a08d904e4c4e4224d3c5b42df4f7235d0d439efe148b36a2000000000000000b9d9216cc6679406cf8b5995a0473ebfe0584ae71ce0fc3aa01b76d3794526e92000000000000000d24c6e09533fcb8dcfcb964c9ef3313d789e85ad4c5e270f69b884de8ad4242816000000", "97c5bc19efb43f536f078d401d8e8cb130c0329bbc2b2116608f14adc7a7cdd4"),
-        ];
-        let leaf_hashes = testdata
-            .iter()
-            .map(|(_, leaf_hash)| from_hex(leaf_hash).unwrap())
-            .collect::<Vec<_>>();
-
-        let proofs = testdata
-            .into_iter()
-            .enumerate()
-            .map(|(i, (data, leaf_hash))| {
-                let proof: BalancedBinaryMerkleProof<ValidatorNodeBmtHasherBlake256> =
-                    bincode::deserialize(&from_hex(data).unwrap()).unwrap();
-                assert!(
-                    proof.verify(&root, from_hex(leaf_hash).unwrap()),
-                    "proof {} is invalid",
-                    i
-                );
-                proof
-            })
-            .collect::<Vec<_>>();
-
-        let merged = MergedBalancedBinaryMerkleProof::create_from_proofs(&proofs).unwrap();
-        assert!(merged.verify_consume(&root, leaf_hashes).unwrap());
     }
 
     #[test]

@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, BinaryHeap, HashMap, HashSet},
     sync::Arc,
 };
 
@@ -89,6 +89,8 @@ pub struct RetrieveResults {
     pub transactions_to_insert: Vec<Arc<Transaction>>,
 }
 
+pub type CompleteTransactionBranch = HashMap<TransactionKey, (HashMap<TransactionKey, Arc<Transaction>>, u64, u64)>;
+
 impl UnconfirmedPool {
     /// Create a new UnconfirmedPool with the specified configuration
     pub fn new(config: UnconfirmedPoolConfig) -> Self {
@@ -111,21 +113,21 @@ impl UnconfirmedPool {
         tx: Arc<Transaction>,
         dependent_outputs: Option<Vec<HashOutput>>,
         transaction_weighting: &TransactionWeight,
-    ) {
+    ) -> std::io::Result<()> {
         if tx
             .body
             .kernels()
             .iter()
             .all(|k| self.txs_by_signature.contains_key(k.excess_sig.get_signature()))
         {
-            return;
+            return Ok(());
         }
 
         let new_key = self.get_next_key();
-        let prioritized_tx = PrioritizedTransaction::new(new_key, transaction_weighting, tx, dependent_outputs);
+        let prioritized_tx = PrioritizedTransaction::new(new_key, transaction_weighting, tx, dependent_outputs)?;
         if self.tx_by_key.len() >= self.config.storage_capacity {
             if prioritized_tx.priority < *self.lowest_priority() {
-                return;
+                return Ok(());
             }
             self.remove_lowest_priority_tx();
         }
@@ -144,6 +146,8 @@ impl UnconfirmedPool {
             "Inserted transaction {} into unconfirmed pool:", prioritized_tx
         );
         self.tx_by_key.insert(new_key, prioritized_tx);
+
+        Ok(())
     }
 
     /// This will search the unconfirmed pool for the set of outputs and return true if all of them are found
@@ -157,10 +161,11 @@ impl UnconfirmedPool {
         &mut self,
         txs: I,
         transaction_weighting: &TransactionWeight,
-    ) {
+    ) -> std::io::Result<()> {
         for tx in txs {
-            self.insert(tx, None, transaction_weighting);
+            self.insert(tx, None, transaction_weighting)?;
         }
+        Ok(())
     }
 
     /// Check if a transaction is available in the UnconfirmedPool
@@ -169,40 +174,94 @@ impl UnconfirmedPool {
     }
 
     /// Returns a set of the highest priority unconfirmed transactions, that can be included in a block
+    #[allow(clippy::too_many_lines)]
     pub fn fetch_highest_priority_txs(&mut self, total_weight: u64) -> Result<RetrieveResults, UnconfirmedPoolError> {
+        // The process of selection is as follows:
+        // Assume that all transaction have the same weight for simplicity. A(20)->B(2) means A depends on B and A has
+        // fee 20 and B has fee 2. A(20)->B(2)->C(14), D(12)
+        // 1) A will be selected first, but B and C will be piggybacked on A, because overall fee_per_byte is 12, so we
+        //   store it temporarily.
+        // 2) We look at transaction C with fee per byte 14, it's good, nothing is better.
+        // 3) We come back to transaction A with fee per byte 12, but now that C is already in, we recompute it's fee
+        //   per byte to 11, and again we store it temporarily.
+        // 4) Next we process transaction D, it's good, nothing is better.
+        // 5) And now we proceed finally to transaction A, because there is no other possible better option.
+        //
+        // Note, if we store some TX_a that is dependent on some TXs including TX_b. And we remove TX_b (this should
+        // trigger TX_a fee per byte recompute) before we process TX_a again, then the TX_a fee_per_byte will be lower
+        // or equal, it will never be higher. Proof by contradiction we remove TX_b sooner then TX_a is process and
+        // fee_per_byte(TX_a+dependents) > fee_per_byte(TX_a+dependents-TX_b), that would mean that
+        // fee_per_byte(TX_b)<fee_per_byte(TX_a+dependents), but if this would be the case then we would not
+        // process TX_b before TX_a.
+
         let mut selected_txs = HashMap::new();
         let mut curr_weight = 0;
         let mut curr_skip_count = 0;
         let mut transactions_to_remove_and_recheck = Vec::new();
-        let mut potential_transactions_to_remove_and_recheck = Vec::new();
         let mut unique_ids = HashSet::new();
+        let mut complete_transaction_branch = CompleteTransactionBranch::new();
+        let mut potentional_to_add = BinaryHeap::<(u64, TransactionKey)>::new();
+        // For each transaction we store transactions that depends on it. So when we process it, we can mark all of them
+        // for recomputing.
+        let mut depended_on: HashMap<TransactionKey, Vec<&TransactionKey>> = HashMap::new();
+        let mut recompute = HashSet::new();
         for (_, tx_key) in self.tx_by_priority.iter().rev() {
             if selected_txs.contains_key(tx_key) {
                 continue;
             }
-
             let prioritized_transaction = self
                 .tx_by_key
                 .get(tx_key)
                 .ok_or(UnconfirmedPoolError::StorageOutofSync)?;
-
+            self.check_the_potential_txs(
+                total_weight,
+                &mut selected_txs,
+                &mut curr_weight,
+                &mut curr_skip_count,
+                &mut complete_transaction_branch,
+                &mut potentional_to_add,
+                &mut depended_on,
+                &mut recompute,
+                prioritized_transaction.fee_per_byte,
+            );
+            if curr_skip_count >= self.config.weight_tx_skip_count {
+                break;
+            }
             let mut total_transaction_weight = 0;
+            let mut total_transaction_fees = 0;
             let mut candidate_transactions_to_select = HashMap::new();
+            let mut potential_transactions_to_remove_and_recheck = Vec::new();
             self.get_all_dependent_transactions(
                 prioritized_transaction,
                 &mut candidate_transactions_to_select,
                 &mut potential_transactions_to_remove_and_recheck,
                 &selected_txs,
                 &mut total_transaction_weight,
+                &mut total_transaction_fees,
                 &mut unique_ids,
             )?;
             let total_weight_after_candidates = curr_weight + total_transaction_weight;
             if total_weight_after_candidates <= total_weight && potential_transactions_to_remove_and_recheck.is_empty()
             {
-                if !UnconfirmedPool::find_duplicate_input(&selected_txs, &candidate_transactions_to_select) {
-                    curr_weight += total_transaction_weight;
-                    selected_txs.extend(candidate_transactions_to_select);
+                for dependend_on_tx_key in candidate_transactions_to_select.keys() {
+                    if dependend_on_tx_key != tx_key {
+                        // Transaction is not depended on itself.
+                        depended_on
+                            .entry(*dependend_on_tx_key)
+                            .and_modify(|v| v.push(tx_key))
+                            .or_insert_with(|| vec![tx_key]);
+                    }
                 }
+                let fee_per_byte = (total_transaction_fees * 1000) / total_transaction_weight;
+                complete_transaction_branch.insert(
+                    *tx_key,
+                    (
+                        candidate_transactions_to_select.clone(),
+                        total_transaction_weight,
+                        total_transaction_fees,
+                    ),
+                );
+                potentional_to_add.push((fee_per_byte, *tx_key));
             } else {
                 transactions_to_remove_and_recheck.append(&mut potential_transactions_to_remove_and_recheck);
                 // Check if some the next few txs with slightly lower priority wont fit in the remaining space.
@@ -211,6 +270,19 @@ impl UnconfirmedPool {
                     break;
                 }
             }
+        }
+        if curr_skip_count < self.config.weight_tx_skip_count {
+            self.check_the_potential_txs(
+                total_weight,
+                &mut selected_txs,
+                &mut curr_weight,
+                &mut curr_skip_count,
+                &mut complete_transaction_branch,
+                &mut potentional_to_add,
+                &mut depended_on,
+                &mut recompute,
+                0,
+            );
         }
         if !transactions_to_remove_and_recheck.is_empty() {
             // we need to remove all transactions that need to be rechecked.
@@ -232,6 +304,98 @@ impl UnconfirmedPool {
                 .collect(),
         };
         Ok(results)
+    }
+
+    fn check_the_potential_txs<'a>(
+        &self,
+        total_weight: u64,
+        selected_txs: &mut HashMap<TransactionKey, Arc<Transaction>>,
+        curr_weight: &mut u64,
+        curr_skip_count: &mut usize,
+        complete_transaction_branch: &mut CompleteTransactionBranch,
+        potentional_to_add: &mut BinaryHeap<(u64, TransactionKey)>,
+        depended_on: &mut HashMap<TransactionKey, Vec<&'a TransactionKey>>,
+        recompute: &mut HashSet<&'a TransactionKey>,
+        fee_per_byte_threshold: u64,
+    ) {
+        while match potentional_to_add.peek() {
+            Some((fee_per_byte, _)) => *fee_per_byte >= fee_per_byte_threshold,
+            None => false,
+        } {
+            // If the current TXs has lower fee than the ones we already processed, we can add some.
+            let (_fee_per_byte, tx_key) = potentional_to_add.pop().unwrap(); // Safe, we already checked we have some.
+            if selected_txs.contains_key(&tx_key) {
+                continue;
+            }
+            // Before we do anything with the top transaction we need to know if needs to be recomputed.
+            if recompute.contains(&tx_key) {
+                recompute.remove(&tx_key);
+                // So we recompute the total fees based on updated weights and fees.
+                let (_, total_transaction_weight, total_transaction_fees) =
+                    complete_transaction_branch.get(&tx_key).unwrap();
+                let fee_per_byte = (*total_transaction_fees * 1000) / *total_transaction_weight;
+                potentional_to_add.push((fee_per_byte, tx_key));
+                continue;
+            }
+            let (candidate_transactions_to_select, total_transaction_weight, _total_transaction_fees) =
+                complete_transaction_branch.remove(&tx_key).unwrap();
+
+            let total_weight_after_candidates = *curr_weight + total_transaction_weight;
+            if total_weight_after_candidates <= total_weight {
+                if !UnconfirmedPool::find_duplicate_input(selected_txs, &candidate_transactions_to_select) {
+                    *curr_weight += total_transaction_weight;
+                    // So we processed the transaction, let's mark the dependents to be recomputed.
+                    for tx_key in candidate_transactions_to_select.keys() {
+                        self.remove_transaction_from_the_dependants(
+                            *tx_key,
+                            complete_transaction_branch,
+                            depended_on,
+                            recompute,
+                        );
+                    }
+                    selected_txs.extend(candidate_transactions_to_select);
+                }
+            } else {
+                *curr_skip_count += 1;
+                if *curr_skip_count >= self.config.weight_tx_skip_count {
+                    break;
+                }
+            }
+            // Some cleanup of what we don't need anymore
+            complete_transaction_branch.remove(&tx_key);
+            depended_on.remove(&tx_key);
+        }
+    }
+
+    pub fn remove_transaction_from_the_dependants<'a>(
+        &self,
+        tx_key: TransactionKey,
+        complete_transaction_branch: &mut CompleteTransactionBranch,
+        depended_on: &mut HashMap<TransactionKey, Vec<&'a TransactionKey>>,
+        recompute: &mut HashSet<&'a TransactionKey>,
+    ) {
+        if let Some(txs) = depended_on.remove(&tx_key) {
+            let prioritized_transaction = self
+                .tx_by_key
+                .get(&tx_key)
+                .ok_or(UnconfirmedPoolError::StorageOutofSync)
+                .unwrap();
+            for tx in txs {
+                if let Some((
+                    update_candidate_transactions_to_select,
+                    update_total_transaction_weight,
+                    update_total_transaction_fees,
+                )) = complete_transaction_branch.get_mut(tx)
+                {
+                    update_candidate_transactions_to_select.remove(&tx_key);
+                    *update_total_transaction_weight -= prioritized_transaction.weight;
+                    *update_total_transaction_fees -= prioritized_transaction.transaction.body.get_total_fee().0;
+                    // We mark it as recompute, we don't have to update the Heap, because it will never be
+                    // better as it was (see the note at the top of the function).
+                    recompute.insert(tx);
+                }
+            }
+        }
     }
 
     pub fn retrieve_by_excess_sigs(&self, excess_sigs: &[PrivateKey]) -> (Vec<Arc<Transaction>>, Vec<PrivateKey>) {
@@ -266,6 +430,7 @@ impl UnconfirmedPool {
         transactions_to_recheck: &mut Vec<(TransactionKey, Arc<Transaction>)>,
         selected_txs: &HashMap<TransactionKey, Arc<Transaction>>,
         total_weight: &mut u64,
+        total_fees: &mut u64,
         _unique_ids: &mut HashSet<[u8; 32]>,
     ) -> Result<(), UnconfirmedPoolError> {
         for dependent_output in &transaction.dependent_output_hashes {
@@ -279,6 +444,7 @@ impl UnconfirmedPool {
                             transactions_to_recheck,
                             selected_txs,
                             total_weight,
+                            total_fees,
                             _unique_ids,
                         )?;
 
@@ -301,6 +467,7 @@ impl UnconfirmedPool {
             .insert(transaction.key, transaction.transaction.clone())
             .is_none()
         {
+            *total_fees += transaction.transaction.body.get_total_fee().0;
             *total_weight += transaction.weight;
         }
 
@@ -521,10 +688,13 @@ impl UnconfirmedPool {
     }
 
     /// Returns the total weight of all transactions stored in the pool.
-    pub fn calculate_weight(&self, transaction_weight: &TransactionWeight) -> u64 {
-        self.tx_by_key.values().fold(0, |weight, ptx| {
-            weight + ptx.transaction.calculate_weight(transaction_weight)
-        })
+    pub fn calculate_weight(&self, transaction_weight: &TransactionWeight) -> std::io::Result<u64> {
+        let weights = self
+            .tx_by_key
+            .values()
+            .map(|ptx| ptx.transaction.calculate_weight(transaction_weight))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(weights.iter().sum())
     }
 
     pub fn get_fee_per_gram_stats(
@@ -645,8 +815,16 @@ mod test {
     #[tokio::test]
     async fn test_find_duplicate_input() {
         let key_manager = create_test_core_key_manager_with_memory_db();
-        let tx1 = Arc::new(tx!(MicroTari(5000), fee: MicroTari(50), inputs: 2, outputs: 1, &key_manager).0);
-        let tx2 = Arc::new(tx!(MicroTari(5000), fee: MicroTari(50), inputs: 2, outputs: 1, &key_manager).0);
+        let tx1 = Arc::new(
+            tx!(MicroTari(5000), fee: MicroTari(50), inputs: 2, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let tx2 = Arc::new(
+            tx!(MicroTari(5000), fee: MicroTari(50), inputs: 2, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
         let mut tx_pool = HashMap::new();
         let mut tx1_pool = HashMap::new();
         let mut tx2_pool = HashMap::new();
@@ -666,11 +844,31 @@ mod test {
     #[tokio::test]
     async fn test_insert_and_retrieve_highest_priority_txs() {
         let key_manager = create_test_core_key_manager_with_memory_db();
-        let tx1 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(5), inputs: 2, outputs: 1, &key_manager).0);
-        let tx2 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(4), inputs: 4, outputs: 1, &key_manager).0);
-        let tx3 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(20), inputs: 5, outputs: 1, &key_manager).0);
-        let tx4 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(6), inputs: 3, outputs: 1, &key_manager).0);
-        let tx5 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(11), inputs: 5, outputs: 1, &key_manager).0);
+        let tx1 = Arc::new(
+            tx!(MicroTari(5_000), fee: MicroTari(5), inputs: 2, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let tx2 = Arc::new(
+            tx!(MicroTari(5_000), fee: MicroTari(4), inputs: 4, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let tx3 = Arc::new(
+            tx!(MicroTari(5_000), fee: MicroTari(20), inputs: 5, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let tx4 = Arc::new(
+            tx!(MicroTari(5_000), fee: MicroTari(6), inputs: 3, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let tx5 = Arc::new(
+            tx!(MicroTari(5_000), fee: MicroTari(11), inputs: 5, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
 
         let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
             storage_capacity: 4,
@@ -678,10 +876,12 @@ mod test {
         });
 
         let tx_weight = TransactionWeight::latest();
-        unconfirmed_pool.insert_many(
-            [tx1.clone(), tx2.clone(), tx3.clone(), tx4.clone(), tx5.clone()],
-            &tx_weight,
-        );
+        unconfirmed_pool
+            .insert_many(
+                [tx1.clone(), tx2.clone(), tx3.clone(), tx4.clone(), tx5.clone()],
+                &tx_weight,
+            )
+            .expect("Failed to insert many");
         // Check that lowest priority tx was removed to make room for new incoming transactions
         assert!(unconfirmed_pool.has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig));
         assert!(!unconfirmed_pool.has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig));
@@ -689,8 +889,9 @@ mod test {
         assert!(unconfirmed_pool.has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig));
         assert!(unconfirmed_pool.has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig));
         // Retrieve the set of highest priority unspent transactions
-        let desired_weight =
-            tx1.calculate_weight(&tx_weight) + tx3.calculate_weight(&tx_weight) + tx5.calculate_weight(&tx_weight);
+        let desired_weight = tx1.calculate_weight(&tx_weight).expect("Failed to get tx") +
+            tx3.calculate_weight(&tx_weight).expect("Failed to get tx") +
+            tx5.calculate_weight(&tx_weight).expect("Failed to get tx");
         let results = unconfirmed_pool.fetch_highest_priority_txs(desired_weight).unwrap();
         assert_eq!(results.retrieved_transactions.len(), 3);
         assert!(results.retrieved_transactions.contains(&tx1));
@@ -705,9 +906,11 @@ mod test {
     #[tokio::test]
     async fn test_double_spend_inputs() {
         let key_manager = create_test_core_key_manager_with_memory_db();
-        let (tx1, _, _) = tx!(MicroTari(5_000), fee: MicroTari(10), inputs: 1, outputs: 1, &key_manager);
+        let (tx1, _, _) =
+            tx!(MicroTari(5_000), fee: MicroTari(10), inputs: 1, outputs: 1, &key_manager).expect("Failed to get tx");
         const INPUT_AMOUNT: MicroTari = MicroTari(5_000);
-        let (tx2, inputs, _) = tx!(INPUT_AMOUNT, fee: MicroTari(5), inputs: 1, outputs: 1, &key_manager);
+        let (tx2, inputs, _) =
+            tx!(INPUT_AMOUNT, fee: MicroTari(5), inputs: 1, outputs: 1, &key_manager).expect("Failed to get tx");
 
         let mut stx_builder = SenderTransactionProtocol::builder(create_consensus_constants(0), key_manager.clone());
 
@@ -732,7 +935,9 @@ mod test {
             1,
             1,
             1,
-            test_params.get_size_for_default_features_and_scripts(1),
+            test_params
+                .get_size_for_default_features_and_scripts(1)
+                .expect("Failed to get size for default features and scripts"),
         );
 
         let utxo = test_params
@@ -768,12 +973,14 @@ mod test {
         });
 
         let tx_weight = TransactionWeight::latest();
-        unconfirmed_pool.insert_many(vec![tx1.clone(), tx2.clone(), tx3.clone()], &tx_weight);
+        unconfirmed_pool
+            .insert_many(vec![tx1.clone(), tx2.clone(), tx3.clone()], &tx_weight)
+            .expect("Failed to insert many");
         assert_eq!(unconfirmed_pool.len(), 3);
 
-        let desired_weight = tx1.calculate_weight(&tx_weight) +
-            tx2.calculate_weight(&tx_weight) +
-            tx3.calculate_weight(&tx_weight) +
+        let desired_weight = tx1.calculate_weight(&tx_weight).expect("Failed to get tx") +
+            tx2.calculate_weight(&tx_weight).expect("Failed to get tx") +
+            tx3.calculate_weight(&tx_weight).expect("Failed to get tx") +
             1000;
         let results = unconfirmed_pool.fetch_highest_priority_txs(desired_weight).unwrap();
         assert!(results.retrieved_transactions.contains(&tx1));
@@ -787,22 +994,48 @@ mod test {
         let key_manager = create_test_core_key_manager_with_memory_db();
         let network = Network::LocalNet;
         let consensus = ConsensusManagerBuilder::new(network).build().unwrap();
-        let tx1 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(50), inputs:2, outputs: 1, &key_manager).0);
-        let tx2 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(20), inputs:3, outputs: 1, &key_manager).0);
-        let tx3 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(100), inputs:2, outputs: 1, &key_manager).0);
-        let tx4 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(30), inputs:4, outputs: 1, &key_manager).0);
-        let tx5 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(50), inputs:3, outputs: 1, &key_manager).0);
-        let tx6 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(75), inputs:2, outputs: 1, &key_manager).0);
+        let tx1 = Arc::new(
+            tx!(MicroTari(10_000), fee: MicroTari(50), inputs:2, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let tx2 = Arc::new(
+            tx!(MicroTari(10_000), fee: MicroTari(20), inputs:3, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let tx3 = Arc::new(
+            tx!(MicroTari(10_000), fee: MicroTari(100), inputs:2, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let tx4 = Arc::new(
+            tx!(MicroTari(10_000), fee: MicroTari(30), inputs:4, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let tx5 = Arc::new(
+            tx!(MicroTari(10_000), fee: MicroTari(50), inputs:3, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let tx6 = Arc::new(
+            tx!(MicroTari(10_000), fee: MicroTari(75), inputs:2, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
 
         let tx_weight = TransactionWeight::latest();
         let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
             storage_capacity: 10,
             weight_tx_skip_count: 3,
         });
-        unconfirmed_pool.insert_many(
-            vec![tx1.clone(), tx2.clone(), tx3.clone(), tx4.clone(), tx5.clone()],
-            &tx_weight,
-        );
+        unconfirmed_pool
+            .insert_many(
+                vec![tx1.clone(), tx2.clone(), tx3.clone(), tx4.clone(), tx5.clone()],
+                &tx_weight,
+            )
+            .expect("Failed to insert many");
         // utx6 should not be added to unconfirmed_pool as it is an unknown transactions that was included in the block
         // by another node
 
@@ -831,12 +1064,32 @@ mod test {
     async fn test_discard_double_spend_txs() {
         let key_manager = create_test_core_key_manager_with_memory_db();
         let consensus = create_consensus_rules();
-        let tx1 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(5), inputs:2, outputs:1, &key_manager).0);
-        let tx2 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(4), inputs:3, outputs:1, &key_manager).0);
-        let tx3 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(5), inputs:2, outputs:1, &key_manager).0);
-        let tx4 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(6), inputs:2, outputs:1, &key_manager).0);
-        let mut tx5 = tx!(MicroTari(5_000), fee:MicroTari(5), inputs:3, outputs:1, &key_manager).0;
-        let mut tx6 = tx!(MicroTari(5_000), fee:MicroTari(13), inputs: 2, outputs: 1, &key_manager).0;
+        let tx1 = Arc::new(
+            tx!(MicroTari(5_000), fee: MicroTari(5), inputs:2, outputs:1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let tx2 = Arc::new(
+            tx!(MicroTari(5_000), fee: MicroTari(4), inputs:3, outputs:1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let tx3 = Arc::new(
+            tx!(MicroTari(5_000), fee: MicroTari(5), inputs:2, outputs:1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let tx4 = Arc::new(
+            tx!(MicroTari(5_000), fee: MicroTari(6), inputs:2, outputs:1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let mut tx5 = tx!(MicroTari(5_000), fee:MicroTari(5), inputs:3, outputs:1, &key_manager)
+            .expect("Failed to get tx")
+            .0;
+        let mut tx6 = tx!(MicroTari(5_000), fee:MicroTari(13), inputs: 2, outputs: 1, &key_manager)
+            .expect("Failed to get tx")
+            .0;
         // tx1 and tx5 have a shared input. Also, tx3 and tx6 have a shared input
         tx5.body.inputs_mut()[0] = tx1.body.inputs()[0].clone();
         tx6.body.inputs_mut()[1] = tx3.body.inputs()[1].clone();
@@ -848,17 +1101,19 @@ mod test {
             storage_capacity: 10,
             weight_tx_skip_count: 3,
         });
-        unconfirmed_pool.insert_many(
-            vec![
-                tx1.clone(),
-                tx2.clone(),
-                tx3.clone(),
-                tx4.clone(),
-                tx5.clone(),
-                tx6.clone(),
-            ],
-            &tx_weight,
-        );
+        unconfirmed_pool
+            .insert_many(
+                vec![
+                    tx1.clone(),
+                    tx2.clone(),
+                    tx3.clone(),
+                    tx4.clone(),
+                    tx5.clone(),
+                    tx6.clone(),
+                ],
+                &tx_weight,
+            )
+            .expect("Failed to insert many");
 
         // The publishing of tx1 and tx3 will be double-spends and orphan tx5 and tx6
         let published_block = create_orphan_block(0, vec![(*tx1).clone(), (*tx2).clone(), (*tx3).clone()], &consensus);
@@ -878,14 +1133,18 @@ mod test {
     #[tokio::test]
     async fn test_multiple_transactions_with_same_outputs_in_mempool() {
         let key_manager = create_test_core_key_manager_with_memory_db();
-        let (tx1, _, _) = tx!(MicroTari(150_000), fee: MicroTari(50), inputs:5, outputs:5, &key_manager);
-        let (tx2, _, _) = tx!(MicroTari(250_000), fee: MicroTari(50), inputs:5, outputs:5, &key_manager);
+        let (tx1, _, _) =
+            tx!(MicroTari(150_000), fee: MicroTari(50), inputs:5, outputs:5, &key_manager).expect("Failed to get tx");
+        let (tx2, _, _) =
+            tx!(MicroTari(250_000), fee: MicroTari(50), inputs:5, outputs:5, &key_manager).expect("Failed to get tx");
 
         // Create transactions with duplicate kernels (will not pass internal validation, but that is ok)
         let mut tx3 = tx1.clone();
         let mut tx4 = tx2.clone();
-        let (tx5, _, _) = tx!(MicroTari(350_000), fee: MicroTari(50), inputs:5, outputs:5, &key_manager);
-        let (tx6, _, _) = tx!(MicroTari(450_000), fee: MicroTari(50), inputs:5, outputs:5, &key_manager);
+        let (tx5, _, _) =
+            tx!(MicroTari(350_000), fee: MicroTari(50), inputs:5, outputs:5, &key_manager).expect("Failed to get tx");
+        let (tx6, _, _) =
+            tx!(MicroTari(450_000), fee: MicroTari(50), inputs:5, outputs:5, &key_manager).expect("Failed to get tx");
         tx3.body.set_kernel(tx5.body.kernels()[0].clone());
         tx4.body.set_kernel(tx6.body.kernels()[0].clone());
 
@@ -903,7 +1162,9 @@ mod test {
             Arc::new(tx3.clone()),
             Arc::new(tx4.clone()),
         ];
-        unconfirmed_pool.insert_many(txns.clone(), &tx_weight);
+        unconfirmed_pool
+            .insert_many(txns.clone(), &tx_weight)
+            .expect("Failed to insert many");
 
         for txn in txns {
             for output in txn.as_ref().body.outputs() {
@@ -974,10 +1235,14 @@ mod test {
         #[tokio::test]
         async fn it_compiles_correct_stats_for_single_block() {
             let key_manager = create_test_core_key_manager_with_memory_db();
-            let (tx1, _, _) = tx!(MicroTari(150_000), fee: MicroTari(5), inputs:5, outputs:1, &key_manager);
-            let (tx2, _, _) = tx!(MicroTari(250_000), fee: MicroTari(5), inputs:5, outputs:5, &key_manager);
-            let (tx3, _, _) = tx!(MicroTari(350_000), fee: MicroTari(4), inputs:2, outputs:1, &key_manager);
-            let (tx4, _, _) = tx!(MicroTari(450_000), fee: MicroTari(4), inputs:4, outputs:5, &key_manager);
+            let (tx1, _, _) = tx!(MicroTari(150_000), fee: MicroTari(5), inputs:5, outputs:1, &key_manager)
+                .expect("Failed to get tx");
+            let (tx2, _, _) = tx!(MicroTari(250_000), fee: MicroTari(5), inputs:5, outputs:5, &key_manager)
+                .expect("Failed to get tx");
+            let (tx3, _, _) = tx!(MicroTari(350_000), fee: MicroTari(4), inputs:2, outputs:1, &key_manager)
+                .expect("Failed to get tx");
+            let (tx4, _, _) = tx!(MicroTari(450_000), fee: MicroTari(4), inputs:4, outputs:5, &key_manager)
+                .expect("Failed to get tx");
 
             let tx_weight = TransactionWeight::latest();
             let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig::default());
@@ -986,7 +1251,9 @@ mod test {
             let tx2 = Arc::new(tx2);
             let tx3 = Arc::new(tx3);
             let tx4 = Arc::new(tx4);
-            unconfirmed_pool.insert_many(vec![tx1, tx2, tx3, tx4], &tx_weight);
+            unconfirmed_pool
+                .insert_many(vec![tx1, tx2, tx3, tx4], &tx_weight)
+                .expect("Failed to insert many");
 
             let stats = unconfirmed_pool.get_fee_per_gram_stats(1, 19500).unwrap();
             assert_eq!(stats[0].order, 0);
@@ -1014,17 +1281,21 @@ mod test {
             ];
             let mut transactions = Vec::new();
             for i in 0..50 {
-                let (tx, _, _) = tx!(MicroTari(150_000 + i), fee: MicroTari(10), inputs: 1, outputs: 1, &key_manager);
+                let (tx, _, _) = tx!(MicroTari(150_000 + i), fee: MicroTari(10), inputs: 1, outputs: 1, &key_manager)
+                    .expect("Failed to get tx");
                 transactions.push(Arc::new(tx));
             }
 
-            let (tx1, _, _) = tx!(MicroTari(150_000), fee: MicroTari(5), inputs:1, outputs: 5, &key_manager);
+            let (tx1, _, _) = tx!(MicroTari(150_000), fee: MicroTari(5), inputs:1, outputs: 5, &key_manager)
+                .expect("Failed to get tx");
             transactions.push(Arc::new(tx1));
 
             let tx_weight = TransactionWeight::latest();
             let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig::default());
 
-            unconfirmed_pool.insert_many(transactions, &tx_weight);
+            unconfirmed_pool
+                .insert_many(transactions, &tx_weight)
+                .expect("Failed to insert many");
 
             let stats = unconfirmed_pool.get_fee_per_gram_stats(2, 2000).unwrap();
             assert_eq!(stats, expected_stats);

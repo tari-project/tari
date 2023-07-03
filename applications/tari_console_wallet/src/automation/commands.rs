@@ -338,7 +338,8 @@ pub async fn discover_peer(
 
     Ok(())
 }
-
+// casting here is okay. If the txns per second for this primary debug tool is a bit off its okay.
+#[allow(clippy::cast_possible_truncation)]
 #[allow(clippy::too_many_lines)]
 pub async fn make_it_rain(
     wallet_transaction_service: TransactionServiceHandle,
@@ -667,7 +668,6 @@ pub async fn command_runner(
                         println!("Burnt {} Tari in tx_id: {}", args.amount, tx_id);
                         println!("The following can be used to claim the burnt funds:");
                         println!();
-                        // TODO: Define and use a standard format (e.g. json w/ base64)
                         println!("claim_public_key: {}", proof.reciprocal_claim_public_key);
                         println!("commitment: {}", proof.commitment.as_public_key());
                         println!("ownership_proof: {:?}", proof.ownership_proof);
@@ -830,8 +830,8 @@ pub async fn command_runner(
                         println!("Minimum value UTXO   : {}", min);
                     }
                     if count > 0 {
-                        let average = f64::from(sum) / count as f64;
-                        let average = Tari::from(MicroTari(average.round() as u64));
+                        let average_val = sum.as_u64().div_euclid(count as u64);
+                        let average = Tari::from(MicroTari(average_val));
                         println!("Average value UTXO   : {}", average);
                     }
                     if let Some(max) = values.iter().max() {

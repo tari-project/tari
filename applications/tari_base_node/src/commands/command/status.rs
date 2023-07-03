@@ -48,6 +48,8 @@ impl HandleCommand<Args> for CommandContext {
 }
 
 impl CommandContext {
+    // converting u64 to i64 is okay as the this is only for viewing timestamps.
+    #[allow(clippy::cast_possible_wrap)]
     #[allow(clippy::too_many_lines)]
     pub async fn status(&mut self, output: StatusLineOutput) -> Result<(), Error> {
         let mut full_log = false;
@@ -95,7 +97,7 @@ impl CommandContext {
                     if mempool_stats.unconfirmed_weight == 0 {
                         0
                     } else {
-                        1 + mempool_stats.unconfirmed_weight / constants.max_block_weight_excluding_coinbase()
+                        1 + mempool_stats.unconfirmed_weight / constants.max_block_weight_excluding_coinbase()?
                     },
                 ),
             );

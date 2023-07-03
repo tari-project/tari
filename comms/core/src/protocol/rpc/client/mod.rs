@@ -677,7 +677,6 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                 },
             };
 
-            // let resp = match self.read_response(request_id).await {
             let resp = match resp_result {
                 Ok((resp, time_to_first_msg)) => {
                     if let Some(t) = time_to_first_msg {

@@ -324,7 +324,7 @@ impl AggregateBody {
                 return Err(TransactionError::NonCoinbaseHasOutputFeaturesCoinbaseExtra);
             }
 
-            if output.is_coinbase() && output.features.coinbase_extra.len() as u32 > max_coinbase_metadata_size {
+            if output.is_coinbase() && output.features.coinbase_extra.len() > max_coinbase_metadata_size as usize {
                 return Err(TransactionError::InvalidOutputFeaturesCoinbaseExtraSize {
                     len: output.features.coinbase_extra.len(),
                     max: max_coinbase_metadata_size,
@@ -354,12 +354,18 @@ impl AggregateBody {
     }
 
     /// Returns the weight in grams of a body
-    pub fn calculate_weight(&self, transaction_weight: &TransactionWeight) -> u64 {
+    pub fn calculate_weight(&self, transaction_weight: &TransactionWeight) -> std::io::Result<u64> {
         transaction_weight.calculate_body(self)
     }
 
-    pub fn sum_features_and_scripts_size(&self) -> usize {
-        self.outputs.iter().map(|o| o.get_features_and_scripts_size()).sum()
+    pub fn sum_features_and_scripts_size(&self) -> std::io::Result<usize> {
+        Ok(self
+            .outputs
+            .iter()
+            .map(|o| o.get_features_and_scripts_size())
+            .collect::<Result<Vec<_>, _>>()?
+            .iter()
+            .sum())
     }
 
     pub fn is_sorted(&self) -> bool {

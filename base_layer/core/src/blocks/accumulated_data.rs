@@ -329,7 +329,6 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
 }
 
 /// Accumulated and other pertinent data in the block header acting as a "condensed blockchain snapshot" for the block
-// TODO: Find a better name and move into `core::blocks` mod
 #[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
 pub struct BlockHeaderAccumulatedData {
     /// The block hash.

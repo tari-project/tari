@@ -463,7 +463,6 @@ impl DhtActor {
         Ok(())
     }
 
-    // TODO: Break up this function
     #[allow(clippy::too_many_lines)]
     async fn select_peers(
         config: &DhtConfig,

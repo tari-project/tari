@@ -59,14 +59,21 @@ impl Mempool {
 
     /// Insert an unconfirmed transaction into the Mempool.
     pub async fn insert(&self, tx: Arc<Transaction>) -> Result<TxStorageResponse, MempoolError> {
-        self.with_write_access(|storage| Ok(storage.insert(tx))).await
+        self.with_write_access(|storage| {
+            storage
+                .insert(tx)
+                .map_err(|e| MempoolError::InternalError(e.to_string()))
+        })
+        .await
     }
 
     /// Inserts all transactions into the mempool.
     pub async fn insert_all(&self, transactions: Vec<Arc<Transaction>>) -> Result<(), MempoolError> {
         self.with_write_access(|storage| {
             for tx in transactions {
-                storage.insert(tx);
+                storage
+                    .insert(tx)
+                    .map_err(|e| MempoolError::InternalError(e.to_string()))?;
             }
 
             Ok(())
@@ -135,7 +142,8 @@ impl Mempool {
 
     /// Gathers and returns the stats of the Mempool.
     pub async fn stats(&self) -> Result<StatsResponse, MempoolError> {
-        self.with_read_access(|storage| Ok(storage.stats())).await
+        self.with_read_access(|storage| storage.stats().map_err(|e| MempoolError::InternalError(e.to_string())))
+            .await
     }
 
     /// Gathers and returns a breakdown of all the transaction in the Mempool.

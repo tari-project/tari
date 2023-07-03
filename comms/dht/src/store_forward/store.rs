@@ -282,17 +282,6 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Se
                     return Ok(None);
                 }
 
-                // If this is a join message, we may want to store it if it's for our neighbourhood
-                // if message.dht_header.message_type.is_dht_join() {
-                // return match self.get_priority_for_dht_join(message).await? {
-                //     Some(priority) => Ok(Some(priority)),
-                //     None => {
-                //         log_not_eligible("the join message was not considered in this node's neighbourhood");
-                //         Ok(None)
-                //     },
-                // };
-                // }
-
                 log_not_eligible("it is not an eligible DhtMessageType");
                 // Otherwise, don't store
                 Ok(None)
@@ -300,7 +289,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Se
             // This node could not decrypt the message
             None => {
                 if !message.has_message_signature() {
-                    // TODO: #banheuristic - the source peer should not have propagated this message
+                    // #banheuristic - the source peer should not have propagated this message
                     debug!(
                         target: LOG_TARGET,
                         "Store task received an encrypted message with no message signature. This message {} is \
@@ -318,41 +307,6 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Se
             },
         }
     }
-
-    // async fn get_priority_for_dht_join(
-    //     &self,
-    //     message: &DecryptedDhtMessage,
-    // ) -> SafResult<Option<StoredMessagePriority>>
-    // {
-    //     debug_assert!(message.dht_header.message_type.is_dht_join() && !message.is_encrypted());
-    //
-    //     let body = message
-    //         .decryption_result
-    //         .as_ref()
-    //         .expect("already checked that this message is not encrypted");
-    //     let join_msg = body
-    //         .decode_part::<JoinMessage>(0)?
-    //         .ok_or_else(|| StoreAndForwardError::InvalidEnvelopeBody)?;
-    //     let node_id = NodeId::from_bytes(&join_msg.node_id).map_err(StoreAndForwardError::MalformedNodeId)?;
-    //
-    //     // If this join request is for a peer that we'd consider to be a neighbour, store it for other neighbours
-    //     if self
-    //         .peer_manager
-    //         .in_network_region(
-    //             &node_id,
-    //             self.node_identity.node_id(),
-    //             self.config.num_neighbouring_nodes,
-    //         )
-    //         .await?
-    //     {
-    //         if self.saf_requester.query_messages(
-    //             DhtMessageType::Join,
-    //         )
-    //         return Ok(Some(StoredMessagePriority::Low));
-    //     }
-    //
-    //     Ok(None)
-    // }
 
     async fn get_priority_by_destination(
         &self,
@@ -377,7 +331,6 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Se
             return Ok(None);
         }
 
-        // TODO: Remove this once we have a layer that filters out all messages to/from banned peers
         if let Some(origin_pk) = message.authenticated_origin() {
             if let Ok(Some(peer)) = self.peer_manager.find_by_public_key(origin_pk).await {
                 if peer.is_banned() {

@@ -386,8 +386,8 @@ mod tests {
 
     #[test]
     fn detect_change_in_consensus_encoding() {
-        const NONCE: u64 = 7661716481620366421;
-        let difficulty = Difficulty::from_u64(1467).expect("Failed to create difficulty");
+        const NONCE: u64 = 17490136304365714239;
+        let difficulty = Difficulty::from_u64(1913).expect("Failed to create difficulty");
         unsafe {
             let mut error = -1;
             let error_ptr = &mut error as *mut c_int;
@@ -402,9 +402,9 @@ mod tests {
             if result != difficulty.as_u64() {
                 // Use this to generate new NONCE and DIFFICULTY
                 // Use ONLY if you know encoding has changed
-                let (difficulty, nonce) = generate_nonce_with_min_difficulty(min_difficulty()).unwrap();
-                eprintln!("nonce = {:?}", nonce);
-                eprintln!("difficulty = {:?}", difficulty);
+                // let (difficulty, nonce) = generate_nonce_with_min_difficulty(min_difficulty()).unwrap();
+                // eprintln!("nonce = {:?}", nonce);
+                // eprintln!("difficulty = {:?}", difficulty);
                 panic!(
                     "detect_change_in_consensus_encoding has failed. This might be a change in consensus encoding \
                      which requires an update to the pool miner code."
@@ -422,7 +422,7 @@ mod tests {
             let error_ptr = &mut error as *mut c_int;
             let block = create_test_block();
             let header_bytes = block.header.try_to_vec().unwrap();
-            let len = header_bytes.len() as u32;
+            let len = u32::try_from(header_bytes.len()).unwrap();
             let byte_vec = byte_vector_create(header_bytes.as_ptr(), len, error_ptr);
             inject_nonce(byte_vec, nonce, error_ptr);
             assert_eq!(error, 0);

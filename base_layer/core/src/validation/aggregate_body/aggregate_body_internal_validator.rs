@@ -304,7 +304,9 @@ fn check_weight(
     height: u64,
     consensus_constants: &ConsensusConstants,
 ) -> Result<(), ValidationError> {
-    let block_weight = body.calculate_weight(consensus_constants.transaction_weight_params());
+    let block_weight = body
+        .calculate_weight(consensus_constants.transaction_weight_params())
+        .map_err(|e| ValidationError::CustomError(e.to_string()))?;
     let max_weight = consensus_constants.max_block_transaction_weight();
     if block_weight <= max_weight {
         trace!(
@@ -391,9 +393,6 @@ fn check_validator_node_registration_utxo(
             });
         }
 
-        // TODO(SECURITY): Signing this with a blank msg allows the signature to be replayed. Using the commitment
-        //                 is ideal as uniqueness is enforced. However, because the VN and wallet have different
-        //                 keys this becomes difficult. Fix this once we have decided on a solution.
         if !reg.is_valid_signature_for(&[]) {
             return Err(ValidationError::InvalidValidatorNodeSignature);
         }

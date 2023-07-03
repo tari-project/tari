@@ -86,10 +86,6 @@ impl From<InterfaceError> for LibWalletError {
                 code: 4,
                 message: format!("{:?}", v),
             },
-            // InterfaceError::NetworkError(_) => Self {
-            //     code: 5,
-            //     message: format!("{:?}", v),
-            // },
             InterfaceError::InvalidEmojiId => Self {
                 code: 6,
                 message: format!("{:?}", v),
