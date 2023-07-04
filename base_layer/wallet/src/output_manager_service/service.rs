@@ -689,13 +689,28 @@ where
             _ => return Err(OutputManagerError::InvalidSenderMessage),
         };
 
-        // Confirm script hash is for the expected script, at the moment assuming Nop
-        if single_round_sender_data.script != script!(Nop) {
-            return Err(OutputManagerError::InvalidScriptHash);
+        // Confirm covenant is default
+        if single_round_sender_data.covenant != Covenant::default() {
+            return Err(OutputManagerError::InvalidCovenant);
+        }
+
+        // Confirm output features is default
+        if single_round_sender_data.features != OutputFeatures::default() {
+            return Err(OutputManagerError::InvalidCovenant);
         }
 
         let (spending_key_id, _, script_key_id, script_public_key) =
             self.resources.key_manager.get_next_spend_and_script_key_ids().await?;
+
+        // Confirm script hash is for the expected script, at the moment assuming Nop or Push_pubkey
+        // if the script is Push_pubkey(default_key) we know we have to fill it in.
+        let script = if single_round_sender_data.script == script!(Nop) {
+            single_round_sender_data.script.clone()
+        } else if single_round_sender_data.script == script!(PushPubKey(Box::new(PublicKey::default()))) {
+            script!(PushPubKey(Box::new(script_public_key.clone())))
+        } else {
+            return Err(OutputManagerError::InvalidScriptHash);
+        };
 
         let encrypted_data = self
             .resources
@@ -707,7 +722,7 @@ where
 
         let metadata_message = TransactionOutput::metadata_signature_message_from_parts(
             &TransactionOutputVersion::get_current_version(),
-            &single_round_sender_data.script,
+            &script,
             &single_round_sender_data.features.clone(),
             &single_round_sender_data.covenant,
             &encrypted_data,
@@ -731,7 +746,7 @@ where
             single_round_sender_data.amount,
             spending_key_id.clone(),
             single_round_sender_data.features.clone(),
-            single_round_sender_data.script.clone(),
+            script,
             inputs!(script_public_key),
             script_key_id,
             single_round_sender_data.sender_offset_public_key.clone(),
