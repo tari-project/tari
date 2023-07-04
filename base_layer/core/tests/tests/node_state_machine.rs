@@ -54,18 +54,19 @@ use tokio::{
 };
 
 use crate::helpers::{
-    block_builders::{append_block, chain_block, create_blockchain_with_spendable_coinbase},
+    block_builders::{append_block, chain_block},
     chain_metadata::MockChainMetadata,
     nodes::{create_network_with_2_base_nodes_with_config, random_node_identity, wait_until_online, BaseNodeBuilder},
 };
+use crate::helpers::block_builders::create_blockchain_with_genesis_block_only;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_listening_lagging() {
     let temp_dir = tempdir().unwrap();
     let key_manager = create_test_core_key_manager_with_memory_db();
-    let (prev_block, _utxo0, consensus_manager, blockchain_db) =
-        create_blockchain_with_spendable_coinbase(&key_manager, Network::LocalNet, &None).await;
-    let (alice_node, bob_node, consensus_manager) = create_network_with_2_base_nodes_with_config(
+    let (initial_block, consensus_manager, blockchain_db) =
+        create_blockchain_with_genesis_block_only(Network::LocalNet, &None).await;
+    let (alice_node, mut bob_node, consensus_manager) = create_network_with_2_base_nodes_with_config(
         MempoolServiceConfig::default(),
         LivenessConfig {
             auto_ping_interval: Some(Duration::from_millis(100)),
@@ -97,13 +98,11 @@ async fn test_listening_lagging() {
 
     let await_event_task = task::spawn(async move { Listening::new().next_event(&mut alice_state_machine).await });
 
-    let bob_db = bob_node.blockchain_db;
-    let mut bob_local_nci = bob_node.local_nci;
-
+    // TODO: It seems the event is actually sent
     // Bob Block 1 - no block event
-    let prev_block = append_block(
-        &bob_db,
-        &prev_block,
+    let block_1 = append_block(
+        &bob_node.blockchain_db,
+        &initial_block,
         vec![],
         &consensus_manager,
         Difficulty::from_u64(3).unwrap(),
@@ -111,21 +110,30 @@ async fn test_listening_lagging() {
     )
     .await
     .unwrap();
+    assert_eq!(alice_node.blockchain_db.fetch_tip_header().unwrap().height(), bob_node.blockchain_db.fetch_tip_header().unwrap().height());
+
     // Bob Block 2 - with block event and liveness service metadata update
-    let mut prev_block = bob_db
-        .prepare_new_block(chain_block(prev_block.block(), vec![], &consensus_manager, &key_manager).await)
+    let block_2 = bob_node.blockchain_db
+        .prepare_new_block(chain_block(block_1.block(), vec![], &consensus_manager, &key_manager).await)
         .unwrap();
-    prev_block.header.output_mmr_size += 1;
-    prev_block.header.kernel_mmr_size += 1;
-    bob_local_nci.submit_block(prev_block).await.unwrap();
-    assert_eq!(bob_db.get_height().unwrap(), 2);
+    bob_node.local_nci.submit_block(block_2).await.unwrap();
+    assert_eq!(alice_node.blockchain_db.fetch_tip_header().unwrap().height(), bob_node.blockchain_db.fetch_tip_header().unwrap().height());
+    assert_eq!(bob_node.blockchain_db.get_height().unwrap(), 2);
 
-    let next_event = time::timeout(Duration::from_secs(10), await_event_task)
-        .await
-        .expect("Alice did not emit `StateEvent::FallenBehind` within 10 seconds")
-        .unwrap();
-
-    assert!(matches!(next_event, StateEvent::FallenBehind(_)));
+    match time::timeout(Duration::from_secs(5), await_event_task).await {
+        Ok(event) => {
+            if let Ok(state_event) = event {
+                println!("Event: {:?}", state_event);
+                assert!(matches!(state_event, StateEvent::FallenBehind(_)));
+            } else {
+                panic!("Unexpected event");
+            }
+        },
+        Err(e) => {
+            println!("TODO: It seems the event is actually sent, so Alice cannot fall behind");
+            panic!("Timeout waiting for event ({})", e);
+        },
+    }
 }
 
 #[tokio::test]

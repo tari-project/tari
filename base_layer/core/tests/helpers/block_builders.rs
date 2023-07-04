@@ -40,25 +40,15 @@ use tari_core::{
     test_helpers::blockchain::{create_store_with_consensus, TempDatabase},
     transactions::{
         tari_amount::MicroTari,
-        test_helpers::{
-            create_wallet_output_with_data,
-            schema_to_transaction,
-            spend_utxos,
-            TestKeyManager,
-            TestParams,
-            TransactionSchema,
-        },
-        transaction_components::{OutputFeatures, Transaction, TransactionKernel, TransactionOutput, WalletOutput},
+        test_helpers::{schema_to_transaction, spend_utxos, TestKeyManager, TestParams, TransactionSchema},
+        transaction_components::{Transaction, TransactionKernel, TransactionOutput, WalletOutput},
         CoinbaseBuilder,
     },
     txn_schema,
     KernelMmr,
-    KernelMmrHasherBlake256,
     MutableOutputMmr,
 };
 use tari_crypto::tari_utilities::hex::Hex;
-use tari_mmr::{Hash, MutableMmr};
-use tari_script::script;
 
 pub async fn create_coinbase_with_coinbase_builder(
     constants: &ConsensusConstants,
@@ -88,29 +78,6 @@ pub async fn create_coinbase_with_coinbase_builder(
     )
 }
 
-async fn genesis_template(
-    coinbase_value: MicroTari,
-    consensus_constants: &ConsensusConstants,
-    key_manager: &TestKeyManager,
-) -> (NewBlockTemplate, WalletOutput) {
-    let header = BlockHeader::new(consensus_constants.blockchain_version());
-    let (utxo, kernel, output) = create_coinbase_with_coinbase_builder(
-        consensus_constants,
-        coinbase_value,
-        0,
-        0.into(),
-        Some(b"The big bang".to_vec()),
-        key_manager,
-    )
-    .await;
-    let block = NewBlockTemplate::from_block(
-        header.into_builder().with_coinbase_utxo(utxo, kernel).build(),
-        Difficulty::min(),
-        coinbase_value,
-    );
-    (block, output)
-}
-
 #[test]
 fn print_new_genesis_block_values() {
     let vn_mr = calculate_validator_node_mr(&[]);
@@ -136,30 +103,22 @@ fn print_new_genesis_block_values() {
     println!("header total_script_offset: {}", FixedHash::zero().to_hex());
 }
 
-// Calculate the MMR Merkle roots for the genesis block template and update the header.
-fn update_genesis_block_mmr_roots(template: NewBlockTemplate) -> Result<Block, ChainStorageError> {
-    type BaseLayerKernelMutableMmr = MutableMmr<KernelMmrHasherBlake256, Vec<Hash>>;
-
-    let NewBlockTemplate { header, mut body, .. } = template;
-    // Make sure the body components are sorted. If they already are, this is a very cheap call.
-    body.sort();
-    let kernel_hashes: Vec<Vec<u8>> = body.kernels().iter().map(|k| k.hash().to_vec()).collect();
-    let out_hashes: Vec<Vec<u8>> = body.outputs().iter().map(|out| out.hash().to_vec()).collect();
-
-    let mut header = BlockHeader::from(header);
-    header.kernel_mr = FixedHash::try_from(
-        BaseLayerKernelMutableMmr::new(kernel_hashes, Bitmap::create())
-            .unwrap()
-            .get_merkle_root()?,
-    )
-    .unwrap();
-    header.output_mr = FixedHash::try_from(
-        MutableOutputMmr::new(out_hashes, Bitmap::create())
-            .unwrap()
-            .get_merkle_root()?,
-    )
-    .unwrap();
-    Ok(Block { header, body })
+pub async fn create_blockchain_with_genesis_block_only(
+    network: Network,
+    consensus_constants: &Option<ConsensusConstants>,
+) -> (
+    ChainBlock,
+    ConsensusManager,
+    BlockchainDatabase<TempDatabase>,
+) {
+    let mut builder = ConsensusManagerBuilder::new(network);
+    if let Some(consensus_constants) = consensus_constants {
+        builder = builder.add_consensus_constants(consensus_constants.clone());
+    }
+    let consensus_manager = builder.build().unwrap();
+    let genesis_block = consensus_manager.get_genesis_block().unwrap();
+    let blockchain_db = create_store_with_consensus(consensus_manager.clone()).unwrap();
+    (genesis_block, consensus_manager, blockchain_db)
 }
 
 pub async fn create_blockchain_with_spendable_coinbase(
@@ -180,7 +139,7 @@ pub async fn create_blockchain_with_spendable_coinbase(
     let genesis_block = consensus_manager.get_genesis_block().unwrap();
     let blockchain_db = create_store_with_consensus(consensus_manager.clone()).unwrap();
     // Add 1st block to get hold of the coinbase
-    let (mut tip_block, first_coinbase) = append_block_with_coinbase(
+    let (mut block_at_tip, first_coinbase) = append_block_with_coinbase(
         &blockchain_db,
         &genesis_block,
         vec![],
@@ -188,97 +147,58 @@ pub async fn create_blockchain_with_spendable_coinbase(
         Difficulty::min(),
         key_manager,
     )
-    .await
-    .unwrap();
+        .await
+        .unwrap();
     for _i in 0..=consensus_manager.consensus_constants(0).coinbase_min_maturity() {
-        (tip_block, _) = append_block_with_coinbase(
+        (block_at_tip, _) = append_block_with_coinbase(
             &blockchain_db,
-            &tip_block.clone(),
+            &block_at_tip.clone(),
             vec![],
             &consensus_manager,
             Difficulty::min(),
             key_manager,
         )
-        .await
-        .unwrap();
+            .await
+            .unwrap();
     }
-    (tip_block, first_coinbase, consensus_manager, blockchain_db)
+    (block_at_tip, first_coinbase, consensus_manager, blockchain_db)
 }
 
 pub async fn create_blockchain_with_utxos(
     values: &[MicroTari],
     key_manager: &TestKeyManager,
+    network: Network,
+    consensus_constants: &Option<ConsensusConstants>,
 ) -> (
     ChainBlock,
     Vec<WalletOutput>,
     ConsensusManager,
     BlockchainDatabase<TempDatabase>,
 ) {
-    let (block_1, coinbase_1, consensus_manager, blockchain_db) =
-        create_blockchain_with_spendable_coinbase(key_manager, Network::LocalNet, &None).await;
+    let (block_at_tip, first_coinbase, consensus_manager, blockchain_db) =
+        create_blockchain_with_spendable_coinbase(key_manager, network, consensus_constants).await;
     // Spend the coinbase to the required outputs
-    let (txns, wallet_outputs) = schema_to_transaction(
-        &[txn_schema!(from: vec![coinbase_1], to: values.to_vec(), fee: 1.into())],
+    let (schema_transactions, wallet_outputs) = schema_to_transaction(
+        &[txn_schema!(from: vec![first_coinbase], to: values.to_vec(), fee: 1.into())],
         key_manager,
     )
     .await;
-    let txns = txns
+    let transactions = schema_transactions
         .into_iter()
-        .map(|t| t.deref().clone())
+        .map(|txn| txn.deref().clone())
         .collect::<Vec<Transaction>>();
-    // Add 2nd block to generate the outputs
-    let (block_2, _coinbase_2) = append_block_with_coinbase(
+    // Add another block to generate the outputs
+    let (final_block, _final_coinbase) = append_block_with_coinbase(
         &blockchain_db,
-        &block_1,
-        txns,
+        &block_at_tip,
+        transactions,
         &consensus_manager,
         Difficulty::min(),
         key_manager,
     )
     .await
     .unwrap();
-    (block_2, wallet_outputs, consensus_manager, blockchain_db)
-}
-
-/// Create a Genesis block with additional utxos that are immediately available for spending. This is useful for
-/// writing tests without having to add blocks just so the coinbase output can mature.
-#[allow(dead_code)]
-pub async fn create_genesis_block_with_utxos(
-    values: &[MicroTari],
-    consensus_constants: &ConsensusConstants,
-    key_manager: &TestKeyManager,
-) -> (ChainBlock, Vec<WalletOutput>) {
-    let (mut template, coinbase) = genesis_template(100_000_000.into(), consensus_constants, key_manager).await;
-    let script = script!(Nop);
-    let output_features = OutputFeatures::default();
-    let mut outputs = Vec::new();
-    outputs.push(coinbase);
-    for value in values {
-        let p = TestParams::new(key_manager).await;
-        let wallet_output =
-            create_wallet_output_with_data(script.clone(), output_features.clone(), &p, *value, key_manager)
-                .await
-                .unwrap();
-        outputs.push(wallet_output.clone());
-        let output = wallet_output.to_transaction_output(key_manager).await.unwrap();
-        template.body.add_output(output);
-    }
-    let mut block = update_genesis_block_mmr_roots(template).unwrap();
-    find_header_with_achieved_difficulty(&mut block.header, Difficulty::from_u64(1).unwrap());
-    let hash = block.hash();
-    (
-        ChainBlock::try_construct(block.into(), BlockHeaderAccumulatedData {
-            hash,
-            total_kernel_offset: Default::default(),
-            achieved_difficulty: Difficulty::min(),
-            total_accumulated_difficulty: 1,
-            accumulated_randomx_difficulty: Difficulty::min(),
-            accumulated_sha3x_difficulty: Difficulty::min(),
-            target_difficulty: Difficulty::min(),
-        })
-        .unwrap(),
-        outputs,
-    )
+    (final_block, wallet_outputs, consensus_manager, blockchain_db)
 }
 
 /// Create a new block using the provided transactions that adds to the blockchain given in `prev_block`.
@@ -447,7 +367,7 @@ pub async fn append_block_with_coinbase<B: BlockchainBackend>(
 
 /// Generate a new block using the given transaction schema and add it to the provided database.
 /// The blocks and UTXO vectors are also updated with the info from the new block.
-pub async fn generate_new_block<B: BlockchainBackend>(
+pub async fn generate_block_with_schemas<B: BlockchainBackend>(
     db: &mut BlockchainDatabase<B>,
     blocks: &mut Vec<ChainBlock>,
     outputs: &mut Vec<Vec<WalletOutput>>,
@@ -455,58 +375,24 @@ pub async fn generate_new_block<B: BlockchainBackend>(
     consensus: &ConsensusManager,
     key_manager: &TestKeyManager,
 ) -> Result<BlockAddResult, ChainStorageError> {
-    let coinbase_value = consensus
-        .emission_schedule()
-        .block_emission(db.get_height().unwrap() + 1);
-    generate_new_block_with_coinbase(db, blocks, outputs, schemas, coinbase_value, consensus, key_manager).await
-}
-
-#[allow(dead_code)]
-pub async fn generate_new_block_with_achieved_difficulty<B: BlockchainBackend>(
-    db: &mut BlockchainDatabase<B>,
-    blocks: &mut Vec<ChainBlock>,
-    outputs: &mut Vec<Vec<WalletOutput>>,
-    schemas: Vec<TransactionSchema>,
-    achieved_difficulty: Difficulty,
-    consensus: &ConsensusManager,
-    key_manager: &TestKeyManager,
-) -> Result<BlockAddResult, ChainStorageError> {
-    let mut txns = Vec::new();
-    let mut block_utxos = Vec::new();
-    for schema in schemas {
-        let (tx, mut utxos) = spend_utxos(schema, key_manager).await;
-        txns.push(tx);
-        block_utxos.append(&mut utxos);
-    }
-    outputs.push(block_utxos);
-    generate_block_with_achieved_difficulty(db, blocks, txns, achieved_difficulty, consensus, key_manager).await
-}
-
-/// Generate a new block using the given transaction schema and coinbase value and add it to the provided database.
-/// The blocks and UTXO vectors are also updated with the info from the new block.
-pub async fn generate_new_block_with_coinbase<B: BlockchainBackend>(
-    db: &mut BlockchainDatabase<B>,
-    blocks: &mut Vec<ChainBlock>,
-    outputs: &mut Vec<Vec<WalletOutput>>,
-    schemas: Vec<TransactionSchema>,
-    coinbase_value: MicroTari,
-    consensus: &ConsensusManager,
-    key_manager: &TestKeyManager,
-) -> Result<BlockAddResult, ChainStorageError> {
-    let mut txns = Vec::new();
+    // Add transactions
+    let mut transactions = Vec::new();
     let mut block_utxos = Vec::new();
     let mut fees = MicroTari(0);
     for schema in schemas {
         let (tx, mut utxos) = spend_utxos(schema, key_manager).await;
         fees += tx.body.get_total_fee();
-        txns.push(tx);
+        transactions.push(tx);
         block_utxos.append(&mut utxos);
     }
 
+    // Add cooinbase
     let height = blocks.last().unwrap().height();
     let (coinbase_utxo, coinbase_kernel, coinbase_output) = create_coinbase_with_coinbase_builder(
         consensus.consensus_constants(height),
-        coinbase_value,
+        consensus
+            .emission_schedule()
+            .block_emission(db.get_height().unwrap() + 1),
         height + consensus.consensus_constants(height).coinbase_min_maturity(),
         fees,
         None,
@@ -514,10 +400,26 @@ pub async fn generate_new_block_with_coinbase<B: BlockchainBackend>(
     )
     .await;
 
+    // Update UTXO vector
     block_utxos.push(coinbase_output);
-
     outputs.push(block_utxos);
-    generate_block_with_coinbase(db, blocks, txns, coinbase_utxo, coinbase_kernel, consensus)
+
+    // Create and add block to database
+    let template = chain_block_with_coinbase(
+        blocks.last().unwrap(),
+        transactions,
+        coinbase_utxo,
+        coinbase_kernel,
+        consensus,
+    );
+    let new_block = db.prepare_new_block(template)?;
+    let result = db.add_block(new_block.into())?;
+
+    // Upadte block vector
+    if let BlockAddResult::Ok(ref b) = result {
+        blocks.push(b.as_ref().clone());
+    }
+    Ok(result)
 }
 
 pub fn find_header_with_achieved_difficulty(header: &mut BlockHeader, achieved_difficulty: Difficulty) {
@@ -536,9 +438,9 @@ pub fn find_header_with_achieved_difficulty(header: &mut BlockHeader, achieved_d
 /// Generate a block and add it to the database using the transactions provided. The header will be updated with the
 /// correct MMR roots.
 /// This function is not able to determine the wallet outputs of a transaction, so if you are mixing using this
-/// with [generate_new_block], you must update the unblinded UTXO vector yourself.
+/// with [generate_block_with_schemas], you must update the unblinded UTXO vector yourself.
 #[allow(dead_code)]
-pub async fn generate_block<B: BlockchainBackend>(
+pub async fn generate_block_with_transactions<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
     blocks: &mut Vec<ChainBlock>,
     transactions: Vec<Transaction>,
@@ -558,61 +460,14 @@ pub async fn generate_block<B: BlockchainBackend>(
 }
 
 #[allow(dead_code)]
-pub async fn generate_block_with_achieved_difficulty<B: BlockchainBackend>(
-    db: &mut BlockchainDatabase<B>,
-    blocks: &mut Vec<ChainBlock>,
-    transactions: Vec<Transaction>,
-    achieved_difficulty: Difficulty,
-    consensus: &ConsensusManager,
-    key_manager: &TestKeyManager,
-) -> Result<BlockAddResult, ChainStorageError> {
-    let template = chain_block_with_new_coinbase(blocks.last().unwrap(), transactions, consensus, None, key_manager)
-        .await
-        .0;
-    let mut new_block = db.prepare_new_block(template)?;
-    new_block.header.nonce = OsRng.next_u64();
-    find_header_with_achieved_difficulty(&mut new_block.header, achieved_difficulty);
-    let result = db.add_block(new_block.into());
-    if let Ok(BlockAddResult::Ok(ref b)) = result {
-        blocks.push(b.as_ref().clone());
-    }
-    result
-}
-
-/// Generate a block and add it to the database using the provided transactions and coinbase. The header will be updated
-/// with the correct MMR roots.
-pub fn generate_block_with_coinbase<B: BlockchainBackend>(
-    db: &mut BlockchainDatabase<B>,
-    blocks: &mut Vec<ChainBlock>,
-    transactions: Vec<Transaction>,
-    coinbase_utxo: TransactionOutput,
-    coinbase_kernel: TransactionKernel,
-    consensus: &ConsensusManager,
-) -> Result<BlockAddResult, ChainStorageError> {
-    let template = chain_block_with_coinbase(
-        blocks.last().unwrap(),
-        transactions,
-        coinbase_utxo,
-        coinbase_kernel,
-        consensus,
-    );
-    let new_block = db.prepare_new_block(template)?;
-    let result = db.add_block(new_block.into())?;
-    if let BlockAddResult::Ok(ref b) = result {
-        blocks.push(b.as_ref().clone());
-    }
-    Ok(result)
-}
-
-#[allow(dead_code)]
 pub async fn construct_chained_blocks<B: BlockchainBackend>(
     db: &BlockchainDatabase<B>,
-    block0: ChainBlock,
+    starting_block: ChainBlock,
     consensus: &ConsensusManager,
     n: usize,
     key_manager: &TestKeyManager,
 ) -> Vec<ChainBlock> {
-    let mut prev_block = block0;
+    let mut prev_block = starting_block;
     let mut blocks = Vec::new();
     for _i in 0..n {
         let block = append_block(db, &prev_block, vec![], consensus, Difficulty::min(), key_manager)

@@ -85,7 +85,8 @@ async fn propagate_and_forward_many_valid_blocks() {
     let carol_node_identity = random_node_identity();
     let dan_node_identity = random_node_identity();
     let network = Network::LocalNet;
-    let (block0, outputs, rules, blockchain_db) = create_blockchain_with_utxos(&[T, T], &key_manager).await;
+    let (initial_block, outputs, rules, blockchain_db) =
+        create_blockchain_with_utxos(&[T, T], &key_manager, network, &None).await;
 
     let (mut alice_node, rules) = BaseNodeBuilder::new(network.into())
         .with_node_identity(alice_node_identity.clone())
@@ -162,7 +163,7 @@ async fn propagate_and_forward_many_valid_blocks() {
     blocks.push(
         append_block(
             &alice_node.blockchain_db,
-            &block0,
+            &initial_block,
             vec![tx01],
             &rules,
             Difficulty::min(),
@@ -502,11 +503,13 @@ async fn local_get_new_block_template_and_get_new_block() {
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let key_manager = create_test_core_key_manager_with_memory_db();
-    let (_block0, outputs, rules, blockchain_db) = create_blockchain_with_utxos(&[T, T], &key_manager).await;
+    let (_block0, outputs, rules, blockchain_db) =
+        create_blockchain_with_utxos(&[T, T], &key_manager, network, &None).await;
     let (mut node, _rules) = BaseNodeBuilder::new(network.into())
-        .with_consensus_manager(rules)
+        .with_consensus_manager(rules.clone())
         .start(temp_dir.path().to_str().unwrap(), Some(blockchain_db))
         .await;
+    let initial_height = node.blockchain_db.fetch_tip_header().unwrap().height();
 
     let schema = [
         txn_schema!(from: vec![outputs[1].clone()], to: vec![10_000 * uT, 20_000 * uT]),
@@ -516,16 +519,29 @@ async fn local_get_new_block_template_and_get_new_block() {
     node.mempool.insert(txs[0].clone()).await.unwrap();
     node.mempool.insert(txs[1].clone()).await.unwrap();
 
-    let block_template = node
+    let mut block_template = node
         .local_nci
         .get_new_block_template(PowAlgorithm::Sha3x, 0)
         .await
         .unwrap();
-    assert_eq!(block_template.header.height, 1);
+    assert_eq!(block_template.header.height, initial_height + 1);
     assert_eq!(block_template.body.kernels().len(), 2);
 
+    let (output, kernel, _) = create_coinbase_with_coinbase_builder(
+        rules.consensus_constants(initial_height +  1),
+        rules.get_block_emission_at(initial_height +  1),
+        rules.consensus_constants(initial_height +  1).coinbase_min_maturity() + initial_height +  1,
+        block_template.body.get_total_fee(),
+        None,
+        &key_manager,
+    )
+        .await;
+    block_template.body.add_kernel(kernel);
+    block_template.body.add_output(output);
+    block_template.body.sort();
+
     let block = node.local_nci.get_new_block(block_template.clone()).await.unwrap();
-    assert_eq!(block.header.height, 1);
+    assert_eq!(block.header.height, initial_height + 1);
     assert_eq!(block.body, block_template.body);
 
     node.blockchain_db.add_block(block.clone().into()).unwrap();
@@ -539,7 +555,8 @@ async fn local_get_new_block_with_zero_conf() {
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let key_manager = create_test_core_key_manager_with_memory_db();
-    let (_block0, outputs, rules, blockchain_db) = create_blockchain_with_utxos(&[T, T], &key_manager).await;
+    let (_block0, outputs, rules, blockchain_db) =
+        create_blockchain_with_utxos(&[T, T], &key_manager, network, &None).await;
     let difficulty_calculator = DifficultyCalculator::new(rules.clone(), RandomXFactory::default());
     let (mut node, rules) = BaseNodeBuilder::new(network.into())
         .with_consensus_manager(rules.clone())
@@ -550,6 +567,7 @@ async fn local_get_new_block_with_zero_conf() {
         )
         .start(temp_dir.path().to_str().unwrap(), Some(blockchain_db))
         .await;
+    let initial_height = node.blockchain_db.fetch_tip_header().unwrap().height();
 
     let (tx01, tx01_out) = spend_utxos(
         txn_schema!(from: vec![outputs[1].clone()], to: vec![20_000 * uT], fee: 10*uT, lock: 0, features: OutputFeatures::default()),&key_manager
@@ -590,12 +608,12 @@ async fn local_get_new_block_with_zero_conf() {
         .get_new_block_template(PowAlgorithm::Sha3x, 0)
         .await
         .unwrap();
-    assert_eq!(block_template.header.height, 1);
+    assert_eq!(block_template.header.height, initial_height +  1);
     assert_eq!(block_template.body.kernels().len(), 4);
     let (output, kernel, _) = create_coinbase_with_coinbase_builder(
-        rules.consensus_constants(1),
-        rules.get_block_emission_at(1),
-        rules.consensus_constants(1).coinbase_min_maturity() + 1,
+        rules.consensus_constants(initial_height +  1),
+        rules.get_block_emission_at(initial_height +  1),
+        rules.consensus_constants(initial_height +  1).coinbase_min_maturity() + initial_height +  1,
         block_template.body.get_total_fee(),
         None,
         &key_manager,
@@ -605,7 +623,7 @@ async fn local_get_new_block_with_zero_conf() {
     block_template.body.add_output(output);
     block_template.body.sort();
     let block = node.local_nci.get_new_block(block_template.clone()).await.unwrap();
-    assert_eq!(block.header.height, 1);
+    assert_eq!(block.header.height, initial_height +  1);
     assert_eq!(block.body, block_template.body);
     assert_eq!(block_template.body.kernels().len(), 5);
 
@@ -620,7 +638,8 @@ async fn local_get_new_block_with_combined_transaction() {
     let temp_dir = tempdir().unwrap();
     let network = Network::LocalNet;
     let key_manager = create_test_core_key_manager_with_memory_db();
-    let (_block0, outputs, rules, blockchain_db) = create_blockchain_with_utxos(&[T, T], &key_manager).await;
+    let (_initial_block, outputs, rules, blockchain_db) =
+        create_blockchain_with_utxos(&[T, T], &key_manager, network, &None).await;
 
     let difficulty_calculator = DifficultyCalculator::new(rules.clone(), RandomXFactory::default());
     let (mut node, rules) = BaseNodeBuilder::new(network.into())
@@ -632,6 +651,7 @@ async fn local_get_new_block_with_combined_transaction() {
         )
         .start(temp_dir.path().to_str().unwrap(), Some(blockchain_db))
         .await;
+    let initial_height = node.blockchain_db.fetch_tip_header().unwrap().height();
 
     let (tx01, tx01_out) = spend_utxos(
         txn_schema!(from: vec![outputs[1].clone()], to: vec![20_000 * uT], fee: 10*uT, lock: 0, features: OutputFeatures::default()),&key_manager
@@ -667,12 +687,12 @@ async fn local_get_new_block_with_combined_transaction() {
         .get_new_block_template(PowAlgorithm::Sha3x, 0)
         .await
         .unwrap();
-    assert_eq!(block_template.header.height, 1);
+    assert_eq!(block_template.header.height, initial_height + 1);
     assert_eq!(block_template.body.kernels().len(), 4);
     let (output, kernel, _) = create_coinbase_with_coinbase_builder(
-        rules.consensus_constants(1),
-        rules.get_block_emission_at(1),
-        rules.consensus_constants(1).coinbase_min_maturity() + 1,
+        rules.consensus_constants(initial_height + 1),
+        rules.get_block_emission_at(initial_height + 1),
+        rules.consensus_constants(initial_height + 1).coinbase_min_maturity() + initial_height + 1,
         block_template.body.get_total_fee(),
         None,
         &key_manager,
@@ -682,7 +702,7 @@ async fn local_get_new_block_with_combined_transaction() {
     block_template.body.add_output(output);
     block_template.body.sort();
     let block = node.local_nci.get_new_block(block_template.clone()).await.unwrap();
-    assert_eq!(block.header.height, 1);
+    assert_eq!(block.header.height, initial_height + 1);
     assert_eq!(block.body, block_template.body);
     assert_eq!(block_template.body.kernels().len(), 5);
 

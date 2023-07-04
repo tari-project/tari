@@ -26,7 +26,7 @@ use tari_core::{
     blocks::ChainBlock,
     chain_storage::BlockchainDatabase,
     consensus::{ConsensusConstants, ConsensusManager},
-    test_helpers::blockchain::{create_store_with_consensus, TempDatabase},
+    test_helpers::blockchain::TempDatabase,
     transactions::{
         tari_amount::{uT, T},
         test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager},
@@ -35,7 +35,7 @@ use tari_core::{
     txn_schema,
 };
 
-use crate::helpers::block_builders::{create_blockchain_with_spendable_coinbase, generate_new_block};
+use crate::helpers::block_builders::{create_blockchain_with_spendable_coinbase, generate_block_with_schemas};
 
 /// Create a simple 6 block memory-backed database.
 /// Genesis block:
@@ -87,7 +87,7 @@ pub async fn create_blockchain_db_no_cut_through() -> (
     let (mut db, mut blocks, mut outputs, consensus_manager, key_manager) = create_new_blockchain(network).await;
     // Block 1
     let txs = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![60*T], fee: 100*uT)];
-    generate_new_block(
+    generate_block_with_schemas(
         &mut db,
         &mut blocks,
         &mut outputs,
@@ -102,7 +102,7 @@ pub async fn create_blockchain_db_no_cut_through() -> (
         txn_schema!(from: vec![outputs[1][0].clone()], to: vec![20*T, 5*T, 1*T], fee: 120*uT),
         txn_schema!(from: vec![outputs[1][1].clone()], to: vec![15*T], fee: 75*uT),
     ];
-    generate_new_block(
+    generate_block_with_schemas(
         &mut db,
         &mut blocks,
         &mut outputs,
@@ -117,7 +117,7 @@ pub async fn create_blockchain_db_no_cut_through() -> (
         txn_schema!(from: vec![outputs[2][1].clone(), outputs[2][2].clone()], to: vec![]),
         txn_schema!(from: vec![outputs[2][4].clone(), outputs[2][3].clone()], to: vec![40*T], fee: 100*uT),
     ];
-    generate_new_block(
+    generate_block_with_schemas(
         &mut db,
         &mut blocks,
         &mut outputs,
@@ -132,7 +132,7 @@ pub async fn create_blockchain_db_no_cut_through() -> (
         from: vec![outputs[2][0].clone()],
         to: vec![1 * T, 2 * T, 3 * T, 4 * T]
     )];
-    generate_new_block(
+    generate_block_with_schemas(
         &mut db,
         &mut blocks,
         &mut outputs,
@@ -154,7 +154,7 @@ pub async fn create_blockchain_db_no_cut_through() -> (
         ),
         txn_schema!(from: vec![outputs[3][2].clone()], to: vec![500_000 * uT]),
     ];
-    generate_new_block(
+    generate_block_with_schemas(
         &mut db,
         &mut blocks,
         &mut outputs,
@@ -179,12 +179,12 @@ pub async fn create_new_blockchain(
     TestKeyManager,
 ) {
     let key_manager = create_test_core_key_manager_with_memory_db();
-    let (block0, output, consensus_manager, _blockchain_db) =
+    let (block_at_tip, first_coinbase, consensus_manager, blockchain_db) =
         create_blockchain_with_spendable_coinbase(&key_manager, network, &None).await;
     (
-        create_store_with_consensus(consensus_manager.clone()).unwrap(),
-        vec![block0],
-        vec![vec![output]],
+        blockchain_db,
+        vec![block_at_tip],
+        vec![vec![first_coinbase]],
         consensus_manager,
         key_manager,
     )
@@ -202,10 +202,10 @@ pub async fn create_new_blockchain_with_constants(
     Vec<Vec<WalletOutput>>,
     ConsensusManager,
 ) {
-    let (block0, output, consensus_manager, _blockchain_db) =
+    let (block0, output, consensus_manager, blockchain_db) =
         create_blockchain_with_spendable_coinbase(key_manager, network, &Some(constants)).await;
     (
-        create_store_with_consensus(consensus_manager.clone()).unwrap(),
+        blockchain_db,
         vec![block0],
         vec![vec![output]],
         consensus_manager,
