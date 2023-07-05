@@ -810,7 +810,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let peers = self
             .comms
             .peer_manager()
-            .discovery_syncing()
+            .all()
             .await
             .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
         let peers: Vec<tari_rpc::Peer> = peers.into_iter().map(|p| p.into()).collect();

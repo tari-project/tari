@@ -44,7 +44,7 @@ use crate::{
 
 const LOG_TARGET: &str = "comms::peer_manager::peer_storage";
 /// The maximum number of peers to return in peer manager
-const PEER_MANAGER_SYNC_PEERS: usize = 1000;
+const PEER_MANAGER_SYNC_PEERS: usize = 100;
 const PEER_ACTIVE_WITHIN_DURATION: u64 = 7 * 24 * 60 * 60; // 7 days, 24h, 60m, 60s = 1 week
 
 /// PeerStorage provides a mechanism to keep a datastore and a local copy of all peers in sync and allow fast searches
@@ -285,16 +285,29 @@ where DS: KeyValueStore<PeerId, Peer>
     ///  - Peer has been seen within a defined time span (1 week)
     ///  - Only returns a maximum number of syncable peers (corresponds with the max possible number of requestable
     ///    peers to sync)
-    pub fn discovery_syncing(&self) -> Result<Vec<Peer>, PeerManagerError> {
-        self.peer_db
-            .filter_take(PEER_MANAGER_SYNC_PEERS, |(_, peer)| {
-                !peer.is_banned() &&
+    pub fn discovery_syncing(
+        &self,
+        n: usize,
+        excluded_peers: &[NodeId],
+        features: Option<PeerFeatures>,
+    ) -> Result<Vec<Peer>, PeerManagerError> {
+        if n == 0 {
+            return Ok(Vec::new());
+        }
+
+        let query = PeerQuery::new()
+            .select_where(|peer| {
+                features.map(|f| peer.features == f).unwrap_or(true) &&
+                    !peer.is_banned() &&
+                    peer.deleted_at.is_none() &&
                     peer.last_seen_since().is_some() &&
                     peer.last_seen_since().expect("Last seen to exist") <=
-                        Duration::from_secs(PEER_ACTIVE_WITHIN_DURATION)
+                        Duration::from_secs(PEER_ACTIVE_WITHIN_DURATION) &&
+                    !excluded_peers.contains(&peer.node_id)
             })
-            .map(|pairs| pairs.into_iter().map(|(_, peer)| peer).collect())
-            .map_err(PeerManagerError::DatabaseError)
+            .limit(n);
+
+        self.perform_query(query)
     }
 
     /// Compile a list of all known peers
@@ -326,7 +339,10 @@ where DS: KeyValueStore<PeerId, Peer>
             .select_where(|peer| {
                 features.map(|f| peer.features == f).unwrap_or(true) &&
                     !peer.is_banned() &&
-                    !peer.is_offline() &&
+                    peer.deleted_at.is_none() &&
+                    peer.last_seen_since().is_some() &&
+                    peer.last_seen_since().expect("Last seen to exist") <=
+                        Duration::from_secs(PEER_ACTIVE_WITHIN_DURATION) &&
                     !excluded_peers.contains(&peer.node_id)
             })
             .sort_by(PeerQuerySortBy::DistanceFrom(node_id))
@@ -843,6 +859,7 @@ mod test {
     #[test]
     fn discovery_syncing_returns_correct_peers() {
         let mut peer_storage = PeerStorage::new_indexed(HashmapDatabase::new()).unwrap();
+        #[allow(clippy::cast_possible_wrap)] // Won't wrap around, numbers are static
         let a_week_ago = Utc::now().timestamp() - (PEER_ACTIVE_WITHIN_DURATION + 60) as i64; // A week ago + a minute
 
         let never_seen_peer = create_test_peer(PeerFeatures::COMMUNICATION_NODE, false);
@@ -867,6 +884,12 @@ mod test {
         assert!(peer_storage.add_peer(good_peer).is_ok());
 
         assert_eq!(peer_storage.all().unwrap().len(), 4);
-        assert_eq!(peer_storage.discovery_syncing().unwrap().len(), 1);
+        assert_eq!(
+            peer_storage
+                .discovery_syncing(100, &[], Some(PeerFeatures::COMMUNICATION_NODE))
+                .unwrap()
+                .len(),
+            1
+        );
     }
 }
