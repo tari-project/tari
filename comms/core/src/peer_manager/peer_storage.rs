@@ -296,15 +296,7 @@ where DS: KeyValueStore<PeerId, Peer>
         }
 
         let query = PeerQuery::new()
-            .select_where(|peer| {
-                features.map(|f| peer.features == f).unwrap_or(true) &&
-                    !peer.is_banned() &&
-                    peer.deleted_at.is_none() &&
-                    peer.last_seen_since().is_some() &&
-                    peer.last_seen_since().expect("Last seen to exist") <=
-                        Duration::from_secs(PEER_ACTIVE_WITHIN_DURATION) &&
-                    !excluded_peers.contains(&peer.node_id)
-            })
+            .select_where(|peer| is_active_peer(peer, features, excluded_peers))
             .limit(n);
 
         self.perform_query(query)
@@ -336,15 +328,7 @@ where DS: KeyValueStore<PeerId, Peer>
         }
 
         let query = PeerQuery::new()
-            .select_where(|peer| {
-                features.map(|f| peer.features == f).unwrap_or(true) &&
-                    !peer.is_banned() &&
-                    peer.deleted_at.is_none() &&
-                    peer.last_seen_since().is_some() &&
-                    peer.last_seen_since().expect("Last seen to exist") <=
-                        Duration::from_secs(PEER_ACTIVE_WITHIN_DURATION) &&
-                    !excluded_peers.contains(&peer.node_id)
-            })
+            .select_where(|peer| is_active_peer(peer, features, excluded_peers))
             .sort_by(PeerQuerySortBy::DistanceFrom(node_id))
             .limit(n);
 
@@ -892,4 +876,13 @@ mod test {
             1
         );
     }
+}
+
+fn is_active_peer(peer: &Peer, features: Option<PeerFeatures>, excluded_peers: &[NodeId]) -> bool {
+    features.map(|f| peer.features == f).unwrap_or(true) &&
+        !excluded_peers.contains(&peer.node_id) &&
+        !peer.is_banned() &&
+        peer.deleted_at.is_none() &&
+        peer.last_seen_since().is_some() &&
+        peer.last_seen_since().expect("Last seen to exist") <= Duration::from_secs(PEER_ACTIVE_WITHIN_DURATION)
 }
