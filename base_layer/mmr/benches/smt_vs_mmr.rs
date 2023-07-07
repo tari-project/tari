@@ -1,8 +1,6 @@
 // Copyright 2023. The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use std::convert::TryFrom;
-
 #[cfg(feature = "native_bitmap")]
 use croaring::Bitmap;
 use tari_crypto::hash::blake2::Blake256;
@@ -22,6 +20,7 @@ hash_domain!(MmrBenchTestHashDomain, "com.tari.base_layer.mmr.benches", 1);
 pub type MmrTestHasherBlake256 = DomainSeparatedHasher<Blake256, MmrBenchTestHashDomain>;
 #[cfg(feature = "native_bitmap")]
 pub type TestMmr = MutableMmr<MmrTestHasherBlake256, Vec<Hash>>;
+use std::convert::TryFrom;
 
 fn random_key() -> NodeKey {
     let key = rand::random::<[u8; 32]>();

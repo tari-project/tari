@@ -17,9 +17,9 @@ use crate::sparse_merkle_tree::{
     ValueHash,
 };
 
-/// An inclusion proof for a key-value pair in a sparse merkle tree.
+/// An inclusion proof for a key-value pair in a sparse Merkle& tree.
 ///
-/// Given a sparse merkle tree, `tree`, you can create a proof that a certain key-value pair exists by calling
+/// Given a sparse Merkle& tree, `tree`, you can create a proof that a certain key-value pair exists by calling
 /// [`InclusionProof::from_tree`], for example:
 ///
 /// ```
@@ -60,9 +60,9 @@ pub struct InclusionProof<H> {
     phantom: std::marker::PhantomData<H>,
 }
 
-/// An exclusion proof for a key in a sparse merkle tree.
+/// An exclusion proof for a key in a sparse Merkle& tree.
 ///
-/// Given a sparse merkle tree, `tree`, you can create a proof that a certain key does *not exist* in the tree by
+/// Given a sparse Merkle& tree, `tree`, you can create a proof that a certain key does *not exist* in the tree by
 /// calling [`ExclusionProof::from_tree`]. For example:
 ///
 /// ```
@@ -103,7 +103,7 @@ trait MerkleProofDigest<H: Digest<OutputSize = U32>> {
     /// Returns an array to the vector of sibling hashes along the path to the key's leaf node for this proof.
     fn siblings(&self) -> &[NodeHash];
 
-    /// Calculate the merkle tree root for this proof, given the key and value hash.
+    /// Calculate the Merkle& tree root for this proof, given the key and value hash.
     fn calculate_root_hash(&self, key: &NodeKey, leaf_hash: NodeHash) -> NodeHash {
         let n = self.siblings().len();
         let dirs = key.as_directions().take(n);
@@ -133,7 +133,7 @@ impl<H: Digest<OutputSize = U32>> InclusionProof<H> {
     pub fn new(siblings: Vec<NodeHash>) -> Self {
         Self {
             siblings,
-            phantom: PhantomData::<H>::default(),
+            phantom: PhantomData::<H>,
         }
     }
 
@@ -141,7 +141,7 @@ impl<H: Digest<OutputSize = U32>> InclusionProof<H> {
     /// tree, or the key does exist, but the value hash does not match, then `from_tree` will return a
     /// `NonViableProof` error.
     pub fn from_tree(tree: &SparseMerkleTree<H>, key: &NodeKey, value_hash: &ValueHash) -> Result<Self, SMTError> {
-        let proof = tree.non_failing_exclusion_proof(key)?;
+        let proof = tree.build_proof_candidate(key)?;
         match proof.leaf {
             Some(leaf) => {
                 let node_hash = LeafNode::<H>::hash_value(key, value_hash);
@@ -178,14 +178,14 @@ impl<H: Digest<OutputSize = U32>> ExclusionProof<H> {
         Self {
             siblings,
             leaf,
-            phantom: PhantomData::<H>::default(),
+            phantom: PhantomData::<H>,
         }
     }
 
     /// Generates an exclusion proof for the given key from the given tree. If the key exists in the tree then
     /// `from_tree` will return a `NonViableProof` error.
     pub fn from_tree(tree: &SparseMerkleTree<H>, key: &NodeKey) -> Result<Self, SMTError> {
-        let proof = tree.non_failing_exclusion_proof(key)?;
+        let proof = tree.build_proof_candidate(key)?;
         // If the keys match, then we cannot provide an exclusion proof, since the key *is* in the tree
         if let Some(leaf) = &proof.leaf {
             if leaf.key() == key {
@@ -222,29 +222,9 @@ impl<H: Digest<OutputSize = U32>> MerkleProofDigest<H> for ExclusionProof<H> {
 
 #[cfg(test)]
 mod test {
-    use rand::{RngCore, SeedableRng};
     use tari_crypto::hash::blake2::Blake256;
 
     use super::*;
-
-    fn random_arr(n: usize, seed: u64) -> Vec<[u8; 32]> {
-        let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
-        (0..n)
-            .map(|_| {
-                let mut key = [0u8; 32];
-                rng.fill_bytes(&mut key);
-                key
-            })
-            .collect()
-    }
-
-    fn random_keys(n: usize, seed: u64) -> Vec<NodeKey> {
-        random_arr(n, seed).into_iter().map(|k| k.into()).collect()
-    }
-
-    fn random_values(n: usize, seed: u64) -> Vec<ValueHash> {
-        random_arr(n, seed).into_iter().map(|k| k.into()).collect()
-    }
 
     #[test]
     fn root_proof() {
@@ -282,37 +262,96 @@ mod test {
     }
 
     #[test]
-    fn merkle_proofs() {
-        let n = 20;
-        let keys = random_keys(n, 420);
-        let values = random_values(n, 1420);
+    fn non_viable_inclusion_proof() {
         let mut tree = SparseMerkleTree::<Blake256>::default();
-        (0..n).for_each(|i| {
-            let _ = tree.upsert(keys[i].clone(), values[i].clone()).unwrap();
-        });
-        let root_hash = tree.hash().clone();
-        (0..n).for_each(|i| {
-            let in_proof = InclusionProof::from_tree(&tree, &keys[i], &values[i]).unwrap();
-            // Validate the proof with correct key / value
-            assert!(in_proof.validate(&keys[i], &values[i], &root_hash));
-            // Show that incorrect value for existing key fails
-            assert!(!in_proof.validate(&keys[i], &values[(i + 3) % n], &root_hash),);
-            // // Show that incorrect key fails
-            assert!(!in_proof.validate(&keys[(i + 3) % n], &values[i], &root_hash),);
-            // Exclusion proofs construction fails
-            let ex_proof = ExclusionProof::from_tree(&tree, &keys[i]);
-            assert!(matches!(ex_proof, Err(SMTError::NonViableProof)));
-        });
+        let key = NodeKey::from([64u8; 32]);
+        let value = ValueHash::from([128u8; 32]);
+        // Inclusion proof on empty tree
+        let proof = InclusionProof::from_tree(&tree, &key, &value);
+        assert!(matches!(proof, Err(SMTError::NonViableProof)));
+        tree.upsert(key, value.clone()).unwrap();
+        // Inclusion proof on non-existent key
+        let proof = InclusionProof::from_tree(&tree, &NodeKey::from([65u8; 32]), &value);
+        assert!(matches!(proof, Err(SMTError::NonViableProof)));
+        // Existing key, wrong value
+        let proof = InclusionProof::from_tree(&tree, &NodeKey::from([64u8; 32]), &ValueHash::from([0u8; 32]));
+        assert!(matches!(proof, Err(SMTError::NonViableProof)));
+    }
 
-        // Test exclusion proof
-        let unused_keys = random_keys(n, 72);
-        (0..n).for_each(|i| {
-            let ex_proof = ExclusionProof::from_tree(&tree, &unused_keys[i]).unwrap();
-            assert!(ex_proof.validate(&unused_keys[i], &root_hash));
+    #[test]
+    fn proof_with_stale_hash() {
+        let mut tree = SparseMerkleTree::<Blake256>::default();
+        tree.upsert(NodeKey::from([64u8; 32]), ValueHash::from([128u8; 32]))
+            .unwrap();
+        tree.upsert(NodeKey::from([155u8; 32]), ValueHash::from([128u8; 32]))
+            .unwrap();
+        let key = NodeKey::from([65u8; 32]);
+        let value = ValueHash::from([65u8; 32]);
+        tree.upsert(key.clone(), value.clone()).unwrap();
+        let proof = InclusionProof::from_tree(&tree, &key, &value);
+        assert!(matches!(proof, Err(SMTError::StaleHash)));
+    }
 
-            // Inclusion proof construction fails
-            let in_proof = InclusionProof::from_tree(&tree, &unused_keys[i], &values[i]);
-            assert!(matches!(in_proof, Err(SMTError::NonViableProof)));
-        });
+    #[test]
+    fn deep_inclusion_proof() {
+        let key1 = NodeKey::from([64u8; 32]);
+        let mut key2 = key1.clone();
+        key2.as_slice_mut()[31] = 65;
+        let value = ValueHash::from([128u8; 32]);
+        let mut tree = SparseMerkleTree::<Blake256>::default();
+        tree.upsert(key1, ValueHash::from([42u8; 32])).unwrap();
+        tree.upsert(key2.clone(), value.clone()).unwrap();
+        tree.hash();
+        let proof = InclusionProof::from_tree(&tree, &key2, &value).unwrap();
+        assert!(proof.validate(&key2, &value, tree.hash()));
+    }
+
+    #[test]
+    fn exclusion_proofs() {
+        let mut tree = SparseMerkleTree::<Blake256>::default();
+        let proof = ExclusionProof::from_tree(&tree, &NodeKey::from([64; 32])).unwrap();
+        // Assert that key does not exist
+        assert!(proof.validate(&NodeKey::from([64u8; 32]), tree.hash()));
+        // Validation with a non-existent key, but different root should fail
+        assert!(!proof.validate(&NodeKey::from([64u8; 32]), &NodeHash::from([1; 32])));
+
+        // Tree with single node
+        tree.upsert(NodeKey::from([64u8; 32]), ValueHash::from([42u8; 32]))
+            .unwrap();
+        // Cannot create an exclusion proof for a key that exists
+        let proof = ExclusionProof::from_tree(&tree, &NodeKey::from([64u8; 32]));
+        assert!(matches!(proof, Err(SMTError::NonViableProof)));
+        // A valid exclusion proof
+        let proof = ExclusionProof::from_tree(&tree, &NodeKey::from([65u8; 32])).unwrap();
+        assert!(proof.validate(&NodeKey::from([65u8; 32]), tree.hash()));
+        // Does not validate against invalid root hash
+        assert!(!proof.validate(&NodeKey::from([65u8; 32]), &NodeHash::default()));
+        // All key paths for exclusion proofs are identical right now, so any non-existent key will validate. (bug or
+        // feature?)
+        assert!(proof.validate(&NodeKey::from([67u8; 32]), tree.hash()));
+        // Use an exclusion proof to try and give an invalid validation for a key that does exist
+        assert_eq!(proof.validate(&NodeKey::from([64u8; 32]), tree.hash()), false);
+
+        // A tree with branches
+        tree.upsert(NodeKey::from([96u8; 32]), ValueHash::from([1u8; 32]))
+            .unwrap();
+        tree.upsert(NodeKey::from([222u8; 32]), ValueHash::from([2u8; 32]))
+            .unwrap();
+        tree.hash();
+        // Cannot create an exclusion proof for a key that exists
+        let proof = ExclusionProof::from_tree(&tree, &NodeKey::from([222u8; 32]));
+        assert!(matches!(proof, Err(SMTError::NonViableProof)));
+        // A valid exclusion proof
+        let proof = ExclusionProof::from_tree(&tree, &NodeKey::from([99u8; 32])).unwrap();
+        assert!(proof.validate(&NodeKey::from([99u8; 32]), tree.hash()));
+        // Does not validate against invalid root hash
+        assert!(!proof.validate(&NodeKey::from([99u8; 32]), &NodeHash::default()));
+        // Not all non-existent keys will validate. (bug or feature?)
+        assert_eq!(proof.validate(&NodeKey::from([65; 32]), tree.hash()), false);
+        // But any keys with prefix 011 (that is not 96) will validate
+        assert!(proof.validate(&NodeKey::from([0b0110_0011; 32]), tree.hash()));
+        assert!(proof.validate(&NodeKey::from([0b0111_0001; 32]), tree.hash()));
+        // The key 96 does exist..
+        assert_eq!(proof.validate(&NodeKey::from([0b0110_0000; 32]), tree.hash()), false);
     }
 }

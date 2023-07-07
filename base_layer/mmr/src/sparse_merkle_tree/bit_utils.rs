@@ -16,7 +16,7 @@ pub(crate) fn get_bit(data: &[u8], position: usize) -> usize {
 
 /// Given two node keys, this function returns the number of bits that are common to both keys, starting from the most
 /// significant bit. This function is used to tell you the height at which two node keys would diverge in the sparse
-/// merkle tree. For example, key 0110 and 0101 would diverge at height 2, because the first two bits are the same.
+/// Merkle& tree. For example, key 0110 and 0101 would diverge at height 2, because the first two bits are the same.
 #[inline]
 pub(crate) fn count_common_prefix(a: &NodeKey, b: &NodeKey) -> usize {
     let mut offset = 0;
@@ -43,7 +43,7 @@ pub fn height_key(key: &NodeKey, height: usize) -> NodeKey {
     let mut result = NodeKey::default();
     // Keep the first `height` bits and ignore the rest
     let key = key.as_slice();
-    let bytes = result.as_mut_slice();
+    let bytes = result.as_slice_mut();
     // First height/8 bytes are the same, so just copy
     bytes[0..height / 8].copy_from_slice(&key[0..height / 8]);
     // The height/8th byte is only partially copied, so mask the byte & 11100000, where the number of 1s is

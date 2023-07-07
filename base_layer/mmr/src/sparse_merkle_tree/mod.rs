@@ -41,7 +41,7 @@
 //!   │A│   │B│                  │D│   │C│
 //!   └─┘   └─┘                  └─┘   └─┘
 //!
-//! The merkle root is calculated by hashing nodes in the familiar way.
+//! The Merkle& root is calculated by hashing nodes in the familiar way.
 //! ```rust
 //! use tari_crypto::hash::blake2::Blake256;
 //! use tari_mmr::sparse_merkle_tree::{NodeKey, SparseMerkleTree, ValueHash};

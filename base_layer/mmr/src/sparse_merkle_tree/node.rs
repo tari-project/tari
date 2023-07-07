@@ -15,33 +15,32 @@ use crate::sparse_merkle_tree::{
     SMTError,
 };
 
+pub const KEY_LENGTH: usize = 32;
+
 macro_rules! hash_type {
     ($name: ident) => {
         /// A wrapper around a 32-byte hash value. Provides convenience functions to display as hex or binary
-        #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-        pub struct $name([u8; 32]);
+        #[derive(Clone, Debug, PartialEq, Eq, PartialOrd)]
+        pub struct $name([u8; KEY_LENGTH]);
 
+        #[allow(clippy::len_without_is_empty)]
         impl $name {
             pub fn as_slice(&self) -> &[u8] {
                 &self.0
             }
 
-            pub fn as_mut_slice(&mut self) -> &mut [u8] {
+            pub fn as_slice_mut(&mut self) -> &mut [u8] {
                 &mut self.0
             }
 
             pub fn len(&self) -> usize {
                 self.0.len()
             }
-
-            pub fn is_empty(&self) -> bool {
-                self.0.is_empty()
-            }
         }
 
         impl Default for $name {
             fn default() -> Self {
-                Self([0; 32])
+                Self([0; KEY_LENGTH])
             }
         }
 
@@ -49,23 +48,23 @@ macro_rules! hash_type {
             type Error = SMTError;
 
             fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-                if value.len() < 32 {
+                if value.len() < KEY_LENGTH {
                     return Err(SMTError::ArrayTooShort(value.len()));
                 }
-                let mut bytes = [0u8; 32];
+                let mut bytes = [0u8; KEY_LENGTH];
                 bytes.copy_from_slice(value);
                 Ok(Self(bytes))
             }
         }
 
-        impl From<[u8; 32]> for $name {
-            fn from(arr: [u8; 32]) -> Self {
+        impl From<[u8; KEY_LENGTH]> for $name {
+            fn from(arr: [u8; KEY_LENGTH]) -> Self {
                 Self(arr)
             }
         }
 
-        impl From<&[u8; 32]> for $name {
-            fn from(arr: &[u8; 32]) -> Self {
+        impl From<&[u8; KEY_LENGTH]> for $name {
+            fn from(arr: &[u8; KEY_LENGTH]) -> Self {
                 Self(arr.clone())
             }
         }
@@ -116,7 +115,7 @@ impl NodeKey {
     }
 }
 
-pub const EMPTY_NODE_HASH: NodeHash = NodeHash([0; 32]);
+pub const EMPTY_NODE_HASH: NodeHash = NodeHash([0; KEY_LENGTH]);
 
 pub struct PathIterator<'a> {
     cursor_front: usize,
@@ -129,7 +128,8 @@ impl PathIterator<'_> {
     pub fn new(key: &NodeKey) -> PathIterator {
         PathIterator {
             cursor_front: 0,
-            cursor_back: key.len() * 8,
+            // KEY_LENGTH is currently 32 bytes, so this will not overflow
+            cursor_back: KEY_LENGTH * 8,
             key,
         }
     }
@@ -165,9 +165,6 @@ impl<'a> DoubleEndedIterator for PathIterator<'a> {
     }
 
     fn nth_back(&mut self, n: usize) -> Option<Self::Item> {
-        if self.cursor_front >= self.cursor_back {
-            return None;
-        }
         self.cursor_back -= n;
         self.next_back()
     }
@@ -251,15 +248,6 @@ impl<H> Node<H> {
         match self {
             Leaf(n) => Ok(n),
             _ => Err(SMTError::UnexpectedNodeType),
-        }
-    }
-
-    /// Indicates whether the node is semi-terminal, i.e. whether it is a leaf or empty node, or if a branch, if it is
-    /// the last branch in the sub-tree.
-    pub fn is_semi_terminal(&self) -> bool {
-        match self {
-            Leaf(_) | Empty(_) => true,
-            Branch(n) => !n.left.is_branch() && !n.right.is_branch(),
         }
     }
 }
@@ -356,7 +344,7 @@ impl<H: Digest<OutputSize = U32>> LeafNode<H> {
             .chain(key.as_slice())
             .chain(value.as_slice())
             .finalize();
-        let mut result = [0; 32];
+        let mut result = [0; KEY_LENGTH];
         result.copy_from_slice(hash.as_slice());
         result.into()
     }
@@ -530,8 +518,8 @@ mod test {
     use super::*;
     use crate::sparse_merkle_tree::bit_utils::TraverseDirection::{Left, Right};
 
-    fn random_arr() -> [u8; 32] {
-        let mut result = [0; 32];
+    fn random_arr() -> [u8; KEY_LENGTH] {
+        let mut result = [0; KEY_LENGTH];
         rand::thread_rng().fill_bytes(&mut result);
         result
     }
@@ -568,14 +556,24 @@ mod test {
         let left = Node::Empty(EmptyNode {});
         let right = Node::Leaf(LeafNode::<Blake256>::new(random_key(), random_value_hash()));
         let branch = BranchNode::<Blake256>::new(0, random_key(), left, right);
+        let exp_msg = "A branch node cannot an empty node and leaf node as children";
         // Should not be allowed - since this can be represented as a leaf node
-        assert!(matches!(branch, Err(SMTError::InvalidBranch(_))));
+        assert!(matches!(branch, Err(SMTError::InvalidBranch(msg)) if msg == exp_msg));
 
         let left = Node::Leaf(LeafNode::<Blake256>::new(random_key(), random_value_hash()));
         let right = Node::Empty(EmptyNode {});
         let branch = BranchNode::<Blake256>::new(0, random_key(), left, right);
         // Should not be allowed - since this can be represented as a leaf node
-        assert!(matches!(branch, Err(SMTError::InvalidBranch(_))));
+        assert!(matches!(branch, Err(SMTError::InvalidBranch(msg)) if msg == exp_msg));
+    }
+
+    #[test]
+    fn cannot_create_branch_with_empty_nodes() {
+        let left = Node::Empty(EmptyNode {});
+        let right = Node::Empty(EmptyNode {});
+        let branch = BranchNode::<Blake256>::new(0, random_key(), left, right);
+        // Should not be allowed - since this can be represented as a leaf node
+        assert!(matches!(branch, Err(SMTError::InvalidBranch(msg)) if msg == "Both left and right nodes are empty"));
     }
 
     #[test]
@@ -597,7 +595,7 @@ mod test {
 
     #[test]
     fn path_iterator_default() {
-        let key = NodeKey::from(&[0; 32]);
+        let key = NodeKey::from(&[0; KEY_LENGTH]);
         let path = key.as_directions().collect::<Vec<_>>();
         assert_eq!(path.len(), 256);
         assert_eq!(path, [TraverseDirection::Left; 256]);
@@ -605,7 +603,7 @@ mod test {
 
     #[test]
     fn path_iterator_connectors() {
-        let key = NodeKey::from(&[0; 32]);
+        let key = NodeKey::from(&[0; KEY_LENGTH]);
         let iter = key.as_directions();
         assert_eq!(iter.len(), 256);
         assert_eq!(iter.take(14).len(), 14);
@@ -615,7 +613,7 @@ mod test {
 
     #[test]
     fn path_iterator() {
-        let mut key = [0u8; 32];
+        let mut key = [0u8; KEY_LENGTH];
         key[0] = 0b1101_1011;
         let key = NodeKey::from(key);
         let dirs = key.as_directions().take(8).collect::<Vec<_>>();
@@ -623,8 +621,26 @@ mod test {
     }
 
     #[test]
+    fn path_iterator_rev_iter() {
+        let key = NodeKey::default();
+        let mut dirs = key.as_directions().skip(256);
+        assert_eq!(dirs.next(), None);
+        assert_eq!(dirs.next(), None);
+    }
+
+    #[test]
+    fn path_iterator_iter() {
+        let mut key = [0u8; KEY_LENGTH];
+        key[0] = 0b1101_1011;
+        let key = NodeKey::from(key);
+        let mut dirs = key.as_directions().skip(255);
+        assert_eq!(dirs.next(), Some(Left));
+        assert_eq!(dirs.next(), None);
+    }
+
+    #[test]
     fn path_iterator_rev() {
-        let mut key = [0u8; 32];
+        let mut key = [0u8; KEY_LENGTH];
         key[0] = 0b0011_1000;
         key[31] = 0b1110_0011;
         let key = NodeKey::from(key);
@@ -632,5 +648,43 @@ mod test {
         assert_eq!(dirs, [Right, Right, Left, Left, Left, Right, Right, Right]);
         let dirs = key.as_directions().take(8).rev().collect::<Vec<_>>();
         assert_eq!(dirs, [Left, Left, Left, Right, Right, Right, Left, Left]);
+    }
+
+    #[test]
+    fn hash_type_from_slice() {
+        let arr = vec![1u8; 32];
+        assert!(matches!(NodeKey::try_from(&arr[..3]), Err(SMTError::ArrayTooShort(3))));
+        assert!(NodeKey::try_from(&arr[..]).is_ok());
+        assert!(matches!(
+            ValueHash::try_from(&arr[..4]),
+            Err(SMTError::ArrayTooShort(4))
+        ));
+        assert!(ValueHash::try_from(&arr[..]).is_ok());
+        assert!(matches!(
+            NodeHash::try_from(&arr[..16]),
+            Err(SMTError::ArrayTooShort(16))
+        ));
+        assert!(NodeHash::try_from(&arr[..]).is_ok());
+    }
+
+    #[test]
+    fn hash_type_display() {
+        let key = NodeKey::from(&[
+            1u8, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
+            29, 30, 31, 32,
+        ]);
+        let bin =  "0000000100000010000000110000010000000101000001100000011100001000\
+                         0000100100001010000010110000110000001101000011100000111100010000\
+                         0001000100010010000100110001010000010101000101100001011100011000\
+                         0001100100011010000110110001110000011101000111100001111100100000";
+        let lower_hex = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
+        assert_eq!(format!("{key:x}"), lower_hex);
+        assert_eq!(format!("{key}"), lower_hex);
+        assert_eq!(
+            format!("{key:X}"),
+            "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20"
+        );
+        assert_eq!(format!("{key:b}"), bin);
+        assert_eq!(format!("{key:#}"), bin);
     }
 }
