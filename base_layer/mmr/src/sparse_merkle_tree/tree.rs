@@ -172,14 +172,14 @@ impl<'a, H: Digest<OutputSize = U32>> TerminalBranch<'a, H> {
 
 impl<H: Digest<OutputSize = U32>> SparseMerkleTree<H> {
     /// Lazily returns the hash of the Sparse Merkle tree. This function requires a mutable reference to `self` in
-    /// case the root node needs to be updated. If you are absolutely sure that the merkle root is correct and want a
+    /// case the root node needs to be updated. If you are absolutely sure that the Merkle& root is correct and want a
     /// non-mutable reference, use [`SparseMerkleTree::unsafe_hash()`] instead.
     pub fn hash(&mut self) -> &NodeHash {
         self.root.hash()
     }
 
     /// Returns the hash of the Sparse Merkle tree. This function does not require a mutable reference to `self` but
-    /// should only be used if you are absolutely sure that the merkle root is correct. Otherwise, use
+    /// should only be used if you are absolutely sure that the Merkle& root is correct. Otherwise, use
     /// [`SparseMerkleTree::hash()`] instead.
     pub fn unsafe_hash(&self) -> &NodeHash {
         self.root.unsafe_hash()
@@ -271,10 +271,10 @@ impl<H: Digest<OutputSize = U32>> SparseMerkleTree<H> {
         Ok(node.map(|n| n.as_leaf().unwrap().value()))
     }
 
-    /// Construct the data structures needed to generate the merkle proofs. Although this function returns a struct
+    /// Construct the data structures needed to generate the Merkle& proofs. Although this function returns a struct
     /// of type `ExclusionProof` it is not really a valid (exclusion) proof. The constructors do additional
     /// validation before passing the structure on. For this reason, this method is `private` outside of the module.
-    pub(crate) fn non_failing_exclusion_proof(&self, key: &NodeKey) -> Result<ExclusionProof<H>, SMTError> {
+    pub(crate) fn build_proof_candidate(&self, key: &NodeKey) -> Result<ExclusionProof<H>, SMTError> {
         let mut siblings = Vec::new();
         let mut current_node = &self.root;
         while current_node.is_branch() {
@@ -539,6 +539,13 @@ mod test {
         assert_eq!(right.key(), &key2);
         // Hash is e3f62f1bfccca2e03e3238cf22748d6a39a7e5eee1dd4b78e2fdd04b5c47d303
         assert_eq!(right.hash().to_string(), format!("{right_hash:x}"));
+
+        // Update a key-value
+        let old_hash = tree.unsafe_hash().to_string();
+        let res = tree.upsert(key1, value2).unwrap();
+        assert_eq!(tree.size(), 2);
+        assert!(matches!(res, UpdateResult::Updated(v) if v == value1));
+        assert_ne!(tree.hash().to_string(), old_hash);
     }
 
     #[test]
@@ -761,6 +768,12 @@ mod test {
         //  │A│   │B│
         //  └─┘   └─┘
         // Root hash is e693520b5ba4ff8b1e37ae4feabcb54701f32efd6bc4b78db356fa9baa64ca99
+
+        // Deleting a key that does not exist is ok.
+        let res = tree.delete(&short_key(5));
+        assert!(matches!(res, Ok(DeleteResult::KeyNotFound)));
+
+        // Delete an existing key
         let res = tree.delete(&short_key(224)).unwrap();
         assert_eq!(res, DeleteResult::Deleted(ValueHash::from([4u8; 32])));
         assert_eq!(

@@ -23,6 +23,7 @@ hash_domain!(MmrBenchTestHashDomain, "com.tari.base_layer.mmr.benches", 1);
 pub type MmrTestHasherBlake256 = DomainSeparatedHasher<Blake2b<U32>, MmrBenchTestHashDomain>;
 #[cfg(feature = "native_bitmap")]
 pub type TestMmr = MutableMmr<MmrTestHasherBlake256, Vec<Hash>>;
+use std::convert::TryFrom;
 
 fn random_key() -> NodeKey {
     let key = rand::random::<[u8; 32]>();
