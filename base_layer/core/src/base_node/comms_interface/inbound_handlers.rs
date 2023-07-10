@@ -436,14 +436,27 @@ where B: BlockchainBackend + 'static
             return Ok(());
         }
 
+        // Lets check if the block exists before we try and ask for a complete block
+        if self.blockchain_db.block_exists(block_hash).await? {
+            debug!(
+                target: LOG_TARGET,
+                "Block with hash `{}` already stored",
+                block_hash.to_hex()
+            );
+            return Ok(());
+        }
+
+        // We need to make sure that we can ask for the block from multiple sources as a single source can maliciously
+        // delay the block blocking us from getting to true latest tip
+        let block = self.reconcile_block(source_peer.clone(), new_block).await?;
+
         // Only a single block request can complete at a time.
-        // As multiple NewBlock requests arrive from propagation, this semaphore prevents multiple requests to nodes for
-        // the same full block. The first request that succeeds will stop the node from requesting the block from any
-        // other node (block_exists is true).
         // Arc clone to satisfy the borrow checker
         let semaphore = self.new_block_request_semaphore.clone();
         let _permit = semaphore.acquire().await.unwrap();
 
+        // its possible that we have more than one request for the same block and we need network requests to fix that.
+        // Only one of those should be processed, so we need to check again if the block has not been processed.
         if self.blockchain_db.block_exists(block_hash).await? {
             debug!(
                 target: LOG_TARGET,
@@ -461,7 +474,6 @@ where B: BlockchainBackend + 'static
             source_peer
         );
 
-        let block = self.reconcile_block(source_peer.clone(), new_block).await?;
         self.handle_block(block, Some(source_peer)).await?;
 
         Ok(())
