@@ -136,7 +136,8 @@ jobs:
           vcpkg.exe install sqlite3:x64-windows zlib:x64-windows
           # Bug in choco - need to install each package individually
           choco upgrade llvm -y
-          choco upgrade psutils -y
+          # psutils is out of date
+          # choco upgrade psutils -y
           choco upgrade openssl -y
           choco upgrade strawberryperl -y
 
@@ -182,7 +183,11 @@ jobs:
         if: startsWith(runner.os,'Windows')
         shell: bash
         run: |
-          echo "SHARUN=pwsh C:\ProgramData\chocolatey\lib\psutils\tools\psutils-master\shasum.ps1 --algorithm 256" >> $GITHUB_ENV
+          # echo "SHARUN=pwsh C:\ProgramData\chocolatey\lib\psutils\tools\psutils-master\shasum.ps1 --algorithm 256" >> $GITHUB_ENV
+          mkdir -p "$GITHUB_WORKSPACE\psutils"
+          curl -v -o "$GITHUB_WORKSPACE\psutils\getopt.ps1" "https://raw.githubusercontent.com/lukesampson/psutils/master/getopt.ps1"
+          curl -v -o "$GITHUB_WORKSPACE\psutils\shasum.ps1" "https://raw.githubusercontent.com/lukesampson/psutils/master/shasum.ps1"
+          echo "SHARUN=pwsh $GITHUB_WORKSPACE\psutils\shasum.ps1 --algorithm 256" >> $GITHUB_ENV
           echo "TBN_EXT=.exe" >> $GITHUB_ENV
           echo "LIB_EXT=.dll" >> $GITHUB_ENV
           echo "LIB_PRE=" >> $GITHUB_ENV
@@ -367,6 +372,7 @@ jobs:
           path: "${{ github.workspace }}/buildtools/Output/*"
 
       - name: Archive and Checksum Binaries
+        # if: "!startsWith(runner.os,'Windows')"    # Disable checksum for Windows - workaround
         shell: bash
         run: |
           echo "Archive ${{ env.BINFILE }} too ${{ env.BINFILE }}.zip"
