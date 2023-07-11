@@ -48,6 +48,8 @@ fn setup() -> (DhtRpcServiceImpl, RpcRequestMock, Arc<PeerManager>) {
 
 // Unit tests for get_closer_peers request
 mod get_closer_peers {
+    use std::borrow::BorrowMut;
+
     use super::*;
     use crate::rpc::PeerInfo;
 
@@ -75,7 +77,12 @@ mod get_closer_peers {
         let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
         let peers = ordered_node_identities_by_distance(node_identity.node_id(), 10, PeerFeatures::COMMUNICATION_NODE);
         for peer in &peers {
-            peer_manager.add_peer(peer.to_peer()).await.unwrap();
+            let mut peer = peer.to_peer();
+            let good_addresses = peer.addresses.borrow_mut();
+            let good_address = good_addresses.addresses()[0].address().clone();
+            good_addresses.mark_last_seen_now(&good_address);
+
+            peer_manager.add_peer(peer).await.unwrap();
         }
         let req = GetCloserPeersRequest {
             n: 15,
@@ -111,7 +118,12 @@ mod get_closer_peers {
         let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
         let peers = ordered_node_identities_by_distance(node_identity.node_id(), 6, PeerFeatures::COMMUNICATION_NODE);
         for peer in &peers {
-            peer_manager.add_peer(peer.to_peer()).await.unwrap();
+            let mut peer = peer.to_peer();
+            let good_addresses = peer.addresses.borrow_mut();
+            let good_address = good_addresses.addresses()[0].address().clone();
+            good_addresses.mark_last_seen_now(&good_address);
+
+            peer_manager.add_peer(peer).await.unwrap();
         }
         let req = GetCloserPeersRequest {
             n: 5,
@@ -133,7 +145,12 @@ mod get_closer_peers {
         let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
         let peers = ordered_node_identities_by_distance(node_identity.node_id(), 5, PeerFeatures::COMMUNICATION_NODE);
         for peer in &peers {
-            peer_manager.add_peer(peer.to_peer()).await.unwrap();
+            let mut peer = peer.to_peer();
+            let good_addresses = peer.addresses.borrow_mut();
+            let good_address = good_addresses.addresses()[0].address().clone();
+            good_addresses.mark_last_seen_now(&good_address);
+
+            peer_manager.add_peer(peer).await.unwrap();
         }
         let excluded_peer = peers.last().unwrap();
         let req = GetCloserPeersRequest {
@@ -166,7 +183,7 @@ mod get_closer_peers {
 }
 
 mod get_peers {
-    use std::time::Duration;
+    use std::{borrow::BorrowMut, time::Duration};
 
     use tari_comms::test_utils::node_identity::build_many_node_identities;
 
@@ -195,10 +212,15 @@ mod get_peers {
         let nodes = build_many_node_identities(3, PeerFeatures::COMMUNICATION_NODE);
         let clients = build_many_node_identities(2, PeerFeatures::COMMUNICATION_CLIENT);
         for peer in nodes.iter().chain(clients.iter()) {
-            peer_manager.add_peer(peer.to_peer()).await.unwrap();
+            let mut peer = peer.to_peer();
+            let good_addresses = peer.addresses.borrow_mut();
+            let good_address = good_addresses.addresses()[0].address().clone();
+            good_addresses.mark_last_seen_now(&good_address);
+
+            peer_manager.add_peer(peer).await.unwrap();
         }
         let req = GetPeersRequest {
-            n: 0,
+            n: 5,
             include_clients: true,
         };
 
@@ -226,10 +248,15 @@ mod get_peers {
         let nodes = build_many_node_identities(3, PeerFeatures::COMMUNICATION_NODE);
         let clients = build_many_node_identities(2, PeerFeatures::COMMUNICATION_CLIENT);
         for peer in nodes.iter().chain(clients.iter()) {
-            peer_manager.add_peer(peer.to_peer()).await.unwrap();
+            let mut peer = peer.to_peer();
+            let good_addresses = peer.addresses.borrow_mut();
+            let good_address = good_addresses.addresses()[0].address().clone();
+            good_addresses.mark_last_seen_now(&good_address);
+
+            peer_manager.add_peer(peer).await.unwrap();
         }
         let req = GetPeersRequest {
-            n: 0,
+            n: 3,
             include_clients: false,
         };
 
@@ -257,7 +284,12 @@ mod get_peers {
         let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
         let peers = build_many_node_identities(3, PeerFeatures::COMMUNICATION_NODE);
         for peer in &peers {
-            peer_manager.add_peer(peer.to_peer()).await.unwrap();
+            let mut peer = peer.to_peer();
+            let good_addresses = peer.addresses.borrow_mut();
+            let good_address = good_addresses.addresses()[0].address().clone();
+            good_addresses.mark_last_seen_now(&good_address);
+
+            peer_manager.add_peer(peer).await.unwrap();
         }
         let req = GetPeersRequest {
             n: 2,
