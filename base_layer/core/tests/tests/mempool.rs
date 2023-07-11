@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, ops::Deref, panic, sync::Arc, time::Duration};
+use std::{convert::TryFrom, ops::Deref, sync::Arc, time::Duration};
 
 use randomx_rs::RandomXFlag;
 use tari_common::configuration::Network;
@@ -28,7 +28,7 @@ use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
 use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_core::{
     base_node::state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
-    consensus::{ConsensusConstantsBuilder, ConsensusManager},
+    consensus::test_helpers::TestConsensusConstantsBuilder,
     mempool::{Mempool, MempoolConfig, MempoolServiceConfig, TxStorageResponse},
     proof_of_work::Difficulty,
     proto,
@@ -77,11 +77,10 @@ use tempfile::tempdir;
 use crate::helpers::{
     block_builders::{
         chain_block,
-        create_genesis_block,
-        create_genesis_block_with_coinbase_value,
+        create_blockchain_with_spendable_coinbase,
         find_header_with_achieved_difficulty,
-        generate_block,
-        generate_new_block,
+        generate_block_with_schemas,
+        generate_block_with_transactions,
     },
     nodes::{create_network_with_2_base_nodes_with_config, create_network_with_3_base_nodes_with_config},
     sample_blockchains::{create_new_blockchain, create_new_blockchain_with_constants},
@@ -102,9 +101,9 @@ async fn test_insert_and_process_published_block() {
     // Create a block with 4 outputs
     let txs = vec![txn_schema!(
         from: vec![outputs[0][0].clone()],
-        to: vec![2 * T, 2 * T, 2 * T, 2 * T],fee: 5.into(), lock: 0, features: OutputFeatures::default()
+        to: vec![2 * T, 2 * T, 2 * T, 2 * T], fee: 5.into(), lock: 0, features: OutputFeatures::default()
     )];
-    generate_new_block(
+    generate_block_with_schemas(
         &mut store,
         &mut blocks,
         &mut outputs,
@@ -125,9 +124,9 @@ async fn test_insert_and_process_published_block() {
         from: vec![outputs[1][1].clone()],
         to: vec![1*T],
         fee: 20*uT,
-        lock: 4,
+        lock: blocks[0].height() + 4,
         features: OutputFeatures{
-            maturity: 1,
+            maturity: blocks[0].height() + 1,
             ..Default::default()
         }
     );
@@ -137,9 +136,9 @@ async fn test_insert_and_process_published_block() {
         from: vec![outputs[1][2].clone()],
         to: vec![1*T],
         fee: 20*uT,
-        lock: 3,
+        lock: blocks[0].height() + 3,
         features: OutputFeatures{
-            maturity: 2,
+            maturity: blocks[0].height() + 2,
             ..Default::default()
         }
     );
@@ -212,7 +211,7 @@ async fn test_insert_and_process_published_block() {
     assert_eq!(stats.unconfirmed_weight, expected_weight);
 
     // Spend tx2, so it goes in Reorg pool
-    generate_block(
+    generate_block_with_transactions(
         &store,
         &mut blocks,
         vec![tx2.deref().clone()],
@@ -284,7 +283,7 @@ async fn test_time_locked() {
         from: vec![outputs[0][0].clone()],
         to: vec![2 * T, 2 * T, 2 * T, 2 * T], fee: 5*uT, lock: 0, features: OutputFeatures::default()
     )];
-    generate_new_block(
+    generate_block_with_schemas(
         &mut store,
         &mut blocks,
         &mut outputs,
@@ -295,22 +294,22 @@ async fn test_time_locked() {
     .await
     .unwrap();
     mempool.process_published_block(blocks[1].to_arc_block()).await.unwrap();
-    // Block height should be 1
+    // Block height should be blocks[0].height() + 1
     let mut tx2 = txn_schema!(from: vec![outputs[1][0].clone()], to: vec![1*T], fee: 20*uT, lock: 0, features: OutputFeatures::default());
-    tx2.lock_height = 3;
+    tx2.lock_height = blocks[0].height() + 3;
     let tx2 = Arc::new(spend_utxos(tx2, &key_manager).await.0);
 
     let mut tx3 = txn_schema!(
         from: vec![outputs[1][1].clone()],
         to: vec![1*T],
         fee: 4*uT,
-        lock: 4,
+        lock:  blocks[0].height() + 4,
         features: OutputFeatures{
             maturity: 1,
             ..Default::default()
         }
     );
-    tx3.lock_height = 2;
+    tx3.lock_height =  blocks[0].height() + 2;
     let tx3 = Arc::new(spend_utxos(tx3, &key_manager).await.0);
 
     // Tx2 should not go in, but Tx3 should
@@ -324,7 +323,7 @@ async fn test_time_locked() {
     );
 
     // Spend tx3, so that the height of the chain will increase
-    generate_block(
+    generate_block_with_transactions(
         &store,
         &mut blocks,
         vec![tx3.deref().clone()],
@@ -356,7 +355,7 @@ async fn test_retrieve() {
         to: vec![1 * T, 1 * T, 1 * T, 1 * T, 1 * T, 1 * T, 1 * T]
     )];
     // "Mine" Block 1
-    generate_new_block(
+    generate_block_with_schemas(
         &mut store,
         &mut blocks,
         &mut outputs,
@@ -369,6 +368,7 @@ async fn test_retrieve() {
     mempool.process_published_block(blocks[1].to_arc_block()).await.unwrap();
 
     let stats = mempool.stats().await.unwrap();
+    dbg!(mempool.stats().await.unwrap());
     assert_eq!(stats.unconfirmed_txs, 0);
     assert_eq!(stats.reorg_txs, 0);
 
@@ -378,19 +378,19 @@ async fn test_retrieve() {
         txn_schema!(from: vec![outputs[1][1].clone()], to: vec![], fee: 20*uT, lock: 0, features: OutputFeatures::default()),
         txn_schema!(from: vec![outputs[1][2].clone()], to: vec![], fee: 40*uT, lock: 0, features: OutputFeatures::default()),
         txn_schema!(from: vec![outputs[1][3].clone()], to: vec![], fee: 50*uT, lock: 0, features: OutputFeatures::default()),
-        txn_schema!(from: vec![outputs[1][4].clone()], to: vec![], fee: 20*uT, lock: 2, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][4].clone()], to: vec![], fee: 20*uT, lock: blocks[0].height() + 2, features: OutputFeatures::default()),
         // will get rejected as its time-locked
-        txn_schema!(from: vec![outputs[1][5].clone()], to: vec![], fee: 20*uT, lock: 3, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[1][5].clone()], to: vec![], fee: 20*uT, lock: blocks[0].height() + 3, features: OutputFeatures::default()),
         // Will be time locked when a tx is added to mempool with this as an input:
         txn_schema!(from: vec![outputs[1][6].clone()], to: vec![800_000*uT], fee: 60*uT, lock: 0,
             features: OutputFeatures{
-                maturity: 4,
+                maturity: blocks[0].height() + 4,
                 ..Default::default()
         }),
         // Will be time locked when a tx is added to mempool with this as an input:
         txn_schema!(from: vec![outputs[1][7].clone()], to: vec![800_000*uT], fee: 25*uT, lock: 0,
             features: OutputFeatures{
-            maturity: 2,
+            maturity: blocks[0].height() + 2,
             ..Default::default()
         }),
     ];
@@ -420,7 +420,7 @@ async fn test_retrieve() {
         tx[7].deref().clone(),
     ];
     // "Mine" block 2
-    generate_block(&store, &mut blocks, block2_txns, &consensus_manager, &key_manager)
+    generate_block_with_transactions(&store, &mut blocks, block2_txns, &consensus_manager, &key_manager)
         .await
         .unwrap();
     outputs.push(utxos);
@@ -472,7 +472,7 @@ async fn test_zero_conf_no_piggyback() {
         to: vec![21 * T, 11 * T, 11 * T, 16 * T]
     )];
     // "Mine" Block 1
-    generate_new_block(
+    generate_block_with_schemas(
         &mut store,
         &mut blocks,
         &mut outputs,
@@ -572,7 +572,7 @@ async fn test_zero_conf() {
         to: vec![21 * T, 11 * T, 11 * T, 16 * T]
     )];
     // "Mine" Block 1
-    generate_new_block(
+    generate_block_with_schemas(
         &mut store,
         &mut blocks,
         &mut outputs,
@@ -957,7 +957,7 @@ async fn test_reorg() {
     let txs = vec![
         txn_schema!(from: vec![outputs[0][0].clone()], to: vec![1 * T, 1 * T], fee: 25*uT, lock: 0, features: OutputFeatures::default()),
     ];
-    generate_new_block(
+    generate_block_with_schemas(
         &mut db,
         &mut blocks,
         &mut outputs,
@@ -983,7 +983,7 @@ async fn test_reorg() {
     let stats = mempool.stats().await.unwrap();
     assert_eq!(stats.unconfirmed_txs, 3);
     let txns2 = txns2.iter().map(|t| t.deref().clone()).collect();
-    generate_block(&db, &mut blocks, txns2, &consensus_manager, &key_manager)
+    generate_block_with_transactions(&db, &mut blocks, txns2, &consensus_manager, &key_manager)
         .await
         .unwrap();
     mempool.process_published_block(blocks[2].to_arc_block()).await.unwrap();
@@ -991,7 +991,7 @@ async fn test_reorg() {
     // "Mine" block 3
     let schemas = vec![
         txn_schema!(from: vec![outputs[2][0].clone()], to: vec![], fee: 25*uT, lock: 0, features: OutputFeatures::default()),
-        txn_schema!(from: vec![outputs[2][1].clone()], to: vec![], fee: 25*uT, lock: 5, features: OutputFeatures::default()),
+        txn_schema!(from: vec![outputs[2][1].clone()], to: vec![], fee: 25*uT, lock: blocks[0].height() + 5, features: OutputFeatures::default()),
         txn_schema!(from: vec![outputs[2][2].clone()], to: vec![], fee: 25*uT, lock: 0, features: OutputFeatures::default()),
     ];
     let (txns3, utxos) = schema_to_transaction(&schemas, &key_manager).await;
@@ -1001,7 +1001,7 @@ async fn test_reorg() {
     }
     let txns3: Vec<Transaction> = txns3.iter().map(|t| t.deref().clone()).collect();
 
-    generate_block(
+    generate_block_with_transactions(
         &db,
         &mut blocks,
         vec![txns3[0].clone(), txns3[2].clone()],
@@ -1014,10 +1014,9 @@ async fn test_reorg() {
 
     let stats = mempool.stats().await.unwrap();
     assert_eq!(stats.unconfirmed_txs, 0);
-    // assert_eq!(stats.timelocked_txs, 1);
     assert_eq!(stats.reorg_txs, 5);
 
-    db.rewind_to_height(2).unwrap();
+    db.rewind_to_height(blocks[0].height() + 2).unwrap();
 
     let template = chain_block(blocks[2].block(), vec![], &consensus_manager, &key_manager).await;
     let reorg_block3 = db.prepare_new_block(template).unwrap();
@@ -1046,24 +1045,16 @@ static EMISSION: [u64; 2] = [10, 10];
 #[allow(clippy::identity_op)]
 async fn receive_and_propagate_transaction() {
     let temp_dir = tempdir().unwrap();
-    let network = Network::LocalNet;
-    let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_coinbase_lockheight(100)
-        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
-        .build();
     let key_manager = create_test_core_key_manager_with_memory_db();
-    let (block0, utxo) = create_genesis_block(&consensus_constants, &key_manager).await;
-    let consensus_manager = ConsensusManager::builder(network)
-        .add_consensus_constants(consensus_constants)
-        .with_block(block0)
-        .build()
-        .unwrap();
+    let (_block0, utxo0, consensus_manager, blockchain_db) =
+        create_blockchain_with_spendable_coinbase(&key_manager, Network::LocalNet, &None).await;
     let (mut alice_node, mut bob_node, mut carol_node, _consensus_manager) =
         create_network_with_3_base_nodes_with_config(
             MempoolServiceConfig::default(),
             LivenessConfig::default(),
             consensus_manager,
             temp_dir.path().to_str().unwrap(),
+            Some(blockchain_db),
         )
         .await;
     alice_node.mock_base_node_state_machine.publish_status(StatusInfo {
@@ -1086,7 +1077,7 @@ async fn receive_and_propagate_transaction() {
     });
 
     let (tx, _) = spend_utxos(
-        txn_schema!(from: vec![utxo], to: vec![2 * T, 2 * T, 2 * T]),
+        txn_schema!(from: vec![utxo0], to: vec![2 * T, 2 * T, 2 * T]),
         &key_manager,
     )
     .await;
@@ -1169,13 +1160,14 @@ async fn receive_and_propagate_transaction() {
 async fn consensus_validation_large_tx() {
     let network = Network::LocalNet;
     // We dont want to compute the 19500 limit of local net, so we create smaller blocks
-    let consensus_constants = ConsensusConstantsBuilder::new(network)
+    let consensus_constants = TestConsensusConstantsBuilder::new(network)
         .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .with_coinbase_lockheight(1)
         .with_max_block_transaction_weight(500)
         .build();
-    let (mut store, mut blocks, mut outputs, consensus_manager, key_manager) =
-        create_new_blockchain_with_constants(network, consensus_constants).await;
+    let key_manager = create_test_core_key_manager_with_memory_db();
+    let (mut store, mut blocks, mut outputs, consensus_manager) =
+        create_new_blockchain_with_constants(network, consensus_constants, &key_manager).await;
     let mempool_validator = TransactionFullValidator::new(
         CryptoFactories::default(),
         true,
@@ -1189,7 +1181,7 @@ async fn consensus_validation_large_tx() {
     );
     // Create a block with 1 output
     let txs = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![5 * T])];
-    generate_new_block(
+    generate_block_with_schemas(
         &mut store,
         &mut blocks,
         &mut outputs,
@@ -1437,7 +1429,7 @@ async fn consensus_validation_versions() {
         to: vec![2 * T, 2 * T, 2 * T, 2 * T, 2 * T]
     );
     let txs = vec![schema];
-    generate_new_block(
+    generate_block_with_schemas(
         &mut store,
         &mut blocks,
         &mut outputs,
@@ -1526,7 +1518,7 @@ async fn consensus_validation_unique_excess_sig() {
         from: vec![outputs[0][0].clone()],
         to: vec![2 * T, 2 * T, 2 * T, 2 * T, 2 * T], fee: 25.into(), lock: 0, features: OutputFeatures::default()
     )];
-    generate_new_block(
+    generate_block_with_schemas(
         &mut store,
         &mut blocks,
         &mut outputs,
@@ -1539,7 +1531,7 @@ async fn consensus_validation_unique_excess_sig() {
 
     let schema = txn_schema!(from: vec![outputs[1][0].clone()], to: vec![1_500_000 * uT]);
     let (tx1, _) = spend_utxos(schema.clone(), &key_manager).await;
-    generate_block(&store, &mut blocks, vec![tx1.clone()], &consensus_manager, &key_manager)
+    generate_block_with_transactions(&store, &mut blocks, vec![tx1.clone()], &consensus_manager, &key_manager)
         .await
         .unwrap();
 
@@ -1561,27 +1553,22 @@ async fn block_event_and_reorg_event_handling() {
     // Both nodes have all transactions in their mempools
     // When block B2A is submitted, then both nodes have TX2A and TX3A in their reorg pools
     // When block B2B is submitted with TX2B, TX3B, then TX2A, TX3A are discarded (Not Stored)
-    let network = Network::LocalNet;
+
     let key_manager = create_test_core_key_manager_with_memory_db();
-    let consensus_constants = ConsensusConstantsBuilder::new(Network::LocalNet)
-        .with_coinbase_lockheight(1)
-        .build();
 
     let temp_dir = tempdir().unwrap();
-    let (block0, utxos0) =
-        create_genesis_block_with_coinbase_value(100_000_000.into(), &consensus_constants, &key_manager).await;
-    let consensus_manager = ConsensusManager::builder(network)
-        .add_consensus_constants(consensus_constants.clone())
-        .with_block(block0.clone())
-        .build()
-        .unwrap();
+    let (initial_block, initial_utxo, consensus_manager, blockchain_db) =
+        create_blockchain_with_spendable_coinbase(&key_manager, Network::LocalNet, &None).await;
     let (mut alice, mut bob, consensus_manager) = create_network_with_2_base_nodes_with_config(
         MempoolServiceConfig::default(),
         LivenessConfig::default(),
         consensus_manager,
         temp_dir.path().to_str().unwrap(),
+        Some(blockchain_db.clone()),
     )
     .await;
+    println!("Block height: {}", initial_block.height());
+
     alice.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
         state_info: StateInfo::Listening(ListeningInfo::new(true)),
@@ -1589,10 +1576,98 @@ async fn block_event_and_reorg_event_handling() {
         randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
 
+    // These blocks are manually constructed to allow the block event system to be used.
+
+    async_assert_eventually!(
+        alice.blockchain_db.fetch_tip_header().unwrap().height() ==
+            bob.blockchain_db.fetch_tip_header().unwrap().height() &&
+            alice.blockchain_db.fetch_tip_header().unwrap().height() == initial_block.block().header.height,
+        expect = true,
+        max_attempts = 5,
+        interval = Duration::from_millis(1000)
+    );
+
     // Bob creates Block 1 and sends it to Alice. Alice adds it to her chain and creates a block event that the Mempool
     // service will receive.
-    let (tx1, utxos1) =
-        schema_to_transaction(&[txn_schema!(from: vec![utxos0], to: vec![1 * T, 1 * T])], &key_manager).await;
+    let (tx1, utxos1) = schema_to_transaction(
+        &[txn_schema!(from: vec![initial_utxo], to: vec![1 * T, 1 * T])],
+        &key_manager,
+    )
+    .await;
+    let tx1 = (*tx1[0]).clone();
+    let tx1_excess_sig = tx1.body.kernels()[0].excess_sig.clone();
+
+    alice.mempool.insert(Arc::new(tx1.clone())).await.unwrap();
+    bob.mempool.insert(Arc::new(tx1.clone())).await.unwrap();
+    println!(
+        "Mempool response Alice: {:?}",
+        alice
+            .mempool
+            .has_tx_with_excess_sig(tx1_excess_sig.clone())
+            .await
+            .unwrap()
+    );
+    println!(
+        "Mempool response Bob  : {:?}",
+        bob.mempool
+            .has_tx_with_excess_sig(tx1_excess_sig.clone())
+            .await
+            .unwrap()
+    );
+    let mut block1 = bob
+        .blockchain_db
+        .prepare_new_block(chain_block(initial_block.block(), vec![tx1], &consensus_manager, &key_manager).await)
+        .unwrap();
+    find_header_with_achieved_difficulty(&mut block1.header, Difficulty::from_u64(1).unwrap());
+    // Add Block1 - tx1 will be moved to the ReorgPool.
+    // TODO: Fix - if Alice submits the block and propagates it to Bob, the transaction will stay in Bob's
+    // TODO:   'UnconfirmedPool', even if Bob then also tries to submit the block, and vice versa.
+    alice.local_nci.submit_block(block1.clone()).await.unwrap();
+    // bob.local_nci.submit_block(block1.clone()).await.unwrap();
+    println!("Block height: {}", block1.header.height);
+    async_assert_eventually!(
+        alice.blockchain_db.fetch_tip_header().unwrap().height() == bob.blockchain_db.fetch_tip_header().unwrap().height(),
+        expect = true,
+        max_attempts = 5,
+        interval = Duration::from_millis(1000)
+    );
+    println!(
+        "Mempool response Alice: {:?}",
+        alice
+            .mempool
+            .has_tx_with_excess_sig(tx1_excess_sig.clone())
+            .await
+            .unwrap()
+    );
+    println!(
+        "Mempool response Bob  : {:?}",
+        bob.mempool
+            .has_tx_with_excess_sig(tx1_excess_sig.clone())
+            .await
+            .unwrap()
+    );
+    async_assert_eventually!(
+        bob.mempool
+            .has_tx_with_excess_sig(tx1_excess_sig.clone())
+            .await
+            .unwrap(),
+        expect = TxStorageResponse::ReorgPool,
+        max_attempts = 5,
+        interval = Duration::from_millis(1000)
+    );
+    async_assert_eventually!(
+        alice
+            .mempool
+            .has_tx_with_excess_sig(tx1_excess_sig.clone())
+            .await
+            .unwrap(),
+        expect = TxStorageResponse::ReorgPool,
+        max_attempts = 5,
+        interval = Duration::from_millis(1000)
+    );
+
+    // Double spends
+
     let (txs_a, _utxos2) = schema_to_transaction(
         &[
             txn_schema!(from: vec![utxos1[0].clone()], to: vec![400_000 * uT, 590_000 * uT]),
@@ -1609,45 +1684,15 @@ async fn block_event_and_reorg_event_handling() {
         &key_manager,
     )
     .await;
-    let tx1 = (*tx1[0]).clone();
     let tx2a = (*txs_a[0]).clone();
     let tx3a = (*txs_a[1]).clone();
     let tx2b = (*txs_b[0]).clone();
     let tx3b = (*txs_b[1]).clone();
-    let tx1_excess_sig = tx1.body.kernels()[0].excess_sig.clone();
     let tx2a_excess_sig = tx2a.body.kernels()[0].excess_sig.clone();
     let tx3a_excess_sig = tx3a.body.kernels()[0].excess_sig.clone();
     let tx2b_excess_sig = tx2b.body.kernels()[0].excess_sig.clone();
     let tx3b_excess_sig = tx3b.body.kernels()[0].excess_sig.clone();
 
-    // These blocks are manually constructed to allow the block event system to be used.
-    let empty_block = bob
-        .blockchain_db
-        .prepare_new_block(chain_block(block0.block(), vec![], &consensus_manager, &key_manager).await)
-        .unwrap();
-
-    // Add one empty block, so the coinbase UTXO is no longer time-locked.
-    assert!(bob.local_nci.submit_block(empty_block.clone(),).await.is_ok());
-    assert!(alice.local_nci.submit_block(empty_block.clone(),).await.is_ok());
-    alice.mempool.insert(Arc::new(tx1.clone())).await.unwrap();
-    bob.mempool.insert(Arc::new(tx1.clone())).await.unwrap();
-    let mut block1 = bob
-        .blockchain_db
-        .prepare_new_block(chain_block(&empty_block, vec![tx1], &consensus_manager, &key_manager).await)
-        .unwrap();
-    find_header_with_achieved_difficulty(&mut block1.header, Difficulty::from_u64(1).unwrap());
-    // Add Block1 - tx1 will be moved to the ReorgPool.
-    assert!(bob.local_nci.submit_block(block1.clone(),).await.is_ok());
-    async_assert_eventually!(
-        alice
-            .mempool
-            .has_tx_with_excess_sig(tx1_excess_sig.clone())
-            .await
-            .unwrap(),
-        expect = TxStorageResponse::ReorgPool,
-        max_attempts = 20,
-        interval = Duration::from_millis(1000)
-    );
     alice.mempool.insert(Arc::new(tx2a.clone())).await.unwrap();
     alice.mempool.insert(Arc::new(tx3a.clone())).await.unwrap();
     alice.mempool.insert(Arc::new(tx2b.clone())).await.unwrap();
@@ -1657,20 +1702,20 @@ async fn block_event_and_reorg_event_handling() {
     bob.mempool.insert(Arc::new(tx2b.clone())).await.unwrap();
     bob.mempool.insert(Arc::new(tx3b.clone())).await.unwrap();
 
-    let mut block2a = bob
+    let mut block3a = bob
         .blockchain_db
         .prepare_new_block(chain_block(&block1, vec![tx2a, tx3a], &consensus_manager, &key_manager).await)
         .unwrap();
-    find_header_with_achieved_difficulty(&mut block2a.header, Difficulty::from_u64(1).unwrap());
+    find_header_with_achieved_difficulty(&mut block3a.header, Difficulty::from_u64(1).unwrap());
     // Block2b also builds on Block1 but has a stronger PoW
-    let mut block2b = bob
+    let mut block3b = bob
         .blockchain_db
         .prepare_new_block(chain_block(&block1, vec![tx2b, tx3b], &consensus_manager, &key_manager).await)
         .unwrap();
-    find_header_with_achieved_difficulty(&mut block2b.header, Difficulty::from_u64(10).unwrap());
+    find_header_with_achieved_difficulty(&mut block3b.header, Difficulty::from_u64(10).unwrap());
 
     // Add Block2a - tx2b and tx3b will be discarded as double spends.
-    assert!(bob.local_nci.submit_block(block2a.clone(),).await.is_ok());
+    assert!(bob.local_nci.submit_block(block3a.clone(),).await.is_ok());
 
     async_assert_eventually!(
         bob.mempool

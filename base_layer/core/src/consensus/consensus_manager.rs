@@ -22,7 +22,15 @@
 
 use std::sync::Arc;
 
+#[cfg(feature = "base_node")]
+use croaring::Bitmap;
 use tari_common::configuration::Network;
+#[cfg(feature = "base_node")]
+use tari_common_types::types::{Commitment, PrivateKey};
+#[cfg(feature = "base_node")]
+use tari_crypto::commitment::HomomorphicCommitmentFactory;
+use tari_crypto::errors::RangeProofError;
+use tari_mmr::error::MerkleMountainRangeError;
 use thiserror::Error;
 
 #[cfg(feature = "base_node")]
@@ -32,6 +40,13 @@ use crate::{
     proof_of_work::PowAlgorithm,
     proof_of_work::TargetDifficultyWindow,
 };
+#[cfg(feature = "base_node")]
+use crate::{
+    chain_storage::calculate_validator_node_mr,
+    transactions::{transaction_components::transaction_output::batch_verify_range_proofs, CryptoFactories},
+    KernelMmr,
+    MutableOutputMmr,
+};
 use crate::{
     consensus::{
         emission::{Emission, EmissionSchedule},
@@ -39,8 +54,15 @@ use crate::{
         NetworkConsensus,
     },
     proof_of_work::DifficultyAdjustmentError,
-    transactions::{tari_amount::MicroTari, transaction_components::TransactionKernel},
+    transactions::{
+        tari_amount::MicroTari,
+        transaction_components::{TransactionError, TransactionKernel},
+    },
 };
+
+// This can be adjusted as required, but must be limited
+#[cfg(feature = "base_node")]
+pub const NOT_BEFORE_PROOF_BYTES_SIZE: usize = 2048usize;
 
 #[derive(Debug, Error)]
 #[allow(clippy::large_enum_variant)]
@@ -53,6 +75,14 @@ pub enum ConsensusManagerError {
     PoisonedAccess(String),
     #[error("No Difficulty adjustment manager present")]
     MissingDifficultyAdjustmentManager,
+    #[error("Genesis block is invalid: `{0}`")]
+    InvalidGenesisBlock(String),
+    #[error("Genesis block range proof is invalid: `{0}`")]
+    InvalidGenesisBlockProof(#[from] RangeProofError),
+    #[error("Genesis block transaction is invalid: `{0}`")]
+    InvalidGenesisBlockTransaction(#[from] TransactionError),
+    #[error("Genesis block MMR is invalid: `{0}`")]
+    InvalidGenesisBlockMMR(#[from] MerkleMountainRangeError),
 }
 
 /// Container struct for consensus rules. This can be cheaply cloned.
@@ -69,17 +99,161 @@ impl ConsensusManager {
 
     /// Returns the genesis block for the selected network.
     #[cfg(feature = "base_node")]
-    pub fn get_genesis_block(&self) -> ChainBlock {
+    pub fn get_genesis_block(&self) -> Result<ChainBlock, ConsensusManagerError> {
         use crate::blocks::genesis_block::get_genesis_block;
         let network = self.inner.network.as_network();
-        match network {
+        let genesis_block = match network {
             Network::LocalNet => self
                 .inner
                 .gen_block
                 .clone()
                 .unwrap_or_else(|| get_genesis_block(network)),
             _ => get_genesis_block(network),
+        };
+        self.check_genesis_block(&genesis_block)?;
+        Ok(genesis_block)
+    }
+
+    // Performs a manual validation of every aspect of the genesis block
+    #[allow(clippy::too_many_lines)]
+    #[cfg(feature = "base_node")]
+    fn check_genesis_block(&self, block: &ChainBlock) -> Result<(), ConsensusManagerError> {
+        // Check the not-before-proof
+        if block.block().header.pow.pow_algo != PowAlgorithm::Sha3x {
+            return Err(ConsensusManagerError::InvalidGenesisBlock(
+                "Genesis block must use Sha3x PoW".to_string(),
+            ));
         }
+        if block.block().header.pow.pow_data.len() > NOT_BEFORE_PROOF_BYTES_SIZE {
+            return Err(ConsensusManagerError::InvalidGenesisBlock(format!(
+                "Genesis block PoW data is too large: expected {}, received {}",
+                NOT_BEFORE_PROOF_BYTES_SIZE,
+                block.block().header.pow.pow_data.len()
+            )));
+        }
+
+        // Check transaction composition
+        if !block.block().body.inputs().is_empty() {
+            return Err(ConsensusManagerError::InvalidGenesisBlock(
+                "Genesis block may not have inputs".to_string(),
+            ));
+        }
+        if block.block().body.outputs().iter().any(|o| o.is_coinbase()) {
+            return Err(ConsensusManagerError::InvalidGenesisBlock(
+                "Genesis block may not have coinbase outputs".to_string(),
+            ));
+        }
+        if block
+            .block()
+            .body
+            .outputs()
+            .iter()
+            .any(|o| o.features.output_type.is_sidechain_type())
+        {
+            return Err(ConsensusManagerError::InvalidGenesisBlock(
+                "Genesis block may not have sidechain outputs".to_string(),
+            ));
+        }
+        if block.block().body.kernels().len() > 1 {
+            return Err(ConsensusManagerError::InvalidGenesisBlock(
+                "Genesis block may not have more than one kernel".to_string(),
+            ));
+        }
+        if block
+            .block()
+            .body
+            .kernels()
+            .iter()
+            .any(|k| k.features.is_coinbase() || k.features.is_burned())
+        {
+            return Err(ConsensusManagerError::InvalidGenesisBlock(
+                "Genesis block may not have coinbase or burn kernels".to_string(),
+            ));
+        }
+
+        // Check range proofs
+        let factories = CryptoFactories::default();
+        let outputs = block.block().body.outputs().iter().collect::<Vec<_>>();
+        batch_verify_range_proofs(&factories.range_proof, &outputs)?;
+
+        // Check the kernel signature
+        for kernel in block.block().body.kernels() {
+            kernel.verify_signature()?;
+        }
+
+        // Check the metadata signatures
+        for o in block.block().body.outputs() {
+            o.verify_metadata_signature()?;
+        }
+
+        // Check MMR sizes
+        if block.block().body.kernels().len() as u64 != block.header().kernel_mmr_size {
+            return Err(ConsensusManagerError::InvalidGenesisBlock(format!(
+                "Genesis block kernel MMR size is invalid, expected {} got {}",
+                block.block().body.kernels().len(),
+                block.header().kernel_mmr_size
+            )));
+        }
+        if block.block().body.outputs().len() as u64 != block.header().output_mmr_size {
+            return Err(ConsensusManagerError::InvalidGenesisBlock(format!(
+                "Genesis block output MMR size is invalid, expected {} got {}",
+                block.block().body.outputs().len(),
+                block.header().output_mmr_size
+            )));
+        }
+
+        // Check the MMRs and MMR roots
+        let mut kernel_mmr = KernelMmr::new(Vec::new());
+        for kernel in block.block().body.kernels() {
+            kernel_mmr.push(kernel.hash().to_vec())?;
+        }
+        if kernel_mmr.get_merkle_root()? != block.header().kernel_mr {
+            return Err(ConsensusManagerError::InvalidGenesisBlock(
+                "Genesis block kernel MMR root is invalid".to_string(),
+            ));
+        }
+        let mut output_mmr = MutableOutputMmr::new(Vec::new(), Bitmap::create())?;
+        for output in block.block().body.outputs() {
+            output_mmr.push(output.hash().to_vec())?;
+        }
+        if output_mmr.get_merkle_root()? != block.header().output_mr {
+            return Err(ConsensusManagerError::InvalidGenesisBlock(
+                "Genesis block output MMR root is invalid".to_string(),
+            ));
+        }
+        if calculate_validator_node_mr(&[]) != block.header().validator_node_mr {
+            return Err(ConsensusManagerError::InvalidGenesisBlock(
+                "Genesis block validator node MMR root is invalid".to_string(),
+            ));
+        }
+
+        // Check the chain balance
+        // See `ChainBalanceValidator::validate`
+        let factories = CryptoFactories::default();
+        let emission_h = {
+            // See `ChainBalanceValidator::get_emission_commitment_at`
+            let total_supply = self.get_total_emission_at(0) + self.consensus_constants(0).faucet_value();
+            factories
+                .commitment
+                .commit_value(&PrivateKey::default(), total_supply.into())
+        };
+        let total_offset = {
+            // See `ChainBalanceValidator::fetch_total_offset_commitment`
+            let chain_header = block.to_chain_header();
+            let offset = &chain_header.accumulated_data().total_kernel_offset;
+            factories.commitment.commit(offset, &0u64.into())
+        };
+        let total_kernel_sum: Commitment = block.block().body.kernels().iter().map(|k| &k.excess).sum();
+        let input = &(&emission_h + &total_kernel_sum) + &total_offset;
+        let total_utxo_sum: Commitment = block.block().body.outputs().iter().map(|o| &o.commitment).sum();
+        let total_burned_sum = Commitment::default();
+        if (&total_utxo_sum + &total_burned_sum) != input {
+            return Err(ConsensusManagerError::InvalidGenesisBlock(
+                "Chain balance validation failed".to_string(),
+            ));
+        }
+
+        Ok(())
     }
 
     /// Get a pointer to the emission schedule
@@ -89,9 +263,9 @@ impl ConsensusManager {
         &self.inner.emission
     }
 
-    /// Gets the block reward for the height
-    pub fn get_block_reward_at(&self, height: u64) -> MicroTari {
-        self.emission_schedule().block_reward(height)
+    /// Gets the block emission for the height
+    pub fn get_block_emission_at(&self, height: u64) -> MicroTari {
+        self.emission_schedule().block_emission(height)
     }
 
     /// Get the emission reward at height
@@ -132,7 +306,7 @@ impl ConsensusManager {
 
     /// Creates a total_coinbase offset containing all fees for the validation from the height and kernel set
     pub fn calculate_coinbase_and_fees(&self, height: u64, kernels: &[TransactionKernel]) -> MicroTari {
-        let coinbase = self.emission_schedule().block_reward(height);
+        let coinbase = self.emission_schedule().block_emission(height);
         kernels.iter().fold(coinbase, |total, k| total + k.fee)
     }
 

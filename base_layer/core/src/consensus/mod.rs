@@ -24,7 +24,7 @@
 pub(crate) mod chain_strength_comparer;
 
 pub mod consensus_constants;
-pub use consensus_constants::{ConsensusConstants, ConsensusConstantsBuilder};
+pub use consensus_constants::ConsensusConstants;
 
 mod consensus_manager;
 pub use consensus_manager::{ConsensusBuilderError, ConsensusManager, ConsensusManagerBuilder, ConsensusManagerError};
@@ -33,5 +33,7 @@ mod consensus_encoding;
 pub use consensus_encoding::{DomainSeparatedConsensusHasher, MaxSizeBytes, MaxSizeString};
 mod network;
 pub use network::NetworkConsensus;
+pub use test_helpers::TestConsensusConstantsBuilder;
 
 pub mod emission;
+pub mod test_helpers;

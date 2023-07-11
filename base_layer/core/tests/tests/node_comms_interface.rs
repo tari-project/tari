@@ -63,7 +63,7 @@ fn new_mempool() -> Mempool {
 
 #[tokio::test]
 async fn inbound_get_metadata() {
-    let store = create_test_blockchain_db();
+    let store = create_test_blockchain_db().unwrap();
     let mempool = new_mempool();
 
     let network = Network::LocalNet;
@@ -97,7 +97,7 @@ async fn inbound_get_metadata() {
 
 #[tokio::test]
 async fn inbound_fetch_kernel_by_excess_sig() {
-    let store = create_test_blockchain_db();
+    let store = create_test_blockchain_db().unwrap();
     let mempool = new_mempool();
 
     let network = Network::LocalNet;
@@ -131,7 +131,7 @@ async fn inbound_fetch_kernel_by_excess_sig() {
 
 #[tokio::test]
 async fn inbound_fetch_headers() {
-    let store = create_test_blockchain_db();
+    let store = create_test_blockchain_db().unwrap();
     let mempool = new_mempool();
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManager::builder(network).build().unwrap();
@@ -162,7 +162,7 @@ async fn inbound_fetch_headers() {
 
 #[tokio::test]
 async fn inbound_fetch_utxos() {
-    let store = create_test_blockchain_db();
+    let store = create_test_blockchain_db().unwrap();
     let mempool = new_mempool();
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManager::builder(network).build().unwrap();
@@ -209,7 +209,7 @@ async fn inbound_fetch_utxos() {
 
 #[tokio::test]
 async fn inbound_fetch_blocks() {
-    let store = create_test_blockchain_db();
+    let store = create_test_blockchain_db().unwrap();
     let mempool = new_mempool();
     let (block_event_sender, _) = broadcast::channel(50);
     let network = Network::LocalNet;
@@ -246,7 +246,7 @@ async fn inbound_fetch_blocks() {
 #[allow(clippy::too_many_lines)]
 async fn inbound_fetch_blocks_before_horizon_height() {
     let consensus_manager = ConsensusManager::builder(Network::LocalNet).build().unwrap();
-    let block0 = consensus_manager.get_genesis_block();
+    let block0 = consensus_manager.get_genesis_block().unwrap();
     let key_manager = create_test_core_key_manager_with_memory_db();
     let validators = Validators::new(
         MockValidator::new(true),
@@ -258,7 +258,8 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         pruning_interval: 1,
         ..Default::default()
     };
-    let store = create_store_with_consensus_and_validators_and_config(consensus_manager.clone(), validators, config);
+    let store =
+        create_store_with_consensus_and_validators_and_config(consensus_manager.clone(), validators, config).unwrap();
     let mempool_validator = TransactionChainLinkedValidator::new(store.clone(), consensus_manager.clone());
     let mempool = Mempool::new(
         MempoolConfig::default(),

@@ -41,7 +41,7 @@ use tari_core::{
         sync::rpc::BaseNodeSyncRpcService,
     },
     blocks::ChainBlock,
-    consensus::{ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder, NetworkConsensus},
+    consensus::{ConsensusManager, NetworkConsensus},
     proto::{
         base_node::{FetchMatchingUtxos, Signatures as SignaturesProto, SyncUtxosByBlockRequest},
         types::{Signature as SignatureProto, Transaction as TransactionProto},
@@ -62,7 +62,7 @@ use tokio::sync::broadcast;
 
 use crate::{
     helpers::{
-        block_builders::{chain_block, chain_block_with_new_coinbase, create_genesis_block_with_coinbase_value},
+        block_builders::{chain_block, chain_block_with_new_coinbase, create_blockchain_with_spendable_coinbase},
         nodes::{BaseNodeBuilder, NodeInterfaces},
     },
     tests::assert_block_add_result_added,
@@ -80,20 +80,13 @@ async fn setup() -> (
     TestKeyManager,
 ) {
     let network = NetworkConsensus::from(Network::LocalNet);
-    let consensus_constants = ConsensusConstantsBuilder::new(Network::LocalNet)
-        .with_coinbase_lockheight(1)
-        .build();
     let key_manager = create_test_core_key_manager_with_memory_db();
     let temp_dir = tempdir().unwrap();
-    let (block0, utxo0) =
-        create_genesis_block_with_coinbase_value(100_000_000.into(), &consensus_constants, &key_manager).await;
-    let consensus_manager = ConsensusManagerBuilder::new(network.as_network())
-        .with_block(block0.clone())
-        .build()
-        .unwrap();
+    let (block0, utxo0, rules, blockchain_db) =
+        create_blockchain_with_spendable_coinbase(&key_manager, Network::LocalNet, &None).await;
     let (mut base_node, _consensus_manager) = BaseNodeBuilder::new(network)
-        .with_consensus_manager(consensus_manager.clone())
-        .start(temp_dir.path().to_str().unwrap())
+        .with_consensus_manager(rules.clone())
+        .start(temp_dir.path().to_str().unwrap(), Some(blockchain_db))
         .await;
     base_node.mock_base_node_state_machine.publish_status(StatusInfo {
         bootstrapped: true,
@@ -118,7 +111,7 @@ async fn setup() -> (
         base_node_service,
         base_node,
         request_mock,
-        consensus_manager,
+        rules,
         block0,
         utxo0,
         temp_dir,

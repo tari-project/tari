@@ -140,8 +140,8 @@ message NewBlockTemplate {
     tari.types.AggregateBody body = 2;
     // The difficulty is defined as the maximum target divided by the block hash.
     uint64 target_difficulty = 3;
-    // The reward is the sum of the coinbase utxo and the total fees.
-    uint64 reward = 4;
+    // The emission is equal to the value of the coinbase utxo.
+    uint64 emission = 4;
     // The total fees is the sum of all the fees in the block.
     uint64 total_fees  = 5;
 }

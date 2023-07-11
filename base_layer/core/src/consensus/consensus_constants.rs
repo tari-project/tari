@@ -26,14 +26,12 @@ use std::{
 };
 
 use chrono::{DateTime, Duration, Utc};
-use tari_common::configuration::Network;
 use tari_common_types::epoch::VnEpoch;
 use tari_script::{script, OpcodeVersion};
 use tari_utilities::epoch_time::EpochTime;
 
 use crate::{
     borsh::SerializedSize,
-    consensus::network::NetworkConsensus,
     proof_of_work::{Difficulty, PowAlgorithm},
     transactions::{
         tari_amount::{uT, MicroTari, T},
@@ -50,15 +48,18 @@ use crate::{
     },
 };
 
+static EMISSION_DECAY: [u64; 6] = [21u64, 22, 23, 25, 26, 37];
+const ESMERALDA_DECAY_PARAMS: [u64; 6] = [21u64, 22, 23, 25, 26, 37]; // less significant values don't matter
+
 /// This is the inner struct used to control all consensus values.
 #[derive(Debug, Clone)]
 pub struct ConsensusConstants {
     /// The height at which these constants become effective
     effective_from_height: u64,
     /// The minimum maturity a coinbase utxo must have, in number of blocks
-    coinbase_min_maturity: u64,
+    pub(in crate::consensus) coinbase_min_maturity: u64,
     /// Current version of the blockchain
-    blockchain_version: u16,
+    pub(in crate::consensus) blockchain_version: u16,
     /// The blockchain version that are accepted. Values outside of this range will be rejected.
     valid_blockchain_version_range: RangeInclusive<u16>,
     /// The Future Time Limit (FTL) of the blockchain in seconds. This is the max allowable timestamp that is accepted.
@@ -68,7 +69,7 @@ pub struct ConsensusConstants {
     /// <https://github.com/zawy12/difficulty-algorithms/issues/14>
     difficulty_block_window: u64,
     /// Maximum transaction weight used for the construction of new blocks.
-    max_block_transaction_weight: u64,
+    pub(in crate::consensus) max_block_transaction_weight: u64,
     /// This is how many blocks we use to count towards the median timestamp to ensure the block chain timestamp moves
     /// forward
     median_timestamp_count: usize,
@@ -81,16 +82,16 @@ pub struct ConsensusConstants {
     pub(in crate::consensus) emission_tail: MicroTari,
     /// This is the maximum age a Monero merge mined seed can be reused
     /// Monero forces a change every height mod 2048 blocks
-    max_randomx_seed_height: u64,
+    pub(in crate::consensus) max_randomx_seed_height: u64,
     /// This keeps track of the block split targets and which algo is accepted
     /// Ideally this should count up to 100. If this does not you will reduce your target time.
-    proof_of_work: HashMap<PowAlgorithm, PowAlgorithmConstants>,
+    pub(in crate::consensus) proof_of_work: HashMap<PowAlgorithm, PowAlgorithmConstants>,
     /// This is to keep track of the value inside of the genesis block
-    faucet_value: MicroTari,
+    pub(in crate::consensus) faucet_value: MicroTari,
     /// Transaction Weight params
     transaction_weight: TransactionWeight,
     /// Maximum byte size of TariScript
-    max_script_byte_size: usize,
+    pub(in crate::consensus) max_script_byte_size: usize,
     /// Range of valid transaction input versions
     input_version_range: RangeInclusive<TransactionInputVersion>,
     /// Range of valid transaction output (and features) versions
@@ -98,9 +99,9 @@ pub struct ConsensusConstants {
     /// Range of valid transaction kernel versions
     kernel_version_range: RangeInclusive<TransactionKernelVersion>,
     /// An allowlist of output types
-    permitted_output_types: &'static [OutputType],
+    pub(in crate::consensus) permitted_output_types: &'static [OutputType],
     /// The allowlist of range proof types
-    permitted_range_proof_types: &'static [RangeProofType],
+    pub(in crate::consensus) permitted_range_proof_types: &'static [RangeProofType],
     /// Coinbase outputs are allowed to have metadata, but it has the following length limit
     coinbase_output_features_extra_max_length: u32,
     /// Maximum number of token elements permitted in covenants
@@ -148,8 +149,6 @@ pub struct PowAlgorithmConstants {
     pub max_difficulty: Difficulty,
     pub target_time: u64,
 }
-
-const ESMERALDA_FAUCET_VALUE: u64 = 5_025_126_665_742_480;
 
 // The target time used by the difficulty adjustment algorithms, their target time is the target block interval * PoW
 // algorithm count
@@ -360,7 +359,7 @@ impl ConsensusConstants {
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
         let consensus_constants = vec![ConsensusConstants {
             effective_from_height: 0,
-            coinbase_min_maturity: 2,
+            coinbase_min_maturity: 1,
             blockchain_version: 0,
             valid_blockchain_version_range: 0..=0,
             future_time_limit: 540,
@@ -372,7 +371,7 @@ impl ConsensusConstants {
             emission_tail: 800 * T,
             max_randomx_seed_height: u64::MAX,
             proof_of_work: algos,
-            faucet_value: ESMERALDA_FAUCET_VALUE.into(), // The esmeralda genesis block is re-used for localnet
+            faucet_value: MicroTari::zero(), // We do not want any faucet UTXOs on localnet to speed up testing
             transaction_weight: TransactionWeight::latest(),
             max_script_byte_size: 2048,
             input_version_range,
@@ -495,7 +494,7 @@ impl ConsensusConstants {
             emission_tail: 800 * T,
             max_randomx_seed_height: 3000,
             proof_of_work: algos,
-            faucet_value: ESMERALDA_FAUCET_VALUE.into(),
+            faucet_value: 5_025_126_665_742_480.into(),
             transaction_weight: TransactionWeight::v1(),
             max_script_byte_size: 2048,
             input_version_range,
@@ -763,96 +762,6 @@ fn assert_hybrid_pow_constants(
     }
 }
 
-static EMISSION_DECAY: [u64; 6] = [21u64, 22, 23, 25, 26, 37];
-const ESMERALDA_DECAY_PARAMS: [u64; 6] = [21u64, 22, 23, 25, 26, 37]; // less significant values don't matter
-
-/// Class to create custom consensus constants
-pub struct ConsensusConstantsBuilder {
-    consensus: ConsensusConstants,
-}
-
-impl ConsensusConstantsBuilder {
-    pub fn new(network: Network) -> Self {
-        Self {
-            consensus: NetworkConsensus::from(network)
-                .create_consensus_constants()
-                .pop()
-                .expect("Empty consensus constants"),
-        }
-    }
-
-    pub fn clear_proof_of_work(mut self) -> Self {
-        self.consensus.proof_of_work = HashMap::new();
-        self
-    }
-
-    pub fn add_proof_of_work(mut self, proof_of_work: PowAlgorithm, constants: PowAlgorithmConstants) -> Self {
-        self.consensus.proof_of_work.insert(proof_of_work, constants);
-        self
-    }
-
-    pub fn with_coinbase_lockheight(mut self, height: u64) -> Self {
-        self.consensus.coinbase_min_maturity = height;
-        self
-    }
-
-    pub fn with_max_script_byte_size(mut self, byte_size: usize) -> Self {
-        self.consensus.max_script_byte_size = byte_size;
-        self
-    }
-
-    pub fn with_max_block_transaction_weight(mut self, weight: u64) -> Self {
-        self.consensus.max_block_transaction_weight = weight;
-        self
-    }
-
-    pub fn with_consensus_constants(mut self, consensus: ConsensusConstants) -> Self {
-        self.consensus = consensus;
-        self
-    }
-
-    pub fn with_max_randomx_seed_height(mut self, height: u64) -> Self {
-        self.consensus.max_randomx_seed_height = height;
-        self
-    }
-
-    pub fn with_faucet_value(mut self, value: MicroTari) -> Self {
-        self.consensus.faucet_value = value;
-        self
-    }
-
-    pub fn with_emission_amounts(
-        mut self,
-        intial_amount: MicroTari,
-        decay: &'static [u64],
-        tail_amount: MicroTari,
-    ) -> Self {
-        self.consensus.emission_initial = intial_amount;
-        self.consensus.emission_decay = decay;
-        self.consensus.emission_tail = tail_amount;
-        self
-    }
-
-    pub fn with_permitted_output_types(mut self, permitted_output_types: &'static [OutputType]) -> Self {
-        self.consensus.permitted_output_types = permitted_output_types;
-        self
-    }
-
-    pub fn with_permitted_range_proof_types(mut self, permitted_range_proof_types: &'static [RangeProofType]) -> Self {
-        self.consensus.permitted_range_proof_types = permitted_range_proof_types;
-        self
-    }
-
-    pub fn with_blockchain_version(mut self, version: u16) -> Self {
-        self.consensus.blockchain_version = version;
-        self
-    }
-
-    pub fn build(self) -> ConsensusConstants {
-        self.consensus
-    }
-}
-
 #[cfg(test)]
 mod test {
     use std::convert::TryFrom;
@@ -884,10 +793,10 @@ mod test {
             esmeralda[0].emission_tail,
         );
         // No genesis block coinbase
-        assert_eq!(schedule.block_reward(0), MicroTari(0));
+        assert_eq!(schedule.block_emission(0), MicroTari(0));
         // Coinbases starts at block 1
         let coinbase_offset = 1;
-        let first_reward = schedule.block_reward(coinbase_offset);
+        let first_reward = schedule.block_emission(coinbase_offset);
         assert_eq!(first_reward, esmeralda[0].emission_initial * uT);
         assert_eq!(schedule.supply_at_block(coinbase_offset), first_reward);
         let three_years = 365 * 24 * 30 * 3;
@@ -912,10 +821,10 @@ mod test {
         let igor = ConsensusConstants::igor();
         let schedule = EmissionSchedule::new(igor[0].emission_initial, igor[0].emission_decay, igor[0].emission_tail);
         // No genesis block coinbase
-        assert_eq!(schedule.block_reward(0), MicroTari(0));
+        assert_eq!(schedule.block_emission(0), MicroTari(0));
         // Coinbases starts at block 1
         let coinbase_offset = 1;
-        let first_reward = schedule.block_reward(coinbase_offset);
+        let first_reward = schedule.block_emission(coinbase_offset);
         assert_eq!(first_reward, igor[0].emission_initial * uT);
         assert_eq!(schedule.supply_at_block(coinbase_offset), first_reward);
         let three_years = 365 * 24 * 30 * 3;

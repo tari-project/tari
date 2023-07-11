@@ -96,7 +96,7 @@ pub async fn create_block(
         .with_fees(0.into())
         .with_spend_key_id(spend_key_id.clone())
         .with_script_key_id(spend_key_id)
-        .build_with_reward(rules.consensus_constants(block_height), reward)
+        .build_with_emission(rules.consensus_constants(block_height), reward)
         .await
         .unwrap();
 

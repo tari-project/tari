@@ -24,21 +24,18 @@
 use tari_common::configuration::Network;
 use tari_core::{
     blocks::ChainBlock,
-    chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, Validators},
-    consensus::{ConsensusConstants, ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder},
-    test_helpers::blockchain::{create_store_with_consensus, TempDatabase},
+    chain_storage::BlockchainDatabase,
+    consensus::{ConsensusConstants, ConsensusManager},
+    test_helpers::blockchain::TempDatabase,
     transactions::{
         tari_amount::{uT, T},
         test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager},
         transaction_components::WalletOutput,
     },
     txn_schema,
-    validation::DifficultyCalculator,
 };
 
-use crate::helpers::block_builders::{create_genesis_block, generate_new_block};
-
-static EMISSION: [u64; 2] = [10, 10];
+use crate::helpers::block_builders::{create_blockchain_with_spendable_coinbase, generate_block_with_schemas};
 
 /// Create a simple 6 block memory-backed database.
 /// Genesis block:
@@ -90,7 +87,7 @@ pub async fn create_blockchain_db_no_cut_through() -> (
     let (mut db, mut blocks, mut outputs, consensus_manager, key_manager) = create_new_blockchain(network).await;
     // Block 1
     let txs = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![60*T], fee: 100*uT)];
-    generate_new_block(
+    generate_block_with_schemas(
         &mut db,
         &mut blocks,
         &mut outputs,
@@ -105,7 +102,7 @@ pub async fn create_blockchain_db_no_cut_through() -> (
         txn_schema!(from: vec![outputs[1][0].clone()], to: vec![20*T, 5*T, 1*T], fee: 120*uT),
         txn_schema!(from: vec![outputs[1][1].clone()], to: vec![15*T], fee: 75*uT),
     ];
-    generate_new_block(
+    generate_block_with_schemas(
         &mut db,
         &mut blocks,
         &mut outputs,
@@ -120,7 +117,7 @@ pub async fn create_blockchain_db_no_cut_through() -> (
         txn_schema!(from: vec![outputs[2][1].clone(), outputs[2][2].clone()], to: vec![]),
         txn_schema!(from: vec![outputs[2][4].clone(), outputs[2][3].clone()], to: vec![40*T], fee: 100*uT),
     ];
-    generate_new_block(
+    generate_block_with_schemas(
         &mut db,
         &mut blocks,
         &mut outputs,
@@ -135,7 +132,7 @@ pub async fn create_blockchain_db_no_cut_through() -> (
         from: vec![outputs[2][0].clone()],
         to: vec![1 * T, 2 * T, 3 * T, 4 * T]
     )];
-    generate_new_block(
+    generate_block_with_schemas(
         &mut db,
         &mut blocks,
         &mut outputs,
@@ -157,7 +154,7 @@ pub async fn create_blockchain_db_no_cut_through() -> (
         ),
         txn_schema!(from: vec![outputs[3][2].clone()], to: vec![500_000 * uT]),
     ];
-    generate_new_block(
+    generate_block_with_schemas(
         &mut db,
         &mut blocks,
         &mut outputs,
@@ -170,7 +167,7 @@ pub async fn create_blockchain_db_no_cut_through() -> (
     (db, blocks, outputs, consensus_manager, key_manager)
 }
 
-/// Create a new blockchain database containing only the Genesis block
+/// Create a new blockchain database with a spendable coinbase
 #[allow(dead_code)]
 pub async fn create_new_blockchain(
     network: Network,
@@ -182,85 +179,35 @@ pub async fn create_new_blockchain(
     TestKeyManager,
 ) {
     let key_manager = create_test_core_key_manager_with_memory_db();
-    let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
-        .with_coinbase_lockheight(1)
-        .build();
-    let (block0, output) = create_genesis_block(&consensus_constants, &key_manager).await;
-    let consensus_manager = ConsensusManagerBuilder::new(network)
-        .add_consensus_constants(consensus_constants)
-        .with_block(block0.clone())
-        .build()
-        .unwrap();
+    let (block_at_tip, first_coinbase, consensus_manager, blockchain_db) =
+        create_blockchain_with_spendable_coinbase(&key_manager, network, &None).await;
     (
-        create_store_with_consensus(consensus_manager.clone()),
-        vec![block0],
-        vec![vec![output]],
+        blockchain_db,
+        vec![block_at_tip],
+        vec![vec![first_coinbase]],
         consensus_manager,
         key_manager,
     )
 }
 
-/// Create a new blockchain database containing only the Genesis block
+/// Create a new blockchain database with a spendable coinbase
 #[allow(dead_code)]
 pub async fn create_new_blockchain_with_constants(
     network: Network,
     constants: ConsensusConstants,
+    key_manager: &TestKeyManager,
 ) -> (
     BlockchainDatabase<TempDatabase>,
     Vec<ChainBlock>,
     Vec<Vec<WalletOutput>>,
     ConsensusManager,
-    TestKeyManager,
 ) {
-    let key_manager = create_test_core_key_manager_with_memory_db();
-    let (block0, output) = create_genesis_block(&constants, &key_manager).await;
-    let consensus_manager = ConsensusManagerBuilder::new(network)
-        .add_consensus_constants(constants)
-        .with_block(block0.clone())
-        .build()
-        .unwrap();
+    let (block0, output, consensus_manager, blockchain_db) =
+        create_blockchain_with_spendable_coinbase(key_manager, network, &Some(constants)).await;
     (
-        create_store_with_consensus(consensus_manager.clone()),
+        blockchain_db,
         vec![block0],
         vec![vec![output]],
         consensus_manager,
-        key_manager,
     )
-}
-
-/// Create a new blockchain database containing only the Genesis block
-#[allow(dead_code)]
-pub async fn create_new_blockchain_lmdb(
-    network: Network,
-    validators: Validators<TempDatabase>,
-    config: BlockchainDatabaseConfig,
-) -> (
-    BlockchainDatabase<TempDatabase>,
-    Vec<ChainBlock>,
-    Vec<Vec<WalletOutput>>,
-    ConsensusManager,
-    TestKeyManager,
-) {
-    let key_manager = create_test_core_key_manager_with_memory_db();
-    let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
-        .with_coinbase_lockheight(1)
-        .build();
-    let (block0, output) = create_genesis_block(&consensus_constants, &key_manager).await;
-    let consensus_manager = ConsensusManagerBuilder::new(network)
-        .add_consensus_constants(consensus_constants)
-        .with_block(block0.clone())
-        .build()
-        .unwrap();
-    let db = TempDatabase::new();
-    let db = BlockchainDatabase::new(
-        db,
-        consensus_manager.clone(),
-        validators,
-        config,
-        DifficultyCalculator::new(consensus_manager.clone(), Default::default()),
-    )
-    .unwrap();
-    (db, vec![block0], vec![vec![output]], consensus_manager, key_manager)
 }

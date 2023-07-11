@@ -42,21 +42,21 @@ pub struct NewBlockTemplate {
     pub body: AggregateBody,
     /// The difficulty is defined as the maximum target divided by the block hash.
     pub target_difficulty: Difficulty,
-    /// The reward is the sum of the coinbase utxo and the total fees.
-    pub reward: MicroTari,
+    /// The emission is equal to the value of the coinbase utxo.
+    pub emission: MicroTari,
     /// The total fees is the sum of all the fees in the block.
     pub total_fees: MicroTari,
 }
 
 impl NewBlockTemplate {
-    pub fn from_block(block: Block, target_difficulty: Difficulty, reward: MicroTari) -> Self {
+    pub fn from_block(block: Block, target_difficulty: Difficulty, emission: MicroTari) -> Self {
         let Block { header, body } = block;
         let total_fees = body.get_total_fee();
         Self {
             header: NewBlockHeaderTemplate::from_header(header),
             body,
             target_difficulty,
-            reward,
+            emission,
             total_fees,
         }
     }
@@ -71,8 +71,8 @@ impl Display for NewBlockTemplate {
         writeln!(f, "{}", self.body)?;
         writeln!(
             f,
-            "Target difficulty: {}\nReward: {}\nTotal fees: {}",
-            self.target_difficulty, self.reward, self.total_fees
+            "Target difficulty: {}\nEmission: {}\nTotal fees: {}",
+            self.target_difficulty, self.emission, self.total_fees
         )?;
         Ok(())
     }

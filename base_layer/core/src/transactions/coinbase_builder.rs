@@ -167,8 +167,8 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         emission_schedule: &EmissionSchedule,
     ) -> Result<(Transaction, WalletOutput), CoinbaseBuildError> {
         let height = self.block_height.ok_or(CoinbaseBuildError::MissingBlockHeight)?;
-        let reward = emission_schedule.block_reward(height);
-        self.build_with_reward(constants, reward).await
+        let emission = emission_schedule.block_emission(height);
+        self.build_with_emission(constants, emission).await
     }
 
     /// Try and construct a Coinbase Transaction while specifying the block reward. The other parameters (keys, nonces
@@ -177,14 +177,14 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
     /// set from the consensus rules.
     #[allow(clippy::too_many_lines)]
     #[allow(clippy::erasing_op)] // This is for 0 * uT
-    pub async fn build_with_reward(
+    pub async fn build_with_emission(
         self,
         constants: &ConsensusConstants,
-        block_reward: MicroTari,
+        block_emission: MicroTari,
     ) -> Result<(Transaction, WalletOutput), CoinbaseBuildError> {
         // gets tx details
         let height = self.block_height.ok_or(CoinbaseBuildError::MissingBlockHeight)?;
-        let total_reward = block_reward + self.fees.ok_or(CoinbaseBuildError::MissingFees)?;
+        let total_reward = block_emission + self.fees.ok_or(CoinbaseBuildError::MissingFees)?;
         let spending_key_id = self.spend_key_id.ok_or(CoinbaseBuildError::MissingSpendKey)?;
         let script_key_id = self.script_key_id.ok_or(CoinbaseBuildError::MissingScriptKey)?;
         let covenant = self.covenant;
@@ -393,7 +393,7 @@ mod test {
             .await
             .unwrap();
         let utxo = &tx.body.outputs()[0];
-        let block_reward = rules.emission_schedule().block_reward(42) + 145 * uT;
+        let block_reward = rules.emission_schedule().block_emission(42) + 145 * uT;
 
         let commitment = key_manager
             .get_commitment(&p.spend_key_id, &block_reward.into())
@@ -428,7 +428,7 @@ mod test {
     async fn invalid_coinbase_maturity() {
         let (builder, rules, factories, key_manager) = get_builder();
         let p = TestParams::new(&key_manager).await;
-        let block_reward = rules.emission_schedule().block_reward(42) + 145 * uT;
+        let block_reward = rules.emission_schedule().block_emission(42) + 145 * uT;
         let builder = builder
             .with_block_height(42)
             .with_fees(145 * uT)
@@ -456,7 +456,7 @@ mod test {
         let (builder, rules, factories, key_manager) = get_builder();
         let p = TestParams::new(&key_manager).await;
         // We just want some small amount here.
-        let missing_fee = rules.emission_schedule().block_reward(4200000) + (2 * uT);
+        let missing_fee = rules.emission_schedule().block_emission(4200000) + (2 * uT);
         let builder = builder
             .with_block_height(42)
             .with_fees(1 * uT)
@@ -466,7 +466,7 @@ mod test {
             .build(rules.consensus_constants(0), rules.emission_schedule())
             .await
             .unwrap();
-        let block_reward = rules.emission_schedule().block_reward(42) + missing_fee;
+        let block_reward = rules.emission_schedule().block_emission(42) + missing_fee;
         let builder = CoinbaseBuilder::new(key_manager.clone());
         let builder = builder
             .with_block_height(4200000)
@@ -532,7 +532,7 @@ mod test {
         let (builder, rules, factories, key_manager) = get_builder();
         let p = TestParams::new(&key_manager).await;
         // We just want some small amount here.
-        let missing_fee = rules.emission_schedule().block_reward(4200000) + (2 * uT);
+        let missing_fee = rules.emission_schedule().block_emission(4200000) + (2 * uT);
         let builder = builder
             .with_block_height(42)
             .with_fees(1 * uT)
@@ -544,7 +544,7 @@ mod test {
             .unwrap();
 
         // we calculate a duplicate tx here so that we can have a coinbase with the correct fee amount
-        let block_reward = rules.emission_schedule().block_reward(42) + missing_fee;
+        let block_reward = rules.emission_schedule().block_emission(42) + missing_fee;
         let builder = CoinbaseBuilder::new(key_manager.clone());
         let builder = builder
             .with_block_height(4200000)

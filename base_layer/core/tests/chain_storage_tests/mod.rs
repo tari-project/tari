@@ -21,5 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
+#[cfg(any(test))]
 mod chain_backend;
+#[cfg(any(test))]
 mod chain_storage;

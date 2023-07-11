@@ -34,9 +34,6 @@ use crate::{
     transactions::{aggregated_body::AggregateBody, transaction_components::TransactionOutput},
 };
 
-// This can be adjusted as required, but must be limited
-const NOT_BEFORE_PROOF_BYTES_SIZE: usize = u16::MAX as usize;
-
 /// Returns the genesis block for the selected network.
 pub fn get_genesis_block(network: Network) -> ChainBlock {
     use Network::{Esmeralda, Igor, LocalNet, MainNet, NextNet, StageNet};
@@ -46,7 +43,7 @@ pub fn get_genesis_block(network: Network) -> ChainBlock {
         NextNet => get_nextnet_genesis_block(),
         Igor => get_igor_genesis_block(),
         Esmeralda => get_esmeralda_genesis_block(),
-        LocalNet => get_esmeralda_genesis_block(),
+        LocalNet => get_localnet_genesis_block(),
     }
 }
 
@@ -99,6 +96,25 @@ fn print_mr_values(block: &mut Block, print: bool) {
     println!("kernel mr: {}", block.header.kernel_mr.to_hex());
     println!("output mr: {}", block.header.output_mr.to_hex());
     println!("vn mr: {}", block.header.validator_node_mr.to_hex());
+}
+
+pub fn get_localnet_genesis_block() -> ChainBlock {
+    // Lets get the block
+    let block = get_esmeralda_genesis_block_raw();
+
+    // For testing we do not want any faucet UTXOs, so we omit that step
+
+    // Finalize the block
+    let accumulated_data = BlockHeaderAccumulatedData {
+        hash: block.hash(),
+        total_kernel_offset: block.header.total_kernel_offset.clone(),
+        achieved_difficulty: Difficulty::min(),
+        total_accumulated_difficulty: 1,
+        accumulated_randomx_difficulty: Difficulty::min(),
+        accumulated_sha3x_difficulty: Difficulty::min(),
+        target_difficulty: Difficulty::min(),
+    };
+    ChainBlock::try_construct(Arc::new(block), accumulated_data).unwrap()
 }
 
 pub fn get_stagenet_genesis_block() -> ChainBlock {
@@ -316,10 +332,6 @@ fn get_esmeralda_genesis_block_raw() -> Block {
 fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &[u8]) -> Block {
     // Note: Use 'print_new_genesis_block_values' in core/tests/helpers/block_builders.rs to generate the required
     // fields below
-
-    let mut not_before_proof = not_before_proof.to_vec();
-    not_before_proof.truncate(NOT_BEFORE_PROOF_BYTES_SIZE);
-
     #[allow(clippy::cast_sign_loss)]
     let timestamp = genesis_timestamp.timestamp() as u64;
     Block {
@@ -346,7 +358,7 @@ fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &[
             nonce: 0,
             pow: ProofOfWork {
                 pow_algo: PowAlgorithm::Sha3x,
-                pow_data: not_before_proof,
+                pow_data: not_before_proof.to_vec(), // Limited to consensus_manager::NOT_BEFORE_PROOF_BYTES_SIZE
             },
         },
         body: AggregateBody::new(vec![], vec![], vec![]),
@@ -355,127 +367,26 @@ fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &[
 
 #[cfg(test)]
 mod test {
-    use croaring::Bitmap;
-    use tari_common_types::{epoch::VnEpoch, types::Commitment};
-    use tari_utilities::ByteArray;
+    use std::time::Instant;
 
     use super::*;
-    use crate::{
-        chain_storage::calculate_validator_node_mr,
-        consensus::ConsensusManager,
-        test_helpers::blockchain::create_new_blockchain_with_network,
-        transactions::{
-            transaction_components::{transaction_output::batch_verify_range_proofs, KernelFeatures, OutputType},
-            CryptoFactories,
-        },
-        validation::{ChainBalanceValidator, FinalHorizonStateValidation},
-        KernelMmr,
-        MutableOutputMmr,
-    };
+    use crate::consensus::ConsensusManager;
 
     #[test]
-    fn stagenet_genesis_sanity_check() {
-        // Note: Generate new data for `pub fn get_stagenet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
-        // if consensus values change, e.g. new faucet or other
-        let block = get_stagenet_genesis_block();
-        check_block(Network::StageNet, &block, 0, 0);
-    }
-
-    #[test]
-    fn nextnet_genesis_sanity_check() {
-        // Note: Generate new data for `pub fn get_nextnet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
-        // if consensus values change, e.g. new faucet or other
-        let block = get_nextnet_genesis_block();
-        check_block(Network::NextNet, &block, 0, 0);
-    }
-
-    #[test]
-    fn esmeralda_genesis_sanity_check() {
-        // Note: Generate new data for `pub fn get_esmeralda_genesis_block()` and `fn get_esmeralda_genesis_block_raw()`
-        // if consensus values change, e.g. new faucet or other
-        let block = get_esmeralda_genesis_block();
-        check_block(Network::Esmeralda, &block, 4965, 1);
-    }
-
-    #[test]
-    fn igor_genesis_sanity_check() {
-        // Note: Generate new data for `pub fn get_igor_genesis_block()` and `fn get_igor_genesis_block_raw()`
-        // if consensus values change, e.g. new faucet or other
-        let block = get_igor_genesis_block();
-        check_block(Network::Igor, &block, 5526, 1);
-    }
-
-    fn check_block(network: Network, block: &ChainBlock, expected_outputs: usize, expected_kernels: usize) {
-        assert!(block.block().body.inputs().is_empty());
-        assert_eq!(block.block().body.kernels().len(), expected_kernels);
-        assert_eq!(block.block().body.outputs().len(), expected_outputs);
-
-        let factories = CryptoFactories::default();
-        let some_output_is_coinbase = block.block().body.outputs().iter().any(|o| o.is_coinbase());
-        assert!(!some_output_is_coinbase);
-        let outputs = block.block().body.outputs().iter().collect::<Vec<_>>();
-        batch_verify_range_proofs(&factories.range_proof, &outputs).unwrap();
-        // Coinbase and faucet kernel
-        assert_eq!(
-            block.block().body.kernels().len() as u64,
-            block.header().kernel_mmr_size
-        );
-        assert_eq!(
-            block.block().body.outputs().len() as u64,
-            block.header().output_mmr_size
-        );
-
-        for kernel in block.block().body.kernels() {
-            kernel.verify_signature().unwrap();
+    fn genesis_block_sanity_check() {
+        for network in &[
+            // TODO: mainnet not yet implemented, uncomment when ready
+            // Network::MainNet,
+            Network::StageNet,
+            Network::NextNet,
+            Network::LocalNet,
+            Network::Igor,
+            Network::Esmeralda,
+        ] {
+            let start = Instant::now();
+            let consensus_manager = ConsensusManager::builder(*network).build().unwrap();
+            consensus_manager.get_genesis_block().unwrap();
+            println!("genesis_block_sanity_check for '{}': {:?}", network, start.elapsed());
         }
-        let some_kernel_contains_coinbase_features = block
-            .block()
-            .body
-            .kernels()
-            .iter()
-            .any(|k| k.features.contains(KernelFeatures::COINBASE_KERNEL));
-        assert!(!some_kernel_contains_coinbase_features);
-
-        // Check MMR
-        let mut kernel_mmr = KernelMmr::new(Vec::new());
-        for k in block.block().body.kernels() {
-            kernel_mmr.push(k.hash().to_vec()).unwrap();
-        }
-
-        let mut output_mmr = MutableOutputMmr::new(Vec::new(), Bitmap::create()).unwrap();
-        let mut vn_nodes = Vec::new();
-        for o in block.block().body.outputs() {
-            o.verify_metadata_signature().unwrap();
-            output_mmr.push(o.hash().to_vec()).unwrap();
-            if matches!(o.features.output_type, OutputType::ValidatorNodeRegistration) {
-                let reg = o
-                    .features
-                    .sidechain_feature
-                    .as_ref()
-                    .and_then(|f| f.validator_node_registration())
-                    .unwrap();
-                vn_nodes.push((
-                    reg.public_key().clone(),
-                    reg.derive_shard_key(None, VnEpoch(0), VnEpoch(0), block.hash()),
-                ));
-            }
-        }
-
-        assert_eq!(kernel_mmr.get_merkle_root().unwrap(), block.header().kernel_mr,);
-        assert_eq!(output_mmr.get_merkle_root().unwrap(), block.header().output_mr,);
-        assert_eq!(calculate_validator_node_mr(&vn_nodes), block.header().validator_node_mr,);
-
-        // Check that the faucet UTXOs balance (the faucet_value consensus constant is set correctly and faucet kernel
-        // is correct)
-
-        let utxo_sum = block.block().body.outputs().iter().map(|o| &o.commitment).sum();
-        let kernel_sum = block.block().body.kernels().iter().map(|k| &k.excess).sum();
-
-        let db = create_new_blockchain_with_network(Network::Igor);
-
-        let lock = db.db_read_access().unwrap();
-        ChainBalanceValidator::new(ConsensusManager::builder(network).build().unwrap(), Default::default())
-            .validate(&*lock, 0, &utxo_sum, &kernel_sum, &Commitment::default())
-            .unwrap();
     }
 }

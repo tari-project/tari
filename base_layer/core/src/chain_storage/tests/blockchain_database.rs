@@ -39,7 +39,7 @@ use crate::{
     txn_schema,
 };
 
-fn setup() -> BlockchainDatabase<TempDatabase> {
+fn setup() -> Result<BlockchainDatabase<TempDatabase>, ChainStorageError> {
     create_new_blockchain()
 }
 
@@ -105,14 +105,14 @@ mod fetch_blocks {
 
     #[test]
     fn it_returns_genesis() {
-        let db = setup();
+        let db = setup().unwrap();
         let blocks = db.fetch_blocks(0.., true).unwrap();
         assert_eq!(blocks.len(), 1);
     }
 
     #[tokio::test]
     async fn it_returns_all() {
-        let db = setup();
+        let db = setup().unwrap();
         let key_manager = create_test_core_key_manager_with_memory_db();
         add_many_chained_blocks(4, &db, &key_manager).await;
         let blocks = db.fetch_blocks(.., true).unwrap();
@@ -124,7 +124,7 @@ mod fetch_blocks {
 
     #[tokio::test]
     async fn it_returns_one() {
-        let db = setup();
+        let db = setup().unwrap();
         let key_manager = create_test_core_key_manager_with_memory_db();
         let (new_blocks, _) = add_many_chained_blocks(1, &db, &key_manager).await;
         let blocks = db.fetch_blocks(1..=1, true).unwrap();
@@ -134,7 +134,7 @@ mod fetch_blocks {
 
     #[tokio::test]
     async fn it_returns_nothing_if_asking_for_blocks_out_of_range() {
-        let db = setup();
+        let db = setup().unwrap();
         let key_manager = create_test_core_key_manager_with_memory_db();
         add_many_chained_blocks(1, &db, &key_manager).await;
         let blocks = db.fetch_blocks(2.., true).unwrap();
@@ -143,7 +143,7 @@ mod fetch_blocks {
 
     #[tokio::test]
     async fn it_returns_blocks_between_bounds_exclusive() {
-        let db = setup();
+        let db = setup().unwrap();
         let key_manager = create_test_core_key_manager_with_memory_db();
         add_many_chained_blocks(5, &db, &key_manager).await;
         let blocks = db.fetch_blocks(3..5, true).unwrap();
@@ -154,7 +154,7 @@ mod fetch_blocks {
 
     #[tokio::test]
     async fn it_returns_blocks_between_bounds_inclusive() {
-        let db = setup();
+        let db = setup().unwrap();
         let key_manager = create_test_core_key_manager_with_memory_db();
         add_many_chained_blocks(5, &db, &key_manager).await;
         let blocks = db.fetch_blocks(3..=5, true).unwrap();
@@ -166,7 +166,7 @@ mod fetch_blocks {
 
     #[tokio::test]
     async fn it_returns_blocks_to_the_tip() {
-        let db = setup();
+        let db = setup().unwrap();
         let key_manager = create_test_core_key_manager_with_memory_db();
         add_many_chained_blocks(5, &db, &key_manager).await;
         let blocks = db.fetch_blocks(3.., true).unwrap();
@@ -178,7 +178,7 @@ mod fetch_blocks {
 
     #[tokio::test]
     async fn it_returns_blocks_from_genesis() {
-        let db = setup();
+        let db = setup().unwrap();
         let key_manager = create_test_core_key_manager_with_memory_db();
         add_many_chained_blocks(5, &db, &key_manager).await;
         let blocks = db.fetch_blocks(..=3, true).unwrap();
@@ -195,7 +195,7 @@ mod fetch_headers {
 
     #[test]
     fn it_returns_genesis() {
-        let db = setup();
+        let db = setup().unwrap();
         let headers = db.fetch_headers(0..).unwrap();
         assert_eq!(headers.len(), 1);
         let headers = db.fetch_headers(0..0).unwrap();
@@ -208,7 +208,7 @@ mod fetch_headers {
 
     #[tokio::test]
     async fn it_returns_all() {
-        let db = setup();
+        let db = setup().unwrap();
         let key_manager = create_test_core_key_manager_with_memory_db();
         add_many_chained_blocks(4, &db, &key_manager).await;
         let headers = db.fetch_headers(..).unwrap();
@@ -220,7 +220,7 @@ mod fetch_headers {
 
     #[tokio::test]
     async fn it_returns_nothing_if_asking_for_blocks_out_of_range() {
-        let db = setup();
+        let db = setup().unwrap();
         let key_manager = create_test_core_key_manager_with_memory_db();
         add_many_chained_blocks(1, &db, &key_manager).await;
         let headers = db.fetch_headers(2..).unwrap();
@@ -229,7 +229,7 @@ mod fetch_headers {
 
     #[tokio::test]
     async fn it_returns_blocks_between_bounds_exclusive() {
-        let db = setup();
+        let db = setup().unwrap();
         let key_manager = create_test_core_key_manager_with_memory_db();
         add_many_chained_blocks(5, &db, &key_manager).await;
         let headers = db.fetch_headers(3..5).unwrap();
@@ -240,7 +240,7 @@ mod fetch_headers {
 
     #[tokio::test]
     async fn it_returns_blocks_between_bounds_inclusive() {
-        let db = setup();
+        let db = setup().unwrap();
         let key_manager = create_test_core_key_manager_with_memory_db();
         add_many_chained_blocks(5, &db, &key_manager).await;
         let headers = db.fetch_headers(3..=5).unwrap();
@@ -251,7 +251,7 @@ mod fetch_headers {
     }
     #[tokio::test]
     async fn it_returns_blocks_to_the_tip() {
-        let db = setup();
+        let db = setup().unwrap();
         let key_manager = create_test_core_key_manager_with_memory_db();
         add_many_chained_blocks(5, &db, &key_manager).await;
         let headers = db.fetch_headers(3..).unwrap();
@@ -263,7 +263,7 @@ mod fetch_headers {
 
     #[tokio::test]
     async fn it_returns_blocks_from_genesis() {
-        let db = setup();
+        let db = setup().unwrap();
         let key_manager = create_test_core_key_manager_with_memory_db();
         add_many_chained_blocks(5, &db, &key_manager).await;
         let headers = db.fetch_headers(..=3).unwrap();
@@ -282,14 +282,14 @@ mod find_headers_after_hash {
 
     #[test]
     fn it_returns_none_given_empty_vec() {
-        let db = setup();
+        let db = setup().unwrap();
         let hashes = vec![];
         assert!(db.find_headers_after_hash(hashes, 1).unwrap().is_none());
     }
 
     #[tokio::test]
     async fn it_returns_from_genesis() {
-        let db = setup();
+        let db = setup().unwrap();
         let genesis_hash = db.fetch_block(0, true).unwrap().block().hash();
         let key_manager = create_test_core_key_manager_with_memory_db();
         add_many_chained_blocks(1, &db, &key_manager).await;
@@ -301,7 +301,7 @@ mod find_headers_after_hash {
     }
     #[tokio::test]
     async fn it_returns_the_first_headers_found() {
-        let db = setup();
+        let db = setup().unwrap();
         let key_manager = create_test_core_key_manager_with_memory_db();
         add_many_chained_blocks(5, &db, &key_manager).await;
         let hashes = (1..=3)
@@ -316,7 +316,7 @@ mod find_headers_after_hash {
 
     #[tokio::test]
     async fn fnit_ignores_unknown_hashes() {
-        let db = setup();
+        let db = setup().unwrap();
 
         let key_manager = create_test_core_key_manager_with_memory_db();
         add_many_chained_blocks(5, &db, &key_manager).await;
@@ -336,7 +336,7 @@ mod fetch_block_hashes_from_header_tip {
 
     #[test]
     fn it_returns_genesis() {
-        let db = setup();
+        let db = setup().unwrap();
         let genesis = db.fetch_tip_header().unwrap();
         let hashes = db.fetch_block_hashes_from_header_tip(10, 0).unwrap();
         assert_eq!(hashes.len(), 1);
@@ -344,7 +344,7 @@ mod fetch_block_hashes_from_header_tip {
     }
     #[tokio::test]
     async fn it_returns_empty_set_for_big_offset() {
-        let db = setup();
+        let db = setup().unwrap();
         let key_manager = create_test_core_key_manager_with_memory_db();
         add_many_chained_blocks(5, &db, &key_manager).await;
         let hashes = db.fetch_block_hashes_from_header_tip(3, 6).unwrap();
@@ -353,7 +353,7 @@ mod fetch_block_hashes_from_header_tip {
 
     #[tokio::test]
     async fn it_returns_n_hashes_from_tip() {
-        let db = setup();
+        let db = setup().unwrap();
         let key_manager = create_test_core_key_manager_with_memory_db();
         let (blocks, _) = add_many_chained_blocks(5, &db, &key_manager).await;
         let hashes = db.fetch_block_hashes_from_header_tip(3, 1).unwrap();
@@ -365,7 +365,7 @@ mod fetch_block_hashes_from_header_tip {
 
     #[tokio::test]
     async fn it_returns_hashes_without_overlapping() {
-        let db = setup();
+        let db = setup().unwrap();
         let key_manager = create_test_core_key_manager_with_memory_db();
         let (blocks, _) = add_many_chained_blocks(3, &db, &key_manager).await;
         let hashes = db.fetch_block_hashes_from_header_tip(2, 0).unwrap();
@@ -377,7 +377,7 @@ mod fetch_block_hashes_from_header_tip {
 
     #[tokio::test]
     async fn it_returns_all_hashes_from_tip() {
-        let db = setup();
+        let db = setup().unwrap();
         let genesis = db.fetch_tip_header().unwrap();
         let key_manager = create_test_core_key_manager_with_memory_db();
         let (blocks, _) = add_many_chained_blocks(5, &db, &key_manager).await;
@@ -393,7 +393,7 @@ mod get_stats {
 
     #[test]
     fn it_works_when_db_is_empty() {
-        let db = setup();
+        let db = setup().unwrap();
         let stats = db.get_stats().unwrap();
         assert_eq!(stats.root().depth, 1);
     }
@@ -404,7 +404,7 @@ mod fetch_total_size_stats {
 
     #[tokio::test]
     async fn it_measures_the_number_of_entries() {
-        let db = setup();
+        let db = setup().unwrap();
         let genesis_output_count = db.fetch_header(0).unwrap().unwrap().output_mmr_size;
         let key_manager = create_test_core_key_manager_with_memory_db();
         let _block_and_outputs = add_many_chained_blocks(2, &db, &key_manager).await;
@@ -421,7 +421,7 @@ mod prepare_new_block {
 
     #[test]
     fn it_errors_for_genesis_block() {
-        let db = setup();
+        let db = setup().unwrap();
         let genesis = db.fetch_block(0, true).unwrap();
         let template = NewBlockTemplate::from_block(genesis.block().clone(), Difficulty::min(), 5000 * T);
         let err = db.prepare_new_block(template).unwrap_err();
@@ -430,7 +430,7 @@ mod prepare_new_block {
 
     #[test]
     fn it_errors_for_non_tip_template() {
-        let db = setup();
+        let db = setup().unwrap();
         let genesis = db.fetch_block(0, true).unwrap();
         let next_block = BlockHeader::from_previous(genesis.header());
         let mut template = NewBlockTemplate::from_block(next_block.into_builder().build(), Difficulty::min(), 5000 * T);
@@ -445,7 +445,7 @@ mod prepare_new_block {
     }
     #[test]
     fn it_prepares_the_first_block() {
-        let db = setup();
+        let db = setup().unwrap();
         let genesis = db.fetch_block(0, true).unwrap();
         let next_block = BlockHeader::from_previous(genesis.header());
         let template = NewBlockTemplate::from_block(next_block.into_builder().build(), Difficulty::min(), 5000 * T);
@@ -459,38 +459,32 @@ mod fetch_header_containing_utxo_mmr {
 
     #[test]
     fn it_returns_genesis() {
-        let db = setup();
+        let db = setup().unwrap();
         let genesis = db.fetch_block(0, true).unwrap();
-        assert!(!genesis.block().body.outputs().is_empty());
-        let mut mmr_position = 0;
-        genesis.block().body.outputs().iter().for_each(|_| {
-            let header = db.fetch_header_containing_utxo_mmr(mmr_position).unwrap();
-            assert_eq!(header.height(), 0);
-            mmr_position += 1;
-        });
+        assert!(genesis.block().body.outputs().is_empty());
+        let mmr_position = 0;
         let err = db.fetch_header_containing_utxo_mmr(mmr_position).unwrap_err();
         matches!(err, ChainStorageError::ValueNotFound { .. });
     }
 
     #[tokio::test]
     async fn it_returns_corresponding_header() {
-        let db = setup();
+        let db = setup().unwrap();
         let genesis = db.fetch_block(0, true).unwrap();
         let key_manager = create_test_core_key_manager_with_memory_db();
         let _block_and_outputs = add_many_chained_blocks(5, &db, &key_manager).await;
         let num_genesis_outputs = genesis.block().body.outputs().len() as u64;
+        assert_eq!(num_genesis_outputs, 0);
 
-        let header = db.fetch_header_containing_utxo_mmr(num_genesis_outputs - 1).unwrap();
-        assert_eq!(header.height(), 0);
+        let header = db.fetch_header_containing_utxo_mmr(0).unwrap();
+        assert_eq!(header.height(), 1);
 
-        for i in 1..=5 {
-            let index = num_genesis_outputs + i - 1;
+        for i in 2..5 {
+            let index = i;
             let header = db.fetch_header_containing_utxo_mmr(index).unwrap();
-            assert_eq!(header.height(), i, "Incorrect header for MMR index = {}", index);
+            assert_eq!(header.height(), i + 1, "Incorrect header for MMR index = {}", index);
         }
-        let err = db
-            .fetch_header_containing_utxo_mmr(num_genesis_outputs + 5)
-            .unwrap_err();
+        let err = db.fetch_header_containing_utxo_mmr(5).unwrap_err();
         matches!(err, ChainStorageError::ValueNotFound { .. });
     }
 }
@@ -500,9 +494,9 @@ mod fetch_header_containing_kernel_mmr {
 
     #[test]
     fn it_returns_genesis() {
-        let db = setup();
+        let db = setup().unwrap();
         let genesis = db.fetch_block(0, true).unwrap();
-        assert_eq!(genesis.block().body.kernels().len(), 1);
+        assert_eq!(genesis.block().body.kernels().len(), 0);
         let mut mmr_position = 0;
         genesis.block().body.kernels().iter().for_each(|_| {
             let header = db.fetch_header_containing_kernel_mmr(mmr_position).unwrap();
@@ -515,11 +509,12 @@ mod fetch_header_containing_kernel_mmr {
 
     #[tokio::test]
     async fn it_returns_corresponding_header() {
-        let db = setup();
+        let db = setup().unwrap();
         let genesis = db.fetch_block(0, true).unwrap();
         let key_manager = create_test_core_key_manager_with_memory_db();
         let (blocks, outputs) = add_many_chained_blocks(1, &db, &key_manager).await;
         let num_genesis_kernels = genesis.block().body.kernels().len() as u64;
+        assert_eq!(num_genesis_kernels, 0); // no faucet, no coinbase
 
         let (txns, _) = schema_to_transaction(
             &[txn_schema!(from: vec![outputs[0].clone()], to: vec![50 * T])],
@@ -531,17 +526,13 @@ mod fetch_header_containing_kernel_mmr {
         db.add_block(block).unwrap();
         let _block_and_outputs = add_many_chained_blocks(3, &db, &key_manager).await;
 
-        let header = db.fetch_header_containing_kernel_mmr(num_genesis_kernels - 1).unwrap();
-        assert_eq!(header.height(), 0);
-        let header = db.fetch_header_containing_kernel_mmr(num_genesis_kernels).unwrap();
+        let header = db.fetch_header_containing_kernel_mmr(0).unwrap();
         assert_eq!(header.height(), 1);
+        let header = db.fetch_header_containing_kernel_mmr(1).unwrap();
+        assert_eq!(header.height(), 2);
 
-        for i in 1..=2 {
-            let header = db.fetch_header_containing_kernel_mmr(num_genesis_kernels + i).unwrap();
-            assert_eq!(header.height(), 2);
-        }
-        for i in 3..=5 {
-            let header = db.fetch_header_containing_kernel_mmr(num_genesis_kernels + i).unwrap();
+        for i in 2..=5 {
+            let header = db.fetch_header_containing_kernel_mmr(i).unwrap();
             assert_eq!(header.height(), i);
         }
 
@@ -557,7 +548,7 @@ mod clear_all_pending_headers {
 
     #[tokio::test]
     async fn it_clears_no_headers() {
-        let db = setup();
+        let db = setup().unwrap();
         assert_eq!(db.clear_all_pending_headers().unwrap(), 0);
         let key_manager = create_test_core_key_manager_with_memory_db();
         let _block_and_outputs = add_many_chained_blocks(2, &db, &key_manager).await;
@@ -568,7 +559,7 @@ mod clear_all_pending_headers {
 
     #[tokio::test]
     async fn it_clears_headers_after_tip() {
-        let db = setup();
+        let db = setup().unwrap();
         let key_manager = create_test_core_key_manager_with_memory_db();
         let _blocks_and_outputs = add_many_chained_blocks(2, &db, &key_manager).await;
         let prev_block = db.fetch_block(2, true).unwrap();
@@ -628,14 +619,14 @@ mod validator_node_merkle_root {
     async fn it_has_the_correct_genesis_merkle_root() {
         let key_manager = create_test_core_key_manager_with_memory_db();
         let vn_mmr = ValidatorNodeBMT::create(Vec::new());
-        let db = setup();
+        let db = setup().unwrap();
         let (blocks, _outputs) = add_many_chained_blocks(1, &db, &key_manager).await;
         assert_eq!(blocks[0].header.validator_node_mr, vn_mmr.get_merkle_root());
     }
 
     #[tokio::test]
     async fn it_has_the_correct_merkle_root_for_current_vn_set() {
-        let db = setup();
+        let db = setup().unwrap();
         let key_manager = create_test_core_key_manager_with_memory_db();
         let (blocks, outputs) = add_many_chained_blocks(1, &db, &key_manager).await;
 

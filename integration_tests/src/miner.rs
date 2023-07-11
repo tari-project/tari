@@ -335,7 +335,7 @@ async fn generate_coinbase(
         .with_spend_key_id(spending_key_id)
         .with_script_key_id(script_key_id)
         .with_extra(extra)
-        .build_with_reward(consensus_constants, reward.into())
+        .build_with_emission(consensus_constants, reward.into())
         .await
         .unwrap();
 

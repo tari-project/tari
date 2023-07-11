@@ -1010,7 +1010,7 @@ where
             .with_script_key_id(coinbase_script_key)
             .with_script(script!(Nop))
             .with_extra(extra)
-            .build_with_reward(&self.resources.consensus_constants, reward)
+            .build_with_emission(&self.resources.consensus_constants, reward)
             .await?;
 
         let output = DbWalletOutput::from_wallet_output(

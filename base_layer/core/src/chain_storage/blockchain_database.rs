@@ -229,7 +229,7 @@ where B: BlockchainBackend
             difficulty_calculator: Arc::new(difficulty_calculator),
             disable_add_block_flag: Arc::new(AtomicBool::new(false)),
         };
-        let genesis_block = Arc::new(blockchain_db.consensus_manager.get_genesis_block());
+        let genesis_block = Arc::new(blockchain_db.consensus_manager.get_genesis_block()?);
         if is_empty {
             info!(
                 target: LOG_TARGET,
@@ -2496,7 +2496,7 @@ mod test {
         consensus::{
             chain_strength_comparer::strongest_chain,
             consensus_constants::PowAlgorithmConstants,
-            ConsensusConstantsBuilder,
+            test_helpers::TestConsensusConstantsBuilder,
             ConsensusManager,
         },
         proof_of_work::Difficulty,
@@ -2516,7 +2516,7 @@ mod test {
 
     #[test]
     fn lmdb_fetch_monero_seeds() {
-        let db = create_test_blockchain_db();
+        let db = create_test_blockchain_db().unwrap();
         let seed = b"test1";
         {
             let db_read = db.db_read_access().unwrap();
@@ -2550,7 +2550,7 @@ mod test {
 
         #[tokio::test]
         async fn it_gets_a_simple_link_to_genesis() {
-            let db = create_new_blockchain();
+            let db = create_new_blockchain().unwrap();
             let genesis = db
                 .fetch_block(0, true)
                 .unwrap()
@@ -2569,7 +2569,7 @@ mod test {
 
         #[tokio::test]
         async fn it_selects_a_large_reorg_chain() {
-            let db = create_new_blockchain();
+            let db = create_new_blockchain().unwrap();
             // Main chain
             let (_, mainchain) = create_main_chain(&db, &[
                 ("A->GB", 1, 120),
@@ -2603,7 +2603,7 @@ mod test {
 
         #[test]
         fn it_errors_if_orphan_not_exist() {
-            let db = create_new_blockchain();
+            let db = create_new_blockchain().unwrap();
             let access = db.db_read_access().unwrap();
             let err = get_orphan_link_main_chain(&*access, &FixedHash::zero()).unwrap_err();
             assert!(matches!(err, ChainStorageError::InvalidOperation(_)));
@@ -2615,7 +2615,7 @@ mod test {
 
         #[tokio::test]
         async fn it_inserts_new_block_in_orphan_db_as_tip() {
-            let db = create_new_blockchain();
+            let db = create_new_blockchain().unwrap();
             let validator = MockValidator::new(true);
             let genesis_block = db
                 .fetch_block(0, true)
@@ -2641,7 +2641,7 @@ mod test {
 
         #[tokio::test]
         async fn it_inserts_true_orphan_chain() {
-            let db = create_new_blockchain();
+            let db = create_new_blockchain().unwrap();
             let validator = MockValidator::new(true);
             let (_, main_chain) = create_main_chain(&db, &[("A->GB", 1, 120), ("B->A", 1, 120)]).await;
 
@@ -2676,7 +2676,7 @@ mod test {
 
         #[tokio::test]
         async fn it_correctly_handles_duplicate_blocks() {
-            let db = create_new_blockchain();
+            let db = create_new_blockchain().unwrap();
             let validator = MockValidator::new(true);
             let (_, main_chain) = create_main_chain(&db, &[("A->GB", 1, 120)]).await;
 
@@ -2934,7 +2934,7 @@ mod test {
 
     #[tokio::test]
     async fn test_handle_possible_reorg_case6_orphan_chain_link() {
-        let db = create_new_blockchain();
+        let db = create_new_blockchain().unwrap();
         let (_, mainchain) = create_main_chain(&db, &[
             ("A->GB", 1, 120),
             ("B->A", 1, 120),
@@ -3018,7 +3018,7 @@ mod test {
 
     #[tokio::test]
     async fn test_handle_possible_reorg_case7_fail_reorg() {
-        let db = create_new_blockchain();
+        let db = create_new_blockchain().unwrap();
         let (_, mainchain) = create_main_chain(&db, &[
             ("A->GB", 1, 120),
             ("B->A", 1, 120),
@@ -3268,7 +3268,7 @@ mod test {
     impl TestHarness {
         pub fn setup() -> Self {
             let consensus = create_consensus_rules();
-            let db = create_new_blockchain();
+            let db = create_new_blockchain().unwrap();
             let difficulty_calculator = DifficultyCalculator::new(consensus.clone(), Default::default());
             let header_validator = Box::new(HeaderFullValidator::new(
                 consensus.clone(),
@@ -3311,7 +3311,7 @@ mod test {
         blocks: T,
     ) -> Result<(Vec<BlockAddResult>, HashMap<String, Arc<ChainBlock>>), ChainStorageError> {
         let test = TestHarness::setup();
-        // let db = create_new_blockchain();
+        // let db = create_new_blockchain().unwrap();
         let genesis_block = test
             .db
             .fetch_block(0, true)
@@ -3338,7 +3338,7 @@ mod test {
     fn create_consensus_rules() -> ConsensusManager {
         ConsensusManager::builder(Network::LocalNet)
             .add_consensus_constants(
-                ConsensusConstantsBuilder::new(Network::LocalNet)
+                TestConsensusConstantsBuilder::new(Network::LocalNet)
                     .clear_proof_of_work()
                     .add_proof_of_work(PowAlgorithm::Sha3x, PowAlgorithmConstants {
                         min_difficulty: Difficulty::min(),

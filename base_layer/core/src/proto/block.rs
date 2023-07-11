@@ -167,7 +167,7 @@ impl TryFrom<proto::NewBlockTemplate> for NewBlockTemplate {
             header,
             body,
             target_difficulty: Difficulty::from_u64(block_template.target_difficulty).map_err(|e| e.to_string())?,
-            reward: block_template.reward.into(),
+            emission: block_template.emission.into(),
             total_fees: block_template.total_fees.into(),
         })
     }
@@ -181,7 +181,7 @@ impl TryFrom<NewBlockTemplate> for proto::NewBlockTemplate {
             header: Some(block_template.header.into()),
             body: Some(block_template.body.try_into()?),
             target_difficulty: block_template.target_difficulty.as_u64(),
-            reward: block_template.reward.0,
+            emission: block_template.emission.0,
             total_fees: block_template.total_fees.0,
         })
     }

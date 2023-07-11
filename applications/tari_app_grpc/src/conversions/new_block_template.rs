@@ -103,7 +103,7 @@ impl TryFrom<grpc::NewBlockTemplate> for NewBlockTemplate {
             header,
             body,
             target_difficulty: Default::default(),
-            reward: Default::default(),
+            emission: Default::default(),
             total_fees: Default::default(),
         })
     }

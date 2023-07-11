@@ -419,7 +419,7 @@ mod tests {
     impl AsyncBlockchainDb<TempDatabase> {
         pub fn sample() -> Self {
             Self {
-                db: create_new_blockchain(),
+                db: create_new_blockchain().unwrap(),
             }
         }
     }
