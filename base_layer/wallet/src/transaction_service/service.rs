@@ -1750,7 +1750,7 @@ where
             validator_node_signature,
             validator_node_consensus_public_key,
         )
-        .ok_or_else(|| TransactionServiceError::InvalidConsensusPublicKeySignature)?;
+        .ok_or(|| TransactionServiceError::InvalidConsensusPublicKeySignature)?;
         self.send_transaction(
             self.resources.wallet_identity.address.clone(),
             amount,
