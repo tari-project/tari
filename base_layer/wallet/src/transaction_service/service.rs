@@ -671,6 +671,7 @@ where
                 amount,
                 validator_node_public_key,
                 validator_node_signature,
+                validator_node_consensus_public_key,
                 selection_criteria,
                 fee_per_gram,
                 message,
@@ -680,6 +681,7 @@ where
                     amount,
                     validator_node_public_key,
                     validator_node_signature,
+                    validator_node_consensus_public_key,
                     selection_criteria,
                     fee_per_gram,
                     message,
@@ -1747,7 +1749,8 @@ where
             validator_node_public_key,
             validator_node_signature,
             validator_node_consensus_public_key,
-        );
+        )
+        .ok_or_else(|| TransactionServiceError::InvalidConsensusPublicKeySignature)?;
         self.send_transaction(
             self.resources.wallet_identity.address.clone(),
             amount,

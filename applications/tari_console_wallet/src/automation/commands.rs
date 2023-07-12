@@ -1003,6 +1003,7 @@ pub async fn command_runner(
                         args.validator_node_public_nonce.into(),
                         RistrettoSecretKey::from_vec(&args.validator_node_signature)?,
                     ),
+                    args.validator_node_consensus_public_key,
                     UtxoSelectionCriteria::default(),
                     config.fee_per_gram * uT,
                     args.message,

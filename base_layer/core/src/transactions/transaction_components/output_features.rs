@@ -145,18 +145,18 @@ impl OutputFeatures {
         validator_node_public_key: PublicKey,
         validator_node_signature: Signature,
         validator_node_consensus_public_key: Vec<u8>,
-    ) -> OutputFeatures {
-        OutputFeatures {
-            output_type: OutputType::ValidatorNodeRegistration,
-            sidechain_feature: Some(SideChainFeature::ValidatorNodeRegistration(
-                ValidatorNodeRegistration::new(ValidatorNodeSignature::sign(
-                    validator_node_public_key,
-                    validator_node_signature,
-                    &validator_node_consensus_public_key,
+    ) -> Option<OutputFeatures> {
+        let validator_node_signature = ValidatorNodeSignature::new(validator_node_public_key, validator_node_signature);
+        if validator_node_signature.is_valid_signature_for(&validator_node_consensus_public_key) {
+            return Some(OutputFeatures {
+                output_type: OutputType::ValidatorNodeRegistration,
+                sidechain_feature: Some(SideChainFeature::ValidatorNodeRegistration(
+                    ValidatorNodeRegistration::new(validator_node_signature),
                 )),
-            )),
-            ..Default::default()
+                ..Default::default()
+            });
         }
+        None
     }
 
     pub fn for_code_template_registration(

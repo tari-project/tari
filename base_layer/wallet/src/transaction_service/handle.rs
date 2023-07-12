@@ -101,6 +101,7 @@ pub enum TransactionServiceRequest {
         amount: MicroTari,
         validator_node_public_key: CommsPublicKey,
         validator_node_signature: Signature,
+        validator_node_consensus_public_key: Vec<u8>,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroTari,
         message: String,
