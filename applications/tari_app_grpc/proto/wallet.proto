@@ -341,6 +341,7 @@ message RegisterValidatorNodeRequest {
     Signature validator_node_signature = 2;
     uint64 fee_per_gram = 3;
     string message = 4;
+    bytes validator_node_consensus_public_key = 5;
 }
 
 message RegisterValidatorNodeResponse {
