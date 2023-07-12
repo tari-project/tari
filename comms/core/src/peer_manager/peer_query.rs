@@ -29,9 +29,10 @@ use crate::peer_manager::{peer_id::PeerId, NodeId, Peer, PeerManagerError};
 type Predicate<'a, A> = Box<dyn FnMut(&A) -> bool + Send + 'a>;
 
 /// Sort options for `PeerQuery`
-#[derive(Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 pub enum PeerQuerySortBy<'a> {
     /// No sorting
+    #[default]
     None,
     /// Sort by distance from a given node id
     DistanceFrom(&'a NodeId),
@@ -39,12 +40,6 @@ pub enum PeerQuerySortBy<'a> {
     LastConnected,
     /// Sort by distance from a given node followed by last connected
     DistanceFromLastConnected(&'a NodeId),
-}
-
-impl Default for PeerQuerySortBy<'_> {
-    fn default() -> Self {
-        PeerQuerySortBy::None
-    }
 }
 
 /// Represents a query which can be performed on the peer database

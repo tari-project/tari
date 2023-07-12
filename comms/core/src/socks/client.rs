@@ -39,9 +39,10 @@ use super::error::SocksError;
 pub type Result<T> = std::result::Result<T, SocksError>;
 
 /// Authentication methods
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Authentication {
     /// No auth
+    #[default]
     None,
     /// Password auth (username, password)
     Password { username: String, password: String },
@@ -53,12 +54,6 @@ impl Authentication {
             Authentication::Password { .. } => 0x02,
             Authentication::None => 0x00,
         }
-    }
-}
-
-impl Default for Authentication {
-    fn default() -> Self {
-        Authentication::None
     }
 }
 
