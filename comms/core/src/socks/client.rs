@@ -371,7 +371,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
                 let password_bytes = password.as_bytes();
                 let password_len = password_bytes.len();
                 self.len = 3 + username_len + password_len;
-                self.buf[(2 + username_len)] = u8::try_from(password_len).unwrap();
+                self.buf[2 + username_len] = u8::try_from(password_len).unwrap();
                 self.buf[(3 + username_len)..self.len].copy_from_slice(password_bytes);
             },
             Authentication::None => unreachable!(),
