@@ -369,8 +369,7 @@ impl AggregateBody {
     }
 
     pub fn is_sorted(&self) -> bool {
-        // a block containing only a single kernel, single output and single input is sorted by default
-        self.sorted || (self.kernels.len() <= 1 && self.outputs.len() <= 1 && self.inputs.len() <= 1)
+        self.sorted
     }
 
     /// Lists the number of inputs, outputs, and kernels in the block
