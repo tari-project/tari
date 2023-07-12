@@ -41,7 +41,7 @@ use crate::{
     DhtConfig,
 };
 const LOG_TARGET: &str = "comms::dht::network_discovery:onconnect";
-const NUM_FETCH_PEERS: u32 = 1000;
+const NUM_FETCH_PEERS: u32 = 100;
 
 #[derive(Debug)]
 pub(super) struct OnConnect {
