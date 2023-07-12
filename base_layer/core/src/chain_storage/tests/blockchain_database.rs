@@ -641,9 +641,13 @@ mod validator_node_merkle_root {
 
         let (sk, public_key) = PublicKey::random_keypair(&mut OsRng);
         let consensus_public_key: [u8; 32] = rand::random();
-        let signature = ValidatorNodeSignature::sign(&sk, &[]);
-        let features =
-            OutputFeatures::for_validator_node_registration(public_key.clone(), signature.signature().clone(), consensus_public_key.to_vec()).expect("Failed to verify signature");
+        let signature = ValidatorNodeSignature::sign(&sk, &consensus_public_key);
+        let features = OutputFeatures::for_validator_node_registration(
+            public_key.clone(),
+            signature.signature().clone(),
+            consensus_public_key.to_vec(),
+        )
+        .expect("Failed to verify signature");
         let (tx, _outputs) = schema_to_transaction(
             &[txn_schema!(
                 from: vec![outputs[0].clone()],
