@@ -511,6 +511,7 @@ where TBackend: TransactionBackend + 'static
             inbound_tx.destination_address = self.comms_address.clone();
             transaction = Some(inbound_tx);
         } else {
+            // should only be one of the two
         };
 
         match transaction {

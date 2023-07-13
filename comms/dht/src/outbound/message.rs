@@ -40,9 +40,10 @@ use crate::{
 };
 
 /// Determines if an outbound message should be Encrypted and, if so, for which public key
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub enum OutboundEncryption {
     /// Message should not be encrypted
+    #[default]
     ClearText,
     /// Message should be encrypted using a shared secret derived from the given public key
     EncryptFor(Box<CommsPublicKey>),
@@ -77,12 +78,6 @@ impl Display for OutboundEncryption {
             OutboundEncryption::ClearText => write!(f, "ClearText"),
             OutboundEncryption::EncryptFor(ref key) => write!(f, "EncryptFor:{}", key.to_hex()),
         }
-    }
-}
-
-impl Default for OutboundEncryption {
-    fn default() -> Self {
-        OutboundEncryption::ClearText
     }
 }
 

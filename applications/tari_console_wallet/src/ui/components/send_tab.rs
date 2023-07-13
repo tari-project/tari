@@ -341,6 +341,7 @@ impl SendTab {
                     },
                 }
             } else {
+                // dont care
             }
         }
 
@@ -614,6 +615,7 @@ impl<B: Backend> Component<B> for SendTab {
                 self.table_state.select(None);
             }
         } else {
+            // dont care
         }
     }
 
@@ -624,6 +626,7 @@ impl<B: Backend> Component<B> for SendTab {
         } else if self.send_input_mode == SendInputMode::Amount {
             self.table_state.select(None);
         } else {
+            // dont care
         }
     }
 
