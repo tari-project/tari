@@ -2008,6 +2008,7 @@ where
                         val.tx_id
                     );
                 } else {
+                    // dont care
                 }
             },
             Err(TransactionServiceProtocolError { id, error }) => {
@@ -2126,6 +2127,7 @@ where
                 let _sender = self.pending_transaction_reply_senders.remove(&tx_id);
                 let _sender = self.send_transaction_cancellation_senders.remove(&tx_id);
             } else {
+                // dont care
             }
 
             if not_yet_pending || queued {
@@ -2977,16 +2979,11 @@ pub struct TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManage
     pub shutdown_signal: ShutdownSignal,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Default, Clone, Copy)]
 enum PowerMode {
     Low,
+    #[default]
     Normal,
-}
-
-impl Default for PowerMode {
-    fn default() -> Self {
-        PowerMode::Normal
-    }
 }
 
 /// Contains the generated TxId and SpendingKey for a Pending Coinbase transaction

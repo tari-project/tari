@@ -685,7 +685,7 @@ impl ReadOnlyIterator {
         Ok((key, val))
     }
 
-    fn next<'r, K, V>(c: &mut Cursor, access: &'r ConstAccessor) -> Result<(K, V), error::Error>
+    fn next<K, V>(c: &mut Cursor, access: &ConstAccessor) -> Result<(K, V), error::Error>
     where
         K: serde::de::DeserializeOwned,
         V: serde::de::DeserializeOwned,

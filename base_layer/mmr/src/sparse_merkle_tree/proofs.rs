@@ -32,7 +32,7 @@ impl<H: Digest<OutputSize = U32>> MerkleProof<H> {
             siblings,
             key,
             value,
-            phantom: PhantomData::<H>::default(),
+            phantom: PhantomData::<H>,
         }
     }
 

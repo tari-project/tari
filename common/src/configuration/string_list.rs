@@ -181,7 +181,7 @@ mod tests {
         assert_eq!(Some(String::from("Tari")), res_iter.next());
         assert_eq!(Some(String::from("Project")), res_iter.next());
         assert_eq!(Some(String::from("let's mine it!")), res_iter.next());
-        assert_eq!(None, res_iter.into_iter().next());
+        assert_eq!(None, res_iter.next());
     }
 
     #[test]

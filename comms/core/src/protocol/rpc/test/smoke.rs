@@ -233,14 +233,13 @@ async fn concurrent_requests() {
 
     let mut cloned_client = client.clone();
     let spawned1 = task::spawn(async move {
-        let resp = cloned_client
+        cloned_client
             .say_hello(SayHelloRequest {
                 name: "Madeupington".to_string(),
                 language: 2,
             })
             .await
-            .unwrap();
-        resp
+            .unwrap()
     });
     let mut cloned_client = client.clone();
     let spawned2 = task::spawn(async move {

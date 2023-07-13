@@ -57,6 +57,7 @@ impl WindowedListState {
                 self.start -= diff;
                 self.end -= diff;
             } else {
+                // dont care
             }
             self.offset = self.start;
             list_state.select(Some(selected - self.start));
