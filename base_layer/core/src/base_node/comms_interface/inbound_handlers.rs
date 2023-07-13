@@ -21,7 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    collections::HashSet,
     convert::{TryFrom, TryInto},
+    ops::DerefMut,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -31,7 +33,7 @@ use strum_macros::Display;
 use tari_common_types::types::{BlockHash, FixedHash, HashOutput};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
 use tari_utilities::hex::Hex;
-use tokio::sync::Semaphore;
+use tokio::sync::Mutex;
 
 use crate::{
     base_node::{
@@ -81,7 +83,7 @@ pub struct InboundNodeCommsHandlers<B> {
     blockchain_db: AsyncBlockchainDb<B>,
     mempool: Mempool,
     consensus_manager: ConsensusManager,
-    new_block_request_semaphore: Arc<Semaphore>,
+    list_of_reconciling_blocks: Arc<Mutex<HashSet<HashOutput>>>,
     outbound_nci: OutboundNodeCommsInterface,
     connectivity: ConnectivityRequester,
 }
@@ -103,7 +105,7 @@ where B: BlockchainBackend + 'static
             blockchain_db,
             mempool,
             consensus_manager,
-            new_block_request_semaphore: Arc::new(Semaphore::new(1)),
+            list_of_reconciling_blocks: Arc::new(Mutex::new(HashSet::new())),
             outbound_nci,
             connectivity,
         }
@@ -445,27 +447,22 @@ where B: BlockchainBackend + 'static
             );
             return Ok(());
         }
-
-        // We need to make sure that we can ask for the block from multiple sources as a single source can maliciously
-        // delay the block blocking us from getting to true latest tip
-        let block = self.reconcile_block(source_peer.clone(), new_block).await?;
-
-        // Only a single block request can complete at a time.
-        // Arc clone to satisfy the borrow checker
-        let semaphore = self.new_block_request_semaphore.clone();
-        let _permit = semaphore.acquire().await.unwrap();
-
-        // its possible that we have more than one request for the same block and we need network requests to fix that.
-        // Only one of those should be processed, so we need to check again if the block has not been processed.
-        if self.blockchain_db.block_exists(block_hash).await? {
-            debug!(
-                target: LOG_TARGET,
-                "Block with hash `{}` already stored",
-                block_hash.to_hex()
-            );
-            return Ok(());
+        {
+            // we have this in mutex to ensure we dont have any funnies with rwlock with multiples requests first
+            // passing the check then all wanting to reconcile. We should only have 1 request passing
+            let mut lock = self.list_of_reconciling_blocks.lock().await;
+            let list_of_reconciling_blocks = lock.deref_mut();
+            if list_of_reconciling_blocks.contains(&block_hash) {
+                debug!(
+                    target: LOG_TARGET,
+                    "Block with hash `{}` is already being reconciled",
+                    block_hash.to_hex()
+                );
+                return Ok(());
+            } else {
+                list_of_reconciling_blocks.insert(block_hash);
+            }
         }
-
         debug!(
             target: LOG_TARGET,
             "Block with hash `{}` is unknown. Constructing block from known mempool transactions / requesting missing \
@@ -473,6 +470,16 @@ where B: BlockchainBackend + 'static
             block_hash.to_hex(),
             source_peer
         );
+
+        // We need to make sure that we can ask for the block from multiple sources as a single source can maliciously
+        // delay the block blocking us from getting to true latest tip
+        let block = self.reconcile_block(source_peer.clone(), new_block).await?;
+
+        {
+            let mut lock = self.list_of_reconciling_blocks.lock().await;
+            let list_of_reconciling_blocks = lock.deref_mut();
+            list_of_reconciling_blocks.remove(&block_hash);
+        }
 
         self.handle_block(block, Some(source_peer)).await?;
 
@@ -902,7 +909,7 @@ impl<B> Clone for InboundNodeCommsHandlers<B> {
             blockchain_db: self.blockchain_db.clone(),
             mempool: self.mempool.clone(),
             consensus_manager: self.consensus_manager.clone(),
-            new_block_request_semaphore: self.new_block_request_semaphore.clone(),
+            list_of_reconciling_blocks: self.list_of_reconciling_blocks.clone(),
             outbound_nci: self.outbound_nci.clone(),
             connectivity: self.connectivity.clone(),
         }
