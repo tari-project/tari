@@ -105,7 +105,9 @@ impl AggregateBody {
     }
 
     /// Should be used for tests only. Get a mutable reference to the inputs
+    /// This will set the sorted flag to false
     pub fn inputs_mut(&mut self) -> &mut Vec<TransactionInput> {
+        self.sorted = false;
         &mut self.inputs
     }
 
@@ -115,7 +117,9 @@ impl AggregateBody {
     }
 
     /// Should be used for tests only. Get a mutable reference to the outputs
+    /// This will set the sorted flag to false
     pub fn outputs_mut(&mut self) -> &mut Vec<TransactionOutput> {
+        self.sorted = false;
         &mut self.outputs
     }
 
@@ -125,7 +129,9 @@ impl AggregateBody {
     }
 
     /// Should be used for tests only. Get a mutable reference to the kernels
+    /// This will set the sorted flag to false
     pub fn kernels_mut(&mut self) -> &mut Vec<TransactionKernel> {
+        self.sorted = false;
         &mut self.kernels
     }
 
@@ -156,6 +162,7 @@ impl AggregateBody {
     /// Add a kernel to the existing aggregate body
     pub fn add_kernel(&mut self, kernel: TransactionKernel) {
         self.kernels.push(kernel);
+        self.sorted = false;
     }
 
     /// Add a series of kernels to the existing aggregate body
@@ -490,7 +497,7 @@ mod test {
             0.into(),
         );
 
-        body.add_kernels(vec![kernel.clone()]);
+        body.add_kernel(kernel.clone());
         assert!(body.is_sorted());
         assert!(!body.sorted);
 
@@ -503,7 +510,7 @@ mod test {
         assert!(!body.sorted);
 
         let mut body2 = body.clone();
-        body2.add_kernels(vec![kernel]);
+        body2.add_kernel(kernel);
         assert!(!body2.is_sorted());
 
         let mut body3 = body.clone();
