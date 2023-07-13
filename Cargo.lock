@@ -5250,6 +5250,7 @@ dependencies = [
  "tari_common_types",
  "tari_comms",
  "tari_contacts",
+ "tari_shutdown",
  "thiserror",
  "tokio",
 ]

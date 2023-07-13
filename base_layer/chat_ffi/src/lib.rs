@@ -24,6 +24,7 @@
 
 use std::{ffi::CStr, path::PathBuf, ptr, str::FromStr, sync::Arc};
 
+use callback_handler::CallbackContactStatusChange;
 use libc::{c_char, c_int};
 use tari_app_utilities::identity_management::load_from_json;
 use tari_chat_client::{
@@ -37,8 +38,12 @@ use tari_comms::{multiaddr::Multiaddr, NodeIdentity};
 use tari_contacts::contacts_service::types::Message;
 use tokio::runtime::Runtime;
 
-use crate::error::{InterfaceError, LibChatError};
+use crate::{
+    callback_handler::CallbackHandler,
+    error::{InterfaceError, LibChatError},
+};
 
+mod callback_handler;
 mod error;
 
 #[derive(Clone)]
@@ -67,6 +72,7 @@ pub unsafe extern "C" fn create_chat_client(
     config: *mut ApplicationConfig,
     identity_file_path: *const c_char,
     error_out: *mut c_int,
+    callback_contact_status_change: CallbackContactStatusChange,
 ) -> *mut ClientFFI {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
@@ -111,6 +117,16 @@ pub unsafe extern "C" fn create_chat_client(
 
     let mut client = Client::new(identity, (*config).clone());
     runtime.block_on(client.initialize());
+
+    let mut callback_handler = CallbackHandler::new(
+        client.contacts.clone().expect("No contacts service loaded yet"),
+        client.shutdown.to_signal(),
+        callback_contact_status_change,
+    );
+
+    runtime.spawn(async move {
+        callback_handler.start().await;
+    });
 
     let client_ffi = ClientFFI { client, runtime };
 
