@@ -451,3 +451,66 @@ impl Display for AggregateBody {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod test {
+    use tari_common_types::types::{ComAndPubSignature, Commitment, FixedHash, PublicKey, Signature};
+    use tari_script::{ExecutionStack, TariScript};
+
+    use super::*;
+    use crate::{
+        covenants::Covenant,
+        transactions::transaction_components::{EncryptedData, OutputFeatures, TransactionInputVersion},
+    };
+
+    #[test]
+    fn test_sorted() {
+        let mut body = AggregateBody::empty();
+        let kernel = TransactionKernel::new_current_version(
+            KernelFeatures::default(),
+            0.into(),
+            0,
+            Commitment::default(),
+            Signature::default(),
+            None,
+        );
+        let output = TransactionOutput::default();
+        let input = TransactionInput::new_with_output_data(
+            TransactionInputVersion::get_current_version(),
+            OutputFeatures::default(),
+            Commitment::default(),
+            TariScript::default(),
+            ExecutionStack::default(),
+            ComAndPubSignature::default(),
+            PublicKey::default(),
+            Covenant::default(),
+            EncryptedData::default(),
+            ComAndPubSignature::default(),
+            FixedHash::zero(),
+            0.into(),
+        );
+
+        body.add_kernels(vec![kernel.clone()]);
+        assert!(body.is_sorted());
+        assert!(!body.sorted);
+
+        body.add_input(input.clone());
+        assert!(body.is_sorted());
+        assert!(!body.sorted);
+
+        body.add_output(output.clone());
+        assert!(body.is_sorted());
+        assert!(!body.sorted);
+
+        let mut body2 = body.clone();
+        body2.add_kernels(vec![kernel]);
+        assert!(!body2.is_sorted());
+
+        let mut body3 = body.clone();
+        body3.add_input(input);
+        assert!(!body3.is_sorted());
+
+        body.add_output(output);
+        assert!(!body.is_sorted())
+    }
+}
