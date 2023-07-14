@@ -39,7 +39,7 @@ use tari_contacts::contacts_service::types::Message;
 use tokio::runtime::Runtime;
 
 use crate::{
-    callback_handler::CallbackHandler,
+    callback_handler::{CallbackHandler, CallbackMessageReceived},
     error::{InterfaceError, LibChatError},
 };
 
@@ -73,6 +73,7 @@ pub unsafe extern "C" fn create_chat_client(
     identity_file_path: *const c_char,
     error_out: *mut c_int,
     callback_contact_status_change: CallbackContactStatusChange,
+    callback_message_received: CallbackMessageReceived,
 ) -> *mut ClientFFI {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
@@ -122,6 +123,7 @@ pub unsafe extern "C" fn create_chat_client(
         client.contacts.clone().expect("No contacts service loaded yet"),
         client.shutdown.to_signal(),
         callback_contact_status_change,
+        callback_message_received,
     );
 
     runtime.spawn(async move {

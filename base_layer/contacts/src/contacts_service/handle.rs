@@ -150,6 +150,7 @@ pub struct ContactsServiceHandle {
     request_response_service:
         SenderService<ContactsServiceRequest, Result<ContactsServiceResponse, ContactsServiceError>>,
     liveness_events: broadcast::Sender<Arc<ContactsLivenessEvent>>,
+    message_events: broadcast::Sender<Arc<Message>>,
 }
 
 impl ContactsServiceHandle {
@@ -159,10 +160,12 @@ impl ContactsServiceHandle {
             Result<ContactsServiceResponse, ContactsServiceError>,
         >,
         liveness_events: broadcast::Sender<Arc<ContactsLivenessEvent>>,
+        message_events: broadcast::Sender<Arc<Message>>,
     ) -> Self {
         Self {
             request_response_service,
             liveness_events,
+            message_events,
         }
     }
 
@@ -212,6 +215,10 @@ impl ContactsServiceHandle {
 
     pub fn get_contacts_liveness_event_stream(&self) -> broadcast::Receiver<Arc<ContactsLivenessEvent>> {
         self.liveness_events.subscribe()
+    }
+
+    pub fn get_messages_event_stream(&self) -> broadcast::Receiver<Arc<Message>> {
+        self.message_events.subscribe()
     }
 
     /// Determines the contact's online status based on their last seen time

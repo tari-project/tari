@@ -130,6 +130,7 @@ where T: ContactsBackend + 'static
     dht: Dht,
     subscription_factory: Arc<SubscriptionFactory>,
     event_publisher: broadcast::Sender<Arc<ContactsLivenessEvent>>,
+    message_publisher: broadcast::Sender<Arc<Message>>,
     number_of_rounds_no_pings: u16,
     contacts_auto_ping_interval: Duration,
     contacts_online_ping_window: usize,
@@ -150,6 +151,7 @@ where T: ContactsBackend + 'static
         dht: Dht,
         subscription_factory: Arc<SubscriptionFactory>,
         event_publisher: broadcast::Sender<Arc<ContactsLivenessEvent>>,
+        message_publisher: broadcast::Sender<Arc<Message>>,
         contacts_auto_ping_interval: Duration,
         contacts_online_ping_window: usize,
     ) -> Self {
@@ -163,6 +165,7 @@ where T: ContactsBackend + 'static
             dht,
             subscription_factory,
             event_publisher,
+            message_publisher,
             number_of_rounds_no_pings: 0,
             contacts_auto_ping_interval,
             contacts_online_ping_window,
@@ -415,7 +418,10 @@ where T: ContactsBackend + 'static
                 ..msg.into()
             };
 
-            self.db.save_message(message).expect("Couldn't save the message");
+            self.db
+                .save_message(message.clone())
+                .expect("Couldn't save the message");
+            let _msg = self.message_publisher.send(Arc::new(message));
         }
 
         Ok(())
