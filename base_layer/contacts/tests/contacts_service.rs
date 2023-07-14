@@ -32,10 +32,10 @@ use tari_contacts::contacts_service::{
     error::{ContactsServiceError, ContactsServiceStorageError},
     handle::ContactsServiceHandle,
     storage::{
-        database::{ContactsBackend, DbKey},
+        database::{ContactsBackend, ContactsDatabase, DbKey},
         sqlite_db::ContactsServiceSqliteDatabase,
     },
-    types::Contact,
+    types::{Contact, MessageBuilder},
     ContactsServiceInitializer,
 };
 use tari_crypto::keys::PublicKey as PublicKeyTrait;
@@ -214,5 +214,45 @@ pub fn test_contacts_service() {
             Err(TryRecvError::Empty) => {},
             Err(_) => panic!("Should not receive any other type of error here"),
         };
+    });
+}
+
+#[test]
+pub fn test_message_pagination() {
+    with_temp_dir(|dir_path| {
+        let mut runtime = Runtime::new().unwrap();
+
+        let db_name = format!("{}.sqlite3", string(8).as_str());
+        let db_path = format!("{}/{}", dir_path.to_str().unwrap(), db_name);
+        let url: DbConnectionUrl = db_path.try_into().unwrap();
+
+        let db = DbConnection::connect_url(&url).unwrap();
+        let backend = ContactsServiceSqliteDatabase::init(db);
+        let contacts_db = ContactsDatabase::new(backend.clone());
+
+        let (mut contacts_service, _node_identity, _shutdown) = setup_contacts_service(&mut runtime, backend);
+
+        let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
+        let address = TariAddress::new(public_key, Network::default());
+
+        let contact = Contact::new(random::string(8), address.clone(), None, None, false);
+        runtime.block_on(contacts_service.upsert_contact(contact)).unwrap();
+
+        for num in 0..8 {
+            let message = MessageBuilder::new()
+                .message(format!("Test {:?}", num))
+                .address(address.clone())
+                .build();
+
+            contacts_db.save_message(message.clone()).expect("Message to be saved");
+        }
+
+        let messages = runtime
+            .block_on(contacts_service.get_messages(address.clone(), 5, 0))
+            .unwrap();
+        assert_eq!(5, messages.len());
+
+        let messages = runtime.block_on(contacts_service.get_messages(address, 5, 1)).unwrap();
+        assert_eq!(3, messages.len());
     });
 }

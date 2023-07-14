@@ -396,6 +396,8 @@ pub unsafe extern "C" fn check_online_status(
 /// ## Arguments
 /// `client` - The Client pointer
 /// `address` - A TariAddress ptr
+/// `limit` - The amount of messages you want to fetch. Default to 35, max 2500
+/// `page` - The page of results you'd like returned. Default to 0, maximum of u64 max
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns

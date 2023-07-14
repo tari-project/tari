@@ -245,7 +245,7 @@ impl ContactsServiceHandle {
         &mut self,
         pk: TariAddress,
         mut limit: u64,
-        mut page: u64,
+        page: u64,
     ) -> Result<Vec<Message>, ContactsServiceError> {
         if limit == 0 || limit > MAX_MESSAGE_LIMIT {
             limit = DEFAULT_MESSAGE_LIMIT;
