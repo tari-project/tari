@@ -50,6 +50,11 @@ extern "C" fn callback_contact_status_change(_state: *mut c_void) {
     *callback.contact_status_change.lock().unwrap() += 1;
 }
 
+extern "C" fn callback_message_received(_state: *mut c_void) {
+    let callback = ChatCallback::instance();
+    *callback.message_received.lock().unwrap() += 1;
+}
+
 #[cfg_attr(windows, link(name = "tari_chat_ffi.dll"))]
 #[cfg_attr(not(windows), link(name = "tari_chat_ffi"))]
 extern "C" {
@@ -58,6 +63,7 @@ extern "C" {
         identity_file_path: *const c_char,
         out_error: *const c_int,
         callback_contact_status_change: unsafe extern "C" fn(*mut c_void),
+        callback_message_received: unsafe extern "C" fn(*mut c_void),
     ) -> *mut ClientFFI;
     pub fn send_message(client: *mut ClientFFI, receiver: *mut c_void, message: *const c_char, out_error: *const c_int);
     pub fn add_contact(client: *mut ClientFFI, address: *mut c_void, out_error: *const c_int);
@@ -193,6 +199,7 @@ pub async fn spawn_ffi_chat_client(name: &str, seed_peers: Vec<Peer>, base_dir: 
             identity_path_c_char,
             out_error,
             callback_contact_status_change,
+            callback_message_received,
         );
     }
 
@@ -208,6 +215,7 @@ static START: Once = Once::new();
 #[derive(Default)]
 pub struct ChatCallback {
     pub contact_status_change: Mutex<u64>,
+    pub message_received: Mutex<u64>,
 }
 
 impl ChatCallback {

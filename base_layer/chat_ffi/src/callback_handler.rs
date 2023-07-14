@@ -23,17 +23,22 @@
 use std::ops::Deref;
 
 use log::{debug, info, trace};
-use tari_contacts::contacts_service::handle::{ContactsLivenessData, ContactsLivenessEvent, ContactsServiceHandle};
+use tari_contacts::contacts_service::{
+    handle::{ContactsLivenessData, ContactsLivenessEvent, ContactsServiceHandle},
+    types::Message,
+};
 use tari_shutdown::ShutdownSignal;
 
 const LOG_TARGET: &str = "chat_ffi::callback_handler";
 
 pub(crate) type CallbackContactStatusChange = unsafe extern "C" fn(*mut ContactsLivenessData);
+pub(crate) type CallbackMessageReceived = unsafe extern "C" fn(*mut Message);
 
 #[derive(Clone)]
 pub struct CallbackHandler {
     contacts_service_handle: ContactsServiceHandle,
     callback_contact_status_change: CallbackContactStatusChange,
+    callback_message_received: CallbackMessageReceived,
     shutdown: ShutdownSignal,
 }
 
@@ -42,19 +47,32 @@ impl CallbackHandler {
         contacts_service_handle: ContactsServiceHandle,
         shutdown: ShutdownSignal,
         callback_contact_status_change: CallbackContactStatusChange,
+        callback_message_received: CallbackMessageReceived,
     ) -> Self {
         Self {
             contacts_service_handle,
             shutdown,
             callback_contact_status_change,
+            callback_message_received,
         }
     }
 
     pub(crate) async fn start(&mut self) {
         let mut liveness_events = self.contacts_service_handle.get_contacts_liveness_event_stream();
+        let mut chat_messages = self.contacts_service_handle.get_messages_event_stream();
 
         loop {
             tokio::select! {
+                rec_message = chat_messages.recv() => {
+                    match rec_message {
+                        Ok(message) => {
+                            trace!(target: LOG_TARGET, "FFI Callback monitor received a new Message");
+                            self.trigger_message_received(message.deref().clone());
+                        },
+                        Err(_) => { debug!(target: LOG_TARGET, "FFI Callback monitor had an error receiving new messages")}
+                    }
+                },
+
                 event = liveness_events.recv() => {
                     match event {
                         Ok(liveness_event) => {
@@ -82,11 +100,22 @@ impl CallbackHandler {
     fn trigger_contact_status_change(&mut self, data: ContactsLivenessData) {
         debug!(
             target: LOG_TARGET,
-            "Calling Contacts Liveness Data Updated callback function for contact {}",
+            "Calling ContactStatusChanged callback function for contact {}",
             data.address(),
         );
         unsafe {
             (self.callback_contact_status_change)(Box::into_raw(Box::new(data)));
+        }
+    }
+
+    fn trigger_message_received(&mut self, message: Message) {
+        debug!(
+            target: LOG_TARGET,
+            "Calling MessageReceived callback function for sender {}",
+            message.address,
+        );
+        unsafe {
+            (self.callback_message_received)(Box::into_raw(Box::new(message)));
         }
     }
 }
