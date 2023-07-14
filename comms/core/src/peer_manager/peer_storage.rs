@@ -285,15 +285,16 @@ where DS: KeyValueStore<PeerId, Peer>
     ///  - Peer has been seen within a defined time span (1 week)
     ///  - Only returns a maximum number of syncable peers (corresponds with the max possible number of requestable
     ///    peers to sync)
+    ///  - Uses 0 as max PEER_MANAGER_SYNC_PEERS
     pub fn discovery_syncing(
         &self,
-        n: usize,
+        mut n: usize,
         excluded_peers: &[NodeId],
         features: Option<PeerFeatures>,
     ) -> Result<Vec<Peer>, PeerManagerError> {
         if n == 0 {
-            return Ok(Vec::new());
-        }
+            n = PEER_MANAGER_SYNC_PEERS
+        };
 
         let query = PeerQuery::new()
             .select_where(|peer| is_active_peer(peer, features, excluded_peers))
