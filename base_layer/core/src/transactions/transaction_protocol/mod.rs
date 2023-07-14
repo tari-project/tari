@@ -85,10 +85,12 @@
 
 // #![allow(clippy::op_ref)]
 
+use blake2::Blake2b;
 use derivative::Derivative;
+use digest::consts::U32;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::PrivateKey;
-use tari_crypto::{errors::RangeProofError, hash::blake2::Blake256, signatures::SchnorrSignatureError};
+use tari_crypto::{errors::RangeProofError, signatures::SchnorrSignatureError};
 use thiserror::Error;
 
 use crate::transactions::{tari_amount::*, transaction_components::TransactionError};
@@ -193,4 +195,4 @@ hash_domain!(
 );
 
 pub type CalculateTxIdTransactionProtocolHasherBlake256 =
-    DomainSeparatedHasher<Blake256, CalculateTxIdTransactionProtocolHashDomain>;
+    DomainSeparatedHasher<Blake2b<U32>, CalculateTxIdTransactionProtocolHashDomain>;

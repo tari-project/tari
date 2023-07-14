@@ -2399,7 +2399,7 @@ where
 
                     // Compute the stealth address offset
                     let stealth_address_offset = PrivateKey::from_bytes(stealth_address_hasher.as_ref())
-                        .expect("'DomainSeparatedHash<Blake256>' has correct size");
+                        .expect("'DomainSeparatedHash<Blake2b<U32>>' has correct size");
                     let stealth_key = self
                         .resources
                         .key_manager

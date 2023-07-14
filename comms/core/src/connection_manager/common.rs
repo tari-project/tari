@@ -327,9 +327,9 @@ fn validate_onion3_address(addr: &multiaddr::Onion3Addr<'_>) -> Result<(), Conne
     }
 
     let calculated_checksum = sha3::Sha3_256::new()
-        .chain(".onion checksum")
-        .chain(pub_key)
-        .chain(version)
+        .chain_update(".onion checksum")
+        .chain_update(pub_key)
+        .chain_update(version)
         .finalize();
 
     if calculated_checksum[..2] != *checksum {

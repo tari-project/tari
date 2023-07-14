@@ -23,6 +23,7 @@
 use std::string::ToString;
 
 use blake2::Blake2b;
+use digest::consts::U64;
 use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
 use tari_mmr::MerkleMountainRange;
 use tari_utilities::hex::Hex;
@@ -32,7 +33,7 @@ hash_domain!(
     "com.tari.test.mmr.tests.with_blake512_hash",
     1
 );
-pub type Blake512TestMmrHasherBlake2b = DomainSeparatedHasher<Blake2b, Blake512TestMmrHashDomain>;
+pub type Blake512TestMmrHasherBlake2b = DomainSeparatedHasher<Blake2b<U64>, Blake512TestMmrHashDomain>;
 
 #[allow(clippy::vec_init_then_push)]
 pub fn hash_values() -> Vec<String> {

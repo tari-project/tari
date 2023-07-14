@@ -196,11 +196,12 @@ impl BorshSerialize for ExecutionStack {
 }
 
 impl BorshDeserialize for ExecutionStack {
-    fn deserialize(buf: &mut &[u8]) -> io::Result<Self> {
-        let len = buf.read_varint()?;
+    fn deserialize_reader<R>(reader: &mut R) -> Result<Self, io::Error>
+    where R: io::Read {
+        let len = reader.read_varint()?;
         let mut data = Vec::with_capacity(len);
         for _ in 0..len {
-            data.push(u8::deserialize(buf)?);
+            data.push(u8::deserialize_reader(reader)?);
         }
         let stack = Self::from_bytes(data.as_slice())
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
@@ -338,7 +339,7 @@ impl Hex for ExecutionStack {
     fn from_hex(hex: &str) -> Result<Self, HexError>
     where Self: Sized {
         let b = from_hex(hex)?;
-        ExecutionStack::from_bytes(&b).map_err(|_| HexError::HexConversionError)
+        ExecutionStack::from_bytes(&b).map_err(|_| HexError::HexConversionError {})
     }
 
     fn to_hex(&self) -> String {
@@ -382,10 +383,10 @@ fn counter(values: [u8; 6], item: &StackItem) -> [u8; 6] {
 
 #[cfg(test)]
 mod test {
+    use blake2::Blake2b;
     use borsh::{BorshDeserialize, BorshSerialize};
-    use digest::Digest;
+    use digest::{consts::U32, Digest};
     use tari_crypto::{
-        hash::blake2::Blake256,
         keys::{PublicKey, SecretKey},
         ristretto::{pedersen::PedersenCommitment, RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
     };
@@ -416,7 +417,7 @@ mod test {
         let r =
             RistrettoSecretKey::from_hex("193ee873f3de511eda8ae387db6498f3d194d31a130a94cdf13dc5890ec1ad0f").unwrap();
         let p = RistrettoPublicKey::from_secret_key(&k);
-        let m = Blake256::digest(b"Hello Tari Script");
+        let m = Blake2b::<U32>::digest(b"Hello Tari Script");
         let sig = RistrettoSchnorr::sign_raw(&k, r, m.as_slice()).unwrap();
         let scalar: ScalarValue = m.into();
         let inputs = inputs!(sig, p, scalar);
@@ -432,7 +433,7 @@ mod test {
         // unwrap(); let s =
         //     RistrettoSecretKey::from_hex("6db1023d5c46d78a97da8eb6c5a37e00d5f2fee182dcb38c1b6c65e90a43c109").
         // unwrap(); let sig = RistrettoSchnorr::new(r, s);
-        // let m: HashValue = Blake256::digest(b"Hello Tari Script").into();
+        // let m: HashValue = Blake2b::<U32>::digest(b"Hello Tari Script").into();
         // let inputs = inputs!(m, sig, p);
         // eprintln!("to_hex(&m) = {:?}", tari_utilities::hex::to_hex(&m));
         // eprintln!("inputs.to_hex() = {:?}", inputs.to_hex());
@@ -485,7 +486,7 @@ mod test {
         let s =
             RistrettoSecretKey::from_hex("6db1023d5c46d78a97da8eb6c5a37e00d5f2fee182dcb38c1b6c65e90a43c109").unwrap();
         let sig = RistrettoSchnorr::new(p.clone(), s);
-        let m: HashValue = Blake256::digest(b"Hello Tari Script").into();
+        let m: HashValue = Blake2b::<U32>::digest(b"Hello Tari Script").into();
         let s: ScalarValue = m;
         let commitment = PedersenCommitment::from_public_key(&p);
 

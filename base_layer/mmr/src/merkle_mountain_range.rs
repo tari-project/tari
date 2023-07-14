@@ -163,7 +163,7 @@ where
                     .unwrap()
                     .expect("find_peaks returned invalid indexes")
             })
-            .fold(hasher, |hasher, h| hasher.chain(h)))
+            .fold(hasher, |hasher, h| hasher.chain_update(h)))
     }
 
     /// Push a new element into the MMR. Computes new related peaks at the same time if applicable.

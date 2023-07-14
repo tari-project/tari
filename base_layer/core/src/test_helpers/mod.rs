@@ -25,7 +25,9 @@
 
 use std::{iter, path::Path, sync::Arc};
 
+use blake2::Blake2b;
 pub use block_spec::{BlockSpec, BlockSpecs};
+use digest::consts::U32;
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
 use tari_common::configuration::Network;
 use tari_common_types::types::PublicKey;
@@ -136,7 +138,7 @@ pub fn create_peer_manager<P: AsRef<Path>>(data_path: P) -> Arc<PeerManager> {
     let peer_database_name = {
         let mut rng = rand::thread_rng();
         iter::repeat(())
-            .map(|_| rng.sample(Alphanumeric))
+            .map(|_| rng.sample(Alphanumeric) as char)
             .take(8)
             .collect::<String>()
     };
@@ -174,6 +176,8 @@ pub fn new_public_key() -> PublicKey {
 
 pub fn make_hash<T: AsRef<[u8]>>(preimage: T) -> [u8; 32] {
     use digest::Digest;
-    use tari_crypto::hash::blake2::Blake256;
-    Blake256::new().chain(preimage.as_ref()).finalize().into()
+    Blake2b::<U32>::default()
+        .chain_update(preimage.as_ref())
+        .finalize()
+        .into()
 }

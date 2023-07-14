@@ -123,5 +123,11 @@ pub enum MaxSizeBytesError {
     #[error("Invalid Bytes length: expected {expected}, got {actual}")]
     MaxSizeBytesLengthError { expected: usize, actual: usize },
     #[error("Conversion error: {0}")]
-    HexError(#[from] HexError),
+    HexError(String),
+}
+
+impl From<HexError> for MaxSizeBytesError {
+    fn from(err: HexError) -> Self {
+        MaxSizeBytesError::HexError(err.to_string())
+    }
 }

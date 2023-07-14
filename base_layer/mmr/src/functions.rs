@@ -28,7 +28,7 @@ use crate::{
     MerkleMountainRange,
     MutableMmr,
 };
-use digest::Digest;
+use digest::{Digest};
 use std::{convert::TryFrom, marker::PhantomData};
 use tari_common::DomainDigest;
 

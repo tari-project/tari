@@ -13,7 +13,7 @@ minotari_node = { path = "../applications/minotari_node" }
 minotari_node_grpc_client = { path = "../clients/rust/base_node_grpc_client" }
 tari_chat_client = { path = "../base_layer/contacts/examples/chat_client" }
 tari_chat_ffi = { path = "../base_layer/chat_ffi" }
-tari_crypto = { version = "0.17" }
+tari_crypto = { git = "https://github.com/hansieodendaal/tari-crypto.git",  rev = "e048298c1801d373303732feea85046b8ea7163c" }
 tari_common = { path = "../common" }
 tari_common_types = { path = "../base_layer/common_types" }
 tari_comms = { path = "../comms/core" }
@@ -26,7 +26,7 @@ minotari_miner = { path = "../applications/minotari_miner" }
 tari_p2p = { path = "../base_layer/p2p" }
 tari_script = { path = "../infrastructure/tari_script" }
 tari_shutdown = { path = "../infrastructure/shutdown" }
-tari_utilities = "0.4.10"
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git",  rev = "c06726322683c4671b93388b444d108103cd7b55" }
 minotari_wallet = { path = "../base_layer/wallet" }
 minotari_wallet_ffi = { path = "../base_layer/wallet_ffi" }
 minotari_wallet_grpc_client = { path = "../clients/rust/wallet_grpc_client" }
@@ -41,7 +41,7 @@ futures = { version = "^0.3.1" }
 indexmap = "1.9.1"
 libc = "0.2.65"
 log = { version = "0.4.8", features = ["std"] }
-rand = "0.7"
+rand = "0.8"
 reqwest = "0.11.11"
 serde_json = "1.0.64"
 tempfile = "3.3.0"

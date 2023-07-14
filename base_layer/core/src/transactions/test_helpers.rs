@@ -879,7 +879,10 @@ pub async fn schema_to_transaction(
 pub type TestKeyManager = TransactionKeyManagerWrapper<KeyManagerSqliteDatabase<DbConnection>>;
 
 fn random_string(len: usize) -> String {
-    iter::repeat(()).map(|_| OsRng.sample(Alphanumeric)).take(len).collect()
+    iter::repeat(())
+        .map(|_| OsRng.sample(Alphanumeric) as char)
+        .take(len)
+        .collect()
 }
 
 pub fn create_test_core_key_manager_with_memory_db_with_range_proof_size(size: usize) -> TestKeyManager {

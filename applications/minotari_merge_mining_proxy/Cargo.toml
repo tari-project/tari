@@ -15,14 +15,14 @@ tari_common = { path = "../../common" }
 tari_comms = { path = "../../comms/core" }
 tari_core = { path = "../../base_layer/core", default-features = false, features = ["transactions"] }
 minotari_app_utilities = { path = "../minotari_app_utilities" }
-tari_utilities = "0.4.10"
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git",  rev = "c06726322683c4671b93388b444d108103cd7b55" }
 minotari_node_grpc_client = {path="../../clients/rust/base_node_grpc_client" }
 minotari_wallet_grpc_client = {path="../../clients/rust/wallet_grpc_client" }
 
 anyhow = "1.0.53"
 crossterm = { version = "0.25.0" }
 bincode = "1.3.1"
-borsh = "0.9.3"
+borsh = "0.10"
 bytes = "1.1"
 chrono = { version = "0.4.6", default-features = false }
 clap = { version = "3.2", features = ["derive", "env"] }

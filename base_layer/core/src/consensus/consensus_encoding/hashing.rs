@@ -22,17 +22,18 @@
 
 use std::{io, io::Write, marker::PhantomData};
 
+use blake2::Blake2b;
 use borsh::BorshSerialize;
 use digest::{consts::U32, Digest};
-use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparation};
+use tari_crypto::{hash_domain, hashing::DomainSeparation};
 
 /// Domain separated consensus encoding hasher.
 pub struct DomainSeparatedConsensusHasher<M>(PhantomData<M>);
 
 impl<M: DomainSeparation> DomainSeparatedConsensusHasher<M> {
     #[allow(clippy::new_ret_no_self)]
-    pub fn new(label: &'static str) -> ConsensusHasher<Blake256> {
-        let mut digest = Blake256::new();
+    pub fn new(label: &'static str) -> ConsensusHasher<Blake2b<U32>> {
+        let mut digest = Blake2b::<U32>::default();
         M::add_domain_separation_tag(&mut digest, label);
         ConsensusHasher::from_digest(digest)
     }
@@ -69,7 +70,7 @@ where D: Digest<OutputSize = U32>
     }
 }
 
-impl Default for ConsensusHasher<Blake256> {
+impl Default for ConsensusHasher<Blake2b<U32>> {
     /// This `default` implementation is provided for convenience, but should not be used as the de-facto consensus
     /// hasher, rather create a new unique hash domain.
     fn default() -> Self {
@@ -100,6 +101,8 @@ impl<D: Digest> Write for WriteHashWrapper<D> {
 
 #[cfg(test)]
 mod tests {
+    use blake2::Blake2b;
+    use digest::consts::U32;
     use tari_crypto::hash_domain;
     use tari_script::script;
 
@@ -109,10 +112,10 @@ mod tests {
 
     #[test]
     fn it_hashes_using_the_domain_hasher() {
-        let mut hasher = Blake256::new();
+        let mut hasher = Blake2b::<U32>::default();
         TestHashDomain::add_domain_separation_tag(&mut hasher, "foo");
 
-        let expected_hash = hasher.chain(b"\xff\x00\x00\x00\x00\x00\x00\x00").finalize();
+        let expected_hash = hasher.chain_update(b"\xff\x00\x00\x00\x00\x00\x00\x00").finalize();
         let hash = DomainSeparatedConsensusHasher::<TestHashDomain>::new("foo")
             .chain(&255u64)
             .finalize();
@@ -124,10 +127,10 @@ mod tests {
     fn it_adds_to_hash_challenge_in_complete_chunks() {
         // Script is chosen because the consensus encoding impl for TariScript has 2 writes
         let test_subject = script!(Nop);
-        let mut hasher = Blake256::new();
+        let mut hasher = Blake2b::<U32>::default();
         TestHashDomain::add_domain_separation_tag(&mut hasher, "foo");
 
-        let expected_hash = hasher.chain(b"\x01\x73").finalize();
+        let expected_hash = hasher.chain_update(b"\x01\x73").finalize();
         let hash = DomainSeparatedConsensusHasher::<TestHashDomain>::new("foo")
             .chain(&test_subject)
             .finalize();
@@ -137,8 +140,8 @@ mod tests {
 
     #[test]
     fn default_consensus_hash_is_not_blake256_default_hash() {
-        let blake256_hasher = Blake256::new();
-        let blake256_hash = blake256_hasher.chain(b"").finalize();
+        let blake256_hasher = Blake2b::<U32>::default();
+        let blake256_hash = blake256_hasher.chain_update(b"").finalize();
 
         let default_consensus_hasher = ConsensusHasher::default();
         let default_consensus_hash = default_consensus_hasher.chain(b"").finalize();

@@ -27,10 +27,11 @@ use std::{
     iter::FromIterator,
 };
 
+use blake2::Blake2b;
 use borsh::{BorshDeserialize, BorshSerialize};
-use digest::Digest;
+use digest::{consts::U32, Digest};
 use integer_encoding::VarIntWriter;
-use tari_crypto::{hash::blake2::Blake256, hashing::DomainSeparation};
+use tari_crypto::hashing::DomainSeparation;
 
 use super::{
     decoder::{CovenantDecodeError, CovenantReadExt},
@@ -340,8 +341,8 @@ impl OutputFields {
 
     /// Given a `TransactionOutput` it iteratively hashes the field value for a
     /// `TransactionOutput`, over the underlying list of field values
-    pub fn construct_challenge_from(&self, output: &TransactionOutput) -> Blake256 {
-        let mut challenge = Blake256::new();
+    pub fn construct_challenge_from(&self, output: &TransactionOutput) -> Blake2b<U32> {
+        let mut challenge = Blake2b::<U32>::default();
         BaseLayerCovenantsDomain::add_domain_separation_tag(&mut challenge, COVENANTS_FIELD_HASHER_LABEL);
         for field in &self.fields {
             challenge.update(field.get_field_value_bytes(output).as_slice());
@@ -563,6 +564,7 @@ mod test {
 
         mod construct_challenge_from {
             use blake2::Digest;
+            use digest::Update;
             use tari_crypto::hashing::DomainSeparation;
 
             use super::*;
@@ -603,7 +605,7 @@ mod test {
                 let hash = fields.construct_challenge_from(&output).finalize();
                 let hash = hash.to_vec();
 
-                let mut hasher = Blake256::new();
+                let mut hasher = Blake2b::<U32>::default();
                 BaseLayerCovenantsDomain::add_domain_separation_tag(&mut hasher, COVENANTS_FIELD_HASHER_LABEL);
                 let expected_hash = hasher
                     .chain(output.features.try_to_vec().unwrap())

@@ -22,6 +22,8 @@
 
 use std::{cmp, marker::PhantomData, sync::Arc};
 
+use blake2::Blake2b;
+use digest::consts::U32;
 use log::*;
 use tari_common::configuration::bootstrap::ApplicationType;
 use tari_common_types::{
@@ -54,7 +56,7 @@ use tari_core::{
         CryptoFactories,
     },
 };
-use tari_crypto::{hash::blake2::Blake256, hash_domain, signatures::SchnorrSignatureError};
+use tari_crypto::{hash_domain, signatures::SchnorrSignatureError};
 use tari_key_manager::{
     cipher_seed::CipherSeed,
     key_manager::KeyManager,
@@ -722,7 +724,7 @@ async fn persist_one_sided_payment_script_for_node_identity(
     let script = one_sided_payment_script(wallet_identity.node_identity.public_key());
     let known_script = KnownOneSidedPaymentScript {
         script_hash: script
-            .as_hash::<Blake256>()
+            .as_hash::<Blake2b<U32>>()
             .map_err(|e| WalletError::OutputManagerError(OutputManagerError::ScriptError(e)))?
             .to_vec(),
         script_key_id: wallet_identity.wallet_node_key_id.clone(),

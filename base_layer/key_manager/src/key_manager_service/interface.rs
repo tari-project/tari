@@ -181,7 +181,10 @@ mod test {
     use crate::key_manager_service::KeyId;
 
     fn random_string(len: usize) -> String {
-        iter::repeat(()).map(|_| OsRng.sample(Alphanumeric)).take(len).collect()
+        iter::repeat(())
+            .map(|_| OsRng.sample(Alphanumeric) as char)
+            .take(len)
+            .collect()
     }
 
     #[test]

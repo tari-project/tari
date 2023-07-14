@@ -22,11 +22,13 @@
 
 use std::fmt::Display;
 
+use blake2::Blake2b;
 use console_error_panic_hook;
 use derivative::Derivative;
+use digest::consts::U32;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{PrivateKey, PublicKey};
-use tari_crypto::{hash::blake2::Blake256, keys::PublicKey as PublicKeyTrait};
+use tari_crypto::keys::PublicKey as PublicKeyTrait;
 use wasm_bindgen::prelude::*;
 
 use crate::{
@@ -34,7 +36,7 @@ use crate::{
     key_manager::{DerivedKey, KeyManager as GenericKeyManager},
 };
 
-type KeyDigest = Blake256;
+type KeyDigest = Blake2b<U32>;
 
 type KeyManager = GenericKeyManager<PublicKey, KeyDigest>;
 

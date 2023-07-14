@@ -242,13 +242,15 @@ where D: Digest + DomainDigest
 
 #[cfg(test)]
 mod test {
-    use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparatedHasher};
+    use blake2::Blake2b;
+    use digest::consts::U32;
+    use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
 
     use super::*;
 
     hash_domain!(TestDomain, "com.tari.test.testing", 0);
 
-    type TestHasher = DomainSeparatedHasher<Blake256, TestDomain>;
+    type TestHasher = DomainSeparatedHasher<Blake2b<U32>, TestDomain>;
 
     #[test]
     fn test_small_tree() {
