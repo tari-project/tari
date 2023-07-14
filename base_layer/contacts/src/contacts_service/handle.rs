@@ -41,7 +41,7 @@ use crate::contacts_service::{
 
 pub static DEFAULT_MESSAGE_LIMIT: u64 = 35;
 pub static MAX_MESSAGE_LIMIT: u64 = 2500;
-pub static DEFAULT_MESSAGE_PAGE: u64 = 1;
+pub static DEFAULT_MESSAGE_PAGE: u64 = 0;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContactsLivenessData {
@@ -249,10 +249,6 @@ impl ContactsServiceHandle {
     ) -> Result<Vec<Message>, ContactsServiceError> {
         if limit == 0 || limit > MAX_MESSAGE_LIMIT {
             limit = DEFAULT_MESSAGE_LIMIT;
-        }
-
-        if page == 0 {
-            page = DEFAULT_MESSAGE_PAGE;
         }
 
         // const values won't be a problem here
