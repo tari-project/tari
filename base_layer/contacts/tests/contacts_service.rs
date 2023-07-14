@@ -30,7 +30,7 @@ use tari_comms::{peer_manager::PeerFeatures, NodeIdentity};
 use tari_comms_dht::{store_forward::SafConfig, DhtConfig};
 use tari_contacts::contacts_service::{
     error::{ContactsServiceError, ContactsServiceStorageError},
-    handle::ContactsServiceHandle,
+    handle::{ContactsServiceHandle, DEFAULT_MESSAGE_LIMIT, MAX_MESSAGE_LIMIT},
     storage::{
         database::{ContactsBackend, ContactsDatabase, DbKey},
         sqlite_db::ContactsServiceSqliteDatabase,
@@ -238,6 +238,7 @@ pub fn test_message_pagination() {
         let contact = Contact::new(random::string(8), address.clone(), None, None, false);
         runtime.block_on(contacts_service.upsert_contact(contact)).unwrap();
 
+        // Test lower bounds
         for num in 0..8 {
             let message = MessageBuilder::new()
                 .message(format!("Test {:?}", num))
@@ -252,7 +253,55 @@ pub fn test_message_pagination() {
             .unwrap();
         assert_eq!(5, messages.len());
 
-        let messages = runtime.block_on(contacts_service.get_messages(address, 5, 1)).unwrap();
+        let messages = runtime
+            .block_on(contacts_service.get_messages(address.clone(), 5, 1))
+            .unwrap();
         assert_eq!(3, messages.len());
+
+        let messages = runtime
+            .block_on(contacts_service.get_messages(address.clone(), 0, 0))
+            .unwrap();
+        assert_eq!(8, messages.len());
+
+        let messages = runtime
+            .block_on(contacts_service.get_messages(address.clone(), 0, 1))
+            .unwrap();
+        assert_eq!(0, messages.len());
+
+        // Test upper bounds
+        for num in 0..3000 {
+            let message = MessageBuilder::new()
+                .message(format!("Test {:?}", num))
+                .address(address.clone())
+                .build();
+
+            contacts_db.save_message(message.clone()).expect("Message to be saved");
+        }
+
+        let messages = runtime
+            .block_on(contacts_service.get_messages(address.clone(), u64::MAX, 0))
+            .unwrap();
+        assert_eq!(DEFAULT_MESSAGE_LIMIT, messages.len() as u64);
+
+        let messages = runtime
+            .block_on(contacts_service.get_messages(address.clone(), MAX_MESSAGE_LIMIT, 0))
+            .unwrap();
+        assert_eq!(2500, messages.len());
+
+        let messages = runtime
+            .block_on(contacts_service.get_messages(address.clone(), MAX_MESSAGE_LIMIT, 1))
+            .unwrap();
+        assert_eq!(508, messages.len());
+
+        // Would cause overflows, defaults to page = 0
+        let messages = runtime
+            .block_on(contacts_service.get_messages(address.clone(), MAX_MESSAGE_LIMIT, u64::MAX))
+            .unwrap();
+        assert_eq!(2500, messages.len());
+
+        let messages = runtime
+            .block_on(contacts_service.get_messages(address, 1, i64::MAX as u64))
+            .unwrap();
+        assert_eq!(0, messages.len());
     });
 }

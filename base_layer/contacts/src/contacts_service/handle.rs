@@ -245,11 +245,16 @@ impl ContactsServiceHandle {
         &mut self,
         pk: TariAddress,
         mut limit: u64,
-        page: u64,
+        mut page: u64,
     ) -> Result<Vec<Message>, ContactsServiceError> {
         if limit == 0 || limit > MAX_MESSAGE_LIMIT {
             limit = DEFAULT_MESSAGE_LIMIT;
         }
+
+        page = match page.checked_mul(limit) {
+            Some(_) => page,
+            None => DEFAULT_MESSAGE_PAGE,
+        };
 
         // const values won't be a problem here
         #[allow(clippy::cast_possible_wrap)]

@@ -78,7 +78,7 @@ impl MessagesSql {
         Ok(messages::table
             .filter(messages::address.eq(address))
             .order(messages::stored_at.desc())
-            .offset(page * limit)
+            .offset(limit * page)
             .limit(limit)
             .load::<MessagesSql>(conn)?)
     }
