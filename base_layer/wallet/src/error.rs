@@ -106,6 +106,7 @@ pub enum WalletError {
 }
 
 pub const LOG_TARGET: &str = "minotari::application";
+
 impl From<ByteArrayError> for WalletError {
     fn from(err: ByteArrayError) -> Self {
         Self::ByteArrayError(err.to_string())
