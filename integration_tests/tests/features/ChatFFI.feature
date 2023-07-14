@@ -11,6 +11,14 @@ Feature: Chat FFI messaging
     When I use CHAT_A to send a message 'Hey there' to CHAT_B
     Then CHAT_B will have 1 message with CHAT_A
 
+  Scenario: Callback for new message received
+    Given I have a seed node SEED_A
+    When I have a chat FFI client CHAT_A connected to seed node SEED_A
+    When I have a chat FFI client CHAT_B connected to seed node SEED_A
+    When I use CHAT_A to send a message 'Hey there' to CHAT_B
+    Then there will be a MessageReceived callback of at least 1
+    Then CHAT_B will have 1 message with CHAT_A
+
   # Also flaky on CI. Seems liveness has issues on CI
   @broken
   Scenario: Callback for status change is received
