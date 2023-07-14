@@ -291,8 +291,8 @@ where T: ContactsBackend + 'static
                 let result = self.get_online_status(&contact).await;
                 Ok(result.map(ContactsServiceResponse::OnlineStatus)?)
             },
-            ContactsServiceRequest::GetAllMessages(pk) => {
-                let result = self.db.get_messages(pk);
+            ContactsServiceRequest::GetMessages(pk, limit, page) => {
+                let result = self.db.get_messages(pk, limit, page);
                 Ok(result.map(ContactsServiceResponse::Messages)?)
             },
             ContactsServiceRequest::SendMessage(address, mut message) => {

@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    convert::TryFrom,
     fmt::{Display, Error, Formatter},
     sync::Arc,
 };
@@ -37,6 +38,10 @@ use crate::contacts_service::{
     service::{ContactMessageType, ContactOnlineStatus},
     types::{Contact, Message},
 };
+
+pub static DEFAULT_MESSAGE_LIMIT: u64 = 35;
+pub static MAX_MESSAGE_LIMIT: u64 = 2500;
+pub static DEFAULT_MESSAGE_PAGE: u64 = 1;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContactsLivenessData {
@@ -131,7 +136,7 @@ pub enum ContactsServiceRequest {
     GetContacts,
     GetContactOnlineStatus(Contact),
     SendMessage(TariAddress, Message),
-    GetAllMessages(TariAddress),
+    GetMessages(TariAddress, i64, i64),
 }
 
 #[derive(Debug)]
@@ -236,10 +241,29 @@ impl ContactsServiceHandle {
         }
     }
 
-    pub async fn get_all_messages(&mut self, pk: TariAddress) -> Result<Vec<Message>, ContactsServiceError> {
+    pub async fn get_messages(
+        &mut self,
+        pk: TariAddress,
+        mut limit: u64,
+        mut page: u64,
+    ) -> Result<Vec<Message>, ContactsServiceError> {
+        if limit == 0 || limit > MAX_MESSAGE_LIMIT {
+            limit = DEFAULT_MESSAGE_LIMIT;
+        }
+
+        if page == 0 {
+            page = DEFAULT_MESSAGE_PAGE;
+        }
+
+        // const values won't be a problem here
+        #[allow(clippy::cast_possible_wrap)]
         match self
             .request_response_service
-            .call(ContactsServiceRequest::GetAllMessages(pk))
+            .call(ContactsServiceRequest::GetMessages(
+                pk,
+                i64::try_from(limit).unwrap_or(DEFAULT_MESSAGE_LIMIT as i64),
+                i64::try_from(page).unwrap_or(DEFAULT_MESSAGE_PAGE as i64),
+            ))
             .await??
         {
             ContactsServiceResponse::Messages(messages) => Ok(messages),

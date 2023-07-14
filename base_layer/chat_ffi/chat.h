@@ -161,9 +161,11 @@ int check_online_status(struct ClientFFI *client, struct TariAddress *receiver, 
  * The ```address``` should be destroyed after use
  * The returned pointer to ```*mut ChatMessages``` should be destroyed after use
  */
-struct ChatMessages *get_all_messages(struct ClientFFI *client,
-                                      struct TariAddress *address,
-                                      int *error_out);
+struct ChatMessages *get_messages(struct ClientFFI *client,
+                                  struct TariAddress *address,
+                                  int *limit,
+                                  int *page,
+                                  int *error_out);
 
 /**
  * Frees memory for messages
