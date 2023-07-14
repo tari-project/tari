@@ -11,6 +11,16 @@ Feature: Chat FFI messaging
     When I use CHAT_A to send a message 'Hey there' to CHAT_B
     Then CHAT_B will have 1 message with CHAT_A
 
+  # Also flaky on CI. Seems liveness has issues on CI
+  @broken
+  Scenario: Callback for status change is received
+    Given I have a seed node SEED_A
+    When I have a chat FFI client CHAT_A connected to seed node SEED_A
+    When I have a chat FFI client CHAT_B connected to seed node SEED_A
+    When CHAT_A adds CHAT_B as a contact
+    When CHAT_A waits for contact CHAT_B to be online
+    Then there will be a contact status update callback of at least 1
+
   #This is flaky, passes on local run time, but fails CI
   @broken
   Scenario: A message is sent directly between two FFI clients

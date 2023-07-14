@@ -127,6 +127,10 @@ loggers:
     appenders:
       - base_layer_base_node
     additive: false
+  chat_ffi:
+    level: debug
+    appenders:
+      - base_layer_contacts
   wallet:
     level: debug
     appenders:

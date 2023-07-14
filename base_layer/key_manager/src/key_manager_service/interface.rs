@@ -38,10 +38,16 @@ pub enum AddResult {
     AlreadyExists,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Default, Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub enum KeyId<PK> {
-    Managed { branch: String, index: u64 },
-    Imported { key: PK },
+    Managed {
+        branch: String,
+        index: u64,
+    },
+    Imported {
+        key: PK,
+    },
+    #[default]
     Zero,
 }
 
@@ -87,12 +93,6 @@ where PK: ByteArray
             KeyId::Imported { key: public_key } => write!(f, "{}.{}", IMPORTED_KEY_BRANCH, public_key.to_hex()),
             KeyId::Zero => write!(f, "{}", ZERO_KEY_BRANCH),
         }
-    }
-}
-
-impl<PK> Default for KeyId<PK> {
-    fn default() -> Self {
-        KeyId::Zero
     }
 }
 

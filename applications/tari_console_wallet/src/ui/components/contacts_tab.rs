@@ -213,6 +213,7 @@ impl ContactsTab {
                     },
                 }
             } else {
+                // dont care
             }
         }
 

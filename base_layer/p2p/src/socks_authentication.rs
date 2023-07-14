@@ -28,16 +28,15 @@ use std::{
 use serde::{Deserialize, Serialize};
 use tari_comms::socks;
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Default, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SocksAuthentication {
+    #[default]
     None,
-    UsernamePassword { username: String, password: String },
-}
-impl Default for SocksAuthentication {
-    fn default() -> Self {
-        SocksAuthentication::None
-    }
+    UsernamePassword {
+        username: String,
+        password: String,
+    },
 }
 
 fn parse_key_value(s: &str, split_chr: char) -> (String, Option<&str>) {

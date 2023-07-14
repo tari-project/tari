@@ -12,7 +12,11 @@ struct ChatMessages;
 
 struct ClientFFI;
 
+struct ContactsLivenessData;
+
 struct TariAddress;
+
+typedef void (*CallbackContactStatusChange)(struct ContactsLivenessData*);
 
 #ifdef __cplusplus
 extern "C" {
@@ -35,7 +39,8 @@ extern "C" {
  */
 struct ClientFFI *create_chat_client(ApplicationConfig *config,
                                      const char *identity_file_path,
-                                     int *error_out);
+                                     int *error_out,
+                                     CallbackContactStatusChange callback_contact_status_change);
 
 /**
  * Frees memory for a ClientFFI

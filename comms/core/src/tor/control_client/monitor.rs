@@ -96,6 +96,7 @@ where
                                     "Failed to send response on internal channel: {:?}", err
                                 );
                             } else {
+                                // sent response
                             }
                         },
                         Err(err) => log_server_response_error(err),
