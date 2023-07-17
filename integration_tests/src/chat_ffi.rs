@@ -68,7 +68,13 @@ extern "C" {
     pub fn send_message(client: *mut ClientFFI, receiver: *mut c_void, message: *const c_char, out_error: *const c_int);
     pub fn add_contact(client: *mut ClientFFI, address: *mut c_void, out_error: *const c_int);
     pub fn check_online_status(client: *mut ClientFFI, address: *mut c_void, out_error: *const c_int) -> c_int;
-    pub fn get_all_messages(client: *mut ClientFFI, sender: *mut c_void, out_error: *const c_int) -> *mut c_void;
+    pub fn get_messages(
+        client: *mut ClientFFI,
+        sender: *mut c_void,
+        limit: *mut c_void,
+        page: *mut c_void,
+        out_error: *const c_int,
+    ) -> *mut c_void;
     pub fn destroy_client_ffi(client: *mut ClientFFI);
 }
 
@@ -119,7 +125,7 @@ impl ChatClient for ChatFFI {
         }
     }
 
-    async fn get_all_messages(&self, address: &TariAddress) -> Vec<Message> {
+    async fn get_messages(&self, address: &TariAddress, limit: u64, page: u64) -> Vec<Message> {
         let client = self.ptr.lock().unwrap();
 
         let address_ptr = Box::into_raw(Box::new(address.clone())) as *mut c_void;
@@ -127,7 +133,9 @@ impl ChatClient for ChatFFI {
         let messages;
         unsafe {
             let out_error = Box::into_raw(Box::new(0));
-            let all_messages = get_all_messages(client.0, address_ptr, out_error) as *mut Vec<Message>;
+            let limit = Box::into_raw(Box::new(limit)) as *mut c_void;
+            let page = Box::into_raw(Box::new(page)) as *mut c_void;
+            let all_messages = get_messages(client.0, address_ptr, limit, page, out_error) as *mut Vec<Message>;
             messages = (*all_messages).clone();
         }
 
