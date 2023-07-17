@@ -22,7 +22,7 @@
 
 #![recursion_limit = "1024"]
 
-use std::{ffi::CStr, path::PathBuf, ptr, str::FromStr, sync::Arc};
+use std::{convert::TryFrom, ffi::CStr, path::PathBuf, ptr, str::FromStr, sync::Arc};
 
 use callback_handler::CallbackContactStatusChange;
 use libc::{c_char, c_int};
@@ -35,7 +35,10 @@ use tari_chat_client::{
 use tari_common::configuration::{MultiaddrList, Network};
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::{multiaddr::Multiaddr, NodeIdentity};
-use tari_contacts::contacts_service::types::Message;
+use tari_contacts::contacts_service::{
+    handle::{DEFAULT_MESSAGE_LIMIT, DEFAULT_MESSAGE_PAGE},
+    types::Message,
+};
 use tokio::runtime::Runtime;
 
 use crate::{
@@ -393,6 +396,8 @@ pub unsafe extern "C" fn check_online_status(
 /// ## Arguments
 /// `client` - The Client pointer
 /// `address` - A TariAddress ptr
+/// `limit` - The amount of messages you want to fetch. Default to 35, max 2500
+/// `page` - The page of results you'd like returned. Default to 0, maximum of u64 max
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
@@ -402,9 +407,11 @@ pub unsafe extern "C" fn check_online_status(
 /// The ```address``` should be destroyed after use
 /// The returned pointer to ```*mut ChatMessages``` should be destroyed after use
 #[no_mangle]
-pub unsafe extern "C" fn get_all_messages(
+pub unsafe extern "C" fn get_messages(
     client: *mut ClientFFI,
     address: *mut TariAddress,
+    limit: *mut c_int,
+    page: *mut c_int,
     error_out: *mut c_int,
 ) -> *mut ChatMessages {
     let mut error = 0;
@@ -420,9 +427,14 @@ pub unsafe extern "C" fn get_all_messages(
         ptr::swap(error_out, &mut error as *mut c_int);
     }
 
+    let mlimit = u64::try_from(*limit).unwrap_or(DEFAULT_MESSAGE_LIMIT);
+    let mpage = u64::try_from(*page).unwrap_or(DEFAULT_MESSAGE_PAGE);
+
     let mut messages = Vec::new();
 
-    let mut retrieved_messages = (*client).runtime.block_on((*client).client.get_all_messages(&*address));
+    let mut retrieved_messages = (*client)
+        .runtime
+        .block_on((*client).client.get_messages(&*address, mlimit, mpage));
     messages.append(&mut retrieved_messages);
 
     Box::into_raw(Box::new(ChatMessages(messages)))
