@@ -25,7 +25,7 @@ use std::{
     ffi::{c_void, CString},
     path::PathBuf,
     str::FromStr,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, Once},
 };
 
 use async_trait::async_trait;
@@ -45,6 +45,16 @@ use tari_contacts::contacts_service::{service::ContactOnlineStatus, types::Messa
 
 use crate::{chat_client::test_config, get_port};
 
+extern "C" fn callback_contact_status_change(_state: *mut c_void) {
+    let callback = ChatCallback::instance();
+    *callback.contact_status_change.lock().unwrap() += 1;
+}
+
+extern "C" fn callback_message_received(_state: *mut c_void) {
+    let callback = ChatCallback::instance();
+    *callback.message_received.lock().unwrap() += 1;
+}
+
 #[cfg_attr(windows, link(name = "tari_chat_ffi.dll"))]
 #[cfg_attr(not(windows), link(name = "tari_chat_ffi"))]
 extern "C" {
@@ -52,11 +62,19 @@ extern "C" {
         config: *mut c_void,
         identity_file_path: *const c_char,
         out_error: *const c_int,
+        callback_contact_status_change: unsafe extern "C" fn(*mut c_void),
+        callback_message_received: unsafe extern "C" fn(*mut c_void),
     ) -> *mut ClientFFI;
     pub fn send_message(client: *mut ClientFFI, receiver: *mut c_void, message: *const c_char, out_error: *const c_int);
     pub fn add_contact(client: *mut ClientFFI, address: *mut c_void, out_error: *const c_int);
     pub fn check_online_status(client: *mut ClientFFI, address: *mut c_void, out_error: *const c_int) -> c_int;
-    pub fn get_all_messages(client: *mut ClientFFI, sender: *mut c_void, out_error: *const c_int) -> *mut c_void;
+    pub fn get_messages(
+        client: *mut ClientFFI,
+        sender: *mut c_void,
+        limit: *mut c_void,
+        page: *mut c_void,
+        out_error: *const c_int,
+    ) -> *mut c_void;
     pub fn destroy_client_ffi(client: *mut ClientFFI);
 }
 
@@ -107,7 +125,7 @@ impl ChatClient for ChatFFI {
         }
     }
 
-    async fn get_all_messages(&self, address: &TariAddress) -> Vec<Message> {
+    async fn get_messages(&self, address: &TariAddress, limit: u64, page: u64) -> Vec<Message> {
         let client = self.ptr.lock().unwrap();
 
         let address_ptr = Box::into_raw(Box::new(address.clone())) as *mut c_void;
@@ -115,7 +133,9 @@ impl ChatClient for ChatFFI {
         let messages;
         unsafe {
             let out_error = Box::into_raw(Box::new(0));
-            let all_messages = get_all_messages(client.0, address_ptr, out_error) as *mut Vec<Message>;
+            let limit = Box::into_raw(Box::new(limit)) as *mut c_void;
+            let page = Box::into_raw(Box::new(page)) as *mut c_void;
+            let all_messages = get_messages(client.0, address_ptr, limit, page, out_error) as *mut Vec<Message>;
             messages = (*all_messages).clone();
         }
 
@@ -180,11 +200,39 @@ pub async fn spawn_ffi_chat_client(name: &str, seed_peers: Vec<Peer>, base_dir: 
     let out_error = Box::into_raw(Box::new(0));
 
     unsafe {
-        client_ptr = create_chat_client(config_ptr, identity_path_c_char, out_error);
+        *ChatCallback::instance().contact_status_change.lock().unwrap() = 0;
+
+        client_ptr = create_chat_client(
+            config_ptr,
+            identity_path_c_char,
+            out_error,
+            callback_contact_status_change,
+            callback_message_received,
+        );
     }
 
     ChatFFI {
         ptr: Arc::new(Mutex::new(PtrWrapper(client_ptr))),
         identity,
+    }
+}
+
+static mut INSTANCE: Option<ChatCallback> = None;
+static START: Once = Once::new();
+
+#[derive(Default)]
+pub struct ChatCallback {
+    pub contact_status_change: Mutex<u64>,
+    pub message_received: Mutex<u64>,
+}
+
+impl ChatCallback {
+    pub fn instance() -> &'static mut Self {
+        unsafe {
+            START.call_once(|| {
+                INSTANCE = Some(Self::default());
+            });
+            INSTANCE.as_mut().unwrap()
+        }
     }
 }

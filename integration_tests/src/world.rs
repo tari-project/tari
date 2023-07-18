@@ -133,6 +133,7 @@ impl Debug for TariWorld {
             .field("ffi_wallets", &self.ffi_wallets)
             .field("wallets", &self.wallets)
             .field("merge_mining_proxies", &self.merge_mining_proxies)
+            .field("chat_clients", &self.chat_clients.keys())
             .field("transactions", &self.transactions)
             .field("wallet_addresses", &self.wallet_addresses)
             .field("utxos", &self.utxos)

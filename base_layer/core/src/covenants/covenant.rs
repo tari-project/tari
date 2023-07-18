@@ -115,11 +115,11 @@ impl Covenant {
 
     /// It executes the covenant on the transaction input being spent, it filters the transaction outputs which should
     /// generate at least one match. An empty covenant is an identity and matches all outputs.
-    pub fn execute<'a>(
+    pub fn execute(
         &self,
         block_height: u64,
         input: &TransactionInput,
-        outputs: &'a [TransactionOutput],
+        outputs: &[TransactionOutput],
     ) -> Result<usize, CovenantError> {
         if self.tokens.is_empty() {
             // Empty covenants always pass

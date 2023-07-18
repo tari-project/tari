@@ -104,15 +104,17 @@ where TContactServiceDbConnection: PooledDbConnection<Error = SqliteStorageError
                     .map(|c| Contact::try_from(c.clone()))
                     .collect::<Result<Vec<_>, _>>()?,
             )),
-            DbKey::Messages(address) => match MessagesSql::find_by_address(&address.to_bytes(), &mut conn) {
-                Ok(messages) => Some(DbValue::Messages(
-                    messages
-                        .iter()
-                        .map(|m| Message::try_from(m.clone()).expect("Couldn't cast MessageSql to Message"))
-                        .collect::<Vec<Message>>(),
-                )),
-                Err(ContactsServiceStorageError::DieselError(DieselError::NotFound)) => None,
-                Err(e) => return Err(e),
+            DbKey::Messages(address, limit, page) => {
+                match MessagesSql::find_by_address(&address.to_bytes(), *limit, *page, &mut conn) {
+                    Ok(messages) => Some(DbValue::Messages(
+                        messages
+                            .iter()
+                            .map(|m| Message::try_from(m.clone()).expect("Couldn't cast MessageSql to Message"))
+                            .collect::<Vec<Message>>(),
+                    )),
+                    Err(ContactsServiceStorageError::DieselError(DieselError::NotFound)) => None,
+                    Err(e) => return Err(e),
+                }
             },
         };
 
@@ -170,7 +172,7 @@ where TContactServiceDbConnection: PooledDbConnection<Error = SqliteStorageError
                     Err(e) => return Err(e),
                 },
                 DbKey::Contacts => return Err(ContactsServiceStorageError::OperationNotSupported),
-                DbKey::Messages(_pk) => return Err(ContactsServiceStorageError::OperationNotSupported),
+                DbKey::Messages(_pk, _l, _p) => return Err(ContactsServiceStorageError::OperationNotSupported),
             },
             WriteOperation::Insert(i) => {
                 if let DbValue::Message(m) = *i {

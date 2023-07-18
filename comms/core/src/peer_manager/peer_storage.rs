@@ -43,8 +43,9 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "comms::peer_manager::peer_storage";
-/// The maximum number of peers to return from the flood_identities method in peer manager
-const PEER_MANAGER_MAX_FLOOD_PEERS: usize = 1000;
+/// The maximum number of peers to return in peer manager
+const PEER_MANAGER_SYNC_PEERS: usize = 100;
+const PEER_ACTIVE_WITHIN_DURATION: u64 = 7 * 24 * 60 * 60; // 7 days, 24h, 60m, 60s = 1 week
 
 /// PeerStorage provides a mechanism to keep a datastore and a local copy of all peers in sync and allow fast searches
 /// using the node_id, public key or net_address of a peer.
@@ -278,10 +279,34 @@ where DS: KeyValueStore<PeerId, Peer>
         Ok(peers)
     }
 
+    /// Return "good" peers for syncing
+    /// Criteria:
+    ///  - Peer is not banned
+    ///  - Peer has been seen within a defined time span (1 week)
+    ///  - Only returns a maximum number of syncable peers (corresponds with the max possible number of requestable
+    ///    peers to sync)
+    ///  - Uses 0 as max PEER_MANAGER_SYNC_PEERS
+    pub fn discovery_syncing(
+        &self,
+        mut n: usize,
+        excluded_peers: &[NodeId],
+        features: Option<PeerFeatures>,
+    ) -> Result<Vec<Peer>, PeerManagerError> {
+        if n == 0 {
+            n = PEER_MANAGER_SYNC_PEERS
+        };
+
+        let query = PeerQuery::new()
+            .select_where(|peer| is_active_peer(peer, features, excluded_peers))
+            .limit(n);
+
+        self.perform_query(query)
+    }
+
     /// Compile a list of all known peers
     pub fn flood_peers(&self) -> Result<Vec<Peer>, PeerManagerError> {
         self.peer_db
-            .filter_take(PEER_MANAGER_MAX_FLOOD_PEERS, |(_, peer)| !peer.is_banned())
+            .filter_take(PEER_MANAGER_SYNC_PEERS, |(_, peer)| !peer.is_banned())
             .map(|pairs| pairs.into_iter().map(|(_, peer)| peer).collect())
             .map_err(PeerManagerError::DatabaseError)
     }
@@ -304,12 +329,7 @@ where DS: KeyValueStore<PeerId, Peer>
         }
 
         let query = PeerQuery::new()
-            .select_where(|peer| {
-                features.map(|f| peer.features == f).unwrap_or(true) &&
-                    !peer.is_banned() &&
-                    !peer.is_offline() &&
-                    !excluded_peers.contains(&peer.node_id)
-            })
+            .select_where(|peer| is_active_peer(peer, features, excluded_peers))
             .sort_by(PeerQuerySortBy::DistanceFrom(node_id))
             .limit(n);
 
@@ -498,15 +518,17 @@ impl Into<CommsDatabase> for PeerStorage<CommsDatabase> {
 
 #[cfg(test)]
 mod test {
-    use std::iter::repeat_with;
+    use std::{borrow::BorrowMut, iter::repeat_with};
 
+    use chrono::NaiveDateTime;
     use multiaddr::Multiaddr;
+    use rand::Rng;
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
     use tari_storage::HashmapDatabase;
 
     use super::*;
     use crate::{
-        net_address::{MultiaddressesWithStats, PeerAddressSource},
+        net_address::{MultiaddrWithStats, MultiaddressesWithStats, PeerAddressSource},
         peer_manager::{peer::PeerFlags, PeerFeatures},
     };
 
@@ -743,11 +765,26 @@ mod test {
 
     fn create_test_peer(features: PeerFeatures, ban: bool) -> Peer {
         let mut rng = rand::rngs::OsRng;
+
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut rng);
         let node_id = NodeId::from_key(&pk);
-        let net_address = "/ip4/1.2.3.4/tcp/8000".parse::<Multiaddr>().unwrap();
-        let net_addresses =
-            MultiaddressesWithStats::from_addresses_with_source(vec![net_address], &PeerAddressSource::Config);
+
+        let mut net_addresses = MultiaddressesWithStats::from_addresses_with_source(vec![], &PeerAddressSource::Config);
+
+        // Create 1 to 4 random addresses
+        for _i in 1..=rand::thread_rng().gen_range(1, 4) {
+            let n = vec![
+                rand::thread_rng().gen_range(1, 9),
+                rand::thread_rng().gen_range(1, 9),
+                rand::thread_rng().gen_range(1, 9),
+                rand::thread_rng().gen_range(1, 9),
+            ];
+            let net_address = format!("/ip4/{}.{}.{}.{}/tcp/{0}{1}{2}{3}", n[0], n[1], n[2], n[3],)
+                .parse::<Multiaddr>()
+                .unwrap();
+            net_addresses.add_address(&net_address, &PeerAddressSource::Config);
+        }
+
         let mut peer = Peer::new(
             pk,
             node_id,
@@ -803,4 +840,50 @@ mod test {
         let is_in_region = peer_storage.in_network_region(far_node, &main_peer_node_id, 3).unwrap();
         assert!(!is_in_region);
     }
+
+    #[test]
+    fn discovery_syncing_returns_correct_peers() {
+        let mut peer_storage = PeerStorage::new_indexed(HashmapDatabase::new()).unwrap();
+        #[allow(clippy::cast_possible_wrap)] // Won't wrap around, numbers are static
+        let a_week_ago = Utc::now().timestamp() - (PEER_ACTIVE_WITHIN_DURATION + 60) as i64; // A week ago + a minute
+
+        let never_seen_peer = create_test_peer(PeerFeatures::COMMUNICATION_NODE, false);
+        let banned_peer = create_test_peer(PeerFeatures::COMMUNICATION_NODE, true);
+
+        let mut not_active_peer = create_test_peer(PeerFeatures::COMMUNICATION_NODE, false);
+        let address = not_active_peer.addresses.best().unwrap();
+        let mut address = MultiaddrWithStats::new(address.address().clone(), PeerAddressSource::Config);
+        address.last_seen = Some(NaiveDateTime::from_timestamp_opt(a_week_ago, 0).unwrap());
+        not_active_peer
+            .addresses
+            .merge(&MultiaddressesWithStats::from(vec![address]));
+
+        let mut good_peer = create_test_peer(PeerFeatures::COMMUNICATION_NODE, false);
+        let good_addresses = good_peer.addresses.borrow_mut();
+        let good_address = good_addresses.addresses()[0].address().clone();
+        good_addresses.mark_last_seen_now(&good_address);
+
+        assert!(peer_storage.add_peer(never_seen_peer).is_ok());
+        assert!(peer_storage.add_peer(not_active_peer).is_ok());
+        assert!(peer_storage.add_peer(banned_peer).is_ok());
+        assert!(peer_storage.add_peer(good_peer).is_ok());
+
+        assert_eq!(peer_storage.all().unwrap().len(), 4);
+        assert_eq!(
+            peer_storage
+                .discovery_syncing(100, &[], Some(PeerFeatures::COMMUNICATION_NODE))
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+}
+
+fn is_active_peer(peer: &Peer, features: Option<PeerFeatures>, excluded_peers: &[NodeId]) -> bool {
+    features.map(|f| peer.features == f).unwrap_or(true) &&
+        !excluded_peers.contains(&peer.node_id) &&
+        !peer.is_banned() &&
+        peer.deleted_at.is_none() &&
+        peer.last_seen_since().is_some() &&
+        peer.last_seen_since().expect("Last seen to exist") <= Duration::from_secs(PEER_ACTIVE_WITHIN_DURATION)
 }

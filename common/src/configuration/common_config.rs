@@ -65,7 +65,7 @@ mod test {
     fn default_common_config() {
         let default_common_config = CommonConfig::default();
 
-        assert!(matches!(default_common_config.override_from, None));
+        assert!(default_common_config.override_from.is_none());
         assert_eq!(
             *default_common_config.base_path(),
             dirs_next::home_dir()

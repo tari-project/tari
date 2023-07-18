@@ -5243,6 +5243,7 @@ dependencies = [
  "cbindgen 0.24.5",
  "libc",
  "log",
+ "log4rs",
  "openssl",
  "tari_app_utilities",
  "tari_chat_client",
@@ -5250,6 +5251,7 @@ dependencies = [
  "tari_common_types",
  "tari_comms",
  "tari_contacts",
+ "tari_shutdown",
  "thiserror",
  "tokio",
 ]

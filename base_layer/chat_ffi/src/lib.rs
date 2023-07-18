@@ -22,9 +22,22 @@
 
 #![recursion_limit = "1024"]
 
-use std::{ffi::CStr, path::PathBuf, ptr, str::FromStr, sync::Arc};
+use std::{convert::TryFrom, ffi::CStr, path::PathBuf, ptr, str::FromStr, sync::Arc};
 
+use callback_handler::CallbackContactStatusChange;
 use libc::{c_char, c_int};
+use log::{debug, info, warn, LevelFilter};
+use log4rs::{
+    append::{
+        rolling_file::{
+            policy::compound::{roll::fixed_window::FixedWindowRoller, trigger::size::SizeTrigger, CompoundPolicy},
+            RollingFileAppender,
+        },
+        Append,
+    },
+    config::{Appender, Config, Logger, Root},
+    encode::pattern::PatternEncoder,
+};
 use tari_app_utilities::identity_management::load_from_json;
 use tari_chat_client::{
     config::{ApplicationConfig, ChatClientConfig},
@@ -34,12 +47,26 @@ use tari_chat_client::{
 use tari_common::configuration::{MultiaddrList, Network};
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::{multiaddr::Multiaddr, NodeIdentity};
-use tari_contacts::contacts_service::types::Message;
+use tari_contacts::contacts_service::{
+    handle::{DEFAULT_MESSAGE_LIMIT, DEFAULT_MESSAGE_PAGE},
+    types::Message,
+};
 use tokio::runtime::Runtime;
 
-use crate::error::{InterfaceError, LibChatError};
+use crate::{
+    callback_handler::{CallbackHandler, CallbackMessageReceived},
+    error::{InterfaceError, LibChatError},
+};
 
+mod callback_handler;
 mod error;
+
+const LOG_TARGET: &str = "chat_ffi";
+
+mod consts {
+    // Import the auto-generated const values from the Manifest and Git
+    include!(concat!(env!("OUT_DIR"), "/consts.rs"));
+}
 
 #[derive(Clone)]
 pub struct ChatMessages(Vec<Message>);
@@ -67,6 +94,8 @@ pub unsafe extern "C" fn create_chat_client(
     config: *mut ApplicationConfig,
     identity_file_path: *const c_char,
     error_out: *mut c_int,
+    callback_contact_status_change: CallbackContactStatusChange,
+    callback_message_received: CallbackMessageReceived,
 ) -> *mut ClientFFI {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
@@ -76,6 +105,19 @@ pub unsafe extern "C" fn create_chat_client(
         ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
+
+    if let Some(log_path) = (*config).clone().chat_client.log_path {
+        init_logging(log_path, error_out);
+
+        if error > 0 {
+            return ptr::null_mut();
+        }
+    }
+    info!(
+        target: LOG_TARGET,
+        "Starting Tari Chat FFI version: {}",
+        consts::APP_VERSION
+    );
 
     let mut bad_identity = |e| {
         error = LibChatError::from(InterfaceError::InvalidArgument(e)).code;
@@ -111,6 +153,17 @@ pub unsafe extern "C" fn create_chat_client(
 
     let mut client = Client::new(identity, (*config).clone());
     runtime.block_on(client.initialize());
+
+    let mut callback_handler = CallbackHandler::new(
+        client.contacts.clone().expect("No contacts service loaded yet"),
+        client.shutdown.to_signal(),
+        callback_contact_status_change,
+        callback_message_received,
+    );
+
+    runtime.spawn(async move {
+        callback_handler.start().await;
+    });
 
     let client_ffi = ClientFFI { client, runtime };
 
@@ -151,6 +204,7 @@ pub unsafe extern "C" fn create_chat_config(
     network_str: *const c_char,
     public_address: *const c_char,
     datastore_path: *const c_char,
+    log_path: *const c_char,
     error_out: *mut c_int,
 ) -> *mut ApplicationConfig {
     let mut error = 0;
@@ -225,10 +279,30 @@ pub unsafe extern "C" fn create_chat_config(
         },
     };
 
+    let log_path_string;
+    if log_path.is_null() {
+        error = LibChatError::from(InterfaceError::NullError("log_path".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    } else {
+        match CStr::from_ptr(log_path).to_str() {
+            Ok(v) => {
+                log_path_string = v.to_owned();
+            },
+            _ => {
+                error = LibChatError::from(InterfaceError::InvalidArgument("log_path".to_string())).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return ptr::null_mut();
+            },
+        }
+    }
+    let log_path = PathBuf::from(log_path_string);
+
     let mut chat_client_config = ChatClientConfig::default();
     chat_client_config.network = network;
     chat_client_config.p2p.transport.tcp.listener_address = address.clone();
     chat_client_config.p2p.public_addresses = MultiaddrList::from(vec![address]);
+    chat_client_config.log_path = Some(log_path);
     chat_client_config.set_base_path(datastore_path);
 
     let config = ApplicationConfig {
@@ -253,6 +327,133 @@ pub unsafe extern "C" fn create_chat_config(
 pub unsafe extern "C" fn destroy_config(config: *mut ApplicationConfig) {
     if !config.is_null() {
         drop(Box::from_raw(config))
+    }
+}
+
+/// Inits logging, this function is deliberately not exposed externally in the header
+///
+/// ## Arguments
+/// `log_path` - Path to where the log will be stored
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[allow(clippy::too_many_lines)]
+unsafe fn init_logging(log_path: PathBuf, error_out: *mut c_int) {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    let num_rolling_log_files = 2;
+    let size_per_log_file_bytes: u64 = 10 * 1024 * 1024;
+
+    let path = log_path.to_str().expect("Convert path to string");
+    let encoder = PatternEncoder::new("{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}");
+
+    let mut pattern;
+    let split_str: Vec<&str> = path.split('.').collect();
+    if split_str.len() <= 1 {
+        pattern = format!("{}{}", path, "{}");
+    } else {
+        pattern = split_str[0].to_string();
+        for part in split_str.iter().take(split_str.len() - 1).skip(1) {
+            pattern = format!("{}.{}", pattern, part);
+        }
+
+        pattern = format!("{}{}", pattern, ".{}.");
+        pattern = format!("{}{}", pattern, split_str[split_str.len() - 1]);
+    }
+    let roller = FixedWindowRoller::builder()
+        .build(pattern.as_str(), num_rolling_log_files)
+        .expect("Should be able to create a Roller");
+    let size_trigger = SizeTrigger::new(size_per_log_file_bytes);
+    let policy = CompoundPolicy::new(Box::new(size_trigger), Box::new(roller));
+
+    let log_appender: Box<dyn Append> = Box::new(
+        RollingFileAppender::builder()
+            .encoder(Box::new(encoder))
+            .append(true)
+            .build(path, Box::new(policy))
+            .expect("Should be able to create an appender"),
+    );
+
+    let lconfig = Config::builder()
+        .appender(Appender::builder().build("logfile", log_appender))
+        .logger(
+            Logger::builder()
+                .appender("logfile")
+                .additive(false)
+                .build("comms", LevelFilter::Warn),
+        )
+        .logger(
+            Logger::builder()
+                .appender("logfile")
+                .additive(false)
+                .build("comms::noise", LevelFilter::Warn),
+        )
+        .logger(
+            Logger::builder()
+                .appender("logfile")
+                .additive(false)
+                .build("tokio_util", LevelFilter::Warn),
+        )
+        .logger(
+            Logger::builder()
+                .appender("logfile")
+                .additive(false)
+                .build("tracing", LevelFilter::Warn),
+        )
+        .logger(
+            Logger::builder()
+                .appender("logfile")
+                .additive(false)
+                .build("chat_ffi::callback_handler", LevelFilter::Warn),
+        )
+        .logger(
+            Logger::builder()
+                .appender("logfile")
+                .additive(false)
+                .build("chat_ffi", LevelFilter::Warn),
+        )
+        .logger(
+            Logger::builder()
+                .appender("logfile")
+                .additive(false)
+                .build("contacts", LevelFilter::Warn),
+        )
+        .logger(
+            Logger::builder()
+                .appender("logfile")
+                .additive(false)
+                .build("p2p", LevelFilter::Warn),
+        )
+        .logger(
+            Logger::builder()
+                .appender("logfile")
+                .additive(false)
+                .build("yamux", LevelFilter::Warn),
+        )
+        .logger(
+            Logger::builder()
+                .appender("logfile")
+                .additive(false)
+                .build("dht", LevelFilter::Warn),
+        )
+        .logger(
+            Logger::builder()
+                .appender("logfile")
+                .additive(false)
+                .build("mio", LevelFilter::Warn),
+        )
+        .build(Root::builder().appender("logfile").build(LevelFilter::Warn))
+        .expect("Should be able to create a Config");
+
+    match log4rs::init_config(lconfig) {
+        Ok(_) => debug!(target: LOG_TARGET, "Logging started"),
+        Err(_) => warn!(target: LOG_TARGET, "Logging has already been initialized"),
     }
 }
 
@@ -375,6 +576,8 @@ pub unsafe extern "C" fn check_online_status(
 /// ## Arguments
 /// `client` - The Client pointer
 /// `address` - A TariAddress ptr
+/// `limit` - The amount of messages you want to fetch. Default to 35, max 2500
+/// `page` - The page of results you'd like returned. Default to 0, maximum of u64 max
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
@@ -384,9 +587,11 @@ pub unsafe extern "C" fn check_online_status(
 /// The ```address``` should be destroyed after use
 /// The returned pointer to ```*mut ChatMessages``` should be destroyed after use
 #[no_mangle]
-pub unsafe extern "C" fn get_all_messages(
+pub unsafe extern "C" fn get_messages(
     client: *mut ClientFFI,
     address: *mut TariAddress,
+    limit: *mut c_int,
+    page: *mut c_int,
     error_out: *mut c_int,
 ) -> *mut ChatMessages {
     let mut error = 0;
@@ -402,9 +607,14 @@ pub unsafe extern "C" fn get_all_messages(
         ptr::swap(error_out, &mut error as *mut c_int);
     }
 
+    let mlimit = u64::try_from(*limit).unwrap_or(DEFAULT_MESSAGE_LIMIT);
+    let mpage = u64::try_from(*page).unwrap_or(DEFAULT_MESSAGE_PAGE);
+
     let mut messages = Vec::new();
 
-    let mut retrieved_messages = (*client).runtime.block_on((*client).client.get_all_messages(&*address));
+    let mut retrieved_messages = (*client)
+        .runtime
+        .block_on((*client).client.get_messages(&*address, mlimit, mpage));
     messages.append(&mut retrieved_messages);
 
     Box::into_raw(Box::new(ChatMessages(messages)))
