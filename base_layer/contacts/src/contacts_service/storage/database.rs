@@ -50,7 +50,7 @@ pub enum DbKey {
     Contact(TariAddress),
     ContactId(NodeId),
     Contacts,
-    Messages(TariAddress),
+    Messages(TariAddress, i64, i64),
 }
 
 pub enum DbValue {
@@ -163,8 +163,13 @@ where T: ContactsBackend + 'static
         }
     }
 
-    pub fn get_messages(&self, address: TariAddress) -> Result<Vec<Message>, ContactsServiceStorageError> {
-        let key = DbKey::Messages(address);
+    pub fn get_messages(
+        &self,
+        address: TariAddress,
+        limit: i64,
+        page: i64,
+    ) -> Result<Vec<Message>, ContactsServiceStorageError> {
+        let key = DbKey::Messages(address, limit, page);
         let db_clone = self.db.clone();
         match db_clone.fetch(&key) {
             Ok(None) => log_error(
@@ -197,7 +202,7 @@ impl Display for DbKey {
             DbKey::Contact(c) => f.write_str(&format!("Contact: {:?}", c)),
             DbKey::ContactId(id) => f.write_str(&format!("Contact: {:?}", id)),
             DbKey::Contacts => f.write_str("Contacts"),
-            DbKey::Messages(c) => f.write_str(&format!("Messages for id: {:?}", c)),
+            DbKey::Messages(c, _l, _p) => f.write_str(&format!("Messages for id: {:?}", c)),
         }
     }
 }

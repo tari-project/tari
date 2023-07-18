@@ -71,10 +71,15 @@ impl MessagesSql {
     /// Find a particular message by their address, if it exists
     pub fn find_by_address(
         address: &[u8],
+        limit: i64,
+        page: i64,
         conn: &mut SqliteConnection,
     ) -> Result<Vec<MessagesSql>, ContactsServiceStorageError> {
         Ok(messages::table
             .filter(messages::address.eq(address))
+            .order(messages::stored_at.desc())
+            .offset(limit * page)
+            .limit(limit)
             .load::<MessagesSql>(conn)?)
     }
 }

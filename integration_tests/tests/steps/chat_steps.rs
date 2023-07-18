@@ -25,7 +25,10 @@ use std::time::Duration;
 use cucumber::{then, when};
 use tari_common::configuration::Network;
 use tari_common_types::tari_address::TariAddress;
-use tari_contacts::contacts_service::service::ContactOnlineStatus;
+use tari_contacts::contacts_service::{
+    handle::{DEFAULT_MESSAGE_LIMIT, DEFAULT_MESSAGE_PAGE},
+    service::ContactOnlineStatus,
+};
 use tari_integration_tests::{chat_client::spawn_chat_client, TariWorld};
 
 use crate::steps::{HALF_SECOND, TWO_MINUTES_WITH_HALF_SECOND_SLEEP};
@@ -73,7 +76,9 @@ async fn receive_n_messages(world: &mut TariWorld, receiver: String, message_cou
 
     let mut messages = vec![];
     for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
-        messages = (*receiver).get_all_messages(&address).await;
+        messages = (*receiver)
+            .get_messages(&address, DEFAULT_MESSAGE_LIMIT, DEFAULT_MESSAGE_PAGE)
+            .await;
 
         if messages.len() as u64 == message_count {
             return;

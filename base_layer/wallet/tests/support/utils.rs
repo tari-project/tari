@@ -47,10 +47,9 @@ pub async fn make_input<R: Rng + CryptoRng>(
     key_manager: &TestKeyManager,
 ) -> WalletOutput {
     let test_params = TestParams::new(key_manager).await;
-    let utxo = create_wallet_output_with_data(script!(Nop), features.clone(), &test_params, val, key_manager)
+    create_wallet_output_with_data(script!(Nop), features.clone(), &test_params, val, key_manager)
         .await
-        .unwrap();
-    utxo
+        .unwrap()
 }
 
 pub async fn create_wallet_output_from_sender_data(
@@ -108,10 +107,9 @@ pub async fn make_input_with_features<R: Rng + CryptoRng>(
     key_manager: &TestKeyManager,
 ) -> WalletOutput {
     let test_params = TestParams::new(key_manager).await;
-    let utxo = create_wallet_output_with_data(script!(Nop), features, &test_params, value, key_manager)
+    create_wallet_output_with_data(script!(Nop), features, &test_params, value, key_manager)
         .await
-        .unwrap();
-    utxo
+        .unwrap()
 }
 
 /// This macro unlocks a Mutex or RwLock. If the lock is

@@ -97,9 +97,10 @@ impl fmt::Display for PeerConnectionStats {
 }
 
 /// Peer connection statistics
-#[derive(Debug, Clone, PartialOrd, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, PartialOrd, PartialEq, Eq)]
 pub enum LastConnectionAttempt {
     /// This node has never attempted to connect to this peer
+    #[default]
     Never,
     /// The last connection attempt was successful
     Succeeded(Instant),
@@ -110,12 +111,6 @@ pub enum LastConnectionAttempt {
         /// Number of failed attempts in a row
         num_attempts: usize,
     },
-}
-
-impl Default for LastConnectionAttempt {
-    fn default() -> Self {
-        LastConnectionAttempt::Never
-    }
 }
 
 impl Display for LastConnectionAttempt {

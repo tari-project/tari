@@ -195,7 +195,7 @@ mod tests {
             Some(Multiaddr::from_str("/ip4/10.0.0.1/tcp/1234").unwrap()),
             res_iter.next()
         );
-        assert_eq!(None, res_iter.into_iter().next());
+        assert_eq!(None, res_iter.next());
     }
 
     #[test]

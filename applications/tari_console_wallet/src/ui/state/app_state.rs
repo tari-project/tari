@@ -876,6 +876,7 @@ impl AppStateInner {
                     self.updated = true;
                     return Ok(());
                 } else {
+                    // dont care
                 }
 
                 if let Some(index) = self.data.completed_txs.iter().position(|i| i.tx_id == tx_id) {

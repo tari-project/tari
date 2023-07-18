@@ -204,6 +204,7 @@ mod test {
                     key3_found = true;
                     assert_eq!(val, val3);
                 } else {
+                    panic!("Should not be here")
                 }
                 IterationResult::Continue
             });

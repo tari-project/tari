@@ -46,7 +46,7 @@ pub trait ChatClient {
     async fn add_contact(&self, address: &TariAddress);
     async fn check_online_status(&self, address: &TariAddress) -> ContactOnlineStatus;
     async fn send_message(&self, receiver: TariAddress, message: String);
-    async fn get_all_messages(&self, sender: &TariAddress) -> Vec<Message>;
+    async fn get_messages(&self, sender: &TariAddress, limit: u64, page: u64) -> Vec<Message>;
     fn identity(&self) -> &NodeIdentity;
     fn shutdown(&mut self);
 }
@@ -157,11 +157,11 @@ impl ChatClient for Client {
         }
     }
 
-    async fn get_all_messages(&self, sender: &TariAddress) -> Vec<Message> {
+    async fn get_messages(&self, sender: &TariAddress, limit: u64, page: u64) -> Vec<Message> {
         let mut messages = vec![];
         if let Some(mut contacts_service) = self.contacts.clone() {
             messages = contacts_service
-                .get_all_messages(sender.clone())
+                .get_messages(sender.clone(), limit, page)
                 .await
                 .expect("Messages not fetched");
         }
