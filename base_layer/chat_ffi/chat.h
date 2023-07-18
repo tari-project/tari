@@ -78,6 +78,7 @@ void destroy_client_ffi(struct ClientFFI *client);
 ApplicationConfig *create_chat_config(const char *network_str,
                                       const char *public_address,
                                       const char *datastore_path,
+                                      const char *log_path,
                                       int *error_out);
 
 /**
