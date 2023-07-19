@@ -128,6 +128,7 @@ pub enum OutputManagerRequest {
     ReinstateCancelledInboundTx(TxId),
     SetCoinbaseAbandoned(TxId, bool),
     CreateClaimShaAtomicSwapTransaction(HashOutput, PublicKey, MicroTari),
+    CreateClaimBlake2AtomicSwapTransaction(HashOutput, PublicKey, u64, MicroTari),
     CreateHtlcRefundTransaction(HashOutput, MicroTari),
     GetOutputStatusesByTxId(TxId),
 }
@@ -210,6 +211,14 @@ impl fmt::Display for OutputManagerRequest {
                 "ClaimShaAtomicSwap(output hash: {}, pre_image: {}, fee_per_gram: {} )",
                 output.to_hex(),
                 pre_image,
+                fee_per_gram,
+            ),
+            CreateClaimBlake2AtomicSwapTransaction(output, pre_image, timelock, fee_per_gram) => write!(
+                f,
+                "ClaimBlake2AtomicSwap(output hash: {}, pre_image: {}, timelock: {}, fee_per_gram: {} )",
+                output.to_hex(),
+                pre_image,
+                timelock,
                 fee_per_gram,
             ),
             CreateHtlcRefundTransaction(output, fee_per_gram) => write!(
@@ -696,6 +705,28 @@ impl OutputManagerHandle {
             .call(OutputManagerRequest::CreateClaimShaAtomicSwapTransaction(
                 output,
                 pre_image,
+                fee_per_gram,
+            ))
+            .await??
+        {
+            OutputManagerResponse::ClaimHtlcTransaction(ct) => Ok(ct),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn create_claim_blake2_atomic_swap_transaction(
+        &mut self,
+        output: HashOutput,
+        pre_image: PublicKey,
+        timelock: u64,
+        fee_per_gram: MicroTari,
+    ) -> Result<(TxId, MicroTari, MicroTari, Transaction), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::CreateClaimBlake2AtomicSwapTransaction(
+                output,
+                pre_image,
+                timelock,
                 fee_per_gram,
             ))
             .await??

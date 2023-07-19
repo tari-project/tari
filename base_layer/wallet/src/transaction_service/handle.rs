@@ -133,6 +133,7 @@ pub enum TransactionServiceRequest {
         message: String,
     },
     SendShaAtomicSwapTransaction(TariAddress, MicroTari, UtxoSelectionCriteria, MicroTari, String),
+    SendBlake256AtomicSwapTransaction(TariAddress, MicroTari, u64, UtxoSelectionCriteria, MicroTari, String),
     CancelTransaction(TxId),
     ImportUtxoWithStatus {
         amount: MicroTari,
@@ -210,6 +211,9 @@ impl fmt::Display for TransactionServiceRequest {
             Self::SendShaAtomicSwapTransaction(k, _, v, _, msg) => {
                 write!(f, "SendShaAtomicSwapTransaction (to {}, {}, {})", k, v, msg)
             },
+            Self::SendBlake256AtomicSwapTransaction(k, _, _, v, _, msg) => {
+                write!(f, "SendBlake256AtomicSwapTransaction (to {}, {}, {})", k, v, msg)
+            },
             Self::CancelTransaction(t) => write!(f, "CancelTransaction ({})", t),
             Self::ImportUtxoWithStatus {
                 amount,
@@ -285,6 +289,7 @@ pub enum TransactionServiceResponse {
     ValidationStarted(OperationId),
     CompletedTransactionValidityChanged,
     ShaAtomicSwapTransactionSent(Box<(TxId, PublicKey, TransactionOutput)>),
+    Blake256AtomicSwapTransactionSent(Box<(TxId, PublicKey, TransactionOutput)>),
     FeePerGramStatsPerBlock(FeePerGramStatsResponse),
 }
 
@@ -900,6 +905,7 @@ impl TransactionServiceHandle {
         }
     }
 
+    /// Sends a SHA256 atomic swap transaction
     pub async fn send_sha_atomic_swap_transaction(
         &mut self,
         destination: TariAddress,
@@ -920,6 +926,36 @@ impl TransactionServiceHandle {
             .await??
         {
             TransactionServiceResponse::ShaAtomicSwapTransactionSent(boxed) => {
+                let (tx_id, pre_image, output) = *boxed;
+                Ok((tx_id, pre_image, output))
+            },
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Sends a Blake256 atomic swap transaction
+    pub async fn send_blake256_atomic_swap_transaction(
+        &mut self,
+        destination: TariAddress,
+        amount: MicroTari,
+        timelock: u64,
+        selection_criteria: UtxoSelectionCriteria,
+        fee_per_gram: MicroTari,
+        message: String,
+    ) -> Result<(TxId, PublicKey, TransactionOutput), TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::SendBlake256AtomicSwapTransaction(
+                destination,
+                amount,
+                timelock,
+                selection_criteria,
+                fee_per_gram,
+                message,
+            ))
+            .await??
+        {
+            TransactionServiceResponse::Blake256AtomicSwapTransactionSent(boxed) => {
                 let (tx_id, pre_image, output) = *boxed;
                 Ok((tx_id, pre_image, output))
             },

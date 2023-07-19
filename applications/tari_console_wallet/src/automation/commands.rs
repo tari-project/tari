@@ -180,6 +180,42 @@ pub async fn finalise_sha_atomic_swap(
     Ok(tx_id)
 }
 
+/// publishes a tari-Blake256 atomic swap HTLC transaction
+pub async fn init_blake256_atomic_swap(
+    mut wallet_transaction_service: TransactionServiceHandle,
+    fee_per_gram: u64,
+    amount: MicroTari,
+    timelock: u64,
+    selection_criteria: UtxoSelectionCriteria,
+    dest_address: TariAddress,
+    message: String,
+) -> Result<(TxId, PublicKey, TransactionOutput), CommandError> {
+    let (tx_id, pre_image, output) = wallet_transaction_service
+        .send_blake256_atomic_swap_transaction(dest_address, amount, timelock, selection_criteria, fee_per_gram * uT, message)
+        .await
+        .map_err(CommandError::TransactionServiceError)?;
+    Ok((tx_id, pre_image, output))
+}
+
+/// claims a tari-Blake256 atomic swap HTLC transaction
+pub async fn finalise_blake256_atomic_swap(
+    mut output_service: OutputManagerHandle,
+    mut transaction_service: TransactionServiceHandle,
+    output_hash: FixedHash,
+    pre_image: PublicKey,
+    timelock: u64,
+    fee_per_gram: MicroTari,
+    message: String,
+) -> Result<TxId, CommandError> {
+    let (tx_id, _fee, amount, tx) = output_service
+        .create_claim_blake2_atomic_swap_transaction(output_hash, pre_image, timelock, fee_per_gram)
+        .await?;
+    transaction_service
+        .submit_transaction(tx_id, tx, amount, message)
+        .await?;
+    Ok(tx_id)
+}
+
 /// claims a HTLC refund transaction
 pub async fn claim_htlc_refund(
     mut output_service: OutputManagerHandle,

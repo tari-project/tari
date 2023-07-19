@@ -418,6 +418,10 @@ where
                 self.claim_sha_atomic_swap_with_hash(output_hash, pre_image, fee_per_gram)
                     .await
             },
+            OutputManagerRequest::CreateClaimBlake2AtomicSwapTransaction(output_hash, pre_image, timelock, fee_per_gram) => {
+                self.claim_blake2_atomic_swap_with_hash(output_hash, pre_image, timelock, fee_per_gram)
+                    .await
+            },
             OutputManagerRequest::CreateHtlcRefundTransaction(output, fee_per_gram) => self
                 .create_htlc_refund_transaction(output, fee_per_gram)
                 .await
@@ -484,6 +488,24 @@ where
                 });
             },
         }
+    }
+
+    async fn claim_blake2_atomic_swap_with_hash(
+        &mut self,
+        output_hash: HashOutput,
+        pre_image: PublicKey,
+        timelock: u64,
+        fee_per_gram: MicroTari,
+    ) -> Result<OutputManagerResponse, OutputManagerError> {
+        let output = self
+            .fetch_outputs_from_node(vec![output_hash])
+            .await?
+            .pop()
+            .ok_or_else(|| OutputManagerError::ServiceError("Output not found".to_string()))?;
+
+        self.create_claim_blake2_atomic_swap_transaction(output, pre_image, timelock, fee_per_gram)
+            .await
+            .map(OutputManagerResponse::ClaimHtlcTransaction)
     }
 
     fn validate_outputs(&mut self) -> Result<u64, OutputManagerError> {
@@ -2175,6 +2197,122 @@ where
                 );
                 builder
                     .with_lock_height(0)
+                    .with_fee_per_gram(fee_per_gram)
+                    .with_message(message)
+                    .with_kernel_features(KernelFeatures::empty())
+                    .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
+                    .with_input(rewound_output)
+                    .await?;
+
+                let mut outputs = Vec::new();
+
+                let (change_spending_key_id, _, change_script_key_id, change_script_public_key) =
+                    self.resources.key_manager.get_next_spend_and_script_key_ids().await?;
+                builder.with_change_data(
+                    script!(Nop),
+                    inputs!(change_script_public_key),
+                    change_script_key_id,
+                    change_spending_key_id,
+                    Covenant::default(),
+                );
+
+                let mut stp = builder
+                    .build()
+                    .await
+                    .map_err(|e| OutputManagerError::BuildError(e.message))?;
+
+                let tx_id = stp.get_tx_id()?;
+
+                let wallet_output = stp.get_change_output()?.ok_or_else(|| {
+                    OutputManagerError::BuildError(
+                        "There should be a change output metadata signature available".to_string(),
+                    )
+                })?;
+                let change_output = DbWalletOutput::from_wallet_output(
+                    wallet_output,
+                    &self.resources.key_manager,
+                    None,
+                    OutputSource::AtomicSwap,
+                    Some(tx_id),
+                    None,
+                )
+                .await?;
+                outputs.push(change_output);
+
+                trace!(target: LOG_TARGET, "Claiming HTLC with transaction ({}).", tx_id);
+                self.resources.db.encumber_outputs(tx_id, Vec::new(), outputs)?;
+                self.confirm_encumberance(tx_id)?;
+                let fee = stp.get_fee_amount()?;
+                trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", tx_id);
+                stp.finalize(&self.resources.key_manager).await?;
+                let tx = stp.into_transaction()?;
+
+                Ok((tx_id, fee, amount - fee, tx))
+            } else {
+                Err(OutputManagerError::TransactionError(TransactionError::RangeProofError(
+                    RangeProofError::InvalidRewind(
+                        "Atomic swap: Blinding factor could not open the commitment!".to_string(),
+                    ),
+                )))
+            }
+        } else {
+            Err(OutputManagerError::TransactionError(TransactionError::RangeProofError(
+                RangeProofError::InvalidRewind("Atomic swap: Encrypted value could not be decrypted!".to_string()),
+            )))
+        }
+    }
+
+    #[allow(clippy::too_many_lines)]
+    pub async fn create_claim_blake2_atomic_swap_transaction(
+        &mut self,
+        output: TransactionOutput,
+        pre_image: PublicKey,
+        timelock: u64,
+        fee_per_gram: MicroTari,
+    ) -> Result<(TxId, MicroTari, MicroTari, Transaction), OutputManagerError> {
+        let shared_secret = self
+            .resources
+            .key_manager
+            .get_diffie_hellman_shared_secret(
+                &self.resources.wallet_identity.wallet_node_key_id,
+                &output.sender_offset_public_key,
+            )
+            .await?;
+        let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
+        if let Ok((amount, spending_key)) =
+            EncryptedData::decrypt_data(&encryption_key, &output.commitment, &output.encrypted_data)
+        {
+            if output.verify_mask(&self.resources.factories.range_proof, &spending_key, amount.as_u64())? {
+                let spending_key_id = self.resources.key_manager.import_key(spending_key).await?;
+                let rewound_output = WalletOutput::new(
+                    output.version,
+                    amount,
+                    spending_key_id,
+                    output.features,
+                    output.script,
+                    inputs!(pre_image),
+                    self.resources.wallet_identity.wallet_node_key_id.clone(),
+                    output.sender_offset_public_key,
+                    output.metadata_signature,
+                    // Although the technically the script does have a script lock higher than 0, this does not apply
+                    // to to us as we are claiming the Hashed part which has a 0 time lock
+                    0,
+                    output.covenant,
+                    output.encrypted_data,
+                    output.minimum_value_promise,
+                    &self.resources.key_manager,
+                )
+                .await?;
+
+                let message = "MINOTARI-TARI atomic swap".to_string();
+
+                // Create builder with no recipients (other than ourselves)
+                let mut builder = SenderTransactionProtocol::builder(
+                    self.resources.consensus_constants.clone(),
+                    self.resources.key_manager.clone(),
+                );
+                builder
+                    .with_lock_height(timelock)
                     .with_fee_per_gram(fee_per_gram)
                     .with_message(message)
                     .with_kernel_features(KernelFeatures::empty())

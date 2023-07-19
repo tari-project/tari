@@ -60,6 +60,8 @@ pub enum TransactionServiceError {
     InvalidNetwork,
     #[error("One-sided transaction error: `{0}`")]
     OneSidedTransactionError(String),
+    #[error("Blake256 atomic swap error: `{0}`")]
+    Blake256AtomicSwapTransactionError(String),
     #[error("Transaction Protocol Error: `{0}`")]
     TransactionProtocolError(#[from] TransactionProtocolError),
     #[error("The message being processed is not recognized by the Transaction Manager")]

@@ -74,6 +74,7 @@ use tari_core::{
     },
 };
 use tari_crypto::{
+    hash::blake2::Blake256,
     keys::{PublicKey as PKtrait, SecretKey},
     tari_utilities::ByteArray,
 };
@@ -740,6 +741,25 @@ where
                 )
                 .await?,
             )),
+            TransactionServiceRequest::SendBlake256AtomicSwapTransaction(
+                destination,
+                amount,
+                timelock,
+                selection_criteria,
+                fee_per_gram,
+                message,
+            ) => Ok(TransactionServiceResponse::Blake256AtomicSwapTransactionSent(
+                self.send_blake256_atomic_swap_transaction(
+                    destination,
+                    amount,
+                    selection_criteria,
+                    fee_per_gram,
+                    message,
+                    timelock,
+                    transaction_broadcast_join_handles,
+                )
+                .await?,
+            )),
             TransactionServiceRequest::CancelTransaction(tx_id) => self
                 .cancel_pending_transaction(tx_id)
                 .await
@@ -1071,15 +1091,15 @@ where
     ) -> Result<Box<(TxId, PublicKey, TransactionOutput)>, TransactionServiceError> {
         let dest_pubkey = destination.public_key();
         let tx_id = TxId::new_random();
-        // this can be anything, so lets generate a random private key
+        // this can be anything, so let's generate a random private key
         let pre_image = PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng));
         let hash: [u8; 32] = Sha256::digest(pre_image.as_bytes()).into();
 
-        // lets make the unlock height a day from now, 2 min blocks which gives us 30 blocks per hour * 24 hours
+        // let's make the unlock height a day from now, 2 min blocks which gives us 30 blocks per hour * 24 hours
         let tip_height = self.last_seen_tip_height.unwrap_or(0);
         let height = tip_height + (24 * 30);
 
-        // lets create the HTLC script
+        // let's create the HTLC script
         let script = script!(
             HashSha256 PushHash(Box::new(hash)) Equal IfThen
                 PushPubKey(Box::new(dest_pubkey.clone()))
@@ -1230,6 +1250,232 @@ where
         info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", tx_id);
 
         // This event being sent is important, but not critical to the protocol being successful. Send only fails if
+        // there are no subscribers.
+        let _size = self
+            .event_publisher
+            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
+
+        // Broadcast one-sided transaction
+
+        let tx = stp
+            .get_transaction()
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+        let fee = stp
+            .get_fee_amount()
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+        self.resources
+            .output_manager_service
+            .add_output_with_tx_id(tx_id, output.clone(), Some(SpendingPriority::HtlcSpendAsap))
+            .await?;
+        self.submit_transaction(
+            transaction_broadcast_join_handles,
+            CompletedTransaction::new(
+                tx_id,
+                self.resources.wallet_identity.address.clone(),
+                destination,
+                amount,
+                fee,
+                tx.clone(),
+                TransactionStatus::Completed,
+                message.clone(),
+                Utc::now().naive_utc(),
+                TransactionDirection::Outbound,
+                None,
+                None,
+                None,
+            ),
+        )?;
+
+        let tx_output = output
+            .to_transaction_output(&self.resources.transaction_key_manager_service)
+            .await?;
+
+        Ok(Box::new((tx_id, pre_image, tx_output)))
+    }
+
+    /// broadcasts a MinoTari - Tari atomic swap transaction
+    /// # Arguments
+    /// 'dest_pubkey': The Comms pubkey of the recipient node
+    /// 'amount': The amount of MinoTari to send to the recipient
+    /// 'fee_per_gram': The amount of fee per transaction gram to be included in transaction
+    #[allow(clippy::too_many_lines)]
+    async fn send_blake256_atomic_swap_transaction(
+        &mut self,
+        destination: TariAddress,
+        amount: MicroTari,
+        selection_criteria: UtxoSelectionCriteria,
+        fee_per_gram: MicroTari,
+        message: String,
+        timelock: u64,
+        transaction_broadcast_join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
+        >,
+    ) -> Result<Box<(TxId, PublicKey, TransactionOutput)>, TransactionServiceError> {
+        let dest_pubkey = destination.public_key();
+        let tx_id = TxId::new_random();
+        // this can be anything, so let's generate a random private key
+        let pre_image = PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng));
+        let hash: [u8; 32] = Blake256::digest(pre_image.as_bytes()).into();
+
+        // let's check that the timelock corresponds to some time in the future
+        let tip_height = self.last_seen_tip_height.unwrap_or(0);
+        if timelock <= tip_height {
+            return Err(TransactionServiceError::Blake256AtomicSwapTransactionError(format!(
+                "Invalid timelock, must be a value in the future"
+            )));
+        }
+
+        // let's create the HTLC script
+        let script = script!(
+            HashBlake256 PushHash(Box::new(hash)) Equal IfThen
+                PushPubKey(Box::new(dest_pubkey.clone()))
+            Else
+                CheckHeightVerify(timelock) PushPubKey(Box::new(self.resources.wallet_identity.node_identity.public_key().clone()))
+            EndIf
+        );
+
+        // Empty covenant
+        let covenant = Covenant::default();
+
+        // Default range proof
+        let minimum_value_promise = MicroTari::zero();
+
+        // Prepare sender part of the transaction
+        let mut stp = self
+            .resources
+            .output_manager_service
+            .prepare_transaction_to_send(
+                tx_id,
+                amount,
+                selection_criteria,
+                OutputFeatures::default(),
+                fee_per_gram,
+                TransactionMetadata::default(),
+                message.clone(),
+                script.clone(),
+                covenant.clone(),
+                minimum_value_promise,
+            )
+            .await?;
+
+        // This call is needed to advance the state from `SingleRoundMessageReady` to `SingleMessageReady`
+        // but the returned value is not used
+        let _single_round_sender_data = stp
+            .build_single_round_message(&self.resources.transaction_key_manager_service)
+            .await
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+
+        self.resources
+            .output_manager_service
+            .confirm_pending_transaction(tx_id)
+            .await
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+
+        // Prepare receiver part of the transaction
+
+        // Diffie-Hellman shared secret `k_Ob * K_Sb = K_Ob * k_Sb` results in a public key, which is fed into
+        // KDFs to produce the spending, rewind, and encryption keys
+        let sender_offset_private_key = stp
+            .get_recipient_sender_offset_private_key()
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?
+            .ok_or(TransactionServiceProtocolError::new(
+                tx_id,
+                TransactionServiceError::InvalidKeyId("Missing sender offset keyid".to_string()),
+            ))?;
+
+        let shared_secret = self
+            .resources
+            .transaction_key_manager_service
+            .get_diffie_hellman_shared_secret(&sender_offset_private_key, destination.public_key())
+            .await?;
+        let spending_key = shared_secret_to_output_spending_key(&shared_secret)
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+
+        let sender_message = TransactionSenderMessage::new_single_round_message(
+            stp.get_single_round_message(&self.resources.transaction_key_manager_service)
+                .await?,
+        );
+        let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret)?;
+        let encryption_key = self
+            .resources
+            .transaction_key_manager_service
+            .import_key(encryption_private_key)
+            .await?;
+
+        let sender_offset_public_key = self
+            .resources
+            .transaction_key_manager_service
+            .get_public_key_at_key_id(&sender_offset_private_key)
+            .await?;
+
+        let spending_key_id = self
+            .resources
+            .transaction_key_manager_service
+            .import_key(spending_key)
+            .await?;
+
+        let minimum_value_promise = MicroTari::zero();
+        let output = WalletOutputBuilder::new(amount, spending_key_id)
+            .with_features(
+                sender_message
+                    .single()
+                    .ok_or(TransactionServiceProtocolError::new(
+                        tx_id,
+                        TransactionServiceError::InvalidMessageError("Sent invalid message type".to_string()),
+                    ))?
+                    .features
+                    .clone(),
+            )
+            .with_script(script)
+            .encrypt_data_for_recovery(&self.resources.transaction_key_manager_service, Some(&encryption_key))
+            .await?
+            .with_input_data(inputs!(PublicKey::from_secret_key(
+                self.resources.wallet_identity.node_identity.secret_key()
+            )))
+            .with_covenant(covenant)
+            .with_sender_offset_public_key(sender_offset_public_key)
+            .with_script_key(self.resources.wallet_identity.wallet_node_key_id.clone())
+            .with_minimum_value_promise(minimum_value_promise)
+            .sign_as_sender_and_receiver(
+                &self.resources.transaction_key_manager_service,
+                &sender_offset_private_key,
+            )
+            .await
+            .unwrap()
+            .try_build(&self.resources.transaction_key_manager_service)
+            .await
+            .unwrap();
+
+        let consensus_constants = self.consensus_manager.consensus_constants(tip_height);
+        let rtp = ReceiverTransactionProtocol::new(
+            sender_message,
+            output.clone(),
+            &self.resources.transaction_key_manager_service,
+            consensus_constants,
+        )
+        .await;
+
+        let recipient_reply = rtp.get_signed_data()?.clone();
+
+        // Start finalizing
+
+        stp.add_presigned_recipient_info(recipient_reply)
+            .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+
+        // Finalize
+
+        stp.finalize(&self.resources.transaction_key_manager_service)
+            .await
+            .map_err(|e| {
+                error!(
+                    target: LOG_TARGET,
+                    "Transaction (TxId: {}) could not be finalized. Failure error: {:?}", tx_id, e,
+                );
+                TransactionServiceProtocolError::new(tx_id, e.into())
+            })?;
+        info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", tx_id);
+
+        // This event being setn is important, but not critical to the protocol being successful. Send only fails if
         // there are no subscribers.
         let _size = self
             .event_publisher
