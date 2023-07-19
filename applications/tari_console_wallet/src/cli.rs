@@ -264,6 +264,8 @@ fn parse_hex(s: &str) -> Result<Vec<u8>, HexError> {
 pub struct ClaimShaAtomicSwapRefundArgs {
     #[clap(short, long, parse(try_from_str = parse_hex), required = true)]
     pub output_hash: Vec<Vec<u8>>,
+    #[clap(short, long)]
+    pub timelock: Option<u64>,
     #[clap(short, long, default_value = "Claimed HTLC atomic swap refund")]
     pub message: String,
 }

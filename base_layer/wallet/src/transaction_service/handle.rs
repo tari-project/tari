@@ -133,7 +133,7 @@ pub enum TransactionServiceRequest {
         message: String,
     },
     SendShaAtomicSwapTransaction(TariAddress, MicroTari, UtxoSelectionCriteria, MicroTari, String),
-    SendBlake256AtomicSwapTransaction(TariAddress, MicroTari, u64, UtxoSelectionCriteria, MicroTari, String),
+    SendBlake2AtomicSwapTransaction(TariAddress, MicroTari, u64, UtxoSelectionCriteria, MicroTari, String),
     CancelTransaction(TxId),
     ImportUtxoWithStatus {
         amount: MicroTari,
@@ -211,8 +211,8 @@ impl fmt::Display for TransactionServiceRequest {
             Self::SendShaAtomicSwapTransaction(k, _, v, _, msg) => {
                 write!(f, "SendShaAtomicSwapTransaction (to {}, {}, {})", k, v, msg)
             },
-            Self::SendBlake256AtomicSwapTransaction(k, _, _, v, _, msg) => {
-                write!(f, "SendBlake256AtomicSwapTransaction (to {}, {}, {})", k, v, msg)
+            Self::SendBlake2AtomicSwapTransaction(k, _, _, v, _, msg) => {
+                write!(f, "SendBlake2AtomicSwapTransaction (to {}, {}, {})", k, v, msg)
             },
             Self::CancelTransaction(t) => write!(f, "CancelTransaction ({})", t),
             Self::ImportUtxoWithStatus {
@@ -289,7 +289,7 @@ pub enum TransactionServiceResponse {
     ValidationStarted(OperationId),
     CompletedTransactionValidityChanged,
     ShaAtomicSwapTransactionSent(Box<(TxId, PublicKey, TransactionOutput)>),
-    Blake256AtomicSwapTransactionSent(Box<(TxId, PublicKey, TransactionOutput)>),
+    Blake2AtomicSwapTransactionSent(Box<(TxId, PublicKey, TransactionOutput)>),
     FeePerGramStatsPerBlock(FeePerGramStatsResponse),
 }
 
@@ -934,7 +934,7 @@ impl TransactionServiceHandle {
     }
 
     /// Sends a Blake256 atomic swap transaction
-    pub async fn send_blake256_atomic_swap_transaction(
+    pub async fn send_blake2_atomic_swap_transaction(
         &mut self,
         destination: TariAddress,
         amount: MicroTari,
@@ -945,7 +945,7 @@ impl TransactionServiceHandle {
     ) -> Result<(TxId, PublicKey, TransactionOutput), TransactionServiceError> {
         match self
             .handle
-            .call(TransactionServiceRequest::SendBlake256AtomicSwapTransaction(
+            .call(TransactionServiceRequest::SendBlake2AtomicSwapTransaction(
                 destination,
                 amount,
                 timelock,
@@ -955,7 +955,7 @@ impl TransactionServiceHandle {
             ))
             .await??
         {
-            TransactionServiceResponse::Blake256AtomicSwapTransactionSent(boxed) => {
+            TransactionServiceResponse::Blake2AtomicSwapTransactionSent(boxed) => {
                 let (tx_id, pre_image, output) = *boxed;
                 Ok((tx_id, pre_image, output))
             },

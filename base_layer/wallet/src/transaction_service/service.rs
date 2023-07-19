@@ -741,15 +741,15 @@ where
                 )
                 .await?,
             )),
-            TransactionServiceRequest::SendBlake256AtomicSwapTransaction(
+            TransactionServiceRequest::SendBlake2AtomicSwapTransaction(
                 destination,
                 amount,
                 timelock,
                 selection_criteria,
                 fee_per_gram,
                 message,
-            ) => Ok(TransactionServiceResponse::Blake256AtomicSwapTransactionSent(
-                self.send_blake256_atomic_swap_transaction(
+            ) => Ok(TransactionServiceResponse::Blake2AtomicSwapTransactionSent(
+                self.send_blake2_atomic_swap_transaction(
                     destination,
                     amount,
                     selection_criteria,
@@ -1299,7 +1299,7 @@ where
     /// 'amount': The amount of MinoTari to send to the recipient
     /// 'fee_per_gram': The amount of fee per transaction gram to be included in transaction
     #[allow(clippy::too_many_lines)]
-    async fn send_blake256_atomic_swap_transaction(
+    async fn send_blake2_atomic_swap_transaction(
         &mut self,
         destination: TariAddress,
         amount: MicroTari,
@@ -1320,7 +1320,7 @@ where
         // let's check that the timelock corresponds to some time in the future
         let tip_height = self.last_seen_tip_height.unwrap_or(0);
         if timelock <= tip_height {
-            return Err(TransactionServiceError::Blake256AtomicSwapTransactionError(format!(
+            return Err(TransactionServiceError::Blake2AtomicSwapTransactionError(format!(
                 "Invalid timelock, must be a value in the future"
             )));
         }

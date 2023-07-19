@@ -454,7 +454,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let mut output_manager_service = self.get_output_manager_service();
         debug!(target: LOG_TARGET, "Trying to claim HTLC with hash {}", output.to_hex());
         let response = match output_manager_service
-            .create_htlc_refund_transaction(output, message.fee_per_gram.into())
+            .create_htlc_refund_transaction(output, Some(message.timelock), message.fee_per_gram.into())
             .await
         {
             Ok((tx_id, _fee, amount, tx)) => {

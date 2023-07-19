@@ -164,6 +164,7 @@ message ClaimShaAtomicSwapResponse {
 message ClaimHtlcRefundRequest{
     string output_hash = 1;
     uint64 fee_per_gram = 2;
+    uint64 timelock = 3;
 }
 
 message ClaimHtlcRefundResponse {

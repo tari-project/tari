@@ -98,6 +98,8 @@ pub enum WalletCommand {
     InitShaAtomicSwap,
     FinaliseShaAtomicSwap,
     ClaimShaAtomicSwapRefund,
+    FinaliseBlake2AtomicSwap,
+    ClaimBlake2AtomicSwapRefund,
     RegisterAsset,
     MintTokens,
     CreateInitialCheckpoint,
@@ -181,7 +183,7 @@ pub async fn finalise_sha_atomic_swap(
 }
 
 /// publishes a tari-Blake256 atomic swap HTLC transaction
-pub async fn init_blake256_atomic_swap(
+pub async fn init_blake2_atomic_swap(
     mut wallet_transaction_service: TransactionServiceHandle,
     fee_per_gram: u64,
     amount: MicroTari,
@@ -191,14 +193,14 @@ pub async fn init_blake256_atomic_swap(
     message: String,
 ) -> Result<(TxId, PublicKey, TransactionOutput), CommandError> {
     let (tx_id, pre_image, output) = wallet_transaction_service
-        .send_blake256_atomic_swap_transaction(dest_address, amount, timelock, selection_criteria, fee_per_gram * uT, message)
+        .send_blake2_atomic_swap_transaction(dest_address, amount, timelock, selection_criteria, fee_per_gram * uT, message)
         .await
         .map_err(CommandError::TransactionServiceError)?;
     Ok((tx_id, pre_image, output))
 }
 
 /// claims a tari-Blake256 atomic swap HTLC transaction
-pub async fn finalise_blake256_atomic_swap(
+pub async fn finalise_blake2_atomic_swap(
     mut output_service: OutputManagerHandle,
     mut transaction_service: TransactionServiceHandle,
     output_hash: FixedHash,
@@ -221,11 +223,12 @@ pub async fn claim_htlc_refund(
     mut output_service: OutputManagerHandle,
     mut transaction_service: TransactionServiceHandle,
     output_hash: FixedHash,
+    timelock: Option<u64>,
     fee_per_gram: MicroTari,
     message: String,
 ) -> Result<TxId, CommandError> {
     let (tx_id, _fee, amount, tx) = output_service
-        .create_htlc_refund_transaction(output_hash, fee_per_gram)
+        .create_htlc_refund_transaction(output_hash, timelock, fee_per_gram)
         .await?;
     transaction_service
         .submit_transaction(tx_id, tx, amount, message)
@@ -967,6 +970,7 @@ pub async fn command_runner(
                         output_service.clone(),
                         transaction_service.clone(),
                         hash,
+                        args.timelock,
                         config.fee_per_gram.into(),
                         args.message,
                     )
