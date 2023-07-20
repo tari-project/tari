@@ -27,7 +27,7 @@ const {
 
 
 console.log("Set up library...");
-const libWallet = ffi.Library("./libtari_wallet_ffi.dylib", {
+const libWallet = ffi.Library("./libminotari_wallet_ffi.dylib", {
   byte_vector_create: [byteVectorRef, [u8ArrayPtr, u32, errPtr]],
   comms_config_create: [
     commsConfigRef,

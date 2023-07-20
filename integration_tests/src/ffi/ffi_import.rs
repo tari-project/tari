@@ -71,8 +71,8 @@ pub type EmojiSet = c_void;
 pub type TariFeePerGramStats = c_void;
 pub type TariBaseNodeState = c_void;
 
-#[cfg_attr(windows, link(name = "tari_wallet_ffi.dll"))]
-#[cfg_attr(not(windows), link(name = "tari_wallet_ffi"))]
+#[cfg_attr(windows, link(name = "minotari_wallet_ffi.dll"))]
+#[cfg_attr(not(windows), link(name = "minotari_wallet_ffi"))]
 #[allow(dead_code)]
 extern "C" {
     pub fn create_tari_vector(tag: TariTypeTag) -> *mut TariVector;

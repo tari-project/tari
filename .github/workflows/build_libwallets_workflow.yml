@@ -76,7 +76,7 @@ jobs:
           mkdir -p "${{ runner.temp }}/libwallet-android-${target_platform}"
           cd "${{ runner.temp }}/libwallet-android-${target_platform}"
           cp -v "$GITHUB_WORKSPACE/target/${{ matrix.build }}/release/libminotari_wallet_ffi.a" "libminotari_wallet_ffi.android_${target_platform}.a"
-          cp -v "$GITHUB_WORKSPACE/base_layer/wallet_ffi/wallet.h" libtari_wallet_ffi.h
+          cp -v "$GITHUB_WORKSPACE/base_layer/wallet_ffi/wallet.h" libminotari_wallet_ffi.h
           if [ -f "$GITHUB_WORKSPACE/changelog-${{ env.TARI_NETWORK_CHANGELOG }}.md" ]; then
             cp -v "$GITHUB_WORKSPACE/changelog-${{ env.TARI_NETWORK_CHANGELOG }}.md" .
             TARI_NETWORK_CHANGELOG_FILE=libwallet-android-${target_platform}/changelog-${{ env.TARI_NETWORK_CHANGELOG }}.md
@@ -164,7 +164,7 @@ jobs:
           shasum -a 256 \
             "libwallet-ios-${target_platform}/libminotari_wallet_ffi.ios_${target_platform}.a" \
             "libwallet-ios-${target_platform}/libminotari_wallet_ffi.h" "${TARI_NETWORK_CHANGELOG_FILE}" \
-              > "libwallet-ios-${target_platform}/libtari_wallet_ffi.ios_${target_platform}.sha256"
+              > "libwallet-ios-${target_platform}/libminotari_wallet_ffi.ios_${target_platform}.sha256"
           ls -alht "${{ runner.temp }}/libwallet-ios-${target_platform}"
 
       - name: Upload artifacts
