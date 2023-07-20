@@ -145,7 +145,7 @@ jobs:
       - name: cargo check
         run: cargo check --release --all-targets --workspace --exclude tari_integration_tests --locked
       - name: cargo check ffi separately
-        run: cargo check --release --package tari_wallet_ffi --locked
+        run: cargo check --release --package minotari_wallet_ffi --locked
   licenses:
     name: file licenses
     runs-on: [ubuntu-20.04]

@@ -227,7 +227,7 @@ jobs:
         run: |
           mkdir -p "$GITHUB_WORKSPACE${TBN_DIST}"
           cd "$GITHUB_WORKSPACE${TBN_DIST}"
-          VERSION=$(awk -F ' = ' '$1 ~ /version/ { gsub(/["]/, "", $2); printf("%s",$2) }' "$GITHUB_WORKSPACE/applications/tari_base_node/Cargo.toml")
+          VERSION=$(awk -F ' = ' '$1 ~ /version/ { gsub(/["]/, "", $2); printf("%s",$2) }' "$GITHUB_WORKSPACE/applications/minotari_base_node/Cargo.toml")
           echo "Branch: ${VBRANCH}"
           echo "Sha: ${VSHA_SHORT}"
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
@@ -237,18 +237,18 @@ jobs:
           echo "Copying files for ${BINFILE} to $(pwd)"
           ls -la "$GITHUB_WORKSPACE/target/${{ matrix.builds.target }}/release/"
           FILES=(
-            "tari_base_node"
-            "tari_console_wallet"
-            "tari_miner"
-            "tari_merge_mining_proxy"
+            "minotari_base_node"
+            "minotari_console_wallet"
+            "minotari_miner"
+            "minotari_merge_mining_proxy"
           )
           for FILE in "${FILES[@]}"; do
             if [ -f "$GITHUB_WORKSPACE/target/${{ matrix.builds.target }}/release/${FILE}${TBN_EXT}" ]; then
               cp -v "$GITHUB_WORKSPACE/target/${{ matrix.builds.target }}/release/${FILE}${TBN_EXT}" .
             fi
           done
-          if [ -f "$GITHUB_WORKSPACE/applications/tari_base_node/${PLATFORM_SPECIFIC_DIR}/runtime/start_tor${SHELL_EXT}" ]; then
-            cp -v "$GITHUB_WORKSPACE/applications/tari_base_node/${PLATFORM_SPECIFIC_DIR}/runtime/start_tor${SHELL_EXT}" .
+          if [ -f "$GITHUB_WORKSPACE/applications/minotari_base_node/${PLATFORM_SPECIFIC_DIR}/runtime/start_tor${SHELL_EXT}" ]; then
+            cp -v "$GITHUB_WORKSPACE/applications/minotari_base_node/${PLATFORM_SPECIFIC_DIR}/runtime/start_tor${SHELL_EXT}" .
           fi
 
       - name: Build the macOS pkg
@@ -278,10 +278,10 @@ jobs:
           export target_release="target/${{ matrix.builds.target }}/release"
           ./create_osx_install_zip.sh unused nozip
           FILES=(
-            "tari_base_node"
-            "tari_console_wallet"
-            "tari_miner"
-            "tari_merge_mining_proxy"
+            "minotari_base_node"
+            "minotari_console_wallet"
+            "minotari_miner"
+            "minotari_merge_mining_proxy"
           )
           for FILE in "${FILES[@]}"; do
             codesign --options runtime --force --verify --verbose --timestamp --sign "Developer ID Application: $MACOS_APPLICATION_ID" "/tmp/tari_testnet/runtime/$FILE"
@@ -394,20 +394,20 @@ jobs:
         shell: bash
         run: |
           cd "${{ github.workspace }}${{ env.TBN_DIST }}"
-          cp -v "tari_miner${{ env.TBN_EXT}}" \
-            "tari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}"
+          cp -v "minotari_miner${{ env.TBN_EXT}}" \
+            "minotari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}"
           echo "Compute miner shasum"
-          ${SHARUN} "tari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}" \
-            >> "tari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}.sha256"
-          cat "tari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}.sha256"
+          ${SHARUN} "minotari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}" \
+            >> "minotari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}.sha256"
+          cat "minotari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}.sha256"
           echo "Checksum verification for miner is "
-          ${SHARUN} --check "tari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}.sha256"
+          ${SHARUN} --check "minotari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}.sha256"
 
       - name: Artifact upload for Miner
         uses: actions/upload-artifact@v3
         with:
-          name: tari_miner-${{ matrix.builds.name }}
-          path: "${{ github.workspace }}${{ env.TBN_DIST }}/tari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}*"
+          name: minotari_miner-${{ matrix.builds.name }}
+          path: "${{ github.workspace }}${{ env.TBN_DIST }}/minotari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}*"
 
       - name: Prep diag-utils archive for upload
         continue-on-error: true
