@@ -52,7 +52,7 @@ use crate::{
             TransactionKeyManagerWrapper,
             TxoStage,
         },
-        tari_amount::MicroTari,
+        tari_amount::MicroMinoTari,
         transaction_components::{
             KernelBuilder,
             KernelFeatures,
@@ -71,7 +71,7 @@ use crate::{
     },
 };
 
-pub async fn create_test_input(amount: MicroTari, maturity: u64, key_manager: &TestKeyManager) -> WalletOutput {
+pub async fn create_test_input(amount: MicroMinoTari, maturity: u64, key_manager: &TestKeyManager) -> WalletOutput {
     let params = TestParams::new(key_manager).await;
     params
         .create_input(
@@ -196,17 +196,17 @@ impl TestParams {
 
 #[derive(Clone)]
 pub struct UtxoTestParams {
-    pub value: MicroTari,
+    pub value: MicroMinoTari,
     pub script: TariScript,
     pub features: OutputFeatures,
     pub input_data: Option<ExecutionStack>,
     pub covenant: Covenant,
     pub output_version: Option<TransactionOutputVersion>,
-    pub minimum_value_promise: MicroTari,
+    pub minimum_value_promise: MicroMinoTari,
 }
 
 impl UtxoTestParams {
-    pub fn with_value(value: MicroTari) -> Self {
+    pub fn with_value(value: MicroMinoTari) -> Self {
         Self {
             value,
             ..Default::default()
@@ -223,7 +223,7 @@ impl Default for UtxoTestParams {
             input_data: None,
             covenant: Covenant::default(),
             output_version: None,
-            minimum_value_promise: MicroTari::zero(),
+            minimum_value_promise: MicroMinoTari::zero(),
         }
     }
 }
@@ -247,13 +247,17 @@ pub fn generate_keys() -> TestKeySet {
 }
 
 /// Generate a random transaction signature, returning the public key (excess) and the signature.
-pub fn create_random_signature(fee: MicroTari, lock_height: u64, features: KernelFeatures) -> (PublicKey, Signature) {
+pub fn create_random_signature(
+    fee: MicroMinoTari,
+    lock_height: u64,
+    features: KernelFeatures,
+) -> (PublicKey, Signature) {
     let (k, p) = PublicKey::random_keypair(&mut OsRng);
     (p, create_signature(k, fee, lock_height, features))
 }
 
 /// Generate a random transaction signature, returning the public key (excess) and the signature.
-pub fn create_signature(k: PrivateKey, fee: MicroTari, lock_height: u64, features: KernelFeatures) -> Signature {
+pub fn create_signature(k: PrivateKey, fee: MicroMinoTari, lock_height: u64, features: KernelFeatures) -> Signature {
     let r = PrivateKey::random(&mut OsRng);
     let tx_meta = TransactionMetadata::new_with_features(fee, lock_height, features);
     let e = TransactionKernel::build_kernel_challenge_from_tx_meta(
@@ -269,7 +273,7 @@ pub fn create_signature(k: PrivateKey, fee: MicroTari, lock_height: u64, feature
 pub async fn create_random_signature_from_secret_key(
     key_manager: &TestKeyManager,
     secret_key_id: TariKeyId,
-    fee: MicroTari,
+    fee: MicroMinoTari,
     lock_height: u64,
     kernel_features: KernelFeatures,
     txo_type: TxoStage,
@@ -333,7 +337,7 @@ pub async fn create_wallet_output_with_data(
     script: TariScript,
     output_features: OutputFeatures,
     test_params: &TestParams,
-    value: MicroTari,
+    value: MicroMinoTari,
     key_manager: &TestKeyManager,
 ) -> Result<WalletOutput, String> {
     test_params
@@ -474,9 +478,9 @@ macro_rules! txn_schema {
 #[derive(Clone, Debug)]
 pub struct TransactionSchema {
     pub from: Vec<WalletOutput>,
-    pub to: Vec<MicroTari>,
+    pub to: Vec<MicroMinoTari>,
     pub to_outputs: Vec<WalletOutput>,
-    pub fee: MicroTari,
+    pub fee: MicroMinoTari,
     pub lock_height: u64,
     pub features: OutputFeatures,
     pub script: TariScript,
@@ -489,8 +493,8 @@ pub struct TransactionSchema {
 /// Create an unconfirmed transaction for testing with a valid fee, unique access_sig, random inputs and outputs, the
 /// transaction is only partially constructed
 pub async fn create_tx(
-    amount: MicroTari,
-    fee_per_gram: MicroTari,
+    amount: MicroMinoTari,
+    fee_per_gram: MicroMinoTari,
     lock_height: u64,
     input_count: usize,
     input_maturity: u64,
@@ -515,11 +519,11 @@ pub async fn create_tx(
 }
 
 pub async fn create_wallet_outputs(
-    amount: MicroTari,
+    amount: MicroMinoTari,
     input_count: usize,
     input_maturity: u64,
     output_count: usize,
-    fee_per_gram: MicroTari,
+    fee_per_gram: MicroMinoTari,
     output_features: &OutputFeatures,
     output_script: &TariScript,
     output_covenant: &Covenant,
@@ -597,7 +601,7 @@ pub async fn create_wallet_outputs(
 /// transaction is only partially constructed
 pub async fn create_transaction_with(
     lock_height: u64,
-    fee_per_gram: MicroTari,
+    fee_per_gram: MicroMinoTari,
     inputs: Vec<WalletOutput>,
     outputs: Vec<(WalletOutput, TariKeyId)>,
     key_manager: &TestKeyManager,
@@ -774,7 +778,7 @@ pub async fn create_coinbase_kernel(spending_key_id: &TariKeyId, key_manager: &T
 }
 
 /// Create a transaction kernel with the given fee, using random keys to generate the signature
-pub fn create_test_kernel(fee: MicroTari, lock_height: u64, features: KernelFeatures) -> TransactionKernel {
+pub fn create_test_kernel(fee: MicroMinoTari, lock_height: u64, features: KernelFeatures) -> TransactionKernel {
     let (excess, s) = create_random_signature(fee, lock_height, features);
     KernelBuilder::new()
         .with_fee(fee)
@@ -788,12 +792,12 @@ pub fn create_test_kernel(fee: MicroTari, lock_height: u64, features: KernelFeat
 
 /// Create a new UTXO for the specified value and return the output and spending key
 pub async fn create_utxo(
-    value: MicroTari,
+    value: MicroMinoTari,
     key_manager: &TestKeyManager,
     features: &OutputFeatures,
     script: &TariScript,
     covenant: &Covenant,
-    minimum_value_promise: MicroTari,
+    minimum_value_promise: MicroMinoTari,
 ) -> (TransactionOutput, TariKeyId, TariKeyId) {
     let (spending_key_id, _) = key_manager
         .get_next_key(TransactionKeyManagerBranch::CommitmentMask.get_branch_key())

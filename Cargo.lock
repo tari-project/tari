@@ -3070,6 +3070,343 @@ dependencies = [
 ]
 
 [[package]]
+name = "minotari_app_grpc"
+version = "0.51.0-pre.4"
+dependencies = [
+ "argon2",
+ "base64 0.13.1",
+ "borsh",
+ "chrono",
+ "log",
+ "prost 0.9.0",
+ "prost-types 0.9.0",
+ "rand 0.8.5",
+ "tari_common_types",
+ "tari_comms",
+ "tari_core",
+ "tari_crypto",
+ "tari_script",
+ "tari_utilities",
+ "thiserror",
+ "tonic 0.6.2",
+ "tonic-build",
+ "zeroize",
+]
+
+[[package]]
+name = "minotari_app_utilities"
+version = "0.51.0-pre.4"
+dependencies = [
+ "clap 3.2.25",
+ "futures 0.3.28",
+ "json5",
+ "log",
+ "rand 0.7.3",
+ "serde",
+ "tari_common",
+ "tari_common_types",
+ "tari_comms",
+ "tari_features",
+ "tari_utilities",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
+name = "minotari_base_node"
+version = "0.51.0-pre.4"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bincode",
+ "borsh",
+ "chrono",
+ "clap 3.2.25",
+ "config",
+ "console-subscriber",
+ "crossterm 0.23.2",
+ "derive_more",
+ "either",
+ "futures 0.3.28",
+ "log",
+ "log-mdc",
+ "log4rs",
+ "minotari_app_grpc",
+ "minotari_app_utilities",
+ "nom 7.1.3",
+ "qrcode",
+ "rustyline",
+ "rustyline-derive",
+ "serde",
+ "strum",
+ "tari_common",
+ "tari_common_types",
+ "tari_comms",
+ "tari_comms_dht",
+ "tari_core",
+ "tari_crypto",
+ "tari_features",
+ "tari_libtor",
+ "tari_metrics",
+ "tari_p2p",
+ "tari_service_framework",
+ "tari_shutdown",
+ "tari_storage",
+ "tari_utilities",
+ "thiserror",
+ "tokio",
+ "tonic 0.6.2",
+]
+
+[[package]]
+name = "minotari_base_node_grpc_client"
+version = "0.1.0"
+dependencies = [
+ "minotari_app_grpc",
+ "tokio",
+]
+
+[[package]]
+name = "minotari_console_wallet"
+version = "0.51.0-pre.4"
+dependencies = [
+ "bitflags 1.3.2",
+ "chrono",
+ "clap 3.2.25",
+ "config",
+ "console-subscriber",
+ "crossterm 0.25.0",
+ "digest 0.9.0",
+ "futures 0.3.28",
+ "log",
+ "log4rs",
+ "minotari_app_grpc",
+ "minotari_app_utilities",
+ "minotari_wallet",
+ "qrcode",
+ "rand 0.7.3",
+ "regex",
+ "reqwest",
+ "rpassword",
+ "rustyline",
+ "serde",
+ "serde_json",
+ "sha2 0.9.9",
+ "strum",
+ "strum_macros",
+ "tari_common",
+ "tari_common_types",
+ "tari_comms",
+ "tari_comms_dht",
+ "tari_contacts",
+ "tari_core",
+ "tari_crypto",
+ "tari_features",
+ "tari_key_manager",
+ "tari_libtor",
+ "tari_p2p",
+ "tari_script",
+ "tari_shutdown",
+ "tari_utilities",
+ "thiserror",
+ "tokio",
+ "tonic 0.6.2",
+ "tui",
+ "unicode-segmentation",
+ "unicode-width",
+ "url",
+ "zeroize",
+ "zxcvbn",
+]
+
+[[package]]
+name = "minotari_merge_mining_proxy"
+version = "0.51.0-pre.4"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "borsh",
+ "bytes 1.4.0",
+ "chrono",
+ "clap 3.2.25",
+ "config",
+ "crossterm 0.25.0",
+ "futures 0.3.28",
+ "hex",
+ "hyper",
+ "jsonrpc",
+ "log",
+ "minotari_app_utilities",
+ "minotari_base_node_grpc_client",
+ "minotari_wallet_grpc_client",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tari_common",
+ "tari_comms",
+ "tari_core",
+ "tari_features",
+ "tari_utilities",
+ "thiserror",
+ "tokio",
+ "tonic 0.6.2",
+ "tracing",
+ "url",
+]
+
+[[package]]
+name = "minotari_miner"
+version = "0.51.0-pre.4"
+dependencies = [
+ "base64 0.13.1",
+ "borsh",
+ "bufstream",
+ "chrono",
+ "clap 3.2.25",
+ "config",
+ "crossbeam",
+ "crossterm 0.25.0",
+ "derivative",
+ "futures 0.3.28",
+ "hex",
+ "log",
+ "log4rs",
+ "minotari_app_grpc",
+ "minotari_app_utilities",
+ "native-tls",
+ "num_cpus",
+ "prost-types 0.9.0",
+ "rand 0.7.3",
+ "serde",
+ "serde_json",
+ "tari_common",
+ "tari_common_types",
+ "tari_comms",
+ "tari_core",
+ "tari_crypto",
+ "tari_utilities",
+ "thiserror",
+ "tokio",
+ "tonic 0.6.2",
+]
+
+[[package]]
+name = "minotari_mining_helper_ffi"
+version = "0.51.0-pre.4"
+dependencies = [
+ "borsh",
+ "hex",
+ "libc",
+ "rand 0.7.3",
+ "tari_common",
+ "tari_comms",
+ "tari_core",
+ "tari_crypto",
+ "tari_utilities",
+ "thiserror",
+]
+
+[[package]]
+name = "minotari_wallet"
+version = "0.51.0-pre.4"
+dependencies = [
+ "argon2",
+ "async-trait",
+ "bincode",
+ "blake2 0.9.2",
+ "borsh",
+ "chacha20poly1305 0.10.1",
+ "chrono",
+ "derivative",
+ "diesel",
+ "diesel_migrations",
+ "digest 0.9.0",
+ "env_logger",
+ "fs2",
+ "futures 0.3.28",
+ "itertools",
+ "libsqlite3-sys",
+ "log",
+ "prost 0.9.0",
+ "rand 0.7.3",
+ "serde",
+ "serde_json",
+ "sha2 0.9.9",
+ "strum",
+ "strum_macros",
+ "tari_common",
+ "tari_common_sqlite",
+ "tari_common_types",
+ "tari_comms",
+ "tari_comms_dht",
+ "tari_contacts",
+ "tari_core",
+ "tari_crypto",
+ "tari_key_manager",
+ "tari_p2p",
+ "tari_script",
+ "tari_service_framework",
+ "tari_shutdown",
+ "tari_test_utils",
+ "tari_utilities",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tower",
+ "zeroize",
+]
+
+[[package]]
+name = "minotari_wallet_ffi"
+version = "0.51.0-pre.4"
+dependencies = [
+ "borsh",
+ "cbindgen 0.24.5",
+ "chacha20poly1305 0.10.1",
+ "chrono",
+ "futures 0.3.28",
+ "itertools",
+ "lazy_static",
+ "libc",
+ "log",
+ "log4rs",
+ "minotari_wallet",
+ "num-traits",
+ "openssl",
+ "rand 0.7.3",
+ "serde_json",
+ "tari_common",
+ "tari_common_types",
+ "tari_comms",
+ "tari_comms_dht",
+ "tari_contacts",
+ "tari_core",
+ "tari_crypto",
+ "tari_key_manager",
+ "tari_p2p",
+ "tari_script",
+ "tari_service_framework",
+ "tari_shutdown",
+ "tari_test_utils",
+ "tari_utilities",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "zeroize",
+]
+
+[[package]]
+name = "minotari_wallet_grpc_client"
+version = "0.1.0"
+dependencies = [
+ "minotari_app_grpc",
+ "tari_common_types",
+ "thiserror",
+ "tokio",
+ "tonic 0.6.2",
+]
+
+[[package]]
 name = "mio"
 version = "0.7.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5073,103 +5410,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tari_app_grpc"
-version = "0.51.0-pre.4"
-dependencies = [
- "argon2",
- "base64 0.13.1",
- "borsh",
- "chrono",
- "log",
- "prost 0.9.0",
- "prost-types 0.9.0",
- "rand 0.8.5",
- "tari_common_types",
- "tari_comms",
- "tari_core",
- "tari_crypto",
- "tari_script",
- "tari_utilities",
- "thiserror",
- "tonic 0.6.2",
- "tonic-build",
- "zeroize",
-]
-
-[[package]]
-name = "tari_app_utilities"
-version = "0.51.0-pre.4"
-dependencies = [
- "clap 3.2.25",
- "futures 0.3.28",
- "json5",
- "log",
- "rand 0.7.3",
- "serde",
- "tari_common",
- "tari_common_types",
- "tari_comms",
- "tari_features",
- "tari_utilities",
- "thiserror",
- "tokio",
-]
-
-[[package]]
-name = "tari_base_node"
-version = "0.51.0-pre.4"
-dependencies = [
- "anyhow",
- "async-trait",
- "bincode",
- "borsh",
- "chrono",
- "clap 3.2.25",
- "config",
- "console-subscriber",
- "crossterm 0.23.2",
- "derive_more",
- "either",
- "futures 0.3.28",
- "log",
- "log-mdc",
- "log4rs",
- "nom 7.1.3",
- "qrcode",
- "rustyline",
- "rustyline-derive",
- "serde",
- "strum",
- "tari_app_grpc",
- "tari_app_utilities",
- "tari_common",
- "tari_common_types",
- "tari_comms",
- "tari_comms_dht",
- "tari_core",
- "tari_crypto",
- "tari_features",
- "tari_libtor",
- "tari_metrics",
- "tari_p2p",
- "tari_service_framework",
- "tari_shutdown",
- "tari_storage",
- "tari_utilities",
- "thiserror",
- "tokio",
- "tonic 0.6.2",
-]
-
-[[package]]
-name = "tari_base_node_grpc_client"
-version = "0.1.0"
-dependencies = [
- "tari_app_grpc",
- "tokio",
-]
-
-[[package]]
 name = "tari_bulletproofs"
 version = "4.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5222,8 +5462,8 @@ dependencies = [
  "diesel",
  "lmdb-zero",
  "log",
+ "minotari_app_utilities",
  "serde",
- "tari_app_utilities",
  "tari_common",
  "tari_common_sqlite",
  "tari_common_types",
@@ -5244,8 +5484,8 @@ dependencies = [
  "libc",
  "log",
  "log4rs",
+ "minotari_app_utilities",
  "openssl",
- "tari_app_utilities",
  "tari_chat_client",
  "tari_common",
  "tari_common_types",
@@ -5426,59 +5666,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tari_console_wallet"
-version = "0.51.0-pre.4"
-dependencies = [
- "bitflags 1.3.2",
- "chrono",
- "clap 3.2.25",
- "config",
- "console-subscriber",
- "crossterm 0.25.0",
- "digest 0.9.0",
- "futures 0.3.28",
- "log",
- "log4rs",
- "qrcode",
- "rand 0.7.3",
- "regex",
- "reqwest",
- "rpassword",
- "rustyline",
- "serde",
- "serde_json",
- "sha2 0.9.9",
- "strum",
- "strum_macros",
- "tari_app_grpc",
- "tari_app_utilities",
- "tari_common",
- "tari_common_types",
- "tari_comms",
- "tari_comms_dht",
- "tari_contacts",
- "tari_core",
- "tari_crypto",
- "tari_features",
- "tari_key_manager",
- "tari_libtor",
- "tari_p2p",
- "tari_script",
- "tari_shutdown",
- "tari_utilities",
- "tari_wallet",
- "thiserror",
- "tokio",
- "tonic 0.6.2",
- "tui",
- "unicode-segmentation",
- "unicode-width",
- "url",
- "zeroize",
- "zxcvbn",
-]
-
-[[package]]
 name = "tari_contacts"
 version = "0.51.0-pre.4"
 dependencies = [
@@ -5628,32 +5815,32 @@ dependencies = [
  "indexmap",
  "libc",
  "log",
+ "minotari_app_grpc",
+ "minotari_app_utilities",
+ "minotari_base_node",
+ "minotari_base_node_grpc_client",
+ "minotari_console_wallet",
+ "minotari_merge_mining_proxy",
+ "minotari_miner",
+ "minotari_wallet",
+ "minotari_wallet_ffi",
+ "minotari_wallet_grpc_client",
  "rand 0.7.3",
  "reqwest",
  "serde_json",
- "tari_app_grpc",
- "tari_app_utilities",
- "tari_base_node",
- "tari_base_node_grpc_client",
  "tari_chat_client",
  "tari_chat_ffi",
  "tari_common",
  "tari_common_types",
  "tari_comms",
  "tari_comms_dht",
- "tari_console_wallet",
  "tari_contacts",
  "tari_core",
  "tari_crypto",
- "tari_merge_mining_proxy",
- "tari_miner",
  "tari_p2p",
  "tari_script",
  "tari_shutdown",
  "tari_utilities",
- "tari_wallet",
- "tari_wallet_ffi",
- "tari_wallet_grpc_client",
  "tempfile",
  "thiserror",
  "time",
@@ -5716,41 +5903,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tari_merge_mining_proxy"
-version = "0.51.0-pre.4"
-dependencies = [
- "anyhow",
- "bincode",
- "borsh",
- "bytes 1.4.0",
- "chrono",
- "clap 3.2.25",
- "config",
- "crossterm 0.25.0",
- "futures 0.3.28",
- "hex",
- "hyper",
- "jsonrpc",
- "log",
- "reqwest",
- "serde",
- "serde_json",
- "tari_app_utilities",
- "tari_base_node_grpc_client",
- "tari_common",
- "tari_comms",
- "tari_core",
- "tari_features",
- "tari_utilities",
- "tari_wallet_grpc_client",
- "thiserror",
- "tokio",
- "tonic 0.6.2",
- "tracing",
- "url",
-]
-
-[[package]]
 name = "tari_metrics"
 version = "0.1.0"
 dependencies = [
@@ -5763,58 +5915,6 @@ dependencies = [
  "thiserror",
  "tokio",
  "warp",
-]
-
-[[package]]
-name = "tari_miner"
-version = "0.51.0-pre.4"
-dependencies = [
- "base64 0.13.1",
- "borsh",
- "bufstream",
- "chrono",
- "clap 3.2.25",
- "config",
- "crossbeam",
- "crossterm 0.25.0",
- "derivative",
- "futures 0.3.28",
- "hex",
- "log",
- "log4rs",
- "native-tls",
- "num_cpus",
- "prost-types 0.9.0",
- "rand 0.7.3",
- "serde",
- "serde_json",
- "tari_app_grpc",
- "tari_app_utilities",
- "tari_common",
- "tari_common_types",
- "tari_comms",
- "tari_core",
- "tari_crypto",
- "tari_utilities",
- "thiserror",
- "tokio",
- "tonic 0.6.2",
-]
-
-[[package]]
-name = "tari_mining_helper_ffi"
-version = "0.51.0-pre.4"
-dependencies = [
- "borsh",
- "hex",
- "libc",
- "rand 0.7.3",
- "tari_common",
- "tari_comms",
- "tari_core",
- "tari_crypto",
- "tari_utilities",
- "thiserror",
 ]
 
 [[package]]
@@ -5959,106 +6059,6 @@ dependencies = [
  "subtle",
  "thiserror",
  "zeroize",
-]
-
-[[package]]
-name = "tari_wallet"
-version = "0.51.0-pre.4"
-dependencies = [
- "argon2",
- "async-trait",
- "bincode",
- "blake2 0.9.2",
- "borsh",
- "chacha20poly1305 0.10.1",
- "chrono",
- "derivative",
- "diesel",
- "diesel_migrations",
- "digest 0.9.0",
- "env_logger",
- "fs2",
- "futures 0.3.28",
- "itertools",
- "libsqlite3-sys",
- "log",
- "prost 0.9.0",
- "rand 0.7.3",
- "serde",
- "serde_json",
- "sha2 0.9.9",
- "strum",
- "strum_macros",
- "tari_common",
- "tari_common_sqlite",
- "tari_common_types",
- "tari_comms",
- "tari_comms_dht",
- "tari_contacts",
- "tari_core",
- "tari_crypto",
- "tari_key_manager",
- "tari_p2p",
- "tari_script",
- "tari_service_framework",
- "tari_shutdown",
- "tari_test_utils",
- "tari_utilities",
- "tempfile",
- "thiserror",
- "tokio",
- "tower",
- "zeroize",
-]
-
-[[package]]
-name = "tari_wallet_ffi"
-version = "0.51.0-pre.4"
-dependencies = [
- "borsh",
- "cbindgen 0.24.5",
- "chacha20poly1305 0.10.1",
- "chrono",
- "futures 0.3.28",
- "itertools",
- "lazy_static",
- "libc",
- "log",
- "log4rs",
- "num-traits",
- "openssl",
- "rand 0.7.3",
- "serde_json",
- "tari_common",
- "tari_common_types",
- "tari_comms",
- "tari_comms_dht",
- "tari_contacts",
- "tari_core",
- "tari_crypto",
- "tari_key_manager",
- "tari_p2p",
- "tari_script",
- "tari_service_framework",
- "tari_shutdown",
- "tari_test_utils",
- "tari_utilities",
- "tari_wallet",
- "tempfile",
- "thiserror",
- "tokio",
- "zeroize",
-]
-
-[[package]]
-name = "tari_wallet_grpc_client"
-version = "0.1.0"
-dependencies = [
- "tari_app_grpc",
- "tari_common_types",
- "thiserror",
- "tokio",
- "tonic 0.6.2",
 ]
 
 [[package]]

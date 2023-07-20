@@ -37,7 +37,7 @@ use super::TransactionKernelVersion;
 use crate::{
     consensus::DomainSeparatedConsensusHasher,
     transactions::{
-        tari_amount::MicroTari,
+        tari_amount::MicroMinoTari,
         transaction_components::{KernelFeatures, TransactionError},
         transaction_protocol::TransactionMetadata,
         TransactionHashDomain,
@@ -55,7 +55,7 @@ pub struct TransactionKernel {
     /// Options for a kernel's structure or use
     pub features: KernelFeatures,
     /// Fee originally included in the transaction this proof is for.
-    pub fee: MicroTari,
+    pub fee: MicroMinoTari,
     /// This kernel is not valid earlier than lock_height blocks
     /// The max lock_height of all *inputs* to this transaction
     pub lock_height: u64,
@@ -73,7 +73,7 @@ impl TransactionKernel {
     pub fn new(
         version: TransactionKernelVersion,
         features: KernelFeatures,
-        fee: MicroTari,
+        fee: MicroMinoTari,
         lock_height: u64,
         excess: Commitment,
         excess_sig: Signature,
@@ -100,7 +100,7 @@ impl TransactionKernel {
 
     pub fn new_current_version(
         features: KernelFeatures,
-        fee: MicroTari,
+        fee: MicroMinoTari,
         lock_height: u64,
         excess: Commitment,
         excess_sig: Signature,
@@ -185,7 +185,7 @@ impl TransactionKernel {
         version: &TransactionKernelVersion,
         sum_public_nonces: &PublicKey,
         total_excess: &PublicKey,
-        fee: MicroTari,
+        fee: MicroMinoTari,
         lock_height: u64,
         features: &KernelFeatures,
         burn_commitment: &Option<Commitment>,
@@ -217,7 +217,7 @@ impl TransactionKernel {
     /// outside of the signing keys and nonces.
     pub fn build_kernel_signature_message(
         version: &TransactionKernelVersion,
-        fee: MicroTari,
+        fee: MicroMinoTari,
         lock_height: u64,
         features: &KernelFeatures,
         burn_commitment: &Option<Commitment>,

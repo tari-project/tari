@@ -37,7 +37,7 @@ use crate::{
     covenants::Covenant,
     transactions::{
         key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface},
-        tari_amount::MicroTari,
+        tari_amount::MicroMinoTari,
         transaction_components::{EncryptedData, OutputFeatures, TransactionError, WalletOutput},
     },
 };
@@ -48,7 +48,7 @@ use crate::{
 #[derive(Clone, Serialize, Deserialize)]
 pub struct UnblindedOutput {
     pub version: TransactionOutputVersion,
-    pub value: MicroTari,
+    pub value: MicroMinoTari,
     pub spending_key: PrivateKey,
     pub features: OutputFeatures,
     pub script: TariScript,
@@ -59,7 +59,7 @@ pub struct UnblindedOutput {
     pub metadata_signature: ComAndPubSignature,
     pub script_lock_height: u64,
     pub encrypted_data: EncryptedData,
-    pub minimum_value_promise: MicroTari,
+    pub minimum_value_promise: MicroMinoTari,
 }
 
 impl UnblindedOutput {
@@ -68,7 +68,7 @@ impl UnblindedOutput {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         version: TransactionOutputVersion,
-        value: MicroTari,
+        value: MicroMinoTari,
         spending_key: PrivateKey,
         features: OutputFeatures,
         script: TariScript,
@@ -79,7 +79,7 @@ impl UnblindedOutput {
         script_lock_height: u64,
         covenant: Covenant,
         encrypted_data: EncryptedData,
-        minimum_value_promise: MicroTari,
+        minimum_value_promise: MicroMinoTari,
     ) -> Self {
         Self {
             version,
@@ -99,7 +99,7 @@ impl UnblindedOutput {
     }
 
     pub fn new_current_version(
-        value: MicroTari,
+        value: MicroMinoTari,
         spending_key: PrivateKey,
         features: OutputFeatures,
         script: TariScript,
@@ -110,7 +110,7 @@ impl UnblindedOutput {
         script_lock_height: u64,
         covenant: Covenant,
         encrypted_data: EncryptedData,
-        minimum_value_promise: MicroTari,
+        minimum_value_promise: MicroMinoTari,
     ) -> Self {
         Self::new(
             TransactionOutputVersion::get_current_version(),

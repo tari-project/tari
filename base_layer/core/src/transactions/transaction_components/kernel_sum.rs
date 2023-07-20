@@ -25,12 +25,12 @@
 
 use tari_common_types::types::Commitment;
 
-use crate::transactions::tari_amount::MicroTari;
+use crate::transactions::tari_amount::MicroMinoTari;
 
 /// This struct holds the result of calculating the sum of the kernels in a Transaction
 /// and returns the summed commitments and the total fees
 #[derive(Default)]
 pub struct KernelSum {
     pub sum: Commitment,
-    pub fees: MicroTari,
+    pub fees: MicroMinoTari,
 }

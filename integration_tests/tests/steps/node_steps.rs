@@ -25,8 +25,9 @@ use std::{convert::TryFrom, time::Duration};
 use cucumber::{given, then, when};
 use futures::StreamExt;
 use indexmap::IndexMap;
-use tari_app_grpc::tari_rpc::{self as grpc, GetBlocksRequest, ListHeadersRequest};
-use tari_base_node::BaseNodeConfig;
+use minotari_app_grpc::tari_rpc::{self as grpc, GetBlocksRequest, ListHeadersRequest};
+use minotari_base_node::BaseNodeConfig;
+use minotari_wallet_grpc_client::grpc::{Empty, GetIdentityRequest};
 use tari_core::blocks::Block;
 use tari_integration_tests::{
     base_node_process::{spawn_base_node, spawn_base_node_with_config},
@@ -35,7 +36,6 @@ use tari_integration_tests::{
     world::NodeClient,
     TariWorld,
 };
-use tari_wallet_grpc_client::grpc::{Empty, GetIdentityRequest};
 
 use crate::steps::{HALF_SECOND, TWO_MINUTES_WITH_HALF_SECOND_SLEEP};
 

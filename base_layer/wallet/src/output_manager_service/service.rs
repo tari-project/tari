@@ -40,7 +40,7 @@ use tari_core::{
     transactions::{
         fee::Fee,
         key_manager::{TariKeyId, TransactionKeyManagerBranch, TransactionKeyManagerInterface},
-        tari_amount::MicroTari,
+        tari_amount::MicroMinoTari,
         transaction_components::{
             EncryptedData,
             KernelFeatures,
@@ -455,7 +455,7 @@ where
         &mut self,
         output_hash: HashOutput,
         pre_image: PublicKey,
-        fee_per_gram: MicroTari,
+        fee_per_gram: MicroMinoTari,
     ) -> Result<OutputManagerResponse, OutputManagerError> {
         let output = self
             .fetch_outputs_from_node(vec![output_hash])
@@ -659,7 +659,7 @@ where
 
     async fn create_output_with_features(
         &mut self,
-        value: MicroTari,
+        value: MicroMinoTari,
         features: OutputFeatures,
     ) -> Result<WalletOutputBuilder, OutputManagerError> {
         let (spending_key_id, _, script_key_id, script_public_key) =
@@ -770,16 +770,16 @@ where
         Ok(rtp)
     }
 
-    /// Get a fee estimate for an amount of MicroTari, at a specified fee per gram and given number of kernels and
+    /// Get a fee estimate for an amount of MicroMinoTari, at a specified fee per gram and given number of kernels and
     /// outputs.
     async fn fee_estimate(
         &mut self,
-        amount: MicroTari,
+        amount: MicroMinoTari,
         selection_criteria: UtxoSelectionCriteria,
-        fee_per_gram: MicroTari,
+        fee_per_gram: MicroMinoTari,
         num_kernels: usize,
         num_outputs: usize,
-    ) -> Result<MicroTari, OutputManagerError> {
+    ) -> Result<MicroMinoTari, OutputManagerError> {
         debug!(
             target: LOG_TARGET,
             "Getting fee estimate. Amount: {}. Fee per gram: {}. Num kernels: {}. Num outputs: {}",
@@ -855,15 +855,15 @@ where
     pub async fn prepare_transaction_to_send(
         &mut self,
         tx_id: TxId,
-        amount: MicroTari,
+        amount: MicroMinoTari,
         selection_criteria: UtxoSelectionCriteria,
-        fee_per_gram: MicroTari,
+        fee_per_gram: MicroMinoTari,
         tx_meta: TransactionMetadata,
         message: String,
         recipient_output_features: OutputFeatures,
         recipient_script: TariScript,
         recipient_covenant: Covenant,
-        recipient_minimum_value_promise: MicroTari,
+        recipient_minimum_value_promise: MicroMinoTari,
     ) -> Result<SenderTransactionProtocol, OutputManagerError> {
         debug!(
             target: LOG_TARGET,
@@ -982,8 +982,8 @@ where
     async fn get_coinbase_transaction(
         &mut self,
         tx_id: TxId,
-        reward: MicroTari,
-        fees: MicroTari,
+        reward: MicroMinoTari,
+        fees: MicroMinoTari,
         block_height: u64,
         extra: Vec<u8>,
     ) -> Result<Transaction, OutputManagerError> {
@@ -1044,7 +1044,7 @@ where
         &mut self,
         outputs: Vec<WalletOutputBuilder>,
         selection_criteria: UtxoSelectionCriteria,
-        fee_per_gram: MicroTari,
+        fee_per_gram: MicroMinoTari,
     ) -> Result<(TxId, Transaction), OutputManagerError> {
         let total_value = outputs.iter().map(|o| o.value()).sum();
         let nop_script = script![Nop];
@@ -1166,12 +1166,12 @@ where
     async fn create_pay_to_self_transaction(
         &mut self,
         tx_id: TxId,
-        amount: MicroTari,
+        amount: MicroMinoTari,
         selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
-        fee_per_gram: MicroTari,
+        fee_per_gram: MicroMinoTari,
         lock_height: Option<u64>,
-    ) -> Result<(MicroTari, Transaction), OutputManagerError> {
+    ) -> Result<(MicroMinoTari, Transaction), OutputManagerError> {
         let script = script!(Nop);
         let covenant = Covenant::default();
 
@@ -1306,9 +1306,9 @@ where
     #[allow(clippy::too_many_lines)]
     async fn select_utxos(
         &mut self,
-        amount: MicroTari,
+        amount: MicroMinoTari,
         mut selection_criteria: UtxoSelectionCriteria,
-        fee_per_gram: MicroTari,
+        fee_per_gram: MicroMinoTari,
         num_outputs: usize,
         total_output_features_and_scripts_byte_size: usize,
     ) -> Result<UtxoSelection, OutputManagerError> {
@@ -1368,9 +1368,9 @@ where
         trace!(target: LOG_TARGET, "We found {} UTXOs to select from", uo.len());
 
         let mut requires_change_output = false;
-        let mut utxos_total_value = MicroTari::from(0);
-        let mut fee_without_change = MicroTari::from(0);
-        let mut fee_with_change = MicroTari::from(0);
+        let mut utxos_total_value = MicroMinoTari::from(0);
+        let mut fee_without_change = MicroMinoTari::from(0);
+        let mut fee_with_change = MicroMinoTari::from(0);
         for o in uo {
             utxos_total_value += o.wallet_output.value;
 
@@ -1464,17 +1464,17 @@ where
     pub async fn preview_coin_join_with_commitments(
         &self,
         commitments: Vec<Commitment>,
-        fee_per_gram: MicroTari,
-    ) -> Result<(Vec<MicroTari>, MicroTari), OutputManagerError> {
+        fee_per_gram: MicroMinoTari,
+    ) -> Result<(Vec<MicroMinoTari>, MicroMinoTari), OutputManagerError> {
         let src_outputs = self.resources.db.fetch_unspent_outputs_for_spending(
             &UtxoSelectionCriteria::specific(commitments),
-            MicroTari::zero(),
+            MicroMinoTari::zero(),
             None,
         )?;
 
         let accumulated_amount = src_outputs
             .iter()
-            .fold(MicroTari::zero(), |acc, x| acc + x.wallet_output.value);
+            .fold(MicroMinoTari::zero(), |acc, x| acc + x.wallet_output.value);
 
         let fee = self.get_fee_calc().calculate(
             fee_per_gram,
@@ -1492,8 +1492,8 @@ where
         &mut self,
         commitments: Vec<Commitment>,
         number_of_splits: usize,
-        fee_per_gram: MicroTari,
-    ) -> Result<(Vec<MicroTari>, MicroTari), OutputManagerError> {
+        fee_per_gram: MicroMinoTari,
+    ) -> Result<(Vec<MicroMinoTari>, MicroMinoTari), OutputManagerError> {
         if commitments.is_empty() {
             return Err(OutputManagerError::NoCommitmentsProvided);
         }
@@ -1506,7 +1506,7 @@ where
 
         let src_outputs = self.resources.db.fetch_unspent_outputs_for_spending(
             &UtxoSelectionCriteria::specific(commitments),
-            MicroTari::zero(),
+            MicroMinoTari::zero(),
             None,
         )?;
 
@@ -1522,11 +1522,11 @@ where
 
         let accumulated_amount = src_outputs
             .iter()
-            .fold(MicroTari::zero(), |acc, x| acc + x.wallet_output.value);
+            .fold(MicroMinoTari::zero(), |acc, x| acc + x.wallet_output.value);
 
         let aftertax_amount = accumulated_amount.saturating_sub(fee);
-        let amount_per_split = MicroTari(aftertax_amount.as_u64() / number_of_splits as u64);
-        let unspent_remainder = MicroTari(aftertax_amount.as_u64() % amount_per_split.as_u64());
+        let amount_per_split = MicroMinoTari(aftertax_amount.as_u64() / number_of_splits as u64);
+        let unspent_remainder = MicroMinoTari(aftertax_amount.as_u64() % amount_per_split.as_u64());
         let mut expected_outputs = vec![];
 
         for i in 1..=number_of_splits {
@@ -1543,17 +1543,17 @@ where
     async fn create_coin_split_with_commitments(
         &mut self,
         commitments: Vec<Commitment>,
-        amount_per_split: Option<MicroTari>,
+        amount_per_split: Option<MicroMinoTari>,
         number_of_splits: usize,
-        fee_per_gram: MicroTari,
-    ) -> Result<(TxId, Transaction, MicroTari), OutputManagerError> {
+        fee_per_gram: MicroMinoTari,
+    ) -> Result<(TxId, Transaction, MicroMinoTari), OutputManagerError> {
         if commitments.is_empty() {
             return Err(OutputManagerError::NoCommitmentsProvided);
         }
 
         let src_outputs = self.resources.db.fetch_unspent_outputs_for_spending(
             &UtxoSelectionCriteria::specific(commitments),
-            MicroTari::zero(),
+            MicroMinoTari::zero(),
             None,
         )?;
 
@@ -1571,10 +1571,10 @@ where
 
     async fn create_coin_split_auto(
         &mut self,
-        amount_per_split: Option<MicroTari>,
+        amount_per_split: Option<MicroMinoTari>,
         number_of_splits: usize,
-        fee_per_gram: MicroTari,
-    ) -> Result<(TxId, Transaction, MicroTari), OutputManagerError> {
+        fee_per_gram: MicroMinoTari,
+    ) -> Result<(TxId, Transaction, MicroMinoTari), OutputManagerError> {
         match amount_per_split {
             None => Err(OutputManagerError::InvalidArgument(
                 "coin split without `amount_per_split` is not supported yet".to_string(),
@@ -1582,7 +1582,7 @@ where
             Some(amount_per_split) => {
                 let selection = self
                     .select_utxos(
-                        amount_per_split * MicroTari(number_of_splits as u64),
+                        amount_per_split * MicroMinoTari(number_of_splits as u64),
                         UtxoSelectionCriteria::largest_first(),
                         fee_per_gram,
                         number_of_splits,
@@ -1603,8 +1603,8 @@ where
         &mut self,
         src_outputs: Vec<DbWalletOutput>,
         number_of_splits: usize,
-        fee_per_gram: MicroTari,
-    ) -> Result<(TxId, Transaction, MicroTari), OutputManagerError> {
+        fee_per_gram: MicroMinoTari,
+    ) -> Result<(TxId, Transaction, MicroMinoTari), OutputManagerError> {
         if number_of_splits == 0 {
             return Err(OutputManagerError::InvalidArgument(
                 "number_of_splits must be greater than 0".to_string(),
@@ -1617,7 +1617,7 @@ where
         // accumulated value amount from given source outputs
         let accumulated_amount_with_fee = src_outputs
             .iter()
-            .fold(MicroTari::zero(), |acc, x| acc + x.wallet_output.value);
+            .fold(MicroMinoTari::zero(), |acc, x| acc + x.wallet_output.value);
 
         let fee = self.get_fee_calc().calculate(
             fee_per_gram,
@@ -1629,8 +1629,8 @@ where
         );
 
         let accumulated_amount = accumulated_amount_with_fee.saturating_sub(fee);
-        let amount_per_split = MicroTari(accumulated_amount.as_u64() / number_of_splits as u64);
-        let unspent_remainder = MicroTari(accumulated_amount.as_u64() % amount_per_split.as_u64());
+        let amount_per_split = MicroMinoTari(accumulated_amount.as_u64() / number_of_splits as u64);
+        let unspent_remainder = MicroMinoTari(accumulated_amount.as_u64() % amount_per_split.as_u64());
 
         // preliminary balance check
         if self.get_balance(None)?.available_balance < (accumulated_amount + fee) {
@@ -1720,17 +1720,17 @@ where
     async fn create_coin_split(
         &mut self,
         src_outputs: Vec<DbWalletOutput>,
-        amount_per_split: MicroTari,
+        amount_per_split: MicroMinoTari,
         number_of_splits: usize,
-        fee_per_gram: MicroTari,
-    ) -> Result<(TxId, Transaction, MicroTari), OutputManagerError> {
+        fee_per_gram: MicroMinoTari,
+    ) -> Result<(TxId, Transaction, MicroMinoTari), OutputManagerError> {
         if number_of_splits == 0 {
             return Err(OutputManagerError::InvalidArgument(
                 "number_of_splits must be greater than 0".to_string(),
             ));
         }
 
-        if amount_per_split == MicroTari::zero() {
+        if amount_per_split == MicroMinoTari::zero() {
             return Err(OutputManagerError::InvalidArgument(
                 "amount_per_split must be greater than 0".to_string(),
             ));
@@ -1740,12 +1740,12 @@ where
             .default_features_and_scripts_size()
             .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?;
         let mut dest_outputs = Vec::with_capacity(number_of_splits + 1);
-        let total_split_amount = MicroTari::from(amount_per_split.as_u64() * number_of_splits as u64);
+        let total_split_amount = MicroMinoTari::from(amount_per_split.as_u64() * number_of_splits as u64);
 
         // accumulated value amount from given source outputs
         let accumulated_amount = src_outputs
             .iter()
-            .fold(MicroTari::zero(), |acc, x| acc + x.wallet_output.value);
+            .fold(MicroMinoTari::zero(), |acc, x| acc + x.wallet_output.value);
 
         if total_split_amount >= accumulated_amount {
             return Err(OutputManagerError::NotEnoughFunds);
@@ -1843,7 +1843,7 @@ where
             dest_outputs.push(output);
         }
 
-        let has_leftover_change = change > MicroTari::zero();
+        let has_leftover_change = change > MicroMinoTari::zero();
 
         // extending transaction if there is some `change` left over
         if has_leftover_change {
@@ -1923,7 +1923,7 @@ where
     async fn output_to_self(
         &mut self,
         output_features: OutputFeatures,
-        amount: MicroTari,
+        amount: MicroMinoTari,
         covenant: Covenant,
         script: TariScript,
     ) -> Result<(DbWalletOutput, TariKeyId), OutputManagerError> {
@@ -1935,7 +1935,7 @@ where
             .key_manager
             .encrypt_data_for_recovery(&spending_key_id, None, amount.as_u64())
             .await?;
-        let minimum_value_promise = MicroTari::zero();
+        let minimum_value_promise = MicroMinoTari::zero();
         let metadata_message = TransactionOutput::metadata_signature_message_from_parts(
             &TransactionOutputVersion::get_current_version(),
             &script,
@@ -1994,21 +1994,21 @@ where
     pub async fn create_coin_join(
         &mut self,
         commitments: Vec<Commitment>,
-        fee_per_gram: MicroTari,
-    ) -> Result<(TxId, Transaction, MicroTari), OutputManagerError> {
+        fee_per_gram: MicroMinoTari,
+    ) -> Result<(TxId, Transaction, MicroMinoTari), OutputManagerError> {
         let default_features_and_scripts_size = self
             .default_features_and_scripts_size()
             .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?;
 
         let src_outputs = self.resources.db.fetch_unspent_outputs_for_spending(
             &UtxoSelectionCriteria::specific(commitments),
-            MicroTari::zero(),
+            MicroMinoTari::zero(),
             None,
         )?;
 
         let accumulated_amount_with_fee = src_outputs
             .iter()
-            .fold(MicroTari::zero(), |acc, x| acc + x.wallet_output.value);
+            .fold(MicroMinoTari::zero(), |acc, x| acc + x.wallet_output.value);
 
         let fee =
             self.get_fee_calc()
@@ -2017,7 +2017,7 @@ where
         let accumulated_amount = accumulated_amount_with_fee.saturating_sub(fee);
 
         // checking, again, whether a total output value is enough
-        if accumulated_amount == MicroTari::zero() {
+        if accumulated_amount == MicroMinoTari::zero() {
             error!(target: LOG_TARGET, "failed to join coins, not enough funds");
             return Err(OutputManagerError::NotEnoughFunds);
         }
@@ -2130,8 +2130,8 @@ where
         &mut self,
         output: TransactionOutput,
         pre_image: PublicKey,
-        fee_per_gram: MicroTari,
-    ) -> Result<(TxId, MicroTari, MicroTari, Transaction), OutputManagerError> {
+        fee_per_gram: MicroMinoTari,
+    ) -> Result<(TxId, MicroMinoTari, MicroMinoTari, Transaction), OutputManagerError> {
         let shared_secret = self
             .resources
             .key_manager
@@ -2243,8 +2243,8 @@ where
     pub async fn create_htlc_refund_transaction(
         &mut self,
         output_hash: HashOutput,
-        fee_per_gram: MicroTari,
-    ) -> Result<(TxId, MicroTari, MicroTari, Transaction), OutputManagerError> {
+        fee_per_gram: MicroMinoTari,
+    ) -> Result<(TxId, MicroMinoTari, MicroMinoTari, Transaction), OutputManagerError> {
         let output = self.resources.db.get_unspent_output(output_hash)?.wallet_output;
 
         let amount = output.value;
@@ -2513,13 +2513,13 @@ where
 #[derive(Debug, Clone, PartialEq)]
 pub struct Balance {
     /// The current balance that is available to spend
-    pub available_balance: MicroTari,
+    pub available_balance: MicroMinoTari,
     /// The amount of the available balance that is current time-locked, None if no chain tip is provided
-    pub time_locked_balance: Option<MicroTari>,
+    pub time_locked_balance: Option<MicroMinoTari>,
     /// The current balance of funds that are due to be received but have not yet been confirmed
-    pub pending_incoming_balance: MicroTari,
+    pub pending_incoming_balance: MicroMinoTari,
     /// The current balance of funds encumbered in pending outbound transactions that have not been confirmed
-    pub pending_outgoing_balance: MicroTari,
+    pub pending_outgoing_balance: MicroMinoTari,
 }
 
 impl Balance {
@@ -2549,14 +2549,14 @@ impl fmt::Display for Balance {
 struct UtxoSelection {
     utxos: Vec<DbWalletOutput>,
     requires_change_output: bool,
-    total_value: MicroTari,
-    fee_without_change: MicroTari,
-    fee_with_change: MicroTari,
+    total_value: MicroMinoTari,
+    fee_without_change: MicroMinoTari,
+    fee_with_change: MicroMinoTari,
 }
 
 #[allow(dead_code)]
 impl UtxoSelection {
-    pub fn as_final_fee(&self) -> MicroTari {
+    pub fn as_final_fee(&self) -> MicroMinoTari {
         if self.requires_change_output {
             return self.fee_with_change;
         }
@@ -2568,7 +2568,7 @@ impl UtxoSelection {
     }
 
     /// Total value of the selected inputs
-    pub fn total_value(&self) -> MicroTari {
+    pub fn total_value(&self) -> MicroMinoTari {
         self.total_value
     }
 

@@ -150,7 +150,7 @@ impl From<KeyManagerServiceError> for TransactionProtocolError {
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize)]
 pub struct TransactionMetadata {
     /// The absolute fee for the transaction
-    pub fee: MicroTari,
+    pub fee: MicroMinoTari,
     /// The earliest block this transaction can be mined
     pub lock_height: u64,
     /// The kernel features
@@ -160,7 +160,7 @@ pub struct TransactionMetadata {
 }
 
 impl TransactionMetadata {
-    pub fn new(fee: MicroTari, lock_height: u64) -> Self {
+    pub fn new(fee: MicroMinoTari, lock_height: u64) -> Self {
         Self {
             fee,
             lock_height,
@@ -169,7 +169,7 @@ impl TransactionMetadata {
         }
     }
 
-    pub fn new_with_features(fee: MicroTari, lock_height: u64, kernel_features: KernelFeatures) -> Self {
+    pub fn new_with_features(fee: MicroMinoTari, lock_height: u64, kernel_features: KernelFeatures) -> Self {
         Self {
             fee,
             lock_height,

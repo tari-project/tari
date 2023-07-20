@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! The Tari base node implementation.
+//! The MinoTari base node implementation.
 //!
 //! Base nodes are the key pieces of infrastructure that maintain the security and integrity of the Tari
 //! cryptocurrency. The role of the base node is to provide the following services:

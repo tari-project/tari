@@ -25,6 +25,30 @@ use std::{collections::HashMap, mem::size_of, sync::Arc, time::Duration};
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use chrono::Utc;
 use futures::StreamExt;
+use minotari_wallet::{
+    connectivity_service::{create_wallet_connectivity_mock, WalletConnectivityMock},
+    output_manager_service::{
+        error::OutputManagerError,
+        handle::{OutputManagerHandle, OutputManagerRequest, OutputManagerResponse},
+    },
+    storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
+    transaction_service::{
+        config::TransactionServiceConfig,
+        error::TransactionServiceError,
+        handle::{TransactionEvent, TransactionEventReceiver, TransactionEventSender},
+        protocols::{
+            transaction_broadcast_protocol::TransactionBroadcastProtocol,
+            transaction_validation_protocol::TransactionValidationProtocol,
+        },
+        service::TransactionServiceResources,
+        storage::{
+            database::TransactionDatabase,
+            models::{CompletedTransaction, TxCancellationReason},
+            sqlite_db::TransactionServiceSqliteDatabase,
+        },
+    },
+    util::{wallet_identity::WalletIdentity, watch::Watch},
+};
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
 use tari_common_types::{
@@ -54,7 +78,7 @@ use tari_core::{
         types::Signature as SignatureProto,
     },
     transactions::{
-        tari_amount::{uT, MicroTari, T},
+        tari_amount::{uT, MicroMinoTari, T},
         test_helpers::{create_test_core_key_manager_with_memory_db, schema_to_transaction, TestKeyManager},
         transaction_components::OutputFeatures,
         CryptoFactories,
@@ -64,30 +88,6 @@ use tari_core::{
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::Shutdown;
 use tari_test_utils::random;
-use tari_wallet::{
-    connectivity_service::{create_wallet_connectivity_mock, WalletConnectivityMock},
-    output_manager_service::{
-        error::OutputManagerError,
-        handle::{OutputManagerHandle, OutputManagerRequest, OutputManagerResponse},
-    },
-    storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
-    transaction_service::{
-        config::TransactionServiceConfig,
-        error::TransactionServiceError,
-        handle::{TransactionEvent, TransactionEventReceiver, TransactionEventSender},
-        protocols::{
-            transaction_broadcast_protocol::TransactionBroadcastProtocol,
-            transaction_validation_protocol::TransactionValidationProtocol,
-        },
-        service::TransactionServiceResources,
-        storage::{
-            database::TransactionDatabase,
-            models::{CompletedTransaction, TxCancellationReason},
-            sqlite_db::TransactionServiceSqliteDatabase,
-        },
-    },
-    util::{wallet_identity::WalletIdentity, watch::Watch},
-};
 use tempfile::{tempdir, TempDir};
 use tokio::{sync::broadcast, task, time::sleep};
 
@@ -190,7 +190,7 @@ pub async fn setup() -> (
 
 pub async fn add_transaction_to_database(
     tx_id: TxId,
-    amount: MicroTari,
+    amount: MicroMinoTari,
     status: Option<TransactionStatus>,
     coinbase_block_height: Option<u64>,
     db: TransactionDatabase<TransactionServiceSqliteDatabase>,

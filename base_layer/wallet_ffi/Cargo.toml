@@ -1,5 +1,5 @@
 [package]
-name = "tari_wallet_ffi"
+name = "minotari_wallet_ffi"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency wallet C FFI bindings"
 license = "BSD-3-Clause"
@@ -18,7 +18,7 @@ tari_p2p = {  path = "../p2p" }
 tari_script = { path = "../../infrastructure/tari_script" }
 tari_shutdown = {  path = "../../infrastructure/shutdown" }
 tari_utilities = { version = "0.4.10"}
-tari_wallet = {  path = "../wallet", features = ["c_integration"]}
+minotari_wallet = {  path = "../wallet", features = ["c_integration"]}
 tari_contacts = { path = "../../base_layer/contacts" }
 
 chacha20poly1305 = "0.10.1"

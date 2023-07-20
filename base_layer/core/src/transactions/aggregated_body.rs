@@ -32,7 +32,7 @@ use tari_crypto::commitment::HomomorphicCommitmentFactory;
 
 use crate::transactions::{
     crypto_factories::CryptoFactories,
-    tari_amount::MicroTari,
+    tari_amount::MicroMinoTari,
     transaction_components::{
         KernelFeatures,
         OutputType,
@@ -233,8 +233,8 @@ impl AggregateBody {
         Ok(())
     }
 
-    pub fn get_total_fee(&self) -> MicroTari {
-        let mut fee = MicroTari::from(0);
+    pub fn get_total_fee(&self) -> MicroMinoTari {
+        let mut fee = MicroMinoTari::from(0);
         for kernel in &self.kernels {
             fee += kernel.fee;
         }
@@ -258,7 +258,7 @@ impl AggregateBody {
     /// 1. The reward amount is correct.
     pub fn check_coinbase_output(
         &self,
-        reward: MicroTari,
+        reward: MicroMinoTari,
         coinbase_min_maturity: u64,
         factories: &CryptoFactories,
         height: u64,

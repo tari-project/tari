@@ -17,16 +17,16 @@ if [ "$OUTFILE" = "" ]; then
 fi
 
 BUNDLE='
-target/release/tari_base_node
+target/release/minotari_base_node
 scripts/install_tor.sh
 common/config/presets/tari_config_example.toml
 common/logging/log4rs_sample_base_node.yml
-applications/tari_base_node/osx/install.sh
-applications/tari_base_node/osx/osx_diag_report.sh
-applications/tari_base_node/osx/post_install.sh
-applications/tari_base_node/osx/start_tor.sh
-applications/tari_base_node/osx/uninstall_pkg.sh
-applications/tari_base_node/README.md
+applications/minotari_base_node/osx/install.sh
+applications/minotari_base_node/osx/osx_diag_report.sh
+applications/minotari_base_node/osx/post_install.sh
+applications/minotari_base_node/osx/start_tor.sh
+applications/minotari_base_node/osx/uninstall_pkg.sh
+applications/minotari_base_node/README.md
 '
 
 # Create a zip file, stripping out paths (-j)

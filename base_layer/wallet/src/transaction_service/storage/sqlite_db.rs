@@ -44,7 +44,7 @@ use tari_common_types::{
     },
     types::{BlockHash, PrivateKey, PublicKey, Signature},
 };
-use tari_core::transactions::tari_amount::MicroTari;
+use tari_core::transactions::tari_amount::MicroMinoTari;
 use tari_utilities::{
     hex::{from_hex, Hex},
     ByteArray,
@@ -785,7 +785,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
     fn find_coinbase_transaction_at_block_height(
         &self,
         block_height: u64,
-        amount: MicroTari,
+        amount: MicroMinoTari,
     ) -> Result<Option<CompletedTransaction>, TransactionStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
@@ -1407,7 +1407,7 @@ impl InboundTransaction {
         Ok(Self {
             tx_id: (i.tx_id as u64).into(),
             source_address: TariAddress::from_bytes(&i.source_address).map_err(TransactionKeyError::Source)?,
-            amount: MicroTari::from(i.amount as u64),
+            amount: MicroMinoTari::from(i.amount as u64),
             receiver_protocol: serde_json::from_str(&i.receiver_protocol.clone())?,
             status: TransactionStatus::Pending,
             message: i.message,
@@ -1667,8 +1667,8 @@ impl OutboundTransaction {
             tx_id: (o.tx_id as u64).into(),
             destination_address: TariAddress::from_bytes(&o.destination_address)
                 .map_err(TransactionKeyError::Destination)?,
-            amount: MicroTari::from(o.amount as u64),
-            fee: MicroTari::from(o.fee as u64),
+            amount: MicroMinoTari::from(o.amount as u64),
+            fee: MicroMinoTari::from(o.fee as u64),
             sender_protocol: serde_json::from_str(&o.sender_protocol.clone())?,
             status: TransactionStatus::Pending,
             message: o.message,
@@ -2124,8 +2124,8 @@ impl CompletedTransaction {
             source_address: TariAddress::from_bytes(&c.source_address).map_err(TransactionKeyError::Source)?,
             destination_address: TariAddress::from_bytes(&c.destination_address)
                 .map_err(TransactionKeyError::Destination)?,
-            amount: MicroTari::from(c.amount as u64),
-            fee: MicroTari::from(c.fee as u64),
+            amount: MicroMinoTari::from(c.amount as u64),
+            fee: MicroMinoTari::from(c.fee as u64),
             transaction: serde_json::from_str(&c.transaction_protocol.clone())?,
             status: TransactionStatus::try_from(c.status)?,
             message: c.message,
@@ -2261,7 +2261,7 @@ mod test {
         types::{PrivateKey, PublicKey, Signature},
     };
     use tari_core::transactions::{
-        tari_amount::MicroTari,
+        tari_amount::MicroMinoTari,
         test_helpers::{create_test_core_key_manager_with_memory_db, create_wallet_output_with_data, TestParams},
         transaction_components::{OutputFeatures, Transaction},
         transaction_protocol::sender::TransactionSenderMessage,
@@ -2333,16 +2333,16 @@ mod test {
             TariScript::default(),
             OutputFeatures::default(),
             &test_params,
-            MicroTari::from(100_000),
+            MicroMinoTari::from(100_000),
             &key_manager,
         )
         .await
         .unwrap();
-        let amount = MicroTari::from(10_000);
+        let amount = MicroMinoTari::from(10_000);
         let change = TestParams::new(&key_manager).await;
         builder
             .with_lock_height(0)
-            .with_fee_per_gram(MicroTari::from(177 / 5))
+            .with_fee_per_gram(MicroMinoTari::from(177 / 5))
             .with_message("Yo!".to_string())
             .with_input(input)
             .await
@@ -2351,7 +2351,7 @@ mod test {
                 script!(Nop),
                 OutputFeatures::default(),
                 Default::default(),
-                MicroTari::zero(),
+                MicroMinoTari::zero(),
                 amount,
             )
             .await
@@ -2437,7 +2437,7 @@ mod test {
             TariScript::default(),
             OutputFeatures::default(),
             &test_params,
-            MicroTari::from(100_000),
+            MicroMinoTari::from(100_000),
             &key_manager,
         )
         .await
@@ -2533,7 +2533,7 @@ mod test {
             source_address,
             destination_address,
             amount,
-            fee: MicroTari::from(100),
+            fee: MicroMinoTari::from(100),
             transaction: tx.clone(),
             status: TransactionStatus::MinedUnconfirmed,
             message: "Yo!".to_string(),
@@ -2562,7 +2562,7 @@ mod test {
             source_address,
             destination_address,
             amount,
-            fee: MicroTari::from(100),
+            fee: MicroMinoTari::from(100),
             transaction: tx.clone(),
             status: TransactionStatus::Broadcast,
             message: "Hey!".to_string(),
@@ -2703,7 +2703,7 @@ mod test {
             source_address,
             destination_address,
             amount,
-            fee: MicroTari::from(100),
+            fee: MicroMinoTari::from(100),
             transaction: tx.clone(),
             status: TransactionStatus::Coinbase,
             message: "Hey!".to_string(),
@@ -2733,7 +2733,7 @@ mod test {
             source_address,
             destination_address,
             amount,
-            fee: MicroTari::from(100),
+            fee: MicroMinoTari::from(100),
             transaction: tx.clone(),
             status: TransactionStatus::Coinbase,
             message: "Hey!".to_string(),
@@ -2763,7 +2763,7 @@ mod test {
             source_address,
             destination_address,
             amount,
-            fee: MicroTari::from(100),
+            fee: MicroMinoTari::from(100),
             transaction: tx.clone(),
             status: TransactionStatus::Coinbase,
             message: "Hey!".to_string(),
@@ -2842,7 +2842,7 @@ mod test {
         let inbound_tx = InboundTransaction {
             tx_id: 1u64.into(),
             source_address,
-            amount: MicroTari::from(100),
+            amount: MicroMinoTari::from(100),
             receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
             status: TransactionStatus::Pending,
             message: "Yo!".to_string(),
@@ -2868,8 +2868,8 @@ mod test {
         let outbound_tx = OutboundTransaction {
             tx_id: 2u64.into(),
             destination_address,
-            amount: MicroTari::from(100),
-            fee: MicroTari::from(10),
+            amount: MicroMinoTari::from(100),
+            fee: MicroMinoTari::from(10),
             sender_protocol: SenderTransactionProtocol::new_placeholder(),
             status: TransactionStatus::Pending,
             message: "Yo!".to_string(),
@@ -2901,8 +2901,8 @@ mod test {
             tx_id: 3u64.into(),
             source_address,
             destination_address,
-            amount: MicroTari::from(100),
-            fee: MicroTari::from(100),
+            amount: MicroMinoTari::from(100),
+            fee: MicroMinoTari::from(100),
             transaction: Transaction::new(
                 vec![],
                 vec![],
@@ -2982,7 +2982,7 @@ mod test {
             let inbound_tx = InboundTransaction {
                 tx_id: 1u64.into(),
                 source_address,
-                amount: MicroTari::from(100),
+                amount: MicroMinoTari::from(100),
                 receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
                 status: TransactionStatus::Pending,
                 message: "Yo!".to_string(),
@@ -3003,8 +3003,8 @@ mod test {
             let outbound_tx = OutboundTransaction {
                 tx_id: 2u64.into(),
                 destination_address,
-                amount: MicroTari::from(100),
-                fee: MicroTari::from(10),
+                amount: MicroMinoTari::from(100),
+                fee: MicroMinoTari::from(10),
                 sender_protocol: SenderTransactionProtocol::new_placeholder(),
                 status: TransactionStatus::Pending,
                 message: "Yo!".to_string(),
@@ -3030,8 +3030,8 @@ mod test {
                 tx_id: 3u64.into(),
                 source_address,
                 destination_address,
-                amount: MicroTari::from(100),
-                fee: MicroTari::from(100),
+                amount: MicroMinoTari::from(100),
+                fee: MicroMinoTari::from(100),
                 transaction: Transaction::new(
                     vec![],
                     vec![],
@@ -3176,8 +3176,8 @@ mod test {
                 tx_id: TxId::from(i),
                 source_address,
                 destination_address,
-                amount: MicroTari::from(100),
-                fee: MicroTari::from(100),
+                amount: MicroMinoTari::from(100),
+                fee: MicroMinoTari::from(100),
                 transaction: Transaction::new(
                     vec![],
                     vec![],

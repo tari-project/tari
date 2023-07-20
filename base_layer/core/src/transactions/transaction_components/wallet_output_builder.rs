@@ -28,7 +28,7 @@ use crate::{
     covenants::Covenant,
     transactions::{
         key_manager::{TariKeyId, TransactionKeyManagerInterface},
-        tari_amount::MicroTari,
+        tari_amount::MicroMinoTari,
         transaction_components::{
             EncryptedData,
             OutputFeatures,
@@ -44,7 +44,7 @@ use crate::{
 #[derivative(Debug)]
 pub struct WalletOutputBuilder {
     version: TransactionOutputVersion,
-    value: MicroTari,
+    value: MicroMinoTari,
     spending_key_id: TariKeyId,
     features: OutputFeatures,
     script: Option<TariScript>,
@@ -57,12 +57,12 @@ pub struct WalletOutputBuilder {
     metadata_signed_by_sender: bool,
     encrypted_data: EncryptedData,
     custom_recovery_key_id: Option<TariKeyId>,
-    minimum_value_promise: MicroTari,
+    minimum_value_promise: MicroMinoTari,
 }
 
 #[allow(dead_code)]
 impl WalletOutputBuilder {
-    pub fn new(value: MicroTari, spending_key_id: TariKeyId) -> Self {
+    pub fn new(value: MicroMinoTari, spending_key_id: TariKeyId) -> Self {
         Self {
             version: TransactionOutputVersion::get_current_version(),
             value,
@@ -78,7 +78,7 @@ impl WalletOutputBuilder {
             metadata_signed_by_sender: false,
             encrypted_data: EncryptedData::default(),
             custom_recovery_key_id: None,
-            minimum_value_promise: MicroTari::zero(),
+            minimum_value_promise: MicroMinoTari::zero(),
         }
     }
 
@@ -128,12 +128,12 @@ impl WalletOutputBuilder {
         self
     }
 
-    pub fn with_minimum_value_promise(mut self, minimum_value_promise: MicroTari) -> Self {
+    pub fn with_minimum_value_promise(mut self, minimum_value_promise: MicroMinoTari) -> Self {
         self.minimum_value_promise = minimum_value_promise;
         self
     }
 
-    pub fn value(&self) -> MicroTari {
+    pub fn value(&self) -> MicroMinoTari {
         self.value
     }
 
@@ -238,7 +238,7 @@ mod test {
     async fn test_try_build() {
         let key_manager = create_test_core_key_manager_with_memory_db();
         let (spending_key_id, _, script_key_id, _) = key_manager.get_next_spend_and_script_key_ids().await.unwrap();
-        let value = MicroTari(100);
+        let value = MicroMinoTari(100);
         let kmob = WalletOutputBuilder::new(value, spending_key_id.clone());
         let kmob = kmob.with_script(TariScript::new(vec![]));
         assert!(kmob.clone().try_build(&key_manager).await.is_err());
@@ -280,7 +280,7 @@ mod test {
     async fn test_partial_metadata_signatures() {
         let key_manager = create_test_core_key_manager_with_memory_db();
         let (spending_key_id, _, script_key_id, _) = key_manager.get_next_spend_and_script_key_ids().await.unwrap();
-        let value = MicroTari(100);
+        let value = MicroMinoTari(100);
         let kmob = WalletOutputBuilder::new(value, spending_key_id.clone());
         let kmob = kmob.with_script(TariScript::new(vec![]));
         let (sender_offset_private_key_id, sender_offset_public_key) = key_manager

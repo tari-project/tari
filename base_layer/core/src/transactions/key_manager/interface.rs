@@ -27,7 +27,7 @@ use tari_crypto::{hash::blake2::Blake256, hashing::DomainSeparatedHash, ristrett
 use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface, KeyManagerServiceError};
 
 use crate::transactions::{
-    tari_amount::MicroTari,
+    tari_amount::MicroMinoTari,
     transaction_components::{
         EncryptedData,
         KernelFeatures,
@@ -170,7 +170,7 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
         &self,
         output: &TransactionOutput,
         custom_recovery_key_id: Option<&TariKeyId>,
-    ) -> Result<(TariKeyId, MicroTari), TransactionError>;
+    ) -> Result<(TariKeyId, MicroMinoTari), TransactionError>;
 
     async fn get_script_offset(
         &self,

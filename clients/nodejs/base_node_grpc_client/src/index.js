@@ -9,7 +9,7 @@ const path = require("path");
 const packageDefinition = protoLoader.loadSync(
   path.resolve(
     __dirname,
-    "../../../../applications/tari_app_grpc/proto/base_node.proto"
+    "../../../../applications/minotari_app_grpc/proto/base_node.proto"
   ),
   {
     keepCase: true,

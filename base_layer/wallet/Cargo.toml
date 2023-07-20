@@ -1,5 +1,5 @@
 [package]
-name = "tari_wallet"
+name = "minotari_wallet"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency wallet library"
 license = "BSD-3-Clause"

@@ -20,6 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use log::*;
+use minotari_wallet::{
+    error::{WalletError, WalletStorageError},
+    output_manager_service::error::{OutputManagerError, OutputManagerStorageError},
+    transaction_service::error::{TransactionServiceError, TransactionStorageError},
+};
 use tari_common_types::tari_address::TariAddressError;
 use tari_comms::multiaddr;
 use tari_comms_dht::store_forward::StoreAndForwardError;
@@ -29,11 +34,6 @@ use tari_crypto::{
     tari_utilities::{hex::HexError, ByteArrayError},
 };
 use tari_key_manager::error::{KeyManagerError, MnemonicError};
-use tari_wallet::{
-    error::{WalletError, WalletStorageError},
-    output_manager_service::error::{OutputManagerError, OutputManagerStorageError},
-    transaction_service::error::{TransactionServiceError, TransactionStorageError},
-};
 use thiserror::Error;
 
 const LOG_TARGET: &str = "wallet_ffi::error";

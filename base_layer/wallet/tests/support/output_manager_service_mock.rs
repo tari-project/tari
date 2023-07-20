@@ -24,14 +24,14 @@ use std::sync::{Arc, Mutex};
 
 use futures::StreamExt;
 use log::*;
-use tari_common_types::transaction::TxId;
-use tari_service_framework::{reply_channel, reply_channel::Receiver};
-use tari_shutdown::ShutdownSignal;
-use tari_wallet::output_manager_service::{
+use minotari_wallet::output_manager_service::{
     error::OutputManagerError,
     handle::{OutputManagerEvent, OutputManagerHandle, OutputManagerRequest, OutputManagerResponse, RecoveredOutput},
     storage::models::DbWalletOutput,
 };
+use tari_common_types::transaction::TxId;
+use tari_service_framework::{reply_channel, reply_channel::Receiver};
+use tari_shutdown::ShutdownSignal;
 use tokio::sync::{broadcast, broadcast::Sender, oneshot};
 
 const LOG_TARGET: &str = "wallet::output_manager_service_mock";

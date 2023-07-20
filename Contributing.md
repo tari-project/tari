@@ -37,9 +37,9 @@ These guidelines are split up into a few main topics:
   offers tips for effective preventing bugs from scuttling past your gimlet gaze. 
 * Bug bounty and disclosure policy.
 
-# The Tari release process
+# The MinoTari release process
 
-The Tari release process draws inspiration from the Rust [compiler release process] and borrows some of its key 
+The MinoTari release process draws inspiration from the Rust [compiler release process] and borrows some of its key 
 ideas.
 
 The process is well-suited for a large open-source project that desires a regular release schedule but also needs 
@@ -47,7 +47,7 @@ the flexibility of having features being "in development" over several cycles. S
 
 ## Release branches
 
-Post mainnet, there are 4 release branches in the Tari repo:
+Post mainnet, there are 4 release branches in the MinoTari repo:
 
 * `mainnet` - the code on this branch represents the latest "official release". Almost every commit on this branch 
   will be tagged with a version number.

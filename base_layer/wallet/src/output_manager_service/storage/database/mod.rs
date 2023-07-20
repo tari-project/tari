@@ -33,7 +33,7 @@ use tari_common_types::{
     types::{Commitment, HashOutput},
 };
 use tari_core::transactions::{
-    tari_amount::MicroTari,
+    tari_amount::MicroMinoTari,
     transaction_components::{OutputType, TransactionOutput},
 };
 use tari_utilities::hex::Hex;
@@ -255,7 +255,7 @@ where T: OutputManagerBackend + 'static
     pub fn fetch_unspent_outputs_for_spending(
         &self,
         selection_criteria: &UtxoSelectionCriteria,
-        amount: MicroTari,
+        amount: MicroMinoTari,
         tip_height: Option<u64>,
     ) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError> {
         let utxos = self

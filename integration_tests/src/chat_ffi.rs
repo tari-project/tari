@@ -33,7 +33,7 @@ use async_trait::async_trait;
 type ClientFFI = c_void;
 
 use libc::{c_char, c_int};
-use tari_app_utilities::identity_management::setup_node_identity;
+use minotari_app_utilities::identity_management::setup_node_identity;
 use tari_chat_client::{database, ChatClient};
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::{

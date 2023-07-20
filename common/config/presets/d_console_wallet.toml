@@ -96,7 +96,7 @@
 # - transaction cancelled
 # - transaction mined but unconfirmed
 # - transaction mined and confirmed
-# An example script is available here: applications/tari_console_wallet/src/notifier/notify_example.sh
+# An example script is available here: applications/minotari_console_wallet/src/notifier/notify_example.sh
 #notify_file = "/path/to/script"
 
 [wallet.transactions]

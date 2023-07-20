@@ -23,8 +23,8 @@
 use std::{convert::TryFrom, time::Duration};
 
 use cucumber::{given, then, when};
+use minotari_app_grpc::tari_rpc::{self as grpc, GetTransactionInfoRequest};
 use rand::Rng;
-use tari_app_grpc::tari_rpc::{self as grpc, GetTransactionInfoRequest};
 use tari_common_types::types::BlockHash;
 use tari_core::blocks::Block;
 use tari_integration_tests::{

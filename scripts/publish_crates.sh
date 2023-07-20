@@ -14,9 +14,9 @@ base_layer/mmr
 base_layer/key_manager
 base_layer/p2p
 base_layer/core
-base_layer/wallet
-base_layer/wallet_ffi
-applications/tari_base_node
+base_layer/minowallet
+base_layer/minowallet_ffi
+applications/minotari_base_node
 '}
 p_arr=($packages)
 

@@ -49,7 +49,7 @@ use thiserror::Error;
 use zeroize::{Zeroize, Zeroizing};
 
 use super::EncryptedDataKey;
-use crate::transactions::{tari_amount::MicroTari, TransactionSecureNonceKdfDomain};
+use crate::transactions::{tari_amount::MicroMinoTari, TransactionSecureNonceKdfDomain};
 
 // Useful size constants, each in bytes
 const SIZE_NONCE: usize = size_of::<XNonce>();
@@ -81,7 +81,7 @@ impl EncryptedData {
     pub fn encrypt_data(
         encryption_key: &PrivateKey,
         commitment: &Commitment,
-        value: MicroTari,
+        value: MicroMinoTari,
         mask: &PrivateKey,
     ) -> Result<EncryptedData, EncryptedDataError> {
         // Encode the value and mask
@@ -115,7 +115,7 @@ impl EncryptedData {
         encryption_key: &PrivateKey,
         commitment: &Commitment,
         encrypted_data: &EncryptedData,
-    ) -> Result<(MicroTari, PrivateKey), EncryptedDataError> {
+    ) -> Result<(MicroMinoTari, PrivateKey), EncryptedDataError> {
         // Extract the nonce, ciphertext, and tag
         let nonce = XNonce::from_slice(&encrypted_data.as_bytes()[..SIZE_NONCE]);
         let mut bytes = Zeroizing::new([0u8; SIZE_VALUE + SIZE_MASK]);
@@ -252,7 +252,7 @@ mod test {
         ] {
             let commitment = CommitmentFactory::default().commit(&mask, &PrivateKey::from(value));
             let encryption_key = PrivateKey::random(&mut OsRng);
-            let amount = MicroTari::from(value);
+            let amount = MicroMinoTari::from(value);
             let encrypted_data = EncryptedData::encrypt_data(&encryption_key, &commitment, amount, &mask).unwrap();
             let (decrypted_value, decrypted_mask) =
                 EncryptedData::decrypt_data(&encryption_key, &commitment, &encrypted_data).unwrap();
@@ -278,7 +278,7 @@ mod test {
         ] {
             let commitment = CommitmentFactory::default().commit(&mask, &PrivateKey::from(value));
             let encryption_key = PrivateKey::random(&mut OsRng);
-            let amount = MicroTari::from(value);
+            let amount = MicroMinoTari::from(value);
             let encrypted_data = EncryptedData::encrypt_data(&encryption_key, &commitment, amount, &mask).unwrap();
             let bytes = encrypted_data.to_byte_vec();
             let encrypted_data_from_bytes = EncryptedData::from_bytes(&bytes).unwrap();

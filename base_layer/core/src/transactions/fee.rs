@@ -22,14 +22,14 @@
 
 use std::cmp::max;
 
-use super::{tari_amount::MicroTari, weight::TransactionWeight};
+use super::{tari_amount::MicroMinoTari, weight::TransactionWeight};
 use crate::transactions::aggregated_body::AggregateBody;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Fee(TransactionWeight);
 
 impl Fee {
-    pub(crate) const MINIMUM_TRANSACTION_FEE: MicroTari = MicroTari(101);
+    pub(crate) const MINIMUM_TRANSACTION_FEE: MicroMinoTari = MicroMinoTari(101);
 
     pub fn new(weight: TransactionWeight) -> Self {
         Self(weight)
@@ -40,28 +40,28 @@ impl Fee {
     /// are guaranteed to hold between calculations. for e.g. fee(1,1,1,4) + fee(1,1,1,12) != fee(1,1,1,16)
     pub fn calculate(
         &self,
-        fee_per_gram: MicroTari,
+        fee_per_gram: MicroMinoTari,
         num_kernels: usize,
         num_inputs: usize,
         num_outputs: usize,
         rounded_features_and_scripts_byte_size: usize,
-    ) -> MicroTari {
+    ) -> MicroMinoTari {
         let weight = self.weighting().calculate(
             num_kernels,
             num_inputs,
             num_outputs,
             rounded_features_and_scripts_byte_size,
         );
-        MicroTari::from(weight) * fee_per_gram
+        MicroMinoTari::from(weight) * fee_per_gram
     }
 
-    pub fn calculate_body(&self, fee_per_gram: MicroTari, body: &AggregateBody) -> std::io::Result<MicroTari> {
+    pub fn calculate_body(&self, fee_per_gram: MicroMinoTari, body: &AggregateBody) -> std::io::Result<MicroMinoTari> {
         let weight = self.weighting().calculate_body(body)?;
-        Ok(MicroTari::from(weight) * fee_per_gram)
+        Ok(MicroMinoTari::from(weight) * fee_per_gram)
     }
 
     /// Normalizes the given fee returning a fee that is equal to or above the minimum fee
-    pub fn normalize(fee: MicroTari) -> MicroTari {
+    pub fn normalize(fee: MicroMinoTari) -> MicroMinoTari {
         max(Self::MINIMUM_TRANSACTION_FEE, fee)
     }
 

@@ -84,58 +84,7 @@ use log4rs::{
     config::{Appender, Config, Logger, Root},
     encode::pattern::PatternEncoder,
 };
-use num_traits::FromPrimitive;
-use rand::rngs::OsRng;
-use tari_common::configuration::{MultiaddrList, StringList};
-use tari_common_types::{
-    emoji::emoji_set,
-    tari_address::{TariAddress, TariAddressError},
-    transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::{ComAndPubSignature, Commitment, PublicKey, SignatureWithDomain},
-};
-use tari_comms::{
-    multiaddr::Multiaddr,
-    peer_manager::NodeIdentity,
-    transports::MemoryTransport,
-    types::CommsPublicKey,
-};
-use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
-use tari_contacts::contacts_service::types::Contact;
-use tari_core::{
-    borsh::FromBytes,
-    consensus::ConsensusManager,
-    transactions::{
-        tari_amount::MicroTari,
-        transaction_components::{OutputFeatures, OutputFeaturesVersion, OutputType, RangeProofType, UnblindedOutput},
-        CryptoFactories,
-    },
-};
-use tari_crypto::{
-    keys::{PublicKey as PublicKeyTrait, SecretKey},
-    tari_utilities::{ByteArray, Hidden},
-};
-use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage, SeedWords};
-use tari_p2p::{
-    auto_update::AutoUpdateConfig,
-    transport::MemoryTransportConfig,
-    Network,
-    PeerSeedsConfig,
-    SocksAuthentication,
-    TcpTransportConfig,
-    TorControlAuthentication,
-    TorTransportConfig,
-    TransportConfig,
-    TransportType,
-    DEFAULT_DNS_NAME_SERVER,
-};
-use tari_script::TariScript;
-use tari_shutdown::Shutdown;
-use tari_utilities::{
-    hex,
-    hex::{Hex, HexError},
-    SafePassword,
-};
-use tari_wallet::{
+use minotari_wallet::{
     base_node_service::config::BaseNodeServiceConfig,
     connectivity_service::{WalletConnectivityHandle, WalletConnectivityInterface},
     error::{WalletError, WalletStorageError},
@@ -166,6 +115,57 @@ use tari_wallet::{
     Wallet,
     WalletConfig,
     WalletSqlite,
+};
+use num_traits::FromPrimitive;
+use rand::rngs::OsRng;
+use tari_common::configuration::{MultiaddrList, StringList};
+use tari_common_types::{
+    emoji::emoji_set,
+    tari_address::{TariAddress, TariAddressError},
+    transaction::{TransactionDirection, TransactionStatus, TxId},
+    types::{ComAndPubSignature, Commitment, PublicKey, SignatureWithDomain},
+};
+use tari_comms::{
+    multiaddr::Multiaddr,
+    peer_manager::NodeIdentity,
+    transports::MemoryTransport,
+    types::CommsPublicKey,
+};
+use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
+use tari_contacts::contacts_service::types::Contact;
+use tari_core::{
+    borsh::FromBytes,
+    consensus::ConsensusManager,
+    transactions::{
+        tari_amount::MicroMinoTari,
+        transaction_components::{OutputFeatures, OutputFeaturesVersion, OutputType, RangeProofType, UnblindedOutput},
+        CryptoFactories,
+    },
+};
+use tari_crypto::{
+    keys::{PublicKey as PublicKeyTrait, SecretKey},
+    tari_utilities::{ByteArray, Hidden},
+};
+use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage, SeedWords};
+use tari_p2p::{
+    auto_update::AutoUpdateConfig,
+    transport::MemoryTransportConfig,
+    Network,
+    PeerSeedsConfig,
+    SocksAuthentication,
+    TcpTransportConfig,
+    TorControlAuthentication,
+    TorTransportConfig,
+    TransportConfig,
+    TransportType,
+    DEFAULT_DNS_NAME_SERVER,
+};
+use tari_script::TariScript;
+use tari_shutdown::Shutdown;
+use tari_utilities::{
+    hex,
+    hex::{Hex, HexError},
+    SafePassword,
 };
 use tokio::runtime::Runtime;
 use zeroize::Zeroize;
@@ -212,18 +212,18 @@ pub struct TariUnblindedOutputs(Vec<UnblindedOutput>);
 pub struct TariContacts(Vec<TariContact>);
 
 pub type TariContact = tari_contacts::contacts_service::types::Contact;
-pub type TariCompletedTransaction = tari_wallet::transaction_service::storage::models::CompletedTransaction;
-pub type TariTransactionSendStatus = tari_wallet::transaction_service::handle::TransactionSendStatus;
-pub type TariFeePerGramStats = tari_wallet::transaction_service::handle::FeePerGramStatsResponse;
+pub type TariCompletedTransaction = minotari_wallet::transaction_service::storage::models::CompletedTransaction;
+pub type TariTransactionSendStatus = minotari_wallet::transaction_service::handle::TransactionSendStatus;
+pub type TariFeePerGramStats = minotari_wallet::transaction_service::handle::FeePerGramStatsResponse;
 pub type TariFeePerGramStat = tari_core::mempool::FeePerGramStat;
 pub type TariContactsLivenessData = tari_contacts::contacts_service::handle::ContactsLivenessData;
-pub type TariBalance = tari_wallet::output_manager_service::service::Balance;
+pub type TariBalance = minotari_wallet::output_manager_service::service::Balance;
 pub type TariMnemonicLanguage = tari_key_manager::mnemonic::MnemonicLanguage;
 
 pub struct TariCompletedTransactions(Vec<TariCompletedTransaction>);
 
-pub type TariPendingInboundTransaction = tari_wallet::transaction_service::storage::models::InboundTransaction;
-pub type TariPendingOutboundTransaction = tari_wallet::transaction_service::storage::models::OutboundTransaction;
+pub type TariPendingInboundTransaction = minotari_wallet::transaction_service::storage::models::InboundTransaction;
+pub type TariPendingOutboundTransaction = minotari_wallet::transaction_service::storage::models::OutboundTransaction;
 
 pub struct TariPendingInboundTransactions(Vec<TariPendingInboundTransaction>);
 
@@ -1431,7 +1431,7 @@ pub unsafe extern "C" fn commitment_and_public_signature_destroy(compub_sig: *mu
 /// Creates an unblinded output
 ///
 /// ## Arguments
-/// `amount` - The value of the UTXO in MicroTari
+/// `amount` - The value of the UTXO in MicroMinoTari
 /// `spending_key` - The private spending key
 /// `source_address` - The tari address of the source of the transaction
 /// `features` - Options for an output's structure or use
@@ -1787,7 +1787,7 @@ pub unsafe extern "C" fn unblinded_outputs_destroy(outputs: *mut TariUnblindedOu
 ///
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
-/// `amount` - The value of the UTXO in MicroTari
+/// `amount` - The value of the UTXO in MicroMinoTari
 /// `spending_key` - The private spending key
 /// `source_address` - The tari address of the source of the transaction
 /// `features` - Options for an output's structure or use
@@ -5843,7 +5843,7 @@ pub unsafe extern "C" fn wallet_coin_split(
     match (*wallet).runtime.block_on((*wallet).wallet.coin_split_even(
         commitments,
         number_of_splits,
-        MicroTari(fee_per_gram),
+        MicroMinoTari(fee_per_gram),
         String::new(),
     )) {
         Ok(tx_id) => {
@@ -5979,7 +5979,7 @@ pub unsafe extern "C" fn wallet_preview_coin_join(
     match (*wallet).runtime.block_on(
         (*wallet)
             .wallet
-            .preview_coin_join_with_commitments(commitments, MicroTari(fee_per_gram)),
+            .preview_coin_join_with_commitments(commitments, MicroMinoTari(fee_per_gram)),
     ) {
         Ok((expected_outputs, fee)) => {
             ptr::replace(error_ptr, 0);
@@ -6063,7 +6063,7 @@ pub unsafe extern "C" fn wallet_preview_coin_split(
         .block_on((*wallet).wallet.preview_coin_split_with_commitments_no_amount(
             commitments,
             number_of_splits,
-            MicroTari(fee_per_gram),
+            MicroMinoTari(fee_per_gram),
         )) {
         Ok((expected_outputs, fee)) => {
             ptr::replace(error_ptr, 0);
@@ -6468,7 +6468,7 @@ pub unsafe extern "C" fn balance_get_time_locked(balance: *mut TariBalance, erro
     let b = if let Some(bal) = (*balance).time_locked_balance {
         bal
     } else {
-        MicroTari::from(0)
+        MicroMinoTari::from(0)
     };
     c_ulonglong::from(b)
 }
@@ -6628,10 +6628,10 @@ pub unsafe extern "C" fn wallet_send_transaction(
                 .transaction_service
                 .send_one_sided_to_stealth_address_transaction(
                     (*destination).clone(),
-                    MicroTari::from(amount),
+                    MicroMinoTari::from(amount),
                     selection_criteria,
                     OutputFeatures::default(),
-                    MicroTari::from(fee_per_gram),
+                    MicroMinoTari::from(fee_per_gram),
                     message_string,
                 ),
         ) {
@@ -6647,10 +6647,10 @@ pub unsafe extern "C" fn wallet_send_transaction(
             .runtime
             .block_on((*wallet).wallet.transaction_service.send_transaction(
                 (*destination).clone(),
-                MicroTari::from(amount),
+                MicroMinoTari::from(amount),
                 selection_criteria,
                 OutputFeatures::default(),
-                MicroTari::from(fee_per_gram),
+                MicroMinoTari::from(fee_per_gram),
                 message_string,
             )) {
             Ok(tx_id) => tx_id.as_u64(),
@@ -6677,7 +6677,7 @@ pub unsafe extern "C" fn wallet_send_transaction(
 /// as an out parameter.
 ///
 /// ## Returns
-/// `unsigned long long` - Returns 0 if unsuccessful or the fee estimate in MicroTari if successful
+/// `unsigned long long` - Returns 0 if unsuccessful or the fee estimate in MicroMinoTari if successful
 ///
 /// # Safety
 /// None
@@ -6714,9 +6714,9 @@ pub unsafe extern "C" fn wallet_get_fee_estimate(
     match (*wallet)
         .runtime
         .block_on((*wallet).wallet.output_manager_service.fee_estimate(
-            MicroTari::from(amount),
+            MicroMinoTari::from(amount),
             selection_criteria,
-            MicroTari::from(fee_per_gram),
+            MicroMinoTari::from(fee_per_gram),
             num_kernels as usize,
             num_outputs as usize,
         )) {
@@ -8000,7 +8000,7 @@ pub unsafe extern "C" fn wallet_is_recovery_in_progress(wallet: *mut TariWallet,
 ///     - ConnectedToBaseNode, 0, 1
 ///     - ConnectionToBaseNodeFailed, number of retries, retry limit
 ///     - Progress, current block, total number of blocks
-///     - Completed, total number of UTXO's recovered, MicroTari recovered,
+///     - Completed, total number of UTXO's recovered, MicroMinoTari recovered,
 ///     - ScanningRoundFailed, number of retries, retry limit
 ///     - RecoveryFailed, 0, 0
 ///
@@ -8011,7 +8011,7 @@ pub unsafe extern "C" fn wallet_is_recovery_in_progress(wallet: *mut TariWallet,
 ///       started
 ///     - In Progress callbacks will be of the form (n, m) where n < m
 ///     - If the process completed successfully then the final `Completed` callback will return how many UTXO's were
-///       scanned and how much MicroTari was recovered
+///       scanned and how much MicroMinoTari was recovered
 ///     - If there is an error in the connection process then the `ConnectionToBaseNodeFailed` will be returned
 ///     - If there is a minor error in scanning then `ScanningRoundFailed` will be returned and another connection/sync
 ///       attempt will be made
@@ -8573,6 +8573,10 @@ mod test {
 
     use borsh::BorshSerialize;
     use libc::{c_char, c_uchar, c_uint};
+    use minotari_wallet::{
+        storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
+        transaction_service::handle::TransactionSendStatus,
+    };
     use tari_common_types::{emoji, transaction::TransactionStatus, types::PrivateKey};
     use tari_comms::peer_manager::PeerFeatures;
     use tari_core::{
@@ -8590,10 +8594,6 @@ mod test {
     use tari_key_manager::{mnemonic::MnemonicLanguage, mnemonic_wordlists};
     use tari_script::script;
     use tari_test_utils::random;
-    use tari_wallet::{
-        storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
-        transaction_service::handle::TransactionSendStatus,
-    };
     use tempfile::tempdir;
 
     use crate::*;
@@ -9150,7 +9150,7 @@ mod test {
             let spending_key = PrivateKey::random(&mut OsRng);
             let commitment = Commitment::from_public_key(&PublicKey::from_secret_key(&spending_key));
             let encryption_key = PrivateKey::random(&mut OsRng);
-            let amount = MicroTari::from(123456);
+            let amount = MicroMinoTari::from(123456);
             let encrypted_data =
                 TariEncryptedOpenings::encrypt_data(&encryption_key, &commitment, amount, &spending_key).unwrap();
             let encrypted_data_bytes = encrypted_data.to_byte_vec();
@@ -10301,7 +10301,7 @@ mod test {
                 .unwrap()
                 .into_iter()
                 .map(|x| x.wallet_output.value)
-                .collect::<Vec<MicroTari>>();
+                .collect::<Vec<MicroMinoTari>>();
 
             let new_pending_outputs = (*alice_wallet)
                 .wallet
@@ -10313,7 +10313,7 @@ mod test {
                 .unwrap()
                 .into_iter()
                 .map(|x| x.wallet_output.value)
-                .collect::<Vec<MicroTari>>();
+                .collect::<Vec<MicroMinoTari>>();
 
             let post_join_total_amount = new_pending_outputs.iter().fold(0u64, |acc, x| acc + x.as_u64());
             let expected_output_values: Vec<u64> = Vec::from_raw_parts(
@@ -10544,7 +10544,7 @@ mod test {
 
             // comparing resulting output values relative to itself
             assert_eq!(new_pending_outputs[0], new_pending_outputs[1]);
-            assert_eq!(new_pending_outputs[2], new_pending_outputs[1] + MicroTari(1));
+            assert_eq!(new_pending_outputs[2], new_pending_outputs[1] + MicroMinoTari(1));
 
             // comparing resulting output values to the expected
             assert_eq!(new_pending_outputs[0].as_u64(), expected_output_values[0]);
@@ -10761,7 +10761,7 @@ mod test {
                     script!(Nop),
                     OutputFeatures::default(),
                     &runtime.block_on(TestParams::new(&key_manager)),
-                    MicroTari(1234u64),
+                    MicroMinoTari(1234u64),
                     &key_manager,
                 ))
                 .unwrap();
@@ -10902,7 +10902,7 @@ mod test {
                     script!(Nop),
                     OutputFeatures::default(),
                     &runtime.block_on(TestParams::new(&key_manager)),
-                    MicroTari(1234u64),
+                    MicroMinoTari(1234u64),
                     &key_manager,
                 ))
                 .unwrap();
@@ -10998,7 +10998,7 @@ mod test {
                     script!(Nop),
                     OutputFeatures::default(),
                     &runtime.block_on(TestParams::new(&key_manager)),
-                    MicroTari(1234u64),
+                    MicroMinoTari(1234u64),
                     &key_manager,
                 ))
                 .unwrap();

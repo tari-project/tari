@@ -32,7 +32,7 @@ message SingleRoundSenderData {
     tari.types.OutputFeatures features = 10;
     // Covenant
     bytes covenant  = 11;
-    // The minimum value of the commitment that is proven by the range proof (in MicroTari)
+    // The minimum value of the commitment that is proven by the range proof (in MicroMinoTari)
     uint64 minimum_value_promise = 12;
     // The version of this transaction output
     uint32 output_version = 13;

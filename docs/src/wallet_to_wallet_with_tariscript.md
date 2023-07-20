@@ -171,7 +171,7 @@ pub struct SingleRoundSenderData {
     /// The transaction id for the recipient
     pub tx_id: u64,
     /// The amount, in µT, being sent to the recipient
-    pub amount: MicroTari,
+    pub amount: MicroMinoTari,
     /// The offset public excess for this transaction
     pub public_excess: PublicKey,
     /// The sender's public nonce
@@ -193,7 +193,7 @@ And the receiver will need to keep track of their spendable UTXO's using the fol
 
 ```rust,ignore
 pub struct UnblindedOutput {
-    pub value: MicroTari,
+    pub value: MicroMinoTari,
     pub spending_key: PrivateKey,
     pub features: OutputFeatures,
     

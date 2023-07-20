@@ -38,7 +38,7 @@ use crate::{
     covenants::Covenant,
     transactions::{
         key_manager::{TariKeyId, TransactionKeyManagerInterface},
-        tari_amount::MicroTari,
+        tari_amount::MicroMinoTari,
         transaction_components,
         transaction_components::{
             transaction_input::{SpentOutput, TransactionInput},
@@ -58,7 +58,7 @@ use crate::{
 #[derive(Clone, Serialize, Deserialize)]
 pub struct WalletOutput {
     pub version: TransactionOutputVersion,
-    pub value: MicroTari,
+    pub value: MicroMinoTari,
     pub spending_key_id: TariKeyId,
     pub features: OutputFeatures,
     pub script: TariScript,
@@ -69,7 +69,7 @@ pub struct WalletOutput {
     pub metadata_signature: ComAndPubSignature,
     pub script_lock_height: u64,
     pub encrypted_data: EncryptedData,
-    pub minimum_value_promise: MicroTari,
+    pub minimum_value_promise: MicroMinoTari,
     pub rangeproof: Option<RangeProof>,
 }
 
@@ -79,7 +79,7 @@ impl WalletOutput {
     #[allow(clippy::too_many_arguments)]
     pub async fn new<KM: TransactionKeyManagerInterface>(
         version: TransactionOutputVersion,
-        value: MicroTari,
+        value: MicroMinoTari,
         spending_key_id: TariKeyId,
         features: OutputFeatures,
         script: TariScript,
@@ -90,7 +90,7 @@ impl WalletOutput {
         script_lock_height: u64,
         covenant: Covenant,
         encrypted_data: EncryptedData,
-        minimum_value_promise: MicroTari,
+        minimum_value_promise: MicroMinoTari,
         key_manager: &KM,
     ) -> Result<Self, TransactionError> {
         let rangeproof = if features.range_proof_type == RangeProofType::BulletProofPlus {
@@ -123,7 +123,7 @@ impl WalletOutput {
     #[allow(clippy::too_many_arguments)]
     pub fn new_with_rangeproof(
         version: TransactionOutputVersion,
-        value: MicroTari,
+        value: MicroMinoTari,
         spending_key_id: TariKeyId,
         features: OutputFeatures,
         script: TariScript,
@@ -134,7 +134,7 @@ impl WalletOutput {
         script_lock_height: u64,
         covenant: Covenant,
         encrypted_data: EncryptedData,
-        minimum_value_promise: MicroTari,
+        minimum_value_promise: MicroMinoTari,
         rangeproof: Option<RangeProof>,
     ) -> Self {
         Self {
@@ -157,7 +157,7 @@ impl WalletOutput {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn new_current_version<KM: TransactionKeyManagerInterface>(
-        value: MicroTari,
+        value: MicroMinoTari,
         spending_key_id: TariKeyId,
         features: OutputFeatures,
         script: TariScript,
@@ -168,7 +168,7 @@ impl WalletOutput {
         script_lock_height: u64,
         covenant: Covenant,
         encrypted_data: EncryptedData,
-        minimum_value_promise: MicroTari,
+        minimum_value_promise: MicroMinoTari,
         key_manager: &KM,
     ) -> Result<Self, TransactionError> {
         Self::new(

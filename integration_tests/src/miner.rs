@@ -22,7 +22,7 @@
 
 use std::{convert::TryInto, str::FromStr, time::Duration};
 
-use tari_app_grpc::{
+use minotari_app_grpc::{
     authentication::ClientAuthenticationInterceptor,
     tari_rpc::{
         pow_algo::PowAlgos,
@@ -38,8 +38,9 @@ use tari_app_grpc::{
         TransactionOutput,
     },
 };
-use tari_app_utilities::common_cli_args::CommonCliArgs;
-use tari_base_node_grpc_client::BaseNodeGrpcClient;
+use minotari_app_utilities::common_cli_args::CommonCliArgs;
+use minotari_base_node_grpc_client::BaseNodeGrpcClient;
+use minotari_miner::{run_miner, Cli};
 use tari_common::configuration::Network;
 use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tari_core::{
@@ -51,7 +52,6 @@ use tari_core::{
         CoinbaseBuilder,
     },
 };
-use tari_miner::{run_miner, Cli};
 use tonic::{
     codegen::InterceptedService,
     transport::{Channel, Endpoint},

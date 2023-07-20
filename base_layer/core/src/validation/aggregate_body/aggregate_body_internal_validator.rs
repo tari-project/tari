@@ -36,7 +36,7 @@ use crate::{
     consensus::{ConsensusConstants, ConsensusManager},
     transactions::{
         aggregated_body::AggregateBody,
-        tari_amount::MicroTari,
+        tari_amount::MicroMinoTari,
         transaction_components::{
             transaction_output::batch_verify_range_proofs,
             KernelSum,
@@ -90,18 +90,18 @@ impl AggregateBodyInternalConsistencyValidator {
     /// 1. Range proofs of the outputs are valid
     ///
     /// This function does NOT check that inputs come from the UTXO set
-    /// The reward is the total amount of Tari rewarded for this block (block reward + total fees), this should be 0
-    /// for a transaction
+    /// The reward is the total amount of MicroTari rewarded for this block (block reward + total fees), this should be
+    /// 0 for a transaction
     pub fn validate(
         &self,
         body: &AggregateBody,
         tx_offset: &PrivateKey,
         script_offset: &PrivateKey,
-        total_reward: Option<MicroTari>,
+        total_reward: Option<MicroMinoTari>,
         prev_header: Option<HashOutput>,
         height: u64,
     ) -> Result<(), ValidationError> {
-        let total_reward = total_reward.unwrap_or(MicroTari::zero());
+        let total_reward = total_reward.unwrap_or(MicroMinoTari::zero());
 
         // old internal validator
         verify_kernel_signatures(body)?;
@@ -219,7 +219,7 @@ fn sum_kernels(body: &AggregateBody, offset_with_fee: PedersenCommitment) -> Ker
     // Sum all kernel excesses and fees
     body.kernels().iter().fold(
         KernelSum {
-            fees: MicroTari(0),
+            fees: MicroMinoTari(0),
             sum: offset_with_fee,
         },
         |acc, val| KernelSum {
@@ -476,7 +476,7 @@ mod test {
                 Default::default(),
                 Default::default(),
                 Default::default(),
-                MicroTari::zero(),
+                MicroMinoTari::zero(),
             );
 
             assert!(matches!(

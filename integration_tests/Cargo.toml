@@ -7,10 +7,10 @@ version = "0.35.1"
 edition = "2018"
 
 [dependencies]
-tari_app_grpc = { path = "../applications/tari_app_grpc" }
-tari_app_utilities = { path = "../applications/tari_app_utilities" }
-tari_base_node = { path = "../applications/tari_base_node" }
-tari_base_node_grpc_client = { path = "../clients/rust/base_node_grpc_client" }
+minotari_app_grpc = { path = "../applications/minotari_app_grpc" }
+minotari_app_utilities = { path = "../applications/minotari_app_utilities" }
+minotari_base_node = { path = "../applications/minotari_base_node" }
+minotari_base_node_grpc_client = { path = "../clients/rust/base_node_grpc_client" }
 tari_chat_client = { path = "../base_layer/contacts/examples/chat_client" }
 tari_chat_ffi = { path = "../base_layer/chat_ffi" }
 tari_crypto = { version = "0.17" }
@@ -18,18 +18,18 @@ tari_common = { path = "../common" }
 tari_common_types = { path = "../base_layer/common_types" }
 tari_comms = { path = "../comms/core" }
 tari_comms_dht = { path = "../comms/dht" }
-tari_console_wallet = { path = "../applications/tari_console_wallet" }
+minotari_console_wallet = { path = "../applications/minotari_console_wallet" }
 tari_contacts = { path = "../base_layer/contacts" }
 tari_core = { path = "../base_layer/core" }
-tari_merge_mining_proxy = { path = "../applications/tari_merge_mining_proxy" }
-tari_miner = { path = "../applications/tari_miner" }
+minotari_merge_mining_proxy = { path = "../applications/minotari_merge_mining_proxy" }
+minotari_miner = { path = "../applications/minotari_miner" }
 tari_p2p = { path = "../base_layer/p2p" }
 tari_script = { path = "../infrastructure/tari_script" }
 tari_shutdown = { path = "../infrastructure/shutdown" }
 tari_utilities = "0.4.10"
-tari_wallet = { path = "../base_layer/wallet" }
-tari_wallet_ffi = { path = "../base_layer/wallet_ffi" }
-tari_wallet_grpc_client = { path = "../clients/rust/wallet_grpc_client" }
+minotari_wallet = { path = "../base_layer/wallet" }
+minotari_wallet_ffi = { path = "../base_layer/wallet_ffi" }
+minotari_wallet_grpc_client = { path = "../clients/rust/wallet_grpc_client" }
 
 anyhow = "1.0.53"
 async-trait = "0.1.50"

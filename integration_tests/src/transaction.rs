@@ -27,7 +27,7 @@ use tari_core::{
     covenants::Covenant,
     transactions::{
         key_manager::TariKeyId,
-        tari_amount::MicroTari,
+        tari_amount::MicroMinoTari,
         test_helpers::{create_transaction_with, TestKeyManager, TestParams},
         transaction_components::{
             OutputFeatures,
@@ -44,8 +44,8 @@ use tari_script::{inputs, script, TariScript};
 
 #[derive(Clone)]
 struct TestTransactionBuilder {
-    amount: MicroTari,
-    fee_per_gram: MicroTari,
+    amount: MicroMinoTari,
+    fee_per_gram: MicroMinoTari,
     inputs_max_height: u64,
     inputs: Vec<(TransactionInput, WalletOutput)>,
     keys: TestParams,
@@ -56,8 +56,8 @@ struct TestTransactionBuilder {
 impl TestTransactionBuilder {
     pub async fn new(key_manager: &TestKeyManager) -> Self {
         Self {
-            amount: MicroTari(0),
-            fee_per_gram: MicroTari(1),
+            amount: MicroMinoTari(0),
+            fee_per_gram: MicroMinoTari(1),
             inputs_max_height: 0,
             inputs: vec![],
             keys: TestParams::new(key_manager).await,
@@ -66,7 +66,7 @@ impl TestTransactionBuilder {
         }
     }
 
-    pub fn fee_per_gram(&mut self, fee: MicroTari) -> &mut Self {
+    pub fn fee_per_gram(&mut self, fee: MicroMinoTari) -> &mut Self {
         self.fee_per_gram = fee;
         self
     }
@@ -76,7 +76,7 @@ impl TestTransactionBuilder {
         self
     }
 
-    fn update_amount(&mut self, amount: MicroTari) {
+    fn update_amount(&mut self, amount: MicroMinoTari) {
         self.amount += amount
     }
 
@@ -141,12 +141,12 @@ impl TestTransactionBuilder {
         features: OutputFeatures,
         script: TariScript,
         covenant: Covenant,
-    ) -> std::io::Result<MicroTari> {
+    ) -> std::io::Result<MicroMinoTari> {
         let features_and_scripts_bytes =
             features.get_serialized_size()? + script.get_serialized_size()? + covenant.get_serialized_size()?;
         let weights = TransactionWeight::v1();
         let fee = self.fee_per_gram.0 * weights.calculate(1, num_inputs, 1 + 1, features_and_scripts_bytes);
-        Ok(MicroTari(fee))
+        Ok(MicroMinoTari(fee))
     }
 }
 
@@ -159,7 +159,7 @@ pub async fn build_transaction_with_output_and_fee_per_gram(
     for wallet_output in utxos {
         builder.add_input(wallet_output, key_manager).await;
     }
-    builder.fee_per_gram(MicroTari(fee_per_gram));
+    builder.fee_per_gram(MicroMinoTari(fee_per_gram));
 
     builder.build(key_manager).await
 }

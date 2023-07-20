@@ -38,7 +38,7 @@ use log4rs::{
     config::{Appender, Config, Logger, Root},
     encode::pattern::PatternEncoder,
 };
-use tari_app_utilities::identity_management::load_from_json;
+use minotari_app_utilities::identity_management::load_from_json;
 use tari_chat_client::{
     config::{ApplicationConfig, ChatClientConfig},
     ChatClient,

@@ -22,6 +22,7 @@
 use std::mem::size_of;
 
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
+use minotari_wallet::storage::sqlite_utilities::WalletDbConnection;
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::types::PublicKey;
 use tari_key_manager::{
@@ -34,7 +35,6 @@ use tari_key_manager::{
         KeyManagerInterface,
     },
 };
-use tari_wallet::storage::sqlite_utilities::WalletDbConnection;
 
 use crate::support::data::get_temp_sqlite_database_connection;
 

@@ -78,7 +78,7 @@ use tari_common_types::types::Signature;
 
 use crate::{
     proto::base_node as base_node_proto,
-    transactions::{tari_amount::MicroTari, transaction_components::Transaction},
+    transactions::{tari_amount::MicroMinoTari, transaction_components::Transaction},
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -141,9 +141,9 @@ impl Display for TxStorageResponse {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FeePerGramStat {
     pub order: u64,
-    pub min_fee_per_gram: MicroTari,
-    pub avg_fee_per_gram: MicroTari,
-    pub max_fee_per_gram: MicroTari,
+    pub min_fee_per_gram: MicroMinoTari,
+    pub avg_fee_per_gram: MicroMinoTari,
+    pub max_fee_per_gram: MicroMinoTari,
 }
 
 impl From<base_node_proto::MempoolFeePerGramStat> for FeePerGramStat {

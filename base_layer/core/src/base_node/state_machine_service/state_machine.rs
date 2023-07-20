@@ -67,7 +67,7 @@ impl Default for BaseNodeStateMachineConfig {
     }
 }
 
-/// A Tari full node, aka Base Node.
+/// A MinoTari full node, aka Base Node.
 ///
 /// This service is essentially a finite state machine that synchronises its blockchain state with its peers and
 /// then listens for new blocks to add to the blockchain. See the [SynchronizationState] documentation for more details.

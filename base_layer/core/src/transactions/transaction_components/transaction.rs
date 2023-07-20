@@ -39,8 +39,8 @@ use crate::transactions::{
 };
 
 /// A transaction which consists of a kernel offset and an aggregate body made up of inputs, outputs and kernels.
-/// This struct is used to describe single transactions only. The common part between transactions and Tari blocks is
-/// accessible via the `body` field, but single transactions also need to carry the public offset around with them so
+/// This struct is used to describe single transactions only. The common part between transactions and MinoTari blocks
+/// is accessible via the `body` field, but single transactions also need to carry the public offset around with them so
 /// that these can be aggregated into block offsets.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Transaction {
