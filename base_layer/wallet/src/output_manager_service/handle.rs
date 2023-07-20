@@ -221,7 +221,7 @@ impl fmt::Display for OutputManagerRequest {
                 timelock,
                 fee_per_gram,
             ),
-            CreateHtlcRefundTransaction(output, timelock, fee_per_gram) => write!(
+            CreateHtlcRefundTransaction(output, _, fee_per_gram) => write!(
                 f,
                 "CreateHtlcRefundTransaction(output hash: {}, , fee_per_gram: {} )",
                 output.to_hex(),

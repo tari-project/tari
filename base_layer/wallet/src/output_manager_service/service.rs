@@ -418,7 +418,12 @@ where
                 self.claim_sha_atomic_swap_with_hash(output_hash, pre_image, fee_per_gram)
                     .await
             },
-            OutputManagerRequest::CreateClaimBlake2AtomicSwapTransaction(output_hash, pre_image, timelock, fee_per_gram) => {
+            OutputManagerRequest::CreateClaimBlake2AtomicSwapTransaction(
+                output_hash,
+                pre_image,
+                timelock,
+                fee_per_gram,
+            ) => {
                 self.claim_blake2_atomic_swap_with_hash(output_hash, pre_image, timelock, fee_per_gram)
                     .await
             },

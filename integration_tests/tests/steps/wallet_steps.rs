@@ -1889,7 +1889,7 @@ async fn claim_htlc_refund_transaction_with_wallet_at_fee(world: &mut TariWorld,
     let claim_htlc_req = ClaimHtlcRefundRequest {
         output_hash,
         fee_per_gram,
-        timelock: 0
+        timelock: 0,
     };
 
     let claim_htlc_refund_res = wallet_client

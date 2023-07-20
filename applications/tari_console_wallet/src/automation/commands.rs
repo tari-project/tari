@@ -55,7 +55,7 @@ use tari_core::transactions::{
     tari_amount::{uT, MicroTari, Tari},
     transaction_components::{OutputFeatures, TransactionOutput, WalletOutput},
 };
-use tari_crypto::ristretto::RistrettoSecretKey;
+use tari_crypto::{ristretto::RistrettoSecretKey, hash::blake2::Blake256};
 use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
     connectivity_service::WalletConnectivityInterface,
@@ -98,6 +98,7 @@ pub enum WalletCommand {
     InitShaAtomicSwap,
     FinaliseShaAtomicSwap,
     ClaimShaAtomicSwapRefund,
+    InitBlake2AtomicSwap,
     FinaliseBlake2AtomicSwap,
     ClaimBlake2AtomicSwapRefund,
     RegisterAsset,
@@ -193,7 +194,14 @@ pub async fn init_blake2_atomic_swap(
     message: String,
 ) -> Result<(TxId, PublicKey, TransactionOutput), CommandError> {
     let (tx_id, pre_image, output) = wallet_transaction_service
-        .send_blake2_atomic_swap_transaction(dest_address, amount, timelock, selection_criteria, fee_per_gram * uT, message)
+        .send_blake2_atomic_swap_transaction(
+            dest_address,
+            amount,
+            timelock,
+            selection_criteria,
+            fee_per_gram * uT,
+            message,
+        )
         .await
         .map_err(CommandError::TransactionServiceError)?;
     Ok((tx_id, pre_image, output))
@@ -964,12 +972,59 @@ pub async fn command_runner(
                 },
                 Err(e) => eprintln!("FinaliseShaAtomicSwap error! {}", e),
             },
-            ClaimShaAtomicSwapRefund(args) => match args.output_hash[0].clone().try_into() {
+            ClaimShaAtomicSwapRefund(args) | ClaimBlake2AtomicSwapRefund(args) => {
+                match args.output_hash[0].clone().try_into() {
+                    Ok(hash) => {
+                        match claim_htlc_refund(
+                            output_service.clone(),
+                            transaction_service.clone(),
+                            hash,
+                            args.timelock,
+                            config.fee_per_gram.into(),
+                            args.message,
+                        )
+                        .await
+                        {
+                            Ok(tx_id) => {
+                                debug!(target: LOG_TARGET, "claiming tari HTLC tx_id {}", tx_id);
+                                tx_ids.push(tx_id);
+                            },
+                            Err(e) => eprintln!("ClaimShaAtomicSwapRefund | ClaimBlake2AtomicSwapRefunderror! {}", e),
+                        }
+                    },
+                    Err(e) => eprintln!("ClaimShaAtomicSwapRefund | ClaimBlake2AtomicSwapRefund error! {}", e),
+                }
+            },
+            InitBlake2AtomicSwap(args) => {
+                match init_blake2_atomic_swap(
+                    transaction_service.clone(),
+                    config.fee_per_gram,
+                    args.amount,
+                    args.timelock,
+                    UtxoSelectionCriteria::default(),
+                    args.destination,
+                    args.message,
+                )
+                .await
+                {
+                    Ok((tx_id, pre_image, output)) => {
+                        debug!(target: LOG_TARGET, "tari HTLC tx_id {}", tx_id);
+                        let hash: [u8; 32] = Blake256::digest(pre_image.as_bytes()).into();
+                        println!("pre_image hex: {}", pre_image.to_hex());
+                        println!("pre_image hash: {}", hash.to_hex());
+                        println!("Output hash: {}", output.hash().to_hex());
+                        tx_ids.push(tx_id);
+                    },
+                    Err(e) => println!("InitBlake2AtomicSwap error! {}", e),
+                }
+            },
+            FinaliseBlake2AtomicSwap(args) => match args.output_hash[0].clone().try_into() {
                 Ok(hash) => {
-                    match claim_htlc_refund(
+                    match finalise_blake2_atomic_swap(
                         output_service.clone(),
                         transaction_service.clone(),
                         hash,
+                        args.pre_image.into(),
                         args.timelock,
                         config.fee_per_gram.into(),
                         args.message,
@@ -980,12 +1035,11 @@ pub async fn command_runner(
                             debug!(target: LOG_TARGET, "claiming tari HTLC tx_id {}", tx_id);
                             tx_ids.push(tx_id);
                         },
-                        Err(e) => eprintln!("ClaimShaAtomicSwapRefund error! {}", e),
+                        Err(e) => eprintln!("FinaliseBlake2AtomicSwap error! {}", e),
                     }
                 },
-                Err(e) => eprintln!("FinaliseShaAtomicSwap error! {}", e),
+                Err(e) => eprintln!("FinaliseBlake2AtomicSwap error! {}", e),
             },
-
             RevalidateWalletDb => {
                 if let Err(e) = output_service
                     .revalidate_all_outputs()
