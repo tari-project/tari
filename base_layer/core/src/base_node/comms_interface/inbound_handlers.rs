@@ -446,8 +446,9 @@ where B: BlockchainBackend + 'static
             );
             return Ok(());
         }
-        {
-            // we use a double lock to make sure we can only reconcile one block at a time
+
+       {
+            // we use a double lock to make sure we can only reconcile one unique block at a time. We may receive the same block from multiple peer near simultaneously. We should only reconcile each unique block once.
             let read_lock = self.list_of_reconciling_blocks.read().await;
             if read_lock.contains(&block_hash) {
                 debug!(
@@ -468,6 +469,14 @@ where B: BlockchainBackend + 'static
                 );
                 return Ok(());
             }
+            if write_lock.contains(&block_hash) {
+                debug!(
+                    target: LOG_TARGET,
+                    "Block with hash `{}` is already being reconciled",
+                    block_hash.to_hex()
+                );
+                return Ok(());
+            }
             write_lock.insert(block_hash);
         }
 
@@ -479,15 +488,14 @@ where B: BlockchainBackend + 'static
             source_peer
         );
 
-        // We need to make sure that we can ask for the block from multiple sources as a single source can maliciously
-        // delay the block blocking us from getting to true latest tip
-        let block = self.reconcile_block(source_peer.clone(), new_block).await?;
+
+        let block_result = self.reconcile_block(source_peer.clone(), new_block).await;
 
         {
             let mut write_lock = self.list_of_reconciling_blocks.write().await;
             write_lock.remove(&block_hash);
         }
-
+        let block = block_result?;
         self.handle_block(block, Some(source_peer)).await?;
 
         Ok(())
