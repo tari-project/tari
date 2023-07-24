@@ -447,8 +447,9 @@ where B: BlockchainBackend + 'static
             return Ok(());
         }
 
-       {
-            // we use a double lock to make sure we can only reconcile one unique block at a time. We may receive the same block from multiple peer near simultaneously. We should only reconcile each unique block once.
+        {
+            // we use a double lock to make sure we can only reconcile one unique block at a time. We may receive the
+            // same block from multiple peer near simultaneously. We should only reconcile each unique block once.
             let read_lock = self.list_of_reconciling_blocks.read().await;
             if read_lock.contains(&block_hash) {
                 debug!(
@@ -487,7 +488,6 @@ where B: BlockchainBackend + 'static
             block_hash.to_hex(),
             source_peer
         );
-
 
         let block_result = self.reconcile_block(source_peer.clone(), new_block).await;
 
