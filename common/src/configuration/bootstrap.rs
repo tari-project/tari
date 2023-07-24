@@ -47,12 +47,12 @@ impl ApplicationType {
         #[allow(clippy::enum_glob_use)]
         use ApplicationType::*;
         match self {
-            BaseNode => "MinoTari Base Node",
-            ConsoleWallet => "MinoTari Wallet",
-            MergeMiningProxy => "MinoTari Merge Mining Proxy",
-            Miner => "MinoTari Miner",
+            BaseNode => "Minotari Base Node",
+            ConsoleWallet => "Minotari Wallet",
+            MergeMiningProxy => "Minotari Merge Mining Proxy",
+            Miner => "Minotari Miner",
             ValidatorNode => "Digital Assets Network Validator Node",
-            StratumTranscoder => "MinoTari Stratum Transcoder",
+            StratumTranscoder => "Minotari Stratum Transcoder",
             Collectibles => "Tari Collectibles",
         }
     }
@@ -137,11 +137,11 @@ mod test {
         let collectibles = ApplicationType::Collectibles;
 
         // test `as_str` method
-        assert_eq!(base_node.as_str(), "MinoTari Base Node");
-        assert_eq!(console_wallet.as_str(), "MinoTari Wallet");
-        assert_eq!(mm_proxy.as_str(), "MinoTari Merge Mining Proxy");
-        assert_eq!(miner.as_str(), "MinoTari Miner");
-        assert_eq!(stratum_transcoder.as_str(), "MinoTari Stratum Transcoder");
+        assert_eq!(base_node.as_str(), "Minotari Base Node");
+        assert_eq!(console_wallet.as_str(), "Minotari Wallet");
+        assert_eq!(mm_proxy.as_str(), "Minotari Merge Mining Proxy");
+        assert_eq!(miner.as_str(), "Minotari Miner");
+        assert_eq!(stratum_transcoder.as_str(), "Minotari Stratum Transcoder");
         assert_eq!(validator_node.as_str(), "Digital Assets Network Validator Node");
         assert_eq!(collectibles.as_str(), "Tari Collectibles");
 

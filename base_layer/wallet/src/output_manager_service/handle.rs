@@ -29,7 +29,7 @@ use tari_common_types::{
 use tari_core::{
     covenants::Covenant,
     transactions::{
-        tari_amount::MicroMinoTari,
+        tari_amount::MicroMinotari,
         transaction_components::{OutputFeatures, Transaction, TransactionOutput, WalletOutput, WalletOutputBuilder},
         transaction_protocol::{sender::TransactionSenderMessage, TransactionMetadata},
         ReceiverTransactionProtocol,
@@ -63,35 +63,35 @@ pub enum OutputManagerRequest {
     GetRecipientTransaction(TransactionSenderMessage),
     GetCoinbaseTransaction {
         tx_id: TxId,
-        reward: MicroMinoTari,
-        fees: MicroMinoTari,
+        reward: MicroMinotari,
+        fees: MicroMinotari,
         block_height: u64,
         extra: Vec<u8>,
     },
     ConfirmPendingTransaction(TxId),
     PrepareToSendTransaction {
         tx_id: TxId,
-        amount: MicroMinoTari,
+        amount: MicroMinotari,
         selection_criteria: UtxoSelectionCriteria,
         output_features: Box<OutputFeatures>,
-        fee_per_gram: MicroMinoTari,
+        fee_per_gram: MicroMinotari,
         tx_meta: TransactionMetadata,
         message: String,
         script: TariScript,
         covenant: Covenant,
-        minimum_value_promise: MicroMinoTari,
+        minimum_value_promise: MicroMinotari,
     },
     CreatePayToSelfTransaction {
         tx_id: TxId,
-        amount: MicroMinoTari,
+        amount: MicroMinotari,
         selection_criteria: UtxoSelectionCriteria,
         output_features: Box<OutputFeatures>,
-        fee_per_gram: MicroMinoTari,
+        fee_per_gram: MicroMinotari,
         lock_height: Option<u64>,
     },
     CreatePayToSelfWithOutputs {
         outputs: Vec<WalletOutputBuilder>,
-        fee_per_gram: MicroMinoTari,
+        fee_per_gram: MicroMinotari,
         selection_criteria: UtxoSelectionCriteria,
     },
     CancelTransaction(TxId),
@@ -101,18 +101,18 @@ pub enum OutputManagerRequest {
     GetInvalidOutputs,
     ValidateUtxos,
     RevalidateTxos,
-    CreateCoinSplit((Vec<Commitment>, MicroMinoTari, usize, MicroMinoTari)),
-    CreateCoinSplitEven((Vec<Commitment>, usize, MicroMinoTari)),
-    PreviewCoinJoin((Vec<Commitment>, MicroMinoTari)),
-    PreviewCoinSplitEven((Vec<Commitment>, usize, MicroMinoTari)),
+    CreateCoinSplit((Vec<Commitment>, MicroMinotari, usize, MicroMinotari)),
+    CreateCoinSplitEven((Vec<Commitment>, usize, MicroMinotari)),
+    PreviewCoinJoin((Vec<Commitment>, MicroMinotari)),
+    PreviewCoinSplitEven((Vec<Commitment>, usize, MicroMinotari)),
     CreateCoinJoin {
         commitments: Vec<Commitment>,
-        fee_per_gram: MicroMinoTari,
+        fee_per_gram: MicroMinotari,
     },
     FeeEstimate {
-        amount: MicroMinoTari,
+        amount: MicroMinotari,
         selection_criteria: UtxoSelectionCriteria,
-        fee_per_gram: MicroMinoTari,
+        fee_per_gram: MicroMinotari,
         num_kernels: usize,
         num_outputs: usize,
     },
@@ -121,14 +121,14 @@ pub enum OutputManagerRequest {
     ScanOutputs(Vec<TransactionOutput>),
     AddKnownOneSidedPaymentScript(KnownOneSidedPaymentScript),
     CreateOutputWithFeatures {
-        value: MicroMinoTari,
+        value: MicroMinotari,
         features: Box<OutputFeatures>,
     },
 
     ReinstateCancelledInboundTx(TxId),
     SetCoinbaseAbandoned(TxId, bool),
-    CreateClaimShaAtomicSwapTransaction(HashOutput, PublicKey, MicroMinoTari),
-    CreateHtlcRefundTransaction(HashOutput, MicroMinoTari),
+    CreateClaimShaAtomicSwapTransaction(HashOutput, PublicKey, MicroMinotari),
+    CreateHtlcRefundTransaction(HashOutput, MicroMinotari),
     GetOutputStatusesByTxId(TxId),
 }
 
@@ -235,7 +235,7 @@ pub enum OutputManagerResponse {
     CoinbaseTransaction(Transaction),
     OutputConfirmed,
     PendingTransactionConfirmed,
-    PayToSelfTransaction((MicroMinoTari, Transaction)),
+    PayToSelfTransaction((MicroMinotari, Transaction)),
     TransactionToSend(SenderTransactionProtocol),
     TransactionCancelled,
     SpentOutputs(Vec<DbWalletOutput>),
@@ -244,10 +244,10 @@ pub enum OutputManagerResponse {
     InvalidOutputs(Vec<WalletOutput>),
     BaseNodePublicKeySet,
     TxoValidationStarted(u64),
-    Transaction((TxId, Transaction, MicroMinoTari)),
+    Transaction((TxId, Transaction, MicroMinotari)),
     PublicRewindKeys(Box<PublicRewindKeys>),
     RecoveryByte(u8),
-    FeeEstimate(MicroMinoTari),
+    FeeEstimate(MicroMinotari),
     RewoundOutputs(Vec<RecoveredOutput>),
     ScanOutputs(Vec<RecoveredOutput>),
     AddKnownOneSidedPaymentScript,
@@ -255,9 +255,9 @@ pub enum OutputManagerResponse {
     CreatePayToSelfWithOutputs { transaction: Box<Transaction>, tx_id: TxId },
     ReinstatedCancelledInboundTx,
     CoinbaseAbandonedSet,
-    ClaimHtlcTransaction((TxId, MicroMinoTari, MicroMinoTari, Transaction)),
+    ClaimHtlcTransaction((TxId, MicroMinotari, MicroMinotari, Transaction)),
     OutputStatusesByTxId(OutputStatusesByTxId),
-    CoinPreview((Vec<MicroMinoTari>, MicroMinoTari)),
+    CoinPreview((Vec<MicroMinotari>, MicroMinotari)),
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;
@@ -380,7 +380,7 @@ impl OutputManagerHandle {
 
     pub async fn create_output_with_features(
         &mut self,
-        value: MicroMinoTari,
+        value: MicroMinotari,
         features: OutputFeatures,
     ) -> Result<WalletOutputBuilder, OutputManagerError> {
         match self
@@ -441,8 +441,8 @@ impl OutputManagerHandle {
     pub async fn get_coinbase_transaction(
         &mut self,
         tx_id: TxId,
-        reward: MicroMinoTari,
-        fees: MicroMinoTari,
+        reward: MicroMinotari,
+        fees: MicroMinotari,
         block_height: u64,
         extra: Vec<u8>,
     ) -> Result<Transaction, OutputManagerError> {
@@ -465,15 +465,15 @@ impl OutputManagerHandle {
     pub async fn prepare_transaction_to_send(
         &mut self,
         tx_id: TxId,
-        amount: MicroMinoTari,
+        amount: MicroMinotari,
         utxo_selection: UtxoSelectionCriteria,
         output_features: OutputFeatures,
-        fee_per_gram: MicroMinoTari,
+        fee_per_gram: MicroMinotari,
         tx_meta: TransactionMetadata,
         message: String,
         script: TariScript,
         covenant: Covenant,
-        minimum_value_promise: MicroMinoTari,
+        minimum_value_promise: MicroMinotari,
     ) -> Result<SenderTransactionProtocol, OutputManagerError> {
         match self
             .handle
@@ -496,16 +496,16 @@ impl OutputManagerHandle {
         }
     }
 
-    /// Get a fee estimate for an amount of MicroMinoTari, at a specified fee per gram and given number of kernels and
+    /// Get a fee estimate for an amount of MicroMinotari, at a specified fee per gram and given number of kernels and
     /// outputs.
     pub async fn fee_estimate(
         &mut self,
-        amount: MicroMinoTari,
+        amount: MicroMinotari,
         selection_criteria: UtxoSelectionCriteria,
-        fee_per_gram: MicroMinoTari,
+        fee_per_gram: MicroMinotari,
         num_kernels: usize,
         num_outputs: usize,
-    ) -> Result<MicroMinoTari, OutputManagerError> {
+    ) -> Result<MicroMinotari, OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::FeeEstimate {
@@ -576,8 +576,8 @@ impl OutputManagerHandle {
     pub async fn preview_coin_join_with_commitments(
         &mut self,
         commitments: Vec<Commitment>,
-        fee_per_gram: MicroMinoTari,
-    ) -> Result<(Vec<MicroMinoTari>, MicroMinoTari), OutputManagerError> {
+        fee_per_gram: MicroMinotari,
+    ) -> Result<(Vec<MicroMinotari>, MicroMinotari), OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::PreviewCoinJoin((commitments, fee_per_gram)))
@@ -592,8 +592,8 @@ impl OutputManagerHandle {
         &mut self,
         commitments: Vec<Commitment>,
         split_count: usize,
-        fee_per_gram: MicroMinoTari,
-    ) -> Result<(Vec<MicroMinoTari>, MicroMinoTari), OutputManagerError> {
+        fee_per_gram: MicroMinotari,
+    ) -> Result<(Vec<MicroMinotari>, MicroMinotari), OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::PreviewCoinSplitEven((
@@ -613,10 +613,10 @@ impl OutputManagerHandle {
     pub async fn create_coin_split(
         &mut self,
         commitments: Vec<Commitment>,
-        amount_per_split: MicroMinoTari,
+        amount_per_split: MicroMinotari,
         split_count: usize,
-        fee_per_gram: MicroMinoTari,
-    ) -> Result<(TxId, Transaction, MicroMinoTari), OutputManagerError> {
+        fee_per_gram: MicroMinotari,
+    ) -> Result<(TxId, Transaction, MicroMinotari), OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::CreateCoinSplit((
@@ -636,8 +636,8 @@ impl OutputManagerHandle {
         &mut self,
         commitments: Vec<Commitment>,
         split_count: usize,
-        fee_per_gram: MicroMinoTari,
-    ) -> Result<(TxId, Transaction, MicroMinoTari), OutputManagerError> {
+        fee_per_gram: MicroMinotari,
+    ) -> Result<(TxId, Transaction, MicroMinotari), OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::CreateCoinSplitEven((
@@ -655,8 +655,8 @@ impl OutputManagerHandle {
     pub async fn create_coin_join(
         &mut self,
         commitments: Vec<Commitment>,
-        fee_per_gram: MicroMinoTari,
-    ) -> Result<(TxId, Transaction, MicroMinoTari), OutputManagerError> {
+        fee_per_gram: MicroMinotari,
+    ) -> Result<(TxId, Transaction, MicroMinotari), OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::CreateCoinJoin {
@@ -673,8 +673,8 @@ impl OutputManagerHandle {
     pub async fn create_htlc_refund_transaction(
         &mut self,
         output: HashOutput,
-        fee_per_gram: MicroMinoTari,
-    ) -> Result<(TxId, MicroMinoTari, MicroMinoTari, Transaction), OutputManagerError> {
+        fee_per_gram: MicroMinotari,
+    ) -> Result<(TxId, MicroMinotari, MicroMinotari, Transaction), OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::CreateHtlcRefundTransaction(output, fee_per_gram))
@@ -689,8 +689,8 @@ impl OutputManagerHandle {
         &mut self,
         output: HashOutput,
         pre_image: PublicKey,
-        fee_per_gram: MicroMinoTari,
-    ) -> Result<(TxId, MicroMinoTari, MicroMinoTari, Transaction), OutputManagerError> {
+        fee_per_gram: MicroMinotari,
+    ) -> Result<(TxId, MicroMinotari, MicroMinotari, Transaction), OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::CreateClaimShaAtomicSwapTransaction(
@@ -743,7 +743,7 @@ impl OutputManagerHandle {
     pub async fn create_send_to_self_with_output(
         &mut self,
         outputs: Vec<WalletOutputBuilder>,
-        fee_per_gram: MicroMinoTari,
+        fee_per_gram: MicroMinotari,
         input_selection: UtxoSelectionCriteria,
     ) -> Result<(TxId, Transaction), OutputManagerError> {
         match self
@@ -763,12 +763,12 @@ impl OutputManagerHandle {
     pub async fn create_pay_to_self_transaction(
         &mut self,
         tx_id: TxId,
-        amount: MicroMinoTari,
+        amount: MicroMinotari,
         utxo_selection: UtxoSelectionCriteria,
         output_features: OutputFeatures,
-        fee_per_gram: MicroMinoTari,
+        fee_per_gram: MicroMinotari,
         lock_height: Option<u64>,
-    ) -> Result<(MicroMinoTari, Transaction), OutputManagerError> {
+    ) -> Result<(MicroMinotari, Transaction), OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::CreatePayToSelfTransaction {

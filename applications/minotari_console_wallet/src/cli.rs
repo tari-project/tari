@@ -32,7 +32,7 @@ use minotari_app_utilities::{common_cli_args::CommonCliArgs, utilities::UniPubli
 use tari_common::configuration::{ConfigOverrideProvider, Network};
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::multiaddr::Multiaddr;
-use tari_core::transactions::{tari_amount, tari_amount::MicroMinoTari};
+use tari_core::transactions::{tari_amount, tari_amount::MicroMinotari};
 use tari_key_manager::SeedWords;
 use tari_utilities::{
     hex::{Hex, HexError},
@@ -142,7 +142,7 @@ pub struct DiscoverPeerArgs {
 
 #[derive(Debug, Args, Clone)]
 pub struct SendMinotariArgs {
-    pub amount: MicroMinoTari,
+    pub amount: MicroMinotari,
     pub destination: TariAddress,
     #[clap(short, long, default_value = "<No message>")]
     pub message: String,
@@ -150,7 +150,7 @@ pub struct SendMinotariArgs {
 
 #[derive(Debug, Args, Clone)]
 pub struct BurnMinotariArgs {
-    pub amount: MicroMinoTari,
+    pub amount: MicroMinotari,
     #[clap(short, long, default_value = "Burn funds")]
     pub message: String,
 }
@@ -159,13 +159,13 @@ pub struct BurnMinotariArgs {
 pub struct MakeItRainArgs {
     pub destination: TariAddress,
     #[clap(short, long, alias="amount", default_value_t = tari_amount::T)]
-    pub start_amount: MicroMinoTari,
+    pub start_amount: MicroMinotari,
     #[clap(short, long, alias = "tps", default_value_t = 25)]
     pub transactions_per_second: u32,
     #[clap(short, long, parse(try_from_str = parse_duration), default_value="60")]
     pub duration: Duration,
     #[clap(long, default_value_t=tari_amount::T)]
-    pub increase_amount: MicroMinoTari,
+    pub increase_amount: MicroMinotari,
     #[clap(long, parse(try_from_str=parse_start_time))]
     pub start_time: Option<DateTime<Utc>>,
     #[clap(short, long)]
@@ -221,10 +221,10 @@ fn parse_duration(arg: &str) -> Result<std::time::Duration, std::num::ParseIntEr
 
 #[derive(Debug, Args, Clone)]
 pub struct CoinSplitArgs {
-    pub amount_per_split: MicroMinoTari,
+    pub amount_per_split: MicroMinotari,
     pub num_splits: usize,
     #[clap(short, long, default_value = "1")]
-    pub fee_per_gram: MicroMinoTari,
+    pub fee_per_gram: MicroMinotari,
     #[clap(short, long, default_value = "Coin split")]
     pub message: String,
 }
@@ -276,7 +276,7 @@ pub struct HashPasswordArgs {
 
 #[derive(Debug, Args, Clone)]
 pub struct RegisterValidatorNodeArgs {
-    pub amount: MicroMinoTari,
+    pub amount: MicroMinotari,
     pub validator_node_public_key: UniPublicKey,
     pub validator_node_public_nonce: UniPublicKey,
     pub validator_node_signature: Vec<u8>,

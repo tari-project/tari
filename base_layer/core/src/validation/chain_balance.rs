@@ -29,7 +29,7 @@ use tari_crypto::commitment::HomomorphicCommitmentFactory;
 use crate::{
     chain_storage::BlockchainBackend,
     consensus::ConsensusManager,
-    transactions::{tari_amount::MicroMinoTari, CryptoFactories},
+    transactions::{tari_amount::MicroMinotari, CryptoFactories},
     validation::{FinalHorizonStateValidation, ValidationError},
 };
 
@@ -102,7 +102,7 @@ impl<B: BlockchainBackend> ChainBalanceValidator<B> {
     }
 
     #[inline]
-    fn commit_value(&self, v: MicroMinoTari) -> Commitment {
+    fn commit_value(&self, v: MicroMinotari) -> Commitment {
         self.factories.commitment.commit_value(&PrivateKey::default(), v.into())
     }
 }

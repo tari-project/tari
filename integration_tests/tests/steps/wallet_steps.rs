@@ -47,7 +47,7 @@ use tari_core::{
     consensus::ConsensusManager,
     covenants::Covenant,
     transactions::{
-        tari_amount::MicroMinoTari,
+        tari_amount::MicroMinotari,
         transaction_components::{
             EncryptedData,
             OutputFeatures,
@@ -2199,7 +2199,7 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
             "V1" => TransactionOutputVersion::V1,
             _ => panic!("Invalid output version"),
         };
-        let value = MicroMinoTari(output[2].parse::<u64>().unwrap());
+        let value = MicroMinotari(output[2].parse::<u64>().unwrap());
         let spending_key = PrivateKey::from_hex(&output[3]).unwrap();
         let flags = match &output[5] {
             "Standard" => OutputType::Standard,
@@ -2224,7 +2224,7 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
         let signature_u_y = PrivateKey::from_hex(&output[17]).unwrap();
         let script_lock_height = output[18].parse::<u64>().unwrap();
         let encrypted_data = EncryptedData::from_hex(&output[19]).unwrap();
-        let minimum_value_promise = MicroMinoTari(output[20].parse::<u64>().unwrap());
+        let minimum_value_promise = MicroMinotari(output[20].parse::<u64>().unwrap());
 
         let features =
             OutputFeatures::new_current_version(flags, maturity, coinbase_extra, None, RangeProofType::BulletProofPlus);
@@ -2303,7 +2303,7 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
             "V1" => TransactionOutputVersion::V1,
             _ => panic!("Invalid output version"),
         };
-        let value = MicroMinoTari(output[2].parse::<u64>().unwrap());
+        let value = MicroMinotari(output[2].parse::<u64>().unwrap());
         let spending_key = PrivateKey::from_hex(&output[3]).unwrap();
         let flags = match &output[5] {
             "Standard" => OutputType::Standard,
@@ -2328,7 +2328,7 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
         let signature_u_y = PrivateKey::from_hex(&output[17]).unwrap();
         let script_lock_height = output[18].parse::<u64>().unwrap();
         let encrypted_data = EncryptedData::from_hex(&output[19]).unwrap();
-        let minimum_value_promise = MicroMinoTari(output[20].parse::<u64>().unwrap());
+        let minimum_value_promise = MicroMinotari(output[20].parse::<u64>().unwrap());
 
         let features =
             OutputFeatures::new_current_version(flags, maturity, coinbase_extra, None, RangeProofType::BulletProofPlus);
@@ -2407,7 +2407,7 @@ async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: Stri
             "V1" => TransactionOutputVersion::V1,
             _ => panic!("Invalid output version"),
         };
-        let value = MicroMinoTari(output[2].parse::<u64>().unwrap());
+        let value = MicroMinotari(output[2].parse::<u64>().unwrap());
         let spending_key = PrivateKey::from_hex(&output[3]).unwrap();
         let flags = match &output[5] {
             "Standard" => OutputType::Standard,
@@ -2432,7 +2432,7 @@ async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: Stri
         let signature_u_y = PrivateKey::from_hex(&output[17]).unwrap();
         let script_lock_height = output[18].parse::<u64>().unwrap();
         let encrypted_data = EncryptedData::from_hex(&output[19]).unwrap();
-        let minimum_value_promise = MicroMinoTari(output[20].parse::<u64>().unwrap());
+        let minimum_value_promise = MicroMinotari(output[20].parse::<u64>().unwrap());
 
         let features =
             OutputFeatures::new_current_version(flags, maturity, coinbase_extra, None, RangeProofType::BulletProofPlus);

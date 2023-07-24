@@ -5,8 +5,8 @@
 #                                                                                                                      #
 ########################################################################################################################
 
-# If you are not running a MinoTari Base node, you can simply leave everything in this section commented out. Base nodes
-# help maintain the security of the MinoTari token and are the surest way to preserve your privacy and be 100% sure that
+# If you are not running a Minotari Base node, you can simply leave everything in this section commented out. Base nodes
+# help maintain the security of the Minotari token and are the surest way to preserve your privacy and be 100% sure that
 # no-one is cheating you out of your money.
 
 [dibbler.base_node]

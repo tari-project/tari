@@ -43,7 +43,7 @@ use tari_common::initialize_logging;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let terminal_title = format!("MinoTari Merge Mining Proxy - Version {}", consts::APP_VERSION);
+    let terminal_title = format!("Minotari Merge Mining Proxy - Version {}", consts::APP_VERSION);
     if let Err(e) = execute!(stdout(), SetTitle(terminal_title.as_str())) {
         println!("Error setting terminal title. {}", e)
     }

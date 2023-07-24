@@ -25,7 +25,7 @@ use std::convert::{TryFrom, TryInto};
 use borsh::{BorshDeserialize, BorshSerialize};
 use tari_common_types::types::{BulletRangeProof, Commitment, PublicKey};
 use tari_core::transactions::{
-    tari_amount::MicroMinoTari,
+    tari_amount::MicroMinotari,
     transaction_components::{EncryptedData, TransactionOutput, TransactionOutputVersion},
 };
 use tari_script::TariScript;
@@ -64,7 +64,7 @@ impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
         let mut covenant = output.covenant.as_bytes();
         let covenant = BorshDeserialize::deserialize(&mut covenant).map_err(|err| err.to_string())?;
         let encrypted_data = EncryptedData::from_bytes(&output.encrypted_data).map_err(|err| err.to_string())?;
-        let minimum_value_promise = MicroMinoTari::from(output.minimum_value_promise);
+        let minimum_value_promise = MicroMinotari::from(output.minimum_value_promise);
         Ok(Self::new(
             TransactionOutputVersion::try_from(
                 u8::try_from(output.version).map_err(|_| "Invalid version: overflowed u8")?,

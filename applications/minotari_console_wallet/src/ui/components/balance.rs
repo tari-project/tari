@@ -1,7 +1,7 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use tari_core::transactions::tari_amount::MicroMinoTari;
+use tari_core::transactions::tari_amount::MicroMinotari;
 use tui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
@@ -49,7 +49,7 @@ impl<B: Backend> Component<B> for Balance {
         f.render_widget(block, area);
 
         let balance = app_state.get_balance();
-        let time_locked = balance.time_locked_balance.unwrap_or_else(|| MicroMinoTari::from(0u64));
+        let time_locked = balance.time_locked_balance.unwrap_or_else(|| MicroMinotari::from(0u64));
         let available_balance = Spans::from(vec![
             Span::styled("Available:", Style::default().fg(Color::Magenta)),
             Span::raw(" "),

@@ -22,23 +22,23 @@
 
 use std::cmp;
 
-use crate::transactions::tari_amount::MicroMinoTari;
+use crate::transactions::tari_amount::MicroMinotari;
 
 pub trait Emission {
-    fn block_reward(&self, height: u64) -> MicroMinoTari;
-    fn supply_at_block(&self, height: u64) -> MicroMinoTari;
+    fn block_reward(&self, height: u64) -> MicroMinotari;
+    fn supply_at_block(&self, height: u64) -> MicroMinotari;
 }
 
-/// The MinoTari emission schedule. The emission schedule determines how much MinoTari is mined as a block reward at
+/// The Minotari emission schedule. The emission schedule determines how much Minotari is mined as a block reward at
 /// every block.
 ///
-/// NB: We don't know what the final emission schedule will be on MinoTari yet, so do not give any weight to values or
+/// NB: We don't know what the final emission schedule will be on Minotari yet, so do not give any weight to values or
 /// formulae provided in this file, they will almost certainly change ahead of main-net release.
 #[derive(Debug, Clone)]
 pub struct EmissionSchedule {
-    initial: MicroMinoTari,
+    initial: MicroMinotari,
     decay: &'static [u64],
-    tail: MicroMinoTari,
+    tail: MicroMinotari,
 }
 
 impl EmissionSchedule {
@@ -97,7 +97,7 @@ impl EmissionSchedule {
     ///
     /// The shift right operation will overflow if shifting more than 63 bits. `new` will panic if any of the decay
     /// values are greater than or equal to 64.
-    pub fn new(initial: MicroMinoTari, decay: &'static [u64], tail: MicroMinoTari) -> EmissionSchedule {
+    pub fn new(initial: MicroMinotari, decay: &'static [u64], tail: MicroMinotari) -> EmissionSchedule {
         assert!(
             decay.iter().all(|i| *i < 64),
             "Decay value would overflow. All `decay` values must be less than 64"
@@ -177,7 +177,7 @@ impl EmissionSchedule {
     /// ```edition2018
     /// use tari_core::{
     ///     consensus::emission::EmissionSchedule,
-    ///     transactions::tari_amount::MicroMinoTari,
+    ///     transactions::tari_amount::MicroMinotari,
     /// };
     /// // Print the reward and supply for first 100 blocks
     /// let schedule = EmissionSchedule::new(10.into(), &[3], 1.into());
@@ -200,8 +200,8 @@ impl EmissionSchedule {
 
 pub struct EmissionRate<'a> {
     block_num: u64,
-    supply: MicroMinoTari,
-    reward: MicroMinoTari,
+    supply: MicroMinotari,
+    reward: MicroMinotari,
     schedule: &'a EmissionSchedule,
 }
 
@@ -209,13 +209,13 @@ impl<'a> EmissionRate<'a> {
     fn new(schedule: &'a EmissionSchedule) -> EmissionRate<'a> {
         EmissionRate {
             block_num: 0,
-            supply: MicroMinoTari(0),
-            reward: MicroMinoTari(0),
+            supply: MicroMinotari(0),
+            reward: MicroMinotari(0),
             schedule,
         }
     }
 
-    pub fn supply(&self) -> MicroMinoTari {
+    pub fn supply(&self) -> MicroMinotari {
         self.supply
     }
 
@@ -223,7 +223,7 @@ impl<'a> EmissionRate<'a> {
         self.block_num
     }
 
-    pub fn block_reward(&self) -> MicroMinoTari {
+    pub fn block_reward(&self) -> MicroMinotari {
         self.reward
     }
 
@@ -233,20 +233,20 @@ impl<'a> EmissionRate<'a> {
     /// (1-k) would be 0.75 = 1/2 plus 1/4 (1/2^2).
     ///
     /// Then we calculate k.R = (1 - e).R = R - e.R = R - (0.5 * R + 0.25 * R) = R - R >> 1 - R >> 2
-    fn next_reward(&self) -> MicroMinoTari {
+    fn next_reward(&self) -> MicroMinotari {
         let r = self.reward.as_u64();
         let next = self
             .schedule
             .decay
             .iter()
-            .fold(self.reward, |sum, i| sum - MicroMinoTari::from(r >> *i));
+            .fold(self.reward, |sum, i| sum - MicroMinotari::from(r >> *i));
 
         cmp::max(next, self.schedule.tail)
     }
 }
 
 impl Iterator for EmissionRate<'_> {
-    type Item = (u64, MicroMinoTari, MicroMinoTari);
+    type Item = (u64, MicroMinotari, MicroMinotari);
 
     fn next(&mut self) -> Option<Self::Item> {
         self.block_num += 1;
@@ -263,16 +263,16 @@ impl Iterator for EmissionRate<'_> {
 }
 
 impl Emission for EmissionSchedule {
-    /// Calculate the block reward for the given block height, in µMinoTari
-    fn block_reward(&self, height: u64) -> MicroMinoTari {
+    /// Calculate the block reward for the given block height, in µMinotari
+    fn block_reward(&self, height: u64) -> MicroMinotari {
         let iterator = self.inner_schedule(height);
         iterator.block_reward()
     }
 
-    /// Calculate the exact emitted supply after the given block, in µMinoTari. The value is calculated by summing up
+    /// Calculate the exact emitted supply after the given block, in µMinotari. The value is calculated by summing up
     /// the block reward for each block, making this a very inefficient function if you wanted to call it from a
     /// loop for example. For those cases, use the `iter` function instead.
-    fn supply_at_block(&self, height: u64) -> MicroMinoTari {
+    fn supply_at_block(&self, height: u64) -> MicroMinotari {
         let iterator = self.inner_schedule(height);
         iterator.supply()
     }
@@ -282,23 +282,23 @@ impl Emission for EmissionSchedule {
 mod test {
     use crate::{
         consensus::emission::{Emission, EmissionSchedule},
-        transactions::tari_amount::{uT, MicroMinoTari, T},
+        transactions::tari_amount::{uT, MicroMinotari, T},
     };
 
     #[test]
     fn schedule() {
         let schedule = EmissionSchedule::new(
-            MicroMinoTari::from(10_000_100),
+            MicroMinotari::from(10_000_100),
             &[22, 23, 24, 26, 27],
-            MicroMinoTari::from(100),
+            MicroMinotari::from(100),
         );
-        assert_eq!(schedule.block_reward(0), MicroMinoTari::from(0));
-        assert_eq!(schedule.supply_at_block(0), MicroMinoTari::from(0));
-        assert_eq!(schedule.block_reward(1), MicroMinoTari::from(10_000_100));
-        assert_eq!(schedule.supply_at_block(1), MicroMinoTari::from(10_000_100));
+        assert_eq!(schedule.block_reward(0), MicroMinotari::from(0));
+        assert_eq!(schedule.supply_at_block(0), MicroMinotari::from(0));
+        assert_eq!(schedule.block_reward(1), MicroMinotari::from(10_000_100));
+        assert_eq!(schedule.supply_at_block(1), MicroMinotari::from(10_000_100));
         // These values have been independently calculated
-        assert_eq!(schedule.block_reward(100 + 1), MicroMinoTari::from(9_999_800));
-        assert_eq!(schedule.supply_at_block(100 + 1), MicroMinoTari::from(1_009_994_950));
+        assert_eq!(schedule.block_reward(100 + 1), MicroMinotari::from(9_999_800));
+        assert_eq!(schedule.supply_at_block(100 + 1), MicroMinotari::from(1_009_994_950));
     }
 
     #[test]
@@ -306,47 +306,47 @@ mod test {
         // let mut n = (std::i32::MAX - 1) as u64;
         let height = 262_800_000; // 1000 years' problem
         let schedule = EmissionSchedule::new(
-            MicroMinoTari::from(10000000u64),
+            MicroMinotari::from(10000000u64),
             &[22, 23, 24, 26, 27],
-            MicroMinoTari::from(100),
+            MicroMinotari::from(100),
         );
         // Slow but does not overflow
-        assert_eq!(schedule.block_reward(height + 1), MicroMinoTari::from(4_194_303));
+        assert_eq!(schedule.block_reward(height + 1), MicroMinotari::from(4_194_303));
     }
 
     #[test]
     fn generate_emission_schedule_as_iterator() {
         const INITIAL: u64 = 10_000_100;
         let schedule = EmissionSchedule::new(
-            MicroMinoTari::from(INITIAL),
+            MicroMinotari::from(INITIAL),
             &[2], // 0.25 decay
-            MicroMinoTari::from(100),
+            MicroMinotari::from(100),
         );
-        assert_eq!(schedule.block_reward(0), MicroMinoTari(0));
-        assert_eq!(schedule.supply_at_block(0), MicroMinoTari(0));
+        assert_eq!(schedule.block_reward(0), MicroMinotari(0));
+        assert_eq!(schedule.supply_at_block(0), MicroMinotari(0));
         let values = schedule.iter().take(101).collect::<Vec<_>>();
         let (height, reward, supply) = values[0];
         assert_eq!(height, 1);
-        assert_eq!(reward, MicroMinoTari::from(INITIAL));
-        assert_eq!(supply, MicroMinoTari::from(INITIAL));
+        assert_eq!(reward, MicroMinotari::from(INITIAL));
+        assert_eq!(supply, MicroMinotari::from(INITIAL));
         let (height, reward, supply) = values[1];
         assert_eq!(height, 2);
-        assert_eq!(reward, MicroMinoTari::from(7_500_075));
-        assert_eq!(supply, MicroMinoTari::from(17_500_175));
+        assert_eq!(reward, MicroMinotari::from(7_500_075));
+        assert_eq!(supply, MicroMinotari::from(17_500_175));
         let (height, reward, supply) = values[2];
         assert_eq!(height, 3);
-        assert_eq!(reward, MicroMinoTari::from(5_625_057));
-        assert_eq!(supply, MicroMinoTari::from(23_125_232));
+        assert_eq!(reward, MicroMinotari::from(5_625_057));
+        assert_eq!(supply, MicroMinotari::from(23_125_232));
         let (height, reward, supply) = values[10];
         assert_eq!(height, 11);
-        assert_eq!(reward, MicroMinoTari::from(563_142));
-        assert_eq!(supply, MicroMinoTari::from(38_310_986));
+        assert_eq!(reward, MicroMinotari::from(563_142));
+        assert_eq!(supply, MicroMinotari::from(38_310_986));
         let (height, reward, supply) = values[41];
         assert_eq!(height, 42);
-        assert_eq!(reward, MicroMinoTari::from(100));
-        assert_eq!(supply, MicroMinoTari::from(40_000_252));
+        assert_eq!(reward, MicroMinotari::from(100));
+        assert_eq!(supply, MicroMinotari::from(40_000_252));
 
-        let mut tot_supply = MicroMinoTari::from(0);
+        let mut tot_supply = MicroMinotari::from(0);
         for (_, reward, supply) in schedule.iter().take(1000) {
             tot_supply += reward;
             assert_eq!(tot_supply, supply);
@@ -360,8 +360,8 @@ mod test {
         let mut emission = emission.iter();
         // decay is 1 - 0.25 - 0.125 = 0.625
         assert_eq!(emission.block_height(), 0);
-        assert_eq!(emission.block_reward(), MicroMinoTari(0));
-        assert_eq!(emission.supply(), MicroMinoTari(0));
+        assert_eq!(emission.block_reward(), MicroMinotari(0));
+        assert_eq!(emission.supply(), MicroMinotari(0));
 
         assert_eq!(emission.next(), Some((1, 1_000_000 * uT, 1_000_000 * uT)));
         assert_eq!(emission.next(), Some((2, 250_000 * uT, 1_250_000 * uT)));

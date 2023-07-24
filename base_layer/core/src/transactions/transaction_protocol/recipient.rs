@@ -216,9 +216,9 @@ mod test {
         let key_manager = create_test_core_key_manager_with_memory_db();
         let factories = CryptoFactories::default();
         let sender_test_params = TestParams::new(&key_manager).await;
-        let m = TransactionMetadata::new(MicroMinoTari(125), 0);
+        let m = TransactionMetadata::new(MicroMinotari(125), 0);
         let script = TariScript::default();
-        let amount = MicroMinoTari(500);
+        let amount = MicroMinotari(500);
         let features = OutputFeatures::default();
         let msg = SingleRoundSenderData {
             tx_id: 15u64.into(),
@@ -232,7 +232,7 @@ mod test {
             sender_offset_public_key: sender_test_params.sender_offset_key_pk,
             ephemeral_public_nonce: sender_test_params.ephemeral_public_nonce_key_pk,
             covenant: Covenant::default(),
-            minimum_value_promise: MicroMinoTari::zero(),
+            minimum_value_promise: MicroMinotari::zero(),
             output_version: TransactionOutputVersion::get_current_version(),
             kernel_version: TransactionKernelVersion::get_current_version(),
         };

@@ -37,7 +37,7 @@ use crate::{
     consensus::ConsensusManager,
     transactions::{
         key_manager::TransactionKeyManagerInterface,
-        tari_amount::{uT, MicroMinoTari, T},
+        tari_amount::{uT, MicroMinotari, T},
         test_helpers,
         test_helpers::{
             create_test_core_key_manager_with_memory_db,
@@ -330,7 +330,7 @@ fn check_timelocks() {
         EncryptedData::default(),
         Default::default(),
         Default::default(),
-        MicroMinoTari::zero(),
+        MicroMinotari::zero(),
     );
 
     let mut kernel = test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::empty());
@@ -498,7 +498,7 @@ async fn inputs_not_malleable() {
 async fn test_output_recover_openings() {
     let key_manager = create_test_core_key_manager_with_memory_db();
     let test_params = TestParams::new(&key_manager).await;
-    let v = MicroMinoTari::from(42);
+    let v = MicroMinotari::from(42);
 
     let wallet_output = test_params
         .create_output(

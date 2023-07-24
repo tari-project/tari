@@ -1,6 +1,6 @@
-# MinoTari Console Wallet
+# Minotari Console Wallet
 
-The MinoTari Console Wallet is a terminal based wallet for sending and receiving MinoTari. It can be run in a few different modes.
+The Minotari Console Wallet is a terminal based wallet for sending and receiving Minotari. It can be run in a few different modes.
 
 ## Terminal UI (TUI) mode
 
@@ -49,7 +49,7 @@ Done! All transactions monitored to Broadcast stage.
 
 - **send-one-sided**
 
-Send an amount of MinoTari to a public key or emoji id in a one-sided transaction.
+Send an amount of Minotari to a public key or emoji id in a one-sided transaction.
 
 `minotari_console_wallet --command send-one-sided <amount> <pubkey> <optional message>"`
 

@@ -60,7 +60,7 @@ use tari_comms::{
 };
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::transactions::{
-    tari_amount::{uT, MicroMinoTari, MinoTari},
+    tari_amount::{uT, MicroMinotari, Minotari},
     transaction_components::{OutputFeatures, TransactionOutput, WalletOutput},
 };
 use tari_crypto::ristretto::RistrettoSecretKey;
@@ -111,7 +111,7 @@ pub struct SentTransaction {}
 pub async fn send_tari(
     mut wallet_transaction_service: TransactionServiceHandle,
     fee_per_gram: u64,
-    amount: MicroMinoTari,
+    amount: MicroMinotari,
     destination: TariAddress,
     message: String,
 ) -> Result<TxId, CommandError> {
@@ -131,7 +131,7 @@ pub async fn send_tari(
 pub async fn burn_tari(
     mut wallet_transaction_service: TransactionServiceHandle,
     fee_per_gram: u64,
-    amount: MicroMinoTari,
+    amount: MicroMinotari,
     message: String,
 ) -> Result<(TxId, BurntProof), CommandError> {
     wallet_transaction_service
@@ -150,7 +150,7 @@ pub async fn burn_tari(
 pub async fn init_sha_atomic_swap(
     mut wallet_transaction_service: TransactionServiceHandle,
     fee_per_gram: u64,
-    amount: MicroMinoTari,
+    amount: MicroMinotari,
     selection_criteria: UtxoSelectionCriteria,
     dest_address: TariAddress,
     message: String,
@@ -168,7 +168,7 @@ pub async fn finalise_sha_atomic_swap(
     mut transaction_service: TransactionServiceHandle,
     output_hash: FixedHash,
     pre_image: PublicKey,
-    fee_per_gram: MicroMinoTari,
+    fee_per_gram: MicroMinotari,
     message: String,
 ) -> Result<TxId, CommandError> {
     let (tx_id, _fee, amount, tx) = output_service
@@ -185,7 +185,7 @@ pub async fn claim_htlc_refund(
     mut output_service: OutputManagerHandle,
     mut transaction_service: TransactionServiceHandle,
     output_hash: FixedHash,
-    fee_per_gram: MicroMinoTari,
+    fee_per_gram: MicroMinotari,
     message: String,
 ) -> Result<TxId, CommandError> {
     let (tx_id, _fee, amount, tx) = output_service
@@ -198,12 +198,12 @@ pub async fn claim_htlc_refund(
 }
 
 pub async fn register_validator_node(
-    amount: MicroMinoTari,
+    amount: MicroMinotari,
     mut wallet_transaction_service: TransactionServiceHandle,
     validator_node_public_key: PublicKey,
     validator_node_signature: Signature,
     selection_criteria: UtxoSelectionCriteria,
-    fee_per_gram: MicroMinoTari,
+    fee_per_gram: MicroMinotari,
     message: String,
 ) -> Result<TxId, CommandError> {
     wallet_transaction_service
@@ -223,7 +223,7 @@ pub async fn register_validator_node(
 pub async fn send_one_sided(
     mut wallet_transaction_service: TransactionServiceHandle,
     fee_per_gram: u64,
-    amount: MicroMinoTari,
+    amount: MicroMinotari,
     selection_criteria: UtxoSelectionCriteria,
     dest_address: TariAddress,
     message: String,
@@ -244,7 +244,7 @@ pub async fn send_one_sided(
 pub async fn send_one_sided_to_stealth_address(
     mut wallet_transaction_service: TransactionServiceHandle,
     fee_per_gram: u64,
-    amount: MicroMinoTari,
+    amount: MicroMinotari,
     selection_criteria: UtxoSelectionCriteria,
     dest_address: TariAddress,
     message: String,
@@ -263,9 +263,9 @@ pub async fn send_one_sided_to_stealth_address(
 }
 
 pub async fn coin_split(
-    amount_per_split: MicroMinoTari,
+    amount_per_split: MicroMinotari,
     num_splits: usize,
-    fee_per_gram: MicroMinoTari,
+    fee_per_gram: MicroMinotari,
     message: String,
     output_service: &mut OutputManagerHandle,
     transaction_service: &mut TransactionServiceHandle,
@@ -346,8 +346,8 @@ pub async fn make_it_rain(
     fee_per_gram: u64,
     transactions_per_second: u32,
     duration: Duration,
-    start_amount: MicroMinoTari,
-    increase_amount: MicroMinoTari,
+    start_amount: MicroMinotari,
+    increase_amount: MicroMinotari,
     start_time: DateTime<Utc>,
     destination: TariAddress,
     transaction_type: MakeItRainTransactionType,
@@ -665,7 +665,7 @@ pub async fn command_runner(
                 {
                     Ok((tx_id, proof)) => {
                         debug!(target: LOG_TARGET, "burn minotari concluded with tx_id {}", tx_id);
-                        println!("Burnt {} MinoTari in tx_id: {}", args.amount, tx_id);
+                        println!("Burnt {} Minotari in tx_id: {}", args.amount, tx_id);
                         println!("The following can be used to claim the burnt funds:");
                         println!();
                         println!("claim_public_key: {}", proof.reciprocal_claim_public_key);
@@ -674,7 +674,7 @@ pub async fn command_runner(
                         println!("ownership_proof: {:?}", proof.range_proof);
                         tx_ids.push(tx_id);
                     },
-                    Err(e) => eprintln!("BurnMinoTari error! {}", e),
+                    Err(e) => eprintln!("BurnMinotari error! {}", e),
                 }
             },
             SendMinotari(args) => {
@@ -691,7 +691,7 @@ pub async fn command_runner(
                         debug!(target: LOG_TARGET, "send-minotari concluded with tx_id {}", tx_id);
                         tx_ids.push(tx_id);
                     },
-                    Err(e) => eprintln!("SendMinoTari error! {}", e),
+                    Err(e) => eprintln!("SendMinotari error! {}", e),
                 }
             },
             SendOneSided(args) => {
@@ -783,7 +783,7 @@ pub async fn command_runner(
                     let utxos: Vec<(WalletOutput, Commitment)> =
                         utxos.into_iter().map(|v| (v.wallet_output, v.commitment)).collect();
                     let count = utxos.len();
-                    let sum: MicroMinoTari = utxos.iter().map(|utxo| utxo.0.value).sum();
+                    let sum: MicroMinotari = utxos.iter().map(|utxo| utxo.0.value).sum();
                     if let Some(file) = args.output_file {
                         if let Err(e) = write_utxos_to_csv_file(utxos, file) {
                             eprintln!("ExportUtxos error! {}", e);
@@ -803,7 +803,7 @@ pub async fn command_runner(
                     let utxos: Vec<(WalletOutput, Commitment)> =
                         utxos.into_iter().map(|v| (v.wallet_output, v.commitment)).collect();
                     let count = utxos.len();
-                    let sum: MicroMinoTari = utxos.iter().map(|utxo| utxo.0.value).sum();
+                    let sum: MicroMinotari = utxos.iter().map(|utxo| utxo.0.value).sum();
                     if let Some(file) = args.output_file {
                         if let Err(e) = write_utxos_to_csv_file(utxos, file) {
                             eprintln!("ExportSpentUtxos error! {}", e);
@@ -822,8 +822,8 @@ pub async fn command_runner(
                 Ok(utxos) => {
                     let utxos: Vec<WalletOutput> = utxos.into_iter().map(|v| v.wallet_output).collect();
                     let count = utxos.len();
-                    let values: Vec<MicroMinoTari> = utxos.iter().map(|utxo| utxo.value).collect();
-                    let sum: MicroMinoTari = values.iter().sum();
+                    let values: Vec<MicroMinotari> = utxos.iter().map(|utxo| utxo.value).collect();
+                    let sum: MicroMinotari = values.iter().sum();
                     println!("Total number of UTXOs: {}", count);
                     println!("Total value of UTXOs : {}", sum);
                     if let Some(min) = values.iter().min() {
@@ -831,7 +831,7 @@ pub async fn command_runner(
                     }
                     if count > 0 {
                         let average_val = sum.as_u64().div_euclid(count as u64);
-                        let average = MinoTari::from(MicroMinoTari(average_val));
+                        let average = Minotari::from(MicroMinotari(average_val));
                         println!("Average value UTXO   : {}", average);
                     }
                     if let Some(max) = values.iter().max() {

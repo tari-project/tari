@@ -27,7 +27,7 @@ use tari_common_types::types::PrivateKey;
 
 use crate::transactions::{
     aggregated_body::AggregateBody,
-    tari_amount::MicroMinoTari,
+    tari_amount::MicroMinotari,
     transaction_components::{Transaction, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
 };
 
@@ -36,7 +36,7 @@ pub struct TransactionBuilder {
     body: AggregateBody,
     offset: Option<PrivateKey>,
     script_offset: Option<PrivateKey>,
-    reward: Option<MicroMinoTari>,
+    reward: Option<MicroMinotari>,
 }
 
 impl TransactionBuilder {
@@ -87,7 +87,7 @@ impl TransactionBuilder {
         self
     }
 
-    pub fn with_reward(&mut self, reward: MicroMinoTari) -> &mut Self {
+    pub fn with_reward(&mut self, reward: MicroMinotari) -> &mut Self {
         self.reward = Some(reward);
         self
     }

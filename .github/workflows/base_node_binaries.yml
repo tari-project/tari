@@ -227,7 +227,7 @@ jobs:
         run: |
           mkdir -p "$GITHUB_WORKSPACE${TBN_DIST}"
           cd "$GITHUB_WORKSPACE${TBN_DIST}"
-          VERSION=$(awk -F ' = ' '$1 ~ /version/ { gsub(/["]/, "", $2); printf("%s",$2) }' "$GITHUB_WORKSPACE/applications/minotari_base_node/Cargo.toml")
+          VERSION=$(awk -F ' = ' '$1 ~ /version/ { gsub(/["]/, "", $2); printf("%s",$2) }' "$GITHUB_WORKSPACE/applications/minotari_node/Cargo.toml")
           echo "Branch: ${VBRANCH}"
           echo "Sha: ${VSHA_SHORT}"
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
@@ -237,7 +237,7 @@ jobs:
           echo "Copying files for ${BINFILE} to $(pwd)"
           ls -la "$GITHUB_WORKSPACE/target/${{ matrix.builds.target }}/release/"
           FILES=(
-            "minotari_base_node"
+            "minotari_node"
             "minotari_console_wallet"
             "minotari_miner"
             "minotari_merge_mining_proxy"
@@ -247,8 +247,8 @@ jobs:
               cp -v "$GITHUB_WORKSPACE/target/${{ matrix.builds.target }}/release/${FILE}${TBN_EXT}" .
             fi
           done
-          if [ -f "$GITHUB_WORKSPACE/applications/minotari_base_node/${PLATFORM_SPECIFIC_DIR}/runtime/start_tor${SHELL_EXT}" ]; then
-            cp -v "$GITHUB_WORKSPACE/applications/minotari_base_node/${PLATFORM_SPECIFIC_DIR}/runtime/start_tor${SHELL_EXT}" .
+          if [ -f "$GITHUB_WORKSPACE/applications/minotari_node/${PLATFORM_SPECIFIC_DIR}/runtime/start_tor${SHELL_EXT}" ]; then
+            cp -v "$GITHUB_WORKSPACE/applications/minotari_node/${PLATFORM_SPECIFIC_DIR}/runtime/start_tor${SHELL_EXT}" .
           fi
 
       - name: Build the macOS pkg
@@ -278,7 +278,7 @@ jobs:
           export target_release="target/${{ matrix.builds.target }}/release"
           ./create_osx_install_zip.sh unused nozip
           FILES=(
-            "minotari_base_node"
+            "minotari_node"
             "minotari_console_wallet"
             "minotari_miner"
             "minotari_merge_mining_proxy"

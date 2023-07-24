@@ -45,7 +45,7 @@ mod test {
         types::Contact,
     };
     use tari_core::transactions::{
-        tari_amount::{uT, MicroMinoTari},
+        tari_amount::{uT, MicroMinotari},
         transaction_components::Transaction,
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
@@ -308,8 +308,8 @@ mod test {
             2u64.into(),
             source_address,
             destination_address,
-            MicroMinoTari::from(100),
-            MicroMinoTari::from(2000),
+            MicroMinotari::from(100),
+            MicroMinotari::from(2000),
             Transaction::new(
                 Vec::new(),
                 Vec::new(),
@@ -376,8 +376,8 @@ mod test {
             6u64.into(),
             source_address,
             destination_address,
-            MicroMinoTari::from(100),
-            MicroMinoTari::from(2000),
+            MicroMinotari::from(100),
+            MicroMinotari::from(2000),
             Transaction::new(
                 Vec::new(),
                 Vec::new(),
@@ -408,8 +408,8 @@ mod test {
             7u64.into(),
             source_address,
             destination_address,
-            MicroMinoTari::from(100),
-            MicroMinoTari::from(2000),
+            MicroMinotari::from(100),
+            MicroMinotari::from(2000),
             Transaction::new(
                 Vec::new(),
                 Vec::new(),

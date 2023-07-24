@@ -20,10 +20,10 @@
 # automatically configured (default = )
 #public_address =
 
-# The MinoTari base node's GRPC address. (default = "127.0.0.1/<port>" the <port> value is based on network)
+# The Minotari base node's GRPC address. (default = "127.0.0.1/<port>" the <port> value is based on network)
 #base_node_grpc_address = "127.0.0.1/tcp/18142"
 
-# The MinoTari console wallet's GRPC address. (default = "127.0.0.1/<port>" the <port> value is based on network)
+# The Minotari console wallet's GRPC address. (default = "127.0.0.1/<port>" the <port> value is based on network)
 #wallet_grpc_address = "127.0.0.1/tcp/18143"
 
 # How often do we want to scan the base layer for changes. (default = 10)

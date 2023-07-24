@@ -26,14 +26,14 @@
 use tari_common_types::types::{Commitment, Signature};
 
 use crate::transactions::{
-    tari_amount::MicroMinoTari,
+    tari_amount::MicroMinotari,
     transaction_components::{KernelFeatures, TransactionError, TransactionKernel},
 };
 
 /// A version of Transaction kernel with optional fields. This struct is only used in constructing transaction kernels
 pub struct KernelBuilder {
     features: KernelFeatures,
-    fee: MicroMinoTari,
+    fee: MicroMinotari,
     lock_height: u64,
     excess: Option<Commitment>,
     excess_sig: Option<Signature>,
@@ -54,7 +54,7 @@ impl KernelBuilder {
     }
 
     /// Build a transaction kernel with the provided fee
-    pub fn with_fee(mut self, fee: MicroMinoTari) -> KernelBuilder {
+    pub fn with_fee(mut self, fee: MicroMinotari) -> KernelBuilder {
         self.fee = fee;
         self
     }
@@ -102,7 +102,7 @@ impl Default for KernelBuilder {
     fn default() -> Self {
         KernelBuilder {
             features: KernelFeatures::empty(),
-            fee: MicroMinoTari::from(0),
+            fee: MicroMinotari::from(0),
             lock_height: 0,
             excess: None,
             excess_sig: None,

@@ -25,7 +25,7 @@ members = [
     "infrastructure/tari_script",
     "infrastructure/test_utils",
     "buildtools/deps_only",
-    "applications/minotari_base_node",
+    "applications/minotari_node",
     "applications/minotari_console_wallet",
     "applications/minotari_app_utilities",
     "applications/minotari_merge_mining_proxy",

@@ -54,7 +54,7 @@ use tari_core::{
     proto::base_node as base_node_proto,
     transactions::{
         key_manager::TransactionKeyManagerInterface,
-        tari_amount::MicroMinoTari,
+        tari_amount::MicroMinotari,
         transaction_components::{
             CodeTemplateRegistration,
             KernelFeatures,
@@ -954,10 +954,10 @@ where
     pub async fn send_transaction(
         &mut self,
         destination: TariAddress,
-        amount: MicroMinoTari,
+        amount: MicroMinotari,
         selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
-        fee_per_gram: MicroMinoTari,
+        fee_per_gram: MicroMinotari,
         message: String,
         tx_meta: TransactionMetadata,
         join_handles: &mut FuturesUnordered<
@@ -1061,9 +1061,9 @@ where
     pub async fn send_sha_atomic_swap_transaction(
         &mut self,
         destination: TariAddress,
-        amount: MicroMinoTari,
+        amount: MicroMinotari,
         selection_criteria: UtxoSelectionCriteria,
-        fee_per_gram: MicroMinoTari,
+        fee_per_gram: MicroMinotari,
         message: String,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
@@ -1092,7 +1092,7 @@ where
         let covenant = Covenant::default();
 
         // Default range proof
-        let minimum_value_promise = MicroMinoTari::zero();
+        let minimum_value_promise = MicroMinotari::zero();
 
         // Prepare sender part of the transaction
         let mut stp = self
@@ -1168,7 +1168,7 @@ where
             .import_key(spending_key)
             .await?;
 
-        let minimum_value_promise = MicroMinoTari::zero();
+        let minimum_value_promise = MicroMinotari::zero();
         let output = WalletOutputBuilder::new(amount, spending_key_id)
             .with_features(
                 sender_message
@@ -1277,10 +1277,10 @@ where
     async fn send_one_sided_or_stealth(
         &mut self,
         dest_address: TariAddress,
-        amount: MicroMinoTari,
+        amount: MicroMinotari,
         selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
-        fee_per_gram: MicroMinoTari,
+        fee_per_gram: MicroMinotari,
         message: String,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
@@ -1303,7 +1303,7 @@ where
                 message.clone(),
                 script.clone(),
                 Covenant::default(),
-                MicroMinoTari::zero(),
+                MicroMinotari::zero(),
             )
             .await?;
 
@@ -1364,7 +1364,7 @@ where
             .get_public_key_at_key_id(&sender_offset_private_key)
             .await?;
 
-        let minimum_value_promise = MicroMinoTari::zero();
+        let minimum_value_promise = MicroMinotari::zero();
         let output = WalletOutputBuilder::new(amount, spending_key_id)
             .with_features(
                 sender_message
@@ -1466,10 +1466,10 @@ where
     pub async fn send_one_sided_transaction(
         &mut self,
         destination: TariAddress,
-        amount: MicroMinoTari,
+        amount: MicroMinotari,
         selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
-        fee_per_gram: MicroMinoTari,
+        fee_per_gram: MicroMinotari,
         message: String,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
@@ -1498,7 +1498,7 @@ where
         .await
     }
 
-    /// Creates a transaction to burn some MinoTari. The optional _claim public key_ parameter is used in the challenge
+    /// Creates a transaction to burn some Minotari. The optional _claim public key_ parameter is used in the challenge
     /// of the
     // corresponding optional _ownership proof_ return value. Burn commitments and ownership proofs will exclusively be
     // used in the 2nd layer (DAN layer). When such an _ownership proof_ is presented later on as part of some
@@ -1507,9 +1507,9 @@ where
     #[allow(clippy::too_many_lines)]
     pub async fn burn_tari(
         &mut self,
-        amount: MicroMinoTari,
+        amount: MicroMinotari,
         selection_criteria: UtxoSelectionCriteria,
-        fee_per_gram: MicroMinoTari,
+        fee_per_gram: MicroMinotari,
         message: String,
         claim_public_key: Option<PublicKey>,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
@@ -1538,7 +1538,7 @@ where
                 message.clone(),
                 TariScript::default(),
                 Covenant::default(),
-                MicroMinoTari::zero(),
+                MicroMinotari::zero(),
             )
             .await?;
 
@@ -1728,11 +1728,11 @@ where
 
     pub async fn register_validator_node(
         &mut self,
-        amount: MicroMinoTari,
+        amount: MicroMinotari,
         validator_node_public_key: CommsPublicKey,
         validator_node_signature: Signature,
         selection_criteria: UtxoSelectionCriteria,
-        fee_per_gram: MicroMinoTari,
+        fee_per_gram: MicroMinotari,
         message: String,
         join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
@@ -1761,7 +1761,7 @@ where
 
     pub async fn register_code_template(
         &mut self,
-        fee_per_gram: MicroMinoTari,
+        fee_per_gram: MicroMinotari,
         template_registration: CodeTemplateRegistration,
         selection_criteria: UtxoSelectionCriteria,
         message: String,
@@ -1796,10 +1796,10 @@ where
     pub async fn send_one_sided_to_stealth_address_transaction(
         &mut self,
         destination: TariAddress,
-        amount: MicroMinoTari,
+        amount: MicroMinotari,
         selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
-        fee_per_gram: MicroMinoTari,
+        fee_per_gram: MicroMinotari,
         message: String,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
@@ -2767,7 +2767,7 @@ where
     /// Add a completed transaction to the Transaction Manager to record directly importing a spendable UTXO.
     pub async fn add_utxo_import_transaction_with_status(
         &mut self,
-        value: MicroMinoTari,
+        value: MicroMinotari,
         source_address: TariAddress,
         message: String,
         maturity: Option<u64>,
@@ -2851,8 +2851,8 @@ where
         >,
         tx_id: TxId,
         tx: Transaction,
-        fee: MicroMinoTari,
-        amount: MicroMinoTari,
+        fee: MicroMinotari,
+        amount: MicroMinotari,
         message: String,
     ) -> Result<(), TransactionServiceError> {
         self.submit_transaction(
@@ -2878,8 +2878,8 @@ where
 
     async fn generate_coinbase_transaction(
         &mut self,
-        reward: MicroMinoTari,
-        fees: MicroMinoTari,
+        reward: MicroMinotari,
+        fees: MicroMinotari,
         block_height: u64,
         extra: Vec<u8>,
     ) -> Result<Transaction, TransactionServiceError> {
@@ -2913,7 +2913,7 @@ where
                     self.resources.wallet_identity.address.clone(),
                     self.resources.wallet_identity.address.clone(),
                     amount,
-                    MicroMinoTari::from(0),
+                    MicroMinotari::from(0),
                     tx.clone(),
                     TransactionStatus::Coinbase,
                     format!("Coinbase Transaction for Block #{}", block_height),

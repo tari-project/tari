@@ -25,7 +25,7 @@ use tari_core::{
     covenants::Covenant,
     transactions::{
         key_manager::TransactionKeyManagerInterface,
-        tari_amount::MicroMinoTari,
+        tari_amount::MicroMinotari,
         test_helpers::{create_wallet_output_with_data, TestKeyManager, TestParams},
         transaction_components::{
             OutputFeatures,
@@ -42,7 +42,7 @@ use tari_script::{inputs, script};
 
 pub async fn make_input<R: Rng + CryptoRng>(
     _rng: &mut R,
-    val: MicroMinoTari,
+    val: MicroMinotari,
     features: &OutputFeatures,
     key_manager: &TestKeyManager,
 ) -> WalletOutput {
@@ -79,7 +79,7 @@ pub async fn create_wallet_output_from_sender_data(
         0,
         Covenant::default(),
         encrypted_data,
-        MicroMinoTari::zero(),
+        MicroMinotari::zero(),
         key_manager,
     )
     .await
@@ -102,7 +102,7 @@ pub async fn create_wallet_output_from_sender_data(
 
 pub async fn make_input_with_features<R: Rng + CryptoRng>(
     _rng: &mut R,
-    value: MicroMinoTari,
+    value: MicroMinotari,
     features: OutputFeatures,
     key_manager: &TestKeyManager,
 ) -> WalletOutput {

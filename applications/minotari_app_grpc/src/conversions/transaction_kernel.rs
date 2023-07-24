@@ -24,7 +24,7 @@ use std::convert::{TryFrom, TryInto};
 
 use tari_common_types::types::Commitment;
 use tari_core::transactions::{
-    tari_amount::MicroMinoTari,
+    tari_amount::MicroMinotari,
     transaction_components::{KernelFeatures, TransactionKernel, TransactionKernelVersion},
 };
 use tari_utilities::ByteArray;
@@ -60,7 +60,7 @@ impl TryFrom<grpc::TransactionKernel> for TransactionKernel {
             )?,
             KernelFeatures::from_bits(kernel_features)
                 .ok_or_else(|| "Invalid or unrecognised kernel feature flag".to_string())?,
-            MicroMinoTari::from(kernel.fee),
+            MicroMinotari::from(kernel.fee),
             kernel.lock_height,
             excess,
             excess_sig,

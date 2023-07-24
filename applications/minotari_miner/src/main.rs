@@ -47,7 +47,7 @@ mod utils;
 /// Application entry point
 fn main() {
     let rt = Runtime::new().expect("Failed to start tokio runtime");
-    let terminal_title = format!("MinoTari Miner - Version {}", consts::APP_VERSION);
+    let terminal_title = format!("Minotari Miner - Version {}", consts::APP_VERSION);
     if let Err(e) = execute!(stdout(), SetTitle(terminal_title.as_str())) {
         println!("Error setting terminal title. {}", e)
     }

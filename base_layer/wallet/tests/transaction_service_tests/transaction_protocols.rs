@@ -78,7 +78,7 @@ use tari_core::{
         types::Signature as SignatureProto,
     },
     transactions::{
-        tari_amount::{uT, MicroMinoTari, T},
+        tari_amount::{uT, MicroMinotari, T},
         test_helpers::{create_test_core_key_manager_with_memory_db, schema_to_transaction, TestKeyManager},
         transaction_components::OutputFeatures,
         CryptoFactories,
@@ -190,7 +190,7 @@ pub async fn setup() -> (
 
 pub async fn add_transaction_to_database(
     tx_id: TxId,
-    amount: MicroMinoTari,
+    amount: MicroMinotari,
     status: Option<TransactionStatus>,
     coinbase_block_height: Option<u64>,
     db: TransactionDatabase<TransactionServiceSqliteDatabase>,

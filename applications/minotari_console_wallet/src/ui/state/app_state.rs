@@ -57,7 +57,7 @@ use tari_comms::{
 };
 use tari_contacts::contacts_service::{handle::ContactsLivenessEvent, types::Contact};
 use tari_core::transactions::{
-    tari_amount::{uT, MicroMinoTari},
+    tari_amount::{uT, MicroMinotari},
     transaction_components::{OutputFeatures, TemplateType},
     weight::TransactionWeight,
 };
@@ -312,7 +312,7 @@ impl AppState {
         let tx_service_handle = inner.wallet.transaction_service.clone();
         tokio::spawn(send_transaction_task(
             address,
-            MicroMinoTari::from(amount),
+            MicroMinotari::from(amount),
             selection_criteria,
             output_features,
             message,
@@ -345,7 +345,7 @@ impl AppState {
         let tx_service_handle = inner.wallet.transaction_service.clone();
         tokio::spawn(send_one_sided_transaction_task(
             address,
-            MicroMinoTari::from(amount),
+            MicroMinotari::from(amount),
             selection_criteria,
             output_features,
             message,
@@ -379,7 +379,7 @@ impl AppState {
         let tx_service_handle = inner.wallet.transaction_service.clone();
         tokio::spawn(send_one_sided_to_stealth_address_transaction(
             address,
-            MicroMinoTari::from(amount),
+            MicroMinotari::from(amount),
             selection_criteria,
             output_features,
             message,
@@ -429,7 +429,7 @@ impl AppState {
         send_burn_transaction_task(
             burn_proof_filepath,
             claim_public_key,
-            MicroMinoTari::from(amount),
+            MicroMinotari::from(amount),
             selection_criteria,
             message,
             fee_per_gram,
@@ -451,7 +451,7 @@ impl AppState {
         binary_sha: String,
         repository_url: String,
         repository_commit_hash: String,
-        fee_per_gram: MicroMinoTari,
+        fee_per_gram: MicroMinotari,
         selection_criteria: UtxoSelectionCriteria,
         result_tx: watch::Sender<UiTransactionSendStatus>,
     ) -> Result<(), UiError> {
@@ -685,7 +685,7 @@ impl AppState {
         inner.clear_notifications();
     }
 
-    pub fn get_default_fee_per_gram(&self) -> MicroMinoTari {
+    pub fn get_default_fee_per_gram(&self) -> MicroMinotari {
         self.wallet_config.fee_per_gram.into()
     }
 
@@ -956,7 +956,7 @@ impl AppStateInner {
 
     pub fn has_time_locked_balance(&self) -> bool {
         if let Some(time_locked_balance) = self.data.balance.time_locked_balance {
-            if time_locked_balance > MicroMinoTari::from(0) {
+            if time_locked_balance > MicroMinotari::from(0) {
                 return true;
             }
         }
@@ -1155,8 +1155,8 @@ pub struct CompletedTransactionInfo {
     pub tx_id: TxId,
     pub source_address: TariAddress,
     pub destination_address: TariAddress,
-    pub amount: MicroMinoTari,
-    pub fee: MicroMinoTari,
+    pub amount: MicroMinotari,
+    pub fee: MicroMinotari,
     pub excess_signature: String,
     pub maturity: u64,
     pub status: TransactionStatus,

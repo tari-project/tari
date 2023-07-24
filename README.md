@@ -4,11 +4,11 @@
 
 A number of applications have been developed by the Tari community to implement the Tari protocol. These are:
 
-- MinoTari Base Node
-- MinoTari Wallet
-- MinoTari Miner
-- MinoTari Merge Mining Proxy
-- MinoTari Aurora wallets for Android and iOS
+- Minotari Base Node
+- Minotari Wallet
+- Minotari Miner
+- Minotari Merge Mining Proxy
+- Minotari Aurora wallets for Android and iOS
 
 Only the first four applications will be discussed in this README (see [wallet-android](https://github.com/tari-project/wallet-android) and [wallet-ios](https://github.com/tari-project/wallet-ios) for mobile wallets' repos).
 
@@ -73,14 +73,14 @@ Execute the `start_all` soft link/shortcut; this will start everything you need
 depending on the choices you make when prompted:
 
 - Tor services started by default
-- MinoTari Base Node, or
-- MinoTari Base Node & MinoTari Wallet, or
-- MinoTari Base Node & MinoTari Wallet & MinoTari Miner, or
-- MinoTari Base Node & MinoTari Wallet & MinoTari Merge Mining Proxy & XMRig
+- Minotari Base Node, or
+- Minotari Base Node & Minotari Wallet, or
+- Minotari Base Node & Minotari Wallet & Minotari Miner, or
+- Minotari Base Node & Minotari Wallet & Minotari Merge Mining Proxy & XMRig
 
 #### Start all applications individually
 
-- Execute the `start_minotari_base_node` soft link/shortcut; this will also start the Tor
+- Execute the `start_minotari_node` soft link/shortcut; this will also start the Tor
   services if not running already that needs to be running before the base node
   can run (do not close the Tor console).
 
@@ -101,7 +101,7 @@ depending on the choices you make when prompted:
 
 ## Building from source
 
-To build the MinoTari codebase from source, there are a few dependencies you need to have installed.
+To build the Minotari codebase from source, there are a few dependencies you need to have installed.
 
 ### Install development packages
 
@@ -221,13 +221,13 @@ A successful build should output something as follows
    Compiling minotari_wallet v0.0.9 (.../tari/base_layer/wallet)
    Compiling test_faucet v0.0.1 (.../tari/applications/test_faucet)
    Compiling minotari_wallet_ffi v0.0.9 (.../tari/base_layer/wallet_ffi)
-   Compiling minotari_base_node v0.0.9 (.../tari/applications/minotari_base_node)
+   Compiling minotari_node v0.0.9 (.../tari/applications/minotari_node)
     Finished release [optimized] target(s) in 12m 24s
 ```
 
 Compiled executable can be found by following path:
 
-    ./target/release/minotari_base_node
+    ./target/release/minotari_node
     ./target/release/minotari_console_wallet
     ./target/release/minotari_merge_mining_proxy
     ./target/release/minotari_miner
@@ -235,7 +235,7 @@ Compiled executable can be found by following path:
 Alternatively, cargo can build and install the executable into `~/.cargo/bin` (`%USERPROFILE%\.cargo\bin` on Windows), so it will be executable from anywhere
 on your system.
 
-    cargo install --path=applications/minotari_base_node --force
+    cargo install --path=applications/minotari_node --force
     cargo install --path=applications/minotari_console_wallet --force
     cargo install --path=applications/minotari_merge_mining_proxy --force
     cargo install --path=applications/minotari_miner --force
@@ -245,7 +245,7 @@ on your system.
 Alternatively, cargo can build and install the executable into `%USERPROFILE%\.cargo\bin`, so it will be executable from
 anywhere on your system.
 
-    cargo install --path=applications/minotari_base_node --force
+    cargo install --path=applications/minotari_node --force
     cargo install --path=applications/minotari_console_wallet --force
     cargo install --path=applications/minotari_merge_mining_proxy --force
     cargo install --path=applications/minotari_miner --force
@@ -256,14 +256,14 @@ The executables will either be inside your `~/tari/target/release` (on Linux) or
 (on Windows) directory, or alternatively, inside your `~/.cargo/bin` (on Linux) `%USERPROFILE%\.cargo\bin` (on Windows)
 directory, depending on the build choice above, and must be run from the command line. If the former build method was
 used, you can run it from that directory, or you more likely want to copy it somewhere more convenient. Make sure to
-start Tor service `~/tari/applications/minotari_base_node/osx/start_tor` (on Mac),
-`~/tari/applications/minotari_base_node/linux/start_tor` (on Linux) or
-`%USERPROFILE%\Code\tari\applications\minotari_base_node\windows\start_tor.lnk` (on Windows).
+start Tor service `~/tari/applications/minotari_node/osx/start_tor` (on Mac),
+`~/tari/applications/minotari_node/linux/start_tor` (on Linux) or
+`%USERPROFILE%\Code\tari\applications\minotari_node\windows\start_tor.lnk` (on Windows).
 
 To run from any directory of your choice, where the executable is visible in the path (first time use):
 
-    minotari_base_node --init
-    minotari_base_node
+    minotari_node --init
+    minotari_node
 
     minotari_console_wallet --init
 
@@ -273,7 +273,7 @@ To run from any directory of your choice, where the executable is visible in the
 
 Consecutive runs:
 
-    minotari_base_node
+    minotari_node
 
     minotari_console_wallet
 
@@ -284,8 +284,8 @@ Consecutive runs:
 Alternatively, you can run the Tari applications from your source directory using `cargo`, and just omit the `--release`
 flag if you want to run in debug mode (first time use):
 
-    cargo run --bin minotari_base_node --release --  --init
-    cargo run --bin minotari_base_node --release
+    cargo run --bin minotari_node --release --  --init
+    cargo run --bin minotari_node --release
 
     cargo run --bin minotari_merge_mining_proxy --release
 
@@ -295,7 +295,7 @@ flag if you want to run in debug mode (first time use):
 
 Consecutive runs:
 
-    cargo run --bin minotari_base_node --release
+    cargo run --bin minotari_node --release
 
     cargo run --bin minotari_console_wallet --release
 
@@ -316,7 +316,7 @@ directory.
 
 ### Running the base node with a docker image
 
-MinoTari Base Node Docker images can be found at https://quay.io/repository/tarilabs/tari_base_node
+Minotari Base Node Docker images can be found at https://quay.io/repository/tarilabs/tari_base_node
 
 Using `docker-compose.yaml`
 
@@ -355,7 +355,7 @@ CONTAINER ID        IMAGE                                    COMMAND            
 73427509a4bb        quay.io/tarilabs/tari_base_node:v0.5.4   "start.sh"          45 minutes ago      Up 26 minutes       0.0.0.0:18142->18142/tcp   tbn_tari_base_node_1
 ```
 
-With the container ID `73427509a4bb`, connect to the minotari_base_node console as follows `docker attach 73427509a4bb`
+With the container ID `73427509a4bb`, connect to the minotari_node console as follows `docker attach 73427509a4bb`
 
 ```
 >> help
@@ -409,8 +409,8 @@ Default docker builds for base x86-64 CPU. Better performing builds can be creat
 
 ## Mining
 
-The Tari protocol supports hybrid mining; stand-alone or pooled SHA3 mining using the MinoTari Miner or merged mining with
-Monero using the MinoTari Merge Mining Proxy in conjunction with XMRig (RandomX-based mining). Blocks to be won by
+The Tari protocol supports hybrid mining; stand-alone or pooled SHA3 mining using the Minotari Miner or merged mining with
+Monero using the Minotari Merge Mining Proxy in conjunction with XMRig (RandomX-based mining). Blocks to be won by
 stand-alone and pooled SHA3 mining has been apportioned to approximately 40% and with Monero merged mining to approximately 60%.
 This apportionment is deeply baked into the Tari protocol and part of the consensus rules. The 40/60 split is determined
 by slightly different block target times for each algorithm, that when combined will give an average block time of
@@ -423,25 +423,25 @@ completely fair without any additional empirical meddling to try force a certain
 
 In order to perform SHA3 mining with Tari, the following applications are needed:
 
-- A MinoTari Base Node [_to supply blockchain metadata information_];
-- A MinoTari Wallet [_to collect the MinoTari block rewards (coinbase transactions)_];
-- A MinoTari Miner [_to perform the mining_];
+- A Minotari Base Node [_to supply blockchain metadata information_];
+- A Minotari Wallet [_to collect the Minotari block rewards (coinbase transactions)_];
+- A Minotari Miner [_to perform the mining_];
 
 In order to perform pooled SHA3 mining with Tari, the following applications are needed:
 
 - For a pool operator:
 
-  - A MinoTari Base Node [_to supply blockchain metadata information_];
-  - A MinoTari Wallet [_to collect the MinoTari block rewards (coinbase transactions)_];
+  - A Minotari Base Node [_to supply blockchain metadata information_];
+  - A Minotari Wallet [_to collect the Minotari block rewards (coinbase transactions)_];
   - Miningcore [_pool software supporting various cryptocurrencies, configured for Tari_]
 
 - For a miner:
-  - A MinoTari Wallet [_to collect the share rewards (pool payouts)_];
-  - A MinoTari Miner [_to perform the mining_];
+  - A Minotari Wallet [_to collect the share rewards (pool payouts)_];
+  - A Minotari Miner [_to perform the mining_];
 
 #### Runtime prerequisites
 
-The MinoTari Base Node, MinoTari Wallet and MinoTari Miner can all run in the same directory. By performing the
+The Minotari Base Node, Minotari Wallet and Minotari Miner can all run in the same directory. By performing the
 default installation as described in [Installing using binaries](#installing-using-binaries), all these applications
 will be available.
 
@@ -455,7 +455,7 @@ will be created in the `~/tari_esmeralda_testnet/config` (on Linux) or `%USERPRO
 directory.
 
 With the main configuration file, in addition to the settings already present, the following must also be enabled for
-the MinoTari Base Node and the MinoTari Wallet, if they are not enabled already. Under sections **`base_node.esmeralda`** and **`wallet`** respectively:
+the Minotari Base Node and the Minotari Wallet, if they are not enabled already. Under sections **`base_node.esmeralda`** and **`wallet`** respectively:
 
 ```
 [wallet]
@@ -475,7 +475,7 @@ For MiningCore:
 
 See example configuration [here](https://github.com/tari-project/miningcore/blob/master/examples/tari_pool.json).
 
-For the MinoTari Miner there are some additional settings under section **`miner`** that can be changed:
+For the Minotari Miner there are some additional settings under section **`miner`** that can be changed:
 
 - For SHA3 Mining:
 
@@ -568,20 +568,20 @@ and performing mining:
 - For pooled SHA3 Mining:
 
   - Pool Operators:
-    Tor and the required MinoTari applications must be started in this order:
+    Tor and the required Minotari applications must be started in this order:
 
     - Tor:
 
       - Linux/OSX: Execute `start_tor.sh`.
       - Windows: `Start Tor Serviecs` menu item or `start_tor` shortcut in the Tari installation folder.
 
-    - MinoTari Base Node:
+    - Minotari Base Node:
 
       - Linux/OSX: As per [Runtime links](#runtime-links).
       - Windows: As per [Runtime links](#runtime-links) or `Start Base Node` menu item or
         `start_tari_base_node` shortcut in the Tari installation folder.
 
-    - MinoTari Wallet:
+    - Minotari Wallet:
 
       - Linux/OSX: As per [Runtime links](#runtime-links).
       - Windows: As per [Runtime links](#runtime-links) or `Start Console Wallet` menu item or
@@ -590,7 +590,7 @@ and performing mining:
     - MiningCore
 
   - Miners:
-    - MinoTari Miner:
+    - Minotari Miner:
       - Linux/OSX: As per [Runtime links](#runtime-links).
       - Windows: As per [Runtime links](#runtime-links) or `Start Miner` menu item
         or `start_tari_miner` shortcut in the Tari installation folder.
@@ -599,20 +599,20 @@ and performing mining:
 
 In order to perform merge mining with Tari, the following applications are needed:
 
-- A MinoTari Base Node [_to supply blockchain metadata information_];
-- A MinoTari Wallet [_to collect the Tari block rewards (coinbase transactions)_];
-- A MinoTari Merge Mining Proxy [_to enable communication between all applications_];
+- A Minotari Base Node [_to supply blockchain metadata information_];
+- A Minotari Wallet [_to collect the Tari block rewards (coinbase transactions)_];
+- A Minotari Merge Mining Proxy [_to enable communication between all applications_];
 - XMRig [_to perform the mining_];
 - Monero wallet (specifically a stagenet wallet address during testnet; the one provided can be used, or a custom
   one can be set up) [_to collect Monero block rewards (coinbase transactions)_].
 
-The MinoTari Merge Mining Proxy will be the communication gateway between all these applications and will coordinate all
-activities. It will also submit finalized MinoTari and Monero blocks to the respective networks when RandomX is solved at
+The Minotari Merge Mining Proxy will be the communication gateway between all these applications and will coordinate all
+activities. It will also submit finalized Minotari and Monero blocks to the respective networks when RandomX is solved at
 the respective difficulties.
 
 #### Runtime prerequisites
 
-The MinoTari Base Node, MinoTari Wallet and MinoTari Merge Mining Proxy can all run in the same directory, whereas XMRig
+The Minotari Base Node, Minotari Wallet and Minotari Merge Mining Proxy can all run in the same directory, whereas XMRig
 will run in its own directory. By performing the default installation as described in
 [Installing using binaries](#installing-using-binaries), all these applications will be available.
 
@@ -620,9 +620,9 @@ XMRig can also be build from sources. If that is your preference, follow these i
 
 #### Configuration prerequisites
 
-##### MinoTari applications
+##### Minotari applications
 
-The configuration prerequisites are the same for all three MinoTari applications. After performing a
+The configuration prerequisites are the same for all three Minotari applications. After performing a
 [default installation](#installing-using-binaries), locate the main configuration file (`config.toml`), which
 will be created in the `~/tari_esmeralda_testnet/config` (on Linux) or `%USERPROFILE%\.tari-testnet\config` (on Windows)
 directory.
@@ -630,7 +630,7 @@ directory.
 With the main configuration file, in addition to the settings already present, the following must also be enabled if
 they are not enabled already:
 
-- For the MinoTari Base Node and the MinoTari Wallet, under sections **`base_node.esmeralda`** and **`wallet`** respectively
+- For the Minotari Base Node and the Minotari Wallet, under sections **`base_node.esmeralda`** and **`wallet`** respectively
   ```
   [wallet]
   grpc_address = "127.0.0.1:18143"
@@ -646,7 +646,7 @@ And then depending on if you are using solo mining or self-select mining you wil
 
 ###### Solo mining
 
-- For the MinoTari Merge Mining Proxy, under section **`merge_mining_proxy`**
+- For the Minotari Merge Mining Proxy, under section **`merge_mining_proxy`**
 
   ```
   [merge_mining_proxy]
@@ -667,7 +667,7 @@ And then depending on if you are using solo mining or self-select mining you wil
 
 ###### Self-Select mining
 
-- For the MinoTari Merge Mining Proxy, under section **`merge_mining_proxy`**
+- For the Minotari Merge Mining Proxy, under section **`merge_mining_proxy`**
 
   ```
   [merge_mining_proxy]
@@ -721,7 +721,7 @@ in via the command line upon runtime.
 **Notes:**
 
 - Monero mainnet and stagenet wallet addresses can only be used with the corresponding network. The `monerod_url`
-  configuration setting (see [MinoTari applications](#minotari-applications)) must also correspond to the chosen network.
+  configuration setting (see [Minotari applications](#minotari-applications)) must also correspond to the chosen network.
 - For the solo mining configuration, Monero doesn't currently support requesting templates to mine on with the address
   being a subaddress. It is possible to do with the self-select configuration since the template is requested by the miner
   with the wallet address of the pool.
@@ -831,7 +831,7 @@ activity for that address. The configuration file used for this exercise is show
 
 #### Perform merge mining
 
-Tor and the required MinoTari applications must be started and preferably in this order:
+Tor and the required Minotari applications must be started and preferably in this order:
 
 - Tor:
 
@@ -842,7 +842,7 @@ Tor and the required MinoTari applications must be started and preferably in thi
 
   - Linux/OSX: As per [Runtime links](#runtime-links).
   - Windows: As per [Runtime links](#runtime-links) or `Start Base Node` menu item or
-    `start_minotari_base_node` shortcut in the Tari installation folder.
+    `start_minotari_node` shortcut in the Tari installation folder.
 
 - Tari Console Wallet:
 
@@ -918,20 +918,20 @@ and accepting jobs:
 ```
 
 The `cpu: rejected` and `cpu: accepted` messages originates from stagenet or mainnet `monerod`, and shows the Monero
-statistics. At this point, the mined and rejected MinoTari coinbases should be visible in the MinoTari Wallet.
+statistics. At this point, the mined and rejected Minotari coinbases should be visible in the Minotari Wallet.
 
 ##### Pool merged mining with Monero (self select)
 
-This paragraph is applicable to pool mining Monero on mainnet and solo mining MinoTari on testnet.
+This paragraph is applicable to pool mining Monero on mainnet and solo mining Minotari on testnet.
 
 Pool merged mining with Monero is supported using the
 [Stratum mode self-select](https://github.com/jtgrassie/monero-pool/blob/master/sss.md) option via XMRig. Two mining
 pools we have tried out that support this feature are [monero-pool](https://github.com/jtgrassie/monero-pool), with
 its reference pool implementation running [here](http://monerop.com/), and
 [cryptonote.social](https://cryptonote.social/xmr). With normal self select mode, XMRig requests a Monero block
-template from a third party and submits the solution to the mining pool. MinoTari added a `submit-to-origin` option to the
+template from a third party and submits the solution to the mining pool. Minotari added a `submit-to-origin` option to the
 self select mode whereby, if a solution has been found that only matches the pool difficulty, XMRig will submit the
-solution to the pool only, but if the achieved difficulty meets both that of the pool and MinoTari, it will be submitted to
+solution to the pool only, but if the achieved difficulty meets both that of the pool and Minotari, it will be submitted to
 the Merge Mining Proxy as well as to the mining pool.
 
 ###### Merge Mining Proxy configuration

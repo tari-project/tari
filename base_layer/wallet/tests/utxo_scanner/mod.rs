@@ -61,7 +61,7 @@ use tari_core::{
     blocks::BlockHeader,
     proto::base_node::{ChainMetadata, TipInfoResponse},
     transactions::{
-        tari_amount::MicroMinoTari,
+        tari_amount::MicroMinotari,
         test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager},
         transaction_components::{OutputFeatures, WalletOutput},
         CryptoFactories,
@@ -258,7 +258,7 @@ async fn generate_block_headers_and_utxos(
         for _j in 0..=i + 1 {
             let uo = make_input(
                 &mut OsRng,
-                MicroMinoTari::from(100 + OsRng.next_u64() % 1000),
+                MicroMinotari::from(100 + OsRng.next_u64() % 1000),
                 &OutputFeatures::default(),
                 key_manager,
             )
@@ -327,7 +327,7 @@ async fn test_utxo_scanner_recovery() {
     // Adding half the outputs of the blocks to the OMS mock
     let mut db_wallet_outputs = Vec::new();
     let mut total_outputs_to_recover = 0;
-    let mut total_amount_to_recover = MicroMinoTari::from(0);
+    let mut total_amount_to_recover = MicroMinotari::from(0);
     for (h, outputs) in &wallet_outputs {
         for output in outputs.iter().skip(outputs.len() / 2) {
             let dbo = DbWalletOutput::from_wallet_output(
@@ -426,7 +426,7 @@ async fn test_utxo_scanner_recovery_with_restart() {
     // Adding half the outputs of the blocks to the OMS mock
     let mut db_wallet_outputs = Vec::new();
     let mut total_outputs_to_recover = 0;
-    let mut total_amount_to_recover = MicroMinoTari::from(0);
+    let mut total_amount_to_recover = MicroMinotari::from(0);
     for (h, outputs) in &wallet_outputs {
         for output in outputs.iter().skip(outputs.len() / 2) {
             let dbo = DbWalletOutput::from_wallet_output(
@@ -668,7 +668,7 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
     // Adding half the outputs of the blocks to the OMS mock
     let mut db_wallet_outputs = Vec::new();
     let mut total_outputs_to_recover = 0;
-    let mut total_amount_to_recover = MicroMinoTari::from(0);
+    let mut total_amount_to_recover = MicroMinotari::from(0);
     for (h, outputs) in &wallet_outputs {
         for output in outputs.iter().skip(outputs.len() / 2) {
             let dbo = DbWalletOutput::from_wallet_output(
@@ -894,7 +894,7 @@ async fn test_utxo_scanner_one_sided_payments() {
     // Adding half the outputs of the blocks to the OMS mock
     let mut db_wallet_outputs = Vec::new();
     let mut total_outputs_to_recover = 0;
-    let mut total_amount_to_recover = MicroMinoTari::from(0);
+    let mut total_amount_to_recover = MicroMinotari::from(0);
     for (h, outputs) in &wallet_outputs {
         for output in outputs.iter().skip(outputs.len() / 2) {
             let dbo = DbWalletOutput::from_wallet_output(
@@ -970,7 +970,7 @@ async fn test_utxo_scanner_one_sided_payments() {
     block_header11.timestamp = EpochTime::from(block_headers.get(&10).unwrap().timestamp.as_u64() + 1000000u64);
     let uo = make_input(
         &mut OsRng,
-        MicroMinoTari::from(666000u64),
+        MicroMinotari::from(666000u64),
         &OutputFeatures::default(),
         &key_manager,
     )

@@ -35,7 +35,7 @@ use tari_core::{
     transactions::{
         fee::Fee,
         key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface, TxoStage},
-        tari_amount::{uT, MicroMinoTari, T},
+        tari_amount::{uT, MicroMinotari, T},
         test_helpers::{
             create_test_core_key_manager_with_memory_db,
             create_wallet_output_with_data,
@@ -1204,7 +1204,7 @@ async fn consensus_validation_large_tx() {
     let fee_per_gram = 15;
     let input_count = 1;
     let output_count = 39;
-    let amount = MicroMinoTari::from(5_000_000);
+    let amount = MicroMinotari::from(5_000_000);
 
     let input = outputs[1][0].clone();
     let inputs = vec![input.to_transaction_input(&key_manager).await.unwrap()];

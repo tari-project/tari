@@ -37,7 +37,7 @@ use crate::{
     proto,
     transactions::{
         aggregated_body::AggregateBody,
-        tari_amount::MicroMinoTari,
+        tari_amount::MicroMinotari,
         transaction_components::{
             EncryptedData,
             KernelFeatures,
@@ -87,7 +87,7 @@ impl TryFrom<proto::types::TransactionKernel> for TransactionKernel {
             )?,
             KernelFeatures::from_bits(kernel_features)
                 .ok_or_else(|| "Invalid or unrecognised kernel feature flag".to_string())?,
-            MicroMinoTari::from(kernel.fee),
+            MicroMinotari::from(kernel.fee),
             kernel.lock_height,
             excess,
             excess_sig,

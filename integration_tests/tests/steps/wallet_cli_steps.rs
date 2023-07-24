@@ -38,7 +38,7 @@ use minotari_console_wallet::{
 };
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::multiaddr::Multiaddr;
-use tari_core::transactions::tari_amount::MicroMinoTari;
+use tari_core::transactions::tari_amount::MicroMinotari;
 use tari_integration_tests::{
     wallet_process::{create_wallet_client, get_default_cli, spawn_wallet},
     TariWorld,
@@ -151,7 +151,7 @@ async fn send_from_cli(world: &mut TariWorld, amount: u64, wallet_a: String, wal
     let mut cli = get_default_cli();
 
     let args = SendMinotariArgs {
-        amount: MicroMinoTari(amount),
+        amount: MicroMinotari(amount),
         message: format!("Send amount {} from {} to {}", amount, wallet_a, wallet_b),
         destination: wallet_b_address,
     };
@@ -173,7 +173,7 @@ async fn create_burn_tx_via_cli(world: &mut TariWorld, amount: u64, wallet: Stri
     let mut cli = get_default_cli();
 
     let args = BurnMinotariArgs {
-        amount: MicroMinoTari(amount),
+        amount: MicroMinotari(amount),
         message: format!("Burn, burn amount {} !!!", amount,),
     };
     cli.command2 = Some(CliCommands::BurnMinotari(args));
@@ -204,7 +204,7 @@ async fn send_one_sided_tx_via_cli(world: &mut TariWorld, amount: u64, wallet_a:
     let mut cli = get_default_cli();
 
     let args = SendMinotariArgs {
-        amount: MicroMinoTari(amount),
+        amount: MicroMinotari(amount),
         message: format!("Send one sided amount {} from {} to {}", amount, wallet_a, wallet_b),
         destination: wallet_b_address,
     };
@@ -247,14 +247,14 @@ async fn make_it_rain(
     let mut cli = get_default_cli();
 
     let args = MakeItRainArgs {
-        start_amount: MicroMinoTari(start_amount),
+        start_amount: MicroMinotari(start_amount),
         transactions_per_second: u32::try_from(txs_per_second).unwrap(),
         duration: Duration::from_secs(duration),
         message: format!(
             "Make it raing amount {} from {} to {}",
             start_amount, wallet_a, wallet_b
         ),
-        increase_amount: MicroMinoTari(increment_amount),
+        increase_amount: MicroMinotari(increment_amount),
         destination: wallet_b_address,
         start_time: None,
         one_sided: false,
@@ -280,9 +280,9 @@ async fn coin_split_via_cli(world: &mut TariWorld, wallet: String, amount: u64, 
     let mut cli = get_default_cli();
 
     let args = CoinSplitArgs {
-        amount_per_split: MicroMinoTari(amount),
+        amount_per_split: MicroMinotari(amount),
         num_splits: usize::try_from(splits).unwrap(),
-        fee_per_gram: MicroMinoTari(20),
+        fee_per_gram: MicroMinotari(20),
         message: format!("coin split amount {} with splits {}", amount, splits),
     };
 

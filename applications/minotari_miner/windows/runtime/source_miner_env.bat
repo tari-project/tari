@@ -1,5 +1,5 @@
 @echo off
-title MinoTari Miner
+title Minotari Miner
 
 rem Verify arguments
 if ["%config_path%"]==[""] (

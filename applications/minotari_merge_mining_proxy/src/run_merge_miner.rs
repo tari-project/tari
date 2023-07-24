@@ -25,7 +25,7 @@ use std::convert::Infallible;
 use futures::future;
 use hyper::{service::make_service_fn, Server};
 use log::*;
-use minotari_base_node_grpc_client::BaseNodeGrpcClient;
+use minotari_node_grpc_client::BaseNodeGrpcClient;
 use minotari_wallet_grpc_client::WalletGrpcClient;
 use tari_common::{
     configuration::bootstrap::{grpc_default_port, ApplicationType},

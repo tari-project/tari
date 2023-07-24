@@ -8,7 +8,7 @@ use log::*;
 use minotari_wallet::output_manager_service::UtxoSelectionCriteria;
 use regex::Regex;
 use reqwest::StatusCode;
-use tari_core::transactions::{tari_amount::MicroMinoTari, transaction_components::TemplateType};
+use tari_core::transactions::{tari_amount::MicroMinotari, transaction_components::TemplateType};
 use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparation};
 use tari_utilities::hex::Hex;
 use tokio::{
@@ -462,7 +462,7 @@ impl RegisterTemplateTab {
                         },
                     };
 
-                    let fee_per_gram = if let Ok(fee_per_gram) = MicroMinoTari::from_str(self.fee_per_gram.as_str()) {
+                    let fee_per_gram = if let Ok(fee_per_gram) = MicroMinotari::from_str(self.fee_per_gram.as_str()) {
                         fee_per_gram
                     } else {
                         self.confirmation_dialog = None;
@@ -792,9 +792,9 @@ impl<B: Backend> Component<B> for RegisterTemplateTab {
                     return;
                 }
 
-                if self.fee_per_gram.parse::<MicroMinoTari>().is_err() {
+                if self.fee_per_gram.parse::<MicroMinotari>().is_err() {
                     self.error_message =
-                        Some("Fee-Per-Gram should be a valid amount of MinoTari\nPress Enter to continue.".to_string());
+                        Some("Fee-Per-Gram should be a valid amount of Minotari\nPress Enter to continue.".to_string());
                     return;
                 }
 

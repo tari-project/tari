@@ -33,7 +33,7 @@ use minotari_wallet::{
 };
 use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_common_types::types::FixedHashSizeError;
-use tari_core::transactions::{tari_amount::MicroMinoTariError, transaction_components::TransactionError};
+use tari_core::transactions::{tari_amount::MicroMinotariError, transaction_components::TransactionError};
 use tari_key_manager::key_manager_service::KeyManagerServiceError;
 use tari_utilities::{hex::HexError, ByteArrayError};
 use thiserror::Error;
@@ -48,8 +48,8 @@ pub enum CommandError {
     Argument,
     #[error("Invalid argument: {0}")]
     InvalidArgument(String),
-    #[error("MinoTari value error `{0}`")]
-    MicroMinoTariError(#[from] MicroMinoTariError),
+    #[error("Minotari value error `{0}`")]
+    MicroMinotariError(#[from] MicroMinotariError),
     #[error("Transaction service error `{0}`")]
     TransactionError(#[from] TransactionError),
     #[error("Transaction service error `{0}`")]
@@ -97,8 +97,8 @@ impl From<CommandError> for ExitError {
 pub enum ParseError {
     #[error("Failed to parse wallet command at `{0}`.")]
     WalletCommand(String),
-    #[error("Failed to parse MinoTari amount.")]
-    MicroMinoTariAmount(#[from] MicroMinoTariError),
+    #[error("Failed to parse Minotari amount.")]
+    MicroMinotariAmount(#[from] MicroMinotariError),
     #[error("Failed to parse public key or emoji id.")]
     PublicKey,
     #[error("Failed to parse hash")]

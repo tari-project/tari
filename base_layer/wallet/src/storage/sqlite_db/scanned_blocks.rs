@@ -25,7 +25,7 @@ use std::convert::TryFrom;
 use chrono::{NaiveDateTime, Utc};
 use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl, SqliteConnection};
 use tari_common_types::types::FixedHash;
-use tari_core::transactions::tari_amount::MicroMinoTari;
+use tari_core::transactions::tari_amount::MicroMinotari;
 use tari_utilities::ByteArray;
 
 use crate::{
@@ -131,7 +131,7 @@ impl TryFrom<ScannedBlockSql> for ScannedBlock {
             header_hash: FixedHash::try_from(sb.header_hash).map_err(|err| err.to_string())?,
             height: sb.height as u64,
             num_outputs: sb.num_outputs.map(|n| n as u64),
-            amount: sb.amount.map(|a| MicroMinoTari::from(a as u64)),
+            amount: sb.amount.map(|a| MicroMinotari::from(a as u64)),
             timestamp: sb.timestamp,
         })
     }

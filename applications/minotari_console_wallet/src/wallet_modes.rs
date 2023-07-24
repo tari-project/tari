@@ -147,14 +147,14 @@ pub(crate) fn command_mode(
     let commands = vec![command];
 
     // Do not remove this println!
-    const CUCUMBER_TEST_MARKER_A: &str = "MinoTari Console Wallet running... (Command mode started)";
+    const CUCUMBER_TEST_MARKER_A: &str = "Minotari Console Wallet running... (Command mode started)";
     println!("{}", CUCUMBER_TEST_MARKER_A);
 
     info!(target: LOG_TARGET, "Starting wallet command mode");
     handle.block_on(command_runner(config, commands, wallet.clone()))?;
 
     // Do not remove this println!
-    const CUCUMBER_TEST_MARKER_B: &str = "MinoTari Console Wallet running... (Command mode completed)";
+    const CUCUMBER_TEST_MARKER_B: &str = "Minotari Console Wallet running... (Command mode completed)";
     println!("{}", CUCUMBER_TEST_MARKER_B);
 
     info!(target: LOG_TARGET, "Completed wallet command mode");
@@ -209,14 +209,14 @@ pub(crate) fn script_mode(
     println!("{} commands parsed successfully.", commands.len());
 
     // Do not remove this println!
-    const CUCUMBER_TEST_MARKER_A: &str = "MinoTari Console Wallet running... (Script mode started)";
+    const CUCUMBER_TEST_MARKER_A: &str = "Minotari Console Wallet running... (Script mode started)";
     println!("{}", CUCUMBER_TEST_MARKER_A);
 
     println!("Starting the command runner!");
     handle.block_on(command_runner(config, commands, wallet.clone()))?;
 
     // Do not remove this println!
-    const CUCUMBER_TEST_MARKER_B: &str = "MinoTari Console Wallet running... (Script mode completed)";
+    const CUCUMBER_TEST_MARKER_B: &str = "Minotari Console Wallet running... (Script mode completed)";
     println!("{}", CUCUMBER_TEST_MARKER_B);
 
     info!(target: LOG_TARGET, "Completed wallet script mode");
@@ -302,7 +302,7 @@ pub fn tui_mode(
     }
 
     let app = App::<CrosstermBackend<Stdout>>::new(
-        "MinoTari Wallet".into(),
+        "Minotari Wallet".into(),
         wallet,
         config.clone(),
         base_node_selected,
@@ -313,7 +313,7 @@ pub fn tui_mode(
     info!(target: LOG_TARGET, "Starting app");
 
     // Do not remove this println!
-    const CUCUMBER_TEST_MARKER: &str = "MinoTari Console Wallet running... (TUI mode started)";
+    const CUCUMBER_TEST_MARKER: &str = "Minotari Console Wallet running... (TUI mode started)";
     println!("{}", CUCUMBER_TEST_MARKER);
 
     {
@@ -337,7 +337,7 @@ pub fn recovery_mode(
     wallet: WalletSqlite,
 ) -> Result<(), ExitError> {
     // Do not remove this println!
-    const CUCUMBER_TEST_MARKER_A: &str = "MinoTari Console Wallet running... (Recovery mode started)";
+    const CUCUMBER_TEST_MARKER_A: &str = "Minotari Console Wallet running... (Recovery mode started)";
     println!("{}", CUCUMBER_TEST_MARKER_A);
 
     println!("Starting recovery...");
@@ -359,7 +359,7 @@ pub fn recovery_mode(
     }
 
     // Do not remove this println!
-    const CUCUMBER_TEST_MARKER_B: &str = "MinoTari Console Wallet running... (Recovery mode completed)";
+    const CUCUMBER_TEST_MARKER_B: &str = "Minotari Console Wallet running... (Recovery mode completed)";
     println!("{}", CUCUMBER_TEST_MARKER_B);
 
     println!("Starting TUI.");
@@ -399,7 +399,7 @@ async fn run_grpc(
     wallet: WalletSqlite,
 ) -> Result<(), String> {
     // Do not remove this println!
-    const CUCUMBER_TEST_MARKER_A: &str = "MinoTari Console Wallet running... (gRPC mode started)";
+    const CUCUMBER_TEST_MARKER_A: &str = "Minotari Console Wallet running... (gRPC mode started)";
     println!("{}", CUCUMBER_TEST_MARKER_A);
 
     info!(target: LOG_TARGET, "Starting GRPC on {}", grpc_listener_addr);
@@ -414,7 +414,7 @@ async fn run_grpc(
         .map_err(|e| format!("GRPC server returned error:{}", e))?;
 
     // Do not remove this println!
-    const CUCUMBER_TEST_MARKER_B: &str = "MinoTari Console Wallet running... (gRPC mode completed)";
+    const CUCUMBER_TEST_MARKER_B: &str = "Minotari Console Wallet running... (gRPC mode completed)";
     println!("{}", CUCUMBER_TEST_MARKER_B);
 
     info!(target: LOG_TARGET, "Stopping GRPC");

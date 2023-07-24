@@ -1,5 +1,5 @@
 @echo off
-title MinoTari Merge Mining Proxy
+title Minotari Merge Mining Proxy
 
 rem Verify arguments
 if ["%config_path%"]==[""] (

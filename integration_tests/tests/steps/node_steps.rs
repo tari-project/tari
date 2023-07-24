@@ -26,7 +26,7 @@ use cucumber::{given, then, when};
 use futures::StreamExt;
 use indexmap::IndexMap;
 use minotari_app_grpc::tari_rpc::{self as grpc, GetBlocksRequest, ListHeadersRequest};
-use minotari_base_node::BaseNodeConfig;
+use minotari_node::BaseNodeConfig;
 use minotari_wallet_grpc_client::grpc::{Empty, GetIdentityRequest};
 use tari_core::blocks::Block;
 use tari_integration_tests::{

@@ -40,7 +40,7 @@ use crate::{
     consensus::DomainSeparatedConsensusHasher,
     covenants::Covenant,
     transactions::{
-        tari_amount::MicroMinoTari,
+        tari_amount::MicroMinotari,
         transaction_components,
         transaction_components::{
             transaction_output::TransactionOutput,
@@ -117,7 +117,7 @@ impl TransactionInput {
         encrypted_data: EncryptedData,
         metadata_signature: ComAndPubSignature,
         rangeproof_hash: FixedHash,
-        minimum_value_promise: MicroMinoTari,
+        minimum_value_promise: MicroMinotari,
     ) -> TransactionInput {
         TransactionInput::new(
             version,
@@ -150,7 +150,7 @@ impl TransactionInput {
         encrypted_data: EncryptedData,
         metadata_signature: ComAndPubSignature,
         rangeproof_hash: FixedHash,
-        minimum_value_promise: MicroMinoTari,
+        minimum_value_promise: MicroMinotari,
     ) {
         self.spent_output = SpentOutput::OutputData {
             version,
@@ -312,7 +312,7 @@ impl TransactionInput {
     }
 
     /// Returns a reference to the minimum value promise of this input. An error is returned if this is a compact input.
-    pub fn minimum_value_promise(&self) -> Result<&MicroMinoTari, TransactionError> {
+    pub fn minimum_value_promise(&self) -> Result<&MicroMinotari, TransactionError> {
         match self.spent_output {
             SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
             SpentOutput::OutputData {
@@ -556,7 +556,7 @@ pub enum SpentOutput {
         encrypted_data: EncryptedData,
         metadata_signature: ComAndPubSignature,
         rangeproof_hash: FixedHash,
-        minimum_value_promise: MicroMinoTari,
+        minimum_value_promise: MicroMinotari,
     },
 }
 

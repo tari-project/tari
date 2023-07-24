@@ -30,8 +30,8 @@ use std::{
 };
 
 use minotari_app_utilities::identity_management::save_as_json;
-use minotari_base_node::{run_base_node, BaseNodeConfig, MetricsConfig};
-use minotari_base_node_grpc_client::BaseNodeGrpcClient;
+use minotari_node::{run_base_node, BaseNodeConfig, MetricsConfig};
+use minotari_node_grpc_client::BaseNodeGrpcClient;
 use rand::rngs::OsRng;
 use tari_common::configuration::{CommonConfig, MultiaddrList};
 use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, NodeIdentity};
@@ -140,7 +140,7 @@ pub async fn spawn_base_node_with_config(
     let mut common_config = CommonConfig::default();
     common_config.base_path = temp_dir_path.clone();
     task::spawn(async move {
-        let mut base_node_config = minotari_base_node::ApplicationConfig {
+        let mut base_node_config = minotari_node::ApplicationConfig {
             common: common_config,
             auto_update: AutoUpdateConfig::default(),
             base_node: base_node_config,

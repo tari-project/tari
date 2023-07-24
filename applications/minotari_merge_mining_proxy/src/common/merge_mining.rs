@@ -24,7 +24,7 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use minotari_base_node_grpc_client::grpc;
+use minotari_node_grpc_client::grpc;
 use tari_core::{
     blocks::NewBlockTemplate,
     transactions::transaction_components::{TransactionKernel, TransactionOutput},

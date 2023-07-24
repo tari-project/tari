@@ -41,7 +41,7 @@ use crate::{
     proof_of_work::ProofOfWork,
     transactions::{
         aggregated_body::AggregateBody,
-        tari_amount::MicroMinoTari,
+        tari_amount::MicroMinotari,
         transaction_components::{
             KernelFeatures,
             OutputType,
@@ -71,7 +71,7 @@ pub enum BlockValidationError {
     },
 }
 
-/// A MinoTari block. Blocks are linked together into a blockchain.
+/// A Minotari block. Blocks are linked together into a blockchain.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
 pub struct Block {
     /// The BlockHeader contains all the metadata for the block, including proof of work, a link to the previous block
@@ -92,7 +92,7 @@ impl Block {
     }
 
     /// This function will calculate the total fees contained in a block
-    pub fn calculate_fees(&self) -> MicroMinoTari {
+    pub fn calculate_fees(&self) -> MicroMinotari {
         self.body.kernels().iter().fold(0.into(), |sum, x| sum + x.fee)
     }
 
@@ -108,7 +108,7 @@ impl Block {
     /// 3. The amount is correct.
     pub fn check_coinbase_output(
         &self,
-        reward: MicroMinoTari,
+        reward: MicroMinotari,
         consensus_constants: &ConsensusConstants,
         factories: &CryptoFactories,
     ) -> Result<(), BlockValidationError> {
@@ -180,7 +180,7 @@ pub struct BlockBuilder {
     inputs: Vec<TransactionInput>,
     outputs: Vec<TransactionOutput>,
     kernels: Vec<TransactionKernel>,
-    total_fee: MicroMinoTari,
+    total_fee: MicroMinotari,
 }
 
 impl BlockBuilder {
@@ -190,7 +190,7 @@ impl BlockBuilder {
             inputs: Vec::new(),
             outputs: Vec::new(),
             kernels: Vec::new(),
-            total_fee: MicroMinoTari::from(0),
+            total_fee: MicroMinotari::from(0),
         }
     }
 

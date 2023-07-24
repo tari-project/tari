@@ -1,5 +1,5 @@
 @echo off
-title MinoTari Wallet
+title Minotari Wallet
 
 rem Verify arguments
 if ["%config_path%"]==[""] (

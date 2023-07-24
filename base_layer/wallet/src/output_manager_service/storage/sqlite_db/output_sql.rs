@@ -36,7 +36,7 @@ use tari_common_types::{
     types::{ComAndPubSignature, Commitment, FixedHash, PrivateKey, PublicKey, RangeProof},
 };
 use tari_core::transactions::{
-    tari_amount::MicroMinoTari,
+    tari_amount::MicroMinotari,
     transaction_components::{EncryptedData, OutputFeatures, OutputType, TransactionOutputVersion, WalletOutput},
 };
 use tari_crypto::tari_utilities::ByteArray;
@@ -457,13 +457,13 @@ impl OutputSql {
         let mut pending_outgoing_balance = None;
         for balance in balance_query_result {
             match balance.category.as_str() {
-                "available_balance" => available_balance = Some(MicroMinoTari::from(balance.amount as u64)),
-                "time_locked_balance" => time_locked_balance = Some(Some(MicroMinoTari::from(balance.amount as u64))),
+                "available_balance" => available_balance = Some(MicroMinotari::from(balance.amount as u64)),
+                "time_locked_balance" => time_locked_balance = Some(Some(MicroMinotari::from(balance.amount as u64))),
                 "pending_incoming_balance" => {
-                    pending_incoming_balance = Some(MicroMinoTari::from(balance.amount as u64))
+                    pending_incoming_balance = Some(MicroMinotari::from(balance.amount as u64))
                 },
                 "pending_outgoing_balance" => {
-                    pending_outgoing_balance = Some(MicroMinoTari::from(balance.amount as u64))
+                    pending_outgoing_balance = Some(MicroMinotari::from(balance.amount as u64))
                 },
                 _ => {
                     return Err(OutputManagerStorageError::UnexpectedResult(
@@ -657,7 +657,7 @@ impl OutputSql {
         let encrypted_data = EncryptedData::from_bytes(&self.encrypted_data)?;
         let wallet_output = WalletOutput::new_with_rangeproof(
             TransactionOutputVersion::get_current_version(),
-            MicroMinoTari::from(self.value as u64),
+            MicroMinotari::from(self.value as u64),
             KeyId::from_str(&self.spending_key).map_err(|e| {
                 error!(
                     target: LOG_TARGET,
@@ -738,7 +738,7 @@ impl OutputSql {
             self.script_lock_height as u64,
             covenant,
             encrypted_data,
-            MicroMinoTari::from(self.minimum_value_promise as u64),
+            MicroMinotari::from(self.minimum_value_promise as u64),
             match self.rangeproof {
                 Some(bytes) => Some(RangeProof::from_bytes(&bytes)?),
                 None => None,

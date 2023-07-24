@@ -5,7 +5,7 @@ use std::fs;
 
 use log::*;
 use minotari_wallet::output_manager_service::UtxoSelectionCriteria;
-use tari_core::transactions::tari_amount::MicroMinoTari;
+use tari_core::transactions::tari_amount::MicroMinotari;
 use tokio::{runtime::Handle, sync::watch};
 use tui::{
     backend::Backend,
@@ -70,7 +70,7 @@ impl BurnTab {
     fn draw_burn_form<B>(&self, f: &mut Frame<B>, area: Rect, _app_state: &AppState)
     where B: Backend {
         let block = Block::default().borders(Borders::ALL).title(Span::styled(
-            "Burn MinoTari",
+            "Burn Minotari",
             Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
         ));
         f.render_widget(block, area);
@@ -277,8 +277,8 @@ impl BurnTab {
                 if 'y' == c {
                     let amount = self
                         .amount_field
-                        .parse::<MicroMinoTari>()
-                        .unwrap_or_else(|_| MicroMinoTari::from(0));
+                        .parse::<MicroMinotari>()
+                        .unwrap_or_else(|_| MicroMinotari::from(0));
 
                     let fee_per_gram = if let Ok(v) = self.fee_field.parse::<u64>() {
                         v
@@ -546,7 +546,7 @@ impl<B: Backend> Component<B> for BurnTab {
                     area,
                     "Confirm Burning Transaction".to_string(),
                     format!(
-                        "Are you sure you want to burn {} MinoTari with a Claim Public Key {}?\n(Y)es / (N)o",
+                        "Are you sure you want to burn {} Minotari with a Claim Public Key {}?\n(Y)es / (N)o",
                         self.amount_field, self.claim_public_key_field
                     ),
                     Color::Red,
@@ -624,9 +624,9 @@ impl<B: Backend> Component<B> for BurnTab {
                     return;
                 }
 
-                if self.amount_field.parse::<MicroMinoTari>().is_err() {
+                if self.amount_field.parse::<MicroMinotari>().is_err() {
                     self.error_message =
-                        Some("Amount should be a valid amount of MinoTari\nPress Enter to continue.".to_string());
+                        Some("Amount should be a valid amount of Minotari\nPress Enter to continue.".to_string());
                     return;
                 }
 

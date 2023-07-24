@@ -36,7 +36,7 @@ use tari_common_types::{
 use tari_core::{
     consensus::{DomainSeparatedConsensusHasher, MaxSizeBytes, MaxSizeString},
     transactions::{
-        tari_amount::MicroMinoTari,
+        tari_amount::MicroMinotari,
         transaction_components::{BuildInfo, OutputFeatures, TemplateType},
         TransactionHashDomain,
     },
@@ -55,11 +55,11 @@ const LOG_TARGET: &str = "wallet::console_wallet::tasks ";
 
 pub async fn send_transaction_task(
     address: TariAddress,
-    amount: MicroMinoTari,
+    amount: MicroMinotari,
     selection_criteria: UtxoSelectionCriteria,
     output_features: OutputFeatures,
     message: String,
-    fee_per_gram: MicroMinoTari,
+    fee_per_gram: MicroMinotari,
     mut transaction_service_handle: TransactionServiceHandle,
     result_tx: watch::Sender<UiTransactionSendStatus>,
 ) {
@@ -131,11 +131,11 @@ pub async fn send_transaction_task(
 
 pub async fn send_one_sided_transaction_task(
     address: TariAddress,
-    amount: MicroMinoTari,
+    amount: MicroMinotari,
     selection_criteria: UtxoSelectionCriteria,
     output_features: OutputFeatures,
     message: String,
-    fee_per_gram: MicroMinoTari,
+    fee_per_gram: MicroMinotari,
     mut transaction_service_handle: TransactionServiceHandle,
     result_tx: watch::Sender<UiTransactionSendStatus>,
 ) {
@@ -185,11 +185,11 @@ pub async fn send_one_sided_transaction_task(
 
 pub async fn send_one_sided_to_stealth_address_transaction(
     address: TariAddress,
-    amount: MicroMinoTari,
+    amount: MicroMinotari,
     selection_criteria: UtxoSelectionCriteria,
     output_features: OutputFeatures,
     message: String,
-    fee_per_gram: MicroMinoTari,
+    fee_per_gram: MicroMinotari,
     mut transaction_service_handle: TransactionServiceHandle,
     result_tx: watch::Sender<UiTransactionSendStatus>,
 ) {
@@ -240,10 +240,10 @@ pub async fn send_one_sided_to_stealth_address_transaction(
 pub async fn send_burn_transaction_task(
     burn_proof_filepath: Option<PathBuf>,
     claim_public_key: Option<PublicKey>,
-    amount: MicroMinoTari,
+    amount: MicroMinotari,
     selection_criteria: UtxoSelectionCriteria,
     message: String,
-    fee_per_gram: MicroMinoTari,
+    fee_per_gram: MicroMinotari,
     mut transaction_service_handle: TransactionServiceHandle,
     db: WalletDatabase<WalletSqliteDatabase>,
     result_tx: watch::Sender<UiTransactionBurnStatus>,
@@ -345,7 +345,7 @@ pub async fn send_register_template_transaction_task(
     repository_commit_hash: String,
     binary_url: String,
     binary_sha: String,
-    fee_per_gram: MicroMinoTari,
+    fee_per_gram: MicroMinotari,
     _selection_criteria: UtxoSelectionCriteria,
     mut transaction_service_handle: TransactionServiceHandle,
     _db: WalletDatabase<WalletSqliteDatabase>,

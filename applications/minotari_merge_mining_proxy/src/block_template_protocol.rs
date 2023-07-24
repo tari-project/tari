@@ -25,7 +25,7 @@
 use std::{cmp, sync::Arc};
 
 use log::*;
-use minotari_base_node_grpc_client::{grpc, BaseNodeGrpcClient};
+use minotari_node_grpc_client::{grpc, BaseNodeGrpcClient};
 use minotari_wallet_grpc_client::WalletGrpcClient;
 use tari_core::proof_of_work::{monero_rx, monero_rx::FixedByteArray, Difficulty};
 
@@ -82,7 +82,7 @@ impl BlockTemplateProtocol<'_> {
             let block_template_with_coinbase = merge_mining::add_coinbase(coinbase, new_template.template.clone())?;
             info!(
                 target: LOG_TARGET,
-                "Received new block template from MinoTari base node for height #{}",
+                "Received new block template from Minotari base node for height #{}",
                 new_template
                     .template
                     .header
@@ -214,7 +214,7 @@ impl BlockTemplateProtocol<'_> {
         monero_mining_data: MoneroMiningData,
         template_data: NewBlockTemplateData,
     ) -> Result<FinalBlockTemplateData, MmProxyError> {
-        debug!(target: LOG_TARGET, "New block received from MinoTari: {:?}", tari_block);
+        debug!(target: LOG_TARGET, "New block received from Minotari: {:?}", tari_block);
 
         let tari_difficulty = template_data.miner_data.target_difficulty;
         let block_template_data = BlockTemplateDataBuilder::new()
@@ -246,7 +246,7 @@ impl BlockTemplateProtocol<'_> {
         let mining_difficulty = cmp::min(monero_difficulty, tari_difficulty);
         info!(
             target: LOG_TARGET,
-            "Difficulties: MinoTari ({}), Monero({}), Selected({})",
+            "Difficulties: Minotari ({}), Monero({}), Selected({})",
             tari_difficulty,
             monero_mining_data.difficulty,
             mining_difficulty

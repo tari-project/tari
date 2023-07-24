@@ -37,14 +37,14 @@ message BlockHeight {
     uint64 block_height = 1;
 }
 
-// Define the explicit Signature implementation for the MinoTari base layer. A different signature scheme can be
+// Define the explicit Signature implementation for the Minotari base layer. A different signature scheme can be
 // employed by redefining this type.
 message Signature {
     bytes public_nonce = 1;
     bytes signature = 2;
 }
 
-// Define the explicit ComAndPubSignature implementation for the MinoTari base layer. A different signature scheme can be
+// Define the explicit ComAndPubSignature implementation for the Minotari base layer. A different signature scheme can be
 // employed by redefining this type.
 message ComAndPubSignature {
     bytes ephemeral_commitment = 1;
@@ -54,7 +54,7 @@ message ComAndPubSignature {
     bytes u_y = 5;
 }
 
-// Define the explicit CommitmentSignature implementation for the MinoTari base layer. A different signature scheme can be
+// Define the explicit CommitmentSignature implementation for the Minotari base layer. A different signature scheme can be
 // employed by redefining this type
 message CommitmentSignature {
     bytes public_nonce = 1;

@@ -20,7 +20,7 @@ fi
 #   common
 #   comms
 #   comms/dht
-#   applications/minotari_base_node
+#   applications/minotari_node
 #   applications/minotari_app_grpc
 #   applications/minotari_app_utilities
 #   applications/minotari_console_wallet
@@ -49,7 +49,7 @@ function update_versions {
    comms/core
    comms/dht
    comms/rpc_macros
-   applications/minotari_base_node
+   applications/minotari_node
    applications/minotari_app_grpc
    applications/minotari_app_utilities
    applications/minotari_console_wallet

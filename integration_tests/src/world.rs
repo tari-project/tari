@@ -150,7 +150,7 @@ impl Debug for TariWorld {
 }
 
 pub enum NodeClient {
-    BaseNode(minotari_base_node_grpc_client::BaseNodeGrpcClient<tonic::transport::Channel>),
+    BaseNode(minotari_node_grpc_client::BaseNodeGrpcClient<tonic::transport::Channel>),
     Wallet(minotari_wallet_grpc_client::WalletGrpcClient<tonic::transport::Channel>),
 }
 
@@ -158,7 +158,7 @@ impl TariWorld {
     pub async fn get_node_client<S: AsRef<str>>(
         &self,
         name: &S,
-    ) -> anyhow::Result<minotari_base_node_grpc_client::BaseNodeGrpcClient<tonic::transport::Channel>> {
+    ) -> anyhow::Result<minotari_node_grpc_client::BaseNodeGrpcClient<tonic::transport::Channel>> {
         self.get_node(name)?.get_grpc_client().await
     }
 

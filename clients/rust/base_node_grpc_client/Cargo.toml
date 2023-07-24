@@ -1,5 +1,5 @@
 [package]
-name = "minotari_base_node_grpc_client"
+name = "minotari_node_grpc_client"
 version = "0.1.0"
 edition = "2021"
 description = "Base node GRPC client"

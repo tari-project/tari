@@ -46,7 +46,7 @@ use tari_core::{
         TempDatabase,
     },
     transactions::{
-        tari_amount::{uT, MicroMinoTari, T},
+        tari_amount::{uT, MicroMinotari, T},
         test_helpers::spend_utxos,
         CryptoFactories,
     },
@@ -185,7 +185,7 @@ fn test_checkpoints() {
 
     let txn = txn_schema!(
         from: vec![outputs[0][0].clone()],
-        to: vec![MicroMinoTari(5_000), MicroMinoTari(6_000)]
+        to: vec![MicroMinotari(5_000), MicroMinotari(6_000)]
     );
     let (txn, _) = spend_utxos(txn);
     let block1 = append_block(&db, &blocks[0], vec![txn], &consensus_manager, Difficulty::min()).unwrap();
@@ -2135,7 +2135,7 @@ mod malleability {
 
     mod kernel {
         use tari_common_types::types::Signature;
-        use tari_core::transactions::tari_amount::MicroMinoTari;
+        use tari_core::transactions::tari_amount::MicroMinotari;
 
         use super::*;
 
@@ -2146,7 +2146,7 @@ mod malleability {
         fn test_fee() {
             check_kernel_malleability(|block: &mut Block| {
                 let kernel = &mut block.body.kernels_mut()[0];
-                kernel.fee += MicroMinoTari::from(1);
+                kernel.fee += MicroMinotari::from(1);
             });
         }
 

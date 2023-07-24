@@ -34,7 +34,7 @@ import "sidechain_types.proto";
 message TransactionKernel {
     // Options for a kernel's structure or use
     uint32 features = 1;
-    /// Fee originally included in the transaction this proof is for (in MicroMinoTari)
+    /// Fee originally included in the transaction this proof is for (in MicroMinotari)
     uint64 fee = 2;
     // This kernel is not valid earlier than lock_height blocks
     // The max lock_height of all *inputs* to this transaction
@@ -80,7 +80,7 @@ message TransactionInput {
     uint32 version = 11;
     // The encrypted data
     bytes encrypted_data = 12;
-    // The minimum value of the commitment that is proven by the range proof (in MicroMinoTari)
+    // The minimum value of the commitment that is proven by the range proof (in MicroMinotari)
     uint64 minimum_value_promise = 13;
     // The metadata signature for output this input is spending
     ComAndPubSignature metadata_signature = 14;
@@ -113,7 +113,7 @@ message TransactionOutput {
     uint32 version = 9;
     // Encrypted Pedersen commitment openings (value and mask) for the output
     bytes encrypted_data = 10;
-    // The minimum value of the commitment that is proven by the range proof (in MicroMinoTari)
+    // The minimum value of the commitment that is proven by the range proof (in MicroMinotari)
     uint64 minimum_value_promise = 11;
 }
 
@@ -176,7 +176,7 @@ message UnblindedOutput {
     bytes covenant = 11;
     // Encrypted data
     bytes encrypted_data = 12;
-    // The minimum value of the commitment that is proven by the range proof (in MicroMinoTari)
+    // The minimum value of the commitment that is proven by the range proof (in MicroMinotari)
     uint64 minimum_value_promise = 13;
 }
 

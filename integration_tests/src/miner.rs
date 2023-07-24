@@ -39,8 +39,8 @@ use minotari_app_grpc::{
     },
 };
 use minotari_app_utilities::common_cli_args::CommonCliArgs;
-use minotari_base_node_grpc_client::BaseNodeGrpcClient;
 use minotari_miner::{run_miner, Cli};
+use minotari_node_grpc_client::BaseNodeGrpcClient;
 use tari_common::configuration::Network;
 use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tari_core::{

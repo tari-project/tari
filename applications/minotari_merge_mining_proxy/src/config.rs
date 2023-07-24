@@ -41,20 +41,20 @@ pub struct MergeMiningProxyConfig {
     pub monerod_password: String,
     /// If authentication is being used for curl
     pub monerod_use_auth: bool,
-    /// The MinoTari base node's GRPC address
+    /// The Minotari base node's GRPC address
     pub base_node_grpc_address: Option<Multiaddr>,
-    /// The MinoTari wallet's GRPC address
+    /// The Minotari wallet's GRPC address
     pub console_wallet_grpc_address: Option<Multiaddr>,
     /// GRPC authentication for console wallet
     pub console_wallet_grpc_authentication: GrpcAuthentication,
     /// Address of the minotari_merge_mining_proxy application
     pub listener_address: Multiaddr,
     /// In sole merged mining, the block solution is usually submitted to the Monero blockchain (monerod) as well as to
-    /// the MinoTari blockchain, then this setting should be "true". With pool merged mining, there is no sense in
+    /// the Minotari blockchain, then this setting should be "true". With pool merged mining, there is no sense in
     /// submitting the solution to the Monero blockchain as thepool does that, then this setting should be "false".
     pub submit_to_origin: bool,
     /// The merge mining proxy can either wait for the base node to achieve initial sync at startup before it enables
-    /// mining, or not. If merge mining starts before the base node has achieved initial sync, those MinoTari mined
+    /// mining, or not. If merge mining starts before the base node has achieved initial sync, those Minotari mined
     /// blocks will not be accepted.
     pub wait_for_initial_sync_at_startup: bool,
     /// When mining for minotari, you might want to check the achieved difficulty of the mined minotari block before

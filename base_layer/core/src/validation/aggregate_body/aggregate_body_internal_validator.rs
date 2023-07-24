@@ -36,7 +36,7 @@ use crate::{
     consensus::{ConsensusConstants, ConsensusManager},
     transactions::{
         aggregated_body::AggregateBody,
-        tari_amount::MicroMinoTari,
+        tari_amount::MicroMinotari,
         transaction_components::{
             transaction_output::batch_verify_range_proofs,
             KernelSum,
@@ -97,11 +97,11 @@ impl AggregateBodyInternalConsistencyValidator {
         body: &AggregateBody,
         tx_offset: &PrivateKey,
         script_offset: &PrivateKey,
-        total_reward: Option<MicroMinoTari>,
+        total_reward: Option<MicroMinotari>,
         prev_header: Option<HashOutput>,
         height: u64,
     ) -> Result<(), ValidationError> {
-        let total_reward = total_reward.unwrap_or(MicroMinoTari::zero());
+        let total_reward = total_reward.unwrap_or(MicroMinotari::zero());
 
         // old internal validator
         verify_kernel_signatures(body)?;
@@ -219,7 +219,7 @@ fn sum_kernels(body: &AggregateBody, offset_with_fee: PedersenCommitment) -> Ker
     // Sum all kernel excesses and fees
     body.kernels().iter().fold(
         KernelSum {
-            fees: MicroMinoTari(0),
+            fees: MicroMinotari(0),
             sum: offset_with_fee,
         },
         |acc, val| KernelSum {
@@ -476,7 +476,7 @@ mod test {
                 Default::default(),
                 Default::default(),
                 Default::default(),
-                MicroMinoTari::zero(),
+                MicroMinotari::zero(),
             );
 
             assert!(matches!(

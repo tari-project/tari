@@ -38,7 +38,7 @@ use crate::{
         unconfirmed_pool::UnconfirmedPoolError,
         FeePerGramStat,
     },
-    transactions::{tari_amount::MicroMinoTari, transaction_components::Transaction, weight::TransactionWeight},
+    transactions::{tari_amount::MicroMinotari, transaction_components::Transaction, weight::TransactionWeight},
 };
 
 pub const LOG_TARGET: &str = "c::mp::unconfirmed_pool::unconfirmed_pool_storage";
@@ -714,9 +714,9 @@ impl UnconfirmedPool {
         let mut offset = 0usize;
         for start in 0..count {
             let mut total_weight = 0;
-            let mut total_fees = MicroMinoTari::zero();
-            let mut min_fee_per_gram = MicroMinoTari::from(u64::MAX);
-            let mut max_fee_per_gram = MicroMinoTari::zero();
+            let mut total_fees = MicroMinotari::zero();
+            let mut min_fee_per_gram = MicroMinotari::from(u64::MAX);
+            let mut max_fee_per_gram = MicroMinotari::zero();
             for key in self.tx_by_priority.values().rev().skip(offset) {
                 let tx = self.tx_by_key.get(key).ok_or(UnconfirmedPoolError::StorageOutofSync)?;
                 let weight = tx.weight;
@@ -804,7 +804,7 @@ mod test {
         test_helpers::{create_consensus_constants, create_consensus_rules, create_orphan_block},
         transactions::{
             fee::Fee,
-            tari_amount::MicroMinoTari,
+            tari_amount::MicroMinotari,
             test_helpers::{create_test_core_key_manager_with_memory_db, TestParams, UtxoTestParams},
             weight::TransactionWeight,
             SenderTransactionProtocol,
@@ -816,12 +816,12 @@ mod test {
     async fn test_find_duplicate_input() {
         let key_manager = create_test_core_key_manager_with_memory_db();
         let tx1 = Arc::new(
-            tx!(MicroMinoTari(5000), fee: MicroMinoTari(50), inputs: 2, outputs: 1, &key_manager)
+            tx!(MicroMinotari(5000), fee: MicroMinotari(50), inputs: 2, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
                 .0,
         );
         let tx2 = Arc::new(
-            tx!(MicroMinoTari(5000), fee: MicroMinoTari(50), inputs: 2, outputs: 1, &key_manager)
+            tx!(MicroMinotari(5000), fee: MicroMinotari(50), inputs: 2, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
                 .0,
         );
@@ -845,27 +845,27 @@ mod test {
     async fn test_insert_and_retrieve_highest_priority_txs() {
         let key_manager = create_test_core_key_manager_with_memory_db();
         let tx1 = Arc::new(
-            tx!(MicroMinoTari(5_000), fee: MicroMinoTari(5), inputs: 2, outputs: 1, &key_manager)
+            tx!(MicroMinotari(5_000), fee: MicroMinotari(5), inputs: 2, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
                 .0,
         );
         let tx2 = Arc::new(
-            tx!(MicroMinoTari(5_000), fee: MicroMinoTari(4), inputs: 4, outputs: 1, &key_manager)
+            tx!(MicroMinotari(5_000), fee: MicroMinotari(4), inputs: 4, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
                 .0,
         );
         let tx3 = Arc::new(
-            tx!(MicroMinoTari(5_000), fee: MicroMinoTari(20), inputs: 5, outputs: 1, &key_manager)
+            tx!(MicroMinotari(5_000), fee: MicroMinotari(20), inputs: 5, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
                 .0,
         );
         let tx4 = Arc::new(
-            tx!(MicroMinoTari(5_000), fee: MicroMinoTari(6), inputs: 3, outputs: 1, &key_manager)
+            tx!(MicroMinotari(5_000), fee: MicroMinotari(6), inputs: 3, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
                 .0,
         );
         let tx5 = Arc::new(
-            tx!(MicroMinoTari(5_000), fee: MicroMinoTari(11), inputs: 5, outputs: 1, &key_manager)
+            tx!(MicroMinotari(5_000), fee: MicroMinotari(11), inputs: 5, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
                 .0,
         );
@@ -906,11 +906,11 @@ mod test {
     #[tokio::test]
     async fn test_double_spend_inputs() {
         let key_manager = create_test_core_key_manager_with_memory_db();
-        let (tx1, _, _) = tx!(MicroMinoTari(5_000), fee: MicroMinoTari(10), inputs: 1, outputs: 1, &key_manager)
+        let (tx1, _, _) = tx!(MicroMinotari(5_000), fee: MicroMinotari(10), inputs: 1, outputs: 1, &key_manager)
             .expect("Failed to get tx");
-        const INPUT_AMOUNT: MicroMinoTari = MicroMinoTari(5_000);
+        const INPUT_AMOUNT: MicroMinotari = MicroMinotari(5_000);
         let (tx2, inputs, _) =
-            tx!(INPUT_AMOUNT, fee: MicroMinoTari(5), inputs: 1, outputs: 1, &key_manager).expect("Failed to get tx");
+            tx!(INPUT_AMOUNT, fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager).expect("Failed to get tx");
 
         let mut stx_builder = SenderTransactionProtocol::builder(create_consensus_constants(0), key_manager.clone());
 
@@ -995,32 +995,32 @@ mod test {
         let network = Network::LocalNet;
         let consensus = ConsensusManagerBuilder::new(network).build().unwrap();
         let tx1 = Arc::new(
-            tx!(MicroMinoTari(10_000), fee: MicroMinoTari(50), inputs:2, outputs: 1, &key_manager)
+            tx!(MicroMinotari(10_000), fee: MicroMinotari(50), inputs:2, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
                 .0,
         );
         let tx2 = Arc::new(
-            tx!(MicroMinoTari(10_000), fee: MicroMinoTari(20), inputs:3, outputs: 1, &key_manager)
+            tx!(MicroMinotari(10_000), fee: MicroMinotari(20), inputs:3, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
                 .0,
         );
         let tx3 = Arc::new(
-            tx!(MicroMinoTari(10_000), fee: MicroMinoTari(100), inputs:2, outputs: 1, &key_manager)
+            tx!(MicroMinotari(10_000), fee: MicroMinotari(100), inputs:2, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
                 .0,
         );
         let tx4 = Arc::new(
-            tx!(MicroMinoTari(10_000), fee: MicroMinoTari(30), inputs:4, outputs: 1, &key_manager)
+            tx!(MicroMinotari(10_000), fee: MicroMinotari(30), inputs:4, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
                 .0,
         );
         let tx5 = Arc::new(
-            tx!(MicroMinoTari(10_000), fee: MicroMinoTari(50), inputs:3, outputs: 1, &key_manager)
+            tx!(MicroMinotari(10_000), fee: MicroMinotari(50), inputs:3, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
                 .0,
         );
         let tx6 = Arc::new(
-            tx!(MicroMinoTari(10_000), fee: MicroMinoTari(75), inputs:2, outputs: 1, &key_manager)
+            tx!(MicroMinotari(10_000), fee: MicroMinotari(75), inputs:2, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
                 .0,
         );
@@ -1065,29 +1065,29 @@ mod test {
         let key_manager = create_test_core_key_manager_with_memory_db();
         let consensus = create_consensus_rules();
         let tx1 = Arc::new(
-            tx!(MicroMinoTari(5_000), fee: MicroMinoTari(5), inputs:2, outputs:1, &key_manager)
+            tx!(MicroMinotari(5_000), fee: MicroMinotari(5), inputs:2, outputs:1, &key_manager)
                 .expect("Failed to get tx")
                 .0,
         );
         let tx2 = Arc::new(
-            tx!(MicroMinoTari(5_000), fee: MicroMinoTari(4), inputs:3, outputs:1, &key_manager)
+            tx!(MicroMinotari(5_000), fee: MicroMinotari(4), inputs:3, outputs:1, &key_manager)
                 .expect("Failed to get tx")
                 .0,
         );
         let tx3 = Arc::new(
-            tx!(MicroMinoTari(5_000), fee: MicroMinoTari(5), inputs:2, outputs:1, &key_manager)
+            tx!(MicroMinotari(5_000), fee: MicroMinotari(5), inputs:2, outputs:1, &key_manager)
                 .expect("Failed to get tx")
                 .0,
         );
         let tx4 = Arc::new(
-            tx!(MicroMinoTari(5_000), fee: MicroMinoTari(6), inputs:2, outputs:1, &key_manager)
+            tx!(MicroMinotari(5_000), fee: MicroMinotari(6), inputs:2, outputs:1, &key_manager)
                 .expect("Failed to get tx")
                 .0,
         );
-        let mut tx5 = tx!(MicroMinoTari(5_000), fee:MicroMinoTari(5), inputs:3, outputs:1, &key_manager)
+        let mut tx5 = tx!(MicroMinotari(5_000), fee:MicroMinotari(5), inputs:3, outputs:1, &key_manager)
             .expect("Failed to get tx")
             .0;
-        let mut tx6 = tx!(MicroMinoTari(5_000), fee:MicroMinoTari(13), inputs: 2, outputs: 1, &key_manager)
+        let mut tx6 = tx!(MicroMinotari(5_000), fee:MicroMinotari(13), inputs: 2, outputs: 1, &key_manager)
             .expect("Failed to get tx")
             .0;
         // tx1 and tx5 have a shared input. Also, tx3 and tx6 have a shared input
@@ -1133,17 +1133,17 @@ mod test {
     #[tokio::test]
     async fn test_multiple_transactions_with_same_outputs_in_mempool() {
         let key_manager = create_test_core_key_manager_with_memory_db();
-        let (tx1, _, _) = tx!(MicroMinoTari(150_000), fee: MicroMinoTari(50), inputs:5, outputs:5, &key_manager)
+        let (tx1, _, _) = tx!(MicroMinotari(150_000), fee: MicroMinotari(50), inputs:5, outputs:5, &key_manager)
             .expect("Failed to get tx");
-        let (tx2, _, _) = tx!(MicroMinoTari(250_000), fee: MicroMinoTari(50), inputs:5, outputs:5, &key_manager)
+        let (tx2, _, _) = tx!(MicroMinotari(250_000), fee: MicroMinotari(50), inputs:5, outputs:5, &key_manager)
             .expect("Failed to get tx");
 
         // Create transactions with duplicate kernels (will not pass internal validation, but that is ok)
         let mut tx3 = tx1.clone();
         let mut tx4 = tx2.clone();
-        let (tx5, _, _) = tx!(MicroMinoTari(350_000), fee: MicroMinoTari(50), inputs:5, outputs:5, &key_manager)
+        let (tx5, _, _) = tx!(MicroMinotari(350_000), fee: MicroMinotari(50), inputs:5, outputs:5, &key_manager)
             .expect("Failed to get tx");
-        let (tx6, _, _) = tx!(MicroMinoTari(450_000), fee: MicroMinoTari(50), inputs:5, outputs:5, &key_manager)
+        let (tx6, _, _) = tx!(MicroMinotari(450_000), fee: MicroMinotari(50), inputs:5, outputs:5, &key_manager)
             .expect("Failed to get tx");
         tx3.body.set_kernel(tx5.body.kernels()[0].clone());
         tx4.body.set_kernel(tx6.body.kernels()[0].clone());
@@ -1235,13 +1235,13 @@ mod test {
         #[tokio::test]
         async fn it_compiles_correct_stats_for_single_block() {
             let key_manager = create_test_core_key_manager_with_memory_db();
-            let (tx1, _, _) = tx!(MicroMinoTari(150_000), fee: MicroMinoTari(5), inputs:5, outputs:1, &key_manager)
+            let (tx1, _, _) = tx!(MicroMinotari(150_000), fee: MicroMinotari(5), inputs:5, outputs:1, &key_manager)
                 .expect("Failed to get tx");
-            let (tx2, _, _) = tx!(MicroMinoTari(250_000), fee: MicroMinoTari(5), inputs:5, outputs:5, &key_manager)
+            let (tx2, _, _) = tx!(MicroMinotari(250_000), fee: MicroMinotari(5), inputs:5, outputs:5, &key_manager)
                 .expect("Failed to get tx");
-            let (tx3, _, _) = tx!(MicroMinoTari(350_000), fee: MicroMinoTari(4), inputs:2, outputs:1, &key_manager)
+            let (tx3, _, _) = tx!(MicroMinotari(350_000), fee: MicroMinotari(4), inputs:2, outputs:1, &key_manager)
                 .expect("Failed to get tx");
-            let (tx4, _, _) = tx!(MicroMinoTari(450_000), fee: MicroMinoTari(4), inputs:4, outputs:5, &key_manager)
+            let (tx4, _, _) = tx!(MicroMinotari(450_000), fee: MicroMinotari(4), inputs:4, outputs:5, &key_manager)
                 .expect("Failed to get tx");
 
             let tx_weight = TransactionWeight::latest();
@@ -1282,12 +1282,12 @@ mod test {
             let mut transactions = Vec::new();
             for i in 0..50 {
                 let (tx, _, _) =
-                    tx!(MicroMinoTari(150_000 + i), fee: MicroMinoTari(10), inputs: 1, outputs: 1, &key_manager)
+                    tx!(MicroMinotari(150_000 + i), fee: MicroMinotari(10), inputs: 1, outputs: 1, &key_manager)
                         .expect("Failed to get tx");
                 transactions.push(Arc::new(tx));
             }
 
-            let (tx1, _, _) = tx!(MicroMinoTari(150_000), fee: MicroMinoTari(5), inputs:1, outputs: 5, &key_manager)
+            let (tx1, _, _) = tx!(MicroMinotari(150_000), fee: MicroMinotari(5), inputs:1, outputs: 5, &key_manager)
                 .expect("Failed to get tx");
             transactions.push(Arc::new(tx1));
 

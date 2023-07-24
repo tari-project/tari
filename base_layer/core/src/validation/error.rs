@@ -31,7 +31,7 @@ use crate::{
     covenants::CovenantError,
     proof_of_work::{monero_rx::MergeMineError, DifficultyError, PowError},
     transactions::{
-        tari_amount::MicroMinoTari,
+        tari_amount::MicroMinotari,
         transaction_components::{OutputType, RangeProofType, TransactionError},
     },
 };
@@ -144,7 +144,7 @@ pub enum ValidationError {
     #[error("Validator node MMR is not correct")]
     ValidatorNodeMmmrError,
     #[error("Validator registration has invalid minimum amount {actual}, must be at least {min}")]
-    ValidatorNodeRegistrationMinDepositAmount { min: MicroMinoTari, actual: MicroMinoTari },
+    ValidatorNodeRegistrationMinDepositAmount { min: MicroMinotari, actual: MicroMinotari },
     #[error("Validator registration has invalid maturity {actual}, must be at least {min}")]
     ValidatorNodeRegistrationMinLockHeight { min: u64, actual: u64 },
     #[error("Validator node registration signature failed verification")]

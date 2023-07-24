@@ -45,7 +45,7 @@ use tari_core::{
     blocks::BlockHeader,
     proto::base_node::SyncUtxosByBlockRequest,
     transactions::{
-        tari_amount::MicroMinoTari,
+        tari_amount::MicroMinotari,
         transaction_components::{TransactionOutput, WalletOutput},
     },
 };
@@ -150,7 +150,7 @@ where
         &self,
         num_outputs_recovered: u64,
         final_height: u64,
-        total_value: MicroMinoTari,
+        total_value: MicroMinotari,
         elapsed: Duration,
     ) -> Result<(), UtxoScannerError> {
         self.publish_event(UtxoScannerEvent::Progress {
@@ -197,7 +197,7 @@ where
         }
     }
 
-    async fn attempt_sync(&mut self, peer: NodeId) -> Result<(u64, u64, MicroMinoTari, Duration), UtxoScannerError> {
+    async fn attempt_sync(&mut self, peer: NodeId) -> Result<(u64, u64, MicroMinotari, Duration), UtxoScannerError> {
         self.publish_event(UtxoScannerEvent::ConnectingToBaseNode(peer.clone()));
         let selected_peer = self.resources.wallet_connectivity.get_current_base_node_id();
 
@@ -237,7 +237,7 @@ where
                     return Ok((
                         last_scanned_block.num_outputs.unwrap_or(0),
                         last_scanned_block.height,
-                        last_scanned_block.amount.unwrap_or_else(|| MicroMinoTari::from(0)),
+                        last_scanned_block.amount.unwrap_or_else(|| MicroMinotari::from(0)),
                         timer.elapsed(),
                     ));
                 }
@@ -273,7 +273,7 @@ where
                 return Ok((
                     next_block_to_scan.num_outputs.unwrap_or(0),
                     next_block_to_scan.height,
-                    next_block_to_scan.amount.unwrap_or_else(|| MicroMinoTari::from(0)),
+                    next_block_to_scan.amount.unwrap_or_else(|| MicroMinotari::from(0)),
                     timer.elapsed(),
                 ));
             }
@@ -357,7 +357,7 @@ where
         let mut last_missing_scanned_block = None;
         let mut found_scanned_block = None;
         let mut num_outputs = 0u64;
-        let mut amount = MicroMinoTari::from(0);
+        let mut amount = MicroMinotari::from(0);
         for sb in scanned_blocks {
             // The scanned block has a higher height than the current tip, meaning the previously scanned block was
             // reorged out.
@@ -391,7 +391,7 @@ where
             if found_scanned_block.is_some() {
                 num_outputs = num_outputs.saturating_add(sb.num_outputs.unwrap_or(0));
                 amount = amount
-                    .checked_add(sb.amount.unwrap_or_else(|| MicroMinoTari::from(0)))
+                    .checked_add(sb.amount.unwrap_or_else(|| MicroMinotari::from(0)))
                     .ok_or(UtxoScannerError::OverflowError)?;
             }
         }
@@ -437,12 +437,12 @@ where
         start_header_hash: HashOutput,
         end_header_hash: HashOutput,
         tip_height: u64,
-    ) -> Result<(u64, u64, MicroMinoTari), UtxoScannerError> {
+    ) -> Result<(u64, u64, MicroMinotari), UtxoScannerError> {
         // Setting how often the progress event and log should occur during scanning. Defined in blocks
         const PROGRESS_REPORT_INTERVAL: u64 = 100;
 
         let mut num_recovered = 0u64;
-        let mut total_amount = MicroMinoTari::from(0);
+        let mut total_amount = MicroMinotari::from(0);
         let mut total_scanned = 0;
 
         let request = SyncUtxosByBlockRequest {
@@ -598,9 +598,9 @@ where
         utxos: Vec<(WalletOutput, String, ImportStatus, TxId)>,
         current_height: u64,
         mined_timestamp: NaiveDateTime,
-    ) -> Result<(u64, MicroMinoTari), UtxoScannerError> {
+    ) -> Result<(u64, MicroMinotari), UtxoScannerError> {
         let mut num_recovered = 0u64;
-        let mut total_amount = MicroMinoTari::from(0);
+        let mut total_amount = MicroMinotari::from(0);
         for (uo, message, import_status, tx_id) in utxos {
             let source_address = if uo.features.is_coinbase() {
                 // its a coinbase, so we know we mined it and it comes from us.

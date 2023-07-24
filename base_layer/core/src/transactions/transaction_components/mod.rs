@@ -88,7 +88,7 @@ hidden_type!(EncryptedDataKey, SafeArray<u8, AEAD_KEY_LEN>);
 
 //----------------------------------------     Crate functions   ----------------------------------------------------//
 
-use super::tari_amount::MicroMinoTari;
+use super::tari_amount::MicroMinotari;
 use crate::{consensus::DomainSeparatedConsensusHasher, covenants::Covenant, transactions::TransactionHashDomain};
 
 /// Implement the canonical hashing function for TransactionOutput and WalletOutput for use in
@@ -107,7 +107,7 @@ pub(super) fn hash_output(
     sender_offset_public_key: &PublicKey,
     metadata_signature: &ComAndPubSignature,
     rangeproof_hash: &FixedHash,
-    minimum_value_promise: MicroMinoTari,
+    minimum_value_promise: MicroMinotari,
 ) -> FixedHash {
     let common_hash = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("transaction_output")
         .chain(&version)

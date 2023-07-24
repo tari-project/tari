@@ -101,7 +101,7 @@ use tari_comms::{multiaddr::Multiaddr, types::CommsPublicKey, CommsNode};
 use tari_core::{
     consensus::{ConsensusBuilderError, ConsensusConstants, ConsensusManager},
     transactions::{
-        tari_amount::{MicroMinoTari, T},
+        tari_amount::{MicroMinotari, T},
         transaction_components::{
             CodeTemplateRegistration,
             OutputFeatures,
@@ -593,7 +593,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let message = request.into_inner();
 
         let mut transaction_service = self.get_transaction_service();
-        debug!(target: LOG_TARGET, "Trying to burn {} MinoTari", message.amount);
+        debug!(target: LOG_TARGET, "Trying to burn {} Minotari", message.amount);
         let response = match transaction_service
             .burn_tari(
                 message.amount.into(),
@@ -814,10 +814,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let tx_id = wallet
             .coin_split(
                 vec![],
-                MicroMinoTari::from(message.amount_per_split),
+                MicroMinotari::from(message.amount_per_split),
                 usize::try_from(message.split_count)
                     .map_err(|_| Status::internal("Count not convert u64 to usize".to_string()))?,
-                MicroMinoTari::from(message.fee_per_gram),
+                MicroMinotari::from(message.fee_per_gram),
                 message.message,
             )
             .await

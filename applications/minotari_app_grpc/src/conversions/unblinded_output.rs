@@ -25,7 +25,7 @@ use std::convert::{TryFrom, TryInto};
 use borsh::{BorshDeserialize, BorshSerialize};
 use tari_common_types::types::{PrivateKey, PublicKey};
 use tari_core::transactions::{
-    tari_amount::MicroMinoTari,
+    tari_amount::MicroMinotari,
     transaction_components::{EncryptedData, TransactionOutputVersion, UnblindedOutput},
 };
 use tari_script::{ExecutionStack, TariScript};
@@ -97,7 +97,7 @@ impl TryFrom<grpc::UnblindedOutput> for UnblindedOutput {
 
         let encrypted_data = EncryptedData::from_bytes(&output.encrypted_data).map_err(|err| err.to_string())?;
 
-        let minimum_value_promise = MicroMinoTari::from(output.minimum_value_promise);
+        let minimum_value_promise = MicroMinotari::from(output.minimum_value_promise);
 
         // zeroize output sensitive data
         output.spending_key.zeroize();
@@ -105,7 +105,7 @@ impl TryFrom<grpc::UnblindedOutput> for UnblindedOutput {
 
         Ok(Self::new(
             TransactionOutputVersion::try_from(0u8)?,
-            MicroMinoTari::from(output.value),
+            MicroMinotari::from(output.value),
             spending_key,
             features,
             script,

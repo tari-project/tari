@@ -84,7 +84,7 @@ pub enum MmProxyError {
     HexError(#[from] FromHexError),
     #[error("Coinbase builder error: {0}")]
     CoinbaseBuilderError(#[from] CoinbaseBuildError),
-    #[error("Unexpected MinoTari base node response: {0}")]
+    #[error("Unexpected Minotari base node response: {0}")]
     UnexpectedTariBaseNodeResponse(String),
     #[error("Invalid header value")]
     InvalidHeaderValue(#[from] InvalidHeaderValue),

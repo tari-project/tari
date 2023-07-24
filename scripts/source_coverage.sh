@@ -12,8 +12,8 @@ ignored_crates=(
 deps_only
 minotari_app_grpc
 minotari_app_utilities
-minotari_base_node
-minotari_base_node_grpc_client
+minotari_node
+minotari_node_grpc_client
 tari_chat_client
 tari_chat_ffi
 minotari_console_wallet

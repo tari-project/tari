@@ -38,7 +38,7 @@ use tari_core::{
     covenants::Covenant,
     transactions::{
         key_manager::TransactionKeyManagerInterface,
-        tari_amount::MicroMinoTari,
+        tari_amount::MicroMinotari,
         transaction_components::OutputFeatures,
         transaction_protocol::{
             proto::protocol as proto,
@@ -89,8 +89,8 @@ pub enum TransactionSendProtocolStage {
 pub struct TransactionSendProtocol<TBackend, TWalletConnectivity, TKeyManagerInterface> {
     id: TxId,
     dest_address: TariAddress,
-    amount: MicroMinoTari,
-    fee_per_gram: MicroMinoTari,
+    amount: MicroMinotari,
+    fee_per_gram: MicroMinotari,
     message: String,
     service_request_reply_channel: Option<oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>>,
     stage: TransactionSendProtocolStage,
@@ -114,8 +114,8 @@ where
         transaction_reply_receiver: Receiver<(CommsPublicKey, RecipientSignedMessage)>,
         cancellation_receiver: oneshot::Receiver<()>,
         dest_address: TariAddress,
-        amount: MicroMinoTari,
-        fee_per_gram: MicroMinoTari,
+        amount: MicroMinotari,
+        fee_per_gram: MicroMinotari,
         message: String,
         tx_meta: TransactionMetadata,
         service_request_reply_channel: Option<
@@ -226,7 +226,7 @@ where
                 self.message.clone(),
                 script!(Nop),
                 Covenant::default(),
-                MicroMinoTari::zero(),
+                MicroMinotari::zero(),
             )
             .await
         {

@@ -37,7 +37,7 @@ use crate::{
     test_helpers::{blockchain::create_store_with_consensus, create_chain_header},
     transactions::{
         key_manager::TxoStage,
-        tari_amount::{uT, MicroMinoTari},
+        tari_amount::{uT, MicroMinotari},
         test_helpers::{
             create_random_signature_from_secret_key,
             create_test_core_key_manager_with_memory_db,
@@ -137,7 +137,7 @@ async fn chain_balance_validation() {
         &OutputFeatures::default(),
         &script!(Nop),
         &Covenant::default(),
-        MicroMinoTari::zero(),
+        MicroMinotari::zero(),
     )
     .await;
     let (pk, sig) = create_random_signature_from_secret_key(
@@ -151,7 +151,7 @@ async fn chain_balance_validation() {
     .await;
     let excess = Commitment::from_public_key(&pk);
     let kernel =
-        TransactionKernel::new_current_version(KernelFeatures::empty(), MicroMinoTari::from(0), 0, excess, sig, None);
+        TransactionKernel::new_current_version(KernelFeatures::empty(), MicroMinotari::from(0), 0, excess, sig, None);
     let mut gen_block = genesis.block().clone();
     gen_block.body.add_output(faucet_utxo);
     gen_block.body.add_kernels([kernel]);
@@ -195,7 +195,7 @@ async fn chain_balance_validation() {
         &OutputFeatures::create_coinbase(1, None),
         &script!(Nop),
         &Covenant::default(),
-        MicroMinoTari::zero(),
+        MicroMinotari::zero(),
     )
     .await;
 
@@ -257,7 +257,7 @@ async fn chain_balance_validation() {
         &OutputFeatures::create_coinbase(1, None),
         &script!(Nop),
         &Covenant::default(),
-        MicroMinoTari::zero(),
+        MicroMinotari::zero(),
     )
     .await;
     let (pk, sig) = create_random_signature_from_secret_key(
@@ -322,7 +322,7 @@ async fn chain_balance_validation_burned() {
         &OutputFeatures::default(),
         &script!(Nop),
         &Covenant::default(),
-        MicroMinoTari::zero(),
+        MicroMinotari::zero(),
     )
     .await;
     let (pk, sig) = create_random_signature_from_secret_key(
@@ -336,7 +336,7 @@ async fn chain_balance_validation_burned() {
     .await;
     let excess = Commitment::from_public_key(&pk);
     let kernel =
-        TransactionKernel::new_current_version(KernelFeatures::empty(), MicroMinoTari::from(0), 0, excess, sig, None);
+        TransactionKernel::new_current_version(KernelFeatures::empty(), MicroMinotari::from(0), 0, excess, sig, None);
     let mut gen_block = genesis.block().clone();
     gen_block.body.add_output(faucet_utxo);
     gen_block.body.add_kernels([kernel]);
@@ -373,14 +373,14 @@ async fn chain_balance_validation_burned() {
 
     //---------------------------------- Add block (coinbase + burned) --------------------------------------------//
     let mut txn = DbTransaction::new();
-    let coinbase_value = consensus_manager.get_block_reward_at(1) - MicroMinoTari::from(100);
+    let coinbase_value = consensus_manager.get_block_reward_at(1) - MicroMinotari::from(100);
     let (coinbase, coinbase_key_id, _) = create_utxo(
         coinbase_value,
         &key_manager,
         &OutputFeatures::create_coinbase(1, None),
         &script!(Nop),
         &Covenant::default(),
-        MicroMinoTari::zero(),
+        MicroMinotari::zero(),
     )
     .await;
     let (pk, sig) = create_random_signature_from_secret_key(
@@ -406,7 +406,7 @@ async fn chain_balance_validation_burned() {
         &OutputFeatures::create_burn_output(),
         &script!(Nop),
         &Covenant::default(),
-        MicroMinoTari::zero(),
+        MicroMinotari::zero(),
     )
     .await;
 
@@ -484,7 +484,7 @@ mod transaction_validator {
         let factories = CryptoFactories::default();
         let validator = TransactionInternalConsistencyValidator::new(true, consensus_manager, factories);
         let features = OutputFeatures::create_coinbase(0, None);
-        let tx = match tx!(MicroMinoTari(100_000), fee: MicroMinoTari(5), inputs: 1, outputs: 1, features: features, &key_manager)
+        let tx = match tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, features: features, &key_manager)
         {
             Ok((tx, _, _)) => tx,
             Err(e) => panic!("Error found: {}", e),
@@ -503,7 +503,7 @@ mod transaction_validator {
         let validator = TransactionInternalConsistencyValidator::new(true, consensus_manager, factories);
         let mut features = OutputFeatures { ..Default::default() };
         features.coinbase_extra = b"deadbeef".to_vec();
-        let tx = match tx!(MicroMinoTari(100_000), fee: MicroMinoTari(5), inputs: 1, outputs: 1, features: features, &key_manager)
+        let tx = match tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, features: features, &key_manager)
         {
             Ok((tx, _, _)) => tx,
             Err(e) => panic!("Error found: {}", e),

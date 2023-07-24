@@ -22,19 +22,19 @@
 //
 //! Miner specific configuration
 //!
-//! MinoTari Miner Node derives all configuration management
+//! Minotari Miner Node derives all configuration management
 //! from [tari_common] crate, also extending with few
 //! specific options:
 //! - base_node_grpc_address - is IPv4/IPv6 address including port
-//! number, by which MinoTari Base Node can be found
+//! number, by which Minotari Base Node can be found
 //! - wallet_grpc_address - is IPv4/IPv6 address including port number,
-//! where MinoTari Wallet Node can be found
+//! where Minotari Wallet Node can be found
 //! - num_mining_threads - number of mining threads, defaults to number of cpu cores
 //! - mine_on_tip_only - will start mining only when node is reporting bootstrapped state
 //! - validate_tip_timeout_sec - will check tip with node every N seconds to validate that still
 //! mining on a tip
 //! All miner options configured under `[miner]` section of
-//! MinoTari's `config.toml`.
+//! Minotari's `config.toml`.
 
 use std::time::Duration;
 
@@ -79,7 +79,7 @@ pub struct MinerConfig {
     pub wait_timeout_on_error: u64,
 }
 
-/// The proof of work data structure that is included in the block header. For the MinoTari miner only `Sha3x` is
+/// The proof of work data structure that is included in the block header. For the Minotari miner only `Sha3x` is
 /// allowed.
 #[derive(Serialize, Deserialize, Debug, Default)]
 pub enum ProofOfWork {

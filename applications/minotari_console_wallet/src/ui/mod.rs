@@ -86,7 +86,7 @@ fn crossterm_loop(mut app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitErro
         error!(target: LOG_TARGET, "Error creating stdout context. {}", e);
         ExitCode::InterfaceError
     })?;
-    let terminal_title = format!("MinoTari Console Wallet - Version {}", consts::APP_VERSION);
+    let terminal_title = format!("Minotari Console Wallet - Version {}", consts::APP_VERSION);
     if let Err(e) = execute!(stdout, SetTitle(terminal_title.as_str())) {
         println!("Error setting terminal title. {}", e)
     }

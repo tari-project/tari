@@ -33,7 +33,7 @@ use minotari_wallet::output_manager_service::{
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{transaction::TxId, types::FixedHash};
 use tari_core::transactions::{
-    tari_amount::MicroMinoTari,
+    tari_amount::MicroMinotari,
     test_helpers::create_test_core_key_manager_with_memory_db,
     transaction_components::OutputFeatures,
 };
@@ -50,7 +50,7 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     for i in 0..5 {
         let uo = make_input(
             &mut OsRng,
-            MicroMinoTari::from(100 + OsRng.next_u64() % 1000),
+            MicroMinotari::from(100 + OsRng.next_u64() % 1000),
             &OutputFeatures::default(),
             &key_manager,
         )
@@ -72,7 +72,7 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
 
     for i in 0..4usize {
         let balance = db.get_balance(Some(i as u64)).unwrap();
-        let mut sum = MicroMinoTari::from(0);
+        let mut sum = MicroMinotari::from(0);
         for output in unspent_outputs.iter().take(5).skip(i + 1) {
             sum += output.wallet_output.value;
         }
@@ -101,7 +101,7 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
         for _ in 0..4 {
             let kmo = make_input(
                 &mut OsRng,
-                MicroMinoTari::from(100 + OsRng.next_u64() % 1000),
+                MicroMinotari::from(100 + OsRng.next_u64() % 1000),
                 &OutputFeatures::default(),
                 &key_manager,
             )
@@ -115,7 +115,7 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
         for _ in 0..2 {
             let uo = make_input(
                 &mut OsRng,
-                MicroMinoTari::from(100 + OsRng.next_u64() % 1000),
+                MicroMinotari::from(100 + OsRng.next_u64() % 1000),
                 &OutputFeatures::default(),
                 &key_manager,
             )
@@ -137,18 +137,18 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     // Test balance calc
     let available_balance = unspent_outputs
         .iter()
-        .fold(MicroMinoTari::from(0), |acc, x| acc + x.wallet_output.value);
-    let mut pending_incoming_balance = MicroMinoTari(0);
-    let mut pending_outgoing_balance = MicroMinoTari(0);
+        .fold(MicroMinotari::from(0), |acc, x| acc + x.wallet_output.value);
+    let mut pending_incoming_balance = MicroMinotari(0);
+    let mut pending_outgoing_balance = MicroMinotari(0);
     for v in &pending_txs {
         pending_outgoing_balance += v
             .outputs_to_be_spent
             .iter()
-            .fold(MicroMinoTari::from(0), |acc, x| acc + x.wallet_output.value);
+            .fold(MicroMinotari::from(0), |acc, x| acc + x.wallet_output.value);
         pending_incoming_balance += v
             .outputs_to_be_received
             .iter()
-            .fold(MicroMinoTari::from(0), |acc, x| acc + x.wallet_output.value);
+            .fold(MicroMinotari::from(0), |acc, x| acc + x.wallet_output.value);
     }
 
     let balance = db.get_balance(None).unwrap();
@@ -213,31 +213,31 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     // Balance with confirmed second pending tx
     let mut available_balance = unspent_outputs
         .iter()
-        .fold(MicroMinoTari::from(0), |acc, x| acc + x.wallet_output.value);
-    let mut pending_incoming_balance = MicroMinoTari(0);
-    let mut pending_outgoing_balance = MicroMinoTari(0);
+        .fold(MicroMinotari::from(0), |acc, x| acc + x.wallet_output.value);
+    let mut pending_incoming_balance = MicroMinotari(0);
+    let mut pending_outgoing_balance = MicroMinotari(0);
 
     pending_outgoing_balance += pending_txs[0]
         .outputs_to_be_spent
         .iter()
-        .fold(MicroMinoTari::from(0), |acc, x| acc + x.wallet_output.value);
+        .fold(MicroMinotari::from(0), |acc, x| acc + x.wallet_output.value);
     pending_outgoing_balance += pending_txs[2]
         .outputs_to_be_spent
         .iter()
-        .fold(MicroMinoTari::from(0), |acc, x| acc + x.wallet_output.value);
+        .fold(MicroMinotari::from(0), |acc, x| acc + x.wallet_output.value);
     pending_incoming_balance += pending_txs[0]
         .outputs_to_be_received
         .iter()
-        .fold(MicroMinoTari::from(0), |acc, x| acc + x.wallet_output.value);
+        .fold(MicroMinotari::from(0), |acc, x| acc + x.wallet_output.value);
     pending_incoming_balance += pending_txs[2]
         .outputs_to_be_received
         .iter()
-        .fold(MicroMinoTari::from(0), |acc, x| acc + x.wallet_output.value);
+        .fold(MicroMinotari::from(0), |acc, x| acc + x.wallet_output.value);
 
     available_balance += pending_txs[1]
         .outputs_to_be_received
         .iter()
-        .fold(MicroMinoTari::from(0), |acc, x| acc + x.wallet_output.value);
+        .fold(MicroMinotari::from(0), |acc, x| acc + x.wallet_output.value);
 
     let balance = db.get_balance(None).unwrap();
     assert_eq!(
@@ -254,7 +254,7 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     // Add output to be received
     let uo = make_input(
         &mut OsRng,
-        MicroMinoTari::from(100 + OsRng.next_u64() % 1000),
+        MicroMinotari::from(100 + OsRng.next_u64() % 1000),
         &OutputFeatures::default(),
         &key_manager,
     )
@@ -353,7 +353,7 @@ pub async fn test_short_term_encumberance() {
     for i in 0..5 {
         let kmo = make_input(
             &mut OsRng,
-            MicroMinoTari::from(100 + OsRng.next_u64() % 1000),
+            MicroMinotari::from(100 + OsRng.next_u64() % 1000),
             &OutputFeatures::default(),
             &key_manager,
         )
@@ -374,7 +374,7 @@ pub async fn test_short_term_encumberance() {
         balance.available_balance,
         unspent_outputs[3..5]
             .iter()
-            .fold(MicroMinoTari::from(0), |acc, x| acc + x.wallet_output.value)
+            .fold(MicroMinotari::from(0), |acc, x| acc + x.wallet_output.value)
     );
 
     db.clear_short_term_encumberances().unwrap();
@@ -384,7 +384,7 @@ pub async fn test_short_term_encumberance() {
         balance.available_balance,
         unspent_outputs
             .iter()
-            .fold(MicroMinoTari::from(0), |acc, x| acc + x.wallet_output.value)
+            .fold(MicroMinotari::from(0), |acc, x| acc + x.wallet_output.value)
     );
 
     db.encumber_outputs(2u64.into(), unspent_outputs[0..=2].to_vec(), vec![])
@@ -398,7 +398,7 @@ pub async fn test_short_term_encumberance() {
         balance.available_balance,
         unspent_outputs[3..5]
             .iter()
-            .fold(MicroMinoTari::from(0), |acc, x| acc + x.wallet_output.value)
+            .fold(MicroMinotari::from(0), |acc, x| acc + x.wallet_output.value)
     );
 }
 
@@ -412,7 +412,7 @@ pub async fn test_no_duplicate_outputs() {
     let key_manager = create_test_core_key_manager_with_memory_db();
     let uo = make_input(
         &mut OsRng,
-        MicroMinoTari::from(1000),
+        MicroMinotari::from(1000),
         &OutputFeatures::default(),
         &key_manager,
     )
@@ -454,7 +454,7 @@ pub async fn test_mark_as_unmined() {
     let key_manager = create_test_core_key_manager_with_memory_db();
     let uo = make_input(
         &mut OsRng,
-        MicroMinoTari::from(1000),
+        MicroMinotari::from(1000),
         &OutputFeatures::default(),
         &key_manager,
     )

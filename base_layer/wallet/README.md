@@ -1,6 +1,6 @@
-# MinoTari Wallet
+# Minotari Wallet
 
-Foreign Function interface for the MinoTari Android and MinoTari iOS Wallets.
+Foreign Function interface for the Minotari Android and Minotari iOS Wallets.
 
 This crate is part of the [Tari Cryptocurrency](https://tari.com) project.
 

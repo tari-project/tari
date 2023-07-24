@@ -16,7 +16,7 @@ tari_comms = { path = "../../comms/core" }
 tari_core = { path = "../../base_layer/core", default-features = false, features = ["transactions"] }
 minotari_app_utilities = { path = "../minotari_app_utilities" }
 tari_utilities = "0.4.10"
-minotari_base_node_grpc_client = {path="../../clients/rust/base_node_grpc_client" }
+minotari_node_grpc_client = {path="../../clients/rust/base_node_grpc_client" }
 minotari_wallet_grpc_client = {path="../../clients/rust/wallet_grpc_client" }
 
 anyhow = "1.0.53"

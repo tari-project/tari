@@ -43,7 +43,7 @@ service Wallet {
     rpc GetAddress (Empty) returns (GetAddressResponse);
     // This returns a coinbase transaction
     rpc GetCoinbase (GetCoinbaseRequest) returns (GetCoinbaseResponse);
-    // Send MinoTari to a number of recipients
+    // Send Minotari to a number of recipients
     rpc Transfer (TransferRequest)  returns (TransferResponse);
     // Returns the transaction details for the given transaction IDs
     rpc GetTransactionInfo (GetTransactionInfoRequest) returns (GetTransactionInfoResponse);

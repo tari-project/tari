@@ -3,7 +3,7 @@
 
 use log::*;
 use minotari_wallet::output_manager_service::UtxoSelectionCriteria;
-use tari_core::transactions::tari_amount::MicroMinoTari;
+use tari_core::transactions::tari_amount::MicroMinotari;
 use tari_utilities::hex::Hex;
 use tokio::{runtime::Handle, sync::watch};
 use tui::{
@@ -245,7 +245,7 @@ impl SendTab {
                     Some(ConfirmationDialogType::OneSided) |
                     Some(ConfirmationDialogType::StealthAddress) => {
                         if 'y' == c {
-                            let amount = if let Ok(v) = self.amount_field.parse::<MicroMinoTari>() {
+                            let amount = if let Ok(v) = self.amount_field.parse::<MicroMinotari>() {
                                 v
                             } else {
                                 if self.selected_unique_id.is_none() {
@@ -253,7 +253,7 @@ impl SendTab {
                                         Some("Amount should be an integer\nPress Enter to continue.".to_string());
                                     return KeyHandled::Handled;
                                 }
-                                MicroMinoTari::from(0)
+                                MicroMinotari::from(0)
                             };
 
                             let fee_per_gram = if let Ok(v) = self.fee_field.parse::<u64>() {
@@ -589,9 +589,9 @@ impl<B: Backend> Component<B> for SendTab {
                     self.error_message = Some("Amount or token required\nPress Enter to continue.".to_string());
                     return;
                 }
-                if self.amount_field.parse::<MicroMinoTari>().is_err() && self.selected_unique_id.is_none() {
+                if self.amount_field.parse::<MicroMinotari>().is_err() && self.selected_unique_id.is_none() {
                     self.error_message =
-                        Some("Amount should be a valid amount of MinoTari\nPress Enter to continue.".to_string());
+                        Some("Amount should be a valid amount of Minotari\nPress Enter to continue.".to_string());
                     return;
                 }
 

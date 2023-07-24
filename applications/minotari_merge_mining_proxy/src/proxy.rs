@@ -39,7 +39,7 @@ use bytes::Bytes;
 use hyper::{header::HeaderValue, service::Service, Body, Method, Request, Response, StatusCode, Uri};
 use json::json;
 use jsonrpc::error::StandardError;
-use minotari_base_node_grpc_client::{grpc, BaseNodeGrpcClient};
+use minotari_node_grpc_client::{grpc, BaseNodeGrpcClient};
 use minotari_wallet_grpc_client::WalletGrpcClient;
 use reqwest::{ResponseBuilderExt, Url};
 use serde_json as json;
@@ -200,14 +200,14 @@ impl InnerService {
                 .store(result.get_ref().initial_sync_achieved, Ordering::Relaxed);
             debug!(
                 target: LOG_TARGET,
-                "MinoTari base node initial sync status change to {}",
+                "Minotari base node initial sync status change to {}",
                 result.get_ref().initial_sync_achieved
             );
         }
 
         debug!(
             target: LOG_TARGET,
-            "Monero height = #{}, MinoTari base node height = #{}", json["height"], height
+            "Monero height = #{}, Minotari base node height = #{}", json["height"], height
         );
 
         json["height"] = json!(cmp::max(json["height"].as_i64().unwrap_or_default(), height as i64));
@@ -244,12 +244,12 @@ impl InnerService {
             let monero_block = monero_rx::deserialize_monero_block_from_hex(param)?;
             debug!(target: LOG_TARGET, "Monero block: {}", monero_block);
             let hash = monero_rx::extract_tari_hash(&monero_block)?.ok_or_else(|| {
-                MmProxyError::MissingDataError("Could not find MinoTari header in coinbase".to_string())
+                MmProxyError::MissingDataError("Could not find Minotari header in coinbase".to_string())
             })?;
 
             debug!(
                 target: LOG_TARGET,
-                "MinoTari Hash found in Monero block: {}",
+                "Minotari Hash found in Monero block: {}",
                 hex::encode(hash)
             );
 
@@ -305,7 +305,7 @@ impl InnerService {
                             );
                             debug!(
                                 target: LOG_TARGET,
-                                "Submitted block #{} to MinoTari node in {:.0?} (SubmitBlock)",
+                                "Submitted block #{} to Minotari node in {:.0?} (SubmitBlock)",
                                 height,
                                 start.elapsed()
                             );
@@ -397,7 +397,7 @@ impl InnerService {
         let mut grpc_wallet_client = self.wallet_client.clone();
 
         // Add merge mining tag on blocktemplate request
-        debug!(target: LOG_TARGET, "Requested new block template from MinoTari base node");
+        debug!(target: LOG_TARGET, "Requested new block template from Minotari base node");
         if !self.initial_sync_achieved.load(Ordering::Relaxed) {
             let grpc::TipInfoResponse {
                 initial_sync_achieved,
@@ -713,7 +713,7 @@ impl InnerService {
             debug!(
                 target: LOG_TARGET,
                 "[monerod] skip: Proxy configured for self-select mode. Pool will submit to MoneroD, submitting to \
-                 MinoTari.",
+                 Minotari.",
             );
 
             // This is required for self-select configuration.
