@@ -67,10 +67,14 @@ service Wallet {
     rpc RevalidateAllTransactions (RevalidateRequest) returns (RevalidateResponse);
     // This will send a XTR SHA Atomic swap transaction
     rpc SendShaAtomicSwapTransaction(SendShaAtomicSwapRequest) returns (SendShaAtomicSwapResponse);
+    // This will send a Tari <> MinoTari Blake2 Atomic swap transaction
+    rpc SendBlake2AtomicSwapTransaction(SendBlake2AtomicSwapRequest) returns (SendBlake2AtomicSwapResponse);
     // This will create a burn transaction
     rpc CreateBurnTransaction(CreateBurnTransactionRequest) returns (CreateBurnTransactionResponse);
     // This will claim a XTR SHA Atomic swap transaction
     rpc ClaimShaAtomicSwapTransaction(ClaimShaAtomicSwapRequest) returns (ClaimShaAtomicSwapResponse);
+    // This will claim a Tari <> MinoTari Blake 2 Atomic swap transaction
+    rpc ClaimBlake2AtomicSwapTransaction(ClaimBlake2AtomicSwapRequest) returns (ClaimBlake2AtomicSwapResponse);
     // This will claim a HTLC refund transaction
     rpc ClaimHtlcRefundTransaction(ClaimHtlcRefundRequest) returns (ClaimHtlcRefundResponse);
     // Creates a transaction with a template registration output
@@ -99,6 +103,11 @@ message TransferRequest {
 
 message SendShaAtomicSwapRequest {
     PaymentRecipient recipient = 1;
+}
+
+message SendBlake2AtomicSwapRequest {
+    PaymentRecipient recipient = 1;
+    uint64 timelock = 2;
 }
 
 message CreateBurnTransactionRequest{
@@ -134,6 +143,14 @@ message SendShaAtomicSwapResponse {
     string failure_message = 5;
 }
 
+message SendBlake2AtomicSwapResponse {
+    uint64 transaction_id = 1;
+    string pre_image = 2;
+    string output_hash = 3;
+    bool is_success = 4;
+    string failure_message = 5;
+}
+
 message CreateBurnTransactionResponse{
     uint64 transaction_id = 1;
     bool is_success = 2;
@@ -157,14 +174,23 @@ message ClaimShaAtomicSwapRequest{
     uint64 fee_per_gram = 3;
 }
 
+message ClaimBlake2AtomicSwapRequest {
+    string output = 1;
+    string pre_image = 2;
+    uint64 fee_per_gram = 3;
+}
+
 message ClaimShaAtomicSwapResponse {
+    TransferResult results = 1;
+}
+
+message ClaimBlake2AtomicSwapResponse { 
     TransferResult results = 1;
 }
 
 message ClaimHtlcRefundRequest{
     string output_hash = 1;
     uint64 fee_per_gram = 2;
-    uint64 timelock = 3;
 }
 
 message ClaimHtlcRefundResponse {

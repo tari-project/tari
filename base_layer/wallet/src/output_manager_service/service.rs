@@ -418,17 +418,12 @@ where
                 self.claim_sha_atomic_swap_with_hash(output_hash, pre_image, fee_per_gram)
                     .await
             },
-            OutputManagerRequest::CreateClaimBlake2AtomicSwapTransaction(
-                output_hash,
-                pre_image,
-                timelock,
-                fee_per_gram,
-            ) => {
-                self.claim_blake2_atomic_swap_with_hash(output_hash, pre_image, timelock, fee_per_gram)
+            OutputManagerRequest::CreateClaimBlake2AtomicSwapTransaction(output_hash, pre_image, fee_per_gram) => {
+                self.claim_blake2_atomic_swap_with_hash(output_hash, pre_image, fee_per_gram)
                     .await
             },
-            OutputManagerRequest::CreateHtlcRefundTransaction(output, timelock, fee_per_gram) => self
-                .create_htlc_refund_transaction(output, timelock, fee_per_gram)
+            OutputManagerRequest::CreateHtlcRefundTransaction(output, fee_per_gram) => self
+                .create_htlc_refund_transaction(output, fee_per_gram)
                 .await
                 .map(OutputManagerResponse::ClaimHtlcTransaction),
             OutputManagerRequest::GetOutputStatusesByTxId(tx_id) => {
@@ -499,7 +494,6 @@ where
         &mut self,
         output_hash: HashOutput,
         pre_image: PublicKey,
-        timelock: u64,
         fee_per_gram: MicroTari,
     ) -> Result<OutputManagerResponse, OutputManagerError> {
         let output = self
@@ -508,7 +502,7 @@ where
             .pop()
             .ok_or_else(|| OutputManagerError::ServiceError("Output not found".to_string()))?;
 
-        self.create_claim_blake2_atomic_swap_transaction(output, pre_image, timelock, fee_per_gram)
+        self.create_claim_blake2_atomic_swap_transaction(output, pre_image, fee_per_gram)
             .await
             .map(OutputManagerResponse::ClaimHtlcTransaction)
     }
@@ -2272,7 +2266,6 @@ where
         &mut self,
         output: TransactionOutput,
         pre_image: PublicKey,
-        timelock: u64,
         fee_per_gram: MicroTari,
     ) -> Result<(TxId, MicroTari, MicroTari, Transaction), OutputManagerError> {
         let shared_secret = self
@@ -2317,7 +2310,7 @@ where
                     self.resources.key_manager.clone(),
                 );
                 builder
-                    .with_lock_height(timelock)
+                    .with_lock_height(0)
                     .with_fee_per_gram(fee_per_gram)
                     .with_message(message)
                     .with_kernel_features(KernelFeatures::empty())
@@ -2386,7 +2379,6 @@ where
     pub async fn create_htlc_refund_transaction(
         &mut self,
         output_hash: HashOutput,
-        timelock: Option<u64>,
         fee_per_gram: MicroTari,
     ) -> Result<(TxId, MicroTari, MicroTari, Transaction), OutputManagerError> {
         let output = self.resources.db.get_unspent_output(output_hash)?.wallet_output;
@@ -2401,7 +2393,7 @@ where
             self.resources.key_manager.clone(),
         );
         builder
-            .with_lock_height(timelock.unwrap_or(0))
+            .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
             .with_message(message)
             .with_kernel_features(KernelFeatures::empty())

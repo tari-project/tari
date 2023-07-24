@@ -1297,6 +1297,7 @@ where
     /// # Arguments
     /// 'dest_pubkey': The Comms pubkey of the recipient node
     /// 'amount': The amount of MinoTari to send to the recipient
+    /// 'timelock': The time to lock the funds, it should be some value in the future
     /// 'fee_per_gram': The amount of fee per transaction gram to be included in transaction
     #[allow(clippy::too_many_lines)]
     async fn send_blake2_atomic_swap_transaction(

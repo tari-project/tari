@@ -55,7 +55,7 @@ use tari_core::transactions::{
     tari_amount::{uT, MicroTari, Tari},
     transaction_components::{OutputFeatures, TransactionOutput, WalletOutput},
 };
-use tari_crypto::{ristretto::RistrettoSecretKey, hash::blake2::Blake256};
+use tari_crypto::{hash::blake2::Blake256, ristretto::RistrettoSecretKey};
 use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
     connectivity_service::WalletConnectivityInterface,
@@ -213,12 +213,11 @@ pub async fn finalise_blake2_atomic_swap(
     mut transaction_service: TransactionServiceHandle,
     output_hash: FixedHash,
     pre_image: PublicKey,
-    timelock: u64,
     fee_per_gram: MicroTari,
     message: String,
 ) -> Result<TxId, CommandError> {
     let (tx_id, _fee, amount, tx) = output_service
-        .create_claim_blake2_atomic_swap_transaction(output_hash, pre_image, timelock, fee_per_gram)
+        .create_claim_blake2_atomic_swap_transaction(output_hash, pre_image, fee_per_gram)
         .await?;
     transaction_service
         .submit_transaction(tx_id, tx, amount, message)
@@ -231,12 +230,11 @@ pub async fn claim_htlc_refund(
     mut output_service: OutputManagerHandle,
     mut transaction_service: TransactionServiceHandle,
     output_hash: FixedHash,
-    timelock: Option<u64>,
     fee_per_gram: MicroTari,
     message: String,
 ) -> Result<TxId, CommandError> {
     let (tx_id, _fee, amount, tx) = output_service
-        .create_htlc_refund_transaction(output_hash, timelock, fee_per_gram)
+        .create_htlc_refund_transaction(output_hash, fee_per_gram)
         .await?;
     transaction_service
         .submit_transaction(tx_id, tx, amount, message)
@@ -979,7 +977,6 @@ pub async fn command_runner(
                             output_service.clone(),
                             transaction_service.clone(),
                             hash,
-                            args.timelock,
                             config.fee_per_gram.into(),
                             args.message,
                         )
@@ -1025,7 +1022,6 @@ pub async fn command_runner(
                         transaction_service.clone(),
                         hash,
                         args.pre_image.into(),
-                        args.timelock,
                         config.fee_per_gram.into(),
                         args.message,
                     )

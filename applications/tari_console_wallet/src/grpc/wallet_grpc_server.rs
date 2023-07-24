@@ -35,6 +35,8 @@ use tari_app_grpc::{
         payment_recipient::PaymentType,
         wallet_server,
         CheckConnectivityResponse,
+        ClaimBlake2AtomicSwapRequest,
+        ClaimBlake2AtomicSwapResponse,
         ClaimHtlcRefundRequest,
         ClaimHtlcRefundResponse,
         ClaimShaAtomicSwapRequest,
@@ -67,6 +69,8 @@ use tari_app_grpc::{
         RegisterValidatorNodeResponse,
         RevalidateRequest,
         RevalidateResponse,
+        SendBlake2AtomicSwapRequest,
+        SendBlake2AtomicSwapResponse,
         SendShaAtomicSwapRequest,
         SendShaAtomicSwapResponse,
         SetBaseNodeRequest,
@@ -386,6 +390,64 @@ impl wallet_server::Wallet for WalletGrpcServer {
         Ok(Response::new(response))
     }
 
+    async fn send_blake2_atomic_swap_transaction(
+        &self,
+        request: Request<SendBlake2AtomicSwapRequest>,
+    ) -> Result<Response<SendBlake2AtomicSwapResponse>, Status> {
+        let request_inner = request.into_inner();
+        let message = request_inner
+            .recipient
+            .ok_or_else(|| Status::internal("Request is malformed".to_string()))?;
+        let timelock = request_inner.timelock;
+        let address = TariAddress::from_hex(&message.address)
+            .map_err(|_| Status::internal("Destination address is malformed".to_string()))?;
+
+        let mut transaction_service = self.get_transaction_service();
+        let response = match transaction_service
+            .send_blake2_atomic_swap_transaction(
+                address.clone(),
+                message.amount.into(),
+                timelock,
+                UtxoSelectionCriteria::default(),
+                message.fee_per_gram.into(),
+                message.message,
+            )
+            .await
+        {
+            Ok((tx_id, pre_image, output)) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Transaction broadcast: {}, preimage_hex: {}, hash {}",
+                    tx_id,
+                    pre_image.to_hex(),
+                    output.hash().to_hex()
+                );
+                SendBlake2AtomicSwapResponse {
+                    transaction_id: tx_id.as_u64(),
+                    pre_image: pre_image.to_hex(),
+                    output_hash: output.hash().to_hex(),
+                    is_success: true,
+                    failure_message: Default::default(),
+                }
+            },
+            Err(e) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Failed to send Blake2 Tari <> MinoTari atomic swap for address `{}`: {}", address, e
+                );
+                SendBlake2AtomicSwapResponse {
+                    transaction_id: Default::default(),
+                    pre_image: "".to_string(),
+                    output_hash: "".to_string(),
+                    is_success: false,
+                    failure_message: e.to_string(),
+                }
+            },
+        };
+
+        Ok(Response::new(response))
+    }
+
     async fn claim_sha_atomic_swap_transaction(
         &self,
         request: Request<ClaimShaAtomicSwapRequest>,
@@ -442,6 +504,62 @@ impl wallet_server::Wallet for WalletGrpcServer {
         }))
     }
 
+    async fn claim_blake2_atomic_swap_transaction(
+        &self,
+        request: Request<ClaimBlake2AtomicSwapRequest>,
+    ) -> Result<Response<ClaimBlake2AtomicSwapResponse>, Status> {
+        let message = request.into_inner();
+        let pre_image = CommsPublicKey::from_hex(&message.pre_image)
+            .map_err(|_| Status::internal("pre_image is malformed".to_string()))?;
+        let output = BlockHash::from_hex(&message.output)
+            .map_err(|_| Status::internal("Output hash is malformed".to_string()))?;
+        debug!(target: LOG_TARGET, "Trying to claim HTLC with hash {}", output.to_hex());
+        let mut transaction_service = self.get_transaction_service();
+        let mut output_manager_service = self.get_output_manager_service();
+        let response = match output_manager_service
+            .create_claim_blake2_atomic_swap_transaction(output, pre_image, message.fee_per_gram.into())
+            .await
+        {
+            Ok((tx_id, _fee, amount, tx)) => {
+                match transaction_service
+                    .submit_transaction(
+                        tx_id,
+                        tx,
+                        amount,
+                        "Claiming HTLC transaction with pre-image".to_string(),
+                    )
+                    .await
+                {
+                    Ok(()) => TransferResult {
+                        address: Default::default(),
+                        transaction_id: tx_id.as_u64(),
+                        is_success: true,
+                        failure_message: Default::default(),
+                    },
+                    Err(e) => TransferResult {
+                        address: Default::default(),
+                        transaction_id: Default::default(),
+                        is_success: false,
+                        failure_message: e.to_string(),
+                    },
+                }
+            },
+            Err(e) => {
+                warn!(target: LOG_TARGET, "Failed to claim Blake2 Tari <> MinoTari atomic swap: {}", e);
+                TransferResult {
+                    address: Default::default(),
+                    transaction_id: Default::default(),
+                    is_success: false,
+                    failure_message: e.to_string(),
+                }
+            },
+        };
+
+        Ok(Response::new(ClaimBlake2AtomicSwapResponse {
+            results: Some(response),
+        }))
+    }
+
     async fn claim_htlc_refund_transaction(
         &self,
         request: Request<ClaimHtlcRefundRequest>,
@@ -454,7 +572,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let mut output_manager_service = self.get_output_manager_service();
         debug!(target: LOG_TARGET, "Trying to claim HTLC with hash {}", output.to_hex());
         let response = match output_manager_service
-            .create_htlc_refund_transaction(output, Some(message.timelock), message.fee_per_gram.into())
+            .create_htlc_refund_transaction(output, message.fee_per_gram.into())
             .await
         {
             Ok((tx_id, _fee, amount, tx)) => {
