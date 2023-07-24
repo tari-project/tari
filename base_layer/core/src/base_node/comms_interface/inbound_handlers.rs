@@ -23,7 +23,6 @@
 use std::{
     collections::HashSet,
     convert::{TryFrom, TryInto},
-    ops::DerefMut,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -33,7 +32,7 @@ use strum_macros::Display;
 use tari_common_types::types::{BlockHash, FixedHash, HashOutput};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
 use tari_utilities::hex::Hex;
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 
 use crate::{
     base_node::{
@@ -83,7 +82,7 @@ pub struct InboundNodeCommsHandlers<B> {
     blockchain_db: AsyncBlockchainDb<B>,
     mempool: Mempool,
     consensus_manager: ConsensusManager,
-    list_of_reconciling_blocks: Arc<Mutex<HashSet<HashOutput>>>,
+    list_of_reconciling_blocks: Arc<RwLock<HashSet<HashOutput>>>,
     outbound_nci: OutboundNodeCommsInterface,
     connectivity: ConnectivityRequester,
 }
@@ -105,7 +104,7 @@ where B: BlockchainBackend + 'static
             blockchain_db,
             mempool,
             consensus_manager,
-            list_of_reconciling_blocks: Arc::new(Mutex::new(HashSet::new())),
+            list_of_reconciling_blocks: Arc::new(RwLock::new(HashSet::new())),
             outbound_nci,
             connectivity,
         }
@@ -448,21 +447,30 @@ where B: BlockchainBackend + 'static
             return Ok(());
         }
         {
-            // we have this in mutex to ensure we dont have any funnies with rwlock with multiples requests first
-            // passing the check then all wanting to reconcile. We should only have 1 request passing
-            let mut lock = self.list_of_reconciling_blocks.lock().await;
-            let list_of_reconciling_blocks = lock.deref_mut();
-            if list_of_reconciling_blocks.contains(&block_hash) {
+            // we use a double lock to make sure we can only reconcile one block at a time
+            let read_lock = self.list_of_reconciling_blocks.read().await;
+            if read_lock.contains(&block_hash) {
                 debug!(
                     target: LOG_TARGET,
                     "Block with hash `{}` is already being reconciled",
                     block_hash.to_hex()
                 );
                 return Ok(());
-            } else {
-                list_of_reconciling_blocks.insert(block_hash);
             }
         }
+        {
+            let mut write_lock = self.list_of_reconciling_blocks.write().await;
+            if self.blockchain_db.block_exists(block_hash).await? {
+                debug!(
+                    target: LOG_TARGET,
+                    "Block with hash `{}` already stored",
+                    block_hash.to_hex()
+                );
+                return Ok(());
+            }
+            write_lock.insert(block_hash);
+        }
+
         debug!(
             target: LOG_TARGET,
             "Block with hash `{}` is unknown. Constructing block from known mempool transactions / requesting missing \
@@ -476,9 +484,8 @@ where B: BlockchainBackend + 'static
         let block = self.reconcile_block(source_peer.clone(), new_block).await?;
 
         {
-            let mut lock = self.list_of_reconciling_blocks.lock().await;
-            let list_of_reconciling_blocks = lock.deref_mut();
-            list_of_reconciling_blocks.remove(&block_hash);
+            let mut write_lock = self.list_of_reconciling_blocks.write().await;
+            write_lock.remove(&block_hash);
         }
 
         self.handle_block(block, Some(source_peer)).await?;
