@@ -153,6 +153,7 @@ async fn send_from_cli(world: &mut TariWorld, amount: u64, wallet_a: String, wal
     let args = SendTariArgs {
         amount: MicroTari(amount),
         message: format!("Send amount {} from {} to {}", amount, wallet_a, wallet_b),
+        timelock: 0,
         destination: wallet_b_address,
     };
     cli.command2 = Some(CliCommands::SendTari(args));
@@ -206,6 +207,7 @@ async fn send_one_sided_tx_via_cli(world: &mut TariWorld, amount: u64, wallet_a:
     let args = SendTariArgs {
         amount: MicroTari(amount),
         message: format!("Send one sided amount {} from {} to {}", amount, wallet_a, wallet_b),
+        timelock: 0,
         destination: wallet_b_address,
     };
     cli.command2 = Some(CliCommands::SendOneSided(args));

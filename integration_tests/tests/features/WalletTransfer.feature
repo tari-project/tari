@@ -90,3 +90,21 @@ Feature: Wallet Transfer
     When I claim an HTLC refund transaction with wallet WALLET_A at fee 20
     When mining node MINER_2 mines 6 blocks
     Then I wait for wallet WALLET_A to have at least 9000000000 uT
+
+  Scenario: As a wallet I want to claim a Blake2 HTLC refund transaction
+    Given I have a seed node NODE
+    # Add a 2nd node otherwise initial sync will not succeed
+    When I have 1 base nodes connected to all seed nodes
+    When I have wallet WALLET_A connected to all seed nodes
+    When I have wallet WALLET_B connected to all seed nodes
+    When I have wallet WALLET_C connected to all seed nodes
+    When I have mining node MINER connected to base node NODE and wallet WALLET_A
+    When I have mining node MINER_2 connected to base node NODE and wallet WALLET_C
+    When mining node MINER mines 10 blocks
+    Then I wait for wallet WALLET_A to have at least 10000000000 uT
+    When I broadcast a blake2 HTLC transaction with 5000000000 uT from wallet WALLET_A to wallet WALLET_B with timelock 12 at fee 20
+    When mining node MINER_2 mines 16 blocks
+    When I wait 5 seconds
+    When I claim an HTLC refund transaction with wallet WALLET_A at fee 20
+    When mining node MINER_2 mines 6 blocks
+    Then I wait for wallet WALLET_A to have at least 9000000000 uT
