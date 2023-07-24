@@ -2026,7 +2026,7 @@ where
                 trace!(
                     target: LOG_TARGET,
                     "Transaction (TxId: {}) has already been received, this is probably a repeated message, Trace:
-            {}.",
+                {}.",
                     data.tx_id,
                     traced_message_tag
                 );
