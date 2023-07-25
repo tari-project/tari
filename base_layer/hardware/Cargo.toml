@@ -1,0 +1,18 @@
+[package]
+name = "tari_hardware"
+authors = ["The Tari Development Community"]
+description = "Service Managers for hardware devices"
+repository = "https://github.com/tari-project/tari"
+license = "BSD-3-Clause"
+version = "0.51.0-pre.4"
+edition = "2018"
+
+[dependencies]
+tari_service_framework = { path = "../service_framework" }
+tari_shutdown = {  path = "../../infrastructure/shutdown" }
+
+futures = { version = "^0.3.1", features = ["compat", "std"] }
+log = "0.4.6"
+tokio = { version = "1.23", features = ["sync", "macros"] }
+
+[dev-dependencies]
