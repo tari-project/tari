@@ -29,14 +29,16 @@ console-subscriber = "0.1.8"
 tokio = { version = "1.23", features = ["signal"] }
 
 bitflags = "1.2.1"
+blake2 = "0.10"
 chrono = { version = "0.4.19", default-features = false }
 clap = { version = "3.2", features = ["derive", "env"] }
 config = "0.13.0"
 crossterm = { version = "0.25.0" }
 digest = "0.10"
 futures = { version = "^0.3.16", default-features = false, features = ["alloc"] }
-log4rs = { git = "https://github.com/tari-project/log4rs.git", default_features = false, features = ["config_parsing", "threshold_filter", "yaml_format", "console_appender", "rolling_file_appender", "compound_policy", "size_trigger", "fixed_window_roller", "delete_roller"] }
+ledger-transport-hid = { git = "https://github.com/Zondax/ledger-rs" }
 log = { version = "0.4.8", features = ["std"] }
+log4rs = { git = "https://github.com/tari-project/log4rs.git", default_features = false, features = ["config_parsing", "threshold_filter", "yaml_format", "console_appender", "rolling_file_appender", "compound_policy", "size_trigger", "fixed_window_roller", "delete_roller"] }
 qrcode = { version = "0.12" }
 rand = "0.8"
 regex = "1.5.4"
@@ -52,10 +54,9 @@ thiserror = "1.0.26"
 tonic = "0.6.2"
 unicode-segmentation = "1.6.0"
 unicode-width = "0.1"
+url = "2.3.1"
 zeroize = "1"
 zxcvbn = "2"
-url = "2.3.1"
-blake2 = "0.10"
 
 [dependencies.tari_core]
 path = "../../base_layer/core"

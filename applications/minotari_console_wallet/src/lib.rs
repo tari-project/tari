@@ -63,7 +63,7 @@ use tokio::runtime::Runtime;
 use wallet_modes::{command_mode, grpc_mode, recovery_mode, script_mode, tui_mode, WalletMode};
 
 pub use crate::config::ApplicationConfig;
-use crate::init::{boot_with_password, confirm_seed_words, wallet_mode};
+use crate::init::{boot_with_password, confirm_seed_words, prompt_wallet_type, wallet_mode};
 
 pub const LOG_TARGET: &str = "wallet::console_wallet::main";
 
@@ -126,7 +126,9 @@ pub fn run_wallet_with_cli(
     // check for recovery based on existence of wallet file
     let (mut boot_mode, password) = boot_with_password(&cli, &config.wallet)?;
 
-    let recovery_seed = get_recovery_seed(boot_mode, &cli)?;
+    let recovery_seed = get_recovery_seed(&boot_mode, &cli)?;
+
+    let wallet_type = prompt_wallet_type(&boot_mode, &config.wallet, &cli.non_interactive_mode);
 
     // get command line password if provided
     let seed_words_file_name = cli.seed_words_file_name.clone();
@@ -167,6 +169,7 @@ pub fn run_wallet_with_cli(
         recovery_seed,
         shutdown_signal,
         cli.non_interactive_mode,
+        wallet_type,
     ))?;
 
     // if wallet is being set for the first time, wallet seed words are prompted on the screen
@@ -238,7 +241,7 @@ fn get_password(config: &ApplicationConfig, cli: &Cli) -> Option<SafePassword> {
         .map(|s| s.to_owned())
 }
 
-fn get_recovery_seed(boot_mode: WalletBoot, cli: &Cli) -> Result<Option<CipherSeed>, ExitError> {
+fn get_recovery_seed(boot_mode: &WalletBoot, cli: &Cli) -> Result<Option<CipherSeed>, ExitError> {
     if matches!(boot_mode, WalletBoot::Recovery) {
         let seed = if let Some(ref seed_words) = cli.seed_words {
             get_seed_from_seed_words(seed_words)?
