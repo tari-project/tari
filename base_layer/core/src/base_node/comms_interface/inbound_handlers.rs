@@ -470,7 +470,7 @@ where B: BlockchainBackend + 'static
                 );
                 return Ok(());
             }
-            if write_lock.contains(&block_hash) {
+            if !write_lock.insert(block_hash) {
                 debug!(
                     target: LOG_TARGET,
                     "Block with hash `{}` is already being reconciled",
@@ -478,7 +478,6 @@ where B: BlockchainBackend + 'static
                 );
                 return Ok(());
             }
-            write_lock.insert(block_hash);
         }
 
         debug!(
