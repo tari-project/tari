@@ -24,6 +24,7 @@
 
 use std::{fs, path::PathBuf, str::FromStr, sync::Arc, time::Instant};
 
+use ledger_transport_hid::{hidapi::HidApi, TransportNativeHID};
 use log::*;
 use minotari_app_utilities::identity_management::setup_node_identity;
 use minotari_wallet::{
@@ -33,10 +34,11 @@ use minotari_wallet::{
         database::{WalletBackend, WalletDatabase},
         sqlite_utilities::initialize_sqlite_database_backends,
     },
-    wallet::{derive_comms_secret_key, read_or_create_master_seed},
+    wallet::{derive_comms_secret_key, read_or_create_master_seed, read_or_create_wallet_type},
     Wallet,
     WalletConfig,
     WalletSqlite,
+    WalletType,
 };
 use rpassword::prompt_password_stdout;
 use rustyline::Editor;
@@ -248,6 +250,7 @@ pub async fn change_password(
         None,
         shutdown_signal,
         non_interactive_mode,
+        None,
     )
     .await?;
 
@@ -379,6 +382,7 @@ pub async fn init_wallet(
     recovery_seed: Option<CipherSeed>,
     shutdown_signal: ShutdownSignal,
     non_interactive_mode: bool,
+    wallet_type: Option<WalletType>,
 ) -> Result<WalletSqlite, ExitError> {
     fs::create_dir_all(
         config
@@ -414,6 +418,7 @@ pub async fn init_wallet(
     };
 
     let master_seed = read_or_create_master_seed(recovery_seed.clone(), &wallet_db)?;
+    let _wallet_type = read_or_create_wallet_type(wallet_type, &wallet_db);
 
     let node_identity = match config.wallet.identity_file.as_ref() {
         Some(identity_file) => {
@@ -802,6 +807,39 @@ pub(crate) fn boot_with_password(
     };
 
     Ok((boot_mode, password))
+}
+
+pub fn prompt_wallet_type(
+    boot_mode: &WalletBoot,
+    wallet_config: &WalletConfig,
+    non_interactive: &bool,
+) -> Option<WalletType> {
+    if *non_interactive {
+        return Some(WalletType::Software);
+    }
+
+    if wallet_config.wallet_type.is_some() {
+        return wallet_config.wallet_type;
+    }
+
+    match boot_mode {
+        WalletBoot::New => {
+            if prompt("\r\nWould you like to use a connected hardware wallet? (Supported types: Ledger)") {
+                print!("Scanning for connected Ledger hardware device... ");
+                let err = "No connected device was found. Please make sure the device is plugged in before continuing.";
+                match TransportNativeHID::new(&HidApi::new().expect(err)) {
+                    Ok(_) => {
+                        println!("Device found.");
+                        Some(WalletType::Ledger)
+                    },
+                    Err(_) => panic!("{}", err),
+                }
+            } else {
+                Some(WalletType::Software)
+            }
+        },
+        _ => None,
+    }
 }
 
 #[cfg(test)]

@@ -104,6 +104,7 @@ use crate::{
     },
     util::wallet_identity::WalletIdentity,
     utxo_scanner_service::{handle::UtxoScannerHandle, initializer::UtxoScannerServiceInitializer, RECOVERY_KEY},
+    WalletType,
 };
 
 const LOG_TARGET: &str = "wallet";
@@ -759,6 +760,25 @@ pub fn read_or_create_master_seed<T: WalletBackend + 'static>(
     };
 
     Ok(master_seed)
+}
+
+pub fn read_or_create_wallet_type<T: WalletBackend + 'static>(
+    wallet_type: Option<WalletType>,
+    db: &WalletDatabase<T>,
+) -> Result<WalletType, WalletError> {
+    let db_wallet_type = db.get_wallet_type()?;
+
+    match (db_wallet_type, wallet_type) {
+        (None, None) => {
+            panic!("Something is very wrong, no wallet type was found in the DB, or provided (on first run)")
+        },
+        (Some(_), Some(_)) => panic!("Something is very wrong we have a wallet type from the DB and on first run"),
+        (None, Some(t)) => {
+            db.set_wallet_type(t)?;
+            Ok(t)
+        },
+        (Some(t), None) => Ok(t),
+    }
 }
 
 pub fn derive_comms_secret_key(master_seed: &CipherSeed) -> Result<CommsSecretKey, WalletError> {

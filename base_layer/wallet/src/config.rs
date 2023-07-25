@@ -21,6 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    fmt,
+    fmt::{Display, Formatter},
     path::{Path, PathBuf},
     str::FromStr,
     time::Duration,
@@ -118,6 +120,8 @@ pub struct WalletConfig {
     pub use_libtor: bool,
     /// A path to the file that stores the base node identity and secret key
     pub identity_file: Option<PathBuf>,
+    /// The type of wallet software, or specific type of hardware
+    pub wallet_type: Option<WalletType>,
 }
 
 impl Default for WalletConfig {
@@ -156,6 +160,7 @@ impl Default for WalletConfig {
             num_required_confirmations: 3,
             use_libtor: true,
             identity_file: None,
+            wallet_type: None,
         }
     }
 }
@@ -190,4 +195,19 @@ pub enum TransactionStage {
     MinedUnconfirmed,
     Mined,
     TimedOut,
+}
+
+#[derive(Debug, EnumString, Clone, Copy, Serialize, Deserialize)]
+pub enum WalletType {
+    Software,
+    Ledger,
+}
+
+impl Display for WalletType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            WalletType::Software => write!(f, "Software"),
+            WalletType::Ledger => write!(f, "Ledger"),
+        }
+    }
 }
