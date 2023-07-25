@@ -40,10 +40,11 @@ use tokio::sync::RwLock;
 
 use crate::transactions::{
     key_manager::{
+        abstract_inner::TransactionKeyManagerAbstractInner,
         interface::{SecretTransactionKeyManagerInterface, TxoStage},
         TariKeyId,
         TransactionKeyManagerBranch,
-        TransactionKeyManagerInner,
+        TransactionKeyManagerConsoleWalletInner,
         TransactionKeyManagerInterface,
     },
     tari_amount::MicroMinotari,
@@ -67,7 +68,7 @@ use crate::transactions::{
 /// This handle can be cloned cheaply and safely shared across multiple threads.
 #[derive(Clone)]
 pub struct TransactionKeyManagerWrapper<TBackend> {
-    transaction_key_manager_inner: Arc<RwLock<TransactionKeyManagerInner<TBackend>>>,
+    transaction_key_manager_inner: Arc<RwLock<TransactionKeyManagerConsoleWalletInner<TBackend>>>,
 }
 
 impl<TBackend> TransactionKeyManagerWrapper<TBackend>
@@ -82,7 +83,21 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         crypto_factories: CryptoFactories,
     ) -> Result<Self, KeyManagerServiceError> {
         Ok(TransactionKeyManagerWrapper {
-            transaction_key_manager_inner: Arc::new(RwLock::new(TransactionKeyManagerInner::new(
+            transaction_key_manager_inner: Arc::new(RwLock::new(TransactionKeyManagerConsoleWalletInner::new(
+                master_seed,
+                db,
+                crypto_factories,
+            )?)),
+        })
+    }
+
+    pub fn with_ledger(
+        master_seed: CipherSeed,
+        db: KeyManagerDatabase<TBackend, PublicKey>,
+        crypto_factories: CryptoFactories,
+    ) -> Result<Self, KeyManagerServiceError> {
+        Ok(TransactionKeyManagerWrapper {
+            transaction_key_manager_inner: Arc::new(RwLock::new(TransactionKeyManagerConsoleWalletInner::new(
                 master_seed,
                 db,
                 crypto_factories,

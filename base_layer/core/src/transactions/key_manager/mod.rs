@@ -35,5 +35,10 @@ pub use interface::{
 mod initializer;
 pub use initializer::TransactionKeyManagerInitializer;
 
-mod inner;
-pub use inner::TransactionKeyManagerInner;
+mod abstract_inner;
+
+mod ledger_wallet_inner;
+pub use ledger_wallet_inner::TransactionKeyManagerLedgerWalletInner;
+
+mod console_wallet_inner;
+pub use console_wallet_inner::TransactionKeyManagerConsoleWalletInner;

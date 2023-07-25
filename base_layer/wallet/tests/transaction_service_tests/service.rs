@@ -242,6 +242,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
             kms_backend,
             cipher,
             factories.clone(),
+            1,
         ))
         .add_initializer(TransactionServiceInitializer::<_, _, TestKeyManager>::new(
             TransactionServiceConfig {

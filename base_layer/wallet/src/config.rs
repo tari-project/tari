@@ -192,10 +192,11 @@ pub enum TransactionStage {
     TimedOut,
 }
 
+#[repr(u8)]
 #[derive(Debug, EnumString, Clone, Copy, Serialize, Deserialize)]
 pub enum WalletType {
-    Software,
-    Ledger,
+    Software = 1,
+    Ledger = 2,
 }
 
 impl Display for WalletType {
@@ -204,5 +205,11 @@ impl Display for WalletType {
             WalletType::Software => write!(f, "Software"),
             WalletType::Ledger => write!(f, "Ledger"),
         }
+    }
+}
+
+impl WalletType {
+    pub fn as_byte(self) -> u8 {
+        self as u8
     }
 }

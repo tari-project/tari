@@ -178,6 +178,7 @@ where
             config.buffer_size,
             config.buffer_rate_limit
         );
+        let wallet_type = wallet_database.get_wallet_type()?.unwrap();
         let wallet_identity = WalletIdentity::new(node_identity.clone(), config.network);
         let stack = StackBuilder::new(shutdown_signal)
             .add_initializer(P2pInitializer::new(
@@ -198,6 +199,7 @@ where
                 key_manager_backend,
                 master_seed,
                 factories.clone(),
+                wallet_type.as_byte(),
             ))
             .add_initializer(TransactionServiceInitializer::<U, T, TKeyManagerInterface>::new(
                 config.transaction_service_config,

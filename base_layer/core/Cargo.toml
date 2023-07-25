@@ -35,7 +35,6 @@ tari_test_utils = {  path = "../../infrastructure/test_utils" }
 tari_utilities = { version = "0.5", features = ["borsh"] }
 tari_key_manager = {  path = "../key_manager", features = ["key_manager_service"] }
 tari_common_sqlite = { path = "../../common_sqlite" }
-
 async-trait = {version = "0.1.50"}
 bincode = "1.1.4"
 bitflags = "1.0.4"

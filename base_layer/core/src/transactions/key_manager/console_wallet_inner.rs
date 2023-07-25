@@ -21,8 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use std::{collections::HashMap, ops::Shl};
 
-use blake2::Blake2b;
-use digest::consts::U32;
+use async_trait::async_trait;
 use log::*;
 use rand::rngs::OsRng;
 use strum::IntoEnumIterator;
@@ -30,7 +29,9 @@ use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, Publi
 use tari_comms::types::CommsDHKE;
 use tari_crypto::{
     commitment::{ExtensionDegree, HomomorphicCommitmentFactory},
+    errors::RangeProofError,
     extended_range_proof::ExtendedRangeProofService,
+    hash::blake2::Blake256,
     hash_domain,
     hashing::{DomainSeparatedHash, DomainSeparatedHasher},
     keys::{PublicKey as PublicKeyTrait, SecretKey},
@@ -69,10 +70,11 @@ use crate::{
     common::ConfidentialOutputHasher,
     transactions::{
         key_manager::{
+            abstract_inner::TransactionKeyManagerAbstractInner,
             interface::{TransactionKeyManagerBranch, TxoStage},
             TariKeyId,
         },
-        tari_amount::MicroMinotari,
+        tari_amount::MicroTari,
         transaction_components::{
             EncryptedData,
             RangeProofType,
@@ -89,14 +91,14 @@ hash_domain!(
     "com.tari.base_layer.core.transactions.key_manager"
 );
 
-pub struct TransactionKeyManagerInner<TBackend> {
+pub struct TransactionKeyManagerConsoleWalletInner<TBackend> {
     key_managers: HashMap<String, RwLock<KeyManager<PublicKey, KeyDigest>>>,
     db: KeyManagerDatabase<TBackend, PublicKey>,
     master_seed: CipherSeed,
     crypto_factories: CryptoFactories,
 }
 
-impl<TBackend> TransactionKeyManagerInner<TBackend>
+impl<TBackend> TransactionKeyManagerConsoleWalletInner<TBackend>
 where TBackend: KeyManagerBackend<PublicKey> + 'static
 {
     // -----------------------------------------------------------------------------------------------------------------
@@ -108,7 +110,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         db: KeyManagerDatabase<TBackend, PublicKey>,
         crypto_factories: CryptoFactories,
     ) -> Result<Self, KeyManagerServiceError> {
-        let mut km = TransactionKeyManagerInner {
+        let mut km = TransactionKeyManagerConsoleWalletInner {
             key_managers: HashMap::new(),
             db,
             master_seed,
@@ -117,7 +119,12 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         km.add_standard_core_branches()?;
         Ok(km)
     }
+}
 
+#[async_trait]
+impl<TBackend> TransactionKeyManagerAbstractInner for TransactionKeyManagerConsoleWalletInner<TBackend>
+where TBackend: KeyManagerBackend<PublicKey> + 'static
+{
     fn add_standard_core_branches(&mut self) -> Result<(), KeyManagerServiceError> {
         for branch in TransactionKeyManagerBranch::iter() {
             self.add_key_manager_branch(&branch.get_branch_key())?;
@@ -125,7 +132,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         Ok(())
     }
 
-    pub fn add_key_manager_branch(&mut self, branch: &str) -> Result<AddResult, KeyManagerServiceError> {
+    fn add_key_manager_branch(&mut self, branch: &str) -> Result<AddResult, KeyManagerServiceError> {
         let result = if self.key_managers.contains_key(branch) {
             AddResult::AlreadyExists
         } else {
@@ -153,7 +160,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         Ok(result)
     }
 
-    pub async fn get_next_key(&self, branch: &str) -> Result<(TariKeyId, PublicKey), KeyManagerServiceError> {
+    async fn get_next_key(&self, branch: &str) -> Result<(TariKeyId, PublicKey), KeyManagerServiceError> {
         let mut km = self
             .key_managers
             .get(branch)
@@ -172,7 +179,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         ))
     }
 
-    pub async fn get_static_key(&self, branch: &str) -> Result<TariKeyId, KeyManagerServiceError> {
+    async fn get_static_key(&self, branch: &str) -> Result<TariKeyId, KeyManagerServiceError> {
         match self.key_managers.get(branch) {
             None => Err(KeyManagerServiceError::UnknownKeyBranch),
             Some(_) => Ok(KeyId::Managed {
@@ -182,7 +189,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         }
     }
 
-    pub async fn get_public_key_at_key_id(&self, key_id: &TariKeyId) -> Result<PublicKey, KeyManagerServiceError> {
+    async fn get_public_key_at_key_id(&self, key_id: &TariKeyId) -> Result<PublicKey, KeyManagerServiceError> {
         match key_id {
             KeyId::Managed { branch, index } => {
                 let km = self
@@ -198,7 +205,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         }
     }
 
-    pub async fn get_next_spend_and_script_key_ids(
+    async fn get_next_spend_and_script_key_ids(
         &self,
     ) -> Result<(TariKeyId, PublicKey, TariKeyId, PublicKey), KeyManagerServiceError> {
         let (spend_key_id, spend_public_key) = self
@@ -218,7 +225,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     }
 
     /// Search the specified branch key manager key chain to find the index of the specified key.
-    pub async fn find_key_index(&self, branch: &str, key: &PublicKey) -> Result<u64, KeyManagerServiceError> {
+    async fn find_key_index(&self, branch: &str, key: &PublicKey) -> Result<u64, KeyManagerServiceError> {
         let km = self
             .key_managers
             .get(branch)
@@ -262,11 +269,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     }
 
     /// If the supplied index is higher than the current UTXO key chain indices then they will be updated.
-    pub async fn update_current_key_index_if_higher(
-        &self,
-        branch: &str,
-        index: u64,
-    ) -> Result<(), KeyManagerServiceError> {
+    async fn update_current_key_index_if_higher(&self, branch: &str, index: u64) -> Result<(), KeyManagerServiceError> {
         let mut km = self
             .key_managers
             .get(branch)
@@ -282,7 +285,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         Ok(())
     }
 
-    pub async fn import_key(&self, private_key: PrivateKey) -> Result<TariKeyId, KeyManagerServiceError> {
+    async fn import_key(&self, private_key: PrivateKey) -> Result<TariKeyId, KeyManagerServiceError> {
         let public_key = PublicKey::from_secret_key(&private_key);
         let hex_key = public_key.to_hex();
         self.db.insert_imported_key(public_key.clone(), private_key)?;
@@ -291,7 +294,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         Ok(key_id)
     }
 
-    pub(crate) async fn get_private_key(&self, key_id: &TariKeyId) -> Result<PrivateKey, KeyManagerServiceError> {
+    async fn get_private_key(&self, key_id: &TariKeyId) -> Result<PrivateKey, KeyManagerServiceError> {
         match key_id {
             KeyId::Managed { branch, index } => {
                 let km = self
@@ -315,7 +318,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     // General crypto section
     // -----------------------------------------------------------------------------------------------------------------
 
-    pub async fn get_commitment(
+    async fn get_commitment(
         &self,
         private_key: &TariKeyId,
         value: &PrivateKey,
@@ -325,7 +328,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     }
 
     /// Verify that the commitment matches the value and the spending key/mask
-    pub async fn verify_mask(
+    async fn verify_mask(
         &self,
         commitment: &Commitment,
         spending_key_id: &TariKeyId,
@@ -338,7 +341,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .map_err(|e| e.into())
     }
 
-    pub async fn get_diffie_hellman_shared_secret(
+    async fn get_diffie_hellman_shared_secret(
         &self,
         secret_key_id: &TariKeyId,
         public_key: &PublicKey,
@@ -348,16 +351,16 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         Ok(shared_secret)
     }
 
-    pub async fn get_diffie_hellman_stealth_domain_hasher(
+    async fn get_diffie_hellman_stealth_domain_hasher(
         &self,
         secret_key_id: &TariKeyId,
         public_key: &PublicKey,
-    ) -> Result<DomainSeparatedHash<Blake2b<U32>>, TransactionError> {
+    ) -> Result<DomainSeparatedHash<Blake256>, TransactionError> {
         let secret_key = self.get_private_key(secret_key_id).await?;
         Ok(diffie_hellman_stealth_domain_hasher(&secret_key, public_key))
     }
 
-    pub async fn import_add_offset_to_private_key(
+    async fn import_add_offset_to_private_key(
         &self,
         secret_key_id: &TariKeyId,
         offset: PrivateKey,
@@ -366,7 +369,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         self.import_key(secret_key + offset).await
     }
 
-    pub async fn generate_burn_proof(
+    async fn generate_burn_proof(
         &self,
         spending_key: &TariKeyId,
         amount: &PrivateKey,
@@ -401,7 +404,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     // Transaction input section (transactions > transaction_components > transaction_input)
     // -----------------------------------------------------------------------------------------------------------------
 
-    pub async fn get_script_signature(
+    async fn get_script_signature(
         &self,
         script_key_id: &TariKeyId,
         spend_key_id: &TariKeyId,
@@ -444,7 +447,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     // Transaction output section (transactions > transaction_components > transaction_output)
     // -----------------------------------------------------------------------------------------------------------------
 
-    pub async fn get_spending_key_id(&self, public_spending_key: &PublicKey) -> Result<TariKeyId, TransactionError> {
+    async fn get_spending_key_id(&self, public_spending_key: &PublicKey) -> Result<TariKeyId, TransactionError> {
         let index = self
             .find_key_index(
                 &TransactionKeyManagerBranch::CommitmentMask.get_branch_key(),
@@ -458,7 +461,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         Ok(spending_key_id)
     }
 
-    pub async fn construct_range_proof(
+    async fn construct_range_proof(
         &self,
         private_key: &TariKeyId,
         value: u64,
@@ -492,15 +495,21 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 .construct_extended_proof(vec![extended_witness], None)
         };
 
-        let proof_bytes = proof_bytes_result
-            .map_err(|err| TransactionError::RangeProofError(format!("Failed to construct range proof: {}", err)))?;
+        let proof_bytes = proof_bytes_result.map_err(|err| {
+            TransactionError::RangeProofError(RangeProofError::ProofConstructionError(format!(
+                "Failed to construct range proof: {}",
+                err
+            )))
+        })?;
 
         RangeProof::from_bytes(&proof_bytes).map_err(|_| {
-            TransactionError::RangeProofError("Rangeproof factory returned invalid range proof bytes".to_string())
+            TransactionError::RangeProofError(RangeProofError::ProofConstructionError(
+                "Rangeproof factory returned invalid range proof bytes".to_string(),
+            ))
         })
     }
 
-    pub async fn get_script_offset(
+    async fn get_script_offset(
         &self,
         script_key_ids: &[TariKeyId],
         sender_offset_key_ids: &[TariKeyId],
@@ -528,7 +537,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         // With RevealedValue type range proofs, the nonce is always 0 and the minimum value promise equal to the value
         let nonce_a = match range_proof_type {
             RangeProofType::BulletProofPlus => {
-                let hasher_a = DomainSeparatedHasher::<Blake2b<U32>, KeyManagerHashingDomain>::new_with_label(
+                let hasher_a = DomainSeparatedHasher::<Blake256, KeyManagerHashingDomain>::new_with_label(
                     "metadata_signature_ephemeral_nonce_a",
                 );
                 let a_hash = hasher_a.chain(nonce_private_key.as_bytes()).finalize();
@@ -539,7 +548,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             RangeProofType::RevealedValue => Ok(PrivateKey::default()),
         }?;
 
-        let hasher_b = DomainSeparatedHasher::<Blake2b<U32>, KeyManagerHashingDomain>::new_with_label(
+        let hasher_b = DomainSeparatedHasher::<Blake256, KeyManagerHashingDomain>::new_with_label(
             "metadata_signature_ephemeral_nonce_b",
         );
         let b_hash = hasher_b.chain(nonce_private_key.as_bytes()).finalize();
@@ -549,7 +558,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         Ok((nonce_a, nonce_b))
     }
 
-    pub async fn get_metadata_signature_ephemeral_commitment(
+    async fn get_metadata_signature_ephemeral_commitment(
         &self,
         nonce_id: &TariKeyId,
         range_proof_type: RangeProofType,
@@ -560,7 +569,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         Ok(self.crypto_factories.commitment.commit(&nonce_b, &nonce_a))
     }
 
-    pub async fn get_metadata_signature_raw(
+    async fn get_metadata_signature_raw(
         &self,
         spending_key_id: &TariKeyId,
         value_as_private_key: &PrivateKey,
@@ -599,7 +608,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         Ok(metadata_signature)
     }
 
-    pub async fn get_metadata_signature(
+    async fn get_metadata_signature(
         &self,
         spending_key_id: &TariKeyId,
         value_as_private_key: &PrivateKey,
@@ -639,7 +648,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         Ok(metadata_signature)
     }
 
-    pub async fn get_receiver_partial_metadata_signature(
+    async fn get_receiver_partial_metadata_signature(
         &self,
         spend_key_id: &TariKeyId,
         value: &PrivateKey,
@@ -680,7 +689,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         Ok(metadata_signature)
     }
 
-    pub async fn get_sender_partial_metadata_signature(
+    async fn get_sender_partial_metadata_signature(
         &self,
         ephemeral_private_nonce_id: &TariKeyId,
         sender_offset_key_id: &TariKeyId,
@@ -720,13 +729,12 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     // Transaction kernel section (transactions > transaction_components > transaction_kernel)
     // -----------------------------------------------------------------------------------------------------------------
 
-    pub async fn get_txo_private_kernel_offset(
+    async fn get_txo_private_kernel_offset(
         &self,
         spend_key_id: &TariKeyId,
         nonce_id: &TariKeyId,
     ) -> Result<PrivateKey, TransactionError> {
-        let hasher =
-            DomainSeparatedHasher::<Blake2b<U32>, KeyManagerHashingDomain>::new_with_label("kernel_excess_offset");
+        let hasher = DomainSeparatedHasher::<Blake256, KeyManagerHashingDomain>::new_with_label("kernel_excess_offset");
         let spending_private_key = self.get_private_key(spend_key_id).await?;
         let nonce_private_key = self.get_private_key(nonce_id).await?;
         let key_hash = hasher
@@ -738,7 +746,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         })
     }
 
-    pub async fn get_partial_txo_kernel_signature(
+    async fn get_partial_txo_kernel_signature(
         &self,
         spending_key_id: &TariKeyId,
         nonce_id: &TariKeyId,
@@ -779,7 +787,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         Ok(signature)
     }
 
-    pub async fn get_txo_kernel_signature_excess_with_offset(
+    async fn get_txo_kernel_signature_excess_with_offset(
         &self,
         spend_key_id: &TariKeyId,
         nonce_id: &TariKeyId,
@@ -802,7 +810,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         self.get_private_key(&recovery_id).await
     }
 
-    pub async fn encrypt_data_for_recovery(
+    async fn encrypt_data_for_recovery(
         &self,
         spend_key_id: &TariKeyId,
         custom_recovery_key_id: Option<&TariKeyId>,
@@ -820,11 +828,11 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         Ok(data)
     }
 
-    pub async fn try_output_key_recovery(
+    async fn try_output_key_recovery(
         &self,
         output: &TransactionOutput,
         custom_recovery_key_id: Option<&TariKeyId>,
-    ) -> Result<(TariKeyId, MicroMinotari), TransactionError> {
+    ) -> Result<(TariKeyId, MicroTari), TransactionError> {
         let recovery_key = if let Some(key_id) = custom_recovery_key_id {
             self.get_private_key(key_id).await?
         } else {

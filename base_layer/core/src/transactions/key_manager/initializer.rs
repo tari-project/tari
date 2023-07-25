@@ -44,17 +44,19 @@ where T: KeyManagerBackend<PublicKey>
     backend: Option<T>,
     master_seed: CipherSeed,
     crypto_factories: CryptoFactories,
+    wallet_type: u8,
 }
 
 impl<T> TransactionKeyManagerInitializer<T>
 where T: KeyManagerBackend<PublicKey> + 'static
 {
     /// Creates a new [TransactionKeyManagerInitializer] from the provided [KeyManagerBackend] and [CipherSeed]
-    pub fn new(backend: T, master_seed: CipherSeed, crypto_factories: CryptoFactories) -> Self {
+    pub fn new(backend: T, master_seed: CipherSeed, crypto_factories: CryptoFactories, wallet_type: u8) -> Self {
         Self {
             backend: Some(backend),
             master_seed,
             crypto_factories,
+            wallet_type,
         }
     }
 }
@@ -69,11 +71,20 @@ where T: KeyManagerBackend<PublicKey> + 'static
             .take()
             .expect("Cannot start Key Manager Service without setting a storage backend");
 
-        let key_manager: TransactionKeyManagerWrapper<T> = TransactionKeyManagerWrapper::new(
-            self.master_seed.clone(),
-            KeyManagerDatabase::new(backend),
-            self.crypto_factories.clone(),
-        )?;
+        let key_manager: TransactionKeyManagerWrapper<T> = if self.wallet_type == 2 {
+            TransactionKeyManagerWrapper::with_ledger(
+                self.master_seed.clone(),
+                KeyManagerDatabase::new(backend),
+                self.crypto_factories.clone(),
+            )?
+        } else {
+            TransactionKeyManagerWrapper::new(
+                self.master_seed.clone(),
+                KeyManagerDatabase::new(backend),
+                self.crypto_factories.clone(),
+            )?
+        };
+
         context.register_handle(key_manager);
 
         Ok(())
