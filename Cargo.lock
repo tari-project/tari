@@ -5861,17 +5861,6 @@ name = "tari_features"
 version = "0.52.0-pre.0"
 
 [[package]]
-name = "tari_hardware"
-version = "0.51.0-pre.4"
-dependencies = [
- "futures 0.3.28",
- "log",
- "tari_service_framework",
- "tari_shutdown",
- "tokio",
-]
-
-[[package]]
 name = "tari_integration_tests"
 version = "0.35.1"
 dependencies = [
