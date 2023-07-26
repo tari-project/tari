@@ -128,8 +128,11 @@ pub enum CliCommands {
     SetCustomBaseNode(SetBaseNodeArgs),
     ClearCustomBaseNode,
     InitShaAtomicSwap(SendTariArgs),
-    FinaliseShaAtomicSwap(FinaliseShaAtomicSwapArgs),
-    ClaimShaAtomicSwapRefund(ClaimShaAtomicSwapRefundArgs),
+    FinaliseShaAtomicSwap(FinaliseAtomicSwapArgs),
+    ClaimShaAtomicSwapRefund(ClaimAtomicSwapRefundArgs),
+    InitBlake2AtomicSwap(SendTariArgs),
+    FinaliseBlake2AtomicSwap(FinaliseAtomicSwapArgs),
+    ClaimBlake2AtomicSwapRefund(ClaimAtomicSwapRefundArgs),
     RevalidateWalletDb,
     HashGrpcPassword(HashPasswordArgs),
     RegisterValidatorNode(RegisterValidatorNodeArgs),
@@ -144,6 +147,7 @@ pub struct DiscoverPeerArgs {
 pub struct SendTariArgs {
     pub amount: MicroTari,
     pub destination: TariAddress,
+    pub timelock: u64,
     #[clap(short, long, default_value = "<No message>")]
     pub message: String,
 }
@@ -247,7 +251,7 @@ pub struct SetBaseNodeArgs {
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct FinaliseShaAtomicSwapArgs {
+pub struct FinaliseAtomicSwapArgs {
     #[clap(short, long, parse(try_from_str = parse_hex), required=true )]
     pub output_hash: Vec<Vec<u8>>,
     #[clap(short, long)]
@@ -261,7 +265,7 @@ fn parse_hex(s: &str) -> Result<Vec<u8>, HexError> {
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct ClaimShaAtomicSwapRefundArgs {
+pub struct ClaimAtomicSwapRefundArgs {
     #[clap(short, long, parse(try_from_str = parse_hex), required = true)]
     pub output_hash: Vec<Vec<u8>>,
     #[clap(short, long, default_value = "Claimed HTLC atomic swap refund")]

@@ -26,6 +26,7 @@ use cucumber::{given, then, when};
 use futures::StreamExt;
 use grpc::{
     CancelTransactionRequest,
+    ClaimBlake2AtomicSwapRequest,
     ClaimHtlcRefundRequest,
     ClaimShaAtomicSwapRequest,
     Empty,
@@ -35,6 +36,7 @@ use grpc::{
     GetTransactionInfoRequest,
     ImportUtxosRequest,
     PaymentRecipient,
+    SendBlake2AtomicSwapRequest,
     SendShaAtomicSwapRequest,
     TransferRequest,
 };
@@ -599,9 +601,21 @@ async fn wait_for_wallet_to_have_less_than_micro_tari(world: &mut TariWorld, wal
     let num_retries = 100;
     let request = GetBalanceRequest {};
 
-    for _ in 0..num_retries {
+    let initial_balance = client
+        .get_balance(request.clone())
+        .await
+        .unwrap()
+        .into_inner()
+        .available_balance;
+    for i in 0..num_retries {
         let balance_res = client.get_balance(request.clone()).await.unwrap().into_inner();
         let current_balance = balance_res.available_balance;
+        if i == 50 {
+            panic!(
+                "FLAG: CUCUMBER current_balance = {}, amount = {}, initial_balance = {}",
+                current_balance, amount, initial_balance
+            );
+        }
         if current_balance < amount {
             println!(
                 "Wallet {} now has less than {}, with current balance {}",
@@ -1880,6 +1894,112 @@ async fn htlc_transaction(world: &mut TariWorld, amount: u64, sender: String, re
     );
 }
 
+#[when(
+    expr = "I broadcast a blake2 HTLC transaction with {int} uT from wallet {word} to wallet {word} with timelock \
+            {int} at fee {int}"
+)]
+async fn blake2_htlc_transaction(
+    world: &mut TariWorld,
+    amount: u64,
+    sender: String,
+    receiver: String,
+    timelock: u64,
+    fee_per_gram: u64,
+) {
+    let mut sender_wallet_client = create_wallet_client(world, sender.clone()).await.unwrap();
+    let sender_wallet_address = world.get_wallet_address(&sender).await.unwrap();
+    let receiver_wallet_address = world.get_wallet_address(&receiver).await.unwrap();
+
+    let payment_recipient = PaymentRecipient {
+        address: receiver_wallet_address.clone(),
+        amount,
+        fee_per_gram,
+        message: format!(
+            "Blake2 Atomic Swap from {} to {} with amount {} at fee {}",
+            sender.as_str(),
+            receiver.as_str(),
+            amount,
+            fee_per_gram
+        ),
+        payment_type: 0, // normal mimblewimble transaction
+    };
+
+    let atomic_swap_request = SendBlake2AtomicSwapRequest {
+        recipient: Some(payment_recipient),
+        timelock,
+    };
+    let blake2_atomic_swap_tx_res = sender_wallet_client
+        .send_blake2_atomic_swap_transaction(atomic_swap_request)
+        .await
+        .unwrap()
+        .into_inner();
+
+    assert!(
+        blake2_atomic_swap_tx_res.is_success,
+        "Atomic swap transacting amount uT {} from wallet {} to {} at fee {} failed",
+        amount,
+        sender.as_str(),
+        receiver.as_str(),
+        fee_per_gram
+    );
+
+    // we wait for transaction to be broadcasted
+    let tx_id = blake2_atomic_swap_tx_res.transaction_id;
+    let num_retries = 100;
+    let tx_info_req = GetTransactionInfoRequest {
+        transaction_ids: vec![tx_id],
+    };
+
+    for i in 0..=num_retries {
+        let tx_info_res = sender_wallet_client
+            .get_transaction_info(tx_info_req.clone())
+            .await
+            .unwrap()
+            .into_inner();
+        let tx_info = tx_info_res.transactions.first().unwrap();
+
+        // TransactionStatus::TRANSACTION_STATUS_BROADCAST == 1_i32
+        if tx_info.status == 1_i32 {
+            println!(
+                "Atomic swap transaction from {} to {} with amount {} at fee {} has been broadcasted",
+                sender.as_str(),
+                receiver.as_str(),
+                amount,
+                fee_per_gram
+            );
+            break;
+        }
+
+        if i == num_retries {
+            panic!(
+                "Atomic swap transaction from {} to {} with amount {} at fee {} failed to be broadcasted",
+                sender.as_str(),
+                receiver.as_str(),
+                amount,
+                fee_per_gram
+            )
+        }
+
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+
+    // insert tx_id's to the corresponding world mapping
+    let sender_tx_ids = world.wallet_tx_ids.entry(sender_wallet_address.clone()).or_default();
+
+    sender_tx_ids.push(tx_id);
+
+    let receiver_tx_ids = world.wallet_tx_ids.entry(receiver_wallet_address.clone()).or_default();
+
+    receiver_tx_ids.push(tx_id);
+    world.output_hash = Some(blake2_atomic_swap_tx_res.output_hash);
+    world.pre_image = Some(blake2_atomic_swap_tx_res.pre_image);
+
+    println!(
+        "Atomic swap transfer amount {} from {} to {} at fee {} succeeded",
+        amount, sender, receiver, fee_per_gram
+    );
+}
+
 #[when(expr = "I claim an HTLC refund transaction with wallet {word} at fee {int}")]
 async fn claim_htlc_refund_transaction_with_wallet_at_fee(world: &mut TariWorld, wallet: String, fee_per_gram: u64) {
     let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
@@ -2018,6 +2138,78 @@ async fn wallet_claims_htlc_transaction_at_fee(world: &mut TariWorld, wallet: St
 
     println!(
         "Claim HTLC transaction with wallet {} at fee {} succeeded",
+        wallet, fee_per_gram
+    );
+}
+
+#[when(expr = "I claim a Blake2 HTLC transaction with wallet {word} at fee {int}")]
+async fn wallet_claims_blake2_htlc_transaction_at_fee(world: &mut TariWorld, wallet: String, fee_per_gram: u64) {
+    let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
+    let wallet_address = world.get_wallet_address(&wallet).await.unwrap();
+    let output_hash = world.output_hash.clone().unwrap();
+    let pre_image = world.pre_image.clone().unwrap();
+
+    let claim_htlc_req = ClaimBlake2AtomicSwapRequest {
+        output: output_hash,
+        pre_image,
+        fee_per_gram,
+    };
+
+    let claim_htlc_res = wallet_client
+        .claim_blake2_atomic_swap_transaction(claim_htlc_req)
+        .await
+        .unwrap()
+        .into_inner();
+
+    assert!(
+        claim_htlc_res.clone().results.unwrap().is_success,
+        "Claim Blake2 HTLC transaction with wallet {} at fee {} failed",
+        wallet.as_str(),
+        fee_per_gram
+    );
+
+    // we wait for transaction to be broadcasted
+    let tx_id = claim_htlc_res.results.unwrap().transaction_id;
+    let num_retries = 100;
+    let tx_info_req = GetTransactionInfoRequest {
+        transaction_ids: vec![tx_id],
+    };
+
+    for i in 0..=num_retries {
+        let tx_info_res = wallet_client
+            .get_transaction_info(tx_info_req.clone())
+            .await
+            .unwrap()
+            .into_inner();
+        let tx_info = tx_info_res.transactions.first().unwrap();
+
+        // TransactionStatus::TRANSACTION_STATUS_BROADCAST == 1_i32
+        if tx_info.status == 1_i32 {
+            println!(
+                "Claim Blake2 HTLC transaction with wallet {} at fee {} has been broadcasted",
+                wallet.as_str(),
+                fee_per_gram
+            );
+            break;
+        }
+
+        if i == num_retries {
+            panic!(
+                "Claim Blake2 HTLC transaction with wallet {} at fee {} failed to be broadcasted",
+                wallet.as_str(),
+                fee_per_gram
+            )
+        }
+
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+
+    // insert tx_id's to the corresponding world mapping
+    let wallet_tx_ids = world.wallet_tx_ids.entry(wallet_address.clone()).or_default();
+    wallet_tx_ids.push(tx_id);
+
+    println!(
+        "Claim Blake2 HTLC transaction with wallet {} at fee {} succeeded",
         wallet, fee_per_gram
     );
 }
