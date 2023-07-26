@@ -82,14 +82,14 @@ Feature: Wallet Transfer
     When I have mining node MINER connected to base node NODE and wallet WALLET_A
     When I have mining node MINER_2 connected to base node NODE and wallet WALLET_C
     When mining node MINER mines 10 blocks
-    Then I wait for wallet WALLET_A to have at least 10000000000 uT
-    When I broadcast HTLC transaction with 5000000000 uT from wallet WALLET_A to wallet WALLET_B at fee 20
+    Then I wait for wallet WALLET_A to have at least 120000000000 uT
+    When I broadcast HTLC transaction with 120000000000 uT from wallet WALLET_A to wallet WALLET_B at fee 20
     # atomic swaps are set at lock of 720 blocks
     When mining node MINER_2 mines 720 blocks
     When I wait 5 seconds
     When I claim an HTLC refund transaction with wallet WALLET_A at fee 20
     When mining node MINER_2 mines 6 blocks
-    Then I wait for wallet WALLET_A to have at least 9000000000 uT
+    Then I wait for wallet WALLET_A to have at least 120000000000 uT
 
   Scenario: As a wallet I want to claim a Blake2 HTLC refund transaction
     Given I have a seed node NODE
@@ -101,10 +101,10 @@ Feature: Wallet Transfer
     When I have mining node MINER connected to base node NODE and wallet WALLET_A
     When I have mining node MINER_2 connected to base node NODE and wallet WALLET_C
     When mining node MINER mines 10 blocks
-    Then I wait for wallet WALLET_A to have at least 10000000000 uT
-    When I broadcast a blake2 HTLC transaction with 5000000000 uT from wallet WALLET_A to wallet WALLET_B with timelock 12 at fee 20
+    Then I wait for wallet WALLET_A to have at least 120000000000 uT
+    When I broadcast a blake2 HTLC transaction with 120000000000 uT from wallet WALLET_A to wallet WALLET_B with timelock 2 at fee 20
     When mining node MINER_2 mines 16 blocks
-    When I wait 5 seconds
+    When I wait for wallet WALLET_A to have less than 10000000000 uT
     When I claim an HTLC refund transaction with wallet WALLET_A at fee 20
     When mining node MINER_2 mines 6 blocks
-    Then I wait for wallet WALLET_A to have at least 9000000000 uT
+    Then I wait for wallet WALLET_A to have at least 120000000000 uT

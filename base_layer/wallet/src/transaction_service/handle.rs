@@ -938,7 +938,7 @@ impl TransactionServiceHandle {
         &mut self,
         destination: TariAddress,
         amount: MicroTari,
-        timelock: u64,
+        timelock_delta: u64,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroTari,
         message: String,
@@ -948,7 +948,7 @@ impl TransactionServiceHandle {
             .call(TransactionServiceRequest::SendBlake2AtomicSwapTransaction(
                 destination,
                 amount,
-                timelock,
+                timelock_delta,
                 selection_criteria,
                 fee_per_gram,
                 message,

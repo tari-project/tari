@@ -744,7 +744,7 @@ where
             TransactionServiceRequest::SendBlake2AtomicSwapTransaction(
                 destination,
                 amount,
-                timelock,
+                timelock_delta,
                 selection_criteria,
                 fee_per_gram,
                 message,
@@ -755,7 +755,7 @@ where
                     selection_criteria,
                     fee_per_gram,
                     message,
-                    timelock,
+                    timelock_delta,
                     transaction_broadcast_join_handles,
                 )
                 .await?,
@@ -1108,10 +1108,7 @@ where
             EndIf
         );
 
-        // Empty covenant
         let covenant = Covenant::default();
-
-        // Default range proof
         let minimum_value_promise = MicroTari::zero();
 
         // Prepare sender part of the transaction
@@ -1307,7 +1304,7 @@ where
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroTari,
         message: String,
-        timelock: u64,
+        timelock_delta: u64,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
@@ -1320,11 +1317,7 @@ where
 
         // let's check that the timelock corresponds to some time in the future
         let tip_height = self.last_seen_tip_height.unwrap_or(0);
-        if timelock <= tip_height {
-            return Err(TransactionServiceError::Blake2AtomicSwapTransactionError(format!(
-                "Invalid timelock, must be a value in the future"
-            )));
-        }
+        let timelock = tip_height + timelock_delta;
 
         // let's create the HTLC script
         let script = script!(
@@ -1335,10 +1328,7 @@ where
             EndIf
         );
 
-        // Empty covenant
         let covenant = Covenant::default();
-
-        // Default range proof
         let minimum_value_promise = MicroTari::zero();
 
         // Prepare sender part of the transaction
@@ -1415,7 +1405,6 @@ where
             .import_key(spending_key)
             .await?;
 
-        let minimum_value_promise = MicroTari::zero();
         let output = WalletOutputBuilder::new(amount, spending_key_id)
             .with_features(
                 sender_message
@@ -1476,7 +1465,7 @@ where
             })?;
         info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", tx_id);
 
-        // This event being setn is important, but not critical to the protocol being successful. Send only fails if
+        // This event being sent is important, but not critical to the protocol being successful. Send only fails if
         // there are no subscribers.
         let _size = self
             .event_publisher

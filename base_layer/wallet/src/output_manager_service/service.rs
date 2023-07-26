@@ -2178,7 +2178,7 @@ where
                     output.sender_offset_public_key,
                     output.metadata_signature,
                     // Although the technically the script does have a script lock higher than 0, this does not apply
-                    // to to us as we are claiming the Hashed part which has a 0 time lock
+                    // to us as we are claiming the Hashed part which has a 0 time lock
                     0,
                     output.covenant,
                     output.encrypted_data,
@@ -2293,7 +2293,7 @@ where
                     output.sender_offset_public_key,
                     output.metadata_signature,
                     // Although the technically the script does have a script lock higher than 0, this does not apply
-                    // to to us as we are claiming the Hashed part which has a 0 time lock
+                    // to us as we are claiming the Hashed part which has a 0 time lock
                     0,
                     output.covenant,
                     output.encrypted_data,

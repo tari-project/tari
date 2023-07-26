@@ -601,9 +601,21 @@ async fn wait_for_wallet_to_have_less_than_micro_tari(world: &mut TariWorld, wal
     let num_retries = 100;
     let request = GetBalanceRequest {};
 
-    for _ in 0..num_retries {
+    let initial_balance = client
+        .get_balance(request.clone())
+        .await
+        .unwrap()
+        .into_inner()
+        .available_balance;
+    for i in 0..num_retries {
         let balance_res = client.get_balance(request.clone()).await.unwrap().into_inner();
         let current_balance = balance_res.available_balance;
+        if i == 50 {
+            panic!(
+                "FLAG: CUCUMBER current_balance = {}, amount = {}, initial_balance = {}",
+                current_balance, amount, initial_balance
+            );
+        }
         if current_balance < amount {
             println!(
                 "Wallet {} now has less than {}, with current balance {}",

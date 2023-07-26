@@ -128,10 +128,10 @@ pub enum CliCommands {
     SetCustomBaseNode(SetBaseNodeArgs),
     ClearCustomBaseNode,
     InitShaAtomicSwap(SendTariArgs),
-    FinaliseShaAtomicSwap(FinaliseShaAtomicSwapArgs),
+    FinaliseShaAtomicSwap(FinaliseAtomicSwapArgs),
     ClaimShaAtomicSwapRefund(ClaimAtomicSwapRefundArgs),
     InitBlake2AtomicSwap(SendTariArgs),
-    FinaliseBlake2AtomicSwap(FinaliseBlake2AtomicSwapArgs),
+    FinaliseBlake2AtomicSwap(FinaliseAtomicSwapArgs),
     ClaimBlake2AtomicSwapRefund(ClaimAtomicSwapRefundArgs),
     RevalidateWalletDb,
     HashGrpcPassword(HashPasswordArgs),
@@ -251,17 +251,7 @@ pub struct SetBaseNodeArgs {
 }
 
 #[derive(Debug, Args, Clone)]
-pub struct FinaliseShaAtomicSwapArgs {
-    #[clap(short, long, parse(try_from_str = parse_hex), required=true )]
-    pub output_hash: Vec<Vec<u8>>,
-    #[clap(short, long)]
-    pub pre_image: UniPublicKey,
-    #[clap(short, long, default_value = "Claimed HTLC atomic swap")]
-    pub message: String,
-}
-
-#[derive(Debug, Args, Clone)]
-pub struct FinaliseBlake2AtomicSwapArgs {
+pub struct FinaliseAtomicSwapArgs {
     #[clap(short, long, parse(try_from_str = parse_hex), required=true )]
     pub output_hash: Vec<Vec<u8>>,
     #[clap(short, long)]
