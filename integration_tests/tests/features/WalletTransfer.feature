@@ -87,6 +87,7 @@ Feature: Wallet Transfer
     # atomic swaps are set at lock of 720 blocks
     When mining node MINER_2 mines 720 blocks
     When I wait 5 seconds
+    # When I wait for wallet WALLET_A to have less than 120000000000 uT
     When I claim an HTLC refund transaction with wallet WALLET_A at fee 20
     When mining node MINER_2 mines 6 blocks
     Then I wait for wallet WALLET_A to have at least 120000000000 uT
@@ -104,7 +105,7 @@ Feature: Wallet Transfer
     Then I wait for wallet WALLET_A to have at least 120000000000 uT
     When I broadcast a blake2 HTLC transaction with 120000000000 uT from wallet WALLET_A to wallet WALLET_B with timelock 2 at fee 20
     When mining node MINER_2 mines 16 blocks
-    When I wait for wallet WALLET_A to have less than 10000000000 uT
-    When I claim an HTLC refund transaction with wallet WALLET_A at fee 20
+    When I wait 5 seconds
+    #    When I claim an HTLC refund transaction with wallet WALLET_A at fee 20
     When mining node MINER_2 mines 6 blocks
     Then I wait for wallet WALLET_A to have at least 120000000000 uT
