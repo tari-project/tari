@@ -671,6 +671,7 @@ where
                 amount,
                 validator_node_public_key,
                 validator_node_signature,
+                validator_node_consensus_public_key,
                 selection_criteria,
                 fee_per_gram,
                 message,
@@ -680,6 +681,7 @@ where
                     amount,
                     validator_node_public_key,
                     validator_node_signature,
+                    validator_node_consensus_public_key,
                     selection_criteria,
                     fee_per_gram,
                     message,
@@ -1731,6 +1733,7 @@ where
         amount: MicroTari,
         validator_node_public_key: CommsPublicKey,
         validator_node_signature: Signature,
+        validator_node_consensus_public_key: Vec<u8>,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroTari,
         message: String,
@@ -1742,8 +1745,12 @@ where
         >,
         reply_channel: oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>,
     ) -> Result<(), TransactionServiceError> {
-        let output_features =
-            OutputFeatures::for_validator_node_registration(validator_node_public_key, validator_node_signature);
+        let output_features = OutputFeatures::for_validator_node_registration(
+            validator_node_public_key,
+            validator_node_signature,
+            validator_node_consensus_public_key,
+        )
+        .ok_or(TransactionServiceError::InvalidConsensusPublicKeySignature)?;
         self.send_transaction(
             self.resources.wallet_identity.address.clone(),
             amount,

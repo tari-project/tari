@@ -189,6 +189,8 @@ pub enum TransactionServiceError {
     InvalidKeyId(String),
     #[error("Invalid key manager data: `{0}`")]
     KeyManagerServiceError(#[from] KeyManagerServiceError),
+    #[error("Failed to sign validator node consensus public key")]
+    InvalidConsensusPublicKeySignature,
 }
 
 #[derive(Debug, Error)]

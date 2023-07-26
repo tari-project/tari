@@ -1012,6 +1012,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .ok_or_else(|| Status::invalid_argument("Validator node signature is missing!"))?
             .try_into()
             .map_err(|_| Status::invalid_argument("Validator node signature is malformed!"))?;
+        let validator_node_consensus_public_key = request.validator_node_consensus_public_key;
 
         let constants = self.get_consensus_constants().map_err(|e| {
             error!(target: LOG_TARGET, "Failed to get consensus constants: {}", e);
@@ -1023,6 +1024,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 constants.validator_node_registration_min_deposit_amount(),
                 validator_node_public_key,
                 validator_node_signature,
+                validator_node_consensus_public_key,
                 UtxoSelectionCriteria::default(),
                 request.fee_per_gram.into(),
                 request.message,
