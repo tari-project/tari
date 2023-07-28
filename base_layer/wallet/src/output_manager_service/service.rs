@@ -696,7 +696,7 @@ where
 
         // Confirm output features is default
         if single_round_sender_data.features != OutputFeatures::default() {
-            return Err(OutputManagerError::InvalidCovenant);
+            return Err(OutputManagerError::InvalidOutputFeatures);
         }
 
         let (spending_key_id, _, script_key_id, script_public_key) =
