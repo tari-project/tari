@@ -30,7 +30,6 @@ use std::{
     sync::{atomic, atomic::AtomicBool, Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
     time::Instant,
 };
-use crate::validation::ValidationError;
 
 use croaring::Bitmap;
 use log::*;
@@ -97,6 +96,7 @@ use crate::{
         DifficultyCalculator,
         HeaderChainLinkedValidator,
         InternalConsistencyValidator,
+        ValidationError,
         ValidationError::BlockHeaderError,
     },
     MutablePrunedOutputMmr,
@@ -916,8 +916,12 @@ where B: BlockchainBackend
         if db.contains(&DbKey::BlockHash(block_hash))? {
             return Ok(BlockAddResult::BlockExists);
         }
-        if db.bad_block_exists(block_hash)?{
-            return Err(ChainStorageError::ValidationError{source: ValidationError::BadBlockFound{hash: block_hash.to_hex()}})
+        if db.bad_block_exists(block_hash)? {
+            return Err(ChainStorageError::ValidationError {
+                source: ValidationError::BadBlockFound {
+                    hash: block_hash.to_hex(),
+                },
+            });
         }
         // the only fast check we can perform that is slightly expensive to fake is a min difficulty check, this is done
         // as soon as we receive the block before we do any processing on it. A proper proof of work is done as soon as
@@ -1078,8 +1082,7 @@ where B: BlockchainBackend
     /// Returns true if this block exists in the chain, or is orphaned.
     pub fn block_exists(&self, hash: BlockHash) -> Result<bool, ChainStorageError> {
         let db = self.db_read_access()?;
-        Ok(db.contains(&DbKey::BlockHash(hash))? ||
-            db.contains(&DbKey::OrphanBlock(hash))?)
+        Ok(db.contains(&DbKey::BlockHash(hash))? || db.contains(&DbKey::OrphanBlock(hash))?)
     }
 
     /// Returns true if this block exists in the chain, or is orphaned.

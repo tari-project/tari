@@ -59,9 +59,8 @@ use crate::{
         PowError,
     },
     transactions::aggregated_body::AggregateBody,
-    validation::helpers,
+    validation::{helpers, ValidationError},
 };
-use crate::validation::ValidationError;
 
 const LOG_TARGET: &str = "c::bn::comms_interface::inbound_handler";
 const MAX_REQUEST_BY_BLOCK_HASHES: usize = 100;
@@ -464,7 +463,13 @@ where B: BlockchainBackend + 'static
                 "Block with hash `{}` already validated as a bad block",
                 block_hash.to_hex()
             );
-            return Err(CommsInterfaceError::ChainStorageError(ChainStorageError::ValidationError{source: ValidationError::BadBlockFound{hash: block_hash.to_hex()}}));
+            return Err(CommsInterfaceError::ChainStorageError(
+                ChainStorageError::ValidationError {
+                    source: ValidationError::BadBlockFound {
+                        hash: block_hash.to_hex(),
+                    },
+                },
+            ));
         }
 
         // lets check that the difficulty at least matches the min required difficulty

@@ -49,6 +49,7 @@ use tari_core::{
         MempoolServiceInitializer,
         OutboundMempoolServiceInterface,
     },
+    proof_of_work::randomx_factory::RandomXFactory,
     test_helpers::blockchain::{create_store_with_consensus_and_validators, TempDatabase},
     validation::{
         mocks::MockValidator,
@@ -58,7 +59,6 @@ use tari_core::{
         InternalConsistencyValidator,
     },
 };
-use tari_core::proof_of_work::randomx_factory::RandomXFactory;
 use tari_p2p::{
     comms_connector::{pubsub_connector, InboundDomainConnector},
     initialization::initialize_local_test_comms,
@@ -407,7 +407,8 @@ async fn setup_base_node_services(
             blockchain_db.clone().into(),
             mempool.clone(),
             consensus_manager,
-            Duration::from_secs(60),randomx_factory
+            Duration::from_secs(60),
+            randomx_factory,
         ))
         .add_initializer(MempoolServiceInitializer::new(mempool.clone(), subscription_factory))
         .add_initializer(mock_state_machine.get_initializer())

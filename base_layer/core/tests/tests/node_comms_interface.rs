@@ -35,7 +35,7 @@ use tari_core::{
     consensus::ConsensusManager,
     covenants::Covenant,
     mempool::{Mempool, MempoolConfig},
-    proof_of_work::Difficulty,
+    proof_of_work::{randomx_factory::RandomXFactory, Difficulty},
     test_helpers::{
         blockchain::{create_store_with_consensus_and_validators_and_config, create_test_blockchain_db},
         create_consensus_rules,
@@ -52,7 +52,6 @@ use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tari_script::{inputs, script, TariScript};
 use tari_service_framework::reply_channel;
 use tokio::sync::{broadcast, mpsc};
-use tari_core::proof_of_work::randomx_factory::RandomXFactory;
 
 use crate::helpers::block_builders::append_block;
 
@@ -81,7 +80,8 @@ async fn inbound_get_metadata() {
         mempool,
         consensus_manager,
         outbound_nci,
-        connectivity,randomx_factory
+        connectivity,
+        randomx_factory,
     );
     let block = store.fetch_block(0, true).unwrap().block().clone();
 
@@ -115,7 +115,8 @@ async fn inbound_fetch_kernel_by_excess_sig() {
         mempool,
         consensus_manager,
         outbound_nci,
-        connectivity,randomx_factory
+        connectivity,
+        randomx_factory,
     );
     let block = store.fetch_block(0, true).unwrap().block().clone();
     let sig = block.body.kernels()[0].excess_sig.clone();
@@ -150,7 +151,7 @@ async fn inbound_fetch_headers() {
         consensus_manager,
         outbound_nci,
         connectivity,
-        randomx_factory
+        randomx_factory,
     );
     let header = store.fetch_block(0, true).unwrap().header().clone();
 
@@ -183,7 +184,7 @@ async fn inbound_fetch_utxos() {
         consensus_manager,
         outbound_nci,
         connectivity,
-        randomx_factory
+        randomx_factory,
     );
     let block = store.fetch_block(0, true).unwrap().block().clone();
     let utxo_1 = block.body.outputs()[0].clone();
@@ -232,7 +233,7 @@ async fn inbound_fetch_blocks() {
         consensus_manager,
         outbound_nci,
         connectivity,
-        randomx_factory
+        randomx_factory,
     );
     let block = store.fetch_block(0, true).unwrap().block().clone();
 
@@ -286,7 +287,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         consensus_manager.clone(),
         outbound_nci,
         connectivity,
-        randomx_factory
+        randomx_factory,
     );
     let script = script!(Nop);
     let amount = MicroMinotari(10_000);
