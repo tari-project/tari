@@ -30,6 +30,7 @@ use crate::{
     chain_storage::ChainStorageError,
     consensus::ConsensusManagerError,
     mempool::MempoolError,
+    proof_of_work::{monero_rx::MergeMineError, DifficultyError},
 };
 
 #[derive(Debug, Error)]
@@ -70,4 +71,8 @@ pub enum CommsInterfaceError {
     InvalidRequest { request: &'static str, details: String },
     #[error("Peer sent invalid full block {hash}: {details}")]
     InvalidFullBlock { hash: FixedHash, details: String },
+    #[error("Invalid merge mined block: {0}")]
+    MergeMineError(#[from] MergeMineError),
+    #[error("Invalid difficulty: {0}")]
+    DifficultyError(#[from] DifficultyError),
 }

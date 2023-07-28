@@ -515,7 +515,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 header.pow_algo(),
                 header.hash().to_hex(),
             );
-            self.header_validator.validate(header)?;
+            self.header_validator.validate(header).await?;
         }
 
         debug!(
@@ -662,7 +662,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 continue;
             }
             let current_height = header.height;
-            last_total_accumulated_difficulty = self.header_validator.validate(header)?;
+            last_total_accumulated_difficulty = self.header_validator.validate(header).await?;
 
             if has_switched_to_new_chain {
                 // If we've switched to the new chain, we simply commit every COMMIT_EVERY_N_HEADERS headers

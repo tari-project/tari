@@ -67,6 +67,7 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for HeaderFullValidator
     ) -> Result<AchievedTargetDifficulty, ValidationError> {
         let constants = self.rules.consensus_constants(header.height);
 
+        check_not_bad_block(db, header.hash())?;
         check_blockchain_version(constants, header.version)?;
 
         check_timestamp_count(header, prev_timestamps, constants)?;
@@ -75,7 +76,6 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for HeaderFullValidator
         check_height(header, prev_header)?;
         check_prev_hash(header, prev_header)?;
         check_timestamp_ftl(header, &self.rules)?;
-        check_not_bad_block(db, header.hash())?;
         check_pow_data(header, &self.rules, db)?;
 
         let achieved_target = if let Some(target) = target_difficulty {

@@ -58,6 +58,7 @@ use tari_core::{
         InternalConsistencyValidator,
     },
 };
+use tari_core::proof_of_work::randomx_factory::RandomXFactory;
 use tari_p2p::{
     comms_connector::{pubsub_connector, InboundDomainConnector},
     initialization::initialize_local_test_comms,
@@ -393,7 +394,7 @@ async fn setup_base_node_services(
         setup_comms_services(node_identity.clone(), peers, publisher, data_path).await;
 
     let mock_state_machine = MockBaseNodeStateMachine::new();
-
+    let randomx_factory = RandomXFactory::new(2);
     let handles = StackBuilder::new(shutdown.to_signal())
         .add_initializer(RegisterHandle::new(dht))
         .add_initializer(RegisterHandle::new(comms.connectivity()))
@@ -406,7 +407,7 @@ async fn setup_base_node_services(
             blockchain_db.clone().into(),
             mempool.clone(),
             consensus_manager,
-            Duration::from_secs(60),
+            Duration::from_secs(60),randomx_factory
         ))
         .add_initializer(MempoolServiceInitializer::new(mempool.clone(), subscription_factory))
         .add_initializer(mock_state_machine.get_initializer())

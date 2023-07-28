@@ -27,12 +27,17 @@ use tari_utilities::{epoch_time::EpochTime, hex::Hex};
 
 use crate::{
     base_node::sync::BlockHeaderSyncError,
-    blocks::{BlockHeader, BlockHeaderAccumulatedData, ChainHeader},
+    blocks::{BlockHeader, BlockHeaderAccumulatedData, BlockHeaderValidationError, ChainHeader},
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError, TargetDifficulties},
     common::rolling_vec::RollingVec,
     consensus::ConsensusManager,
     proof_of_work::{randomx_factory::RandomXFactory, PowAlgorithm},
-    validation::{header::HeaderFullValidator, DifficultyCalculator, HeaderChainLinkedValidator},
+    validation::{
+        header::HeaderFullValidator,
+        DifficultyCalculator,
+        HeaderChainLinkedValidator,
+        ValidationError::BlockHeaderError,
+    },
 };
 
 const LOG_TARGET: &str = "c::bn::header_sync";
@@ -109,7 +114,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
         self.valid_headers().last()
     }
 
-    pub fn validate(&mut self, header: BlockHeader) -> Result<u128, BlockHeaderSyncError> {
+    pub async fn validate(&mut self, header: BlockHeader) -> Result<u128, BlockHeaderSyncError> {
         let state = self.state();
         let constants = self.consensus_rules.consensus_constants(header.height);
 
@@ -118,7 +123,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
             constants.max_pow_difficulty(header.pow_algo()),
         );
 
-        let achieved_target = {
+        let result = {
             let txn = self.db.inner().db_read_access()?;
             self.validator.validate(
                 &*txn,
@@ -126,9 +131,22 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
                 &state.previous_header,
                 &state.timestamps,
                 Some(target_difficulty),
-            )?
+            )
         };
+        if let Err(e) = &result {
+            match e {
+                // future timelimit validation can succeed at a later time. As the block is not yet valid, we discard it
+                // for now and ban the peer, but wont blacklist the block.
+                BlockHeaderError(BlockHeaderValidationError::InvalidTimestampFutureTimeLimit) => {},
+                _ => {
+                    let mut txn = self.db.write_transaction();
+                    txn.insert_bad_block(header.hash(), header.height);
+                    txn.commit().await?;
+                },
+            }
+        }
 
+        let achieved_target = result?;
         // Header is valid, add this header onto the validation state for the next round
         // Mutable borrow done later in the function to allow multiple immutable borrows before this line. This has
         // nothing to do with locking or concurrency.
@@ -299,11 +317,11 @@ mod test {
             validator.initialize_state(tip.hash()).await.unwrap();
             assert!(validator.valid_headers().is_empty());
             let next = BlockHeader::from_previous(tip.header());
-            validator.validate(next).unwrap();
+            validator.validate(next).await.unwrap();
             assert_eq!(validator.valid_headers().len(), 1);
             let tip = validator.valid_headers().last().cloned().unwrap();
             let next = BlockHeader::from_previous(tip.header());
-            validator.validate(next).unwrap();
+            validator.validate(next).await.unwrap();
             assert_eq!(validator.valid_headers().len(), 2);
         }
 
@@ -313,7 +331,7 @@ mod test {
             validator.initialize_state(tip.hash()).await.unwrap();
             let mut next = BlockHeader::from_previous(tip.header());
             next.height = 14;
-            let err = validator.validate(next).unwrap_err();
+            let err = validator.validate(next).await.unwrap_err();
             unpack_enum!(BlockHeaderSyncError::ValidationFailed(val_err) = err);
             unpack_enum!(ValidationError::BlockHeaderError(header_err) = val_err);
             unpack_enum!(BlockHeaderValidationError::InvalidHeight { actual, expected } = header_err);

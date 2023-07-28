@@ -30,6 +30,7 @@ use std::{
     sync::{atomic, atomic::AtomicBool, Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
     time::Instant,
 };
+use crate::validation::ValidationError;
 
 use croaring::Bitmap;
 use log::*;
@@ -48,6 +49,7 @@ use crate::{
         BlockAccumulatedData,
         BlockHeader,
         BlockHeaderAccumulatedData,
+        BlockHeaderValidationError,
         ChainBlock,
         ChainHeader,
         CompleteDeletedBitmap,
@@ -95,6 +97,7 @@ use crate::{
         DifficultyCalculator,
         HeaderChainLinkedValidator,
         InternalConsistencyValidator,
+        ValidationError::BlockHeaderError,
     },
     MutablePrunedOutputMmr,
     PrunedInputMmr,
@@ -913,17 +916,12 @@ where B: BlockchainBackend
         if db.contains(&DbKey::BlockHash(block_hash))? {
             return Ok(BlockAddResult::BlockExists);
         }
-        // Perform orphan block validation.
-        if let Err(e) = self.validators.orphan.validate_internal_consistency(&block) {
-            warn!(
-                target: LOG_TARGET,
-                "Block #{} ({}) failed validation - {}",
-                &new_height,
-                block.hash().to_hex(),
-                e.to_string()
-            );
-            return Err(e.into());
+        if db.bad_block_exists(block_hash)?{
+            return Err(ChainStorageError::ValidationError{source: ValidationError::BadBlockFound{hash: block_hash.to_hex()}})
         }
+        // the only fast check we can perform that is slightly expensive to fake is a min difficulty check, this is done
+        // as soon as we receive the block before we do any processing on it. A proper proof of work is done as soon as
+        // we can link it to the main chain.
         let block_add_result = add_block(
             &mut *db,
             &self.config,
@@ -1080,13 +1078,22 @@ where B: BlockchainBackend
     /// Returns true if this block exists in the chain, or is orphaned.
     pub fn block_exists(&self, hash: BlockHash) -> Result<bool, ChainStorageError> {
         let db = self.db_read_access()?;
-        Ok(db.contains(&DbKey::BlockHash(hash))? || db.contains(&DbKey::OrphanBlock(hash))?)
+        Ok(db.contains(&DbKey::BlockHash(hash))? ||
+            db.contains(&DbKey::OrphanBlock(hash))?)
     }
 
     /// Returns true if this block exists in the chain, or is orphaned.
     pub fn bad_block_exists(&self, hash: BlockHash) -> Result<bool, ChainStorageError> {
         let db = self.db_read_access()?;
         db.bad_block_exists(hash)
+    }
+
+    /// Adds a block hash to the list of bad blocks so it wont get process again.
+    pub fn add_bad_block(&self, hash: BlockHash, height: u64) -> Result<(), ChainStorageError> {
+        let mut db = self.db_write_access()?;
+        let mut txn = DbTransaction::new();
+        txn.insert_bad_block(hash, height);
+        db.write(txn)
     }
 
     /// Atomically commit the provided transaction to the database backend. This function does not update the metadata.
@@ -1934,6 +1941,7 @@ fn reorganize_chain<T: BlockchainBackend>(
                 block_hash.to_hex(),
                 e
             );
+            txn.insert_bad_block(block.header().hash(), block.header().height);
             remove_orphan(backend, block_hash)?;
 
             info!(target: LOG_TARGET, "Restoring previous chain after failed reorg.");
@@ -2172,7 +2180,20 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
         let timestamp = EpochTime::from(h.timestamp());
         prev_timestamps.push(timestamp);
     }
-    validator.validate(db, &block.header, parent.header(), &prev_timestamps, None)?;
+    let result = validator.validate(db, &block.header, parent.header(), &prev_timestamps, None);
+    if let Err(e) = &result {
+        match e {
+            // future timelimit validation can succeed at a later time. As the block is not yet valid, we discard it
+            // for now and ban the peer, but wont blacklist the block.
+            BlockHeaderError(BlockHeaderValidationError::InvalidTimestampFutureTimeLimit) => {},
+            _ => {
+                let mut txn = DbTransaction::new();
+                txn.insert_bad_block(block.header.hash(), block.header.height);
+                db.write(txn)?;
+            },
+        }
+    }
+    result?;
     let achieved_target_diff = difficulty_calculator.check_achieved_and_target_difficulty(db, &block.header)?;
 
     let accumulated_data = BlockHeaderAccumulatedData::builder(parent.accumulated_data())
