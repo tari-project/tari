@@ -150,15 +150,15 @@ impl Debug for TariWorld {
 }
 
 pub enum NodeClient {
-    BaseNode(tari_base_node_grpc_client::BaseNodeGrpcClient<tonic::transport::Channel>),
-    Wallet(tari_wallet_grpc_client::WalletGrpcClient<tonic::transport::Channel>),
+    BaseNode(minotari_node_grpc_client::BaseNodeGrpcClient<tonic::transport::Channel>),
+    Wallet(minotari_wallet_grpc_client::WalletGrpcClient<tonic::transport::Channel>),
 }
 
 impl TariWorld {
     pub async fn get_node_client<S: AsRef<str>>(
         &self,
         name: &S,
-    ) -> anyhow::Result<tari_base_node_grpc_client::BaseNodeGrpcClient<tonic::transport::Channel>> {
+    ) -> anyhow::Result<minotari_node_grpc_client::BaseNodeGrpcClient<tonic::transport::Channel>> {
         self.get_node(name)?.get_grpc_client().await
     }
 
@@ -184,7 +184,7 @@ impl TariWorld {
                 let mut wallet = wallet;
 
                 Ok(wallet
-                    .get_address(tari_wallet_grpc_client::grpc::Empty {})
+                    .get_address(minotari_wallet_grpc_client::grpc::Empty {})
                     .await
                     .unwrap()
                     .into_inner()
@@ -203,7 +203,7 @@ impl TariWorld {
     pub async fn get_wallet_client<S: AsRef<str>>(
         &self,
         name: &S,
-    ) -> anyhow::Result<tari_wallet_grpc_client::WalletGrpcClient<tonic::transport::Channel>> {
+    ) -> anyhow::Result<minotari_wallet_grpc_client::WalletGrpcClient<tonic::transport::Channel>> {
         self.get_wallet(name)?.get_grpc_client().await
     }
 

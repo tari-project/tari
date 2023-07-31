@@ -41,7 +41,7 @@ use tari_core::{
         create_consensus_rules,
     },
     transactions::{
-        tari_amount::MicroTari,
+        tari_amount::MicroMinotari,
         test_helpers::{create_test_core_key_manager_with_memory_db, create_utxo, spend_utxos},
         transaction_components::{OutputFeatures, TransactionOutputVersion, WalletOutput},
     },
@@ -185,12 +185,12 @@ async fn inbound_fetch_utxos() {
 
     let key_manager = create_test_core_key_manager_with_memory_db();
     let (utxo_2, _, _) = create_utxo(
-        MicroTari(10_000),
+        MicroMinotari(10_000),
         &key_manager,
         &Default::default(),
         &TariScript::default(),
         &Covenant::default(),
-        MicroTari::zero(),
+        MicroMinotari::zero(),
     )
     .await;
     let hash_2 = utxo_2.hash();
@@ -279,7 +279,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         connectivity,
     );
     let script = script!(Nop);
-    let amount = MicroTari(10_000);
+    let amount = MicroMinotari(10_000);
     let output_features = OutputFeatures::default();
     let covenant = Covenant::default();
     let (utxo, spending_key_id, sender_offset_key_id) = create_utxo(
@@ -288,7 +288,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         &output_features,
         &script,
         &covenant,
-        MicroTari::zero(),
+        MicroMinotari::zero(),
     )
     .await;
     let mut txn = DbTransaction::new();
@@ -323,7 +323,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         utxo.proof,
     );
 
-    let txn = txn_schema!(from: vec![wallet_output], to: vec![MicroTari(5_000), MicroTari(4_000)]);
+    let txn = txn_schema!(from: vec![wallet_output], to: vec![MicroMinotari(5_000), MicroMinotari(4_000)]);
     let (txn, _) = spend_utxos(txn, &key_manager).await;
     let block1 = append_block(
         &store,

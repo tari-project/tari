@@ -106,7 +106,7 @@ impl SingleReceiverTransactionProtocol {
     ) -> Result<(), TPE> {
         // validate amount
         if sender_info.amount == 0.into() {
-            return Err(TPE::ValidationError("Cannot send zero microTari".into()));
+            return Err(TPE::ValidationError("Cannot send zero micro Minotari".into()));
         }
 
         // validate kernel version
@@ -177,7 +177,7 @@ mod test {
         let consensus_constants = create_consensus_constants(0);
         let info = SingleRoundSenderData::default();
         let bob_output = WalletOutput::new_current_version(
-            MicroTari(5000),
+            MicroMinotari(5000),
             test_params.spend_key_id,
             OutputFeatures::default(),
             script!(Nop),
@@ -197,7 +197,7 @@ mod test {
         #[allow(clippy::match_wild_err_arm)]
         match SingleReceiverTransactionProtocol::create(&info, bob_output, &key_manager, &consensus_constants).await {
             Ok(_) => panic!("Zero amounts should fail"),
-            Err(TransactionProtocolError::ValidationError(s)) => assert_eq!(s, "Cannot send zero microTari"),
+            Err(TransactionProtocolError::ValidationError(s)) => assert_eq!(s, "Cannot send zero micro Minotari"),
             Err(_) => panic!("Protocol fails for the wrong reason"),
         };
     }
@@ -211,13 +211,13 @@ mod test {
         // let's use a sender's output version (V1) outside of the allowed range used by the receiver (V0..V0 by
         // default)
         let info = SingleRoundSenderData {
-            amount: MicroTari(5000),
+            amount: MicroMinotari(5000),
             output_version: TransactionOutputVersion::V1,
             ..Default::default()
         };
 
         let bob_output = WalletOutput::new_current_version(
-            MicroTari(5000),
+            MicroMinotari(5000),
             test_params.spend_key_id,
             OutputFeatures::default(),
             script!(Nop),
@@ -252,7 +252,7 @@ mod test {
             >,
         > = create_test_core_key_manager_with_memory_db();
         let consensus_constants = create_consensus_constants(0);
-        let m = TransactionMetadata::new(MicroTari(100), 0);
+        let m = TransactionMetadata::new(MicroMinotari(100), 0);
         let test_params = TestParams::new(&key_manager).await;
         let test_params2 = TestParams::new(&key_manager).await;
         let script = TariScript::default();
@@ -274,7 +274,7 @@ mod test {
             .unwrap();
         let info = SingleRoundSenderData {
             tx_id: 500u64.into(),
-            amount: MicroTari(1500),
+            amount: MicroMinotari(1500),
             public_excess: pub_xs.clone(),
             public_nonce: pub_rs.clone(),
             metadata: m.clone(),
@@ -284,7 +284,7 @@ mod test {
             sender_offset_public_key,
             ephemeral_public_nonce: ephemeral_public_nonce.clone(),
             covenant: Default::default(),
-            minimum_value_promise: MicroTari::zero(),
+            minimum_value_promise: MicroMinotari::zero(),
             output_version: TransactionOutputVersion::get_current_version(),
             kernel_version: TransactionKernelVersion::get_current_version(),
         };
@@ -293,7 +293,7 @@ mod test {
             .await
             .unwrap();
         let mut bob_output = WalletOutput::new_current_version(
-            MicroTari(1500),
+            MicroMinotari(1500),
             test_params2.spend_key_id.clone(),
             OutputFeatures::default(),
             script.clone(),

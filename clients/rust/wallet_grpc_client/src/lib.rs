@@ -32,8 +32,8 @@ use tonic::{
 
 pub type Client<TTransport> = grpc::wallet_client::WalletClient<TTransport>;
 
-// Re-export so that users don't have to depend on tari_app_grpc
-pub use tari_app_grpc::{
+// Re-export so that users don't have to depend on minotari_app_grpc
+pub use minotari_app_grpc::{
     authentication::{BasicAuthError, ClientAuthenticationInterceptor},
     tari_rpc as grpc,
 };

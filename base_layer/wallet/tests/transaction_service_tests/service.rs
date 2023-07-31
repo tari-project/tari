@@ -36,6 +36,47 @@ use futures::{
     FutureExt,
     SinkExt,
 };
+use minotari_wallet::{
+    base_node_service::{config::BaseNodeServiceConfig, handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
+    connectivity_service::{
+        create_wallet_connectivity_mock,
+        WalletConnectivityHandle,
+        WalletConnectivityInitializer,
+        WalletConnectivityInterface,
+        WalletConnectivityMock,
+    },
+    output_manager_service::{
+        config::OutputManagerServiceConfig,
+        handle::{OutputManagerEvent, OutputManagerHandle},
+        service::{Balance, OutputManagerService},
+        storage::{
+            database::OutputManagerDatabase,
+            models::KnownOneSidedPaymentScript,
+            sqlite_db::OutputManagerSqliteDatabase,
+        },
+        OutputManagerServiceInitializer,
+        UtxoSelectionCriteria,
+    },
+    storage::{
+        database::WalletDatabase,
+        sqlite_db::wallet::WalletSqliteDatabase,
+        sqlite_utilities::{run_migration_and_create_sqlite_connection, WalletDbConnection},
+    },
+    test_utils::{create_consensus_constants, make_wallet_database_connection, random_string},
+    transaction_service::{
+        config::TransactionServiceConfig,
+        error::TransactionServiceError,
+        handle::{TransactionEvent, TransactionSendStatus, TransactionServiceHandle},
+        service::TransactionService,
+        storage::{
+            database::{DbKeyValuePair, TransactionBackend, TransactionDatabase, WriteOperation},
+            models::{CompletedTransaction, InboundTransaction, OutboundTransaction, WalletTransaction},
+            sqlite_db::TransactionServiceSqliteDatabase,
+        },
+        TransactionServiceInitializer,
+    },
+    util::wallet_identity::WalletIdentity,
+};
 use prost::Message;
 use rand::{rngs::OsRng, RngCore};
 use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
@@ -118,47 +159,6 @@ use tari_service_framework::{reply_channel, RegisterHandle, StackBuilder};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::{comms_and_services::get_next_memory_address, random};
 use tari_utilities::{ByteArray, SafePassword};
-use tari_wallet::{
-    base_node_service::{config::BaseNodeServiceConfig, handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
-    connectivity_service::{
-        create_wallet_connectivity_mock,
-        WalletConnectivityHandle,
-        WalletConnectivityInitializer,
-        WalletConnectivityInterface,
-        WalletConnectivityMock,
-    },
-    output_manager_service::{
-        config::OutputManagerServiceConfig,
-        handle::{OutputManagerEvent, OutputManagerHandle},
-        service::{Balance, OutputManagerService},
-        storage::{
-            database::OutputManagerDatabase,
-            models::KnownOneSidedPaymentScript,
-            sqlite_db::OutputManagerSqliteDatabase,
-        },
-        OutputManagerServiceInitializer,
-        UtxoSelectionCriteria,
-    },
-    storage::{
-        database::WalletDatabase,
-        sqlite_db::wallet::WalletSqliteDatabase,
-        sqlite_utilities::{run_migration_and_create_sqlite_connection, WalletDbConnection},
-    },
-    test_utils::{create_consensus_constants, make_wallet_database_connection, random_string},
-    transaction_service::{
-        config::TransactionServiceConfig,
-        error::TransactionServiceError,
-        handle::{TransactionEvent, TransactionSendStatus, TransactionServiceHandle},
-        service::TransactionService,
-        storage::{
-            database::{DbKeyValuePair, TransactionBackend, TransactionDatabase, WriteOperation},
-            models::{CompletedTransaction, InboundTransaction, OutboundTransaction, WalletTransaction},
-            sqlite_db::TransactionServiceSqliteDatabase,
-        },
-        TransactionServiceInitializer,
-    },
-    util::wallet_identity::WalletIdentity,
-};
 use tempfile::tempdir;
 use tokio::{
     sync::{broadcast, broadcast::channel},
@@ -572,10 +572,10 @@ async fn manage_single_transaction() {
         .await
         .unwrap();
 
-    let value = MicroTari::from(1000);
+    let value = MicroMinotari::from(1000);
     let uo1 = make_input(
         &mut OsRng,
-        MicroTari(2500),
+        MicroMinotari(2500),
         &OutputFeatures::default(),
         &alice_key_manager_handle,
     )
@@ -587,7 +587,7 @@ async fn manage_single_transaction() {
             value,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
-            MicroTari::from(4),
+            MicroMinotari::from(4),
             "".to_string()
         )
         .await
@@ -601,7 +601,7 @@ async fn manage_single_transaction() {
             value,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
-            MicroTari::from(4),
+            MicroMinotari::from(4),
             message,
         )
         .await
@@ -836,7 +836,7 @@ async fn single_transaction_burn_tari() {
     let statement = RistrettoAggregatedPublicStatement {
         statements: vec![Statement {
             commitment: burn_proof.commitment.clone(),
-            minimum_value_promise: MicroTari::zero().as_u64(),
+            minimum_value_promise: MicroMinotari::zero().as_u64(),
         }],
     };
     assert!(factories
@@ -1433,7 +1433,7 @@ async fn manage_multiple_transactions() {
 
     let uo2 = make_input(
         &mut OsRng,
-        MicroTari(35000),
+        MicroMinotari(35000),
         &OutputFeatures::default(),
         &key_manager_handle,
     )
@@ -1441,7 +1441,7 @@ async fn manage_multiple_transactions() {
     bob_oms.add_output(uo2, None).await.unwrap();
     let uo3 = make_input(
         &mut OsRng,
-        MicroTari(45000),
+        MicroMinotari(45000),
         &OutputFeatures::default(),
         &key_manager_handle,
     )
@@ -1451,7 +1451,7 @@ async fn manage_multiple_transactions() {
     // Add some funds to Alices wallet
     let uo1a = make_input(
         &mut OsRng,
-        MicroTari(55000),
+        MicroMinotari(55000),
         &OutputFeatures::default(),
         &key_manager_handle,
     )
@@ -1459,7 +1459,7 @@ async fn manage_multiple_transactions() {
     alice_oms.add_output(uo1a, None).await.unwrap();
     let uo1b = make_input(
         &mut OsRng,
-        MicroTari(30000),
+        MicroMinotari(30000),
         &OutputFeatures::default(),
         &key_manager_handle,
     )
@@ -1467,7 +1467,7 @@ async fn manage_multiple_transactions() {
     alice_oms.add_output(uo1b, None).await.unwrap();
     let uo1c = make_input(
         &mut OsRng,
-        MicroTari(30000),
+        MicroMinotari(30000),
         &OutputFeatures::default(),
         &key_manager_handle,
     )
@@ -1475,10 +1475,10 @@ async fn manage_multiple_transactions() {
     alice_oms.add_output(uo1c, None).await.unwrap();
 
     // A series of interleaved transactions. First with Bob and Carol offline and then two with them online
-    let value_a_to_b_1 = MicroTari::from(10000);
-    let value_a_to_b_2 = MicroTari::from(8000);
-    let value_b_to_a_1 = MicroTari::from(11000);
-    let value_a_to_c_1 = MicroTari::from(14000);
+    let value_a_to_b_1 = MicroMinotari::from(10000);
+    let value_a_to_b_2 = MicroMinotari::from(8000);
+    let value_b_to_a_1 = MicroMinotari::from(11000);
+    let value_a_to_c_1 = MicroMinotari::from(14000);
     log::trace!("Sending A to B 1");
     let bob_address = TariAddress::new(bob_node_identity.public_key().clone(), Network::LocalNet);
     let tx_id_a_to_b_1 = alice_ts
@@ -1487,7 +1487,7 @@ async fn manage_multiple_transactions() {
             value_a_to_b_1,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
-            MicroTari::from(20),
+            MicroMinotari::from(20),
             "a to b 1".to_string(),
         )
         .await
@@ -1501,7 +1501,7 @@ async fn manage_multiple_transactions() {
             value_a_to_c_1,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
-            MicroTari::from(20),
+            MicroMinotari::from(20),
             "a to c 1".to_string(),
         )
         .await
@@ -1517,7 +1517,7 @@ async fn manage_multiple_transactions() {
             value_b_to_a_1,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
-            MicroTari::from(20),
+            MicroMinotari::from(20),
             "b to a 1".to_string(),
         )
         .await
@@ -1528,7 +1528,7 @@ async fn manage_multiple_transactions() {
             value_a_to_b_2,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
-            MicroTari::from(20),
+            MicroMinotari::from(20),
             "a to b 2".to_string(),
         )
         .await
@@ -1643,7 +1643,7 @@ async fn test_accepting_unknown_tx_id_and_malformed_reply() {
 
     let uo = make_input(
         &mut OsRng,
-        MicroTari(250000),
+        MicroMinotari(250000),
         &OutputFeatures::default(),
         &alice_ts_interface.key_manager_handle,
     )
@@ -1660,10 +1660,10 @@ async fn test_accepting_unknown_tx_id_and_malformed_reply() {
         .transaction_service_handle
         .send_transaction(
             bob_address,
-            MicroTari::from(5000),
+            MicroMinotari::from(5000),
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
-            MicroTari::from(20),
+            MicroMinotari::from(20),
             "".to_string(),
         )
         .await
@@ -1739,7 +1739,7 @@ async fn finalize_tx_with_incorrect_pubkey() {
 
     let uo = make_input(
         &mut OsRng,
-        MicroTari(250000),
+        MicroMinotari(250000),
         &OutputFeatures::default(),
         &alice_ts_interface.key_manager_handle,
     )
@@ -1753,15 +1753,15 @@ async fn finalize_tx_with_incorrect_pubkey() {
         .output_manager_service_handle
         .prepare_transaction_to_send(
             TxId::new_random(),
-            MicroTari::from(5000),
+            MicroMinotari::from(5000),
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
-            MicroTari::from(25),
+            MicroMinotari::from(25),
             TransactionMetadata::default(),
             "".to_string(),
             script!(Nop),
             Covenant::default(),
-            MicroTari::zero(),
+            MicroMinotari::zero(),
         )
         .await
         .unwrap();
@@ -1859,7 +1859,7 @@ async fn finalize_tx_with_missing_output() {
 
     let uo = make_input(
         &mut OsRng,
-        MicroTari(250000),
+        MicroMinotari(250000),
         &OutputFeatures::default(),
         &alice_ts_interface.key_manager_handle,
     )
@@ -1875,15 +1875,15 @@ async fn finalize_tx_with_missing_output() {
         .output_manager_service_handle
         .prepare_transaction_to_send(
             TxId::new_random(),
-            MicroTari::from(5000),
+            MicroMinotari::from(5000),
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
-            MicroTari::from(20),
+            MicroMinotari::from(20),
             TransactionMetadata::default(),
             "".to_string(),
             script!(Nop),
             Covenant::default(),
-            MicroTari::zero(),
+            MicroMinotari::zero(),
         )
         .await
         .unwrap();
@@ -2036,7 +2036,7 @@ async fn discovery_async_return_test() {
 
     let uo1a = make_input(
         &mut OsRng,
-        MicroTari(55000),
+        MicroMinotari(55000),
         &OutputFeatures::default(),
         &key_manager_handle,
     )
@@ -2044,7 +2044,7 @@ async fn discovery_async_return_test() {
     alice_oms.add_output(uo1a, None).await.unwrap();
     let uo1b = make_input(
         &mut OsRng,
-        MicroTari(30000),
+        MicroMinotari(30000),
         &OutputFeatures::default(),
         &key_manager_handle,
     )
@@ -2052,7 +2052,7 @@ async fn discovery_async_return_test() {
     alice_oms.add_output(uo1b, None).await.unwrap();
     let uo1c = make_input(
         &mut OsRng,
-        MicroTari(30000),
+        MicroMinotari(30000),
         &OutputFeatures::default(),
         &key_manager_handle,
     )
@@ -2061,7 +2061,7 @@ async fn discovery_async_return_test() {
 
     let initial_balance = alice_oms.get_balance().await.unwrap();
 
-    let value_a_to_c_1 = MicroTari::from(14000);
+    let value_a_to_c_1 = MicroMinotari::from(14000);
     let bob_address = TariAddress::new(bob_node_identity.public_key().clone(), network);
     let tx_id = alice_ts
         .send_transaction(
@@ -2069,7 +2069,7 @@ async fn discovery_async_return_test() {
             value_a_to_c_1,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
-            MicroTari::from(20),
+            MicroMinotari::from(20),
             "Discovery Tx!".to_string(),
         )
         .await
@@ -2107,7 +2107,7 @@ async fn discovery_async_return_test() {
             value_a_to_c_1,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
-            MicroTari::from(20),
+            MicroMinotari::from(20),
             "Discovery Tx2!".to_string(),
         )
         .await
@@ -2194,7 +2194,7 @@ async fn test_power_mode_updates() {
         source_address,
         destination_address,
         amount: 5000 * uT,
-        fee: MicroTari::from(100),
+        fee: MicroMinotari::from(100),
         transaction: tx.clone(),
         status: TransactionStatus::Completed,
         message: "Yo!".to_string(),
@@ -2224,7 +2224,7 @@ async fn test_power_mode_updates() {
         source_address,
         destination_address,
         amount: 6000 * uT,
-        fee: MicroTari::from(200),
+        fee: MicroMinotari::from(200),
         transaction: tx.clone(),
         status: TransactionStatus::Completed,
         message: "Yo!".to_string(),
@@ -2492,7 +2492,7 @@ async fn test_transaction_cancellation() {
         TariScript::default(),
         OutputFeatures::default(),
         &TestParams::new(&key_manager).await,
-        MicroTari::from(100_000),
+        MicroMinotari::from(100_000),
         &key_manager,
     )
     .await
@@ -2501,11 +2501,11 @@ async fn test_transaction_cancellation() {
     let constants = create_consensus_constants(0);
     let key_manager = create_test_core_key_manager_with_memory_db();
     let mut builder = SenderTransactionProtocol::builder(constants, key_manager.clone());
-    let amount = MicroTari::from(10_000);
+    let amount = MicroMinotari::from(10_000);
     let change = TestParams::new(&key_manager).await;
     builder
         .with_lock_height(0)
-        .with_fee_per_gram(MicroTari::from(5))
+        .with_fee_per_gram(MicroMinotari::from(5))
         .with_message("Yo!".to_string())
         .with_input(input)
         .await
@@ -2521,7 +2521,7 @@ async fn test_transaction_cancellation() {
             script!(Nop),
             Default::default(),
             Covenant::default(),
-            MicroTari::zero(),
+            MicroMinotari::zero(),
             amount,
         )
         .await
@@ -2579,18 +2579,18 @@ async fn test_transaction_cancellation() {
         TariScript::default(),
         OutputFeatures::default(),
         &TestParams::new(&key_manager.clone()).await,
-        MicroTari::from(100_000),
+        MicroMinotari::from(100_000),
         &key_manager.clone(),
     )
     .await
     .unwrap();
     let constants = create_consensus_constants(0);
     let mut builder = SenderTransactionProtocol::builder(constants, key_manager.clone());
-    let amount = MicroTari::from(10_000);
+    let amount = MicroMinotari::from(10_000);
     let change = TestParams::new(&key_manager).await;
     builder
         .with_lock_height(0)
-        .with_fee_per_gram(MicroTari::from(5))
+        .with_fee_per_gram(MicroMinotari::from(5))
         .with_message("Yo!".to_string())
         .with_input(input)
         .await
@@ -2606,7 +2606,7 @@ async fn test_transaction_cancellation() {
             script!(Nop),
             Default::default(),
             Covenant::default(),
-            MicroTari::zero(),
+            MicroMinotari::zero(),
             amount,
         )
         .await
@@ -3298,7 +3298,7 @@ async fn test_restarting_transaction_protocols() {
     // Bob is going to send a transaction to Alice
     let input = make_input(
         &mut OsRng,
-        MicroTari(2000),
+        MicroMinotari(2000),
         &OutputFeatures::default(),
         &alice_ts_interface.key_manager_handle,
     )
@@ -3307,11 +3307,11 @@ async fn test_restarting_transaction_protocols() {
     let fee_calc = Fee::new(*constants.transaction_weight_params());
     let key_manager = create_test_core_key_manager_with_memory_db();
     let mut builder = SenderTransactionProtocol::builder(constants.clone(), key_manager.clone());
-    let fee = fee_calc.calculate(MicroTari(4), 1, 1, 1, 0);
+    let fee = fee_calc.calculate(MicroMinotari(4), 1, 1, 1, 0);
     let change = TestParams::new(&key_manager).await;
     builder
         .with_lock_height(0)
-        .with_fee_per_gram(MicroTari(4))
+        .with_fee_per_gram(MicroMinotari(4))
         .with_input(input)
         .await
         .unwrap()
@@ -3319,8 +3319,8 @@ async fn test_restarting_transaction_protocols() {
             script!(Nop),
             Default::default(),
             Covenant::default(),
-            MicroTari::zero(),
-            MicroTari(2000) - fee - MicroTari(10),
+            MicroMinotari::zero(),
+            MicroMinotari(2000) - fee - MicroMinotari(10),
         )
         .await
         .unwrap()
@@ -3530,7 +3530,7 @@ async fn test_coinbase_transactions_rejection_same_hash_but_accept_on_same_heigh
             .await
             .unwrap()
             .pending_incoming_balance,
-        MicroTari::from(0)
+        MicroMinotari::from(0)
     );
 
     // Create a second coinbase txn at the first block height, with same output hash as the previous one
@@ -3558,7 +3558,7 @@ async fn test_coinbase_transactions_rejection_same_hash_but_accept_on_same_heigh
             .await
             .unwrap()
             .pending_incoming_balance,
-        MicroTari::from(0)
+        MicroMinotari::from(0)
     );
 
     // Create another coinbase Txn at the same block height; the previous one should not be cancelled
@@ -3585,7 +3585,7 @@ async fn test_coinbase_transactions_rejection_same_hash_but_accept_on_same_heigh
             .await
             .unwrap()
             .pending_incoming_balance,
-        MicroTari::from(0)
+        MicroMinotari::from(0)
     );
 
     // Create a third coinbase Txn at the second block height; all the three should be valid
@@ -3612,7 +3612,7 @@ async fn test_coinbase_transactions_rejection_same_hash_but_accept_on_same_heigh
             .await
             .unwrap()
             .pending_incoming_balance,
-        MicroTari::from(0)
+        MicroMinotari::from(0)
     );
 
     assert!(transactions.values().any(|tx| tx.amount == fees1 + reward1));
@@ -3668,7 +3668,7 @@ async fn test_coinbase_generation_and_monitoring() {
             .await
             .unwrap()
             .pending_incoming_balance,
-        MicroTari::from(0)
+        MicroMinotari::from(0)
     );
 
     // Create another coinbase Txn at the next block height
@@ -3695,7 +3695,7 @@ async fn test_coinbase_generation_and_monitoring() {
             .await
             .unwrap()
             .pending_incoming_balance,
-        MicroTari::from(0)
+        MicroMinotari::from(0)
     );
 
     // Take out a second one at the second height which should not overwrite the initial one
@@ -3722,7 +3722,7 @@ async fn test_coinbase_generation_and_monitoring() {
             .await
             .unwrap()
             .pending_incoming_balance,
-        MicroTari::from(0)
+        MicroMinotari::from(0)
     );
 
     assert!(transactions.values().any(|tx| tx.amount == fees1 + reward1));
@@ -3910,7 +3910,7 @@ async fn test_coinbase_abandoned() {
             .await
             .unwrap()
             .pending_incoming_balance,
-        MicroTari::from(0)
+        MicroMinotari::from(0)
     );
 
     let transaction_query_batch_responses = vec![TxQueryBatchResponseProto {
@@ -3939,7 +3939,7 @@ async fn test_coinbase_abandoned() {
         .get_balance()
         .await
         .unwrap();
-    assert_eq!(balance.pending_incoming_balance, MicroTari::from(0));
+    assert_eq!(balance.pending_incoming_balance, MicroMinotari::from(0));
 
     let validation_id = alice_ts_interface
         .transaction_service_handle
@@ -3993,10 +3993,10 @@ async fn test_coinbase_abandoned() {
         .await
         .unwrap();
     assert_eq!(balance, Balance {
-        available_balance: MicroTari(0),
-        time_locked_balance: Some(MicroTari(0)),
-        pending_incoming_balance: MicroTari(0),
-        pending_outgoing_balance: MicroTari(0)
+        available_balance: MicroMinotari(0),
+        time_locked_balance: Some(MicroMinotari(0)),
+        pending_incoming_balance: MicroMinotari(0),
+        pending_outgoing_balance: MicroMinotari(0)
     });
 
     let invalid_txs = alice_ts_interface
@@ -4034,7 +4034,7 @@ async fn test_coinbase_abandoned() {
             .await
             .unwrap()
             .pending_incoming_balance,
-        MicroTari::from(0)
+        MicroMinotari::from(0)
     );
 
     let transaction_query_batch_responses = vec![
@@ -4223,10 +4223,10 @@ async fn test_coinbase_abandoned() {
         .await
         .unwrap();
     assert_eq!(balance, Balance {
-        available_balance: MicroTari(0),
-        time_locked_balance: Some(MicroTari(0)),
-        pending_incoming_balance: MicroTari(0),
-        pending_outgoing_balance: MicroTari(0)
+        available_balance: MicroMinotari(0),
+        time_locked_balance: Some(MicroMinotari(0)),
+        pending_incoming_balance: MicroMinotari(0),
+        pending_outgoing_balance: MicroMinotari(0)
     });
 
     // Now reorg again and have tx2 be mined
@@ -4354,7 +4354,7 @@ async fn test_coinbase_transaction_reused_for_same_height() {
         .unwrap();
 
     assert_eq!(transactions.len(), 1);
-    let mut amount = MicroTari::zero();
+    let mut amount = MicroMinotari::zero();
     for tx in transactions.values() {
         amount += tx.amount;
     }
@@ -4366,7 +4366,7 @@ async fn test_coinbase_transaction_reused_for_same_height() {
             .await
             .unwrap()
             .pending_incoming_balance,
-        MicroTari::from(0)
+        MicroMinotari::from(0)
     );
 
     // a requested coinbase transaction for the same height but new amount should be different
@@ -4383,7 +4383,7 @@ async fn test_coinbase_transaction_reused_for_same_height() {
         .await
         .unwrap();
     assert_eq!(transactions.len(), 2);
-    let mut amount = MicroTari::zero();
+    let mut amount = MicroMinotari::zero();
     for tx in transactions.values() {
         amount += tx.amount;
     }
@@ -4395,7 +4395,7 @@ async fn test_coinbase_transaction_reused_for_same_height() {
             .await
             .unwrap()
             .pending_incoming_balance,
-        MicroTari::from(0)
+        MicroMinotari::from(0)
     );
 
     // a requested coinbase transaction for a new height should be different
@@ -4412,7 +4412,7 @@ async fn test_coinbase_transaction_reused_for_same_height() {
         .await
         .unwrap();
     assert_eq!(transactions.len(), 3);
-    let mut amount = MicroTari::zero();
+    let mut amount = MicroMinotari::zero();
     for tx in transactions.values() {
         amount += tx.amount;
     }
@@ -4424,7 +4424,7 @@ async fn test_coinbase_transaction_reused_for_same_height() {
             .await
             .unwrap()
             .pending_incoming_balance,
-        MicroTari::from(0)
+        MicroMinotari::from(0)
     );
 }
 
@@ -4651,7 +4651,7 @@ async fn test_resend_on_startup() {
         script!(Nop),
         OutputFeatures::default(),
         &TestParams::new(&key_manager).await,
-        MicroTari::from(100_000),
+        MicroMinotari::from(100_000),
         &key_manager,
     )
     .await
@@ -4659,11 +4659,11 @@ async fn test_resend_on_startup() {
     let constants = create_consensus_constants(0);
     let key_manager = create_test_core_key_manager_with_memory_db();
     let mut builder = SenderTransactionProtocol::builder(constants.clone(), key_manager.clone());
-    let amount = MicroTari::from(10_000);
+    let amount = MicroMinotari::from(10_000);
     let change = TestParams::new(&key_manager).await;
     builder
         .with_lock_height(0)
-        .with_fee_per_gram(MicroTari::from(177 / 5))
+        .with_fee_per_gram(MicroMinotari::from(177 / 5))
         .with_message("Yo!".to_string())
         .with_input(input)
         .await
@@ -4679,7 +4679,7 @@ async fn test_resend_on_startup() {
             script!(Nop),
             Default::default(),
             Covenant::default(),
-            MicroTari::zero(),
+            MicroMinotari::zero(),
             amount,
         )
         .await
@@ -5158,7 +5158,7 @@ async fn test_transaction_timeout_cancellation() {
         TariScript::default(),
         OutputFeatures::default(),
         &TestParams::new(&key_manager).await,
-        MicroTari::from(100_000),
+        MicroMinotari::from(100_000),
         &key_manager,
     )
     .await
@@ -5166,11 +5166,11 @@ async fn test_transaction_timeout_cancellation() {
     let constants = create_consensus_constants(0);
     let key_manager = create_test_core_key_manager_with_memory_db();
     let mut builder = SenderTransactionProtocol::builder(constants, key_manager.clone());
-    let amount = MicroTari::from(10_000);
+    let amount = MicroMinotari::from(10_000);
     let change = TestParams::new(&key_manager).await;
     builder
         .with_lock_height(0)
-        .with_fee_per_gram(MicroTari::from(177 / 5))
+        .with_fee_per_gram(MicroMinotari::from(177 / 5))
         .with_message("Yo!".to_string())
         .with_input(input)
         .await
@@ -5186,7 +5186,7 @@ async fn test_transaction_timeout_cancellation() {
             script!(Nop),
             Default::default(),
             Covenant::default(),
-            MicroTari::zero(),
+            MicroMinotari::zero(),
             amount,
         )
         .await
@@ -5354,7 +5354,7 @@ async fn transaction_service_tx_broadcast() {
     let (connection2, _temp_dir2) = make_wallet_database_connection(None);
     let mut bob_ts_interface = setup_transaction_service_no_comms(factories.clone(), connection2, None).await;
 
-    let alice_output_value = MicroTari(250000);
+    let alice_output_value = MicroMinotari(250000);
 
     let uo = make_input(
         &mut OsRng,
@@ -5506,7 +5506,7 @@ async fn transaction_service_tx_broadcast() {
         .get_balance()
         .await
         .unwrap();
-    assert_eq!(balance.available_balance, MicroTari(0));
+    assert_eq!(balance.available_balance, MicroMinotari(0));
 
     // Give Alice the first of tx reply to start the broadcast process.
     alice_ts_interface
@@ -5731,7 +5731,7 @@ async fn broadcast_all_completed_transactions_on_startup() {
         source_address,
         destination_address,
         amount: 5000 * uT,
-        fee: MicroTari::from(20),
+        fee: MicroMinotari::from(20),
         transaction: tx.clone(),
         status: TransactionStatus::Completed,
         message: "Yo!".to_string(),
@@ -5851,7 +5851,7 @@ async fn test_update_faux_tx_on_oms_validation() {
     let tx_id_1 = alice_ts_interface
         .transaction_service_handle
         .import_utxo_with_status(
-            MicroTari::from(10000),
+            MicroMinotari::from(10000),
             alice_address.clone(),
             "blah".to_string(),
             None,
@@ -5865,7 +5865,7 @@ async fn test_update_faux_tx_on_oms_validation() {
     let tx_id_2 = alice_ts_interface
         .transaction_service_handle
         .import_utxo_with_status(
-            MicroTari::from(20000),
+            MicroMinotari::from(20000),
             alice_address.clone(),
             "one-sided 1".to_string(),
             None,
@@ -5880,7 +5880,7 @@ async fn test_update_faux_tx_on_oms_validation() {
     let tx_id_3 = alice_ts_interface
         .transaction_service_handle
         .import_utxo_with_status(
-            MicroTari::from(30000),
+            MicroMinotari::from(30000),
             alice_address,
             "one-sided 2".to_string(),
             None,
@@ -5894,21 +5894,21 @@ async fn test_update_faux_tx_on_oms_validation() {
 
     let uo_1 = make_input(
         &mut OsRng.clone(),
-        MicroTari::from(10000),
+        MicroMinotari::from(10000),
         &OutputFeatures::default(),
         &alice_ts_interface.key_manager_handle,
     )
     .await;
     let uo_2 = make_input(
         &mut OsRng.clone(),
-        MicroTari::from(20000),
+        MicroMinotari::from(20000),
         &OutputFeatures::default(),
         &alice_ts_interface.key_manager_handle,
     )
     .await;
     let uo_3 = make_input(
         &mut OsRng.clone(),
-        MicroTari::from(30000),
+        MicroMinotari::from(30000),
         &OutputFeatures::default(),
         &alice_ts_interface.key_manager_handle,
     )

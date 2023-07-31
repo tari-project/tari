@@ -7,7 +7,7 @@ version = "0.51.0-pre.4"
 edition = "2018"
 
 [dependencies]
-tari_app_utilities = { path = "../../applications/tari_app_utilities" }
+minotari_app_utilities = { path = "../../applications/minotari_app_utilities" }
 tari_chat_client = { path = "../contacts/examples/chat_client" }
 tari_common = { path = "../../common" }
 tari_common_types = { path = "../common_types" }

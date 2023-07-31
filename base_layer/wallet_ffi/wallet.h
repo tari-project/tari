@@ -824,7 +824,7 @@ void commitment_and_public_signature_destroy(TariComAndPubSignature *compub_sig)
  * Creates an unblinded output
  *
  * ## Arguments
- * `amount` - The value of the UTXO in MicroTari
+ * `amount` - The value of the UTXO in MicroMinotari
  * `spending_key` - The private spending key
  * `source_address` - The tari address of the source of the transaction
  * `features` - Options for an output's structure or use
@@ -968,7 +968,7 @@ void unblinded_outputs_destroy(struct TariUnblindedOutputs *outputs);
  *
  * ## Arguments
  * `wallet` - The TariWallet pointer
- * `amount` - The value of the UTXO in MicroTari
+ * `amount` - The value of the UTXO in MicroMinotari
  * `spending_key` - The private spending key
  * `source_address` - The tari address of the source of the transaction
  * `features` - Options for an output's structure or use
@@ -3125,7 +3125,7 @@ unsigned long long wallet_send_transaction(struct TariWallet *wallet,
  * as an out parameter.
  *
  * ## Returns
- * `unsigned long long` - Returns 0 if unsuccessful or the fee estimate in MicroTari if successful
+ * `unsigned long long` - Returns 0 if unsuccessful or the fee estimate in MicroMinotari if successful
  *
  * # Safety
  * None
@@ -3600,7 +3600,7 @@ bool wallet_is_recovery_in_progress(struct TariWallet *wallet,
  *     - ConnectedToBaseNode, 0, 1
  *     - ConnectionToBaseNodeFailed, number of retries, retry limit
  *     - Progress, current block, total number of blocks
- *     - Completed, total number of UTXO's recovered, MicroTari recovered,
+ *     - Completed, total number of UTXO's recovered, MicroMinotari recovered,
  *     - ScanningRoundFailed, number of retries, retry limit
  *     - RecoveryFailed, 0, 0
  *
@@ -3611,7 +3611,7 @@ bool wallet_is_recovery_in_progress(struct TariWallet *wallet,
  *       started
  *     - In Progress callbacks will be of the form (n, m) where n < m
  *     - If the process completed successfully then the final `Completed` callback will return how many UTXO's were
- *       scanned and how much MicroTari was recovered
+ *       scanned and how much MicroMinotari was recovered
  *     - If there is an error in the connection process then the `ConnectionToBaseNodeFailed` will be returned
  *     - If there is a minor error in scanning then `ScanningRoundFailed` will be returned and another connection/sync
  *       attempt will be made

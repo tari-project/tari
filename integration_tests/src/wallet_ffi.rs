@@ -32,7 +32,6 @@ use chrono::{DateTime, Utc};
 use indexmap::IndexMap;
 use libc::c_void;
 
-// use tari_wallet_ffi::*;
 use super::ffi::{
     Balance,
     Callbacks,

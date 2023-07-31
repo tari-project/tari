@@ -25,6 +25,21 @@ use std::mem::size_of;
 
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use chrono::{NaiveDateTime, Utc};
+use minotari_wallet::{
+    storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
+    test_utils::create_consensus_constants,
+    transaction_service::storage::{
+        database::{DbKeyValuePair, TransactionBackend, TransactionDatabase, WriteOperation},
+        models::{
+            CompletedTransaction,
+            InboundTransaction,
+            OutboundTransaction,
+            TxCancellationReason,
+            WalletTransaction,
+        },
+        sqlite_db::TransactionServiceSqliteDatabase,
+    },
+};
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
 use tari_common_types::{
@@ -36,7 +51,7 @@ use tari_core::{
     covenants::Covenant,
     transactions::{
         key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface},
-        tari_amount::{uT, MicroTari},
+        tari_amount::{uT, MicroMinotari},
         test_helpers::{create_test_core_key_manager_with_memory_db, create_wallet_output_with_data, TestParams},
         transaction_components::{
             OutputFeatures,
@@ -55,21 +70,6 @@ use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait
 use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tari_script::{inputs, script, TariScript};
 use tari_test_utils::random;
-use tari_wallet::{
-    storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
-    test_utils::create_consensus_constants,
-    transaction_service::storage::{
-        database::{DbKeyValuePair, TransactionBackend, TransactionDatabase, WriteOperation},
-        models::{
-            CompletedTransaction,
-            InboundTransaction,
-            OutboundTransaction,
-            TxCancellationReason,
-            WalletTransaction,
-        },
-        sqlite_db::TransactionServiceSqliteDatabase,
-    },
-};
 use tempfile::tempdir;
 
 pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
@@ -79,7 +79,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         TariScript::default(),
         OutputFeatures::default(),
         &TestParams::new(&key_manager).await,
-        MicroTari::from(100_000),
+        MicroMinotari::from(100_000),
         &key_manager,
     )
     .await
@@ -87,10 +87,10 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let constants = create_consensus_constants(0);
     let key_manager = create_test_core_key_manager_with_memory_db();
     let mut builder = SenderTransactionProtocol::builder(constants.clone(), key_manager.clone());
-    let amount = MicroTari::from(10_000);
+    let amount = MicroMinotari::from(10_000);
     builder
         .with_lock_height(0)
-        .with_fee_per_gram(MicroTari::from(177 / 5))
+        .with_fee_per_gram(MicroMinotari::from(177 / 5))
         .with_message("Yo!".to_string())
         .with_input(input)
         .await
@@ -99,7 +99,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             script!(Nop),
             Default::default(),
             Covenant::default(),
-            MicroTari::zero(),
+            MicroMinotari::zero(),
             amount,
         )
         .await
@@ -116,7 +116,11 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let stp = builder.build().await.unwrap();
 
     let messages = vec!["Hey!".to_string(), "Yo!".to_string(), "Sup!".to_string()];
-    let amounts = vec![MicroTari::from(10_000), MicroTari::from(23_000), MicroTari::from(5_000)];
+    let amounts = vec![
+        MicroMinotari::from(10_000),
+        MicroMinotari::from(23_000),
+        MicroMinotari::from(5_000),
+    ];
 
     let mut outbound_txs = Vec::new();
 
@@ -196,7 +200,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         0,
         Covenant::default(),
         encrypted_data,
-        MicroTari::zero(),
+        MicroMinotari::zero(),
         &key_manager,
     )
     .await
@@ -308,7 +312,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             source_address,
             destination_address: dest_address,
             amount: outbound_txs[i].amount,
-            fee: MicroTari::from(200),
+            fee: MicroMinotari::from(200),
             transaction: tx.clone(),
             status: match i {
                 0 => TransactionStatus::Completed,
@@ -557,8 +561,8 @@ async fn import_tx_and_read_it_from_db() {
         TxId::from(1u64),
         TariAddress::default(),
         TariAddress::default(),
-        MicroTari::from(100000),
-        MicroTari::from(0),
+        MicroMinotari::from(100000),
+        MicroMinotari::from(0),
         Transaction::new(
             Vec::new(),
             Vec::new(),
@@ -586,8 +590,8 @@ async fn import_tx_and_read_it_from_db() {
         TxId::from(2u64),
         TariAddress::default(),
         TariAddress::default(),
-        MicroTari::from(100000),
-        MicroTari::from(0),
+        MicroMinotari::from(100000),
+        MicroMinotari::from(0),
         Transaction::new(
             Vec::new(),
             Vec::new(),
@@ -615,8 +619,8 @@ async fn import_tx_and_read_it_from_db() {
         TxId::from(3u64),
         TariAddress::default(),
         TariAddress::default(),
-        MicroTari::from(100000),
-        MicroTari::from(0),
+        MicroMinotari::from(100000),
+        MicroMinotari::from(0),
         Transaction::new(
             Vec::new(),
             Vec::new(),

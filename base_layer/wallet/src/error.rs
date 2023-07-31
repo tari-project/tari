@@ -105,7 +105,7 @@ pub enum WalletError {
     PublicAddressNotSet,
 }
 
-pub const LOG_TARGET: &str = "tari::application";
+pub const LOG_TARGET: &str = "minotari::application";
 
 impl From<WalletError> for ExitError {
     fn from(err: WalletError) -> Self {

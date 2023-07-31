@@ -119,11 +119,11 @@ impl Display for PrioritizedTransaction {
 mod tests {
     use super::*;
     use crate::transactions::{
-        tari_amount::{uT, MicroTari, T},
+        tari_amount::{uT, MicroMinotari, T},
         test_helpers::{create_test_core_key_manager_with_memory_db, create_tx, TestKeyManager},
     };
 
-    async fn create_tx_with_fee(fee_per_gram: MicroTari, key_manager: &TestKeyManager) -> Transaction {
+    async fn create_tx_with_fee(fee_per_gram: MicroMinotari, key_manager: &TestKeyManager) -> Transaction {
         let (tx, _, _) = create_tx(10 * T, fee_per_gram, 0, 1, 0, 1, Default::default(), key_manager)
             .await
             .expect("Failed to get tx");

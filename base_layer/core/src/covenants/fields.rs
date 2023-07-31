@@ -392,7 +392,7 @@ mod test {
         mod is_eq {
             use super::*;
             use crate::transactions::{
-                tari_amount::MicroTari,
+                tari_amount::MicroMinotari,
                 test_helpers::create_test_core_key_manager_with_memory_db,
                 transaction_components::RangeProofType,
             };
@@ -454,8 +454,8 @@ mod test {
                             ..Default::default()
                         },
                         script: script![Drop Nop],
-                        minimum_value_promise: MicroTari(123456),
-                        value: MicroTari(123456),
+                        minimum_value_promise: MicroMinotari(123456),
+                        value: MicroMinotari(123456),
                         ..Default::default()
                     },
                     &key_manager,
@@ -482,7 +482,7 @@ mod test {
                     .is_eq(&output, &RangeProofType::BulletProofPlus)
                     .unwrap());
                 assert!(!OutputField::MinimumValuePromise
-                    .is_eq(&output, &MicroTari::default())
+                    .is_eq(&output, &MicroMinotari::default())
                     .unwrap());
             }
         }
@@ -567,7 +567,7 @@ mod test {
 
             use super::*;
             use crate::transactions::{
-                tari_amount::MicroTari,
+                tari_amount::MicroMinotari,
                 test_helpers::create_test_core_key_manager_with_memory_db,
                 transaction_components::RangeProofType,
             };
@@ -586,8 +586,8 @@ mod test {
                     UtxoTestParams {
                         features,
                         script: script![Drop Nop],
-                        minimum_value_promise: MicroTari(123456),
-                        value: MicroTari(123456),
+                        minimum_value_promise: MicroMinotari(123456),
+                        value: MicroMinotari(123456),
                         ..Default::default()
                     },
                     &key_manager,
@@ -619,7 +619,7 @@ mod test {
         mod get_field_value_ref {
             use super::*;
             use crate::transactions::{
-                tari_amount::MicroTari,
+                tari_amount::MicroMinotari,
                 test_helpers::create_test_core_key_manager_with_memory_db,
                 transaction_components::RangeProofType,
             };
@@ -636,8 +636,8 @@ mod test {
                     1,
                     UtxoTestParams {
                         features: features.clone(),
-                        minimum_value_promise: MicroTari(123456),
-                        value: MicroTari(123456),
+                        minimum_value_promise: MicroMinotari(123456),
+                        value: MicroMinotari(123456),
                         ..Default::default()
                     },
                     &key_manager,
@@ -647,8 +647,8 @@ mod test {
                 .unwrap();
                 let r = OutputField::Features.get_field_value_ref::<OutputFeatures>(&output);
                 assert_eq!(*r.unwrap(), features);
-                let r = OutputField::MinimumValuePromise.get_field_value_ref::<MicroTari>(&output);
-                assert_eq!(*r.unwrap(), MicroTari(123456));
+                let r = OutputField::MinimumValuePromise.get_field_value_ref::<MicroMinotari>(&output);
+                assert_eq!(*r.unwrap(), MicroMinotari(123456));
             }
         }
     }

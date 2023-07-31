@@ -22,7 +22,7 @@
 
 use std::{path::PathBuf, str::FromStr};
 
-use tari_app_utilities::identity_management::setup_node_identity;
+use minotari_app_utilities::identity_management::setup_node_identity;
 use tari_chat_client::{
     config::{ApplicationConfig, ChatClientConfig},
     database,

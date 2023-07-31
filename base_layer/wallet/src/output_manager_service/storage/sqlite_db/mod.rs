@@ -1313,7 +1313,7 @@ mod test {
     use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
     use rand::{rngs::OsRng, RngCore};
     use tari_core::transactions::{
-        tari_amount::MicroTari,
+        tari_amount::MicroMinotari,
         test_helpers::{
             create_test_core_key_manager_with_memory_db,
             create_wallet_output_with_data,
@@ -1332,7 +1332,7 @@ mod test {
         OutputSource,
     };
 
-    pub async fn make_input(val: MicroTari, key_manager: &TestKeyManager) -> (TransactionInput, WalletOutput) {
+    pub async fn make_input(val: MicroMinotari, key_manager: &TestKeyManager) -> (TransactionInput, WalletOutput) {
         let test_params = TestParams::new(key_manager).await;
 
         let wallet_output =
@@ -1379,7 +1379,7 @@ mod test {
 
         let key_manager = create_test_core_key_manager_with_memory_db();
         for _i in 0..2 {
-            let (_, uo) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000), &key_manager).await;
+            let (_, uo) = make_input(MicroMinotari::from(100 + OsRng.next_u64() % 1000), &key_manager).await;
             let uo = DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Unknown, None, None)
                 .await
                 .unwrap();
@@ -1390,7 +1390,7 @@ mod test {
         }
 
         for _i in 0..3 {
-            let (_, uo) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000), &key_manager).await;
+            let (_, uo) = make_input(MicroMinotari::from(100 + OsRng.next_u64() % 1000), &key_manager).await;
             let uo = DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Unknown, None, None)
                 .await
                 .unwrap();

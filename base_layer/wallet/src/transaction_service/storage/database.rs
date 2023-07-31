@@ -35,7 +35,7 @@ use tari_common_types::{
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
     types::{BlockHash, PrivateKey},
 };
-use tari_core::transactions::{tari_amount::MicroTari, transaction_components::Transaction};
+use tari_core::transactions::{tari_amount::MicroMinotari, transaction_components::Transaction};
 
 use crate::transaction_service::{
     error::TransactionStorageError,
@@ -121,7 +121,7 @@ pub trait TransactionBackend: Send + Sync + Clone {
     fn find_coinbase_transaction_at_block_height(
         &self,
         block_height: u64,
-        amount: MicroTari,
+        amount: MicroMinotari,
     ) -> Result<Option<CompletedTransaction>, TransactionStorageError>;
     /// Increment the send counter and timestamp of a transaction
     fn increment_send_count(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
@@ -645,7 +645,7 @@ where T: TransactionBackend + 'static
     pub fn add_utxo_import_transaction_with_status(
         &self,
         tx_id: TxId,
-        amount: MicroTari,
+        amount: MicroMinotari,
         source_address: TariAddress,
         comms_address: TariAddress,
         message: String,
@@ -659,7 +659,7 @@ where T: TransactionBackend + 'static
             source_address,
             comms_address,
             amount,
-            MicroTari::from(0),
+            MicroMinotari::from(0),
             Transaction::new(
                 Vec::new(),
                 Vec::new(),
@@ -694,7 +694,7 @@ where T: TransactionBackend + 'static
     pub fn find_coinbase_transaction_at_block_height(
         &self,
         block_height: u64,
-        amount: MicroTari,
+        amount: MicroMinotari,
     ) -> Result<Option<CompletedTransaction>, TransactionStorageError> {
         self.db.find_coinbase_transaction_at_block_height(block_height, amount)
     }

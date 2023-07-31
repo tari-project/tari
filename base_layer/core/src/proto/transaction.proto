@@ -16,7 +16,7 @@ package tari.types;
 message TransactionKernel {
     // Options for a kernel's structure or use
     uint32 features = 1;
-    /// Fee originally included in the transaction this proof is for (in MicroTari)
+    /// Fee originally included in the transaction this proof is for (in MicroMinotari)
     uint64 fee = 2;
     // This kernel is not valid earlier than lock_height blocks
     // The max lock_height of all *inputs* to this transaction
@@ -58,7 +58,7 @@ message TransactionInput {
     uint32 version = 10;
     // The encrypted value
     bytes encrypted_data = 11;
-    // The minimum value of the commitment that is proven by the range proof (in MicroTari)
+    // The minimum value of the commitment that is proven by the range proof (in MicroMinotari)
     uint64 minimum_value_promise = 12;
     // The metadata signature for output this input is spending
     ComAndPubSignature metadata_signature = 13;
@@ -88,7 +88,7 @@ message TransactionOutput {
     uint32 version = 8;
     // Encrypted Pedersen commitment openings (value and mask) for the output
     bytes encrypted_data = 9;
-    // The minimum value of the commitment that is proven by the range proof (in MicroTari)
+    // The minimum value of the commitment that is proven by the range proof (in MicroMinotari)
     uint64 minimum_value_promise = 10;
 }
 

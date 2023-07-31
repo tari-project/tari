@@ -97,7 +97,7 @@ root:
 
 loggers:
   # Route log events common to every application to all appenders
-  tari::application:
+  minotari::application:
     level: info
     appenders:
       - base_layer
@@ -110,7 +110,7 @@ loggers:
     level: info
     appenders:
       - base_layer
-  tari:
+  minotari:
     level: info
     appenders:
       - base_layer

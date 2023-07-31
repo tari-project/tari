@@ -66,3 +66,5 @@ pie/
 /integration_tests/.husky/_/husky.sh
 /integration_tests/tests/temp
 integration_tests/cucumber-output-junit.xml
+
+integration_tests/log/

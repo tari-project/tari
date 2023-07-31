@@ -38,11 +38,7 @@
 use std::{ops::Deref, sync::Arc};
 
 use log::*;
-use tari_common_types::{tari_address::TariAddress, transaction::TxId, types::BlockHash};
-use tari_comms_dht::event::{DhtEvent, DhtEventReceiver};
-use tari_contacts::contacts_service::handle::{ContactsLivenessData, ContactsLivenessEvent};
-use tari_shutdown::ShutdownSignal;
-use tari_wallet::{
+use minotari_wallet::{
     base_node_service::{
         handle::{BaseNodeEvent, BaseNodeEventReceiver},
         service::BaseNodeState,
@@ -60,6 +56,10 @@ use tari_wallet::{
         },
     },
 };
+use tari_common_types::{tari_address::TariAddress, transaction::TxId, types::BlockHash};
+use tari_comms_dht::event::{DhtEvent, DhtEventReceiver};
+use tari_contacts::contacts_service::handle::{ContactsLivenessData, ContactsLivenessEvent};
+use tari_shutdown::ShutdownSignal;
 use tokio::sync::{broadcast, watch};
 
 use crate::ffi_basenode_state::TariBaseNodeState;

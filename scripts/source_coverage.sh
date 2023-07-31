@@ -10,24 +10,24 @@ fi
 
 ignored_crates=(
 deps_only
-tari_app_grpc
-tari_app_utilities
-tari_base_node
-tari_base_node_grpc_client
+minotari_app_grpc
+minotari_app_utilities
+minotari_node
+minotari_node_grpc_client
 tari_chat_client
 tari_chat_ffi
-tari_console_wallet
+minotari_console_wallet
 tari_contacts
 tari_features
 tari_integration_tests
 tari_libtor
-tari_merge_mining_proxy
+minotari_merge_mining_proxy
 tari_metrics
-tari_miner
-tari_mining_helper_ffi
+minotari_miner
+minotari_mining_helper_ffi
 tari_test_utils
-tari_wallet_ffi
-tari_wallet_grpc_client
+minotari_wallet_ffi
+minotari_wallet_grpc_client
 )
 
 # Included:

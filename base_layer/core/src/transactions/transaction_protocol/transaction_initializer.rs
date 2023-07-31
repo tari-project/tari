@@ -68,12 +68,12 @@ pub(super) struct ChangeDetails {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub(super) struct RecipientDetails {
-    pub amount: MicroTari,
+    pub amount: MicroMinotari,
     pub recipient_output_features: OutputFeatures,
     pub recipient_script: TariScript,
     pub recipient_sender_offset_key_id: TariKeyId,
     pub recipient_covenant: Covenant,
-    pub recipient_minimum_value_promise: MicroTari,
+    pub recipient_minimum_value_promise: MicroMinotari,
     pub recipient_ephemeral_public_key_nonce: TariKeyId,
 }
 
@@ -88,7 +88,7 @@ pub(super) struct RecipientDetails {
 #[derive(Debug, Clone)]
 pub struct SenderTransactionInitializer<KM> {
     lock_height: Option<u64>,
-    fee_per_gram: Option<MicroTari>,
+    fee_per_gram: Option<MicroMinotari>,
     inputs: Vec<OutputPair>,
     sender_custom_outputs: Vec<OutputPair>,
     change: Option<ChangeDetails>,
@@ -136,7 +136,7 @@ where KM: TransactionKeyManagerInterface
 
     /// Set the fee per weight for the transaction. See (Fee::calculate)[Struct.Fee.html#calculate] for how the
     /// absolute fee is calculated from the fee-per-gram value.
-    pub fn with_fee_per_gram(&mut self, fee_per_gram: MicroTari) -> &mut Self {
+    pub fn with_fee_per_gram(&mut self, fee_per_gram: MicroMinotari) -> &mut Self {
         self.fee_per_gram = Some(fee_per_gram);
         self
     }
@@ -148,8 +148,8 @@ where KM: TransactionKeyManagerInterface
         recipient_script: TariScript,
         recipient_output_features: OutputFeatures,
         recipient_covenant: Covenant,
-        recipient_minimum_value_promise: MicroTari,
-        amount: MicroTari,
+        recipient_minimum_value_promise: MicroMinotari,
+        amount: MicroMinotari,
     ) -> Result<&mut Self, KeyManagerServiceError> {
         let (recipient_ephemeral_public_key_nonce, _) = self
             .key_manager
@@ -290,16 +290,16 @@ where KM: TransactionKeyManagerInterface
     #[allow(clippy::too_many_lines)]
     async fn add_change_if_required(
         &mut self,
-    ) -> Result<(MicroTari, MicroTari, Option<(WalletOutput, TariKeyId)>), String> {
+    ) -> Result<(MicroMinotari, MicroMinotari, Option<(WalletOutput, TariKeyId)>), String> {
         // The number of outputs excluding a possible residual change output
         let num_outputs = self.sender_custom_outputs.len() + usize::from(self.recipient.is_some());
         let num_inputs = self.inputs.len();
-        let total_being_spent = self.inputs.iter().map(|i| i.output.value).sum::<MicroTari>();
+        let total_being_spent = self.inputs.iter().map(|i| i.output.value).sum::<MicroMinotari>();
         let total_to_self = self
             .sender_custom_outputs
             .iter()
             .map(|o| o.output.value)
-            .sum::<MicroTari>();
+            .sum::<MicroMinotari>();
         let total_amount = match &self.recipient {
             Some(data) => data.amount,
             None => 0.into(),
@@ -343,14 +343,14 @@ where KM: TransactionKeyManagerInterface
                 "You are spending ({}) more than you're providing ({}).",
                 total_input_value, total_being_spent
             )),
-            Some(MicroTari(0)) => Ok((fee_without_change, MicroTari(0), None)),
+            Some(MicroMinotari(0)) => Ok((fee_without_change, MicroMinotari(0), None)),
             Some(v) => {
                 let change_amount = v.checked_sub(change_fee);
                 match change_amount {
                     // You can't win. Just add the change to the fee (which is less than the cost of adding another
                     // output and go without a change output
-                    None => Ok((fee_without_change + v, MicroTari(0), None)),
-                    Some(MicroTari(0)) => Ok((fee_without_change + v, MicroTari(0), None)),
+                    None => Ok((fee_without_change + v, MicroMinotari(0), None)),
+                    Some(MicroMinotari(0)) => Ok((fee_without_change + v, MicroMinotari(0), None)),
                     Some(v) => {
                         let change_data = self.change.as_ref().ok_or("Change data was not provided")?;
                         let change_script = change_data.change_script.clone();
@@ -376,7 +376,7 @@ where KM: TransactionKeyManagerInterface
                             .await
                             .map_err(|e| e.to_string())?;
 
-                        let minimum_value_promise = MicroTari::zero();
+                        let minimum_value_promise = MicroMinotari::zero();
 
                         let output_version = TransactionOutputVersion::get_current_version();
 
@@ -547,7 +547,7 @@ where KM: TransactionKeyManagerInterface
 
         // cached data
 
-        // Everything is here. Let's send some Tari!
+        // Everything is here. Let's send some Minotari!
         let sender_info = RawTransactionInfo {
             tx_id,
             recipient_data: self.recipient,
@@ -622,7 +622,7 @@ mod test {
                     script.clone(),
                     OutputFeatures::default(),
                     &p,
-                    MicroTari(100),
+                    MicroMinotari(100),
                     &key_manager,
                 )
                 .await
@@ -635,18 +635,21 @@ mod test {
             .await
             .create_input(
                 UtxoTestParams {
-                    value: MicroTari(5_000),
+                    value: MicroMinotari(5_000),
                     ..Default::default()
                 },
                 &key_manager,
             )
             .await;
         builder.with_input(input).await.unwrap();
-        builder.with_fee_per_gram(MicroTari(20));
-        let expected_fee =
-            builder
-                .fee()
-                .calculate(MicroTari(20), 1, 1, 2, p.get_size_for_default_features_and_scripts(2)?);
+        builder.with_fee_per_gram(MicroMinotari(20));
+        let expected_fee = builder.fee().calculate(
+            MicroMinotari(20),
+            1,
+            1,
+            2,
+            p.get_size_for_default_features_and_scripts(2)?,
+        );
         // We needed a change input, so this should fail
         let err = builder.build().await.unwrap_err();
         assert_eq!(err.message, "Change data was not provided");
@@ -681,10 +684,10 @@ mod test {
         // Create some inputs
         let key_manager = create_test_core_key_manager_with_memory_db();
         let p = TestParams::new(&key_manager).await;
-        let input = create_test_input(MicroTari(5000), 0, &key_manager).await;
+        let input = create_test_input(MicroMinotari(5000), 0, &key_manager).await;
         let constants = create_consensus_constants(0);
         let expected_fee = Fee::from(*constants.transaction_weight_params()).calculate(
-            MicroTari(4),
+            MicroMinotari(4),
             1,
             1,
             1,
@@ -696,7 +699,7 @@ mod test {
             TariScript::default(),
             OutputFeatures::default(),
             &p,
-            MicroTari(5000) - expected_fee,
+            MicroMinotari(5000) - expected_fee,
             &key_manager,
         )
         .await
@@ -711,7 +714,7 @@ mod test {
             .with_input(input)
             .await
             .unwrap()
-            .with_fee_per_gram(MicroTari(4))
+            .with_fee_per_gram(MicroMinotari(4))
             .with_prevent_fee_gt_amount(false);
         let result = builder.build().await.unwrap();
         // Peek inside and check the results
@@ -767,7 +770,7 @@ mod test {
             .with_input(input)
             .await
             .unwrap()
-            .with_fee_per_gram(MicroTari(1))
+            .with_fee_per_gram(MicroMinotari(1))
             .with_prevent_fee_gt_amount(false);
         let result = builder.build().await.unwrap();
         // Peek inside and check the results
@@ -791,7 +794,7 @@ mod test {
             TariScript::default(),
             OutputFeatures::default(),
             &p,
-            MicroTari(500),
+            MicroMinotari(500),
             &key_manager,
         )
         .await
@@ -804,8 +807,8 @@ mod test {
             .with_output(output, p.sender_offset_key_id)
             .await
             .unwrap()
-            .with_fee_per_gram(MicroTari(2));
-        let input_base = create_test_input(MicroTari(50), 0, &key_manager).await;
+            .with_fee_per_gram(MicroMinotari(2));
+        let input_base = create_test_input(MicroMinotari(50), 0, &key_manager).await;
         for _ in 0..=MAX_TRANSACTION_INPUTS {
             builder.with_input(input_base.clone()).await.unwrap();
         }
@@ -819,7 +822,7 @@ mod test {
         let key_manager = create_test_core_key_manager_with_memory_db();
         let p = TestParams::new(&key_manager).await;
         let tx_fee = p.fee().calculate(
-            MicroTari(1),
+            MicroMinotari(1),
             1,
             1,
             1,
@@ -844,8 +847,14 @@ mod test {
                 change.spend_key_id.clone(),
                 Covenant::default(),
             )
-            .with_fee_per_gram(MicroTari(1))
-            .with_recipient_data(script, Default::default(), Default::default(), 0.into(), MicroTari(500))
+            .with_fee_per_gram(MicroMinotari(1))
+            .with_recipient_data(
+                script,
+                Default::default(),
+                Default::default(),
+                0.into(),
+                MicroMinotari(500),
+            )
             .await
             .unwrap();
         let err = builder.build().await.unwrap_err();
@@ -857,13 +866,13 @@ mod test {
         // Create some inputs
         let key_manager = create_test_core_key_manager_with_memory_db();
         let p = TestParams::new(&key_manager).await;
-        let input = create_test_input(MicroTari(400), 0, &key_manager).await;
+        let input = create_test_input(MicroMinotari(400), 0, &key_manager).await;
         let script = script!(Nop);
         let output = create_wallet_output_with_data(
             script.clone(),
             OutputFeatures::default(),
             &p,
-            MicroTari(400),
+            MicroMinotari(400),
             &key_manager,
         )
         .await
@@ -887,13 +896,13 @@ mod test {
                 change.spend_key_id.clone(),
                 Covenant::default(),
             )
-            .with_fee_per_gram(MicroTari(1))
+            .with_fee_per_gram(MicroMinotari(1))
             .with_recipient_data(
                 script.clone(),
                 Default::default(),
                 Default::default(),
                 0.into(),
-                MicroTari::zero(),
+                MicroMinotari::zero(),
             )
             .await
             .unwrap();
@@ -909,9 +918,9 @@ mod test {
         // Create some inputs
         let key_manager = create_test_core_key_manager_with_memory_db();
         let p = TestParams::new(&key_manager).await;
-        let input1 = create_test_input(MicroTari(2000), 0, &key_manager).await;
-        let input2 = create_test_input(MicroTari(3000), 0, &key_manager).await;
-        let fee_per_gram = MicroTari(6);
+        let input1 = create_test_input(MicroMinotari(2000), 0, &key_manager).await;
+        let input2 = create_test_input(MicroMinotari(3000), 0, &key_manager).await;
+        let fee_per_gram = MicroMinotari(6);
 
         let script = script!(Nop);
         let constants = create_consensus_constants(0);
@@ -927,7 +936,7 @@ mod test {
             script.clone(),
             OutputFeatures::default(),
             &p,
-            MicroTari(1500) - expected_fee,
+            MicroMinotari(1500) - expected_fee,
             &key_manager,
         )
         .await
@@ -959,7 +968,7 @@ mod test {
                 Default::default(),
                 Default::default(),
                 0.into(),
-                MicroTari(2500),
+                MicroMinotari(2500),
             )
             .await
             .unwrap();

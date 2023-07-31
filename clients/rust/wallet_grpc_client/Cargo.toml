@@ -1,5 +1,5 @@
 [package]
-name = "tari_wallet_grpc_client"
+name = "minotari_wallet_grpc_client"
 version = "0.1.0"
 edition = "2021"
 description = "Base node GRPC client"
@@ -10,7 +10,7 @@ readme = "README.md"
 license = "BSD-3-Clause"
 
 [dependencies]
-tari_app_grpc = { path = "../../../applications/tari_app_grpc" }
+minotari_app_grpc = { path = "../../../applications/minotari_app_grpc" }
 tari_common_types = { path = "../../../base_layer/common_types" }
 
 thiserror = "1.0.35"

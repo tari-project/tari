@@ -27,8 +27,8 @@ use std::{
 };
 
 use config::Config;
+use minotari_app_utilities::consts;
 use serde::{Deserialize, Serialize};
-use tari_app_utilities::consts;
 use tari_common::{
     configuration::{serializers, CommonConfig, Network, StringList},
     ConfigurationError,

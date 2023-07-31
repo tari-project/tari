@@ -34,7 +34,7 @@ use crate::{
     covenants::Covenant,
     transactions::{
         key_manager::{TariKeyId, TransactionKeyManagerBranch, TransactionKeyManagerInterface, TxoStage},
-        tari_amount::{uT, MicroTari},
+        tari_amount::{uT, MicroMinotari},
         transaction_components::{
             KernelBuilder,
             KernelFeatures,
@@ -87,7 +87,7 @@ impl From<KeyManagerServiceError> for CoinbaseBuildError {
 pub struct CoinbaseBuilder<TKeyManagerInterface> {
     key_manager: TKeyManagerInterface,
     block_height: Option<u64>,
-    fees: Option<MicroTari>,
+    fees: Option<MicroMinotari>,
     spend_key_id: Option<TariKeyId>,
     script_key_id: Option<TariKeyId>,
     script: Option<TariScript>,
@@ -120,7 +120,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
     }
 
     /// Indicates the sum total of all fees that the coinbase transaction earns, over and above the block reward
-    pub fn with_fees(mut self, value: MicroTari) -> Self {
+    pub fn with_fees(mut self, value: MicroMinotari) -> Self {
         self.fees = Some(value);
         self
     }
@@ -180,7 +180,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
     pub async fn build_with_reward(
         self,
         constants: &ConsensusConstants,
-        block_reward: MicroTari,
+        block_reward: MicroMinotari,
     ) -> Result<(Transaction, WalletOutput), CoinbaseBuildError> {
         // gets tx details
         let height = self.block_height.ok_or(CoinbaseBuildError::MissingBlockHeight)?;
@@ -231,7 +231,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             .key_manager
             .encrypt_data_for_recovery(&spending_key_id, None, total_reward.into())
             .await?;
-        let minimum_value_promise = MicroTari::zero();
+        let minimum_value_promise = MicroMinotari::zero();
 
         let output_version = TransactionOutputVersion::get_current_version();
         let metadata_message = TransactionOutput::metadata_signature_message_from_parts(

@@ -26,7 +26,7 @@ use log::*;
 use tari_common_types::transaction::TxId;
 use tari_core::transactions::{
     key_manager::{TariKeyId, TransactionKeyManagerBranch, TransactionKeyManagerInterface},
-    tari_amount::MicroTari,
+    tari_amount::MicroMinotari,
     transaction_components::{TransactionError, TransactionOutput, WalletOutput},
 };
 use tari_script::{inputs, script, Opcode};
@@ -172,7 +172,7 @@ where
     async fn attempt_output_recovery(
         &self,
         output: &TransactionOutput,
-    ) -> Result<Option<(TariKeyId, MicroTari)>, OutputManagerError> {
+    ) -> Result<Option<(TariKeyId, MicroMinotari)>, OutputManagerError> {
         // lets first check if the output exists in the db, if it does we dont have to try recovery as we already know
         // about the output.
         match self.db.fetch_by_commitment(output.commitment().clone()) {

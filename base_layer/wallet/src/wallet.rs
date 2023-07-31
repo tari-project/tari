@@ -49,7 +49,7 @@ use tari_core::{
     covenants::Covenant,
     transactions::{
         key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInitializer},
-        tari_amount::MicroTari,
+        tari_amount::MicroMinotari,
         transaction_components::{EncryptedData, OutputFeatures, UnblindedOutput},
         CryptoFactories,
     },
@@ -427,7 +427,7 @@ where
     /// provide a record of the event. The TxId of the generated transaction is returned.
     pub async fn import_external_utxo_as_non_rewindable(
         &mut self,
-        amount: MicroTari,
+        amount: MicroMinotari,
         spending_key: &PrivateKey,
         script: TariScript,
         input_data: ExecutionStack,
@@ -440,7 +440,7 @@ where
         script_lock_height: u64,
         covenant: Covenant,
         encrypted_data: EncryptedData,
-        minimum_value_promise: MicroTari,
+        minimum_value_promise: MicroMinotari,
     ) -> Result<TxId, WalletError> {
         // lets import the private keys
         let unblinded_output = UnblindedOutput::new_current_version(
@@ -520,8 +520,8 @@ where
         &mut self,
         commitments: Vec<Commitment>,
         split_count: usize,
-        fee_per_gram: MicroTari,
-    ) -> Result<(Vec<MicroTari>, MicroTari), WalletError> {
+        fee_per_gram: MicroMinotari,
+    ) -> Result<(Vec<MicroMinotari>, MicroMinotari), WalletError> {
         self.output_manager_service
             .preview_coin_split_with_commitments_no_amount(commitments, split_count, fee_per_gram)
             .await
@@ -532,8 +532,8 @@ where
     pub async fn preview_coin_join_with_commitments(
         &mut self,
         commitments: Vec<Commitment>,
-        fee_per_gram: MicroTari,
-    ) -> Result<(Vec<MicroTari>, MicroTari), WalletError> {
+        fee_per_gram: MicroMinotari,
+    ) -> Result<(Vec<MicroMinotari>, MicroMinotari), WalletError> {
         self.output_manager_service
             .preview_coin_join_with_commitments(commitments, fee_per_gram)
             .await
@@ -544,9 +544,9 @@ where
     pub async fn coin_split(
         &mut self,
         commitments: Vec<Commitment>,
-        amount_per_split: MicroTari,
+        amount_per_split: MicroMinotari,
         split_count: usize,
-        fee_per_gram: MicroTari,
+        fee_per_gram: MicroMinotari,
         message: String,
     ) -> Result<TxId, WalletError> {
         let coin_split_tx = self
@@ -574,7 +574,7 @@ where
         &mut self,
         commitments: Vec<Commitment>,
         split_count: usize,
-        fee_per_gram: MicroTari,
+        fee_per_gram: MicroMinotari,
         message: String,
     ) -> Result<TxId, WalletError> {
         let coin_split_tx = self
@@ -602,7 +602,7 @@ where
         &mut self,
         commitments: Vec<Commitment>,
         split_count: usize,
-        fee_per_gram: MicroTari,
+        fee_per_gram: MicroMinotari,
         message: String,
     ) -> Result<TxId, WalletError> {
         let coin_split_tx = self
@@ -628,7 +628,7 @@ where
     pub async fn coin_join(
         &mut self,
         commitments: Vec<Commitment>,
-        fee_per_gram: MicroTari,
+        fee_per_gram: MicroMinotari,
         msg: Option<String>,
     ) -> Result<TxId, WalletError> {
         let coin_join_tx = self

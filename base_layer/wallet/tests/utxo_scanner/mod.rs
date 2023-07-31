@@ -28,34 +28,7 @@ use std::{
 };
 
 use chrono::{Duration as ChronoDuration, Utc};
-use rand::{rngs::OsRng, RngCore};
-use tari_common::configuration::Network;
-use tari_common_types::tari_address::TariAddress;
-use tari_comms::{
-    peer_manager::PeerFeatures,
-    protocol::rpc::{mock::MockRpcServer, NamedProtocolService},
-    test_utils::{
-        mocks::{create_connectivity_mock, ConnectivityManagerMockState},
-        node_identity::build_node_identity,
-    },
-};
-use tari_core::{
-    base_node::rpc::BaseNodeWalletRpcServer,
-    blocks::BlockHeader,
-    proto::base_node::{ChainMetadata, TipInfoResponse},
-    transactions::{
-        tari_amount::MicroTari,
-        test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager},
-        transaction_components::{OutputFeatures, WalletOutput},
-        CryptoFactories,
-    },
-};
-use tari_key_manager::{cipher_seed::CipherSeed, get_birthday_from_unix_epoch_in_seconds};
-use tari_service_framework::reply_channel;
-use tari_shutdown::Shutdown;
-use tari_test_utils::random;
-use tari_utilities::{epoch_time::EpochTime, ByteArray, SafePassword};
-use tari_wallet::{
+use minotari_wallet::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     connectivity_service::{create_wallet_connectivity_mock, WalletConnectivityMock},
     output_manager_service::storage::{models::DbWalletOutput, OutputSource},
@@ -72,6 +45,33 @@ use tari_wallet::{
         uxto_scanner_service_builder::UtxoScannerMode,
     },
 };
+use rand::{rngs::OsRng, RngCore};
+use tari_common::configuration::Network;
+use tari_common_types::tari_address::TariAddress;
+use tari_comms::{
+    peer_manager::PeerFeatures,
+    protocol::rpc::{mock::MockRpcServer, NamedProtocolService},
+    test_utils::{
+        mocks::{create_connectivity_mock, ConnectivityManagerMockState},
+        node_identity::build_node_identity,
+    },
+};
+use tari_core::{
+    base_node::rpc::BaseNodeWalletRpcServer,
+    blocks::BlockHeader,
+    proto::base_node::{ChainMetadata, TipInfoResponse},
+    transactions::{
+        tari_amount::MicroMinotari,
+        test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager},
+        transaction_components::{OutputFeatures, WalletOutput},
+        CryptoFactories,
+    },
+};
+use tari_key_manager::{cipher_seed::CipherSeed, get_birthday_from_unix_epoch_in_seconds};
+use tari_service_framework::reply_channel;
+use tari_shutdown::Shutdown;
+use tari_test_utils::random;
+use tari_utilities::{epoch_time::EpochTime, ByteArray, SafePassword};
 use tempfile::{tempdir, TempDir};
 use tokio::{
     sync::{broadcast, mpsc},
@@ -258,7 +258,7 @@ async fn generate_block_headers_and_utxos(
         for _j in 0..=i + 1 {
             let uo = make_input(
                 &mut OsRng,
-                MicroTari::from(100 + OsRng.next_u64() % 1000),
+                MicroMinotari::from(100 + OsRng.next_u64() % 1000),
                 &OutputFeatures::default(),
                 key_manager,
             )
@@ -327,7 +327,7 @@ async fn test_utxo_scanner_recovery() {
     // Adding half the outputs of the blocks to the OMS mock
     let mut db_wallet_outputs = Vec::new();
     let mut total_outputs_to_recover = 0;
-    let mut total_amount_to_recover = MicroTari::from(0);
+    let mut total_amount_to_recover = MicroMinotari::from(0);
     for (h, outputs) in &wallet_outputs {
         for output in outputs.iter().skip(outputs.len() / 2) {
             let dbo = DbWalletOutput::from_wallet_output(
@@ -426,7 +426,7 @@ async fn test_utxo_scanner_recovery_with_restart() {
     // Adding half the outputs of the blocks to the OMS mock
     let mut db_wallet_outputs = Vec::new();
     let mut total_outputs_to_recover = 0;
-    let mut total_amount_to_recover = MicroTari::from(0);
+    let mut total_amount_to_recover = MicroMinotari::from(0);
     for (h, outputs) in &wallet_outputs {
         for output in outputs.iter().skip(outputs.len() / 2) {
             let dbo = DbWalletOutput::from_wallet_output(
@@ -668,7 +668,7 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
     // Adding half the outputs of the blocks to the OMS mock
     let mut db_wallet_outputs = Vec::new();
     let mut total_outputs_to_recover = 0;
-    let mut total_amount_to_recover = MicroTari::from(0);
+    let mut total_amount_to_recover = MicroMinotari::from(0);
     for (h, outputs) in &wallet_outputs {
         for output in outputs.iter().skip(outputs.len() / 2) {
             let dbo = DbWalletOutput::from_wallet_output(
@@ -830,7 +830,7 @@ async fn test_utxo_scanner_scanned_block_cache_clearing() {
     }
     let scanned_blocks = test_interface.wallet_db.get_scanned_blocks().unwrap();
 
-    use tari_wallet::utxo_scanner_service::service::SCANNED_BLOCK_CACHE_SIZE;
+    use minotari_wallet::utxo_scanner_service::service::SCANNED_BLOCK_CACHE_SIZE;
     let threshold = 800 + NUM_BLOCKS - 1 - SCANNED_BLOCK_CACHE_SIZE;
 
     // Below the threshold the even indices had no outputs and should be cleared
@@ -894,7 +894,7 @@ async fn test_utxo_scanner_one_sided_payments() {
     // Adding half the outputs of the blocks to the OMS mock
     let mut db_wallet_outputs = Vec::new();
     let mut total_outputs_to_recover = 0;
-    let mut total_amount_to_recover = MicroTari::from(0);
+    let mut total_amount_to_recover = MicroMinotari::from(0);
     for (h, outputs) in &wallet_outputs {
         for output in outputs.iter().skip(outputs.len() / 2) {
             let dbo = DbWalletOutput::from_wallet_output(
@@ -970,7 +970,7 @@ async fn test_utxo_scanner_one_sided_payments() {
     block_header11.timestamp = EpochTime::from(block_headers.get(&10).unwrap().timestamp.as_u64() + 1000000u64);
     let uo = make_input(
         &mut OsRng,
-        MicroTari::from(666000u64),
+        MicroMinotari::from(666000u64),
         &OutputFeatures::default(),
         &key_manager,
     )
