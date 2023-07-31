@@ -198,7 +198,7 @@ fn add_monero_data(tblock: &mut Block, seed_key: &str) {
     monero_rx::append_merge_mining_tag(&mut mblock, hash).unwrap();
     let hashes = monero_rx::create_ordered_transaction_hashes_from_block(&mblock);
     let merkle_root = monero_rx::tree_hash(&hashes).unwrap();
-    let coinbase_merkle_proof = monero_rx::create_merkle_proof(&hashes, &hashes[0]).unwrap();
+    let coinbase_merkle_proof = monero_rx::create_merkle_proof(&hashes).unwrap();
     #[allow(clippy::cast_possible_truncation)]
     let monero_data = MoneroPowData {
         header: mblock.header,

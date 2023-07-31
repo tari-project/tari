@@ -139,7 +139,7 @@ pub fn serialize_monero_block_to_hex(obj: &monero::Block) -> Result<String, Merg
 pub fn construct_monero_data(block: monero::Block, seed: FixedByteArray) -> Result<MoneroPowData, MergeMineError> {
     let hashes = create_ordered_transaction_hashes_from_block(&block);
     let root = tree_hash(&hashes)?;
-    let coinbase_merkle_proof = create_merkle_proof(&hashes, &hashes[0]).ok_or_else(|| {
+    let coinbase_merkle_proof = create_merkle_proof(&hashes).ok_or_else(|| {
         MergeMineError::ValidationError(
             "create_merkle_proof returned None because the block had no coinbase (which is impossible because the \
              Block type does not allow that)"
@@ -339,7 +339,7 @@ mod test {
         let hashes = create_ordered_transaction_hashes_from_block(&block);
         assert_eq!(hashes.len(), block.tx_hashes.len() + 1);
         let root = tree_hash(&hashes).unwrap();
-        let coinbase_merkle_proof = create_merkle_proof(&hashes, &hashes[0]).unwrap();
+        let coinbase_merkle_proof = create_merkle_proof(&hashes).unwrap();
 
         let monero_data = MoneroPowData {
             header: block.header,
@@ -401,7 +401,7 @@ mod test {
         }
         let root = tree_hash(&hashes).unwrap();
         assert_eq!(root, hashes[0]);
-        let coinbase_merkle_proof = create_merkle_proof(&hashes, &hashes[0]).unwrap();
+        let coinbase_merkle_proof = create_merkle_proof(&hashes).unwrap();
         let monero_data = MoneroPowData {
             header: block.header,
             randomx_key: FixedByteArray::from_bytes(&from_hex(&seed_hash).unwrap()).unwrap(),
@@ -449,7 +449,7 @@ mod test {
             hashes.push(item);
         }
         let root = tree_hash(&hashes).unwrap();
-        let coinbase_merkle_proof = create_merkle_proof(&hashes, &hashes[0]).unwrap();
+        let coinbase_merkle_proof = create_merkle_proof(&hashes).unwrap();
         let monero_data = MoneroPowData {
             header: block.header,
             randomx_key: FixedByteArray::from_bytes(&from_hex(&seed_hash).unwrap()).unwrap(),
@@ -505,7 +505,7 @@ mod test {
             proof.push(item);
         }
         let root = tree_hash(&hashes).unwrap();
-        let coinbase_merkle_proof = create_merkle_proof(&hashes, &hashes[0]).unwrap();
+        let coinbase_merkle_proof = create_merkle_proof(&hashes).unwrap();
         let monero_data = MoneroPowData {
             header: block.header,
             randomx_key: FixedByteArray::from_bytes(&from_hex(&seed_hash).unwrap()).unwrap(),
@@ -618,7 +618,7 @@ mod test {
             proof.push(item);
         }
         let root = tree_hash(&hashes).unwrap();
-        let coinbase_merkle_proof = create_merkle_proof(&hashes, &hashes[0]).unwrap();
+        let coinbase_merkle_proof = create_merkle_proof(&hashes).unwrap();
         let monero_data = MoneroPowData {
             header: block.header,
             randomx_key: FixedByteArray::from_bytes(&from_hex(&seed_hash).unwrap()).unwrap(),
@@ -662,7 +662,7 @@ mod test {
             randomx_key: FixedByteArray::default(),
             transaction_count: 1,
             merkle_root: Default::default(),
-            coinbase_merkle_proof: create_merkle_proof(&[Hash::null()], &Hash::null()).unwrap(),
+            coinbase_merkle_proof: create_merkle_proof(&[Hash::null()]).unwrap(),
             coinbase_tx: Default::default(),
         };
         let mut serialized = Vec::new();
@@ -711,7 +711,7 @@ mod test {
             proof.push(item);
         }
 
-        let coinbase_merkle_proof = create_merkle_proof(&hashes, &hashes[0]).unwrap();
+        let coinbase_merkle_proof = create_merkle_proof(&hashes).unwrap();
         let monero_data = MoneroPowData {
             header: block.header,
             randomx_key: FixedByteArray::from_bytes(&from_hex(&seed_hash).unwrap()).unwrap(),
