@@ -25,6 +25,8 @@ pub mod weight;
 
 pub mod key_manager;
 
+pub mod ledger_key_manager;
+
 #[macro_use]
 #[cfg(feature = "base_node")]
 pub mod test_helpers;
