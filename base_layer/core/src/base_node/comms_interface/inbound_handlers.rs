@@ -490,13 +490,17 @@ where B: BlockchainBackend + 'static
 
         let block_result = self.reconcile_block(source_peer.clone(), new_block).await;
 
-        {
+        if block_result.is_err() {
             let mut write_lock = self.list_of_reconciling_blocks.write().await;
             write_lock.remove(&block_hash);
         }
         let block = block_result?;
-        self.handle_block(block, Some(source_peer)).await?;
-
+        let add_result = self.handle_block(block, Some(source_peer)).await;
+        {
+            let mut write_lock = self.list_of_reconciling_blocks.write().await;
+            write_lock.remove(&block_hash);
+        }
+        add_result?;
         Ok(())
     }
 
