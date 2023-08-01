@@ -74,6 +74,8 @@ pub enum BlockHeaderValidationError {
     ProofOfWorkError(#[from] PowError),
     #[error("Monero seed hash too old")]
     OldSeedHash,
+    #[error("Monero blocks must have a nonce of 0")]
+    InvalidNonce,
     #[error("Incorrect height: Expected {expected} but got {actual}")]
     InvalidHeight { expected: u64, actual: u64 },
     #[error("Incorrect previous hash: Expected {expected} but got {actual}")]
