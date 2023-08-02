@@ -488,19 +488,23 @@ where B: BlockchainBackend + 'static
             source_peer
         );
 
-        let block_result = self.reconcile_block(source_peer.clone(), new_block).await;
+        let result = self.reconcile_and_add_block(source_peer.clone(), new_block).await;
 
-        if block_result.is_err() {
-            let mut write_lock = self.list_of_reconciling_blocks.write().await;
-            write_lock.remove(&block_hash);
-        }
-        let block = block_result?;
-        let add_result = self.handle_block(block, Some(source_peer)).await;
         {
             let mut write_lock = self.list_of_reconciling_blocks.write().await;
             write_lock.remove(&block_hash);
         }
-        add_result?;
+        result?;
+        Ok(())
+    }
+
+    async fn reconcile_and_add_block(
+        &mut self,
+        source_peer: NodeId,
+        new_block: NewBlock,
+    ) -> Result<(), CommsInterfaceError> {
+        let block = self.reconcile_block(source_peer.clone(), new_block).await?;
+        self.handle_block(block, Some(source_peer)).await?;
         Ok(())
     }
 
