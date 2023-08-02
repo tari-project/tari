@@ -74,16 +74,25 @@ fn get_random_x_difficulty(input: &[u8], vm: &RandomXVMInstance) -> Result<(Diff
 /// If these assertions pass, a valid `MoneroPowData` instance is returned
 pub fn verify_header(header: &BlockHeader) -> Result<MoneroPowData, MergeMineError> {
     let monero_data = MoneroPowData::from_header(header)?;
-    let expected_merge_mining_hash = header.mining_hash();
+    let expected_merge_mining_hash = header.merge_mining_hash();
     let extra_field = ExtraField::try_parse(&monero_data.coinbase_tx.prefix.extra)
         .map_err(|_| MergeMineError::DeserializeError("Invalid extra field".to_string()))?;
     // Check that the Tari MM hash is found in the monero coinbase transaction
-    let is_found = extra_field.0.iter().any(|item| match item {
-        SubField::MergeMining(Some(depth), merge_mining_hash) => {
-            depth == &VarInt(0) && merge_mining_hash.as_bytes() == expected_merge_mining_hash.as_slice()
-        },
-        _ => false,
-    });
+    // and that only 1 tari header is found
+
+    let mut is_found = false;
+    for item in extra_field.0 {
+        if let SubField::MergeMining(Some(depth), merge_mining_hash) = item {
+            if is_found && &merge_mining_hash.as_bytes()[0..4] == b"TARI" {
+                return Err(MergeMineError::ValidationError(
+                    "More than one Tari header found in coinbase".to_string(),
+                ));
+            }
+            if depth == VarInt(0) && merge_mining_hash.as_bytes() == expected_merge_mining_hash.as_slice() {
+                is_found = true;
+            }
+        }
+    }
 
     if !is_found {
         return Err(MergeMineError::ValidationError(
@@ -325,7 +334,7 @@ mod test {
             pow: ProofOfWork::default(),
             validator_node_mr: FixedHash::zero(),
         };
-        let hash = block_header.mining_hash();
+        let hash = block_header.merge_mining_hash();
         append_merge_mining_tag(&mut block, hash).unwrap();
         let hashes = create_ordered_transaction_hashes_from_block(&block);
         assert_eq!(hashes.len(), block.tx_hashes.len() + 1);
@@ -381,7 +390,7 @@ mod test {
             pow: ProofOfWork::default(),
             validator_node_mr: FixedHash::zero(),
         };
-        let hash = block_header.mining_hash();
+        let hash = block_header.merge_mining_hash();
         append_merge_mining_tag(&mut block, hash).unwrap();
         let count = 1 + (u16::try_from(block.tx_hashes.len()).unwrap());
         let mut hashes = Vec::with_capacity(count as usize);
@@ -518,6 +527,64 @@ mod test {
     }
 
     #[test]
+    fn test_duplicate_append_mm_tag() {
+        let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
+        let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
+        let bytes = hex::decode(blocktemplate_blob).unwrap();
+        let mut block = deserialize::<monero::Block>(&bytes[..]).unwrap();
+        let mut block_header = BlockHeader {
+            version: 0,
+            height: 0,
+            prev_hash: FixedHash::zero(),
+            timestamp: EpochTime::now(),
+            output_mr: FixedHash::zero(),
+            output_mmr_size: 0,
+            kernel_mr: FixedHash::zero(),
+            kernel_mmr_size: 0,
+            input_mr: FixedHash::zero(),
+            total_kernel_offset: Default::default(),
+            total_script_offset: Default::default(),
+            nonce: 0,
+            pow: ProofOfWork::default(),
+            validator_node_mr: FixedHash::zero(),
+        };
+        let hash = block_header.merge_mining_hash();
+        append_merge_mining_tag(&mut block, hash).unwrap();
+        let mut block_header2 = block_header.clone();
+        block_header2.version = 1;
+        let hash2 = block_header.merge_mining_hash();
+        append_merge_mining_tag(&mut block, hash2).unwrap();
+        let count = 1 + (u16::try_from(block.tx_hashes.len()).unwrap());
+        let mut hashes = Vec::with_capacity(count as usize);
+        hashes.push(block.miner_tx.hash());
+        // Note: tx_hashes is empty, so |hashes| == 1
+        for item in block.clone().tx_hashes {
+            hashes.push(item);
+        }
+        let root = tree_hash(&hashes).unwrap();
+        assert_eq!(root, hashes[0]);
+        let coinbase_merkle_proof = create_merkle_proof(&hashes, &hashes[0]).unwrap();
+        let monero_data = MoneroPowData {
+            header: block.header,
+            randomx_key: FixedByteArray::from_bytes(&from_hex(&seed_hash).unwrap()).unwrap(),
+            transaction_count: count,
+            merkle_root: root,
+            coinbase_merkle_proof,
+            coinbase_tx: block.miner_tx,
+        };
+        let mut serialized = Vec::new();
+        monero_data.serialize(&mut serialized).unwrap();
+        let pow = ProofOfWork {
+            pow_algo: PowAlgorithm::RandomX,
+            pow_data: serialized,
+        };
+        block_header.pow = pow;
+        let err = verify_header(&block_header).unwrap_err();
+        unpack_enum!(MergeMineError::ValidationError(details) = err);
+        assert!(details.contains("More than one Tari header found in coinbase"));
+    }
+
+    #[test]
     fn test_verify_header_no_coinbase() {
         let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
         let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
@@ -539,7 +606,7 @@ mod test {
             pow: ProofOfWork::default(),
             validator_node_mr: FixedHash::zero(),
         };
-        let hash = block_header.mining_hash();
+        let hash = block_header.merge_mining_hash();
         append_merge_mining_tag(&mut block, hash).unwrap();
         let count = 1 + (u16::try_from(block.tx_hashes.len()).unwrap());
         let mut hashes = Vec::with_capacity(count as usize);
@@ -632,7 +699,7 @@ mod test {
             pow: ProofOfWork::default(),
             validator_node_mr: FixedHash::zero(),
         };
-        let hash = block_header.mining_hash();
+        let hash = block_header.merge_mining_hash();
         append_merge_mining_tag(&mut block, hash).unwrap();
         let count = 1 + (u16::try_from(block.tx_hashes.len()).unwrap());
         let mut hashes = Vec::with_capacity(count as usize);

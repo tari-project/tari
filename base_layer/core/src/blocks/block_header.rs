@@ -232,6 +232,15 @@ impl BlockHeader {
             .into()
     }
 
+    pub fn merge_mining_hash(&self) -> Vec<u8> {
+        let mining_prefix = (b"TARI").to_vec();
+        let mut mining_hash = self.mining_hash().to_vec();
+        for i in 0..4 {
+            mining_hash[i] = mining_prefix[i];
+        }
+        mining_hash
+    }
+
     #[inline]
     pub fn timestamp(&self) -> EpochTime {
         self.timestamp
