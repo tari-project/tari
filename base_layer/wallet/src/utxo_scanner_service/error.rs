@@ -46,7 +46,7 @@ pub enum UtxoScannerError {
     #[error("Utxo Scanning Error: '{0}")]
     UtxoScanningError(String),
     #[error("Hex conversion error: {0}")]
-    HexError(#[from] HexError),
+    HexError(String),
     #[error("Error converting a type: {0}")]
     ConversionError(String),
     #[error("Output manager error: `{0}`")]
@@ -63,4 +63,10 @@ pub enum UtxoScannerError {
     FixedHashSizeError(#[from] FixedHashSizeError),
     #[error("Connectivity has shut down")]
     ConnectivityShutdown,
+}
+
+impl From<HexError> for UtxoScannerError {
+    fn from(err: HexError) -> Self {
+        UtxoScannerError::HexError(err.to_string())
+    }
 }

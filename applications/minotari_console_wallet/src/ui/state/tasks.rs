@@ -22,6 +22,8 @@
 
 use std::{convert::TryFrom, path::PathBuf};
 
+use blake2::Blake2b;
+use digest::consts::U32;
 use log::{error, warn};
 use minotari_wallet::{
     output_manager_service::UtxoSelectionCriteria,
@@ -41,7 +43,7 @@ use tari_core::{
         TransactionHashDomain,
     },
 };
-use tari_crypto::{hash::blake2::Blake256, keys::PublicKey as PublicKeyTrait, ristretto::RistrettoPublicKey};
+use tari_crypto::{keys::PublicKey as PublicKeyTrait, ristretto::RistrettoPublicKey};
 use tari_key_manager::key_manager::KeyManager;
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::sync::{broadcast, watch};
@@ -419,7 +421,7 @@ pub async fn send_register_template_transaction_task(
     // signing and sending code template registration request
     // ----------------------------------------------------------------------------
 
-    let mut km = KeyManager::<RistrettoPublicKey, Blake256>::new();
+    let mut km = KeyManager::<RistrettoPublicKey, Blake2b<U32>>::new();
 
     let author_private_key = match km.next_key() {
         Ok(secret_key) => secret_key.key,

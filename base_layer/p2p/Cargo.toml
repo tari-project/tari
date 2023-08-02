@@ -13,11 +13,11 @@ edition = "2018"
 tari_comms = {  path = "../../comms/core" }
 tari_comms_dht = {  path = "../../comms/dht" }
 tari_common = {  path = "../../common" }
-tari_crypto = { version = "0.17" }
+tari_crypto = { git = "https://github.com/hansieodendaal/tari-crypto.git",  rev = "e048298c1801d373303732feea85046b8ea7163c" }
 tari_service_framework = {  path = "../service_framework" }
 tari_shutdown = {  path = "../../infrastructure/shutdown" }
 tari_storage = {  path = "../../infrastructure/storage" }
-tari_utilities = "0.4.10"
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git",  rev = "c06726322683c4671b93388b444d108103cd7b55" }
 
 anyhow = "1.0.53"
 fs2 = "0.4.0"
@@ -26,7 +26,7 @@ lmdb-zero = "0.4.4"
 log = "0.4.6"
 pgp = { version = "0.8.0", optional = true }
 prost = "=0.9.0"
-rand = "0.7.3"
+rand = "0.8"
 reqwest = { version = "0.11", optional = true, default-features = false }
 rustls = "0.20.2"
 semver = { version = "1.0.1", optional = true }
@@ -52,5 +52,4 @@ tari_common = {  path = "../../common", features = ["build"] }
 [features]
 test-mocks = []
 auto-update = ["reqwest/default", "pgp" ,"semver"]
-avx2 = ["tari_crypto/simd_backend"]
 

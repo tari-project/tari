@@ -163,7 +163,7 @@ pub enum TransactionServiceError {
     #[error("Maximum Attempts Exceeded")]
     MaximumAttemptsExceeded,
     #[error("Byte array error")]
-    ByteArrayError(#[from] tari_utilities::ByteArrayError),
+    ByteArrayError(String),
     #[error("Transaction Service Error: `{0}`")]
     ServiceError(String),
     #[error("Wallet Recovery in progress so Transaction Service Messaging Requests ignored")]
@@ -189,6 +189,12 @@ pub enum TransactionServiceError {
     InvalidKeyId(String),
     #[error("Invalid key manager data: `{0}`")]
     KeyManagerServiceError(#[from] KeyManagerServiceError),
+}
+
+impl From<ByteArrayError> for TransactionServiceError {
+    fn from(err: ByteArrayError) -> Self {
+        TransactionServiceError::ByteArrayError(err.to_string())
+    }
 }
 
 #[derive(Debug, Error)]
@@ -246,13 +252,19 @@ pub enum TransactionStorageError {
     #[error("Transaction (TxId: '{0}') is not mined")]
     TransactionNotMined(TxId),
     #[error("Conversion error: `{0}`")]
-    ByteArrayError(#[from] ByteArrayError),
+    ByteArrayError(String),
     #[error("Tari address error: `{0}`")]
     TariAddressError(#[from] TariAddressError),
     #[error("Not a coinbase transaction so cannot be abandoned")]
     NotCoinbase,
     #[error("Db error: `{0}`")]
     SqliteStorageError(#[from] SqliteStorageError),
+}
+
+impl From<ByteArrayError> for TransactionStorageError {
+    fn from(e: ByteArrayError) -> Self {
+        TransactionStorageError::ByteArrayError(e.to_string())
+    }
 }
 
 /// This error type is used to return TransactionServiceErrors from inside a Transaction Service protocol but also

@@ -12,11 +12,11 @@ tari_common_sqlite = { path = "../../common_sqlite" }
 tari_common_types = {  path = "../../base_layer/common_types" }
 tari_comms = {  path = "../../comms/core" }
 tari_comms_dht = { path = "../../comms/dht" }
-tari_crypto = { version = "0.17" }
+tari_crypto = { git = "https://github.com/hansieodendaal/tari-crypto.git",  rev = "e048298c1801d373303732feea85046b8ea7163c" }
 tari_p2p = {  path = "../p2p", features = ["auto-update"] }
 tari_service_framework = {  path = "../service_framework" }
 tari_shutdown = {  path = "../../infrastructure/shutdown" }
-tari_utilities = "0.4.10"
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git",  rev = "c06726322683c4671b93388b444d108103cd7b55" }
 
 chrono = { version = "0.4.19", default-features = false, features = ["serde"] }
 diesel = { version = "2.0.3", features = ["sqlite", "serde_json", "chrono", "64-column-tables"] }
@@ -26,7 +26,7 @@ log = "0.4.6"
 num-derive = "0.3.3"
 num-traits = "0.2.15"
 prost = "0.9"
-rand = "0.7.3"
+rand = "0.8"
 thiserror = "1.0.26"
 tokio = { version = "1.23", features = ["sync", "macros"] }
 tower = "0.4"

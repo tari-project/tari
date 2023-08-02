@@ -34,7 +34,10 @@ use crate::storage::sqlite_utilities::{
 };
 
 pub fn random_string(len: usize) -> String {
-    iter::repeat(()).map(|_| OsRng.sample(Alphanumeric)).take(len).collect()
+    iter::repeat(())
+        .map(|_| OsRng.sample(Alphanumeric) as char)
+        .take(len)
+        .collect()
 }
 
 /// A test helper to create a temporary wallet service databases

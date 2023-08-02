@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use croaring::Bitmap;
+use digest::Digest;
 use tari_mmr::{common::LeafIndex, Hash, HashSlice};
 use tari_utilities::hex::Hex;
 
@@ -30,8 +31,8 @@ fn hash_with_bitmap(hash: &HashSlice, bitmap: &mut Bitmap) -> Hash {
     bitmap.run_optimize();
     let hasher = MmrTestHasherBlake256::new();
     hasher
-        .chain(hash)
-        .chain(bitmap.serialize())
+        .chain_update(hash)
+        .chain_update(bitmap.serialize())
         .finalize()
         .as_ref()
         .to_vec()

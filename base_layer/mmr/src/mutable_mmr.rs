@@ -23,7 +23,7 @@
 use std::convert::TryFrom;
 
 use croaring::Bitmap;
-use digest::Digest;
+use digest::{Digest};
 use tari_common::DomainDigest;
 
 use crate::{
@@ -132,8 +132,8 @@ where
 
         // Include the compressed bitmap in the root hash
         let mut hasher = D::new();
-        hasher.update(&mmr_root);
-        hasher.update(&bitmap_ser);
+        Digest::update(&mut hasher, &mmr_root);
+        Digest::update(&mut hasher, &bitmap_ser);
 
         Ok(hasher.finalize().to_vec())
     }

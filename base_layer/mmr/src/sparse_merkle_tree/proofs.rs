@@ -94,8 +94,9 @@ impl<H: Digest<OutputSize = U32>> MerkleProof<H> {
 
 #[cfg(test)]
 mod test {
+    use blake2::Blake2b;
+    use digest::consts::U32;
     use rand::{RngCore, SeedableRng};
-    use tari_crypto::hash::blake2::Blake256;
 
     use super::*;
 
@@ -122,7 +123,7 @@ mod test {
     fn root_proof() {
         let key = NodeKey::from([64u8; 32]);
         let value = ValueHash::from([128u8; 32]);
-        let mut tree = SparseMerkleTree::<Blake256>::default();
+        let mut tree = SparseMerkleTree::<Blake2b<U32>>::default();
         let hash = tree.hash().clone();
         let proof = tree.build_proof(&key).unwrap();
 
@@ -143,7 +144,7 @@ mod test {
         let n = 15;
         let keys = random_keys(n, 420);
         let values = random_values(n, 1420);
-        let mut tree = SparseMerkleTree::<Blake256>::default();
+        let mut tree = SparseMerkleTree::<Blake2b<U32>>::default();
         (0..n).for_each(|i| {
             let _ = tree.upsert(keys[i].clone(), values[i].clone()).unwrap();
         });

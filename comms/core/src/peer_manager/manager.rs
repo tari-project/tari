@@ -387,12 +387,12 @@ mod test {
         let mut net_addresses = MultiaddressesWithStats::from_addresses_with_source(vec![], &PeerAddressSource::Config);
 
         // Create 1 to 4 random addresses
-        for _i in 1..=rand::thread_rng().gen_range(1, 4) {
+        for _i in 1..=rand::thread_rng().gen_range(1..4) {
             let n = vec![
-                rand::thread_rng().gen_range(1, 9),
-                rand::thread_rng().gen_range(1, 9),
-                rand::thread_rng().gen_range(1, 9),
-                rand::thread_rng().gen_range(1, 9),
+                rand::thread_rng().gen_range(1..9),
+                rand::thread_rng().gen_range(1..9),
+                rand::thread_rng().gen_range(1..9),
+                rand::thread_rng().gen_range(1..9),
             ];
             let net_address = format!("/ip4/{}.{}.{}.{}/tcp/{0}{1}{2}{3}", n[0], n[1], n[2], n[3],)
                 .parse::<Multiaddr>()

@@ -20,10 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use blake2::Blake2b;
+use digest::consts::U32;
 use strum_macros::EnumIter;
 use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature};
 use tari_comms::types::CommsDHKE;
-use tari_crypto::{hash::blake2::Blake256, hashing::DomainSeparatedHash, ristretto::RistrettoComSig};
+use tari_crypto::{hashing::DomainSeparatedHash, ristretto::RistrettoComSig};
 use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface, KeyManagerServiceError};
 
 use crate::transactions::{
@@ -109,7 +111,7 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
         &self,
         secret_key_id: &TariKeyId,
         public_key: &PublicKey,
-    ) -> Result<DomainSeparatedHash<Blake256>, TransactionError>;
+    ) -> Result<DomainSeparatedHash<Blake2b<U32>>, TransactionError>;
 
     async fn import_add_offset_to_private_key(
         &self,

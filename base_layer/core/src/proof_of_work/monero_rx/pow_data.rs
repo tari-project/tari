@@ -69,15 +69,16 @@ impl BorshSerialize for MoneroPowData {
 }
 
 impl BorshDeserialize for MoneroPowData {
-    fn deserialize(buf: &mut &[u8]) -> io::Result<Self> {
-        let header = monero::BlockHeader::consensus_decode(buf)
+    fn deserialize_reader<R>(reader: &mut R) -> Result<Self, io::Error>
+    where R: io::Read {
+        let header = monero::BlockHeader::consensus_decode(reader)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
-        let randomx_key = BorshDeserialize::deserialize(buf)?;
-        let transaction_count = BorshDeserialize::deserialize(buf)?;
-        let merkle_root = monero::Hash::consensus_decode(buf)
+        let randomx_key = BorshDeserialize::deserialize_reader(reader)?;
+        let transaction_count = BorshDeserialize::deserialize_reader(reader)?;
+        let merkle_root = monero::Hash::consensus_decode(reader)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
-        let coinbase_merkle_proof = BorshDeserialize::deserialize(buf)?;
-        let coinbase_tx = monero::Transaction::consensus_decode(buf)
+        let coinbase_merkle_proof = BorshDeserialize::deserialize_reader(reader)?;
+        let coinbase_tx = monero::Transaction::consensus_decode(reader)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
         Ok(Self {
             header,

@@ -418,8 +418,8 @@ impl<H: Digest<OutputSize = U32>> SparseMerkleTree<H> {
 
 #[cfg(test)]
 mod test {
+    use blake2::Blake2b;
     use digest::{consts::U32, generic_array::GenericArray, Digest};
-    use tari_crypto::hash::blake2::Blake256;
 
     use crate::sparse_merkle_tree::{
         tree::{DeleteResult, SparseMerkleTree},
@@ -436,7 +436,11 @@ mod test {
     }
 
     fn leaf_hash(k: &NodeKey, v: &ValueHash) -> GenericArray<u8, U32> {
-        Blake256::new().chain(b"V").chain(k).chain(v).finalize()
+        Blake2b::<U32>::new()
+            .chain_update(b"V")
+            .chain_update(k)
+            .chain_update(v)
+            .finalize()
     }
 
     fn branch_hash<B1, B2>(height: usize, key: &NodeKey, left: B1, right: B2) -> GenericArray<u8, U32>
@@ -444,32 +448,32 @@ mod test {
         B1: AsRef<[u8]>,
         B2: AsRef<[u8]>,
     {
-        Blake256::new()
-            .chain(b"B")
-            .chain(height.to_le_bytes())
-            .chain(key)
-            .chain(left)
-            .chain(right)
+        Blake2b::<U32>::default()
+            .chain_update(b"B")
+            .chain_update(height.to_le_bytes())
+            .chain_update(key)
+            .chain_update(left)
+            .chain_update(right)
             .finalize()
     }
 
     #[test]
     fn empty_tree() {
-        let tree = SparseMerkleTree::<Blake256>::default();
+        let tree = SparseMerkleTree::<Blake2b<U32>>::default();
         assert_eq!(tree.size(), 0);
         assert!(tree.root().is_empty());
     }
 
     #[test]
     fn zero_key() {
-        let mut tree = SparseMerkleTree::<Blake256>::default();
+        let mut tree = SparseMerkleTree::<Blake2b<U32>>::default();
         let res = tree.upsert([0u8; 32].into(), [1u8; 32].into());
         assert!(res.is_ok());
     }
 
     #[test]
     fn single_node() {
-        let mut tree = SparseMerkleTree::<Blake256>::default();
+        let mut tree = SparseMerkleTree::<Blake2b<U32>>::default();
         let key = short_key(1);
         let value = ValueHash::from([1u8; 32]);
         let res = tree.upsert(key.clone(), value.clone()).unwrap();
@@ -486,7 +490,7 @@ mod test {
 
     #[test]
     fn single_node_same_key() {
-        let mut tree = SparseMerkleTree::<Blake256>::default();
+        let mut tree = SparseMerkleTree::<Blake2b<U32>>::default();
         let key = short_key(1);
         let value = ValueHash::from([1u8; 32]);
         let _ = tree.upsert(key.clone(), value).unwrap();
@@ -510,7 +514,7 @@ mod test {
         // +---+----+         +---+----+
         // |0111: v1|         |1111: v2|
         // +--------+         +--------+
-        let mut tree = SparseMerkleTree::<Blake256>::default();
+        let mut tree = SparseMerkleTree::<Blake2b<U32>>::default();
         let key1 = short_key(127);
         let value1 = ValueHash::from([1u8; 32]);
         let res = tree.upsert(key1.clone(), value1.clone()).unwrap();
@@ -545,7 +549,7 @@ mod test {
     #[test]
     fn deep_divergent_nodes() {
         // As with the simple branch test above, but now the keys only diverge several levels down
-        let mut tree = SparseMerkleTree::<Blake256>::default();
+        let mut tree = SparseMerkleTree::<Blake2b<U32>>::default();
         let key1 = short_key(79);
         let value1 = ValueHash::from([1u8; 32]);
         let res = tree.upsert(key1.clone(), value1.clone()).unwrap();
@@ -682,12 +686,12 @@ mod test {
 
     #[test]
     fn order_does_not_matter() {
-        let mut tree = SparseMerkleTree::<Blake256>::new();
+        let mut tree = SparseMerkleTree::<Blake2b<U32>>::new();
         tree.upsert(short_key(42), ValueHash::from([4u8; 32])).unwrap();
         tree.upsert(short_key(24), ValueHash::from([2u8; 32])).unwrap();
         let hash1 = tree.hash().clone();
 
-        let mut tree = SparseMerkleTree::<Blake256>::new();
+        let mut tree = SparseMerkleTree::<Blake2b<U32>>::new();
         tree.upsert(short_key(24), ValueHash::from([2u8; 32])).unwrap();
         tree.upsert(short_key(42), ValueHash::from([4u8; 32])).unwrap();
         let hash2 = tree.hash().clone();
@@ -697,14 +701,14 @@ mod test {
 
     #[test]
     fn delete_empty_tree() {
-        let mut tree = SparseMerkleTree::<Blake256>::new();
+        let mut tree = SparseMerkleTree::<Blake2b<U32>>::new();
         let key = short_key(42);
         assert!(matches!(tree.delete(&key), Ok(DeleteResult::KeyNotFound)));
     }
 
     #[test]
     fn delete_single_node() {
-        let mut tree = SparseMerkleTree::<Blake256>::new();
+        let mut tree = SparseMerkleTree::<Blake2b<U32>>::new();
         let key = short_key(42);
         let value = ValueHash::from([1u8; 32]);
         tree.upsert(key.clone(), value.clone()).unwrap();
@@ -733,7 +737,7 @@ mod test {
         //  ┌┴┐   ┌┴┐                  ┌┴┐   ┌┴┐
         //  │A│   │B│                  │D│   │C│
         //  └─┘   └─┘                  └─┘   └─┘
-        let mut tree = SparseMerkleTree::<Blake256>::default();
+        let mut tree = SparseMerkleTree::<Blake2b<U32>>::default();
         tree.upsert(short_key(79), ValueHash::from([1u8; 32])).unwrap();
         tree.upsert(short_key(95), ValueHash::from([2u8; 32])).unwrap();
         tree.upsert(short_key(240), ValueHash::from([3u8; 32])).unwrap();
@@ -773,7 +777,7 @@ mod test {
 
     #[test]
     fn delete_non_terminal_branch() {
-        let mut tree = SparseMerkleTree::<Blake256>::default();
+        let mut tree = SparseMerkleTree::<Blake2b<U32>>::default();
         tree.upsert(short_key(127), ValueHash::from([1u8; 32])).unwrap();
         tree.upsert(short_key(128), ValueHash::from([2u8; 32])).unwrap();
         tree.upsert(short_key(192), ValueHash::from([3u8; 32])).unwrap();
@@ -792,7 +796,7 @@ mod test {
 
     #[test]
     fn delete_highly_branched() {
-        let mut tree = SparseMerkleTree::<Blake256>::default();
+        let mut tree = SparseMerkleTree::<Blake2b<U32>>::default();
         tree.upsert(short_key(65), ValueHash::from([1u8; 32])).unwrap();
         tree.upsert(short_key(79), ValueHash::from([1u8; 32])).unwrap();
         let hash2 = tree.hash().clone();
@@ -816,7 +820,7 @@ mod test {
 
     #[test]
     fn contains() {
-        let mut tree = SparseMerkleTree::<Blake256>::default();
+        let mut tree = SparseMerkleTree::<Blake2b<U32>>::default();
 
         // An empty tree contains no keys
         assert!(!tree.contains(&short_key(0)));

@@ -5,7 +5,7 @@ syntax = "proto3";
 
 package tari.types;
 
-// Define the data type that is used to store results of `Blake256`
+// Define the data type that is used to store results of `Blake2b<U32>`
 message HashOutput {
     bytes data = 1;
 }

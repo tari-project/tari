@@ -358,15 +358,15 @@ impl From<HexError> for LibWalletError {
     fn from(h: HexError) -> Self {
         error!(target: LOG_TARGET, "{}", format!("{:?}", h));
         match h {
-            HexError::HexConversionError => Self {
+            HexError::HexConversionError {} => Self {
                 code: 404,
                 message: format!("{:?}", h),
             },
-            HexError::LengthError => Self {
+            HexError::LengthError {} => Self {
                 code: 501,
                 message: format!("{:?}", h),
             },
-            HexError::InvalidCharacter(_) => Self {
+            HexError::InvalidCharacter {} => Self {
                 code: 503,
                 message: format!("{:?}", h),
             },
@@ -380,11 +380,11 @@ impl From<ByteArrayError> for LibWalletError {
     fn from(b: ByteArrayError) -> Self {
         error!(target: LOG_TARGET, "{}", format!("{:?}", b));
         match b {
-            ByteArrayError::ConversionError(_) => Self {
+            ByteArrayError::ConversionError { .. } => Self {
                 code: 404,
                 message: format!("{:?}", b),
             },
-            ByteArrayError::IncorrectLength => Self {
+            ByteArrayError::IncorrectLength {} => Self {
                 code: 601,
                 message: format!("{:?}", b),
             },

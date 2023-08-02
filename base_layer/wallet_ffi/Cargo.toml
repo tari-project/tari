@@ -12,12 +12,12 @@ tari_common = { path="../../common" }
 tari_common_types = { path="../common_types" }
 tari_comms = {  path = "../../comms/core", features = ["c_integration"]}
 tari_comms_dht = {  path = "../../comms/dht", default-features = false }
-tari_crypto = { version = "0.17" }
+tari_crypto = { git = "https://github.com/hansieodendaal/tari-crypto.git",  rev = "e048298c1801d373303732feea85046b8ea7163c" }
 tari_key_manager = {  path = "../key_manager" }
 tari_p2p = {  path = "../p2p" }
 tari_script = { path = "../../infrastructure/tari_script" }
 tari_shutdown = {  path = "../../infrastructure/shutdown" }
-tari_utilities = { version = "0.4.10"}
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git",  rev = "c06726322683c4671b93388b444d108103cd7b55" }
 minotari_wallet = {  path = "../wallet", features = ["c_integration"]}
 tari_contacts = { path = "../../base_layer/contacts" }
 
@@ -27,7 +27,7 @@ futures =  { version = "^0.3.1", features =["compat", "std"]}
 libc = "0.2.65"
 log = "0.4.6"
 log4rs = { git = "https://github.com/tari-project/log4rs.git", features = ["console_appender", "file_appender", "yaml_format"] }
-rand = "0.7.3"
+rand = "0.8"
 thiserror = "1.0.26"
 tokio = "1.23"
 num-traits = "0.2.15"
@@ -48,7 +48,7 @@ tari_key_manager = {  path = "../key_manager" }
 tari_common_types = {  path = "../../base_layer/common_types"}
 tari_test_utils = {  path = "../../infrastructure/test_utils"}
 tari_service_framework = { path = "../../base_layer/service_framework" }
-borsh = "0.9.3"
+borsh = "0.10"
 
 [build-dependencies]
 cbindgen = "0.24.3"

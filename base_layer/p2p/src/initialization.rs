@@ -136,7 +136,7 @@ pub async fn initialize_local_test_comms<P: AsRef<Path>>(
     let peer_database_name = {
         let mut rng = thread_rng();
         iter::repeat(())
-            .map(|_| rng.sample(Alphanumeric))
+            .map(|_| rng.sample(Alphanumeric) as char)
             .take(8)
             .collect::<String>()
     };

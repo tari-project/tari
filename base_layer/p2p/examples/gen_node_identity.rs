@@ -40,7 +40,7 @@ use tari_comms::{
 use tari_utilities::message_format::MessageFormat;
 
 fn random_address() -> Multiaddr {
-    let port = OsRng.gen_range(9000, std::u16::MAX);
+    let port = OsRng.gen_range(9000..std::u16::MAX);
     let socket_addr: SocketAddr = (Ipv4Addr::LOCALHOST, port).into();
     socketaddr_to_multiaddr(&socket_addr)
 }
