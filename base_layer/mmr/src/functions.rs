@@ -20,6 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{convert::TryFrom, marker::PhantomData};
+
+use digest::Digest;
+use tari_common::DomainDigest;
+
 use crate::{
     error::MerkleMountainRangeError,
     pruned_hashset::PrunedHashSet,
@@ -28,9 +33,6 @@ use crate::{
     MerkleMountainRange,
     MutableMmr,
 };
-use digest::Digest;
-use std::{convert::TryFrom, marker::PhantomData};
-use tari_common::DomainDigest;
 
 pub type PrunedMmr<D> = MerkleMountainRange<D, PrunedHashSet>;
 pub type PrunedMutableMmr<D> = MutableMmr<D, PrunedHashSet>;
