@@ -112,8 +112,6 @@ impl From<ByteArrayError> for WalletError {
     }
 }
 
-pub const LOG_TARGET: &str = "tari::application";
-
 impl From<WalletError> for ExitError {
     fn from(err: WalletError) -> Self {
         log::error!(target: LOG_TARGET, "{}", err);

@@ -71,7 +71,6 @@ features = ["crossterm"]
 tari_features = { version = "0.51.0-pre.4", path = "../../common/tari_features"}
 
 [features]
-avx2 = ["tari_core/avx2", "tari_crypto/simd_backend", "minotari_wallet/avx2", "tari_comms/avx2", "tari_comms_dht/avx2", "tari_p2p/avx2", "tari_key_manager/avx2"]
 libtor = ["tari_libtor"]
 
 [package.metadata.cargo-machete]
