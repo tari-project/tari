@@ -8,12 +8,12 @@ version = "0.52.0-pre.0"
 edition = "2018"
 
 [dependencies]
+minotari_app_grpc = { path = "../minotari_app_grpc" }
+minotari_app_utilities = { path = "../minotari_app_utilities" }
 tari_core = { path = "../../base_layer/core", default-features = false }
 tari_common = { path = "../../common" }
 tari_common_types = { path = "../../base_layer/common_types" }
 tari_comms = { path = "../../comms/core" }
-minotari_app_utilities = { path = "../minotari_app_utilities" }
-minotari_app_grpc = { path = "../minotari_app_grpc" }
 tari_crypto = { version = "0.18" }
 tari_utilities = { version = "0.5" }
 

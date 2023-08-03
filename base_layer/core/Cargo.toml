@@ -19,11 +19,13 @@ benches = ["base_node", "criterion"]
 
 [dependencies]
 tari_common = {  path = "../../common" }
+tari_common_sqlite = { path = "../../common_sqlite" }
 tari_common_types = {  path = "../../base_layer/common_types" }
 tari_comms = {  path = "../../comms/core" }
 tari_comms_dht = {  path = "../../comms/dht" }
 tari_comms_rpc_macros = {  path = "../../comms/rpc_macros" }
 tari_crypto = { version = "0.18", features = ["borsh"] }
+tari_key_manager = {  path = "../key_manager", features = ["key_manager_service"] }
 tari_metrics = { path = "../../infrastructure/metrics" }
 tari_mmr = {  path = "../../base_layer/mmr", optional = true, features = ["native_bitmap"] }
 tari_p2p = {  path = "../../base_layer/p2p" }
@@ -33,8 +35,6 @@ tari_shutdown = {  path = "../../infrastructure/shutdown" }
 tari_storage = {  path = "../../infrastructure/storage" }
 tari_test_utils = {  path = "../../infrastructure/test_utils" }
 tari_utilities = { version = "0.5", features = ["borsh"] }
-tari_key_manager = {  path = "../key_manager", features = ["key_manager_service"] }
-tari_common_sqlite = { path = "../../common_sqlite" }
 async-trait = {version = "0.1.50"}
 bincode = "1.1.4"
 bitflags = "1.0.4"

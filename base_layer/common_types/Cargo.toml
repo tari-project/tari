@@ -11,9 +11,10 @@ tari_crypto = { version = "0.18" }
 tari_utilities = { version = "0.5" }
 tari_common = {  path = "../../common" }
 
-
-chacha20poly1305 = "0.10.1"
+base64 = "0.21.0"
+blake2 = "0.10"
 borsh = "0.10"
+chacha20poly1305 = "0.10.1"
 digest = "0.10"
 lazy_static = "1.4.0"
 newtype-ops = "0.1"
@@ -21,5 +22,3 @@ rand = "0.8"
 serde = { version = "1.0.106", features = ["derive"] }
 thiserror = "1.0.29"
 tokio = { version = "1.23", features = ["time", "sync"] }
-base64 = "0.21.0"
-blake2 = "0.10"

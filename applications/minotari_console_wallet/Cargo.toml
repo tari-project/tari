@@ -8,6 +8,7 @@ license = "BSD-3-Clause"
 [dependencies]
 minotari_app_grpc = { path = "../minotari_app_grpc" }
 minotari_app_utilities = { path = "../minotari_app_utilities" }
+minotari_wallet = { path = "../../base_layer/wallet", features = ["bundled_sqlite"] }
 tari_common = { path = "../../common" }
 tari_common_types = { path = "../../base_layer/common_types" }
 tari_comms = { path = "../../comms/core" }
@@ -20,7 +21,6 @@ tari_p2p = { path = "../../base_layer/p2p", features = ["auto-update"] }
 tari_script = { path = "../../infrastructure/tari_script" }
 tari_shutdown = { path = "../../infrastructure/shutdown" }
 tari_utilities = { version = "0.5" }
-minotari_wallet = { path = "../../base_layer/wallet", features = ["bundled_sqlite"] }
 
 # Uncomment for tokio tracing via tokio-console (needs "tracing" featurs)
 console-subscriber = "0.1.8"

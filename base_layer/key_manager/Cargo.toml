@@ -17,28 +17,28 @@ tari_common_sqlite = { path = "../../common_sqlite" }
 tari_common_types = {  path = "../../base_layer/common_types"}
 tari_service_framework = {  path = "../service_framework" }
 
-async-trait = {version = "0.1.50"}
-chrono = { version = "0.4.19", default-features = false, features = ["serde"] }
-chacha20poly1305 = "0.10.1"
-tokio = { version = "1.23", features = ["sync", "macros"]}
-futures = { version = "^0.3.1", features = ["compat", "std"] }
-log = {version = "0.4.6"}
-diesel = { version = "2.0.3", features = ["sqlite", "serde_json", "chrono", "64-column-tables"]}
-diesel_migrations = {version = "2.0.0"}
 argon2 = { version = "0.4.1", features = ["std", "alloc"] }
+async-trait = {version = "0.1.50"}
 blake2 = "0.10"
 chacha20 = "0.7.1"
+chacha20poly1305 = "0.10.1"
+chrono = { version = "0.4.19", default-features = false, features = ["serde"] }
 crc32fast = "1.2.1"
 derivative = "2.2.0"
+diesel = { version = "2.0.3", features = ["sqlite", "serde_json", "chrono", "64-column-tables"]}
+diesel_migrations = {version = "2.0.0"}
 digest = "0.10"
+futures = { version = "^0.3.1", features = ["compat", "std"] }
 js-sys = { version = "0.3.55", optional = true }
+log = {version = "0.4.6"}
 rand = "0.8"
 serde = "1.0.89"
-thiserror = "1.0.26"
-strum_macros = "0.22"
 strum = { version = "0.22", features = ["derive"] }
-zeroize = "1"
+strum_macros = "0.22"
 subtle = "2.4.1"
+thiserror = "1.0.26"
+tokio = { version = "1.23", features = ["sync", "macros"]}
+zeroize = "1"
 
 [dev-dependencies]
 sha2 = "0.9.8"

@@ -15,12 +15,12 @@ native_bitmap = ["croaring"]
 tari_utilities = { version = "0.5" }
 tari_crypto = { version = "0.18" }
 tari_common = { path = "../../common" }
-thiserror = "1.0"
 borsh = "0.10"
+croaring = { version = "0.5", optional = true }
 digest = "0.10"
 log = "0.4"
 serde = { version = "1.0", features = ["derive"] }
-croaring = { version = "0.5", optional = true }
+thiserror = "1.0"
 
 [dev-dependencies]
 rand = "0.8"

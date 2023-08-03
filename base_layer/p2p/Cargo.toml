@@ -10,9 +10,9 @@ license = "BSD-3-Clause"
 edition = "2018"
 
 [dependencies]
+tari_common = {  path = "../../common" }
 tari_comms = {  path = "../../comms/core" }
 tari_comms_dht = {  path = "../../comms/dht" }
-tari_common = {  path = "../../common" }
 tari_crypto = { version = "0.18" }
 tari_service_framework = {  path = "../service_framework" }
 tari_shutdown = {  path = "../../infrastructure/shutdown" }

@@ -10,14 +10,14 @@ license = "BSD-3-Clause"
 edition = "2018"
 
 [dependencies]
-tari_comms = {  path = "../core", features = ["rpc"] }
 tari_common = { path = "../../common" }
+tari_common_sqlite = { path = "../../common_sqlite" }
+tari_comms = {  path = "../core", features = ["rpc"] }
 tari_comms_rpc_macros = {  path = "../rpc_macros" }
 tari_crypto = { version = "0.18" }
-tari_utilities = { version = "0.5" }
 tari_shutdown = {  path = "../../infrastructure/shutdown" }
 tari_storage = {  path = "../../infrastructure/storage" }
-tari_common_sqlite = { path = "../../common_sqlite" }
+tari_utilities = { version = "0.5" }
 
 anyhow = "1.0.53"
 bitflags = "1.2.0"
