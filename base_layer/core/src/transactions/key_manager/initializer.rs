@@ -28,64 +28,32 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common_types::types::PublicKey;
-use tari_key_manager::{
-    cipher_seed::CipherSeed,
-    key_manager_service::storage::database::{KeyManagerBackend, KeyManagerDatabase},
-};
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 
-use crate::transactions::{key_manager::TransactionKeyManagerWrapper, CryptoFactories};
+use crate::transactions::key_manager::SecretTransactionKeyManagerInterface;
 
 /// Initializes the key manager service by implementing the [ServiceInitializer] trait.
 pub struct TransactionKeyManagerInitializer<T>
-where T: KeyManagerBackend<PublicKey>
+where T: SecretTransactionKeyManagerInterface
 {
-    backend: Option<T>,
-    master_seed: CipherSeed,
-    crypto_factories: CryptoFactories,
-    wallet_type: u8,
+    key_manager: T,
 }
 
 impl<T> TransactionKeyManagerInitializer<T>
-where T: KeyManagerBackend<PublicKey> + 'static
+where T: SecretTransactionKeyManagerInterface
 {
     /// Creates a new [TransactionKeyManagerInitializer] from the provided [KeyManagerBackend] and [CipherSeed]
-    pub fn new(backend: T, master_seed: CipherSeed, crypto_factories: CryptoFactories, wallet_type: u8) -> Self {
-        Self {
-            backend: Some(backend),
-            master_seed,
-            crypto_factories,
-            wallet_type,
-        }
+    pub fn new(key_manager: T) -> Self {
+        Self { key_manager }
     }
 }
 
 #[async_trait]
 impl<T> ServiceInitializer for TransactionKeyManagerInitializer<T>
-where T: KeyManagerBackend<PublicKey> + 'static
+where T: SecretTransactionKeyManagerInterface
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
-        let backend = self
-            .backend
-            .take()
-            .expect("Cannot start Key Manager Service without setting a storage backend");
-
-        let key_manager: TransactionKeyManagerWrapper<T> = if self.wallet_type == 2 {
-            TransactionKeyManagerWrapper::with_ledger(
-                self.master_seed.clone(),
-                KeyManagerDatabase::new(backend),
-                self.crypto_factories.clone(),
-            )?
-        } else {
-            TransactionKeyManagerWrapper::new(
-                self.master_seed.clone(),
-                KeyManagerDatabase::new(backend),
-                self.crypto_factories.clone(),
-            )?
-        };
-
-        context.register_handle(key_manager);
+        context.register_handle(self.key_manager.clone());
 
         Ok(())
     }

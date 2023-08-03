@@ -55,9 +55,20 @@ use tari_comms::{
     types::CommsPublicKey,
     NodeIdentity,
 };
-use tari_core::{consensus::ConsensusManager, transactions::CryptoFactories};
+use tari_core::{
+    consensus::ConsensusManager,
+    transactions::{
+        key_manager::TransactionKeyManagerWrapper,
+        ledger_key_manager::TransactionKeyManagerLedgerWrapper,
+        CryptoFactories,
+    },
+};
 use tari_crypto::keys::PublicKey;
-use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage};
+use tari_key_manager::{
+    cipher_seed::CipherSeed,
+    key_manager_service::storage::database::KeyManagerDatabase,
+    mnemonic::MnemonicLanguage,
+};
 use tari_p2p::{peer_seeds::SeedPeer, TransportType};
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::{hex::Hex, ByteArray, SafePassword};
@@ -419,8 +430,31 @@ pub async fn init_wallet(
         config.wallet.p2p.public_addresses.clone()
     };
 
+    let factories = CryptoFactories::default();
+
     let master_seed = read_or_create_master_seed(recovery_seed.clone(), &wallet_db)?;
     let _wallet_type = read_or_create_wallet_type(wallet_type, &wallet_db);
+    let key_manager_interface = match _wallet_type {
+        Ok(WalletType::Software) => KeyManagerType::Console(
+            TransactionKeyManagerWrapper::new(
+                master_seed.clone(),
+                KeyManagerDatabase::new(key_manager_backend),
+                factories.clone(),
+            )
+            .unwrap(),
+        ),
+        Ok(WalletType::Ledger) => KeyManagerType::Ledger(
+            TransactionKeyManagerLedgerWrapper::new(
+                master_seed.clone(),
+                KeyManagerDatabase::new(key_manager_backend),
+                factories.clone(),
+            )
+            .unwrap(),
+        ),
+        Err(_) => {
+            panic!("error")
+        },
+    };
 
     let node_identity = match config.wallet.identity_file.as_ref() {
         Some(identity_file) => {
@@ -447,7 +481,6 @@ pub async fn init_wallet(
     let consensus_manager = ConsensusManager::builder(config.wallet.network)
         .build()
         .map_err(|e| ExitError::new(ExitCode::WalletError, format!("Error consensus manager. {}", e)))?;
-    let factories = CryptoFactories::default();
 
     let mut wallet = Wallet::start(
         wallet_config,
@@ -461,9 +494,8 @@ pub async fn init_wallet(
         transaction_backend,
         output_manager_backend,
         contacts_backend,
-        key_manager_backend,
+        key_manager_interface,
         shutdown_signal,
-        master_seed,
     )
     .await
     .map_err(|e| match e {

@@ -81,7 +81,6 @@ use minotari_wallet::{
 };
 use prost::Message;
 use rand::{rngs::OsRng, RngCore};
-use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     tari_address::TariAddress,
@@ -123,7 +122,7 @@ use tari_core::{
     },
     transactions::{
         fee::Fee,
-        key_manager::{TransactionKeyManagerInitializer, TransactionKeyManagerInterface},
+        key_manager::{TransactionKeyManagerInitializer, TransactionKeyManagerInterface, TransactionKeyManagerWrapper},
         tari_amount::*,
         test_helpers::{
             create_test_core_key_manager_with_memory_db,
@@ -152,7 +151,11 @@ use tari_crypto::{
 };
 use tari_key_manager::{
     cipher_seed::CipherSeed,
-    key_manager_service::{storage::sqlite_db::KeyManagerSqliteDatabase, KeyId, KeyManagerInterface},
+    key_manager_service::{
+        storage::{database::KeyManagerDatabase, sqlite_db::KeyManagerSqliteDatabase},
+        KeyId,
+        KeyManagerInterface,
+    },
 };
 use tari_p2p::{comms_connector::pubsub_connector, domain_message::DomainMessage, Network};
 use tari_script::{inputs, one_sided_payment_script, script, ExecutionStack, TariScript};
@@ -203,6 +206,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
     .await;
 
     let passphrase = SafePassword::from("My lovely secret passphrase");
+
     let db = WalletDatabase::new(WalletSqliteDatabase::new(db_connection.clone(), passphrase).unwrap());
     let metadata = ChainMetadata::new(std::i64::MAX as u64, FixedHash::zero(), 0, 0, 0, 0);
 
@@ -217,13 +221,15 @@ async fn setup_transaction_service<P: AsRef<Path>>(
     let oms_backend = OutputManagerSqliteDatabase::new(db_connection.clone());
     let wallet_identity = WalletIdentity::new(node_identity, Network::LocalNet);
 
-    let connection = DbConnection::connect_url(&DbConnectionUrl::MemoryShared(random_string(8))).unwrap();
     let cipher = CipherSeed::new();
     let mut key = [0u8; size_of::<Key>()];
     OsRng.fill_bytes(&mut key);
     let key_ga = Key::from_slice(&key);
     let db_cipher = XChaCha20Poly1305::new(key_ga);
-    let kms_backend = KeyManagerSqliteDatabase::init(connection, db_cipher);
+    let kms_backend = KeyManagerSqliteDatabase::init(db_connection.clone(), db_cipher);
+    let key_manager =
+        TransactionKeyManagerWrapper::new(cipher, KeyManagerDatabase::new(kms_backend), factories.clone())
+            .expect("To get a key manager wrapper");
 
     let handles = StackBuilder::new(shutdown_signal)
         .add_initializer(RegisterHandle::new(dht))
@@ -238,12 +244,9 @@ async fn setup_transaction_service<P: AsRef<Path>>(
             Network::LocalNet.into(),
             wallet_identity.clone(),
         ))
-        .add_initializer(TransactionKeyManagerInitializer::<KeyManagerSqliteDatabase<_>>::new(
-            kms_backend,
-            cipher,
-            factories.clone(),
-            1,
-        ))
+        .add_initializer(TransactionKeyManagerInitializer::new(KeyManagerType::Console(
+            key_manager,
+        )))
         .add_initializer(TransactionServiceInitializer::<_, _, TestKeyManager>::new(
             TransactionServiceConfig {
                 broadcast_monitoring_timeout: Duration::from_secs(5),

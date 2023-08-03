@@ -111,6 +111,7 @@ use minotari_wallet::{
     },
     utxo_scanner_service::{service::UtxoScannerService, RECOVERY_KEY},
     wallet::{derive_comms_secret_key, read_or_create_master_seed, WalletMessageSigningDomain},
+    KeyManagerType,
     Wallet,
     WalletConfig,
     WalletSqlite,
@@ -5428,6 +5429,19 @@ pub unsafe extern "C" fn wallet_create(
         },
     };
 
+    let key_manager = match TransactionKeyManagerWrapper::new(
+        master_seed.clone(),
+        KeyManagerDatabase::new(key_manager_backend),
+        factories.clone(),
+    ) {
+        Ok(km) => km,
+        Err(_) => {
+            error = 10;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    };
+
     let w = runtime.block_on(Wallet::start(
         wallet_config,
         peer_seeds,
@@ -5440,9 +5454,8 @@ pub unsafe extern "C" fn wallet_create(
         transaction_backend.clone(),
         output_manager_backend,
         contacts_backend,
-        key_manager_backend,
+        KeyManagerType::Console(key_manager),
         shutdown.to_signal(),
-        master_seed,
     ));
 
     match w {

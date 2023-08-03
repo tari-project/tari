@@ -61,7 +61,7 @@ use tari_crypto::{hash_domain, signatures::SchnorrSignatureError};
 use tari_key_manager::{
     cipher_seed::CipherSeed,
     key_manager::KeyManager,
-    key_manager_service::{storage::database::KeyManagerBackend, KeyDigest},
+    key_manager_service::KeyDigest,
     mnemonic::{Mnemonic, MnemonicLanguage},
     SeedWords,
 };
@@ -84,6 +84,7 @@ use crate::{
     connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer, WalletConnectivityInterface},
     consts,
     error::{WalletError, WalletStorageError},
+    key_manager_type::KeyManagerType,
     output_manager_service::{
         error::OutputManagerError,
         handle::OutputManagerHandle,
@@ -144,7 +145,7 @@ where
     TKeyManagerInterface: SecretTransactionKeyManagerInterface,
 {
     #[allow(clippy::too_many_lines)]
-    pub async fn start<TKeyManagerBackend: KeyManagerBackend<PublicKey> + 'static>(
+    pub async fn start(
         config: WalletConfig,
         peer_seeds: PeerSeedsConfig,
         auto_update: AutoUpdateConfig,
@@ -156,9 +157,8 @@ where
         transaction_backend: U,
         output_manager_backend: V,
         contacts_backend: W,
-        key_manager_backend: TKeyManagerBackend,
+        key_manager_interface: KeyManagerType,
         shutdown_signal: ShutdownSignal,
-        master_seed: CipherSeed,
     ) -> Result<Self, WalletError> {
         let buf_size = cmp::max(WALLET_BUFFER_MIN_SIZE, config.buffer_size);
         let (publisher, subscription_factory) = pubsub_connector(buf_size, config.buffer_rate_limit);
@@ -178,7 +178,6 @@ where
             config.buffer_size,
             config.buffer_rate_limit
         );
-        let wallet_type = wallet_database.get_wallet_type()?.unwrap();
         let wallet_identity = WalletIdentity::new(node_identity.clone(), config.network);
         let stack = StackBuilder::new(shutdown_signal)
             .add_initializer(P2pInitializer::new(
@@ -195,12 +194,7 @@ where
                 config.network.into(),
                 wallet_identity.clone(),
             ))
-            .add_initializer(TransactionKeyManagerInitializer::new(
-                key_manager_backend,
-                master_seed,
-                factories.clone(),
-                wallet_type.as_byte(),
-            ))
+            .add_initializer(TransactionKeyManagerInitializer::new(key_manager_interface))
             .add_initializer(TransactionServiceInitializer::<U, T, TKeyManagerInterface>::new(
                 config.transaction_service_config,
                 peer_message_subscription_factory.clone(),
