@@ -107,6 +107,8 @@ track_reorgs = true
 # The maximum number of transactions that can be skipped when compiling a set of highest priority transactions,
 # skipping over large transactions are performed in an attempt to fit more transactions into the remaining space.
 #unconfirmed_pool.weight_tx_skip_count = 20
+# The minimum fee accepted by the mempool
+#unconfirmed_pool.min_fee: = 0,
 
 # The height horizon to clear transactions from the reorg pool.
 #reorg_pool.expiry_height = 5

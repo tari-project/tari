@@ -100,6 +100,14 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
     async fn fetch_kernel(&self, signature: Signature) -> Result<TxQueryResponse, RpcStatus> {
         let db = self.db();
         let chain_metadata = db.get_chain_metadata().await.rpc_status_internal_error(LOG_TARGET)?;
+        let state_machine = self.state_machine();
+
+        // Determine if we are synced
+        let status_watch = state_machine.get_status_info_watch();
+        let is_synced = match (status_watch.borrow()).state_info {
+            StateInfo::Listening(li) => li.is_synced(),
+            _ => false,
+        };
         match db
             .fetch_kernel_by_excess_sig(signature.clone())
             .await
@@ -119,7 +127,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
                             location: TxLocation::Mined as i32,
                             block_hash: Some(block_hash.to_vec()),
                             confirmations,
-                            is_synced: true,
+                            is_synced,
                             height_of_longest_chain: chain_metadata.height_of_longest_chain(),
                             mined_timestamp: Some(header.timestamp.as_u64()),
                         };
@@ -140,7 +148,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
                 location: TxLocation::InMempool as i32,
                 block_hash: None,
                 confirmations: 0,
-                is_synced: true,
+                is_synced,
                 height_of_longest_chain: chain_metadata.height_of_longest_chain(),
                 mined_timestamp: None,
             },
@@ -150,11 +158,12 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
             TxStorageResponse::NotStoredAlreadySpent |
             TxStorageResponse::NotStoredConsensus |
             TxStorageResponse::NotStored |
+            TxStorageResponse::NotStoredFeeToLow |
             TxStorageResponse::NotStoredAlreadyMined => TxQueryResponse {
                 location: TxLocation::NotStored as i32,
                 block_hash: None,
                 confirmations: 0,
-                is_synced: true,
+                is_synced,
                 height_of_longest_chain: chain_metadata.height_of_longest_chain(),
                 mined_timestamp: None,
             },
@@ -196,6 +205,11 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             TxStorageResponse::NotStoredOrphan => TxSubmissionResponse {
                 accepted: false,
                 rejection_reason: TxSubmissionRejectionReason::Orphan.into(),
+                is_synced,
+            },
+            TxStorageResponse::NotStoredFeeToLow => TxSubmissionResponse {
+                accepted: false,
+                rejection_reason: TxSubmissionRejectionReason::FeeToLow.into(),
                 is_synced,
             },
             TxStorageResponse::NotStoredTimeLocked => TxSubmissionResponse {

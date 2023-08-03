@@ -17,6 +17,7 @@ enum TxSubmissionRejectionReason {
   TxSubmissionRejectionReasonOrphan = 3;
   TxSubmissionRejectionReasonTimeLocked = 4;
   TxSubmissionRejectionReasonValidationFailed = 5;
+  TxSubmissionRejectionReasonFeeToLow = 6;
 }
 
 message TxSubmissionResponse {
