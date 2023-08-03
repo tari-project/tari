@@ -28,6 +28,7 @@ use tari_comms::types::CommsDHKE;
 use tari_core::transactions::{
     key_manager::{
         SecretTransactionKeyManagerInterface,
+        TariKeyId,
         TransactionKeyManagerInterface,
         TransactionKeyManagerWrapper,
         TxoStage,
@@ -45,15 +46,10 @@ use tari_core::transactions::{
         TransactionOutputVersion,
     },
 };
-use tari_crypto::{
-    hashing::DomainSeparatedHash,
-    keys::{PublicKey as TPublicKey, SecretKey},
-    ristretto::RistrettoComSig,
-};
+use tari_crypto::{hashing::DomainSeparatedHash, ristretto::RistrettoComSig};
 use tari_key_manager::key_manager_service::{
     storage::sqlite_db::KeyManagerSqliteDatabase,
     AddResult,
-    KeyId,
     KeyManagerInterface,
     KeyManagerServiceError,
 };
@@ -67,11 +63,7 @@ pub enum KeyManagerType {
 }
 
 #[async_trait]
-impl<PK> KeyManagerInterface<PK> for KeyManagerType
-where
-    PK: TPublicKey + Send + Sync + 'static,
-    PK::K: SecretKey + Send + Sync + 'static,
-{
+impl KeyManagerInterface<PublicKey> for KeyManagerType {
     async fn add_new_branch<T: Into<String> + Send>(&self, branch: T) -> Result<AddResult, KeyManagerServiceError> {
         match self {
             KeyManagerType::Ledger(km) => km.add_new_branch(branch).await,
@@ -79,20 +71,39 @@ where
         }
     }
 
-    async fn get_next_key<T: Into<String> + Send>(&self, branch: T) -> Result<(KeyId<PK>, PK), KeyManagerServiceError> {
-        todo!()
+    async fn get_next_key<T: Into<String> + Send>(
+        &self,
+        branch: T,
+    ) -> Result<(TariKeyId, PublicKey), KeyManagerServiceError> {
+        match self {
+            KeyManagerType::Ledger(km) => km.get_next_key(branch).await,
+            KeyManagerType::Console(km) => km.get_next_key(branch).await,
+        }
     }
 
-    async fn get_static_key<T: Into<String> + Send>(&self, branch: T) -> Result<KeyId<PK>, KeyManagerServiceError> {
-        todo!()
+    async fn get_static_key<T: Into<String> + Send>(&self, branch: T) -> Result<TariKeyId, KeyManagerServiceError> {
+        match self {
+            KeyManagerType::Ledger(km) => km.get_static_key(branch).await,
+            KeyManagerType::Console(km) => km.get_static_key(branch).await,
+        }
     }
 
-    async fn get_public_key_at_key_id(&self, key_id: &KeyId<PK>) -> Result<PK, KeyManagerServiceError> {
-        todo!()
+    async fn get_public_key_at_key_id(&self, key_id: &TariKeyId) -> Result<PublicKey, KeyManagerServiceError> {
+        match self {
+            KeyManagerType::Ledger(km) => km.get_public_key_at_key_id(key_id).await,
+            KeyManagerType::Console(km) => km.get_public_key_at_key_id(key_id).await,
+        }
     }
 
-    async fn find_key_index<T: Into<String> + Send>(&self, branch: T, key: &PK) -> Result<u64, KeyManagerServiceError> {
-        todo!()
+    async fn find_key_index<T: Into<String> + Send>(
+        &self,
+        branch: T,
+        key: &PublicKey,
+    ) -> Result<u64, KeyManagerServiceError> {
+        match self {
+            KeyManagerType::Ledger(km) => km.find_key_index(branch, key).await,
+            KeyManagerType::Console(km) => km.find_key_index(branch, key).await,
+        }
     }
 
     async fn update_current_key_index_if_higher<T: Into<String> + Send>(
@@ -100,11 +111,17 @@ where
         branch: T,
         index: u64,
     ) -> Result<(), KeyManagerServiceError> {
-        todo!()
+        match self {
+            KeyManagerType::Ledger(km) => km.update_current_key_index_if_higher(branch, index).await,
+            KeyManagerType::Console(km) => km.update_current_key_index_if_higher(branch, index).await,
+        }
     }
 
-    async fn import_key(&self, private_key: PK::K) -> Result<KeyId<PK>, KeyManagerServiceError> {
-        todo!()
+    async fn import_key(&self, private_key: PrivateKey) -> Result<TariKeyId, KeyManagerServiceError> {
+        match self {
+            KeyManagerType::Ledger(km) => km.import_key(private_key).await,
+            KeyManagerType::Console(km) => km.import_key(private_key).await,
+        }
     }
 }
 
@@ -112,96 +129,125 @@ where
 impl TransactionKeyManagerInterface for KeyManagerType {
     async fn get_commitment(
         &self,
-        spend_key_id: &tari_core::transactions::key_manager::TariKeyId,
+        spend_key_id: &TariKeyId,
         value: &PrivateKey,
     ) -> Result<Commitment, KeyManagerServiceError> {
-        todo!()
+        match self {
+            KeyManagerType::Ledger(km) => km.get_commitment(spend_key_id, value).await,
+            KeyManagerType::Console(km) => km.get_commitment(spend_key_id, value).await,
+        }
     }
 
     async fn verify_mask(
         &self,
         commitment: &Commitment,
-        spend_key_id: &tari_core::transactions::key_manager::TariKeyId,
+        spending_key_id: &TariKeyId,
         value: u64,
     ) -> Result<bool, KeyManagerServiceError> {
-        todo!()
+        match self {
+            KeyManagerType::Ledger(km) => km.verify_mask(commitment, spending_key_id, value).await,
+            KeyManagerType::Console(km) => km.verify_mask(commitment, spending_key_id, value).await,
+        }
     }
 
-    async fn get_recovery_key_id(
-        &self,
-    ) -> Result<tari_core::transactions::key_manager::TariKeyId, KeyManagerServiceError> {
-        todo!()
+    async fn get_recovery_key_id(&self) -> Result<TariKeyId, KeyManagerServiceError> {
+        match self {
+            KeyManagerType::Ledger(km) => km.get_recovery_key_id().await,
+            KeyManagerType::Console(km) => km.get_recovery_key_id().await,
+        }
     }
 
     async fn get_next_spend_and_script_key_ids(
         &self,
-    ) -> Result<
-        (
-            tari_core::transactions::key_manager::TariKeyId,
-            PublicKey,
-            tari_core::transactions::key_manager::TariKeyId,
-            PublicKey,
-        ),
-        KeyManagerServiceError,
-    > {
-        todo!()
+    ) -> Result<(TariKeyId, PublicKey, TariKeyId, PublicKey), KeyManagerServiceError> {
+        match self {
+            KeyManagerType::Ledger(km) => km.get_next_spend_and_script_key_ids().await,
+            KeyManagerType::Console(km) => km.get_next_spend_and_script_key_ids().await,
+        }
     }
 
     async fn get_diffie_hellman_shared_secret(
         &self,
-        secret_key_id: &tari_core::transactions::key_manager::TariKeyId,
+        secret_key_id: &TariKeyId,
         public_key: &PublicKey,
     ) -> Result<CommsDHKE, TransactionError> {
-        todo!()
+        match self {
+            KeyManagerType::Ledger(km) => km.get_diffie_hellman_shared_secret(secret_key_id, public_key).await,
+            KeyManagerType::Console(km) => km.get_diffie_hellman_shared_secret(secret_key_id, public_key).await,
+        }
     }
 
     async fn get_diffie_hellman_stealth_domain_hasher(
         &self,
-        secret_key_id: &tari_core::transactions::key_manager::TariKeyId,
+        secret_key_id: &TariKeyId,
         public_key: &PublicKey,
     ) -> Result<DomainSeparatedHash<Blake2b<U32>>, TransactionError> {
-        todo!()
+        match self {
+            KeyManagerType::Ledger(km) => {
+                km.get_diffie_hellman_stealth_domain_hasher(secret_key_id, public_key)
+                    .await
+            },
+            KeyManagerType::Console(km) => {
+                km.get_diffie_hellman_stealth_domain_hasher(secret_key_id, public_key)
+                    .await
+            },
+        }
     }
 
     async fn import_add_offset_to_private_key(
         &self,
-        secret_key_id: &tari_core::transactions::key_manager::TariKeyId,
+        secret_key_id: &TariKeyId,
         offset: PrivateKey,
-    ) -> Result<tari_core::transactions::key_manager::TariKeyId, KeyManagerServiceError> {
-        todo!()
+    ) -> Result<TariKeyId, KeyManagerServiceError> {
+        match self {
+            KeyManagerType::Ledger(km) => km.import_add_offset_to_private_key(secret_key_id, offset).await,
+            KeyManagerType::Console(km) => km.import_add_offset_to_private_key(secret_key_id, offset).await,
+        }
     }
 
-    async fn get_spending_key_id(
-        &self,
-        public_spending_key: &PublicKey,
-    ) -> Result<tari_core::transactions::key_manager::TariKeyId, TransactionError> {
-        todo!()
+    async fn get_spending_key_id(&self, public_spending_key: &PublicKey) -> Result<TariKeyId, TransactionError> {
+        match self {
+            KeyManagerType::Ledger(km) => km.get_spending_key_id(public_spending_key).await,
+            KeyManagerType::Console(km) => km.get_spending_key_id(public_spending_key).await,
+        }
     }
 
     async fn construct_range_proof(
         &self,
-        spend_key_id: &tari_core::transactions::key_manager::TariKeyId,
+        spend_key_id: &TariKeyId,
         value: u64,
         min_value: u64,
     ) -> Result<RangeProof, TransactionError> {
-        todo!()
+        match self {
+            KeyManagerType::Ledger(km) => km.construct_range_proof(spend_key_id, value, min_value).await,
+            KeyManagerType::Console(km) => km.construct_range_proof(spend_key_id, value, min_value).await,
+        }
     }
 
     async fn get_script_signature(
         &self,
-        script_key_id: &tari_core::transactions::key_manager::TariKeyId,
-        spend_key_id: &tari_core::transactions::key_manager::TariKeyId,
+        script_key_id: &TariKeyId,
+        spend_key_id: &TariKeyId,
         value: &PrivateKey,
         txi_version: &TransactionInputVersion,
         script_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, TransactionError> {
-        todo!()
+        match self {
+            KeyManagerType::Ledger(km) => {
+                km.get_script_signature(script_key_id, spend_key_id, value, txi_version, script_message)
+                    .await
+            },
+            KeyManagerType::Console(km) => {
+                km.get_script_signature(script_key_id, spend_key_id, value, txi_version, script_message)
+                    .await
+            },
+        }
     }
 
     async fn get_partial_txo_kernel_signature(
         &self,
-        spend_key_id: &tari_core::transactions::key_manager::TariKeyId,
-        nonce_id: &tari_core::transactions::key_manager::TariKeyId,
+        spend_key_id: &TariKeyId,
+        nonce_id: &TariKeyId,
         total_nonce: &PublicKey,
         total_excess: &PublicKey,
         kernel_version: &TransactionKernelVersion,
@@ -209,73 +255,159 @@ impl TransactionKeyManagerInterface for KeyManagerType {
         kernel_features: &KernelFeatures,
         txo_type: TxoStage,
     ) -> Result<Signature, TransactionError> {
-        todo!()
+        match self {
+            KeyManagerType::Ledger(km) => {
+                km.get_partial_txo_kernel_signature(
+                    spend_key_id,
+                    nonce_id,
+                    total_nonce,
+                    total_excess,
+                    kernel_version,
+                    kernel_message,
+                    kernel_features,
+                    txo_type,
+                )
+                .await
+            },
+            KeyManagerType::Console(km) => {
+                km.get_partial_txo_kernel_signature(
+                    spend_key_id,
+                    nonce_id,
+                    total_nonce,
+                    total_excess,
+                    kernel_version,
+                    kernel_message,
+                    kernel_features,
+                    txo_type,
+                )
+                .await
+            },
+        }
     }
 
     async fn get_txo_kernel_signature_excess_with_offset(
         &self,
-        spend_key_id: &tari_core::transactions::key_manager::TariKeyId,
-        nonce: &tari_core::transactions::key_manager::TariKeyId,
+        spend_key_id: &TariKeyId,
+        nonce_id: &TariKeyId,
     ) -> Result<PublicKey, TransactionError> {
-        todo!()
+        match self {
+            KeyManagerType::Ledger(km) => {
+                km.get_txo_kernel_signature_excess_with_offset(spend_key_id, nonce_id)
+                    .await
+            },
+            KeyManagerType::Console(km) => {
+                km.get_txo_kernel_signature_excess_with_offset(spend_key_id, nonce_id)
+                    .await
+            },
+        }
     }
 
     async fn get_txo_private_kernel_offset(
         &self,
-        spend_key_id: &tari_core::transactions::key_manager::TariKeyId,
-        nonce_id: &tari_core::transactions::key_manager::TariKeyId,
+        spend_key_id: &TariKeyId,
+        nonce_id: &TariKeyId,
     ) -> Result<PrivateKey, TransactionError> {
-        todo!()
+        match self {
+            KeyManagerType::Ledger(km) => km.get_txo_private_kernel_offset(spend_key_id, nonce_id).await,
+            KeyManagerType::Console(km) => km.get_txo_private_kernel_offset(spend_key_id, nonce_id).await,
+        }
     }
 
     async fn encrypt_data_for_recovery(
         &self,
-        spend_key_id: &tari_core::transactions::key_manager::TariKeyId,
-        custom_recovery_key_id: Option<&tari_core::transactions::key_manager::TariKeyId>,
+        spend_key_id: &TariKeyId,
+        custom_recovery_key_id: Option<&TariKeyId>,
         value: u64,
     ) -> Result<EncryptedData, TransactionError> {
-        todo!()
+        match self {
+            KeyManagerType::Ledger(km) => {
+                km.encrypt_data_for_recovery(spend_key_id, custom_recovery_key_id, value)
+                    .await
+            },
+            KeyManagerType::Console(km) => {
+                km.encrypt_data_for_recovery(spend_key_id, custom_recovery_key_id, value)
+                    .await
+            },
+        }
     }
 
     async fn try_output_key_recovery(
         &self,
         output: &TransactionOutput,
-        custom_recovery_key_id: Option<&tari_core::transactions::key_manager::TariKeyId>,
-    ) -> Result<(tari_core::transactions::key_manager::TariKeyId, MicroTari), TransactionError> {
-        todo!()
+        custom_recovery_key_id: Option<&TariKeyId>,
+    ) -> Result<(TariKeyId, MicroTari), TransactionError> {
+        match self {
+            KeyManagerType::Ledger(km) => km.try_output_key_recovery(output, custom_recovery_key_id).await,
+            KeyManagerType::Console(km) => km.try_output_key_recovery(output, custom_recovery_key_id).await,
+        }
     }
 
     async fn get_script_offset(
         &self,
-        script_key_ids: &[tari_core::transactions::key_manager::TariKeyId],
-        sender_offset_key_ids: &[tari_core::transactions::key_manager::TariKeyId],
+        script_key_ids: &[TariKeyId],
+        sender_offset_key_ids: &[TariKeyId],
     ) -> Result<PrivateKey, TransactionError> {
-        todo!()
+        match self {
+            KeyManagerType::Ledger(km) => km.get_script_offset(script_key_ids, sender_offset_key_ids).await,
+            KeyManagerType::Console(km) => km.get_script_offset(script_key_ids, sender_offset_key_ids).await,
+        }
     }
 
     async fn get_metadata_signature_ephemeral_commitment(
         &self,
-        nonce_id: &tari_core::transactions::key_manager::TariKeyId,
+        nonce_id: &TariKeyId,
         range_proof_type: RangeProofType,
     ) -> Result<Commitment, TransactionError> {
-        todo!()
+        match self {
+            KeyManagerType::Ledger(km) => {
+                km.get_metadata_signature_ephemeral_commitment(nonce_id, range_proof_type)
+                    .await
+            },
+            KeyManagerType::Console(km) => {
+                km.get_metadata_signature_ephemeral_commitment(nonce_id, range_proof_type)
+                    .await
+            },
+        }
     }
 
     async fn get_metadata_signature(
         &self,
-        spending_key_id: &tari_core::transactions::key_manager::TariKeyId,
+        spending_key_id: &TariKeyId,
         value_as_private_key: &PrivateKey,
-        sender_offset_key_id: &tari_core::transactions::key_manager::TariKeyId,
+        sender_offset_key_id: &TariKeyId,
         txo_version: &TransactionOutputVersion,
         metadata_signature_message: &[u8; 32],
         range_proof_type: RangeProofType,
     ) -> Result<ComAndPubSignature, TransactionError> {
-        todo!()
+        match self {
+            KeyManagerType::Ledger(km) => {
+                km.get_metadata_signature(
+                    spending_key_id,
+                    value_as_private_key,
+                    sender_offset_key_id,
+                    txo_version,
+                    metadata_signature_message,
+                    range_proof_type,
+                )
+                .await
+            },
+            KeyManagerType::Console(km) => {
+                km.get_metadata_signature(
+                    spending_key_id,
+                    value_as_private_key,
+                    sender_offset_key_id,
+                    txo_version,
+                    metadata_signature_message,
+                    range_proof_type,
+                )
+                .await
+            },
+        }
     }
 
     async fn get_receiver_partial_metadata_signature(
         &self,
-        spend_key_id: &tari_core::transactions::key_manager::TariKeyId,
+        spend_key_id: &TariKeyId,
         value: &PrivateKey,
         sender_offset_public_key: &PublicKey,
         ephemeral_pubkey: &PublicKey,
@@ -283,37 +415,88 @@ impl TransactionKeyManagerInterface for KeyManagerType {
         metadata_signature_message: &[u8; 32],
         range_proof_type: RangeProofType,
     ) -> Result<ComAndPubSignature, TransactionError> {
-        todo!()
+        match self {
+            KeyManagerType::Ledger(km) => {
+                km.get_receiver_partial_metadata_signature(
+                    spend_key_id,
+                    value,
+                    sender_offset_public_key,
+                    ephemeral_pubkey,
+                    txo_version,
+                    metadata_signature_message,
+                    range_proof_type,
+                )
+                .await
+            },
+            KeyManagerType::Console(km) => {
+                km.get_receiver_partial_metadata_signature(
+                    spend_key_id,
+                    value,
+                    sender_offset_public_key,
+                    ephemeral_pubkey,
+                    txo_version,
+                    metadata_signature_message,
+                    range_proof_type,
+                )
+                .await
+            },
+        }
     }
 
     async fn get_sender_partial_metadata_signature(
         &self,
-        ephemeral_private_nonce_id: &tari_core::transactions::key_manager::TariKeyId,
-        sender_offset_key_id: &tari_core::transactions::key_manager::TariKeyId,
+        ephemeral_private_nonce_id: &TariKeyId,
+        sender_offset_key_id: &TariKeyId,
         commitment: &Commitment,
         ephemeral_commitment: &Commitment,
         txo_version: &TransactionOutputVersion,
         metadata_signature_message: &[u8; 32],
     ) -> Result<ComAndPubSignature, TransactionError> {
-        todo!()
+        match self {
+            KeyManagerType::Ledger(km) => {
+                km.get_sender_partial_metadata_signature(
+                    ephemeral_private_nonce_id,
+                    sender_offset_key_id,
+                    commitment,
+                    ephemeral_commitment,
+                    txo_version,
+                    metadata_signature_message,
+                )
+                .await
+            },
+            KeyManagerType::Console(km) => {
+                km.get_sender_partial_metadata_signature(
+                    ephemeral_private_nonce_id,
+                    sender_offset_key_id,
+                    commitment,
+                    ephemeral_commitment,
+                    txo_version,
+                    metadata_signature_message,
+                )
+                .await
+            },
+        }
     }
 
     async fn generate_burn_proof(
         &self,
-        spending_key: &tari_core::transactions::key_manager::TariKeyId,
+        spending_key: &TariKeyId,
         amount: &PrivateKey,
         claim_public_key: &PublicKey,
     ) -> Result<RistrettoComSig, TransactionError> {
-        todo!()
+        match self {
+            KeyManagerType::Ledger(km) => km.generate_burn_proof(spending_key, amount, claim_public_key).await,
+            KeyManagerType::Console(km) => km.generate_burn_proof(spending_key, amount, claim_public_key).await,
+        }
     }
 }
 
 #[async_trait]
 impl SecretTransactionKeyManagerInterface for KeyManagerType {
-    async fn get_private_key(
-        &self,
-        key_id: &tari_core::transactions::key_manager::TariKeyId,
-    ) -> Result<PrivateKey, KeyManagerServiceError> {
-        todo!()
+    async fn get_private_key(&self, key_id: &TariKeyId) -> Result<PrivateKey, KeyManagerServiceError> {
+        match self {
+            KeyManagerType::Ledger(km) => km.get_private_key(key_id).await,
+            KeyManagerType::Console(km) => km.get_private_key(key_id).await,
+        }
     }
 }

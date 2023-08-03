@@ -5430,7 +5430,7 @@ pub unsafe extern "C" fn wallet_create(
     };
 
     let key_manager = match TransactionKeyManagerWrapper::new(
-        master_seed.clone(),
+        master_seed,
         KeyManagerDatabase::new(key_manager_backend),
         factories.clone(),
     ) {
