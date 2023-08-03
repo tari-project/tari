@@ -150,6 +150,20 @@ async fn test_monero_blocks() {
         },
     };
 
+    // lets try add some bad data to the block
+    let mut extra_bytes_block_3 = block_3.clone();
+    add_bad_monero_data(&mut extra_bytes_block_3, seed2);
+    match db.add_block(Arc::new(extra_bytes_block_3)) {
+        Err(ChainStorageError::ValidationError {
+            source: ValidationError::CustomError(_),
+        }) => (),
+        Err(e) => {
+            panic!("Failed due to other error:{:?}", e);
+        },
+        Ok(res) => {
+            panic!("Block add unexpectedly succeeded with result: {:?}", res);
+        },
+    };
     // now lets fix the seed, and try again
     add_monero_data(&mut block_3, seed2);
     // lets break the nonce count
@@ -196,6 +210,36 @@ fn add_monero_data(tblock: &mut Block, seed_key: &str) {
     };
     let mut serialized = Vec::new();
     BorshSerialize::serialize(&monero_data, &mut serialized).unwrap();
+    tblock.header.pow.pow_algo = PowAlgorithm::RandomX;
+    tblock.header.pow.pow_data = serialized;
+}
+
+fn add_bad_monero_data(tblock: &mut Block, seed_key: &str) {
+    let blocktemplate_blob =
+        "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000"
+            .to_string();
+    let bytes = hex::decode(blocktemplate_blob).unwrap();
+    let mut mblock = monero_rx::deserialize::<MoneroBlock>(&bytes[..]).unwrap();
+    let hash = tblock.header.mining_hash();
+    monero_rx::append_merge_mining_tag(&mut mblock, hash).unwrap();
+    let hashes = monero_rx::create_ordered_transaction_hashes_from_block(&mblock);
+    let merkle_root = monero_rx::tree_hash(&hashes).unwrap();
+    let coinbase_merkle_proof = monero_rx::create_merkle_proof(&hashes, &hashes[0]).unwrap();
+    #[allow(clippy::cast_possible_truncation)]
+    let monero_data = MoneroPowData {
+        header: mblock.header,
+        randomx_key: FixedByteArray::from_hex(seed_key).unwrap(),
+        transaction_count: hashes.len() as u16,
+        merkle_root,
+        coinbase_merkle_proof,
+        coinbase_tx: mblock.miner_tx,
+    };
+    let mut serialized = Vec::new();
+    // This version adds over and over some data to the serialized vector
+    BorshSerialize::serialize(&monero_data, &mut serialized).unwrap();
+    for _ in 1..100 {
+        BorshSerialize::serialize(&(1 << 30), &mut serialized).unwrap();
+    }
     tblock.header.pow.pow_algo = PowAlgorithm::RandomX;
     tblock.header.pow.pow_data = serialized;
 }

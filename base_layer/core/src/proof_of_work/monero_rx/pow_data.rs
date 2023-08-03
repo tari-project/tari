@@ -94,7 +94,14 @@ impl MoneroPowData {
     /// Create a new MoneroPowData struct from the given header
     pub fn from_header(tari_header: &BlockHeader) -> Result<MoneroPowData, MergeMineError> {
         let mut v = tari_header.pow.pow_data.as_slice();
-        BorshDeserialize::deserialize(&mut v).map_err(|e| MergeMineError::DeserializeError(format!("{:?}", e)))
+        let pow_data =
+            BorshDeserialize::deserialize(&mut v).map_err(|e| MergeMineError::DeserializeError(format!("{:?}", e)))?;
+        if !v.is_empty() {
+            return Err(MergeMineError::DeserializeError(
+                "Bytes leftover after deserialize".to_string(),
+            ));
+        }
+        Ok(pow_data)
     }
 
     /// Returns true if the coinbase merkle proof produces the `merkle_root` hash, otherwise false
