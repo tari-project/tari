@@ -435,8 +435,8 @@ pub async fn init_wallet(
     let factories = CryptoFactories::default();
 
     let master_seed = read_or_create_master_seed(recovery_seed.clone(), &wallet_db)?;
-    let _wallet_type = read_or_create_wallet_type(wallet_type, &wallet_db);
-    let key_manager_interface = match _wallet_type {
+    let wallet_type = read_or_create_wallet_type(wallet_type, &wallet_db);
+    let key_manager_interface = match wallet_type {
         Ok(WalletType::Software) => KeyManagerType::Console(
             TransactionKeyManagerWrapper::new(
                 master_seed.clone(),
