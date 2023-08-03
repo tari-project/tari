@@ -81,6 +81,7 @@ use minotari_wallet::{
 };
 use prost::Message;
 use rand::{rngs::OsRng, RngCore};
+use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     tari_address::TariAddress,
@@ -226,7 +227,8 @@ async fn setup_transaction_service<P: AsRef<Path>>(
     OsRng.fill_bytes(&mut key);
     let key_ga = Key::from_slice(&key);
     let db_cipher = XChaCha20Poly1305::new(key_ga);
-    let kms_backend = KeyManagerSqliteDatabase::init(db_connection.clone(), db_cipher);
+    let connection = DbConnection::connect_url(&DbConnectionUrl::MemoryShared(random_string(8))).unwrap();
+    let kms_backend = KeyManagerSqliteDatabase::init(connection.clone(), db_cipher);
     let key_manager =
         TransactionKeyManagerWrapper::new(cipher, KeyManagerDatabase::new(kms_backend), factories.clone())
             .expect("To get a key manager wrapper");
@@ -244,9 +246,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
             Network::LocalNet.into(),
             wallet_identity.clone(),
         ))
-        .add_initializer(TransactionKeyManagerInitializer::new(KeyManagerType::Console(
-            key_manager,
-        )))
+        .add_initializer(TransactionKeyManagerInitializer::new(key_manager))
         .add_initializer(TransactionServiceInitializer::<_, _, TestKeyManager>::new(
             TransactionServiceConfig {
                 broadcast_monitoring_timeout: Duration::from_secs(5),

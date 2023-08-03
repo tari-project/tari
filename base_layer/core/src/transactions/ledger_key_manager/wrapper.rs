@@ -47,7 +47,7 @@ use crate::transactions::{
         TransactionKeyManagerInterface,
         TxoStage,
     },
-    tari_amount::MicroTari,
+    tari_amount::MicroMinotari,
     transaction_components::{
         EncryptedData,
         KernelFeatures,
@@ -347,7 +347,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         &self,
         output: &TransactionOutput,
         custom_recovery_key_id: Option<&TariKeyId>,
-    ) -> Result<(TariKeyId, MicroTari), TransactionError> {
+    ) -> Result<(TariKeyId, MicroMinotari), TransactionError> {
         self.transaction_key_manager_inner
             .read()
             .await

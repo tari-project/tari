@@ -34,7 +34,7 @@ use tari_core::transactions::{
         TxoStage,
     },
     ledger_key_manager::TransactionKeyManagerLedgerWrapper,
-    tari_amount::MicroTari,
+    tari_amount::MicroMinotari,
     transaction_components::{
         EncryptedData,
         KernelFeatures,
@@ -335,7 +335,7 @@ impl TransactionKeyManagerInterface for KeyManagerType {
         &self,
         output: &TransactionOutput,
         custom_recovery_key_id: Option<&TariKeyId>,
-    ) -> Result<(TariKeyId, MicroTari), TransactionError> {
+    ) -> Result<(TariKeyId, MicroMinotari), TransactionError> {
         match self {
             KeyManagerType::Ledger(km) => km.try_output_key_recovery(output, custom_recovery_key_id).await,
             KeyManagerType::Console(km) => km.try_output_key_recovery(output, custom_recovery_key_id).await,

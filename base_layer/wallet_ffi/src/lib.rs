@@ -137,6 +137,7 @@ use tari_core::{
     borsh::FromBytes,
     consensus::ConsensusManager,
     transactions::{
+        key_manager::TransactionKeyManagerWrapper,
         tari_amount::MicroMinotari,
         transaction_components::{OutputFeatures, OutputFeaturesVersion, OutputType, RangeProofType, UnblindedOutput},
         CryptoFactories,
@@ -146,7 +147,12 @@ use tari_crypto::{
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     tari_utilities::{ByteArray, Hidden},
 };
-use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage, SeedWords};
+use tari_key_manager::{
+    cipher_seed::CipherSeed,
+    key_manager_service::storage::database::KeyManagerDatabase,
+    mnemonic::MnemonicLanguage,
+    SeedWords,
+};
 use tari_p2p::{
     auto_update::AutoUpdateConfig,
     transport::MemoryTransportConfig,

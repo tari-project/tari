@@ -70,7 +70,7 @@ use crate::{
     common::ConfidentialOutputHasher,
     transactions::{
         key_manager::{TariKeyId, TransactionKeyManagerBranch, TxoStage},
-        tari_amount::MicroTari,
+        tari_amount::MicroMinotari,
         transaction_components::{
             EncryptedData,
             RangeProofType,
@@ -828,7 +828,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         &self,
         output: &TransactionOutput,
         custom_recovery_key_id: Option<&TariKeyId>,
-    ) -> Result<(TariKeyId, MicroTari), TransactionError> {
+    ) -> Result<(TariKeyId, MicroMinotari), TransactionError> {
         let recovery_key = if let Some(key_id) = custom_recovery_key_id {
             self.get_private_key(key_id).await?
         } else {

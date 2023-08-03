@@ -34,10 +34,12 @@ use minotari_wallet::{
         database::{WalletBackend, WalletDatabase},
         sqlite_utilities::initialize_sqlite_database_backends,
     },
-    wallet::{derive_comms_secret_key, read_or_create_master_seed},
+    wallet::{derive_comms_secret_key, read_or_create_master_seed, read_or_create_wallet_type},
+    KeyManagerType,
     Wallet,
     WalletConfig,
     WalletSqlite,
+    WalletType,
 };
 use rpassword::prompt_password_stdout;
 use rustyline::Editor;
