@@ -443,7 +443,7 @@ pub async fn init_wallet(
                 KeyManagerDatabase::new(key_manager_backend),
                 factories.clone(),
             )
-            .unwrap(),
+            .map_err(Into::<WalletError>::into)?,
         ),
         WalletType::Ledger => KeyManagerType::Ledger(
             TransactionKeyManagerLedgerWrapper::new(
@@ -451,7 +451,7 @@ pub async fn init_wallet(
                 KeyManagerDatabase::new(key_manager_backend),
                 factories.clone(),
             )
-            .unwrap(),
+            .map_err(Into::<WalletError>::into)?,
         ),
     };
 
