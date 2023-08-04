@@ -435,9 +435,9 @@ pub async fn init_wallet(
     let factories = CryptoFactories::default();
 
     let master_seed = read_or_create_master_seed(recovery_seed.clone(), &wallet_db)?;
-    let wallet_type = read_or_create_wallet_type(wallet_type, &wallet_db);
+    let wallet_type = read_or_create_wallet_type(wallet_type, &wallet_db)?;
     let key_manager_interface = match wallet_type {
-        Ok(WalletType::Software) => KeyManagerType::Console(
+        WalletType::Software => KeyManagerType::Console(
             TransactionKeyManagerWrapper::new(
                 master_seed.clone(),
                 KeyManagerDatabase::new(key_manager_backend),
@@ -445,7 +445,7 @@ pub async fn init_wallet(
             )
             .unwrap(),
         ),
-        Ok(WalletType::Ledger) => KeyManagerType::Ledger(
+        WalletType::Ledger => KeyManagerType::Ledger(
             TransactionKeyManagerLedgerWrapper::new(
                 master_seed.clone(),
                 KeyManagerDatabase::new(key_manager_backend),
@@ -453,9 +453,6 @@ pub async fn init_wallet(
             )
             .unwrap(),
         ),
-        Err(_) => {
-            panic!("error")
-        },
     };
 
     let node_identity = match config.wallet.identity_file.as_ref() {
@@ -810,16 +807,16 @@ pub(crate) fn boot_with_password(
 }
 
 pub fn prompt_wallet_type(
-    boot_mode: &WalletBoot,
+    boot_mode: WalletBoot,
     wallet_config: &WalletConfig,
-    non_interactive: &bool,
-) -> Option<WalletType> {
-    if *non_interactive {
-        return Some(WalletType::Software);
+    non_interactive: bool,
+) -> Result<Option<WalletType>, ExitError> {
+    if non_interactive {
+        return Ok(Some(WalletType::Software));
     }
 
     if wallet_config.wallet_type.is_some() {
-        return wallet_config.wallet_type;
+        return Ok(wallet_config.wallet_type);
     }
 
     match boot_mode {
@@ -830,15 +827,15 @@ pub fn prompt_wallet_type(
                 match TransportNativeHID::new(&HidApi::new().expect(err)) {
                     Ok(_) => {
                         println!("Device found.");
-                        Some(WalletType::Ledger)
+                        Ok(Some(WalletType::Ledger))
                     },
-                    Err(_) => panic!("{}", err),
+                    Err(e) => Err(ExitError::new(ExitCode::InterfaceError, e)),
                 }
             } else {
-                Some(WalletType::Software)
+                Ok(Some(WalletType::Software))
             }
         },
-        _ => None,
+        _ => Ok(None),
     }
 }
 
