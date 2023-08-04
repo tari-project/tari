@@ -237,7 +237,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     }
 
     /// Search the specified branch key manager key chain to find the index of the specified private key.
-    pub async fn find_private_key_index(&self, branch: &str, key: &PrivateKey) -> Result<u64, KeyManagerServiceError> {
+    async fn find_private_key_index(&self, branch: &str, key: &PrivateKey) -> Result<u64, KeyManagerServiceError> {
         let km = self
             .key_managers
             .get(branch)
@@ -288,7 +288,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         Ok(key_id)
     }
 
-    pub async fn get_private_key(&self, key_id: &TariKeyId) -> Result<PrivateKey, KeyManagerServiceError> {
+    pub(crate) async fn get_private_key(&self, key_id: &TariKeyId) -> Result<PrivateKey, KeyManagerServiceError> {
         match key_id {
             KeyId::Managed { branch, index } => {
                 let km = self
@@ -515,7 +515,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         Ok(script_offset)
     }
 
-    pub async fn get_metadata_signature_ephemeral_private_key_pair(
+    async fn get_metadata_signature_ephemeral_private_key_pair(
         &self,
         nonce_id: &TariKeyId,
         range_proof_type: RangeProofType,
@@ -791,7 +791,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
     // Encrypted data section (transactions > transaction_components > encrypted_data)
     // -----------------------------------------------------------------------------------------------------------------
 
-    pub async fn get_recovery_key(&self) -> Result<PrivateKey, KeyManagerServiceError> {
+    async fn get_recovery_key(&self) -> Result<PrivateKey, KeyManagerServiceError> {
         let recovery_id = KeyId::Managed {
             branch: TransactionKeyManagerBranch::DataEncryption.get_branch_key(),
             index: 0,
