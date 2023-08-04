@@ -72,7 +72,7 @@ pub enum LivenessStatus {
 
 pub struct LivenessCheck<TTransport> {
     transport: TTransport,
-    address: Multiaddr,
+    addresses: Vec<Multiaddr>,
     interval: Duration,
     tx_watch: watch::Sender<LivenessStatus>,
     shutdown_signal: ShutdownSignal,
@@ -85,14 +85,14 @@ where
 {
     pub fn spawn(
         transport: TTransport,
-        address: Multiaddr,
+        addresses: Vec<Multiaddr>,
         interval: Duration,
         shutdown_signal: ShutdownSignal,
     ) -> watch::Receiver<LivenessStatus> {
         let (tx_watch, rx_watch) = watch::channel(LivenessStatus::Checking);
         let check = Self {
             transport,
-            address,
+            addresses,
             interval,
             tx_watch,
             shutdown_signal,
@@ -113,17 +113,28 @@ where
             target: LOG_TARGET,
             "🔌️ Starting liveness self-check with interval {:.2?}", self.interval
         );
+        let mut address_idx = 0;
+        let mut last_working_address = None;
         loop {
             let timer = Instant::now();
             let _ = self.tx_watch.send(LivenessStatus::Checking);
-            match self.transport.dial(&self.address).await {
+            let address = last_working_address
+                .clone()
+                .unwrap_or(self.addresses[address_idx].clone());
+            match self.transport.dial(&address).await {
                 Ok(mut socket) => {
-                    debug!(target: LOG_TARGET, "🔌 liveness dial took {:.2?}", timer.elapsed());
+                    debug!(
+                        target: LOG_TARGET,
+                        "🔌 liveness dial ({}) took {:.2?}",
+                        address,
+                        timer.elapsed()
+                    );
                     if let Err(err) = socket.write(&[WireMode::Liveness.as_byte()]).await {
                         warn!(target: LOG_TARGET, "🔌️ liveness failed to write byte: {}", err);
                         self.tx_watch.send_replace(LivenessStatus::Unreachable);
                         continue;
                     }
+                    last_working_address = Some(address);
                     let mut framed = Framed::new(socket, LinesCodec::new_with_max_length(MAX_LINE_LENGTH));
                     loop {
                         match self.ping_pong(&mut framed).await {
@@ -148,10 +159,11 @@ where
                     }
                 },
                 Err(err) => {
+                    address_idx = (address_idx + 1) % self.addresses.len();
                     self.tx_watch.send_replace(LivenessStatus::Unreachable);
                     warn!(
                         target: LOG_TARGET,
-                        "🔌️ Failed to dial public address for self check: {}", err
+                        "🔌️ Failed to dial public address {} for self check: {}", address, err
                     );
                 },
             }
