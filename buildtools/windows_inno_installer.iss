@@ -33,9 +33,9 @@
 #define BaseNodeName "Base Node"
 #define BaseNodeExeName "start_tari_base_node.bat"
 #define ConsoleWalletName "Console Wallet"
-#define ConsoleWalletExeName "start_tari_console_wallet.bat"
+#define ConsoleWalletExeName "start_minotari_wallet.bat"
 #define MinerName "Miner"
-#define MinerExeName "start_tari_miner.bat"
+#define MinerExeName "start_minotari_miner.bat"
 #define TorServicesName "Tor Services"
 #define TorServicesExeName "start_tor.bat"
 #define MergeMiningProxyName "Merge Mining Proxy"
@@ -63,14 +63,14 @@ DefaultDirName={userdocs}\..\.tari-testnet
 DefaultGroupName={#MyOrgName} - Testnet
 AllowNoIcons=yes
 LicenseFile=..\LICENSE
-OutputBaseFilename=tari_base_node-Windows-{#MyAppVersion}
+OutputBaseFilename=minotari_suite-Windows-{#MyAppVersion}
 SetupIconFile=.\tari_logo_black.ico
 Compression=lzma
 SolidCompression=yes
 MinVersion=0,6.1
 VersionInfoCompany=The Tari Developer Community
-VersionInfoProductName=tari_base_node
-InfoAfterFile="..\applications\tari_base_node\windows\README.md"
+VersionInfoProductName=minotari_suite
+InfoAfterFile="..\applications\minotari_node\windows\README.md"
 ;SignTool=SignTool
 
 PrivilegesRequired=none
@@ -92,31 +92,31 @@ Name: ".\generate_config.bat"; Flags: abortonerror cmdprompt redirectoutput
 [Files]
 Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.md"; Flags: ignoreversion
 Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
-Source: "..\applications\tari_base_node\windows\README.md"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\applications\tari_base_node\windows\README.md"; DestDir: "{app}"; DestName: "README.txt"; Flags: ignoreversion
-Source: "..\applications\tari_base_node\windows\start_all.lnk"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\applications\tari_base_node\windows\start_tari_base_node.lnk"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\applications\tari_console_wallet\windows\start_tari_console_wallet.lnk"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\applications\tari_miner\windows\start_tari_miner.lnk"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\applications\tari_merge_mining_proxy\windows\start_tari_merge_mining_proxy.lnk"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\applications\tari_merge_mining_proxy\windows\start_xmrig.lnk"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\applications\tari_base_node\windows\start_tor.lnk"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#TariSuitePath}\tari_base_node.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "{#TariSuitePath}\tari_console_wallet.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "{#TariSuitePath}\tari_miner.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "{#TariSuitePath}\tari_merge_mining_proxy.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "..\applications\tari_base_node\windows\runtime\start_all.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "..\applications\tari_base_node\windows\runtime\start_tor.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "..\applications\tari_base_node\windows\runtime\source_base_node_env.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "..\applications\tari_base_node\windows\runtime\start_tari_base_node.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "..\applications\tari_console_wallet\windows\runtime\source_console_wallet_env.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "..\applications\tari_console_wallet\windows\runtime\start_tari_console_wallet.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "..\applications\tari_miner\windows\runtime\source_miner_env.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "..\applications\tari_miner\windows\runtime\start_tari_miner.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "..\applications\tari_merge_mining_proxy\windows\runtime\source_merge_mining_proxy_env.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "..\applications\tari_merge_mining_proxy\windows\runtime\start_tari_merge_mining_proxy.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "..\applications\tari_merge_mining_proxy\windows\runtime\source_xmrig_env.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "..\applications\tari_merge_mining_proxy\windows\runtime\start_xmrig.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\minotari_node\windows\README.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\applications\minotari_node\windows\README.md"; DestDir: "{app}"; DestName: "README.txt"; Flags: ignoreversion
+Source: "..\applications\minotari_node\windows\start_all.lnk"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\applications\minotari_node\windows\start_tari_base_node.lnk"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\applications\minotari_console_wallet\windows\start_minotari_wallet.lnk"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\applications\minotari_miner\windows\start_minotari_miner.lnk"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\applications\minotari_merge_mining_proxy\windows\start_tari_merge_mining_proxy.lnk"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\applications\minotari_merge_mining_proxy\windows\start_xmrig.lnk"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\applications\minotari_node\windows\start_tor.lnk"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#TariSuitePath}\minotari_node.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "{#TariSuitePath}\minotari_console_wallet.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "{#TariSuitePath}\minotari_miner.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "{#TariSuitePath}\minotari_merge_mining_proxy.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\minotari_node\windows\runtime\start_all.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\minotari_node\windows\runtime\start_tor.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\minotari_node\windows\runtime\source_base_node_env.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\minotari_node\windows\runtime\start_tari_base_node.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\minotari_console_wallet\windows\runtime\source_minotari_wallet_env.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\minotari_console_wallet\windows\runtime\start_minotari_wallet.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\minotari_miner\windows\runtime\source_miner_env.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\minotari_miner\windows\runtime\start_minotari_miner.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\minotari_merge_mining_proxy\windows\runtime\source_merge_mining_proxy_env.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\minotari_merge_mining_proxy\windows\runtime\start_tari_merge_mining_proxy.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\minotari_merge_mining_proxy\windows\runtime\source_xmrig_env.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\minotari_merge_mining_proxy\windows\runtime\start_xmrig.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: ".\tari_config_example.toml"; DestDir: "{app}\config"; DestName: "config.toml"; Flags: ignoreversion
 Source: "tari_logo_purple.ico"; DestDir: "{userdocs}\..\temp\tari_icons"; Flags: ignoreversion
 Source: "tor.ico"; DestDir: "{userdocs}\..\temp\tari_icons"; Flags: ignoreversion
@@ -168,8 +168,8 @@ Type: files; Name: "{app}\README.md"
 Type: files; Name: "{app}\README.txt"
 Type: files; Name: "{app}\start_all.lnk"
 Type: files; Name: "{app}\start_tari_base_node.lnk"
-Type: files; Name: "{app}\start_tari_console_wallet.lnk"
-Type: files; Name: "{app}\start_tari_miner.lnk"
+Type: files; Name: "{app}\start_minotari_wallet.lnk"
+Type: files; Name: "{app}\start_minotari_miner.lnk"
 Type: files; Name: "{app}\start_tari_merge_mining_proxy.lnk"
 Type: files; Name: "{app}\start_xmrig.lnk"
 Type: files; Name: "{app}\start_tor.lnk"
