@@ -1497,7 +1497,7 @@ async fn validation_reject_min_fee() {
     validator.validate(&tx, None, None, u64::MAX).unwrap();
     let response = mempool.insert(Arc::new(tx)).await.unwrap();
     // make sure the tx was not accepted into the mempool
-    assert!(matches!(response, TxStorageResponse::NotStoredFeeToLow));
+    assert!(matches!(response, TxStorageResponse::NotStoredFeeTooLow));
 }
 
 #[tokio::test]

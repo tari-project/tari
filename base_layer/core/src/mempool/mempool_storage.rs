@@ -89,7 +89,7 @@ impl MempoolStorage {
                 let timer = Instant::now();
                 let weight = self.get_transaction_weighting();
                 if tx.body.get_total_fee().as_u64() < self.unconfirmed_pool.config.min_fee {
-                    warn!(target: LOG_TARGET, "Tx: ({}) fee too low, rejecting",tx_id);
+                    debug!(target: LOG_TARGET, "Tx: ({}) fee too low, rejecting",tx_id);
                     return Ok(TxStorageResponse::NotStoredFeeTooLow);
                 }
                 self.unconfirmed_pool.insert(tx, None, &weight)?;
@@ -105,7 +105,7 @@ impl MempoolStorage {
                 if self.unconfirmed_pool.contains_all_outputs(&dependent_outputs) {
                     let weight = self.get_transaction_weighting();
                     if tx.body.get_total_fee().as_u64() < self.unconfirmed_pool.config.min_fee {
-                        warn!(target: LOG_TARGET, "Tx: ({}) fee too low, rejecting",tx_id);
+                        debug!(target: LOG_TARGET, "Tx: ({}) fee too low, rejecting",tx_id);
                         return Ok(TxStorageResponse::NotStoredFeeTooLow);
                     }
                     self.unconfirmed_pool.insert(tx, Some(dependent_outputs), &weight)?;
