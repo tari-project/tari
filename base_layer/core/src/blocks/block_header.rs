@@ -228,6 +228,7 @@ impl BlockHeader {
             .chain(&self.kernel_mmr_size)
             .chain(&self.total_kernel_offset)
             .chain(&self.total_script_offset)
+            .chain(&self.validator_node_mr)
             .finalize()
             .into()
     }
