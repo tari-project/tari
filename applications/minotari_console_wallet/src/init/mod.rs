@@ -508,7 +508,7 @@ async fn detect_local_base_node(network: Network) -> Option<SeedPeer> {
         .public_addresses
         .iter()
         .filter_map(|s| Multiaddr::from_str(s).ok())
-        .collect();
+        .collect::<Vec<_>>();
     debug!(
         target: LOG_TARGET,
         "Local base node found with pk={} and addresses={}",
