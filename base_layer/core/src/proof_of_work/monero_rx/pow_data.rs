@@ -98,7 +98,7 @@ impl MoneroPowData {
             BorshDeserialize::deserialize(&mut v).map_err(|e| MergeMineError::DeserializeError(format!("{:?}", e)))?;
         if !v.is_empty() {
             return Err(MergeMineError::DeserializeError(
-                "Bytes leftover after deserialize".to_string(),
+                format!("{} bytes leftover after deserialize", v.len())
             ));
         }
         Ok(pow_data)
