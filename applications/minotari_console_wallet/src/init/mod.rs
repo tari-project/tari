@@ -300,7 +300,12 @@ pub async fn get_base_node_peer_config(
                     println!(
                         "Local Base Node detected with public key {} and address {}",
                         detected_node.public_key,
-                        detected_node.addresses.first().unwrap()
+                        detected_node
+                            .addresses
+                            .iter()
+                            .map(ToString::to_string)
+                            .collect::<Vec<_>>()
+                            .join(", ")
                     );
                     if prompt(
                         "Would you like to use this base node? IF YOU DID NOT START THIS BASE NODE YOU SHOULD SELECT \
@@ -499,14 +504,18 @@ async fn detect_local_base_node(network: Network) -> Option<SeedPeer> {
     let resp = node_conn.identify(Empty {}).await.ok()?;
     let identity = resp.get_ref();
     let public_key = CommsPublicKey::from_bytes(&identity.public_key).ok()?;
-    let address = Multiaddr::from_str(identity.public_addresses.first()?).ok()?;
+    let addresses = identity
+        .public_addresses
+        .iter()
+        .filter_map(|s| Multiaddr::from_str(s).ok())
+        .collect();
     debug!(
         target: LOG_TARGET,
-        "Local base node found with pk={} and addr={}",
+        "Local base node found with pk={} and addresses={}",
         public_key.to_hex(),
-        address
+        addresses.iter().map(|a| a.to_string()).collect::<Vec<_>>().join(",")
     );
-    Some(SeedPeer::new(public_key, vec![address]))
+    Some(SeedPeer::new(public_key, addresses))
 }
 
 fn setup_identity_from_db<D: WalletBackend + 'static>(
