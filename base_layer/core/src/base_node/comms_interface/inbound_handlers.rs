@@ -453,6 +453,10 @@ where B: BlockchainBackend + 'static
         }
 
         // lets check that the difficulty at least matches the min required difficulty
+        // We cannot check the target difficulty as orphan blocks dont have a target difficulty.
+        // All we care here is that bad blocks are not free to make, and that they are more expensive to make then they
+        // are to validate. As soon as a block can be linked to the main chain, a proper full proof of work check will
+        // be done before any other validation.
         let constants = self.consensus_manager.consensus_constants(new_block.header.height);
         let min_difficulty = constants.min_pow_difficulty(new_block.header.pow.pow_algo);
         let achieved = match new_block.header.pow_algo() {
