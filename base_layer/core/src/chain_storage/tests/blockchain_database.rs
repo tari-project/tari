@@ -640,9 +640,12 @@ mod validator_node_merkle_root {
         let (blocks, outputs) = add_many_chained_blocks(1, &db, &key_manager).await;
 
         let (sk, public_key) = PublicKey::random_keypair(&mut OsRng);
-        let signature = ValidatorNodeSignature::sign(&sk, &[]);
-        let features =
-            OutputFeatures::for_validator_node_registration(public_key.clone(), signature.signature().clone());
+        let signature = ValidatorNodeSignature::sign(&sk, &public_key, &[]);
+        let features = OutputFeatures::for_validator_node_registration(
+            public_key.clone(),
+            signature.signature().clone(),
+            public_key.clone(),
+        );
         let (tx, _outputs) = schema_to_transaction(
             &[txn_schema!(
                 from: vec![outputs[0].clone()],
