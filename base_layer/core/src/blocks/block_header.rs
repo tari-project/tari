@@ -233,10 +233,11 @@ impl BlockHeader {
     }
 
     pub fn merge_mining_hash(&self) -> FixedHash {
-     let mut mining_hash = self.mining_hash();
+        let mut mining_hash = self.mining_hash();
         mining_hash[0..4].copy_from_slice(b"TARI"); // Maybe put this in a `const`
         mining_hash
     }
+
     #[inline]
     pub fn timestamp(&self) -> EpochTime {
         self.timestamp
