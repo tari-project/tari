@@ -448,28 +448,8 @@ where B: BlockchainBackend + 'static
         }
 
         // Lets check if the block exists before we try and ask for a complete block
-        if self.blockchain_db.block_exists(block_hash).await? {
-            debug!(
-                target: LOG_TARGET,
-                "Block with hash `{}` already stored",
-                block_hash.to_hex()
-            );
+        if self.is_block_valid_and_exists(block_hash).await? {
             return Ok(());
-        }
-
-        if self.blockchain_db.bad_block_exists(block_hash).await? {
-            debug!(
-                target: LOG_TARGET,
-                "Block with hash `{}` already validated as a bad block",
-                block_hash.to_hex()
-            );
-            return Err(CommsInterfaceError::ChainStorageError(
-                ChainStorageError::ValidationError {
-                    source: ValidationError::BadBlockFound {
-                        hash: block_hash.to_hex(),
-                    },
-                },
-            ));
         }
 
         // lets check that the difficulty at least matches the min required difficulty
@@ -506,14 +486,10 @@ where B: BlockchainBackend + 'static
         }
         {
             let mut write_lock = self.list_of_reconciling_blocks.write().await;
-            if self.blockchain_db.block_exists(block_hash).await? {
-                debug!(
-                    target: LOG_TARGET,
-                    "Block with hash `{}` already stored",
-                    block_hash.to_hex()
-                );
+            if self.is_block_valid_and_exists(block_hash).await? {
                 return Ok(());
             }
+
             if !write_lock.insert(block_hash) {
                 debug!(
                     target: LOG_TARGET,
@@ -540,6 +516,30 @@ where B: BlockchainBackend + 'static
         }
         result?;
         Ok(())
+    }
+
+    async fn is_block_valid_and_exists(&self, block: FixedHash) -> Result<bool, CommsInterfaceError> {
+        if self.blockchain_db.block_exists(block).await? {
+            debug!(
+                target: LOG_TARGET,
+                "Block with hash `{}` already stored",
+                block.to_hex()
+            );
+            return Ok(true);
+        }
+        if self.blockchain_db.bad_block_exists(block).await? {
+            debug!(
+                target: LOG_TARGET,
+                "Block with hash `{}` already validated as a bad block",
+                block.to_hex()
+            );
+            return Err(CommsInterfaceError::ChainStorageError(
+                ChainStorageError::ValidationError {
+                    source: ValidationError::BadBlockFound { hash: block.to_hex() },
+                },
+            ));
+        }
+        Ok(false)
     }
 
     async fn reconcile_and_add_block(
