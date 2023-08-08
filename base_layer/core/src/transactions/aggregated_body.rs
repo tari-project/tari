@@ -452,6 +452,7 @@ mod test {
     #[test]
     fn test_sorted() {
         let mut body = AggregateBody::empty();
+        assert!(body.is_sorted());
         let kernel = TransactionKernel::new_current_version(
             KernelFeatures::default(),
             0.into(),
@@ -487,6 +488,8 @@ mod test {
         body.add_output(output.clone());
         assert!(body.is_sorted());
         assert!(!body.sorted);
+        body.sort();
+        assert!(body.sorted);
 
         let mut body2 = body.clone();
         body2.add_kernel(kernel);
