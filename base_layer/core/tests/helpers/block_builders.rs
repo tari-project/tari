@@ -196,12 +196,12 @@ fn update_genesis_block_mmr_roots(template: NewBlockTemplate) -> Result<Block, C
             .get_merkle_root()?,
     )
     .unwrap();
-    header.output_mr = FixedHash::try_from(
-        MutableOutputMmr::new(out_hashes, Bitmap::create())
-            .unwrap()
-            .get_merkle_root()?,
-    )
-    .unwrap();
+    let mut mmr = MutableOutputMmr::new(Vec::<Vec<u8>>::new(), Bitmap::create()).unwrap();
+    for output in out_hashes {
+        let _ = mmr.push(output).unwrap();
+    }
+
+    header.output_mr = FixedHash::try_from(mmr.get_merkle_root()?).unwrap();
     Ok(Block { header, body })
 }
 
