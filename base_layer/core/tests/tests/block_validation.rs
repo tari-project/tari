@@ -33,7 +33,7 @@ use tari_core::{
     consensus::{consensus_constants::PowAlgorithmConstants, ConsensusConstantsBuilder, ConsensusManager},
     proof_of_work::{
         monero_rx,
-        monero_rx::{FixedByteArray, MoneroPowData},
+        monero_rx::{verify_header, FixedByteArray, MoneroPowData},
         randomx_factory::RandomXFactory,
         Difficulty,
         PowAlgorithm,
@@ -152,7 +152,26 @@ async fn test_monero_blocks() {
 
     // now lets fix the seed, and try again
     add_monero_data(&mut block_3, seed2);
-    assert_block_add_result_added(&db.add_block(Arc::new(block_3)).unwrap());
+    // lets break the nonce count
+    let hash1 = block_3.hash();
+    block_3.header.nonce = 1;
+    let hash2 = block_3.hash();
+    assert_ne!(hash1, hash2);
+    assert!(verify_header(&block_3.header).is_ok());
+    match db.add_block(Arc::new(block_3.clone())) {
+        Err(ChainStorageError::ValidationError {
+            source: ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidNonce),
+        }) => (),
+        Err(e) => {
+            panic!("Failed due to other error:{:?}", e);
+        },
+        Ok(res) => {
+            panic!("Block add unexpectedly succeeded with result: {:?}", res);
+        },
+    };
+    // lets fix block3
+    block_3.header.nonce = 0;
+    assert_block_add_result_added(&db.add_block(Arc::new(block_3.clone())).unwrap());
 }
 
 fn add_monero_data(tblock: &mut Block, seed_key: &str) {

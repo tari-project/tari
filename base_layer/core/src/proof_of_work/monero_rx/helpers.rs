@@ -72,7 +72,7 @@ fn get_random_x_difficulty(input: &[u8], vm: &RandomXVMInstance) -> Result<(Diff
 /// 1. The merkle proof and coinbase hash produce a matching merkle root
 ///
 /// If these assertions pass, a valid `MoneroPowData` instance is returned
-fn verify_header(header: &BlockHeader) -> Result<MoneroPowData, MergeMineError> {
+pub fn verify_header(header: &BlockHeader) -> Result<MoneroPowData, MergeMineError> {
     let monero_data = MoneroPowData::from_header(header)?;
     let expected_merge_mining_hash = header.mining_hash();
     let extra_field = ExtraField::try_parse(&monero_data.coinbase_tx.prefix.extra)
