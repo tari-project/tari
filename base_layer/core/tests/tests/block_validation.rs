@@ -286,10 +286,12 @@ async fn inputs_are_not_malleable() {
         .await
         .unwrap();
 
-    let input_mut = block.body.inputs_mut().get_mut(0).unwrap();
+    let mut inputs = block.body.inputs().clone();
     // Put the crafted input into the block
-    input_mut.input_data = malicious_input.input_data;
-    input_mut.script_signature = malicious_input.script_signature;
+    inputs[0].input_data = malicious_input.input_data;
+    inputs[0].script_signature = malicious_input.script_signature;
+
+    block.body = AggregateBody::new(inputs, block.body.outputs().clone(), block.body.kernels().clone());
 
     let validator = BlockBodyFullValidator::new(blockchain.consensus_manager().clone(), true);
     let txn = blockchain.store().db_read_access().unwrap();

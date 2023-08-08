@@ -104,35 +104,14 @@ impl AggregateBody {
         &self.inputs
     }
 
-    /// Should be used for tests only. Get a mutable reference to the inputs
-    /// This will set the sorted flag to false
-    pub fn inputs_mut(&mut self) -> &mut Vec<TransactionInput> {
-        self.sorted = false;
-        &mut self.inputs
-    }
-
     /// Provide read-only access to the output list
     pub fn outputs(&self) -> &Vec<TransactionOutput> {
         &self.outputs
     }
 
-    /// Should be used for tests only. Get a mutable reference to the outputs
-    /// This will set the sorted flag to false
-    pub fn outputs_mut(&mut self) -> &mut Vec<TransactionOutput> {
-        self.sorted = false;
-        &mut self.outputs
-    }
-
     /// Provide read-only access to the kernel list
     pub fn kernels(&self) -> &Vec<TransactionKernel> {
         &self.kernels
-    }
-
-    /// Should be used for tests only. Get a mutable reference to the kernels
-    /// This will set the sorted flag to false
-    pub fn kernels_mut(&mut self) -> &mut Vec<TransactionKernel> {
-        self.sorted = false;
-        &mut self.kernels
     }
 
     /// Add an input to the existing aggregate body
