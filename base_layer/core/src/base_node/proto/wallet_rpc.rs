@@ -45,6 +45,7 @@ pub enum TxSubmissionRejectionReason {
     Orphan,
     TimeLocked,
     ValidationFailed,
+    FeeTooLow,
 }
 
 impl Display for TxSubmissionRejectionReason {
@@ -57,6 +58,7 @@ impl Display for TxSubmissionRejectionReason {
             Orphan => "Orphan",
             TimeLocked => "Time Locked",
             ValidationFailed => "Validation Failed",
+            FeeTooLow => "Fee too low",
             None => "None",
         };
         fmt.write_str(response)
@@ -76,6 +78,7 @@ impl TryFrom<proto::TxSubmissionRejectionReason> for TxSubmissionRejectionReason
             Orphan => TxSubmissionRejectionReason::Orphan,
             TimeLocked => TxSubmissionRejectionReason::TimeLocked,
             ValidationFailed => TxSubmissionRejectionReason::ValidationFailed,
+            FeeTooLow => TxSubmissionRejectionReason::FeeTooLow,
         })
     }
 }
@@ -91,6 +94,7 @@ impl From<TxSubmissionRejectionReason> for proto::TxSubmissionRejectionReason {
             Orphan => proto::TxSubmissionRejectionReason::Orphan,
             TimeLocked => proto::TxSubmissionRejectionReason::TimeLocked,
             ValidationFailed => proto::TxSubmissionRejectionReason::ValidationFailed,
+            FeeTooLow => proto::TxSubmissionRejectionReason::FeeTooLow,
         }
     }
 }

@@ -51,6 +51,7 @@ impl From<TxStorageResponse> for proto::TxStorageResponse {
             NotStoredAlreadySpent => proto::TxStorageResponse::NotStored,
             NotStoredConsensus => proto::TxStorageResponse::NotStored,
             NotStoredAlreadyMined => proto::TxStorageResponse::NotStored,
+            NotStoredFeeTooLow => proto::TxStorageResponse::NotStored,
         }
     }
 }
