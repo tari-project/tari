@@ -158,6 +158,23 @@ impl Peer {
         &self.supported_protocols
     }
 
+    pub fn last_connect_attempt(&self) -> Option<NaiveDateTime> {
+        let mut last_connected_attempt = None;
+        for address in self.addresses.addresses() {
+            if let Some(address_time) = address.last_attempted {
+                match last_connected_attempt {
+                    Some(last_time) => {
+                        if last_time < address_time {
+                            last_connected_attempt = address.last_attempted
+                        }
+                    },
+                    None => last_connected_attempt = address.last_attempted,
+                }
+            }
+        }
+        last_connected_attempt
+    }
+
     /// Returns true if the peer is marked as offline
     pub fn is_offline(&self) -> bool {
         self.addresses.offline_at().is_some()
