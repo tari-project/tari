@@ -74,6 +74,8 @@ pub enum BlockHeaderValidationError {
     ProofOfWorkError(#[from] PowError),
     #[error("Monero seed hash too old")]
     OldSeedHash,
+    #[error("Monero blocks must have a nonce of 0")]
+    InvalidNonce,
     #[error("Incorrect height: Expected {expected} but got {actual}")]
     InvalidHeight { expected: u64, actual: u64 },
     #[error("Incorrect previous hash: Expected {expected} but got {actual}")]
@@ -228,6 +230,12 @@ impl BlockHeader {
             .chain(&self.total_script_offset)
             .finalize()
             .into()
+    }
+
+    pub fn merge_mining_hash(&self) -> FixedHash {
+        let mut mining_hash = self.mining_hash();
+        mining_hash[0..4].copy_from_slice(b"TARI"); // Maybe put this in a `const`
+        mining_hash
     }
 
     #[inline]

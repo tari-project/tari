@@ -1348,6 +1348,158 @@ async fn consensus_validation_large_tx() {
     // make sure the tx was not accepted into the mempool
     assert!(matches!(response, TxStorageResponse::NotStored));
 }
+
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn validation_reject_min_fee() {
+    let network = Network::LocalNet;
+    // We dont want to compute the 19500 limit of local net, so we create smaller blocks
+    let consensus_constants = ConsensusConstantsBuilder::new(network)
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
+        .with_coinbase_lockheight(1)
+        .with_max_block_transaction_weight(500)
+        .build();
+    let (mut store, mut blocks, mut outputs, consensus_manager, key_manager) =
+        create_new_blockchain_with_constants(network, consensus_constants).await;
+    let mempool_validator = TransactionFullValidator::new(
+        CryptoFactories::default(),
+        true,
+        store.clone(),
+        consensus_manager.clone(),
+    );
+    let mut mempool_config = MempoolConfig::default();
+    mempool_config.unconfirmed_pool.min_fee = 1;
+    let mempool = Mempool::new(mempool_config, consensus_manager.clone(), Box::new(mempool_validator));
+    // Create a block with 1 output
+    let txs = vec![txn_schema!(from: vec![outputs[0][0].clone()], to: vec![5 * T])];
+    generate_new_block(
+        &mut store,
+        &mut blocks,
+        &mut outputs,
+        txs,
+        &consensus_manager,
+        &key_manager,
+    )
+    .await
+    .unwrap();
+
+    // build huge 0 fee tx manually
+    let input = outputs[1][0].clone();
+    let inputs = vec![input.to_transaction_input(&key_manager).await.unwrap()];
+    let input_script_keys = vec![input.script_key_id];
+
+    let fee = 0.into();
+
+    let (input_kernel_nonce, mut pub_nonce) = key_manager
+        .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
+        .await
+        .unwrap();
+    let mut pub_excess = PublicKey::default() -
+        key_manager
+            .get_txo_kernel_signature_excess_with_offset(&input.spending_key_id, &input_kernel_nonce)
+            .await
+            .unwrap();
+    let mut sender_offsets = Vec::new();
+
+    let test_params = TestParams::new(&key_manager).await;
+    let wallet_output = create_wallet_output_with_data(
+        script!(Nop),
+        OutputFeatures::default(),
+        &test_params,
+        input.value,
+        &key_manager,
+    )
+    .await
+    .unwrap();
+    pub_excess = pub_excess +
+        key_manager
+            .get_txo_kernel_signature_excess_with_offset(
+                &wallet_output.spending_key_id,
+                &test_params.kernel_nonce_key_id,
+            )
+            .await
+            .unwrap();
+    pub_nonce = pub_nonce + test_params.kernel_nonce_key_pk;
+    sender_offsets.push(test_params.sender_offset_key_id.clone());
+
+    let mut agg_sig = Signature::default();
+    let mut offset = PrivateKey::default();
+    let tx_meta = TransactionMetadata::new(fee, 0);
+    let kernel_version = TransactionKernelVersion::get_current_version();
+    let kernel_message = TransactionKernel::build_kernel_signature_message(
+        &kernel_version,
+        tx_meta.fee,
+        tx_meta.lock_height,
+        &tx_meta.kernel_features,
+        &tx_meta.burn_commitment,
+    );
+
+    let tx_output = wallet_output.to_transaction_output(&key_manager).await.unwrap();
+    offset = &offset +
+        &key_manager
+            .get_txo_private_kernel_offset(&wallet_output.spending_key_id, &test_params.kernel_nonce_key_id)
+            .await
+            .unwrap();
+    let sig = key_manager
+        .get_partial_txo_kernel_signature(
+            &wallet_output.spending_key_id,
+            &test_params.kernel_nonce_key_id,
+            &pub_nonce,
+            &pub_excess,
+            &kernel_version,
+            &kernel_message,
+            &tx_meta.kernel_features,
+            TxoStage::Output,
+        )
+        .await
+        .unwrap();
+    agg_sig = &agg_sig + sig;
+
+    offset = &offset -
+        &key_manager
+            .get_txo_private_kernel_offset(&input.spending_key_id, &input_kernel_nonce)
+            .await
+            .unwrap();
+    let sig = key_manager
+        .get_partial_txo_kernel_signature(
+            &input.spending_key_id,
+            &input_kernel_nonce,
+            &pub_nonce,
+            &pub_excess,
+            &kernel_version,
+            &kernel_message,
+            &tx_meta.kernel_features,
+            TxoStage::Input,
+        )
+        .await
+        .unwrap();
+    agg_sig = &agg_sig + sig;
+
+    let kernel = KernelBuilder::new()
+        .with_fee(fee)
+        .with_lock_height(0)
+        .with_excess(&Commitment::from_public_key(&pub_excess))
+        .with_features(tx_meta.kernel_features)
+        .with_signature(agg_sig)
+        .build()
+        .unwrap();
+    let kernels = vec![kernel];
+    let script_offset = key_manager
+        .get_script_offset(&input_script_keys, &sender_offsets)
+        .await
+        .unwrap();
+    let mut tx = Transaction::new(inputs, vec![tx_output], kernels, offset, script_offset);
+    tx.body.sort();
+
+    // make sure the tx was correctly made and is valid
+    let factories = CryptoFactories::default();
+    let validator = TransactionInternalConsistencyValidator::new(true, consensus_manager.clone(), factories);
+    validator.validate(&tx, None, None, u64::MAX).unwrap();
+    let response = mempool.insert(Arc::new(tx)).await.unwrap();
+    // make sure the tx was not accepted into the mempool
+    assert!(matches!(response, TxStorageResponse::NotStoredFeeTooLow));
+}
+
 #[tokio::test]
 #[allow(clippy::erasing_op)]
 #[allow(clippy::identity_op)]
