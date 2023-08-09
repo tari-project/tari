@@ -536,7 +536,7 @@ Uncomment `mining_pool_address` and `mining_wallet_address`. Adjust the values t
 
     - Linux/OSX: As per [Runtime links](#runtime-links).
     - Windows: As per [Runtime links](#runtime-links) or `Start Base Node` menu item or
-      `start_tari_base_node` shortcut in the Tari installation folder.
+      `start_minotari_node` shortcut in the Tari installation folder.
 
   - Tari Console Wallet:
 
@@ -579,7 +579,7 @@ and performing mining:
 
       - Linux/OSX: As per [Runtime links](#runtime-links).
       - Windows: As per [Runtime links](#runtime-links) or `Start Base Node` menu item or
-        `start_tari_base_node` shortcut in the Tari installation folder.
+        `start_minotari_node` shortcut in the Tari installation folder.
 
     - Minotari Wallet:
 

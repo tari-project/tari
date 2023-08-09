@@ -2,17 +2,12 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 ; Notes:
-;  (1) To run this script from the command line, prepare the following:
+;  (1) Preparation:
 ;      - Install Microsoft Windows SDK 10 (https://developer.microsoft.com/en-us/windows/downloads/windows-10-sdk/)
 ;      - Add the Microsoft Windows SDK 10 folder where "signtool.exe" is located to the path,
 ;        e.g. "C:\Program Files (x86)\Windows Kits\10\bin\10.0.18362.0\x64"
 ;      - Install Inno Setup (https://jrsoftware.org/isinfo.php)
-;  (2) To run this script from the command line with Inno Setup console-mode compiler:
-;      - "<path to console-mode compiler>\ISCC.exe" "/SSignTool=signtool sign
-;         /tr http://timestamp.digicert.com /f "<path and filename of the certificate>"
-;         /p <password used to create the certificate> $f"
-;         "/DMyAppVersion=<base node version>" "windows_inno_installer.iss"
-;  (3) To configure sign tools for Inno Script Studio:
+;  (2) Configure sign tools for Inno Script Studio:
 ;      - with 'Tools -> Configure Sign Tools...' (Example configuration), add
 ;        Name:
 ;          SignTool
@@ -20,6 +15,16 @@
 ;          signtool sign /tr http://timestamp.digicert.com
 ;          /f "<path and filename of the certificate>"
 ;          /p "<password used to create the certificate>" $f
+;  (3) To run this script from the command line with Inno Setup console-mode compiler:
+;      - change directory to "<project_root>/buildtools"
+;      - generate_config.bat      
+;      - "<path to console-mode compiler>\ISCC.exe" "/SSignTool=signtool sign
+;         /tr http://timestamp.digicert.com /f "<path and filename of the certificate>"
+;         /p <password used to create the certificate> $f"
+;         "/DMyAppVersion=<base node version>" "windows_inno_installer.iss"
+;  (4) Windows shortcuts
+;      - To edit any of the *.lnk* files, first copy their icons 
+;        "<project_root>/buildtools/*.ico" to "%USERPROFILE%\temp\tari_icons"
 
 
 #define MyOrgName "Tari"
@@ -31,9 +36,9 @@
 #define AllName "All"
 #define AllExeName "start_all.bat"
 #define BaseNodeName "Base Node"
-#define BaseNodeExeName "start_tari_base_node.bat"
+#define BaseNodeExeName "start_minotari_node.bat"
 #define ConsoleWalletName "Console Wallet"
-#define ConsoleWalletExeName "start_minotari_wallet.bat"
+#define ConsoleWalletExeName "start_minotari_console_wallet.bat"
 #define MinerName "Miner"
 #define MinerExeName "start_minotari_miner.bat"
 #define TorServicesName "Tor Services"
@@ -95,8 +100,8 @@ Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreve
 Source: "..\applications\minotari_node\windows\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\applications\minotari_node\windows\README.md"; DestDir: "{app}"; DestName: "README.txt"; Flags: ignoreversion
 Source: "..\applications\minotari_node\windows\start_all.lnk"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\applications\minotari_node\windows\start_tari_base_node.lnk"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\applications\minotari_console_wallet\windows\start_minotari_wallet.lnk"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\applications\minotari_node\windows\start_minotari_node.lnk"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\applications\minotari_console_wallet\windows\start_minotari_console_wallet.lnk"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\applications\minotari_miner\windows\start_minotari_miner.lnk"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\applications\minotari_merge_mining_proxy\windows\start_tari_merge_mining_proxy.lnk"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\applications\minotari_merge_mining_proxy\windows\start_xmrig.lnk"; DestDir: "{app}"; Flags: ignoreversion
@@ -107,14 +112,14 @@ Source: "{#TariSuitePath}\minotari_miner.exe"; DestDir: "{app}\runtime"; Flags: 
 Source: "{#TariSuitePath}\minotari_merge_mining_proxy.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "..\applications\minotari_node\windows\runtime\start_all.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "..\applications\minotari_node\windows\runtime\start_tor.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "..\applications\minotari_node\windows\runtime\source_base_node_env.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "..\applications\minotari_node\windows\runtime\start_tari_base_node.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "..\applications\minotari_console_wallet\windows\runtime\source_minotari_wallet_env.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "..\applications\minotari_console_wallet\windows\runtime\start_minotari_wallet.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\minotari_node\windows\runtime\source_minotari_node_env.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\minotari_node\windows\runtime\start_minotari_node.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\minotari_console_wallet\windows\runtime\source_minotari_console_wallet_env.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\minotari_console_wallet\windows\runtime\start_minotari_console_wallet.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "..\applications\minotari_miner\windows\runtime\source_miner_env.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "..\applications\minotari_miner\windows\runtime\start_minotari_miner.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "..\applications\minotari_merge_mining_proxy\windows\runtime\source_merge_mining_proxy_env.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "..\applications\minotari_merge_mining_proxy\windows\runtime\start_tari_merge_mining_proxy.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\minotari_merge_mining_proxy\windows\runtime\start_minotari_merge_mining_proxy.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "..\applications\minotari_merge_mining_proxy\windows\runtime\source_xmrig_env.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "..\applications\minotari_merge_mining_proxy\windows\runtime\start_xmrig.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: ".\tari_config_example.toml"; DestDir: "{app}\config"; DestName: "config.toml"; Flags: ignoreversion
@@ -167,8 +172,8 @@ Type: files; Name: "{app}\LICENSE.txt"
 Type: files; Name: "{app}\README.md"
 Type: files; Name: "{app}\README.txt"
 Type: files; Name: "{app}\start_all.lnk"
-Type: files; Name: "{app}\start_tari_base_node.lnk"
-Type: files; Name: "{app}\start_minotari_wallet.lnk"
+Type: files; Name: "{app}\start_minotari_node.lnk"
+Type: files; Name: "{app}\start_minotari_console_wallet.lnk"
 Type: files; Name: "{app}\start_minotari_miner.lnk"
 Type: files; Name: "{app}\start_tari_merge_mining_proxy.lnk"
 Type: files; Name: "{app}\start_xmrig.lnk"

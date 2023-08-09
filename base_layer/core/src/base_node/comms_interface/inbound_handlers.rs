@@ -659,10 +659,10 @@ where B: BlockchainBackend + 'static
         match self
             .outbound_nci
             .request_blocks_by_hashes_from_peer(block_hash, Some(source_peer.clone()))
-            .await?
+            .await
         {
-            Some(block) => Ok(block),
-            None => {
+            Ok(Some(block)) => Ok(block),
+            Ok(None) => {
                 if let Err(e) = self
                     .connectivity
                     .ban_peer_until(
@@ -684,6 +684,21 @@ where B: BlockchainBackend + 'static
                     source_peer
                 )))
             },
+            Err(CommsInterfaceError::UnexpectedApiResponse) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Peer `{}` sent unexpected API response.", source_peer
+                );
+                if let Err(e) = self
+                    .connectivity
+                    .ban_peer(source_peer.clone(), format!("Peer sen invalid API response"))
+                    .await
+                {
+                    error!(target: LOG_TARGET, "Failed to ban peer: {}", e);
+                }
+                Err(CommsInterfaceError::UnexpectedApiResponse)
+            },
+            Err(e) => Err(e),
         }
     }
 

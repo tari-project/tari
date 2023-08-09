@@ -150,6 +150,20 @@ async fn test_monero_blocks() {
         },
     };
 
+    // lets try add some bad data to the block
+    let mut extra_bytes_block_3 = block_3.clone();
+    add_bad_monero_data(&mut extra_bytes_block_3, seed2);
+    match db.add_block(Arc::new(extra_bytes_block_3)) {
+        Err(ChainStorageError::ValidationError {
+            source: ValidationError::CustomError(_),
+        }) => (),
+        Err(e) => {
+            panic!("Failed due to other error:{:?}", e);
+        },
+        Ok(res) => {
+            panic!("Block add unexpectedly succeeded with result: {:?}", res);
+        },
+    };
     // now lets fix the seed, and try again
     add_monero_data(&mut block_3, seed2);
     // lets break the nonce count
@@ -198,6 +212,12 @@ fn add_monero_data(tblock: &mut Block, seed_key: &str) {
     BorshSerialize::serialize(&monero_data, &mut serialized).unwrap();
     tblock.header.pow.pow_algo = PowAlgorithm::RandomX;
     tblock.header.pow.pow_data = serialized;
+}
+
+fn add_bad_monero_data(tblock: &mut Block, seed_key: &str) {
+    add_monero_data(tblock, seed_key);
+    // Add some "garbage" bytes to the end of the pow_data
+    tblock.header.pow.pow_data.extend([1u8; 100]);
 }
 
 #[tokio::test]
