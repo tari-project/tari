@@ -209,12 +209,12 @@ impl TransactionOutput {
             self.version,
             &self.features,
             &self.commitment,
+            &rp_hash,
             &self.script,
-            &self.covenant,
-            &self.encrypted_data,
             &self.sender_offset_public_key,
             &self.metadata_signature,
-            &rp_hash,
+            &self.covenant,
+            &self.encrypted_data,
             self.minimum_value_promise,
         )
     }
