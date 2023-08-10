@@ -123,7 +123,7 @@ pub fn get_stagenet_genesis_block() -> ChainBlock {
     let mut block = get_stagenet_genesis_block_raw();
 
     // Add faucet utxos - enable/disable as required
-    let add_faucet_utxos = true;
+    let add_faucet_utxos = false;
     if add_faucet_utxos {
         // NB! Update 'consensus_constants.rs/pub fn igor()/ConsensusConstants {faucet_value: ?}' with total value
         // NB: `stagenet_genesis_sanity_check` must pass
@@ -243,7 +243,7 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
     if add_faucet_utxos {
         // NB! Update 'consensus_constants.rs/pub fn igor()/ConsensusConstants {faucet_value: ?}' with total value
         // NB: `nextnet_genesis_sanity_check` must pass
-        let file_contents = include_str!("faucets/esmeralda_faucet.json");
+        let file_contents = include_str!("faucets/nextnet_faucet.json");
         add_faucet_utxos_to_genesis_block(file_contents, &mut block);
         // Enable print only if you need to generate new Merkle roots, then disable it again
         let print_values = false;
@@ -251,11 +251,11 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
 
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
-            FixedHash::from_hex("ecb543eb52fe0018fcdf20d51104633c4512e8bcfe7fa7c6fdeaf7ad7ea584cb").unwrap();
+            FixedHash::from_hex("14145c10dc33305220d87499aaa828f91af0a2083559edfad357072b59953e5b").unwrap();
         block.header.witness_mr =
-            FixedHash::from_hex("d80e44cd922403b9f48881b0b5a4adfb9090caff2075b49ee015705047d1760b").unwrap();
+            FixedHash::from_hex("c6bb77da0272a4ba30e46b2afc4a65990ad36ed11e1e4c6cb7da750fe24146da").unwrap();
         block.header.output_mr =
-            FixedHash::from_hex("a8431dd16b19d534dbcd1f322cc50f2b7af44b13791fb3ef35a0fdf92bc783fd").unwrap();
+            FixedHash::from_hex("c4466ab40c5fbfd2387e4825f2ec5de1adedfe765fa6b8067a50825645679cb8").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("e1d55f91ecc7e435080ac2641280516a355a5ecbe231158987da217b5af30047").unwrap();
     }
@@ -315,7 +315,7 @@ fn get_nextnet_genesis_block_raw() -> Block {
     let mut body = AggregateBody::new(vec![], vec![coinbase], vec![kernel]);
     body.sort();
     // set genesis timestamp
-    let genesis = DateTime::parse_from_rfc2822("24 Jul 2023 13:00:00 +0200").unwrap();
+    let genesis = DateTime::parse_from_rfc2822("10 Aug 2023 17:00:00 +0200").unwrap();
     #[allow(clippy::cast_sign_loss)]
     let timestamp = genesis.timestamp() as u64;
     Block {
@@ -616,7 +616,7 @@ mod test {
         // Note: Generate new data for `pub fn get_stagenet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
         // if consensus values change, e.g. new faucet or other
         let block = get_stagenet_genesis_block();
-        check_block(Network::StageNet, &block, 4966, 2);
+        check_block(Network::StageNet, &block, 1, 1);
     }
 
     #[test]
@@ -624,7 +624,7 @@ mod test {
         // Note: Generate new data for `pub fn get_nextnet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
         // if consensus values change, e.g. new faucet or other
         let block = get_nextnet_genesis_block();
-        check_block(Network::NextNet, &block, 4966, 2);
+        check_block(Network::NextNet, &block, 456, 2);
     }
 
     #[test]
