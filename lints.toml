@@ -12,6 +12,9 @@ deny = [
     #    'clippy::missing_safety_doc',
     #    'clippy::missing_panics_doc',
 
+    # detect overflows and underflows
+    'clippy::integer_arithmetic',
+
     # Common mistakes
     'clippy::await_holding_lock',
     'unused_variables',
