@@ -225,6 +225,8 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(bad_block_exists(block_hash: BlockHash) -> bool, "bad_block_exists");
 
+    make_async_fn!(add_bad_block(hash: BlockHash, height: u64) -> (), "add_bad_block");
+
     make_async_fn!(fetch_block(height: u64, compact: bool) -> HistoricalBlock, "fetch_block");
 
     make_async_fn!(fetch_blocks<T: RangeBounds<u64>>(bounds: T, compact: bool) -> Vec<HistoricalBlock>, "fetch_blocks");

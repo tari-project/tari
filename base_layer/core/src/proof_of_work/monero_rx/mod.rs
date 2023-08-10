@@ -32,6 +32,7 @@ pub use helpers::{
     extract_tari_hash,
     randomx_difficulty,
     serialize_monero_block_to_hex,
+    verify_header,
 };
 
 mod fixed_array;

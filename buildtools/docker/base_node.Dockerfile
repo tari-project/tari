@@ -60,7 +60,7 @@ RUN groupadd --system tari_base_node && \
 FROM base
 
 COPY --from=builder /tari_base_node/buildtools/docker/torrc /etc/tor/torrc
-COPY --from=builder /tari_base_node/buildtools/docker/start.sh /usr/local/bin/start_tari_base_node.sh
+COPY --from=builder /tari_base_node/buildtools/docker/start.sh /usr/local/bin/start_minotari_node.sh
 
 COPY --from=builder /tari_base_node/target/release/tari_base_node /usr/local/bin/
 
@@ -73,4 +73,4 @@ COPY --from=builder /tari_base_node/common/logging/log4rs_sample_base_node.yml /
 # Keep the .tari directory in a volume by default
 VOLUME ["/home/tari_base_node/.tari"]
 # Use start.sh to run tor then the base node or tari_base_node for the executable
-CMD ["/usr/local/bin/start_tari_base_node.sh"]
+CMD ["/usr/local/bin/start_minotari_node.sh"]

@@ -50,7 +50,7 @@ Notes:
               install_tor_services.bat
               install_vs2019_redist.bat
               install_xmrig.bat
-              source_base_node_env.bat
+              source_minotari_node_env.bat
               source_console_wallet_env.bat
               source_merge_mining_proxy_env.bat
               source_miner_env.bat

@@ -36,6 +36,7 @@ use super::*;
 use crate::{
     consensus::ConsensusManager,
     transactions::{
+        aggregated_body::AggregateBody,
         key_manager::TransactionKeyManagerInterface,
         tari_amount::{uT, MicroMinotari, T},
         test_helpers,
@@ -421,13 +422,16 @@ async fn check_cut_through() {
         .inputs()
         .clone()
         .iter()
-        .filter(|input| tx3_cut_through.body.outputs_mut().iter().any(|o| o.is_equal_to(input)))
+        .filter(|input| tx3_cut_through.body.outputs().iter().any(|o| o.is_equal_to(input)))
         .cloned()
         .collect();
+    let mut outputs = tx3_cut_through.body.outputs().clone();
+    let mut inputs = tx3_cut_through.body.inputs().clone();
     for input in double_inputs {
-        tx3_cut_through.body.outputs_mut().retain(|x| !input.is_equal_to(x));
-        tx3_cut_through.body.inputs_mut().retain(|x| *x != input);
+        outputs.retain(|x| !input.is_equal_to(x));
+        inputs.retain(|x| *x != input);
     }
+    tx3_cut_through.body = AggregateBody::new(inputs, outputs, tx3_cut_through.body.kernels().clone());
     tx3.body.sort();
     tx3_cut_through.body.sort();
 
@@ -484,8 +488,10 @@ async fn inputs_not_malleable() {
         .push(StackItem::Hash(*b"Pls put this on tha tari network"))
         .unwrap();
 
-    tx.body.inputs_mut()[0].set_script(script![Drop]).unwrap();
-    tx.body.inputs_mut()[0].input_data = stack;
+    let mut inputs = tx.body().inputs().clone();
+    inputs[0].set_script(script![Drop]).unwrap();
+    inputs[0].input_data = stack;
+    tx.body = AggregateBody::new(inputs, tx.body.outputs().clone(), tx.body().kernels().clone());
 
     let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
     let factories = CryptoFactories::default();

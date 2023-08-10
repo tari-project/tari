@@ -35,7 +35,7 @@ use tari_core::{
     consensus::ConsensusManager,
     covenants::Covenant,
     mempool::{Mempool, MempoolConfig},
-    proof_of_work::Difficulty,
+    proof_of_work::{randomx_factory::RandomXFactory, Difficulty},
     test_helpers::{
         blockchain::{create_store_with_consensus_and_validators_and_config, create_test_blockchain_db},
         create_consensus_rules,
@@ -72,7 +72,7 @@ async fn inbound_get_metadata() {
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = mpsc::unbounded_channel();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender.clone());
-
+    let randomx_factory = RandomXFactory::new(2);
     let (connectivity, _) = create_connectivity_mock();
     let inbound_nch = InboundNodeCommsHandlers::new(
         block_event_sender,
@@ -81,6 +81,7 @@ async fn inbound_get_metadata() {
         consensus_manager,
         outbound_nci,
         connectivity,
+        randomx_factory,
     );
     let block = store.fetch_block(0, true).unwrap().block().clone();
 
@@ -107,6 +108,7 @@ async fn inbound_fetch_kernel_by_excess_sig() {
     let (block_sender, _) = mpsc::unbounded_channel();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender.clone());
     let (connectivity, _) = create_connectivity_mock();
+    let randomx_factory = RandomXFactory::new(2);
     let inbound_nch = InboundNodeCommsHandlers::new(
         block_event_sender,
         store.clone().into(),
@@ -114,6 +116,7 @@ async fn inbound_fetch_kernel_by_excess_sig() {
         consensus_manager,
         outbound_nci,
         connectivity,
+        randomx_factory,
     );
     let block = store.fetch_block(0, true).unwrap().block().clone();
     let sig = block.body.kernels()[0].excess_sig.clone();
@@ -140,6 +143,7 @@ async fn inbound_fetch_headers() {
     let (block_sender, _) = mpsc::unbounded_channel();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
     let (connectivity, _) = create_connectivity_mock();
+    let randomx_factory = RandomXFactory::new(2);
     let inbound_nch = InboundNodeCommsHandlers::new(
         block_event_sender,
         store.clone().into(),
@@ -147,6 +151,7 @@ async fn inbound_fetch_headers() {
         consensus_manager,
         outbound_nci,
         connectivity,
+        randomx_factory,
     );
     let header = store.fetch_block(0, true).unwrap().header().clone();
 
@@ -171,6 +176,7 @@ async fn inbound_fetch_utxos() {
     let (block_sender, _) = mpsc::unbounded_channel();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
     let (connectivity, _) = create_connectivity_mock();
+    let randomx_factory = RandomXFactory::new(2);
     let inbound_nch = InboundNodeCommsHandlers::new(
         block_event_sender,
         store.clone().into(),
@@ -178,6 +184,7 @@ async fn inbound_fetch_utxos() {
         consensus_manager,
         outbound_nci,
         connectivity,
+        randomx_factory,
     );
     let block = store.fetch_block(0, true).unwrap().block().clone();
     let utxo_1 = block.body.outputs()[0].clone();
@@ -218,6 +225,7 @@ async fn inbound_fetch_blocks() {
     let (block_sender, _) = mpsc::unbounded_channel();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
     let (connectivity, _) = create_connectivity_mock();
+    let randomx_factory = RandomXFactory::new(2);
     let inbound_nch = InboundNodeCommsHandlers::new(
         block_event_sender,
         store.clone().into(),
@@ -225,6 +233,7 @@ async fn inbound_fetch_blocks() {
         consensus_manager,
         outbound_nci,
         connectivity,
+        randomx_factory,
     );
     let block = store.fetch_block(0, true).unwrap().block().clone();
 
@@ -270,6 +279,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
     let (block_sender, _) = mpsc::unbounded_channel();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
     let (connectivity, _) = create_connectivity_mock();
+    let randomx_factory = RandomXFactory::new(2);
     let inbound_nch = InboundNodeCommsHandlers::new(
         block_event_sender,
         store.clone().into(),
@@ -277,6 +287,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         consensus_manager.clone(),
         outbound_nci,
         connectivity,
+        randomx_factory,
     );
     let script = script!(Nop);
     let amount = MicroMinotari(10_000);

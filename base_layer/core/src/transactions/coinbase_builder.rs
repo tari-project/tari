@@ -438,7 +438,9 @@ mod test {
             .build(rules.consensus_constants(42), rules.emission_schedule())
             .await
             .unwrap();
-        tx.body.outputs_mut()[0].features.maturity = 1;
+        let mut outputs = tx.body.outputs().clone();
+        outputs[0].features.maturity = 1;
+        tx.body = AggregateBody::new(tx.body().inputs().clone(), outputs, tx.body().kernels().clone());
         assert!(matches!(
             tx.body.check_coinbase_output(
                 block_reward,
@@ -518,6 +520,7 @@ mod test {
     use tari_key_manager::key_manager_service::KeyManagerInterface;
 
     use crate::transactions::{
+        aggregated_body::AggregateBody,
         key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface, TxoStage},
         test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager},
         transaction_components::TransactionKernelVersion,
