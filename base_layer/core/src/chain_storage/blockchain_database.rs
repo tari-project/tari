@@ -924,7 +924,8 @@ where B: BlockchainBackend
         }
         // the only fast check we can perform that is slightly expensive to fake is a min difficulty check, this is done
         // as soon as we receive the block before we do any processing on it. A proper proof of work is done as soon as
-        // we can link it to the main chain.
+        // we can link it to the main chain. Full block validation only happens when the proof of work is higher than
+        // the main chain and we want to add the block to the main chain.
         let block_add_result = add_block(
             &mut *db,
             &self.config,
