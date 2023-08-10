@@ -104,29 +104,14 @@ impl AggregateBody {
         &self.inputs
     }
 
-    /// Should be used for tests only. Get a mutable reference to the inputs
-    pub fn inputs_mut(&mut self) -> &mut Vec<TransactionInput> {
-        &mut self.inputs
-    }
-
     /// Provide read-only access to the output list
     pub fn outputs(&self) -> &Vec<TransactionOutput> {
         &self.outputs
     }
 
-    /// Should be used for tests only. Get a mutable reference to the outputs
-    pub fn outputs_mut(&mut self) -> &mut Vec<TransactionOutput> {
-        &mut self.outputs
-    }
-
     /// Provide read-only access to the kernel list
     pub fn kernels(&self) -> &Vec<TransactionKernel> {
         &self.kernels
-    }
-
-    /// Should be used for tests only. Get a mutable reference to the kernels
-    pub fn kernels_mut(&mut self) -> &mut Vec<TransactionKernel> {
-        &mut self.kernels
     }
 
     /// Add an input to the existing aggregate body
@@ -156,6 +141,7 @@ impl AggregateBody {
     /// Add a kernel to the existing aggregate body
     pub fn add_kernel(&mut self, kernel: TransactionKernel) {
         self.kernels.push(kernel);
+        self.sorted = false;
     }
 
     /// Add a series of kernels to the existing aggregate body
@@ -369,7 +355,8 @@ impl AggregateBody {
     }
 
     pub fn is_sorted(&self) -> bool {
-        self.sorted
+        // a block containing only a single kernel, single output and single input is sorted by default
+        self.sorted || (self.kernels.len() <= 1 && self.outputs.len() <= 1 && self.inputs.len() <= 1)
     }
 
     /// Lists the number of inputs, outputs, and kernels in the block
@@ -448,5 +435,71 @@ impl Display for AggregateBody {
             writeln!(fmt, "{}", output)?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use tari_common_types::types::{ComAndPubSignature, Commitment, FixedHash, PublicKey, Signature};
+    use tari_script::{ExecutionStack, TariScript};
+
+    use super::*;
+    use crate::{
+        covenants::Covenant,
+        transactions::transaction_components::{EncryptedData, OutputFeatures, TransactionInputVersion},
+    };
+
+    #[test]
+    fn test_sorted() {
+        let mut body = AggregateBody::empty();
+        assert!(body.is_sorted());
+        let kernel = TransactionKernel::new_current_version(
+            KernelFeatures::default(),
+            0.into(),
+            0,
+            Commitment::default(),
+            Signature::default(),
+            None,
+        );
+        let output = TransactionOutput::default();
+        let input = TransactionInput::new_with_output_data(
+            TransactionInputVersion::get_current_version(),
+            OutputFeatures::default(),
+            Commitment::default(),
+            TariScript::default(),
+            ExecutionStack::default(),
+            ComAndPubSignature::default(),
+            PublicKey::default(),
+            Covenant::default(),
+            EncryptedData::default(),
+            ComAndPubSignature::default(),
+            FixedHash::zero(),
+            0.into(),
+        );
+
+        body.add_kernel(kernel.clone());
+        assert!(body.is_sorted());
+        assert!(!body.sorted);
+
+        body.add_input(input.clone());
+        assert!(body.is_sorted());
+        assert!(!body.sorted);
+
+        body.add_output(output.clone());
+        assert!(body.is_sorted());
+        assert!(!body.sorted);
+        body.sort();
+        assert!(body.sorted);
+
+        let mut body2 = body.clone();
+        body2.add_kernel(kernel);
+        assert!(!body2.is_sorted());
+
+        let mut body3 = body.clone();
+        body3.add_input(input);
+        assert!(!body3.is_sorted());
+
+        body.add_output(output);
+        assert!(!body.is_sorted())
     }
 }

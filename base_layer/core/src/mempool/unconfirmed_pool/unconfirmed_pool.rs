@@ -806,6 +806,7 @@ mod test {
         covenants::Covenant,
         test_helpers::{create_consensus_constants, create_consensus_rules, create_orphan_block},
         transactions::{
+            aggregated_body::AggregateBody,
             fee::Fee,
             tari_amount::MicroMinotari,
             test_helpers::{create_test_core_key_manager_with_memory_db, TestParams, UtxoTestParams},
@@ -1097,8 +1098,12 @@ mod test {
             .expect("Failed to get tx")
             .0;
         // tx1 and tx5 have a shared input. Also, tx3 and tx6 have a shared input
-        tx5.body.inputs_mut()[0] = tx1.body.inputs()[0].clone();
-        tx6.body.inputs_mut()[1] = tx3.body.inputs()[1].clone();
+        let mut inputs = tx5.body.inputs().clone();
+        inputs[0] = tx1.body.inputs()[0].clone();
+        tx5.body = AggregateBody::new(inputs, tx5.body().outputs().clone(), tx5.body().kernels().clone());
+        let mut inputs = tx6.body.inputs().clone();
+        inputs[0] = tx3.body.inputs()[1].clone();
+        tx6.body = AggregateBody::new(inputs, tx6.body().outputs().clone(), tx6.body().kernels().clone());
         let tx5 = Arc::new(tx5);
         let tx6 = Arc::new(tx6);
 
