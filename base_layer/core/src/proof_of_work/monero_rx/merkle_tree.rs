@@ -187,7 +187,7 @@ impl Default for MerkleProof {
 }
 
 /// Creates a merkle proof for the given hash within the set of hashes. This function returns None if the hash is not in
-/// hashes. 
+/// hashes.
 #[allow(clippy::cognitive_complexity)]
 pub fn create_merkle_proof(hashes: &[Hash]) -> Option<MerkleProof> {
     // Monero coinbase rules specify that the coinbase should be hash[0]
@@ -462,27 +462,29 @@ mod test {
 
         #[test]
         fn simple_proof_construction() {
-            //        { root }
-            //      /        \
-            //     h01       h2345
-            //   /    \     /    \
-            //  h0    h1    h23   h45
-            //            /  \    /  \
-            //          h2    h3 h4   h5
-
-            let hashes = (1..=6).map(|i| Hash::from([i; 32])).collect::<Vec<_>>();
+            //               { root }
+            //            /            \
+            //       h0123             h4567
+            //       /    \            /    \
+            //     h01    h23        h45     h67
+            //    /  \    /  \      /  \     / \
+            //  h0    h1 h2   h3  h4    h5 h6   h7
+            let hashes = (1..=8).map(|i| Hash::from([i; 32])).collect::<Vec<_>>();
             let h23 = cn_fast_hash2(&hashes[2], &hashes[3]);
             let h45 = cn_fast_hash2(&hashes[4], &hashes[5]);
+            let h67 = cn_fast_hash2(&hashes[6], &hashes[7]);
             let h01 = cn_fast_hash2(&hashes[0], &hashes[1]);
-            let h2345 = cn_fast_hash2(&h23, &h45);
-            let expected_root = cn_fast_hash2(&h01, &h2345);
+            let h0123 = cn_fast_hash2(&h01, &h23);
+            let h4567 = cn_fast_hash2(&h45, &h67);
+            let expected_root = cn_fast_hash2(&h0123, &h4567);
 
             // Proof for h0
             let proof = create_merkle_proof(&hashes).unwrap();
             assert_eq!(proof.calculate_root(&hashes[0]), expected_root);
-            assert_eq!(proof.branch().len(), 2);
+            assert_eq!(proof.branch().len(), 3);
             assert_eq!(proof.branch()[0], hashes[1]);
-            assert_eq!(proof.branch()[1], h2345);
+            assert_eq!(proof.branch()[1], h23);
+            assert_eq!(proof.branch()[2], h4567)
         }
 
         #[test]
