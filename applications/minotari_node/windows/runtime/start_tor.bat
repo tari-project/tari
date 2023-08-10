@@ -31,7 +31,7 @@ if not defined TOR_RUNNING (
 			pause
 		)
 	)
-    start tor --allow-missing-torrc --ignore-missing-torrc --clientonly 1 --socksport 9050 --controlport 127.0.0.1:9051 --clientuseipv6 1 --log "warn stdout"
+    start tor --allow-missing-torrc --ignore-missing-torrc --clientonly 1 --socksport 9050 --controlport 127.0.0.1:9051 --clientuseipv6 1 --log "notice stdout"
     echo Attempting to start Tor service on ports 9050 and 9051
     ping -n 15 localhost>nul
 ) else (

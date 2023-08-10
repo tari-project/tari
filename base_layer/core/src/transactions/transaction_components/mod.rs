@@ -101,24 +101,24 @@ pub(super) fn hash_output(
     version: TransactionOutputVersion,
     features: &OutputFeatures,
     commitment: &Commitment,
+    rangeproof_hash: &FixedHash,
     script: &TariScript,
-    covenant: &Covenant,
-    encrypted_data: &EncryptedData,
     sender_offset_public_key: &PublicKey,
     metadata_signature: &ComAndPubSignature,
-    rangeproof_hash: &FixedHash,
+    covenant: &Covenant,
+    encrypted_data: &EncryptedData,
     minimum_value_promise: MicroMinotari,
 ) -> FixedHash {
     let common_hash = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("transaction_output")
         .chain(&version)
         .chain(features)
         .chain(commitment)
+        .chain(rangeproof_hash)
         .chain(script)
+        .chain(sender_offset_public_key)
+        .chain(metadata_signature)
         .chain(covenant)
         .chain(encrypted_data)
-        .chain(sender_offset_public_key)
-        .chain(rangeproof_hash)
-        .chain(metadata_signature)
         .chain(&minimum_value_promise);
 
     match version {

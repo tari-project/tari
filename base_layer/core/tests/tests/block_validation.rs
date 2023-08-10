@@ -33,7 +33,7 @@ use tari_core::{
     consensus::{consensus_constants::PowAlgorithmConstants, ConsensusConstantsBuilder, ConsensusManager},
     proof_of_work::{
         monero_rx,
-        monero_rx::{FixedByteArray, MoneroPowData},
+        monero_rx::{verify_header, FixedByteArray, MoneroPowData},
         randomx_factory::RandomXFactory,
         Difficulty,
         PowAlgorithm,
@@ -71,6 +71,7 @@ use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tari_script::{inputs, script};
 use tari_test_utils::unpack_enum;
 use tari_utilities::hex::Hex;
+use tokio::time::Instant;
 
 use crate::{
     helpers::{
@@ -149,9 +150,42 @@ async fn test_monero_blocks() {
         },
     };
 
+    // lets try add some bad data to the block
+    let mut extra_bytes_block_3 = block_3.clone();
+    add_bad_monero_data(&mut extra_bytes_block_3, seed2);
+    match db.add_block(Arc::new(extra_bytes_block_3)) {
+        Err(ChainStorageError::ValidationError {
+            source: ValidationError::CustomError(_),
+        }) => (),
+        Err(e) => {
+            panic!("Failed due to other error:{:?}", e);
+        },
+        Ok(res) => {
+            panic!("Block add unexpectedly succeeded with result: {:?}", res);
+        },
+    };
     // now lets fix the seed, and try again
     add_monero_data(&mut block_3, seed2);
-    assert_block_add_result_added(&db.add_block(Arc::new(block_3)).unwrap());
+    // lets break the nonce count
+    let hash1 = block_3.hash();
+    block_3.header.nonce = 1;
+    let hash2 = block_3.hash();
+    assert_ne!(hash1, hash2);
+    assert!(verify_header(&block_3.header).is_ok());
+    match db.add_block(Arc::new(block_3.clone())) {
+        Err(ChainStorageError::ValidationError {
+            source: ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidNonce),
+        }) => (),
+        Err(e) => {
+            panic!("Failed due to other error:{:?}", e);
+        },
+        Ok(res) => {
+            panic!("Block add unexpectedly succeeded with result: {:?}", res);
+        },
+    };
+    // lets fix block3
+    block_3.header.nonce = 0;
+    assert_block_add_result_added(&db.add_block(Arc::new(block_3.clone())).unwrap());
 }
 
 fn add_monero_data(tblock: &mut Block, seed_key: &str) {
@@ -160,7 +194,7 @@ fn add_monero_data(tblock: &mut Block, seed_key: &str) {
 .to_string();
     let bytes = hex::decode(blocktemplate_blob).unwrap();
     let mut mblock = monero_rx::deserialize::<MoneroBlock>(&bytes[..]).unwrap();
-    let hash = tblock.header.mining_hash();
+    let hash = tblock.header.merge_mining_hash();
     monero_rx::append_merge_mining_tag(&mut mblock, hash).unwrap();
     let hashes = monero_rx::create_ordered_transaction_hashes_from_block(&mblock);
     let merkle_root = monero_rx::tree_hash(&hashes).unwrap();
@@ -178,6 +212,12 @@ fn add_monero_data(tblock: &mut Block, seed_key: &str) {
     BorshSerialize::serialize(&monero_data, &mut serialized).unwrap();
     tblock.header.pow.pow_algo = PowAlgorithm::RandomX;
     tblock.header.pow.pow_data = serialized;
+}
+
+fn add_bad_monero_data(tblock: &mut Block, seed_key: &str) {
+    add_monero_data(tblock, seed_key);
+    // Add some "garbage" bytes to the end of the pow_data
+    tblock.header.pow.pow_data.extend([1u8; 100]);
 }
 
 #[tokio::test]
@@ -246,10 +286,12 @@ async fn inputs_are_not_malleable() {
         .await
         .unwrap();
 
-    let input_mut = block.body.inputs_mut().get_mut(0).unwrap();
+    let mut inputs = block.body.inputs().clone();
     // Put the crafted input into the block
-    input_mut.input_data = malicious_input.input_data;
-    input_mut.script_signature = malicious_input.script_signature;
+    inputs[0].input_data = malicious_input.input_data;
+    inputs[0].script_signature = malicious_input.script_signature;
+
+    block.body = AggregateBody::new(inputs, block.body.outputs().clone(), block.body.kernels().clone());
 
     let validator = BlockBodyFullValidator::new(blockchain.consensus_manager().clone(), true);
     let txn = blockchain.store().db_read_access().unwrap();
@@ -987,4 +1029,140 @@ async fn test_block_sync_body_validator() {
         let txn = db.db_read_access().unwrap();
         validator.validate_body(&*txn, &new_block).unwrap_err();
     }
+}
+
+#[tokio::test]
+async fn add_block_with_large_block() {
+    // we use this test to benchmark a block with multiple inputs and outputs
+    let factories = CryptoFactories::default();
+    let network = Network::LocalNet;
+    let consensus_constants = ConsensusConstantsBuilder::new(network).build();
+    let key_manager = create_test_core_key_manager_with_memory_db();
+    let (genesis, outputs) = create_genesis_block_with_utxos(
+        &[
+            5 * T,
+            5 * T,
+            5 * T,
+            5 * T,
+            5 * T,
+            5 * T,
+            5 * T,
+            5 * T,
+            5 * T,
+            5 * T,
+            5 * T,
+            5 * T,
+        ],
+        &consensus_constants,
+        &key_manager,
+    )
+    .await;
+    let network = Network::LocalNet;
+    let rules = ConsensusManager::builder(network)
+        .add_consensus_constants(consensus_constants.clone())
+        .with_block(genesis.clone())
+        .build()
+        .unwrap();
+    let backend = create_test_db();
+    let difficulty_calculator = DifficultyCalculator::new(rules.clone(), Default::default());
+    let validators = Validators::new(
+        BlockBodyFullValidator::new(rules.clone(), false),
+        HeaderFullValidator::new(rules.clone(), difficulty_calculator),
+        BlockBodyInternalConsistencyValidator::new(rules.clone(), false, factories.clone()),
+    );
+
+    let db = BlockchainDatabase::new(
+        backend,
+        rules.clone(),
+        validators,
+        BlockchainDatabaseConfig::default(),
+        DifficultyCalculator::new(rules.clone(), Default::default()),
+    )
+    .unwrap();
+    // lets make our big block (1 -> 5) * 12
+    let mut schemas = Vec::new();
+    for output in outputs.into_iter().skip(1) {
+        let new_schema = txn_schema!(from: vec![output], to: vec![1 * T, 1 * T, 1 * T, 1 * T]);
+        schemas.push(new_schema);
+    }
+
+    let (txs, _outputs) = schema_to_transaction(&schemas, &key_manager).await;
+    let txs = txs.into_iter().map(|t| Arc::try_unwrap(t).unwrap()).collect::<Vec<_>>();
+    let (template, _) = chain_block_with_new_coinbase(&genesis, txs, &rules, None, &key_manager).await;
+    let new_block = db.prepare_new_block(template).unwrap();
+    println!(
+        "Total block weight is : {}",
+        new_block
+            .body
+            .calculate_weight(rules.consensus_constants(0).transaction_weight_params())
+            .unwrap()
+    );
+    let start = Instant::now();
+    let _unused = db.add_block(Arc::new(new_block)).unwrap();
+    let finished = start.elapsed();
+    // this here here for benchmarking purposes.
+    // we can extrapolate full block validation by 35.7, this we get from the 127_795/block_weight
+    // of the block
+    println!("finished validating in: {}", finished.as_millis());
+}
+
+#[tokio::test]
+async fn add_block_with_large_many_output_block() {
+    // we use this test to benchmark a block with multiple outputs
+    let factories = CryptoFactories::default();
+    let network = Network::LocalNet;
+    let consensus_constants = ConsensusConstantsBuilder::new(network)
+        .with_max_block_transaction_weight(127_795)
+        .build();
+    let key_manager = create_test_core_key_manager_with_memory_db();
+    let (genesis, outputs) = create_genesis_block_with_utxos(&[501 * T], &consensus_constants, &key_manager).await;
+    let network = Network::LocalNet;
+    let rules = ConsensusManager::builder(network)
+        .add_consensus_constants(consensus_constants.clone())
+        .with_block(genesis.clone())
+        .build()
+        .unwrap();
+    let backend = create_test_db();
+    let difficulty_calculator = DifficultyCalculator::new(rules.clone(), Default::default());
+    let validators = Validators::new(
+        BlockBodyFullValidator::new(rules.clone(), false),
+        HeaderFullValidator::new(rules.clone(), difficulty_calculator),
+        BlockBodyInternalConsistencyValidator::new(rules.clone(), false, factories.clone()),
+    );
+
+    let db = BlockchainDatabase::new(
+        backend,
+        rules.clone(),
+        validators,
+        BlockchainDatabaseConfig::default(),
+        DifficultyCalculator::new(rules.clone(), Default::default()),
+    )
+    .unwrap();
+    // lets make our big block (1 -> 5) * 12
+    let mut outs = Vec::new();
+    // create 498 outputs, so we have a block with 500 outputs, 498 + change + coinbase
+    for _ in 0..498 {
+        outs.push(1 * T);
+    }
+
+    let schema = txn_schema!(from: vec![outputs[1].clone()], to: outs);
+    let (txs, _outputs) = schema_to_transaction(&[schema], &key_manager).await;
+
+    let txs = txs.into_iter().map(|t| Arc::try_unwrap(t).unwrap()).collect::<Vec<_>>();
+    let (template, _) = chain_block_with_new_coinbase(&genesis, txs, &rules, None, &key_manager).await;
+    let new_block = db.prepare_new_block(template).unwrap();
+    println!(
+        "Total block weight is : {}",
+        new_block
+            .body
+            .calculate_weight(rules.consensus_constants(0).transaction_weight_params())
+            .unwrap()
+    );
+    let start = Instant::now();
+    let _unused = db.add_block(Arc::new(new_block)).unwrap();
+    let finished = start.elapsed();
+    // this here here for benchmarking purposes.
+    // we can extrapolate full block validation by 4.59, this we get from the 127_795/block_weight
+    // of the block
+    println!("finished validating in: {}", finished.as_millis());
 }

@@ -363,7 +363,7 @@ jobs:
         uses: actions/upload-artifact@v3
         if: startsWith(runner.os,'Windows')
         with:
-          name: "tari_windows_installer"
+          name: "${{ env.TBN_FILENAME }}_windows_installer"
           path: "${{ github.workspace }}/buildtools/Output/*"
 
       - name: Archive and Checksum Binaries
@@ -439,6 +439,12 @@ jobs:
           name: ${{ env.TBN_FILENAME }}_archive-diag-utils-${{ matrix.builds.name }}
           path: "${{ github.workspace }}${{ env.TBN_DIST }}/diag-utils/*.zip*"
 
+      - name: Artifact cleanup for diag-utils
+        continue-on-error: true
+        shell: bash
+        run: |
+          rm -vRf "${{ github.workspace }}${{ env.TBN_DIST }}/diag-utils/"
+  
       - name: Sync dist to S3 - Bash
         continue-on-error: true # Don't break if s3 upload fails
         if: ${{ env.AWS_SECRET_ACCESS_KEY != '' && matrix.builds.runs-on != 'self-hosted' }}

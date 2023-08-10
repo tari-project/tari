@@ -47,10 +47,10 @@ cp -f "${app_dir}/tari_base_node/linux/runtime/start_all.sh" "${tarball_folder}/
 
 # Base Node
 cp -f -P "${app_dir}/tari_base_node/linux/setup_tor_service" "${tarball_folder}/setup_tor_service"
-cp -f -P "${app_dir}/tari_base_node/linux/start_tari_base_node" "${tarball_folder}/start_tari_base_node"
+cp -f -P "${app_dir}/tari_base_node/linux/start_minotari_node" "${tarball_folder}/start_minotari_node"
 cp -f -P "${app_dir}/tari_base_node/linux/start_tor" "${tarball_folder}/start_tor"
 cp -f "${app_dir}/tari_base_node/linux/runtime/setup_tor_service.sh" "${tarball_folder}/runtime/setup_tor_service.sh"
-cp -f "${app_dir}/tari_base_node/linux/runtime/start_tari_base_node.sh" "${tarball_folder}/runtime/start_tari_base_node.sh"
+cp -f "${app_dir}/tari_base_node/linux/runtime/start_minotari_node.sh" "${tarball_folder}/runtime/start_minotari_node.sh"
 cp -f "${app_dir}/tari_base_node/linux/runtime/start_tor.sh" "${tarball_folder}/runtime/start_tor.sh"
 cp -f "${project_dir}/${target_release}/tari_base_node" "${tarball_folder}/runtime/tari_base_node"
 

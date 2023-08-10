@@ -25,7 +25,7 @@
 //! you will notice that they the first two diverge at the first bit, while the first and last pairs differ at the
 //! fourth bit. This results in a SMT that looks like this:
 //!
-//! .           ┌──────┐
+//!             ┌──────┐
 //!       ┌─────┤ root ├─────┐
 //!       │     └──────┘     │
 //!      ┌┴┐                ┌┴┐1

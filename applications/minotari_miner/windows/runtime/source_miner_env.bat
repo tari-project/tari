@@ -63,12 +63,10 @@ echo.
 echo.
 if not exist "%config_path%\log4rs_miner.yml" (
     echo Creating new "%config_path%\log4rs_miner.yml".
-    set INIT_FLAG=--init
 ) else (
     echo Using existing "%config_path%\log4rs_miner.yml"
-    set INIT_FLAG=
 )
 echo.
 
 cd "%base_path%"
-"%miner%" %INIT_FLAG% --config "%config_path%\config.toml" --log_config "%config_path%\log4rs_miner.yml" --base-path "%base_path%"
+"%miner%" --config "%config_path%\config.toml" --log_config "%config_path%\log4rs_miner.yml" --base-path "%base_path%"
