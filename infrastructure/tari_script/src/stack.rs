@@ -386,6 +386,7 @@ mod test {
     use blake2::Blake2b;
     use borsh::{BorshDeserialize, BorshSerialize};
     use digest::{consts::U32, Digest};
+    use rand::rngs::OsRng;
     use tari_crypto::{
         keys::{PublicKey, SecretKey},
         ristretto::{pedersen::PedersenCommitment, RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
@@ -402,7 +403,7 @@ mod test {
         use crate::StackItem::{Number, PublicKey, Signature};
         let k = RistrettoSecretKey::random(&mut rand::thread_rng());
         let p = RistrettoPublicKey::from_secret_key(&k);
-        let s = RistrettoSchnorr::sign_message(&k, b"hi").unwrap();
+        let s = RistrettoSchnorr::sign_message(&k, b"hi", &mut OsRng).unwrap();
         let items = vec![Number(5432), Number(21), Signature(s), PublicKey(p)];
         let stack = ExecutionStack::new(items);
         let bytes = stack.to_bytes();

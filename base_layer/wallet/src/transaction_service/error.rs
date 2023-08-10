@@ -182,13 +182,25 @@ pub enum TransactionServiceError {
     #[error("FixedHash size error: `{0}`")]
     FixedHashSizeError(#[from] FixedHashSizeError),
     #[error("Commitment signature error: {0}")]
-    CommitmentSignatureError(#[from] CommitmentSignatureError),
+    CommitmentSignatureError(String),
     #[error("Invalid data: `{0}`")]
-    RangeProofError(#[from] RangeProofError),
+    RangeProofError(String),
     #[error("Key manager error: `{0}`")]
     InvalidKeyId(String),
     #[error("Invalid key manager data: `{0}`")]
     KeyManagerServiceError(#[from] KeyManagerServiceError),
+}
+
+impl From<RangeProofError> for TransactionServiceError {
+    fn from(e: RangeProofError) -> Self {
+        TransactionServiceError::RangeProofError(e.to_string())
+    }
+}
+
+impl From<CommitmentSignatureError> for TransactionServiceError {
+    fn from(e: CommitmentSignatureError) -> Self {
+        TransactionServiceError::CommitmentSignatureError(e.to_string())
+    }
 }
 
 impl From<ByteArrayError> for TransactionServiceError {

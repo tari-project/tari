@@ -30,7 +30,6 @@ use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, Publi
 use tari_comms::types::CommsDHKE;
 use tari_crypto::{
     commitment::{ExtensionDegree, HomomorphicCommitmentFactory},
-    errors::RangeProofError,
     extended_range_proof::ExtendedRangeProofService,
     hash_domain,
     hashing::{DomainSeparatedHash, DomainSeparatedHasher},
@@ -493,17 +492,11 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 .construct_extended_proof(vec![extended_witness], None)
         };
 
-        let proof_bytes = proof_bytes_result.map_err(|err| {
-            TransactionError::RangeProofError(RangeProofError::ProofConstructionError(format!(
-                "Failed to construct range proof: {}",
-                err
-            )))
-        })?;
+        let proof_bytes = proof_bytes_result
+            .map_err(|err| TransactionError::RangeProofError(format!("Failed to construct range proof: {}", err)))?;
 
         RangeProof::from_bytes(&proof_bytes).map_err(|_| {
-            TransactionError::RangeProofError(RangeProofError::ProofConstructionError(
-                "Rangeproof factory returned invalid range proof bytes".to_string(),
-            ))
+            TransactionError::RangeProofError("Rangeproof factory returned invalid range proof bytes".to_string())
         })
     }
 

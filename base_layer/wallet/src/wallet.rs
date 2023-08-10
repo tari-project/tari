@@ -25,6 +25,7 @@ use std::{cmp, marker::PhantomData, sync::Arc};
 use blake2::Blake2b;
 use digest::consts::U32;
 use log::*;
+use rand::rngs::OsRng;
 use tari_common::configuration::bootstrap::ApplicationType;
 use tari_common_types::{
     tari_address::TariAddress,
@@ -505,7 +506,7 @@ where
         secret: &PrivateKey,
         message: &str,
     ) -> Result<SignatureWithDomain<WalletMessageSigningDomain>, SchnorrSignatureError> {
-        SignatureWithDomain::<WalletMessageSigningDomain>::sign_message(secret, message.as_bytes())
+        SignatureWithDomain::<WalletMessageSigningDomain>::sign_message(secret, message.as_bytes(), &mut OsRng)
     }
 
     pub fn verify_message_signature(
