@@ -47,7 +47,7 @@ name: Build docker images
           - xmrig
 
 env:
-  toolchain_default: nightly-2022-11-03
+  toolchain_default: nightly-2023-06-03
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
