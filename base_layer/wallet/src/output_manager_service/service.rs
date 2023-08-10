@@ -233,7 +233,7 @@ where
                     .map(OutputManagerResponse::Balance)
             },
             OutputManagerRequest::GetRecipientTransaction(tsm) => self
-                .get_recipient_transaction(tsm)
+                .get_default_recipient_transaction(tsm)
                 .await
                 .map(OutputManagerResponse::RecipientTransactionGenerated),
             OutputManagerRequest::GetCoinbaseTransaction {
@@ -680,7 +680,7 @@ where
     }
 
     /// Request a receiver transaction be generated from the supplied Sender Message
-    async fn get_recipient_transaction(
+    async fn get_default_recipient_transaction(
         &mut self,
         sender_message: TransactionSenderMessage,
     ) -> Result<ReceiverTransactionProtocol, OutputManagerError> {
