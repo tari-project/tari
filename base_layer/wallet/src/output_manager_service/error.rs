@@ -116,6 +116,10 @@ pub enum OutputManagerError {
     NodeIdError(#[from] NodeIdError),
     #[error("Script hash does not match expected script")]
     InvalidScriptHash,
+    #[error("Unsupported Covenant")]
+    InvalidCovenant,
+    #[error("Unsupported Output Features")]
+    InvalidOutputFeatures,
     #[error("Tari script error: {0}")]
     ScriptError(#[from] ScriptError),
     #[error("Master secret key does not match persisted key manager state")]
