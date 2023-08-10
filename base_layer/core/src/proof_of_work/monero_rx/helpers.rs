@@ -563,7 +563,7 @@ mod test {
         }
         let root = tree_hash(&hashes).unwrap();
         assert_eq!(root, hashes[0]);
-        let coinbase_merkle_proof = create_merkle_proof(&hashes, &hashes[0]).unwrap();
+        let coinbase_merkle_proof = create_merkle_proof(&hashes).unwrap();
         let monero_data = MoneroPowData {
             header: block.header,
             randomx_key: FixedByteArray::from_bytes(&from_hex(&seed_hash).unwrap()).unwrap(),
