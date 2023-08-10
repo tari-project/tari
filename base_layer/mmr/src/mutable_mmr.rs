@@ -23,7 +23,7 @@
 use std::convert::TryFrom;
 
 use croaring::Bitmap;
-use digest::{Digest};
+use digest::Digest;
 use tari_common::DomainDigest;
 
 use crate::{

@@ -23,7 +23,7 @@
 use std::ops::Deref;
 
 use croaring::Bitmap;
-use digest::{Digest};
+use digest::Digest;
 use tari_common::DomainDigest;
 
 use crate::{

@@ -23,7 +23,7 @@
 use std::{convert::TryFrom, fmt, hash::Hasher};
 
 use croaring::Bitmap;
-use digest::{Digest};
+use digest::Digest;
 use serde::{
     de::{self, Deserialize, Deserializer, MapAccess, SeqAccess, Visitor},
     ser::{Serialize, SerializeStruct, Serializer},
