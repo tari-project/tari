@@ -109,18 +109,19 @@ where
     }
 
     pub async fn run(mut self) {
+        if self.addresses.is_empty() {
+            warn!(target: LOG_TARGET, "🔌️ No addresses to check");
+            return;
+        }
         info!(
             target: LOG_TARGET,
             "🔌️ Starting liveness self-check with interval {:.2?}", self.interval
         );
-        let mut address_idx = 0;
-        let mut last_working_address = None;
+        let mut current_address_idx = 0;
         loop {
             let timer = Instant::now();
             let _ = self.tx_watch.send(LivenessStatus::Checking);
-            let address = last_working_address
-                .clone()
-                .unwrap_or(self.addresses[address_idx].clone());
+            let address = self.addresses[current_address_idx].clone();
             match self.transport.dial(&address).await {
                 Ok(mut socket) => {
                     debug!(
@@ -134,7 +135,6 @@ where
                         self.tx_watch.send_replace(LivenessStatus::Unreachable);
                         continue;
                     }
-                    last_working_address = Some(address);
                     let mut framed = Framed::new(socket, LinesCodec::new_with_max_length(MAX_LINE_LENGTH));
                     loop {
                         match self.ping_pong(&mut framed).await {
@@ -159,7 +159,7 @@ where
                     }
                 },
                 Err(err) => {
-                    address_idx = (address_idx + 1) % self.addresses.len();
+                    current_address_idx = (current_address_idx + 1) % self.addresses.len();
                     self.tx_watch.send_replace(LivenessStatus::Unreachable);
                     warn!(
                         target: LOG_TARGET,
