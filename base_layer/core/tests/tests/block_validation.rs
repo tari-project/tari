@@ -33,7 +33,7 @@ use tari_core::{
     consensus::{consensus_constants::PowAlgorithmConstants, ConsensusConstantsBuilder, ConsensusManager},
     proof_of_work::{
         monero_rx,
-        monero_rx::{FixedByteArray, MoneroPowData},
+        monero_rx::{verify_header, FixedByteArray, MoneroPowData},
         randomx_factory::RandomXFactory,
         Difficulty,
         PowAlgorithm,
@@ -150,9 +150,42 @@ async fn test_monero_blocks() {
         },
     };
 
+    // lets try add some bad data to the block
+    let mut extra_bytes_block_3 = block_3.clone();
+    add_bad_monero_data(&mut extra_bytes_block_3, seed2);
+    match db.add_block(Arc::new(extra_bytes_block_3)) {
+        Err(ChainStorageError::ValidationError {
+            source: ValidationError::CustomError(_),
+        }) => (),
+        Err(e) => {
+            panic!("Failed due to other error:{:?}", e);
+        },
+        Ok(res) => {
+            panic!("Block add unexpectedly succeeded with result: {:?}", res);
+        },
+    };
     // now lets fix the seed, and try again
     add_monero_data(&mut block_3, seed2);
-    assert_block_add_result_added(&db.add_block(Arc::new(block_3)).unwrap());
+    // lets break the nonce count
+    let hash1 = block_3.hash();
+    block_3.header.nonce = 1;
+    let hash2 = block_3.hash();
+    assert_ne!(hash1, hash2);
+    assert!(verify_header(&block_3.header).is_ok());
+    match db.add_block(Arc::new(block_3.clone())) {
+        Err(ChainStorageError::ValidationError {
+            source: ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidNonce),
+        }) => (),
+        Err(e) => {
+            panic!("Failed due to other error:{:?}", e);
+        },
+        Ok(res) => {
+            panic!("Block add unexpectedly succeeded with result: {:?}", res);
+        },
+    };
+    // lets fix block3
+    block_3.header.nonce = 0;
+    assert_block_add_result_added(&db.add_block(Arc::new(block_3.clone())).unwrap());
 }
 
 fn add_monero_data(tblock: &mut Block, seed_key: &str) {
@@ -161,11 +194,11 @@ fn add_monero_data(tblock: &mut Block, seed_key: &str) {
 .to_string();
     let bytes = hex::decode(blocktemplate_blob).unwrap();
     let mut mblock = monero_rx::deserialize::<MoneroBlock>(&bytes[..]).unwrap();
-    let hash = tblock.header.mining_hash();
+    let hash = tblock.header.merge_mining_hash();
     monero_rx::append_merge_mining_tag(&mut mblock, hash).unwrap();
     let hashes = monero_rx::create_ordered_transaction_hashes_from_block(&mblock);
     let merkle_root = monero_rx::tree_hash(&hashes).unwrap();
-    let coinbase_merkle_proof = monero_rx::create_merkle_proof(&hashes, &hashes[0]).unwrap();
+    let coinbase_merkle_proof = monero_rx::create_merkle_proof(&hashes).unwrap();
     #[allow(clippy::cast_possible_truncation)]
     let monero_data = MoneroPowData {
         header: mblock.header,
@@ -179,6 +212,12 @@ fn add_monero_data(tblock: &mut Block, seed_key: &str) {
     BorshSerialize::serialize(&monero_data, &mut serialized).unwrap();
     tblock.header.pow.pow_algo = PowAlgorithm::RandomX;
     tblock.header.pow.pow_data = serialized;
+}
+
+fn add_bad_monero_data(tblock: &mut Block, seed_key: &str) {
+    add_monero_data(tblock, seed_key);
+    // Add some "garbage" bytes to the end of the pow_data
+    tblock.header.pow.pow_data.extend([1u8; 100]);
 }
 
 #[tokio::test]
@@ -247,10 +286,12 @@ async fn inputs_are_not_malleable() {
         .await
         .unwrap();
 
-    let input_mut = block.body.inputs_mut().get_mut(0).unwrap();
+    let mut inputs = block.body.inputs().clone();
     // Put the crafted input into the block
-    input_mut.input_data = malicious_input.input_data;
-    input_mut.script_signature = malicious_input.script_signature;
+    inputs[0].input_data = malicious_input.input_data;
+    inputs[0].script_signature = malicious_input.script_signature;
+
+    block.body = AggregateBody::new(inputs, block.body.outputs().clone(), block.body.kernels().clone());
 
     let validator = BlockBodyFullValidator::new(blockchain.consensus_manager().clone(), true);
     let txn = blockchain.store().db_read_access().unwrap();

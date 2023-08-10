@@ -74,6 +74,8 @@ pub enum BlockHeaderValidationError {
     ProofOfWorkError(#[from] PowError),
     #[error("Monero seed hash too old")]
     OldSeedHash,
+    #[error("Monero blocks must have a nonce of 0")]
+    InvalidNonce,
     #[error("Incorrect height: Expected {expected} but got {actual}")]
     InvalidHeight { expected: u64, actual: u64 },
     #[error("Incorrect previous hash: Expected {expected} but got {actual}")]
@@ -92,6 +94,8 @@ pub struct BlockHeader {
     pub prev_hash: BlockHash,
     /// Timestamp at which the block was built.
     pub timestamp: EpochTime,
+    /// This is the Merkle root of the inputs in this block
+    pub input_mr: FixedHash,
     /// This is the UTXO merkle root of the outputs
     /// This is calculated as Hash (txo MMR root  || roaring bitmap hash of UTXO indices)
     pub output_mr: FixedHash,
@@ -101,18 +105,16 @@ pub struct BlockHeader {
     pub kernel_mr: FixedHash,
     /// The number of MMR leaves in the kernel MMR
     pub kernel_mmr_size: u64,
-    /// This is the Merkle root of the inputs in this block
-    pub input_mr: FixedHash,
     /// Sum of kernel offsets for all kernels in this block.
     pub total_kernel_offset: PrivateKey,
     /// Sum of script offsets for all kernels in this block.
     pub total_script_offset: PrivateKey,
-    /// Nonce increment used to mine this block.
-    pub nonce: u64,
-    /// Proof of work summary
-    pub pow: ProofOfWork,
     /// Merkle root of all active validator node.
     pub validator_node_mr: FixedHash,
+    /// Proof of work summary
+    pub pow: ProofOfWork,
+    /// Nonce increment used to mine this block.
+    pub nonce: u64,
 }
 
 impl BlockHeader {
@@ -226,8 +228,15 @@ impl BlockHeader {
             .chain(&self.kernel_mmr_size)
             .chain(&self.total_kernel_offset)
             .chain(&self.total_script_offset)
+            .chain(&self.validator_node_mr)
             .finalize()
             .into()
+    }
+
+    pub fn merge_mining_hash(&self) -> FixedHash {
+        let mut mining_hash = self.mining_hash();
+        mining_hash[0..4].copy_from_slice(b"TARI"); // Maybe put this in a `const`
+        mining_hash
     }
 
     #[inline]

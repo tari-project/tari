@@ -178,6 +178,11 @@ fn check_pow_data<B: BlockchainBackend>(
     use PowAlgorithm::{RandomX, Sha3x};
     match block_header.pow.pow_algo {
         RandomX => {
+            if block_header.nonce != 0 {
+                return Err(ValidationError::BlockHeaderError(
+                    BlockHeaderValidationError::InvalidNonce,
+                ));
+            }
             let monero_data =
                 MoneroPowData::from_header(block_header).map_err(|e| ValidationError::CustomError(e.to_string()))?;
             let seed_height = db.fetch_monero_seed_first_seen_height(&monero_data.randomx_key)?;
