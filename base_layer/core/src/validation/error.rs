@@ -53,7 +53,7 @@ pub enum ValidationError {
     #[error("The transaction is invalid: {0}")]
     TransactionError(#[from] TransactionError),
     #[error("A range proof verification has produced an error: {0}")]
-    RangeProofError(#[from] RangeProofError),
+    RangeProofError(String),
     #[error("Error: {0}")]
     CustomError(String),
     #[error("Fatal storage error during validation: {0}")]
@@ -166,5 +166,11 @@ impl From<ChainStorageError> for ValidationError {
 impl ValidationError {
     pub fn custom_error<T: Into<String>>(err: T) -> Self {
         ValidationError::CustomError(err.into())
+    }
+}
+
+impl From<RangeProofError> for ValidationError {
+    fn from(e: RangeProofError) -> Self {
+        ValidationError::RangeProofError(e.to_string())
     }
 }

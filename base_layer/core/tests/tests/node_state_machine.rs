@@ -22,7 +22,8 @@
 
 use std::time::Duration;
 
-use blake2::Digest;
+use blake2::{Blake2b, Digest};
+use digest::consts::U32;
 use tari_common::configuration::Network;
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_core::{
@@ -42,7 +43,6 @@ use tari_core::{
     transactions::test_helpers::create_test_core_key_manager_with_memory_db,
     validation::mocks::MockValidator,
 };
-use tari_crypto::hash::blake2::Blake256;
 use tari_p2p::services::liveness::config::LivenessConfig;
 use tari_shutdown::Shutdown;
 use tari_test_utils::unpack_enum;
@@ -167,7 +167,7 @@ async fn test_event_channel() {
     task::spawn(state_machine.run());
 
     let node_identity = random_node_identity();
-    let block_hash = Blake256::digest(node_identity.node_id().as_bytes()).into();
+    let block_hash = Blake2b::<U32>::digest(node_identity.node_id().as_bytes()).into();
     let metadata = ChainMetadata::new(10, block_hash, 2800, 0, 5000, 0);
 
     node.comms

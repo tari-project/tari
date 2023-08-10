@@ -45,9 +45,9 @@ pub enum TransactionError {
     #[error("Transaction kernel does not contain a signature")]
     NoSignatureError,
     #[error("A range proof construction or verification has produced an error: {0}")]
-    RangeProofError(#[from] RangeProofError),
+    RangeProofError(String),
     #[error("An error occurred while performing a commitment signature: {0}")]
-    SigningError(#[from] CommitmentAndPublicKeySignatureError),
+    SigningError(String),
     #[error("Invalid kernel in body: {0}")]
     InvalidKernel(String),
     #[error("Invalid coinbase in body")]
@@ -65,7 +65,7 @@ pub enum TransactionError {
     #[error("Tari script error: {0}")]
     ScriptError(#[from] ScriptError),
     #[error("Schnorr signature error: {0}")]
-    SchnorrSignatureError(#[from] SchnorrSignatureError),
+    SchnorrSignatureError(String),
     #[error("Error performing conversion: {0}")]
     ConversionError(String),
     #[error("Error performing encryption: {0}")]
@@ -117,5 +117,23 @@ impl From<EncryptedDataError> for TransactionError {
 impl From<ByteArrayError> for TransactionError {
     fn from(err: ByteArrayError) -> Self {
         TransactionError::ByteArrayError(err.to_string())
+    }
+}
+
+impl From<RangeProofError> for TransactionError {
+    fn from(e: RangeProofError) -> Self {
+        TransactionError::RangeProofError(e.to_string())
+    }
+}
+
+impl From<CommitmentAndPublicKeySignatureError> for TransactionError {
+    fn from(e: CommitmentAndPublicKeySignatureError) -> Self {
+        TransactionError::SigningError(e.to_string())
+    }
+}
+
+impl From<SchnorrSignatureError> for TransactionError {
+    fn from(e: SchnorrSignatureError) -> Self {
+        TransactionError::SchnorrSignatureError(e.to_string())
     }
 }

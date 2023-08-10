@@ -139,12 +139,13 @@ impl BorshSerialize for MerkleProof {
 }
 
 impl BorshDeserialize for MerkleProof {
-    fn deserialize(buf: &mut &[u8]) -> io::Result<Self> {
-        let len = buf.read_varint()?;
+    fn deserialize_reader<R>(reader: &mut R) -> Result<Self, io::Error>
+    where R: io::Read {
+        let len = reader.read_varint()?;
         let mut branch = Vec::with_capacity(len);
         for _ in 0..len {
             branch.push(
-                Hash::consensus_decode(buf)
+                Hash::consensus_decode(reader)
                     .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err.to_string()))?,
             );
         }

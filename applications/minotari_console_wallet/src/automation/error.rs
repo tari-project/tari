@@ -71,7 +71,7 @@ pub enum CommandError {
     #[error("Wallet storage error `{0}`")]
     WalletStorageError(#[from] WalletStorageError),
     #[error("Hex error `{0}`")]
-    HexError(#[from] HexError),
+    HexError(String),
     #[error("Error `{0}`")]
     ShaError(String),
     #[error("JSON file error `{0}`")]
@@ -83,7 +83,19 @@ pub enum CommandError {
     #[error("FixedHash size error `{0}`")]
     FixedHashSizeError(#[from] FixedHashSizeError),
     #[error("ByteArrayError {0}")]
-    ByteArrayError(#[from] ByteArrayError),
+    ByteArrayError(String),
+}
+
+impl From<HexError> for CommandError {
+    fn from(err: HexError) -> Self {
+        CommandError::HexError(err.to_string())
+    }
+}
+
+impl From<ByteArrayError> for CommandError {
+    fn from(e: ByteArrayError) -> Self {
+        CommandError::ByteArrayError(e.to_string())
+    }
 }
 
 impl From<CommandError> for ExitError {

@@ -1,8 +1,9 @@
 // Copyright 2023. The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
+use blake2::Blake2b;
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
-use tari_crypto::hash::blake2::Blake256;
+use digest::consts::U32;
 use tari_mmr::sparse_merkle_tree::{NodeKey, SparseMerkleTree, ValueHash};
 
 fn random_key() -> NodeKey {
@@ -14,8 +15,8 @@ fn get_keys(n: usize) -> Vec<NodeKey> {
     (0..n).map(|_| random_key()).collect()
 }
 
-fn create_smt() -> SparseMerkleTree<Blake256> {
-    SparseMerkleTree::<Blake256>::new()
+fn create_smt() -> SparseMerkleTree<Blake2b<U32>> {
+    SparseMerkleTree::<Blake2b<U32>>::new()
 }
 
 pub fn benchmark_sparse_merkle_trees(c: &mut Criterion) {

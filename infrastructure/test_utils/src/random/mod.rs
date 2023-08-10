@@ -27,14 +27,17 @@ use rand::{distributions::Alphanumeric, thread_rng, Rng};
 /// Generate a random alphanumeric string of the given size using the default `ThreadRng`.
 pub fn string(len: usize) -> String {
     let mut rng = thread_rng();
-    iter::repeat(()).map(|_| rng.sample(Alphanumeric)).take(len).collect()
+    iter::repeat(())
+        .map(|_| rng.sample(Alphanumeric) as char)
+        .take(len)
+        .collect()
 }
 
 /// Generate a random alphanumeric string of the given size using the default `ThreadRng`.
 pub fn prefixed_string(prefix: &str, len: usize) -> String {
     let mut rng = thread_rng();
     let rand_str = iter::repeat(())
-        .map(|_| rng.sample(Alphanumeric))
+        .map(|_| rng.sample(Alphanumeric) as char)
         .take(len)
         .collect::<String>();
     format!("{}{}", prefix, rand_str)

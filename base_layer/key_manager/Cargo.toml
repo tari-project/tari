@@ -11,8 +11,8 @@ edition = "2021"
 crate-type = ["lib", "cdylib"]
 
 [dependencies]
-tari_crypto = { version = "0.17" }
-tari_utilities = "0.4.10"
+tari_crypto = { version = "0.18" }
+tari_utilities = { version = "0.5" }
 tari_common_sqlite = { path = "../../common_sqlite" }
 tari_common_types = {  path = "../../base_layer/common_types"}
 tari_service_framework = {  path = "../service_framework" }
@@ -26,13 +26,13 @@ log = {version = "0.4.6"}
 diesel = { version = "2.0.3", features = ["sqlite", "serde_json", "chrono", "64-column-tables"]}
 diesel_migrations = {version = "2.0.0"}
 argon2 = { version = "0.4.1", features = ["std", "alloc"] }
-blake2 = "0.9.1"
+blake2 = "0.10"
 chacha20 = "0.7.1"
 crc32fast = "1.2.1"
 derivative = "2.2.0"
-digest = "0.9.0"
+digest = "0.10"
 js-sys = { version = "0.3.55", optional = true }
-rand = "0.7.3"
+rand = "0.8"
 serde = "1.0.89"
 thiserror = "1.0.26"
 strum_macros = "0.22"
@@ -47,5 +47,4 @@ tempfile = "3.1.0"
 [features]
 default = []
 key_manager_service = []
-avx2 = ["tari_crypto/simd_backend"]
 js = [ "js-sys"]

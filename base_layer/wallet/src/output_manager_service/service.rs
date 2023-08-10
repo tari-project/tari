@@ -59,7 +59,6 @@ use tari_core::{
         SenderTransactionProtocol,
     },
 };
-use tari_crypto::errors::RangeProofError;
 use tari_script::{inputs, script, Opcode, TariScript};
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
@@ -2228,14 +2227,12 @@ where
                 Ok((tx_id, fee, amount - fee, tx))
             } else {
                 Err(OutputManagerError::TransactionError(TransactionError::RangeProofError(
-                    RangeProofError::InvalidRewind(
-                        "Atomic swap: Blinding factor could not open the commitment!".to_string(),
-                    ),
+                    "Atomic swap: Blinding factor could not open the commitment!".to_string(),
                 )))
             }
         } else {
             Err(OutputManagerError::TransactionError(TransactionError::RangeProofError(
-                RangeProofError::InvalidRewind("Atomic swap: Encrypted value could not be decrypted!".to_string()),
+                "Atomic swap: Encrypted value could not be decrypted!".to_string(),
             )))
         }
     }
@@ -2399,7 +2396,7 @@ where
 
                     // Compute the stealth address offset
                     let stealth_address_offset = PrivateKey::from_bytes(stealth_address_hasher.as_ref())
-                        .expect("'DomainSeparatedHash<Blake256>' has correct size");
+                        .expect("'DomainSeparatedHash<Blake2b<U32>>' has correct size");
                     let stealth_key = self
                         .resources
                         .key_manager

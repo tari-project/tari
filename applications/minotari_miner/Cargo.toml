@@ -14,10 +14,10 @@ tari_common_types = { path = "../../base_layer/common_types" }
 tari_comms = { path = "../../comms/core" }
 minotari_app_utilities = { path = "../minotari_app_utilities" }
 minotari_app_grpc = { path = "../minotari_app_grpc" }
-tari_crypto = { version = "0.17" }
-tari_utilities = "0.4.10"
+tari_crypto = { version = "0.18" }
+tari_utilities = { version = "0.5" }
 
-borsh = "0.9.3"
+borsh = "0.10"
 crossterm = { version = "0.25.0" }
 clap = { version = "3.2", features = ["derive"] }
 crossbeam = "0.8"
@@ -25,7 +25,7 @@ futures = "0.3"
 log = { version = "0.4", features = ["std"] }
 log4rs = { git = "https://github.com/tari-project/log4rs.git", default_features = false, features = ["config_parsing", "threshold_filter", "yaml_format", "console_appender", "rolling_file_appender", "compound_policy", "size_trigger", "fixed_window_roller"] }
 num_cpus = "1.13"
-rand = "0.7.3"
+rand = "0.8"
 serde = { version = "1.0", default_features = false, features = ["derive"] }
 tonic = { version = "0.6.2", features = ["transport"] }
 tokio = { version = "1.23", default_features = false, features = ["rt-multi-thread"] }

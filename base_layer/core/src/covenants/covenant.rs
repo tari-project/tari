@@ -64,11 +64,12 @@ impl BorshSerialize for Covenant {
 }
 
 impl BorshDeserialize for Covenant {
-    fn deserialize(buf: &mut &[u8]) -> io::Result<Self> {
-        let len = buf.read_varint()?;
+    fn deserialize_reader<R>(reader: &mut R) -> Result<Self, io::Error>
+    where R: io::Read {
+        let len = reader.read_varint()?;
         let mut data = Vec::with_capacity(len);
         for _ in 0..len {
-            data.push(u8::deserialize(buf)?);
+            data.push(u8::deserialize_reader(reader)?);
         }
         let covenant = Self::from_bytes(&mut data.as_slice())
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;

@@ -222,7 +222,7 @@ pub enum Opcode {
     OrVerify(u8),
 
     // Cryptographic Operations
-    /// Pops the top element, hash it with the Blake256 hash function and push the result to the stack. Fails with
+    /// Pops the top element, hash it with the Blake2b<U32> hash function and push the result to the stack. Fails with
     /// `StackUnderflow` if the stack is empty. Fails with `InvalidInput` if the input is not a valid 32 byte hash
     /// value.
     HashBlake256,

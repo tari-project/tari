@@ -40,8 +40,8 @@ pub enum UiError {
     ContactsService(#[from] ContactsServiceError),
     #[error(transparent)]
     Connectivity(#[from] ConnectivityError),
-    #[error(transparent)]
-    HexError(#[from] HexError),
+    #[error("Conversion: `{0}`")]
+    HexError(String),
     #[error(transparent)]
     WalletError(#[from] WalletError),
     #[error(transparent)]
@@ -58,4 +58,10 @@ pub enum UiError {
     SendError(String),
     #[error("Transaction error: `{0}`")]
     TransactionError(String),
+}
+
+impl From<HexError> for UiError {
+    fn from(err: HexError) -> Self {
+        UiError::HexError(err.to_string())
+    }
 }

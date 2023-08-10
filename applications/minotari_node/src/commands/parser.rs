@@ -57,10 +57,24 @@ impl Default for Format {
 pub struct FromHex<T>(pub T);
 
 impl<T: Hex> FromStr for FromHex<T> {
-    type Err = HexError;
+    type Err = ParserError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        T::from_hex(s).map(Self)
+        T::from_hex(s)
+            .map(Self)
+            .map_err(|e| ParserError::HexError(format!("{}", e)))
+    }
+}
+
+#[derive(Debug, Error, PartialEq)]
+pub enum ParserError {
+    #[error("Could not convert into hex: `{0}`")]
+    HexError(String),
+}
+
+impl From<HexError> for ParserError {
+    fn from(e: HexError) -> Self {
+        ParserError::HexError(e.to_string())
     }
 }
 

@@ -35,7 +35,8 @@ use tari_comms::{
     NodeIdentity,
 };
 use tari_crypto::ristretto::RistrettoPublicKey;
-use tari_utilities::{hex::Hex, ByteArray};
+use tari_utilities::{hex::Hex, ByteArray, ByteArrayError};
+use thiserror::Error;
 
 use crate::{
     proto::dht::{DiscoveryMessage, JoinMessage},
@@ -96,6 +97,18 @@ impl fmt::Display for dht::JoinMessage {
 
 //---------------------------------- Rpc Message Conversions --------------------------------------------//
 
+#[derive(Debug, Error, PartialEq)]
+enum PeerInfoConvertError {
+    #[error("Could not convert into byte array: `{0}`")]
+    ByteArrayError(String),
+}
+
+impl From<ByteArrayError> for PeerInfoConvertError {
+    fn from(e: ByteArrayError) -> Self {
+        PeerInfoConvertError::ByteArrayError(e.to_string())
+    }
+}
+
 impl TryFrom<DiscoveryMessage> for PeerInfo {
     type Error = anyhow::Error;
 
@@ -117,7 +130,8 @@ impl TryFrom<DiscoveryMessage> for PeerInfo {
         };
 
         Ok(Self {
-            public_key: RistrettoPublicKey::from_bytes(&value.public_key)?,
+            public_key: RistrettoPublicKey::from_bytes(&value.public_key)
+                .map_err(|e| PeerInfoConvertError::ByteArrayError(format!("{}", e)))?,
             addresses: value
                 .addresses
                 .iter()
@@ -174,7 +188,8 @@ impl TryInto<PeerInfo> for rpc::PeerInfo {
     type Error = anyhow::Error;
 
     fn try_into(self) -> Result<PeerInfo, Self::Error> {
-        let public_key = CommsPublicKey::from_bytes(&self.public_key)?;
+        let public_key = CommsPublicKey::from_bytes(&self.public_key)
+            .map_err(|e| PeerInfoConvertError::ByteArrayError(format!("{}", e)))?;
         let addresses = self
             .addresses
             .into_iter()
@@ -243,8 +258,10 @@ impl TryFrom<common::IdentitySignature> for IdentitySignature {
     fn try_from(value: common::IdentitySignature) -> Result<Self, Self::Error> {
         let version = u8::try_from(value.version)
             .map_err(|_| anyhow::anyhow!("Invalid peer identity signature version {}", value.version))?;
-        let public_nonce = CommsPublicKey::from_bytes(&value.public_nonce)?;
-        let signature = CommsSecretKey::from_bytes(&value.signature)?;
+        let public_nonce = CommsPublicKey::from_bytes(&value.public_nonce)
+            .map_err(|e| PeerInfoConvertError::ByteArrayError(format!("{}", e)))?;
+        let signature = CommsSecretKey::from_bytes(&value.signature)
+            .map_err(|e| PeerInfoConvertError::ByteArrayError(format!("{}", e)))?;
         let updated_at = NaiveDateTime::from_timestamp_opt(value.updated_at, 0)
             .ok_or_else(|| anyhow::anyhow!("updated_at overflowed"))?;
         let updated_at = DateTime::<Utc>::from_utc(updated_at, Utc);

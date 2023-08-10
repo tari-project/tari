@@ -39,9 +39,15 @@ pub enum MergeMineError {
     #[error("Validation error: {0}")]
     ValidationError(String),
     #[error("Hex conversion error: {0}")]
-    HexError(#[from] HexError),
+    HexError(String),
     #[error("Monero PoW data did not contain a valid merkle root")]
     InvalidMerkleRoot,
     #[error("Invalid difficulty: {0}")]
     DifficultyError(#[from] DifficultyError),
+}
+
+impl From<HexError> for MergeMineError {
+    fn from(err: HexError) -> Self {
+        MergeMineError::HexError(err.to_string())
+    }
 }

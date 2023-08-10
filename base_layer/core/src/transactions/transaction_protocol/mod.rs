@@ -85,10 +85,12 @@
 
 // #![allow(clippy::op_ref)]
 
+use blake2::Blake2b;
 use derivative::Derivative;
+use digest::consts::U32;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::PrivateKey;
-use tari_crypto::{errors::RangeProofError, hash::blake2::Blake256, signatures::SchnorrSignatureError};
+use tari_crypto::{errors::RangeProofError, signatures::SchnorrSignatureError};
 use thiserror::Error;
 
 use crate::transactions::{tari_amount::*, transaction_components::TransactionError};
@@ -115,7 +117,7 @@ pub enum TransactionProtocolError {
     #[error("Invalid state")]
     InvalidStateError,
     #[error("An error occurred while performing a signature: `{0}`")]
-    SigningError(#[from] SchnorrSignatureError),
+    SigningError(String),
     #[error("A signature verification failed: {0}")]
     InvalidSignatureError(String),
     #[error("An error occurred while building the final transaction: `{0}`")]
@@ -123,7 +125,7 @@ pub enum TransactionProtocolError {
     #[error("The transaction construction broke down due to communication failure")]
     TimeoutError,
     #[error("An error was produced while constructing a rangeproof: `{0}`")]
-    RangeProofError(#[from] RangeProofError),
+    RangeProofError(String),
     #[error("This set of parameters is currently not supported: `{0}`")]
     UnsupportedError(String),
     #[error("There has been an error serializing or deserializing this structure")]
@@ -138,6 +140,18 @@ pub enum TransactionProtocolError {
     EncryptionError,
     #[error("Key manager service error: `{0}`")]
     KeyManagerServiceError(String),
+}
+
+impl From<RangeProofError> for TransactionProtocolError {
+    fn from(e: RangeProofError) -> Self {
+        TransactionProtocolError::RangeProofError(e.to_string())
+    }
+}
+
+impl From<SchnorrSignatureError> for TransactionProtocolError {
+    fn from(e: SchnorrSignatureError) -> Self {
+        TransactionProtocolError::SigningError(e.to_string())
+    }
 }
 
 impl From<KeyManagerServiceError> for TransactionProtocolError {
@@ -193,4 +207,4 @@ hash_domain!(
 );
 
 pub type CalculateTxIdTransactionProtocolHasherBlake256 =
-    DomainSeparatedHasher<Blake256, CalculateTxIdTransactionProtocolHashDomain>;
+    DomainSeparatedHasher<Blake2b<U32>, CalculateTxIdTransactionProtocolHashDomain>;

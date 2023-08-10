@@ -27,6 +27,7 @@
 
 use std::mem::size_of;
 
+use blake2::Blake2b;
 use borsh::{BorshDeserialize, BorshSerialize};
 use chacha20poly1305::{
     aead::{AeadCore, AeadInPlace, Error, OsRng},
@@ -35,10 +36,10 @@ use chacha20poly1305::{
     XChaCha20Poly1305,
     XNonce,
 };
-use digest::{generic_array::GenericArray, FixedOutput};
+use digest::{consts::U32, generic_array::GenericArray, FixedOutput};
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{Commitment, PrivateKey};
-use tari_crypto::{hash::blake2::Blake256, hashing::DomainSeparatedHasher, keys::SecretKey};
+use tari_crypto::{hashing::DomainSeparatedHasher, keys::SecretKey};
 use tari_utilities::{
     hex::{from_hex, to_hex, Hex, HexError},
     safe_array::SafeArray,
@@ -189,7 +190,7 @@ impl EncryptedData {
 impl Hex for EncryptedData {
     fn from_hex(hex: &str) -> Result<Self, HexError> {
         let v = from_hex(hex)?;
-        Self::from_bytes(&v).map_err(|_| HexError::HexConversionError)
+        Self::from_bytes(&v).map_err(|_| HexError::HexConversionError {})
     }
 
     fn to_hex(&self) -> String {
@@ -210,9 +211,15 @@ pub enum EncryptedDataError {
     #[error("Encryption failed: {0}")]
     EncryptionFailed(Error),
     #[error("Conversion failed: {0}")]
-    ByteArrayError(#[from] ByteArrayError),
+    ByteArrayError(String),
     #[error("Incorrect length: {0}")]
     IncorrectLength(String),
+}
+
+impl From<ByteArrayError> for EncryptedDataError {
+    fn from(e: ByteArrayError) -> Self {
+        EncryptedDataError::ByteArrayError(e.to_string())
+    }
 }
 
 // Chacha error is not StdError compatible
@@ -225,7 +232,7 @@ impl From<Error> for EncryptedDataError {
 // Generate a ChaCha20-Poly1305 key from a private key and commitment using Blake2b
 fn kdf_aead(encryption_key: &PrivateKey, commitment: &Commitment) -> EncryptedDataKey {
     let mut aead_key = EncryptedDataKey::from(SafeArray::default());
-    DomainSeparatedHasher::<Blake256, TransactionSecureNonceKdfDomain>::new_with_label("encrypted_value_and_mask")
+    DomainSeparatedHasher::<Blake2b<U32>, TransactionSecureNonceKdfDomain>::new_with_label("encrypted_value_and_mask")
         .chain(encryption_key.as_bytes())
         .chain(commitment.as_bytes())
         .finalize_into(GenericArray::from_mut_slice(aead_key.reveal_mut()));

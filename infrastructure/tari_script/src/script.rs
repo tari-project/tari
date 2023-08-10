@@ -18,13 +18,13 @@
 // pending updates to Dalek/Digest
 use std::{cmp::Ordering, collections::HashSet, convert::TryFrom, fmt, io, ops::Deref};
 
+use blake2::Blake2b;
 use borsh::{BorshDeserialize, BorshSerialize};
-use digest::Digest;
+use digest::{consts::U32, Digest};
 use integer_encoding::{VarIntReader, VarIntWriter};
 use sha2::Sha256;
 use sha3::Sha3_256;
 use tari_crypto::{
-    hash::blake2::Blake256,
     keys::PublicKey,
     ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
 };
@@ -73,11 +73,12 @@ impl BorshSerialize for TariScript {
 }
 
 impl BorshDeserialize for TariScript {
-    fn deserialize(buf: &mut &[u8]) -> io::Result<Self> {
-        let len = buf.read_varint()?;
+    fn deserialize_reader<R>(reader: &mut R) -> Result<Self, io::Error>
+    where R: io::Read {
+        let len = reader.read_varint()?;
         let mut data = Vec::with_capacity(len);
         for _ in 0..len {
-            data.push(u8::deserialize(buf)?);
+            data.push(u8::deserialize_reader(reader)?);
         }
         let script = TariScript::from_bytes(data.as_slice())
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
@@ -160,10 +161,10 @@ impl TariScript {
     /// `as_hash` returns [ScriptError::InvalidDigest] if the digest function does not produce at least 32 bytes of
     /// output.
     pub fn as_hash<D: Digest>(&self) -> Result<HashValue, ScriptError> {
-        if D::output_size() < 32 {
+        if <D as Digest>::output_size() < 32 {
             return Err(ScriptError::InvalidDigest);
         }
-        let h = D::digest(&self.to_bytes());
+        let h = D::digest(self.to_bytes());
         Ok(slice_to_hash(&h.as_slice()[..32]))
     }
 
@@ -202,9 +203,9 @@ impl TariScript {
 
     /// Calculate the message hash that CHECKSIG uses to verify signatures
     pub fn script_message(&self, pub_key: &RistrettoPublicKey) -> Result<RistrettoSecretKey, ScriptError> {
-        let b = Blake256::new()
-            .chain(pub_key.as_bytes())
-            .chain(self.to_bytes())
+        let b = Blake2b::<U32>::default()
+            .chain_update(pub_key.as_bytes())
+            .chain_update(self.to_bytes())
             .finalize();
         RistrettoSecretKey::from_bytes(b.as_slice()).map_err(|_| ScriptError::InvalidSignature)
     }
@@ -256,7 +257,7 @@ impl TariScript {
             },
             Or(n) => TariScript::handle_or(stack, *n),
             OrVerify(n) => TariScript::handle_or_verify(stack, *n),
-            HashBlake256 => TariScript::handle_hash::<Blake256>(stack),
+            HashBlake256 => TariScript::handle_hash::<Blake2b<U32>>(stack),
             HashSha256 => TariScript::handle_hash::<Sha256>(stack),
             HashSha3 => TariScript::handle_hash::<Sha3_256>(stack),
             CheckSig(msg) => {
@@ -616,7 +617,7 @@ impl Hex for TariScript {
     fn from_hex(hex: &str) -> Result<Self, HexError>
     where Self: Sized {
         let bytes = from_hex(hex)?;
-        TariScript::from_bytes(&bytes).map_err(|_| HexError::HexConversionError)
+        TariScript::from_bytes(&bytes).map_err(|_| HexError::HexConversionError {})
     }
 
     fn to_hex(&self) -> String {
@@ -668,12 +669,12 @@ impl Default for ExecutionState {
 
 #[cfg(test)]
 mod test {
+    use blake2::Blake2b;
     use borsh::{BorshDeserialize, BorshSerialize};
-    use digest::Digest;
+    use digest::{consts::U32, Digest};
     use sha2::Sha256;
     use sha3::Sha3_256 as Sha3;
     use tari_crypto::{
-        hash::blake2::Blake256,
         keys::{PublicKey, SecretKey},
         ristretto::{pedersen::PedersenCommitment, RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
     };
@@ -702,7 +703,7 @@ mod test {
         let inputs = ExecutionStack::default();
         assert!(script.execute(&inputs).is_ok());
         assert_eq!(&script.to_hex(), "7b");
-        assert_eq!(script.as_hash::<Blake256>().unwrap(), DEFAULT_SCRIPT_HASH);
+        assert_eq!(script.as_hash::<Blake2b<U32>>().unwrap(), DEFAULT_SCRIPT_HASH);
     }
 
     #[test]
@@ -1478,7 +1479,7 @@ mod test {
         let k =
             RistrettoSecretKey::from_hex("7212ac93ee205cdbbb57c4f0f815fbf8db25b4d04d3532e2262e31907d82c700").unwrap();
         let p = RistrettoPublicKey::from_secret_key(&k); // 56c0fa32558d6edc0916baa26b48e745de834571534ca253ea82435f08ebbc7c
-        let hash = Blake256::digest(p.as_bytes());
+        let hash = Blake2b::<U32>::digest(p.as_bytes());
         let pkh = slice_to_boxed_hash(hash.as_slice()); // ae2337ce44f9ebb6169c863ec168046cb35ab4ef7aa9ed4f5f1f669bb74b09e5
 
         // Unlike in Bitcoin where P2PKH includes a CheckSig at the end of the script, that part of the process is built

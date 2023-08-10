@@ -1631,7 +1631,7 @@ pub unsafe extern "C" fn tari_unblinded_output_to_json(
                 },
             },
             Err(_) => {
-                error = LibWalletError::from(HexError::HexConversionError).code;
+                error = LibWalletError::from(HexError::HexConversionError {}).code;
                 ptr::swap(error_out, &mut error as *mut c_int);
             },
         }
@@ -1684,7 +1684,7 @@ pub unsafe extern "C" fn create_tari_unblinded_output_from_json(
         Err(e) => {
             error!(target: LOG_TARGET, "Error creating a output from json: {:?}", e);
 
-            error = LibWalletError::from(HexError::HexConversionError).code;
+            error = LibWalletError::from(HexError::HexConversionError {}).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             ptr::null_mut()
         },
@@ -3810,7 +3810,7 @@ pub unsafe extern "C" fn tari_completed_transaction_to_json(
                 },
             },
             Err(_) => {
-                error = LibWalletError::from(HexError::HexConversionError).code;
+                error = LibWalletError::from(HexError::HexConversionError {}).code;
                 ptr::swap(error_out, &mut error as *mut c_int);
             },
         }
@@ -3863,7 +3863,7 @@ pub unsafe extern "C" fn create_tari_completed_transaction_from_json(
         Err(e) => {
             error!(target: LOG_TARGET, "Error creating a transaction from json: {:?}", e);
 
-            error = LibWalletError::from(HexError::HexConversionError).code;
+            error = LibWalletError::from(HexError::HexConversionError {}).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             ptr::null_mut()
         },

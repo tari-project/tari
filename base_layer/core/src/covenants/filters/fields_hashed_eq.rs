@@ -45,6 +45,7 @@ impl Filter for FieldsHashedEqFilter {
 #[cfg(test)]
 mod test {
     use borsh::BorshSerialize;
+    use digest::Update;
     use tari_common_types::types::Challenge;
     use tari_crypto::hashing::DomainSeparation;
 

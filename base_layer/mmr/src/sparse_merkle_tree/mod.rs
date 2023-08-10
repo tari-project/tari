@@ -14,7 +14,7 @@
 //!
 //! # Example
 //!
-//! Let's create a SMT with four nodes. We'll use the `Blake256` hash function to hash the nodes, and we'll use
+//! Let's create a SMT with four nodes. We'll use the `Blake2b<U32>` hash function to hash the nodes, and we'll use
 //! the `ValueHash` type to represent the values. The `ValueHash` type is a wrapper around a `[u8; 32]` array.
 //!
 //! If we insert the nodes at
@@ -43,7 +43,8 @@
 //!
 //! The merkle root is calculated by hashing nodes in the familiar way.
 //! ```rust
-//! use tari_crypto::hash::blake2::Blake256;
+//! use blake2::Blake2b;
+//! use digest::consts::U32;
 //! use tari_mmr::sparse_merkle_tree::{NodeKey, SparseMerkleTree, ValueHash};
 //!
 //! fn new_key(v: u8) -> NodeKey {
@@ -51,7 +52,7 @@
 //!     key[0] = v;
 //!     NodeKey::from(key)
 //! }
-//! let mut tree = SparseMerkleTree::<Blake256>::default();
+//! let mut tree = SparseMerkleTree::<Blake2b<U32>>::default();
 //! tree.upsert(new_key(79), ValueHash::from([1u8; 32]))
 //!     .unwrap();
 //! tree.upsert(new_key(95), ValueHash::from([2u8; 32]))

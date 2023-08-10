@@ -20,7 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use digest::{generic_array::GenericArray, FixedOutput};
+use blake2::Blake2b;
+use digest::{consts::U32, generic_array::GenericArray, FixedOutput};
 use rand::rngs::OsRng;
 use snow::{
     params::{CipherChoice, DHChoice, HashChoice},
@@ -28,7 +29,6 @@ use snow::{
     types::{Cipher, Dh, Hash, Random},
 };
 use tari_crypto::{
-    hash::blake2::Blake256,
     hashing::DomainSeparatedHasher,
     keys::{PublicKey, SecretKey},
     tari_utilities::ByteArray,
@@ -70,7 +70,7 @@ impl CryptoResolver for TariCryptoResolver {
 
 fn noise_kdf(shared_key: &CommsDHKE) -> CommsNoiseKey {
     let mut comms_noise_key = CommsNoiseKey::from(SafeArray::default());
-    DomainSeparatedHasher::<Blake256, CommsCoreHashDomain>::new_with_label("noise.dh")
+    DomainSeparatedHasher::<Blake2b<U32>, CommsCoreHashDomain>::new_with_label("noise.dh")
         .chain(shared_key.as_bytes())
         .finalize_into(GenericArray::from_mut_slice(comms_noise_key.reveal_mut()));
 

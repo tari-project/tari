@@ -26,7 +26,7 @@ use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
 use tari_common_types::types::HashOutput;
-use tari_utilities::message_format::MessageFormat;
+use tari_utilities::message_format::{MessageFormat, MessageFormatError};
 use thiserror::Error;
 
 use super::{CommandContext, HandleCommand, TypeOrHex};
@@ -64,6 +64,14 @@ enum ArgsError {
     NotFoundAt { height: u64 },
     #[error("Block not found")]
     NotFound,
+    #[error("Serializing/Deserializing error: `{0}`")]
+    MessageFormatError(String),
+}
+
+impl From<MessageFormatError> for ArgsError {
+    fn from(e: MessageFormatError) -> Self {
+        ArgsError::MessageFormatError(e.to_string())
+    }
 }
 
 impl CommandContext {
@@ -82,7 +90,12 @@ impl CommandContext {
                 println!("-- Accumulated data --");
                 println!("{}", block_data);
             },
-            Format::Json => println!("{}", block.to_json()?),
+            Format::Json => println!(
+                "{}",
+                block
+                    .to_json()
+                    .map_err(|e| ArgsError::MessageFormatError(format!("{}", e)))?
+            ),
         }
         Ok(())
     }
@@ -95,7 +108,12 @@ impl CommandContext {
             .ok_or(ArgsError::NotFound)?;
         match format {
             Format::Text => println!("{}", block),
-            Format::Json => println!("{}", block.to_json()?),
+            Format::Json => println!(
+                "{}",
+                block
+                    .to_json()
+                    .map_err(|e| ArgsError::MessageFormatError(format!("{}", e)))?
+            ),
         }
         Ok(())
     }

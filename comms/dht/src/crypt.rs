@@ -125,9 +125,10 @@ fn get_original_message_from_padded_text(padded_message: &mut BytesMut) -> Resul
 /// Generate the key for a message
 pub fn generate_key_message(data: &CommsDHKE) -> CommsMessageKey {
     let mut comms_message_key = CommsMessageKey::from(SafeArray::default());
-    comms_dht_hash_domain_key_message()
-        .chain(data.as_bytes())
-        .finalize_into(GenericArray::from_mut_slice(comms_message_key.reveal_mut()));
+    FixedOutput::finalize_into(
+        comms_dht_hash_domain_key_message().chain(data.as_bytes()),
+        GenericArray::from_mut_slice(comms_message_key.reveal_mut()),
+    );
 
     comms_message_key
 }
@@ -135,9 +136,10 @@ pub fn generate_key_message(data: &CommsDHKE) -> CommsMessageKey {
 /// Generate the mask used to protect a sender public key
 pub fn generate_key_mask(data: &CommsDHKE) -> Result<CommsSecretKey, ByteArrayError> {
     let mut comms_key_mask = CommsKeyMask::from(SafeArray::default());
-    comms_dht_hash_domain_key_mask()
-        .chain(data.as_bytes())
-        .finalize_into(GenericArray::from_mut_slice(comms_key_mask.reveal_mut()));
+    FixedOutput::finalize_into(
+        comms_dht_hash_domain_key_mask().chain(data.as_bytes()),
+        GenericArray::from_mut_slice(comms_key_mask.reveal_mut()),
+    );
 
     // This is infallible since we require 32 bytes of hash output
     CommsSecretKey::from_bytes(comms_key_mask.reveal())
