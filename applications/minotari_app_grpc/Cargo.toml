@@ -11,9 +11,9 @@ edition = "2018"
 tari_common_types = {  path = "../../base_layer/common_types" }
 tari_comms = { path = "../../comms/core" }
 tari_core = { path = "../../base_layer/core" }
-tari_crypto = { git = "https://github.com/hansieodendaal/tari-crypto.git",  rev = "e048298c1801d373303732feea85046b8ea7163c" }
+tari_crypto = { version = "0.18" }
 tari_script = { path = "../../infrastructure/tari_script" }
-tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git",  rev = "c06726322683c4671b93388b444d108103cd7b55" }
+tari_utilities = { version = "0.5" }
 
 argon2 = { version = "0.4.1", features = ["std", "password-hash"] }
 base64 = "0.13.0"

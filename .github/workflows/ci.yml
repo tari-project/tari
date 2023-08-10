@@ -194,12 +194,6 @@ jobs:
           restore-keys: |
             tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}
             tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly
-      - name: test key manager wasm
-        run: |
-          cd base_layer/key_manager
-          rustup target add wasm32-unknown-unknown
-          cargo install wasm-pack --force
-          make test
       - name: Install cargo-nextest
         run: cargo install cargo-nextest --locked --force
       - name: cargo test compile

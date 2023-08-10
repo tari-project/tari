@@ -53,7 +53,7 @@ pub enum HorizonSyncError {
     #[error("Join error: {0}")]
     JoinError(#[from] task::JoinError),
     #[error("A range proof verification has produced an error: {0}")]
-    RangeProofError(#[from] RangeProofError),
+    RangeProofError(String),
     #[error("An invalid transaction has been encountered: {0}")]
     TransactionError(#[from] TransactionError),
     #[error("Invalid kernel signature: {0}")]
@@ -100,5 +100,11 @@ pub enum HorizonSyncError {
 impl From<TryFromIntError> for HorizonSyncError {
     fn from(err: TryFromIntError) -> Self {
         HorizonSyncError::ConversionError(err.to_string())
+    }
+}
+
+impl From<RangeProofError> for HorizonSyncError {
+    fn from(e: RangeProofError) -> Self {
+        HorizonSyncError::RangeProofError(e.to_string())
     }
 }

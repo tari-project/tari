@@ -10,10 +10,9 @@ edition = "2021"
 [lib]
 crate-type = ["lib", "cdylib"]
 
-# NB: All dependencies must support or be gated for the WASM target.
 [dependencies]
-tari_crypto = { git = "https://github.com/hansieodendaal/tari-crypto.git",  rev = "e048298c1801d373303732feea85046b8ea7163c" }
-tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git",  rev = "c06726322683c4671b93388b444d108103cd7b55" }
+tari_crypto = { version = "0.18" }
+tari_utilities = { version = "0.5" }
 tari_common_sqlite = { path = "../../common_sqlite" }
 tari_common_types = {  path = "../../base_layer/common_types"}
 tari_service_framework = {  path = "../service_framework" }
@@ -29,7 +28,6 @@ diesel_migrations = {version = "2.0.0"}
 argon2 = { version = "0.4.1", features = ["std", "alloc"] }
 blake2 = "0.10"
 chacha20 = "0.7.1"
-console_error_panic_hook = { version = "0.1.7", optional = true }
 crc32fast = "1.2.1"
 derivative = "2.2.0"
 digest = "0.10"
@@ -39,17 +37,14 @@ serde = "1.0.89"
 thiserror = "1.0.26"
 strum_macros = "0.22"
 strum = { version = "0.22", features = ["derive"] }
-wasm-bindgen = { version = "0.2", features = ["serde-serialize", "nightly"], optional = true }
 zeroize = "1"
 subtle = "2.4.1"
 
 [dev-dependencies]
 sha2 = "0.9.8"
-wasm-bindgen-test = "0.3.28"
 tempfile = "3.1.0"
 
 [features]
 default = []
 key_manager_service = []
 js = [ "js-sys"]
-wasm = ["tari_crypto/wasm", "wasm-bindgen", "js", "console_error_panic_hook"]

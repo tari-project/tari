@@ -142,7 +142,13 @@ pub enum OutputManagerError {
     #[error("Validation in progress")]
     ValidationInProgress,
     #[error("Invalid data: `{0}`")]
-    RangeProofError(#[from] RangeProofError),
+    RangeProofError(String),
+}
+
+impl From<RangeProofError> for OutputManagerError {
+    fn from(e: RangeProofError) -> Self {
+        OutputManagerError::RangeProofError(e.to_string())
+    }
 }
 
 impl From<ByteArrayError> for OutputManagerError {

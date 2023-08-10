@@ -12,14 +12,14 @@ tari_common = { path = "../../common" }
 tari_common_types = {  path = "../../base_layer/common_types" }
 tari_comms = {  path = "../../comms/core" }
 tari_comms_dht = {  path = "../../comms/dht" }
-tari_crypto = { git = "https://github.com/hansieodendaal/tari-crypto.git",  rev = "e048298c1801d373303732feea85046b8ea7163c" }
+tari_crypto = { version = "0.18" }
 tari_key_manager = {  path = "../key_manager", features = ["key_manager_service"] }
 tari_p2p = {  path = "../p2p", features = ["auto-update"] }
 tari_script = { path = "../../infrastructure/tari_script" }
 tari_service_framework = {  path = "../service_framework" }
 tari_shutdown = {  path = "../../infrastructure/shutdown" }
 tari_common_sqlite = { path = "../../common_sqlite" }
-tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git",  rev = "c06726322683c4671b93388b444d108103cd7b55" }
+tari_utilities = { version = "0.5" }
 tari_contacts = { path = "../../base_layer/contacts" }
 
 # Uncomment for tokio tracing via tokio-console (needs "tracing" features)

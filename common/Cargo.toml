@@ -14,7 +14,7 @@ build = ["toml", "prost-build"]
 static-application-info = ["git2"]
 
 [dependencies]
-tari_crypto = { git = "https://github.com/hansieodendaal/tari-crypto.git",  rev = "e048298c1801d373303732feea85046b8ea7163c" }
+tari_crypto = { version = "0.18" }
 
 anyhow = "1.0.53"
 blake2 = "0.10"
