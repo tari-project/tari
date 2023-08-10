@@ -187,7 +187,7 @@ impl Default for MerkleProof {
 }
 
 /// Creates a merkle proof for the given hash within the set of hashes. This function returns None if the hash is not in
-/// hashes. This is a port of Monero's tcreate_merkle_proofree_branch function
+/// hashes. 
 #[allow(clippy::cognitive_complexity)]
 pub fn create_merkle_proof(hashes: &[Hash]) -> Option<MerkleProof> {
     // Monero coinbase rules specify that the coinbase should be hash[0]
