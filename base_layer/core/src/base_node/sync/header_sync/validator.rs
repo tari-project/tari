@@ -32,12 +32,7 @@ use crate::{
     common::rolling_vec::RollingVec,
     consensus::ConsensusManager,
     proof_of_work::{randomx_factory::RandomXFactory, PowAlgorithm},
-    validation::{
-        header::HeaderFullValidator,
-        DifficultyCalculator,
-        HeaderChainLinkedValidator,
-        ValidationError::BlockHeaderError,
-    },
+    validation::{header::HeaderFullValidator, DifficultyCalculator, HeaderChainLinkedValidator, ValidationError},
 };
 
 const LOG_TARGET: &str = "c::bn::header_sync";
@@ -133,20 +128,30 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
                 Some(target_difficulty),
             )
         };
-        if let Err(e) = &result {
-            match e {
-                // future timelimit validation can succeed at a later time. As the block is not yet valid, we discard it
-                // for now and ban the peer, but wont blacklist the block.
-                BlockHeaderError(BlockHeaderValidationError::InvalidTimestampFutureTimeLimit) => {},
-                _ => {
-                    let mut txn = self.db.write_transaction();
-                    txn.insert_bad_block(header.hash(), header.height);
-                    txn.commit().await?;
-                },
-            }
-        }
+        let achieved_target = match result {
+            Ok(achieved_target) => achieved_target,
+            // future timelimit validation can succeed at a later time. As the block is not yet valid, we discard it
+            // for now and ban the peer, but wont blacklist the block.
+            Err(e @ ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidTimestampFutureTimeLimit)) => {
+                return Err(e.into())
+            },
+            // We dont want to mark a block as bad for internal failures
+            Err(
+                e @ ValidationError::FatalStorageError(_) |
+                e @ ValidationError::NotEnoughTimestamps { .. } |
+                e @ ValidationError::AsyncTaskFailed(_),
+            ) => return Err(e.into()),
+            // We dont have to mark the block twice
+            Err(e @ ValidationError::BadBlockFound { .. }) => return Err(e.into()),
 
-        let achieved_target = result?;
+            Err(e) => {
+                let mut txn = self.db.write_transaction();
+                txn.insert_bad_block(header.hash(), header.height);
+                txn.commit().await?;
+                return Err(e.into());
+            },
+        };
+
         // Header is valid, add this header onto the validation state for the next round
         // Mutable borrow done later in the function to allow multiple immutable borrows before this line. This has
         // nothing to do with locking or concurrency.

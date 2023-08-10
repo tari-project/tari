@@ -97,8 +97,6 @@ pub enum ValidationError {
     InvalidMinedHeight,
     #[error("Maximum transaction weight exceeded")]
     MaxTransactionWeightExceeded,
-    #[error("End of time: {0}")]
-    EndOfTimeError(String),
     #[error("Expected block height to be {expected}, but was {block_height}")]
     IncorrectHeight { expected: u64, block_height: u64 },
     #[error("Expected block previous hash to be {expected}, but was {block_hash}")]

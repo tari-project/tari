@@ -448,7 +448,7 @@ where B: BlockchainBackend + 'static
         }
 
         // Lets check if the block exists before we try and ask for a complete block
-        if self.is_block_valid_and_exists(block_hash).await? {
+        if self.check_exists_and_not_bad_block(block_hash).await? {
             return Ok(());
         }
 
@@ -457,23 +457,7 @@ where B: BlockchainBackend + 'static
         // All we care here is that bad blocks are not free to make, and that they are more expensive to make then they
         // are to validate. As soon as a block can be linked to the main chain, a proper full proof of work check will
         // be done before any other validation.
-        let constants = self.consensus_manager.consensus_constants(new_block.header.height);
-        let min_difficulty = constants.min_pow_difficulty(new_block.header.pow.pow_algo);
-        let achieved = match new_block.header.pow_algo() {
-            PowAlgorithm::RandomX => randomx_difficulty(&new_block.header, &self.randomx_factory)?,
-            PowAlgorithm::Sha3x => sha3x_difficulty(&new_block.header)?,
-        };
-        if achieved < min_difficulty {
-            self.blockchain_db
-                .add_bad_block(
-                    new_block.header.hash(),
-                    self.blockchain_db.get_chain_metadata().await?.height_of_longest_chain(),
-                )
-                .await?;
-            return Err(CommsInterfaceError::InvalidBlockHeader(
-                BlockHeaderValidationError::ProofOfWorkError(PowError::AchievedDifficultyBelowMin),
-            ));
-        }
+        self.check_min_block_difficulty(&new_block).await?;
 
         {
             // we use a double lock to make sure we can only reconcile one unique block at a time. We may receive the
@@ -490,7 +474,7 @@ where B: BlockchainBackend + 'static
         }
         {
             let mut write_lock = self.list_of_reconciling_blocks.write().await;
-            if self.is_block_valid_and_exists(block_hash).await? {
+            if self.check_exists_and_not_bad_block(block_hash).await? {
                 return Ok(());
             }
 
@@ -522,7 +506,28 @@ where B: BlockchainBackend + 'static
         Ok(())
     }
 
-    async fn is_block_valid_and_exists(&self, block: FixedHash) -> Result<bool, CommsInterfaceError> {
+    async fn check_min_block_difficulty(&self, new_block: &NewBlock) -> Result<(), CommsInterfaceError> {
+        let constants = self.consensus_manager.consensus_constants(new_block.header.height);
+        let min_difficulty = constants.min_pow_difficulty(new_block.header.pow.pow_algo);
+        let achieved = match new_block.header.pow_algo() {
+            PowAlgorithm::RandomX => randomx_difficulty(&new_block.header, &self.randomx_factory)?,
+            PowAlgorithm::Sha3x => sha3x_difficulty(&new_block.header)?,
+        };
+        if achieved < min_difficulty {
+            self.blockchain_db
+                .add_bad_block(
+                    new_block.header.hash(),
+                    self.blockchain_db.get_chain_metadata().await?.height_of_longest_chain(),
+                )
+                .await?;
+            return Err(CommsInterfaceError::InvalidBlockHeader(
+                BlockHeaderValidationError::ProofOfWorkError(PowError::AchievedDifficultyBelowMin),
+            ));
+        }
+        Ok(())
+    }
+
+    async fn check_exists_and_not_bad_block(&self, block: FixedHash) -> Result<bool, CommsInterfaceError> {
         if self.blockchain_db.block_exists(block).await? {
             debug!(
                 target: LOG_TARGET,

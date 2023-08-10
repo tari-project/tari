@@ -97,7 +97,6 @@ use crate::{
         HeaderChainLinkedValidator,
         InternalConsistencyValidator,
         ValidationError,
-        ValidationError::BlockHeaderError,
     },
     MutablePrunedOutputMmr,
     PrunedInputMmr,
@@ -2184,19 +2183,29 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
         prev_timestamps.push(timestamp);
     }
     let result = validator.validate(db, &block.header, parent.header(), &prev_timestamps, None);
-    if let Err(e) = &result {
-        match e {
-            // future timelimit validation can succeed at a later time. As the block is not yet valid, we discard it
-            // for now and ban the peer, but wont blacklist the block.
-            BlockHeaderError(BlockHeaderValidationError::InvalidTimestampFutureTimeLimit) => {},
-            _ => {
-                let mut txn = DbTransaction::new();
-                txn.insert_bad_block(block.header.hash(), block.header.height);
-                db.write(txn)?;
-            },
-        }
-    }
-    result?;
+    match result {
+        Ok(_) => {},
+        // future timelimit validation can succeed at a later time. As the block is not yet valid, we discard it
+        // for now and ban the peer, but wont blacklist the block.
+        Err(e @ ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidTimestampFutureTimeLimit)) => {
+            return Err(e.into())
+        },
+        // We dont want to mark a block as bad for internal failures
+        Err(
+            e @ ValidationError::FatalStorageError(_) |
+            e @ ValidationError::NotEnoughTimestamps { .. } |
+            e @ ValidationError::AsyncTaskFailed(_),
+        ) => return Err(e.into()),
+        // We dont have to mark the block twice
+        Err(e @ ValidationError::BadBlockFound { .. }) => return Err(e.into()),
+
+        Err(e) => {
+            let mut txn = DbTransaction::new();
+            txn.insert_bad_block(block.header.hash(), block.header.height);
+            db.write(txn)?;
+            return Err(e.into());
+        },
+    };
     let achieved_target_diff = difficulty_calculator.check_achieved_and_target_difficulty(db, &block.header)?;
 
     let accumulated_data = BlockHeaderAccumulatedData::builder(parent.accumulated_data())
