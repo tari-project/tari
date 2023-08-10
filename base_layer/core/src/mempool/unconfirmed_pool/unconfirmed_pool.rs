@@ -54,6 +54,8 @@ pub struct UnconfirmedPoolConfig {
     /// The maximum number of transactions that can be skipped when compiling a set of highest priority transactions,
     /// skipping over large transactions are performed in an attempt to fit more transactions into the remaining space.
     pub weight_tx_skip_count: usize,
+    /// The minimum fee accepted by this mempool
+    pub min_fee: u64,
 }
 
 impl Default for UnconfirmedPoolConfig {
@@ -61,6 +63,7 @@ impl Default for UnconfirmedPoolConfig {
         Self {
             storage_capacity: 40_000,
             weight_tx_skip_count: 20,
+            min_fee: 0,
         }
     }
 }
@@ -74,7 +77,7 @@ impl Default for UnconfirmedPoolConfig {
 /// be included in a block. The excess_sig of a transaction is used as a key to uniquely identify a specific transaction
 /// in these containers.
 pub struct UnconfirmedPool {
-    config: UnconfirmedPoolConfig,
+    pub(crate) config: UnconfirmedPoolConfig,
     key_counter: usize,
     tx_by_key: HashMap<TransactionKey, PrioritizedTransaction>,
     txs_by_signature: HashMap<PrivateKey, Vec<TransactionKey>>,
@@ -873,6 +876,7 @@ mod test {
         let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
             storage_capacity: 4,
             weight_tx_skip_count: 3,
+            min_fee: 0,
         });
 
         let tx_weight = TransactionWeight::latest();
@@ -970,6 +974,7 @@ mod test {
         let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
             storage_capacity: 4,
             weight_tx_skip_count: 3,
+            min_fee: 0,
         });
 
         let tx_weight = TransactionWeight::latest();
@@ -1029,6 +1034,7 @@ mod test {
         let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
             storage_capacity: 10,
             weight_tx_skip_count: 3,
+            min_fee: 0,
         });
         unconfirmed_pool
             .insert_many(
@@ -1100,6 +1106,7 @@ mod test {
         let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
             storage_capacity: 10,
             weight_tx_skip_count: 3,
+            min_fee: 0,
         });
         unconfirmed_pool
             .insert_many(
@@ -1154,6 +1161,7 @@ mod test {
         let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
             storage_capacity: 10,
             weight_tx_skip_count: 3,
+            min_fee: 0,
         });
         let txns = vec![
             Arc::new(tx1.clone()),
