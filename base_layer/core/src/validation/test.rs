@@ -51,8 +51,14 @@ use crate::{
 };
 
 mod header_validators {
+    use tari_utilities::epoch_time::EpochTime;
+
     use super::*;
-    use crate::validation::{header::HeaderFullValidator, HeaderChainLinkedValidator};
+    use crate::{
+        block_specs,
+        test_helpers::blockchain::{create_main_chain, create_new_blockchain},
+        validation::{header::HeaderFullValidator, HeaderChainLinkedValidator},
+    };
 
     #[test]
     fn header_iter_empty_and_invalid_height() {
@@ -119,6 +125,47 @@ mod header_validators {
             .unwrap_err();
         assert!(matches!(err, ValidationError::InvalidBlockchainVersion {
             version: u16::MAX
+        }));
+    }
+
+    #[tokio::test]
+    async fn it_does_a_sanity_check_on_the_number_of_timestamps_provided() {
+        let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build().unwrap();
+        let db = create_new_blockchain();
+
+        let (_, blocks) = create_main_chain(&db, block_specs!(["1->GB"], ["2->1"], ["3->2"])).await;
+        let last_block = blocks.get("3").unwrap();
+
+        let candidate_header = BlockHeader::from_previous(last_block.header());
+        let difficulty_calculator = DifficultyCalculator::new(consensus_manager.clone(), Default::default());
+        let validator = HeaderFullValidator::new(consensus_manager, difficulty_calculator);
+        let mut timestamps = db.fetch_block_timestamps(*blocks.get("3").unwrap().hash()).unwrap();
+
+        // First, lets check that everything else is valid
+        validator
+            .validate(
+                &*db.db_read_access().unwrap(),
+                &candidate_header,
+                last_block.header(),
+                &timestamps,
+                None,
+            )
+            .unwrap();
+
+        // Add an extra timestamp
+        timestamps.push(EpochTime::now());
+        let err = validator
+            .validate(
+                &*db.db_read_access().unwrap(),
+                &candidate_header,
+                last_block.header(),
+                &timestamps,
+                None,
+            )
+            .unwrap_err();
+        assert!(matches!(err, ValidationError::IncorrectNumberOfTimestampsProvided {
+            actual: 5,
+            expected: 4
         }));
     }
 }

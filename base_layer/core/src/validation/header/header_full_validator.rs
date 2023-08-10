@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{cmp, convert::TryFrom};
+use std::cmp;
 
 use log::warn;
 use tari_common_types::types::FixedHash;
@@ -69,11 +69,11 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for HeaderFullValidator
 
         check_not_bad_block(db, header.hash())?;
         check_blockchain_version(constants, header.version)?;
+        check_height(header, prev_header)?;
 
-        check_timestamp_count(header, prev_timestamps, constants)?;
+        sanity_check_timestamp_count(header, prev_timestamps, constants)?;
         check_header_timestamp_greater_than_median(header, prev_timestamps)?;
 
-        check_height(header, prev_header)?;
         check_prev_hash(header, prev_header)?;
         check_timestamp_ftl(header, &self.rules)?;
         check_pow_data(header, &self.rules, db)?;
@@ -89,20 +89,24 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for HeaderFullValidator
     }
 }
 
-fn check_timestamp_count(
+/// This is a sanity check for the information provided by the caller, rather than a validation for the header itself.
+fn sanity_check_timestamp_count(
     header: &BlockHeader,
-    prev_timestamps: &[EpochTime],
+    timestamps: &[EpochTime],
     consensus_constants: &ConsensusConstants,
 ) -> Result<(), ValidationError> {
-    let expected_timestamp_count = cmp::min(
-        consensus_constants.median_timestamp_count(),
-        usize::try_from(header.height - 1)
-            .map_err(|_| ValidationError::CustomError("Invalid conversion u64 to uszie".to_string()))?,
-    );
-    let timestamps: Vec<EpochTime> = prev_timestamps.iter().take(expected_timestamp_count).copied().collect();
-    if timestamps.len() < expected_timestamp_count {
-        return Err(ValidationError::NotEnoughTimestamps {
-            actual: timestamps.len(),
+    let expected_timestamp_count = cmp::min(consensus_constants.median_timestamp_count() as u64, header.height);
+    // Empty `timestamps` is never valid
+    if timestamps.is_empty() {
+        return Err(ValidationError::IncorrectNumberOfTimestampsProvided {
+            expected: expected_timestamp_count,
+            actual: 0,
+        });
+    }
+
+    if timestamps.len() as u64 != expected_timestamp_count {
+        return Err(ValidationError::IncorrectNumberOfTimestampsProvided {
+            actual: timestamps.len() as u64,
             expected: expected_timestamp_count,
         });
     }

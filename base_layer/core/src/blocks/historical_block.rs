@@ -34,11 +34,11 @@ use crate::blocks::{error::BlockError, Block, BlockHeader, BlockHeaderAccumulate
 pub struct HistoricalBlock {
     /// The number of blocks that have been mined since this block, including this one. The current tip will have one
     /// confirmation.
-    pub confirmations: u64,
+    confirmations: u64,
     /// The underlying block
     block: Block,
     /// Accumulated data in the block header
-    pub accumulated_data: BlockHeaderAccumulatedData,
+    accumulated_data: BlockHeaderAccumulatedData,
     pruned_outputs: Vec<HashOutput>,
     pruned_input_count: u64,
 }
@@ -71,6 +71,14 @@ impl HistoricalBlock {
     /// Returns a reference to the block of the HistoricalBlock
     pub fn block(&self) -> &Block {
         &self.block
+    }
+
+    pub fn into_block(self) -> Block {
+        self.block
+    }
+
+    pub fn accumulated_data(&self) -> &BlockHeaderAccumulatedData {
+        &self.accumulated_data
     }
 
     pub fn hash(&self) -> &HashOutput {

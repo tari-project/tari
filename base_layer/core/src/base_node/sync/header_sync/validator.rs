@@ -138,7 +138,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
             // We dont want to mark a block as bad for internal failures
             Err(
                 e @ ValidationError::FatalStorageError(_) |
-                e @ ValidationError::NotEnoughTimestamps { .. } |
+                e @ ValidationError::IncorrectNumberOfTimestampsProvided { .. } |
                 e @ ValidationError::AsyncTaskFailed(_),
             ) => return Err(e.into()),
             // We dont have to mark the block twice
@@ -159,12 +159,14 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
         state.previous_header = header.clone();
 
         // Ensure that timestamps are inserted in sorted order
-        let maybe_index = state.timestamps.iter().position(|ts| ts >= &header.timestamp());
+        let maybe_index = state.timestamps.iter().position(|ts| *ts >= header.timestamp());
         match maybe_index {
             Some(pos) => {
                 state.timestamps.insert(pos, header.timestamp());
             },
-            None => state.timestamps.push(header.timestamp()),
+            None => {
+                state.timestamps.push(header.timestamp());
+            },
         }
 
         state.current_height = header.height;

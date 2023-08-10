@@ -147,8 +147,11 @@ pub enum ValidationError {
     ValidatorNodeRegistrationMinLockHeight { min: u64, actual: u64 },
     #[error("Validator node registration signature failed verification")]
     InvalidValidatorNodeSignature,
-    #[error("Not enough timestamps provided. Expected {expected}, got {actual}")]
-    NotEnoughTimestamps { expected: usize, actual: usize },
+    #[error(
+        "An unexpected number of timestamps were provided to the header validator. THIS IS A BUG. Expected \
+         {expected}, got {actual}"
+    )]
+    IncorrectNumberOfTimestampsProvided { expected: u64, actual: u64 },
     #[error("Invalid difficulty: {0}")]
     DifficultyError(#[from] DifficultyError),
     #[error("Covenant too large. Max size: {max_size}, Actual size: {actual_size}")]
