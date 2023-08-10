@@ -10,7 +10,6 @@ edition = "2021"
 [lib]
 crate-type = ["lib", "cdylib"]
 
-# NB: All dependencies must support or be gated for the WASM target.
 [dependencies]
 tari_crypto = { version = "0.17" }
 tari_utilities = "0.4.10"
@@ -29,7 +28,6 @@ diesel_migrations = {version = "2.0.0"}
 argon2 = { version = "0.4.1", features = ["std", "alloc"] }
 blake2 = "0.9.1"
 chacha20 = "0.7.1"
-console_error_panic_hook = { version = "0.1.7", optional = true }
 crc32fast = "1.2.1"
 derivative = "2.2.0"
 digest = "0.9.0"
@@ -39,13 +37,11 @@ serde = "1.0.89"
 thiserror = "1.0.26"
 strum_macros = "0.22"
 strum = { version = "0.22", features = ["derive"] }
-wasm-bindgen = { version = "0.2", features = ["serde-serialize", "nightly"], optional = true }
 zeroize = "1"
 subtle = "2.4.1"
 
 [dev-dependencies]
 sha2 = "0.9.8"
-wasm-bindgen-test = "0.3.28"
 tempfile = "3.1.0"
 
 [features]
@@ -53,4 +49,3 @@ default = []
 key_manager_service = []
 avx2 = ["tari_crypto/simd_backend"]
 js = [ "js-sys"]
-wasm = ["tari_crypto/wasm", "wasm-bindgen", "js", "console_error_panic_hook"]
