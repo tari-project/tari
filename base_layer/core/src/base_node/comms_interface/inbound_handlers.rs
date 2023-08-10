@@ -46,13 +46,20 @@ use crate::{
         },
         metrics,
     },
-    blocks::{Block, BlockBuilder, BlockHeader, ChainBlock, NewBlock, NewBlockTemplate},
+    blocks::{Block, BlockBuilder, BlockHeader, BlockHeaderValidationError, ChainBlock, NewBlock, NewBlockTemplate},
     chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend, ChainStorageError, PrunedOutput},
     consensus::{ConsensusConstants, ConsensusManager},
     mempool::Mempool,
-    proof_of_work::{Difficulty, PowAlgorithm},
+    proof_of_work::{
+        randomx_difficulty,
+        randomx_factory::RandomXFactory,
+        sha3x_difficulty,
+        Difficulty,
+        PowAlgorithm,
+        PowError,
+    },
     transactions::aggregated_body::AggregateBody,
-    validation::helpers,
+    validation::{helpers, ValidationError},
 };
 
 const LOG_TARGET: &str = "c::bn::comms_interface::inbound_handler";
@@ -85,6 +92,7 @@ pub struct InboundNodeCommsHandlers<B> {
     list_of_reconciling_blocks: Arc<RwLock<HashSet<HashOutput>>>,
     outbound_nci: OutboundNodeCommsInterface,
     connectivity: ConnectivityRequester,
+    randomx_factory: RandomXFactory,
 }
 
 impl<B> InboundNodeCommsHandlers<B>
@@ -98,6 +106,7 @@ where B: BlockchainBackend + 'static
         consensus_manager: ConsensusManager,
         outbound_nci: OutboundNodeCommsInterface,
         connectivity: ConnectivityRequester,
+        randomx_factory: RandomXFactory,
     ) -> Self {
         Self {
             block_event_sender,
@@ -107,6 +116,7 @@ where B: BlockchainBackend + 'static
             list_of_reconciling_blocks: Arc::new(RwLock::new(HashSet::new())),
             outbound_nci,
             connectivity,
+            randomx_factory,
         }
     }
 
@@ -438,14 +448,16 @@ where B: BlockchainBackend + 'static
         }
 
         // Lets check if the block exists before we try and ask for a complete block
-        if self.blockchain_db.block_exists(block_hash).await? {
-            debug!(
-                target: LOG_TARGET,
-                "Block with hash `{}` already stored",
-                block_hash.to_hex()
-            );
+        if self.check_exists_and_not_bad_block(block_hash).await? {
             return Ok(());
         }
+
+        // lets check that the difficulty at least matches the min required difficulty
+        // We cannot check the target difficulty as orphan blocks dont have a target difficulty.
+        // All we care here is that bad blocks are not free to make, and that they are more expensive to make then they
+        // are to validate. As soon as a block can be linked to the main chain, a proper full proof of work check will
+        // be done before any other validation.
+        self.check_min_block_difficulty(&new_block).await?;
 
         {
             // we use a double lock to make sure we can only reconcile one unique block at a time. We may receive the
@@ -462,14 +474,10 @@ where B: BlockchainBackend + 'static
         }
         {
             let mut write_lock = self.list_of_reconciling_blocks.write().await;
-            if self.blockchain_db.block_exists(block_hash).await? {
-                debug!(
-                    target: LOG_TARGET,
-                    "Block with hash `{}` already stored",
-                    block_hash.to_hex()
-                );
+            if self.check_exists_and_not_bad_block(block_hash).await? {
                 return Ok(());
             }
+
             if !write_lock.insert(block_hash) {
                 debug!(
                     target: LOG_TARGET,
@@ -496,6 +504,51 @@ where B: BlockchainBackend + 'static
         }
         result?;
         Ok(())
+    }
+
+    async fn check_min_block_difficulty(&self, new_block: &NewBlock) -> Result<(), CommsInterfaceError> {
+        let constants = self.consensus_manager.consensus_constants(new_block.header.height);
+        let min_difficulty = constants.min_pow_difficulty(new_block.header.pow.pow_algo);
+        let achieved = match new_block.header.pow_algo() {
+            PowAlgorithm::RandomX => randomx_difficulty(&new_block.header, &self.randomx_factory)?,
+            PowAlgorithm::Sha3x => sha3x_difficulty(&new_block.header)?,
+        };
+        if achieved < min_difficulty {
+            self.blockchain_db
+                .add_bad_block(
+                    new_block.header.hash(),
+                    self.blockchain_db.get_chain_metadata().await?.height_of_longest_chain(),
+                )
+                .await?;
+            return Err(CommsInterfaceError::InvalidBlockHeader(
+                BlockHeaderValidationError::ProofOfWorkError(PowError::AchievedDifficultyBelowMin),
+            ));
+        }
+        Ok(())
+    }
+
+    async fn check_exists_and_not_bad_block(&self, block: FixedHash) -> Result<bool, CommsInterfaceError> {
+        if self.blockchain_db.block_exists(block).await? {
+            debug!(
+                target: LOG_TARGET,
+                "Block with hash `{}` already stored",
+                block.to_hex()
+            );
+            return Ok(true);
+        }
+        if self.blockchain_db.bad_block_exists(block).await? {
+            debug!(
+                target: LOG_TARGET,
+                "Block with hash `{}` already validated as a bad block",
+                block.to_hex()
+            );
+            return Err(CommsInterfaceError::ChainStorageError(
+                ChainStorageError::ValidationError {
+                    source: ValidationError::BadBlockFound { hash: block.to_hex() },
+                },
+            ));
+        }
+        Ok(false)
     }
 
     async fn reconcile_and_add_block(
@@ -949,6 +1002,7 @@ impl<B> Clone for InboundNodeCommsHandlers<B> {
             list_of_reconciling_blocks: self.list_of_reconciling_blocks.clone(),
             outbound_nci: self.outbound_nci.clone(),
             connectivity: self.connectivity.clone(),
+            randomx_factory: self.randomx_factory.clone(),
         }
     }
 }
