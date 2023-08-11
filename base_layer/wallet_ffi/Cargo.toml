@@ -3,7 +3,7 @@ name = "minotari_wallet_ffi"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency wallet C FFI bindings"
 license = "BSD-3-Clause"
-version = "0.51.0-pre.4"
+version = "0.51.0-rc.0"
 edition = "2018"
 
 [dependencies]

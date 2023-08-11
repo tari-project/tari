@@ -1,6 +1,6 @@
 [package]
 name = "minotari_console_wallet"
-version = "0.51.0-pre.4"
+version = "0.51.0-rc.0"
 authors = ["The Tari Development Community"]
 edition = "2018"
 license = "BSD-3-Clause"
@@ -68,7 +68,7 @@ default-features = false
 features = ["crossterm"]
 
 [build-dependencies]
-tari_features = { version = "0.51.0-pre.4", path = "../../common/tari_features"}
+tari_features = { path = "../../common/tari_features"}
 
 [features]
 libtor = ["tari_libtor"]
