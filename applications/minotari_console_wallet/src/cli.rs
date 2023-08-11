@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    fmt::{Display, Formatter},
+    fmt::{Debug, Display, Formatter},
     path::PathBuf,
     time::Duration,
 };
@@ -38,6 +38,7 @@ use tari_utilities::{
     hex::{Hex, HexError},
     SafePassword,
 };
+use thiserror::Error;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -246,6 +247,18 @@ pub struct SetBaseNodeArgs {
     pub address: Multiaddr,
 }
 
+#[derive(Debug, Error, PartialEq)]
+enum CliParseError {
+    #[error("Could not convert into hex: `{0}`")]
+    HexError(String),
+}
+
+impl From<HexError> for CliParseError {
+    fn from(e: HexError) -> Self {
+        CliParseError::HexError(e.to_string())
+    }
+}
+
 #[derive(Debug, Args, Clone)]
 pub struct FinaliseShaAtomicSwapArgs {
     #[clap(short, long, parse(try_from_str = parse_hex), required=true )]
@@ -256,8 +269,8 @@ pub struct FinaliseShaAtomicSwapArgs {
     pub message: String,
 }
 
-fn parse_hex(s: &str) -> Result<Vec<u8>, HexError> {
-    Vec::<u8>::from_hex(s)
+fn parse_hex(s: &str) -> Result<Vec<u8>, CliParseError> {
+    Vec::<u8>::from_hex(s).map_err(|e| CliParseError::HexError(format!("{}", e)))
 }
 
 #[derive(Debug, Args, Clone)]

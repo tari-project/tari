@@ -20,31 +20,30 @@
 //! `Contact`.
 //!
 //! To send a transaction:
-//! 1.  Call the `send_transaction(dest_public_key, amount, fee_per_gram, message)` function which will result in a
-//!     `PendingOutboundTransaction` being produced and transmitted to the recipient and the funds becoming
-//!     encumbered and appearing in the `PendingOutgoingBalance` and any change will appear in the
-//!     `PendingIncomingBalance`.
-//! 2.  Wait until the recipient replies to the sent transaction which will result in the `PendingOutboundTransaction`
-//!     becoming a `CompletedTransaction` with the `Completed` status. This means that the transaction has been
-//!     negotiated between the parties and is now ready to be broadcast to the Base Layer. The funds are still
-//!     encumbered as pending because the transaction has not been mined yet.
-//! 3.  The finalized `CompletedTransaction` will be sent back to the the receiver so that they have a copy.
-//! 4.  The wallet will broadcast the `CompletedTransaction` to a Base Node to be added to the mempool. Its status will
-//!     move from `Completed` to `Broadcast`.
-//! 5.  Wait until the transaction is mined. The `CompleteTransaction` status will then move from `Broadcast` to `Mined`
-//!     and the pending funds will be spent and received.
+//! 1. Call the `send_transaction(dest_public_key, amount, fee_per_gram, message)` function which will result in a
+//!    `PendingOutboundTransaction` being produced and transmitted to the recipient and the funds becoming encumbered
+//!    and appearing in the `PendingOutgoingBalance` and any change will appear in the `PendingIncomingBalance`.
+//! 2. Wait until the recipient replies to the sent transaction which will result in the `PendingOutboundTransaction`
+//!    becoming a `CompletedTransaction` with the `Completed` status. This means that the transaction has been
+//!    negotiated between the parties and is now ready to be broadcast to the Base Layer. The funds are still encumbered
+//!    as pending because the transaction has not been mined yet.
+//! 3. The finalized `CompletedTransaction` will be sent back to the the receiver so that they have a copy.
+//! 4. The wallet will broadcast the `CompletedTransaction` to a Base Node to be added to the mempool. Its status will
+//!    move from `Completed` to `Broadcast`.
+//! 5. Wait until the transaction is mined. The `CompleteTransaction` status will then move from `Broadcast` to `Mined`
+//!    and the pending funds will be spent and received.
 //!
 //! ## Receive a Transaction
-//! 1.  When a transaction is received it will appear as an `InboundTransaction` and the amount to be received will
-//!     appear as a `PendingIncomingBalance`. The wallet backend will be listening for these transactions and will
-//!     immediately reply to the sending wallet.
-//! 2.  The sender will send back the finalized `CompletedTransaction`
-//! 3.  This wallet will also broadcast the `CompletedTransaction` to a Base Node to be added to the mempool, its status
-//!     will move from `Completed` to `Broadcast`. This is done so that the Receiver can be sure the finalized
-//!     transaction is broadcast.
-//! 6.  This wallet will then monitor the Base Layer to see when the transaction is mined which means the
-//!     `CompletedTransaction` status will become `Mined` and the funds will then move from the `PendingIncomingBalance`
-//!     to the `AvailableBalance`.
+//! 1. When a transaction is received it will appear as an `InboundTransaction` and the amount to be received will
+//!    appear as a `PendingIncomingBalance`. The wallet backend will be listening for these transactions and will
+//!    immediately reply to the sending wallet.
+//! 2. The sender will send back the finalized `CompletedTransaction`
+//! 3. This wallet will also broadcast the `CompletedTransaction` to a Base Node to be added to the mempool, its status
+//!    will move from `Completed` to `Broadcast`. This is done so that the Receiver can be sure the finalized
+//!    transaction is broadcast.
+//! 6. This wallet will then monitor the Base Layer to see when the transaction is mined which means the
+//!    `CompletedTransaction` status will become `Mined` and the funds will then move from the `PendingIncomingBalance`
+//!    to the `AvailableBalance`.
 
 #![recursion_limit = "1024"]
 
@@ -1632,7 +1631,7 @@ pub unsafe extern "C" fn tari_unblinded_output_to_json(
                 },
             },
             Err(_) => {
-                error = LibWalletError::from(HexError::HexConversionError).code;
+                error = LibWalletError::from(HexError::HexConversionError {}).code;
                 ptr::swap(error_out, &mut error as *mut c_int);
             },
         }
@@ -1685,7 +1684,7 @@ pub unsafe extern "C" fn create_tari_unblinded_output_from_json(
         Err(e) => {
             error!(target: LOG_TARGET, "Error creating a output from json: {:?}", e);
 
-            error = LibWalletError::from(HexError::HexConversionError).code;
+            error = LibWalletError::from(HexError::HexConversionError {}).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             ptr::null_mut()
         },
@@ -3811,7 +3810,7 @@ pub unsafe extern "C" fn tari_completed_transaction_to_json(
                 },
             },
             Err(_) => {
-                error = LibWalletError::from(HexError::HexConversionError).code;
+                error = LibWalletError::from(HexError::HexConversionError {}).code;
                 ptr::swap(error_out, &mut error as *mut c_int);
             },
         }
@@ -3864,7 +3863,7 @@ pub unsafe extern "C" fn create_tari_completed_transaction_from_json(
         Err(e) => {
             error!(target: LOG_TARGET, "Error creating a transaction from json: {:?}", e);
 
-            error = LibWalletError::from(HexError::HexConversionError).code;
+            error = LibWalletError::from(HexError::HexConversionError {}).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             ptr::null_mut()
         },

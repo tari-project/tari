@@ -172,20 +172,22 @@ where
 
 #[cfg(test)]
 mod test {
-    use tari_crypto::{hash::blake2::Blake256, ristretto::RistrettoPublicKey};
+    use blake2::Blake2b;
+    use digest::consts::U32;
+    use tari_crypto::ristretto::RistrettoPublicKey;
 
     use crate::key_manager::*;
 
     #[test]
     fn test_new_keymanager() {
-        let km1 = KeyManager::<RistrettoPublicKey, Blake256>::new();
-        let km2 = KeyManager::<RistrettoPublicKey, Blake256>::new();
+        let km1 = KeyManager::<RistrettoPublicKey, Blake2b<U32>>::new();
+        let km2 = KeyManager::<RistrettoPublicKey, Blake2b<U32>>::new();
         assert_ne!(km1.seed, km2.seed);
     }
 
     #[test]
     fn test_derive_and_next_key() {
-        let mut km = KeyManager::<RistrettoPublicKey, Blake256>::new();
+        let mut km = KeyManager::<RistrettoPublicKey, Blake2b<U32>>::new();
         let next_key1_result = km.next_key();
         let next_key2_result = km.next_key();
         let desired_key_index1 = 1;
@@ -205,7 +207,7 @@ mod test {
 
     #[test]
     fn test_derive_and_next_key_with_branch_seed() {
-        let mut km = KeyManager::<RistrettoPublicKey, Blake256>::from(CipherSeed::new(), "Test".to_string(), 0);
+        let mut km = KeyManager::<RistrettoPublicKey, Blake2b<U32>>::from(CipherSeed::new(), "Test".to_string(), 0);
         let next_key1_result = km.next_key();
         let next_key2_result = km.next_key();
         let desired_key_index1 = 1;
@@ -226,8 +228,8 @@ mod test {
     #[test]
     fn test_use_of_branch_seed() {
         let x = CipherSeed::new();
-        let mut km1 = KeyManager::<RistrettoPublicKey, Blake256>::from(x.clone(), "some".to_string(), 0);
-        let mut km2 = KeyManager::<RistrettoPublicKey, Blake256>::from(x, "other".to_string(), 0);
+        let mut km1 = KeyManager::<RistrettoPublicKey, Blake2b<U32>>::from(x.clone(), "some".to_string(), 0);
+        let mut km2 = KeyManager::<RistrettoPublicKey, Blake2b<U32>>::from(x, "other".to_string(), 0);
         let next_key1 = km1.next_key().unwrap();
         let next_key2 = km2.next_key().unwrap();
         assert_ne!(next_key1.key, next_key2.key);

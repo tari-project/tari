@@ -29,8 +29,10 @@ use std::{
     time::Duration,
 };
 
+use blake2::Blake2b;
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use chrono::{Duration as ChronoDuration, Utc};
+use digest::consts::U32;
 use futures::{
     channel::{mpsc, mpsc::Sender},
     FutureExt,
@@ -145,7 +147,6 @@ use tari_core::{
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     extended_range_proof::{ExtendedRangeProofService, Statement},
-    hash::blake2::Blake256,
     keys::{PublicKey as PK, SecretKey as SK},
     ristretto::bulletproofs_plus::RistrettoAggregatedPublicStatement,
 };
@@ -1054,7 +1055,7 @@ async fn recover_one_sided_transaction() {
     .await;
     let script = one_sided_payment_script(bob_node_identity.public_key());
     let known_script = KnownOneSidedPaymentScript {
-        script_hash: script.as_hash::<Blake256>().unwrap().to_vec(),
+        script_hash: script.as_hash::<Blake2b<U32>>().unwrap().to_vec(),
         script_key_id: bob_key_manager_handle
             .import_key(bob_node_identity.secret_key().clone())
             .await

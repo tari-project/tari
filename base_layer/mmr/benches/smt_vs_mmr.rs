@@ -3,9 +3,10 @@
 
 use std::convert::TryFrom;
 
+use blake2::Blake2b;
 #[cfg(feature = "native_bitmap")]
 use croaring::Bitmap;
-use tari_crypto::hash::blake2::Blake256;
+use digest::consts::U32;
 #[cfg(feature = "native_bitmap")]
 use tari_crypto::hash_domain;
 #[cfg(feature = "native_bitmap")]
@@ -19,7 +20,7 @@ use tari_mmr::{Hash, MutableMmr};
 #[cfg(feature = "native_bitmap")]
 hash_domain!(MmrBenchTestHashDomain, "com.tari.base_layer.mmr.benches", 1);
 #[cfg(feature = "native_bitmap")]
-pub type MmrTestHasherBlake256 = DomainSeparatedHasher<Blake256, MmrBenchTestHashDomain>;
+pub type MmrTestHasherBlake256 = DomainSeparatedHasher<Blake2b<U32>, MmrBenchTestHashDomain>;
 #[cfg(feature = "native_bitmap")]
 pub type TestMmr = MutableMmr<MmrTestHasherBlake256, Vec<Hash>>;
 
@@ -32,17 +33,17 @@ fn get_keys(n: usize) -> Vec<NodeKey> {
     (0..n).map(|_| random_key()).collect()
 }
 
-fn create_smt() -> SparseMerkleTree<Blake256> {
-    SparseMerkleTree::<Blake256>::new()
+fn create_smt() -> SparseMerkleTree<Blake2b<U32>> {
+    SparseMerkleTree::<Blake2b<U32>>::new()
 }
 
-fn insert_into_smt(keys: &[NodeKey], tree: &mut SparseMerkleTree<Blake256>) {
+fn insert_into_smt(keys: &[NodeKey], tree: &mut SparseMerkleTree<Blake2b<U32>>) {
     keys.iter().for_each(|key| {
         tree.upsert(key.clone(), ValueHash::default()).unwrap();
     });
 }
 
-fn delete_from_smt(keys: &[NodeKey], tree: &mut SparseMerkleTree<Blake256>) {
+fn delete_from_smt(keys: &[NodeKey], tree: &mut SparseMerkleTree<Blake2b<U32>>) {
     keys.iter().for_each(|key| {
         tree.delete(key).unwrap();
     });

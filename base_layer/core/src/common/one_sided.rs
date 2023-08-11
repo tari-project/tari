@@ -22,10 +22,11 @@
 
 use core::result::Result;
 
+use blake2::Blake2b;
+use digest::consts::U32;
 use tari_common_types::types::{PrivateKey, PublicKey, WalletHasher};
 use tari_comms::types::CommsDHKE;
 use tari_crypto::{
-    hash::blake2::Blake256,
     hash_domain,
     hashing::{DomainSeparatedHash, DomainSeparatedHasher},
     keys::PublicKey as PKtrait,
@@ -50,8 +51,8 @@ hash_domain!(
     1
 );
 
-type WalletOutputEncryptionKeysDomainHasher = DomainSeparatedHasher<Blake256, WalletOutputEncryptionKeysDomain>;
-type WalletOutputSpendingKeysDomainHasher = DomainSeparatedHasher<Blake256, WalletOutputSpendingKeysDomain>;
+type WalletOutputEncryptionKeysDomainHasher = DomainSeparatedHasher<Blake2b<U32>, WalletOutputEncryptionKeysDomain>;
+type WalletOutputSpendingKeysDomainHasher = DomainSeparatedHasher<Blake2b<U32>, WalletOutputSpendingKeysDomain>;
 
 /// Generate an output encryption key from a Diffie-Hellman shared secret
 pub fn shared_secret_to_output_encryption_key(shared_secret: &CommsDHKE) -> Result<PrivateKey, ByteArrayError> {
@@ -77,7 +78,7 @@ pub fn shared_secret_to_output_spending_key(shared_secret: &CommsDHKE) -> Result
 pub fn diffie_hellman_stealth_domain_hasher(
     private_key: &PrivateKey,
     public_key: &PublicKey,
-) -> DomainSeparatedHash<Blake256> {
+) -> DomainSeparatedHash<Blake2b<U32>> {
     WalletHasher::new_with_label("stealth_address")
         .chain(CommsDHKE::new(private_key, public_key).as_bytes())
         .finalize()
@@ -85,10 +86,11 @@ pub fn diffie_hellman_stealth_domain_hasher(
 
 /// Stealth payment script spending key
 pub fn stealth_address_script_spending_key(
-    dh_domain_hasher: &DomainSeparatedHash<Blake256>,
+    dh_domain_hasher: &DomainSeparatedHash<Blake2b<U32>>,
     destination_public_key: &PublicKey,
 ) -> PublicKey {
     PublicKey::from_secret_key(
-        &PrivateKey::from_bytes(dh_domain_hasher.as_ref()).expect("'DomainSeparatedHash<Blake256>' has correct size"),
+        &PrivateKey::from_bytes(dh_domain_hasher.as_ref())
+            .expect("'DomainSeparatedHash<Blake2b<U32>>' has correct size"),
     ) + destination_public_key
 }

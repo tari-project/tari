@@ -53,7 +53,7 @@ pub enum ValidationError {
     #[error("The transaction is invalid: {0}")]
     TransactionError(#[from] TransactionError),
     #[error("A range proof verification has produced an error: {0}")]
-    RangeProofError(#[from] RangeProofError),
+    RangeProofError(String),
     #[error("Error: {0}")]
     CustomError(String),
     #[error("Fatal storage error during validation: {0}")]
@@ -97,8 +97,6 @@ pub enum ValidationError {
     InvalidMinedHeight,
     #[error("Maximum transaction weight exceeded")]
     MaxTransactionWeightExceeded,
-    #[error("End of time: {0}")]
-    EndOfTimeError(String),
     #[error("Expected block height to be {expected}, but was {block_height}")]
     IncorrectHeight { expected: u64, block_height: u64 },
     #[error("Expected block previous hash to be {expected}, but was {block_hash}")]
@@ -168,5 +166,11 @@ impl From<ChainStorageError> for ValidationError {
 impl ValidationError {
     pub fn custom_error<T: Into<String>>(err: T) -> Self {
         ValidationError::CustomError(err.into())
+    }
+}
+
+impl From<RangeProofError> for ValidationError {
+    fn from(e: RangeProofError) -> Self {
+        ValidationError::RangeProofError(e.to_string())
     }
 }

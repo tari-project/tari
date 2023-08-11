@@ -114,6 +114,7 @@ pub enum TxStorageResponse {
     NotStoredConsensus,
     NotStored,
     NotStoredAlreadyMined,
+    NotStoredFeeTooLow,
 }
 
 impl TxStorageResponse {
@@ -133,6 +134,7 @@ impl Display for TxStorageResponse {
             TxStorageResponse::NotStoredConsensus => "Not stored due to consensus rule",
             TxStorageResponse::NotStored => "Not stored",
             TxStorageResponse::NotStoredAlreadyMined => "Not stored tx already mined",
+            TxStorageResponse::NotStoredFeeTooLow => "Not stored tx fee is below the minimum accepted by this mempool",
         };
         fmt.write_str(storage)
     }

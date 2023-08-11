@@ -3,13 +3,14 @@
 
 use std::{path::Path, str::FromStr};
 
-use digest::Digest;
+use blake2::Blake2b;
+use digest::{consts::U32, Digest};
 use log::*;
 use minotari_wallet::output_manager_service::UtxoSelectionCriteria;
 use regex::Regex;
 use reqwest::StatusCode;
 use tari_core::transactions::{tari_amount::MicroMinotari, transaction_components::TemplateType};
-use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparation};
+use tari_crypto::{hash_domain, hashing::DomainSeparation};
 use tari_utilities::hex::Hex;
 use tokio::{
     runtime::{Handle, Runtime},
@@ -530,10 +531,10 @@ impl RegisterTemplateTab {
                                 Ok(data) => match data.status() {
                                     StatusCode::OK => match data.bytes().await {
                                         Ok(bytes) => {
-                                            let mut hasher = Blake256::new();
+                                            let mut hasher = Blake2b::<U32>::default();
                                             hash_domain!(TariEngineHashDomain, "com.tari.dan.engine", 0);
                                             TariEngineHashDomain::add_domain_separation_tag(&mut hasher, "Template");
-                                            let hash: [u8; 32] = hasher.chain(bytes).finalize().into();
+                                            let hash: [u8; 32] = hasher.chain_update(bytes).finalize().into();
                                             hex_string = hash.to_hex();
                                         },
                                         Err(e) => {

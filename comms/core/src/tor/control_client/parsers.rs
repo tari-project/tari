@@ -57,7 +57,7 @@ impl fmt::Display for ParseError {
 }
 
 pub fn response_line(line: &str) -> Result<ResponseLine, ParseError> {
-    let parser = map_res(digit1, |code: &str| code.parse::<u16>());
+    let mut parser = map_res(digit1, |code: &str| code.parse::<u16>());
     let (rest, code) = parser(line)?;
     let (rest, ch) = anychar(rest)?;
     if ![' ', '-', '+'].contains(&ch) {

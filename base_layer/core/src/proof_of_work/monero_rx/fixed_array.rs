@@ -46,8 +46,9 @@ impl BorshSerialize for FixedByteArray {
 }
 
 impl BorshDeserialize for FixedByteArray {
-    fn deserialize(buf: &mut &[u8]) -> io::Result<Self> {
-        let len = u8::deserialize(buf)? as usize;
+    fn deserialize_reader<R>(reader: &mut R) -> Result<Self, io::Error>
+    where R: io::Read {
+        let len = u8::deserialize_reader(reader)? as usize;
         if len > MAX_ARR_SIZE {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -56,7 +57,7 @@ impl BorshDeserialize for FixedByteArray {
         }
         let mut bytes = Vec::with_capacity(len);
         for _ in 0..len {
-            bytes.push(u8::deserialize(buf)?);
+            bytes.push(u8::deserialize_reader(reader)?);
         }
         // This unwrap should never fail, the len is checked above.
         Ok(Self::from_bytes(bytes.as_bytes()).unwrap())
@@ -114,10 +115,10 @@ impl Default for FixedByteArray {
 impl ByteArray for FixedByteArray {
     fn from_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError> {
         if bytes.len() > MAX_ARR_SIZE {
-            return Err(ByteArrayError::IncorrectLength);
+            return Err(ByteArrayError::IncorrectLength {});
         }
 
-        let len = u8::try_from(bytes.len()).map_err(|_| ByteArrayError::IncorrectLength)?;
+        let len = u8::try_from(bytes.len()).map_err(|_| ByteArrayError::IncorrectLength {})?;
 
         let mut elems = [0u8; MAX_ARR_SIZE];
         elems[..len as usize].copy_from_slice(&bytes[..len as usize]);

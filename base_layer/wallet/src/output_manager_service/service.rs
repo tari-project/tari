@@ -59,7 +59,6 @@ use tari_core::{
         SenderTransactionProtocol,
     },
 };
-use tari_crypto::errors::RangeProofError;
 use tari_script::{inputs, script, Opcode, TariScript};
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
@@ -234,7 +233,7 @@ where
                     .map(OutputManagerResponse::Balance)
             },
             OutputManagerRequest::GetRecipientTransaction(tsm) => self
-                .get_recipient_transaction(tsm)
+                .get_default_recipient_transaction(tsm)
                 .await
                 .map(OutputManagerResponse::RecipientTransactionGenerated),
             OutputManagerRequest::GetCoinbaseTransaction {
@@ -681,7 +680,7 @@ where
     }
 
     /// Request a receiver transaction be generated from the supplied Sender Message
-    async fn get_recipient_transaction(
+    async fn get_default_recipient_transaction(
         &mut self,
         sender_message: TransactionSenderMessage,
     ) -> Result<ReceiverTransactionProtocol, OutputManagerError> {
@@ -690,13 +689,28 @@ where
             _ => return Err(OutputManagerError::InvalidSenderMessage),
         };
 
-        // Confirm script hash is for the expected script, at the moment assuming Nop
-        if single_round_sender_data.script != script!(Nop) {
-            return Err(OutputManagerError::InvalidScriptHash);
+        // Confirm covenant is default
+        if single_round_sender_data.covenant != Covenant::default() {
+            return Err(OutputManagerError::InvalidCovenant);
+        }
+
+        // Confirm output features is default
+        if single_round_sender_data.features != OutputFeatures::default() {
+            return Err(OutputManagerError::InvalidOutputFeatures);
         }
 
         let (spending_key_id, _, script_key_id, script_public_key) =
             self.resources.key_manager.get_next_spend_and_script_key_ids().await?;
+
+        // Confirm script hash is for the expected script, at the moment assuming Nop or Push_pubkey
+        // if the script is Push_pubkey(default_key) we know we have to fill it in.
+        let script = if single_round_sender_data.script == script!(Nop) {
+            single_round_sender_data.script.clone()
+        } else if single_round_sender_data.script == script!(PushPubKey(Box::new(PublicKey::default()))) {
+            script!(PushPubKey(Box::new(script_public_key.clone())))
+        } else {
+            return Err(OutputManagerError::InvalidScriptHash);
+        };
 
         let encrypted_data = self
             .resources
@@ -708,7 +722,7 @@ where
 
         let metadata_message = TransactionOutput::metadata_signature_message_from_parts(
             &TransactionOutputVersion::get_current_version(),
-            &single_round_sender_data.script,
+            &script,
             &single_round_sender_data.features.clone(),
             &single_round_sender_data.covenant,
             &encrypted_data,
@@ -732,7 +746,7 @@ where
             single_round_sender_data.amount,
             spending_key_id.clone(),
             single_round_sender_data.features.clone(),
-            single_round_sender_data.script.clone(),
+            script,
             inputs!(script_public_key),
             script_key_id,
             single_round_sender_data.sender_offset_public_key.clone(),
@@ -2228,14 +2242,12 @@ where
                 Ok((tx_id, fee, amount - fee, tx))
             } else {
                 Err(OutputManagerError::TransactionError(TransactionError::RangeProofError(
-                    RangeProofError::InvalidRewind(
-                        "Atomic swap: Blinding factor could not open the commitment!".to_string(),
-                    ),
+                    "Atomic swap: Blinding factor could not open the commitment!".to_string(),
                 )))
             }
         } else {
             Err(OutputManagerError::TransactionError(TransactionError::RangeProofError(
-                RangeProofError::InvalidRewind("Atomic swap: Encrypted value could not be decrypted!".to_string()),
+                "Atomic swap: Encrypted value could not be decrypted!".to_string(),
             )))
         }
     }
@@ -2399,7 +2411,7 @@ where
 
                     // Compute the stealth address offset
                     let stealth_address_offset = PrivateKey::from_bytes(stealth_address_hasher.as_ref())
-                        .expect("'DomainSeparatedHash<Blake256>' has correct size");
+                        .expect("'DomainSeparatedHash<Blake2b<U32>>' has correct size");
                     let stealth_key = self
                         .resources
                         .key_manager

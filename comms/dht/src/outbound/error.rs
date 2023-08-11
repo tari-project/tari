@@ -40,9 +40,9 @@ pub enum DhtOutboundError {
     #[error("MessageSerializationError: {0}")]
     MessageSerializationError(#[from] MessageError),
     #[error("MessageFormatError: {0}")]
-    MessageFormatError(#[from] MessageFormatError),
+    MessageFormatError(String),
     #[error("SignatureError: {0}")]
-    SignatureError(#[from] SchnorrSignatureError),
+    SignatureError(String),
     #[error("Requester reply channel closed before response was received")]
     RequesterReplyChannelClosed,
     #[error("Peer selection failed")]
@@ -61,6 +61,18 @@ pub enum DhtOutboundError {
     CipherError(String),
     #[error("Padding error: `{0}`")]
     PaddingError(String),
+}
+
+impl From<SchnorrSignatureError> for DhtOutboundError {
+    fn from(e: SchnorrSignatureError) -> Self {
+        DhtOutboundError::SignatureError(e.to_string())
+    }
+}
+
+impl From<MessageFormatError> for DhtOutboundError {
+    fn from(value: MessageFormatError) -> Self {
+        DhtOutboundError::MessageFormatError(value.to_string())
+    }
 }
 
 impl From<SendFailure> for DhtOutboundError {

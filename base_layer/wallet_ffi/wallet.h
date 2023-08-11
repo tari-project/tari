@@ -264,12 +264,13 @@ typedef struct TariAddress TariWalletAddress;
  * ```rust
  * # use tari_crypto::ristretto::*;
  * # use tari_crypto::keys::*;
- * # use tari_crypto::hash::blake2::Blake256;
+ * # use blake2::Blake2b;
  * # use digest::Digest;
  * # use tari_crypto::commitment::HomomorphicCommitmentFactory;
  * # use tari_crypto::ristretto::pedersen::*;
  * use tari_crypto::ristretto::pedersen::commitment_factory::PedersenCommitmentFactory;
  * use tari_utilities::hex::Hex;
+ * use digest::consts::U32;
  *
  * let mut rng = rand::thread_rng();
  * let a_val = RistrettoSecretKey::random(&mut rng);
@@ -278,7 +279,7 @@ typedef struct TariAddress TariWalletAddress;
  * let a_nonce = RistrettoSecretKey::random(&mut rng);
  * let x_nonce = RistrettoSecretKey::random(&mut rng);
  * let y_nonce = RistrettoSecretKey::random(&mut rng);
- * let e = Blake256::digest(b"Maskerade"); // In real life, this should be strong Fiat-Shamir!
+ * let e = Blake2b::<U32>::digest(b"Maskerade"); // In real life, this should be strong Fiat-Shamir!
  * let factory = PedersenCommitmentFactory::default();
  * let commitment = factory.commit(&x_val, &a_val);
  * let pubkey = RistrettoPublicKey::from_secret_key(&y_val);

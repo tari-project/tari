@@ -27,12 +27,12 @@ use tari_utilities::{epoch_time::EpochTime, hex::Hex};
 
 use crate::{
     base_node::sync::BlockHeaderSyncError,
-    blocks::{BlockHeader, BlockHeaderAccumulatedData, ChainHeader},
+    blocks::{BlockHeader, BlockHeaderAccumulatedData, BlockHeaderValidationError, ChainHeader},
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError, TargetDifficulties},
     common::rolling_vec::RollingVec,
     consensus::ConsensusManager,
     proof_of_work::{randomx_factory::RandomXFactory, PowAlgorithm},
-    validation::{header::HeaderFullValidator, DifficultyCalculator, HeaderChainLinkedValidator},
+    validation::{header::HeaderFullValidator, DifficultyCalculator, HeaderChainLinkedValidator, ValidationError},
 };
 
 const LOG_TARGET: &str = "c::bn::header_sync";
@@ -109,7 +109,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
         self.valid_headers().last()
     }
 
-    pub fn validate(&mut self, header: BlockHeader) -> Result<u128, BlockHeaderSyncError> {
+    pub async fn validate(&mut self, header: BlockHeader) -> Result<u128, BlockHeaderSyncError> {
         let state = self.state();
         let constants = self.consensus_rules.consensus_constants(header.height);
 
@@ -118,7 +118,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
             constants.max_pow_difficulty(header.pow_algo()),
         );
 
-        let achieved_target = {
+        let result = {
             let txn = self.db.inner().db_read_access()?;
             self.validator.validate(
                 &*txn,
@@ -126,7 +126,30 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
                 &state.previous_header,
                 &state.timestamps,
                 Some(target_difficulty),
-            )?
+            )
+        };
+        let achieved_target = match result {
+            Ok(achieved_target) => achieved_target,
+            // future timelimit validation can succeed at a later time. As the block is not yet valid, we discard it
+            // for now and ban the peer, but wont blacklist the block.
+            Err(e @ ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidTimestampFutureTimeLimit)) => {
+                return Err(e.into())
+            },
+            // We dont want to mark a block as bad for internal failures
+            Err(
+                e @ ValidationError::FatalStorageError(_) |
+                e @ ValidationError::NotEnoughTimestamps { .. } |
+                e @ ValidationError::AsyncTaskFailed(_),
+            ) => return Err(e.into()),
+            // We dont have to mark the block twice
+            Err(e @ ValidationError::BadBlockFound { .. }) => return Err(e.into()),
+
+            Err(e) => {
+                let mut txn = self.db.write_transaction();
+                txn.insert_bad_block(header.hash(), header.height);
+                txn.commit().await?;
+                return Err(e.into());
+            },
         };
 
         // Header is valid, add this header onto the validation state for the next round
@@ -299,11 +322,11 @@ mod test {
             validator.initialize_state(tip.hash()).await.unwrap();
             assert!(validator.valid_headers().is_empty());
             let next = BlockHeader::from_previous(tip.header());
-            validator.validate(next).unwrap();
+            validator.validate(next).await.unwrap();
             assert_eq!(validator.valid_headers().len(), 1);
             let tip = validator.valid_headers().last().cloned().unwrap();
             let next = BlockHeader::from_previous(tip.header());
-            validator.validate(next).unwrap();
+            validator.validate(next).await.unwrap();
             assert_eq!(validator.valid_headers().len(), 2);
         }
 
@@ -313,7 +336,7 @@ mod test {
             validator.initialize_state(tip.hash()).await.unwrap();
             let mut next = BlockHeader::from_previous(tip.header());
             next.height = 14;
-            let err = validator.validate(next).unwrap_err();
+            let err = validator.validate(next).await.unwrap_err();
             unpack_enum!(BlockHeaderSyncError::ValidationFailed(val_err) = err);
             unpack_enum!(ValidationError::BlockHeaderError(header_err) = val_err);
             unpack_enum!(BlockHeaderValidationError::InvalidHeight { actual, expected } = header_err);

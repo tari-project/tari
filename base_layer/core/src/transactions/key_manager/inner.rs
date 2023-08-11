@@ -21,6 +21,8 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use std::{collections::HashMap, ops::Shl};
 
+use blake2::Blake2b;
+use digest::consts::U32;
 use log::*;
 use rand::rngs::OsRng;
 use strum::IntoEnumIterator;
@@ -28,9 +30,7 @@ use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, Publi
 use tari_comms::types::CommsDHKE;
 use tari_crypto::{
     commitment::{ExtensionDegree, HomomorphicCommitmentFactory},
-    errors::RangeProofError,
     extended_range_proof::ExtendedRangeProofService,
-    hash::blake2::Blake256,
     hash_domain,
     hashing::{DomainSeparatedHash, DomainSeparatedHasher},
     keys::{PublicKey as PublicKeyTrait, SecretKey},
@@ -352,7 +352,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         &self,
         secret_key_id: &TariKeyId,
         public_key: &PublicKey,
-    ) -> Result<DomainSeparatedHash<Blake256>, TransactionError> {
+    ) -> Result<DomainSeparatedHash<Blake2b<U32>>, TransactionError> {
         let secret_key = self.get_private_key(secret_key_id).await?;
         Ok(diffie_hellman_stealth_domain_hasher(&secret_key, public_key))
     }
@@ -492,17 +492,11 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 .construct_extended_proof(vec![extended_witness], None)
         };
 
-        let proof_bytes = proof_bytes_result.map_err(|err| {
-            TransactionError::RangeProofError(RangeProofError::ProofConstructionError(format!(
-                "Failed to construct range proof: {}",
-                err
-            )))
-        })?;
+        let proof_bytes = proof_bytes_result
+            .map_err(|err| TransactionError::RangeProofError(format!("Failed to construct range proof: {}", err)))?;
 
         RangeProof::from_bytes(&proof_bytes).map_err(|_| {
-            TransactionError::RangeProofError(RangeProofError::ProofConstructionError(
-                "Rangeproof factory returned invalid range proof bytes".to_string(),
-            ))
+            TransactionError::RangeProofError("Rangeproof factory returned invalid range proof bytes".to_string())
         })
     }
 
@@ -534,7 +528,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         // With RevealedValue type range proofs, the nonce is always 0 and the minimum value promise equal to the value
         let nonce_a = match range_proof_type {
             RangeProofType::BulletProofPlus => {
-                let hasher_a = DomainSeparatedHasher::<Blake256, KeyManagerHashingDomain>::new_with_label(
+                let hasher_a = DomainSeparatedHasher::<Blake2b<U32>, KeyManagerHashingDomain>::new_with_label(
                     "metadata_signature_ephemeral_nonce_a",
                 );
                 let a_hash = hasher_a.chain(nonce_private_key.as_bytes()).finalize();
@@ -545,7 +539,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             RangeProofType::RevealedValue => Ok(PrivateKey::default()),
         }?;
 
-        let hasher_b = DomainSeparatedHasher::<Blake256, KeyManagerHashingDomain>::new_with_label(
+        let hasher_b = DomainSeparatedHasher::<Blake2b<U32>, KeyManagerHashingDomain>::new_with_label(
             "metadata_signature_ephemeral_nonce_b",
         );
         let b_hash = hasher_b.chain(nonce_private_key.as_bytes()).finalize();
@@ -731,7 +725,8 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         spend_key_id: &TariKeyId,
         nonce_id: &TariKeyId,
     ) -> Result<PrivateKey, TransactionError> {
-        let hasher = DomainSeparatedHasher::<Blake256, KeyManagerHashingDomain>::new_with_label("kernel_excess_offset");
+        let hasher =
+            DomainSeparatedHasher::<Blake2b<U32>, KeyManagerHashingDomain>::new_with_label("kernel_excess_offset");
         let spending_private_key = self.get_private_key(spend_key_id).await?;
         let nonce_private_key = self.get_private_key(nonce_id).await?;
         let key_hash = hasher

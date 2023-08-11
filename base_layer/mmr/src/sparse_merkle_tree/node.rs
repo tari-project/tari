@@ -285,9 +285,9 @@ impl<H: Digest<OutputSize = U32>> LeafNode<H> {
     pub fn hash_value(key: &NodeKey, value: &ValueHash) -> NodeHash {
         let hasher = H::new();
         let hash = hasher
-            .chain(b"V")
-            .chain(key.as_slice())
-            .chain(value.as_slice())
+            .chain_update(b"V")
+            .chain_update(key.as_slice())
+            .chain_update(value.as_slice())
             .finalize();
         let mut result = [0; 32];
         result.copy_from_slice(hash.as_slice());
@@ -438,11 +438,11 @@ impl<H: Digest<OutputSize = U32>> BranchNode<H> {
     pub fn branch_hash(height: usize, key: &NodeKey, left: &NodeHash, right: &NodeHash) -> NodeHash {
         let hasher = H::new();
         let hash = hasher
-            .chain(b"B")
-            .chain(height.to_le_bytes())
-            .chain(key)
-            .chain(left)
-            .chain(right)
+            .chain_update(b"B")
+            .chain_update(height.to_le_bytes())
+            .chain_update(key)
+            .chain_update(left)
+            .chain_update(right)
             .finalize();
         // Output is guaranteed to be 32 bytes at compile time due to trait constraint on `H`
         NodeHash::try_from(hash.as_slice()).unwrap()
@@ -457,8 +457,9 @@ impl<H: Digest<OutputSize = U32>> BranchNode<H> {
 
 #[cfg(test)]
 mod test {
+    use blake2::Blake2b;
+    use digest::consts::U32;
     use rand::{self, RngCore};
-    use tari_crypto::hash::blake2::Blake256;
 
     use super::*;
 
@@ -485,11 +486,11 @@ mod test {
     fn leaf_node() {
         let key = random_key();
         let value = random_value_hash();
-        let node = LeafNode::<Blake256>::new(key, value);
-        let expect = Blake256::new()
-            .chain(b"V")
-            .chain(node.key())
-            .chain(node.value())
+        let node = LeafNode::<Blake2b<U32>>::new(key, value);
+        let expect = Blake2b::<U32>::default()
+            .chain_update(b"V")
+            .chain_update(node.key())
+            .chain_update(node.value())
             .finalize();
         let expect = NodeHash::try_from(expect.as_slice()).unwrap();
         assert_eq!(node.hash(), &expect);
@@ -498,31 +499,31 @@ mod test {
     #[test]
     fn branch_empty_leaf() {
         let left = Node::Empty(EmptyNode {});
-        let right = Node::Leaf(LeafNode::<Blake256>::new(random_key(), random_value_hash()));
-        let branch = BranchNode::<Blake256>::new(0, random_key(), left, right);
+        let right = Node::Leaf(LeafNode::<Blake2b<U32>>::new(random_key(), random_value_hash()));
+        let branch = BranchNode::<Blake2b<U32>>::new(0, random_key(), left, right);
         // Should not be allowed - since this can be represented as a leaf node
         assert!(matches!(branch, Err(SMTError::InvalidBranch(_))));
 
-        let left = Node::Leaf(LeafNode::<Blake256>::new(random_key(), random_value_hash()));
+        let left = Node::Leaf(LeafNode::<Blake2b<U32>>::new(random_key(), random_value_hash()));
         let right = Node::Empty(EmptyNode {});
-        let branch = BranchNode::<Blake256>::new(0, random_key(), left, right);
+        let branch = BranchNode::<Blake2b<U32>>::new(0, random_key(), left, right);
         // Should not be allowed - since this can be represented as a leaf node
         assert!(matches!(branch, Err(SMTError::InvalidBranch(_))));
     }
 
     #[test]
     fn branch_leaf_leaf() {
-        let left = Node::Leaf(LeafNode::<Blake256>::new(random_key(), random_value_hash()));
-        let right = Node::Leaf(LeafNode::<Blake256>::new(random_key(), random_value_hash()));
+        let left = Node::Leaf(LeafNode::<Blake2b<U32>>::new(random_key(), random_value_hash()));
+        let right = Node::Leaf(LeafNode::<Blake2b<U32>>::new(random_key(), random_value_hash()));
         let l_hash = left.unsafe_hash().clone();
         let r_hash = right.unsafe_hash().clone();
-        let mut branch = BranchNode::<Blake256>::new(0, random_key(), left, right).unwrap();
-        let expected = Blake256::new()
-            .chain(b"B")
-            .chain(branch.height().to_le_bytes())
-            .chain(branch.key())
-            .chain(l_hash)
-            .chain(r_hash)
+        let mut branch = BranchNode::<Blake2b<U32>>::new(0, random_key(), left, right).unwrap();
+        let expected = Blake2b::<U32>::default()
+            .chain_update(b"B")
+            .chain_update(branch.height().to_le_bytes())
+            .chain_update(branch.key())
+            .chain_update(l_hash)
+            .chain_update(r_hash)
             .finalize();
         assert_eq!(branch.hash().as_slice(), expected.as_slice());
     }

@@ -13,13 +13,13 @@ tari_common_types = { path = "../../base_layer/common_types" }
 tari_comms = { path = "../../comms/core" }
 tari_comms_dht = { path = "../../comms/dht" }
 tari_contacts = { path = "../../base_layer/contacts" }
-tari_crypto = { version = "0.17" }
+tari_crypto = { version = "0.18" }
 tari_key_manager = { path = "../../base_layer/key_manager" }
 tari_libtor = { path = "../../infrastructure/libtor", optional = true }
 tari_p2p = { path = "../../base_layer/p2p", features = ["auto-update"] }
 tari_script = { path = "../../infrastructure/tari_script" }
 tari_shutdown = { path = "../../infrastructure/shutdown" }
-tari_utilities = "0.4.10"
+tari_utilities = { version = "0.5" }
 minotari_wallet = { path = "../../base_layer/wallet", features = ["bundled_sqlite"] }
 
 # Uncomment for tokio tracing via tokio-console (needs "tracing" featurs)
@@ -33,19 +33,19 @@ chrono = { version = "0.4.19", default-features = false }
 clap = { version = "3.2", features = ["derive", "env"] }
 config = "0.13.0"
 crossterm = { version = "0.25.0" }
-digest = "0.9.0"
+digest = "0.10"
 futures = { version = "^0.3.16", default-features = false, features = ["alloc"] }
 log4rs = { git = "https://github.com/tari-project/log4rs.git", default_features = false, features = ["config_parsing", "threshold_filter", "yaml_format", "console_appender", "rolling_file_appender", "compound_policy", "size_trigger", "fixed_window_roller", "delete_roller"] }
 log = { version = "0.4.8", features = ["std"] }
 qrcode = { version = "0.12" }
-rand = "0.7.3"
+rand = "0.8"
 regex = "1.5.4"
 reqwest = "0.11.18"
 rpassword = "5.0"
 rustyline = "9.0"
 serde = "1.0.136"
 serde_json = "1.0.79"
-sha2 = "0.9.5"
+sha2 = "0.10"
 strum = "0.22"
 strum_macros = "0.22"
 thiserror = "1.0.26"
@@ -55,6 +55,7 @@ unicode-width = "0.1"
 zeroize = "1"
 zxcvbn = "2"
 url = "2.3.1"
+blake2 = "0.10"
 
 [dependencies.tari_core]
 path = "../../base_layer/core"
@@ -70,7 +71,6 @@ features = ["crossterm"]
 tari_features = { version = "0.51.0-pre.4", path = "../../common/tari_features"}
 
 [features]
-avx2 = ["tari_core/avx2", "tari_crypto/simd_backend", "minotari_wallet/avx2", "tari_comms/avx2", "tari_comms_dht/avx2", "tari_p2p/avx2", "tari_key_manager/avx2"]
 libtor = ["tari_libtor"]
 
 [package.metadata.cargo-machete]

@@ -793,6 +793,10 @@ impl DhtConnectivity {
                 {
                     return false;
                 }
+                // we have tried to connect to this peer, and we have never made a successful attempt at connection
+                if peer.offline_since().is_none() && peer.last_connect_attempt().is_some() {
+                    return false;
+                }
 
                 let is_excluded = excluded.contains(&peer.node_id);
                 if is_excluded {

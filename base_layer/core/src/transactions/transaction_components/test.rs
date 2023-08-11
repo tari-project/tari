@@ -36,6 +36,7 @@ use super::*;
 use crate::{
     consensus::ConsensusManager,
     transactions::{
+        aggregated_body::AggregateBody,
         key_manager::TransactionKeyManagerInterface,
         tari_amount::{uT, MicroMinotari, T},
         test_helpers,
@@ -421,13 +422,16 @@ async fn check_cut_through() {
         .inputs()
         .clone()
         .iter()
-        .filter(|input| tx3_cut_through.body.outputs_mut().iter().any(|o| o.is_equal_to(input)))
+        .filter(|input| tx3_cut_through.body.outputs().iter().any(|o| o.is_equal_to(input)))
         .cloned()
         .collect();
+    let mut outputs = tx3_cut_through.body.outputs().clone();
+    let mut inputs = tx3_cut_through.body.inputs().clone();
     for input in double_inputs {
-        tx3_cut_through.body.outputs_mut().retain(|x| !input.is_equal_to(x));
-        tx3_cut_through.body.inputs_mut().retain(|x| *x != input);
+        outputs.retain(|x| !input.is_equal_to(x));
+        inputs.retain(|x| *x != input);
     }
+    tx3_cut_through.body = AggregateBody::new(inputs, outputs, tx3_cut_through.body.kernels().clone());
     tx3.body.sort();
     tx3_cut_through.body.sort();
 
@@ -484,8 +488,10 @@ async fn inputs_not_malleable() {
         .push(StackItem::Hash(*b"Pls put this on tha tari network"))
         .unwrap();
 
-    tx.body.inputs_mut()[0].set_script(script![Drop]).unwrap();
-    tx.body.inputs_mut()[0].input_data = stack;
+    let mut inputs = tx.body().inputs().clone();
+    inputs[0].set_script(script![Drop]).unwrap();
+    inputs[0].input_data = stack;
+    tx.body = AggregateBody::new(inputs, tx.body.outputs().clone(), tx.body().kernels().clone());
 
     let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
     let factories = CryptoFactories::default();
@@ -519,10 +525,11 @@ async fn test_output_recover_openings() {
 
 mod validate_internal_consistency {
 
+    use blake2::Blake2b;
     use borsh::BorshSerialize;
-    use digest::Digest;
+    use digest::{consts::U32, Digest};
     use tari_common_types::types::FixedHash;
-    use tari_crypto::{hash::blake2::Blake256, hashing::DomainSeparation};
+    use tari_crypto::hashing::DomainSeparation;
 
     use super::*;
     use crate::{
@@ -587,10 +594,10 @@ mod validate_internal_consistency {
         .unwrap();
 
         //---------------------------------- Case2 - PASS --------------------------------------------//
-        let mut hasher = Blake256::new();
+        let mut hasher = Blake2b::<U32>::default();
         BaseLayerCovenantsDomain::add_domain_separation_tag(&mut hasher, COVENANTS_FIELD_HASHER_LABEL);
 
-        let hash = hasher.chain(features.try_to_vec().unwrap()).finalize().to_vec();
+        let hash = hasher.chain_update(features.try_to_vec().unwrap()).finalize().to_vec();
 
         let mut slice = [0u8; FixedHash::byte_size()];
         slice.copy_from_slice(hash.as_ref());

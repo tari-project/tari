@@ -163,7 +163,7 @@ pub enum TransactionServiceError {
     #[error("Maximum Attempts Exceeded")]
     MaximumAttemptsExceeded,
     #[error("Byte array error")]
-    ByteArrayError(#[from] tari_utilities::ByteArrayError),
+    ByteArrayError(String),
     #[error("Transaction Service Error: `{0}`")]
     ServiceError(String),
     #[error("Wallet Recovery in progress so Transaction Service Messaging Requests ignored")]
@@ -182,13 +182,31 @@ pub enum TransactionServiceError {
     #[error("FixedHash size error: `{0}`")]
     FixedHashSizeError(#[from] FixedHashSizeError),
     #[error("Commitment signature error: {0}")]
-    CommitmentSignatureError(#[from] CommitmentSignatureError),
+    CommitmentSignatureError(String),
     #[error("Invalid data: `{0}`")]
-    RangeProofError(#[from] RangeProofError),
+    RangeProofError(String),
     #[error("Key manager error: `{0}`")]
     InvalidKeyId(String),
     #[error("Invalid key manager data: `{0}`")]
     KeyManagerServiceError(#[from] KeyManagerServiceError),
+}
+
+impl From<RangeProofError> for TransactionServiceError {
+    fn from(e: RangeProofError) -> Self {
+        TransactionServiceError::RangeProofError(e.to_string())
+    }
+}
+
+impl From<CommitmentSignatureError> for TransactionServiceError {
+    fn from(e: CommitmentSignatureError) -> Self {
+        TransactionServiceError::CommitmentSignatureError(e.to_string())
+    }
+}
+
+impl From<ByteArrayError> for TransactionServiceError {
+    fn from(err: ByteArrayError) -> Self {
+        TransactionServiceError::ByteArrayError(err.to_string())
+    }
 }
 
 #[derive(Debug, Error)]
@@ -246,13 +264,19 @@ pub enum TransactionStorageError {
     #[error("Transaction (TxId: '{0}') is not mined")]
     TransactionNotMined(TxId),
     #[error("Conversion error: `{0}`")]
-    ByteArrayError(#[from] ByteArrayError),
+    ByteArrayError(String),
     #[error("Tari address error: `{0}`")]
     TariAddressError(#[from] TariAddressError),
     #[error("Not a coinbase transaction so cannot be abandoned")]
     NotCoinbase,
     #[error("Db error: `{0}`")]
     SqliteStorageError(#[from] SqliteStorageError),
+}
+
+impl From<ByteArrayError> for TransactionStorageError {
+    fn from(e: ByteArrayError) -> Self {
+        TransactionStorageError::ByteArrayError(e.to_string())
+    }
 }
 
 /// This error type is used to return TransactionServiceErrors from inside a Transaction Service protocol but also

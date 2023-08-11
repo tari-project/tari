@@ -169,7 +169,9 @@ impl TransactionOutput {
         if let Some(proof) = self.proof.as_ref() {
             Ok(proof)
         } else {
-            Err(RangeProofError::InvalidRangeProof("Range proof not found".to_string()))
+            Err(RangeProofError::InvalidRangeProof {
+                reason: "Range proof not found".to_string(),
+            })
         }
     }
 
@@ -209,12 +211,12 @@ impl TransactionOutput {
             self.version,
             &self.features,
             &self.commitment,
+            &rp_hash,
             &self.script,
-            &self.covenant,
-            &self.encrypted_data,
             &self.sender_offset_public_key,
             &self.metadata_signature,
-            &rp_hash,
+            &self.covenant,
+            &self.encrypted_data,
             self.minimum_value_promise,
         )
     }
@@ -254,10 +256,12 @@ impl TransactionOutput {
     // range proof verification.
     fn revealed_value_range_proof_check(&self) -> Result<(), RangeProofError> {
         if self.features.range_proof_type != RangeProofType::RevealedValue {
-            return Err(RangeProofError::InvalidRangeProof(format!(
-                "Commitment {} does not have a RevealedValue range proof",
-                self.commitment.to_hex()
-            )));
+            return Err(RangeProofError::InvalidRangeProof {
+                reason: format!(
+                    "Commitment {} does not have a RevealedValue range proof",
+                    self.commitment.to_hex()
+                ),
+            });
         }
         // Let's first verify that the metadata signature is valid.
         // Note: If normal code paths are followed, this is checked elsewhere already, but it is theoretically possible
@@ -266,7 +270,9 @@ impl TransactionOutput {
         let e_bytes = match self.verify_metadata_signature_internal() {
             Ok(val) => val,
             Err(e) => {
-                return Err(RangeProofError::InvalidRangeProof(format!("{}", e)));
+                return Err(RangeProofError::InvalidRangeProof {
+                    reason: format!("{}", e),
+                });
             },
         };
         // Now we can perform the balance proof
@@ -276,10 +282,12 @@ impl TransactionOutput {
         if self.metadata_signature.u_a().to_hex() == (commit_nonce_a + e * value_as_private_key).to_hex() {
             Ok(())
         } else {
-            Err(RangeProofError::InvalidRangeProof(format!(
-                "RevealedValue range proof check for commitment {} failed",
-                self.commitment.to_hex()
-            )))
+            Err(RangeProofError::InvalidRangeProof {
+                reason: format!(
+                    "RevealedValue range proof check for commitment {} failed",
+                    self.commitment.to_hex()
+                ),
+            })
         }
     }
 
@@ -528,19 +536,23 @@ pub fn batch_verify_range_proofs(
         if let Err(err_1) = prover.verify_batch(proofs.iter().collect(), statements.iter().collect()) {
             for output in &bulletproof_plus_proofs {
                 if let Err(err_2) = output.verify_range_proof(prover) {
-                    return Err(RangeProofError::InvalidRangeProof(format!(
-                        "commitment {}, minimum_value_promise {}, proof {} ({:?})",
-                        output.commitment.to_hex(),
-                        output.minimum_value_promise,
-                        output.proof_hex_display(false),
-                        err_2,
-                    )));
+                    return Err(RangeProofError::InvalidRangeProof {
+                        reason: format!(
+                            "commitment {}, minimum_value_promise {}, proof {} ({:?})",
+                            output.commitment.to_hex(),
+                            output.minimum_value_promise,
+                            output.proof_hex_display(false),
+                            err_2,
+                        ),
+                    });
                 }
             }
-            Err(RangeProofError::InvalidRangeProof(format!(
-                "Batch verification failed, but individual verification passed - {:?}",
-                err_1
-            )))?
+            Err(RangeProofError::InvalidRangeProof {
+                reason: format!(
+                    "Batch verification failed, but individual verification passed - {:?}",
+                    err_1
+                ),
+            })?
         }
     }
 
@@ -748,10 +760,9 @@ mod test {
         assert!(output.verify_metadata_signature().is_err());
         match output.revealed_value_range_proof_check() {
             Ok(_) => panic!("Should not have passed check"),
-            Err(e) => assert_eq!(
-                e,
-                RangeProofError::InvalidRangeProof("Signature is invalid: Metadata signature not valid!".to_string())
-            ),
+            Err(e) => assert_eq!(e, RangeProofError::InvalidRangeProof {
+                reason: "Signature is invalid: Metadata signature not valid!".to_string()
+            }),
         }
     }
 

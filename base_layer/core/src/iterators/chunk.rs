@@ -286,7 +286,7 @@ mod test {
 
     #[test]
     fn iterator_symmetry() {
-        let size = OsRng.gen_range(3usize, 10 + 1);
+        let size = OsRng.gen_range(3usize..=10);
         let rand_start = OsRng.gen::<u8>();
         let rand_end = OsRng.gen::<u8>().saturating_add(rand_start);
 
