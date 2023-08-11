@@ -116,7 +116,7 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for MockValidator {
         _: Option<Difficulty>,
     ) -> Result<AchievedTargetDifficulty, ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
-            // TODO: this assumes consensus rules are the same as the test rules which is a little brittle
+            // this assumes consensus rules are the same as the test rules which is a little brittle
             let difficulty_calculator = DifficultyCalculator::new(create_consensus_rules(), RandomXFactory::default());
             let achieved_target_diff = difficulty_calculator.check_achieved_and_target_difficulty(db, header)?;
             Ok(achieved_target_diff)

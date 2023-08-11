@@ -2152,8 +2152,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
     };
 
     // validate the block header
-    let prev_timestamps = get_previous_timestamps(db, &candidate_block.header, rules)?;
-
+    let mut prev_timestamps = get_previous_timestamps(db, &candidate_block.header, rules)?;
     let result = validator.validate(db, &candidate_block.header, parent.header(), &prev_timestamps, None);
 
     let achieved_target_diff = match result {
@@ -2179,6 +2178,9 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
             return Err(e.into());
         },
     };
+
+    // Include the current block timestamp in the median window
+    prev_timestamps.push(candidate_block.header.timestamp);
 
     let accumulated_data = BlockHeaderAccumulatedData::builder(parent.accumulated_data())
         .with_hash(hash)
@@ -2235,8 +2237,6 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
         &prev_chain_header.hash()
     );
 
-    let mut current_branch_prev_timestamps = prev_timestamps.clone();
-
     let mut res = vec![];
     for child in children {
         debug!(
@@ -2247,19 +2247,15 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
             prev_chain_header.height(),
             prev_chain_header.hash(),
         );
-        // Append the child timestamp - a RollingVec ensures that the number of timestamps can never be more than the
-        // median timestamp window size.
-        current_branch_prev_timestamps.push(child.header.timestamp);
 
         // we need to validate the header here because it may never have been validated.
-        match validator.validate(
-            db,
-            &child.header,
-            prev_chain_header.header(),
-            &current_branch_prev_timestamps,
-            None,
-        ) {
+        match validator.validate(db, &child.header, prev_chain_header.header(), &prev_timestamps, None) {
             Ok(achieved_target) => {
+                // Append the child timestamp - a RollingVec ensures that the number of timestamps can never be more
+                // than the median timestamp window size.
+                let mut prev_timestamps_for_children = prev_timestamps.clone();
+                prev_timestamps_for_children.push(child.header.timestamp);
+
                 let child_hash = child.hash();
                 let accum_data = BlockHeaderAccumulatedData::builder(prev_chain_header.accumulated_data())
                     .with_hash(child_hash)
@@ -2278,16 +2274,9 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
                 let mut txn = DbTransaction::new();
                 txn.set_accumulated_data_for_orphan(chain_header.accumulated_data().clone());
                 db.write(txn)?;
-                let children = find_orphan_descendant_tips_of(
-                    db,
-                    chain_header,
-                    current_branch_prev_timestamps.clone(),
-                    validator,
-                )?;
+                let children =
+                    find_orphan_descendant_tips_of(db, chain_header, prev_timestamps_for_children, validator)?;
                 res.extend(children);
-
-                // Restore the previous timestamps for this level of branching
-                current_branch_prev_timestamps = prev_timestamps.clone();
             },
             Err(e) => {
                 // Warn for now, idk might lower to debug later.
@@ -2311,26 +2300,17 @@ fn get_previous_timestamps<T: BlockchainBackend>(
     rules: &ConsensusManager,
 ) -> Result<RollingVec<EpochTime>, ChainStorageError> {
     let median_timestamp_window_size = rules.consensus_constants(header.height).median_timestamp_count();
-    let prev_timestamps_count = cmp::min(
-        median_timestamp_window_size,
-        header
-            .height
-            .checked_sub(1)
-            .map(usize::try_from)
-            .ok_or_else(|| {
-                ChainStorageError::InvalidOperation("Invalid height 0 given for candidate block".to_string())
-            })?
-            .map_err(|_| ChainStorageError::ConversionError("Block height overflowed usize".to_string()))?,
-    );
+    let prev_height = usize::try_from(header.height)
+        .map_err(|_| ChainStorageError::ConversionError("Block height overflowed usize".to_string()))?;
+
+    let prev_timestamps_count = cmp::min(median_timestamp_window_size, prev_height);
 
     let mut timestamps = RollingVec::new(median_timestamp_window_size);
-    timestamps.push(header.timestamp());
     let mut curr_header = header.prev_hash;
     for _ in 0..prev_timestamps_count {
         let h = db.fetch_chain_header_in_all_chains(&curr_header)?;
         curr_header = h.header().prev_hash;
-        let timestamp = EpochTime::from(h.timestamp());
-        timestamps.push(timestamp);
+        timestamps.push(EpochTime::from(h.timestamp()));
     }
 
     // median calculation requires timestamps to be sorted
@@ -2763,7 +2743,7 @@ mod test {
 
             // Add orphans out of height order
             for name in ["5b", "3b", "4b", "6b"] {
-                let block = orphan_chain_b.get(name).unwrap().clone();
+                let block = orphan_chain_b.get(name).unwrap();
                 let result = test.handle_possible_reorg(block.to_arc_block()).unwrap();
                 assert!(result.is_orphaned());
             }
@@ -2774,7 +2754,7 @@ mod test {
                 create_chained_blocks(block_specs!(["4c->GB"], ["5c->4c"], ["6c->5c"], ["7c->6c"]), fork_root).await;
 
             for name in ["7c", "5c", "6c", "4c"] {
-                let block = orphan_chain_c.get(name).unwrap().clone();
+                let block = orphan_chain_c.get(name).unwrap();
                 let result = test.handle_possible_reorg(block.to_arc_block()).unwrap();
                 assert!(result.is_orphaned());
             }
@@ -2786,12 +2766,13 @@ mod test {
             )
             .await;
 
-            let block = orphan_chain_d.get("7d").unwrap().clone();
+            let block = orphan_chain_d.get("7d").unwrap();
             let result = test.handle_possible_reorg(block.to_arc_block()).unwrap();
             assert!(result.is_orphaned());
 
+            // REORG
             // Now, connect the chain and check that 7d branch is the tip
-            let block = orphan_chain_b.get("2b").unwrap().clone();
+            let block = orphan_chain_b.get("2b").unwrap();
             let result = test.handle_possible_reorg(block.to_arc_block()).unwrap();
             result.assert_reorg(6, 3);
 
