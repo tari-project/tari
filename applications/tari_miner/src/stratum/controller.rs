@@ -243,6 +243,7 @@ impl Controller {
             // problem with template
             let _result = self.send_message_get_job_template();
         } else {
+            // Unhandled
         }
     }
 

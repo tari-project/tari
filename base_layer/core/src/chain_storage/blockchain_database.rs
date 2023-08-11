@@ -265,6 +265,7 @@ where B: BlockchainBackend
                     .into(),
             ));
         } else {
+            // Block has bee added
         }
         if config.cleanup_orphans_at_startup {
             match blockchain_db.cleanup_all_orphans() {

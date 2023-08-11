@@ -362,6 +362,7 @@ impl BurnTab {
                     return KeyHandled::Handled;
                 }
             } else {
+                // Dont care
             }
         }
 

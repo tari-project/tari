@@ -844,6 +844,7 @@ impl LMDBDatabase {
                 header.height
             )));
         } else {
+            // We can continue
         }
 
         lmdb_insert(

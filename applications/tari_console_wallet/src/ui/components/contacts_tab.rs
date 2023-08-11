@@ -211,6 +211,7 @@ impl ContactsTab {
                     },
                 }
             } else {
+                // Dont care
             }
         }
 
