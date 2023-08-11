@@ -706,7 +706,7 @@ where
         // if the script is Push_pubkey(default_key) we know we have to fill it in.
         let script = if single_round_sender_data.script == script!(Nop) {
             single_round_sender_data.script.clone()
-        } else if single_round_sender_data.script == script!(PushPubKey(Box::new(PublicKey::default()))) {
+        } else if single_round_sender_data.script == script!(PushPubKey(Box::default())) {
             script!(PushPubKey(Box::new(script_public_key.clone())))
         } else {
             return Err(OutputManagerError::InvalidScriptHash);

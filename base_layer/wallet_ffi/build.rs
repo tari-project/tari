@@ -3,7 +3,7 @@
 
 use std::{env, path::PathBuf};
 
-use cbindgen::{Config, ExportConfig, Language, ParseConfig, Style};
+use cbindgen::{Config, ExportConfig, Language, LineEndingStyle, ParseConfig, Style};
 use tari_common::build::StaticApplicationInfo;
 
 fn main() {
@@ -37,6 +37,7 @@ fn main() {
             include: vec!["TariUtxo".to_string()],
             ..Default::default()
         },
+        line_endings: LineEndingStyle::Native,
         ..Default::default()
     };
 

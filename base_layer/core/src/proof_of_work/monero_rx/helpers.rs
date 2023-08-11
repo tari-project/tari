@@ -550,6 +550,7 @@ mod test {
         };
         let hash = block_header.merge_mining_hash();
         append_merge_mining_tag(&mut block, hash).unwrap();
+        #[allow(clippy::redundant_clone)]
         let mut block_header2 = block_header.clone();
         block_header2.version = 1;
         let hash2 = block_header.merge_mining_hash();
