@@ -33,6 +33,7 @@ mod styles;
 pub mod tabs_container;
 pub mod transactions_tab;
 pub use self::component::*;
+pub mod burn_tab;
 pub mod contacts_tab;
 pub mod events_component;
 

@@ -63,6 +63,21 @@ appenders:
         pattern: "{{log_dir}}/log/wallet.{}.log"
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{X(grpc)}] {f}.{L} {i} [{t}] {l:5} {m}{n}"
+  base_layer_contacts:
+    kind: rolling_file
+    path: "{{log_dir}}/log/contacts.log"
+    policy:
+      kind: compound
+      trigger:
+        kind: size
+        limit: 100mb
+      roller:
+        kind: fixed_window
+        base: 1
+        count: 10
+        pattern: "{{log_dir}}/log/contacts.{}.log"
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{X(grpc)}] {f}.{L} {i} [{t}] {l:5} {m}{n}"
   # An appender named "other" that writes to a file with a custom pattern encoder
   other:
     kind: rolling_file
@@ -79,6 +94,7 @@ appenders:
         pattern: "{{log_dir}}/log/other.{}.log"
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{X(grpc)}] {f}.{L} {i} [{t}] {l:5} {m}{n}"
+
 # We don't want prints during cucumber test, everything useful will in logs.
 # root:
 #   level: warn
@@ -105,6 +121,12 @@ loggers:
     level: debug
     appenders:
       - base_layer_base_node
+  # Route log events sent to the "tari::base_node::grpc" logger to the "network" appender
+  tari::base_node::grpc:
+    level: debug
+    appenders:
+      - base_layer_base_node
+    additive: false
   wallet:
     level: debug
     appenders:
@@ -114,6 +136,39 @@ loggers:
     level: debug
     appenders:
       - network
+  comms::noise:
+    level: error
+    appenders:
+      - network
+    additive: false
+  comms::rpc::client:
+    level: debug
+    appenders:
+      - network
+    additive: false
+  # Route log events sent to the "tracing" logger to the "network" appender
+  tracing:
+    level: error
+    appenders:
+      - network
+    additive: false
+  # Route log events sent to the "h2" logger to the "network" appender
+  h2:
+    level: error
+    appenders:
+      - network
+    additive: false
+  # Route log events sent to the "hyper" logger to the "network" appender
+  hyper:
+    level: info
+    appenders:
+      - other
+    additive: false
+  # Route log events sent to the "contacts" logger to the "network" appender
+  contacts:
+    level: debug
+    appenders:
+      - base_layer_contacts
   # Route log events sent to the "p2p" logger to the "network" appender
   p2p:
     level: debug

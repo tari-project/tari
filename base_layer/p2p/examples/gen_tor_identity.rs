@@ -90,7 +90,6 @@ async fn main() {
         .with_port_mapping(port)
         .with_control_server_address(tor_control_addr)
         .build()
-        .await
         .unwrap()
         .create_hidden_service()
         .await

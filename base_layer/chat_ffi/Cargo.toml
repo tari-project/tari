@@ -1,0 +1,30 @@
+[package]
+name = "tari_chat_ffi"
+authors = ["The Tari Development Community"]
+description = "Tari cryptocurrency chat C FFI bindings"
+license = "BSD-3-Clause"
+version = "0.50.0-pre.3"
+edition = "2018"
+
+[dependencies]
+tari_app_utilities = { path = "../../applications/tari_app_utilities" }
+tari_chat_client = { path = "../contacts/examples/chat_client" }
+tari_common = { path = "../../common" }
+tari_common_types = { path = "../common_types" }
+tari_comms = { path = "../../comms/core" }
+tari_contacts = { path = "../contacts" }
+
+libc = "0.2.65"
+log = "0.4.6"
+thiserror = "1.0.26"
+tokio = "1.23"
+
+[target.'cfg(target_os="android")'.dependencies]
+openssl = { version = "0.10.48", features = ["vendored"] }
+
+[lib]
+crate-type = ["staticlib","cdylib"]
+
+[build-dependencies]
+cbindgen = "0.24.3"
+tari_common = { path = "../../common", features = ["build", "static-application-info"] }

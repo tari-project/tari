@@ -26,6 +26,7 @@ use tari_core::transactions::transaction_components::{
     OutputFeatures,
     OutputFeaturesVersion,
     OutputType,
+    RangeProofType,
     SideChainFeature,
 };
 
@@ -46,6 +47,11 @@ impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
             .try_into()
             .map_err(|_| "Invalid output type: overflow")?;
 
+        let range_proof_type = features
+            .range_proof_type
+            .try_into()
+            .map_err(|_| "Invalid range proof type: overflowed")?;
+
         Ok(OutputFeatures::new(
             OutputFeaturesVersion::try_from(
                 u8::try_from(features.version).map_err(|_| "Invalid version: overflowed u8")?,
@@ -54,6 +60,8 @@ impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
             features.maturity,
             features.coinbase_extra,
             sidechain_feature,
+            RangeProofType::from_byte(range_proof_type)
+                .ok_or_else(|| "Invalid or unrecognised range proof type".to_string())?,
         ))
     }
 }
@@ -66,6 +74,7 @@ impl From<OutputFeatures> for grpc::OutputFeatures {
             maturity: features.maturity,
             coinbase_extra: features.coinbase_extra,
             sidechain_feature: features.sidechain_feature.map(Into::into),
+            range_proof_type: u32::from(features.range_proof_type.as_byte()),
         }
     }
 }

@@ -16,7 +16,7 @@ name: CI
   merge_group:
 
 env:
-  toolchain: nightly-2022-11-03
+  toolchain: nightly-2023-06-03
   CARGO_HTTP_MULTIPLEXING: false
   CARGO_TERM_COLOR: always
   CARGO_UNSTABLE_SPARSE_REGISTRY: true
@@ -145,6 +145,7 @@ jobs:
         run: |
           cd base_layer/key_manager
           rustup target add wasm32-unknown-unknown
+          cargo install wasm-pack --force
           make test
       - name: Install cargo-nextest
         run: cargo install cargo-nextest --locked

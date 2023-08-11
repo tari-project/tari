@@ -32,7 +32,7 @@ use crate::{
     proof_of_work::{monero_rx::MergeMineError, PowError},
     transactions::{
         tari_amount::MicroTari,
-        transaction_components::{OutputType, TransactionError},
+        transaction_components::{OutputType, RangeProofType, TransactionError},
     },
 };
 
@@ -137,6 +137,8 @@ pub enum ValidationError {
     InvalidBurnError(String),
     #[error("Output type '{output_type}' is not permitted")]
     OutputTypeNotPermitted { output_type: OutputType },
+    #[error("Range proof type '{range_proof_type}' is not permitted")]
+    RangeProofTypeNotPermitted { range_proof_type: RangeProofType },
     #[error("FixedHash size error: {0}")]
     FixedHashSizeError(#[from] FixedHashSizeError),
     #[error("Validator node MMR is not correct")]

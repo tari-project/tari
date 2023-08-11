@@ -41,6 +41,7 @@ use crate::{
             OutputFeatures,
             OutputFeaturesVersion,
             OutputType,
+            RangeProofType,
             TransactionInputVersion,
             TransactionKernelVersion,
             TransactionOutputVersion,
@@ -96,6 +97,8 @@ pub struct ConsensusConstants {
     kernel_version_range: RangeInclusive<TransactionKernelVersion>,
     /// An allowlist of output types
     permitted_output_types: &'static [OutputType],
+    /// The allowlist of range proof types
+    permitted_range_proof_types: &'static [RangeProofType],
     /// Coinbase outputs are allowed to have metadata, but it has the following length limit
     coinbase_output_features_extra_max_length: u32,
     /// Epoch duration in blocks
@@ -143,6 +146,8 @@ pub struct PowAlgorithmConstants {
     /// example 120/0.5 = 240 for a 50% of the blocks, chain target time of 120.
     pub target_time: u64,
 }
+
+const ESMERALDA_FAUCET_VALUE: u64 = 5_025_126_665_742_480;
 
 // The target time used by the difficulty adjustment algorithms, their target time is the target block interval * PoW
 // algorithm count
@@ -303,6 +308,11 @@ impl ConsensusConstants {
         self.permitted_output_types
     }
 
+    /// Returns the permitted range proof types
+    pub fn permitted_range_proof_types(&self) -> &[RangeProofType] {
+        self.permitted_range_proof_types
+    }
+
     pub fn validator_node_validity_period_epochs(&self) -> VnEpoch {
         self.vn_validity_period_epochs
     }
@@ -363,13 +373,14 @@ impl ConsensusConstants {
             emission_tail: 800 * T,
             max_randomx_seed_height: u64::MAX,
             proof_of_work: algos,
-            faucet_value: MicroTari(0),
+            faucet_value: ESMERALDA_FAUCET_VALUE.into(), // The esmeralda genesis block is re-used for localnet
             transaction_weight: TransactionWeight::latest(),
             max_script_byte_size: 2048,
             input_version_range,
             output_version_range,
             kernel_version_range,
             permitted_output_types: OutputType::all(),
+            permitted_range_proof_types: RangeProofType::all(),
             vn_epoch_length: 10,
             vn_validity_period_epochs: VnEpoch(100),
             vn_registration_min_deposit_amount: MicroTari(0),
@@ -419,6 +430,7 @@ impl ConsensusConstants {
             output_version_range,
             kernel_version_range,
             permitted_output_types: Self::current_permitted_output_types(),
+            permitted_range_proof_types: Self::current_permitted_range_proof_types(),
             vn_epoch_length: 60,
             vn_validity_period_epochs: VnEpoch(100),
             vn_registration_min_deposit_amount: MicroTari(0),
@@ -476,6 +488,7 @@ impl ConsensusConstants {
             kernel_version_range,
             // igor is the first network to support the new output types
             permitted_output_types: OutputType::all(),
+            permitted_range_proof_types: RangeProofType::all(),
             vn_epoch_length: 10,
             vn_validity_period_epochs: VnEpoch(3),
             vn_registration_min_deposit_amount: MicroTari(0),
@@ -535,6 +548,7 @@ impl ConsensusConstants {
                 output_version_range: output_version_range.clone(),
                 kernel_version_range: kernel_version_range.clone(),
                 permitted_output_types: Self::current_permitted_output_types(),
+                permitted_range_proof_types: Self::current_permitted_range_proof_types(),
                 vn_epoch_length: 60,
                 vn_validity_period_epochs: VnEpoch(100),
                 vn_registration_min_deposit_amount: MicroTari(0),
@@ -564,6 +578,7 @@ impl ConsensusConstants {
                 output_version_range,
                 kernel_version_range,
                 permitted_output_types: Self::current_permitted_output_types(),
+                permitted_range_proof_types: Self::current_permitted_range_proof_types(),
                 vn_epoch_length: 60,
                 vn_validity_period_epochs: VnEpoch(100),
                 vn_registration_min_deposit_amount: MicroTari(0),
@@ -613,13 +628,14 @@ impl ConsensusConstants {
             emission_tail: 800 * T,
             max_randomx_seed_height: 3000,
             proof_of_work: algos,
-            faucet_value: 0.into(),
+            faucet_value: ESMERALDA_FAUCET_VALUE.into(),
             transaction_weight: TransactionWeight::v1(),
             max_script_byte_size: 2048,
             input_version_range,
             output_version_range,
             kernel_version_range,
             permitted_output_types: Self::current_permitted_output_types(),
+            permitted_range_proof_types: Self::current_permitted_range_proof_types(),
             vn_epoch_length: 60,
             vn_validity_period_epochs: VnEpoch(100),
             vn_registration_min_deposit_amount: MicroTari(0),
@@ -678,6 +694,7 @@ impl ConsensusConstants {
             output_version_range,
             kernel_version_range,
             permitted_output_types: Self::current_permitted_output_types(),
+            permitted_range_proof_types: Self::current_permitted_range_proof_types(),
             vn_epoch_length: 60,
             vn_validity_period_epochs: VnEpoch(100),
             vn_registration_min_deposit_amount: MicroTari(0),
@@ -721,13 +738,14 @@ impl ConsensusConstants {
             emission_tail: 800 * T,
             max_randomx_seed_height: 3000,
             proof_of_work: algos,
-            faucet_value: 0.into(),
+            faucet_value: MicroTari(3_798_996_893_688_987),
             transaction_weight: TransactionWeight::v1(),
             max_script_byte_size: 2048,
             input_version_range,
             output_version_range,
             kernel_version_range,
             permitted_output_types: Self::current_permitted_output_types(),
+            permitted_range_proof_types: Self::current_permitted_range_proof_types(),
             vn_epoch_length: 60,
             vn_validity_period_epochs: VnEpoch(100),
             vn_registration_min_deposit_amount: MicroTari(0),
@@ -779,6 +797,7 @@ impl ConsensusConstants {
             output_version_range,
             kernel_version_range,
             permitted_output_types: Self::current_permitted_output_types(),
+            permitted_range_proof_types: Self::current_permitted_range_proof_types(),
             vn_epoch_length: 60,
             vn_validity_period_epochs: VnEpoch(100),
             vn_registration_min_deposit_amount: MicroTari(0),
@@ -790,6 +809,10 @@ impl ConsensusConstants {
 
     const fn current_permitted_output_types() -> &'static [OutputType] {
         &[OutputType::Coinbase, OutputType::Standard, OutputType::Burn]
+    }
+
+    const fn current_permitted_range_proof_types() -> &'static [RangeProofType] {
+        &[RangeProofType::BulletProofPlus]
     }
 }
 
@@ -867,6 +890,11 @@ impl ConsensusConstantsBuilder {
 
     pub fn with_permitted_output_types(mut self, permitted_output_types: &'static [OutputType]) -> Self {
         self.consensus.permitted_output_types = permitted_output_types;
+        self
+    }
+
+    pub fn with_permitted_range_proof_types(mut self, permitted_range_proof_types: &'static [RangeProofType]) -> Self {
+        self.consensus.permitted_range_proof_types = permitted_range_proof_types;
         self
     }
 

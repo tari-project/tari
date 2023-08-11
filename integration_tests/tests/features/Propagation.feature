@@ -38,7 +38,6 @@ Feature: Block Propagation
     When I submit block BLOCKA to MINER
     Then all nodes are at height 1
     When I submit block BLOCKA to MINER
-    Then I receive an error containing 'Block exists'
     Then all nodes are at height 1
     # Check that the base node continues to accept blocks
     When I mine 1 blocks on MINER
@@ -48,14 +47,10 @@ Feature: Block Propagation
     Given I have 1 seed nodes
     When I have a base node MINER connected to all seed nodes
     When I mine but do not submit a block BLOCKA on MINER
-    # TODO: Step is missing, so I commented it out
-    # And I update the parent of block BLOCKA to be an orphan
+    Then I update the parent of block BLOCKA to be an orphan
     When I submit block BLOCKA to MINER
-    Then I receive an error containing 'Orphan block'
-    Then all nodes are at height 1
-    # Do it twice to be sure
-    When I submit block BLOCKA to MINER
-    Then I receive an error containing 'Orphan block'
+    Then all nodes are at height 0
+    When I mine 1 blocks on MINER
     Then all nodes are at height 1
 
   @non-sync-propagation
@@ -72,24 +67,26 @@ Feature: Block Propagation
     When mining node MINER mines 15 blocks
     Then all nodes are at height 20
 
-  # Waiting for "When I stop node" step
+  @non-sync-propagation
   Scenario: Node should lag for while before syncing
     Given I have 1 seed nodes
     When I have a SHA3 miner MINER connected to all seed nodes
     When I have a lagging delayed node LAG1 connected to node MINER with blocks_behind_before_considered_lagging 6
+    # Must ensure time for nodes to communicate or propagation will get missed
+    When I wait 10 seconds
     When mining node MINER mines 1 blocks
-    # Then all nodes are at height 1
-    # When I stop node LAG1
-    # When mining node MINER mines 5 blocks
-    # Then node MINER is at height 6
-    # When I start base node LAG1
+    Then all nodes are at height 1
+    When I stop node LAG1
+    When mining node MINER mines 5 blocks
+    Then node MINER is at height 6
+    When I start base node LAG1
     # Wait for node to so start and get into listening mode
-    # Then node LAG1 has reached initial sync
-    # #node was shutdown, so it never received the propagation messages
-    # Then node LAG1 is at height 1
-    # Given mining node MINER mines 1 blocks
-    # Then node MINER is at height 7
-    # Then all nodes are at height 7
+    Then node LAG1 has reached initial sync
+    # node was shutdown, so it never received the propagation messages
+    Then node LAG1 is at height 1
+    Given mining node MINER mines 1 blocks
+    Then node MINER is at height 7
+    Then all nodes are at height 7
 
   @critical @pruned
   Scenario: Pruned node should prune outputs

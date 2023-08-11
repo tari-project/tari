@@ -5,7 +5,7 @@
 Feature: Wallet Transfer
 
   # BROKEN: Runs fine when run by itself, but not with other tests - or maybe is flaky
-  @critical @broken
+  @critical
   Scenario: As a wallet send to a wallet connected to a different base node
     Given I have a seed node SEED_A
     When I have a seed node SEED_B
@@ -16,7 +16,6 @@ Feature: Wallet Transfer
     When I wait 5 seconds
     When I transfer 5T from WALLET_A to WALLET_B
     When I mine 4 blocks on SEED_A
-    # BREAKS HERE
     Then wallet WALLET_A has 5T
     When I wait 5 seconds
     When wallet WALLET_B has 5T

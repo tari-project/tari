@@ -101,9 +101,10 @@ impl ConnectivityManager {
 }
 
 /// Node connectivity status.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ConnectivityStatus {
     /// Initial connectivity status before the Connectivity actor has initialized.
+    #[default]
     Initializing,
     /// Connectivity is online.
     Online(usize),
@@ -128,12 +129,6 @@ impl ConnectivityStatus {
             Initializing | Offline => 0,
             Online(n) | Degraded(n) => *n,
         }
-    }
-}
-
-impl Default for ConnectivityStatus {
-    fn default() -> Self {
-        ConnectivityStatus::Initializing
     }
 }
 
@@ -270,6 +265,7 @@ impl ConnectivityManagerActor {
                 } else if let Err(err) = self.ban_peer(&node_id, duration, reason).await {
                     error!(target: LOG_TARGET, "Error when banning peer: {:?}", err);
                 } else {
+                    // We ban the peer
                 }
             },
             AddPeerToAllowList(node_id) => {

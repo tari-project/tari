@@ -8,34 +8,37 @@ edition = "2018"
 
 [dependencies]
 tari_common = { path = "../../common" }
+tari_common_sqlite = { path = "../../common_sqlite" }
 tari_common_types = {  path = "../../base_layer/common_types" }
 tari_comms = {  path = "../../comms/core" }
-tari_crypto = { version = "0.16.11"}
+tari_comms_dht = { path = "../../comms/dht" }
+tari_crypto = { version = "0.16"}
 tari_p2p = {  path = "../p2p", features = ["auto-update"] }
 tari_service_framework = {  path = "../service_framework" }
 tari_shutdown = {  path = "../../infrastructure/shutdown" }
-tari_common_sqlite = { path = "../../common_sqlite" }
 tari_utilities = "0.4.10"
 
-tokio = { version = "1.23", features = ["sync", "macros"] }
 chrono = { version = "0.4.19", default-features = false, features = ["serde"] }
 diesel = { version = "2.0.3", features = ["sqlite", "serde_json", "chrono", "64-column-tables"] }
 diesel_migrations = "2.0.0"
 futures = { version = "^0.3.1", features = ["compat", "std"] }
-libsqlite3-sys = { version = "0.25.1", features = ["bundled"], optional = true }
 log = "0.4.6"
+num-derive = "0.3.3"
+num-traits = "0.2.15"
+prost = "0.9"
 rand = "0.7.3"
 thiserror = "1.0.26"
+tokio = { version = "1.23", features = ["sync", "macros"] }
 tower = "0.4"
+uuid = { version = "1.3", features = ["v4"] }
 
 [dev-dependencies]
-tari_test_utils = {  path = "../../infrastructure/test_utils" }
 tari_comms_dht = {  path = "../../comms/dht", features = ["test-mocks"] }
+tari_test_utils = {  path = "../../infrastructure/test_utils" }
 tempfile = "3.1.0"
 
-[features]
-default=["bundled_sqlite"]
-bundled_sqlite = ["libsqlite3-sys"]
+[build-dependencies]
+tari_common = { path = "../../common" }
 
 [package.metadata.cargo-machete]
-ignored = ["libsqlite3-sys"] # this is so we can run cargo machete without getting false positive about macro dependancies
+ignored = ["prost"] # this is so we can run cargo machete without getting false positive about macro dependancies

@@ -27,7 +27,7 @@ use tari_common::configuration::bootstrap::ApplicationType;
 use tari_common_types::{
     tari_address::TariAddress,
     transaction::{ImportStatus, TxId},
-    types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, Signature},
+    types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, SignatureWithDomain},
 };
 use tari_comms::{
     multiaddr::Multiaddr,
@@ -49,16 +49,11 @@ use tari_core::{
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
-        transaction_components::{EncryptedValue, OutputFeatures, UnblindedOutput},
+        transaction_components::{EncryptedData, OutputFeatures, UnblindedOutput},
         CryptoFactories,
     },
 };
-use tari_crypto::{
-    hash::blake2::Blake256,
-    ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
-    signatures::{SchnorrSignature, SchnorrSignatureError},
-    tari_utilities::hex::Hex,
-};
+use tari_crypto::{hash::blake2::Blake256, hash_domain, signatures::SchnorrSignatureError, tari_utilities::hex::Hex};
 use tari_key_manager::{
     cipher_seed::CipherSeed,
     key_manager::KeyManager,
@@ -107,6 +102,12 @@ use crate::{
 const LOG_TARGET: &str = "wallet";
 /// The minimum buffer size for the wallet pubsub_connector channel
 const WALLET_BUFFER_MIN_SIZE: usize = 300;
+
+// Domain separator for signing arbitrary messages with a wallet secret key
+hash_domain!(
+    WalletMessageSigningDomain,
+    "com.tari.tari_project.base_layer.wallet.message_signing"
+);
 
 /// A structure containing the config and services that a Wallet application will require. This struct will start up all
 /// the services and provide the APIs that applications will use to interact with the services
@@ -208,10 +209,11 @@ where
                     max_allowed_ping_failures: 0, // Peer with failed ping-pong will never be removed
                     ..Default::default()
                 },
-                peer_message_subscription_factory,
+                peer_message_subscription_factory.clone(),
             ))
             .add_initializer(ContactsServiceInitializer::new(
                 contacts_backend,
+                peer_message_subscription_factory,
                 config.contacts_auto_ping_interval,
                 config.contacts_online_ping_window,
             ))
@@ -272,7 +274,12 @@ where
 
         // Persist the comms node address and features after it has been spawned to capture any modifications made
         // during comms startup. In the case of a Tor Transport the public address could have been generated
-        wallet_database.set_node_address(comms.node_identity().first_public_address())?;
+        wallet_database.set_node_address(
+            comms
+                .node_identity()
+                .first_public_address()
+                .ok_or(WalletError::PublicAddressNotSet)?,
+        )?;
         wallet_database.set_node_features(comms.node_identity().features())?;
         let identity_sig = comms.node_identity().identity_signature_read().as_ref().cloned();
         if let Some(identity_sig) = identity_sig {
@@ -430,7 +437,7 @@ where
         sender_offset_public_key: &PublicKey,
         script_lock_height: u64,
         covenant: Covenant,
-        encrypted_value: EncryptedValue,
+        encrypted_data: EncryptedData,
         minimum_value_promise: MicroTari,
     ) -> Result<TxId, WalletError> {
         let unblinded_output = UnblindedOutput::new_current_version(
@@ -444,7 +451,7 @@ where
             metadata_signature,
             script_lock_height,
             covenant,
-            encrypted_value,
+            encrypted_data,
             minimum_value_promise,
         );
         self.import_unblinded_output_as_non_rewindable(unblinded_output, source_address, message)
@@ -494,16 +501,16 @@ where
 
     pub fn sign_message(
         &mut self,
-        secret: &RistrettoSecretKey,
+        secret: &PrivateKey,
         message: &str,
-    ) -> Result<SchnorrSignature<RistrettoPublicKey, RistrettoSecretKey>, SchnorrSignatureError> {
-        RistrettoSchnorr::sign_message(secret, message.as_bytes())
+    ) -> Result<SignatureWithDomain<WalletMessageSigningDomain>, SchnorrSignatureError> {
+        SignatureWithDomain::<WalletMessageSigningDomain>::sign_message(secret, message.as_bytes())
     }
 
     pub fn verify_message_signature(
         &mut self,
-        public_key: &RistrettoPublicKey,
-        signature: &Signature,
+        public_key: &PublicKey,
+        signature: &SignatureWithDomain<WalletMessageSigningDomain>,
         message: &str,
     ) -> bool {
         signature.verify_message(public_key, message)

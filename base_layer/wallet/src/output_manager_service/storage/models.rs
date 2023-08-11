@@ -26,13 +26,9 @@ use chrono::NaiveDateTime;
 use derivative::Derivative;
 use tari_common_types::{
     transaction::TxId,
-    types::{BlockHash, BulletRangeProof, Commitment, HashOutput, PrivateKey},
+    types::{BlockHash, Commitment, HashOutput, PrivateKey},
 };
-use tari_core::transactions::{
-    transaction_components::UnblindedOutput,
-    transaction_protocol::RewindData,
-    CryptoFactories,
-};
+use tari_core::transactions::{transaction_components::UnblindedOutput, CryptoFactories};
 use tari_script::{ExecutionStack, TariScript};
 
 use crate::output_manager_service::{
@@ -67,10 +63,9 @@ impl DbUnblindedOutput {
         received_in_tx_id: Option<TxId>,
         spent_in_tx_id: Option<TxId>,
     ) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
-        let tx_out = output.as_transaction_output(factory)?;
         Ok(DbUnblindedOutput {
-            hash: tx_out.hash(),
-            commitment: tx_out.commitment,
+            hash: output.hash(factory),
+            commitment: output.commitment(factory),
             unblinded_output: output,
             status: OutputStatus::NotStored,
             mined_height: None,
@@ -80,35 +75,6 @@ impl DbUnblindedOutput {
             marked_deleted_at_height: None,
             marked_deleted_in_block: None,
             spending_priority: spend_priority.unwrap_or(SpendingPriority::Normal),
-            source,
-            received_in_tx_id,
-            spent_in_tx_id,
-        })
-    }
-
-    pub fn rewindable_from_unblinded_output(
-        output: UnblindedOutput,
-        factory: &CryptoFactories,
-        rewind_data: &RewindData,
-        spending_priority: Option<SpendingPriority>,
-        proof: Option<&BulletRangeProof>,
-        source: OutputSource,
-        received_in_tx_id: Option<TxId>,
-        spent_in_tx_id: Option<TxId>,
-    ) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
-        let tx_out = output.as_rewindable_transaction_output(factory, rewind_data, proof)?;
-        Ok(DbUnblindedOutput {
-            hash: tx_out.hash(),
-            commitment: tx_out.commitment,
-            unblinded_output: output,
-            status: OutputStatus::NotStored,
-            mined_height: None,
-            mined_in_block: None,
-            mined_mmr_position: None,
-            mined_timestamp: None,
-            marked_deleted_at_height: None,
-            marked_deleted_in_block: None,
-            spending_priority: spending_priority.unwrap_or(SpendingPriority::Normal),
             source,
             received_in_tx_id,
             spent_in_tx_id,

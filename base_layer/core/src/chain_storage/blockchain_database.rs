@@ -265,6 +265,7 @@ where B: BlockchainBackend
                     .into(),
             ));
         } else {
+            // Block has bee added
         }
         if config.cleanup_orphans_at_startup {
             match blockchain_db.cleanup_all_orphans() {
@@ -1600,7 +1601,7 @@ fn fetch_block<T: BlockchainBackend>(db: &T, height: u64, compact: bool) -> Resu
                         output.script,
                         output.sender_offset_public_key,
                         output.covenant,
-                        output.encrypted_value,
+                        output.encrypted_data,
                         output.minimum_value_promise,
                     );
                     Ok(compact_input)

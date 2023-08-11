@@ -2246,7 +2246,7 @@ impl UnconfirmedTransactionInfoSql {
 
 #[cfg(test)]
 mod test {
-    use std::{io::Write, mem::size_of, time::Duration};
+    use std::{mem::size_of, time::Duration};
 
     use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
     use chrono::Utc;
@@ -2265,7 +2265,7 @@ mod test {
         covenants::Covenant,
         transactions::{
             tari_amount::MicroTari,
-            test_helpers::{create_unblinded_output, TestParams},
+            test_helpers::{create_non_recoverable_unblinded_output, TestParams},
             transaction_components::{OutputFeatures, Transaction},
             transaction_protocol::sender::TransactionSenderMessage,
             CryptoFactories,
@@ -2319,9 +2319,9 @@ mod test {
                 v.into_iter()
                     .map(|b| {
                         let m = format!("Running migration {}", b);
-                        std::io::stdout()
-                            .write_all(m.as_ref())
-                            .expect("Couldn't write migration number to stdout");
+                        // std::io::stdout()
+                        //     .write_all(m.as_ref())
+                        //     .expect("Couldn't write migration number to stdout");
                         m
                     })
                     .collect::<Vec<String>>()
@@ -2333,12 +2333,13 @@ mod test {
         let constants = create_consensus_constants(0);
         let mut builder = SenderTransactionProtocol::builder(1, constants);
         let test_params = TestParams::new();
-        let input = create_unblinded_output(
+        let input = create_non_recoverable_unblinded_output(
             TariScript::default(),
             OutputFeatures::default(),
             &test_params,
             MicroTari::from(100_000),
-        );
+        )
+        .unwrap();
         let amount = MicroTari::from(10_000);
         builder
             .with_lock_height(0)
@@ -2810,9 +2811,9 @@ mod test {
                 v.into_iter()
                     .map(|b| {
                         let m = format!("Running migration {}", b);
-                        std::io::stdout()
-                            .write_all(m.as_ref())
-                            .expect("Couldn't write migration number to stdout");
+                        // std::io::stdout()
+                        //     .write_all(m.as_ref())
+                        //     .expect("Couldn't write migration number to stdout");
                         m
                     })
                     .collect::<Vec<String>>()
@@ -2957,9 +2958,9 @@ mod test {
                     v.into_iter()
                         .map(|b| {
                             let m = format!("Running migration {}", b);
-                            std::io::stdout()
-                                .write_all(m.as_ref())
-                                .expect("Couldn't write migration number to stdout");
+                            // std::io::stdout()
+                            //     .write_all(m.as_ref())
+                            //     .expect("Couldn't write migration number to stdout");
                             m
                         })
                         .collect::<Vec<String>>()
@@ -3093,9 +3094,9 @@ mod test {
                 v.into_iter()
                     .map(|b| {
                         let m = format!("Running migration {}", b);
-                        std::io::stdout()
-                            .write_all(m.as_ref())
-                            .expect("Couldn't write migration number to stdout");
+                        // std::io::stdout()
+                        //     .write_all(m.as_ref())
+                        //     .expect("Couldn't write migration number to stdout");
                         m
                     })
                     .collect::<Vec<String>>()

@@ -35,7 +35,7 @@ use tari_core::{
     covenants::Covenant,
     transactions::{
         tari_amount::{uT, MicroTari},
-        test_helpers::{create_unblinded_output, TestParams},
+        test_helpers::{create_non_recoverable_unblinded_output, TestParams},
         transaction_components::{OutputFeatures, Transaction},
         transaction_protocol::sender::TransactionSenderMessage,
         CryptoFactories,
@@ -66,12 +66,13 @@ use tempfile::tempdir;
 pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let mut db = TransactionDatabase::new(backend);
     let factories = CryptoFactories::default();
-    let input = create_unblinded_output(
+    let input = create_non_recoverable_unblinded_output(
         TariScript::default(),
         OutputFeatures::default(),
         &TestParams::new(),
         MicroTari::from(100_000),
-    );
+    )
+    .unwrap();
     let constants = create_consensus_constants(0);
     let mut builder = SenderTransactionProtocol::builder(1, constants);
     let amount = MicroTari::from(10_000);

@@ -30,20 +30,34 @@ use std::{
 use chrono::{NaiveDateTime, Utc};
 use futures::{pin_mut, StreamExt};
 use log::*;
+use tari_common_types::tari_address::TariAddress;
 use tari_comms::connectivity::{ConnectivityEvent, ConnectivityRequester};
-use tari_p2p::services::liveness::{LivenessEvent, LivenessHandle, MetadataKey, PingPongEvent};
+use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::OutboundEncryption, Dht};
+use tari_p2p::{
+    comms_connector::SubscriptionFactory,
+    domain_message::DomainMessage,
+    services::{
+        liveness::{LivenessEvent, LivenessHandle, MetadataKey, PingPongEvent},
+        utils::{map_decode, ok_or_skip_result},
+    },
+    tari_message::TariMessageType,
+};
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
+use tari_utilities::ByteArray;
 use tokio::sync::broadcast;
 
 use crate::contacts_service::{
     error::ContactsServiceError,
     handle::{ContactsLivenessData, ContactsLivenessEvent, ContactsServiceRequest, ContactsServiceResponse},
-    storage::database::{Contact, ContactsBackend, ContactsDatabase},
+    proto,
+    storage::database::{ContactsBackend, ContactsDatabase},
+    types::{Contact, Message},
 };
 
 const LOG_TARGET: &str = "contacts::contacts_service";
 const NUM_ROUNDS_NETWORK_SILENCE: u16 = 3;
+pub const SUBSCRIPTION_LABEL: &str = "Chat";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ContactMessageType {
@@ -70,6 +84,27 @@ pub enum ContactOnlineStatus {
     Banned(String),
 }
 
+impl ContactOnlineStatus {
+    pub fn as_u8(self) -> u8 {
+        match self {
+            Self::Online => 1,
+            Self::Offline => 2,
+            Self::NeverSeen => 3,
+            Self::Banned(_) => 4,
+        }
+    }
+
+    pub fn from_byte(value: u8) -> Option<Self> {
+        match value {
+            1 => Some(Self::Online),
+            2 => Some(Self::Offline),
+            3 => Some(Self::NeverSeen),
+            4 => Some(Self::Banned("No reason listed".to_string())),
+            _ => None,
+        }
+    }
+}
+
 impl Display for ContactOnlineStatus {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         match self {
@@ -91,6 +126,8 @@ where T: ContactsBackend + 'static
     liveness: LivenessHandle,
     liveness_data: Vec<ContactsLivenessData>,
     connectivity: ConnectivityRequester,
+    dht: Dht,
+    subscription_factory: Arc<SubscriptionFactory>,
     event_publisher: broadcast::Sender<Arc<ContactsLivenessEvent>>,
     number_of_rounds_no_pings: u16,
     contacts_auto_ping_interval: Duration,
@@ -109,6 +146,8 @@ where T: ContactsBackend + 'static
         shutdown_signal: ShutdownSignal,
         liveness: LivenessHandle,
         connectivity: ConnectivityRequester,
+        dht: Dht,
+        subscription_factory: Arc<SubscriptionFactory>,
         event_publisher: broadcast::Sender<Arc<ContactsLivenessEvent>>,
         contacts_auto_ping_interval: Duration,
         contacts_online_ping_window: usize,
@@ -120,6 +159,8 @@ where T: ContactsBackend + 'static
             liveness,
             liveness_data: Vec::new(),
             connectivity,
+            dht,
+            subscription_factory,
             event_publisher,
             number_of_rounds_no_pings: 0,
             contacts_auto_ping_interval,
@@ -141,6 +182,13 @@ where T: ContactsBackend + 'static
         let connectivity_events = self.connectivity.get_event_subscription();
         pin_mut!(connectivity_events);
 
+        let chat_messages = self
+            .subscription_factory
+            .get_subscription(TariMessageType::Chat, SUBSCRIPTION_LABEL)
+            .map(map_decode::<proto::Message>)
+            .filter_map(ok_or_skip_result);
+        pin_mut!(chat_messages);
+
         let shutdown = self
             .shutdown_signal
             .take()
@@ -156,6 +204,13 @@ where T: ContactsBackend + 'static
         debug!(target: LOG_TARGET, "Contacts Service started");
         loop {
             tokio::select! {
+                // Incoming chat messages
+                Some(msg) = chat_messages.next() => {
+                    if let Err(err) = self.handle_incoming_message(msg).await {
+                        warn!(target: LOG_TARGET, "Failed to handle incoming chat message: {}", err);
+                    }
+                },
+
                 Some(request_context) = request_stream.next() => {
                     let (request, reply_tx) = request_context.split();
                     let response = self.handle_request(request).await.map_err(|e| {
@@ -177,7 +232,7 @@ where T: ContactsBackend + 'static
 
                 Ok(event) = connectivity_events.recv() => {
                     self.handle_connectivity_event(event);
-                }
+                },
 
                 _ = shutdown.wait() => {
                     info!(target: LOG_TARGET, "Contacts service shutting down because it received the shutdown signal");
@@ -203,10 +258,10 @@ where T: ContactsBackend + 'static
             },
             ContactsServiceRequest::UpsertContact(c) => {
                 self.db.upsert_contact(c.clone())?;
-                self.liveness.check_add_monitored_peer(c.node_id).await?;
+                self.liveness.check_add_monitored_peer(c.node_id.clone()).await?;
                 info!(
                     target: LOG_TARGET,
-                    "Contact Saved: \nAlias: {}\nAddress: {} ", c.alias, c.address
+                    "Contact Saved: \nAlias: {}\nAddress: {}\nNodeId: {}", c.alias, c.address, c.node_id
                 );
                 Ok(ContactsServiceResponse::ContactSaved)
             },
@@ -231,6 +286,47 @@ where T: ContactsBackend + 'static
             ContactsServiceRequest::GetContactOnlineStatus(contact) => {
                 let result = self.get_online_status(&contact).await;
                 Ok(result.map(ContactsServiceResponse::OnlineStatus)?)
+            },
+            ContactsServiceRequest::GetAllMessages(pk) => {
+                let result = self.db.get_messages(pk);
+                Ok(result.map(ContactsServiceResponse::Messages)?)
+            },
+            ContactsServiceRequest::SendMessage(address, mut message) => {
+                let contact = match self.db.get_contact(address.clone()) {
+                    Ok(contact) => contact,
+                    Err(_) => Contact::from(&address),
+                };
+
+                let ob_message = OutboundDomainMessage::from(message.clone());
+                let encryption = OutboundEncryption::EncryptFor(Box::new(address.public_key().clone()));
+
+                match self.get_online_status(&contact).await {
+                    Ok(ContactOnlineStatus::Online) => {
+                        info!(target: LOG_TARGET, "Chat message being sent directed");
+                        let mut comms_outbound = self.dht.outbound_requester();
+
+                        comms_outbound
+                            .send_direct_encrypted(
+                                address.public_key().clone(),
+                                ob_message,
+                                encryption,
+                                "contact service messaging".to_string(),
+                            )
+                            .await?;
+                    },
+                    Err(e) => return Err(e),
+                    _ => {
+                        let mut comms_outbound = self.dht.outbound_requester();
+                        comms_outbound
+                            .closest_broadcast(address.public_key().clone(), encryption, vec![], ob_message)
+                            .await?;
+                    },
+                }
+
+                message.stored_at = Utc::now().naive_utc().timestamp() as u64;
+                self.db.save_message(message)?;
+
+                Ok(ContactsServiceResponse::MessageSent)
             },
         }
     }
@@ -299,6 +395,26 @@ where T: ContactsBackend + 'static
                     }
                 };
             },
+        }
+
+        Ok(())
+    }
+
+    async fn handle_incoming_message(
+        &mut self,
+        msg: DomainMessage<crate::contacts_service::proto::Message>,
+    ) -> Result<(), ContactsServiceError> {
+        if let Some(source_public_key) = msg.authenticated_origin {
+            let DomainMessage::<_> { inner: msg, .. } = msg;
+
+            let message = Message::from(msg.clone());
+            let message = Message {
+                address: TariAddress::from_public_key(&source_public_key, message.address.network()),
+                stored_at: Utc::now().naive_utc().timestamp() as u64,
+                ..msg.into()
+            };
+
+            self.db.save_message(message).expect("Couldn't save the message");
         }
 
         Ok(())

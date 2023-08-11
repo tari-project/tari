@@ -24,7 +24,7 @@ tari_common_types = {  path = "../../base_layer/common_types" }
 tari_comms = {  path = "../../comms/core" }
 tari_comms_dht = {  path = "../../comms/dht" }
 tari_comms_rpc_macros = {  path = "../../comms/rpc_macros" }
-tari_crypto = { version="0.16.11", features = ["borsh"] }
+tari_crypto = { version = "0.16", features = ["borsh"] }
 tari_metrics = { path = "../../infrastructure/metrics" }
 tari_mmr = {  path = "../../base_layer/mmr", optional = true, features = ["native_bitmap"] }
 tari_p2p = {  path = "../../base_layer/p2p" }
@@ -54,7 +54,7 @@ integer-encoding = "3.0.2"
 lmdb-zero = "0.4.4"
 log = "0.4"
 log-mdc = "0.1.0"
-monero = { git = "https://github.com/tari-project/monero-rs.git", rev = "7aebfd0aa037025cac6cbded3f72d73bf3c18123" , features = ["serde"], optional = true }
+monero = { git = "https://github.com/monero-rs/monero-rs.git", version = "0.18" , features = ["serde-crate"], optional = true }
 newtype-ops = "0.1.4"
 num-traits = "0.2.15"
 num-derive = "0.3.3"
@@ -79,7 +79,8 @@ zeroize = "1"
 tari_p2p = {  path = "../../base_layer/p2p", features = ["test-mocks"] }
 tari_test_utils = {  path = "../../infrastructure/test_utils" }
 curve25519-dalek = {package="tari-curve25519-dalek", version = "4.0.2", default-features = false, features = ["serde", "alloc"] }
-
+# SQLite required for the integration tests
+libsqlite3-sys = { version = "0.25.1", features = ["bundled"] }
 config = { version = "0.13.0" }
 env_logger = "0.7.0"
 tempfile = "3.1.0"

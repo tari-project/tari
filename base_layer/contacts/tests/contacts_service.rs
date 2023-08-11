@@ -23,7 +23,7 @@
 use std::{convert::TryInto, sync::Arc, time::Duration};
 
 use rand::rngs::OsRng;
-use tari_common::configuration::{Network, StringList};
+use tari_common::configuration::{MultiaddrList, Network, StringList};
 use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
 use tari_common_types::{tari_address::TariAddress, types::PublicKey};
 use tari_comms::{peer_manager::PeerFeatures, NodeIdentity};
@@ -32,9 +32,10 @@ use tari_contacts::contacts_service::{
     error::{ContactsServiceError, ContactsServiceStorageError},
     handle::ContactsServiceHandle,
     storage::{
-        database::{Contact, ContactsBackend, DbKey},
+        database::{ContactsBackend, DbKey},
         sqlite_db::ContactsServiceSqliteDatabase,
     },
+    types::Contact,
     ContactsServiceInitializer,
 };
 use tari_crypto::keys::PublicKey as PublicKeyTrait;
@@ -67,11 +68,11 @@ pub fn setup_contacts_service<T: ContactsBackend + 'static>(
     ));
     let comms_config = P2pConfig {
         override_from: None,
-        public_addresses: vec![],
+        public_addresses: MultiaddrList::default(),
         transport: TransportConfig {
             transport_type: TransportType::Memory,
             memory: MemoryTransportConfig {
-                listener_address: node_identity.first_public_address(),
+                listener_address: node_identity.first_public_address().unwrap(),
             },
             ..Default::default()
         },
@@ -92,7 +93,7 @@ pub fn setup_contacts_service<T: ContactsBackend + 'static>(
         allow_test_addresses: true,
         listener_liveness_allowlist_cidrs: StringList::new(),
         listener_liveness_max_sessions: 0,
-        user_agent: "tari/test-wallet".to_string(),
+        user_agent: "tari/test-contacts-service".to_string(),
         rpc_max_simultaneous_sessions: 0,
         rpc_max_sessions_per_peer: 0,
         listener_liveness_check_interval: None,
@@ -114,9 +115,14 @@ pub fn setup_contacts_service<T: ContactsBackend + 'static>(
                 max_allowed_ping_failures: 0, // Peer with failed ping-pong will never be removed
                 ..Default::default()
             },
-            peer_message_subscription_factory,
+            peer_message_subscription_factory.clone(),
         ))
-        .add_initializer(ContactsServiceInitializer::new(backend, Duration::from_secs(5), 2))
+        .add_initializer(ContactsServiceInitializer::new(
+            backend,
+            peer_message_subscription_factory,
+            Duration::from_secs(5),
+            2,
+        ))
         .build();
 
     let handles = runtime.block_on(fut).expect("Service initialization failed");

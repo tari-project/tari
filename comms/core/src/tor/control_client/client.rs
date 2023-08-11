@@ -249,23 +249,18 @@ impl TorControlPortClient {
 }
 
 /// Represents tor control port authentication mechanisms
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum Authentication {
     /// Attempt to configure authentication automatically. This only works for no auth, or cookie auth.
     /// The cookie must be readable by the current process user.
     Auto,
     /// No control port authentication required
+    #[default]
     None,
     /// A hashed password will be sent to authenticate
     HashedPassword(String),
     /// Cookie authentication. The contents of the cookie file encoded as hex
     Cookie(String),
-}
-
-impl Default for Authentication {
-    fn default() -> Self {
-        Authentication::None
-    }
 }
 
 impl fmt::Display for Authentication {

@@ -114,6 +114,7 @@ mod test {
         // Generate identical random data
         let mut rng = rand::thread_rng();
         let data_0: Vec<u8> = (0..SIZE).map(|_| rng.gen::<u8>()).collect();
+        #[allow(clippy::redundant_clone)]
         let data_1 = data_0.clone();
 
         // Compute the checksums

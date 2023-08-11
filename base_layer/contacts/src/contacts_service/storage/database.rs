@@ -30,38 +30,12 @@ use log::*;
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::peer_manager::NodeId;
 
-use crate::contacts_service::error::ContactsServiceStorageError;
+use crate::contacts_service::{
+    error::ContactsServiceStorageError,
+    types::{Contact, Message},
+};
 
 const LOG_TARGET: &str = "contacts::contacts_service::database";
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Contact {
-    pub alias: String,
-    pub address: TariAddress,
-    pub node_id: NodeId,
-    pub last_seen: Option<NaiveDateTime>,
-    pub latency: Option<u32>,
-    pub favourite: bool,
-}
-
-impl Contact {
-    pub fn new(
-        alias: String,
-        address: TariAddress,
-        last_seen: Option<NaiveDateTime>,
-        latency: Option<u32>,
-        favourite: bool,
-    ) -> Self {
-        Self {
-            alias,
-            node_id: NodeId::from_key(address.public_key()),
-            address,
-            last_seen,
-            latency,
-            favourite,
-        }
-    }
-}
 
 /// This trait defines the functionality that a database backend need to provide for the Contacts Service
 pub trait ContactsBackend: Send + Sync + Clone {
@@ -76,12 +50,15 @@ pub enum DbKey {
     Contact(TariAddress),
     ContactId(NodeId),
     Contacts,
+    Messages(TariAddress),
 }
 
 pub enum DbValue {
     Contact(Box<Contact>),
     Contacts(Vec<Contact>),
     TariAddress(Box<TariAddress>),
+    Message(Box<Message>),
+    Messages(Vec<Message>),
 }
 
 #[allow(clippy::large_enum_variant)]
@@ -91,6 +68,7 @@ pub enum DbKeyValuePair {
 }
 
 pub enum WriteOperation {
+    Insert(Box<DbValue>),
     Upsert(Box<DbKeyValuePair>),
     UpdateLastSeen(Box<DbKeyValuePair>),
     Remove(DbKey),
@@ -177,10 +155,31 @@ where T: ContactsBackend + 'static
             .ok_or_else(|| ContactsServiceStorageError::ValueNotFound(DbKey::Contact(address.clone())))?;
         match result {
             DbValue::Contact(c) => Ok(*c),
-            DbValue::Contacts(_) | DbValue::TariAddress(_) => Err(ContactsServiceStorageError::UnexpectedResult(
+            _ => Err(ContactsServiceStorageError::UnexpectedResult(
                 "Incorrect response from backend.".to_string(),
             )),
         }
+    }
+
+    pub fn get_messages(&self, address: TariAddress) -> Result<Vec<Message>, ContactsServiceStorageError> {
+        let key = DbKey::Messages(address);
+        let db_clone = self.db.clone();
+        match db_clone.fetch(&key) {
+            Ok(None) => log_error(
+                key,
+                ContactsServiceStorageError::UnexpectedResult("Could not retrieve messages".to_string()),
+            ),
+            Ok(Some(DbValue::Messages(messages))) => Ok(messages),
+            Ok(Some(other)) => unexpected_result(key, other),
+            Err(e) => log_error(key, e),
+        }
+    }
+
+    pub fn save_message(&self, message: Message) -> Result<(), ContactsServiceStorageError> {
+        self.db
+            .write(WriteOperation::Insert(Box::new(DbValue::Message(Box::new(message)))))?;
+
+        Ok(())
     }
 }
 
@@ -196,6 +195,7 @@ impl Display for DbKey {
             DbKey::Contact(c) => f.write_str(&format!("Contact: {:?}", c)),
             DbKey::ContactId(id) => f.write_str(&format!("Contact: {:?}", id)),
             DbKey::Contacts => f.write_str("Contacts"),
+            DbKey::Messages(c) => f.write_str(&format!("Messages for id: {:?}", c)),
         }
     }
 }
@@ -206,6 +206,8 @@ impl Display for DbValue {
             DbValue::Contact(_) => f.write_str("Contact"),
             DbValue::Contacts(_) => f.write_str("Contacts"),
             DbValue::TariAddress(_) => f.write_str("Address"),
+            DbValue::Messages(_) => f.write_str("Messages"),
+            DbValue::Message(_) => f.write_str("Message"),
         }
     }
 }

@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::process;
+use std::{panic, process};
 
 use clap::Parser;
 use log::*;
@@ -47,8 +47,13 @@ mod utils;
 mod wallet_modes;
 
 fn main() {
-    // Uncomment to enable tokio tracing via tokio-console
-    // console_subscriber::init();
+    // Setup a panic hook which prints the default rust panic message but also exits the process. This makes a panic in
+    // any thread "crash" the system instead of silently continuing.
+    let default_hook = panic::take_hook();
+    panic::set_hook(Box::new(move |info| {
+        default_hook(info);
+        process::exit(1);
+    }));
 
     match main_inner() {
         Ok(_) => process::exit(0),
@@ -79,6 +84,11 @@ fn main_inner() -> Result<(), ExitError> {
         &cli.common.get_base_path(),
         include_str!("../log4rs_sample.yml"),
     )?;
+
+    if cli.profile_with_tokio_console {
+        // Uncomment to enable tokio tracing via tokio-console
+        console_subscriber::init();
+    }
 
     let mut config = ApplicationConfig::load_from(&cfg)?;
 

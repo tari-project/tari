@@ -12,7 +12,7 @@ use thiserror::Error;
 
 pub use crate::tx_id::TxId;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum TransactionStatus {
     /// This transaction has been completed between the parties but has not been broadcast to the base layer network.
     Completed,
@@ -24,6 +24,7 @@ pub enum TransactionStatus {
     /// This transaction was generated as part of importing a spendable unblinded UTXO
     Imported,
     /// This transaction is still being negotiated by the parties
+    #[default]
     Pending,
     /// This is a created Coinbase Transaction
     Coinbase,
@@ -72,12 +73,6 @@ impl TryFrom<i32> for TransactionStatus {
             10 => Ok(TransactionStatus::Queued),
             code => Err(TransactionConversionError { code }),
         }
-    }
-}
-
-impl Default for TransactionStatus {
-    fn default() -> Self {
-        TransactionStatus::Pending
     }
 }
 

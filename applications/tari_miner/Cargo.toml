@@ -14,7 +14,7 @@ tari_common_types = { path = "../../base_layer/common_types" }
 tari_comms = { path = "../../comms/core" }
 tari_app_utilities = { path = "../tari_app_utilities" }
 tari_app_grpc = { path = "../tari_app_grpc" }
-tari_crypto = { version = "0.16.11"}
+tari_crypto = { version = "0.16"}
 tari_utilities = "0.4.10"
 
 borsh = "0.9.3"
@@ -23,6 +23,7 @@ clap = { version = "3.1.1", features = ["derive"] }
 crossbeam = "0.8"
 futures = "0.3"
 log = { version = "0.4", features = ["std"] }
+log4rs = { version = "1.2.0", default_features = false, features = ["config_parsing", "threshold_filter", "yaml_format", "console_appender", "rolling_file_appender", "compound_policy", "size_trigger", "fixed_window_roller"] }
 num_cpus = "1.13"
 rand = "0.7.3"
 serde = { version = "1.0", default_features = false, features = ["derive"] }
@@ -41,3 +42,9 @@ base64 = "0.13.0"
 prost-types = "0.9"
 chrono = { version = "0.4.19", default-features = false }
 config = "0.13.0"
+
+[package.metadata.cargo-machete]
+ignored = [
+    # We need to specify extra features for log4rs even though it is not used directly in this crate
+    "log4rs"
+]

@@ -24,7 +24,7 @@ use rand::{CryptoRng, Rng};
 use tari_common_types::types::{CommitmentFactory, PrivateKey, PublicKey};
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    test_helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
+    test_helpers::{create_non_recoverable_unblinded_output, TestParams as TestParamsHelpers},
     transaction_components::{OutputFeatures, TransactionInput, UnblindedOutput},
 };
 use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
@@ -50,13 +50,14 @@ impl TestParams {
     }
 }
 
-pub async fn make_input<R: Rng + CryptoRng>(
+pub async fn make_non_recoverable_input<R: Rng + CryptoRng>(
     _rng: &mut R,
     val: MicroTari,
     factory: &CommitmentFactory,
 ) -> (TransactionInput, UnblindedOutput) {
     let test_params = TestParamsHelpers::new();
-    let utxo = create_unblinded_output(script!(Nop), OutputFeatures::default(), &test_params, val);
+    let utxo =
+        create_non_recoverable_unblinded_output(script!(Nop), OutputFeatures::default(), &test_params, val).unwrap();
     (
         utxo.as_transaction_input(factory)
             .expect("Should be able to make transaction input"),
@@ -71,7 +72,8 @@ pub async fn make_input_with_features<R: Rng + CryptoRng>(
     features: Option<OutputFeatures>,
 ) -> (TransactionInput, UnblindedOutput) {
     let test_params = TestParamsHelpers::new();
-    let utxo = create_unblinded_output(script!(Nop), features.unwrap_or_default(), &test_params, value);
+    let utxo = create_non_recoverable_unblinded_output(script!(Nop), features.unwrap_or_default(), &test_params, value)
+        .unwrap();
     (
         utxo.as_transaction_input(factory)
             .expect("Should be able to make transaction input"),

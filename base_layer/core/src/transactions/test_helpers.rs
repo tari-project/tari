@@ -42,11 +42,12 @@ use crate::{
         fee::Fee,
         tari_amount::MicroTari,
         transaction_components::{
-            EncryptedValue,
+            EncryptedData,
             KernelBuilder,
             KernelFeatures,
             OutputFeatures,
             OutputType,
+            RangeProofType,
             SpentOutput,
             Transaction,
             TransactionInput,
@@ -55,7 +56,7 @@ use crate::{
             TransactionOutput,
             UnblindedOutput,
         },
-        transaction_protocol::{RewindData, TransactionMetadata, TransactionProtocolError},
+        transaction_protocol::{RecoveryData, TransactionMetadata, TransactionProtocolError},
         weight::TransactionWeight,
         SenderTransactionProtocol,
     },
@@ -94,7 +95,7 @@ pub struct TestParams {
     pub sender_ephemeral_public_nonce: PublicKey,
     pub commitment_factory: CommitmentFactory,
     pub transaction_weight: TransactionWeight,
-    pub rewind_data: RewindData,
+    pub recovery_data: RecoveryData,
 }
 
 #[derive(Clone)]
@@ -152,8 +153,7 @@ impl TestParams {
             sender_ephemeral_public_nonce: PublicKey::from_secret_key(&sender_sig_pvt_nonce),
             commitment_factory: CommitmentFactory::default(),
             transaction_weight: TransactionWeight::v1(),
-            rewind_data: RewindData {
-                rewind_blinding_key: PrivateKey::random(&mut OsRng),
+            recovery_data: RecoveryData {
                 encryption_key: PrivateKey::random(&mut OsRng),
             },
         }
@@ -163,23 +163,36 @@ impl TestParams {
         Fee::new(self.transaction_weight)
     }
 
-    pub fn create_unblinded_output(&self, params: UtxoTestParams) -> UnblindedOutput {
+    pub fn create_unblinded_output_not_recoverable(&self, params: UtxoTestParams) -> Result<UnblindedOutput, String> {
         self.create_output(params, None)
     }
 
-    pub fn create_unblinded_output_with_rewind_data(&self, params: UtxoTestParams) -> UnblindedOutput {
-        self.create_output(params, Some(&self.rewind_data))
+    pub fn create_unblinded_output_with_recovery_data(
+        &self,
+        params: UtxoTestParams,
+    ) -> Result<UnblindedOutput, String> {
+        self.create_output(params, Some(&self.recovery_data))
     }
 
-    fn create_output(&self, params: UtxoTestParams, rewind_data: Option<&RewindData>) -> UnblindedOutput {
+    fn create_output(
+        &self,
+        params: UtxoTestParams,
+        recovery_data: Option<&RecoveryData>,
+    ) -> Result<UnblindedOutput, String> {
         let commitment = self
             .commitment_factory
             .commit_value(&self.spend_key, params.value.as_u64());
 
-        let encrypted_value = if let Some(rewind_data) = rewind_data {
-            EncryptedValue::encrypt_value(&rewind_data.encryption_key, &commitment, params.value).unwrap()
+        let encrypted_data = if let Some(recovery_data) = recovery_data {
+            EncryptedData::encrypt_data(
+                &recovery_data.encryption_key,
+                &commitment,
+                params.value,
+                &self.spend_key,
+            )
+            .map_err(|e| format!("{:?}", e))?
         } else {
-            EncryptedValue::default()
+            EncryptedData::default()
         };
         let version = match params.output_version {
             Some(v) => v,
@@ -193,12 +206,12 @@ impl TestParams {
             &params.features,
             &self.sender_offset_private_key,
             &params.covenant,
-            &encrypted_value,
+            &encrypted_data,
             params.minimum_value_promise,
         )
-        .unwrap();
+        .map_err(|e| format!("{:?}", e))?;
 
-        UnblindedOutput::new(
+        Ok(UnblindedOutput::new(
             version,
             params.value,
             self.spend_key.clone(),
@@ -212,9 +225,9 @@ impl TestParams {
             metadata_signature,
             0,
             params.covenant,
-            encrypted_value,
+            encrypted_data,
             params.minimum_value_promise,
-        )
+        ))
     }
 
     pub fn get_script_public_key(&self) -> PublicKey {
@@ -228,7 +241,7 @@ impl TestParams {
     /// Create a random transaction input for the given amount and maturity period. The input's unblinded
     /// parameters are returned.
     pub fn create_input(&self, params: UtxoTestParams) -> (TransactionInput, UnblindedOutput) {
-        let unblinded = self.create_unblinded_output(params);
+        let unblinded = self.create_unblinded_output_not_recoverable(params).unwrap();
         let input = unblinded.as_transaction_input(&self.commitment_factory).unwrap();
         (input, unblinded)
     }
@@ -314,20 +327,22 @@ pub fn create_consensus_manager() -> ConsensusManager {
 pub fn create_unblinded_coinbase(test_params: &TestParams, height: u64, extra: Option<Vec<u8>>) -> UnblindedOutput {
     let rules = create_consensus_manager();
     let constants = rules.consensus_constants(height);
-    test_params.create_unblinded_output(UtxoTestParams {
-        value: rules.get_block_reward_at(height),
-        features: OutputFeatures::create_coinbase(height + constants.coinbase_lock_height(), extra),
-        ..Default::default()
-    })
+    test_params
+        .create_unblinded_output_not_recoverable(UtxoTestParams {
+            value: rules.get_block_reward_at(height),
+            features: OutputFeatures::create_coinbase(height + constants.coinbase_lock_height(), extra),
+            ..Default::default()
+        })
+        .unwrap()
 }
 
-pub fn create_unblinded_output(
+pub fn create_non_recoverable_unblinded_output(
     script: TariScript,
     output_features: OutputFeatures,
     test_params: &TestParams,
     value: MicroTari,
-) -> UnblindedOutput {
-    test_params.create_unblinded_output(UtxoTestParams {
+) -> Result<UnblindedOutput, String> {
+    test_params.create_unblinded_output_not_recoverable(UtxoTestParams {
         value,
         script,
         features: output_features,
@@ -335,13 +350,13 @@ pub fn create_unblinded_output(
     })
 }
 
-pub fn create_unblinded_output_with_rewind_data(
+pub fn create_unblinded_output_with_recovery_data(
     script: TariScript,
     output_features: OutputFeatures,
     test_params: &TestParams,
     value: MicroTari,
-) -> UnblindedOutput {
-    test_params.create_unblinded_output_with_rewind_data(UtxoTestParams {
+) -> Result<UnblindedOutput, String> {
+    test_params.create_unblinded_output_with_recovery_data(UtxoTestParams {
         value,
         script,
         features: output_features,
@@ -553,13 +568,15 @@ pub fn create_unblinded_txos(
             };
 
             (
-                test_params.create_unblinded_output(UtxoTestParams {
-                    value: output_amount,
-                    covenant: output_covenant.clone(),
-                    script: output_script.clone(),
-                    features: output_features.clone(),
-                    ..Default::default()
-                }),
+                test_params
+                    .create_unblinded_output_not_recoverable(UtxoTestParams {
+                        value: output_amount,
+                        covenant: output_covenant.clone(),
+                        script: output_script.clone(),
+                        features: output_features.clone(),
+                        ..Default::default()
+                    })
+                    .unwrap(),
                 script_offset_pvt_key,
             )
         })
@@ -716,7 +733,7 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
                 sender_offset_public_key: input.sender_offset_public_key.clone(),
                 covenant: input.covenant.clone(),
                 version: input.version,
-                encrypted_value: input.encrypted_value.clone(),
+                encrypted_data: input.encrypted_data,
                 minimum_value_promise: input.minimum_value_promise,
             },
             input.input_data.clone(),
@@ -728,15 +745,17 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
     let mut outputs = Vec::with_capacity(schema.to.len());
     for val in schema.to {
         let test_params = TestParams::new();
-        let utxo = test_params.create_unblinded_output(UtxoTestParams {
-            value: val,
-            features: schema.features.clone(),
-            script: schema.script.clone(),
-            input_data: schema.input_data.clone(),
-            covenant: schema.covenant.clone(),
-            output_version: schema.output_version,
-            minimum_value_promise: MicroTari::zero(),
-        });
+        let utxo = test_params
+            .create_unblinded_output_not_recoverable(UtxoTestParams {
+                value: val,
+                features: schema.features.clone(),
+                script: schema.script.clone(),
+                input_data: schema.input_data.clone(),
+                covenant: schema.covenant.clone(),
+                output_version: schema.output_version,
+                minimum_value_promise: MicroTari::zero(),
+            })
+            .unwrap();
         outputs.push(utxo.clone());
         stx_builder
             .with_output(utxo, test_params.sender_offset_private_key)
@@ -752,7 +771,7 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
             &utxo.features,
             &test_params.sender_offset_private_key,
             &utxo.covenant,
-            &utxo.encrypted_value,
+            &utxo.encrypted_data,
             utxo.minimum_value_promise,
         )
         .unwrap();
@@ -772,7 +791,7 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
     let covenant = Covenant::default();
     let change_features = OutputFeatures::default();
 
-    let encrypted_value = EncryptedValue::default();
+    let encrypted_data = EncryptedData::default();
 
     let minimum_value_promise = MicroTari::zero();
 
@@ -784,7 +803,7 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
         &change_features,
         &test_params_change_and_txn.sender_offset_private_key,
         &covenant,
-        &encrypted_value,
+        &encrypted_data,
         minimum_value_promise,
     )
     .unwrap();
@@ -802,7 +821,7 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
         change_metadata_sig,
         0,
         covenant,
-        encrypted_value,
+        encrypted_data,
         minimum_value_promise,
     );
     outputs.push(change_output);
@@ -845,7 +864,17 @@ pub fn create_utxo(
     let keys = generate_keys();
     let offset_keys = generate_keys();
     let commitment = factories.commitment.commit_value(&keys.k, value.into());
-    let proof = factories.range_proof.construct_proof(&keys.k, value.into()).unwrap();
+    let proof = if features.range_proof_type == RangeProofType::BulletProofPlus {
+        Some(
+            factories
+                .range_proof
+                .construct_proof(&keys.k, value.into())
+                .unwrap()
+                .into(),
+        )
+    } else {
+        None
+    };
 
     let metadata_sig = TransactionOutput::create_metadata_signature(
         TransactionOutputVersion::get_current_version(),
@@ -855,7 +884,7 @@ pub fn create_utxo(
         features,
         &offset_keys.k,
         covenant,
-        &EncryptedValue::default(),
+        &EncryptedData::default(),
         minimum_value_promise,
     )
     .unwrap();
@@ -863,12 +892,12 @@ pub fn create_utxo(
     let utxo = TransactionOutput::new_current_version(
         features.clone(),
         commitment,
-        proof.into(),
+        proof,
         script.clone(),
         offset_keys.pk,
         metadata_sig,
         covenant.clone(),
-        EncryptedValue::default(),
+        EncryptedData::default(),
         minimum_value_promise,
     );
     utxo.verify_range_proof(&CryptoFactories::default().range_proof)

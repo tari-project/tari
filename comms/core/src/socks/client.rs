@@ -39,9 +39,10 @@ use super::error::SocksError;
 pub type Result<T> = std::result::Result<T, SocksError>;
 
 /// Authentication methods
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum Authentication {
     /// No auth
+    #[default]
     None,
     /// Password auth (username, password)
     Password { username: String, password: String },
@@ -53,12 +54,6 @@ impl Authentication {
             Authentication::Password { .. } => 0x02,
             Authentication::None => 0x00,
         }
-    }
-}
-
-impl Default for Authentication {
-    fn default() -> Self {
-        Authentication::None
     }
 }
 
@@ -371,7 +366,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
                 let password_bytes = password.as_bytes();
                 let password_len = password_bytes.len();
                 self.len = 3 + username_len + password_len;
-                self.buf[(2 + username_len)] = u8::try_from(password_len).unwrap();
+                self.buf[2 + username_len] = u8::try_from(password_len).unwrap();
                 self.buf[(3 + username_len)..self.len].copy_from_slice(password_bytes);
             },
             Authentication::None => unreachable!(),

@@ -147,8 +147,11 @@ pub struct TorTransportConfig {
     /// When set to true, outbound TCP connections bypass the tor proxy. Defaults to false for better privacy, setting
     /// to true may improve network performance for TCP nodes.
     pub proxy_bypass_for_outbound_tcp: bool,
-    /// If set, instructs tor to forward traffic the the provided address.
+    /// If set, instructs tor to forward traffic the the provided address. Otherwise, an OS-assigned port on 127.0.0.1
+    /// is used.
     pub forward_address: Option<Multiaddr>,
+    /// If set, the listener will bind to this address instead of the forward_address.
+    pub listener_address_override: Option<Multiaddr>,
     /// The tor identity to use to create the hidden service. If None, a new one will be generated.
     #[serde(skip)]
     pub identity: Option<TorIdentity>,
@@ -195,6 +198,7 @@ impl Default for TorTransportConfig {
             proxy_bypass_addresses: vec![],
             proxy_bypass_for_outbound_tcp: false,
             forward_address: None,
+            listener_address_override: None,
             identity: None,
         }
     }
