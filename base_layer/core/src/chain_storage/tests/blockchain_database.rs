@@ -572,7 +572,7 @@ mod clear_all_pending_headers {
         let key_manager = create_test_core_key_manager_with_memory_db();
         let _blocks_and_outputs = add_many_chained_blocks(2, &db, &key_manager).await;
         let prev_block = db.fetch_block(2, true).unwrap();
-        let mut prev_accum = prev_block.accumulated_data.clone();
+        let mut prev_accum = prev_block.accumulated_data().clone();
         let mut prev_header = prev_block.try_into_chain_block().unwrap().to_chain_header();
         let headers = (0..5)
             .map(|_| {

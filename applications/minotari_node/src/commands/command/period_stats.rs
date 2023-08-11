@@ -113,7 +113,7 @@ impl CommandContext {
             } else {
                 block.header().timestamp.as_u64() - prev_block.header().timestamp.as_u64()
             };
-            let diff = block.accumulated_data.target_difficulty.as_u64();
+            let diff = block.accumulated_data().target_difficulty.as_u64();
             period_difficulty += diff;
             period_solvetime += st;
             period_hash += diff as f64 / st as f64 / 1_000_000.0;

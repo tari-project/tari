@@ -81,6 +81,7 @@ pub fn check_header_timestamp_greater_than_median(
     timestamps: &[EpochTime],
 ) -> Result<(), ValidationError> {
     if timestamps.is_empty() {
+        // unreachable due to sanity_check_timestamp_count
         return Err(ValidationError::BlockHeaderError(
             BlockHeaderValidationError::InvalidTimestamp("The timestamp is empty".to_string()),
         ));
