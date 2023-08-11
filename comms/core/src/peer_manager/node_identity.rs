@@ -145,13 +145,14 @@ impl NodeIdentity {
         }
     }
 
-    pub fn replace_public_address(&self, address: Multiaddr) {
+    /// Set the available addresses. If none of the addresses have changed, the identity signature remains unchanged.
+    pub fn set_public_addresses(&self, addresses: Vec<Multiaddr>) {
         let mut must_sign = false;
         {
             let mut lock = acquire_write_lock!(self.public_addresses);
-            if !lock.contains(&address) {
+            if addresses.len() != lock.len() || addresses.iter().any(|a| !lock.contains(a)) {
                 lock.clear();
-                lock.push(address);
+                lock.extend(addresses);
                 must_sign = true;
             }
         }
@@ -272,7 +273,7 @@ impl fmt::Display for NodeIdentity {
         writeln!(f, "Node ID: {}", self.node_id)?;
         writeln!(
             f,
-            "Public Address: {}",
+            "Public Addresses: {}",
             acquire_read_lock!(self.public_addresses)
                 .iter()
                 .map(|s| s.to_string())
