@@ -2877,7 +2877,7 @@ mod test {
                 let block = orphan_chain_b.get("2b").unwrap().clone();
                 assert!(access.contains(&DbKey::BlockHash(*block.hash())).unwrap());
 
-                // Check 7d is the tip
+                // Check 12b is the tip
                 let block = orphan_chain_b.get("12b").unwrap().clone();
                 let tip = access.fetch_tip_header().unwrap();
                 assert_eq!(tip.hash(), block.hash());
