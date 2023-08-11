@@ -898,6 +898,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                         conn,
                     )?;
                 } else {
+                    // Can only be one of the two
                 }
             }
 

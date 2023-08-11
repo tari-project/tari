@@ -1779,6 +1779,7 @@ where
                         val.tx_id
                     );
                 } else {
+                    // Dont care
                 }
             },
             Err(TransactionServiceProtocolError { id, error }) => {
@@ -1897,6 +1898,7 @@ where
                 let _sender = self.pending_transaction_reply_senders.remove(&tx_id);
                 let _sender = self.send_transaction_cancellation_senders.remove(&tx_id);
             } else {
+                // Dont care
             }
 
             if not_yet_pending || queued {

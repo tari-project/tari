@@ -135,6 +135,7 @@ impl Stream for Miner {
             debug!(target: LOG_TARGET, "Finished mining");
             return Poll::Ready(None);
         } else {
+            // Do nothing
         }
 
         // Non blocking select from all miner's receiver channels

@@ -2,8 +2,8 @@
 
 # Run the Tari test suite locally inside a suitable docker container
 
-IMAGE=quay.io/tarilabs/rust_tari-build-with-deps:nightly-2023-06-02
-TOOLCHAIN_VERSION=nightly-2023-06-02
+IMAGE=quay.io/tarilabs/rust_tari-build-with-deps:nightly-2023-06-03
+TOOLCHAIN_VERSION=nightly-2023-06-03
 CONTAINER=tari_test
 
 echo "Deleting old container"
