@@ -66,6 +66,8 @@ impl DbTransaction {
         DbTransaction::default()
     }
 
+    /// deletes the orphan, and if it was a tip will delete the orphan tip and make its prev header the new tip. This
+    /// will not fail if the orphan does not exist.
     pub fn delete_orphan(&mut self, hash: HashOutput) -> &mut Self {
         self.operations.push(WriteOperation::DeleteOrphan(hash));
         self
@@ -128,7 +130,6 @@ impl DbTransaction {
     pub fn insert_pruned_utxo(
         &mut self,
         output_hash: HashOutput,
-        witness_hash: HashOutput,
         header_hash: HashOutput,
         header_height: u64,
         mmr_leaf_index: u32,
@@ -138,7 +139,6 @@ impl DbTransaction {
             header_hash,
             header_height,
             output_hash,
-            witness_hash,
             mmr_position: mmr_leaf_index,
             timestamp,
         });
@@ -312,7 +312,6 @@ pub enum WriteOperation {
         header_hash: HashOutput,
         header_height: u64,
         output_hash: HashOutput,
-        witness_hash: HashOutput,
         mmr_position: u32,
         timestamp: u64,
     },
@@ -417,7 +416,6 @@ impl fmt::Display for WriteOperation {
                 header_hash: _,
                 header_height: _,
                 output_hash: _,
-                witness_hash: _,
                 mmr_position: _,
                 timestamp: _,
             } => write!(f, "Insert pruned output"),
@@ -440,7 +438,7 @@ impl fmt::Display for WriteOperation {
                 timestamp,
             } => write!(
                 f,
-                "Update best block to height:{} ({}) with difficulty: {} and timestamp : {}",
+                "Update best block to height:{} ({}) with difficulty: {} and timestamp: {}",
                 height,
                 hash.to_hex(),
                 accumulated_difficulty,

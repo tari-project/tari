@@ -50,9 +50,9 @@ fi
 # cp -f "${app_dir}/tari_base_node/osx/runtime/start_all.sh" "${tarball_folder}/runtime/start_all.sh"
 
 # Base Node
-cp -f -P "${app_dir}/tari_base_node/osx/start_tari_base_node" "${tarball_folder}/start_tari_base_node"
+cp -f -P "${app_dir}/tari_base_node/osx/start_minotari_node" "${tarball_folder}/start_minotari_node"
 cp -f -P "${app_dir}/tari_base_node/osx/start_tor" "${tarball_folder}/start_tor"
-cp -f "${app_dir}/tari_base_node/osx/runtime/start_tari_base_node.sh" "${tarball_folder}/runtime/start_tari_base_node.sh"
+cp -f "${app_dir}/tari_base_node/osx/runtime/start_minotari_node.sh" "${tarball_folder}/runtime/start_minotari_node.sh"
 cp -f "${app_dir}/tari_base_node/osx/runtime/start_tor.sh" "${tarball_folder}/runtime/start_tor.sh"
 cp -f "${project_dir}/${target_release}/tari_base_node" "${tarball_folder}/runtime/tari_base_node"
 

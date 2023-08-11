@@ -51,6 +51,7 @@ use crate::{
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     consensus::ConsensusManager,
     mempool::Mempool,
+    proof_of_work::randomx_factory::RandomXFactory,
     proto as shared_protos,
     proto::base_node as proto,
 };
@@ -65,6 +66,7 @@ pub struct BaseNodeServiceInitializer<T> {
     mempool: Mempool,
     consensus_manager: ConsensusManager,
     service_request_timeout: Duration,
+    randomx_factory: RandomXFactory,
 }
 
 impl<T> BaseNodeServiceInitializer<T>
@@ -77,6 +79,7 @@ where T: BlockchainBackend
         mempool: Mempool,
         consensus_manager: ConsensusManager,
         service_request_timeout: Duration,
+        randomx_factory: RandomXFactory,
     ) -> Self {
         Self {
             inbound_message_subscription_factory,
@@ -84,6 +87,7 @@ where T: BlockchainBackend
             mempool,
             consensus_manager,
             service_request_timeout,
+            randomx_factory,
         }
     }
 
@@ -175,6 +179,7 @@ where T: BlockchainBackend + 'static
         let blockchain_db = self.blockchain_db.clone();
         let mempool = self.mempool.clone();
         let consensus_manager = self.consensus_manager.clone();
+        let randomx_factory = self.randomx_factory.clone();
 
         context.spawn_when_ready(move |handles| async move {
             let dht = handles.expect_handle::<Dht>();
@@ -190,6 +195,7 @@ where T: BlockchainBackend + 'static
                 consensus_manager,
                 outbound_nci.clone(),
                 connectivity,
+                randomx_factory,
             );
 
             let streams = BaseNodeStreams {

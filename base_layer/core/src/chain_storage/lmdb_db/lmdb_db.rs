@@ -30,7 +30,7 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     epoch::VnEpoch,
-    types::{BlockHash, Commitment, HashOutput, PublicKey, Signature},
+    types::{BlockHash, Commitment, FixedHash, HashOutput, PublicKey, Signature},
 };
 use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBStore};
 use tari_utilities::{
@@ -105,7 +105,6 @@ use crate::{
     },
     MutablePrunedOutputMmr,
     PrunedKernelMmr,
-    PrunedWitnessMmr,
 };
 
 type DatabaseRef = Arc<Database<'static>>;
@@ -365,7 +364,6 @@ impl LMDBDatabase {
                     header_hash,
                     header_height,
                     output_hash,
-                    witness_hash,
                     mmr_position,
                     timestamp,
                 } => {
@@ -374,7 +372,6 @@ impl LMDBDatabase {
                         header_hash,
                         *header_height,
                         output_hash,
-                        witness_hash,
                         *mmr_position,
                         *timestamp,
                     )?;
@@ -578,7 +575,6 @@ impl LMDBDatabase {
         timestamp: u64,
     ) -> Result<(), ChainStorageError> {
         let output_hash = output.hash();
-        let witness_hash = output.witness_hash();
 
         let output_key = OutputKey::try_from_parts(&[header_hash.as_slice(), mmr_position.to_be_bytes().as_slice()])?;
 
@@ -606,7 +602,6 @@ impl LMDBDatabase {
                 header_hash: *header_hash,
                 mmr_position,
                 hash: output_hash,
-                witness_hash,
                 mined_height: header_height,
                 mined_timestamp: timestamp,
             },
@@ -622,7 +617,6 @@ impl LMDBDatabase {
         header_hash: &HashOutput,
         header_height: u64,
         output_hash: &HashOutput,
-        witness_hash: &HashOutput,
         mmr_position: u32,
         timestamp: u64,
     ) -> Result<(), ChainStorageError> {
@@ -649,7 +643,6 @@ impl LMDBDatabase {
                 header_hash: *header_hash,
                 mmr_position,
                 hash: *output_hash,
-                witness_hash: *witness_hash,
                 mined_height: header_height,
                 mined_timestamp: timestamp,
             },
@@ -844,7 +837,7 @@ impl LMDBDatabase {
                 header.height
             )));
         } else {
-            // We can continue
+            // we can continue
         }
 
         lmdb_insert(
@@ -897,9 +890,6 @@ impl LMDBDatabase {
                 height, header.height
             )));
         }
-
-        // TODO: This can maybe be removed for performance if the check for block_accumulated_data existing is
-        // sufficient
 
         let hash = header.hash();
 
@@ -1049,6 +1039,10 @@ impl LMDBDatabase {
                     ));
                 },
                 PrunedOutput::NotPruned { output } => {
+                    let rp_hash = match output.proof {
+                        Some(proof) => proof.hash(),
+                        None => FixedHash::zero(),
+                    };
                     input.add_output_data(
                         output.version,
                         output.features,
@@ -1057,6 +1051,8 @@ impl LMDBDatabase {
                         output.sender_offset_public_key,
                         output.covenant,
                         output.encrypted_data,
+                        output.metadata_signature,
+                        rp_hash,
                         output.minimum_value_promise,
                     );
                 },
@@ -1148,15 +1144,6 @@ impl LMDBDatabase {
                 "orphan_header_accumulated_data_db",
             )?;
         }
-
-        if lmdb_exists(txn, &self.orphan_header_accumulated_data_db, hash.as_slice())? {
-            lmdb_delete(
-                txn,
-                &self.orphan_header_accumulated_data_db,
-                hash.as_slice(),
-                "orphan_header_accumulated_data_db",
-            )?;
-        }
         lmdb_delete(txn, &self.orphans_db, hash.as_slice(), "orphans_db")?;
         Ok(())
     }
@@ -1212,7 +1199,6 @@ impl LMDBDatabase {
         let BlockAccumulatedData {
             kernels: pruned_kernel_set,
             outputs: pruned_output_set,
-            witness: pruned_proof_set,
             ..
         } = data;
 
@@ -1232,9 +1218,8 @@ impl LMDBDatabase {
             self.insert_kernel(txn, &block_hash, &kernel, pos)?;
         }
         let mut output_mmr = MutablePrunedOutputMmr::new(pruned_output_set, Bitmap::create())?;
-        let mut witness_mmr = PrunedWitnessMmr::new(pruned_proof_set);
 
-        let leaf_count = witness_mmr.get_leaf_count()?;
+        let leaf_count = output_mmr.get_leaf_count();
 
         // Output hashes added before inputs so that inputs can spend outputs in this transaction (0-conf and combined)
         let mut burned_outputs = Vec::new();
@@ -1243,7 +1228,6 @@ impl LMDBDatabase {
             .enumerate()
             .map(|(i, output)| {
                 output_mmr.push(output.hash().to_vec())?;
-                witness_mmr.push(output.witness_hash().to_vec())?;
                 // lets check burn
                 if output.is_burned() {
                     let index = match output_mmr.find_leaf_index(output.hash().as_slice())? {
@@ -1341,7 +1325,7 @@ impl LMDBDatabase {
                 .features
                 .sidechain_feature
                 .as_ref()
-                .and_then(|f| f.template_registration())
+                .and_then(|f| f.code_template_registration())
             {
                 let record = TemplateRegistrationEntry {
                     registration_data: template_reg.clone(),
@@ -1397,7 +1381,6 @@ impl LMDBDatabase {
             &BlockAccumulatedData::new(
                 kernel_mmr.get_pruned_hash_set()?,
                 output_mmr.mmr().get_pruned_hash_set()?,
-                witness_mmr.get_pruned_hash_set()?,
                 deleted_at_current_height,
                 total_kernel_sum,
             ),
@@ -1495,9 +1478,6 @@ impl LMDBDatabase {
         }
         if let Some(utxo_hash_set) = values.utxo_hash_set {
             block_accum_data.outputs = utxo_hash_set;
-        }
-        if let Some(witness_hash_set) = values.witness_hash_set {
-            block_accum_data.witness = witness_hash_set;
         }
 
         lmdb_replace(write_txn, &self.block_accumulated_data_db, &height, &block_accum_data)?;
@@ -1614,9 +1594,6 @@ impl LMDBDatabase {
         hash: &HashOutput,
         height: u64,
     ) -> Result<(), ChainStorageError> {
-        // TODO: Any idea how to improve that?
-        // As an alternative we could add "ignored" test
-        // that will generate blocks equals to this const.
         #[cfg(test)]
         const CLEAN_BAD_BLOCKS_BEFORE_REL_HEIGHT: u64 = 10000;
         #[cfg(not(test))]
@@ -1690,15 +1667,11 @@ impl LMDBDatabase {
                     mmr_position,
                     mined_height,
                     hash,
-                    witness_hash,
                     header_hash,
                     mined_timestamp,
                     ..
                 }) => Ok(Some(UtxoMinedInfo {
-                    output: PrunedOutput::Pruned {
-                        output_hash: hash,
-                        witness_hash,
-                    },
+                    output: PrunedOutput::Pruned { output_hash: hash },
                     mmr_position,
                     mined_height,
                     header_hash,
@@ -1959,7 +1932,6 @@ impl BlockchainBackend for LMDBDatabase {
         Ok(chain_header)
     }
 
-    // TODO: Can be merged with the method above
     fn fetch_header_containing_utxo_mmr(&self, mmr_position: u64) -> Result<ChainHeader, ChainStorageError> {
         let txn = self.read_transaction()?;
         // LMDB returns the height at the position, so we have to offset the position by 1 so that the mmr_position arg
@@ -2064,18 +2036,12 @@ impl BlockchainBackend for LMDBDatabase {
             .into_iter()
             .map(|row| {
                 if deleted.map(|b| b.contains(row.mmr_position)).unwrap_or(false) {
-                    return PrunedOutput::Pruned {
-                        output_hash: row.hash,
-                        witness_hash: row.witness_hash,
-                    };
+                    return PrunedOutput::Pruned { output_hash: row.hash };
                 }
                 if let Some(output) = row.output {
                     PrunedOutput::NotPruned { output }
                 } else {
-                    PrunedOutput::Pruned {
-                        output_hash: row.hash,
-                        witness_hash: row.witness_hash,
-                    }
+                    PrunedOutput::Pruned { output_hash: row.hash }
                 }
             })
             .collect();
@@ -2123,10 +2089,7 @@ impl BlockchainBackend for LMDBDatabase {
             .into_iter()
             .map(|f: TransactionOutputRowData| match f.output {
                 Some(o) => PrunedOutput::NotPruned { output: o },
-                None => PrunedOutput::Pruned {
-                    output_hash: f.hash,
-                    witness_hash: f.witness_hash,
-                },
+                None => PrunedOutput::Pruned { output_hash: f.hash },
             })
             .collect())
     }
@@ -2145,7 +2108,7 @@ impl BlockchainBackend for LMDBDatabase {
         let txn = self.read_transaction()?;
         match tree {
             MmrTree::Kernel => Ok(lmdb_len(&txn, &self.kernels_db)? as u64),
-            MmrTree::Witness | MmrTree::Utxo => Ok(lmdb_len(&txn, &self.utxos_db)? as u64),
+            MmrTree::Utxo => Ok(lmdb_len(&txn, &self.utxos_db)? as u64),
         }
     }
 

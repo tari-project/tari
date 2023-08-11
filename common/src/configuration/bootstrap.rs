@@ -47,12 +47,12 @@ impl ApplicationType {
         #[allow(clippy::enum_glob_use)]
         use ApplicationType::*;
         match self {
-            BaseNode => "Tari Base Node",
-            ConsoleWallet => "Tari Console Wallet",
-            MergeMiningProxy => "Tari Merge Mining Proxy",
-            Miner => "Tari Miner",
+            BaseNode => "Minotari Base Node",
+            ConsoleWallet => "Minotari Wallet",
+            MergeMiningProxy => "Minotari Merge Mining Proxy",
+            Miner => "Minotari Miner",
             ValidatorNode => "Digital Assets Network Validator Node",
-            StratumTranscoder => "Tari Stratum Transcoder",
+            StratumTranscoder => "Minotari Stratum Transcoder",
             Collectibles => "Tari Collectibles",
         }
     }
@@ -108,7 +108,6 @@ pub fn grpc_default_port(app_type: ApplicationType, network: Network) -> u16 {
             Network::Esmeralda => 18142u16,
             Network::Igor => 18152u16,
             Network::LocalNet => 18162u16,
-            _ => unreachable!("Network {} not supported", network),
         },
         ApplicationType::ConsoleWallet => match network {
             Network::MainNet => 18103u16,
@@ -117,7 +116,6 @@ pub fn grpc_default_port(app_type: ApplicationType, network: Network) -> u16 {
             Network::Esmeralda => 18143u16,
             Network::Igor => 18153u16,
             Network::LocalNet => 18163u16,
-            _ => unreachable!("Network {} not supported", network),
         },
         _ => unreachable!("Application {} not supported", app_type),
     }
@@ -139,11 +137,11 @@ mod test {
         let collectibles = ApplicationType::Collectibles;
 
         // test `as_str` method
-        assert_eq!(base_node.as_str(), "Tari Base Node");
-        assert_eq!(console_wallet.as_str(), "Tari Console Wallet");
-        assert_eq!(mm_proxy.as_str(), "Tari Merge Mining Proxy");
-        assert_eq!(miner.as_str(), "Tari Miner");
-        assert_eq!(stratum_transcoder.as_str(), "Tari Stratum Transcoder");
+        assert_eq!(base_node.as_str(), "Minotari Base Node");
+        assert_eq!(console_wallet.as_str(), "Minotari Wallet");
+        assert_eq!(mm_proxy.as_str(), "Minotari Merge Mining Proxy");
+        assert_eq!(miner.as_str(), "Minotari Miner");
+        assert_eq!(stratum_transcoder.as_str(), "Minotari Stratum Transcoder");
         assert_eq!(validator_node.as_str(), "Digital Assets Network Validator Node");
         assert_eq!(collectibles.as_str(), "Tari Collectibles");
 

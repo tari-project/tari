@@ -24,7 +24,7 @@ use tari_common_types::{chain_metadata::ChainMetadata, types::HashOutput};
 
 use crate::{
     consensus::ConsensusManager,
-    transactions::{tari_amount::MicroTari, transaction_components::Transaction, CryptoFactories},
+    transactions::{tari_amount::MicroMinotari, transaction_components::Transaction, CryptoFactories},
     validation::{aggregate_body::AggregateBodyInternalConsistencyValidator, ValidationError},
 };
 
@@ -56,7 +56,7 @@ impl TransactionInternalConsistencyValidator {
     pub fn validate(
         &self,
         tx: &Transaction,
-        reward: Option<MicroTari>,
+        reward: Option<MicroMinotari>,
         prev_header: Option<HashOutput>,
         height: u64,
     ) -> Result<(), ValidationError> {

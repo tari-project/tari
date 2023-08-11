@@ -24,14 +24,19 @@
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
 use serde::{Deserialize, Serialize};
-use tari_crypto::{errors::RangeProofError, signatures::CommitmentAndPublicKeySignatureError};
+use tari_crypto::{
+    errors::RangeProofError,
+    signatures::{CommitmentAndPublicKeySignatureError, SchnorrSignatureError},
+};
+use tari_key_manager::key_manager_service::KeyManagerServiceError;
 use tari_script::ScriptError;
+use tari_utilities::ByteArrayError;
 use thiserror::Error;
 
-use crate::covenants::CovenantError;
+use crate::{covenants::CovenantError, transactions::transaction_components::EncryptedDataError};
 
 //----------------------------------------     TransactionError   ----------------------------------------------------//
-#[derive(Clone, Debug, PartialEq, Error, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Error, Deserialize, Serialize, Eq)]
 pub enum TransactionError {
     #[error("Error validating the transaction: {0}")]
     ValidationError(String),
@@ -40,10 +45,10 @@ pub enum TransactionError {
     #[error("Transaction kernel does not contain a signature")]
     NoSignatureError,
     #[error("A range proof construction or verification has produced an error: {0}")]
-    RangeProofError(#[from] RangeProofError),
+    RangeProofError(String),
     #[error("An error occurred while performing a commitment signature: {0}")]
-    SigningError(#[from] CommitmentAndPublicKeySignatureError),
-    #[error("Invalid kernel in body : {0}")]
+    SigningError(String),
+    #[error("Invalid kernel in body: {0}")]
     InvalidKernel(String),
     #[error("Invalid coinbase in body")]
     InvalidCoinbase,
@@ -57,8 +62,10 @@ pub enum TransactionError {
     MissingRangeProof,
     #[error("Input maturity not reached")]
     InputMaturity,
-    #[error("Tari script error : {0}")]
+    #[error("Tari script error: {0}")]
     ScriptError(#[from] ScriptError),
+    #[error("Schnorr signature error: {0}")]
+    SchnorrSignatureError(String),
     #[error("Error performing conversion: {0}")]
     ConversionError(String),
     #[error("Error performing encryption: {0}")]
@@ -79,12 +86,54 @@ pub enum TransactionError {
     NonCoinbaseHasOutputFeaturesCoinbaseExtra,
     #[error("Coinbase extra size is {len} but the maximum is {max}")]
     InvalidOutputFeaturesCoinbaseExtraSize { len: usize, max: u32 },
-    #[error("Invalid revealed value : {0}")]
+    #[error("Invalid revealed value: {0}")]
     InvalidRevealedValue(String),
+    #[error("KeyManager encountered an error: {0}")]
+    KeyManagerError(String),
+    #[error("EncryptedData error: {0}")]
+    EncryptedDataError(String),
+    #[error("Conversion error: {0}")]
+    ByteArrayError(String),
 }
 
 impl From<CovenantError> for TransactionError {
     fn from(err: CovenantError) -> Self {
         TransactionError::CovenantError(err.to_string())
+    }
+}
+
+impl From<KeyManagerServiceError> for TransactionError {
+    fn from(err: KeyManagerServiceError) -> Self {
+        TransactionError::KeyManagerError(err.to_string())
+    }
+}
+
+impl From<EncryptedDataError> for TransactionError {
+    fn from(err: EncryptedDataError) -> Self {
+        TransactionError::EncryptedDataError(err.to_string())
+    }
+}
+
+impl From<ByteArrayError> for TransactionError {
+    fn from(err: ByteArrayError) -> Self {
+        TransactionError::ByteArrayError(err.to_string())
+    }
+}
+
+impl From<RangeProofError> for TransactionError {
+    fn from(e: RangeProofError) -> Self {
+        TransactionError::RangeProofError(e.to_string())
+    }
+}
+
+impl From<CommitmentAndPublicKeySignatureError> for TransactionError {
+    fn from(e: CommitmentAndPublicKeySignatureError) -> Self {
+        TransactionError::SigningError(e.to_string())
+    }
+}
+
+impl From<SchnorrSignatureError> for TransactionError {
+    fn from(e: SchnorrSignatureError) -> Self {
+        TransactionError::SchnorrSignatureError(e.to_string())
     }
 }

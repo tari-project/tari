@@ -24,6 +24,7 @@ use std::{cmp, convert::TryFrom, ops::Deref};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
+use tari_utilities::hex::{from_hex, HexError};
 
 #[derive(
     Debug,
@@ -73,13 +74,33 @@ impl<const MAX: usize> From<MaxSizeBytes<MAX>> for Vec<u8> {
 }
 
 impl<const MAX: usize> TryFrom<Vec<u8>> for MaxSizeBytes<MAX> {
-    type Error = Vec<u8>;
+    type Error = MaxSizeBytesError;
 
     fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
         if value.len() > MAX {
-            return Err(value);
+            Err(MaxSizeBytesError::MaxSizeBytesLengthError {
+                expected: MAX,
+                actual: value.len(),
+            })
+        } else {
+            Ok(MaxSizeBytes { inner: value })
         }
-        Ok(MaxSizeBytes { inner: value })
+    }
+}
+
+impl<const MAX: usize> TryFrom<&str> for MaxSizeBytes<MAX> {
+    type Error = MaxSizeBytesError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::try_from(from_hex(value)?)
+    }
+}
+
+impl<const MAX: usize> TryFrom<String> for MaxSizeBytes<MAX> {
+    type Error = MaxSizeBytesError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::try_from(from_hex(value.as_str())?)
     }
 }
 
@@ -94,5 +115,19 @@ impl<const MAX: usize> Deref for MaxSizeBytes<MAX> {
 
     fn deref(&self) -> &Self::Target {
         &self.inner
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum MaxSizeBytesError {
+    #[error("Invalid Bytes length: expected {expected}, got {actual}")]
+    MaxSizeBytesLengthError { expected: usize, actual: usize },
+    #[error("Conversion error: {0}")]
+    HexError(String),
+}
+
+impl From<HexError> for MaxSizeBytesError {
+    fn from(err: HexError) -> Self {
+        MaxSizeBytesError::HexError(err.to_string())
     }
 }

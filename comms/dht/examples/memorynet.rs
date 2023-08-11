@@ -116,7 +116,7 @@ async fn main() {
         repeat_with(|| {
             make_node(
                 PeerFeatures::COMMUNICATION_CLIENT,
-                vec![nodes[OsRng.gen_range(0, NUM_NODES - 1)].node_identity()],
+                vec![nodes[OsRng.gen_range(0..NUM_NODES - 1)].node_identity()],
                 node_message_tx.clone(),
                 NUM_NEIGHBOURING_NODES,
                 NUM_RANDOM_NODES,
@@ -225,7 +225,7 @@ async fn main() {
     let mut total_saf_timeouts = 0;
     let total_saf_done = 5;
     for _ in 0..5 {
-        let random_wallet = wallets.remove(OsRng.gen_range(0, wallets.len() - 1));
+        let random_wallet = wallets.remove(OsRng.gen_range(0..wallets.len() - 1));
         let (num_msgs, random_wallet, num_successes, num_attempts) = do_store_and_forward_message_propagation(
             random_wallet,
             &wallets,

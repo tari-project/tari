@@ -19,9 +19,10 @@ name: Build Matrix of Binaries
 env:
   TBN_FILENAME: "tari_suite"
   TBN_BUNDLEID_BASE: "com.tarilabs.pkg"
-  toolchain: nightly-2023-06-03
+  toolchain: nightly-2023-06-04
   matrix-json-file: ".github/workflows/base_node_binaries.json"
   CARGO_HTTP_MULTIPLEXING: false
+  CARGO_UNSTABLE_SPARSE_REGISTRY: true
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -136,7 +137,8 @@ jobs:
           vcpkg.exe install sqlite3:x64-windows zlib:x64-windows
           # Bug in choco - need to install each package individually
           choco upgrade llvm -y
-          choco upgrade psutils -y
+          # psutils is out of date
+          # choco upgrade psutils -y
           choco upgrade openssl -y
           choco upgrade strawberryperl -y
 
@@ -153,7 +155,6 @@ jobs:
           echo "SHARUN=shasum --algorithm 256" >> $GITHUB_ENV
           echo "CC=gcc" >> $GITHUB_ENV
           echo "TBN_EXT=" >> $GITHUB_ENV
-          echo "LIB_PRE=lib" >> $GITHUB_ENV
           echo "SHELL_EXT=.sh" >> $GITHUB_ENV
           echo "PLATFORM_SPECIFIC_DIR=linux" >> $GITHUB_ENV
           echo "TBN_DIST=/dist" >> $GITHUB_ENV
@@ -182,10 +183,13 @@ jobs:
         if: startsWith(runner.os,'Windows')
         shell: bash
         run: |
-          echo "SHARUN=pwsh C:\ProgramData\chocolatey\lib\psutils\tools\psutils-master\shasum.ps1 --algorithm 256" >> $GITHUB_ENV
+          # echo "SHARUN=pwsh C:\ProgramData\chocolatey\lib\psutils\tools\psutils-master\shasum.ps1 --algorithm 256" >> $GITHUB_ENV
+          mkdir -p "$GITHUB_WORKSPACE\psutils"
+          curl -v -o "$GITHUB_WORKSPACE\psutils\getopt.ps1" "https://raw.githubusercontent.com/lukesampson/psutils/master/getopt.ps1"
+          curl -v -o "$GITHUB_WORKSPACE\psutils\shasum.ps1" "https://raw.githubusercontent.com/lukesampson/psutils/master/shasum.ps1"
+          echo "SHARUN=pwsh $GITHUB_WORKSPACE\psutils\shasum.ps1 --algorithm 256" >> $GITHUB_ENV
           echo "TBN_EXT=.exe" >> $GITHUB_ENV
           echo "LIB_EXT=.dll" >> $GITHUB_ENV
-          echo "LIB_PRE=" >> $GITHUB_ENV
           echo "SHELL_EXT=.bat" >> $GITHUB_ENV
           echo "TBN_DIST=\dist" >> $GITHUB_ENV
           echo "PLATFORM_SPECIFIC_DIR=windows" >> $GITHUB_ENV
@@ -194,8 +198,7 @@ jobs:
           echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $GITHUB_ENV
           echo "C:\Strawberry\perl\bin" >> $GITHUB_PATH
 
-      - name: Cache cargo files and outputs
-        uses: Swatinem/rust-cache@v2
+      # Don't use caches for binary builds. Start from a clean slate.
 
       - name: Build rust binaries
         env:
@@ -224,7 +227,7 @@ jobs:
         run: |
           mkdir -p "$GITHUB_WORKSPACE${TBN_DIST}"
           cd "$GITHUB_WORKSPACE${TBN_DIST}"
-          VERSION=$(awk -F ' = ' '$1 ~ /version/ { gsub(/["]/, "", $2); printf("%s",$2) }' "$GITHUB_WORKSPACE/applications/tari_base_node/Cargo.toml")
+          VERSION=$(awk -F ' = ' '$1 ~ /version/ { gsub(/["]/, "", $2); printf("%s",$2) }' "$GITHUB_WORKSPACE/applications/minotari_node/Cargo.toml")
           echo "Branch: ${VBRANCH}"
           echo "Sha: ${VSHA_SHORT}"
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
@@ -234,21 +237,18 @@ jobs:
           echo "Copying files for ${BINFILE} to $(pwd)"
           ls -la "$GITHUB_WORKSPACE/target/${{ matrix.builds.target }}/release/"
           FILES=(
-            "tari_base_node"
-            "tari_console_wallet"
-            "tari_miner"
-            "tari_merge_mining_proxy"
+            "minotari_node"
+            "minotari_console_wallet"
+            "minotari_miner"
+            "minotari_merge_mining_proxy"
           )
           for FILE in "${FILES[@]}"; do
             if [ -f "$GITHUB_WORKSPACE/target/${{ matrix.builds.target }}/release/${FILE}${TBN_EXT}" ]; then
               cp -v "$GITHUB_WORKSPACE/target/${{ matrix.builds.target }}/release/${FILE}${TBN_EXT}" .
             fi
           done
-          if [ -f "$GITHUB_WORKSPACE/target/${{ matrix.builds.target }}/release/${LIB_PRE}tari_mining_helper_ffi${LIB_EXT}" ]; then
-            cp -v "$GITHUB_WORKSPACE/target/${{ matrix.builds.target }}/release/${LIB_PRE}tari_mining_helper_ffi${LIB_EXT}" .
-          fi
-          if [ -f "$GITHUB_WORKSPACE/applications/tari_base_node/${PLATFORM_SPECIFIC_DIR}/runtime/start_tor${SHELL_EXT}" ]; then
-            cp -v "$GITHUB_WORKSPACE/applications/tari_base_node/${PLATFORM_SPECIFIC_DIR}/runtime/start_tor${SHELL_EXT}" .
+          if [ -f "$GITHUB_WORKSPACE/applications/minotari_node/${PLATFORM_SPECIFIC_DIR}/runtime/start_tor${SHELL_EXT}" ]; then
+            cp -v "$GITHUB_WORKSPACE/applications/minotari_node/${PLATFORM_SPECIFIC_DIR}/runtime/start_tor${SHELL_EXT}" .
           fi
 
       - name: Build the macOS pkg
@@ -278,10 +278,10 @@ jobs:
           export target_release="target/${{ matrix.builds.target }}/release"
           ./create_osx_install_zip.sh unused nozip
           FILES=(
-            "tari_base_node"
-            "tari_console_wallet"
-            "tari_miner"
-            "tari_merge_mining_proxy"
+            "minotari_node"
+            "minotari_console_wallet"
+            "minotari_miner"
+            "minotari_merge_mining_proxy"
           )
           for FILE in "${FILES[@]}"; do
             codesign --options runtime --force --verify --verbose --timestamp --sign "Developer ID Application: $MACOS_APPLICATION_ID" "/tmp/tari_testnet/runtime/$FILE"
@@ -363,10 +363,11 @@ jobs:
         uses: actions/upload-artifact@v3
         if: startsWith(runner.os,'Windows')
         with:
-          name: "tari_windows_installer"
+          name: "${{ env.TBN_FILENAME }}_windows_installer"
           path: "${{ github.workspace }}/buildtools/Output/*"
 
       - name: Archive and Checksum Binaries
+        # if: "!startsWith(runner.os,'Windows')"    # Disable checksum for Windows - workaround
         shell: bash
         run: |
           echo "Archive ${{ env.BINFILE }} too ${{ env.BINFILE }}.zip"
@@ -393,20 +394,20 @@ jobs:
         shell: bash
         run: |
           cd "${{ github.workspace }}${{ env.TBN_DIST }}"
-          cp -v "tari_miner${{ env.TBN_EXT}}" \
-            "tari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}"
+          cp -v "minotari_miner${{ env.TBN_EXT}}" \
+            "minotari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}"
           echo "Compute miner shasum"
-          ${SHARUN} "tari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}" \
-            >> "tari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}.sha256"
-          cat "tari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}.sha256"
+          ${SHARUN} "minotari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}" \
+            >> "minotari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}.sha256"
+          cat "minotari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}.sha256"
           echo "Checksum verification for miner is "
-          ${SHARUN} --check "tari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}.sha256"
+          ${SHARUN} --check "minotari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}.sha256"
 
       - name: Artifact upload for Miner
         uses: actions/upload-artifact@v3
         with:
-          name: tari_miner-${{ matrix.builds.name }}
-          path: "${{ github.workspace }}${{ env.TBN_DIST }}/tari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}*"
+          name: minotari_miner-${{ matrix.builds.name }}
+          path: "${{ github.workspace }}${{ env.TBN_DIST }}/minotari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}*"
 
       - name: Prep diag-utils archive for upload
         continue-on-error: true
@@ -438,6 +439,12 @@ jobs:
           name: ${{ env.TBN_FILENAME }}_archive-diag-utils-${{ matrix.builds.name }}
           path: "${{ github.workspace }}${{ env.TBN_DIST }}/diag-utils/*.zip*"
 
+      - name: Artifact cleanup for diag-utils
+        continue-on-error: true
+        shell: bash
+        run: |
+          rm -vRf "${{ github.workspace }}${{ env.TBN_DIST }}/diag-utils/"
+  
       - name: Sync dist to S3 - Bash
         continue-on-error: true # Don't break if s3 upload fails
         if: ${{ env.AWS_SECRET_ACCESS_KEY != '' && matrix.builds.runs-on != 'self-hosted' }}

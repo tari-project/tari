@@ -22,13 +22,13 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use tari_common_types::types::{BlindingFactor, FixedHash, PrivateKey};
+use tari_common_types::types::{FixedHash, PrivateKey};
 use tari_utilities::ByteArray;
 
 use super::core as proto;
 use crate::{
     blocks::{Block, BlockHeaderAccumulatedData, HistoricalBlock, NewBlock, NewBlockHeaderTemplate, NewBlockTemplate},
-    proof_of_work::ProofOfWork,
+    proof_of_work::{Difficulty, ProofOfWork},
 };
 
 //---------------------------------- Block --------------------------------------------//
@@ -83,18 +83,12 @@ impl TryFrom<proto::HistoricalBlock> for HistoricalBlock {
             .into_iter()
             .map(|hash| hash.try_into().map_err(|_| "Malformed pruned hash".to_string()))
             .collect::<Result<_, _>>()?;
-        let witness_hashes: Vec<FixedHash> = historical_block
-            .pruned_witness_hash
-            .into_iter()
-            .map(|hash| hash.try_into().map_err(|_| "Malformed witness hash".to_string()))
-            .collect::<Result<_, _>>()?;
-        let pruned = output_hashes.into_iter().zip(witness_hashes).collect();
 
         Ok(HistoricalBlock::new(
             block,
             historical_block.confirmations,
             accumulated_data,
-            pruned,
+            output_hashes,
             historical_block.pruned_input_count,
         ))
     }
@@ -104,15 +98,13 @@ impl TryFrom<HistoricalBlock> for proto::HistoricalBlock {
     type Error = String;
 
     fn try_from(block: HistoricalBlock) -> Result<Self, Self::Error> {
-        let pruned_output_hashes = block.pruned_outputs().iter().map(|x| x.0.to_vec()).collect();
-        let pruned_witness_hash = block.pruned_outputs().iter().map(|x| x.1.to_vec()).collect();
+        let pruned_output_hashes = block.pruned_outputs().iter().map(|x| x.to_vec()).collect();
         let (block, accumulated_data, confirmations, pruned_input_count) = block.dissolve();
         Ok(Self {
             confirmations,
             accumulated_data: Some(accumulated_data.into()),
             block: Some(block.try_into()?),
             pruned_output_hashes,
-            pruned_witness_hash,
             pruned_input_count,
         })
     }
@@ -122,8 +114,8 @@ impl From<BlockHeaderAccumulatedData> for proto::BlockHeaderAccumulatedData {
     fn from(source: BlockHeaderAccumulatedData) -> Self {
         Self {
             achieved_difficulty: source.achieved_difficulty.into(),
-            accumulated_monero_difficulty: source.accumulated_monero_difficulty.into(),
-            accumulated_sha_difficulty: source.accumulated_sha_difficulty.into(),
+            accumulated_randomx_difficulty: source.accumulated_randomx_difficulty.into(),
+            accumulated_sha3x_difficulty: source.accumulated_sha3x_difficulty.into(),
             target_difficulty: source.target_difficulty.into(),
             total_kernel_offset: source.total_kernel_offset.to_vec(),
             hash: source.hash.to_vec(),
@@ -139,18 +131,17 @@ impl TryFrom<proto::BlockHeaderAccumulatedData> for BlockHeaderAccumulatedData {
         let mut acc_diff = [0; 16];
         acc_diff.copy_from_slice(&source.total_accumulated_difficulty[0..16]);
         let accumulated_difficulty = u128::from_le_bytes(acc_diff);
-        let hash = source
-            .hash
-            .try_into()
-            .map_err(|_| "Malformed witness hash".to_string())?;
+        let hash = source.hash.try_into().map_err(|_| "Malformed hash".to_string())?;
         Ok(Self {
             hash,
-            achieved_difficulty: source.achieved_difficulty.into(),
+            achieved_difficulty: Difficulty::from_u64(source.achieved_difficulty).map_err(|e| e.to_string())?,
             total_accumulated_difficulty: accumulated_difficulty,
-            accumulated_monero_difficulty: source.accumulated_monero_difficulty.into(),
-            accumulated_sha_difficulty: source.accumulated_sha_difficulty.into(),
-            target_difficulty: source.target_difficulty.into(),
-            total_kernel_offset: BlindingFactor::from_bytes(source.total_kernel_offset.as_slice())
+            accumulated_randomx_difficulty: Difficulty::from_u64(source.accumulated_randomx_difficulty)
+                .map_err(|e| e.to_string())?,
+            accumulated_sha3x_difficulty: Difficulty::from_u64(source.accumulated_sha3x_difficulty)
+                .map_err(|e| e.to_string())?,
+            target_difficulty: Difficulty::from_u64(source.target_difficulty).map_err(|e| e.to_string())?,
+            total_kernel_offset: PrivateKey::from_bytes(source.total_kernel_offset.as_slice())
                 .map_err(|err| format!("Invalid value for total_kernel_offset: {}", err))?,
         })
     }
@@ -175,7 +166,7 @@ impl TryFrom<proto::NewBlockTemplate> for NewBlockTemplate {
         Ok(Self {
             header,
             body,
-            target_difficulty: block_template.target_difficulty.into(),
+            target_difficulty: Difficulty::from_u64(block_template.target_difficulty).map_err(|e| e.to_string())?,
             reward: block_template.reward.into(),
             total_fees: block_template.total_fees.into(),
         })
@@ -202,10 +193,8 @@ impl TryFrom<proto::NewBlockHeaderTemplate> for NewBlockHeaderTemplate {
     type Error = String;
 
     fn try_from(header: proto::NewBlockHeaderTemplate) -> Result<Self, Self::Error> {
-        let total_kernel_offset =
-            BlindingFactor::from_bytes(&header.total_kernel_offset).map_err(|err| err.to_string())?;
-        let total_script_offset =
-            BlindingFactor::from_bytes(&header.total_script_offset).map_err(|err| err.to_string())?;
+        let total_kernel_offset = PrivateKey::from_bytes(&header.total_kernel_offset).map_err(|err| err.to_string())?;
+        let total_script_offset = PrivateKey::from_bytes(&header.total_script_offset).map_err(|err| err.to_string())?;
         let pow = match header.pow {
             Some(p) => ProofOfWork::try_from(p)?,
             None => return Err("No proof of work provided".into()),

@@ -20,16 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fmt, ops::Div};
+use std::fmt;
 
-use newtype_ops::newtype_ops;
 use num_format::{Locale, ToFormattedString};
 use serde::{Deserialize, Serialize};
 use tari_utilities::epoch_time::EpochTime;
 
-use crate::proof_of_work::error::DifficultyAdjustmentError;
+use crate::{
+    proof_of_work::{error::DifficultyError, DifficultyAdjustmentError},
+    U256,
+};
 
-/// Minimum difficulty, enforced in diff retargetting
+/// Minimum difficulty, enforced in diff retargeting
 /// avoids getting stuck when trying to increase difficulty subject to dampening
 pub const MIN_DIFFICULTY: u64 = 1;
 
@@ -39,13 +41,11 @@ pub struct Difficulty(u64);
 
 impl Difficulty {
     /// A const constructor for Difficulty
-    pub const fn from_u64(d: u64) -> Self {
-        Self(d)
-    }
-
-    /// Difficulty of MIN_DIFFICULTY
-    pub const fn min() -> Difficulty {
-        Difficulty(MIN_DIFFICULTY)
+    pub const fn from_u64(d: u64) -> Result<Self, DifficultyError> {
+        if d < MIN_DIFFICULTY {
+            return Err(DifficultyError::InvalidDifficulty);
+        }
+        Ok(Self(d))
     }
 
     /// Return the difficulty as a u64
@@ -53,10 +53,42 @@ impl Difficulty {
         self.0
     }
 
-    pub fn checked_sub(self, other: Difficulty) -> Option<Difficulty> {
-        self.0.checked_sub(other.0).map(Difficulty)
+    /// Difficulty of MIN_DIFFICULTY
+    pub const fn min() -> Difficulty {
+        Difficulty(MIN_DIFFICULTY)
+    }
+
+    /// Maximum Difficulty
+    pub const fn max() -> Difficulty {
+        Difficulty(u64::MAX)
+    }
+
+    /// Helper function to provide the difficulty of the hash assuming the hash is big_endian
+    pub fn big_endian_difficulty(hash: &[u8]) -> Result<Difficulty, DifficultyError> {
+        let scalar = U256::from_big_endian(hash); // Big endian so the hash has leading zeroes
+        Difficulty::u256_scalar_to_difficulty(scalar)
+    }
+
+    /// Helper function to provide the difficulty of the hash assuming the hash is little_endian
+    pub fn little_endian_difficulty(hash: &[u8]) -> Result<Difficulty, DifficultyError> {
+        let scalar = U256::from_little_endian(hash); // Little endian so the hash has trailing zeroes
+        Difficulty::u256_scalar_to_difficulty(scalar)
+    }
+
+    fn u256_scalar_to_difficulty(scalar: U256) -> Result<Difficulty, DifficultyError> {
+        let result = U256::MAX / scalar;
+        let result = result.min(u64::MAX.into());
+        Difficulty::from_u64(result.low_u64())
     }
 }
+
+/// These traits should not be implemented for `Difficulty`:
+/// - `Add<Self> for Difficulty` "`+` must not be used, use `checked_add(value)` instead; to prevent overflow
+/// - `Sub<Self> for Difficulty` `-` must not be used, use `checked_sub(value)` instead; to prevent underflow
+/// - `Mul for Difficulty` `*` must not be used at all; difficulties should only be added to or subtracted from
+/// - `Div for Difficulty` `/` must not be used at all; difficulties should only be added to or subtracted from
+/// - `From<u64> for Difficulty` `Difficulty::from<u64>` must not be used, use `from_u64(value)` instead; to prevent
+///   assignment `< MIN_DIFFICULTY`
 
 impl Default for Difficulty {
     fn default() -> Self {
@@ -64,20 +96,54 @@ impl Default for Difficulty {
     }
 }
 
-// You can only add or subtract Difficulty from Difficulty
-newtype_ops! { [Difficulty] {add sub} {:=} Self Self }
-newtype_ops! { [Difficulty] {add sub} {:=} &Self &Self }
-newtype_ops! { [Difficulty] {add sub} {:=} Self &Self }
+/// This trait is used to add a type to `CheckedAdd`, which greatly simplifies usage in the code.
+/// It is implemented for `Difficulty` and `u64`.
+pub trait CheckedAdd<T> {
+    fn checked_add(&self, other: T) -> Option<Self>
+    where Self: Sized;
+}
 
-// Multiplication and division of difficulty by scalar is Difficulty
-newtype_ops! { [Difficulty] {mul div rem} {:=} Self u64 }
+impl CheckedAdd<Difficulty> for Difficulty {
+    fn checked_add(&self, other: Difficulty) -> Option<Self> {
+        self.0.checked_add(other.0).map(Difficulty)
+    }
+}
 
-// Division of difficulty by difficulty is a difficulty ratio (scalar) (newtype_ops doesn't handle this case)
-impl Div for Difficulty {
-    type Output = u64;
+impl CheckedAdd<u64> for Difficulty {
+    fn checked_add(&self, other: u64) -> Option<Self> {
+        self.checked_add(Difficulty(other))
+    }
+}
 
-    fn div(self, rhs: Self) -> Self::Output {
-        self.0 / rhs.0
+/// This trait is used to add a type to `CheckedSub`, which greatly simplifies usage in the code.
+/// It is implemented for `Difficulty` and `u64`.
+pub trait CheckedSub<T> {
+    fn checked_sub(&self, other: T) -> Option<Self>
+    where Self: Sized;
+}
+
+impl CheckedSub<Difficulty> for Difficulty {
+    fn checked_sub(&self, other: Difficulty) -> Option<Self> {
+        if let Some(val) = self.0.checked_sub(other.0) {
+            if val < MIN_DIFFICULTY {
+                return None;
+            }
+            Some(Difficulty(val))
+        } else {
+            None
+        }
+    }
+}
+
+impl CheckedSub<u64> for Difficulty {
+    fn checked_sub(&self, other: u64) -> Option<Self> {
+        self.checked_sub(Difficulty(other))
+    }
+}
+
+impl From<Difficulty> for u64 {
+    fn from(value: Difficulty) -> Self {
+        value.0
     }
 }
 
@@ -85,18 +151,6 @@ impl fmt::Display for Difficulty {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let formatted = self.0.to_formatted_string(&Locale::en);
         write!(f, "{}", formatted)
-    }
-}
-
-impl From<u64> for Difficulty {
-    fn from(value: u64) -> Self {
-        Difficulty(value)
-    }
-}
-
-impl From<Difficulty> for u64 {
-    fn from(value: Difficulty) -> Self {
-        value.0
     }
 }
 
@@ -115,103 +169,120 @@ pub trait DifficultyAdjustment {
     fn get_difficulty(&self) -> Option<Difficulty>;
 }
 
-#[cfg(feature = "base_node")]
-pub mod util {
-    use super::*;
-    use crate::U256;
-
-    /// This will provide the difficulty of the hash assuming the hash is big_endian
-    pub(crate) fn big_endian_difficulty(hash: &[u8]) -> Difficulty {
-        let scalar = U256::from_big_endian(hash); // Big endian so the hash has leading zeroes
-        let result = U256::MAX / scalar;
-        let result = result.min(u64::MAX.into());
-        result.low_u64().into()
-    }
-
-    /// This will provide the difficulty of the hash assuming the hash is little_endian
-    pub(crate) fn little_endian_difficulty(hash: &[u8]) -> Difficulty {
-        let scalar = U256::from_little_endian(hash); // Little endian so the hash has trailing zeroes
-        let result = U256::MAX / scalar;
-        let result = result.min(u64::MAX.into());
-        result.low_u64().into()
-    }
-
-    #[cfg(test)]
-    mod test {
-        use super::*;
-
-        #[test]
-        fn be_high_target() {
-            let target: &[u8] = &[
-                0xff, 0xff, 0xff, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-                0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-            ];
-            let expected = Difficulty::from(1);
-            assert_eq!(big_endian_difficulty(target), expected);
-        }
-
-        #[test]
-        fn be_max_difficulty() {
-            let target = U256::MAX / U256::from(u64::MAX);
-            let mut bytes = [0u8; 32];
-            target.to_big_endian(&mut bytes);
-            assert_eq!(big_endian_difficulty(&bytes), Difficulty::from(u64::MAX));
-        }
-
-        #[test]
-        fn be_stop_overflow() {
-            let target: u64 = 64;
-            let expected = u64::MAX;
-            assert_eq!(big_endian_difficulty(&target.to_be_bytes()), Difficulty::from(expected));
-        }
-
-        #[test]
-        fn le_high_target() {
-            let target: &[u8] = &[
-                0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-                0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0xff, 0xff, 0xff,
-            ];
-            let expected = Difficulty::from(1);
-            assert_eq!(little_endian_difficulty(target), expected);
-        }
-
-        #[test]
-        fn le_max_difficulty() {
-            let target = U256::MAX / U256::from(u64::MAX);
-            let mut bytes = [0u8; 32];
-            target.to_little_endian(&mut bytes);
-            assert_eq!(little_endian_difficulty(&bytes), Difficulty::from(u64::MAX));
-        }
-
-        #[test]
-        fn le_stop_overflow() {
-            let target: u64 = 64;
-            let expected = u64::MAX;
-            assert_eq!(
-                little_endian_difficulty(&target.to_be_bytes()),
-                Difficulty::from(expected)
-            );
-        }
-    }
-}
-
 #[cfg(test)]
 mod test {
-    use crate::proof_of_work::difficulty::Difficulty;
+    use crate::{
+        proof_of_work::{
+            difficulty::{CheckedAdd, CheckedSub, MIN_DIFFICULTY},
+            Difficulty,
+        },
+        U256,
+    };
 
     #[test]
     fn add_difficulty() {
         assert_eq!(
-            Difficulty::from(1_000) + Difficulty::from(8_000),
-            Difficulty::from(9_000)
+            Difficulty::from_u64(1_000).unwrap().checked_add(8_000).unwrap(),
+            Difficulty::from_u64(9_000).unwrap()
         );
-        assert_eq!(Difficulty::default() + Difficulty::from(42), Difficulty::from(43));
-        assert_eq!(Difficulty::from(15) + Difficulty::from(5), Difficulty::from(20));
+        assert_eq!(
+            Difficulty::default().checked_add(42).unwrap(),
+            Difficulty::from_u64(MIN_DIFFICULTY + 42).unwrap()
+        );
+        assert_eq!(
+            Difficulty::from_u64(15).unwrap().checked_add(5).unwrap(),
+            Difficulty::from_u64(20).unwrap()
+        );
     }
 
     #[test]
     fn test_format() {
-        let d = Difficulty::from(1_000_000);
+        let d = Difficulty::from_u64(1_000_000).unwrap();
         assert_eq!("1,000,000", format!("{}", d));
+    }
+
+    #[test]
+    fn difficulty_converts_correctly_at_its_limits() {
+        for d in 0..=MIN_DIFFICULTY + 1 {
+            if d < MIN_DIFFICULTY {
+                assert!(Difficulty::from_u64(d).is_err());
+            } else {
+                assert!(Difficulty::from_u64(d).is_ok());
+            }
+        }
+        assert_eq!(Difficulty::min().as_u64(), MIN_DIFFICULTY);
+        assert_eq!(Difficulty::max().as_u64(), u64::MAX);
+    }
+
+    #[test]
+    fn addition_does_not_overflow() {
+        let d1 = Difficulty::from_u64(100).unwrap();
+        assert!(d1.checked_add(1).is_some());
+        let d2 = Difficulty::max();
+        assert!(d2.checked_add(1).is_none());
+    }
+
+    #[test]
+    fn subtraction_does_not_underflow() {
+        let d1 = Difficulty::from_u64(100).unwrap();
+        assert!(d1.checked_sub(1).is_some());
+        let d2 = Difficulty::max();
+        assert!(d1.checked_sub(d2).is_none());
+    }
+
+    #[test]
+    fn be_high_target() {
+        let target: &[u8] = &[
+            0xff, 0xff, 0xff, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+            0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+        ];
+        let expected = Difficulty::min();
+        assert_eq!(Difficulty::big_endian_difficulty(target).unwrap(), expected);
+    }
+
+    #[test]
+    fn be_max_difficulty() {
+        let target = U256::MAX / U256::from(u64::MAX);
+        let mut bytes = [0u8; 32];
+        target.to_big_endian(&mut bytes);
+        assert_eq!(Difficulty::big_endian_difficulty(&bytes).unwrap(), Difficulty::max());
+    }
+
+    #[test]
+    fn be_stop_overflow() {
+        let target: u64 = 64;
+        let expected = u64::MAX;
+        assert_eq!(
+            Difficulty::big_endian_difficulty(&target.to_be_bytes()).unwrap(),
+            Difficulty::from_u64(expected).unwrap()
+        );
+    }
+
+    #[test]
+    fn le_high_target() {
+        let target: &[u8] = &[
+            0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+            0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0xff, 0xff, 0xff,
+        ];
+        let expected = Difficulty::min();
+        assert_eq!(Difficulty::little_endian_difficulty(target).unwrap(), expected);
+    }
+
+    #[test]
+    fn le_max_difficulty() {
+        let target = U256::MAX / U256::from(u64::MAX);
+        let mut bytes = [0u8; 32];
+        target.to_little_endian(&mut bytes);
+        assert_eq!(Difficulty::little_endian_difficulty(&bytes).unwrap(), Difficulty::max());
+    }
+
+    #[test]
+    fn le_stop_overflow() {
+        let target: u64 = 64;
+        let expected = u64::MAX;
+        assert_eq!(
+            Difficulty::little_endian_difficulty(&target.to_be_bytes()).unwrap(),
+            Difficulty::from_u64(expected).unwrap()
+        );
     }
 }

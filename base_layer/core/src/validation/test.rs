@@ -36,8 +36,13 @@ use crate::{
     proof_of_work::AchievedTargetDifficulty,
     test_helpers::{blockchain::create_store_with_consensus, create_chain_header},
     transactions::{
-        tari_amount::{uT, MicroTari},
-        test_helpers::{create_random_signature_from_s_key, create_utxo},
+        key_manager::TxoStage,
+        tari_amount::{uT, MicroMinotari},
+        test_helpers::{
+            create_random_signature_from_secret_key,
+            create_test_core_key_manager_with_memory_db,
+            create_utxo,
+        },
         transaction_components::{KernelBuilder, KernelFeatures, OutputFeatures, TransactionKernel},
         CryptoFactories,
     },
@@ -46,12 +51,18 @@ use crate::{
 };
 
 mod header_validators {
+    use tari_utilities::epoch_time::EpochTime;
+
     use super::*;
-    use crate::validation::{header::HeaderFullValidator, HeaderChainLinkedValidator};
+    use crate::{
+        block_specs,
+        test_helpers::blockchain::{create_main_chain, create_new_blockchain},
+        validation::{header::HeaderFullValidator, HeaderChainLinkedValidator},
+    };
 
     #[test]
     fn header_iter_empty_and_invalid_height() {
-        let consensus_manager = ConsensusManager::builder(Network::LocalNet).build();
+        let consensus_manager = ConsensusManager::builder(Network::LocalNet).build().unwrap();
         let genesis = consensus_manager.get_genesis_block();
         let db = create_store_with_consensus(consensus_manager);
 
@@ -69,7 +80,7 @@ mod header_validators {
 
     #[test]
     fn header_iter_fetch_in_chunks() {
-        let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build();
+        let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build().unwrap();
         let db = create_store_with_consensus(consensus_manager.clone());
         let headers = (1..=15).fold(vec![db.fetch_chain_header(0).unwrap()], |mut acc, i| {
             let prev = acc.last().unwrap();
@@ -99,7 +110,7 @@ mod header_validators {
 
     #[test]
     fn it_validates_that_version_is_in_range() {
-        let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build();
+        let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build().unwrap();
         let db = create_store_with_consensus(consensus_manager.clone());
 
         let genesis = db.fetch_chain_header(0).unwrap();
@@ -107,7 +118,7 @@ mod header_validators {
         let mut header = BlockHeader::from_previous(genesis.header());
         header.version = u16::MAX;
         let difficulty_calculator = DifficultyCalculator::new(consensus_manager.clone(), Default::default());
-        let validator = HeaderFullValidator::new(consensus_manager, difficulty_calculator, false);
+        let validator = HeaderFullValidator::new(consensus_manager, difficulty_calculator);
 
         let err = validator
             .validate(&*db.db_read_access().unwrap(), &header, genesis.header(), &[], None)
@@ -116,30 +127,81 @@ mod header_validators {
             version: u16::MAX
         }));
     }
+
+    #[tokio::test]
+    async fn it_does_a_sanity_check_on_the_number_of_timestamps_provided() {
+        let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build().unwrap();
+        let db = create_new_blockchain();
+
+        let (_, blocks) = create_main_chain(&db, block_specs!(["1->GB"], ["2->1"], ["3->2"])).await;
+        let last_block = blocks.get("3").unwrap();
+
+        let candidate_header = BlockHeader::from_previous(last_block.header());
+        let difficulty_calculator = DifficultyCalculator::new(consensus_manager.clone(), Default::default());
+        let validator = HeaderFullValidator::new(consensus_manager, difficulty_calculator);
+        let mut timestamps = db.fetch_block_timestamps(*blocks.get("3").unwrap().hash()).unwrap();
+
+        // First, lets check that everything else is valid
+        validator
+            .validate(
+                &*db.db_read_access().unwrap(),
+                &candidate_header,
+                last_block.header(),
+                &timestamps,
+                None,
+            )
+            .unwrap();
+
+        // Add an extra timestamp
+        timestamps.push(EpochTime::now());
+        let err = validator
+            .validate(
+                &*db.db_read_access().unwrap(),
+                &candidate_header,
+                last_block.header(),
+                &timestamps,
+                None,
+            )
+            .unwrap_err();
+        assert!(matches!(err, ValidationError::IncorrectNumberOfTimestampsProvided {
+            actual: 5,
+            expected: 4
+        }));
+    }
 }
 
-#[test]
+#[tokio::test]
 #[allow(clippy::too_many_lines)]
-fn chain_balance_validation() {
+async fn chain_balance_validation() {
     let factories = CryptoFactories::default();
-    let consensus_manager = ConsensusManagerBuilder::new(Network::Esmeralda).build();
+    let consensus_manager = ConsensusManagerBuilder::new(Network::Esmeralda).build().unwrap();
     let genesis = consensus_manager.get_genesis_block();
     let faucet_value = 5000 * uT;
-    let (faucet_utxo, faucet_key, _) = create_utxo(
+    let key_manager = create_test_core_key_manager_with_memory_db();
+    let (faucet_utxo, faucet_key_id, _) = create_utxo(
         faucet_value,
-        &factories,
+        &key_manager,
         &OutputFeatures::default(),
         &script!(Nop),
         &Covenant::default(),
-        MicroTari::zero(),
-    );
-    let (pk, sig) = create_random_signature_from_s_key(faucet_key, 0.into(), 0, KernelFeatures::empty());
+        MicroMinotari::zero(),
+    )
+    .await;
+    let (pk, sig) = create_random_signature_from_secret_key(
+        &key_manager,
+        faucet_key_id,
+        0.into(),
+        0,
+        KernelFeatures::empty(),
+        TxoStage::Output,
+    )
+    .await;
     let excess = Commitment::from_public_key(&pk);
     let kernel =
-        TransactionKernel::new_current_version(KernelFeatures::empty(), MicroTari::from(0), 0, excess, sig, None);
+        TransactionKernel::new_current_version(KernelFeatures::empty(), MicroMinotari::from(0), 0, excess, sig, None);
     let mut gen_block = genesis.block().clone();
     gen_block.body.add_output(faucet_utxo);
-    gen_block.body.add_kernels(&mut vec![kernel]);
+    gen_block.body.add_kernels([kernel]);
     let mut utxo_sum = HomomorphicCommitment::default();
     let mut kernel_sum = HomomorphicCommitment::default();
     let burned_sum = HomomorphicCommitment::default();
@@ -160,7 +222,8 @@ fn chain_balance_validation() {
     let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet)
         .with_block(genesis.clone())
         .add_consensus_constants(constants)
-        .build();
+        .build()
+        .unwrap();
 
     let db = create_store_with_consensus(consensus_manager.clone());
 
@@ -173,19 +236,28 @@ fn chain_balance_validation() {
     //---------------------------------- Add a new coinbase and header --------------------------------------------//
     let mut txn = DbTransaction::new();
     let coinbase_value = consensus_manager.get_block_reward_at(1);
-    let (coinbase, coinbase_key, _) = create_utxo(
+    let (coinbase, coinbase_key_id, _) = create_utxo(
         coinbase_value,
-        &factories,
+        &key_manager,
         &OutputFeatures::create_coinbase(1, None),
         &script!(Nop),
         &Covenant::default(),
-        MicroTari::zero(),
-    );
-    // let _coinbase_hash = coinbase.hash();
-    let (pk, sig) = create_random_signature_from_s_key(coinbase_key, 0.into(), 0, KernelFeatures::create_coinbase());
+        MicroMinotari::zero(),
+    )
+    .await;
+
+    let (pk, sig) = create_random_signature_from_secret_key(
+        &key_manager,
+        coinbase_key_id,
+        0.into(),
+        0,
+        KernelFeatures::create_coinbase(),
+        TxoStage::Output,
+    )
+    .await;
     let excess = Commitment::from_public_key(&pk);
     let kernel = KernelBuilder::new()
-        .with_signature(&sig)
+        .with_signature(sig)
         .with_excess(&excess)
         .with_features(KernelFeatures::COINBASE_KERNEL)
         .build()
@@ -226,18 +298,27 @@ fn chain_balance_validation() {
     let mut txn = DbTransaction::new();
 
     let v = consensus_manager.get_block_reward_at(2) + uT;
-    let (coinbase, key, _) = create_utxo(
+    let (coinbase, spending_key_id, _) = create_utxo(
         v,
-        &factories,
+        &key_manager,
         &OutputFeatures::create_coinbase(1, None),
         &script!(Nop),
         &Covenant::default(),
-        MicroTari::zero(),
-    );
-    let (pk, sig) = create_random_signature_from_s_key(key, 0.into(), 0, KernelFeatures::create_coinbase());
+        MicroMinotari::zero(),
+    )
+    .await;
+    let (pk, sig) = create_random_signature_from_secret_key(
+        &key_manager,
+        spending_key_id,
+        0.into(),
+        0,
+        KernelFeatures::create_coinbase(),
+        TxoStage::Output,
+    )
+    .await;
     let excess = Commitment::from_public_key(&pk);
     let kernel = KernelBuilder::new()
-        .with_signature(&sig)
+        .with_signature(sig)
         .with_excess(&excess)
         .with_features(KernelFeatures::COINBASE_KERNEL)
         .build()
@@ -274,28 +355,38 @@ fn chain_balance_validation() {
         .unwrap_err();
 }
 
-#[test]
+#[tokio::test]
 #[allow(clippy::too_many_lines)]
-fn chain_balance_validation_burned() {
+async fn chain_balance_validation_burned() {
     let factories = CryptoFactories::default();
-    let consensus_manager = ConsensusManagerBuilder::new(Network::Esmeralda).build();
+    let consensus_manager = ConsensusManagerBuilder::new(Network::Esmeralda).build().unwrap();
     let genesis = consensus_manager.get_genesis_block();
     let faucet_value = 5000 * uT;
-    let (faucet_utxo, faucet_key, _) = create_utxo(
+    let key_manager = create_test_core_key_manager_with_memory_db();
+    let (faucet_utxo, faucet_key_id, _) = create_utxo(
         faucet_value,
-        &factories,
+        &key_manager,
         &OutputFeatures::default(),
         &script!(Nop),
         &Covenant::default(),
-        MicroTari::zero(),
-    );
-    let (pk, sig) = create_random_signature_from_s_key(faucet_key, 0.into(), 0, KernelFeatures::empty());
+        MicroMinotari::zero(),
+    )
+    .await;
+    let (pk, sig) = create_random_signature_from_secret_key(
+        &key_manager,
+        faucet_key_id,
+        0.into(),
+        0,
+        KernelFeatures::empty(),
+        TxoStage::Output,
+    )
+    .await;
     let excess = Commitment::from_public_key(&pk);
     let kernel =
-        TransactionKernel::new_current_version(KernelFeatures::empty(), MicroTari::from(0), 0, excess, sig, None);
+        TransactionKernel::new_current_version(KernelFeatures::empty(), MicroMinotari::from(0), 0, excess, sig, None);
     let mut gen_block = genesis.block().clone();
     gen_block.body.add_output(faucet_utxo);
-    gen_block.body.add_kernels(&mut vec![kernel]);
+    gen_block.body.add_kernels([kernel]);
     let mut utxo_sum = HomomorphicCommitment::default();
     let mut kernel_sum = HomomorphicCommitment::default();
     let mut burned_sum = HomomorphicCommitment::default();
@@ -316,7 +407,8 @@ fn chain_balance_validation_burned() {
     let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet)
         .with_block(genesis.clone())
         .add_consensus_constants(constants)
-        .build();
+        .build()
+        .unwrap();
 
     let db = create_store_with_consensus(consensus_manager.clone());
 
@@ -328,37 +420,55 @@ fn chain_balance_validation_burned() {
 
     //---------------------------------- Add block (coinbase + burned) --------------------------------------------//
     let mut txn = DbTransaction::new();
-    let coinbase_value = consensus_manager.get_block_reward_at(1) - MicroTari::from(100);
-    let (coinbase, coinbase_key, _) = create_utxo(
+    let coinbase_value = consensus_manager.get_block_reward_at(1) - MicroMinotari::from(100);
+    let (coinbase, coinbase_key_id, _) = create_utxo(
         coinbase_value,
-        &factories,
+        &key_manager,
         &OutputFeatures::create_coinbase(1, None),
         &script!(Nop),
         &Covenant::default(),
-        MicroTari::zero(),
-    );
-    let (pk, sig) = create_random_signature_from_s_key(coinbase_key, 0.into(), 0, KernelFeatures::create_coinbase());
+        MicroMinotari::zero(),
+    )
+    .await;
+    let (pk, sig) = create_random_signature_from_secret_key(
+        &key_manager,
+        coinbase_key_id,
+        0.into(),
+        0,
+        KernelFeatures::create_coinbase(),
+        TxoStage::Output,
+    )
+    .await;
     let excess = Commitment::from_public_key(&pk);
     let kernel = KernelBuilder::new()
-        .with_signature(&sig)
+        .with_signature(sig)
         .with_excess(&excess)
         .with_features(KernelFeatures::COINBASE_KERNEL)
         .build()
         .unwrap();
 
-    let (burned, burned_key, _) = create_utxo(
+    let (burned, burned_key_id, _) = create_utxo(
         100.into(),
-        &factories,
+        &key_manager,
         &OutputFeatures::create_burn_output(),
         &script!(Nop),
         &Covenant::default(),
-        MicroTari::zero(),
-    );
+        MicroMinotari::zero(),
+    )
+    .await;
 
-    let (pk2, sig2) = create_random_signature_from_s_key(burned_key, 0.into(), 0, KernelFeatures::create_burn());
+    let (pk2, sig2) = create_random_signature_from_secret_key(
+        &key_manager,
+        burned_key_id,
+        0.into(),
+        0,
+        KernelFeatures::create_burn(),
+        TxoStage::Output,
+    )
+    .await;
     let excess2 = Commitment::from_public_key(&pk2);
     let kernel2 = KernelBuilder::new()
-        .with_signature(&sig2)
+        .with_signature(sig2)
         .with_excess(&excess2)
         .with_features(KernelFeatures::create_burn())
         .with_burn_commitment(Some(burned.commitment.clone()))
@@ -393,14 +503,7 @@ fn chain_balance_validation_burned() {
     mmr_leaf_index = 5;
 
     txn.insert_kernel(kernel2.clone(), *header1.hash(), mmr_position);
-    txn.insert_pruned_utxo(
-        burned.hash(),
-        burned.witness_hash(),
-        *header1.hash(),
-        header1.height(),
-        mmr_leaf_index,
-        0,
-    );
+    txn.insert_pruned_utxo(burned.hash(), *header1.hash(), header1.height(), mmr_leaf_index, 0);
 
     db.commit(txn).unwrap();
     utxo_sum = &coinbase.commitment + &utxo_sum;
@@ -413,32 +516,45 @@ fn chain_balance_validation_burned() {
 mod transaction_validator {
     use super::*;
     use crate::{
-        transactions::transaction_components::TransactionError,
+        transactions::{
+            test_helpers::create_test_core_key_manager_with_memory_db,
+            transaction_components::TransactionError,
+        },
         validation::transaction::TransactionInternalConsistencyValidator,
     };
 
-    #[test]
-    fn it_rejects_coinbase_outputs() {
-        let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build();
+    #[tokio::test]
+    async fn it_rejects_coinbase_outputs() {
+        let key_manager = create_test_core_key_manager_with_memory_db();
+        let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build().unwrap();
         let db = create_store_with_consensus(consensus_manager.clone());
         let factories = CryptoFactories::default();
         let validator = TransactionInternalConsistencyValidator::new(true, consensus_manager, factories);
         let features = OutputFeatures::create_coinbase(0, None);
-        let (tx, _, _) = tx!(MicroTari(100_000), fee: MicroTari(5), inputs: 1, outputs: 1, features: features);
+        let tx = match tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, features: features, &key_manager)
+        {
+            Ok((tx, _, _)) => tx,
+            Err(e) => panic!("Error found: {}", e),
+        };
         let tip = db.get_chain_metadata().unwrap();
         let err = validator.validate_with_current_tip(&tx, tip).unwrap_err();
         unpack_enum!(ValidationError::ErroneousCoinbaseOutput = err);
     }
 
-    #[test]
-    fn coinbase_extra_must_be_empty() {
-        let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build();
+    #[tokio::test]
+    async fn coinbase_extra_must_be_empty() {
+        let key_manager = create_test_core_key_manager_with_memory_db();
+        let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build().unwrap();
         let db = create_store_with_consensus(consensus_manager.clone());
         let factories = CryptoFactories::default();
         let validator = TransactionInternalConsistencyValidator::new(true, consensus_manager, factories);
         let mut features = OutputFeatures { ..Default::default() };
         features.coinbase_extra = b"deadbeef".to_vec();
-        let (tx, _, _) = tx!(MicroTari(100_000), fee: MicroTari(5), inputs: 1, outputs: 1, features: features);
+        let tx = match tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, features: features, &key_manager)
+        {
+            Ok((tx, _, _)) => tx,
+            Err(e) => panic!("Error found: {}", e),
+        };
         let tip = db.get_chain_metadata().unwrap();
         let err = validator.validate_with_current_tip(&tx, tip).unwrap_err();
         assert!(matches!(
@@ -448,7 +564,6 @@ mod transaction_validator {
     }
 }
 
-// TODO: This is probably generally useful and should be included in the BlockchainDatabase
 /// Iterator that emits BlockHeaders until a given height. This iterator loads headers in chunks of size `chunk_size`
 /// for a low memory footprint. The chunk buffer is allocated once and reused.
 pub struct HeaderIter<'a, B> {

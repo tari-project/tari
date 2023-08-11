@@ -22,7 +22,7 @@
 
 use std::convert::TryFrom;
 
-use tari_common_types::types::{BlindingFactor, FixedHash};
+use tari_common_types::types::{FixedHash, PrivateKey};
 use tari_utilities::ByteArray;
 
 use super::core as proto;
@@ -38,11 +38,9 @@ impl TryFrom<proto::BlockHeader> for BlockHeader {
     type Error = String;
 
     fn try_from(header: proto::BlockHeader) -> Result<Self, Self::Error> {
-        let total_kernel_offset =
-            BlindingFactor::from_bytes(&header.total_kernel_offset).map_err(|err| err.to_string())?;
+        let total_kernel_offset = PrivateKey::from_bytes(&header.total_kernel_offset).map_err(|err| err.to_string())?;
 
-        let total_script_offset =
-            BlindingFactor::from_bytes(&header.total_script_offset).map_err(|err| err.to_string())?;
+        let total_script_offset = PrivateKey::from_bytes(&header.total_script_offset).map_err(|err| err.to_string())?;
 
         let timestamp = header
             .timestamp
@@ -59,7 +57,6 @@ impl TryFrom<proto::BlockHeader> for BlockHeader {
             prev_hash: FixedHash::try_from(header.prev_hash).map_err(|err| err.to_string())?,
             timestamp,
             output_mr: FixedHash::try_from(header.output_mr).map_err(|err| err.to_string())?,
-            witness_mr: FixedHash::try_from(header.witness_mr).map_err(|err| err.to_string())?,
             output_mmr_size: header.output_mmr_size,
             kernel_mr: FixedHash::try_from(header.kernel_mr).map_err(|err| err.to_string())?,
             kernel_mmr_size: header.kernel_mmr_size,
@@ -82,7 +79,6 @@ impl From<BlockHeader> for proto::BlockHeader {
             prev_hash: header.prev_hash.to_vec(),
             timestamp: Some(timestamp),
             output_mr: header.output_mr.to_vec(),
-            witness_mr: header.witness_mr.to_vec(),
             kernel_mr: header.kernel_mr.to_vec(),
             input_mr: header.input_mr.to_vec(),
             total_kernel_offset: header.total_kernel_offset.to_vec(),

@@ -158,6 +158,7 @@ impl ConnectivityRequester {
     }
 
     /// Dial many peers, returning a Stream that emits the dial Result as each dial completes.
+    #[allow(clippy::let_with_type_underscore)]
     #[tracing::instrument(level = "trace", skip(self, peers))]
     #[allow(clippy::let_with_type_underscore)]
     pub fn dial_many_peers<I: IntoIterator<Item = NodeId>>(

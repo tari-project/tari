@@ -4,7 +4,6 @@
 // this is nasty
 //  ¯\_(ツ)_/¯
 
-// TODO: Use implementation in cucumber tests instead (see helpers/ffi).
 
 const lib = require("./lib");
 const ref = require("ref-napi");
@@ -31,7 +30,6 @@ try {
     err
   );
 
-  // todo: error handling
 
   console.log("Create Comms config...");
   let comms = lib.comms_config_create(

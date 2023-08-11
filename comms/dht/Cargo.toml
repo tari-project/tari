@@ -1,6 +1,6 @@
 [package]
 name = "tari_comms_dht"
-version = "0.50.0-rc.0"
+version = "0.51.0-pre.4"
 authors = ["The Tari Development Community"]
 description = "Tari comms DHT module"
 repository = "https://github.com/tari-project/tari"
@@ -13,8 +13,8 @@ edition = "2018"
 tari_comms = {  path = "../core", features = ["rpc"] }
 tari_common = { path = "../../common" }
 tari_comms_rpc_macros = {  path = "../rpc_macros" }
-tari_crypto = { version = "0.16.2"}
-tari_utilities = "0.4.10"
+tari_crypto = { version = "0.18" }
+tari_utilities = { version = "0.5" }
 tari_shutdown = {  path = "../../infrastructure/shutdown" }
 tari_storage = {  path = "../../infrastructure/storage" }
 tari_common_sqlite = { path = "../../common_sqlite" }
@@ -26,13 +26,13 @@ chacha20poly1305 = "0.10.1"
 chrono = { version = "0.4.19", default-features = false }
 diesel = { version = "2.0.3", features = ["sqlite", "serde_json", "chrono", "numeric"] }
 diesel_migrations = "2.0.0"
-digest = "0.9.0"
+digest = "0.10"
 futures = "^0.3.1"
 log = "0.4.8"
 log-mdc = "0.1.0"
 prost = "=0.9.0"
 prost-types = "=0.9.0"
-rand = "0.7.3"
+rand = "0.8"
 serde = "1.0.90"
 thiserror = "1.0.26"
 tower = { version = "0.4", features = ["full"] }
@@ -58,7 +58,7 @@ lmdb-zero = "0.4.4"
 tempfile = "3.1.0"
 tokio-stream = { version = "0.1.9", features = ["sync"] }
 petgraph = "0.5.1"
-clap = "2.33.0"
+clap = "3.2"
 
 
 [build-dependencies]
@@ -66,4 +66,3 @@ tari_common = {  path = "../../common" }
 
 [features]
 test-mocks = []
-avx2 = ["tari_crypto/simd_backend"]

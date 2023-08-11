@@ -25,21 +25,27 @@ use std::{fmt, fmt::Display, sync::Arc};
 use tari_common::configuration::Network;
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::peer_manager::NodeIdentity;
+use tari_core::transactions::key_manager::TariKeyId;
 
 #[derive(Clone, Debug)]
 pub struct WalletIdentity {
     pub node_identity: Arc<NodeIdentity>,
     pub network: Network,
     pub address: TariAddress,
+    pub wallet_node_key_id: TariKeyId,
 }
 
 impl WalletIdentity {
     pub fn new(node_identity: Arc<NodeIdentity>, network: Network) -> Self {
         let address = TariAddress::new(node_identity.public_key().clone(), network);
+        let wallet_node_key_id = TariKeyId::Imported {
+            key: node_identity.public_key().clone(),
+        };
         WalletIdentity {
             node_identity,
             network,
             address,
+            wallet_node_key_id,
         }
     }
 }
@@ -48,7 +54,6 @@ impl Display for WalletIdentity {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "{}", self.node_identity)?;
         writeln!(f, "Network: {:?}", self.network)?;
-
         Ok(())
     }
 }

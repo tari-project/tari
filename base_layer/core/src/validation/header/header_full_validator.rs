@@ -45,19 +45,13 @@ pub const LOG_TARGET: &str = "c::val::header_full_validator";
 pub struct HeaderFullValidator {
     rules: ConsensusManager,
     difficulty_calculator: DifficultyCalculator,
-    bypass_prev_timestamp_verification: bool,
 }
 
 impl HeaderFullValidator {
-    pub fn new(
-        rules: ConsensusManager,
-        difficulty_calculator: DifficultyCalculator,
-        bypass_prev_timestamp_verification: bool,
-    ) -> Self {
+    pub fn new(rules: ConsensusManager, difficulty_calculator: DifficultyCalculator) -> Self {
         Self {
             rules,
             difficulty_calculator,
-            bypass_prev_timestamp_verification,
         }
     }
 }
@@ -73,17 +67,15 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for HeaderFullValidator
     ) -> Result<AchievedTargetDifficulty, ValidationError> {
         let constants = self.rules.consensus_constants(header.height);
 
+        check_not_bad_block(db, header.hash())?;
         check_blockchain_version(constants, header.version)?;
-
-        if !self.bypass_prev_timestamp_verification {
-            check_timestamp_count(header, prev_timestamps, constants)?;
-            check_header_timestamp_greater_than_median(header, prev_timestamps)?;
-        }
-
         check_height(header, prev_header)?;
+
+        sanity_check_timestamp_count(header, prev_timestamps, constants)?;
+        check_header_timestamp_greater_than_median(header, prev_timestamps)?;
+
         check_prev_hash(header, prev_header)?;
         check_timestamp_ftl(header, &self.rules)?;
-        check_not_bad_block(db, header.hash())?;
         check_pow_data(header, &self.rules, db)?;
 
         let achieved_target = if let Some(target) = target_difficulty {
@@ -97,19 +89,24 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for HeaderFullValidator
     }
 }
 
-fn check_timestamp_count(
+/// This is a sanity check for the information provided by the caller, rather than a validation for the header itself.
+fn sanity_check_timestamp_count(
     header: &BlockHeader,
-    prev_timestamps: &[EpochTime],
+    timestamps: &[EpochTime],
     consensus_constants: &ConsensusConstants,
 ) -> Result<(), ValidationError> {
-    let expected_timestamp_count = cmp::min(
-        consensus_constants.get_median_timestamp_count(),
-        header.height as usize - 1,
-    );
-    let timestamps: Vec<EpochTime> = prev_timestamps.iter().take(expected_timestamp_count).copied().collect();
-    if timestamps.len() < expected_timestamp_count {
-        return Err(ValidationError::NotEnoughTimestamps {
-            actual: timestamps.len(),
+    let expected_timestamp_count = cmp::min(consensus_constants.median_timestamp_count() as u64, header.height);
+    // Empty `timestamps` is never valid
+    if timestamps.is_empty() {
+        return Err(ValidationError::IncorrectNumberOfTimestampsProvided {
+            expected: expected_timestamp_count,
+            actual: 0,
+        });
+    }
+
+    if timestamps.len() as u64 != expected_timestamp_count {
+        return Err(ValidationError::IncorrectNumberOfTimestampsProvided {
+            actual: timestamps.len() as u64,
             expected: expected_timestamp_count,
         });
     }
@@ -182,9 +179,14 @@ fn check_pow_data<B: BlockchainBackend>(
     rules: &ConsensusManager,
     db: &B,
 ) -> Result<(), ValidationError> {
-    use PowAlgorithm::{Monero, Sha3};
+    use PowAlgorithm::{RandomX, Sha3x};
     match block_header.pow.pow_algo {
-        Monero => {
+        RandomX => {
+            if block_header.nonce != 0 {
+                return Err(ValidationError::BlockHeaderError(
+                    BlockHeaderValidationError::InvalidNonce,
+                ));
+            }
             let monero_data =
                 MoneroPowData::from_header(block_header).map_err(|e| ValidationError::CustomError(e.to_string()))?;
             let seed_height = db.fetch_monero_seed_first_seen_height(&monero_data.randomx_key)?;
@@ -200,7 +202,7 @@ fn check_pow_data<B: BlockchainBackend>(
 
             Ok(())
         },
-        Sha3 => {
+        Sha3x => {
             if !block_header.pow.pow_data.is_empty() {
                 return Err(ValidationError::CustomError(
                     "Proof of work data must be empty for Sha3 blocks".to_string(),

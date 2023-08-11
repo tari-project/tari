@@ -29,8 +29,9 @@ use crate::{
     borsh::SerializedSize,
     chain_storage::{BlockchainBackend, MmrRoots, MmrTree},
     consensus::ConsensusConstants,
+    covenants::Covenant,
     proof_of_work::{
-        monero_difficulty,
+        randomx_difficulty,
         randomx_factory::RandomXFactory,
         sha3x_difficulty,
         AchievedTargetDifficulty,
@@ -80,6 +81,7 @@ pub fn check_header_timestamp_greater_than_median(
     timestamps: &[EpochTime],
 ) -> Result<(), ValidationError> {
     if timestamps.is_empty() {
+        // unreachable due to sanity_check_timestamp_count
         return Err(ValidationError::BlockHeaderError(
             BlockHeaderValidationError::InvalidTimestamp("The timestamp is empty".to_string()),
         ));
@@ -110,8 +112,8 @@ pub fn check_target_difficulty(
     randomx_factory: &RandomXFactory,
 ) -> Result<AchievedTargetDifficulty, ValidationError> {
     let achieved = match block_header.pow_algo() {
-        PowAlgorithm::Monero => monero_difficulty(block_header, randomx_factory)?,
-        PowAlgorithm::Sha3 => sha3x_difficulty(block_header),
+        PowAlgorithm::RandomX => randomx_difficulty(block_header, randomx_factory)?,
+        PowAlgorithm::Sha3x => sha3x_difficulty(block_header)?,
     };
 
     match AchievedTargetDifficulty::try_construct(block_header.pow_algo(), target, achieved) {
@@ -196,7 +198,9 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
 
 /// Checks the byte size of TariScript is less than or equal to the given size, otherwise returns an error.
 pub fn check_tari_script_byte_size(script: &TariScript, max_script_size: usize) -> Result<(), ValidationError> {
-    let script_size = script.get_serialized_size();
+    let script_size = script
+        .get_serialized_size()
+        .map_err(|e| ValidationError::CustomError(e.to_string()))?;
     if script_size > max_script_size {
         return Err(ValidationError::TariScriptExceedsMaxSize {
             max_script_size,
@@ -274,16 +278,6 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
             kind: "Utxo",
         }));
     };
-    if header.witness_mr != mmr_roots.witness_mr {
-        warn!(
-            target: LOG_TARGET,
-            "Block header witness MMR roots in {} do not match calculated roots",
-            header.hash().to_hex()
-        );
-        return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots {
-            kind: "Witness",
-        }));
-    };
     if header.output_mmr_size != mmr_roots.output_mmr_size {
         warn!(
             target: LOG_TARGET,
@@ -336,6 +330,17 @@ pub fn check_permitted_output_types(
     {
         return Err(ValidationError::OutputTypeNotPermitted {
             output_type: output.features.output_type,
+        });
+    }
+
+    Ok(())
+}
+
+pub fn check_covenant_length(covenant: &Covenant, max_token_len: u32) -> Result<(), ValidationError> {
+    if covenant.num_tokens() > max_token_len as usize {
+        return Err(ValidationError::CovenantTooLarge {
+            max_size: max_token_len as usize,
+            actual_size: covenant.num_tokens(),
         });
     }
 
@@ -507,40 +512,49 @@ mod test {
     }
 
     mod check_coinbase_maturity {
-        use super::*;
-        use crate::transactions::{aggregated_body::AggregateBody, transaction_components::TransactionError};
+        use futures::executor::block_on;
 
-        #[test]
-        fn it_succeeds_for_valid_coinbase() {
+        use super::*;
+        use crate::transactions::{
+            aggregated_body::AggregateBody,
+            test_helpers::create_test_core_key_manager_with_memory_db,
+            transaction_components::TransactionError,
+        };
+
+        #[tokio::test]
+        async fn it_succeeds_for_valid_coinbase() {
             let height = 1;
-            let test_params = TestParams::new();
+            let key_manager = create_test_core_key_manager_with_memory_db();
+            let test_params = TestParams::new(&key_manager).await;
             let rules = test_helpers::create_consensus_manager();
-            let coinbase = test_helpers::create_unblinded_coinbase(&test_params, height, None);
-            let coinbase_output = coinbase.as_transaction_output(&CryptoFactories::default()).unwrap();
-            let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key);
+            let key_manager = create_test_core_key_manager_with_memory_db();
+            let coinbase = block_on(test_helpers::create_coinbase_wallet_output(&test_params, height, None));
+            let coinbase_output = coinbase.to_transaction_output(&key_manager).await.unwrap();
+            let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key_id, &key_manager).await;
 
             let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
 
             let reward = rules.calculate_coinbase_and_fees(height, body.kernels());
-            let coinbase_lock_height = rules.consensus_constants(height).coinbase_lock_height();
+            let coinbase_lock_height = rules.consensus_constants(height).coinbase_min_maturity();
             body.check_coinbase_output(reward, coinbase_lock_height, &CryptoFactories::default(), height)
                 .unwrap();
         }
 
-        #[test]
-        fn it_returns_error_for_invalid_coinbase_maturity() {
+        #[tokio::test]
+        async fn it_returns_error_for_invalid_coinbase_maturity() {
             let height = 1;
-            let test_params = TestParams::new();
+            let key_manager = create_test_core_key_manager_with_memory_db();
+            let test_params = TestParams::new(&key_manager).await;
             let rules = test_helpers::create_consensus_manager();
-            let mut coinbase = test_helpers::create_unblinded_coinbase(&test_params, height, None);
+            let mut coinbase = test_helpers::create_coinbase_wallet_output(&test_params, height, None).await;
             coinbase.features.maturity = 0;
-            let coinbase_output = coinbase.as_transaction_output(&CryptoFactories::default()).unwrap();
-            let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key);
+            let coinbase_output = coinbase.to_transaction_output(&key_manager).await.unwrap();
+            let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key_id, &key_manager).await;
 
             let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
 
             let reward = rules.calculate_coinbase_and_fees(height, body.kernels());
-            let coinbase_lock_height = rules.consensus_constants(height).coinbase_lock_height();
+            let coinbase_lock_height = rules.consensus_constants(height).coinbase_min_maturity();
 
             let err = body
                 .check_coinbase_output(reward, coinbase_lock_height, &CryptoFactories::default(), height)
@@ -548,19 +562,20 @@ mod test {
             unpack_enum!(TransactionError::InvalidCoinbaseMaturity = err);
         }
 
-        #[test]
-        fn it_returns_error_for_invalid_coinbase_reward() {
+        #[tokio::test]
+        async fn it_returns_error_for_invalid_coinbase_reward() {
             let height = 1;
-            let test_params = TestParams::new();
+            let key_manager = create_test_core_key_manager_with_memory_db();
+            let test_params = TestParams::new(&key_manager).await;
             let rules = test_helpers::create_consensus_manager();
-            let mut coinbase = test_helpers::create_unblinded_coinbase(&test_params, height, None);
+            let mut coinbase = test_helpers::create_coinbase_wallet_output(&test_params, height, None).await;
             coinbase.value = 123.into();
-            let coinbase_output = coinbase.as_transaction_output(&CryptoFactories::default()).unwrap();
-            let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key);
+            let coinbase_output = coinbase.to_transaction_output(&key_manager).await.unwrap();
+            let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key_id, &key_manager).await;
 
             let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
             let reward = rules.calculate_coinbase_and_fees(height, body.kernels());
-            let coinbase_lock_height = rules.consensus_constants(height).coinbase_lock_height();
+            let coinbase_lock_height = rules.consensus_constants(height).coinbase_min_maturity();
 
             let err = body
                 .check_coinbase_output(reward, coinbase_lock_height, &CryptoFactories::default(), height)

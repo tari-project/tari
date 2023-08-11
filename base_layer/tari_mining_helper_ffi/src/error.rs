@@ -82,15 +82,15 @@ impl From<InterfaceError> for MiningHelperError {
 impl From<HexError> for MiningHelperError {
     fn from(h: HexError) -> Self {
         match h {
-            HexError::HexConversionError => Self {
+            HexError::HexConversionError {} => Self {
                 code: 404,
                 message: format!("{:?}", h),
             },
-            HexError::LengthError => Self {
+            HexError::LengthError {} => Self {
                 code: 501,
                 message: format!("{:?}", h),
             },
-            HexError::InvalidCharacter(_) => Self {
+            HexError::InvalidCharacter {} => Self {
                 code: 503,
                 message: format!("{:?}", h),
             },

@@ -24,7 +24,7 @@ use std::{cmp, sync::Arc};
 
 use log::*;
 use tari_comms::{
-    peer_manager::{NodeId, Peer, PeerFeatures, PeerQuery},
+    peer_manager::{NodeId, Peer, PeerFeatures},
     protocol::rpc::{Request, RpcError, RpcStatus, Streaming},
     utils,
     PeerManager,
@@ -151,25 +151,17 @@ impl DhtRpcService for DhtRpcServiceImpl {
 
     async fn get_peers(&self, request: Request<GetPeersRequest>) -> Result<Streaming<GetPeersResponse>, RpcStatus> {
         let message = request.message();
-        let requester_node_id = request.context().peer_node_id();
-
-        let mut query = PeerQuery::new().select_where(|peer| {
-            &peer.node_id != requester_node_id &&
-                (message.include_clients || !peer.features.is_client()) &&
-                !peer.is_banned() &&
-                peer.deleted_at.is_none()
-        });
-
-        if message.n > 0 {
-            query = query.limit(message.n as usize);
+        let excluded_peers = vec![request.context().peer_node_id().clone()];
+        let mut features = Some(PeerFeatures::COMMUNICATION_NODE);
+        if message.include_clients {
+            features = None;
         }
 
-        // TODO: This result set can/will be large
-        //       Ideally, we'd need a lazy-loaded iterator, however that requires a long-lived read transaction and
-        //       the lifetime of that transaction is proportional on the time it takes to send the peers.
-        //       Either we should not need to return all peers, or we can find a way to do an iterator which does not
-        //       require a long-lived read transaction (we don't strictly care about read consistency in this case).
-        let peers = self.peer_manager.perform_query(query).await.map_err(RpcError::from)?;
+        let peers = self
+            .peer_manager
+            .discovery_syncing(message.n as usize, &excluded_peers, features)
+            .await
+            .map_err(RpcError::from)?;
 
         let node_id = request.context().peer_node_id();
         debug!(

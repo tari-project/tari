@@ -61,8 +61,6 @@ impl TorControlPortClient {
         event_tx: broadcast::Sender<TorControlEvent>,
     ) -> Result<Self, TorClientError> {
         let tcp = TcpTransport::new();
-        // TODO: Probably don't need nodelay
-        // tcp.set_nodelay(true);
         let socket = tcp.dial(&addr).await?;
         Ok(Self::new(socket, event_tx))
     }
@@ -249,7 +247,7 @@ impl TorControlPortClient {
 }
 
 /// Represents tor control port authentication mechanisms
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Authentication {
     /// Attempt to configure authentication automatically. This only works for no auth, or cookie auth.
     /// The cookie must be readable by the current process user.

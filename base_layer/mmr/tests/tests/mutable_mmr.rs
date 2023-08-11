@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use croaring::Bitmap;
+use digest::Digest;
 use tari_mmr::{common::LeafIndex, Hash, HashSlice};
 use tari_utilities::hex::Hex;
 
@@ -30,8 +31,8 @@ fn hash_with_bitmap(hash: &HashSlice, bitmap: &mut Bitmap) -> Hash {
     bitmap.run_optimize();
     let hasher = MmrTestHasherBlake256::new();
     hasher
-        .chain(hash)
-        .chain(bitmap.serialize())
+        .chain_update(hash)
+        .chain_update(bitmap.serialize())
         .finalize()
         .as_ref()
         .to_vec()
@@ -62,7 +63,7 @@ fn delete() {
     let root = mmr.get_merkle_root().unwrap();
     assert_eq!(
         &root.to_hex(),
-        "fb69b1e6e6785cfadc3291d7b5c54c050890c731339eecb66add1dde54f483c1"
+        "23affc8202916d88fdb991b22c6975ce4bdb69661c40257580a0c4f6147925d7"
     );
     // Can't delete past bounds
     assert!(!mmr.delete(5));
@@ -77,7 +78,7 @@ fn delete() {
     let root = mmr.get_merkle_root().unwrap();
     assert_eq!(
         &root.to_hex(),
-        "d203c17776d7dc78fd3e7f8d08885019c5229bc6a4f452d7ffba02467e502b37"
+        "9418eecd5f30ae1d892024e068c18013bb4f79f584c9aa5fdba818f9bd40da1e"
     );
     assert_eq!(mmr.len(), 3);
     assert_eq!(mmr.is_empty(), Ok(false));
@@ -100,7 +101,7 @@ fn delete() {
     let root = mmr.get_merkle_root().unwrap();
     assert_eq!(
         &root.to_hex(),
-        "aa2dfb2d9c270142da57e79f3129fce0f53bd89b86c2d0dd3f201e180777f383"
+        "8bdcad274c1677d94037137492185541d3ae259a863df8a4d71ac665644b78ef"
     );
 }
 

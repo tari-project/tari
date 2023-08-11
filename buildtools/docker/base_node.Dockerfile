@@ -1,13 +1,13 @@
 # syntax=docker/dockerfile:1
 #FROM rust:1.42.0 as builder
-FROM quay.io/tarilabs/rust_tari-build-with-deps:nightly-2023-06-03 as builder
+FROM quay.io/tarilabs/rust_tari-build-with-deps:nightly-2023-06-04 as builder
 
 # Copy the dependency lists
 #ADD Cargo.toml ./
 ADD . /tari_base_node
 WORKDIR /tari_base_node
 
-# RUN rustup component add rustfmt --toolchain nightly-2023-06-03-x86_64-unknown-linux-gnu
+# RUN rustup component add rustfmt --toolchain nightly-2023-06-04-x86_64-unknown-linux-gnu
 #ARG TBN_ARCH=native
 ARG TBN_ARCH=x86-64
 #ARG TBN_FEATURES=avx2
@@ -60,7 +60,7 @@ RUN groupadd --system tari_base_node && \
 FROM base
 
 COPY --from=builder /tari_base_node/buildtools/docker/torrc /etc/tor/torrc
-COPY --from=builder /tari_base_node/buildtools/docker/start.sh /usr/local/bin/start_tari_base_node.sh
+COPY --from=builder /tari_base_node/buildtools/docker/start.sh /usr/local/bin/start_minotari_node.sh
 
 COPY --from=builder /tari_base_node/target/release/tari_base_node /usr/local/bin/
 
@@ -73,4 +73,4 @@ COPY --from=builder /tari_base_node/common/logging/log4rs_sample_base_node.yml /
 # Keep the .tari directory in a volume by default
 VOLUME ["/home/tari_base_node/.tari"]
 # Use start.sh to run tor then the base node or tari_base_node for the executable
-CMD ["/usr/local/bin/start_tari_base_node.sh"]
+CMD ["/usr/local/bin/start_minotari_node.sh"]

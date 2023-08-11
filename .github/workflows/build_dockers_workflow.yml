@@ -14,7 +14,7 @@ name: Build docker images - workflow_call/on-demand
       toolchain:
         type: string
         description: 'Rust toolchain'
-        default: nightly-2023-06-03
+        default: nightly-2023-06-04
       arch:
         type: string
         default: x86-64
@@ -29,7 +29,7 @@ name: Build docker images - workflow_call/on-demand
         description: 'build tag alias'
       build_items:
         type: string
-        default: tari_sha3_miner
+        default: minotari_sha3_miner
         description: 'build images'
       platforms:
         type: string
@@ -60,11 +60,11 @@ jobs:
         run: |
           build_items=${{ inputs.build_items }}
           echo "Building with ${build_items}."
-          if [ -z "${build_items}" ] || [ "${build_items}" = "tari_all" ] ; then
-            echo "Build all tari images"
+          if [ -z "${build_items}" ] || [ "${build_items}" = "minotari_all" ] ; then
+            echo "Build all Minotari images"
             matrix_selection=$( jq -s -c '.[]' tari-launchpad/tarisuite.json )
-          elif [ "${build_items:0:5}" = "tari_" ] ; then
-            echo "Build only selected tari images - ${build_items}"
+          elif [ "${build_items:0:9}" = "minotari_" ] ; then
+            echo "Build only selected minotari images - ${build_items}"
             matrix_selection=$( jq --arg jsonVar "${build_items}" -r '[. []
               | select(."image_name"==$jsonVar)]' tari-launchpad/tarisuite.json )
           elif [ "${build_items}" = "all" ] ; then
@@ -129,7 +129,7 @@ jobs:
             TARI_SOURCE_ROOT="tari/"
             VAPP=$(awk -F ' = ' \
               '$1 ~ /version/ { gsub(/["]/, "", $2); printf("%s",$2) }' \
-              "${TARI_SOURCE_ROOT}/applications/tari_base_node/Cargo.toml")
+              "${TARI_SOURCE_ROOT}/applications/minotari_node/Cargo.toml")
 
             VBRANCH=$(git --git-dir ${TARI_SOURCE_ROOT}/.git branch --show-current)
             VSHA_SHORT=$(git --git-dir ${TARI_SOURCE_ROOT}/.git rev-parse --short HEAD)
@@ -143,8 +143,8 @@ jobs:
             echo "Setup tag_alias"
             echo "TAG_ALIAS=${{ secrets.DOCKER_PROVIDER }}/${{ secrets.DOCKER_REPO }}/${{ matrix.builds.image_name }}:${{ inputs.tag_alias }}" >> $GITHUB_ENV
           fi
-          if [ "${IMAGE_NAME:0:5}" = "tari_" ] ; then
-            echo "Tari builds"
+          if [ "${IMAGE_NAME:0:9}" = "minotari_" ] ; then
+            echo "Minotari builds"
             mkdir -p tari/buildtools/docker_rig
             cp -v tari-launchpad/docker_rig/start_tari_app.sh tari/buildtools/docker_rig/start_tari_app.sh
             echo "DOCKERFILE=tarilabs" >> $GITHUB_ENV

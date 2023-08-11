@@ -38,9 +38,10 @@ use super::{
 use crate::{
     blocks::{Block, BlockHeader, ChainBlock},
     chain_storage::BlockchainBackend,
-    proof_of_work::{sha3x_difficulty, AchievedTargetDifficulty, Difficulty, PowAlgorithm},
+    proof_of_work::{randomx_factory::RandomXFactory, AchievedTargetDifficulty, Difficulty},
+    test_helpers::create_consensus_rules,
     transactions::transaction_components::Transaction,
-    validation::{error::ValidationError, FinalHorizonStateValidation},
+    validation::{error::ValidationError, DifficultyCalculator, FinalHorizonStateValidation},
 };
 
 #[derive(Clone)]
@@ -108,19 +109,17 @@ impl InternalConsistencyValidator for MockValidator {
 impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for MockValidator {
     fn validate(
         &self,
-        _: &B,
+        db: &B,
         header: &BlockHeader,
         _: &BlockHeader,
         _: &[EpochTime],
         _: Option<Difficulty>,
     ) -> Result<AchievedTargetDifficulty, ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
-            let achieved = sha3x_difficulty(header);
-
-            let achieved_target =
-                AchievedTargetDifficulty::try_construct(PowAlgorithm::Sha3, achieved - Difficulty::from(1), achieved)
-                    .unwrap();
-            Ok(achieved_target)
+            // this assumes consensus rules are the same as the test rules which is a little brittle
+            let difficulty_calculator = DifficultyCalculator::new(create_consensus_rules(), RandomXFactory::default());
+            let achieved_target_diff = difficulty_calculator.check_achieved_and_target_difficulty(db, header)?;
+            Ok(achieved_target_diff)
         } else {
             Err(ValidationError::custom_error(
                 "This mock validator always returns an error",

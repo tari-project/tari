@@ -515,7 +515,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 header.pow_algo(),
                 header.hash().to_hex(),
             );
-            self.header_validator.validate(header)?;
+            self.header_validator.validate(header).await?;
         }
 
         debug!(
@@ -652,8 +652,6 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 latency
             );
             let existing_header = self.db.fetch_header_by_block_hash(header.hash()).await?;
-            // TODO: Due to a bug in a previous version of base node sync RPC, the duplicate headers can be sent. We
-            //       should be a little more strict about this in future.
             if let Some(h) = existing_header {
                 warn!(
                     target: LOG_TARGET,
@@ -664,7 +662,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 continue;
             }
             let current_height = header.height;
-            last_total_accumulated_difficulty = self.header_validator.validate(header)?;
+            last_total_accumulated_difficulty = self.header_validator.validate(header).await?;
 
             if has_switched_to_new_chain {
                 // If we've switched to the new chain, we simply commit every COMMIT_EVERY_N_HEADERS headers

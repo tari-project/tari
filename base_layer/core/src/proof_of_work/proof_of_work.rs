@@ -38,7 +38,7 @@ pub trait AchievedDifficulty {}
 pub struct ProofOfWork {
     /// The algorithm used to mine this block
     pub pow_algo: PowAlgorithm,
-    /// Supplemental proof of work data. For example for Sha3, this would be empty (only the block header is
+    /// Supplemental proof of work data. For example for Sha3x, this would be empty (only the block header is
     /// required), but for Monero merge mining we need the Monero block header and RandomX seed hash.
     pub pow_data: Vec<u8>,
 }
@@ -47,7 +47,7 @@ impl Default for ProofOfWork {
     #[allow(deprecated)]
     fn default() -> Self {
         Self {
-            pow_algo: PowAlgorithm::Sha3,
+            pow_algo: PowAlgorithm::Sha3x,
             pow_data: vec![],
         }
     }
@@ -93,7 +93,7 @@ mod test {
     #[test]
     fn to_bytes() {
         let pow = ProofOfWork {
-            pow_algo: PowAlgorithm::Sha3,
+            pow_algo: PowAlgorithm::Sha3x,
             ..Default::default()
         };
         assert_eq!(pow.to_bytes(), vec![1]);

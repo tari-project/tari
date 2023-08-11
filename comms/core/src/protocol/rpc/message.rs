@@ -128,15 +128,6 @@ impl<T> BaseRequest<T> {
         self.message
     }
 
-    // #[allow(dead_code)]
-    // pub fn map<F, U>(self, mut f: F) -> BaseRequest<U>
-    // where F: FnMut(T) -> U {
-    //     BaseRequest {
-    //         method: self.method,
-    //         message: f(self.message),
-    //     }
-    // }
-
     pub fn get_ref(&self) -> &T {
         &self.message
     }

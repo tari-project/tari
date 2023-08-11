@@ -27,6 +27,7 @@ use tari_utilities::{ByteArray, ByteArrayError};
 
 const MAX_ARR_SIZE: usize = 63;
 
+/// A fixed size byte array for RandomX that can be serialized and deserialized using Borsh.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FixedByteArray {
     elems: [u8; MAX_ARR_SIZE],
@@ -45,8 +46,9 @@ impl BorshSerialize for FixedByteArray {
 }
 
 impl BorshDeserialize for FixedByteArray {
-    fn deserialize(buf: &mut &[u8]) -> io::Result<Self> {
-        let len = u8::deserialize(buf)? as usize;
+    fn deserialize_reader<R>(reader: &mut R) -> Result<Self, io::Error>
+    where R: io::Read {
+        let len = u8::deserialize_reader(reader)? as usize;
         if len > MAX_ARR_SIZE {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -55,7 +57,7 @@ impl BorshDeserialize for FixedByteArray {
         }
         let mut bytes = Vec::with_capacity(len);
         for _ in 0..len {
-            bytes.push(u8::deserialize(buf)?);
+            bytes.push(u8::deserialize_reader(reader)?);
         }
         // This unwrap should never fail, the len is checked above.
         Ok(Self::from_bytes(bytes.as_bytes()).unwrap())
@@ -63,24 +65,29 @@ impl BorshDeserialize for FixedByteArray {
 }
 
 impl FixedByteArray {
+    /// Create a new FixedByteArray with the preset length. The array will be zeroed.
     pub fn new() -> Self {
         Default::default()
     }
 
+    /// Returns the array as a slice of bytes.
     pub fn as_slice(&self) -> &[u8] {
         &self[..self.len()]
     }
 
+    /// Returns true if the array is full.
     #[inline]
     pub fn is_full(&self) -> bool {
         self.len() == MAX_ARR_SIZE
     }
 
+    /// Returns the length of the array.
     #[inline]
     pub fn len(&self) -> usize {
         self.len as usize
     }
 
+    /// Returns true if the array is empty.
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.len == 0
@@ -108,10 +115,10 @@ impl Default for FixedByteArray {
 impl ByteArray for FixedByteArray {
     fn from_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError> {
         if bytes.len() > MAX_ARR_SIZE {
-            return Err(ByteArrayError::IncorrectLength);
+            return Err(ByteArrayError::IncorrectLength {});
         }
 
-        let len = u8::try_from(bytes.len()).map_err(|_| ByteArrayError::IncorrectLength)?;
+        let len = u8::try_from(bytes.len()).map_err(|_| ByteArrayError::IncorrectLength {})?;
 
         let mut elems = [0u8; MAX_ARR_SIZE];
         elems[..len as usize].copy_from_slice(&bytes[..len as usize]);
@@ -160,7 +167,7 @@ mod test {
 
     #[test]
     fn length_check() {
-        let mut buf = [MAX_ARR_SIZE as u8; MAX_ARR_SIZE + 1];
+        let mut buf = [u8::try_from(MAX_ARR_SIZE).unwrap(); MAX_ARR_SIZE + 1];
         let fixed_byte_array = FixedByteArray::deserialize(&mut buf.as_slice()).unwrap();
         assert_eq!(fixed_byte_array.len(), MAX_ARR_SIZE);
         buf[0] += 1;

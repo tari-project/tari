@@ -28,16 +28,16 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub struct TargetDifficulties {
-    monero: TargetDifficultyWindow,
-    sha3: TargetDifficultyWindow,
+    randomx: TargetDifficultyWindow,
+    sha3x: TargetDifficultyWindow,
 }
 
 impl TargetDifficulties {
-    pub fn new(consensus_rules: &ConsensusManager, height: u64) -> Self {
-        Self {
-            monero: consensus_rules.new_target_difficulty(PowAlgorithm::Monero, height),
-            sha3: consensus_rules.new_target_difficulty(PowAlgorithm::Sha3, height),
-        }
+    pub fn new(consensus_rules: &ConsensusManager, height: u64) -> Result<Self, String> {
+        Ok(Self {
+            randomx: consensus_rules.new_target_difficulty(PowAlgorithm::RandomX, height)?,
+            sha3x: consensus_rules.new_target_difficulty(PowAlgorithm::Sha3x, height)?,
+        })
     }
 
     pub fn add_back(&mut self, header: &BlockHeader, target_difficulty: Difficulty) {
@@ -55,22 +55,22 @@ impl TargetDifficulties {
     }
 
     pub fn is_full(&self) -> bool {
-        self.sha3.is_full() && self.monero.is_full()
+        self.sha3x.is_full() && self.randomx.is_full()
     }
 
     pub fn get(&self, algo: PowAlgorithm) -> &TargetDifficultyWindow {
-        use PowAlgorithm::{Monero, Sha3};
+        use PowAlgorithm::{RandomX, Sha3x};
         match algo {
-            Monero => &self.monero,
-            Sha3 => &self.sha3,
+            RandomX => &self.randomx,
+            Sha3x => &self.sha3x,
         }
     }
 
     fn get_mut(&mut self, algo: PowAlgorithm) -> &mut TargetDifficultyWindow {
-        use PowAlgorithm::{Monero, Sha3};
+        use PowAlgorithm::{RandomX, Sha3x};
         match algo {
-            Monero => &mut self.monero,
-            Sha3 => &mut self.sha3,
+            RandomX => &mut self.randomx,
+            Sha3x => &mut self.sha3x,
         }
     }
 }

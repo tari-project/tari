@@ -49,7 +49,7 @@ async fn main() {
             Arg::with_name("tor-control-addr")
                 .value_name("TOR_CONTROL_ADDR")
                 .long("tor-control-addr")
-                .short("t")
+                .short('t')
                 .help("The address of the tor control server")
                 .takes_value(true)
                 .default_value("/ip4/127.0.0.1/tcp/9051"),
@@ -58,7 +58,7 @@ async fn main() {
             Arg::with_name("onion-port")
                 .value_name("ONION_PORT")
                 .long("onion-port")
-                .short("p")
+                .short('p')
                 .help("The port to use for the onion address")
                 .takes_value(true)
                 .default_value("9999"),
@@ -67,7 +67,7 @@ async fn main() {
             Arg::with_name("output")
                 .value_name("FILE")
                 .long("output")
-                .short("o")
+                .short('o')
                 .help("The relative path of the file to output")
                 .takes_value(true)
                 .required(true),

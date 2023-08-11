@@ -12,7 +12,15 @@ struct ChatMessages;
 
 struct ClientFFI;
 
+struct ContactsLivenessData;
+
+struct Message;
+
 struct TariAddress;
+
+typedef void (*CallbackContactStatusChange)(struct ContactsLivenessData*);
+
+typedef void (*CallbackMessageReceived)(struct Message*);
 
 #ifdef __cplusplus
 extern "C" {
@@ -35,7 +43,9 @@ extern "C" {
  */
 struct ClientFFI *create_chat_client(ApplicationConfig *config,
                                      const char *identity_file_path,
-                                     int *error_out);
+                                     int *error_out,
+                                     CallbackContactStatusChange callback_contact_status_change,
+                                     CallbackMessageReceived callback_message_received);
 
 /**
  * Frees memory for a ClientFFI
@@ -68,6 +78,7 @@ void destroy_client_ffi(struct ClientFFI *client);
 ApplicationConfig *create_chat_config(const char *network_str,
                                       const char *public_address,
                                       const char *datastore_path,
+                                      const char *log_path,
                                       int *error_out);
 
 /**
@@ -142,6 +153,8 @@ int check_online_status(struct ClientFFI *client, struct TariAddress *receiver, 
  * ## Arguments
  * `client` - The Client pointer
  * `address` - A TariAddress ptr
+ * `limit` - The amount of messages you want to fetch. Default to 35, max 2500
+ * `page` - The page of results you'd like returned. Default to 0, maximum of u64 max
  * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
@@ -151,9 +164,11 @@ int check_online_status(struct ClientFFI *client, struct TariAddress *receiver, 
  * The ```address``` should be destroyed after use
  * The returned pointer to ```*mut ChatMessages``` should be destroyed after use
  */
-struct ChatMessages *get_all_messages(struct ClientFFI *client,
-                                      struct TariAddress *address,
-                                      int *error_out);
+struct ChatMessages *get_messages(struct ClientFFI *client,
+                                  struct TariAddress *address,
+                                  int *limit,
+                                  int *page,
+                                  int *error_out);
 
 /**
  * Frees memory for messages

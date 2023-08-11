@@ -22,16 +22,16 @@
 
 use std::{path::PathBuf, str::FromStr, thread, time::Duration};
 
-use tari_app_grpc::tari_rpc::SetBaseNodeRequest;
-use tari_app_utilities::common_cli_args::CommonCliArgs;
+use minotari_app_grpc::tari_rpc::SetBaseNodeRequest;
+use minotari_app_utilities::common_cli_args::CommonCliArgs;
+use minotari_console_wallet::{run_wallet_with_cli, Cli};
+use minotari_wallet::{transaction_service::config::TransactionRoutingMechanism, WalletConfig};
+use minotari_wallet_grpc_client::WalletGrpcClient;
 use tari_common::configuration::{CommonConfig, MultiaddrList};
 use tari_comms::multiaddr::Multiaddr;
 use tari_comms_dht::{DbConnectionUrl, DhtConfig};
-use tari_console_wallet::{run_wallet_with_cli, Cli};
 use tari_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig, TransportType};
 use tari_shutdown::Shutdown;
-use tari_wallet::{transaction_service::config::TransactionRoutingMechanism, WalletConfig};
-use tari_wallet_grpc_client::WalletGrpcClient;
 use tokio::runtime;
 use tonic::transport::Channel;
 
@@ -110,7 +110,7 @@ pub async fn spawn_wallet(
     common_config.base_path = temp_dir_path.clone();
     let wallet_cfg = wallet_config.clone();
     thread::spawn(move || {
-        let mut wallet_app_config = tari_console_wallet::ApplicationConfig {
+        let mut wallet_app_config = minotari_console_wallet::ApplicationConfig {
             common: common_config,
             auto_update: AutoUpdateConfig::default(),
             wallet: wallet_cfg,
@@ -188,7 +188,6 @@ pub async fn spawn_wallet(
     wait_for_service(port).await;
     wait_for_service(grpc_port).await;
 
-    // TODO: fix the wallet configuration so the base node is correctly setted on startup insted of afterwards
     if let Some((_, _, hacky_request)) = base_node {
         let mut wallet_client = create_wallet_client(world, wallet_name)
             .await

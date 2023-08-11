@@ -23,6 +23,9 @@
 use randomx_rs::RandomXError;
 use tari_utilities::hex::HexError;
 
+use crate::proof_of_work::DifficultyError;
+
+/// Errors that can occur when merging Monero PoW data with Tari PoW data
 #[derive(Debug, thiserror::Error)]
 pub enum MergeMineError {
     #[error("Serialization error: {0}")]
@@ -36,7 +39,15 @@ pub enum MergeMineError {
     #[error("Validation error: {0}")]
     ValidationError(String),
     #[error("Hex conversion error: {0}")]
-    HexError(#[from] HexError),
+    HexError(String),
     #[error("Monero PoW data did not contain a valid merkle root")]
     InvalidMerkleRoot,
+    #[error("Invalid difficulty: {0}")]
+    DifficultyError(#[from] DifficultyError),
+}
+
+impl From<HexError> for MergeMineError {
+    fn from(err: HexError) -> Self {
+        MergeMineError::HexError(err.to_string())
+    }
 }

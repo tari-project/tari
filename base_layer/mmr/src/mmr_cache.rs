@@ -198,7 +198,7 @@ where
             self.update_base_mmr()?;
             self.create_curr_mmr()?;
         } else {
-            // We should not update anything
+            //we should not update anything
         }
         Ok(())
     }

@@ -53,7 +53,7 @@ pub enum Error {
     #[error("Connectivity error: {0}")]
     ConnectivityError(#[from] ConnectivityError),
     #[error("Message format error: {0}")]
-    MessageFormatError(#[from] MessageFormatError),
+    MessageFormatError(String),
     #[error("Failed to send message: {0}")]
     SendError(#[from] SendError<OutboundMessage>),
     #[error("JoinError: {0}")]
@@ -70,4 +70,10 @@ pub enum Error {
     UnexpectedEof,
     #[error("Internal reply canceled")]
     ReplyCanceled(#[from] oneshot::error::RecvError),
+}
+
+impl From<MessageFormatError> for Error {
+    fn from(value: MessageFormatError) -> Self {
+        Error::MessageFormatError(value.to_string())
+    }
 }

@@ -27,7 +27,6 @@ use tari_crypto::hash_domain;
 
 use crate::transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput};
 
-// mod composite_key;
 mod composite_key;
 pub(crate) mod cursors;
 pub(crate) mod helpers;
@@ -42,7 +41,6 @@ pub(crate) struct TransactionOutputRowData {
     pub header_hash: HashOutput,
     pub mmr_position: u32,
     pub hash: HashOutput,
-    pub witness_hash: HashOutput,
     pub mined_height: u64,
     pub mined_timestamp: u64,
 }
@@ -75,8 +73,4 @@ pub(crate) struct TransactionKernelRowData {
     pub hash: HashOutput,
 }
 
-hash_domain!(
-    CoreChainStorageHashDomain,
-    "com.tari.tari-project.base_layer.core.lmdb_db",
-    1
-);
+hash_domain!(CoreChainStorageHashDomain, "com.tari.base_layer.core.lmdb_db", 1);

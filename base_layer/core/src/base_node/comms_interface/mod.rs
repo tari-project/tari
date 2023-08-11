@@ -35,6 +35,5 @@ pub use inbound_handlers::{BlockEvent, InboundNodeCommsHandlers};
 mod local_interface;
 pub use local_interface::{BlockEventReceiver, BlockEventSender, LocalNodeCommsInterface};
 
-// TODO: Remove this entirely when able
 mod outbound_interface;
 pub use outbound_interface::OutboundNodeCommsInterface;

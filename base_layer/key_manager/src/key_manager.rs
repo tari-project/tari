@@ -27,43 +27,55 @@ use digest::Digest;
 use serde::{Deserialize, Serialize};
 use tari_crypto::{
     hashing::LengthExtensionAttackResistant,
-    keys::SecretKey,
+    keys::PublicKey,
     tari_utilities::byte_array::ByteArrayError,
 };
+use tari_utilities::ByteArray;
 use zeroize::Zeroize;
 
 use crate::{cipher_seed::CipherSeed, mac_domain_hasher, LABEL_DERIVE_KEY};
 
 #[derive(Clone, Derivative, Serialize, Deserialize, Zeroize)]
 #[derivative(Debug)]
-pub struct DerivedKey<K>
-where K: SecretKey
+pub struct DerivedKey<PK>
+where PK: PublicKey
 {
     #[derivative(Debug = "ignore")]
-    #[serde(skip_serializing)]
-    pub k: K,
+    #[serde(skip_deserializing)]
+    pub key: PK::K,
+    pub key_index: u64,
+}
+
+#[derive(Clone, Derivative, Serialize, Deserialize, Zeroize)]
+#[derivative(Debug)]
+pub struct DerivedPublicKey<PK>
+where PK: PublicKey
+{
+    #[derivative(Debug = "ignore")]
+    #[serde(skip_deserializing)]
+    pub key: PK,
     pub key_index: u64,
 }
 
 #[derive(Clone, Derivative, PartialEq, Serialize, Deserialize, Zeroize)]
 #[derivative(Debug)]
-pub struct KeyManager<K: SecretKey, D: Digest + LengthExtensionAttackResistant> {
+pub struct KeyManager<PK: PublicKey, D: Digest + LengthExtensionAttackResistant> {
     #[derivative(Debug = "ignore")]
     seed: CipherSeed,
     #[derivative(Debug = "ignore")]
     pub branch_seed: String,
     primary_key_index: u64,
     digest_type: PhantomData<D>,
-    key_type: PhantomData<K>,
+    key_type: PhantomData<PK>,
 }
 
-impl<K, D> KeyManager<K, D>
+impl<PK, D> KeyManager<PK, D>
 where
-    K: SecretKey,
+    PK: PublicKey,
     D: Digest + LengthExtensionAttackResistant,
 {
     /// Creates a new KeyManager with a new randomly selected entropy
-    pub fn new() -> KeyManager<K, D> {
+    pub fn new() -> KeyManager<PK, D> {
         KeyManager {
             seed: CipherSeed::new(),
             branch_seed: "".to_string(),
@@ -74,7 +86,7 @@ where
     }
 
     /// Constructs a KeyManager from known parts
-    pub fn from(seed: CipherSeed, branch_seed: String, primary_key_index: u64) -> KeyManager<K, D> {
+    pub fn from(seed: CipherSeed, branch_seed: String, primary_key_index: u64) -> KeyManager<PK, D> {
         KeyManager {
             seed,
             branch_seed,
@@ -86,7 +98,7 @@ where
 
     /// Derive a new private key from master key: derived_key=H(master_key||branch_seed||index), for some
     /// hash function H which is Length attack resistant, such as Blake2b.
-    pub fn derive_key(&self, key_index: u64) -> Result<DerivedKey<K>, ByteArrayError> {
+    fn derive_private_key(&self, key_index: u64) -> Result<PK::K, ByteArrayError> {
         // apply domain separation to generate derive key. Under the hood, the hashing api prepends the length of each
         // piece of data for concatenation, reducing the risk of collisions due to redundancy of variable length
         // input
@@ -97,17 +109,42 @@ where
             .finalize();
 
         let derive_key = derive_key.as_ref();
+        let s = <PK::K>::from_bytes(derive_key)?;
+        Ok(s)
+    }
 
-        match K::from_bytes(derive_key) {
-            Ok(k) => Ok(DerivedKey { k, key_index }),
-            Err(e) => Err(e),
-        }
+    /// Derive a new private key from master key: derived_key=H(master_key||branch_seed||index), for some
+    /// hash function H which is Length attack resistant, such as Blake2b.
+    pub fn derive_key(&self, key_index: u64) -> Result<DerivedKey<PK>, ByteArrayError> {
+        let secret = self.derive_private_key(key_index)?;
+        Ok(DerivedKey { key: secret, key_index })
+    }
+
+    /// Derive a new public key from master key: derived_key=H(master_key||branch_seed||index), for some
+    /// hash function H which is Length attack resistant, such as Blake2b.
+    pub fn derive_public_key(&self, key_index: u64) -> Result<DerivedPublicKey<PK>, ByteArrayError> {
+        let secret = self.derive_private_key(key_index)?;
+        Ok(DerivedPublicKey {
+            key: PublicKey::from_secret_key(&secret),
+            key_index,
+        })
+    }
+
+    pub fn get_private_key(&self, key_index: u64) -> Result<PK::K, ByteArrayError> {
+        let secret = self.derive_private_key(key_index)?;
+        Ok(secret)
     }
 
     /// Generate next deterministic private key derived from master key
-    pub fn next_key(&mut self) -> Result<DerivedKey<K>, ByteArrayError> {
+    pub fn next_key(&mut self) -> Result<DerivedKey<PK>, ByteArrayError> {
         self.primary_key_index += 1;
         self.derive_key(self.primary_key_index)
+    }
+
+    /// Generate next deterministic private key derived from master key
+    pub fn increment_key_index(&mut self, increment: u64) -> u64 {
+        self.primary_key_index += increment;
+        self.primary_key_index
     }
 
     pub fn cipher_seed(&self) -> &CipherSeed {
@@ -125,7 +162,7 @@ where
 
 impl<K, D> Default for KeyManager<K, D>
 where
-    K: SecretKey,
+    K: PublicKey,
     D: Digest + LengthExtensionAttackResistant,
 {
     fn default() -> Self {
@@ -135,20 +172,22 @@ where
 
 #[cfg(test)]
 mod test {
-    use tari_crypto::{hash::blake2::Blake256, ristretto::RistrettoSecretKey};
+    use blake2::Blake2b;
+    use digest::consts::U32;
+    use tari_crypto::ristretto::RistrettoPublicKey;
 
     use crate::key_manager::*;
 
     #[test]
     fn test_new_keymanager() {
-        let km1 = KeyManager::<RistrettoSecretKey, Blake256>::new();
-        let km2 = KeyManager::<RistrettoSecretKey, Blake256>::new();
+        let km1 = KeyManager::<RistrettoPublicKey, Blake2b<U32>>::new();
+        let km2 = KeyManager::<RistrettoPublicKey, Blake2b<U32>>::new();
         assert_ne!(km1.seed, km2.seed);
     }
 
     #[test]
     fn test_derive_and_next_key() {
-        let mut km = KeyManager::<RistrettoSecretKey, Blake256>::new();
+        let mut km = KeyManager::<RistrettoPublicKey, Blake2b<U32>>::new();
         let next_key1_result = km.next_key();
         let next_key2_result = km.next_key();
         let desired_key_index1 = 1;
@@ -159,16 +198,16 @@ mod test {
         let next_key2 = next_key2_result.unwrap();
         let derived_key1 = derived_key1_result.unwrap();
         let derived_key2 = derived_key2_result.unwrap();
-        assert_ne!(next_key1.k, next_key2.k);
-        assert_eq!(next_key1.k, derived_key1.k);
-        assert_eq!(next_key2.k, derived_key2.k);
+        assert_ne!(next_key1.key, next_key2.key);
+        assert_eq!(next_key1.key, derived_key1.key);
+        assert_eq!(next_key2.key, derived_key2.key);
         assert_eq!(next_key1.key_index, desired_key_index1);
         assert_eq!(next_key2.key_index, desired_key_index2);
     }
 
     #[test]
     fn test_derive_and_next_key_with_branch_seed() {
-        let mut km = KeyManager::<RistrettoSecretKey, Blake256>::from(CipherSeed::new(), "Test".to_string(), 0);
+        let mut km = KeyManager::<RistrettoPublicKey, Blake2b<U32>>::from(CipherSeed::new(), "Test".to_string(), 0);
         let next_key1_result = km.next_key();
         let next_key2_result = km.next_key();
         let desired_key_index1 = 1;
@@ -179,9 +218,9 @@ mod test {
         let next_key2 = next_key2_result.unwrap();
         let derived_key1 = derived_key1_result.unwrap();
         let derived_key2 = derived_key2_result.unwrap();
-        assert_ne!(next_key1.k, next_key2.k);
-        assert_eq!(next_key1.k, derived_key1.k);
-        assert_eq!(next_key2.k, derived_key2.k);
+        assert_ne!(next_key1.key, next_key2.key);
+        assert_eq!(next_key1.key, derived_key1.key);
+        assert_eq!(next_key2.key, derived_key2.key);
         assert_eq!(next_key1.key_index, desired_key_index1);
         assert_eq!(next_key2.key_index, desired_key_index2);
     }
@@ -189,10 +228,10 @@ mod test {
     #[test]
     fn test_use_of_branch_seed() {
         let x = CipherSeed::new();
-        let mut km1 = KeyManager::<RistrettoSecretKey, Blake256>::from(x.clone(), "some".to_string(), 0);
-        let mut km2 = KeyManager::<RistrettoSecretKey, Blake256>::from(x, "other".to_string(), 0);
+        let mut km1 = KeyManager::<RistrettoPublicKey, Blake2b<U32>>::from(x.clone(), "some".to_string(), 0);
+        let mut km2 = KeyManager::<RistrettoPublicKey, Blake2b<U32>>::from(x, "other".to_string(), 0);
         let next_key1 = km1.next_key().unwrap();
         let next_key2 = km2.next_key().unwrap();
-        assert_ne!(next_key1.k, next_key2.k);
+        assert_ne!(next_key1.key, next_key2.key);
     }
 }

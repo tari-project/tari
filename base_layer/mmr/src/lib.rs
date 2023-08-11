@@ -142,6 +142,7 @@ mod mem_backend_vec;
 mod merkle_mountain_range;
 mod merkle_proof;
 mod serde_support;
+pub mod sparse_merkle_tree;
 
 // Less commonly used exports
 pub mod common;

@@ -31,10 +31,11 @@ use argon2::password_hash::{
     rand_core::{OsRng, RngCore},
     SaltString,
 };
+use blake2::Blake2b;
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use chrono::NaiveDateTime;
 use diesel::{prelude::*, result::Error, SqliteConnection};
-use digest::{generic_array::GenericArray, FixedOutput};
+use digest::{consts::U32, generic_array::GenericArray, FixedOutput};
 use itertools::Itertools;
 use log::*;
 use tari_common_sqlite::sqlite_connection_pool::PooledDbConnection;
@@ -47,7 +48,7 @@ use tari_comms::{
     peer_manager::{IdentitySignature, PeerFeatures},
     tor::TorIdentity,
 };
-use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparatedHasher};
+use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
 use tari_key_manager::cipher_seed::CipherSeed;
 use tari_utilities::{
     hex::{from_hex, Hex},
@@ -88,14 +89,10 @@ hidden_type!(WalletSecondaryEncryptionKey, SafeArray<u8, { size_of::<Key>() }>);
 const MAIN_KEY_AAD_PREFIX: &str = "wallet_main_key_encryption_v";
 
 // Hash domains for secondary key derivation
-hash_domain!(
-    SecondaryKeyDomain,
-    "com.tari.tari_project.base_layer.wallet.secondary_key",
-    0
-);
+hash_domain!(SecondaryKeyDomain, "com.tari.base_layer.wallet.secondary_key", 0);
 hash_domain!(
     SecondaryKeyHashDomain,
-    "com.tari.tari_project.base_layer.wallet.secondary_key_hash_commitment",
+    "com.tari.base_layer.wallet.secondary_key_hash_commitment",
     0
 );
 
@@ -740,12 +737,12 @@ fn derive_secondary_key(
 
     // Derive the secondary key
     let mut secondary_key = WalletSecondaryEncryptionKey::from(SafeArray::default());
-    DomainSeparatedHasher::<Blake256, SecondaryKeyDomain>::new()
+    DomainSeparatedHasher::<Blake2b<U32>, SecondaryKeyDomain>::new()
         .chain(secondary_derivation_key.reveal())
         .finalize_into(GenericArray::from_mut_slice(secondary_key.reveal_mut()));
 
     // Produce the associated commitment
-    let secondary_key_hash = DomainSeparatedHasher::<Blake256, SecondaryKeyDomain>::new()
+    let secondary_key_hash = DomainSeparatedHasher::<Blake2b<U32>, SecondaryKeyDomain>::new()
         .chain(secondary_derivation_key.reveal())
         .finalize()
         .as_ref()

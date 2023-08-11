@@ -1,26 +1,26 @@
 [package]
-name = "tari_mining_helper_ffi"
+name = "minotari_mining_helper_ffi"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency miningcore C FFI bindings"
 license = "BSD-3-Clause"
-version = "0.50.0-rc.0"
+version = "0.51.0-pre.4"
 edition = "2018"
 
 [dependencies]
 tari_comms = {  path = "../../comms/core" }
-tari_crypto = { version = "0.16"}
+tari_crypto = { version = "0.18" }
 tari_common = {  path = "../../common" }
 tari_core = {  path = "../core", default-features = false, features = ["transactions"]}
-tari_utilities = "0.4.10"
+tari_utilities = { version = "0.5" }
 libc = "0.2.65"
 thiserror = "1.0.26"
-borsh = "0.9.3"
+borsh = "0.10"
 hex = "0.4.2"
 
 [dev-dependencies]
 tari_core = { path = "../core", features = ["transactions", "base_node"]}
 
-rand = "0.7.3"
+rand = "0.8"
 
 [lib]
 crate-type = ["staticlib","cdylib"]

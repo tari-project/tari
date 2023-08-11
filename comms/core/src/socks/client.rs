@@ -39,7 +39,7 @@ use super::error::SocksError;
 pub type Result<T> = std::result::Result<T, SocksError>;
 
 /// Authentication methods
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Authentication {
     /// No auth
     #[default]

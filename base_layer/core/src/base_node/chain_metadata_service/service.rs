@@ -56,6 +56,7 @@ impl ChainMetadataService {
     /// ## Arguments
     /// `liveness` - the liveness service handle
     /// `base_node` - the base node service handle
+    /// `event_publisher` - A broadcast sender for chain metadata events
     pub fn new(
         liveness: LivenessHandle,
         base_node: LocalNodeCommsInterface,

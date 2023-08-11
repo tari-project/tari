@@ -38,11 +38,7 @@
 use std::{ops::Deref, sync::Arc};
 
 use log::*;
-use tari_common_types::{tari_address::TariAddress, transaction::TxId, types::BlockHash};
-use tari_comms_dht::event::{DhtEvent, DhtEventReceiver};
-use tari_contacts::contacts_service::handle::{ContactsLivenessData, ContactsLivenessEvent};
-use tari_shutdown::ShutdownSignal;
-use tari_wallet::{
+use minotari_wallet::{
     base_node_service::{
         handle::{BaseNodeEvent, BaseNodeEventReceiver},
         service::BaseNodeState,
@@ -60,6 +56,10 @@ use tari_wallet::{
         },
     },
 };
+use tari_common_types::{tari_address::TariAddress, transaction::TxId, types::BlockHash};
+use tari_comms_dht::event::{DhtEvent, DhtEventReceiver};
+use tari_contacts::contacts_service::handle::{ContactsLivenessData, ContactsLivenessEvent};
+use tari_shutdown::ShutdownSignal;
 use tokio::sync::{broadcast, watch};
 
 use crate::ffi_basenode_state::TariBaseNodeState;
@@ -511,7 +511,7 @@ where TBackend: TransactionBackend + 'static
             inbound_tx.destination_address = self.comms_address.clone();
             transaction = Some(inbound_tx);
         } else {
-            // Should only be on of the two
+            // should only be one of the two
         };
 
         match transaction {
@@ -652,6 +652,8 @@ where TBackend: TransactionBackend + 'static
         }
     }
 
+    // casting here is okay as we dont care about the super high latency
+    #[allow(clippy::cast_possible_truncation)]
     fn base_node_state_changed(&mut self, state: BaseNodeState) {
         debug!(target: LOG_TARGET, "Calling Base Node State changed callback function");
 

@@ -44,14 +44,17 @@ impl AchievedTargetDifficulty {
         })
     }
 
+    /// Returns the achieved difficulty
     pub fn achieved(&self) -> Difficulty {
         self.achieved
     }
 
+    /// Returns the target difficulty
     pub fn target(&self) -> Difficulty {
         self.target
     }
 
+    /// Returns the PoW algorithm
     pub fn pow_algo(&self) -> PowAlgorithm {
         self.pow_algo
     }

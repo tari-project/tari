@@ -389,7 +389,6 @@ impl Dht {
 
             match msg.dht_header.message_type {
                 DhtMessageType::SafRequestMessages => {
-                    // TODO: #banheuristic This is an indication of node misbehaviour
                     warn!(
                         "Received store and forward message from PublicKey={}. Store and forward feature is not \
                          supported by this node. Discarding message.",

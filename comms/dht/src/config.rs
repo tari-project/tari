@@ -169,10 +169,6 @@ impl Default for DhtConfig {
             allow_test_addresses: false,
             flood_ban_max_msg_count: 100_000,
             flood_ban_timespan: Duration::from_secs(100),
-            // TODO: This should be depending on the kind of offline..... If it has been seen, it is different
-            // to a peer that is not seen at all
-            // Also, 2 hours is too short, because we'll cycle through 2000 peers every two hours
-            // Setting it to 24 hours for now
             offline_peer_cooldown: Duration::from_secs(24 * 60 * 60),
         }
     }

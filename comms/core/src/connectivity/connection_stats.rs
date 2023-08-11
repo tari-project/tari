@@ -97,7 +97,7 @@ impl fmt::Display for PeerConnectionStats {
 }
 
 /// Peer connection statistics
-#[derive(Debug, Clone, PartialOrd, PartialEq, Eq, Default)]
+#[derive(Default, Debug, Clone, PartialOrd, PartialEq, Eq)]
 pub enum LastConnectionAttempt {
     /// This node has never attempted to connect to this peer
     #[default]

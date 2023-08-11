@@ -31,13 +31,19 @@ pub use key_manager_state::{KeyManagerStateSql, NewKeyManagerStateSql};
 use log::*;
 use tari_common_sqlite::{error::SqliteStorageError, sqlite_connection_pool::PooledDbConnection};
 use tari_common_types::encryption::Encryptable;
+use tari_crypto::keys::PublicKey;
 use tari_utilities::acquire_read_lock;
 use tokio::time::Instant;
 
 use crate::key_manager_service::{
     error::KeyManagerStorageError,
-    storage::database::{KeyManagerBackend, KeyManagerState},
+    storage::{
+        database::{ImportedKey, KeyManagerBackend, KeyManagerState},
+        sqlite_db::imported_keys::{ImportedKeySql, NewImportedKeySql},
+    },
 };
+
+mod imported_keys;
 mod key_manager_state;
 
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
@@ -87,15 +93,17 @@ impl<TKeyManagerDbConnection: PooledDbConnection<Error = SqliteStorageError> + C
     }
 }
 
-impl<TKeyManagerDbConnection: PooledDbConnection<Error = SqliteStorageError> + Send + Sync + Clone> KeyManagerBackend
-    for KeyManagerSqliteDatabase<TKeyManagerDbConnection>
+impl<TKeyManagerDbConnection, PK> KeyManagerBackend<PK> for KeyManagerSqliteDatabase<TKeyManagerDbConnection>
+where
+    TKeyManagerDbConnection: PooledDbConnection<Error = SqliteStorageError> + Send + Sync + Clone,
+    PK: PublicKey,
 {
-    fn get_key_manager(&self, branch: String) -> Result<Option<KeyManagerState>, KeyManagerStorageError> {
+    fn get_key_manager(&self, branch: &str) -> Result<Option<KeyManagerState>, KeyManagerStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
-        let result = match KeyManagerStateSql::get_state(&branch, &mut conn).ok() {
+        let result = match KeyManagerStateSql::get_state(branch, &mut conn).ok() {
             None => None,
             Some(km) => {
                 let cipher = acquire_read_lock!(self.cipher);
@@ -142,12 +150,12 @@ impl<TKeyManagerDbConnection: PooledDbConnection<Error = SqliteStorageError> + S
         Ok(())
     }
 
-    fn increment_key_index(&self, branch: String) -> Result<(), KeyManagerStorageError> {
+    fn increment_key_index(&self, branch: &str) -> Result<(), KeyManagerStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
         let cipher = acquire_read_lock!(self.cipher);
-        let km = KeyManagerStateSql::get_state(&branch, &mut conn)?;
+        let km = KeyManagerStateSql::get_state(branch, &mut conn)?;
         let mut km = km
             .decrypt(&cipher)
             .map_err(|e| KeyManagerStorageError::AeadError(format!("Decryption Error: {}", e)))?;
@@ -172,12 +180,12 @@ impl<TKeyManagerDbConnection: PooledDbConnection<Error = SqliteStorageError> + S
         Ok(())
     }
 
-    fn set_key_index(&self, branch: String, index: u64) -> Result<(), KeyManagerStorageError> {
+    fn set_key_index(&self, branch: &str, index: u64) -> Result<(), KeyManagerStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
         let cipher = acquire_read_lock!(self.cipher);
-        let km = KeyManagerStateSql::get_state(&branch, &mut conn)?;
+        let km = KeyManagerStateSql::get_state(branch, &mut conn)?;
         let mut km = km
             .decrypt(&cipher)
             .map_err(|e| KeyManagerStorageError::AeadError(format!("Decryption Error: {}", e)))?;
@@ -197,6 +205,55 @@ impl<TKeyManagerDbConnection: PooledDbConnection<Error = SqliteStorageError> + S
         }
 
         Ok(())
+    }
+
+    fn insert_imported_key(&self, public_key: PK, private_key: PK::K) -> Result<(), KeyManagerStorageError> {
+        let start = Instant::now();
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        // check if we already have the key:
+        if self.get_imported_key(&public_key).is_ok() {
+            // we already have the key so we dont have to add it in
+            return Ok(());
+        }
+        let acquire_lock = start.elapsed();
+        let cipher = acquire_read_lock!(self.cipher);
+        let key = ImportedKey {
+            public_key,
+            private_key,
+        };
+        let encrypted_key = NewImportedKeySql::new_from_imported_key(key, &cipher)?;
+        encrypted_key.commit(&mut conn)?;
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - insert_imported_key: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
+
+        Ok(())
+    }
+
+    fn get_imported_key(&self, public_key: &PK) -> Result<PK::K, KeyManagerStorageError> {
+        let start = Instant::now();
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        let acquire_lock = start.elapsed();
+        let cipher = acquire_read_lock!(self.cipher);
+        let key = ImportedKeySql::get_key(public_key, &mut conn)?;
+        let unencrypted_key = key.to_imported_key::<PK>(&cipher)?;
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - insert_imported_key: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                (start.elapsed() - acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
+
+        Ok(unencrypted_key.private_key)
     }
 }
 

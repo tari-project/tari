@@ -256,7 +256,7 @@ impl DhtEnvelope {
 }
 
 /// Represents the ways a destination node can be represented.
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
+#[derive(Default, Clone, Debug, PartialEq, Eq)]
 pub enum NodeDestination {
     /// The sender has chosen not to disclose the message destination, or the destination is
     /// the peer being sent to.

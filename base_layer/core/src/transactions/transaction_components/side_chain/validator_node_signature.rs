@@ -20,14 +20,20 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use blake2::Blake2b;
 use borsh::{BorshDeserialize, BorshSerialize};
+use digest::consts::U32;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{FixedHash, PrivateKey, PublicKey, Signature};
-use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparatedHasher, keys::PublicKey as PublicKeyT};
+use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher, keys::PublicKey as PublicKeyT};
 use tari_utilities::ByteArray;
 
-hash_domain!(ValidatorNodeHashDomain, "com.tari.dan_layer.validator_node", 0);
+hash_domain!(
+    ValidatorNodeHashDomain,
+    "com.tari.base_layer.core.transactions.side_chain.validator_node",
+    0
+);
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub struct ValidatorNodeSignature {
@@ -40,19 +46,17 @@ impl ValidatorNodeSignature {
         Self { public_key, signature }
     }
 
-    // TODO: pass in commitment instead of arbitrary message
     pub fn sign(private_key: &PrivateKey, msg: &[u8]) -> Self {
         let (secret_nonce, public_nonce) = PublicKey::random_keypair(&mut OsRng);
         let public_key = PublicKey::from_secret_key(private_key);
         let challenge = Self::construct_challenge(&public_key, &public_nonce, msg);
-        // TODO: Changing to use the new signing API requires a lot of changes
         let signature = Signature::sign_raw(private_key, secret_nonce, &*challenge)
             .expect("Sign cannot fail with 32-byte challenge and a RistrettoPublicKey");
         Self { public_key, signature }
     }
 
     fn construct_challenge(public_key: &PublicKey, public_nonce: &PublicKey, msg: &[u8]) -> FixedHash {
-        let hasher = DomainSeparatedHasher::<Blake256, ValidatorNodeHashDomain>::new_with_label("registration")
+        let hasher = DomainSeparatedHasher::<Blake2b<U32>, ValidatorNodeHashDomain>::new_with_label("registration")
             .chain(public_key.as_bytes())
             .chain(public_nonce.as_bytes())
             .chain(msg);

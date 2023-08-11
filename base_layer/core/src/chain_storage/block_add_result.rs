@@ -58,6 +58,22 @@ impl BlockAddResult {
         matches!(self, BlockAddResult::OrphanBlock)
     }
 
+    pub fn added_blocks(&self) -> Vec<Arc<ChainBlock>> {
+        match self {
+            Self::ChainReorg { added, removed: _ } => added.clone(),
+            Self::Ok(added) => vec![added.clone()],
+            _ => vec![],
+        }
+    }
+
+    pub fn removed_blocks(&self) -> Vec<Arc<ChainBlock>> {
+        match self {
+            Self::ChainReorg { added: _, removed } => removed.clone(),
+            _ => vec![],
+        }
+    }
+
+    #[cfg(test)]
     pub fn assert_added(&self) -> ChainBlock {
         match self {
             BlockAddResult::ChainReorg { added, removed } => panic!(
@@ -71,10 +87,12 @@ impl BlockAddResult {
         }
     }
 
+    #[cfg(test)]
     pub fn assert_orphaned(&self) {
         assert!(self.is_orphaned(), "Result was not orphaned");
     }
 
+    #[cfg(test)]
     pub fn assert_reorg(&self, num_added: usize, num_removed: usize) {
         match self {
             BlockAddResult::ChainReorg { added, removed } => {
@@ -88,21 +106,6 @@ impl BlockAddResult {
             BlockAddResult::Ok(_) => panic!("Expected reorg result, but was Ok()"),
             BlockAddResult::BlockExists => panic!("Expected reorg result, but was BlockExists"),
             BlockAddResult::OrphanBlock => panic!("Expected reorg result, but was OrphanBlock"),
-        }
-    }
-
-    pub fn added_blocks(&self) -> Vec<Arc<ChainBlock>> {
-        match self {
-            Self::ChainReorg { added, removed: _ } => added.clone(),
-            Self::Ok(added) => vec![added.clone()],
-            _ => vec![],
-        }
-    }
-
-    pub fn removed_blocks(&self) -> Vec<Arc<ChainBlock>> {
-        match self {
-            Self::ChainReorg { added: _, removed } => removed.clone(),
-            _ => vec![],
         }
     }
 }

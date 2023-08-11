@@ -40,7 +40,7 @@ use crate::{
 };
 
 /// Determines if an outbound message should be Encrypted and, if so, for which public key
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub enum OutboundEncryption {
     /// Message should not be encrypted
     #[default]
