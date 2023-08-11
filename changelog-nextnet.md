@@ -3,6 +3,51 @@
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
 
+## [0.51.0-rc.0](https://github.com/tari-project/tari/compare/v0.50.0-rc.0...v0.51.0-rc.0) (2023-08-11)
+
+#### Breaking Changes
+
+* hash domain consistency (#5556) ([64443c6f](https://github.com/tari-project/tari/commit/64443c6f428fa84f8ab3e4b86949be6faef35aeb))
+* consistent output/kernel versions between sender and receiver (#5553) ([74f9c35f](https://github.com/tari-project/tari/commit/74f9c35f6a34c1cf731274b7febb245734ae7032))
+
+#### Features
+
+* ui for template registration in console wallet (#5444) ([701e3c23](https://github.com/tari-project/tari/commit/701e3c2341d1029c2711b81a66952f3bee7d8e42)
+* proof of work audit part 2 (#5495) ([af32f96f](https://github.com/tari-project/tari/commit/af32f96f36a32235daf7e3b1d9694af7edcf5f8e)
+* improve recovery speed (#5489) ([d128f850](https://github.com/tari-project/tari/commit/d128f850356ff18bfd394f6c3bfe78f5bd0607e1))
+* sparse merkle trees (#5457) ([f536d219](https://github.com/tari-project/tari/commit/f536d21929e4eeb11cc185c013eef0b336def216)
+
+#### Bug Fixes
+
+* mempool should use the correct version of the consensus constant (#5549) ([46ab3ef0](https://github.com/tari-project/tari/commit/46ab3ef07e41b091b869ef59376d0709a24e7437))
+* mempool fetch_highest_priority_txs (#5551) ([f7f749c4](https://github.com/tari-project/tari/commit/f7f749c4c476f489f9e30afb87461780d1996834)
+* remove optional timestamp verification bypass (#5552) ([b5a5bed2](https://github.com/tari-project/tari/commit/b5a5bed2c23c273d3787afa1c845f62badec1a46))
+* update code coverage approach (#5540) ([7a9830ed](https://github.com/tari-project/tari/commit/7a9830edb66b6be3edc40b84ae8a1a9c3f4ef525)
+* use correct TOML field for console wallet network address (#5531) ([70763dde](https://github.com/tari-project/tari/commit/70763dde25c1569013e489a0798540fd66dfa571)
+* llvm-tools installed correctly (#5534) ([4ab4b965](https://github.com/tari-project/tari/commit/4ab4b965e5f0556d508ec071a152deb5ad8ea8cc))
+* push test coverage even if some tests fail (#5533) ([053c748d](https://github.com/tari-project/tari/commit/053c748d3d7aee674bada24609612bde9ba1420e)
+* **console-wallet:**  fix possible subtract underflow panic in list (#5535) ([8d5e8e6e](https://github.com/tari-project/tari/commit/8d5e8e6eac45b11867cee6104c207f6559851405)
+* **core:**  disable covenants for all networks except igor and localnet (#5505) ([308f5299](https://github.com/tari-project/tari/commit/308f5299007a67df8fb9fe73763809264005e35c)
+* add a not before proof (#5560) ([11f42fb0](https://github.com/tari-project/tari/commit/11f42fb0942da3bd64db8ad203b75c364dbe0926)
+* borsh sized serialization should be fallible   (#5537) ([53058ce2](https://github.com/tari-project/tari/commit/53058ce299cb89f118017ccec5e98a991a7fcbcc)
+* add documentation to covenant crate (#5524) ([442d75b0](https://github.com/tari-project/tari/commit/442d75b09f439e4bc81919fc42eaf43846b2c8ca)
+* covenants audit (#5526) ([dbb59758](https://github.com/tari-project/tari/commit/dbb59758a92cdf4483574dc6e7c719efa94eedfd)
+* covenant nit picking (#5506) ([301ca495](https://github.com/tari-project/tari/commit/301ca49513948e84bc972e5d75e16f6882d8fb8b)
+* overflow of target difficulty (#5493) ([822dac60](https://github.com/tari-project/tari/commit/822dac609a4d148227c1bac61d9d81bc1a5925ac)
+* coinbase recovery (#5487) ([48dd157a](https://github.com/tari-project/tari/commit/48dd157a82c4459021a1a02d14f7a3e95e24ebd3))
+* minor audit improvements (#5486) ([8756e0b3](https://github.com/tari-project/tari/commit/8756e0b3c0030700a2409e7d29c4822f8e75aacb)
+* remove implicit change in protocol for partial/full signatures (#5488) ([fef701ef](https://github.com/tari-project/tari/commit/fef701efbd07eb769dbe11b5a0cb74c807d7d88c)
+* compile error in wallet/FFI (#5497) ([49610736](https://github.com/tari-project/tari/commit/49610736b839c1067820ad841d4730ae8032eb2b)
+* **core/base_node:**  safe `mmr_position` cast in horizon sync (#5503) ([fb3ac60b](https://github.com/tari-project/tari/commit/fb3ac60b163184f89b2d69b0b9ce3d9b2cfdeeee)
+* **core/consensus:**  include `coinbase_extra` max size into coinbase weight calculation (#5501) ([4554cc5f](https://github.com/tari-project/tari/commit/4554cc5f075bf9392c75fedb7576753612b374ee)
+* **core/keymanager:**  use tokio rwlock for keymanagers (#5494) ([229aee02](https://github.com/tari-project/tari/commit/229aee029dbb8d401feb74be51caa4f26dd93be1)
+* **core/transactions:**  resolve or remove TODOs (#5500) ([4a9f73c7](https://github.com/tari-project/tari/commit/4a9f73c79b98298e61115744b3e467622dd4945b)
+* **core/weighting:**  remove optional and define correct rounding for usize::MAX (#5490) ([38c399a2](https://github.com/tari-project/tari/commit/38c399a2e5ee28878e0238e2b8e13c15f658ffbc)
+* **mempool:**  remove TODOs and other minor changes (#5498) ([a1f24417](https://github.com/tari-project/tari/commit/a1f244179390d9a4845bce96e3c6a506a59e4b16)
+* **mmr:**  support zero sized balanced merkle proof (#5474) ([ef984823](https://github.com/tari-project/tari/commit/ef98482313c9b9480ac663709162ae62e9c26978)
+* **wallet:**  use correct output features for send to self (#5472) ([ce1f0686](https://github.com/tari-project/tari/commit/ce1f0686f56367ff094bf28cfd0388b2ea94a8c9)
+
+
 ## [0.50.0-rc.0](https://github.com/tari-project/tari/compare/v0.49.0-rc.3...v0.50.0-rc.0) (2023-06-09)
 
 ### ⚠ BREAKING CHANGES
