@@ -25,7 +25,7 @@ mod test {
     use tari_contacts::contacts_service::{
         handle::{ContactsLivenessData, ContactsLivenessEvent},
         service::{ContactMessageType, ContactOnlineStatus},
-        storage::database::Contact,
+        types::Contact,
     };
     use tari_core::transactions::{
         tari_amount::{uT, MicroTari},

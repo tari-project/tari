@@ -22,7 +22,12 @@
 use std::iter;
 
 use log::*;
-use monero::{blockdata::transaction::SubField, consensus, cryptonote::hash::Hashable, VarInt};
+use monero::{
+    blockdata::transaction::{ExtraField, SubField},
+    consensus,
+    cryptonote::hash::Hashable,
+    VarInt,
+};
 use tari_utilities::hex::HexError;
 
 use super::{
@@ -45,7 +50,7 @@ pub const LOG_TARGET: &str = "c::pow::monero_rx";
 /// contain valid Monero PoW data.
 pub fn monero_difficulty(header: &BlockHeader, randomx_factory: &RandomXFactory) -> Result<Difficulty, MergeMineError> {
     let monero_pow_data = verify_header(header)?;
-    debug!(target: LOG_TARGET, "Valid Monero data: {:?}", monero_pow_data);
+    debug!(target: LOG_TARGET, "Valid Monero data: {}", monero_pow_data);
     let blockhashing_blob = monero_pow_data.to_blockhashing_blob();
     let vm = randomx_factory.create(monero_pow_data.randomx_key())?;
     get_random_x_difficulty(&blockhashing_blob, &vm).map(|(diff, _)| diff)
@@ -67,10 +72,11 @@ fn get_random_x_difficulty(input: &[u8], vm: &RandomXVMInstance) -> Result<(Diff
 fn verify_header(header: &BlockHeader) -> Result<MoneroPowData, MergeMineError> {
     let monero_data = MoneroPowData::from_header(header)?;
     let expected_merge_mining_hash = header.mining_hash();
-
+    let extra_field = ExtraField::try_parse(&monero_data.coinbase_tx.prefix.extra)
+        .map_err(|_| MergeMineError::DeserializeError("Invalid extra field".to_string()))?;
     // Check that the Tari MM hash is found in the monero coinbase transaction
-    let is_found = monero_data.coinbase_tx.prefix.extra.0.iter().any(|item| match item {
-        SubField::MergeMining(depth, merge_mining_hash) => {
+    let is_found = extra_field.0.iter().any(|item| match item {
+        SubField::MergeMining(Some(depth), merge_mining_hash) => {
             depth == &VarInt(0) && merge_mining_hash.as_bytes() == expected_merge_mining_hash.as_slice()
         },
         _ => false,
@@ -89,13 +95,15 @@ fn verify_header(header: &BlockHeader) -> Result<MoneroPowData, MergeMineError> 
     Ok(monero_data)
 }
 
-pub fn extract_tari_hash(monero: &monero::Block) -> Option<&monero::Hash> {
-    for item in &monero.miner_tx.prefix.extra.0 {
+pub fn extract_tari_hash(monero: &monero::Block) -> Result<Option<monero::Hash>, MergeMineError> {
+    let extra_field = ExtraField::try_parse(&monero.miner_tx.prefix.extra)
+        .map_err(|_| MergeMineError::DeserializeError("Invalid extra field".to_string()))?;
+    for item in &extra_field.0 {
         if let SubField::MergeMining(_depth, merge_mining_hash) = item {
-            return Some(merge_mining_hash);
+            return Ok(Some(*merge_mining_hash));
         }
     }
-    None
+    Ok(None)
 }
 
 pub fn deserialize_monero_block_from_hex<T>(data: T) -> Result<monero::Block, MergeMineError>
@@ -157,8 +165,11 @@ pub fn append_merge_mining_tag<T: AsRef<[u8]>>(block: &mut monero::Block, hash: 
         )));
     }
     let hash = monero::Hash::from_slice(hash.as_ref());
-    let mm_tag = SubField::MergeMining(VarInt(0), hash);
-    block.miner_tx.prefix.extra.0.push(mm_tag);
+    let mm_tag = SubField::MergeMining(Some(VarInt(0)), hash);
+    let mut extra_field = ExtraField::try_parse(&block.miner_tx.prefix.extra)
+        .map_err(|_| MergeMineError::DeserializeError("Invalid extra field".to_string()))?;
+    extra_field.0.push(mm_tag);
+    block.miner_tx.prefix.extra = extra_field.into();
     Ok(())
 }
 
@@ -177,7 +188,7 @@ pub fn create_block_hashing_blob(
 
 #[cfg(test)]
 mod test {
-    use std::convert::TryFrom;
+    use std::convert::{TryFrom, TryInto};
 
     use borsh::BorshSerialize;
     use monero::{
@@ -222,18 +233,18 @@ mod test {
                 outputs: vec![TxOut {
                     amount: VarInt(1550800739964),
                     target: TxOutTarget::ToKey {
-                        key: PublicKey::from_slice(
-                            hex::decode("e2e19d8badb15e77c8e1f441cf6acd9bcde34a07cae82bbe5ff9629bf88e6e81")
-                                .unwrap()
-                                .as_slice(),
-                        )
-                        .unwrap(),
+                        key: hex::decode("e2e19d8badb15e77c8e1f441cf6acd9bcde34a07cae82bbe5ff9629bf88e6e81")
+                            .unwrap()
+                            .as_slice()
+                            .try_into()
+                            .unwrap(),
                     },
                 }],
                 extra: ExtraField(vec![
                     SubField::TxPublicKey(PublicKey::from_slice(pk_extra.as_slice()).unwrap()),
                     SubField::Nonce(vec![196, 37, 4, 0, 27, 37, 187, 163, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
-                ]),
+                ])
+                .into(),
             },
             signatures: vec![],
             rct_signatures: RctSig {

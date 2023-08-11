@@ -27,6 +27,7 @@ pub mod emoji;
 pub mod encryption;
 pub mod epoch;
 pub mod grpc_authentication;
+pub mod serializers;
 pub mod tari_address;
 pub mod transaction;
 mod tx_id;

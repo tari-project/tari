@@ -4,7 +4,7 @@
 @wallet-routing_mechanism @wallet
 Feature: Wallet Routing Mechanism
 
-    @flaky
+    @flaky @missing-steps
     Scenario Outline: Wallets transacting via specified routing mechanism only
       Given I have a seed node NODE
       #   And I have <NumBaseNodes> base nodes connected to all seed nodes
@@ -42,6 +42,7 @@ Feature: Wallet Routing Mechanism
       #       # | NumBaseNodes | NumWallets | Mechanism      #      |
       #       # | 5      #       # | 5      #     | StoreAndForwardOnly |
 
+  @missing-steps
     Scenario: Store and forward TX
       Given I have a seed node SEED
       When I have a base node BASE connected to seed SEED

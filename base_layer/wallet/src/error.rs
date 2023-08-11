@@ -101,6 +101,8 @@ pub enum WalletError {
     TransportChannelError(#[from] TransportChannelError),
     #[error("Unexpected API Response while calling method `{method}` on `{api}`")]
     UnexpectedApiResponse { method: String, api: String },
+    #[error("Public address not set for this wallet")]
+    PublicAddressNotSet,
 }
 
 pub const LOG_TARGET: &str = "tari::application";
@@ -136,6 +138,8 @@ pub enum WalletStorageError {
     DatabaseMigrationError(String),
     #[error("Value not found: `{}`", .0.to_key_string())]
     ValueNotFound(DbKey),
+    #[error("Burnt proof not found: `{0}`")]
+    BurntProofNotFound(u32),
     #[error("Unexpected result: `{0}`")]
     UnexpectedResult(String),
     #[error("Blocking task spawn error: `{0}`")]

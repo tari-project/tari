@@ -679,18 +679,18 @@ struct ReadOnlyIterator {}
 impl ReadOnlyIterator {
     fn deserialize<K, V>(key_bytes: &[u8], val_bytes: &[u8]) -> Result<(K, V), error::Error>
     where
-        for<'t> K: serde::de::DeserializeOwned,
-        for<'t> V: serde::de::DeserializeOwned,
+        for<'t> K: DeserializeOwned,
+        for<'t> V: DeserializeOwned,
     {
         let key = bincode::deserialize(key_bytes).map_err(|e| error::Error::ValRejected(e.to_string()))?;
         let val = bincode::deserialize(val_bytes).map_err(|e| error::Error::ValRejected(e.to_string()))?;
         Ok((key, val))
     }
 
-    fn next<'r, K, V>(c: &mut Cursor, access: &'r ConstAccessor) -> Result<(K, V), error::Error>
+    fn next<K, V>(c: &mut Cursor, access: &ConstAccessor) -> Result<(K, V), error::Error>
     where
-        K: serde::de::DeserializeOwned,
-        V: serde::de::DeserializeOwned,
+        K: DeserializeOwned,
+        V: DeserializeOwned,
     {
         let (key_bytes, val_bytes) = c.next(access)?;
         ReadOnlyIterator::deserialize(key_bytes, val_bytes)
@@ -707,7 +707,7 @@ impl<'txn, 'db: 'txn> LMDBReadTransaction<'txn, 'db> {
     pub fn get<K, V>(&self, key: &K) -> Result<Option<V>, LMDBError>
     where
         K: AsLmdbBytes + ?Sized,
-        for<'t> V: serde::de::DeserializeOwned, // read this as, for *any* lifetime, t, we can convert a [u8] to V
+        for<'t> V: DeserializeOwned, // read this as, for *any* lifetime, t, we can convert a [u8] to V
     {
         let val = self.access.get(self.db, key).to_opt();
         LMDBReadTransaction::convert_value(val)
@@ -722,8 +722,7 @@ impl<'txn, 'db: 'txn> LMDBReadTransaction<'txn, 'db> {
     }
 
     fn convert_value<V>(val: Result<Option<&[u8]>, error::Error>) -> Result<Option<V>, LMDBError>
-    where for<'t> V: serde::de::DeserializeOwned /* read this as, for *any* lifetime, t, we can convert a [u8] to V */
-    {
+    where for<'t> V: DeserializeOwned /* read this as, for *any* lifetime, t, we can convert a [u8] to V */ {
         match val {
             Ok(None) => Ok(None),
             Err(e) => Err(LMDBError::GetError(format!("LMDB get error: {}", e))),

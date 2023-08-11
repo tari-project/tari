@@ -105,11 +105,11 @@ impl Covenant {
         counter.get()
     }
 
-    pub fn execute<'a>(
+    pub fn execute(
         &self,
         block_height: u64,
         input: &TransactionInput,
-        outputs: &'a [TransactionOutput],
+        outputs: &[TransactionOutput],
     ) -> Result<usize, CovenantError> {
         if self.tokens.is_empty() {
             // Empty covenants always pass

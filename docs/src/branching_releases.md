@@ -42,7 +42,7 @@ Our version numbers can be broken down into 5 segments.
 
 Example: `v1.55.2-rc.7`
 
-- MAJOR: `1` - Used to anytime the network the _MainNet_ will see a hard-fork. TestNets may be reset, or hard-fork on a regular basis without a major version bump. The major version bump will be reserved for only a MainNet hard-fork.
+- MAJOR: `1` - Used anytime the network _MainNet_ will see a hard-fork. TestNets may be reset, or hard-fork on a regular basis without a major version bump. The major version bump will be reserved for only a MainNet hard-fork.
 - MINOR: `55` - For upgrades that may contain breaking changes. These changes won't cause the network to fork, but may require a change in configuration, a restart to the node, or other circumstances. This is only changed once on an 8-week release.
 - PATCH: `2` - All other changes including HotFixes will be reflected in PATCH version increments.
 - PRE-RELEASE TAG: `rc.7` - in the form of `rc` for NextNet and the form `pre` for development networks. In the case of development networks the number following the pre-release tag is incremented anytime a developer wishes to produce a new binary for the testnet. In the case of NextNet it would be used to produce a change to the release candidate.
@@ -56,8 +56,8 @@ Developers can perform this process as often and as many times as they want.
 
 ### 8 Week ritual release
 
-Every 8 weeks the development team will trigger both a NextNet, and StageNet/MainNet release. To be specific the current NextNet version will become the next StageNet/MainNet version. And a new NextNet version will be tagged for the NextNet network, and for use 8 week in the future in StageNet/Mainnet. To do this a developer will checkout the current NextNet tag v1.54.0-rc.0. They can then re-tag this version as v1.54.0. This will trigger a new compilation of the StageNet/MainNet binaries with the flag `TARI_NETWORK=mainnet` which will ensure any existing feature gate is closed.  
-Next the developer will checkout the development branch. From here create a new release branch `nextnet-1.55.0-rc.0`. Make any version bumps or changes necessary. Tag this new branch as v1.55.0-rc.0 triggering a CI compilation of the NextNet binary with the flag `TARI_NETWORK=nextnet` which will allow feature gates in the testing status to stay open. The release branch can be merged back into development and then deleted.
+Every 8 weeks the development team will trigger both a NextNet, and StageNet/MainNet release. To be specific the current NextNet version will become the next StageNet/MainNet version. And a new NextNet version will be tagged for the NextNet network, and for use 8 week in the future in StageNet/Mainnet. To do this a developer will checkout the current NextNet tag v1.54.0-rc.0 into a new branch `stagenet-1.54.0`. This feature branch will be merged into the `stagenet` branch. They can then tag this version as v1.54.0. This will trigger a new compilation of the StageNet/MainNet binaries with the flag `TARI_NETWORK=mainnet` which will ensure any existing feature gate is closed.  
+Next the developer will checkout the nextnet branch. From here create a new release branch `nextnet-1.55.0-rc.0`. Merge development into the feature branch, and make any version bumps or changes necessary. Tag this new branch as v1.55.0-rc.0 triggering a CI compilation of the NextNet binary with the flag `TARI_NETWORK=nextnet` which will allow feature gates in the testing status to stay open. This release branch can be merged back into the `nextnet` branch and then deleted.
 Lastly the development branch should be reset to the _next_ version v1.56.0-pre.0. This makes it simple for the next testnet release and leaves no questions as to what version comes next.
 
 After all the above tags have occurred it would leave us with the version changes as follows:

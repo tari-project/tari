@@ -898,6 +898,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                         conn,
                     )?;
                 } else {
+                    // Can only be one of the two
                 }
             }
 
@@ -1378,7 +1379,7 @@ impl Encryptable<XChaCha20Poly1305> for KnownOneSidedPaymentScriptSql {
 
 #[cfg(test)]
 mod test {
-    use std::{io::Write, mem::size_of};
+    use std::mem::size_of;
 
     use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
     use diesel::{sql_query, Connection, RunQueryDsl, SqliteConnection};
@@ -1387,7 +1388,7 @@ mod test {
     use tari_common_types::{encryption::Encryptable, types::CommitmentFactory};
     use tari_core::transactions::{
         tari_amount::MicroTari,
-        test_helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
+        test_helpers::{create_non_recoverable_unblinded_output, TestParams as TestParamsHelpers},
         transaction_components::{OutputFeatures, TransactionInput, UnblindedOutput},
         CryptoFactories,
     };
@@ -1406,7 +1407,9 @@ mod test {
         let test_params = TestParamsHelpers::new();
         let factory = CommitmentFactory::default();
 
-        let unblinded_output = create_unblinded_output(script!(Nop), OutputFeatures::default(), &test_params, val);
+        let unblinded_output =
+            create_non_recoverable_unblinded_output(script!(Nop), OutputFeatures::default(), &test_params, val)
+                .unwrap();
         let input = unblinded_output.as_transaction_input(&factory).unwrap();
 
         (input, unblinded_output)
@@ -1430,9 +1433,9 @@ mod test {
                 v.into_iter()
                     .map(|b| {
                         let m = format!("Running migration {}", b);
-                        std::io::stdout()
-                            .write_all(m.as_ref())
-                            .expect("Couldn't write migration number to stdout");
+                        // std::io::stdout()
+                        //     .write_all(m.as_ref())
+                        //     .expect("Couldn't write migration number to stdout");
                         m
                     })
                     .collect::<Vec<String>>()
@@ -1570,9 +1573,9 @@ mod test {
                 v.into_iter()
                     .map(|b| {
                         let m = format!("Running migration {}", b);
-                        std::io::stdout()
-                            .write_all(m.as_ref())
-                            .expect("Couldn't write migration number to stdout");
+                        // std::io::stdout()
+                        //     .write_all(m.as_ref())
+                        //     .expect("Couldn't write migration number to stdout");
                         m
                     })
                     .collect::<Vec<String>>()

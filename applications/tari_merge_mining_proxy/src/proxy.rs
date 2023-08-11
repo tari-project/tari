@@ -243,8 +243,7 @@ impl InnerService {
         for param in params.iter().filter_map(|p| p.as_str()) {
             let monero_block = monero_rx::deserialize_monero_block_from_hex(param)?;
             debug!(target: LOG_TARGET, "Monero block: {}", monero_block);
-            let hash = monero_rx::extract_tari_hash(&monero_block)
-                .copied()
+            let hash = monero_rx::extract_tari_hash(&monero_block)?
                 .ok_or_else(|| MmProxyError::MissingDataError("Could not find Tari header in coinbase".to_string()))?;
 
             debug!(
@@ -277,9 +276,14 @@ impl InnerService {
             let mut base_node_client = self.base_node_client.clone();
             let start = Instant::now();
             let achieved_target = if self.config.check_tari_difficulty_before_submit {
-                trace!(target: LOG_TARGET, "Starting calculate achieved tari difficultly");
+                trace!(target: LOG_TARGET, "Starting calculate achieved Tari difficultly");
                 let diff = monero_difficulty(&tari_header, &self.randomx_factory)?;
-                trace!(target: LOG_TARGET, "Finished calculate achieved tari difficultly");
+                trace!(
+                    target: LOG_TARGET,
+                    "Finished calculate achieved Tari difficultly - achieved {} vs. target {}",
+                    diff.as_u64(),
+                    block_data.tari_difficulty
+                );
                 diff.as_u64()
             } else {
                 block_data.tari_difficulty

@@ -288,6 +288,7 @@ impl NetworkTab {
                 self.base_node_edit_mode = BaseNodeInputMode::Selection;
                 return KeyHandled::Handled;
             } else {
+                // We only care about c and y
             }
         }
         KeyHandled::NotHandled

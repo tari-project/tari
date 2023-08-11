@@ -24,7 +24,7 @@
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
 use chacha20poly1305::Key;
-pub use encrypted_value::{EncryptedValue, EncryptionError};
+pub use encrypted_data::{EncryptedData, EncryptedDataError};
 pub use error::TransactionError;
 pub use kernel_builder::KernelBuilder;
 pub use kernel_features::KernelFeatures;
@@ -32,6 +32,7 @@ pub use kernel_sum::KernelSum;
 pub use output_features::OutputFeatures;
 pub use output_features_version::OutputFeaturesVersion;
 pub use output_type::OutputType;
+pub use range_proof_type::RangeProofType;
 pub use side_chain::*;
 use tari_common_types::types::{Commitment, FixedHash, PublicKey};
 use tari_script::TariScript;
@@ -48,7 +49,7 @@ pub use unblinded_output::UnblindedOutput;
 pub use unblinded_output_builder::UnblindedOutputBuilder;
 use zeroize::Zeroize;
 
-mod encrypted_value;
+pub mod encrypted_data;
 mod error;
 mod kernel_builder;
 mod kernel_features;
@@ -56,6 +57,7 @@ mod kernel_sum;
 mod output_features;
 mod output_features_version;
 mod output_type;
+mod range_proof_type;
 mod side_chain;
 
 mod transaction;
@@ -80,6 +82,7 @@ pub(crate) const AEAD_KEY_LEN: usize = std::mem::size_of::<Key>();
 
 // Type for hiding aead key encryption
 hidden_type!(EncryptedValueKey, SafeArray<u8, AEAD_KEY_LEN>);
+hidden_type!(EncryptedDataKey, SafeArray<u8, AEAD_KEY_LEN>);
 
 //----------------------------------------     Crate functions   ----------------------------------------------------//
 
@@ -98,7 +101,7 @@ pub(super) fn hash_output(
     commitment: &Commitment,
     script: &TariScript,
     covenant: &Covenant,
-    encrypted_value: &EncryptedValue,
+    encrypted_data: &EncryptedData,
     sender_offset_public_key: &PublicKey,
     minimum_value_promise: MicroTari,
 ) -> FixedHash {
@@ -108,7 +111,7 @@ pub(super) fn hash_output(
         .chain(commitment)
         .chain(script)
         .chain(covenant)
-        .chain(encrypted_value)
+        .chain(encrypted_data)
         .chain(sender_offset_public_key)
         .chain(&minimum_value_promise);
 

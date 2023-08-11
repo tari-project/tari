@@ -553,6 +553,7 @@ impl<B: Backend> Component<B> for TransactionsTab {
                 self.confirmation_dialog = false;
                 return;
             } else {
+                // Dont care
             }
         }
 

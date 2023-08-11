@@ -53,12 +53,16 @@ pub enum TransactionError {
     MoreThanOneCoinbase,
     #[error("No coinbase in body")]
     NoCoinbase,
+    #[error("Missing range proof")]
+    MissingRangeProof,
     #[error("Input maturity not reached")]
     InputMaturity,
     #[error("Tari script error : {0}")]
     ScriptError(#[from] ScriptError),
     #[error("Error performing conversion: {0}")]
     ConversionError(String),
+    #[error("Error performing encryption: {0}")]
+    EncryptionError(String),
     #[error("The script offset in body does not balance")]
     ScriptOffset,
     #[error("Error executing script: {0}")]
@@ -75,6 +79,8 @@ pub enum TransactionError {
     NonCoinbaseHasOutputFeaturesCoinbaseExtra,
     #[error("Coinbase extra size is {len} but the maximum is {max}")]
     InvalidOutputFeaturesCoinbaseExtraSize { len: usize, max: u32 },
+    #[error("Invalid revealed value : {0}")]
+    InvalidRevealedValue(String),
 }
 
 impl From<CovenantError> for TransactionError {

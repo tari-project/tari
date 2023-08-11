@@ -135,8 +135,8 @@ pub fn comms_dht_hash_domain_key_message() -> DomainSeparatedHasher<CommsChallen
     DomainSeparatedHasher::<CommsChallenge, DHTCommsHashDomain>::new_with_label("key_message")
 }
 
-pub fn comms_dht_hash_domain_key_signature() -> DomainSeparatedHasher<CommsChallenge, DHTCommsHashDomain> {
-    DomainSeparatedHasher::<CommsChallenge, DHTCommsHashDomain>::new_with_label("key_signature")
+pub fn comms_dht_hash_domain_key_mask() -> DomainSeparatedHasher<CommsChallenge, DHTCommsHashDomain> {
+    DomainSeparatedHasher::<CommsChallenge, DHTCommsHashDomain>::new_with_label("key_mask")
 }
 
 pub fn comms_dht_hash_domain_message_signature() -> DomainSeparatedHasher<CommsChallenge, DHTCommsHashDomain> {

@@ -489,51 +489,52 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         mut body: BytesMut,
     ) -> Result<FinalMessageParts, DhtOutboundError> {
         match encryption {
-            OutboundEncryption::EncryptFor(public_key) => {
-                trace!(target: LOG_TARGET, "Encrypting message for {}", public_key);
-                // Generate ephemeral public/private key pair and ECDH shared secret
-                let (e_secret_key, e_public_key) = CommsPublicKey::random_keypair(&mut OsRng);
-                let shared_ephemeral_secret = CommsDHKE::new(&e_secret_key, &**public_key);
+            // Encrypt the message, protecting the sender identity
+            OutboundEncryption::EncryptFor(recipient_public_key) => {
+                trace!(target: LOG_TARGET, "Encrypting message for {}", recipient_public_key);
 
-                // Generate key message for encryption of message
+                // Perform an ephemeral ECDH exchange against the recipient public key
+                let (ephemeral_secret_key, ephemeral_public_key) = CommsPublicKey::random_keypair(&mut OsRng);
+                let shared_ephemeral_secret = CommsDHKE::new(&ephemeral_secret_key, &**recipient_public_key);
+
+                // Produce a masked sender public key using an offset mask derived from the ECDH exchange
+                let mask = crypt::generate_key_mask(&shared_ephemeral_secret)
+                    .map_err(|e| DhtOutboundError::CipherError(e.to_string()))?;
+                let masked_sender_public_key = &mask * self.node_identity.public_key();
+
+                // Pad and encrypt the message using the masked sender public key
                 let key_message = crypt::generate_key_message(&shared_ephemeral_secret);
-                // Encrypt the message with the body with key message above
-                crypt::encrypt_message(&key_message, &mut body)?;
+                crypt::encrypt_message(&key_message, &mut body, masked_sender_public_key.as_bytes())?;
                 let encrypted_body = body.freeze();
 
-                // Produce domain separated signature signature
-                let mac_signature = crypt::create_message_domain_separated_hash_parts(
+                // Produce a hash that binds the message and metadata
+                let binding_hash = crypt::create_message_domain_separated_hash_parts(
                     self.protocol_version,
                     destination,
                     message_type,
                     flags,
                     expires,
-                    Some(&e_public_key),
+                    Some(&ephemeral_public_key),
                     &encrypted_body,
                 );
 
-                // Generate key signature for encryption of signature
-                let key_signature = crypt::generate_key_signature(&shared_ephemeral_secret);
-
-                // Sign the encrypted message
-                let signature =
-                    MessageSignature::new_signed(self.node_identity.secret_key().clone(), &mac_signature).to_proto();
-
-                // Perform authenticated encryption with ChaCha20-Poly1305 and set the origin field
-                let encrypted_message_signature =
-                    crypt::encrypt_signature(&key_signature, &signature.to_encoded_bytes())?;
+                // Sign the encrypted message using the masked sender key
+                let masked_sender_secret_key = mask * self.node_identity.secret_key();
+                let signature = MessageSignature::new_signed(masked_sender_secret_key, &binding_hash).to_proto();
 
                 Ok((
-                    Some(Arc::new(e_public_key)),
-                    Some(encrypted_message_signature.into()),
+                    Some(Arc::new(ephemeral_public_key)),
+                    Some(signature.to_encoded_bytes().into()), // this includes the masked signer public key
                     encrypted_body,
                 ))
             },
+            // Keep the message unencrypted
             OutboundEncryption::ClearText => {
                 trace!(target: LOG_TARGET, "Encryption not requested for message");
 
+                // We may or may not sign it
                 if include_origin {
-                    let binding_message_representation = crypt::create_message_domain_separated_hash_parts(
+                    let binding_hash = crypt::create_message_domain_separated_hash_parts(
                         self.protocol_version,
                         destination,
                         message_type,
@@ -542,12 +543,10 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                         None,
                         &body,
                     );
-                    let signature = MessageSignature::new_signed(
-                        self.node_identity.secret_key().clone(),
-                        &binding_message_representation,
-                    )
-                    .to_proto();
-                    Ok((None, Some(signature.to_encoded_bytes().into()), body.freeze()))
+                    let signature =
+                        MessageSignature::new_signed(self.node_identity.secret_key().clone(), &binding_hash).to_proto();
+                    Ok((None, Some(signature.to_encoded_bytes().into()), body.freeze())) // this includes the signer
+                                                                                         // public key
                 } else {
                     Ok((None, None, body.freeze()))
                 }

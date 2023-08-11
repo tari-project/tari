@@ -737,10 +737,12 @@ mod test {
             test_params.get_size_for_default_features_and_scripts(1),
         );
 
-        let utxo = test_params.create_unblinded_output(UtxoTestParams {
-            value: INPUT_AMOUNT - estimated_fee,
-            ..Default::default()
-        });
+        let utxo = test_params
+            .create_unblinded_output_not_recoverable(UtxoTestParams {
+                value: INPUT_AMOUNT - estimated_fee,
+                ..Default::default()
+            })
+            .unwrap();
         stx_builder
             .with_input(double_spend_utxo, double_spend_input)
             .with_output(utxo, test_params.sender_offset_private_key)

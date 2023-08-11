@@ -52,19 +52,8 @@ hash_domain!(
     1
 );
 
-type WalletOutputRewindKeysDomainHasher = DomainSeparatedHasher<Blake256, WalletOutputRewindKeysDomain>;
 type WalletOutputEncryptionKeysDomainHasher = DomainSeparatedHasher<Blake256, WalletOutputEncryptionKeysDomain>;
 type WalletOutputSpendingKeysDomainHasher = DomainSeparatedHasher<Blake256, WalletOutputSpendingKeysDomain>;
-
-/// Generate an output rewind key from a Diffie-Hellman shared secret
-pub fn shared_secret_to_output_rewind_key(shared_secret: &CommsDHKE) -> Result<PrivateKey, ByteArrayError> {
-    PrivateKey::from_bytes(
-        WalletOutputRewindKeysDomainHasher::new()
-            .chain(shared_secret.as_bytes())
-            .finalize()
-            .as_ref(),
-    )
-}
 
 /// Generate an output encryption key from a Diffie-Hellman shared secret
 pub fn shared_secret_to_output_encryption_key(shared_secret: &CommsDHKE) -> Result<PrivateKey, ByteArrayError> {

@@ -2,6 +2,48 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.50.0](https://github.com/tari-project/tari/compare/v0.49.0...v0.50.0) (2023-08-11)
+
+### ⚠ BREAKING CHANGES
+
+* add optional range proof types (#5372) ([f24784f3](https://github.com/tari-project/tari/commit/f24784f3a2f3f574cd2ac4e2d9fe963078e4c524)
+* use domain separation for wallet message signing (#5400) ([7d71f8be](https://github.com/tari-project/tari/commit/7d71f8bef94fddf1ffa345e6b599cf02ee6ab935)
+* improve message encryption (#5288) ([7a80716c](https://github.com/tari-project/tari/commit/7a80716c71987bae14d83994d7402f96c190242d)
+
+#### Features
+
+* refactor configuration for chat so ffi can create and accept a config file (#5426) ([9d0d8b52](https://github.com/tari-project/tari/commit/9d0d8b5277bd26e79b7fe5506edcaf197ba63eb7)
+* add metadata signature check (#5411) ([9c2bf41e](https://github.com/tari-project/tari/commit/9c2bf41ec8f649ffac824878256c09598bf52269)
+* improved base node monitoring (#5390) ([c704890c](https://github.com/tari-project/tari/commit/c704890ca949bcfcd608e299175694b81cef0165))
+* add optional range proof types (#5372) ([f24784f3](https://github.com/tari-project/tari/commit/f24784f3a2f3f574cd2ac4e2d9fe963078e4c524)
+* added burn feature to the console wallet (#5322) ([45685b9f](https://github.com/tari-project/tari/commit/45685b9f3acceba483ec30021e8d4894dbf2861c))
+* chat ffi (#5349) ([f7cece27](https://github.com/tari-project/tari/commit/f7cece27c02ae3b668e1ffbd6629828d0432debf)
+* add miner timeout config option (#5331) ([aea14f6b](https://github.com/tari-project/tari/commit/aea14f6bf302801c85efa9f304a8f442aaf9a3ff)
+* improve message encryption (#5288) ([7a80716c](https://github.com/tari-project/tari/commit/7a80716c71987bae14d83994d7402f96c190242d)
+* chat scaffold (#5244) ([5b09f8e2](https://github.com/tari-project/tari/commit/5b09f8e2b630685d9ff748eae772b9798954f6ff))
+* **p2p:**  allow listener bind to differ from the tor forward address (#5357) ([857fb555](https://github.com/tari-project/tari/commit/857fb55520145ece48b4b5cca0aa5d7fd8f6c69e)
+
+#### Bug Fixes
+
+*   use mined at timestamp in fauxconfirmation (#5443) ([f3833c9f](https://github.com/tari-project/tari/commit/f3833c9fc46d77fddaa7a23ef1d53ba9d860182a)
+*   fix custom wallet startup logic for console wallet (#5429) ([0c1e5765](https://github.com/tari-project/tari/commit/0c1e5765676a9281b45fd66c8846b78ea4c76125)
+*   use domain separation for wallet message signing (#5400) ([7d71f8be](https://github.com/tari-project/tari/commit/7d71f8bef94fddf1ffa345e6b599cf02ee6ab935)
+*   don't use in memory datastores for chat client dht in integration tests (#5399) ([cbdca6fc](https://github.com/tari-project/tari/commit/cbdca6fcc8ae61ed2dbfacca9da1a59c78945045)
+*   loop on mismatched passphrase entry (#5396) ([ed120b27](https://github.com/tari-project/tari/commit/ed120b277371be7b9bd61c825aa7d61b104d3ac6))
+*   deeplink to rfc spec (#5342) ([806d3b8c](https://github.com/tari-project/tari/commit/806d3b8cc6668f23bb77ca7040833e080c173063))
+*   fix panic when no public addresses (#5367) ([49be2a27](https://github.com/tari-project/tari/commit/49be2a27a8aead96c180cb988614e3696c338530)
+*   remove wallet panic (#5338) ([536d16d2](https://github.com/tari-project/tari/commit/536d16d2feea283ac1b8f546f479b76465938c4b))
+*   added missing log4rs features (#5356) ([b9031bbb](https://github.com/tari-project/tari/commit/b9031bbbece1988c1de180cabbf4e3acfcb50836)
+*   add SECURITY.md Vulnerability Disclosure Policy (#5351) ([72daaf5e](https://github.com/tari-project/tari/commit/72daaf5ef614ceb805f690db12c7fefc642d5453)
+*   make the first output optional in the wallet (#5352) ([bf16140e](https://github.com/tari-project/tari/commit/bf16140ecd1ad0ae25f8a9b8cde9c3e4f1d12a02))
+*   wallet .h file for lib wallets (#5330) ([22a3a17d](https://github.com/tari-project/tari/commit/22a3a17db6ef8889cb3a73dfe2db081a0691a68c))
+*   default network selection (#5333) ([cf4b2c8a](https://github.com/tari-project/tari/commit/cf4b2c8a4f5849ba51dab61595dfed1a9249c580)
+*   allow public addresses from command line (#5303) ([349ac895](https://github.com/tari-project/tari/commit/349ac8957bc513cd4110eaac69550ffa0816862b)
+* **balanced_mp:**  removes some panics, adds some checks and new tests (#5432) ([602f416f](https://github.com/tari-project/tari/commit/602f416f674b5e1835a634f3c8ab123001af600e)
+* **comms:**
+    *  validate onion3 checksum (#5440) ([0dfdb3a4](https://github.com/tari-project/tari/commit/0dfdb3a4bef51952f0cecf6f6fcb00f6b2bfe302)
+    *  only set final forward address if configured to port 0 (#5406) ([ff7fb6d6](https://github.com/tari-project/tari/commit/ff7fb6d6b4ab4f77d108b2d9b7fd010c77e613c7)
+
 ### [0.49.2](https://github.com/tari-project/tari/compare/v0.49.1...v0.49.2) (2023-06-28)
 
 ### Features
@@ -1900,15 +1942,9 @@ Base node users should delete their node databases and resync
 *   fix GRPC GetTransactionInfo not found response (#3145) ([0e0bfe0f](https://github.com/tari-project/tari/commit/0e0bfe0f31b05d44540a3bfa90e28bfc07ec86a7))
 *   fix cucumber transaction builder reliability (#3147) ([d4a7fdd3](https://github.com/tari-project/tari/commit/d4a7fdd3ed4b61b068f9541b24f5fb9ad5bf40b5))
 * **wallet:**
-<<<<<<< HEAD
   *  fix resize panic (#3149) ([33af0847](https://github.com/tari-project/tari/commit/33af084720d752c5111fbef23ff854eaabe1a7d0))
   *  in wallet block certain keys during popup (#3148) ([84542922](https://github.com/tari-project/tari/commit/84542922f98d46985047d590c237bb63bf35c03b))
   *  correctly deal with new coinbase transactions for the same height (#3151) ([564ef5a2](https://github.com/tari-project/tari/commit/564ef5a26a3056ef855f7f132582beaf2ef0e15a))
-=======
-    *  fix resize panic (#3149) ([33af0847](https://github.com/tari-project/tari/commit/33af084720d752c5111fbef23ff854eaabe1a7d0))
-    *  in wallet block certain keys during popup (#3148) ([84542922](https://github.com/tari-project/tari/commit/84542922f98d46985047d590c237bb63bf35c03b))
-    *  correctly deal with new coinbase transactions for the same height (#3151) ([564ef5a2](https://github.com/tari-project/tari/commit/564ef5a26a3056ef855f7f132582beaf2ef0e15a))
->>>>>>> 0cb0e7630 (Update changelog)
 
 #### Features
 
@@ -1938,11 +1974,7 @@ Base node users should delete their node databases and resync
 
 *   add persistent dedup cache for message hashes (#3130) ([08f2675d](https://github.com/tari-project/tari/commit/08f2675d21ff1e7fc8ad98060b897d4c9254e96e))
 * **comms:**
-<<<<<<< HEAD
   *  tcp-only p2p protocol listener (#3127) ([6fefd18a](https://github.com/tari-project/tari/commit/6fefd18a57c6c8efa13412291a132c7242e7b1ea))
-=======
-    *  tcp-only p2p protocol listener (#3127) ([6fefd18a](https://github.com/tari-project/tari/commit/6fefd18a57c6c8efa13412291a132c7242e7b1ea))
->>>>>>> 0cb0e7630 (Update changelog)
 * **wallet:**  add extra feedback to recovery monitoring callback in Wallet FFI (#3128) ([02836b09](https://github.com/tari-project/tari/commit/02836b099ebcf4261199dcf418cffb2c66bfff5d))
 
 #### Breaking Changes
@@ -1970,15 +2002,9 @@ Base node users should delete their node databases and resync
 *   update `Tari-common` crate feature flags to exclude git2 from lib_wallet build (#3072) ([a54d87f2](https://github.com/tari-project/tari/commit/a54d87f2c6f8820b4ec131effb84357dfb268fe4))
 *   improve transaction receive protocol logic (#3067) ([60de24c9](https://github.com/tari-project/tari/commit/60de24c941418490e5f5ee50629c8e48cfcb2b45))
 * **wallet:**
-<<<<<<< HEAD
   *  fix UTXO scanning (#3094) ([81422f1c](https://github.com/tari-project/tari/commit/81422f1cce810017907589ff5313be13ac9d6c3f))
   *  clear the console after seeing the seed words. (#3093) ([7b1c29db](https://github.com/tari-project/tari/commit/7b1c29db51a404d35dc260c01cc67142c2048d07))
   *  fix when ESC is pressed while adding contact. (#3092) ([ffd7abfe](https://github.com/tari-project/tari/commit/ffd7abfe2e2309c3ec1a04f20265fefcaa70bef6))
-=======
-    *  fix UTXO scanning (#3094) ([81422f1c](https://github.com/tari-project/tari/commit/81422f1cce810017907589ff5313be13ac9d6c3f))
-    *  clear the console after seeing the seed words. (#3093) ([7b1c29db](https://github.com/tari-project/tari/commit/7b1c29db51a404d35dc260c01cc67142c2048d07))
-    *  fix when ESC is pressed while adding contact. (#3092) ([ffd7abfe](https://github.com/tari-project/tari/commit/ffd7abfe2e2309c3ec1a04f20265fefcaa70bef6))
->>>>>>> 0cb0e7630 (Update changelog)
 
 #### Breaking Changes
 
@@ -2005,7 +2031,7 @@ Base node users should delete their node databases and resync
 *   fix missing edge case in header sync (#3060) ([0f0fb856](https://github.com/tari-project/tari/commit/0f0fb856e9369d9c7e172fc59ee64d31dff4637f))
 *   remove unstable impl trait from Tari comms (#3056) ([08b019f0](https://github.com/tari-project/tari/commit/08b019f03793f7677b72452e01bead7db89ffa18))
 *   fix db update error (#3063) ([b95d558f](https://github.com/tari-project/tari/commit/b95d558f318d045da9e1172cb802555ae3eb5a47))
-*   remove unimplemented Blake pow algo variant (#3047) ([347973e3](https://github.com/tari-project/tari/commit/347973e3e8fdd39bb74d978d14ff414c04a39212), breaks [#](https://github.com/tari-project/tari/issues/))
+*   remove unimplemented Blake pow algo variant (#3047) ([347973e3](https://github.com/tari-project/tari/commit/347973e3e8fdd39bb74d978d14ff414c04a39212)
 *   fix small issues related to #3020 (#3026) ([da1d7579](https://github.com/tari-project/tari/commit/da1d75790fcb4eb9a71b7822c3ede3d9ba598241))
 *   update connectivity manager defaults (#3031) ([229830e5](https://github.com/tari-project/tari/commit/229830e595c6b3c97011547d18885e2c0a3e3f19))
 *   check minimum number of headers for calc-timing (#3009) ([b3522027](https://github.com/tari-project/tari/commit/b3522027b824dd8bb50a7183397adba082fdf28e))
@@ -2047,10 +2073,5 @@ Base node users should delete their node databases and resync
 *   improve LWMA (#2960) ([db303e8c](https://github.com/tari-project/tari/commit/db303e8ca9632c6a6634e52cbfb6a79cd3e43a29))
 * **ffi:**  `wallet_create` takes seed words for recovery (#2986) ([a2c6b17d](https://github.com/tari-project/tari/commit/a2c6b17de6fd8ac14a5379b0c44d34c1e1e71e2d))
 * **wallet:**
-<<<<<<< HEAD
   *  add maturity to transaction detail (#3042) ([9b281cec](https://github.com/tari-project/tari/commit/9b281cec339fea5cad48ca84cb5698302792373f))
   *  ensure recovery will not overwrite existing wallet (#2992) ([70c21294](https://github.com/tari-project/tari/commit/70c21294fa87da8198e8b79f8b49d61bd6bee721))
-=======
-    *  add maturity to transaction detail (#3042) ([9b281cec](https://github.com/tari-project/tari/commit/9b281cec339fea5cad48ca84cb5698302792373f))
-    *  ensure recovery will not overwrite existing wallet (#2992) ([70c21294](https://github.com/tari-project/tari/commit/70c21294fa87da8198e8b79f8b49d61bd6bee721))
->>>>>>> 0cb0e7630 (Update changelog)

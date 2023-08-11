@@ -35,7 +35,7 @@ use tower::Service;
 use crate::contacts_service::{
     error::ContactsServiceError,
     service::{ContactMessageType, ContactOnlineStatus},
-    storage::database::Contact,
+    types::{Contact, Message},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -130,6 +130,8 @@ pub enum ContactsServiceRequest {
     RemoveContact(TariAddress),
     GetContacts,
     GetContactOnlineStatus(Contact),
+    SendMessage(TariAddress, Message),
+    GetAllMessages(TariAddress),
 }
 
 #[derive(Debug)]
@@ -139,6 +141,8 @@ pub enum ContactsServiceResponse {
     Contact(Contact),
     Contacts(Vec<Contact>),
     OnlineStatus(ContactOnlineStatus),
+    Messages(Vec<Message>),
+    MessageSent,
 }
 
 #[derive(Clone)]
@@ -221,6 +225,28 @@ impl ContactsServiceHandle {
             .await??
         {
             ContactsServiceResponse::OnlineStatus(status) => Ok(status),
+            _ => Err(ContactsServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_all_messages(&mut self, pk: TariAddress) -> Result<Vec<Message>, ContactsServiceError> {
+        match self
+            .request_response_service
+            .call(ContactsServiceRequest::GetAllMessages(pk))
+            .await??
+        {
+            ContactsServiceResponse::Messages(messages) => Ok(messages),
+            _ => Err(ContactsServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn send_message(&mut self, message: Message) -> Result<(), ContactsServiceError> {
+        match self
+            .request_response_service
+            .call(ContactsServiceRequest::SendMessage(message.address.clone(), message))
+            .await??
+        {
+            ContactsServiceResponse::MessageSent => Ok(()),
             _ => Err(ContactsServiceError::UnexpectedApiResponse),
         }
     }

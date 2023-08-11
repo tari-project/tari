@@ -3,12 +3,12 @@ name = "tari_mining_helper_ffi"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency miningcore C FFI bindings"
 license = "BSD-3-Clause"
-version = "0.49.2"
+version = "0.50.0"
 edition = "2018"
 
 [dependencies]
 tari_comms = {  path = "../../comms/core" }
-tari_crypto = { version = "0.16.11"}
+tari_crypto = { version = "0.16"}
 tari_common = {  path = "../../common" }
 tari_core = {  path = "../core", default-features = false, features = ["transactions"]}
 tari_utilities = "0.4.10"

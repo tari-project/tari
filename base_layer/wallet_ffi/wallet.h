@@ -77,9 +77,10 @@ struct Covenant;
 struct EmojiSet;
 
 /**
- * value: u64 + tag: [u8; 16]
+ * Encrypted data for the extended-nonce variant XChaCha20-Poly1305 encryption
+ * Borsh schema only accept array sizes 0 - 32, 64, 65, 128, 256, 512, 1024 and 2048
  */
-struct EncryptedValue;
+struct EncryptedData;
 
 struct FeePerGramStat;
 
@@ -302,7 +303,7 @@ typedef struct OutputFeatures TariOutputFeatures;
 
 typedef struct Covenant TariCovenant;
 
-typedef struct EncryptedValue TariEncryptedValue;
+typedef struct EncryptedData TariEncryptedOpenings;
 
 typedef struct Contact TariContact;
 
@@ -831,7 +832,7 @@ void commitment_and_public_signature_destroy(TariComAndPubSignature *compub_sig)
  * `script_private_key` - Tari script private key, k_S, is used to create the script signature
  * `covenant` - The covenant that will be executed when spending this output
  * `message` - The message that the transaction will have
- * `encrypted_value` - Encrypted value.
+ * `encrypted_data` - Encrypted data.
  * `minimum_value_promise` - The minimum value of the commitment that is proven by the range proof
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
  * as an out parameter.
@@ -853,7 +854,7 @@ TariUnblindedOutput *create_tari_unblinded_output(unsigned long long amount,
                                                   TariPublicKey *sender_offset_public_key,
                                                   TariPrivateKey *script_private_key,
                                                   TariCovenant *covenant,
-                                                  TariEncryptedValue *encrypted_value,
+                                                  TariEncryptedOpenings *encrypted_data,
                                                   unsigned long long minimum_value_promise,
                                                   unsigned long long script_lock_height,
                                                   int *error_out);
@@ -995,7 +996,7 @@ void unblinded_outputs_destroy(struct TariUnblindedOutputs *outputs);
  * `script_private_key` - Tari script private key, k_S, is used to create the script signature
  * `covenant` - The covenant that will be executed when spending this output
  * `message` - The message that the transaction will have
- * `encrypted_value` - Encrypted value.
+ * `encrypted_data` - Encrypted data.
  * `minimum_value_promise` - The minimum value of the commitment that is proven by the range proof
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
  * as an out parameter.
@@ -1150,45 +1151,45 @@ void covenant_destroy(TariCovenant *covenant);
 
 /**
  * -------------------------------------------------------------------------------------------- ///
- * --------------------------------------- EncryptedValue --------------------------------------------///
- * Creates a TariEncryptedValue from a ByteVector containing the encrypted_value bytes
+ * --------------------------------------- EncryptedOpenings --------------------------------------------///
+ * Creates a TariEncryptedOpenings from a ByteVector containing the encrypted_data bytes
  *
  * ## Arguments
- * `encrypted_value_bytes` - The encrypted_value bytes as a ByteVector
+ * `encrypted_data_bytes` - The encrypted_data bytes as a ByteVector
  *
  * ## Returns
- * `TariEncryptedValue` - Returns an encrypted value. Note that it will be ptr::null_mut() if any argument is
+ * `TariEncryptedOpenings` - Returns  encrypted data. Note that it will be ptr::null_mut() if any argument is
  * null or if there was an error with the contents of bytes
  *
  * # Safety
- * The ```encrypted_value_destroy``` function must be called when finished with a TariEncryptedValue to prevent a
+ * The ```encrypted_data_destroy``` function must be called when finished with a TariEncryptedOpenings to prevent a
  * memory leak
  */
-TariEncryptedValue *encrypted_value_create_from_bytes(const struct ByteVector *encrypted_value_bytes,
-                                                      int *error_out);
+TariEncryptedOpenings *encrypted_data_create_from_bytes(const struct ByteVector *encrypted_data_bytes,
+                                                        int *error_out);
 
 /**
- * Creates a ByteVector containing the encrypted_value bytes from a TariEncryptedValue
+ * Creates a ByteVector containing the encrypted_data bytes from a TariEncryptedOpenings
  *
  * ## Arguments
- * `encrypted_value` - The encrypted_value as a TariEncryptedValue
+ * `encrypted_data` - The encrypted_data as a TariEncryptedOpenings
  *
  * ## Returns
- * `ByteVector` - Returns a ByteVector containing the encrypted_value bytes. Note that it will be ptr::null_mut() if
+ * `ByteVector` - Returns a ByteVector containing the encrypted_data bytes. Note that it will be ptr::null_mut() if
  * any argument is null or if there was an error with the contents of bytes
  *
  * # Safety
- * The ```encrypted_value_destroy``` function must be called when finished with a TariEncryptedValue to prevent a
+ * The `encrypted_data_destroy` function must be called when finished with a TariEncryptedOpenings to prevent a
  * memory leak
  */
-struct ByteVector *encrypted_value_as_bytes(const TariEncryptedValue *encrypted_value,
-                                            int *error_out);
+struct ByteVector *encrypted_data_as_bytes(const TariEncryptedOpenings *encrypted_data,
+                                           int *error_out);
 
 /**
- * Frees memory for a TariEncryptedValue
+ * Frees memory for a TariEncryptedOpenings
  *
  * ## Arguments
- * `encrypted_value` - The pointer to a TariEncryptedValue
+ * `encrypted_data` - The pointer to a TariEncryptedOpenings
  *
  * ## Returns
  * `()` - Does not return a value, equivalent to void in C
@@ -1196,7 +1197,7 @@ struct ByteVector *encrypted_value_as_bytes(const TariEncryptedValue *encrypted_
  * # Safety
  * None
  */
-void encrypted_value_destroy(TariEncryptedValue *encrypted_value);
+void encrypted_data_destroy(TariEncryptedOpenings *encrypted_data);
 
 /**
  * -------------------------------------------------------------------------------------------- ///
@@ -1208,6 +1209,7 @@ void encrypted_value_destroy(TariEncryptedValue *encrypted_value);
  * `output_type` - The encoded value of the output type as a byte
  * `maturity` - The encoded value maturity as bytes
  * `metadata` - The metadata componenet as a ByteVector. It cannot be null
+ * `encrypted_data` - The encrypted_data component as a ByteVector. It can be null  to model a None value.
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
  * as an out parameter.
  *
@@ -1223,6 +1225,7 @@ TariOutputFeatures *output_features_create_from_bytes(unsigned char version,
                                                       unsigned short output_type,
                                                       unsigned long long maturity,
                                                       const struct ByteVector *metadata,
+                                                      unsigned short range_proof_type,
                                                       int *error_out);
 
 /**

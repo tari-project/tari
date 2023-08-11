@@ -17,11 +17,11 @@ Only the first four applications will be discussed in this README (see [wallet-a
 ### Versions
 The recommended running versions of each network are:
 
-| Network  | Version      | 
-|----------|--------------|
-| Stagenet | 0.49.2       |
-| Nextnet  | 0.50.0-rc.0   |
-| Development | 0.51.0-pre.0 |
+| Network  | Version     | 
+|----------|-------------|
+| Stagenet | 0.50.0      |
+| Nextnet  | 0.51.0-rc.0 |
+| Development | 0.52.0-pre.0 |
 
 For more detail about versioning see [Release Ideology](https://github.com/tari-project/tari/blob/development/docs/src/branching_releases.md)
 

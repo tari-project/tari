@@ -186,7 +186,7 @@ where
         client: &mut BaseNodeWalletRpcClient,
     ) -> Result<bool, TransactionServiceProtocolError<TxId>> {
         let response = match client
-            .submit_transaction(tx.try_into().map_err(|e| {
+            .submit_transaction(tx.clone().try_into().map_err(|e| {
                 TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::InvalidMessageError(e))
             })?)
             .await
@@ -272,6 +272,7 @@ where
                 target: LOG_TARGET,
                 "Transaction (TxId: {}) successfully submitted to UnconfirmedPool", self.tx_id
             );
+            trace!(target: LOG_TARGET, "submit_transaction ({}) - {}", self.tx_id, tx,);
             self.resources
                 .db
                 .broadcast_completed_transaction(self.tx_id)

@@ -485,7 +485,7 @@ impl SenderTransactionProtocol {
             sender_offset_private_key,
             Some(private_commitment_nonce),
             &output.covenant,
-            &output.encrypted_value,
+            &output.encrypted_data,
             output.minimum_value_promise,
         )?;
         // Create aggregated metadata signature
@@ -772,8 +772,8 @@ mod test {
         transactions::{
             crypto_factories::CryptoFactories,
             tari_amount::*,
-            test_helpers::{create_test_input, create_unblinded_output, TestParams},
-            transaction_components::{EncryptedValue, OutputFeatures, TransactionOutput, TransactionOutputVersion},
+            test_helpers::{create_non_recoverable_unblinded_output, create_test_input, TestParams},
+            transaction_components::{EncryptedData, OutputFeatures, TransactionOutput, TransactionOutputVersion},
             transaction_protocol::{
                 sender::{SenderTransactionProtocol, TransactionSenderMessage},
                 single_receiver::SingleReceiverTransactionProtocol,
@@ -874,7 +874,8 @@ mod test {
 
         // Encrypted value
         let encryption_key = PrivateKey::random(&mut OsRng);
-        let encrypted_value = EncryptedValue::encrypt_value(&encryption_key, &commitment, value.into()).unwrap();
+        let encrypted_data =
+            EncryptedData::encrypt_data(&encryption_key, &commitment, value.into(), &spending_key).unwrap();
 
         let minimum_value_promise = MicroTari::zero();
 
@@ -887,7 +888,7 @@ mod test {
             &sender_offset_public_key,
             &sender_ephemeral_public_nonce,
             &covenant,
-            &encrypted_value,
+            &encrypted_data,
             minimum_value_promise,
         )
         .unwrap();
@@ -895,12 +896,12 @@ mod test {
         let mut output = TransactionOutput::new_current_version(
             Default::default(),
             commitment,
-            proof,
+            Some(proof),
             script.clone(),
             sender_offset_public_key,
             partial_metadata_signature.clone(),
             covenant.clone(),
-            encrypted_value.clone(),
+            encrypted_data,
             minimum_value_promise,
         );
         assert!(output.verify_metadata_signature().is_err());
@@ -915,7 +916,7 @@ mod test {
             &sender_offset_private_key,
             Some(&ephemeral_private_nonce),
             &covenant,
-            &encrypted_value,
+            &encrypted_data,
             minimum_value_promise,
         )
         .unwrap();
@@ -941,12 +942,13 @@ mod test {
             .with_change_secret(p1.change_spend_key.clone())
             .with_input(utxo, input)
             .with_output(
-                create_unblinded_output(script.clone(), output_features.clone(), &p1, MicroTari(500)),
+                create_non_recoverable_unblinded_output(script.clone(), output_features.clone(), &p1, MicroTari(500))
+                    .unwrap(),
                 p1.sender_offset_private_key.clone(),
             )
             .unwrap()
             .with_output(
-                create_unblinded_output(script, output_features, &p2, MicroTari(400)),
+                create_non_recoverable_unblinded_output(script, output_features, &p2, MicroTari(400)).unwrap(),
                 p2.sender_offset_private_key.clone(),
             )
             .unwrap();
@@ -994,8 +996,14 @@ mod test {
         let mut alice = SenderTransactionProtocol::load_pending_transaction_to_be_sent(&ser).unwrap();
 
         // Receiver gets message, deserializes it etc, and creates his response
-        let mut bob_info =
-            SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, &factories, None).unwrap(); // Alice gets message back, deserializes it, etc
+        let mut bob_info = SingleReceiverTransactionProtocol::create(
+            &msg,
+            b.nonce,
+            b.spend_key,
+            &factories,
+            &EncryptedData::default(),
+        )
+        .unwrap(); // Alice gets message back, deserializes it, etc
         alice.add_single_recipient_info(bob_info.clone()).unwrap();
         // Transaction should be complete
         assert!(alice.is_finalizing());
@@ -1070,7 +1078,14 @@ mod test {
         let mut alice = SenderTransactionProtocol::load_pending_transaction_to_be_sent(&ser).unwrap();
 
         // Receiver gets message, deserializes it etc, and creates his response
-        let bob_info = SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, &factories, None).unwrap();
+        let bob_info = SingleReceiverTransactionProtocol::create(
+            &msg,
+            b.nonce,
+            b.spend_key,
+            &factories,
+            &EncryptedData::default(),
+        )
+        .unwrap();
         println!(
             "Bob's key: {}, Nonce: {}, Signature: {}, Commitment: {}",
             bob_info.public_spend_key.to_hex(),
@@ -1133,7 +1148,13 @@ mod test {
         // Send message down the wire....and wait for response
         assert!(alice.is_collecting_single_signature());
         // Receiver gets message, deserializes it etc, and creates his response
-        let bob_info = SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, &factories, None); // Alice gets message back, deserializes it, etc
+        let bob_info = SingleReceiverTransactionProtocol::create(
+            &msg,
+            b.nonce,
+            b.spend_key,
+            &factories,
+            &EncryptedData::default(),
+        ); // Alice gets message back, deserializes it, etc
         match bob_info {
             Ok(_) => panic!("Range proof should have failed to verify"),
             Err(e) => assert_eq!(
@@ -1234,7 +1255,7 @@ mod test {
             .with_offset(alice_test_params.offset.clone())
             .with_private_nonce(alice_test_params.nonce.clone())
             .with_change_secret(alice_test_params.change_spend_key.clone())
-            .with_rewindable_outputs(alice_test_params.rewind_data.clone())
+            .with_recoverable_outputs(alice_test_params.recovery_data.clone())
             .with_input(utxo, input)
             .with_amount(0, MicroTari(5000))
             .with_recipient_data(
@@ -1271,7 +1292,7 @@ mod test {
             bob_test_params.nonce,
             bob_test_params.spend_key,
             &factories,
-            None,
+            &EncryptedData::default(),
         )
         .unwrap();
 
@@ -1289,38 +1310,26 @@ mod test {
         assert_eq!(tx.body.outputs().len(), 2);
 
         // If the first output isn't alice's then the second must be
-        // TODO: Fix this logic when 'encrypted_value.todo_decrypt()' is fixed only one of these will be possible
+        // TODO: Fix this logic when 'encrypted_data.todo_decrypt()' is fixed only one of these will be possible
         let output_0 = &tx.body.outputs()[0];
         let output_1 = &tx.body.outputs()[1];
 
-        if let Ok(committed_value) = EncryptedValue::decrypt_value(
-            &alice_test_params.rewind_data.encryption_key,
+        if let Ok((committed_value, blinding_factor)) = EncryptedData::decrypt_data(
+            &alice_test_params.recovery_data.encryption_key,
             &output_0.commitment,
-            &output_0.encrypted_value,
+            &output_0.encrypted_data,
         ) {
-            let blinding_factor = output_0
-                .recover_mask(
-                    &factories.range_proof,
-                    &alice_test_params.rewind_data.rewind_blinding_key,
-                )
-                .unwrap();
             assert_eq!(
                 factories
                     .commitment
                     .commit_value(&blinding_factor, committed_value.as_u64()),
                 output_0.commitment
             );
-        } else if let Ok(committed_value) = EncryptedValue::decrypt_value(
-            &alice_test_params.rewind_data.encryption_key,
+        } else if let Ok((committed_value, blinding_factor)) = EncryptedData::decrypt_data(
+            &alice_test_params.recovery_data.encryption_key,
             &output_1.commitment,
-            &output_1.encrypted_value,
+            &output_1.encrypted_data,
         ) {
-            let blinding_factor = output_1
-                .recover_mask(
-                    &factories.range_proof,
-                    &alice_test_params.rewind_data.rewind_blinding_key,
-                )
-                .unwrap();
             assert_eq!(
                 factories
                     .commitment

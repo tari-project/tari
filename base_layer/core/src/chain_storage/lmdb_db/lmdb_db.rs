@@ -654,7 +654,8 @@ impl LMDBDatabase {
                 mined_timestamp: timestamp,
             },
             "utxos_db",
-        )
+        )?;
+        Ok(())
     }
 
     fn insert_kernel(
@@ -843,6 +844,7 @@ impl LMDBDatabase {
                 header.height
             )));
         } else {
+            // We can continue
         }
 
         lmdb_insert(
@@ -1054,7 +1056,7 @@ impl LMDBDatabase {
                         output.script,
                         output.sender_offset_public_key,
                         output.covenant,
-                        output.encrypted_value,
+                        output.encrypted_data,
                         output.minimum_value_promise,
                     );
                 },
@@ -1303,12 +1305,22 @@ impl LMDBDatabase {
                     index
                 )));
             }
-            trace!(target: LOG_TARGET, "Inserting input `{}`", input.commitment()?.to_hex());
+            trace!(
+                target: LOG_TARGET,
+                "Inserting input (`{}`, `{}`)",
+                input.commitment()?.to_hex(),
+                input.output_hash().to_hex()
+            );
             self.insert_input(txn, current_header_at_height.height, &block_hash, input, index)?;
         }
 
         for (output, mmr_count) in outputs {
-            trace!(target: LOG_TARGET, "Inserting output `{}`", output.commitment.to_hex());
+            trace!(
+                target: LOG_TARGET,
+                "Inserting output (`{}`, `{}`)",
+                output.commitment.to_hex(),
+                output.hash()
+            );
             let mmr_count = u32::try_from(mmr_count).map(|c| c - 1).map_err(|_| {
                 ChainStorageError::InvalidOperation(format!(
                     "Output MMR node count ({}) is greater than u32::MAX",

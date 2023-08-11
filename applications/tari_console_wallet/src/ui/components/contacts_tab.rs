@@ -16,8 +16,8 @@ use crate::{
     ui::{
         components::{Component, KeyHandled},
         state::AppState,
+        ui_contact::UiContact,
         widgets::{centered_rect_absolute, draw_dialog, MultiColumnList, WindowedListState},
-        UiContact,
         MAX_WIDTH,
     },
     utils::formatting::display_compressed_string,
@@ -211,6 +211,7 @@ impl ContactsTab {
                     },
                 }
             } else {
+                // Dont care
             }
         }
 

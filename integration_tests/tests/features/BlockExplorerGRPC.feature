@@ -11,4 +11,4 @@ Feature: Block Explorer GRPC
     When I merge mine 2 blocks via PROXY
     Then all nodes are at height 2
     When I request the difficulties of a node NODE
-# Then difficulties are available
+    # Then difficulties are available

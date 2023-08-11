@@ -290,9 +290,11 @@ where TBackend: TransactionBackend + 'static
                                 },
                                 TransactionEvent::TransactionValidationCompleted(request_key)  => {
                                     self.transaction_validation_complete_event(request_key.as_u64(), 0);
+                                    self.trigger_balance_refresh().await;
                                 },
                                 TransactionEvent::TransactionValidationFailed(request_key, reason)  => {
                                     self.transaction_validation_complete_event(request_key.as_u64(), reason);
+                                    self.trigger_balance_refresh().await;
                                 },
                                 TransactionEvent::TransactionMinedRequestTimedOut(_tx_id) |
                                 TransactionEvent::TransactionImported(_tx_id)|
@@ -360,7 +362,7 @@ where TBackend: TransactionBackend + 'static
                                     self.base_node_state_changed(state);
                                 },
 
-                                BaseNodeEvent::NewBlockDetected(_new_block_number) => {
+                                BaseNodeEvent::NewBlockDetected(_hash, _new_block_number) => {
                                     //
                                 },
                             }
@@ -379,7 +381,7 @@ where TBackend: TransactionBackend + 'static
                                     );
                                     self.trigger_contacts_refresh(data.deref().clone());
                                 }
-                                ContactsLivenessEvent::NetworkSilence => {}
+                                ContactsLivenessEvent::NetworkSilence => {},
                             }
                         }
                         Err(broadcast::error::RecvError::Lagged(n)) => {
@@ -509,6 +511,7 @@ where TBackend: TransactionBackend + 'static
             inbound_tx.destination_address = self.comms_address.clone();
             transaction = Some(inbound_tx);
         } else {
+            // Should only be on of the two
         };
 
         match transaction {

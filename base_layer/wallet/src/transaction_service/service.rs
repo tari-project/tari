@@ -49,7 +49,7 @@ use tari_core::{
     transactions::{
         tari_amount::MicroTari,
         transaction_components::{
-            EncryptedValue,
+            EncryptedData,
             KernelFeatures,
             OutputFeatures,
             Transaction,
@@ -60,7 +60,7 @@ use tari_core::{
             proto::protocol as proto,
             recipient::RecipientSignedMessage,
             sender::TransactionSenderMessage,
-            RewindData,
+            RecoveryData,
             TransactionMetadata,
         },
         CryptoFactories,
@@ -121,11 +121,9 @@ use crate::{
     },
     types::ConfidentialOutputHasher,
     util::{
-        burn_proof::{derive_burn_claim_encryption_key, derive_diffie_hellman_burn_claim_spend_key},
         one_sided::{
             diffie_hellman_stealth_domain_hasher,
             shared_secret_to_output_encryption_key,
-            shared_secret_to_output_rewind_key,
             shared_secret_to_output_spending_key,
             stealth_address_script_spending_key,
         },
@@ -874,25 +872,20 @@ where
         >,
     ) {
         match (*event).clone() {
-            BaseNodeEvent::BaseNodeStateChanged(state) => {
-                let trigger_validation = match (self.last_seen_tip_height, state.chain_metadata.clone()) {
-                    (Some(last_seen_tip_height), Some(cm)) => last_seen_tip_height != cm.height_of_longest_chain(),
-                    (None, _) => true,
-                    _ => false,
-                };
-
-                if trigger_validation {
-                    let _operation_id = self
-                        .start_transaction_validation_protocol(transaction_validation_join_handles)
-                        .await
-                        .map_err(|e| {
-                            warn!(target: LOG_TARGET, "Error validating  txos: {:?}", e);
-                            e
-                        });
-                }
-                self.last_seen_tip_height = state.chain_metadata.map(|cm| cm.height_of_longest_chain());
+            BaseNodeEvent::BaseNodeStateChanged(_state) => {
+                trace!(target: LOG_TARGET, "Received BaseNodeStateChanged event, but igoring",);
             },
-            BaseNodeEvent::NewBlockDetected(_) => {},
+            BaseNodeEvent::NewBlockDetected(_hash, height) => {
+                let _operation_id = self
+                    .start_transaction_validation_protocol(transaction_validation_join_handles)
+                    .await
+                    .map_err(|e| {
+                        warn!(target: LOG_TARGET, "Error validating  txos: {:?}", e);
+                        e
+                    });
+
+                self.last_seen_tip_height = Some(height);
+            },
         }
     }
 
@@ -1105,30 +1098,25 @@ where
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
-        let rewind_blinding_key = shared_secret_to_output_rewind_key(&shared_secret)?;
         let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
 
-        let rewind_data = RewindData {
-            rewind_blinding_key,
-            encryption_key,
-        };
-
-        let rtp = ReceiverTransactionProtocol::new_with_rewindable_output(
-            sender_message,
-            PrivateKey::random(&mut OsRng),
-            spending_key.clone(),
-            &self.resources.factories,
-            &rewind_data,
-        );
-
-        let recipient_reply = rtp.get_signed_data()?.clone();
-        let output = recipient_reply.output.clone();
         let commitment = self
             .resources
             .factories
             .commitment
             .commit_value(&spending_key, amount.into());
-        let encrypted_value = EncryptedValue::encrypt_value(&rewind_data.encryption_key, &commitment, amount)?;
+        let encrypted_data = EncryptedData::encrypt_data(&encryption_key, &commitment, amount, &spending_key)?;
+
+        let rtp = ReceiverTransactionProtocol::new_with_recoverable_output(
+            sender_message,
+            PrivateKey::random(&mut OsRng),
+            spending_key.clone(),
+            &self.resources.factories,
+            &encrypted_data,
+        );
+
+        let recipient_reply = rtp.get_signed_data()?.clone();
+        let output = recipient_reply.output.clone();
         let minimum_value_promise = MicroTari::zero();
         let unblinded_output = UnblindedOutput::new_current_version(
             amount,
@@ -1143,7 +1131,7 @@ where
             output.metadata_signature.clone(),
             height,
             covenant,
-            encrypted_value,
+            encrypted_data,
             minimum_value_promise,
         );
 
@@ -1178,12 +1166,7 @@ where
             .get_fee_amount()
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         self.output_manager_service
-            .add_rewindable_output_with_tx_id(
-                tx_id,
-                unblinded_output,
-                Some(SpendingPriority::HtlcSpendAsap),
-                Some(rewind_data),
-            )
+            .add_output_with_tx_id(tx_id, unblinded_output, Some(SpendingPriority::HtlcSpendAsap))
             .await?;
         self.submit_transaction(
             transaction_broadcast_join_handles,
@@ -1262,19 +1245,20 @@ where
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
-        let rewind_blinding_key = shared_secret_to_output_rewind_key(&shared_secret)?;
         let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
-        let rewind_data = RewindData {
-            rewind_blinding_key,
-            encryption_key,
-        };
+        let encrypted_data = EncryptedData::encrypt_data(
+            &encryption_key,
+            &CommitmentFactory::default().commit_value(&spending_key, amount.into()),
+            amount,
+            &spending_key,
+        )?;
 
-        let rtp = ReceiverTransactionProtocol::new_with_rewindable_output(
+        let rtp = ReceiverTransactionProtocol::new_with_recoverable_output(
             sender_message,
             PrivateKey::random(&mut OsRng),
             spending_key,
             &self.resources.factories,
-            &rewind_data,
+            &encrypted_data,
         );
 
         let recipient_reply = rtp.get_signed_data()?.clone();
@@ -1431,38 +1415,38 @@ where
             .await?;
         let public_spend_key = PublicKey::from_secret_key(&spend_key);
 
-        let rewind_data = self.resources.output_manager_service.get_rewind_data().await?;
+        let recovery_data = self.resources.output_manager_service.get_recovery_data().await?;
 
-        let (shared_spend_key, rewind_data) = match claim_public_key {
+        let recovery_data = match claim_public_key {
             Some(ref claim_public_key) => {
-                // For claimable L2 burn transactions, we derive a shared mask and encryption key from a nonce (in this
-                // case a new spend key from the key manager) and the provided claim public key. The public
+                // For claimable L2 burn transactions, we derive a shared secret and encryption key from a nonce (in
+                // this case a new spend key from the key manager) and the provided claim public key. The public
                 // nonce/spend_key is returned back to the caller.
-                let shared_spend_key = derive_diffie_hellman_burn_claim_spend_key(&spend_key, claim_public_key);
-                let commitment = CommitmentFactory::default().commit_value(&shared_spend_key, amount.into());
-                let shared_encryption_key = derive_burn_claim_encryption_key(&shared_spend_key, &commitment);
-
-                let shared_rewind_data = RewindData {
-                    rewind_blinding_key: rewind_data.rewind_blinding_key,
-                    encryption_key: shared_encryption_key,
-                };
-                (shared_spend_key, shared_rewind_data)
+                let shared_secret = CommsDHKE::new(&spend_key, claim_public_key);
+                let encryption_key = shared_secret_to_output_encryption_key(&shared_secret)?;
+                RecoveryData { encryption_key }
             },
-            // No claim key provided, no shared mask is required
-            None => (spend_key, rewind_data),
+            // No claim key provided, no shared secret or encryption key needed
+            None => recovery_data,
         };
+        let commitment = self
+            .resources
+            .factories
+            .commitment
+            .commit_value(&spend_key, amount.into());
+        let encrypted_data =
+            EncryptedData::encrypt_data(&recovery_data.encryption_key, &commitment, amount, &spend_key)?;
 
-        let rtp = ReceiverTransactionProtocol::new_with_rewindable_output(
+        let rtp = ReceiverTransactionProtocol::new_with_recoverable_output(
             sender_message,
             PrivateKey::random(&mut OsRng),
-            shared_spend_key.clone(),
+            spend_key.clone(),
             &self.resources.factories,
-            &rewind_data,
+            &encrypted_data,
         );
 
         let recipient_reply = rtp.get_signed_data()?.clone();
-        let commitment = recipient_reply.output.commitment.clone();
-        let range_proof = recipient_reply.output.proof.clone();
+        let range_proof = recipient_reply.output.proof_result()?.clone();
         let mut ownership_proof = None;
 
         if let Some(claim_public_key) = claim_public_key {
@@ -1478,7 +1462,7 @@ where
 
             ownership_proof = Some(RistrettoComSig::sign(
                 &PrivateKey::from(amount),
-                &shared_spend_key,
+                &spend_key,
                 &nonce_a,
                 &nonce_x,
                 &challenge,
@@ -1795,6 +1779,7 @@ where
                         val.tx_id
                     );
                 } else {
+                    // Dont care
                 }
             },
             Err(TransactionServiceProtocolError { id, error }) => {
@@ -1913,6 +1898,7 @@ where
                 let _sender = self.pending_transaction_reply_senders.remove(&tx_id);
                 let _sender = self.send_transaction_cancellation_senders.remove(&tx_id);
             } else {
+                // Dont care
             }
 
             if not_yet_pending || queued {
@@ -2042,7 +2028,7 @@ where
                 trace!(
                     target: LOG_TARGET,
                     "Transaction (TxId: {}) has already been received, this is probably a repeated message, Trace:
-            {}.",
+                {}.",
                     data.tx_id,
                     traced_message_tag
                 );
@@ -2761,16 +2747,11 @@ pub struct TransactionServiceResources<TBackend, TWalletConnectivity> {
     pub shutdown_signal: ShutdownSignal,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 enum PowerMode {
     Low,
+    #[default]
     Normal,
-}
-
-impl Default for PowerMode {
-    fn default() -> Self {
-        PowerMode::Normal
-    }
 }
 
 /// Contains the generated TxId and SpendingKey for a Pending Coinbase transaction
