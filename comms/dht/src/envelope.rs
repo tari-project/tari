@@ -256,10 +256,11 @@ impl DhtEnvelope {
 }
 
 /// Represents the ways a destination node can be represented.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub enum NodeDestination {
     /// The sender has chosen not to disclose the message destination, or the destination is
     /// the peer being sent to.
+    #[default]
     Unknown,
     /// Destined for a particular public key
     PublicKey(Box<CommsPublicKey>),
@@ -327,12 +328,6 @@ impl Display for NodeDestination {
             NodeDestination::Unknown => write!(f, "Unknown"),
             NodeDestination::PublicKey(public_key) => write!(f, "PublicKey({})", public_key),
         }
-    }
-}
-
-impl Default for NodeDestination {
-    fn default() -> Self {
-        NodeDestination::Unknown
     }
 }
 

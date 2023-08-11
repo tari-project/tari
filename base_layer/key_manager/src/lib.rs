@@ -63,10 +63,7 @@ pub struct SeedWords {
 
 impl PartialEq for SeedWords {
     fn eq(&self, other: &Self) -> bool {
-        (other.len() == self.len()) &&
-            (0..self.len())
-                .into_iter()
-                .all(|i| self.get_word(i).unwrap() == other.get_word(i).unwrap())
+        (other.len() == self.len()) && (0..self.len()).all(|i| self.get_word(i).unwrap() == other.get_word(i).unwrap())
     }
 }
 
