@@ -1,6 +1,6 @@
 [package]
 name = "tari_console_wallet"
-version = "0.49.2"
+version = "0.50.0"
 authors = ["The Tari Development Community"]
 edition = "2018"
 license = "BSD-3-Clause"
@@ -65,7 +65,7 @@ default-features = false
 features = ["crossterm"]
 
 [build-dependencies]
-tari_features = { version = "0.49.2", path = "../../common/tari_features"}
+tari_features = { path = "../../common/tari_features"}
 
 [features]
 avx2 = ["tari_core/avx2", "tari_crypto/simd_backend", "tari_wallet/avx2", "tari_comms/avx2", "tari_comms_dht/avx2", "tari_p2p/avx2", "tari_key_manager/avx2"]
