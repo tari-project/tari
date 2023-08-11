@@ -164,6 +164,6 @@ mod test {
         let mut cx = panic_context();
 
         assert!(service.poll_ready(&mut cx).is_pending());
-        let _ = service.call(123);
+        let _fut = service.call(123);
     }
 }

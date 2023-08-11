@@ -23,17 +23,13 @@
 use crate::key_val_store::KeyValStoreError;
 
 /// Used to indicate whether an iteration should continue or break (i.e not called again)
+#[derive(Default)]
 pub enum IterationResult {
     /// Continue the iteration
+    #[default]
     Continue,
     /// Stop the iteration (i.e break)
     Break,
-}
-
-impl Default for IterationResult {
-    fn default() -> Self {
-        IterationResult::Continue
-    }
 }
 
 /// General CRUD behaviour of Key-value store implementations.

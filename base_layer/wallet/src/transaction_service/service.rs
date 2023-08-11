@@ -2745,16 +2745,11 @@ pub struct TransactionServiceResources<TBackend, TWalletConnectivity> {
     pub shutdown_signal: ShutdownSignal,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 enum PowerMode {
     Low,
+    #[default]
     Normal,
-}
-
-impl Default for PowerMode {
-    fn default() -> Self {
-        PowerMode::Normal
-    }
 }
 
 /// Contains the generated TxId and SpendingKey for a Pending Coinbase transaction
