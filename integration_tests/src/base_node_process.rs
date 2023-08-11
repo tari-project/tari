@@ -29,10 +29,10 @@ use std::{
     time::Duration,
 };
 
+use minotari_app_utilities::identity_management::save_as_json;
+use minotari_node::{run_base_node, BaseNodeConfig, MetricsConfig};
+use minotari_node_grpc_client::BaseNodeGrpcClient;
 use rand::rngs::OsRng;
-use tari_app_utilities::identity_management::save_as_json;
-use tari_base_node::{run_base_node, BaseNodeConfig, MetricsConfig};
-use tari_base_node_grpc_client::BaseNodeGrpcClient;
 use tari_common::configuration::{CommonConfig, MultiaddrList};
 use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, NodeIdentity};
 use tari_comms_dht::{DbConnectionUrl, DhtConfig};
@@ -140,7 +140,7 @@ pub async fn spawn_base_node_with_config(
     let mut common_config = CommonConfig::default();
     common_config.base_path = temp_dir_path.clone();
     task::spawn(async move {
-        let mut base_node_config = tari_base_node::ApplicationConfig {
+        let mut base_node_config = minotari_node::ApplicationConfig {
             common: common_config,
             auto_update: AutoUpdateConfig::default(),
             base_node: base_node_config,
@@ -207,12 +207,6 @@ pub async fn spawn_base_node_with_config(
     wait_for_service(port).await;
     wait_for_service(grpc_port).await;
 }
-
-// pub async fn get_base_node_client(port: u64) -> GrpcBaseNodeClient {
-//     let endpoint: SocketAddr = format!("127.0.0.1:{}", port).parse().unwrap();
-//     GrpcBaseNodeClient::new(endpoint)
-// todo!()
-// }
 
 impl BaseNodeProcess {
     pub async fn get_grpc_client(&self) -> anyhow::Result<BaseNodeGrpcClient<Channel>> {

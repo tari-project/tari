@@ -129,27 +129,29 @@ where D: Digest + DomainDigest
 
 #[cfg(test)]
 mod test {
-    use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparatedHasher};
+    use blake2::Blake2b;
+    use digest::consts::U32;
+    use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
 
     use crate::{balanced_binary_merkle_tree::BalancedBinaryMerkleTreeError, BalancedBinaryMerkleTree};
-    hash_domain!(TestDomain, "testing", 0);
+    hash_domain!(TestDomain, "com.tari.test.testing", 0);
 
     #[test]
     fn test_empty_tree() {
         let leaves = vec![];
-        let bmt = BalancedBinaryMerkleTree::<DomainSeparatedHasher<Blake256, TestDomain>>::create(leaves);
+        let bmt = BalancedBinaryMerkleTree::<DomainSeparatedHasher<Blake2b<U32>, TestDomain>>::create(leaves);
         assert_eq!(bmt.num_leaf_nodes(), 0);
         let root = bmt.get_merkle_root();
         assert_eq!(root, vec![
-            72, 54, 179, 2, 214, 45, 9, 89, 161, 132, 177, 251, 229, 46, 124, 233, 32, 186, 46, 87, 127, 247, 19, 36,
-            225, 191, 167, 189, 58, 58, 39, 74
+            203, 169, 22, 71, 203, 110, 122, 67, 142, 42, 83, 145, 95, 216, 75, 195, 46, 141, 76, 90, 101, 42, 69, 124,
+            6, 184, 83, 203, 62, 211, 108, 178
         ]);
     }
 
     #[test]
     fn test_single_node_tree() {
         let leaves = vec![vec![0; 32]];
-        let bmt = BalancedBinaryMerkleTree::<DomainSeparatedHasher<Blake256, TestDomain>>::create(leaves);
+        let bmt = BalancedBinaryMerkleTree::<DomainSeparatedHasher<Blake2b<U32>, TestDomain>>::create(leaves);
         assert_eq!(bmt.num_leaf_nodes(), 1);
         let root = bmt.get_merkle_root();
         assert_eq!(root, vec![0; 32]);
@@ -158,7 +160,7 @@ mod test {
     #[test]
     fn test_find_leaf() {
         let leaves = (0..100).map(|i| vec![i; 32]).collect::<Vec<_>>();
-        let bmt = BalancedBinaryMerkleTree::<DomainSeparatedHasher<Blake256, TestDomain>>::create(leaves);
+        let bmt = BalancedBinaryMerkleTree::<DomainSeparatedHasher<Blake2b<U32>, TestDomain>>::create(leaves);
         assert_eq!(bmt.num_leaf_nodes(), 100);
         assert_eq!(bmt.num_nodes(), (100 << 1) - 1);
         assert_eq!(bmt.find_leaf_index_for_hash(&vec![42; 32]).unwrap(), 42);

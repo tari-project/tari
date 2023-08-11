@@ -28,6 +28,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::marker::PhantomData;
+
+use tari_crypto::keys::PublicKey;
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 
 use crate::{
@@ -39,28 +42,36 @@ use crate::{
 };
 
 /// Initializes the key manager service by implementing the [ServiceInitializer] trait.
-pub struct KeyManagerInitializer<T>
-where T: KeyManagerBackend
+pub struct KeyManagerInitializer<T, PK>
+where
+    T: KeyManagerBackend<PK>,
+    PK: PublicKey,
 {
     backend: Option<T>,
     master_seed: CipherSeed,
+    public_key_type: PhantomData<PK>,
 }
 
-impl<T> KeyManagerInitializer<T>
-where T: KeyManagerBackend + 'static
+impl<T, PK> KeyManagerInitializer<T, PK>
+where
+    T: KeyManagerBackend<PK> + 'static,
+    PK: PublicKey,
 {
     /// Creates a new [KeyManagerInitializer] from the provided [KeyManagerBackend] and [CipherSeed]
     pub fn new(backend: T, master_seed: CipherSeed) -> Self {
         Self {
             backend: Some(backend),
             master_seed,
+            public_key_type: PhantomData,
         }
     }
 }
 
 #[async_trait]
-impl<T> ServiceInitializer for KeyManagerInitializer<T>
-where T: KeyManagerBackend + 'static
+impl<T, PK> ServiceInitializer for KeyManagerInitializer<T, PK>
+where
+    T: KeyManagerBackend<PK> + 'static,
+    PK: PublicKey + Sync + Send + 'static,
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         let backend = self
@@ -68,7 +79,8 @@ where T: KeyManagerBackend + 'static
             .take()
             .expect("Cannot start Key Manager Service without setting a storage backend");
 
-        let key_manager = KeyManagerHandle::new(self.master_seed.clone(), KeyManagerDatabase::new(backend));
+        let key_manager: KeyManagerHandle<T, PK> =
+            KeyManagerHandle::new(self.master_seed.clone(), KeyManagerDatabase::new(backend));
         context.register_handle(key_manager);
 
         Ok(())

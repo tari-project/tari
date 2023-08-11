@@ -46,6 +46,8 @@ use crate::{
 const MAX_COVENANT_BYTES: usize = 4096;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
+/// A covenant allows a UTXO to specify some restrictions on how it is spent in a future transaction.
+/// See https://rfc.tari.com/RFC-0250_Covenants.html for details.
 pub struct Covenant {
     tokens: Vec<CovenantToken>,
 }
@@ -62,11 +64,12 @@ impl BorshSerialize for Covenant {
 }
 
 impl BorshDeserialize for Covenant {
-    fn deserialize(buf: &mut &[u8]) -> io::Result<Self> {
-        let len = buf.read_varint()?;
+    fn deserialize_reader<R>(reader: &mut R) -> Result<Self, io::Error>
+    where R: io::Read {
+        let len = reader.read_varint()?;
         let mut data = Vec::with_capacity(len);
         for _ in 0..len {
-            data.push(u8::deserialize(buf)?);
+            data.push(u8::deserialize_reader(reader)?);
         }
         let covenant = Self::from_bytes(&mut data.as_slice())
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
@@ -79,6 +82,8 @@ impl Covenant {
         Self { tokens: Vec::new() }
     }
 
+    /// Produces a new `Covenant` instance, out of a byte buffer. It errors
+    /// if the byte buffer length is higher than `MAX_COVENANT_BYTES`.
     pub fn from_bytes(bytes: &mut &[u8]) -> Result<Self, CovenantDecodeError> {
         if bytes.is_empty() {
             return Ok(Self::new());
@@ -89,22 +94,28 @@ impl Covenant {
         CovenantTokenDecoder::new(bytes).collect()
     }
 
+    /// Given a `Covenant` instance, it writes its bytes content to a
+    /// new byte buffer.
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut buf = Vec::with_capacity(self.get_byte_length());
         self.write_to(&mut buf).unwrap();
         buf
     }
 
+    /// Writes a `Covenant` instance byte to a writer.
     pub(super) fn write_to<W: io::Write>(&self, writer: &mut W) -> Result<(), io::Error> {
         CovenantTokenEncoder::new(self.tokens.as_slice()).write_to(writer)
     }
 
+    /// Gets the byte lenght of the underlying byte buffer
     pub(super) fn get_byte_length(&self) -> usize {
         let mut counter = ByteCounter::new();
         self.write_to(&mut counter).unwrap();
         counter.get()
     }
 
+    /// It executes the covenant on the transaction input being spent, it filters the transaction outputs which should
+    /// generate at least one match. An empty covenant is an identity and matches all outputs.
     pub fn execute(
         &self,
         block_height: u64,
@@ -131,17 +142,30 @@ impl Covenant {
         Ok(output_set.len())
     }
 
+    /// Adds a new `CovenantToken` to the current `tokens` vector field.
     pub fn push_token(&mut self, token: CovenantToken) {
         self.tokens.push(token);
     }
 
     #[cfg(test)]
+    /// Outputs a slice of the instance existing `CovenantToken`'s.
     pub(super) fn tokens(&self) -> &[CovenantToken] {
         &self.tokens
+    }
+
+    /// Outputs the length of `tokens` field.
+    pub fn num_tokens(&self) -> usize {
+        self.tokens.len()
+    }
+
+    /// Checks if the `tokens` field is empty.
+    pub fn is_empty(&self) -> bool {
+        self.tokens.is_empty()
     }
 }
 
 impl FromIterator<CovenantToken> for Covenant {
+    /// Creates a new `CovenantToken` instance from an iterator with `Item = CovenantToken`.
     fn from_iter<T: IntoIterator<Item = CovenantToken>>(iter: T) -> Self {
         Self {
             tokens: iter.into_iter().collect(),
@@ -159,25 +183,27 @@ mod test {
             test::{create_input, create_outputs},
             Covenant,
         },
-        transactions::test_helpers::UtxoTestParams,
+        transactions::test_helpers::{create_test_core_key_manager_with_memory_db, UtxoTestParams},
     };
 
-    #[test]
-    fn it_succeeds_when_empty() {
-        let outputs = create_outputs(10, UtxoTestParams::default());
-        let input = create_input();
+    #[tokio::test]
+    async fn it_succeeds_when_empty() {
+        let key_manager = create_test_core_key_manager_with_memory_db();
+        let outputs = create_outputs(10, UtxoTestParams::default(), &key_manager).await;
+        let input = create_input(&key_manager).await;
         let covenant = covenant!();
         let num_matching_outputs = covenant.execute(0, &input, &outputs).unwrap();
         assert_eq!(num_matching_outputs, 10);
     }
 
-    #[test]
-    fn it_executes_the_covenant() {
-        let mut outputs = create_outputs(10, UtxoTestParams::default());
+    #[tokio::test]
+    async fn it_executes_the_covenant() {
+        let key_manager = create_test_core_key_manager_with_memory_db();
+        let mut outputs = create_outputs(10, UtxoTestParams::default(), &key_manager).await;
         outputs[4].features.maturity = 42;
         outputs[5].features.maturity = 42;
         outputs[7].features.maturity = 42;
-        let mut input = create_input();
+        let mut input = create_input(&key_manager).await;
         input.set_maturity(42).unwrap();
         let covenant = covenant!(fields_preserved(@fields(
             @field::features_output_type,
@@ -187,13 +213,14 @@ mod test {
         assert_eq!(num_matching_outputs, 3);
     }
 
-    #[test]
-    fn test_borsh_de_serialization() {
-        let mut outputs = create_outputs(10, UtxoTestParams::default());
+    #[tokio::test]
+    async fn test_borsh_de_serialization() {
+        let key_manager = create_test_core_key_manager_with_memory_db();
+        let mut outputs = create_outputs(10, UtxoTestParams::default(), &key_manager).await;
         outputs[4].features.maturity = 42;
         outputs[5].features.maturity = 42;
         outputs[7].features.maturity = 42;
-        let mut input = create_input();
+        let mut input = create_input(&key_manager).await;
         input.set_maturity(42).unwrap();
         let covenant = covenant!(fields_preserved(@fields(
             @field::features_output_type,

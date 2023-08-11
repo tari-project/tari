@@ -59,7 +59,7 @@ pub(super) async fn perform_identity_exchange<
 /// Validate the peer identity info.
 ///
 /// The following process is used to validate the peer:
-/// 1. Check the offered node identity is a valid base node identity (TODO: This won't work for DAN nodes)
+/// 1. Check the offered node identity is a valid base node identity
 /// 1. Check if we know the peer, if so, is the peer banned, if so, return an error
 /// 1. Check that the offered addresses are valid
 ///
@@ -89,7 +89,7 @@ pub(super) async fn validate_peer_identity(
 /// Validate the peer identity info.
 ///
 /// The following process is used to validate the peer:
-/// 1. Check the offered node identity is a valid base node identity (TODO: This won't work for DAN nodes)
+/// 1. Check the offered node identity is a valid base node identity
 /// 1. Check if we know the peer, if so, is the peer banned, if so, return an error
 /// 1. Check that the offered addresses are valid
 /// 1. Update or add the peer, returning it's NodeId
@@ -327,9 +327,9 @@ fn validate_onion3_address(addr: &multiaddr::Onion3Addr<'_>) -> Result<(), Conne
     }
 
     let calculated_checksum = sha3::Sha3_256::new()
-        .chain(".onion checksum")
-        .chain(pub_key)
-        .chain(version)
+        .chain_update(".onion checksum")
+        .chain_update(pub_key)
+        .chain_update(version)
         .finalize();
 
     if calculated_checksum[..2] != *checksum {

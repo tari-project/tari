@@ -141,8 +141,6 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 if self.node_identity.has_peer_features(PeerFeatures::DHT_STORE_FORWARD) {
                     self.handle_stored_messages_request(message).await?
                 } else {
-                    // TODO: #banheuristics - requester should not have requested store and forward messages from this
-                    //       node
                     debug!(
                         target: LOG_TARGET,
                         "Received store and forward request {} from peer '{}' however, this node is not a store and \
@@ -275,7 +273,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let message_tag = message.dht_header.message_tag;
 
         if let Err(err) = self.check_saf_messages_were_requested(&source_node_id).await {
-            // TODO: Peer sent SAF messages we didn't request?? #banheuristics
+            // Peer sent SAF messages we didn't request?? #banheuristics
             warn!(target: LOG_TARGET, "SAF response check failed: {}", err);
             return Ok(());
         }
@@ -313,7 +311,6 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                     },
                     // Failed decryption is acceptable, the message wasn't for this node so we
                     // simply discard the message.
-                    // TODO: Should we add this message to our SAF store?
                     Err(err @ StoreAndForwardError::DecryptionFailed) => {
                         debug!(
                             target: LOG_TARGET,
@@ -323,7 +320,6 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                         );
                     },
                     // The peer that originally sent this message is not known to us.
-                    // TODO: Should we try to discover this peer?
                     Err(StoreAndForwardError::PeerManagerError(PeerManagerError::PeerNotFoundError)) => {
                         debug!(target: LOG_TARGET, "Origin peer not found. Discarding stored message.");
                     },
@@ -345,7 +341,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
                     // Every other error shouldn't happen if the sending node is behaving
                     Err(err) => {
-                        // TODO: #banheuristics
+                        //  #banheuristics
                         warn!(
                             target: LOG_TARGET,
                             "SECURITY: invalid store and forward message was discarded from NodeId={}. Reason: {}. \
@@ -648,8 +644,6 @@ mod test {
             service_spy,
         },
     };
-
-    // TODO: unit tests for static functions (check_signature, etc)
 
     fn make_stored_message(
         message: String,

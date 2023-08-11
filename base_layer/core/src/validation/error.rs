@@ -29,9 +29,9 @@ use crate::{
     blocks::{BlockHeaderValidationError, BlockValidationError},
     chain_storage::ChainStorageError,
     covenants::CovenantError,
-    proof_of_work::{monero_rx::MergeMineError, PowError},
+    proof_of_work::{monero_rx::MergeMineError, DifficultyError, PowError},
     transactions::{
-        tari_amount::MicroTari,
+        tari_amount::MicroMinotari,
         transaction_components::{OutputType, RangeProofType, TransactionError},
     },
 };
@@ -53,7 +53,7 @@ pub enum ValidationError {
     #[error("The transaction is invalid: {0}")]
     TransactionError(#[from] TransactionError),
     #[error("A range proof verification has produced an error: {0}")]
-    RangeProofError(#[from] RangeProofError),
+    RangeProofError(String),
     #[error("Error: {0}")]
     CustomError(String),
     #[error("Fatal storage error during validation: {0}")]
@@ -97,8 +97,6 @@ pub enum ValidationError {
     InvalidMinedHeight,
     #[error("Maximum transaction weight exceeded")]
     MaxTransactionWeightExceeded,
-    #[error("End of time: {0}")]
-    EndOfTimeError(String),
     #[error("Expected block height to be {expected}, but was {block_height}")]
     IncorrectHeight { expected: u64, block_height: u64 },
     #[error("Expected block previous hash to be {expected}, but was {block_hash}")]
@@ -144,13 +142,20 @@ pub enum ValidationError {
     #[error("Validator node MMR is not correct")]
     ValidatorNodeMmmrError,
     #[error("Validator registration has invalid minimum amount {actual}, must be at least {min}")]
-    ValidatorNodeRegistrationMinDepositAmount { min: MicroTari, actual: MicroTari },
+    ValidatorNodeRegistrationMinDepositAmount { min: MicroMinotari, actual: MicroMinotari },
     #[error("Validator registration has invalid maturity {actual}, must be at least {min}")]
     ValidatorNodeRegistrationMinLockHeight { min: u64, actual: u64 },
     #[error("Validator node registration signature failed verification")]
     InvalidValidatorNodeSignature,
-    #[error("Not enough timestamps provided. Expected {expected}, got {actual}")]
-    NotEnoughTimestamps { expected: usize, actual: usize },
+    #[error(
+        "An unexpected number of timestamps were provided to the header validator. THIS IS A BUG. Expected \
+         {expected}, got {actual}"
+    )]
+    IncorrectNumberOfTimestampsProvided { expected: u64, actual: u64 },
+    #[error("Invalid difficulty: {0}")]
+    DifficultyError(#[from] DifficultyError),
+    #[error("Covenant too large. Max size: {max_size}, Actual size: {actual_size}")]
+    CovenantTooLarge { max_size: usize, actual_size: usize },
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in
@@ -164,5 +169,11 @@ impl From<ChainStorageError> for ValidationError {
 impl ValidationError {
     pub fn custom_error<T: Into<String>>(err: T) -> Self {
         ValidationError::CustomError(err.into())
+    }
+}
+
+impl From<RangeProofError> for ValidationError {
+    fn from(e: RangeProofError) -> Self {
+        ValidationError::RangeProofError(e.to_string())
     }
 }

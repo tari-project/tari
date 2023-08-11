@@ -39,7 +39,7 @@ use crate::{
         NetworkConsensus,
     },
     proof_of_work::DifficultyAdjustmentError,
-    transactions::{tari_amount::MicroTari, transaction_components::TransactionKernel},
+    transactions::{tari_amount::MicroMinotari, transaction_components::TransactionKernel},
 };
 
 #[derive(Debug, Error)]
@@ -62,6 +62,7 @@ pub struct ConsensusManager {
 }
 
 impl ConsensusManager {
+    /// Start a builder for specified network
     pub fn builder(network: Network) -> ConsensusManagerBuilder {
         ConsensusManagerBuilder::new(network)
     }
@@ -88,13 +89,14 @@ impl ConsensusManager {
         &self.inner.emission
     }
 
-    pub fn get_block_reward_at(&self, height: u64) -> MicroTari {
+    /// Gets the block reward for the height
+    pub fn get_block_reward_at(&self, height: u64) -> MicroMinotari {
         self.emission_schedule().block_reward(height)
     }
 
     /// Get the emission reward at height
     /// Returns None if the total supply > u64::MAX
-    pub fn get_total_emission_at(&self, height: u64) -> MicroTari {
+    pub fn get_total_emission_at(&self, height: u64) -> MicroMinotari {
         self.inner.emission.supply_at_block(height)
     }
 
@@ -113,24 +115,28 @@ impl ConsensusManager {
     /// Create a new TargetDifficulty for the given proof of work using constants that are effective from the given
     /// height
     #[cfg(feature = "base_node")]
-    pub(crate) fn new_target_difficulty(&self, pow_algo: PowAlgorithm, height: u64) -> TargetDifficultyWindow {
+    pub(crate) fn new_target_difficulty(
+        &self,
+        pow_algo: PowAlgorithm,
+        height: u64,
+    ) -> Result<TargetDifficultyWindow, String> {
         use std::convert::TryFrom;
         let constants = self.consensus_constants(height);
-        let block_window = constants.get_difficulty_block_window();
+        let block_window = constants.difficulty_block_window();
 
         TargetDifficultyWindow::new(
             usize::try_from(block_window).expect("difficulty block window exceeds usize::MAX"),
-            constants.get_diff_target_block_interval(pow_algo),
-            constants.get_difficulty_max_block_interval(pow_algo),
+            constants.pow_target_block_interval(pow_algo),
         )
     }
 
     /// Creates a total_coinbase offset containing all fees for the validation from the height and kernel set
-    pub fn calculate_coinbase_and_fees(&self, height: u64, kernels: &[TransactionKernel]) -> MicroTari {
+    pub fn calculate_coinbase_and_fees(&self, height: u64, kernels: &[TransactionKernel]) -> MicroMinotari {
         let coinbase = self.emission_schedule().block_reward(height);
         kernels.iter().fold(coinbase, |total, k| total + k.fee)
     }
 
+    /// Returns a ref to the chain strength comparer
     #[cfg(feature = "base_node")]
     pub fn chain_strength_comparer(&self) -> &dyn ChainStrengthComparer {
         self.inner.chain_strength_comparer.as_ref()
@@ -163,6 +169,7 @@ struct ConsensusManagerInner {
 pub struct ConsensusManagerBuilder {
     consensus_constants: Vec<ConsensusConstants>,
     network: NetworkConsensus,
+    /// This is can only used be used if the network is localnet
     #[cfg(feature = "base_node")]
     gen_block: Option<ChainBlock>,
     #[cfg(feature = "base_node")]
@@ -202,11 +209,17 @@ impl ConsensusManagerBuilder {
     }
 
     /// Builds a consensus manager
-    pub fn build(mut self) -> ConsensusManager {
+    pub fn build(mut self) -> Result<ConsensusManager, ConsensusBuilderError> {
+        // should not be allowed to set the gen block and have the network type anything else than LocalNet
+        // If feature != base_node, gen_block is not available
+        #[cfg(feature = "base_node")]
+        if self.network.as_network() != Network::LocalNet && self.gen_block.is_some() {
+            return Err(ConsensusBuilderError::CannotSetGenesisBlock);
+        }
+
         if self.consensus_constants.is_empty() {
             self.consensus_constants = self.network.create_consensus_constants();
         }
-        // TODO: Check that constants is not empty
 
         let emission = EmissionSchedule::new(
             self.consensus_constants[0].emission_initial,
@@ -226,12 +239,18 @@ impl ConsensusManagerBuilder {
                     .then()
                     .by_height()
                     .then()
-                    .by_monero_difficulty()
+                    .by_randomx_difficulty()
                     .then()
-                    .by_sha3_difficulty()
+                    .by_sha3x_difficulty()
                     .build()
             }),
         };
-        ConsensusManager { inner: Arc::new(inner) }
+        Ok(ConsensusManager { inner: Arc::new(inner) })
     }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ConsensusBuilderError {
+    #[error("Cannot set a genesis block with a network other than LocalNet")]
+    CannotSetGenesisBlock,
 }

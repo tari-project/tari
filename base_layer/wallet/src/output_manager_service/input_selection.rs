@@ -76,7 +76,7 @@ impl Display for UtxoSelectionCriteria {
 }
 
 /// UTXO selection ordering
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UtxoSelectionOrdering {
     /// The Default ordering is heuristic and depends on the requested value and the value of the available UTXOs.
     /// If the requested value is larger than the largest available UTXO, we select LargerFirst as inputs, otherwise
@@ -100,7 +100,7 @@ impl Display for UtxoSelectionOrdering {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Default, Debug, Clone)]
 pub enum UtxoSelectionFilter {
     /// Select OutputType::Standard or OutputType::Coinbase outputs only
     #[default]

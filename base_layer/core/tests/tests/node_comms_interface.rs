@@ -20,8 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::convert::TryFrom;
+
 use tari_common::configuration::Network;
-use tari_common_types::types::PublicKey;
 use tari_comms::test_utils::mocks::create_connectivity_mock;
 use tari_core::{
     base_node::comms_interface::{
@@ -34,20 +35,20 @@ use tari_core::{
     consensus::ConsensusManager,
     covenants::Covenant,
     mempool::{Mempool, MempoolConfig},
+    proof_of_work::{randomx_factory::RandomXFactory, Difficulty},
     test_helpers::{
         blockchain::{create_store_with_consensus_and_validators_and_config, create_test_blockchain_db},
         create_consensus_rules,
     },
     transactions::{
-        tari_amount::MicroTari,
-        test_helpers::{create_utxo, spend_utxos},
-        transaction_components::{OutputFeatures, TransactionOutput, TransactionOutputVersion, UnblindedOutput},
-        CryptoFactories,
+        tari_amount::MicroMinotari,
+        test_helpers::{create_test_core_key_manager_with_memory_db, create_utxo, spend_utxos},
+        transaction_components::{OutputFeatures, TransactionOutputVersion, WalletOutput},
     },
     txn_schema,
     validation::{mocks::MockValidator, transaction::TransactionChainLinkedValidator},
 };
-use tari_crypto::keys::PublicKey as PublicKeyTrait;
+use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tari_script::{inputs, script, TariScript};
 use tari_service_framework::reply_channel;
 use tokio::sync::{broadcast, mpsc};
@@ -66,12 +67,12 @@ async fn inbound_get_metadata() {
     let mempool = new_mempool();
 
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build();
+    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
     let (block_event_sender, _) = broadcast::channel(50);
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = mpsc::unbounded_channel();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender.clone());
-
+    let randomx_factory = RandomXFactory::new(2);
     let (connectivity, _) = create_connectivity_mock();
     let inbound_nch = InboundNodeCommsHandlers::new(
         block_event_sender,
@@ -80,6 +81,7 @@ async fn inbound_get_metadata() {
         consensus_manager,
         outbound_nci,
         connectivity,
+        randomx_factory,
     );
     let block = store.fetch_block(0, true).unwrap().block().clone();
 
@@ -100,12 +102,13 @@ async fn inbound_fetch_kernel_by_excess_sig() {
     let mempool = new_mempool();
 
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build();
+    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
     let (block_event_sender, _) = broadcast::channel(50);
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = mpsc::unbounded_channel();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender.clone());
     let (connectivity, _) = create_connectivity_mock();
+    let randomx_factory = RandomXFactory::new(2);
     let inbound_nch = InboundNodeCommsHandlers::new(
         block_event_sender,
         store.clone().into(),
@@ -113,6 +116,7 @@ async fn inbound_fetch_kernel_by_excess_sig() {
         consensus_manager,
         outbound_nci,
         connectivity,
+        randomx_factory,
     );
     let block = store.fetch_block(0, true).unwrap().block().clone();
     let sig = block.body.kernels()[0].excess_sig.clone();
@@ -133,12 +137,13 @@ async fn inbound_fetch_headers() {
     let store = create_test_blockchain_db();
     let mempool = new_mempool();
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build();
+    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
     let (block_event_sender, _) = broadcast::channel(50);
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = mpsc::unbounded_channel();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
     let (connectivity, _) = create_connectivity_mock();
+    let randomx_factory = RandomXFactory::new(2);
     let inbound_nch = InboundNodeCommsHandlers::new(
         block_event_sender,
         store.clone().into(),
@@ -146,6 +151,7 @@ async fn inbound_fetch_headers() {
         consensus_manager,
         outbound_nci,
         connectivity,
+        randomx_factory,
     );
     let header = store.fetch_block(0, true).unwrap().header().clone();
 
@@ -161,17 +167,16 @@ async fn inbound_fetch_headers() {
 
 #[tokio::test]
 async fn inbound_fetch_utxos() {
-    let factories = CryptoFactories::default();
-
     let store = create_test_blockchain_db();
     let mempool = new_mempool();
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build();
+    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
     let (block_event_sender, _) = broadcast::channel(50);
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = mpsc::unbounded_channel();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
     let (connectivity, _) = create_connectivity_mock();
+    let randomx_factory = RandomXFactory::new(2);
     let inbound_nch = InboundNodeCommsHandlers::new(
         block_event_sender,
         store.clone().into(),
@@ -179,19 +184,22 @@ async fn inbound_fetch_utxos() {
         consensus_manager,
         outbound_nci,
         connectivity,
+        randomx_factory,
     );
     let block = store.fetch_block(0, true).unwrap().block().clone();
     let utxo_1 = block.body.outputs()[0].clone();
     let hash_1 = utxo_1.hash();
 
+    let key_manager = create_test_core_key_manager_with_memory_db();
     let (utxo_2, _, _) = create_utxo(
-        MicroTari(10_000),
-        &factories,
+        MicroMinotari(10_000),
+        &key_manager,
         &Default::default(),
         &TariScript::default(),
         &Covenant::default(),
-        MicroTari::zero(),
-    );
+        MicroMinotari::zero(),
+    )
+    .await;
     let hash_2 = utxo_2.hash();
 
     // Only retrieve a subset of the actual hashes, including a fake hash in the list
@@ -212,11 +220,12 @@ async fn inbound_fetch_blocks() {
     let mempool = new_mempool();
     let (block_event_sender, _) = broadcast::channel(50);
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build();
+    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
     let (request_sender, _) = reply_channel::unbounded();
     let (block_sender, _) = mpsc::unbounded_channel();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
     let (connectivity, _) = create_connectivity_mock();
+    let randomx_factory = RandomXFactory::new(2);
     let inbound_nch = InboundNodeCommsHandlers::new(
         block_event_sender,
         store.clone().into(),
@@ -224,6 +233,7 @@ async fn inbound_fetch_blocks() {
         consensus_manager,
         outbound_nci,
         connectivity,
+        randomx_factory,
     );
     let block = store.fetch_block(0, true).unwrap().block().clone();
 
@@ -244,9 +254,9 @@ async fn inbound_fetch_blocks() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn inbound_fetch_blocks_before_horizon_height() {
-    let factories = CryptoFactories::default();
-    let consensus_manager = ConsensusManager::builder(Network::LocalNet).build();
+    let consensus_manager = ConsensusManager::builder(Network::LocalNet).build().unwrap();
     let block0 = consensus_manager.get_genesis_block();
+    let key_manager = create_test_core_key_manager_with_memory_db();
     let validators = Validators::new(
         MockValidator::new(true),
         MockValidator::new(true),
@@ -269,6 +279,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
     let (block_sender, _) = mpsc::unbounded_channel();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
     let (connectivity, _) = create_connectivity_mock();
+    let randomx_factory = RandomXFactory::new(2);
     let inbound_nch = InboundNodeCommsHandlers::new(
         block_event_sender,
         store.clone().into(),
@@ -276,66 +287,105 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         consensus_manager.clone(),
         outbound_nci,
         connectivity,
+        randomx_factory,
     );
     let script = script!(Nop);
-    let amount = MicroTari(10_000);
-    let (utxo, key, offset) = create_utxo(
+    let amount = MicroMinotari(10_000);
+    let output_features = OutputFeatures::default();
+    let covenant = Covenant::default();
+    let (utxo, spending_key_id, sender_offset_key_id) = create_utxo(
         amount,
-        &factories,
-        &Default::default(),
+        &key_manager,
+        &output_features,
         &script,
-        &Covenant::default(),
-        MicroTari::zero(),
-    );
+        &covenant,
+        MicroMinotari::zero(),
+    )
+    .await;
     let mut txn = DbTransaction::new();
     txn.insert_utxo(
         utxo.clone(),
         *block0.hash(),
         0,
-        block0.header().output_mmr_size as u32,
+        u32::try_from(block0.header().output_mmr_size).unwrap(),
         0,
     );
     if let Err(e) = store.commit(txn) {
         panic!("{}", e);
     }
 
-    let metadata_signature = TransactionOutput::create_metadata_signature(
+    let wallet_output = WalletOutput::new_with_rangeproof(
         TransactionOutputVersion::get_current_version(),
         amount,
-        &key,
-        &script,
-        &OutputFeatures::default(),
-        &offset,
-        &Covenant::default(),
-        &utxo.encrypted_data,
-        utxo.minimum_value_promise,
-    )
-    .unwrap();
-    let unblinded_output = UnblindedOutput::new_current_version(
-        amount,
-        key.clone(),
-        Default::default(),
+        spending_key_id.clone(),
+        output_features,
         script,
-        inputs!(PublicKey::from_secret_key(&key)),
-        key,
-        PublicKey::from_secret_key(&offset),
-        metadata_signature,
+        inputs!(key_manager.get_public_key_at_key_id(&spending_key_id).await.unwrap()),
+        spending_key_id,
+        key_manager
+            .get_public_key_at_key_id(&sender_offset_key_id)
+            .await
+            .unwrap(),
+        utxo.metadata_signature,
         0,
-        Covenant::default(),
+        covenant,
         utxo.encrypted_data,
         utxo.minimum_value_promise,
+        utxo.proof,
     );
 
-    let txn = txn_schema!(
-        from: vec![unblinded_output],
-        to: vec![MicroTari(5_000), MicroTari(4_000)]
-    );
-    let (txn, _) = spend_utxos(txn);
-    let block1 = append_block(&store, &block0, vec![txn], &consensus_manager, 1.into()).unwrap();
-    let block2 = append_block(&store, &block1, vec![], &consensus_manager, 1.into()).unwrap();
-    let block3 = append_block(&store, &block2, vec![], &consensus_manager, 1.into()).unwrap();
-    let block4 = append_block(&store, &block3, vec![], &consensus_manager, 1.into()).unwrap();
-    let _block5 = append_block(&store, &block4, vec![], &consensus_manager, 1.into()).unwrap();
+    let txn = txn_schema!(from: vec![wallet_output], to: vec![MicroMinotari(5_000), MicroMinotari(4_000)]);
+    let (txn, _) = spend_utxos(txn, &key_manager).await;
+    let block1 = append_block(
+        &store,
+        &block0,
+        vec![txn],
+        &consensus_manager,
+        Difficulty::min(),
+        &key_manager,
+    )
+    .await
+    .unwrap();
+    let block2 = append_block(
+        &store,
+        &block1,
+        vec![],
+        &consensus_manager,
+        Difficulty::min(),
+        &key_manager,
+    )
+    .await
+    .unwrap();
+    let block3 = append_block(
+        &store,
+        &block2,
+        vec![],
+        &consensus_manager,
+        Difficulty::min(),
+        &key_manager,
+    )
+    .await
+    .unwrap();
+    let block4 = append_block(
+        &store,
+        &block3,
+        vec![],
+        &consensus_manager,
+        Difficulty::min(),
+        &key_manager,
+    )
+    .await
+    .unwrap();
+    let _block5 = append_block(
+        &store,
+        &block4,
+        vec![],
+        &consensus_manager,
+        Difficulty::min(),
+        &key_manager,
+    )
+    .await
+    .unwrap();
 
     if let Ok(NodeCommsResponse::HistoricalBlocks(received_blocks)) = inbound_nch
         .handle_request(NodeCommsRequest::FetchMatchingBlocks {

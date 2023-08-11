@@ -37,7 +37,7 @@ use super::TransactionKernelVersion;
 use crate::{
     consensus::DomainSeparatedConsensusHasher,
     transactions::{
-        tari_amount::MicroTari,
+        tari_amount::MicroMinotari,
         transaction_components::{KernelFeatures, TransactionError},
         transaction_protocol::TransactionMetadata,
         TransactionHashDomain,
@@ -55,7 +55,7 @@ pub struct TransactionKernel {
     /// Options for a kernel's structure or use
     pub features: KernelFeatures,
     /// Fee originally included in the transaction this proof is for.
-    pub fee: MicroTari,
+    pub fee: MicroMinotari,
     /// This kernel is not valid earlier than lock_height blocks
     /// The max lock_height of all *inputs* to this transaction
     pub lock_height: u64,
@@ -73,7 +73,7 @@ impl TransactionKernel {
     pub fn new(
         version: TransactionKernelVersion,
         features: KernelFeatures,
-        fee: MicroTari,
+        fee: MicroMinotari,
         lock_height: u64,
         excess: Commitment,
         excess_sig: Signature,
@@ -100,7 +100,7 @@ impl TransactionKernel {
 
     pub fn new_current_version(
         features: KernelFeatures,
-        fee: MicroTari,
+        fee: MicroMinotari,
         lock_height: u64,
         excess: Commitment,
         excess_sig: Signature,
@@ -118,12 +118,12 @@ impl TransactionKernel {
     }
 
     pub fn is_coinbase(&self) -> bool {
-        self.features.contains(KernelFeatures::COINBASE_KERNEL)
+        self.features.is_coinbase()
     }
 
     /// Is this a burned output kernel?
     pub fn is_burned(&self) -> bool {
-        self.features.contains(KernelFeatures::BURN_KERNEL)
+        self.features.is_burned()
     }
 
     pub fn verify_signature(&self) -> Result<(), TransactionError> {
@@ -185,7 +185,7 @@ impl TransactionKernel {
         version: &TransactionKernelVersion,
         sum_public_nonces: &PublicKey,
         total_excess: &PublicKey,
-        fee: MicroTari,
+        fee: MicroMinotari,
         lock_height: u64,
         features: &KernelFeatures,
         burn_commitment: &Option<Commitment>,
@@ -194,10 +194,20 @@ impl TransactionKernel {
         // needs to be transferred in order to sign the signature.
         let message =
             TransactionKernel::build_kernel_signature_message(version, fee, lock_height, features, burn_commitment);
+        TransactionKernel::finalize_kernel_signature_challenge(version, sum_public_nonces, total_excess, &message)
+    }
+
+    /// Helper function to finalize the kernel excess signature challenge.
+    pub fn finalize_kernel_signature_challenge(
+        version: &TransactionKernelVersion,
+        sum_public_nonces: &PublicKey,
+        total_excess: &PublicKey,
+        message: &[u8; 32],
+    ) -> [u8; 32] {
         let common = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("kernel_signature")
             .chain(sum_public_nonces)
             .chain(total_excess)
-            .chain(&message);
+            .chain(message);
         match version {
             TransactionKernelVersion::V0 => common.finalize(),
         }
@@ -207,13 +217,13 @@ impl TransactionKernel {
     /// outside of the signing keys and nonces.
     pub fn build_kernel_signature_message(
         version: &TransactionKernelVersion,
-        fee: MicroTari,
+        fee: MicroMinotari,
         lock_height: u64,
         features: &KernelFeatures,
         burn_commitment: &Option<Commitment>,
     ) -> [u8; 32] {
         let common = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("kernel_message")
-            .chain(&version)
+            .chain(version)
             .chain(&fee)
             .chain(&lock_height)
             .chain(features)

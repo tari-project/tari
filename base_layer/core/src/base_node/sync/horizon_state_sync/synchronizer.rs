@@ -77,7 +77,6 @@ use crate::{
     MutablePrunedOutputMmr,
     PrunedKernelMmr,
     PrunedOutputMmr,
-    PrunedWitnessMmr,
 };
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::horizon_state_sync";
@@ -320,11 +319,11 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
             kernel_hashes.push(kernel.hash());
 
-            // TODO: We mix u32 and u64 for the mmr length. This comes down to the use of a 32-bit croaring Bitmap.
-            //       Suggest should use u64 externally (u64 is in the header) and error on the database calls if they
-            //       are > u32::MAX. Remove the clippy exception once fixed.
-            #[allow(clippy::cast_possible_truncation)]
-            txn.insert_kernel_via_horizon_sync(kernel, *current_header.hash(), mmr_position as u32);
+            let mmr_position_u32 = u32::try_from(mmr_position).map_err(|_| HorizonSyncError::InvalidMmrPosition {
+                at_height: current_header.height(),
+                mmr_position,
+            })?;
+            txn.insert_kernel_via_horizon_sync(kernel, *current_header.hash(), mmr_position_u32);
             if mmr_position == current_header.header().kernel_mmr_size - 1 {
                 let num_kernels = kernel_hashes.len();
                 debug!(
@@ -422,7 +421,6 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         Ok(())
     }
 
-    // TODO: Split this function into smaller pieces
     #[allow(clippy::too_many_lines)]
     async fn synchronize_outputs(
         &mut self,
@@ -498,10 +496,9 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         let block_data = db
             .fetch_block_accumulated_data(current_header.header().prev_hash)
             .await?;
-        let (_, output_pruned_set, witness_pruned_set, _) = block_data.dissolve();
+        let (_, output_pruned_set, _) = block_data.dissolve();
 
         let mut output_mmr = PrunedOutputMmr::new(output_pruned_set);
-        let mut witness_mmr = PrunedWitnessMmr::new(witness_pruned_set);
         let mut constants = self.rules.consensus_constants(current_header.height()).clone();
         let mut last_sync_timer = Instant::now();
         let mut avg_latency = RollingAverageTime::new(20);
@@ -534,11 +531,10 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     );
                     height_utxo_counter += 1;
                     let output = TransactionOutput::try_from(output).map_err(HorizonSyncError::ConversionError)?;
-                    helpers::check_tari_script_byte_size(&output.script, constants.get_max_script_byte_size())?;
+                    helpers::check_tari_script_byte_size(&output.script, constants.max_script_byte_size())?;
                     unpruned_outputs.push(output.clone());
 
                     output_mmr.push(output.hash().to_vec())?;
-                    witness_mmr.push(output.witness_hash().to_vec())?;
 
                     txn.insert_output_via_horizon_sync(
                         output,
@@ -560,11 +556,9 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     );
                     height_txo_counter += 1;
                     output_mmr.push(utxo.hash.clone())?;
-                    witness_mmr.push(utxo.witness_hash.clone())?;
 
                     txn.insert_pruned_output_via_horizon_sync(
                         utxo.hash.try_into()?,
-                        utxo.witness_hash.try_into()?,
                         *current_header.hash(),
                         current_header.height(),
                         u32::try_from(mmr_position)?,
@@ -620,26 +614,14 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                         });
                     }
 
-                    let mmr_root = witness_mmr.get_merkle_root()?;
-                    if mmr_root.as_slice() != current_header.header().witness_mr.as_slice() {
-                        return Err(HorizonSyncError::InvalidMmrRoot {
-                            mmr_tree: MmrTree::Witness,
-                            at_height: current_header.height(),
-                            expected_hex: current_header.header().witness_mr.to_hex(),
-                            actual_hex: mmr_root.to_hex(),
-                        });
-                    }
-
                     self.validate_rangeproofs(mem::take(&mut unpruned_outputs)).await?;
 
                     txn.update_deleted_bitmap(diff_bitmap.clone());
 
-                    let witness_hash_set = witness_mmr.get_pruned_hash_set()?;
                     txn.update_block_accumulated_data_via_horizon_sync(
                         *current_header.hash(),
                         UpdateBlockAccumulatedData {
                             utxo_hash_set: Some(pruned_output_set),
-                            witness_hash_set: Some(witness_hash_set),
                             deleted_diff: Some(diff_bitmap.into()),
                             ..Default::default()
                         },

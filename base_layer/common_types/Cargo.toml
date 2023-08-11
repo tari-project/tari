@@ -3,23 +3,23 @@ name = "tari_common_types"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency common types"
 license = "BSD-3-Clause"
-version = "0.50.0-rc.0"
+version = "0.51.0-rc.0"
 edition = "2018"
 
 [dependencies]
-tari_crypto = { version = "0.16"}
-tari_utilities = "0.4.10"
-# TODO: remove this dependency and move Network into tari_common_types
+tari_crypto = { version = "0.18" }
+tari_utilities = { version = "0.5" }
 tari_common = {  path = "../../common" }
 
 
 chacha20poly1305 = "0.10.1"
-borsh = "0.9.3"
-digest = "0.9.0"
+borsh = "0.10"
+digest = "0.10"
 lazy_static = "1.4.0"
 newtype-ops = "0.1"
-rand = "0.7.3"
+rand = "0.8"
 serde = { version = "1.0.106", features = ["derive"] }
 thiserror = "1.0.29"
 tokio = { version = "1.23", features = ["time", "sync"] }
 base64 = "0.21.0"
+blake2 = "0.10"

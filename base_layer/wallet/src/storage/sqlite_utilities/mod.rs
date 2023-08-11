@@ -131,7 +131,7 @@ pub fn initialize_sqlite_database_backends<P: AsRef<Path>>(
 
     let wallet_backend = WalletSqliteDatabase::new(connection.clone(), passphrase)?;
     let transaction_backend = TransactionServiceSqliteDatabase::new(connection.clone(), wallet_backend.cipher());
-    let output_manager_backend = OutputManagerSqliteDatabase::new(connection.clone(), wallet_backend.cipher());
+    let output_manager_backend = OutputManagerSqliteDatabase::new(connection.clone());
     let contacts_backend = ContactsServiceSqliteDatabase::init(connection.clone());
     let key_manager_backend = KeyManagerSqliteDatabase::init(connection, wallet_backend.cipher());
     Ok((

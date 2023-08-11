@@ -33,17 +33,20 @@ impl<T> RollingVec<T> {
     }
 
     /// Adds a new element to the RollingVec.
-    /// If adding an element will cause the length to exceed the capacity, the first element is removed.
-    pub fn push(&mut self, item: T) {
+    /// If adding an element will cause the length to exceed the capacity, the first element is removed and the removed
+    /// value is returned.
+    pub fn push(&mut self, item: T) -> Option<T> {
         if self.capacity() == 0 {
-            return;
+            return None;
         }
 
+        let mut removed = None;
         if self.is_full() {
-            self.inner_mut().remove(0);
+            removed = Some(self.inner_mut().remove(0));
         }
 
         self.inner_mut().push(item);
+        removed
     }
 
     pub fn insert(&mut self, index: usize, item: T) {
@@ -57,6 +60,10 @@ impl<T> RollingVec<T> {
         self.inner_mut().insert(index, item);
     }
 
+    pub fn pop(&mut self) -> Option<T> {
+        self.inner_mut().pop()
+    }
+
     #[inline]
     pub fn is_full(&self) -> bool {
         // len never exceeds capacity
@@ -67,6 +74,13 @@ impl<T> RollingVec<T> {
     #[inline]
     pub fn capacity(&self) -> usize {
         self.inner().capacity()
+    }
+
+    /// Sorts the slice, but might not preserve the order of equal elements.
+    /// This sort is unstable (i.e., may reorder equal elements), in-place (i.e., does not allocate), and O(n * log(n))
+    pub fn sort_unstable(&mut self)
+    where T: Ord {
+        self.inner_mut().sort_unstable();
     }
 
     #[inline]

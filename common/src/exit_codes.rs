@@ -124,8 +124,6 @@ pub enum ExitCode {
 
 impl From<super::ConfigError> for ExitError {
     fn from(err: super::ConfigError) -> Self {
-        // TODO: Move it out
-        // error!(target: LOG_TARGET, "{}", err);
         Self::new(ExitCode::ConfigError, err.to_string())
     }
 }

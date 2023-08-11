@@ -12,31 +12,7 @@ mod test {
 
     use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
     use chrono::{NaiveDateTime, Utc};
-    use rand::{rngs::OsRng, RngCore};
-    use tari_common::configuration::Network;
-    use tari_common_types::{
-        chain_metadata::ChainMetadata,
-        tari_address::TariAddress,
-        transaction::{TransactionDirection, TransactionStatus},
-        types::{BlindingFactor, PrivateKey, PublicKey},
-    };
-    use tari_comms::peer_manager::NodeId;
-    use tari_comms_dht::event::DhtEvent;
-    use tari_contacts::contacts_service::{
-        handle::{ContactsLivenessData, ContactsLivenessEvent},
-        service::{ContactMessageType, ContactOnlineStatus},
-        types::Contact,
-    };
-    use tari_core::transactions::{
-        tari_amount::{uT, MicroTari},
-        transaction_components::Transaction,
-        ReceiverTransactionProtocol,
-        SenderTransactionProtocol,
-    };
-    use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
-    use tari_service_framework::reply_channel;
-    use tari_shutdown::Shutdown;
-    use tari_wallet::{
+    use minotari_wallet::{
         base_node_service::{handle::BaseNodeEvent, service::BaseNodeState},
         connectivity_service::OnlineStatus,
         output_manager_service::{
@@ -53,6 +29,30 @@ mod test {
             },
         },
     };
+    use rand::{rngs::OsRng, RngCore};
+    use tari_common::configuration::Network;
+    use tari_common_types::{
+        chain_metadata::ChainMetadata,
+        tari_address::TariAddress,
+        transaction::{TransactionDirection, TransactionStatus},
+        types::{PrivateKey, PublicKey},
+    };
+    use tari_comms::peer_manager::NodeId;
+    use tari_comms_dht::event::DhtEvent;
+    use tari_contacts::contacts_service::{
+        handle::{ContactsLivenessData, ContactsLivenessEvent},
+        service::{ContactMessageType, ContactOnlineStatus},
+        types::Contact,
+    };
+    use tari_core::transactions::{
+        tari_amount::{uT, MicroMinotari},
+        transaction_components::Transaction,
+        ReceiverTransactionProtocol,
+        SenderTransactionProtocol,
+    };
+    use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
+    use tari_service_framework::reply_channel;
+    use tari_shutdown::Shutdown;
     use tokio::{
         runtime::Runtime,
         sync::{broadcast, watch},
@@ -242,6 +242,8 @@ mod test {
         drop(Box::from_raw(balance));
     }
 
+    // casting is okay in tests
+    #[allow(clippy::cast_possible_truncation)]
     unsafe extern "C" fn transaction_validation_complete_callback(request_key: u64, result: u64) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.callback_transaction_validation_complete += request_key as u32 + result as u32;
@@ -262,6 +264,8 @@ mod test {
     }
 
     #[test]
+    // casting casting is okay in tests
+    #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::too_many_lines)]
     fn test_callback_handler() {
         let runtime = Runtime::new().unwrap();
@@ -304,14 +308,14 @@ mod test {
             2u64.into(),
             source_address,
             destination_address,
-            MicroTari::from(100),
-            MicroTari::from(2000),
+            MicroMinotari::from(100),
+            MicroMinotari::from(2000),
             Transaction::new(
                 Vec::new(),
                 Vec::new(),
                 Vec::new(),
-                BlindingFactor::default(),
-                BlindingFactor::default(),
+                PrivateKey::default(),
+                PrivateKey::default(),
             ),
             TransactionStatus::Completed,
             "2".to_string(),
@@ -372,14 +376,14 @@ mod test {
             6u64.into(),
             source_address,
             destination_address,
-            MicroTari::from(100),
-            MicroTari::from(2000),
+            MicroMinotari::from(100),
+            MicroMinotari::from(2000),
             Transaction::new(
                 Vec::new(),
                 Vec::new(),
                 Vec::new(),
-                BlindingFactor::default(),
-                BlindingFactor::default(),
+                PrivateKey::default(),
+                PrivateKey::default(),
             ),
             TransactionStatus::FauxUnconfirmed,
             "6".to_string(),
@@ -404,14 +408,14 @@ mod test {
             7u64.into(),
             source_address,
             destination_address,
-            MicroTari::from(100),
-            MicroTari::from(2000),
+            MicroMinotari::from(100),
+            MicroMinotari::from(2000),
             Transaction::new(
                 Vec::new(),
                 Vec::new(),
                 Vec::new(),
-                BlindingFactor::default(),
-                BlindingFactor::default(),
+                PrivateKey::default(),
+                PrivateKey::default(),
             ),
             TransactionStatus::FauxConfirmed,
             "7".to_string(),

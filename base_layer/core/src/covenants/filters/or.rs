@@ -22,10 +22,13 @@
 
 use crate::covenants::{context::CovenantContext, error::CovenantError, filters::Filter, output_set::OutputSet};
 
+/// Holding struct for the "or" filter
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OrFilter;
 
 impl Filter for OrFilter {
+    // The or filter only removes outputs in the mutable output set that are removed when applying both filters in the
+    // covenant context independently from each other. The union of the two outputs sets are returned.
     fn filter(&self, context: &mut CovenantContext<'_>, output_set: &mut OutputSet<'_>) -> Result<(), CovenantError> {
         let a = context.require_next_filter()?;
         let mut output_set_a = output_set.clone();
@@ -48,19 +51,28 @@ mod test {
     use crate::{
         covenant,
         covenants::{filters::test::setup_filter_test, test::create_input},
+        transactions::test_helpers::create_test_core_key_manager_with_memory_db,
     };
 
-    #[test]
-    fn it_filters_outputset_using_union() {
+    #[tokio::test]
+    async fn it_filters_outputset_using_union() {
+        let key_manager = create_test_core_key_manager_with_memory_db();
         let script = script!(CheckHeight(100));
         let covenant = covenant!(or(field_eq(@field::features_maturity, @uint(42),), field_eq(@field::script, @script(script.clone()))));
-        let input = create_input();
-        let (mut context, outputs) = setup_filter_test(&covenant, &input, 0, |outputs| {
-            outputs[5].features.maturity = 42;
-            outputs[5].script = script.clone();
-            outputs[7].features.maturity = 42;
-            outputs[8].script = script;
-        });
+        let input = create_input(&key_manager).await;
+        let (mut context, outputs) = setup_filter_test(
+            &covenant,
+            &input,
+            0,
+            |outputs| {
+                outputs[5].features.maturity = 42;
+                outputs[5].script = script.clone();
+                outputs[7].features.maturity = 42;
+                outputs[8].script = script;
+            },
+            &key_manager,
+        )
+        .await;
         let mut output_set = OutputSet::new(&outputs);
         OrFilter.filter(&mut context, &mut output_set).unwrap();
 

@@ -28,7 +28,6 @@ use serde::{Deserialize, Serialize};
 pub enum MmrTree {
     Utxo,
     Kernel,
-    Witness,
 }
 
 impl Display for MmrTree {
@@ -36,7 +35,6 @@ impl Display for MmrTree {
         match self {
             MmrTree::Utxo => f.write_str("UTXO"),
             MmrTree::Kernel => f.write_str("Kernel"),
-            MmrTree::Witness => f.write_str("Witness"),
         }
     }
 }

@@ -22,7 +22,8 @@
 
 use std::time::Duration;
 
-use blake2::Digest;
+use blake2::{Blake2b, Digest};
+use digest::consts::U32;
 use tari_common::configuration::Network;
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_core::{
@@ -37,12 +38,11 @@ use tari_core::{
     },
     consensus::{ConsensusConstantsBuilder, ConsensusManagerBuilder},
     mempool::MempoolServiceConfig,
-    proof_of_work::randomx_factory::RandomXFactory,
+    proof_of_work::{randomx_factory::RandomXFactory, Difficulty},
     test_helpers::blockchain::create_test_blockchain_db,
-    transactions::CryptoFactories,
+    transactions::test_helpers::create_test_core_key_manager_with_memory_db,
     validation::mocks::MockValidator,
 };
-use tari_crypto::hash::blake2::Blake256;
 use tari_p2p::services::liveness::config::LivenessConfig;
 use tari_shutdown::Shutdown;
 use tari_test_utils::unpack_enum;
@@ -63,17 +63,18 @@ use crate::helpers::{
 static EMISSION: [u64; 2] = [10, 10];
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_listening_lagging() {
-    let factories = CryptoFactories::default();
     let network = Network::LocalNet;
     let temp_dir = tempdir().unwrap();
+    let key_manager = create_test_core_key_manager_with_memory_db();
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
-    let (prev_block, _) = create_genesis_block(&factories, &consensus_constants);
+    let (prev_block, _) = create_genesis_block(&consensus_constants, &key_manager).await;
     let consensus_manager = ConsensusManagerBuilder::new(network)
         .add_consensus_constants(consensus_constants)
         .with_block(prev_block.clone())
-        .build();
+        .build()
+        .unwrap();
     let (alice_node, bob_node, consensus_manager) = create_network_with_2_base_nodes_with_config(
         MempoolServiceConfig::default(),
         LivenessConfig {
@@ -109,10 +110,19 @@ async fn test_listening_lagging() {
     let mut bob_local_nci = bob_node.local_nci;
 
     // Bob Block 1 - no block event
-    let prev_block = append_block(&bob_db, &prev_block, vec![], &consensus_manager, 3.into()).unwrap();
+    let prev_block = append_block(
+        &bob_db,
+        &prev_block,
+        vec![],
+        &consensus_manager,
+        Difficulty::from_u64(3).unwrap(),
+        &key_manager,
+    )
+    .await
+    .unwrap();
     // Bob Block 2 - with block event and liveness service metadata update
     let mut prev_block = bob_db
-        .prepare_new_block(chain_block(prev_block.block(), vec![], &consensus_manager))
+        .prepare_new_block(chain_block(prev_block.block(), vec![], &consensus_manager, &key_manager).await)
         .unwrap();
     prev_block.header.output_mmr_size += 1;
     prev_block.header.kernel_mmr_size += 1;
@@ -157,7 +167,7 @@ async fn test_event_channel() {
     task::spawn(state_machine.run());
 
     let node_identity = random_node_identity();
-    let block_hash = Blake256::digest(node_identity.node_id().as_bytes()).into();
+    let block_hash = Blake2b::<U32>::digest(node_identity.node_id().as_bytes()).into();
     let metadata = ChainMetadata::new(10, block_hash, 2800, 0, 5000, 0);
 
     node.comms

@@ -14,22 +14,22 @@ Feature: Wallet Routing Mechanism
       #   # We need to ensure the coinbase lock heights are gone and we have enough individual UTXOs; mine enough blocks
       #   And mining node MINER mines 20 blocks
       #  Then all nodes are at height 20
-      #   # TODO: This wait is needed to stop base nodes from shutting down
+      #   # This wait is needed to stop base nodes from shutting down
       When I wait 1 seconds
       #   When I wait for wallet WALLET_A to have at least 100000000 uT
       #   #When I print the world
       #   And I multi-send 1000000 uT from wallet WALLET_A to all wallets at fee 100
-      #   # TODO: This wait is needed to stop next merge mining task from continuing
+      #   # This wait is needed to stop next merge mining task from continuing
       When I wait 1 seconds
       #   And mining node MINER mines 1 blocks
       #  Then all nodes are at height 21
       #   Then all wallets detect all transactions as Mined_Unconfirmed
-      #   # TODO: This wait is needed to stop next merge mining task from continuing
+      #   # This wait is needed to stop next merge mining task from continuing
       When I wait 1 seconds
       #   And mining node MINER mines 11 blocks
       #  Then all nodes are at height 32
       #   Then all wallets detect all transactions as Mined_Confirmed
-      #   # TODO: This wait is needed to stop base nodes from shutting down
+      #   This wait is needed to stop base nodes from shutting down
       When I wait 1 seconds
       #   @long-running
       #   Examples:

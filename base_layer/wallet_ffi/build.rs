@@ -3,7 +3,7 @@
 
 use std::{env, path::PathBuf};
 
-use cbindgen::{Config, ExportConfig, Language, ParseConfig, Style};
+use cbindgen::{Config, ExportConfig, Language, LineEndingStyle, ParseConfig, Style};
 use tari_common::build::StaticApplicationInfo;
 
 fn main() {
@@ -13,7 +13,6 @@ fn main() {
     let gen = StaticApplicationInfo::initialize().unwrap();
     gen.write_consts_to_outdir("consts.rs").unwrap();
 
-    // let package_name = env::var("CARGO_PKG_NAME").unwrap();
     let output_file = PathBuf::from(&crate_dir).join("wallet.h").display().to_string();
 
     let config = Config {
@@ -26,7 +25,7 @@ fn main() {
                 "tari_common_types".to_string(),
                 "tari_crypto".to_string(),
                 "tari_p2p".to_string(),
-                "tari_wallet".to_string(),
+                "minotari_wallet".to_string(),
                 "tari_contacts".to_string(),
             ]),
             ..Default::default()
@@ -38,6 +37,7 @@ fn main() {
             include: vec!["TariUtxo".to_string()],
             ..Default::default()
         },
+        line_endings: LineEndingStyle::Native,
         ..Default::default()
     };
 
@@ -45,14 +45,3 @@ fn main() {
         .unwrap()
         .write_to_file(output_file);
 }
-
-// /// Find the location of the `target/` directory. Note that this may be
-// /// overridden by `cmake`, so we also need to check the `CARGO_TARGET_DIR`
-// /// variable.
-// fn target_dir() -> PathBuf {
-//     if let Ok(target) = env::var("CARGO_TARGET_DIR") {
-//         PathBuf::from(target)
-//     } else {
-//         PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap()).join("target")
-//     }
-// }

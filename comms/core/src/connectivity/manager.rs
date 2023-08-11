@@ -101,7 +101,7 @@ impl ConnectivityManager {
 }
 
 /// Node connectivity status.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConnectivityStatus {
     /// Initial connectivity status before the Connectivity actor has initialized.
     #[default]
@@ -265,7 +265,7 @@ impl ConnectivityManagerActor {
                 } else if let Err(err) = self.ban_peer(&node_id, duration, reason).await {
                     error!(target: LOG_TARGET, "Error when banning peer: {:?}", err);
                 } else {
-                    // We ban the peer
+                    // we ban the peer
                 }
             },
             AddPeerToAllowList(node_id) => {

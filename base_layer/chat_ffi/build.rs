@@ -3,7 +3,7 @@
 
 use std::{env, path::PathBuf};
 
-use cbindgen::{Config, ExportConfig, Language, ParseConfig, Style};
+use cbindgen::{Config, ExportConfig, Language, LineEndingStyle, ParseConfig, Style};
 use tari_common::build::StaticApplicationInfo;
 
 fn main() {
@@ -26,7 +26,7 @@ fn main() {
                 "tari_common_types".to_string(),
                 "tari_crypto".to_string(),
                 "tari_p2p".to_string(),
-                "tari_wallet".to_string(),
+                "minotari_wallet".to_string(),
                 "tari_contacts".to_string(),
             ]),
             ..Default::default()
@@ -38,6 +38,7 @@ fn main() {
             include: vec!["TariUtxo".to_string()],
             ..Default::default()
         },
+        line_endings: LineEndingStyle::Native,
         ..Default::default()
     };
 

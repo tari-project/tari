@@ -17,4 +17,6 @@ message RecipientSignedMessage {
     tari.types.Signature partial_signature = 4;
     // The transaction metadata
     TransactionMetadata metadata = 5;
+    // offset from recipient
+    bytes offset = 6;
 }

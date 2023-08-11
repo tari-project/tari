@@ -49,6 +49,7 @@ use tari_core::{
         MempoolServiceInitializer,
         OutboundMempoolServiceInterface,
     },
+    proof_of_work::randomx_factory::RandomXFactory,
     test_helpers::blockchain::{create_store_with_consensus_and_validators, TempDatabase},
     validation::{
         mocks::MockValidator,
@@ -185,7 +186,7 @@ impl BaseNodeBuilder {
         let network = self.network.as_network();
         let consensus_manager = self
             .consensus_manager
-            .unwrap_or_else(|| ConsensusManagerBuilder::new(network).build());
+            .unwrap_or_else(|| ConsensusManagerBuilder::new(network).build().unwrap());
         let blockchain_db = create_store_with_consensus_and_validators(consensus_manager.clone(), validators);
         let mempool_validator = TransactionChainLinkedValidator::new(blockchain_db.clone(), consensus_manager.clone());
         let mempool = Mempool::new(
@@ -283,7 +284,7 @@ pub async fn create_network_with_3_base_nodes(
     data_path: &str,
 ) -> (NodeInterfaces, NodeInterfaces, NodeInterfaces, ConsensusManager) {
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManagerBuilder::new(network).build();
+    let consensus_manager = ConsensusManagerBuilder::new(network).build().unwrap();
     create_network_with_3_base_nodes_with_config(
         MempoolServiceConfig::default(),
         LivenessConfig::default(),
@@ -393,7 +394,7 @@ async fn setup_base_node_services(
         setup_comms_services(node_identity.clone(), peers, publisher, data_path).await;
 
     let mock_state_machine = MockBaseNodeStateMachine::new();
-
+    let randomx_factory = RandomXFactory::new(2);
     let handles = StackBuilder::new(shutdown.to_signal())
         .add_initializer(RegisterHandle::new(dht))
         .add_initializer(RegisterHandle::new(comms.connectivity()))
@@ -407,6 +408,7 @@ async fn setup_base_node_services(
             mempool.clone(),
             consensus_manager,
             Duration::from_secs(60),
+            randomx_factory,
         ))
         .add_initializer(MempoolServiceInitializer::new(mempool.clone(), subscription_factory))
         .add_initializer(mock_state_machine.get_initializer())

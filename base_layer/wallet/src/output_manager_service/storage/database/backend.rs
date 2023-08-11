@@ -13,7 +13,7 @@ use crate::output_manager_service::{
     service::Balance,
     storage::{
         database::{DbKey, DbValue, OutputBackendQuery, WriteOperation},
-        models::DbUnblindedOutput,
+        models::DbWalletOutput,
     },
 };
 
@@ -25,18 +25,18 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     /// Retrieve the record associated with the provided DbKey
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, OutputManagerStorageError>;
     /// Fetch outputs with specific features
-    fn fetch_with_features(&self, features: OutputType) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
+    fn fetch_with_features(&self, features: OutputType) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError>;
     /// Retrieve unspent outputs.
-    fn fetch_sorted_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
+    fn fetch_sorted_unspent_outputs(&self) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError>;
     /// Retrieve outputs that have been mined but not spent yet (have not been deleted)
-    fn fetch_mined_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
+    fn fetch_mined_unspent_outputs(&self) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError>;
     /// Retrieve outputs that are invalid
-    fn fetch_invalid_outputs(&self, timestamp: i64) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
+    fn fetch_invalid_outputs(&self, timestamp: i64) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError>;
     /// Retrieve outputs that have not been found or confirmed in the block chain yet
-    fn fetch_unspent_mined_unconfirmed_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
+    fn fetch_unspent_mined_unconfirmed_outputs(&self) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError>;
     /// Modify the state the of the backend with a write operation
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, OutputManagerStorageError>;
-    fn fetch_pending_incoming_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
+    fn fetch_pending_incoming_outputs(&self) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError>;
 
     fn set_received_output_mined_height_and_status(
         &self,
@@ -67,8 +67,8 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     fn short_term_encumber_outputs(
         &self,
         tx_id: TxId,
-        outputs_to_send: &[DbUnblindedOutput],
-        outputs_to_receive: &[DbUnblindedOutput],
+        outputs_to_send: &[DbWalletOutput],
+        outputs_to_receive: &[DbWalletOutput],
     ) -> Result<(), OutputManagerStorageError>;
     /// This method confirms that a transaction negotiation is complete and outputs can be fully encumbered. This
     /// reserves these outputs until the transaction is confirmed or cancelled
@@ -86,9 +86,9 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     fn revalidate_unspent_output(&self, spending_key: &Commitment) -> Result<(), OutputManagerStorageError>;
 
     /// Get the output that was most recently mined, ordered descending by mined height
-    fn get_last_mined_output(&self) -> Result<Option<DbUnblindedOutput>, OutputManagerStorageError>;
+    fn get_last_mined_output(&self) -> Result<Option<DbWalletOutput>, OutputManagerStorageError>;
     /// Get the output that was most recently spent, ordered descending by mined height
-    fn get_last_spent_output(&self) -> Result<Option<DbUnblindedOutput>, OutputManagerStorageError>;
+    fn get_last_spent_output(&self) -> Result<Option<DbWalletOutput>, OutputManagerStorageError>;
     /// Set if a coinbase output is abandoned or not
     fn set_coinbase_abandoned(&self, tx_id: TxId, abandoned: bool) -> Result<(), OutputManagerStorageError>;
     /// Reinstate a cancelled inbound output
@@ -96,13 +96,13 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     /// Return the available, time locked, pending incoming and pending outgoing balance
     fn get_balance(&self, tip: Option<u64>) -> Result<Balance, OutputManagerStorageError>;
     /// Import unvalidated output
-    fn add_unvalidated_output(&self, output: DbUnblindedOutput, tx_id: TxId) -> Result<(), OutputManagerStorageError>;
+    fn add_unvalidated_output(&self, output: DbWalletOutput, tx_id: TxId) -> Result<(), OutputManagerStorageError>;
     fn fetch_unspent_outputs_for_spending(
         &self,
         selection_criteria: &UtxoSelectionCriteria,
         amount: u64,
         current_tip_height: Option<u64>,
-    ) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
-    fn fetch_outputs_by_tx_id(&self, tx_id: TxId) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
-    fn fetch_outputs_by(&self, q: OutputBackendQuery) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
+    ) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError>;
+    fn fetch_outputs_by_tx_id(&self, tx_id: TxId) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError>;
+    fn fetch_outputs_by(&self, q: OutputBackendQuery) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError>;
 }

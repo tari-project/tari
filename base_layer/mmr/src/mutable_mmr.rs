@@ -50,9 +50,6 @@ where
 {
     pub(crate) mmr: MerkleMountainRange<D, B>,
     pub(crate) deleted: Bitmap,
-    // The number of leaf nodes in the MutableMmr. Bitmap is limited to 4 billion elements, which is plenty.
-    // [croaring::Treemap] is a 64bit alternative, but this would break things on 32bit systems. A good TODO would be
-    // to select the bitmap backend using a feature flag
     pub(crate) size: u32,
 }
 
@@ -97,7 +94,8 @@ where
     /// This function returns the hash of the leaf index provided, indexed from 0. If the hash does not exist, or if it
     /// has been marked for deletion, `None` is returned.
     pub fn get_leaf_hash(&self, leaf_index: LeafIndex) -> Result<Option<Hash>, MerkleMountainRangeError> {
-        if self.deleted.contains(leaf_index.0 as u32) {
+        let leaf_index_value = u32::try_from(leaf_index.0).map_err(|_| MerkleMountainRangeError::InvalidLeafIndex)?;
+        if self.deleted.contains(leaf_index_value) {
             return Ok(None);
         }
         self.mmr.get_node_hash(node_index(leaf_index))
@@ -107,7 +105,8 @@ where
     /// deletion if the boolean value is true.
     pub fn get_leaf_status(&self, leaf_index: LeafIndex) -> Result<(Option<Hash>, bool), MerkleMountainRangeError> {
         let hash = self.mmr.get_node_hash(node_index(leaf_index))?;
-        let deleted = self.deleted.contains(leaf_index.0 as u32);
+        let leaf_index_value = u32::try_from(leaf_index.0).map_err(|_| MerkleMountainRangeError::InvalidLeafIndex)?;
+        let deleted = self.deleted.contains(leaf_index_value);
         Ok((hash, deleted))
     }
 
@@ -133,8 +132,8 @@ where
 
         // Include the compressed bitmap in the root hash
         let mut hasher = D::new();
-        hasher.update(&mmr_root);
-        hasher.update(&bitmap_ser);
+        Digest::update(&mut hasher, &mmr_root);
+        Digest::update(&mut hasher, &bitmap_ser);
 
         Ok(hasher.finalize().to_vec())
     }

@@ -36,31 +36,31 @@ monerod_url = [# stagenet
 # If authentication is being used for curl. (default = false)
 #monerod_use_auth = false
 
-# The Tari base node's GRPC address. (default = "/ip4/127.0.0.1/tcp/18142")
+# The Minotari base node's GRPC address. (default = "/ip4/127.0.0.1/tcp/18142")
 #base_node_grpc_address = "/ip4/127.0.0.1/tcp/18142"
 
-# The Tari console wallet's GRPC address. (default = "/ip4/127.0.0.1/tcp/18143")
+# The Minotari wallet's GRPC address. (default = "/ip4/127.0.0.1/tcp/18143")
 #console_wallet_grpc_address = "/ip4/127.0.0.1/tcp/18143"
 
-# GRPC authentication for the Tari console wallet (default = "none")
+# GRPC authentication for the Minotari wallet (default = "none")
 #wallet_grpc_authentication = { username: "miner", password: "$argon..." }
 
-# Address of the tari_merge_mining_proxy application. (default = "/ip4/127.0.0.1/tcp/18081")
+# Address of the minotari_merge_mining_proxy application. (default = "/ip4/127.0.0.1/tcp/18081")
 #listener_address = "/ip4/127.0.0.1/tcp/18081"
 
 # In sole merged mining, the block solution is usually submitted to the Monero blockchain
-# (monerod) as well as to the Tari blockchain, then this setting should be "true". With pool
+# (monerod) as well as to the Minotari blockchain, then this setting should be "true". With pool
 # merged mining, there is no sense in submitting the solution to the Monero blockchain as the
 # pool does that, then this setting should be "false". (default = true)
 #submit_to_origin = true
 
 # The merge mining proxy can either wait for the base node to achieve initial sync at startup before it enables mining,
-# or not. If merge mining starts before the base node has achieved initial sync, those Tari mined blocks will not be
+# or not. If merge mining starts before the base node has achieved initial sync, those Minotari mined blocks will not be
 # accepted. (default = true)
 #wait_for_initial_sync_at_startup = true
 
-# When mining for tari, you might want to check the achieved difficulty of the mined tari block before submitting
-# This setting this can be disabled to allow you to always submit tari blocks even if the difficulty does not meet the
+# When mining for minotari, you might want to check the achieved difficulty of the mined minotari block before submitting
+# This setting this can be disabled to allow you to always submit minotari blocks even if the difficulty does not meet the
 # required.  (default = true)
 #check_tari_difficulty_before_submit = true
 

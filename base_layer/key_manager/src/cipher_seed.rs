@@ -23,6 +23,7 @@
 use std::{convert::TryFrom, mem::size_of, str::FromStr};
 
 use argon2;
+use blake2::Blake2b;
 use chacha20::{
     cipher::{NewCipher, StreamCipher},
     ChaCha20,
@@ -30,10 +31,10 @@ use chacha20::{
     Nonce,
 };
 use crc32fast::Hasher as CrcHasher;
+use digest::consts::U32;
 use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
-use tari_crypto::hash::blake2::Blake256;
 use tari_utilities::{hidden::Hidden, safe_array::SafeArray, SafePassword};
 use zeroize::{Zeroize, Zeroizing};
 
@@ -301,7 +302,7 @@ impl CipherSeed {
         salt: &[u8],
     ) -> Result<(), KeyManagerError> {
         // The ChaCha20 nonce is derived from the main salt
-        let encryption_nonce = mac_domain_hasher::<Blake256>(LABEL_CHACHA20_ENCODING)
+        let encryption_nonce = mac_domain_hasher::<Blake2b<U32>>(LABEL_CHACHA20_ENCODING)
             .chain(salt)
             .finalize();
         let encryption_nonce = &encryption_nonce.as_ref()[..size_of::<Nonce>()];
@@ -345,7 +346,7 @@ impl CipherSeed {
             return Err(KeyManagerError::InvalidData);
         }
 
-        Ok(mac_domain_hasher::<Blake256>(LABEL_MAC_GENERATION)
+        Ok(mac_domain_hasher::<Blake2b<U32>>(LABEL_MAC_GENERATION)
             .chain(birthday)
             .chain(entropy)
             .chain([cipher_seed_version])
@@ -359,7 +360,7 @@ impl CipherSeed {
     /// Use Argon2 to derive encryption and MAC keys from a passphrase and main salt
     fn derive_keys(passphrase: &SafePassword, salt: &[u8]) -> DerivedCipherSeedKeys {
         // The Argon2 salt is derived from the main salt
-        let argon2_salt = mac_domain_hasher::<Blake256>(LABEL_ARGON_ENCODING)
+        let argon2_salt = mac_domain_hasher::<Blake2b<U32>>(LABEL_ARGON_ENCODING)
             .chain(salt)
             .finalize();
         let argon2_salt = &argon2_salt.as_ref()[..ARGON2_SALT_BYTES];

@@ -72,14 +72,14 @@ struct Contact;
 
 struct ContactsLivenessData;
 
+/**
+ * A covenant allows a UTXO to specify some restrictions on how it is spent in a future transaction.
+ * See https://rfc.tari.com/RFC-0250_Covenants.html for details.
+ */
 struct Covenant;
 
 struct EmojiSet;
 
-/**
- * Encrypted data for the extended-nonce variant XChaCha20-Poly1305 encryption
- * Borsh schema only accept array sizes 0 - 32, 64, 65, 128, 256, 512, 1024 and 2048
- */
 struct EncryptedData;
 
 struct FeePerGramStat;
@@ -189,7 +189,8 @@ struct TransportConfig;
 
 /**
  * An unblinded output is one where the value and spending key (blinding factor) are known. This can be used to
- * build both inputs and outputs (every input comes from an output)
+ * build both inputs and outputs (every input comes from an output). This is only used for import and export where
+ * serialization is important.
  */
 struct UnblindedOutput;
 
@@ -263,12 +264,13 @@ typedef struct TariAddress TariWalletAddress;
  * ```rust
  * # use tari_crypto::ristretto::*;
  * # use tari_crypto::keys::*;
- * # use tari_crypto::hash::blake2::Blake256;
+ * # use blake2::Blake2b;
  * # use digest::Digest;
  * # use tari_crypto::commitment::HomomorphicCommitmentFactory;
  * # use tari_crypto::ristretto::pedersen::*;
  * use tari_crypto::ristretto::pedersen::commitment_factory::PedersenCommitmentFactory;
  * use tari_utilities::hex::Hex;
+ * use digest::consts::U32;
  *
  * let mut rng = rand::thread_rng();
  * let a_val = RistrettoSecretKey::random(&mut rng);
@@ -277,7 +279,7 @@ typedef struct TariAddress TariWalletAddress;
  * let a_nonce = RistrettoSecretKey::random(&mut rng);
  * let x_nonce = RistrettoSecretKey::random(&mut rng);
  * let y_nonce = RistrettoSecretKey::random(&mut rng);
- * let e = Blake256::digest(b"Maskerade"); // In real life, this should be strong Fiat-Shamir!
+ * let e = Blake2b::<U32>::digest(b"Maskerade"); // In real life, this should be strong Fiat-Shamir!
  * let factory = PedersenCommitmentFactory::default();
  * let commitment = factory.commit(&x_val, &a_val);
  * let pubkey = RistrettoPublicKey::from_secret_key(&y_val);
@@ -823,7 +825,7 @@ void commitment_and_public_signature_destroy(TariComAndPubSignature *compub_sig)
  * Creates an unblinded output
  *
  * ## Arguments
- * `amount` - The value of the UTXO in MicroTari
+ * `amount` - The value of the UTXO in MicroMinotari
  * `spending_key` - The private spending key
  * `source_address` - The tari address of the source of the transaction
  * `features` - Options for an output's structure or use
@@ -948,26 +950,6 @@ TariUnblindedOutput *unblinded_outputs_get_at(struct TariUnblindedOutputs *outpu
                                               int *error_out);
 
 /**
- * Gets a TariUnblindedOutput from TariUnblindedOutputs at position
- *
- * ## Arguments
- * `outputs` - The pointer to a TariUnblindedOutputs
- * `position` - The integer position
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
- *
- * ## Returns
- * `*mut TariUnblindedOutput` - Returns a TariUnblindedOutput, note that it returns ptr::null_mut() if
- * TariUnblindedOutputs is null or position is invalid
- *
- * # Safety
- * The ```contact_destroy``` method must be called when finished with a TariContact to prevent a memory leak
- */
-unsigned long long *unblinded_outputs_received_tx_id_get_at(struct TariUnblindedOutputs *outputs,
-                                                            unsigned int position,
-                                                            int *error_out);
-
-/**
  * Frees memory for a TariUnblindedOutputs
  *
  * ## Arguments
@@ -987,7 +969,7 @@ void unblinded_outputs_destroy(struct TariUnblindedOutputs *outputs);
  *
  * ## Arguments
  * `wallet` - The TariWallet pointer
- * `amount` - The value of the UTXO in MicroTari
+ * `amount` - The value of the UTXO in MicroMinotari
  * `spending_key` - The private spending key
  * `source_address` - The tari address of the source of the transaction
  * `features` - Options for an output's structure or use
@@ -1528,14 +1510,14 @@ TariWalletAddress *liveness_data_get_public_key(TariContactsLivenessData *livene
  *
  * ## Returns
  * `*mut c_int` - Returns a pointer to a c_int if the optional latency data (in milli-seconds (ms)) exists, with a
- * value of '-1' if it is None. Note that it also returns '-1' if liveness_data is null.
+ * value of '0' if it is None. Note that it also returns '0' if liveness_data is null.
  *
  * # Safety
  * The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
  * memory leak
  */
-int liveness_data_get_latency(TariContactsLivenessData *liveness_data,
-                              int *error_out);
+unsigned int liveness_data_get_latency(TariContactsLivenessData *liveness_data,
+                                       int *error_out);
 
 /**
  * Gets the last_seen time (in local time) from a TariContactsLivenessData
@@ -2692,11 +2674,15 @@ struct TariWallet *wallet_create(TariCommsConfig *config,
                                  void (*callback_received_finalized_transaction)(TariCompletedTransaction*),
                                  void (*callback_transaction_broadcast)(TariCompletedTransaction*),
                                  void (*callback_transaction_mined)(TariCompletedTransaction*),
-                                 void (*callback_transaction_mined_unconfirmed)(TariCompletedTransaction*, uint64_t),
+                                 void (*callback_transaction_mined_unconfirmed)(TariCompletedTransaction*,
+                                                                                uint64_t),
                                  void (*callback_faux_transaction_confirmed)(TariCompletedTransaction*),
-                                 void (*callback_faux_transaction_unconfirmed)(TariCompletedTransaction*, uint64_t),
-                                 void (*callback_transaction_send_result)(unsigned long long, TariTransactionSendStatus*),
-                                 void (*callback_transaction_cancellation)(TariCompletedTransaction*, uint64_t),
+                                 void (*callback_faux_transaction_unconfirmed)(TariCompletedTransaction*,
+                                                                               uint64_t),
+                                 void (*callback_transaction_send_result)(unsigned long long,
+                                                                          TariTransactionSendStatus*),
+                                 void (*callback_transaction_cancellation)(TariCompletedTransaction*,
+                                                                           uint64_t),
                                  void (*callback_txo_validation_complete)(uint64_t, uint64_t),
                                  void (*callback_contacts_liveness_data_updated)(TariContactsLivenessData*),
                                  void (*callback_balance_updated)(TariBalance*),
@@ -3140,7 +3126,7 @@ unsigned long long wallet_send_transaction(struct TariWallet *wallet,
  * as an out parameter.
  *
  * ## Returns
- * `unsigned long long` - Returns 0 if unsuccessful or the fee estimate in MicroTari if successful
+ * `unsigned long long` - Returns 0 if unsuccessful or the fee estimate in MicroMinotari if successful
  *
  * # Safety
  * None
@@ -3149,8 +3135,8 @@ unsigned long long wallet_get_fee_estimate(struct TariWallet *wallet,
                                            unsigned long long amount,
                                            struct TariVector *commitments,
                                            unsigned long long fee_per_gram,
-                                           unsigned long long num_kernels,
-                                           unsigned long long num_outputs,
+                                           unsigned int num_kernels,
+                                           unsigned int num_outputs,
                                            int *error_out);
 
 /**
@@ -3615,7 +3601,7 @@ bool wallet_is_recovery_in_progress(struct TariWallet *wallet,
  *     - ConnectedToBaseNode, 0, 1
  *     - ConnectionToBaseNodeFailed, number of retries, retry limit
  *     - Progress, current block, total number of blocks
- *     - Completed, total number of UTXO's recovered, MicroTari recovered,
+ *     - Completed, total number of UTXO's recovered, MicroMinotari recovered,
  *     - ScanningRoundFailed, number of retries, retry limit
  *     - RecoveryFailed, 0, 0
  *
@@ -3626,7 +3612,7 @@ bool wallet_is_recovery_in_progress(struct TariWallet *wallet,
  *       started
  *     - In Progress callbacks will be of the form (n, m) where n < m
  *     - If the process completed successfully then the final `Completed` callback will return how many UTXO's were
- *       scanned and how much MicroTari was recovered
+ *       scanned and how much MicroMinotari was recovered
  *     - If there is an error in the connection process then the `ConnectionToBaseNodeFailed` will be returned
  *     - If there is a minor error in scanning then `ScanningRoundFailed` will be returned and another connection/sync
  *       attempt will be made

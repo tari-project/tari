@@ -1,16 +1,22 @@
 #!/usr/bin/env bash
-set -e
+## DEPRECATION NOTICE ##
+#
+# This script is deprecated and will be removed in a future release.
+# Use the source_coverage.sh script for code coverage tests instead.
+#
 
-# Get member source directory and name from command line arguments
-if [ "$1" == "" -o "$2" == "" ]; then
-    echo "Command line argument member_crate_name or member_source_dir missing, Usage: ./codecoverage.sh member_crate_name member_source_dir"
-    exit 1
+# Get package to test
+package_arg="--workspace --exclude tari_integration_tests"
+
+# If first argument is not empty, set it to package variable
+if [ -n "$1" ]; then
+    package="$1"
+    package_arg="-p $package"
 fi
-member_crate_name=$1
-member_source_dir=$2
+
 source_root_dir="tari"
 build_dir="target/debug/"
-report_dir="report/$member_crate_name"
+report_dir="report/$package"
 
 echo "Check if in correct directory":
 path=$(pwd)
@@ -30,67 +36,50 @@ else
     exit 1
 fi
 
-echo "Check if grcov installed:"
-if [ "$(command -v grcov)" ]
+echo "Check for llvm-preview tools"
+if [ "$(cargo cov --version)" ]
 then
     echo "    + Already installed"
+else
+    echo "    + Installing.."
+    rustup component add llvm-tools-preview
+fi
+
+
+echo "Check if grcov v0.8 installed:"
+if [[ "$(grcov --version)" == "grcov 0.8"* ]]
+then
+    echo "    + grcov v0.8 is already installed"
 else
     echo "    + Installing.."
     cargo install grcov
 fi
 
-echo "Check if lcov installed:"
-if [ "$(command -v lcov)" ]
-then
-    echo "    + Already installed"
-else
-    echo "    + Installing.."
-    ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)" < /dev/null 2> /dev/null
-    brew install lcov
-fi
-
-echo "Clear Build and Report directories:"
-if [ -d "$build_dir" ]; then
-    rm -rf $build_dir
-    echo "    + Build directory removed"
-else
-    echo "    + Build directory already cleared"
-fi
 if [ -d "$report_dir" ]; then
     rm -rf $report_dir
     echo "    + Report directory removed"
 else
     echo "    + Report directory already cleared"
 fi
-# Make clean directories for Build and Report
-mkdir $build_dir
 mkdir -p $report_dir
 
 echo "Setup project.."
-export CARGO_INCREMENTAL=0
-export RUSTFLAGS="-Zprofile -Ccodegen-units=1 -Copt-level=0 -Coverflow-checks=off"
-echo "Build project.."
-cargo +nightly build $CARGO_OPTIONS
+export RUSTFLAGS="-C instrument-coverage"
+export RUSTDOCFLAGS="-C instrument-coverage"
+export LLVM_PROFILE_FILE="coverage_data-%p-%m.profraw"
+export CARGO_UNSTABLE_SPARSE_REGISTRY=true
 
-echo "Perform project Tests.."
-cargo_filename="Cargo.toml"
-cargo +nightly test $CARGO_OPTIONS --manifest-path="$member_source_dir$cargo_filename"
+echo "Building $package..."
+cargo test --all-features --no-fail-fast ${package_arg}
 
-echo "Acquire all build and test files for coverage check.."
-ccov_filename="ccov.zip"
-ccov_path="$report_dir$ccov_filename"
+grcov . -s . --binary-path ${build_dir} -t html --branch --ignore-not-existing \
+             -o ${report_dir} \
+             --ignore target/**/*.rs \
+             --ignore **/.cargo/**/*.rs
 
-zip $ccov_path `find $build_dir \( -name "$member_crate_name*.gc*" \) -print`;
-
-echo "Perform grcov code coverage.."
-lcov_filename="lcov.info"
-lcov_path="$report_dir$lcov_filename"
-grcov $ccov_path -s . -t lcov --llvm --branch --ignore-not-existing --ignore "/*" > $lcov_path;
-
-echo "Generate report from code coverage.."
-local_lcov_path="$report_dir$lcov_filename"
-genhtml -o $report_dir --show-details --highlight --title $member_crate_name --legend $local_lcov_path
+echo "Cleaning up temporary files.."
+rm coverage_data-*.profraw
 
 echo "Launch report in browser.."
 index_str="index.html"
-open "$report_dir/$index_str"
+open "$report_dir/html/$index_str"

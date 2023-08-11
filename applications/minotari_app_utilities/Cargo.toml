@@ -1,0 +1,26 @@
+[package]
+name = "minotari_app_utilities"
+version = "0.51.0-rc.0"
+authors = ["The Tari Development Community"]
+edition = "2018"
+license = "BSD-3-Clause"
+
+[dependencies]
+tari_common = { path = "../../common" }
+tari_common_types = { path = "../../base_layer/common_types" }
+tari_comms = { path = "../../comms/core" }
+tari_features = { path = "../../common/tari_features"}
+tari_utilities = { version = "0.5" }
+
+clap = { version = "3.2", features = ["derive", "env"] }
+futures = { version = "^0.3.16", default-features = false, features = ["alloc"] }
+json5 = "0.4"
+log = { version = "0.4.8", features = ["std"] }
+rand = "0.8"
+tokio = { version = "1.23", features = ["signal"] }
+serde = "1.0.126"
+thiserror = "^1.0.26"
+
+[build-dependencies]
+tari_common = { path = "../../common", features = ["build", "static-application-info"] }
+tari_features = { path = "../../common/tari_features"}

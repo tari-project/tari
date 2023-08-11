@@ -48,8 +48,8 @@ deny = [
     'clippy::trivially_copy_pass_by_ref',
     # Highlights potential casting mistakes
     'clippy::cast_lossless',
-#    'clippy::cast_possible_truncation',
-#    'clippy::cast_possible_wrap',
+    'clippy::cast_possible_truncation',
+    'clippy::cast_possible_wrap',
     # Precision loss is almost always competely fine and is only useful as a sanity check.
     # https://rust-lang.github.io/rust-clippy/master/index.html#cast_precision_loss
     # 'clippy::cast_precision_loss',
@@ -66,5 +66,7 @@ allow = [
     'clippy::default_trait_access',
     # Generally when developers fix this, it can lead to leaky abstractions or worse, so
     # too many arguments is generally the lesser of two evils
-    'clippy::too_many_arguments'
+    'clippy::too_many_arguments',
+    # `assert!(!foo(bar))` is misread the majority of the time, while `assert_eq!(foo(bar), false)` is crystal clear
+    'clippy::bool-assert-comparison',
 ]

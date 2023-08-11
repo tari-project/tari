@@ -34,12 +34,12 @@ use crate::blocks::{error::BlockError, Block, BlockHeader, BlockHeaderAccumulate
 pub struct HistoricalBlock {
     /// The number of blocks that have been mined since this block, including this one. The current tip will have one
     /// confirmation.
-    pub confirmations: u64,
+    confirmations: u64,
     /// The underlying block
     block: Block,
-    /// Accumulated data
-    pub accumulated_data: BlockHeaderAccumulatedData,
-    pruned_outputs: Vec<(HashOutput, HashOutput)>,
+    /// Accumulated data in the block header
+    accumulated_data: BlockHeaderAccumulatedData,
+    pruned_outputs: Vec<HashOutput>,
     pruned_input_count: u64,
 }
 
@@ -48,7 +48,7 @@ impl HistoricalBlock {
         block: Block,
         confirmations: u64,
         accumulated_data: BlockHeaderAccumulatedData,
-        pruned_outputs: Vec<(HashOutput, HashOutput)>,
+        pruned_outputs: Vec<HashOutput>,
         pruned_input_count: u64,
     ) -> Self {
         HistoricalBlock {
@@ -71,6 +71,14 @@ impl HistoricalBlock {
     /// Returns a reference to the block of the HistoricalBlock
     pub fn block(&self) -> &Block {
         &self.block
+    }
+
+    pub fn into_block(self) -> Block {
+        self.block
+    }
+
+    pub fn accumulated_data(&self) -> &BlockHeaderAccumulatedData {
+        &self.accumulated_data
     }
 
     pub fn hash(&self) -> &HashOutput {
@@ -103,7 +111,7 @@ impl HistoricalBlock {
         Ok(chain_block)
     }
 
-    pub fn pruned_outputs(&self) -> &[(HashOutput, HashOutput)] {
+    pub fn pruned_outputs(&self) -> &[HashOutput] {
         self.pruned_outputs.as_slice()
     }
 
@@ -123,8 +131,8 @@ impl Display for HistoricalBlock {
 
         if !self.pruned_outputs.is_empty() {
             writeln!(f, "Pruned outputs: ")?;
-            for (output, proof) in &self.pruned_outputs {
-                writeln!(f, "Output hash: {} Proof:{}", output.to_hex(), proof.to_hex())?;
+            for output in &self.pruned_outputs {
+                writeln!(f, "Output hash: {}", output.to_hex())?;
             }
         }
         Ok(())

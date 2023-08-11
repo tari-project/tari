@@ -53,7 +53,7 @@ pub enum HorizonSyncError {
     #[error("Join error: {0}")]
     JoinError(#[from] task::JoinError),
     #[error("A range proof verification has produced an error: {0}")]
-    RangeProofError(#[from] RangeProofError),
+    RangeProofError(String),
     #[error("An invalid transaction has been encountered: {0}")]
     TransactionError(#[from] TransactionError),
     #[error("Invalid kernel signature: {0}")]
@@ -65,7 +65,9 @@ pub enum HorizonSyncError {
         expected_hex: String,
         actual_hex: String,
     },
-    #[error("Invalid range proof for output:{0} : {1}")]
+    #[error("Invalid MMR position {mmr_position} at height {at_height}")]
+    InvalidMmrPosition { at_height: u64, mmr_position: u64 },
+    #[error("Invalid range proof for output: {0} : {1}")]
     InvalidRangeProof(String, String),
     #[error("RPC error: {0}")]
     RpcError(#[from] RpcError),
@@ -98,5 +100,11 @@ pub enum HorizonSyncError {
 impl From<TryFromIntError> for HorizonSyncError {
     fn from(err: TryFromIntError) -> Self {
         HorizonSyncError::ConversionError(err.to_string())
+    }
+}
+
+impl From<RangeProofError> for HorizonSyncError {
+    fn from(e: RangeProofError) -> Self {
+        HorizonSyncError::RangeProofError(e.to_string())
     }
 }

@@ -19,7 +19,6 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#![allow(dead_code)]
 
 use std::{
     fs,
@@ -136,7 +135,7 @@ pub async fn initialize_local_test_comms<P: AsRef<Path>>(
     let peer_database_name = {
         let mut rng = thread_rng();
         iter::repeat(())
-            .map(|_| rng.sample(Alphanumeric))
+            .map(|_| rng.sample(Alphanumeric) as char)
             .take(8)
             .collect::<String>()
     };
@@ -371,7 +370,6 @@ async fn configure_comms_and_dht(
         )
         .build();
 
-    // TODO: messaging events should be optional
     let (messaging_events_sender, _) = broadcast::channel(1);
     comms = comms.add_protocol_extension(MessagingProtocolExtension::new(
         messaging_events_sender,
@@ -578,7 +576,6 @@ impl ServiceInitializer for P2pInitializer {
         };
         add_seed_peers(&peer_manager, &node_identity, peers).await?;
 
-        // TODO: Use serde
         let peers = Self::try_parse_seed_peers(&self.seed_config.peer_seeds)?;
 
         add_seed_peers(&peer_manager, &node_identity, peers).await?;

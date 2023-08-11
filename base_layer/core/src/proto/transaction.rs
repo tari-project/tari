@@ -28,7 +28,7 @@ use std::{
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use tari_common_types::types::{BlindingFactor, BulletRangeProof, Commitment, PublicKey};
+use tari_common_types::types::{BulletRangeProof, Commitment, PrivateKey, PublicKey};
 use tari_crypto::tari_utilities::{ByteArray, ByteArrayError};
 use tari_script::{ExecutionStack, TariScript};
 use tari_utilities::convert::try_convert_all;
@@ -37,7 +37,7 @@ use crate::{
     proto,
     transactions::{
         aggregated_body::AggregateBody,
-        tari_amount::MicroTari,
+        tari_amount::MicroMinotari,
         transaction_components::{
             EncryptedData,
             KernelFeatures,
@@ -87,7 +87,7 @@ impl TryFrom<proto::types::TransactionKernel> for TransactionKernel {
             )?,
             KernelFeatures::from_bits(kernel_features)
                 .ok_or_else(|| "Invalid or unrecognised kernel feature flag".to_string())?,
-            MicroTari::from(kernel.fee),
+            MicroMinotari::from(kernel.fee),
             kernel.lock_height,
             excess,
             excess_sig,
@@ -134,6 +134,16 @@ impl TryFrom<proto::types::TransactionInput> for TransactionInput {
             let sender_offset_public_key =
                 PublicKey::from_bytes(input.sender_offset_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
 
+            let metadata_signature = input
+                .metadata_signature
+                .ok_or_else(|| "Metadata signature not provided".to_string())?
+                .try_into()
+                .map_err(|_| "Metadata signature could not be converted".to_string())?;
+            let rangeproof_hash = input
+                .rangeproof_hash
+                .try_into()
+                .map_err(|_| "Invalid rangeproof hash")?;
+
             let mut buffer_input_covenant = input.covenant.as_bytes();
             Ok(TransactionInput::new_with_output_data(
                 TransactionInputVersion::try_from(
@@ -147,6 +157,8 @@ impl TryFrom<proto::types::TransactionInput> for TransactionInput {
                 sender_offset_public_key,
                 BorshDeserialize::deserialize(&mut buffer_input_covenant).map_err(|err| err.to_string())?,
                 EncryptedData::from_bytes(&input.encrypted_data).map_err(|err| err.to_string())?,
+                metadata_signature,
+                rangeproof_hash,
                 input.minimum_value_promise.into(),
             ))
         } else {
@@ -218,6 +230,17 @@ impl TryFrom<TransactionInput> for proto::types::TransactionInput {
                     .encrypted_data()
                     .map_err(|_| "Non-compact Transaction input should contain encrypted value".to_string())?
                     .to_byte_vec(),
+                metadata_signature: Some(
+                    input
+                        .metadata_signature()
+                        .map_err(|_| "Non-compact Transaction input should contain a metadata_signature".to_string())?
+                        .clone()
+                        .into(),
+                ),
+                rangeproof_hash: input
+                    .rangeproof_hash()
+                    .map_err(|_| "Non-compact Transaction input should contain a rangeproof hash".to_string())?
+                    .to_vec(),
                 minimum_value_promise: input
                     .minimum_value_promise()
                     .map_err(|_| "Non-compact Transaction input should contain the minimum value promise".to_string())?
@@ -399,7 +422,7 @@ impl TryFrom<proto::types::Transaction> for Transaction {
     fn try_from(tx: proto::types::Transaction) -> Result<Self, Self::Error> {
         let offset = tx
             .offset
-            .map(|offset| BlindingFactor::from_bytes(&offset.data))
+            .map(|offset| PrivateKey::from_bytes(&offset.data))
             .ok_or_else(|| "Blinding factor offset not provided".to_string())?
             .map_err(|err| err.to_string())?;
         let body = tx
@@ -408,7 +431,7 @@ impl TryFrom<proto::types::Transaction> for Transaction {
             .ok_or_else(|| "Body not provided".to_string())??;
         let script_offset = tx
             .script_offset
-            .map(|script_offset| BlindingFactor::from_bytes(&script_offset.data))
+            .map(|script_offset| PrivateKey::from_bytes(&script_offset.data))
             .ok_or_else(|| "Script offset not provided".to_string())?
             .map_err(|err| err.to_string())?;
 

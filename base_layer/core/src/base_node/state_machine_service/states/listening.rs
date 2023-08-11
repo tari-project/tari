@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    convert::TryFrom,
     fmt::{Display, Formatter},
     ops::Deref,
     time::{Duration, Instant},
@@ -67,9 +68,9 @@ pub struct PeerMetadata {
 
 impl PeerMetadata {
     pub fn to_bytes(&self) -> Vec<u8> {
-        let size = bincode::serialized_size(self).unwrap();
-        #[allow(clippy::cast_possible_truncation)]
-        let mut buf = Vec::with_capacity(size as usize);
+        let size = usize::try_from(bincode::serialized_size(self).unwrap())
+            .expect("The serialized size is larger than the platform allows");
+        let mut buf = Vec::with_capacity(size);
         bincode::serialize_into(&mut buf, self).unwrap(); // this should not fail
         buf
     }
@@ -111,7 +112,6 @@ impl Listening {
         Default::default()
     }
 
-    // TODO: Break up into smaller functions
     #[allow(clippy::too_many_lines)]
     pub async fn next_event<B: BlockchainBackend + 'static>(
         &mut self,

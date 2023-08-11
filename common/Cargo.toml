@@ -6,7 +6,7 @@ repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version = "0.50.0-rc.0"
+version = "0.51.0-rc.0"
 edition = "2018"
 
 [features]
@@ -14,22 +14,22 @@ build = ["toml", "prost-build"]
 static-application-info = ["git2"]
 
 [dependencies]
-tari_crypto = { version = "0.16"}
+tari_crypto = { version = "0.18" }
 
 anyhow = "1.0.53"
-blake2 = "0.9.1"
+blake2 = "0.10"
 config = { version = "0.13.0", default_features = false, features = ["toml"] }
 dirs-next = "1.0.2"
-git2 = { version = "0.8", default_features = false, optional = true }
+git2 = { version = "0.15", default_features = false, optional = true }
 log = "0.4.8"
-log4rs = { version = "1.2.0", default_features = false, features = ["config_parsing", "threshold_filter", "yaml_format"] }
+log4rs = { git = "https://github.com/tari-project/log4rs.git", default_features = false, features = ["config_parsing", "threshold_filter", "yaml_format"] }
 multiaddr = { version = "0.14.0" }
 path-clean = "0.1.0"
 prost-build = { version = "0.9.0", optional = true }
 serde = { version = "1.0.106", default_features = false }
 serde_json = "1.0.51"
 serde_yaml = "0.9.17"
-sha2 = "0.9.5"
+sha2 = "0.10"
 structopt = { version = "0.3.13", default_features = false }
 tempfile = "3.1.0"
 thiserror = "1.0.29"
@@ -40,4 +40,4 @@ tari_test_utils = {  path = "../infrastructure/test_utils"}
 toml = "0.5.8"
 
 [build-dependencies]
-tari_features = { version = "0.50.0-rc.0", path = "./tari_features"}
+tari_features = { path = "./tari_features"}

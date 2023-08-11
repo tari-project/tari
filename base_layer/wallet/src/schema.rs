@@ -1,6 +1,15 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
+    burnt_proofs (id) {
+        id -> Integer,
+        reciprocal_claim_public_key -> Text,
+        payload -> Text,
+        burned_at -> Timestamp,
+    }
+}
+
+diesel::table! {
     client_key_values (key) {
         key -> Text,
         value -> Text,
@@ -50,7 +59,7 @@ diesel::table! {
 diesel::table! {
     known_one_sided_payment_scripts (script_hash) {
         script_hash -> Binary,
-        private_key -> Binary,
+        private_key -> Text,
         script -> Binary,
         input -> Binary,
         script_lock_height -> BigInt,
@@ -76,16 +85,17 @@ diesel::table! {
 diesel::table! {
     outputs (id) {
         id -> Integer,
-        commitment -> Nullable<Binary>,
-        spending_key -> Binary,
+        commitment -> Binary,
+        rangeproof -> Nullable<Binary>,
+        spending_key -> Text,
         value -> BigInt,
         output_type -> Integer,
         maturity -> BigInt,
         status -> Integer,
-        hash -> Nullable<Binary>,
+        hash -> Binary,
         script -> Binary,
         input_data -> Binary,
-        script_private_key -> Binary,
+        script_private_key -> Text,
         script_lock_height -> BigInt,
         sender_offset_public_key -> Binary,
         metadata_signature_ephemeral_commitment -> Binary,
@@ -130,16 +140,8 @@ diesel::table! {
     }
 }
 
-diesel::table! {
-    burnt_proofs (id) {
-        id -> Integer,
-        reciprocal_claim_public_key -> Text,
-        payload -> Text,
-        burned_at -> Timestamp,
-    }
-}
-
 diesel::allow_tables_to_appear_in_same_query!(
+    burnt_proofs,
     client_key_values,
     completed_transactions,
     inbound_transactions,
@@ -148,5 +150,4 @@ diesel::allow_tables_to_appear_in_same_query!(
     outputs,
     scanned_blocks,
     wallet_settings,
-    burnt_proofs,
 );

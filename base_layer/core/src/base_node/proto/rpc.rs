@@ -42,13 +42,9 @@ impl TryFrom<PrunedOutput> for proto::SyncUtxo {
 
     fn try_from(output: PrunedOutput) -> Result<Self, Self::Error> {
         Ok(match output {
-            PrunedOutput::Pruned {
-                output_hash,
-                witness_hash,
-            } => proto::SyncUtxo {
+            PrunedOutput::Pruned { output_hash } => proto::SyncUtxo {
                 utxo: Some(proto::sync_utxo::Utxo::PrunedOutput(proto::PrunedOutput {
                     hash: output_hash.to_vec(),
-                    witness_hash: witness_hash.to_vec(),
                 })),
             },
             PrunedOutput::NotPruned { output } => proto::SyncUtxo {

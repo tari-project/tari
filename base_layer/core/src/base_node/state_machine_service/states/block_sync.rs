@@ -44,6 +44,8 @@ pub struct BlockSync {
 }
 
 impl BlockSync {
+    // converting u64 to i64 is okay as the its only used for metrics
+    #[allow(clippy::cast_possible_wrap)]
     pub async fn next_event<B: BlockchainBackend + 'static>(
         &mut self,
         shared: &mut BaseNodeStateMachine<B>,

@@ -27,8 +27,8 @@ use std::{
 };
 
 use config::Config;
+use minotari_app_utilities::consts;
 use serde::{Deserialize, Serialize};
-use tari_app_utilities::consts;
 use tari_common::{
     configuration::{serializers, CommonConfig, Network, StringList},
     ConfigurationError,
@@ -91,6 +91,8 @@ pub struct ChatClientConfig {
     /// Liveness meta data auto ping interval between peers
     #[serde(with = "serializers::seconds")]
     pub metadata_auto_ping_interval: Duration,
+    /// The location of the log path
+    pub log_path: Option<PathBuf>,
 }
 
 impl Default for ChatClientConfig {
@@ -117,6 +119,7 @@ impl Default for ChatClientConfig {
             lmdb_path: PathBuf::from("db"),
             force_sync_peers: StringList::default(),
             metadata_auto_ping_interval: Duration::from_secs(30),
+            log_path: None,
         }
     }
 }
@@ -143,6 +146,13 @@ impl ChatClientConfig {
         }
         if !self.db_file.is_absolute() {
             self.db_file = self.data_dir.join(self.db_file.as_path());
+        }
+        if self.log_path.is_some() && !self.log_path.as_ref().expect("There to be a path").is_absolute() {
+            self.log_path = Some(
+                base_path
+                    .as_ref()
+                    .join(self.log_path.as_ref().expect("There to be a path").as_path()),
+            );
         }
         self.p2p.set_base_path(base_path);
     }

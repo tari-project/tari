@@ -310,7 +310,7 @@ mod test {
         // Generate an address using a valid network and ensure it's not valid on another network
         let address = TariAddress::from_public_key(&public_key, Network::Esmeralda);
         assert_eq!(
-            TariAddress::from_bytes_with_network(&address.to_bytes(), Network::Dibbler),
+            TariAddress::from_bytes_with_network(&address.to_bytes(), Network::Igor),
             Err(TariAddressError::InvalidNetworkOrChecksum)
         );
 

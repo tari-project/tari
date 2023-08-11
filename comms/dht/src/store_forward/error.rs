@@ -86,7 +86,7 @@ pub enum StoreAndForwardError {
     #[error("The message has expired, not storing message in SAF db (expiry: {expired}, now: {now})")]
     NotStoringExpiredMessage { expired: EpochTime, now: EpochTime },
     #[error("MalformedNodeId: {0}")]
-    MalformedNodeId(#[from] ByteArrayError),
+    MalformedNodeId(String),
     #[error("DHT message type should not have been forwarded")]
     InvalidDhtMessageType,
     #[error("Failed to send request for store and forward messages: {0}")]
@@ -97,4 +97,10 @@ pub enum StoreAndForwardError {
     SafMessagesReceivedAfterDeadline { peer: NodeId, message_age: Duration },
     #[error("Invalid SAF request: `stored_at` cannot be in the future")]
     StoredAtWasInFuture,
+}
+
+impl From<ByteArrayError> for StoreAndForwardError {
+    fn from(e: ByteArrayError) -> Self {
+        StoreAndForwardError::MalformedNodeId(e.to_string())
+    }
 }

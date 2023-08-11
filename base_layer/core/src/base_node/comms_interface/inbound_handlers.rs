@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    collections::HashSet,
     convert::{TryFrom, TryInto},
     sync::Arc,
     time::{Duration, Instant},
@@ -28,10 +29,10 @@ use std::{
 
 use log::*;
 use strum_macros::Display;
-use tari_common_types::types::{BlockHash, HashOutput};
+use tari_common_types::types::{BlockHash, FixedHash, HashOutput};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
 use tari_utilities::hex::Hex;
-use tokio::sync::Semaphore;
+use tokio::sync::RwLock;
 
 use crate::{
     base_node::{
@@ -45,13 +46,20 @@ use crate::{
         },
         metrics,
     },
-    blocks::{Block, BlockBuilder, BlockHeader, ChainBlock, NewBlock, NewBlockTemplate},
+    blocks::{Block, BlockBuilder, BlockHeader, BlockHeaderValidationError, ChainBlock, NewBlock, NewBlockTemplate},
     chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend, ChainStorageError, PrunedOutput},
     consensus::{ConsensusConstants, ConsensusManager},
     mempool::Mempool,
-    proof_of_work::{Difficulty, PowAlgorithm},
+    proof_of_work::{
+        randomx_difficulty,
+        randomx_factory::RandomXFactory,
+        sha3x_difficulty,
+        Difficulty,
+        PowAlgorithm,
+        PowError,
+    },
     transactions::aggregated_body::AggregateBody,
-    validation::helpers,
+    validation::{helpers, ValidationError},
 };
 
 const LOG_TARGET: &str = "c::bn::comms_interface::inbound_handler";
@@ -81,9 +89,10 @@ pub struct InboundNodeCommsHandlers<B> {
     blockchain_db: AsyncBlockchainDb<B>,
     mempool: Mempool,
     consensus_manager: ConsensusManager,
-    new_block_request_semaphore: Arc<Semaphore>,
+    list_of_reconciling_blocks: Arc<RwLock<HashSet<HashOutput>>>,
     outbound_nci: OutboundNodeCommsInterface,
     connectivity: ConnectivityRequester,
+    randomx_factory: RandomXFactory,
 }
 
 impl<B> InboundNodeCommsHandlers<B>
@@ -97,20 +106,21 @@ where B: BlockchainBackend + 'static
         consensus_manager: ConsensusManager,
         outbound_nci: OutboundNodeCommsInterface,
         connectivity: ConnectivityRequester,
+        randomx_factory: RandomXFactory,
     ) -> Self {
         Self {
             block_event_sender,
             blockchain_db,
             mempool,
             consensus_manager,
-            new_block_request_semaphore: Arc::new(Semaphore::new(1)),
+            list_of_reconciling_blocks: Arc::new(RwLock::new(HashSet::new())),
             outbound_nci,
             connectivity,
+            randomx_factory,
         }
     }
 
     /// Handle inbound node comms requests from remote nodes and local services.
-    // TODO: Break this function up into smaller pieces
     #[allow(clippy::too_many_lines)]
     pub async fn handle_request(&self, request: NodeCommsRequest) -> Result<NodeCommsResponse, CommsInterfaceError> {
         debug!(target: LOG_TARGET, "Handling remote request {}", request);
@@ -255,7 +265,9 @@ where B: BlockchainBackend + 'static
                 header.version = constants.blockchain_version();
                 header.pow.pow_algo = request.algo;
 
-                let constants_weight = constants.get_max_block_weight_excluding_coinbase();
+                let constants_weight = constants
+                    .max_block_weight_excluding_coinbase()
+                    .map_err(|e| CommsInterfaceError::InternalError(e.to_string()))?;
                 let asking_weight = if request.max_weight > constants_weight || request.max_weight == 0 {
                     constants_weight
                 } else {
@@ -295,7 +307,10 @@ where B: BlockchainBackend + 'static
                     target: LOG_TARGET,
                     "New block template requested at height {}, weight: {}",
                     block_template.header.height,
-                    block_template.body.calculate_weight(constants.transaction_weight())
+                    block_template
+                        .body
+                        .calculate_weight(constants.transaction_weight_params())
+                        .map_err(|e| CommsInterfaceError::InternalError(e.to_string()))?
                 );
                 trace!(target: LOG_TARGET, "{}", block_template);
                 Ok(NodeCommsResponse::NewBlockTemplate(block_template))
@@ -308,7 +323,10 @@ where B: BlockchainBackend + 'static
                     target: LOG_TARGET,
                     "Prepared new block from template (hash: {}, weight: {}, {})",
                     block.hash().to_hex(),
-                    block.body.calculate_weight(constants.transaction_weight()),
+                    block
+                        .body
+                        .calculate_weight(constants.transaction_weight_params())
+                        .map_err(|e| CommsInterfaceError::InternalError(e.to_string()))?,
                     block.body.to_counts_string()
                 );
                 Ok(NodeCommsResponse::NewBlock {
@@ -429,21 +447,45 @@ where B: BlockchainBackend + 'static
             return Ok(());
         }
 
-        // Only a single block request can complete at a time.
-        // As multiple NewBlock requests arrive from propagation, this semaphore prevents multiple requests to nodes for
-        // the same full block. The first request that succeeds will stop the node from requesting the block from any
-        // other node (block_exists is true).
-        // Arc clone to satisfy the borrow checker
-        let semaphore = self.new_block_request_semaphore.clone();
-        let _permit = semaphore.acquire().await.unwrap();
-
-        if self.blockchain_db.block_exists(block_hash).await? {
-            debug!(
-                target: LOG_TARGET,
-                "Block with hash `{}` already stored",
-                block_hash.to_hex()
-            );
+        // Lets check if the block exists before we try and ask for a complete block
+        if self.check_exists_and_not_bad_block(block_hash).await? {
             return Ok(());
+        }
+
+        // lets check that the difficulty at least matches the min required difficulty
+        // We cannot check the target difficulty as orphan blocks dont have a target difficulty.
+        // All we care here is that bad blocks are not free to make, and that they are more expensive to make then they
+        // are to validate. As soon as a block can be linked to the main chain, a proper full proof of work check will
+        // be done before any other validation.
+        self.check_min_block_difficulty(&new_block).await?;
+
+        {
+            // we use a double lock to make sure we can only reconcile one unique block at a time. We may receive the
+            // same block from multiple peer near simultaneously. We should only reconcile each unique block once.
+            let read_lock = self.list_of_reconciling_blocks.read().await;
+            if read_lock.contains(&block_hash) {
+                debug!(
+                    target: LOG_TARGET,
+                    "Block with hash `{}` is already being reconciled",
+                    block_hash.to_hex()
+                );
+                return Ok(());
+            }
+        }
+        {
+            let mut write_lock = self.list_of_reconciling_blocks.write().await;
+            if self.check_exists_and_not_bad_block(block_hash).await? {
+                return Ok(());
+            }
+
+            if !write_lock.insert(block_hash) {
+                debug!(
+                    target: LOG_TARGET,
+                    "Block with hash `{}` is already being reconciled",
+                    block_hash.to_hex()
+                );
+                return Ok(());
+            }
         }
 
         debug!(
@@ -454,9 +496,68 @@ where B: BlockchainBackend + 'static
             source_peer
         );
 
+        let result = self.reconcile_and_add_block(source_peer.clone(), new_block).await;
+
+        {
+            let mut write_lock = self.list_of_reconciling_blocks.write().await;
+            write_lock.remove(&block_hash);
+        }
+        result?;
+        Ok(())
+    }
+
+    async fn check_min_block_difficulty(&self, new_block: &NewBlock) -> Result<(), CommsInterfaceError> {
+        let constants = self.consensus_manager.consensus_constants(new_block.header.height);
+        let min_difficulty = constants.min_pow_difficulty(new_block.header.pow.pow_algo);
+        let achieved = match new_block.header.pow_algo() {
+            PowAlgorithm::RandomX => randomx_difficulty(&new_block.header, &self.randomx_factory)?,
+            PowAlgorithm::Sha3x => sha3x_difficulty(&new_block.header)?,
+        };
+        if achieved < min_difficulty {
+            self.blockchain_db
+                .add_bad_block(
+                    new_block.header.hash(),
+                    self.blockchain_db.get_chain_metadata().await?.height_of_longest_chain(),
+                )
+                .await?;
+            return Err(CommsInterfaceError::InvalidBlockHeader(
+                BlockHeaderValidationError::ProofOfWorkError(PowError::AchievedDifficultyBelowMin),
+            ));
+        }
+        Ok(())
+    }
+
+    async fn check_exists_and_not_bad_block(&self, block: FixedHash) -> Result<bool, CommsInterfaceError> {
+        if self.blockchain_db.block_exists(block).await? {
+            debug!(
+                target: LOG_TARGET,
+                "Block with hash `{}` already stored",
+                block.to_hex()
+            );
+            return Ok(true);
+        }
+        if self.blockchain_db.bad_block_exists(block).await? {
+            debug!(
+                target: LOG_TARGET,
+                "Block with hash `{}` already validated as a bad block",
+                block.to_hex()
+            );
+            return Err(CommsInterfaceError::ChainStorageError(
+                ChainStorageError::ValidationError {
+                    source: ValidationError::BadBlockFound { hash: block.to_hex() },
+                },
+            ));
+        }
+        Ok(false)
+    }
+
+    async fn reconcile_and_add_block(
+        &mut self,
+        source_peer: NodeId,
+        new_block: NewBlock,
+    ) -> Result<(), CommsInterfaceError> {
         let block = self.reconcile_block(source_peer.clone(), new_block).await?;
         self.handle_block(block, Some(source_peer)).await?;
-
         Ok(())
     }
 
@@ -611,10 +712,10 @@ where B: BlockchainBackend + 'static
         match self
             .outbound_nci
             .request_blocks_by_hashes_from_peer(block_hash, Some(source_peer.clone()))
-            .await?
+            .await
         {
-            Some(block) => Ok(block),
-            None => {
+            Ok(Some(block)) => Ok(block),
+            Ok(None) => {
                 if let Err(e) = self
                     .connectivity
                     .ban_peer_until(
@@ -636,6 +737,21 @@ where B: BlockchainBackend + 'static
                     source_peer
                 )))
             },
+            Err(CommsInterfaceError::UnexpectedApiResponse) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Peer `{}` sent unexpected API response.", source_peer
+                );
+                if let Err(e) = self
+                    .connectivity
+                    .ban_peer(source_peer.clone(), format!("Peer sen invalid API response"))
+                    .await
+                {
+                    error!(target: LOG_TARGET, "Failed to ban peer: {}", e);
+                }
+                Err(CommsInterfaceError::UnexpectedApiResponse)
+            },
+            Err(e) => Err(e),
         }
     }
 
@@ -777,6 +893,10 @@ where B: BlockchainBackend + 'static
                     });
                 },
                 PrunedOutput::NotPruned { output } => {
+                    let rp_hash = match output.proof {
+                        Some(proof) => proof.hash(),
+                        None => FixedHash::zero(),
+                    };
                     input.add_output_data(
                         output.version,
                         output.features,
@@ -785,6 +905,8 @@ where B: BlockchainBackend + 'static
                         output.sender_offset_public_key,
                         output.covenant,
                         output.encrypted_data,
+                        output.metadata_signature,
+                        rp_hash,
                         output.minimum_value_promise,
                     );
                 },
@@ -811,12 +933,12 @@ where B: BlockchainBackend + 'static
     async fn update_block_result_metrics(&self, block_add_result: &BlockAddResult) -> Result<(), CommsInterfaceError> {
         fn update_target_difficulty(block: &ChainBlock) {
             match block.header().pow_algo() {
-                PowAlgorithm::Sha3 => {
+                PowAlgorithm::Sha3x => {
                     metrics::target_difficulty_sha()
                         .set(i64::try_from(block.accumulated_data().target_difficulty.as_u64()).unwrap_or(i64::MAX));
                 },
-                PowAlgorithm::Monero => {
-                    metrics::target_difficulty_monero()
+                PowAlgorithm::RandomX => {
+                    metrics::target_difficulty_randomx()
                         .set(i64::try_from(block.accumulated_data().target_difficulty.as_u64()).unwrap_or(i64::MAX));
                 },
             }
@@ -877,9 +999,10 @@ impl<B> Clone for InboundNodeCommsHandlers<B> {
             blockchain_db: self.blockchain_db.clone(),
             mempool: self.mempool.clone(),
             consensus_manager: self.consensus_manager.clone(),
-            new_block_request_semaphore: self.new_block_request_semaphore.clone(),
+            list_of_reconciling_blocks: self.list_of_reconciling_blocks.clone(),
             outbound_nci: self.outbound_nci.clone(),
             connectivity: self.connectivity.clone(),
+            randomx_factory: self.randomx_factory.clone(),
         }
     }
 }

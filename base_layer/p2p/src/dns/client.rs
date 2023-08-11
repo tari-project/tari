@@ -132,8 +132,6 @@ pub struct Client<C> {
 impl Client<AsyncDnssecClient> {
     pub async fn connect_secure(name_server: DnsNameServer, trust_anchor: TrustAnchor) -> Result<Self, DnsClientError> {
         let shutdown = Shutdown::new();
-
-        // TODO: make configurable
         let timeout = Duration::from_secs(5);
         let (stream, handle) = tls_client_connect::<AsyncIoTokioAsStd<tokio::net::TcpStream>>(
             name_server.addr,
@@ -160,7 +158,6 @@ impl Client<AsyncClient> {
     pub async fn connect(name_server: DnsNameServer) -> Result<Self, DnsClientError> {
         let shutdown = Shutdown::new();
 
-        // TODO: make configurable
         let timeout = Duration::from_secs(5);
         let (stream, handle) = tls_client_connect::<AsyncIoTokioAsStd<tokio::net::TcpStream>>(
             name_server.addr,

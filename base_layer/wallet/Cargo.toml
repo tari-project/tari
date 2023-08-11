@@ -1,9 +1,9 @@
 [package]
-name = "tari_wallet"
+name = "minotari_wallet"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency wallet library"
 license = "BSD-3-Clause"
-version = "0.50.0-rc.0"
+version = "0.51.0-rc.0"
 edition = "2018"
 
 [dependencies]
@@ -12,14 +12,14 @@ tari_common = { path = "../../common" }
 tari_common_types = {  path = "../../base_layer/common_types" }
 tari_comms = {  path = "../../comms/core" }
 tari_comms_dht = {  path = "../../comms/dht" }
-tari_crypto = { version = "0.16"}
+tari_crypto = { version = "0.18" }
 tari_key_manager = {  path = "../key_manager", features = ["key_manager_service"] }
 tari_p2p = {  path = "../p2p", features = ["auto-update"] }
 tari_script = { path = "../../infrastructure/tari_script" }
 tari_service_framework = {  path = "../service_framework" }
 tari_shutdown = {  path = "../../infrastructure/shutdown" }
 tari_common_sqlite = { path = "../../common_sqlite" }
-tari_utilities = "0.4.10"
+tari_utilities = { version = "0.5" }
 tari_contacts = { path = "../../base_layer/contacts" }
 
 # Uncomment for tokio tracing via tokio-console (needs "tracing" features)
@@ -31,19 +31,19 @@ tokio = { version = "1.23", features = ["sync", "macros"] }
 async-trait = "0.1.50"
 argon2 = "0.4.1"
 bincode = "1.3.1"
-blake2 = "0.9.0"
-borsh = "0.9.3"
-sha2 = "0.9.5"
+blake2 = "0.10"
+borsh = "0.10"
+sha2 = "0.10"
 chrono = { version = "0.4.19", default-features = false, features = ["serde"] }
 derivative = "2.2.0"
 diesel = { version = "2.0.3", features = ["sqlite", "serde_json", "chrono", "64-column-tables"] }
 diesel_migrations = "2.0.0"
-digest = "0.9.0"
+digest = "0.10"
 fs2 = "0.4.0"
 futures = { version = "^0.3.1", features = ["compat", "std"] }
 libsqlite3-sys = { version = "0.25.1", features = ["bundled"], optional = true }
 log = "0.4.6"
-rand = "0.7.3"
+rand = "0.8"
 serde = { version = "1.0.89", features = ["derive"] }
 serde_json = "1.0.39"
 strum = "0.22"
@@ -70,7 +70,6 @@ prost = "0.9.0"
 [features]
 default=["bundled_sqlite"]
 c_integration = []
-avx2 = ["tari_crypto/simd_backend", "tari_core/avx2"]
 bundled_sqlite = ["libsqlite3-sys"]
 
 [package.metadata.cargo-machete]

@@ -21,6 +21,13 @@ impl TransactionKernelVersion {
         self as u8
     }
 }
+
+impl Default for TransactionKernelVersion {
+    fn default() -> Self {
+        Self::get_current_version()
+    }
+}
+
 impl TryFrom<u8> for TransactionKernelVersion {
     type Error = String;
 
