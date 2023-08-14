@@ -2,6 +2,9 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.51.0-rc.1](https://github.com/tari-project/tari/compare/v0.51.0-rc.0...v0.51.0-rc.1) (2023-08-14)
+
+No code changes, fixed automated CI build process creating new builds
 
 ## [0.51.0-rc.0](https://github.com/tari-project/tari/compare/v0.50.0-rc.0...v0.51.0-rc.0) (2023-08-11)
 
