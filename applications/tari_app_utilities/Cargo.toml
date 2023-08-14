@@ -1,6 +1,6 @@
 [package]
 name = "tari_app_utilities"
-version = "0.50.1"
+version = "0.50.0-hotfix.1"
 authors = ["The Tari Development Community"]
 edition = "2018"
 license = "BSD-3-Clause"

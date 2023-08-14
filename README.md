@@ -19,7 +19,7 @@ The recommended running versions of each network are:
 
 | Network  | Version     | 
 |----------|-------------|
-| Stagenet | 0.50.1      |
+| Stagenet | 0.50.0-hotfix.1      |
 | Nextnet  | 0.51.0-rc.0 |
 | Development | 0.52.0-pre.0 |
 
