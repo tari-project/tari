@@ -3,7 +3,7 @@ name = "tari_chat_ffi"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency chat C FFI bindings"
 license = "BSD-3-Clause"
-version = "0.50.0-pre.3"
+version = "0.50.0-hotfix.1"
 edition = "2018"
 
 [dependencies]
