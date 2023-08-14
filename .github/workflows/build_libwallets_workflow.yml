@@ -277,7 +277,7 @@ jobs:
               -headers "libwallet-ios-x86_64/libminotari_wallet_ffi.h" \
             -library "libwallet-ios-aarch64/libminotari_wallet_ffi.ios_aarch64.a" \
               -headers "libwallet-ios-aarch64/libminotari_wallet_ffi.h" \
-            -output libwallet-ios-xcframework/libtminoari_wallet_ffi_ios.xcframework
+            -output libwallet-ios-xcframework/libminoari_wallet_ffi_ios.xcframework
           shasum -a 256 \
             "libwallet-ios-xcframework/libminotari_wallet_ffi_ios.xcframework/Info.plist" \
             "libwallet-ios-xcframework/libminotari_wallet_ffi_ios.xcframework/ios-arm64/Headers" \
