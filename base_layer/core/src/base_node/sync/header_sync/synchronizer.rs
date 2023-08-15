@@ -596,25 +596,28 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             );
             self.switch_to_pending_chain(&split_info).await?;
             has_switched_to_new_chain = true;
-        }
-
-        if pending_len < NUM_INITIAL_HEADERS_TO_REQUEST {
-            // Peer returned less than the number of requested headers. This indicates that we have all the available
-            // headers.
-            debug!(target: LOG_TARGET, "No further headers to download");
-            if !has_better_pow {
-                return Err(BlockHeaderSyncError::PeerSentInaccurateChainMetadata {
-                    claimed: sync_peer.claimed_chain_metadata().accumulated_difficulty(),
-                    actual: Some(total_accumulated_difficulty),
-                    local: split_info
-                        .local_tip_header
-                        .accumulated_data()
-                        .total_accumulated_difficulty,
-                });
+        } else {
+            if pending_len < NUM_INITIAL_HEADERS_TO_REQUEST {
+                // Peer returned less than the max number of requested headers. This indicates that we have all the available
+                // headers and the pow is less than the current chain
+                debug!(target: LOG_TARGET, "No further headers to download");
+                if !has_better_pow {
+                    return Err(BlockHeaderSyncError::PeerSentInaccurateChainMetadata {
+                        claimed: sync_peer.claimed_chain_metadata().accumulated_difficulty(),
+                        actual: Some(total_accumulated_difficulty),
+                        local: split_info
+                            .local_tip_header
+                            .accumulated_data()
+                            .total_accumulated_difficulty,
+                    });
+                }
+            } else
+            {
+                // Peer sent max requested headers, and we still have less pow than our chain. So we assume more is coming, and we continue downloading
             }
-
-            return Ok(());
         }
+
+
 
         debug!(
             target: LOG_TARGET,
@@ -639,6 +642,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
 
         let mut last_total_accumulated_difficulty = 0;
         let mut avg_latency = RollingAverageTime::new(20);
+        let mut prev_height = None;
         while let Some(header) = header_stream.next().await {
             let latency = last_sync_timer.elapsed();
             avg_latency.add_sample(latency);
@@ -651,6 +655,17 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 header.hash().to_hex(),
                 latency
             );
+            if let Some(prev_header_height) = prev_height{
+                if header.height  != prev_header_height + 1 {
+                    warn!(
+                    target: LOG_TARGET,
+                    "Received header #{} `{}` does not follow previous header",
+                    header.height,
+                    header.hash().to_hex()
+                );
+                    return Err(BlockHeaderSyncError::ReceivedInvalidHeader("Header does not follow previous header".to_string()))
+                }
+            }
             let existing_header = self.db.fetch_header_by_block_hash(header.hash()).await?;
             if let Some(h) = existing_header {
                 warn!(
@@ -659,7 +674,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     h.height,
                     h.hash().to_hex()
                 );
-                continue;
+                return Err(BlockHeaderSyncError::ReceivedInvalidHeader("Header already in database".to_string()))
             }
             let current_height = header.height;
             last_total_accumulated_difficulty = self.header_validator.validate(header).await?;
@@ -696,6 +711,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             }
 
             last_sync_timer = Instant::now();
+            prev_height = Some(current_height);
         }
 
         if !has_switched_to_new_chain {
@@ -784,9 +800,9 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             return false;
         }
 
-        // Check that the remote tip is stronger than the local tip
+        // Check that the remote tip is stronger than the local tip, equal should not have ended up here, so we treat equal as less
         let proposed_tip = chain_headers.last().unwrap();
-        self.header_validator.compare_chains(current_tip, proposed_tip).is_le()
+        self.header_validator.compare_chains(current_tip, proposed_tip).is_lt()
     }
 
     async fn switch_to_pending_chain(&mut self, split_info: &ChainSplitInfo) -> Result<(), BlockHeaderSyncError> {
