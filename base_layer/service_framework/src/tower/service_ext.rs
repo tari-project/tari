@@ -124,7 +124,7 @@ mod test {
             type Response = u32;
 
             fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-                if self.flag.load(Ordering::Acquire) {
+                if self.flag.load(Ordering::SeqCst) {
                     Ok(()).into()
                 } else {
                     Poll::Pending
@@ -151,7 +151,7 @@ mod test {
             _ => panic!("Expected future to be pending"),
         }
 
-        ready_flag.store(true, Ordering::Release);
+        ready_flag.store(true, Ordering::SeqCst);
 
         match fut.poll_unpin(&mut cx) {
             Poll::Ready(Ok(v)) => assert_eq!(v, 314),

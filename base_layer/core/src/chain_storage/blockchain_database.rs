@@ -339,15 +339,15 @@ where B: BlockchainBackend
     }
 
     pub(crate) fn is_add_block_disabled(&self) -> bool {
-        self.disable_add_block_flag.load(atomic::Ordering::Acquire)
+        self.disable_add_block_flag.load(atomic::Ordering::SeqCst)
     }
 
     pub(crate) fn set_disable_add_block_flag(&self) {
-        self.disable_add_block_flag.store(true, atomic::Ordering::Release);
+        self.disable_add_block_flag.store(true, atomic::Ordering::SeqCst);
     }
 
     pub(crate) fn clear_disable_add_block_flag(&self) {
-        self.disable_add_block_flag.store(false, atomic::Ordering::Release);
+        self.disable_add_block_flag.store(false, atomic::Ordering::SeqCst);
     }
 
     pub fn write(&self, transaction: DbTransaction) -> Result<(), ChainStorageError> {

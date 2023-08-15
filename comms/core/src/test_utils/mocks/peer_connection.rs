@@ -94,7 +94,7 @@ pub async fn create_peer_connection_mock_pair(
     (
         PeerConnection::unverified(
             // ID must be unique since it is used for connection equivalency, so we re-implement this in the mock
-            ID_COUNTER.fetch_add(1, Ordering::Relaxed),
+            ID_COUNTER.fetch_add(1, Ordering::SeqCst),
             tx1,
             peer2.node_id,
             peer2.features,
@@ -104,7 +104,7 @@ pub async fn create_peer_connection_mock_pair(
         ),
         mock_state_in,
         PeerConnection::unverified(
-            ID_COUNTER.fetch_add(1, Ordering::Relaxed),
+            ID_COUNTER.fetch_add(1, Ordering::SeqCst),
             tx2,
             peer1.node_id,
             peer1.features,
