@@ -1,3 +1,50 @@
+# pubsub connector
+
+```mermaid
+
+flowchart TD
+   A[Start : todo]--> B[Pubsub connector]
+   B --> C[if peer_message::TariMessageType is valid ]
+   C --> D[forward to publisher]
+   D --> E[if topic == sub topic]
+   E --> F[forward to subscription]
+
+    N2:::note
+    classDef note fill:#eee,stroke:#ccc
+
+
+```
+
+
+
+# incoming block pre.
+
+```mermaid
+
+flowchart TD
+    A[inbound message subscription factory] --> B["From get_subscription TODO: Go deeper"]
+    B --> C[[extract_block]]
+    subgraph extract_block 
+   
+    C -..- N1>BaseNodeServiceInitializer line 118]
+    C --> D["decode_message [prost]"]
+    D --Failed --> S[Display warning and filter out message]
+    D --> E[NewBlock try_from]
+    E --Failed--> S
+    
+    end
+    E -->E1[Base Node Service spawn_handle_incoming_block] --> F[[Check is bootstrapped]]
+    F -..- N2>"base_node/service/service.rs line 290"]
+    F --> G[Handle incoming block: TODO:Ref next diagram]
+    N1:::note
+    N2:::note
+    classDef note fill:#eee,stroke:#ccc
+
+```
+
+
+
+
 # Incoming block flow
 
 ```mermaid
@@ -21,3 +68,4 @@ flowchart TD
     I -- Failed --> J
     classDef note fill:#eee,stroke:#ccc
 ```
+
