@@ -588,6 +588,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         // If we already have a stronger chain at this point, switch over to it.
         // just in case we happen to be exactly NUM_INITIAL_HEADERS_TO_REQUEST headers behind.
         let has_better_pow = self.pending_chain_has_higher_pow(&split_info.local_tip_header);
+
         if has_better_pow {
             debug!(
                 target: LOG_TARGET,
@@ -596,10 +597,13 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             );
             self.switch_to_pending_chain(&split_info).await?;
             has_switched_to_new_chain = true;
-        } else {
-            if pending_len < NUM_INITIAL_HEADERS_TO_REQUEST {
-                // Peer returned less than the max number of requested headers. This indicates that we have all the
-                // available headers and the pow is less than the current chain
+        }
+
+        if pending_len < NUM_INITIAL_HEADERS_TO_REQUEST {
+            // Peer returned less than the max number of requested headers. This indicates that we have all the
+            // available headers from the peer.
+            if !has_better_pow {
+                // Because the pow is less or equal than the current chain the peer had to have lied about their pow
                 debug!(target: LOG_TARGET, "No further headers to download");
                 return Err(BlockHeaderSyncError::PeerSentInaccurateChainMetadata {
                     claimed: sync_peer.claimed_chain_metadata().accumulated_difficulty(),
@@ -609,10 +613,10 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                         .accumulated_data()
                         .total_accumulated_difficulty,
                 });
-            } else {
-                // Peer sent max requested headers, and we still have less pow than our chain. So we assume more is
-                // coming, and we continue downloading
             }
+            // The pow is higher, we swapped to the higher chain, we have all the better chain headers, we can move on
+            // to block sync.
+            return Ok(());
         }
 
         debug!(
