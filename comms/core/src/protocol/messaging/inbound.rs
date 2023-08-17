@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use futures::StreamExt;
 use log::*;
@@ -30,7 +30,7 @@ use tokio::{
 };
 
 use super::{metrics, MessagingEvent, MessagingProtocol};
-use crate::{message::InboundMessage, peer_manager::NodeId, rate_limit::RateLimit};
+use crate::{message::InboundMessage, peer_manager::NodeId};
 
 const LOG_TARGET: &str = "comms::protocol::messaging::inbound";
 
@@ -39,8 +39,6 @@ pub struct InboundMessaging {
     peer: NodeId,
     inbound_message_tx: mpsc::Sender<InboundMessage>,
     messaging_events_tx: broadcast::Sender<Arc<MessagingEvent>>,
-    rate_limit_capacity: usize,
-    rate_limit_restock_interval: Duration,
 }
 
 impl InboundMessaging {
@@ -48,15 +46,11 @@ impl InboundMessaging {
         peer: NodeId,
         inbound_message_tx: mpsc::Sender<InboundMessage>,
         messaging_events_tx: broadcast::Sender<Arc<MessagingEvent>>,
-        rate_limit_capacity: usize,
-        rate_limit_restock_interval: Duration,
     ) -> Self {
         Self {
             peer,
             inbound_message_tx,
             messaging_events_tx,
-            rate_limit_capacity,
-            rate_limit_restock_interval,
         }
     }
 
@@ -70,8 +64,7 @@ impl InboundMessaging {
             peer.short_str()
         );
 
-        let stream =
-            MessagingProtocol::framed(socket).rate_limit(self.rate_limit_capacity, self.rate_limit_restock_interval);
+        let stream = MessagingProtocol::framed(socket);
 
         tokio::pin!(stream);
 

@@ -190,7 +190,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
     WalletConnectivityHandle,
     TestKeyManager,
 ) {
-    let (publisher, subscription_factory) = pubsub_connector(100, 20);
+    let (publisher, subscription_factory) = pubsub_connector(100);
     let subscription_factory = Arc::new(subscription_factory);
     let (comms, dht) = setup_comms_services(
         node_identity.clone(),
