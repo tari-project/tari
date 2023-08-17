@@ -33,7 +33,10 @@ use tari_script::ScriptError;
 use tari_utilities::ByteArrayError;
 use thiserror::Error;
 
-use crate::{covenants::CovenantError, transactions::transaction_components::EncryptedDataError};
+use crate::{
+    covenants::CovenantError,
+    transactions::{ledger_key_manager::LedgerDeviceError, transaction_components::EncryptedDataError},
+};
 
 //----------------------------------------     TransactionError   ----------------------------------------------------//
 #[derive(Clone, Debug, PartialEq, Error, Deserialize, Serialize, Eq)]
@@ -94,6 +97,8 @@ pub enum TransactionError {
     EncryptedDataError(String),
     #[error("Conversion error: {0}")]
     ByteArrayError(String),
+    #[error("Ledger communication error: {0}")]
+    LedgerCommunicationError(#[from] LedgerDeviceError),
 }
 
 impl From<CovenantError> for TransactionError {

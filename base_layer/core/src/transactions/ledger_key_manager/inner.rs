@@ -19,11 +19,18 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::{collections::HashMap, ops::Shl};
+use std::{
+    collections::HashMap,
+    ops::Shl,
+    sync::{Arc, Mutex},
+};
 
 use blake2::Blake2b;
 use digest::consts::U32;
+use ledger_transport::APDUCommand;
+use ledger_transport_hid::TransportNativeHID;
 use log::*;
+use once_cell::sync::Lazy;
 use rand::rngs::OsRng;
 use strum::IntoEnumIterator;
 use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature};
@@ -69,6 +76,7 @@ use crate::{
     common::ConfidentialOutputHasher,
     transactions::{
         key_manager::{TariKeyId, TransactionKeyManagerBranch, TxoStage},
+        ledger_key_manager::LedgerDeviceError,
         tari_amount::MicroMinotari,
         transaction_components::{
             EncryptedData,
@@ -92,6 +100,8 @@ pub struct TransactionKeyManagerLedgerInner<TBackend> {
     master_seed: CipherSeed,
     crypto_factories: CryptoFactories,
 }
+
+pub static TRANSPORT: Lazy<Arc<Mutex<Option<TransportNativeHID>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
 
 impl<TBackend> TransactionKeyManagerLedgerInner<TBackend>
 where TBackend: KeyManagerBackend<PublicKey> + 'static
@@ -412,8 +422,34 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         let ephemeral_commitment = self.crypto_factories.commitment.commit(&r_x, &r_a);
         let ephemeral_pubkey = PublicKey::from_secret_key(&r_y);
         let commitment = self.get_commitment(spend_key_id, value).await?;
-        let script_private_key = self.get_private_key(script_key_id).await?;
         let spend_private_key = self.get_private_key(spend_key_id).await?;
+
+        // let script_private_key = self.get_private_key(script_key_id).await?;
+        let data = script_key_id.managed_index().expect("and index").to_le_bytes().to_vec();
+        let command = APDUCommand {
+            cla: 0x80,
+            ins: 0x02, // GetPrivateKey - see `./applications/mp_ledger/src/main.rs/Instruction`
+            p1: 0x00,
+            p2: 0x00,
+            data,
+        };
+        let binding = TRANSPORT.lock().expect("lock exists");
+        let transport = binding.as_ref().expect("transport exists");
+        let script_private_key = match transport.exchange(&command) {
+            Ok(result) => {
+                if result.data().len() < 33 {
+                    return Err(LedgerDeviceError::Processing(format!(
+                        "'get_private_key' insufficient data - expected 33 got {} bytes ({:?})",
+                        result.data().len(),
+                        result
+                    ))
+                    .into());
+                }
+                PrivateKey::from_bytes(&result.data()[1..33])?
+            },
+            Err(e) => return Err(LedgerDeviceError::Instruction(format!("GetPrivateKey: {}", e)).into()),
+        };
+        // end script private key
 
         let challenge = TransactionInput::finalize_script_signature_challenge(
             txi_version,

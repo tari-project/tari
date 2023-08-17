@@ -1,4 +1,4 @@
-// Copyright 2021. The Tari Project
+// Copyright 2023. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,18 +20,35 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_crypto::signatures::CommitmentAndPublicKeySignatureError;
-use tari_key_manager::error::KeyManagerError;
+use serde::{Deserialize, Serialize};
+use tari_utilities::ByteArrayError;
 use thiserror::Error;
 
-use crate::transactions::transaction_components::TransactionError;
+/// Ledger device errors.
+#[derive(Clone, Debug, PartialEq, Error, Deserialize, Serialize, Eq)]
+pub enum LedgerDeviceError {
+    /// HID API error
+    #[error("HID API error `{0}`")]
+    HidApi(String),
+    /// Native HID transport error
+    #[error("Native HID transport error `{0}`")]
+    NativeTransport(String),
+    /// Ledger application not started
+    #[error("Ledger application not started")]
+    ApplicationNotStarted,
+    /// Ledger application instruction error
+    #[error("Ledger application instruction error `{0}`")]
+    Instruction(String),
+    /// Ledger application processing error
+    #[error("Processing error `{0}`")]
+    Processing(String),
+    /// Conversion error to or from ledger
+    #[error("Conversion failed: {0}")]
+    ByteArrayError(String),
+}
 
-#[derive(Debug, Error, PartialEq)]
-pub enum CoreKeyManagerError {
-    #[error("KeyManagerError: `{0}`")]
-    KeyManagerError(#[from] KeyManagerError),
-    #[error("Error generating Commitment and PublicKey signature: `{0}`")]
-    CommitmentAndPublicKeySignatureError(#[from] CommitmentAndPublicKeySignatureError),
-    #[error("Transaction error: `{0}`")]
-    TransactionError(#[from] TransactionError),
+impl From<ByteArrayError> for LedgerDeviceError {
+    fn from(e: ByteArrayError) -> Self {
+        LedgerDeviceError::ByteArrayError(e.to_string())
+    }
 }

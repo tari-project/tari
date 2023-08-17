@@ -2783,6 +2783,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ledger-transport"
+version = "0.10.0"
+source = "git+https://github.com/Zondax/ledger-rs#20e2a2076d799d449ff6f07eb0128548b358d9bc"
+dependencies = [
+ "async-trait",
+ "ledger-apdu",
+]
+
+[[package]]
 name = "ledger-transport-hid"
 version = "0.10.0"
 source = "git+https://github.com/Zondax/ledger-rs#20e2a2076d799d449ff6f07eb0128548b358d9bc"
@@ -2791,7 +2800,7 @@ dependencies = [
  "cfg-if",
  "hex",
  "hidapi",
- "ledger-transport",
+ "ledger-transport 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc",
  "log",
  "thiserror",
@@ -5787,6 +5796,8 @@ dependencies = [
  "futures 0.3.28",
  "hex",
  "integer-encoding",
+ "ledger-transport 0.10.0 (git+https://github.com/Zondax/ledger-rs)",
+ "ledger-transport-hid",
  "libsqlite3-sys",
  "lmdb-zero",
  "log",

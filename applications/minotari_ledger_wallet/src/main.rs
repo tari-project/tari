@@ -24,6 +24,9 @@ use crate::{
     utils::{byte_to_hex, get_raw_key, u64_to_string},
 };
 
+static MINOTARI_LEDGER_ID: u32 = 535348;
+static MINOTARI_ACCOUNT_ID: u32 = 7041;
+
 pub mod hashing;
 pub mod utils;
 
@@ -140,19 +143,18 @@ fn handle_apdu(comm: &mut io::Comm, instruction: Instruction) -> Result<(), Repl
         Instruction::GetPrivateKey => {
             // first 5 bytes are instruction details
             let offset = 5;
-            let mut account_bytes = [0u8; 8];
-            account_bytes.clone_from_slice(comm.get(offset, offset + 8));
-            let account = crate::u64_to_string(u64::from_le_bytes(account_bytes));
             let mut address_index_bytes = [0u8; 8];
-            address_index_bytes.clone_from_slice(comm.get(offset + 8, offset + 8 + 8));
+            address_index_bytes.clone_from_slice(comm.get(offset, offset + 8));
             let address_index = crate::u64_to_string(u64::from_le_bytes(address_index_bytes));
 
             let mut msg = "GetPrivateKey... ".to_string();
             msg.push_str(&address_index);
             ui::SingleMessage::new(&msg).show();
 
-            let mut bip32_path = "m/44'/535348'/".to_string();
-            bip32_path.push_str(&account);
+            let mut bip32_path = "m/44'/".to_string();
+            bip32_path.push_str(&MINOTARI_LEDGER_ID.to_string());
+            bip32_path.push_str(&"'/");
+            bip32_path.push_str(&MINOTARI_ACCOUNT_ID.to_string());
             bip32_path.push_str(&"'/0/");
             bip32_path.push_str(&address_index);
             let path: [u32; 5] = nanos_sdk::ecc::make_bip32_path(bip32_path.as_bytes());

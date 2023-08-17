@@ -25,3 +25,6 @@ pub use wrapper::TransactionKeyManagerLedgerWrapper;
 
 mod inner;
 pub use inner::TransactionKeyManagerLedgerInner;
+
+mod error;
+pub use error::LedgerDeviceError;

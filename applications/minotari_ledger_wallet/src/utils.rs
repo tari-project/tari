@@ -89,7 +89,7 @@ fn cx_error_to_string(e: CxError) -> String {
 //     d8a57c1be0c52e9643485e77aac56d72fa6c4eb831466c2abd2d320c82d3d14929811c598c13d431bad433e037dbd97265492cea42bc2e3aad15440210a20a2d0000000000000000000000000000000000000000000000000000000000000000
 //  - This function applies domain separated hashing to the 64 byte private key of the returned buffer to get 32
 //    uniformly distributed random bytes.
-fn get_raw_key_hash(path: &[u32]) -> Result<[u8; 32], String> {
+fn get_raw_key_hash(path: &[u32]) -> Result<[u8; 64], String> {
     let mut key = Secret::<96>::new();
     let raw_key_64 = match bip32_derive(CurvesId::Ed25519, path, key.as_mut()) {
         Ok(_) => {
@@ -109,7 +109,7 @@ fn get_raw_key_hash(path: &[u32]) -> Result<[u8; 32], String> {
 }
 
 /// Get a raw 32 byte key hash from the BIP32 path. In cas of an error, display an interactive message on the device.
-pub fn get_raw_key(path: &[u32]) -> Result<[u8; 32], SyscallError> {
+pub fn get_raw_key(path: &[u32]) -> Result<[u8; 64], SyscallError> {
     match get_raw_key_hash(&path) {
         Ok(val) => Ok(val),
         Err(e) => {

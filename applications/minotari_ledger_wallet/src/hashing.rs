@@ -10,7 +10,7 @@ use borsh::{
     maybestd::io::{Result as BorshResult, Write},
     BorshSerialize,
 };
-use digest::{consts::U32, Digest};
+use digest::{consts::U64, Digest};
 use tari_crypto::hashing::DomainSeparation;
 
 /// Domain separated consensus hasher
@@ -18,8 +18,8 @@ pub struct DomainSeparatedConsensusHasher<M>(PhantomData<M>);
 
 impl<M: DomainSeparation> DomainSeparatedConsensusHasher<M> {
     /// Create a new hasher with the given label
-    pub fn new(label: &'static str) -> ConsensusHasher<Blake2b<U32>> {
-        let mut digest = Blake2b::<U32>::new();
+    pub fn new(label: &'static str) -> ConsensusHasher<Blake2b<U64>> {
+        let mut digest = Blake2b::<U64>::new();
         M::add_domain_separation_tag(&mut digest, label);
         ConsensusHasher::from_digest(digest)
     }
@@ -40,10 +40,10 @@ impl<D: Digest> ConsensusHasher<D> {
 }
 
 impl<D> ConsensusHasher<D>
-where D: Digest<OutputSize = U32>
+where D: Digest<OutputSize = U64>
 {
     /// Finalize the hasher and return the hash
-    pub fn finalize(self) -> [u8; 32] {
+    pub fn finalize(self) -> [u8; 64] {
         self.writer.0.finalize().into()
     }
 
