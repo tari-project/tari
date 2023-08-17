@@ -151,7 +151,7 @@ mod test {
                 service_fn(|_: ()| future::ok::<_, ()>(handle.0));
             });
 
-            self.state.fetch_add(1, Ordering::AcqRel);
+            self.state.fetch_add(1, Ordering::SeqCst);
             Ok(())
         }
     }
