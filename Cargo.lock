@@ -3102,6 +3102,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "minotari_chat_ffi"
+version = "0.52.0-pre.0"
+dependencies = [
+ "cbindgen",
+ "libc",
+ "libsqlite3-sys",
+ "log",
+ "log4rs",
+ "minotari_app_utilities",
+ "openssl",
+ "tari_chat_client",
+ "tari_common",
+ "tari_common_types",
+ "tari_comms",
+ "tari_contacts",
+ "tari_shutdown",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "minotari_console_wallet"
 version = "0.52.0-pre.0"
 dependencies = [
@@ -5489,26 +5510,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tari_chat_ffi"
-version = "0.52.0-pre.0"
-dependencies = [
- "cbindgen",
- "libc",
- "log",
- "log4rs",
- "minotari_app_utilities",
- "openssl",
- "tari_chat_client",
- "tari_common",
- "tari_common_types",
- "tari_comms",
- "tari_contacts",
- "tari_shutdown",
- "thiserror",
- "tokio",
-]
-
-[[package]]
 name = "tari_common"
 version = "0.52.0-pre.0"
 dependencies = [
@@ -5820,6 +5821,7 @@ dependencies = [
  "log",
  "minotari_app_grpc",
  "minotari_app_utilities",
+ "minotari_chat_ffi",
  "minotari_console_wallet",
  "minotari_merge_mining_proxy",
  "minotari_miner",
@@ -5832,7 +5834,6 @@ dependencies = [
  "reqwest",
  "serde_json",
  "tari_chat_client",
- "tari_chat_ffi",
  "tari_common",
  "tari_common_types",
  "tari_comms",
