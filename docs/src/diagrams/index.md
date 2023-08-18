@@ -31,13 +31,48 @@ Source code link
  A -.- N1>file_name : line 460]
 ```
 
-Calling a method vs next method in flow
-```mermaid
- A --"(calls)"--> B[Called function]
- 
- C --> D["Next method"]
+## Calling a method vs next method in flow
+
+In a flow diagram it's not always clear if an arrow leading to another method or process  is called (as in step into) or if it is the next method called in sequence. 
+We suggest using the following notation to make it clear.
+
+For example, consider this code:
+
+```rust
+fn attempt_sync() {
+    let sync_method = determine_sync_method();
+    if sync_method {
+        do_something();
+        do_next_thing();
+    }
+}
+
+fn determine_sync_method() -> bool {
+    let sync_method = some_logic();
+    if sync_method {
+        some_other_logic();
+    }
+    sync_method
+}
 ```
 
+```mermaid
+ A[attempt_sync] --> B[[determine_sync_method]] --"(calls)"--> B1["s = some_logic()"]
+ 
+```
+
+```mermaid
+ C[attempt_sync] --> D["sync_method = determine_sync_method"]
+ D--> E{"sync_method"}
+ E --"true"--> F["some_other_logic()"]
+ E --"false"--> G["return sync_method"]
+ F --> G
+```
+
+> A subgraph can also be used, but sometimes it might be easier to use the "(calls)" notation to show that a process is
+> inside of a method call, and not the next one in sequence.
+
+```mermaid
 
 # pubsub connector
 
