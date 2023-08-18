@@ -1,3 +1,44 @@
+  
+
+# Top level triggers
+1. New message on messaging layer
+  1. TODO: breakdown into individual messages
+  2. Blocks
+  3. metadata?
+2. New RPC messages?
+  1. Wallet messages?
+4. Timed triggers
+  1. Are there any of these? (Maybe in state machine)
+  2. Liveness maybe?
+3. Start up triggers
+3. New GRPC messages
+4. New CLI messages  (Maybe these can be compiled out completely)
+
+
+## Other diagrams
+1. Important database access methods
+
+
+# Schema/Diagram key/legend Notation
+
+Data access is denoted like this, 
+```mermaid
+ A[(database method call)]
+```
+
+Source code link
+```mermaid
+ A -.- N1>file_name : line 460]
+```
+
+Calling a method vs next method in flow
+```mermaid
+ A --"(calls)"--> B[Called function]
+ 
+ C --> D["Next method"]
+```
+
+
 # pubsub connector
 
 ```mermaid
@@ -12,10 +53,7 @@ flowchart TD
     N2:::note
     classDef note fill:#eee,stroke:#ccc
 
-
 ```
-
-
 
 # incoming block pre.
 
