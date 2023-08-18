@@ -71,9 +71,10 @@ flowchart TD
 flowchart TD
  C[attempt_sync] --> D["sync_method = determine_sync_method"]
  D--> E{"sync_method"}
- E --"true"--> F["some_other_logic()"]
- E --"false"--> G["return sync_method"]
- F --> G
+ E --"true"--> F["do_something()"]
+ F-->F1["do_next_thing()"]
+ E --"false"--> G["return"]
+ F1 --> G
 ```
 
 > A subgraph can also be used, but sometimes it might be easier to use the "(calls)" notation to show that a process is
