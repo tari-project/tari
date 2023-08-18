@@ -80,7 +80,6 @@ flowchart TD
 > A subgraph can also be used, but sometimes it might be easier to use the "(calls)" notation to show that a process is
 > inside of a method call, and not the next one in sequence.
 
-```mermaid
 
 # pubsub connector
 
