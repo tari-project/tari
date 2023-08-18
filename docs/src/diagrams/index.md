@@ -2,14 +2,14 @@
 
 # Top level triggers
 1. New message on messaging layer
-  1. TODO: breakdown into individual messages
-  2. Blocks
-  3. metadata?
+    1. TODO: breakdown into individual messages
+    2. Blocks
+    3. metadata?
 2. New RPC messages?
-  1. Wallet messages?
+    1. Wallet messages?
 4. Timed triggers
-  1. Are there any of these? (Maybe in state machine)
-  2. Liveness maybe?
+    1. Are there any of these? (Maybe in state machine)
+    2. Liveness maybe?
 3. Start up triggers
 3. New GRPC messages
 4. New CLI messages  (Maybe these can be compiled out completely)
@@ -23,12 +23,17 @@
 
 Data access is denoted like this, 
 ```mermaid
- A[(database method call)]
+flowchart TD
+  A[(database method call)]
 ```
 
 Source code link
 ```mermaid
+flowchart TD
  A -.- N1>file_name : line 460]
+ N1:::note
+ classDef note fill:#eee,stroke:#ccc
+
 ```
 
 ## Calling a method vs next method in flow
@@ -57,11 +62,13 @@ fn determine_sync_method() -> bool {
 ```
 
 ```mermaid
+flowchart TD
  A[attempt_sync] --> B[[determine_sync_method]] --"(calls)"--> B1["s = some_logic()"]
  
 ```
 
 ```mermaid
+flowchart TD
  C[attempt_sync] --> D["sync_method = determine_sync_method"]
  D--> E{"sync_method"}
  E --"true"--> F["some_other_logic()"]
