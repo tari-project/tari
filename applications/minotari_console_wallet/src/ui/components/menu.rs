@@ -2,15 +2,15 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 use minotari_app_utilities::consts;
-use tokio::runtime::Handle;
-use tui::{
+use ratatui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
-    text::{Span, Spans},
+    text::{Line, Span},
     widgets::{Block, Paragraph},
     Frame,
 };
+use tokio::runtime::Handle;
 
 use crate::ui::{components::Component, state::AppState};
 
@@ -38,13 +38,13 @@ impl<B: Backend> Component<B> for Menu {
             )
             .split(area);
 
-        let version = Spans::from(vec![
+        let version = Line::from(vec![
             Span::styled(" Version: ", Style::default().fg(Color::White)),
             Span::styled(consts::APP_VERSION_NUMBER, Style::default().fg(Color::Magenta)),
             Span::raw(" "),
         ]);
 
-        let network = Spans::from(vec![
+        let network = Line::from(vec![
             Span::styled(" Network: ", Style::default().fg(Color::White)),
             Span::styled(
                 Handle::current().block_on(app_state.get_network()).to_string(),
@@ -53,7 +53,7 @@ impl<B: Backend> Component<B> for Menu {
             Span::raw(" "),
         ]);
 
-        let tabs = Spans::from(vec![
+        let tabs = Line::from(vec![
             Span::styled("LeftArrow: ", Style::default().fg(Color::White)),
             Span::styled("Previous Tab ", Style::default().fg(Color::Magenta)),
             Span::raw(" "),
@@ -61,7 +61,7 @@ impl<B: Backend> Component<B> for Menu {
             Span::styled("Next Tab ", Style::default().fg(Color::Magenta)),
         ]);
 
-        let quit = Spans::from(vec![
+        let quit = Line::from(vec![
             Span::styled("          F10/Ctrl-Q: ", Style::default().fg(Color::White)),
             Span::styled("Quit    ", Style::default().fg(Color::Magenta)),
         ]);

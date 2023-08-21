@@ -3,17 +3,17 @@
 
 use log::*;
 use minotari_wallet::output_manager_service::UtxoSelectionCriteria;
-use tari_core::transactions::tari_amount::MicroMinotari;
-use tari_utilities::hex::Hex;
-use tokio::{runtime::Handle, sync::watch};
-use tui::{
+use ratatui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    text::{Span, Spans},
+    text::{Line, Span},
     widgets::{Block, Borders, Paragraph, TableState, Wrap},
     Frame,
 };
+use tari_core::transactions::tari_amount::MicroMinotari;
+use tari_utilities::hex::Hex;
+use tokio::{runtime::Handle, sync::watch};
 use unicode_width::UnicodeWidthStr;
 
 use crate::ui::{
@@ -88,7 +88,7 @@ impl SendTab {
             .margin(1)
             .split(area);
         let instructions = Paragraph::new(vec![
-            Spans::from(vec![
+            Line::from(vec![
                 Span::raw("Press "),
                 Span::styled("T", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(" to edit "),
@@ -105,7 +105,7 @@ impl SendTab {
                 Span::styled("C", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(" to select a contact."),
             ]),
-            Spans::from(vec![
+            Line::from(vec![
                 Span::raw("Press "),
                 Span::styled("S", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(" to send a normal transaction, "),
@@ -119,7 +119,7 @@ impl SendTab {
         .block(Block::default());
         f.render_widget(instructions, vert_chunks[0]);
 
-        let to_input = Paragraph::new(self.to_field.as_ref())
+        let to_input = Paragraph::new(&*self.to_field)
             .style(match self.send_input_mode {
                 SendInputMode::To => Style::default().fg(Color::Magenta),
                 _ => Style::default(),
@@ -151,7 +151,7 @@ impl SendTab {
         );
         f.render_widget(amount_input, amount_fee_layout[0]);
 
-        let fee_input = Paragraph::new(self.fee_field.as_ref())
+        let fee_input = Paragraph::new(&*self.fee_field)
             .style(match self.send_input_mode {
                 SendInputMode::Fee => Style::default().fg(Color::Magenta),
                 _ => Style::default(),
@@ -159,7 +159,7 @@ impl SendTab {
             .block(Block::default().borders(Borders::ALL).title("(F)ee-per-gram (uT):"));
         f.render_widget(fee_input, amount_fee_layout[1]);
 
-        let message_input = Paragraph::new(self.message_field.as_ref())
+        let message_input = Paragraph::new(&*self.message_field)
             .style(match self.send_input_mode {
                 SendInputMode::Message => Style::default().fg(Color::Magenta),
                 _ => Style::default(),
@@ -212,7 +212,7 @@ impl SendTab {
             .margin(1)
             .split(area);
 
-        let instructions = Paragraph::new(Spans::from(vec![
+        let instructions = Paragraph::new(Line::from(vec![
             Span::raw(" Use "),
             Span::styled("Up↑/Down↓ Keys", Style::default().add_modifier(Modifier::BOLD)),
             Span::raw(" to choose a contact, "),

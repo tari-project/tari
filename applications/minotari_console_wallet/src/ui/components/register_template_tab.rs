@@ -7,6 +7,14 @@ use blake2::Blake2b;
 use digest::{consts::U32, Digest};
 use log::*;
 use minotari_wallet::output_manager_service::UtxoSelectionCriteria;
+use ratatui::{
+    backend::Backend,
+    layout::{Constraint, Direction, Layout, Rect},
+    style::{Color, Modifier, Style},
+    text::{Line, Span},
+    widgets::{Block, Borders, Paragraph, Wrap},
+    Frame,
+};
 use regex::Regex;
 use reqwest::StatusCode;
 use tari_core::transactions::{tari_amount::MicroMinotari, transaction_components::TemplateType};
@@ -15,14 +23,6 @@ use tari_utilities::hex::Hex;
 use tokio::{
     runtime::{Handle, Runtime},
     sync::watch,
-};
-use tui::{
-    backend::Backend,
-    layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
-    text::{Span, Spans},
-    widgets::{Block, Borders, Paragraph, Wrap},
-    Frame,
 };
 use unicode_width::UnicodeWidthStr;
 use url::Url;
@@ -166,7 +166,7 @@ impl RegisterTemplateTab {
             .split(area);
 
         let instructions = Paragraph::new(vec![
-            Spans::from(vec![
+            Line::from(vec![
                 Span::raw("Press "),
                 Span::styled("B", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(" to edit "),
@@ -200,7 +200,7 @@ impl RegisterTemplateTab {
                 Span::styled("Fee-per-gram", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(" field."),
             ]),
-            Spans::from(vec![
+            Line::from(vec![
                 Span::raw("Press "),
                 Span::styled("S", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(" to send a template registration transaction."),
@@ -252,7 +252,7 @@ impl RegisterTemplateTab {
         // First row - Binary URL
         // ----------------------------------------------------------------------------
 
-        let binary_url = Paragraph::new(self.binary_url.as_ref())
+        let binary_url = Paragraph::new(&*self.binary_url)
             .style(match self.input_mode {
                 InputMode::BinaryUrl => Style::default().fg(Color::Magenta),
                 _ => Style::default(),
@@ -264,7 +264,7 @@ impl RegisterTemplateTab {
         // Second row - Template Name, Template Version, Template Type
         // ----------------------------------------------------------------------------
 
-        let template_name = Paragraph::new(self.template_name.as_ref())
+        let template_name = Paragraph::new(&*self.template_name)
             .style(match self.input_mode {
                 InputMode::TemplateName => Style::default().fg(Color::Magenta),
                 _ => Style::default(),
@@ -280,7 +280,7 @@ impl RegisterTemplateTab {
             .block(Block::default().borders(Borders::ALL).title("Template (V)ersion:"));
         f.render_widget(template_version, second_row_layout[1]);
 
-        let template_type = Paragraph::new(self.template_type.as_ref())
+        let template_type = Paragraph::new(&*self.template_type)
             .style(match self.input_mode {
                 InputMode::TemplateType => Style::default().fg(Color::Magenta),
                 _ => Style::default(),
@@ -292,7 +292,7 @@ impl RegisterTemplateTab {
         // Third row - Repository URL
         // ----------------------------------------------------------------------------
 
-        let repository_url = Paragraph::new(self.repository_url.as_ref())
+        let repository_url = Paragraph::new(&*self.repository_url)
             .style(match self.input_mode {
                 InputMode::RepositoryUrl => Style::default().fg(Color::Magenta),
                 _ => Style::default(),
@@ -304,12 +304,12 @@ impl RegisterTemplateTab {
         // Fourth row - Binary checksum, Repository Commit Hash, Fee per gram
         // ----------------------------------------------------------------------------
 
-        let binary_checksum = Paragraph::new(self.binary_checksum.as_ref())
+        let binary_checksum = Paragraph::new(&*self.binary_checksum)
             .style(Style::default().fg(Color::Gray))
             .block(Block::default().borders(Borders::ALL).title("Binary Checksum:"));
         f.render_widget(binary_checksum, fourth_row_layout[0]);
 
-        let repository_commit_hash = Paragraph::new(self.repository_commit_hash.as_ref())
+        let repository_commit_hash = Paragraph::new(&*self.repository_commit_hash)
             .style(match self.input_mode {
                 InputMode::RepositoryCommitHash => Style::default().fg(Color::Magenta),
                 _ => Style::default(),
@@ -321,7 +321,7 @@ impl RegisterTemplateTab {
             );
         f.render_widget(repository_commit_hash, fourth_row_layout[1]);
 
-        let fee_per_gram = Paragraph::new(self.fee_per_gram.as_ref())
+        let fee_per_gram = Paragraph::new(&*self.fee_per_gram)
             .style(match self.input_mode {
                 InputMode::FeePerGram => Style::default().fg(Color::Magenta),
                 _ => Style::default(),

@@ -4,17 +4,17 @@
 use std::collections::HashMap;
 
 use log::*;
-use tari_comms::peer_manager::Peer;
-use tari_utilities::hex::Hex;
-use tokio::runtime::Handle;
-use tui::{
+use ratatui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    text::{Span, Spans},
+    text::{Line, Span},
     widgets::{Block, Borders, ListItem, ListState, Paragraph, Wrap},
     Frame,
 };
+use tari_comms::peer_manager::Peer;
+use tari_utilities::hex::Hex;
+use tokio::runtime::Handle;
 
 use crate::{
     ui::{
@@ -73,7 +73,7 @@ impl NetworkTab {
             .margin(1)
             .split(area);
 
-        let instructions = Paragraph::new(Spans::from(vec![
+        let instructions = Paragraph::new(Line::from(vec![
             Span::raw("Press "),
             Span::styled("B", Style::default().add_modifier(Modifier::BOLD)),
             Span::raw(" and use "),
@@ -236,7 +236,7 @@ impl NetworkTab {
             ]);
         }
 
-        let instructions_p = Paragraph::new(Spans::from(instructions)).block(Block::default());
+        let instructions_p = Paragraph::new(Line::from(instructions)).block(Block::default());
         f.render_widget(instructions_p, base_node_layout[0]);
 
         let peer = app_state.get_selected_base_node();

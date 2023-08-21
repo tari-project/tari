@@ -3,15 +3,15 @@
 
 use std::fs;
 
-use regex::Regex;
-use tui::{
+use ratatui::{
     backend::Backend,
     layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
-    text::{Span, Spans},
+    text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Wrap},
     Frame,
 };
+use regex::Regex;
 
 use crate::ui::{components::Component, state::AppState};
 
@@ -31,9 +31,9 @@ impl LogTab {
     }
 
     // Format the log line nicely. If it cannot be parsed then return raw line
-    fn format_line(&self, line: String) -> Spans {
+    fn format_line(&self, line: String) -> Line {
         match self.re.captures(line.as_str()) {
-            Some(caps) => Spans::from(vec![
+            Some(caps) => Line::from(vec![
                 Span::styled(caps["timestamp"].to_string(), Style::default().fg(Color::LightGreen)),
                 Span::raw(" ["),
                 Span::styled(caps["target"].to_string(), Style::default().fg(Color::LightMagenta)),
@@ -49,7 +49,7 @@ impl LogTab {
                 Span::raw(caps["message"].to_string()),
             ]),
             // In case the line is not well formatted, just print as it is
-            None => Spans::from(vec![Span::raw(line)]),
+            None => Line::from(vec![Span::raw(line)]),
         }
     }
 
@@ -70,8 +70,8 @@ impl LogTab {
             Ok(content) => content,
             Err(err) => format!("Error reading log: {}", err),
         };
-        // Convert the content into Spans
-        let mut text: Vec<Spans> = content.lines().map(|line| self.format_line(line.to_string())).collect();
+        // Convert the content into Line
+        let mut text: Vec<Line> = content.lines().map(|line| self.format_line(line.to_string())).collect();
         // We want newest at the top
         text.reverse();
         // Render the Paragraph

@@ -1,11 +1,11 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use tui::{
+use ratatui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    text::{Span, Spans},
+    text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
     Frame,
 };
@@ -63,7 +63,7 @@ impl ReceiveTab {
         const ITEM_04: &str = "Emoji ID:       ";
 
         // Tari address
-        let tari_address_text = Spans::from(vec![
+        let tari_address_text = Line::from(vec![
             Span::styled(ITEM_01, Style::default().fg(Color::Magenta)),
             Span::styled(
                 app_state.get_identity().tari_address.clone(),
@@ -74,7 +74,7 @@ impl ReceiveTab {
         f.render_widget(paragraph, details_chunks[0]);
 
         // NodeId
-        let node_id_text = Spans::from(vec![
+        let node_id_text = Line::from(vec![
             Span::styled(ITEM_02, Style::default().fg(Color::Magenta)),
             Span::styled(
                 app_state.get_identity().node_id.clone(),
@@ -85,7 +85,7 @@ impl ReceiveTab {
         f.render_widget(paragraph, details_chunks[1]);
 
         // Public Address
-        let public_address_text = Spans::from(vec![
+        let public_address_text = Line::from(vec![
             Span::styled(ITEM_03, Style::default().fg(Color::Magenta)),
             Span::styled(
                 app_state.get_identity().network_address.clone(),
@@ -96,7 +96,7 @@ impl ReceiveTab {
         f.render_widget(paragraph, details_chunks[2]);
 
         // Emoji ID
-        let emoji_id_text = Spans::from(vec![
+        let emoji_id_text = Line::from(vec![
             Span::styled(ITEM_04, Style::default().fg(Color::Magenta)),
             Span::styled(
                 app_state.get_identity().emoji_id.clone(),

@@ -21,13 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use minotari_wallet::{util::wallet_identity::WalletIdentity, WalletConfig, WalletSqlite};
-use tari_comms::peer_manager::Peer;
-use tokio::runtime::Handle;
-use tui::{
+use ratatui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout},
     Frame,
 };
+use tari_comms::peer_manager::Peer;
+use tokio::runtime::Handle;
 
 use crate::{
     notifier::Notifier,

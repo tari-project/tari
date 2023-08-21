@@ -20,11 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tui::{
+use ratatui::{
     backend::Backend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    text::{Span, Spans},
+    text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
     Frame,
 };
@@ -85,7 +85,7 @@ pub fn draw_dialog<B>(
 
     let mut spans = Vec::new();
     for l in lines {
-        spans.push(Spans::from(Span::styled(
+        spans.push(Line::from(Span::styled(
             l,
             Style::default().fg(color).add_modifier(Modifier::BOLD),
         )));

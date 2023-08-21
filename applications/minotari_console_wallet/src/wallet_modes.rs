@@ -29,12 +29,12 @@ use log::*;
 use minotari_app_grpc::authentication::ServerAuthenticationInterceptor;
 use minotari_wallet::{WalletConfig, WalletSqlite};
 use rand::{rngs::OsRng, seq::SliceRandom};
+use ratatui::backend::CrosstermBackend;
 use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tari_comms::{multiaddr::Multiaddr, peer_manager::Peer, utils::multiaddr::multiaddr_to_socketaddr};
 use tokio::{runtime::Handle, sync::broadcast};
 use tonic::transport::Server;
-use tui::backend::CrosstermBackend;
 
 use crate::{
     automation::commands::command_runner,
