@@ -81,21 +81,53 @@ flowchart TD
 > inside of a method call, and not the next one in sequence.
 
 
+
+# inbound dht middleware
+```mermaid
+A[start]--> B[MetricsLayer]
+B --> C[inbound DeserializeLayer]
+C --> D["FilterLayer(unsupported_saf_messages_filter) "]
+D --..-- N1>"dht.rs line 383"]
+D--> E["FilterLayer(discard_expired_messages)"]
+E --..-- N2>"dht.rs line 437"]
+E--> F[DecryptionLayer]
+F--> G[DedupLayer]
+G--> H["FilterLayer(filter_messages_to_rebroadcast)"]
+H --..-- N3>"dht.rs line 406"]
+H-->I[MessageLoggingLayer]
+I-->J["saf StoreLayer"]
+J-->K["saf ForwardLayer"]
+K-->L["saf MessageHandlerLayer"]
+L-->M["saf DhtHandlerLayer"]
+M-->Z[end]
+   N1:::note
+   N2:::note
+   N3:::note
+    classDef note fill:#eee,stroke:#ccc
+
+
+
+```
+
 # pubsub connector
 
 ```mermaid
 
 flowchart TD
-   A[Start : todo]--> B[Pubsub connector]
-   B --> C[if peer_message::TariMessageType is valid ]
+   A[Start : todo]-->Aa1[[Inbound middleware pipeline]]
+   Aa1--> A1[InboundDomainConnector::construct_peer_message] 
+   A1 --..--N1>inbound_connector line 73] // Note: Can decode_part fail?
+   A1 --> B[Pubsub connector]
+   B --> C[if peer_message::TariMessageType is valid ] TODO: Ban peer
    C --> D[forward to publisher]
    D --> E[if topic == sub topic]
    E --> F[forward to subscription]
 
-    N2:::note
+    N1:::note
     classDef note fill:#eee,stroke:#ccc
 
 ```
+
 
 # incoming block pre.
 
