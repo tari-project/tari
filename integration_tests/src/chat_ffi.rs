@@ -55,8 +55,8 @@ extern "C" fn callback_message_received(_state: *mut c_void) {
     *callback.message_received.lock().unwrap() += 1;
 }
 
-#[cfg_attr(windows, link(name = "tari_chat_ffi.dll"))]
-#[cfg_attr(not(windows), link(name = "tari_chat_ffi"))]
+#[cfg_attr(windows, link(name = "minotari_chat_ffi.dll"))]
+#[cfg_attr(not(windows), link(name = "minotari_chat_ffi"))]
 extern "C" {
     pub fn create_chat_client(
         config: *mut c_void,
