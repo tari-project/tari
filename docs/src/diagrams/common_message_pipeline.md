@@ -8,6 +8,7 @@ messages of those types.
 > TODO: Add in overview diagram of bigger system and where this fits in
 
 ```mermaid
+flowchart TD
 A[Start] --> B[Inbound pipeline and messaging protocol extension]
 B --> C[Inbound DHT middleware]
 C --> D[Pubsub connector]
@@ -19,7 +20,7 @@ D --> G[TODO:Wallet stuff]
 ## Inbound pipeline and Messaging protocol extension
 
 ```mermaid
-
+flowchart TD
 A[Start] --> B[pipeline = Create pipeline]
 B --> C["Add Messaging protocol extension (pipeline, inbound_tx)"]
 C --> D[be = Bounded executor]
@@ -30,6 +31,7 @@ D --> E["Inbound::run(be, inbound_rx)"]
 
 # inbound dht middleware
 ```mermaid
+flowchart TD
 A[start]--> B[MetricsLayer]
 B --> C[inbound DeserializeLayer]
 C --> D["FilterLayer(unsupported_saf_messages_filter) "]
@@ -60,11 +62,11 @@ M-->Z[end]
 ```mermaid
 
 flowchart TD
-   A[Start : todo]-->Aa1[[Inbound middleware pipeline]]
+   A[Start]-->Aa1[[Inbound middleware pipeline]]
    Aa1--> A1[InboundDomainConnector::construct_peer_message] 
-   A1 --..--N1>inbound_connector line 73] // Note: Can decode_part fail?
+   A1 --..--N1>inbound_connector line 73] 
    A1 --> B[Pubsub connector]
-   B --> C[if peer_message::TariMessageType is valid ] TODO: Ban peer
+   B --> C[if peer_message::TariMessageType is valid ]
    C --> D[forward to publisher]
    D --> E[if topic == sub topic]
    E --> F[forward to subscription]
