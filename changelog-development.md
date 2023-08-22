@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.52.0-pre.0](https://github.com/tari-project/tari/compare/v0.51.0-pre.4...v0.52.0-pre.0) (2023-08-14)
+
+#### Breaking Changes
+
+* New Gen block (#5633)
+* Validator mr included in mining hash (#5615)
+* Monero merkle proof change (#5602)
+
 ## [0.51.0-pre.4](https://github.com/tari-project/tari/compare/v0.51.0-pre.3...v0.51.0-pre.4) (2023-06-30)
 
 #### Breaking Changes

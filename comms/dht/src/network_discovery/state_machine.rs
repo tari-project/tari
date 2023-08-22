@@ -134,17 +134,17 @@ pub(super) struct NetworkDiscoveryContext {
 impl NetworkDiscoveryContext {
     /// Increment the number of rounds by 1
     pub(super) fn increment_num_rounds(&self) -> usize {
-        self.num_rounds.fetch_add(1, Ordering::AcqRel)
+        self.num_rounds.fetch_add(1, Ordering::SeqCst)
     }
 
     /// Get the number of rounds
     pub fn num_rounds(&self) -> usize {
-        self.num_rounds.load(Ordering::Relaxed)
+        self.num_rounds.load(Ordering::SeqCst)
     }
 
     /// Reset the number of rounds to 0
     pub(super) fn reset_num_rounds(&self) {
-        self.num_rounds.store(0, Ordering::Release);
+        self.num_rounds.store(0, Ordering::SeqCst);
     }
 
     pub(super) fn publish_event(&self, event: DhtEvent) {
