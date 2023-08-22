@@ -155,7 +155,7 @@ use tari_key_manager::{
     key_manager_service::{storage::sqlite_db::KeyManagerSqliteDatabase, KeyId, KeyManagerInterface},
 };
 use tari_p2p::{comms_connector::pubsub_connector, domain_message::DomainMessage, Network};
-use tari_script::{inputs, one_sided_payment_script, script, ExecutionStack, TariScript};
+use tari_script::{inputs, one_sided_payment_script, script, ExecutionStack};
 use tari_service_framework::{reply_channel, RegisterHandle, StackBuilder};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::{comms_and_services::get_next_memory_address, random};
@@ -2490,7 +2490,7 @@ async fn test_transaction_cancellation() {
 
     let key_manager = create_test_core_key_manager_with_memory_db();
     let input = create_wallet_output_with_data(
-        TariScript::default(),
+        script!(Nop),
         OutputFeatures::default(),
         &TestParams::new(&key_manager).await,
         MicroMinotari::from(100_000),
@@ -2577,7 +2577,7 @@ async fn test_transaction_cancellation() {
 
     // Lets cancel the last one using a Comms stack message
     let input = create_wallet_output_with_data(
-        TariScript::default(),
+        script!(Nop),
         OutputFeatures::default(),
         &TestParams::new(&key_manager.clone()).await,
         MicroMinotari::from(100_000),
@@ -5156,7 +5156,7 @@ async fn test_transaction_timeout_cancellation() {
     // First we will check the Send Transction message
     let key_manager = create_test_core_key_manager_with_memory_db();
     let input = create_wallet_output_with_data(
-        TariScript::default(),
+        script!(Nop),
         OutputFeatures::default(),
         &TestParams::new(&key_manager).await,
         MicroMinotari::from(100_000),

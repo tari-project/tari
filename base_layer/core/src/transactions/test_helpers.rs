@@ -615,8 +615,8 @@ pub async fn create_transaction_with(
         .with_fee_per_gram(fee_per_gram)
         .with_kernel_features(KernelFeatures::empty())
         .with_change_data(
-            script!(Nop),
-            inputs!(change.script_key_pk),
+            TariScript::default(),
+            ExecutionStack::default(),
             change.script_key_id,
             change.spend_key_id,
             Covenant::default(),
@@ -662,8 +662,8 @@ pub async fn create_stx_protocol(
         .with_lock_height(schema.lock_height)
         .with_fee_per_gram(schema.fee)
         .with_change_data(
-            script!(Nop),
-            inputs!(change.script_key_pk),
+            TariScript::default(),
+            ExecutionStack::default(),
             change.script_key_id,
             change.spend_key_id,
             Covenant::default(),

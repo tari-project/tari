@@ -625,10 +625,10 @@ impl Hex for TariScript {
     }
 }
 
-/// The default Tari script is to push a single zero onto the stack; which will execute successfully with zero inputs.
+/// The default Tari script is to push a sender pubkey onto the stack
 impl Default for TariScript {
     fn default() -> Self {
-        script!(PushZero)
+        script!(PushPubKey(Box::default()))
     }
 }
 
