@@ -12,7 +12,7 @@ minotari_app_utilities = { path = "../applications/minotari_app_utilities" }
 minotari_node = { path = "../applications/minotari_node" }
 minotari_node_grpc_client = { path = "../clients/rust/base_node_grpc_client" }
 tari_chat_client = { path = "../base_layer/contacts/examples/chat_client" }
-tari_chat_ffi = { path = "../base_layer/chat_ffi" }
+minotari_chat_ffi = { path = "../base_layer/chat_ffi" }
 tari_crypto = { version = "0.18" }
 tari_common = { path = "../common" }
 tari_common_types = { path = "../base_layer/common_types" }
@@ -51,7 +51,7 @@ tokio = { version = "1.10", features = ["macros", "time", "sync", "rt-multi-thre
 tonic = "0.6.2"
 
 [package.metadata.cargo-machete]
-ignored = ["minotari_wallet_ffi", "tari_chat_ffi"]
+ignored = ["minotari_wallet_ffi", "minotari_chat_ffi"]
 
 [[test]]
 name = "cucumber" # this should be the same as the filename of your test target

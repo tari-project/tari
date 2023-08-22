@@ -195,9 +195,9 @@ impl InnerService {
             .as_ref()
             .map(|meta| meta.height_of_longest_chain)
             .ok_or(MmProxyError::GrpcResponseMissingField("base node metadata"))?;
-        if result.get_ref().initial_sync_achieved != self.initial_sync_achieved.load(Ordering::Relaxed) {
+        if result.get_ref().initial_sync_achieved != self.initial_sync_achieved.load(Ordering::SeqCst) {
             self.initial_sync_achieved
-                .store(result.get_ref().initial_sync_achieved, Ordering::Relaxed);
+                .store(result.get_ref().initial_sync_achieved, Ordering::SeqCst);
             debug!(
                 target: LOG_TARGET,
                 "Minotari base node initial sync status change to {}",
@@ -296,7 +296,7 @@ impl InnerService {
                         if self.config.submit_to_origin {
                             json_resp = json_rpc::success_response(
                                 request["id"].as_i64(),
-                                json!({ "status": "OK", "untrusted": !self.initial_sync_achieved.load(Ordering::Relaxed) }),
+                                json!({ "status": "OK", "untrusted": !self.initial_sync_achieved.load(Ordering::SeqCst) }),
                             );
                             let resp = resp.into_inner();
                             json_resp = append_aux_chain_data(
@@ -398,7 +398,7 @@ impl InnerService {
 
         // Add merge mining tag on blocktemplate request
         debug!(target: LOG_TARGET, "Requested new block template from Minotari base node");
-        if !self.initial_sync_achieved.load(Ordering::Relaxed) {
+        if !self.initial_sync_achieved.load(Ordering::SeqCst) {
             let grpc::TipInfoResponse {
                 initial_sync_achieved,
                 metadata,
@@ -406,7 +406,7 @@ impl InnerService {
             } = grpc_client.get_tip_info(grpc::Empty {}).await?.into_inner();
 
             if initial_sync_achieved {
-                self.initial_sync_achieved.store(true, Ordering::Relaxed);
+                self.initial_sync_achieved.store(true, Ordering::SeqCst);
                 let msg = format!(
                     "Initial base node sync achieved. Ready to mine at height #{}",
                     metadata.as_ref().map(|h| h.height_of_longest_chain).unwrap_or_default(),
