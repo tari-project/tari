@@ -196,6 +196,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 Ok(_) => match self.finalize_horizon_sync(sync_peer).await {
                     Ok(_) => return Ok(()),
                     Err(err) => {
+                        self.ban_peer_on_ban_able_error(&sync_peer, &err).await?;
                         warn!(target: LOG_TARGET, "Error during sync:{}", err);
                         return Err(err);
                     },
@@ -208,6 +209,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     }
                 },
                 Err(err) => {
+                    self.ban_peer_on_ban_able_error(&sync_peer, &err).await?;
                     warn!(target: LOG_TARGET, "Error during sync:{}", err);
                     return Err(err);
                 },
@@ -215,6 +217,46 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         }
 
         Err(HorizonSyncError::FailedSyncAllPeers)
+    }
+
+    async fn ban_peer_on_ban_able_error(
+        &mut self,
+        peer: &SyncPeer,
+        error: &HorizonSyncError,
+    ) -> Result<(), HorizonSyncError> {
+        match error {
+            HorizonSyncError::ChainStorageError(_) |
+            HorizonSyncError::JoinError(_) |
+            HorizonSyncError::RpcError(_) |
+            HorizonSyncError::RpcStatus(_) |
+            HorizonSyncError::ConnectivityError(_) |
+            HorizonSyncError::NoSyncPeers |
+            HorizonSyncError::FailedSyncAllPeers |
+            HorizonSyncError::AllSyncPeersExceedLatency => {
+                // these are local errors so we dont ban die per
+            },
+            HorizonSyncError::MaxLatencyExceeded { .. } => {
+                warn!(target: LOG_TARGET, "Banned sync peer for short while because peer exceeded max latency: {}",error.to_string());
+                if let Err(err) = self
+                    .connectivity
+                    .ban_peer_until(peer.node_id().clone(), self.config.short_ban_period, error.to_string())
+                    .await
+                {
+                    error!(target: LOG_TARGET, "Failed to ban peer: {}", err);
+                }
+            },
+            _ => {
+                warn!(target: LOG_TARGET, "Banned sync peer for because: {}",error.to_string());
+                if let Err(err) = self
+                    .connectivity
+                    .ban_peer_until(peer.node_id().clone(), self.config.ban_period, error.to_string())
+                    .await
+                {
+                    error!(target: LOG_TARGET, "Failed to ban peer: {}", err);
+                }
+            },
+        }
+        Ok(())
     }
 
     async fn begin_sync(
@@ -313,9 +355,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             let latency = last_sync_timer.elapsed();
             avg_latency.add_sample(latency);
             let kernel: TransactionKernel = kernel?.try_into().map_err(HorizonSyncError::ConversionError)?;
-            kernel
-                .verify_signature()
-                .map_err(HorizonSyncError::InvalidKernelSignature)?;
+            kernel.verify_signature()?;
 
             kernel_hashes.push(kernel.hash());
 
