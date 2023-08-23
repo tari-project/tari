@@ -15,20 +15,20 @@ After the pubsub connector has received the message, it is extracted as block an
 ```mermaid
 
 flowchart TD
-    A[inbound message subscription factory] --> B["From get_subscription TODO: Go deeper"]
-    B --> C[[extract_block]]
+    A[1. inbound message subscription factory] --> B["2. From get_subscription TODO: Go deeper"]
+    B --> C[[3. extract_block]]
     subgraph extract_block 
    
     C -..- N1>BaseNodeServiceInitializer line 118]
-    C --> D["decode_message [prost]"]
-    D --Failed --> S[Display warning and filter out message]
-    D --> E[NewBlock try_from]
+    C --> D["4. decode_message [prost]"]
+    D --Failed --> S[5. Display warning and filter out message]
+    D --> E[6. NewBlock try_from]
     E --Failed--> S
     
     end
-    E -->E1[Base Node Service spawn_handle_incoming_block] --> F[[Check is bootstrapped]]
+    E -->E1[7. Base Node Service spawn_handle_incoming_block] --> F[[8. Check is bootstrapped]]
     F -..- N2>"base_node/service/service.rs line 290"]
-    F --> G[Handle incoming block: TODO:Ref next diagram]
+    F --> G[9. Handle incoming block: TODO:Ref next diagram]
     N1:::note
     N2:::note
     classDef note fill:#eee,stroke:#ccc
