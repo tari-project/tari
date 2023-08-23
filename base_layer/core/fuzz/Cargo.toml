@@ -9,7 +9,7 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-borsh = { version = "0.9.3", features = ["const-generics"] }
+borsh = { version = "0.10", features = ["const-generics"] }
 prost = "0.9"
 
 [dependencies.tari_core]
@@ -26,5 +26,11 @@ debug = 1
 [[bin]]
 name = "fuzz_target_1"
 path = "fuzz_targets/fuzz_target_1.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fixed_byte_array"
+path = "fuzz_targets/fixed_byte_array.rs"
 test = false
 doc = false
