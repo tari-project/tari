@@ -196,7 +196,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 Ok(_) => match self.finalize_horizon_sync(sync_peer).await {
                     Ok(_) => return Ok(()),
                     Err(err) => {
-                        self.ban_peer_on_ban_able_error(&sync_peer, &err).await?;
+                        self.ban_peer_on_ban_able_error(sync_peer, &err).await?;
                         warn!(target: LOG_TARGET, "Error during sync:{}", err);
                         return Err(err);
                     },
@@ -209,7 +209,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     }
                 },
                 Err(err) => {
-                    self.ban_peer_on_ban_able_error(&sync_peer, &err).await?;
+                    self.ban_peer_on_ban_able_error(sync_peer, &err).await?;
                     warn!(target: LOG_TARGET, "Error during sync:{}", err);
                     return Err(err);
                 },
