@@ -32,7 +32,7 @@ use monero::{
     consensus::{Decodable, Encodable},
     cryptonote::hash::Hashable,
 };
-use tari_utilities::hex::{to_hex, Hex};
+use tari_utilities::hex::to_hex;
 
 use super::{error::MergeMineError, fixed_array::FixedByteArray, merkle_tree::MerkleProof};
 use crate::{blocks::BlockHeader, proof_of_work::monero_rx::helpers::create_block_hashing_blob};
@@ -138,7 +138,6 @@ impl Display for MoneroPowData {
 mod test {
     use borsh::{BorshDeserialize, BorshSerialize};
     use monero::{BlockHeader, Hash, Transaction, VarInt};
-    use tari_utilities::ByteArray;
 
     use super::MoneroPowData;
     use crate::proof_of_work::monero_rx::{merkle_tree::MerkleProof, FixedByteArray};
@@ -153,7 +152,7 @@ mod test {
                 prev_id: Hash::new([4; 32]),
                 nonce: 5,
             },
-            randomx_key: FixedByteArray::from_bytes(&[6, 7, 8]).unwrap(),
+            randomx_key: FixedByteArray::from_hex("060708").unwrap(),
             transaction_count: 9,
             merkle_root: Hash::new([10; 32]),
             coinbase_merkle_proof: MerkleProof::default(),

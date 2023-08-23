@@ -343,7 +343,7 @@ mod test {
 
         let monero_data = MoneroPowData {
             header: block.header,
-            randomx_key: FixedByteArray::from_bytes(&from_hex(&seed_hash).unwrap()).unwrap(),
+            randomx_key: FixedByteArray::from_hex(&seed_hash).unwrap(),
             transaction_count: u16::try_from(hashes.len()).unwrap(),
             merkle_root: root,
             coinbase_merkle_proof,
@@ -404,7 +404,7 @@ mod test {
         let coinbase_merkle_proof = create_merkle_proof(&hashes).unwrap();
         let monero_data = MoneroPowData {
             header: block.header,
-            randomx_key: FixedByteArray::from_bytes(&from_hex(&seed_hash).unwrap()).unwrap(),
+            randomx_key: FixedByteArray::from_hex(&seed_hash).unwrap(),
             transaction_count: count,
             merkle_root: root,
             coinbase_merkle_proof,
@@ -452,7 +452,7 @@ mod test {
         let coinbase_merkle_proof = create_merkle_proof(&hashes).unwrap();
         let monero_data = MoneroPowData {
             header: block.header,
-            randomx_key: FixedByteArray::from_bytes(&from_hex(&seed_hash).unwrap()).unwrap(),
+            randomx_key: FixedByteArray::from_hex(&seed_hash).unwrap(),
             transaction_count: count,
             merkle_root: root,
             coinbase_merkle_proof,
@@ -508,7 +508,7 @@ mod test {
         let coinbase_merkle_proof = create_merkle_proof(&hashes).unwrap();
         let monero_data = MoneroPowData {
             header: block.header,
-            randomx_key: FixedByteArray::from_bytes(&from_hex(&seed_hash).unwrap()).unwrap(),
+            randomx_key: FixedByteArray::from_hex(&seed_hash).unwrap(),
             transaction_count: count,
             merkle_root: root,
             coinbase_merkle_proof,
@@ -567,7 +567,7 @@ mod test {
         let coinbase_merkle_proof = create_merkle_proof(&hashes).unwrap();
         let monero_data = MoneroPowData {
             header: block.header,
-            randomx_key: FixedByteArray::from_bytes(&from_hex(&seed_hash).unwrap()).unwrap(),
+            randomx_key: FixedByteArray::from_hex(&seed_hash).unwrap(),
             transaction_count: count,
             merkle_root: root,
             coinbase_merkle_proof,
@@ -622,7 +622,7 @@ mod test {
         let coinbase_merkle_proof = create_merkle_proof(&hashes).unwrap();
         let monero_data = MoneroPowData {
             header: block.header,
-            randomx_key: FixedByteArray::from_bytes(&from_hex(&seed_hash).unwrap()).unwrap(),
+            randomx_key: FixedByteArray::from_hex(&seed_hash).unwrap(),
             transaction_count: count,
             merkle_root: root,
             coinbase_merkle_proof,
@@ -715,7 +715,7 @@ mod test {
         let coinbase_merkle_proof = create_merkle_proof(&hashes).unwrap();
         let monero_data = MoneroPowData {
             header: block.header,
-            randomx_key: FixedByteArray::from_bytes(&from_hex(&seed_hash).unwrap()).unwrap(),
+            randomx_key: FixedByteArray::from_hex(&seed_hash).unwrap(),
             transaction_count: count,
             merkle_root: Hash::null(),
             coinbase_merkle_proof,
