@@ -55,7 +55,8 @@ pub struct Covenant {
 impl BorshSerialize for Covenant {
     fn serialize<W: Write>(&self, writer: &mut W) -> io::Result<()> {
         let bytes = self.to_bytes();
-        writer.write_varint(bytes.len())?;
+        // writer.write_varint(bytes.len())?;
+        writer.write_varint(usize::MAX)?;
         for b in &bytes {
             b.serialize(writer)?;
         }
@@ -67,6 +68,12 @@ impl BorshDeserialize for Covenant {
     fn deserialize_reader<R>(reader: &mut R) -> Result<Self, io::Error>
     where R: io::Read {
         let len = reader.read_varint()?;
+        if len > MAX_COVENANT_BYTES {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Larger than max covenant bytes".to_string(),
+            ));
+        }
         let mut data = Vec::with_capacity(len);
         for _ in 0..len {
             data.push(u8::deserialize_reader(reader)?);
@@ -232,5 +239,14 @@ mod test {
         let buf = &mut buf.as_slice();
         assert_eq!(covenant, Covenant::deserialize(buf).unwrap());
         assert_eq!(buf, &[1, 2, 3]);
+    }
+
+    #[tokio::test]
+    async fn test_borsh_de_serialization_too_large() {
+        // We dont care about the actual convent here, just that its not too large on the varint size
+        // We lie about the size to try and get a mem panic, and say this covenant is u64::max large.
+        let buf = vec![255, 255, 255, 255, 255, 255, 255, 255, 255, 1, 49, 8, 2, 5, 6];
+        let buf = &mut buf.as_slice();
+        assert!(Covenant::deserialize(buf).is_err());
     }
 }
