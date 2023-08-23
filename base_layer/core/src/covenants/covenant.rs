@@ -55,8 +55,7 @@ pub struct Covenant {
 impl BorshSerialize for Covenant {
     fn serialize<W: Write>(&self, writer: &mut W) -> io::Result<()> {
         let bytes = self.to_bytes();
-        // writer.write_varint(bytes.len())?;
-        writer.write_varint(usize::MAX)?;
+        writer.write_varint(bytes.len())?;
         for b in &bytes {
             b.serialize(writer)?;
         }
