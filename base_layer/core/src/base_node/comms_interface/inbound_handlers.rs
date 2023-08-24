@@ -448,8 +448,24 @@ where B: BlockchainBackend + 'static
         }
 
         // Lets check if the block exists before we try and ask for a complete block
-        if self.check_exists_and_not_bad_block(block_hash).await? {
-            return Ok(());
+        match self.check_exists_and_not_bad_block(block_hash).await? {
+            Some(true) => return Ok(()),
+            Some(false) => {
+                let err = ChainStorageError::ValidationError {
+                    source: ValidationError::BadBlockFound {
+                        hash: block_hash.to_hex(),
+                    },
+                };
+                if let Err(e) = self
+                    .connectivity
+                    .ban_peer(source_peer.clone(), format!("Peer propagated invalid block: {}", err))
+                    .await
+                {
+                    error!(target: LOG_TARGET, "Failed to ban peer: {}", e);
+                }
+                return Err(CommsInterfaceError::ChainStorageError(err));
+            },
+            None => {},
         }
 
         // lets check that the difficulty at least matches the min required difficulty
@@ -457,7 +473,7 @@ where B: BlockchainBackend + 'static
         // All we care here is that bad blocks are not free to make, and that they are more expensive to make then they
         // are to validate. As soon as a block can be linked to the main chain, a proper full proof of work check will
         // be done before any other validation.
-        self.check_min_block_difficulty(&new_block).await?;
+        self.check_min_block_difficulty(&new_block, &source_peer).await?;
 
         {
             // we use a double lock to make sure we can only reconcile one unique block at a time. We may receive the
@@ -474,8 +490,24 @@ where B: BlockchainBackend + 'static
         }
         {
             let mut write_lock = self.list_of_reconciling_blocks.write().await;
-            if self.check_exists_and_not_bad_block(block_hash).await? {
-                return Ok(());
+            match self.check_exists_and_not_bad_block(block_hash).await? {
+                Some(true) => return Ok(()),
+                Some(false) => {
+                    let err = ChainStorageError::ValidationError {
+                        source: ValidationError::BadBlockFound {
+                            hash: block_hash.to_hex(),
+                        },
+                    };
+                    if let Err(e) = self
+                        .connectivity
+                        .ban_peer(source_peer.clone(), format!("Peer propagated invalid block: {}", err))
+                        .await
+                    {
+                        error!(target: LOG_TARGET, "Failed to ban peer: {}", e);
+                    }
+                    return Err(CommsInterfaceError::ChainStorageError(err));
+                },
+                None => {},
             }
 
             if !write_lock.insert(block_hash) {
@@ -506,7 +538,11 @@ where B: BlockchainBackend + 'static
         Ok(())
     }
 
-    async fn check_min_block_difficulty(&self, new_block: &NewBlock) -> Result<(), CommsInterfaceError> {
+    async fn check_min_block_difficulty(
+        &mut self,
+        new_block: &NewBlock,
+        source_peer: &NodeId,
+    ) -> Result<(), CommsInterfaceError> {
         let constants = self.consensus_manager.consensus_constants(new_block.header.height);
         let min_difficulty = constants.min_pow_difficulty(new_block.header.pow.pow_algo);
         let achieved = match new_block.header.pow_algo() {
@@ -520,21 +556,29 @@ where B: BlockchainBackend + 'static
                     self.blockchain_db.get_chain_metadata().await?.height_of_longest_chain(),
                 )
                 .await?;
-            return Err(CommsInterfaceError::InvalidBlockHeader(
-                BlockHeaderValidationError::ProofOfWorkError(PowError::AchievedDifficultyBelowMin),
-            ));
+            let err = BlockHeaderValidationError::ProofOfWorkError(PowError::AchievedDifficultyBelowMin);
+            if let Err(e) = self
+                .connectivity
+                .ban_peer(source_peer.clone(), format!("Peer propagated invalid block: {}", err))
+                .await
+            {
+                error!(target: LOG_TARGET, "Failed to ban peer: {}", e);
+            }
+            return Err(CommsInterfaceError::InvalidBlockHeader(err));
         }
         Ok(())
     }
 
-    async fn check_exists_and_not_bad_block(&self, block: FixedHash) -> Result<bool, CommsInterfaceError> {
+    /// Returns Some if the block exists, true if it it just a normal block, false if its a bad block. Returns None if
+    /// the block does not exist or is not a bad block
+    async fn check_exists_and_not_bad_block(&self, block: FixedHash) -> Result<Option<bool>, CommsInterfaceError> {
         if self.blockchain_db.block_exists(block).await? {
             debug!(
                 target: LOG_TARGET,
                 "Block with hash `{}` already stored",
                 block.to_hex()
             );
-            return Ok(true);
+            return Ok(Some(true));
         }
         if self.blockchain_db.bad_block_exists(block).await? {
             debug!(
@@ -542,13 +586,9 @@ where B: BlockchainBackend + 'static
                 "Block with hash `{}` already validated as a bad block",
                 block.to_hex()
             );
-            return Err(CommsInterfaceError::ChainStorageError(
-                ChainStorageError::ValidationError {
-                    source: ValidationError::BadBlockFound { hash: block.to_hex() },
-                },
-            ));
+            return Ok(Some(false));
         }
-        Ok(false)
+        Ok(None)
     }
 
     async fn reconcile_and_add_block(
