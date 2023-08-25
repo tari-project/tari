@@ -52,7 +52,7 @@ Some questions to ask:
 PRs will need to be checked manually if they change this code.
 4. What happens when functions are called with no data, too much data, repeated data, etc.?
 5. Can some flow of data lead to a panic?
-6. When using mutexes, readwrite locks or semaphores, can the lock be held for a long time?
+6. When using mutexes, readwrite locks or semaphores, can the lock be held for a long time? e.g. the lock is held while performing network IO with an untrusted peer.
 7. When requesting data from another node, there are a few things to look out for:
    1. What happens if the node does not respond? Is there a timeout? The timeout should be set as low as possible, otherwise 
 the node can hold up the processing on the requesting node.
