@@ -77,7 +77,7 @@ It is also pretty much impossible to test ordering on intel based systems, so it
 When using `Vec::with_capacity`, is the size inputted provided by an untrusted party? If so, use a maximum value.
 
 #### Unchecked arithmetic and overflows
-Any plus/minus `+/-` has a chance of overflowing or underflowing. It is best to use the checked versions `checked_add` and `checked_sub` to avoid this.
+Any arithmetic operation has a chance of overflowing or underflowing. It is best to use the checked versions, for example `checked_mul`, `checked_sub` etc. to avoid this.
 Be careful of indexing into a slice or array with an untrusted value. This can cause a panic. Use `get` instead.
 
 #### Shifts (<<, >>)
