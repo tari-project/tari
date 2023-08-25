@@ -74,7 +74,7 @@ and are only seen in arm based systems. It’s also unlikely that any performanc
 It is also pretty much impossible to test ordering on intel based systems, so it is best to avoid it.
 
 #### Vec
-When using `Vec::with_capacity`, is the size inputted provided by an untrusted party? If so, use a maximum value.
+When using `Vec::with_capacity`, is the size input provided by an untrusted party? If so, use a maximum bound on the capacity and the number of items returned or reject the message. The latter is almost always more appropriate. 
 
 #### Unchecked arithmetic and overflows
 Any arithmetic operation has a chance of overflowing or underflowing. It is best to use the checked versions, for example `checked_mul`, `checked_sub` etc. to avoid this.
