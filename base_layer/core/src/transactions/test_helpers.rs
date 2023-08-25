@@ -658,11 +658,15 @@ pub async fn create_stx_protocol(
         .clone();
     let mut stx_builder = SenderTransactionProtocol::builder(constants, key_manager.clone());
     let change = TestParams::new(key_manager).await;
+    let script_public_key = key_manager
+        .get_public_key_at_key_id(&change.script_key_id)
+        .await
+        .unwrap();
     stx_builder
         .with_lock_height(schema.lock_height)
         .with_fee_per_gram(schema.fee)
         .with_change_data(
-            TariScript::default(),
+            script!(PushPubKey(Box::new(script_public_key))),
             ExecutionStack::default(),
             change.script_key_id,
             change.spend_key_id,
