@@ -123,6 +123,7 @@ use tari_common_types::{
     tari_address::{TariAddress, TariAddressError},
     transaction::{TransactionDirection, TransactionStatus, TxId},
     types::{ComAndPubSignature, Commitment, PublicKey, SignatureWithDomain},
+    wallet_types::WalletType,
 };
 use tari_comms::{
     multiaddr::Multiaddr,
@@ -5528,6 +5529,7 @@ pub unsafe extern "C" fn wallet_create(
         key_manager_backend,
         shutdown.to_signal(),
         master_seed,
+        WalletType::Software,
     ));
 
     match w {

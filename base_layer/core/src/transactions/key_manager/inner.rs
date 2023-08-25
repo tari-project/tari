@@ -26,7 +26,10 @@ use digest::consts::U64;
 use log::*;
 use rand::rngs::OsRng;
 use strum::IntoEnumIterator;
-use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature};
+use tari_common_types::{
+    types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature},
+    wallet_types::WalletType,
+};
 use tari_comms::types::CommsDHKE;
 use tari_crypto::{
     commitment::{ExtensionDegree, HomomorphicCommitmentFactory},
@@ -95,6 +98,7 @@ pub struct TransactionKeyManagerInner<TBackend> {
     db: KeyManagerDatabase<TBackend, PublicKey>,
     master_seed: CipherSeed,
     crypto_factories: CryptoFactories,
+    wallet_type: WalletType,
 }
 
 impl<TBackend> TransactionKeyManagerInner<TBackend>
@@ -108,12 +112,14 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         master_seed: CipherSeed,
         db: KeyManagerDatabase<TBackend, PublicKey>,
         crypto_factories: CryptoFactories,
+        wallet_type: WalletType,
     ) -> Result<Self, KeyManagerServiceError> {
         let mut km = TransactionKeyManagerInner {
             key_managers: HashMap::new(),
             db,
             master_seed,
             crypto_factories,
+            wallet_type,
         };
         km.add_standard_core_branches()?;
         Ok(km)

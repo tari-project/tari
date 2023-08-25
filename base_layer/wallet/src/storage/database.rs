@@ -27,7 +27,7 @@ use std::{
 
 use chrono::NaiveDateTime;
 use log::*;
-use tari_common_types::chain_metadata::ChainMetadata;
+use tari_common_types::{chain_metadata::ChainMetadata, wallet_types::WalletType};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{IdentitySignature, PeerFeatures},
@@ -36,7 +36,7 @@ use tari_comms::{
 use tari_key_manager::cipher_seed::CipherSeed;
 use tari_utilities::SafePassword;
 
-use crate::{error::WalletStorageError, utxo_scanner_service::service::ScannedBlock, WalletType};
+use crate::{error::WalletStorageError, utxo_scanner_service::service::ScannedBlock};
 
 const LOG_TARGET: &str = "wallet::database";
 

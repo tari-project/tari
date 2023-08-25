@@ -32,6 +32,7 @@ use tari_common_types::{
     tari_address::TariAddress,
     transaction::{ImportStatus, TxId},
     types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, SignatureWithDomain},
+    wallet_types::WalletType,
 };
 use tari_comms::{
     multiaddr::{Error as MultiaddrError, Multiaddr},
@@ -104,7 +105,6 @@ use crate::{
     },
     util::wallet_identity::WalletIdentity,
     utxo_scanner_service::{handle::UtxoScannerHandle, initializer::UtxoScannerServiceInitializer, RECOVERY_KEY},
-    WalletType,
 };
 
 const LOG_TARGET: &str = "wallet";
@@ -166,6 +166,7 @@ where
         key_manager_backend: TKeyManagerBackend,
         shutdown_signal: ShutdownSignal,
         master_seed: CipherSeed,
+        wallet_type: WalletType,
     ) -> Result<Self, WalletError> {
         let buf_size = cmp::max(WALLET_BUFFER_MIN_SIZE, config.buffer_size);
         let (publisher, subscription_factory) = pubsub_connector(buf_size);
@@ -204,6 +205,7 @@ where
                 key_manager_backend,
                 master_seed,
                 factories.clone(),
+                wallet_type,
             ))
             .add_initializer(TransactionServiceInitializer::<U, T, TKeyManagerInterface>::new(
                 config.transaction_service_config,

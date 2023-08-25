@@ -21,8 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    fmt,
-    fmt::{Display, Formatter},
     path::{Path, PathBuf},
     str::FromStr,
     time::Duration,
@@ -34,7 +32,7 @@ use tari_common::{
     configuration::{serializers, Network, StringList},
     SubConfigPath,
 };
-use tari_common_types::grpc_authentication::GrpcAuthentication;
+use tari_common_types::{grpc_authentication::GrpcAuthentication, wallet_types::WalletType};
 use tari_comms::multiaddr::Multiaddr;
 use tari_p2p::P2pConfig;
 use tari_utilities::SafePassword;
@@ -195,19 +193,4 @@ pub enum TransactionStage {
     MinedUnconfirmed,
     Mined,
     TimedOut,
-}
-
-#[derive(Debug, EnumString, Clone, Copy, Serialize, Deserialize)]
-pub enum WalletType {
-    Software,
-    Ledger(usize),
-}
-
-impl Display for WalletType {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            WalletType::Software => write!(f, "Software"),
-            WalletType::Ledger(account) => write!(f, "Ledger({account})"),
-        }
-    }
 }

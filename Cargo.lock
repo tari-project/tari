@@ -5686,6 +5686,7 @@ dependencies = [
  "primitive-types",
  "rand",
  "serde",
+ "strum",
  "tari_common",
  "tari_crypto",
  "tari_utilities",

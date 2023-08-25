@@ -38,7 +38,6 @@ use minotari_wallet::{
     Wallet,
     WalletConfig,
     WalletSqlite,
-    WalletType,
 };
 use rpassword::prompt_password_stdout;
 use rustyline::Editor;
@@ -50,6 +49,7 @@ use tari_common::{
     },
     exit_codes::{ExitCode, ExitError},
 };
+use tari_common_types::wallet_types::WalletType;
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{Peer, PeerFeatures, PeerQuery},
@@ -418,7 +418,7 @@ pub async fn init_wallet(
     };
 
     let master_seed = read_or_create_master_seed(recovery_seed.clone(), &wallet_db)?;
-    let _wallet_type = read_or_create_wallet_type(wallet_type, &wallet_db);
+    let wallet_type = read_or_create_wallet_type(wallet_type, &wallet_db);
 
     let node_identity = match config.wallet.identity_file.as_ref() {
         Some(identity_file) => {
@@ -464,6 +464,7 @@ pub async fn init_wallet(
         key_manager_backend,
         shutdown_signal,
         master_seed,
+        wallet_type.unwrap(),
     )
     .await
     .map_err(|e| match e {
