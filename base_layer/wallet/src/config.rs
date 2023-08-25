@@ -200,14 +200,14 @@ pub enum TransactionStage {
 #[derive(Debug, EnumString, Clone, Copy, Serialize, Deserialize)]
 pub enum WalletType {
     Software,
-    Ledger,
+    Ledger(usize),
 }
 
 impl Display for WalletType {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             WalletType::Software => write!(f, "Software"),
-            WalletType::Ledger => write!(f, "Ledger"),
+            WalletType::Ledger(account) => write!(f, "Ledger({account})"),
         }
     }
 }

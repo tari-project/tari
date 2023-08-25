@@ -22,7 +22,7 @@
 
 #![allow(dead_code, unused)]
 
-use std::{fs, path::PathBuf, str::FromStr, sync::Arc, time::Instant};
+use std::{fs, io, path::PathBuf, str::FromStr, sync::Arc, time::Instant};
 
 use ledger_transport_hid::{hidapi::HidApi, TransportNativeHID};
 use log::*;
@@ -830,7 +830,8 @@ pub fn prompt_wallet_type(
                 match TransportNativeHID::new(&HidApi::new().expect(err)) {
                     Ok(_) => {
                         println!("Device found.");
-                        Some(WalletType::Ledger)
+                        let account = prompt_ledger_account().expect("An account value");
+                        Some(WalletType::Ledger(account))
                     },
                     Err(_) => panic!("{}", err),
                 }
@@ -839,6 +840,19 @@ pub fn prompt_wallet_type(
             }
         },
         _ => None,
+    }
+}
+
+pub fn prompt_ledger_account() -> Option<usize> {
+    let question =
+        "\r\nPlease enter an account number for your ledger. A simple 1-9, easily remembered numbers are suggested.";
+    println!("{}", question);
+    let mut input = "".to_string();
+    io::stdin().read_line(&mut input).unwrap();
+    let input = input.trim();
+    match input.parse() {
+        Ok(num) => Some(num),
+        Err(_e) => Some(1),
     }
 }
 
