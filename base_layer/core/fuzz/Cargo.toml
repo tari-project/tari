@@ -34,3 +34,9 @@ name = "fixed_byte_array"
 path = "fuzz_targets/fixed_byte_array.rs"
 test = false
 doc = false
+
+[[bin]]
+name = "blockheader"
+path = "fuzz_targets/blockheader.rs"
+test = false
+doc = false

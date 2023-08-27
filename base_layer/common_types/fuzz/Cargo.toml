@@ -1,0 +1,27 @@
+[package]
+name = "tari_common_types-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2018"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.tari_common_types]
+path = ".."
+
+# Prevent this from interfering with workspaces
+[workspace]
+members = ["."]
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "fixed_hash"
+path = "fuzz_targets/fixed_hash.rs"
+test = false
+doc = false
