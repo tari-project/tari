@@ -61,3 +61,26 @@ impl Default for KernelFeatures {
         KernelFeatures::empty()
     }
 }
+
+#[cfg(test)]
+mod test {
+    #[test]
+    fn test_all_possible_parses() {
+        let x = super::KernelFeatures::from_bits(0);
+        assert_eq!(x, Some(super::KernelFeatures::empty()));
+        let x = super::KernelFeatures::from_bits(1);
+        assert_eq!(x, Some(super::KernelFeatures::COINBASE_KERNEL));
+        let x = super::KernelFeatures::from_bits(2);
+        assert_eq!(x, Some(super::KernelFeatures::BURN_KERNEL));
+        let x = super::KernelFeatures::from_bits(3);
+        assert_eq!(
+            x,
+            Some(super::KernelFeatures::COINBASE_KERNEL | super::KernelFeatures::BURN_KERNEL)
+        );
+        let x = super::KernelFeatures::from_bits(4);
+        assert_eq!(x, None);
+        for i in 5..=u8::max_value() {
+            assert_eq!(None, super::KernelFeatures::from_bits(i));
+        }
+    }
+}
