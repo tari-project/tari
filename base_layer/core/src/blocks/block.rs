@@ -96,12 +96,6 @@ impl Block {
         self.body.kernels().iter().fold(0.into(), |sum, x| sum + x.fee)
     }
 
-    /// This function will check spent kernel rules like tx lock height etc
-    pub fn check_kernel_rules(&self) -> Result<(), BlockValidationError> {
-        self.body.check_kernel_rules(self.header.height)?;
-        Ok(())
-    }
-
     /// Run through the outputs of the block and check that
     /// 1. There is exactly ONE coinbase output
     /// 2. The output's maturity is correctly set
