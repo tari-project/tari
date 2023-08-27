@@ -1,7 +1,7 @@
 [package]
-name = "tari_common_sqlite"
-authors = ["The Tari Development Community"]
-description = "Tari cryptocurrency wallet library"
+name = "taiji_common_sqlite"
+authors = ["The Taiji Development Community"]
+description = "Taiji cryptocurrency wallet library"
 license = "BSD-3-Clause"
 version = "0.52.0-pre.0"
 edition = "2018"
@@ -19,4 +19,4 @@ thiserror = "1.0.26"
 tokio = { version = "1.23", features = ["sync", "macros"] }
 
 [dev-dependencies]
-tari_test_utils = {  path = "../infrastructure/test_utils" }
+taiji_test_utils = {  path = "../infrastructure/test_utils" }

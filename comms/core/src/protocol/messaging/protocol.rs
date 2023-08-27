@@ -1,4 +1,4 @@
-// Copyright 2020, The Tari Project
+// Copyright 2020, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -29,7 +29,7 @@ use std::{
 
 use bytes::Bytes;
 use log::*;
-use tari_shutdown::{Shutdown, ShutdownSignal};
+use taiji_shutdown::{Shutdown, ShutdownSignal};
 use thiserror::Error;
 use tokio::{
     io::{AsyncRead, AsyncWrite},

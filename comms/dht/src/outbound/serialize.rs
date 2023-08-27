@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -24,7 +24,7 @@ use std::task::Poll;
 
 use futures::task::Context;
 use log::*;
-use tari_comms::{
+use taiji_comms::{
     message::{MessageExt, OutboundMessage},
     pipeline::PipelineError,
     Bytes,
@@ -136,7 +136,7 @@ impl<S> Layer<S> for SerializeLayer {
 #[cfg(test)]
 mod test {
     use prost::Message;
-    use tari_comms::peer_manager::NodeId;
+    use taiji_comms::peer_manager::NodeId;
 
     use super::*;
     use crate::test_utils::{assert_send_static_service, create_outbound_message, service_spy};

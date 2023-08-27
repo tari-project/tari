@@ -1,4 +1,4 @@
-// Copyright 2023, The Tari Project
+// Copyright 2023, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -23,11 +23,11 @@
 use std::ops::Deref;
 
 use log::{debug, info, trace};
-use tari_contacts::contacts_service::{
+use taiji_contacts::contacts_service::{
     handle::{ContactsLivenessData, ContactsLivenessEvent, ContactsServiceHandle},
     types::Message,
 };
-use tari_shutdown::ShutdownSignal;
+use taiji_shutdown::ShutdownSignal;
 
 const LOG_TARGET: &str = "chat_ffi::callback_handler";
 

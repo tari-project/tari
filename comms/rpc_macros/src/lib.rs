@@ -1,4 +1,4 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 use proc_macro::TokenStream;
@@ -11,16 +11,16 @@ mod generator;
 mod method_info;
 mod options;
 
-/// #[tari_rpc(...)] proc macro attribute
+/// #[taiji_rpc(...)] proc macro attribute
 ///
-/// Generates Tari RPC "harness code" for a given trait.
+/// Generates Taiji RPC "harness code" for a given trait.
 ///
 /// ```no_run,ignore
-/// # use tari_comms_rpc_macros::tari_rpc;
-/// # use tari_comms::protocol::rpc::{Request, Streaming, Response, RpcStatus, RpcServer};
-/// use tari_comms::{framing, memsocket::MemorySocket};
+/// # use taiji_comms_rpc_macros::taiji_rpc;
+/// # use taiji_comms::protocol::rpc::{Request, Streaming, Response, RpcStatus, RpcServer};
+/// use taiji_comms::{framing, memsocket::MemorySocket};
 ///
-/// #[tari_rpc(protocol_name = b"/tari/greeting/1.0", server_struct = GreetingServer, client_struct = GreetingClient)]
+/// #[taiji_rpc(protocol_name = b"/taiji/greeting/1.0", server_struct = GreetingServer, client_struct = GreetingClient)]
 /// pub trait GreetingRpc: Send + Sync + 'static {
 ///     #[rpc(method = 1)]
 ///     async fn say_hello(&self, request: Request<String>) -> Result<Response<String>, RpcStatus>;
@@ -32,7 +32,7 @@ mod options;
 ///
 /// // GreetingServer and GreetingClient can be used
 /// struct GreetingService;
-/// #[tari_comms::async_trait]
+/// #[taiji_comms::async_trait]
 /// impl GreetingRpc for GreetingService {
 ///     async fn say_hello(&self, request: Request<String>) -> Result<Response<String>, RpcStatus> {
 ///         unimplemented!()
@@ -61,7 +61,7 @@ mod options;
 /// }
 /// ```
 ///
-/// `tari_rpc` options
+/// `taiji_rpc` options
 /// - `protocol_name` is the value used during protocol negotiation
 /// - `server_struct` is the name of the "server" struct that is generated
 /// - `client_struct` is the name of the client struct that is generated
@@ -70,7 +70,7 @@ mod options;
 /// - `method` is a unique number that uniquely identifies each function within the service. Once a `method` is used it
 ///   should never be reused (think protobuf field numbers).
 #[proc_macro_attribute]
-pub fn tari_rpc(attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn taiji_rpc(attr: TokenStream, item: TokenStream) -> TokenStream {
     let options = syn::parse_macro_input!(attr as options::RpcTraitOptions);
     let target_trait = syn::parse_macro_input!(item as syn::ItemTrait);
     let code = expand::expand_trait(target_trait, options);

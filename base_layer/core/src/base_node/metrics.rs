@@ -1,4 +1,4 @@
-//  Copyright 2022, The Tari Project
+//  Copyright 2022, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -21,13 +21,13 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use once_cell::sync::Lazy;
-use tari_common_types::types::FixedHash;
-use tari_metrics::{IntCounter, IntCounterVec, IntGauge, IntGaugeVec};
+use taiji_common_types::types::FixedHash;
+use taiji_metrics::{IntCounter, IntCounterVec, IntGauge, IntGaugeVec};
 use tari_utilities::hex::Hex;
 
 pub fn tip_height() -> &'static IntGauge {
     static METER: Lazy<IntGauge> = Lazy::new(|| {
-        tari_metrics::register_int_gauge("base_node::blockchain::tip_height", "The current tip height").unwrap()
+        taiji_metrics::register_int_gauge("base_node::blockchain::tip_height", "The current tip height").unwrap()
     });
 
     &METER
@@ -35,7 +35,7 @@ pub fn tip_height() -> &'static IntGauge {
 
 pub fn target_difficulty_sha() -> &'static IntGauge {
     static METER: Lazy<IntGauge> = Lazy::new(|| {
-        tari_metrics::register_int_gauge(
+        taiji_metrics::register_int_gauge(
             "base_node::blockchain::target_difficulty_sha",
             "The current miner target difficulty for the sha3 PoW algo",
         )
@@ -47,7 +47,7 @@ pub fn target_difficulty_sha() -> &'static IntGauge {
 
 pub fn target_difficulty_randomx() -> &'static IntGauge {
     static METER: Lazy<IntGauge> = Lazy::new(|| {
-        tari_metrics::register_int_gauge(
+        taiji_metrics::register_int_gauge(
             "base_node::blockchain::target_difficulty_monero",
             "The current miner target difficulty for the monero PoW algo",
         )
@@ -59,7 +59,7 @@ pub fn target_difficulty_randomx() -> &'static IntGauge {
 
 pub fn reorg(fork_height: u64, num_added: usize, num_removed: usize) -> IntGauge {
     static METER: Lazy<IntGaugeVec> = Lazy::new(|| {
-        tari_metrics::register_int_gauge_vec("base_node::blockchain::reorgs", "Reorg stats", &[
+        taiji_metrics::register_int_gauge_vec("base_node::blockchain::reorgs", "Reorg stats", &[
             "fork_height",
             "num_added",
             "num_removed",
@@ -76,7 +76,7 @@ pub fn reorg(fork_height: u64, num_added: usize, num_removed: usize) -> IntGauge
 
 pub fn compact_block_tx_misses(height: u64) -> IntGauge {
     static METER: Lazy<IntGaugeVec> = Lazy::new(|| {
-        tari_metrics::register_int_gauge_vec(
+        taiji_metrics::register_int_gauge_vec(
             "base_node::blockchain::compact_block_unknown_transactions",
             "Number of unknown transactions from the incoming compact block",
             &["height"],
@@ -89,7 +89,7 @@ pub fn compact_block_tx_misses(height: u64) -> IntGauge {
 
 pub fn compact_block_full_misses(height: u64) -> IntCounter {
     static METER: Lazy<IntCounterVec> = Lazy::new(|| {
-        tari_metrics::register_int_counter_vec(
+        taiji_metrics::register_int_counter_vec(
             "base_node::blockchain::compact_block_miss",
             "Number of full blocks that had to be requested",
             &["height"],
@@ -102,7 +102,7 @@ pub fn compact_block_full_misses(height: u64) -> IntCounter {
 
 pub fn compact_block_mmr_mismatch(height: u64) -> IntCounter {
     static METER: Lazy<IntCounterVec> = Lazy::new(|| {
-        tari_metrics::register_int_counter_vec(
+        taiji_metrics::register_int_counter_vec(
             "base_node::blockchain::compact_block_mmr_mismatch",
             "Number of full blocks that had to be requested because of MMR mismatch",
             &["height"],
@@ -115,7 +115,7 @@ pub fn compact_block_mmr_mismatch(height: u64) -> IntCounter {
 
 pub fn orphaned_blocks() -> IntCounter {
     static METER: Lazy<IntCounter> = Lazy::new(|| {
-        tari_metrics::register_int_counter(
+        taiji_metrics::register_int_counter(
             "base_node::blockchain::orphaned_blocks",
             "Number of valid orphan blocks accepted by the base node",
         )
@@ -127,7 +127,7 @@ pub fn orphaned_blocks() -> IntCounter {
 
 pub fn rejected_blocks(height: u64, hash: &FixedHash) -> IntCounter {
     static METER: Lazy<IntCounterVec> = Lazy::new(|| {
-        tari_metrics::register_int_counter_vec(
+        taiji_metrics::register_int_counter_vec(
             "base_node::blockchain::rejected_blocks",
             "Number of block rejected by the base node",
             &["height", "block_hash"],
@@ -140,7 +140,7 @@ pub fn rejected_blocks(height: u64, hash: &FixedHash) -> IntCounter {
 
 pub fn rejected_local_blocks(height: u64, hash: &FixedHash) -> IntCounter {
     static METER: Lazy<IntCounterVec> = Lazy::new(|| {
-        tari_metrics::register_int_counter_vec(
+        taiji_metrics::register_int_counter_vec(
             "base_node::blockchain::rejected_local_blocks",
             "Number of local block rejected by the base node",
             &["height", "block_hash"],
@@ -153,7 +153,7 @@ pub fn rejected_local_blocks(height: u64, hash: &FixedHash) -> IntCounter {
 
 pub fn active_sync_peers() -> &'static IntGauge {
     static METER: Lazy<IntGauge> = Lazy::new(|| {
-        tari_metrics::register_int_gauge(
+        taiji_metrics::register_int_gauge(
             "base_node::sync::active_peers",
             "Number of active peers syncing from this node",
         )
@@ -165,7 +165,7 @@ pub fn active_sync_peers() -> &'static IntGauge {
 
 pub fn utxo_set_size() -> &'static IntGauge {
     static METER: Lazy<IntGauge> = Lazy::new(|| {
-        tari_metrics::register_int_gauge(
+        taiji_metrics::register_int_gauge(
             "base_node::blockchain::utxo_set_size",
             "The number of UTXOs in the current UTXO set",
         )

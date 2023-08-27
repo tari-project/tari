@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2020, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -29,13 +29,13 @@ use std::{
 };
 
 use croaring::Bitmap;
-use tari_common::configuration::Network;
-use tari_common_types::{
+use taiji_common::configuration::Network;
+use taiji_common_types::{
     chain_metadata::ChainMetadata,
     types::{Commitment, HashOutput, PublicKey, Signature},
 };
-use tari_storage::lmdb_store::LMDBConfig;
-use tari_test_utils::paths::create_temporary_data_path;
+use taiji_storage::lmdb_store::LMDBConfig;
+use taiji_test_utils::paths::create_temporary_data_path;
 
 use super::{create_block, mine_to_difficulty};
 use crate::{

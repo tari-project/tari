@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -21,13 +21,13 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use once_cell::sync::Lazy;
-use tari_metrics::{IntCounter, IntCounterVec, IntGauge, IntGaugeVec};
+use taiji_metrics::{IntCounter, IntCounterVec, IntGauge, IntGaugeVec};
 
 use crate::{connection_manager::ConnectionDirection, peer_manager::NodeId, protocol::ProtocolId};
 
 pub fn pending_connections(peer: Option<&NodeId>, direction: ConnectionDirection) -> IntGauge {
     static METER: Lazy<IntGaugeVec> = Lazy::new(|| {
-        tari_metrics::register_int_gauge_vec(
+        taiji_metrics::register_int_gauge_vec(
             "comms::connections::pending",
             "Number of active connections by direction",
             &["peer_id", "direction"],
@@ -45,7 +45,7 @@ pub fn pending_connections(peer: Option<&NodeId>, direction: ConnectionDirection
 
 pub fn successful_connections(peer: &NodeId, direction: ConnectionDirection) -> IntCounter {
     static METER: Lazy<IntCounterVec> = Lazy::new(|| {
-        tari_metrics::register_int_counter_vec(
+        taiji_metrics::register_int_counter_vec(
             "comms::connections::success",
             "Number of active connections by direction",
             &["peer_id", "direction"],
@@ -58,7 +58,7 @@ pub fn successful_connections(peer: &NodeId, direction: ConnectionDirection) -> 
 
 pub fn failed_connections(peer: &NodeId, direction: ConnectionDirection) -> IntCounter {
     static METER: Lazy<IntCounterVec> = Lazy::new(|| {
-        tari_metrics::register_int_counter_vec(
+        taiji_metrics::register_int_counter_vec(
             "comms::connections::failed",
             "Number of active connections by direction",
             &["peer_id", "direction"],
@@ -71,7 +71,7 @@ pub fn failed_connections(peer: &NodeId, direction: ConnectionDirection) -> IntC
 
 pub fn inbound_substream_counter(peer: &NodeId, protocol: &ProtocolId) -> IntCounter {
     static METER: Lazy<IntCounterVec> = Lazy::new(|| {
-        tari_metrics::register_int_counter_vec(
+        taiji_metrics::register_int_counter_vec(
             "comms::connections::inbound_substream_request_count",
             "Number of substream requests",
             &["peer_id", "protocol"],

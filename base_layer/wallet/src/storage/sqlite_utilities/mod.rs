@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2020. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -25,9 +25,9 @@ use std::{fs::File, ops::DerefMut, path::Path, time::Duration};
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
 use fs2::FileExt;
 use log::*;
-use tari_common_sqlite::sqlite_connection_pool::SqliteConnectionPool;
-use tari_contacts::contacts_service::storage::sqlite_db::ContactsServiceSqliteDatabase;
-use tari_key_manager::key_manager_service::storage::sqlite_db::KeyManagerSqliteDatabase;
+use taiji_common_sqlite::sqlite_connection_pool::SqliteConnectionPool;
+use taiji_contacts::contacts_service::storage::sqlite_db::ContactsServiceSqliteDatabase;
+use taiji_key_manager::key_manager_service::storage::sqlite_db::KeyManagerSqliteDatabase;
 use tari_utilities::SafePassword;
 pub use wallet_db_connection::WalletDbConnection;
 

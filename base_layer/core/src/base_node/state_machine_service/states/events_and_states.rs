@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2020. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -23,7 +23,7 @@
 use std::fmt::{Display, Error, Formatter};
 
 use randomx_rs::RandomXFlag;
-use tari_common_types::chain_metadata::ChainMetadata;
+use taiji_common_types::chain_metadata::ChainMetadata;
 
 use crate::base_node::{
     state_machine_service::states::{

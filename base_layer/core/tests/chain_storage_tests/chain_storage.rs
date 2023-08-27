@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -21,9 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use rand::{rngs::OsRng, RngCore};
-use tari_common::configuration::Network;
-use tari_common_types::types::BlockHash;
-use tari_core::{
+use taiji_common::configuration::Network;
+use taiji_common_types::types::BlockHash;
+use taiji_core::{
     blocks::{genesis_block, Block, BlockHeader},
     chain_storage::{
         create_lmdb_database,
@@ -46,7 +46,7 @@ use tari_core::{
         TempDatabase,
     },
     transactions::{
-        tari_amount::{uT, MicroMinotari, T},
+        taiji_amount::{uT, MicroMinotaiji, T},
         test_helpers::spend_utxos,
         CryptoFactories,
     },
@@ -54,8 +54,8 @@ use tari_core::{
     txn_schema,
     validation::{mocks::MockValidator, DifficultyCalculator, ValidationError},
 };
-use tari_storage::lmdb_store::LMDBConfig;
-use tari_test_utils::{paths::create_temporary_data_path, unpack_enum};
+use taiji_storage::lmdb_store::LMDBConfig;
+use taiji_test_utils::{paths::create_temporary_data_path, unpack_enum};
 
 // use crate::helpers::database::create_test_db;
 // use crate::helpers::database::create_store;
@@ -185,7 +185,7 @@ fn test_checkpoints() {
 
     let txn = txn_schema!(
         from: vec![outputs[0][0].clone()],
-        to: vec![MicroMinotari(5_000), MicroMinotari(6_000)]
+        to: vec![MicroMinotaiji(5_000), MicroMinotaiji(6_000)]
     );
     let (txn, _) = spend_utxos(txn);
     let block1 = append_block(&db, &blocks[0], vec![txn], &consensus_manager, Difficulty::min()).unwrap();
@@ -1109,7 +1109,7 @@ fn test_handle_reorg_with_no_removed_blocks() {
     .unwrap();
 
     // Now add the fork blocks B3 and B2 (out of order) to the first DB and ensure a reorg.
-    // see https://github.com/tari-project/tari/issues/2101#issuecomment-679188619
+    // see https://github.com/taiji-project/taiji/issues/2101#issuecomment-679188619
     store.add_block(orphan1_blocks[3].to_arc_block()).unwrap(); // B3
     let result = store.add_block(orphan1_blocks[2].to_arc_block()).unwrap(); // B2
     match result {
@@ -1979,20 +1979,20 @@ fn pruned_mode_cleanup_and_fetch_block() {
 }
 
 mod malleability {
-    use tari_common_types::types::{ComAndPubSignature, RangeProof};
-    use tari_core::{
+    use taiji_common_types::types::{ComAndPubSignature, RangeProof};
+    use taiji_core::{
         blocks::Block,
         covenant,
         transactions::{test_helpers::generate_keys, transaction_components::TransactionOutputVersion},
     };
-    use tari_script::{Opcode, TariScript};
+    use taiji_script::{Opcode, TaijiScript};
     use tari_utilities::hex::Hex;
 
     use crate::helpers::block_malleability::*;
 
     mod input {
-        use tari_core::transactions::transaction_components::TransactionInputVersion;
-        use tari_script::StackItem;
+        use taiji_core::transactions::transaction_components::TransactionInputVersion;
+        use taiji_script::StackItem;
 
         use super::*;
 
@@ -2097,7 +2097,7 @@ mod malleability {
                 let output = &mut block.body.outputs_mut()[0];
                 let mut script_bytes = output.script.to_bytes();
                 Opcode::PushZero.to_bytes(&mut script_bytes);
-                let mod_script = TariScript::from_bytes(&script_bytes).unwrap();
+                let mod_script = TaijiScript::from_bytes(&script_bytes).unwrap();
                 output.script = mod_script;
             });
         }
@@ -2134,8 +2134,8 @@ mod malleability {
     }
 
     mod kernel {
-        use tari_common_types::types::Signature;
-        use tari_core::transactions::tari_amount::MicroMinotari;
+        use taiji_common_types::types::Signature;
+        use taiji_core::transactions::taiji_amount::MicroMinotaiji;
 
         use super::*;
 
@@ -2146,7 +2146,7 @@ mod malleability {
         fn test_fee() {
             check_kernel_malleability(|block: &mut Block| {
                 let kernel = &mut block.body.kernels_mut()[0];
-                kernel.fee += MicroMinotari::from(1);
+                kernel.fee += MicroMinotaiji::from(1);
             });
         }
 

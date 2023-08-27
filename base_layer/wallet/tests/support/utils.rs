@@ -1,4 +1,4 @@
-//  Copyright 2019 The Tari Project
+//  Copyright 2019 The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -21,11 +21,11 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use rand::{CryptoRng, Rng};
-use tari_core::{
+use taiji_core::{
     covenants::Covenant,
     transactions::{
         key_manager::TransactionKeyManagerInterface,
-        tari_amount::MicroMinotari,
+        taiji_amount::MicroMinotaiji,
         test_helpers::{create_wallet_output_with_data, TestKeyManager, TestParams},
         transaction_components::{
             OutputFeatures,
@@ -37,12 +37,12 @@ use tari_core::{
         transaction_protocol::sender::TransactionSenderMessage,
     },
 };
-use tari_key_manager::key_manager_service::KeyManagerInterface;
-use tari_script::{inputs, script};
+use taiji_key_manager::key_manager_service::KeyManagerInterface;
+use taiji_script::{inputs, script};
 
 pub async fn make_input<R: Rng + CryptoRng>(
     _rng: &mut R,
-    val: MicroMinotari,
+    val: MicroMinotaiji,
     features: &OutputFeatures,
     key_manager: &TestKeyManager,
 ) -> WalletOutput {
@@ -79,7 +79,7 @@ pub async fn create_wallet_output_from_sender_data(
         0,
         Covenant::default(),
         encrypted_data,
-        MicroMinotari::zero(),
+        MicroMinotaiji::zero(),
         key_manager,
     )
     .await
@@ -102,7 +102,7 @@ pub async fn create_wallet_output_from_sender_data(
 
 pub async fn make_input_with_features<R: Rng + CryptoRng>(
     _rng: &mut R,
-    value: MicroMinotari,
+    value: MicroMinotaiji,
     features: OutputFeatures,
     key_manager: &TestKeyManager,
 ) -> WalletOutput {

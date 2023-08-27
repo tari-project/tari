@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2020. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -19,14 +19,14 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use tari_common_types::transaction::TxId;
-use tari_comms::types::CommsPublicKey;
-use tari_comms_dht::{
+use taiji_common_types::transaction::TxId;
+use taiji_comms::types::CommsPublicKey;
+use taiji_comms_dht::{
     domain_message::OutboundDomainMessage,
     outbound::{OutboundEncryption, OutboundMessageRequester},
 };
-use tari_core::transactions::transaction_protocol::proto::protocol as proto;
-use tari_p2p::tari_message::TariMessageType;
+use taiji_core::transactions::transaction_protocol::proto::protocol as proto;
+use taiji_p2p::taiji_message::TaijiMessageType;
 
 use crate::transaction_service::error::TransactionServiceError;
 
@@ -42,7 +42,7 @@ pub async fn send_transaction_cancelled_message(
     let _send_message_response = outbound_message_service
         .send_direct_unencrypted(
             destination_public_key.clone(),
-            OutboundDomainMessage::new(&TariMessageType::TransactionCancelled, proto_message.clone()),
+            OutboundDomainMessage::new(&TaijiMessageType::TransactionCancelled, proto_message.clone()),
             "transaction cancelled".to_string(),
         )
         .await?;
@@ -52,7 +52,7 @@ pub async fn send_transaction_cancelled_message(
             destination_public_key.clone(),
             OutboundEncryption::encrypt_for(destination_public_key),
             vec![],
-            OutboundDomainMessage::new(&TariMessageType::SenderPartialTransaction, proto_message),
+            OutboundDomainMessage::new(&TaijiMessageType::SenderPartialTransaction, proto_message),
         )
         .await?;
     Ok(())

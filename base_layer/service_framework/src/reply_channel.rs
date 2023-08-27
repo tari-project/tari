@@ -1,4 +1,4 @@
-// Copyright 2019 The Tari Project
+// Copyright 2019 The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -217,7 +217,7 @@ mod test {
     use std::fmt::Debug;
 
     use futures::{executor::block_on, future, StreamExt};
-    use tari_test_utils::unpack_enum;
+    use taiji_test_utils::unpack_enum;
     use tower::ServiceExt;
 
     use super::*;

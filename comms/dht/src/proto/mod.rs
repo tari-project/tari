@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -28,7 +28,7 @@ use std::{
 use anyhow::anyhow;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use rand::{rngs::OsRng, RngCore};
-use tari_comms::{
+use taiji_comms::{
     multiaddr::Multiaddr,
     peer_manager::{IdentitySignature, PeerFeatures, PeerIdentityClaim},
     types::{CommsPublicKey, CommsSecretKey, Signature},
@@ -44,28 +44,28 @@ use crate::{
 };
 
 pub mod common {
-    tari_comms::outdir_include!("tari.dht.common.rs");
+    taiji_comms::outdir_include!("taiji.dht.common.rs");
 }
 
 pub mod envelope {
-    tari_comms::outdir_include!("tari.dht.envelope.rs");
+    taiji_comms::outdir_include!("taiji.dht.envelope.rs");
 }
 
 pub mod dht {
     use super::common;
-    tari_comms::outdir_include!("tari.dht.rs");
+    taiji_comms::outdir_include!("taiji.dht.rs");
 }
 
 pub mod rpc {
-    tari_comms::outdir_include!("tari.dht.rpc.rs");
+    taiji_comms::outdir_include!("taiji.dht.rpc.rs");
 }
 
 pub mod store_forward {
-    tari_comms::outdir_include!("tari.dht.store_forward.rs");
+    taiji_comms::outdir_include!("taiji.dht.store_forward.rs");
 }
 
 pub mod message_header {
-    tari_comms::outdir_include!("tari.dht.message_header.rs");
+    taiji_comms::outdir_include!("taiji.dht.message_header.rs");
 }
 
 //---------------------------------- JoinMessage --------------------------------------------//

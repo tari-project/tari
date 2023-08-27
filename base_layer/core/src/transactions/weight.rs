@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -30,7 +30,7 @@ pub struct WeightParams {
     pub kernel_weight: u64,
     /// Weight in grams per input
     pub input_weight: u64,
-    /// Weight in grams per output, excl. TariScript and OutputFeatures
+    /// Weight in grams per output, excl. TaijiScript and OutputFeatures
     pub output_weight: u64,
     /// Features and scripts per byte weight
     pub features_and_scripts_bytes_per_gram: NonZeroU64,

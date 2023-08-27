@@ -1,4 +1,4 @@
-//   Copyright 2023. The Tari Project
+//   Copyright 2023. The Taiji Project
 //
 //   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //   following conditions are met:
@@ -33,15 +33,15 @@ use async_trait::async_trait;
 type ClientFFI = c_void;
 
 use libc::{c_char, c_int};
-use minotari_app_utilities::identity_management::setup_node_identity;
-use tari_chat_client::{database, ChatClient};
-use tari_common_types::tari_address::TariAddress;
-use tari_comms::{
+use minotaiji_app_utilities::identity_management::setup_node_identity;
+use taiji_chat_client::{database, ChatClient};
+use taiji_common_types::taiji_address::TaijiAddress;
+use taiji_comms::{
     multiaddr::Multiaddr,
     peer_manager::{Peer, PeerFeatures},
     NodeIdentity,
 };
-use tari_contacts::contacts_service::{service::ContactOnlineStatus, types::Message};
+use taiji_contacts::contacts_service::{service::ContactOnlineStatus, types::Message};
 
 use crate::{chat_client::test_config, get_port};
 
@@ -55,8 +55,8 @@ extern "C" fn callback_message_received(_state: *mut c_void) {
     *callback.message_received.lock().unwrap() += 1;
 }
 
-#[cfg_attr(windows, link(name = "tari_chat_ffi.dll"))]
-#[cfg_attr(not(windows), link(name = "tari_chat_ffi"))]
+#[cfg_attr(windows, link(name = "taiji_chat_ffi.dll"))]
+#[cfg_attr(not(windows), link(name = "taiji_chat_ffi"))]
 extern "C" {
     pub fn create_chat_client(
         config: *mut c_void,
@@ -90,7 +90,7 @@ pub struct ChatFFI {
 
 #[async_trait]
 impl ChatClient for ChatFFI {
-    async fn add_contact(&self, address: &TariAddress) {
+    async fn add_contact(&self, address: &TaijiAddress) {
         let client = self.ptr.lock().unwrap();
 
         let address_ptr = Box::into_raw(Box::new(address.to_owned())) as *mut c_void;
@@ -99,7 +99,7 @@ impl ChatClient for ChatFFI {
         unsafe { add_contact(client.0, address_ptr, out_error) }
     }
 
-    async fn check_online_status(&self, address: &TariAddress) -> ContactOnlineStatus {
+    async fn check_online_status(&self, address: &TaijiAddress) -> ContactOnlineStatus {
         let client = self.ptr.lock().unwrap();
 
         let address_ptr = Box::into_raw(Box::new(address.clone())) as *mut c_void;
@@ -111,7 +111,7 @@ impl ChatClient for ChatFFI {
         ContactOnlineStatus::from_byte(u8::try_from(result).unwrap()).expect("A valid u8 from FFI status")
     }
 
-    async fn send_message(&self, receiver: TariAddress, message: String) {
+    async fn send_message(&self, receiver: TaijiAddress, message: String) {
         let client = self.ptr.lock().unwrap();
 
         let message_c_str = CString::new(message).unwrap();
@@ -125,7 +125,7 @@ impl ChatClient for ChatFFI {
         }
     }
 
-    async fn get_messages(&self, address: &TariAddress, limit: u64, page: u64) -> Vec<Message> {
+    async fn get_messages(&self, address: &TaijiAddress, limit: u64, page: u64) -> Vec<Message> {
         let client = self.ptr.lock().unwrap();
 
         let address_ptr = Box::into_raw(Box::new(address.clone())) as *mut c_void;

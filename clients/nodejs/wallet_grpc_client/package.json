@@ -1,12 +1,12 @@
 {
-  "name": "@tari/wallet-grpc-client",
+  "name": "@taiji/wallet-grpc-client",
   "version": "0.0.1",
-  "description": "GRPC client for Tari wallet",
+  "description": "GRPC client for Taiji wallet",
   "main": "./index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "author": "Tari development community",
+  "author": "Taiji development community",
   "dependencies": {
     "@grpc/grpc-js": "^1.7.0",
     "@grpc/proto-loader": "^0.7.0",

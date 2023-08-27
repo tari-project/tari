@@ -17,7 +17,7 @@
 
 [nextnet.p2p.seeds]
 # DNS seeds hosts - DNS TXT records are queried from these hosts and the resulting peers added to the comms peer list.
-dns_seeds = ["seeds.nextnet.tari.com"]
+dns_seeds = ["seeds.nextnet.taiji.com"]
 # Custom specified peer seed nodes
 peer_seeds = [
     # 44444408d5fa29410d9752770f
@@ -28,7 +28,7 @@ peer_seeds = [
 
 [stagenet.p2p.seeds]
 # DNS seeds hosts - DNS TXT records are queried from these hosts and the resulting peers added to the comms peer list.
-dns_seeds = ["seeds.stagenet.tari.com"]
+dns_seeds = ["seeds.stagenet.taiji.com"]
 # Custom specified peer seed nodes
 peer_seeds = [
     # 1337e9449e63134fd5e0ba3207
@@ -59,7 +59,7 @@ peer_seeds = [
 
 [esmeralda.p2p.seeds]
 # DNS seeds hosts - DNS TXT records are queried from these hosts and the resulting peers added to the comms peer list.
-dns_seeds = ["seeds.esmeralda.tari.com"]
+dns_seeds = ["seeds.esmeralda.taiji.com"]
 # Custom specified peer seed nodes
 peer_seeds = [
     # 111111df4003f0c2c827eddad8

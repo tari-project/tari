@@ -1,22 +1,22 @@
 [package]
-name = "tari_p2p"
+name = "taiji_p2p"
 version = "0.52.0-pre.0"
-authors = ["The Tari Development community"]
-description = "Tari base layer-specific peer-to-peer communication features"
+authors = ["The Taiji Development community"]
+description = "Taiji base layer-specific peer-to-peer communication features"
 repository = "https://github.com/tari-project/tari"
-homepage = "https://tari.com"
+homepage = "https://taiji.com"
 readme = "README.md"
 license = "BSD-3-Clause"
 edition = "2018"
 
 [dependencies]
-tari_comms = {  path = "../../comms/core" }
-tari_comms_dht = {  path = "../../comms/dht" }
-tari_common = {  path = "../../common" }
+taiji_comms = {  path = "../../comms/core" }
+taiji_comms_dht = {  path = "../../comms/dht" }
+taiji_common = {  path = "../../common" }
 tari_crypto = { version = "0.18" }
-tari_service_framework = {  path = "../service_framework" }
-tari_shutdown = {  path = "../../infrastructure/shutdown" }
-tari_storage = {  path = "../../infrastructure/storage" }
+taiji_service_framework = {  path = "../service_framework" }
+taiji_shutdown = {  path = "../../infrastructure/shutdown" }
+taiji_storage = {  path = "../../infrastructure/storage" }
 tari_utilities = { version = "0.5" }
 
 anyhow = "1.0.53"
@@ -39,7 +39,7 @@ trust-dns-client = { version = "=0.21.0-alpha.5", features = ["dns-over-rustls"]
 webpki = "0.21"
 
 [dev-dependencies]
-tari_test_utils = {  path = "../../infrastructure/test_utils" }
+taiji_test_utils = {  path = "../../infrastructure/test_utils" }
 
 config = "0.13.0"
 clap = "3.2"
@@ -47,7 +47,7 @@ lazy_static = "1.3.0"
 tempfile = "3.1.0"
 
 [build-dependencies]
-tari_common = {  path = "../../common", features = ["build"] }
+taiji_common = {  path = "../../common", features = ["build"] }
 
 [features]
 test-mocks = []

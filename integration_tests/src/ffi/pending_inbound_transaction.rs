@@ -1,4 +1,4 @@
-//   Copyright 2022. The Tari Project
+//   Copyright 2022. The Taiji Project
 //
 //   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //   following conditions are met:
@@ -54,13 +54,13 @@ impl PendingInboundTransaction {
     }
 
     #[allow(dead_code)]
-    pub fn get_source_tari_address(&self) -> WalletAddress {
+    pub fn get_source_taiji_address(&self) -> WalletAddress {
         let ptr;
         let mut error = 0;
         unsafe {
-            ptr = ffi_import::pending_inbound_transaction_get_source_tari_address(self.ptr, &mut error);
+            ptr = ffi_import::pending_inbound_transaction_get_source_taiji_address(self.ptr, &mut error);
             if error > 0 {
-                println!("pending_inbound_transaction_get_source_tari_address error {}", error);
+                println!("pending_inbound_transaction_get_source_taiji_address error {}", error);
             }
         }
         WalletAddress::from_ptr(ptr)

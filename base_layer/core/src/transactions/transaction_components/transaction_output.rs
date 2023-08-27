@@ -1,4 +1,4 @@
-// Copyright 2018 The Tari Project
+// Copyright 2018 The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -31,7 +31,7 @@ use std::{
 use borsh::{BorshDeserialize, BorshSerialize};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{
+use taiji_common_types::types::{
     ComAndPubSignature,
     Commitment,
     CommitmentFactory,
@@ -48,7 +48,7 @@ use tari_crypto::{
     ristretto::bulletproofs_plus::RistrettoAggregatedPublicStatement,
     tari_utilities::{hex::Hex, ByteArray},
 };
-use tari_script::TariScript;
+use taiji_script::TaijiScript;
 
 use super::TransactionOutputVersion;
 use crate::{
@@ -56,7 +56,7 @@ use crate::{
     consensus::DomainSeparatedConsensusHasher,
     covenants::Covenant,
     transactions::{
-        tari_amount::MicroMinotari,
+        taiji_amount::MicroMinotaiji,
         transaction_components,
         transaction_components::{
             EncryptedData,
@@ -84,8 +84,8 @@ pub struct TransactionOutput {
     /// A proof that the commitment is in the right range
     pub proof: Option<RangeProof>,
     /// The script that will be executed when spending this output
-    pub script: TariScript,
-    /// Tari script offset pubkey, K_O
+    pub script: TaijiScript,
+    /// Taiji script offset pubkey, K_O
     pub sender_offset_public_key: PublicKey,
     /// UTXO signature with the script offset private key, k_O
     pub metadata_signature: ComAndPubSignature,
@@ -96,10 +96,10 @@ pub struct TransactionOutput {
     pub encrypted_data: EncryptedData,
     /// The minimum value of the commitment that is proven by the range proof
     #[serde(default)]
-    pub minimum_value_promise: MicroMinotari,
+    pub minimum_value_promise: MicroMinotaiji,
 }
 
-/// An output for a transaction, includes a range proof and Tari script metadata
+/// An output for a transaction, includes a range proof and Taiji script metadata
 impl TransactionOutput {
     /// Create new Transaction Output
 
@@ -108,12 +108,12 @@ impl TransactionOutput {
         features: OutputFeatures,
         commitment: Commitment,
         proof: Option<RangeProof>,
-        script: TariScript,
+        script: TaijiScript,
         sender_offset_public_key: PublicKey,
         metadata_signature: ComAndPubSignature,
         covenant: Covenant,
         encrypted_data: EncryptedData,
-        minimum_value_promise: MicroMinotari,
+        minimum_value_promise: MicroMinotaiji,
     ) -> TransactionOutput {
         TransactionOutput {
             version,
@@ -133,12 +133,12 @@ impl TransactionOutput {
         features: OutputFeatures,
         commitment: Commitment,
         proof: Option<RangeProof>,
-        script: TariScript,
+        script: TaijiScript,
         sender_offset_public_key: PublicKey,
         metadata_signature: ComAndPubSignature,
         covenant: Covenant,
         encrypted_data: EncryptedData,
-        minimum_value_promise: MicroMinotari,
+        minimum_value_promise: MicroMinotaiji,
     ) -> TransactionOutput {
         TransactionOutput::new(
             TransactionOutputVersion::get_current_version(),
@@ -197,8 +197,8 @@ impl TransactionOutput {
         }
     }
 
-    /// Accessor method for the TariScript contained in an output
-    pub fn script(&self) -> &TariScript {
+    /// Accessor method for the TaijiScript contained in an output
+    pub fn script(&self) -> &TaijiScript {
         &self.script
     }
 
@@ -370,7 +370,7 @@ impl TransactionOutput {
     /// Convenience function that calculates the challenge for the metadata commitment signature
     pub fn build_metadata_signature_challenge(
         version: &TransactionOutputVersion,
-        script: &TariScript,
+        script: &TaijiScript,
         features: &OutputFeatures,
         sender_offset_public_key: &PublicKey,
         ephemeral_commitment: &Commitment,
@@ -378,7 +378,7 @@ impl TransactionOutput {
         commitment: &Commitment,
         covenant: &Covenant,
         encrypted_data: &EncryptedData,
-        minimum_value_promise: MicroMinotari,
+        minimum_value_promise: MicroMinotaiji,
     ) -> [u8; 32] {
         // We build the message separately to help with hardware wallet support. This reduces the amount of data that
         // needs to be transferred in order to sign the signature.
@@ -436,11 +436,11 @@ impl TransactionOutput {
     /// outside of the signing keys and nonces.
     pub fn metadata_signature_message_from_parts(
         version: &TransactionOutputVersion,
-        script: &TariScript,
+        script: &TaijiScript,
         features: &OutputFeatures,
         covenant: &Covenant,
         encrypted_data: &EncryptedData,
-        minimum_value_promise: &MicroMinotari,
+        minimum_value_promise: &MicroMinotaiji,
     ) -> [u8; 32] {
         let common = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("metadata_message")
             .chain(version)
@@ -467,12 +467,12 @@ impl Default for TransactionOutput {
             OutputFeatures::default(),
             CommitmentFactory::default().zero(),
             Some(RangeProof::default()),
-            TariScript::default(),
+            TaijiScript::default(),
             PublicKey::default(),
             ComAndPubSignature::default(),
             Covenant::default(),
             EncryptedData::default(),
-            MicroMinotari::zero(),
+            MicroMinotaiji::zero(),
         )
     }
 }
@@ -576,7 +576,7 @@ mod test {
     use super::{batch_verify_range_proofs, TransactionOutput};
     use crate::transactions::{
         key_manager::TransactionKeyManagerInterface,
-        tari_amount::MicroMinotari,
+        taiji_amount::MicroMinotaiji,
         test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager, TestParams, UtxoTestParams},
         transaction_components::{OutputFeatures, RangeProofType},
         CryptoFactories,
@@ -588,8 +588,8 @@ mod test {
         let key_manager = create_test_core_key_manager_with_memory_db();
         let test_params = TestParams::new(&key_manager).await;
 
-        let value = MicroMinotari(10);
-        let minimum_value_promise = MicroMinotari(10);
+        let value = MicroMinotaiji(10);
+        let minimum_value_promise = MicroMinotaiji(10);
         let tx_output = create_output(
             &test_params,
             value,
@@ -612,8 +612,8 @@ mod test {
         let key_manager = create_test_core_key_manager_with_memory_db();
         let test_params = TestParams::new(&key_manager).await;
 
-        let value = MicroMinotari(10);
-        let minimum_value_promise = MicroMinotari(11);
+        let value = MicroMinotaiji(10);
+        let minimum_value_promise = MicroMinotaiji(11);
         let tx_output = create_invalid_output(
             &test_params,
             value,
@@ -635,8 +635,8 @@ mod test {
         let outputs = [
             &create_output(
                 &test_params,
-                MicroMinotari(10),
-                MicroMinotari::zero(),
+                MicroMinotaiji(10),
+                MicroMinotaiji::zero(),
                 RangeProofType::BulletProofPlus,
                 &key_manager,
             )
@@ -644,8 +644,8 @@ mod test {
             .unwrap(),
             &create_output(
                 &test_params,
-                MicroMinotari(10),
-                MicroMinotari(5),
+                MicroMinotaiji(10),
+                MicroMinotaiji(5),
                 RangeProofType::BulletProofPlus,
                 &key_manager,
             )
@@ -653,8 +653,8 @@ mod test {
             .unwrap(),
             &create_output(
                 &test_params,
-                MicroMinotari(10),
-                MicroMinotari(10),
+                MicroMinotaiji(10),
+                MicroMinotaiji(10),
                 RangeProofType::BulletProofPlus,
                 &key_manager,
             )
@@ -674,8 +674,8 @@ mod test {
         let outputs = [
             &create_output(
                 &test_params,
-                MicroMinotari(10),
-                MicroMinotari::zero(),
+                MicroMinotaiji(10),
+                MicroMinotaiji::zero(),
                 RangeProofType::BulletProofPlus,
                 &key_manager,
             )
@@ -683,8 +683,8 @@ mod test {
             .unwrap(),
             &create_output(
                 &test_params,
-                MicroMinotari(10),
-                MicroMinotari(10),
+                MicroMinotaiji(10),
+                MicroMinotaiji(10),
                 RangeProofType::RevealedValue,
                 &key_manager,
             )
@@ -692,8 +692,8 @@ mod test {
             .unwrap(),
             &create_output(
                 &test_params,
-                MicroMinotari(10),
-                MicroMinotari::zero(),
+                MicroMinotaiji(10),
+                MicroMinotaiji::zero(),
                 RangeProofType::BulletProofPlus,
                 &key_manager,
             )
@@ -701,8 +701,8 @@ mod test {
             .unwrap(),
             &create_output(
                 &test_params,
-                MicroMinotari(20),
-                MicroMinotari(20),
+                MicroMinotaiji(20),
+                MicroMinotaiji(20),
                 RangeProofType::RevealedValue,
                 &key_manager,
             )
@@ -719,8 +719,8 @@ mod test {
         let test_params = TestParams::new(&key_manager).await;
         assert!(create_output(
             &test_params,
-            MicroMinotari(20),
-            MicroMinotari::zero(),
+            MicroMinotaiji(20),
+            MicroMinotaiji::zero(),
             RangeProofType::BulletProofPlus,
             &key_manager
         )
@@ -728,8 +728,8 @@ mod test {
         .is_ok());
         match create_output(
             &test_params,
-            MicroMinotari(20),
-            MicroMinotari::zero(),
+            MicroMinotaiji(20),
+            MicroMinotaiji::zero(),
             RangeProofType::RevealedValue,
             &key_manager,
         )
@@ -746,8 +746,8 @@ mod test {
         let test_params = TestParams::new(&key_manager).await;
         let mut output = create_output(
             &test_params,
-            MicroMinotari(20),
-            MicroMinotari(20),
+            MicroMinotaiji(20),
+            MicroMinotaiji(20),
             RangeProofType::RevealedValue,
             &key_manager,
         )
@@ -775,8 +775,8 @@ mod test {
         let outputs = [
             &create_output(
                 &test_params,
-                MicroMinotari(10),
-                MicroMinotari(10),
+                MicroMinotaiji(10),
+                MicroMinotaiji(10),
                 RangeProofType::BulletProofPlus,
                 &key_manager,
             )
@@ -784,8 +784,8 @@ mod test {
             .unwrap(),
             &create_invalid_output(
                 &test_params,
-                MicroMinotari(10),
-                MicroMinotari(11),
+                MicroMinotaiji(10),
+                MicroMinotaiji(11),
                 RangeProofType::BulletProofPlus,
                 &key_manager,
             )
@@ -797,8 +797,8 @@ mod test {
 
     async fn create_output(
         test_params: &TestParams,
-        value: MicroMinotari,
-        minimum_value_promise: MicroMinotari,
+        value: MicroMinotaiji,
+        minimum_value_promise: MicroMinotaiji,
         range_proof_type: RangeProofType,
         key_manager: &TestKeyManager,
     ) -> Result<TransactionOutput, String> {
@@ -824,14 +824,14 @@ mod test {
 
     async fn create_invalid_output(
         test_params: &TestParams,
-        value: MicroMinotari,
-        minimum_value_promise: MicroMinotari,
+        value: MicroMinotaiji,
+        minimum_value_promise: MicroMinotaiji,
         range_proof_type: RangeProofType,
         key_manager: &TestKeyManager,
     ) -> TransactionOutput {
         // we need first to create a valid minimum value, regardless of the minimum_value_promise
         // because this test function should allow creating an invalid proof for later testing
-        let mut output = create_output(test_params, value, MicroMinotari::zero(), range_proof_type, key_manager)
+        let mut output = create_output(test_params, value, MicroMinotaiji::zero(), range_proof_type, key_manager)
             .await
             .unwrap();
 

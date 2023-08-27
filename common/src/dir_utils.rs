@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -24,7 +24,7 @@ use std::path::PathBuf;
 
 use path_clean::PathClean;
 
-/// Create the default data directory (`~/.tari` on OSx and Linux, for example) if it doesn't already exist
+/// Create the default data directory (`~/.taiji` on OSx and Linux, for example) if it doesn't already exist
 pub fn create_data_directory(base_dir: Option<&PathBuf>) -> Result<(), std::io::Error> {
     let home = default_path("", base_dir);
 
@@ -36,7 +36,7 @@ pub fn create_data_directory(base_dir: Option<&PathBuf>) -> Result<(), std::io::
     }
 }
 
-/// A convenience function for creating subfolders inside the `~/.tari` default data directory
+/// A convenience function for creating subfolders inside the `~/.taiji` default data directory
 ///
 /// # Panics
 /// This function panics if the home folder location cannot be found or if the path value is not valid UTF-8.
@@ -50,7 +50,7 @@ pub fn default_path(filename: &str, base_path: Option<&PathBuf>) -> PathBuf {
     let mut home = base_path.cloned().unwrap_or_else(|| {
         [
             dirs_next::home_dir().unwrap_or_else(|| PathBuf::from(".")),
-            PathBuf::from(".tari"),
+            PathBuf::from(".taiji"),
         ]
         .iter()
         .collect()
@@ -76,7 +76,7 @@ where P: AsRef<std::path::Path> {
 mod test {
     use std::path::PathBuf;
 
-    use tari_test_utils::random::string;
+    use taiji_test_utils::random::string;
     use tempfile::tempdir;
 
     use crate::dir_utils;

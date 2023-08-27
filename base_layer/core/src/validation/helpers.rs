@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -22,7 +22,7 @@
 
 use log::*;
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex};
-use tari_script::TariScript;
+use taiji_script::TaijiScript;
 
 use crate::{
     blocks::{BlockHeader, BlockHeaderValidationError, BlockValidationError},
@@ -196,13 +196,13 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
     Err(ValidationError::UnknownInput)
 }
 
-/// Checks the byte size of TariScript is less than or equal to the given size, otherwise returns an error.
-pub fn check_tari_script_byte_size(script: &TariScript, max_script_size: usize) -> Result<(), ValidationError> {
+/// Checks the byte size of TaijiScript is less than or equal to the given size, otherwise returns an error.
+pub fn check_taiji_script_byte_size(script: &TaijiScript, max_script_size: usize) -> Result<(), ValidationError> {
     let script_size = script
         .get_serialized_size()
         .map_err(|e| ValidationError::CustomError(e.to_string()))?;
     if script_size > max_script_size {
-        return Err(ValidationError::TariScriptExceedsMaxSize {
+        return Err(ValidationError::TaijiScriptExceedsMaxSize {
             max_script_size,
             actual_script_size: script_size,
         });
@@ -441,7 +441,7 @@ pub fn validate_kernel_version(
 
 #[cfg(test)]
 mod test {
-    use tari_test_utils::unpack_enum;
+    use taiji_test_utils::unpack_enum;
 
     use super::*;
     use crate::transactions::{test_helpers, test_helpers::TestParams, CryptoFactories};

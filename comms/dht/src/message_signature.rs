@@ -1,4 +1,4 @@
-//  Copyright 2022, The Tari Project
+//  Copyright 2022, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -23,7 +23,7 @@
 use std::convert::TryFrom;
 
 use rand::rngs::OsRng;
-use tari_comms::types::{CommsPublicKey, CommsSecretKey, Signature};
+use taiji_comms::types::{CommsPublicKey, CommsSecretKey, Signature};
 use tari_crypto::keys::PublicKey;
 use tari_utilities::ByteArray;
 

@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -25,9 +25,9 @@ use blake2::Blake2b;
 use croaring::Bitmap;
 use digest::{consts::U32, Digest};
 use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
-use tari_mmr::{Hash, HashSlice, MerkleMountainRange, MutableMmr};
+use taiji_mmr::{Hash, HashSlice, MerkleMountainRange, MutableMmr};
 
-hash_domain!(MmrTestHashDomain, "com.tari.test.base_layer.core.kernel_mmr", 1);
+hash_domain!(MmrTestHashDomain, "com.taiji.test.base_layer.core.kernel_mmr", 1);
 pub type MmrTestHasherBlake256 = DomainSeparatedHasher<Blake2b<U32>, MmrTestHashDomain>;
 pub type TestMmr = MerkleMountainRange<MmrTestHasherBlake256, Vec<Hash>>;
 pub type MutableTestMmr = MutableMmr<MmrTestHasherBlake256, Vec<Hash>>;

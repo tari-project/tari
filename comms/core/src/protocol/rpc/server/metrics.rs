@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use once_cell::sync::Lazy;
-use tari_metrics::{Histogram, HistogramVec, IntCounter, IntCounterVec, IntGauge, IntGaugeVec};
+use taiji_metrics::{Histogram, HistogramVec, IntCounter, IntCounterVec, IntGauge, IntGaugeVec};
 
 use crate::{
     peer_manager::NodeId,
@@ -33,7 +33,7 @@ use crate::{
 
 pub fn num_sessions(node_id: &NodeId, protocol: &ProtocolId) -> IntGauge {
     static METER: Lazy<IntGaugeVec> = Lazy::new(|| {
-        tari_metrics::register_int_gauge_vec(
+        taiji_metrics::register_int_gauge_vec(
             "comms::rpc::server::num_sessions",
             "The number of active server sessions per peer per protocol",
             &["peer_id", "protocol"],
@@ -46,7 +46,7 @@ pub fn num_sessions(node_id: &NodeId, protocol: &ProtocolId) -> IntGauge {
 
 pub fn handshake_error_counter(node_id: &NodeId, protocol: &ProtocolId) -> IntCounter {
     static METER: Lazy<IntCounterVec> = Lazy::new(|| {
-        tari_metrics::register_int_counter_vec(
+        taiji_metrics::register_int_counter_vec(
             "comms::rpc::server::handshake_error_count",
             "The number of handshake errors per peer per protocol",
             &["peer_id", "protocol"],
@@ -59,7 +59,7 @@ pub fn handshake_error_counter(node_id: &NodeId, protocol: &ProtocolId) -> IntCo
 
 pub fn error_counter(node_id: &NodeId, protocol: &ProtocolId, err: &RpcServerError) -> IntCounter {
     static METER: Lazy<IntCounterVec> = Lazy::new(|| {
-        tari_metrics::register_int_counter_vec(
+        taiji_metrics::register_int_counter_vec(
             "comms::rpc::server::error_count",
             "The number of RPC errors per peer per protocol",
             &["peer_id", "protocol", "error"],
@@ -76,7 +76,7 @@ pub fn error_counter(node_id: &NodeId, protocol: &ProtocolId, err: &RpcServerErr
 
 pub fn status_error_counter(node_id: &NodeId, protocol: &ProtocolId, status_code: RpcStatusCode) -> IntCounter {
     static METER: Lazy<IntCounterVec> = Lazy::new(|| {
-        tari_metrics::register_int_counter_vec(
+        taiji_metrics::register_int_counter_vec(
             "comms::rpc::server::status_error_count",
             "The number of RPC errors by status code per peer per protocol",
             &["peer_id", "protocol", "status"],
@@ -93,7 +93,7 @@ pub fn status_error_counter(node_id: &NodeId, protocol: &ProtocolId, status_code
 
 pub fn inbound_requests_bytes(node_id: &NodeId, protocol: &ProtocolId) -> Histogram {
     static METER: Lazy<HistogramVec> = Lazy::new(|| {
-        tari_metrics::register_histogram_vec(
+        taiji_metrics::register_histogram_vec(
             "comms::rpc::server::inbound_request_bytes",
             "Avg. request bytes per peer per protocol",
             &["peer_id", "protocol"],
@@ -106,7 +106,7 @@ pub fn inbound_requests_bytes(node_id: &NodeId, protocol: &ProtocolId) -> Histog
 
 pub fn outbound_response_bytes(node_id: &NodeId, protocol: &ProtocolId) -> Histogram {
     static METER: Lazy<HistogramVec> = Lazy::new(|| {
-        tari_metrics::register_histogram_vec(
+        taiji_metrics::register_histogram_vec(
             "comms::rpc::server::outbound_response_bytes",
             "Avg. response bytes per peer per protocol",
             &["peer_id", "protocol"],

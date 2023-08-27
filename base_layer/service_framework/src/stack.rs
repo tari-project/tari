@@ -1,4 +1,4 @@
-// Copyright 2019 The Tari Project
+// Copyright 2019 The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use futures::future;
-use tari_shutdown::ShutdownSignal;
+use taiji_shutdown::ShutdownSignal;
 
 use crate::{
     context::{create_context_notifier_pair, ServiceHandles},
@@ -98,7 +98,7 @@ mod test {
 
     use async_trait::async_trait;
     use futures::{executor::block_on, future};
-    use tari_shutdown::Shutdown;
+    use taiji_shutdown::Shutdown;
     use tower::service_fn;
 
     use super::*;

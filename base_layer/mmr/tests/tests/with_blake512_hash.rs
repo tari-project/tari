@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -25,12 +25,12 @@ use std::string::ToString;
 use blake2::Blake2b;
 use digest::consts::U64;
 use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
-use tari_mmr::MerkleMountainRange;
+use taiji_mmr::MerkleMountainRange;
 use tari_utilities::hex::Hex;
 
 hash_domain!(
     Blake512TestMmrHashDomain,
-    "com.tari.test.mmr.tests.with_blake512_hash",
+    "com.taiji.test.mmr.tests.with_blake512_hash",
     1
 );
 pub type Blake512TestMmrHasherBlake2b = DomainSeparatedHasher<Blake2b<U64>, Blake512TestMmrHashDomain>;

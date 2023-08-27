@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BSD-3-Clause
-// Copyright 2020. The Tari Project
+// Copyright 2020. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -26,8 +26,8 @@ use std::{
     ptr,
 };
 
-use tari_common_types::types::BlockHash;
-use tari_comms::peer_manager::NodeId;
+use taiji_common_types::types::BlockHash;
+use taiji_comms::peer_manager::NodeId;
 use tari_utilities::ByteArray;
 
 use crate::{
@@ -36,7 +36,7 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub struct TariBaseNodeState {
+pub struct TaijiBaseNodeState {
     /// The ID of the base node this wallet is connected to
     pub node_id: Option<NodeId>,
 
@@ -68,7 +68,7 @@ pub struct TariBaseNodeState {
 /// Extracts a `NodeId` represented as a vector of bytes wrapped into a `ByteVector`
 ///
 /// ## Arguments
-/// `ptr` - The pointer to a `TariBaseNodeState`
+/// `ptr` - The pointer to a `TaijiBaseNodeState`
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -79,7 +79,7 @@ pub struct TariBaseNodeState {
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn basenode_state_get_node_id(
-    ptr: *mut TariBaseNodeState,
+    ptr: *mut TaijiBaseNodeState,
     error_out: *mut c_int,
 ) -> *mut ByteVector {
     let mut error = 0;
@@ -97,10 +97,10 @@ pub unsafe extern "C" fn basenode_state_get_node_id(
     }
 }
 
-/// Extracts height of th elongest chain from the `TariBaseNodeState`
+/// Extracts height of th elongest chain from the `TaijiBaseNodeState`
 ///
 /// ## Arguments
-/// `ptr` - The pointer to a TariBaseNodeState
+/// `ptr` - The pointer to a TaijiBaseNodeState
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -112,7 +112,7 @@ pub unsafe extern "C" fn basenode_state_get_node_id(
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn basenode_state_get_height_of_the_longest_chain(
-    ptr: *mut TariBaseNodeState,
+    ptr: *mut TaijiBaseNodeState,
     error_out: *mut c_int,
 ) -> c_ulonglong {
     let mut error = 0;
@@ -130,7 +130,7 @@ pub unsafe extern "C" fn basenode_state_get_height_of_the_longest_chain(
 /// Extracts a best block hash [`FixedHash`] represented as a vector of bytes wrapped into a `ByteVector`
 ///
 /// ## Arguments
-/// `ptr` - The pointer to a `TariBaseNodeState`
+/// `ptr` - The pointer to a `TaijiBaseNodeState`
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -142,7 +142,7 @@ pub unsafe extern "C" fn basenode_state_get_height_of_the_longest_chain(
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn basenode_state_get_best_block(
-    ptr: *mut TariBaseNodeState,
+    ptr: *mut TaijiBaseNodeState,
     error_out: *mut c_int,
 ) -> *mut ByteVector {
     let mut error = 0;
@@ -160,7 +160,7 @@ pub unsafe extern "C" fn basenode_state_get_best_block(
 /// Extracts a timestamp of the best block
 ///
 /// ## Arguments
-/// `ptr` - The pointer to a `TariBaseNodeState`
+/// `ptr` - The pointer to a `TaijiBaseNodeState`
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -171,7 +171,7 @@ pub unsafe extern "C" fn basenode_state_get_best_block(
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn basenode_state_get_best_block_timestamp(
-    ptr: *mut TariBaseNodeState,
+    ptr: *mut TaijiBaseNodeState,
     error_out: *mut c_int,
 ) -> c_ulonglong {
     let mut error = 0;
@@ -189,7 +189,7 @@ pub unsafe extern "C" fn basenode_state_get_best_block_timestamp(
 /// Extracts a pruning horizon
 ///
 /// ## Arguments
-/// `ptr` - The pointer to a `TariBaseNodeState`
+/// `ptr` - The pointer to a `TaijiBaseNodeState`
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -203,7 +203,7 @@ pub unsafe extern "C" fn basenode_state_get_best_block_timestamp(
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn basenode_state_get_pruning_horizon(
-    ptr: *mut TariBaseNodeState,
+    ptr: *mut TaijiBaseNodeState,
     error_out: *mut c_int,
 ) -> c_ulonglong {
     let mut error = 0;
@@ -221,7 +221,7 @@ pub unsafe extern "C" fn basenode_state_get_pruning_horizon(
 /// Extracts a pruned height
 ///
 /// ## Arguments
-/// `ptr` - The pointer to a `TariBaseNodeState`
+/// `ptr` - The pointer to a `TaijiBaseNodeState`
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -234,7 +234,7 @@ pub unsafe extern "C" fn basenode_state_get_pruning_horizon(
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn basenode_state_get_pruned_height(
-    ptr: *mut TariBaseNodeState,
+    ptr: *mut TaijiBaseNodeState,
     error_out: *mut c_int,
 ) -> c_ulonglong {
     let mut error = 0;
@@ -252,7 +252,7 @@ pub unsafe extern "C" fn basenode_state_get_pruned_height(
 /// Denotes whether a base node is fully synced or not.
 ///
 /// ## Arguments
-/// `ptr` - The pointer to a `TariBaseNodeState`
+/// `ptr` - The pointer to a `TaijiBaseNodeState`
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -262,7 +262,7 @@ pub unsafe extern "C" fn basenode_state_get_pruned_height(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn basenode_state_get_is_node_synced(ptr: *mut TariBaseNodeState, error_out: *mut c_int) -> bool {
+pub unsafe extern "C" fn basenode_state_get_is_node_synced(ptr: *mut TaijiBaseNodeState, error_out: *mut c_int) -> bool {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -278,7 +278,7 @@ pub unsafe extern "C" fn basenode_state_get_is_node_synced(ptr: *mut TariBaseNod
 /// Extracts the timestamp of when the base node was last updated.
 ///
 /// ## Arguments
-/// `ptr` - The pointer to a `TariBaseNodeState`
+/// `ptr` - The pointer to a `TaijiBaseNodeState`
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -289,7 +289,7 @@ pub unsafe extern "C" fn basenode_state_get_is_node_synced(ptr: *mut TariBaseNod
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn basenode_state_get_node_updated_at(
-    ptr: *mut TariBaseNodeState,
+    ptr: *mut TaijiBaseNodeState,
     error_out: *mut c_int,
 ) -> c_ulonglong {
     let mut error = 0;
@@ -307,7 +307,7 @@ pub unsafe extern "C" fn basenode_state_get_node_updated_at(
 /// Extracts the connection latency to the base node.
 ///
 /// ## Arguments
-/// `ptr` - The pointer to a `TariBaseNodeState`
+/// `ptr` - The pointer to a `TaijiBaseNodeState`
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -317,7 +317,7 @@ pub unsafe extern "C" fn basenode_state_get_node_updated_at(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn basenode_state_get_latency(ptr: *mut TariBaseNodeState, error_out: *mut c_int) -> c_ulonglong {
+pub unsafe extern "C" fn basenode_state_get_latency(ptr: *mut TaijiBaseNodeState, error_out: *mut c_int) -> c_ulonglong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -332,8 +332,8 @@ pub unsafe extern "C" fn basenode_state_get_latency(ptr: *mut TariBaseNodeState,
 
 #[cfg(test)]
 mod tests {
-    use tari_common_types::types::FixedHash;
-    use tari_comms::types::CommsPublicKey;
+    use taiji_common_types::types::FixedHash;
+    use taiji_comms::types::CommsPublicKey;
 
     use super::*;
 
@@ -343,7 +343,7 @@ mod tests {
         let original_node_id = NodeId::from_key(&CommsPublicKey::new_generator("test").unwrap());
         let original_best_block = BlockHash::zero();
 
-        let boxed_state = Box::into_raw(Box::new(TariBaseNodeState {
+        let boxed_state = Box::into_raw(Box::new(TaijiBaseNodeState {
             node_id: Some(original_node_id.clone()),
             height_of_longest_chain: 123,
             best_block: original_best_block,

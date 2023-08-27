@@ -16,7 +16,7 @@ base_layer/p2p
 base_layer/core
 base_layer/minowallet
 base_layer/minowallet_ffi
-applications/minotari_node
+applications/minotaiji_node
 '}
 p_arr=($packages)
 

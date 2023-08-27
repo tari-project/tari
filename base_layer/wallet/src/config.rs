@@ -1,4 +1,4 @@
-// Copyright 2021. The Tari Project
+// Copyright 2021. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -28,13 +28,13 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use strum::EnumString;
-use tari_common::{
+use taiji_common::{
     configuration::{serializers, Network, StringList},
     SubConfigPath,
 };
-use tari_common_types::grpc_authentication::GrpcAuthentication;
-use tari_comms::multiaddr::Multiaddr;
-use tari_p2p::P2pConfig;
+use taiji_common_types::grpc_authentication::GrpcAuthentication;
+use taiji_comms::multiaddr::Multiaddr;
+use taiji_p2p::P2pConfig;
 use tari_utilities::SafePassword;
 
 use crate::{
@@ -94,7 +94,7 @@ pub struct WalletConfig {
     pub command_send_wait_stage: TransactionStage,
     /// Notification script file for a notifier service - allows a wallet to execute a script or program when certain
     /// transaction events are received by the console wallet .
-    /// (see example at 'applications/tari_console_wallet/src/notifier/notify_example.sh')
+    /// (see example at 'applications/taiji_console_wallet/src/notifier/notify_example.sh')
     pub notify_file: Option<PathBuf>,
     /// If true, a GRPC server will bind to the configured address and listen for incoming GRPC requests.
     pub grpc_enabled: bool,

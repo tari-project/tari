@@ -1,4 +1,4 @@
-// Copyright 2020, The Tari Project
+// Copyright 2020, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -25,7 +25,7 @@ use std::{convert::TryFrom, iter, mem::size_of};
 use chacha20poly1305::{aead::AeadInPlace, ChaCha20Poly1305, KeyInit, Nonce, Tag};
 use digest::{generic_array::GenericArray, Digest, FixedOutput};
 use prost::bytes::BytesMut;
-use tari_comms::{
+use taiji_comms::{
     message::MessageExt,
     types::{CommsDHKE, CommsPublicKey, CommsSecretKey},
     BufMut,
@@ -281,7 +281,7 @@ pub fn create_message_domain_separated_hash_parts(
 mod test {
     use prost::Message;
     use rand::rngs::OsRng;
-    use tari_comms::message::MessageExt;
+    use taiji_comms::message::MessageExt;
     use tari_crypto::keys::PublicKey;
 
     use super::*;

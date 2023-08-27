@@ -1,4 +1,4 @@
-// Copyright 2020, The Tari Project
+// Copyright 2020, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -23,8 +23,8 @@
 use std::time::Duration;
 
 use futures::future;
-use tari_shutdown::Shutdown;
-use tari_test_utils::{collect_try_recv, unpack_enum};
+use taiji_shutdown::Shutdown;
+use taiji_test_utils::{collect_try_recv, unpack_enum};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     runtime::Handle,
@@ -177,7 +177,7 @@ async fn dial_success() {
     assert_eq!(peer1.user_agent, "node1");
 
     let err = conn_out
-        .open_substream(&ProtocolId::from_static(b"/tari/invalid"))
+        .open_substream(&ProtocolId::from_static(b"/taiji/invalid"))
         .await
         .unwrap_err();
     unpack_enum!(PeerConnectionError::ProtocolError(_err) = err);

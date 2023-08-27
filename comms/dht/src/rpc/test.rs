@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2020, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -23,13 +23,13 @@
 use std::{convert::TryInto, sync::Arc, time::Duration};
 
 use futures::StreamExt;
-use tari_comms::{
+use taiji_comms::{
     peer_manager::{NodeDistance, NodeId, PeerFeatures},
     protocol::rpc::{mock::RpcRequestMock, RpcStatusCode},
     test_utils::node_identity::{build_node_identity, ordered_node_identities_by_distance},
     PeerManager,
 };
-use tari_test_utils::collect_recv;
+use taiji_test_utils::collect_recv;
 use tari_utilities::ByteArray;
 
 use crate::{
@@ -185,7 +185,7 @@ mod get_closer_peers {
 mod get_peers {
     use std::{borrow::BorrowMut, time::Duration};
 
-    use tari_comms::test_utils::node_identity::build_many_node_identities;
+    use taiji_comms::test_utils::node_identity::build_many_node_identities;
 
     use super::*;
     use crate::{proto::rpc::GetPeersRequest, rpc::PeerInfo};

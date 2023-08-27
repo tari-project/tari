@@ -1,4 +1,4 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 syntax = "proto3";
@@ -7,7 +7,7 @@ import "transaction_metadata.proto";
 import "types.proto";
 import "transaction.proto";
 
-package tari.transaction_protocol;
+package taiji.transaction_protocol;
 
 message SingleRoundSenderData {
     // The transaction id for the recipient
@@ -22,17 +22,17 @@ message SingleRoundSenderData {
     TransactionMetadata metadata = 5;
     // Plain text message to receiver
     string message = 6;
-    // Tari script serialised script
+    // Taiji script serialised script
     bytes script = 7;
-    // Tari script offset pubkey, K_O
+    // Taiji script offset pubkey, K_O
     bytes sender_offset_public_key = 8;
     // The sender's ephemeral public nonce
     bytes ephemeral_public_nonce = 9;
     // Output features
-    tari.types.OutputFeatures features = 10;
+    taiji.types.OutputFeatures features = 10;
     // Covenant
     bytes covenant  = 11;
-    // The minimum value of the commitment that is proven by the range proof (in MicroMinotari)
+    // The minimum value of the commitment that is proven by the range proof (in MicroMinotaiji)
     uint64 minimum_value_promise = 12;
     // The version of this transaction output
     uint32 output_version = 13;

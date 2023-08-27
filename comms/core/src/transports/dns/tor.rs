@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2020, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -103,13 +103,13 @@ mod test {
         });
 
         let addr = resolver
-            .resolve("/dns4/tari.com/tcp/443".parse().unwrap())
+            .resolve("/dns4/taiji.com/tcp/443".parse().unwrap())
             .await
             .unwrap();
         assert_eq!(addr.port(), 443);
 
         let addr = resolver
-            .resolve("/dns/tari.com/tcp/443".parse().unwrap())
+            .resolve("/dns/taiji.com/tcp/443".parse().unwrap())
             .await
             .unwrap();
         assert_eq!(addr.port(), 443);

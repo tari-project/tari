@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -24,7 +24,7 @@ use std::{sync::Arc, task::Poll};
 
 use futures::{future::BoxFuture, task::Context};
 use log::*;
-use tari_comms::{
+use taiji_comms::{
     peer_manager::{NodeIdentity, PeerFeatures, PeerManager},
     pipeline::PipelineError,
 };
@@ -406,8 +406,8 @@ mod test {
     use std::time::Duration;
 
     use chrono::Utc;
-    use tari_comms::wrap_in_envelope_body;
-    use tari_test_utils::async_assert_eventually;
+    use taiji_comms::wrap_in_envelope_body;
+    use taiji_test_utils::async_assert_eventually;
     use tari_utilities::hex::Hex;
 
     use super::*;

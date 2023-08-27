@@ -1,4 +1,4 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 //! Transaction Protocol Manager facilitates the process of constructing a Mimblewimble transaction between two parties.
@@ -89,20 +89,20 @@ use blake2::Blake2b;
 use derivative::Derivative;
 use digest::consts::U32;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::PrivateKey;
+use taiji_common_types::types::PrivateKey;
 use tari_crypto::{errors::RangeProofError, signatures::SchnorrSignatureError};
 use thiserror::Error;
 
-use crate::transactions::{tari_amount::*, transaction_components::TransactionError};
+use crate::transactions::{taiji_amount::*, transaction_components::TransactionError};
 
 pub mod proto;
 pub mod recipient;
 pub mod sender;
 pub mod single_receiver;
 pub mod transaction_initializer;
-use tari_common_types::types::Commitment;
+use taiji_common_types::types::Commitment;
 use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
-use tari_key_manager::key_manager_service::KeyManagerServiceError;
+use taiji_key_manager::key_manager_service::KeyManagerServiceError;
 
 use crate::transactions::transaction_components::KernelFeatures;
 
@@ -164,7 +164,7 @@ impl From<KeyManagerServiceError> for TransactionProtocolError {
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize)]
 pub struct TransactionMetadata {
     /// The absolute fee for the transaction
-    pub fee: MicroMinotari,
+    pub fee: MicroMinotaiji,
     /// The earliest block this transaction can be mined
     pub lock_height: u64,
     /// The kernel features
@@ -174,7 +174,7 @@ pub struct TransactionMetadata {
 }
 
 impl TransactionMetadata {
-    pub fn new(fee: MicroMinotari, lock_height: u64) -> Self {
+    pub fn new(fee: MicroMinotaiji, lock_height: u64) -> Self {
         Self {
             fee,
             lock_height,
@@ -183,7 +183,7 @@ impl TransactionMetadata {
         }
     }
 
-    pub fn new_with_features(fee: MicroMinotari, lock_height: u64, kernel_features: KernelFeatures) -> Self {
+    pub fn new_with_features(fee: MicroMinotaiji, lock_height: u64, kernel_features: KernelFeatures) -> Self {
         Self {
             fee,
             lock_height,
@@ -202,7 +202,7 @@ pub struct RecoveryData {
 // hash domain
 hash_domain!(
     CalculateTxIdTransactionProtocolHashDomain,
-    "com.tari.base_layer.core.transactions.transaction_protocol.calculate_tx_id",
+    "com.taiji.base_layer.core.transactions.transaction_protocol.calculate_tx_id",
     1
 );
 

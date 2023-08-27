@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -31,20 +31,20 @@ use std::{
 use chrono::{NaiveDateTime, Utc};
 use futures::{pin_mut, StreamExt};
 use log::*;
-use tari_common_types::tari_address::TariAddress;
-use tari_comms::connectivity::{ConnectivityEvent, ConnectivityRequester};
-use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::OutboundEncryption, Dht};
-use tari_p2p::{
+use taiji_common_types::taiji_address::TaijiAddress;
+use taiji_comms::connectivity::{ConnectivityEvent, ConnectivityRequester};
+use taiji_comms_dht::{domain_message::OutboundDomainMessage, outbound::OutboundEncryption, Dht};
+use taiji_p2p::{
     comms_connector::SubscriptionFactory,
     domain_message::DomainMessage,
     services::{
         liveness::{LivenessEvent, LivenessHandle, MetadataKey, PingPongEvent},
         utils::{map_decode, ok_or_skip_result},
     },
-    tari_message::TariMessageType,
+    taiji_message::TaijiMessageType,
 };
-use tari_service_framework::reply_channel;
-use tari_shutdown::ShutdownSignal;
+use taiji_service_framework::reply_channel;
+use taiji_shutdown::ShutdownSignal;
 use tari_utilities::ByteArray;
 use tokio::sync::broadcast;
 
@@ -188,7 +188,7 @@ where T: ContactsBackend + 'static
 
         let chat_messages = self
             .subscription_factory
-            .get_subscription(TariMessageType::Chat, SUBSCRIPTION_LABEL)
+            .get_subscription(TaijiMessageType::Chat, SUBSCRIPTION_LABEL)
             .map(map_decode::<proto::Message>)
             .filter_map(ok_or_skip_result);
         pin_mut!(chat_messages);
@@ -413,7 +413,7 @@ where T: ContactsBackend + 'static
 
             let message = Message::from(msg.clone());
             let message = Message {
-                address: TariAddress::from_public_key(&source_public_key, message.address.network()),
+                address: TaijiAddress::from_public_key(&source_public_key, message.address.network()),
                 stored_at: Utc::now().naive_utc().timestamp() as u64,
                 ..msg.into()
             };

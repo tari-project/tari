@@ -1,4 +1,4 @@
-// Copyright 2018 The Tari Project
+// Copyright 2018 The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -29,16 +29,16 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{ComAndPubSignature, Commitment, FixedHash, PublicKey, RangeProof};
-use tari_script::{ExecutionStack, TariScript};
+use taiji_common_types::types::{ComAndPubSignature, Commitment, FixedHash, PublicKey, RangeProof};
+use taiji_script::{ExecutionStack, TaijiScript};
 
 use super::TransactionOutputVersion;
 use crate::{
     borsh::SerializedSize,
     covenants::Covenant,
     transactions::{
-        key_manager::{TariKeyId, TransactionKeyManagerInterface},
-        tari_amount::MicroMinotari,
+        key_manager::{TaijiKeyId, TransactionKeyManagerInterface},
+        taiji_amount::MicroMinotaiji,
         transaction_components,
         transaction_components::{
             transaction_input::{SpentOutput, TransactionInput},
@@ -58,18 +58,18 @@ use crate::{
 #[derive(Clone, Serialize, Deserialize)]
 pub struct WalletOutput {
     pub version: TransactionOutputVersion,
-    pub value: MicroMinotari,
-    pub spending_key_id: TariKeyId,
+    pub value: MicroMinotaiji,
+    pub spending_key_id: TaijiKeyId,
     pub features: OutputFeatures,
-    pub script: TariScript,
+    pub script: TaijiScript,
     pub covenant: Covenant,
     pub input_data: ExecutionStack,
-    pub script_key_id: TariKeyId,
+    pub script_key_id: TaijiKeyId,
     pub sender_offset_public_key: PublicKey,
     pub metadata_signature: ComAndPubSignature,
     pub script_lock_height: u64,
     pub encrypted_data: EncryptedData,
-    pub minimum_value_promise: MicroMinotari,
+    pub minimum_value_promise: MicroMinotaiji,
     pub rangeproof: Option<RangeProof>,
 }
 
@@ -79,18 +79,18 @@ impl WalletOutput {
     #[allow(clippy::too_many_arguments)]
     pub async fn new<KM: TransactionKeyManagerInterface>(
         version: TransactionOutputVersion,
-        value: MicroMinotari,
-        spending_key_id: TariKeyId,
+        value: MicroMinotaiji,
+        spending_key_id: TaijiKeyId,
         features: OutputFeatures,
-        script: TariScript,
+        script: TaijiScript,
         input_data: ExecutionStack,
-        script_key_id: TariKeyId,
+        script_key_id: TaijiKeyId,
         sender_offset_public_key: PublicKey,
         metadata_signature: ComAndPubSignature,
         script_lock_height: u64,
         covenant: Covenant,
         encrypted_data: EncryptedData,
-        minimum_value_promise: MicroMinotari,
+        minimum_value_promise: MicroMinotaiji,
         key_manager: &KM,
     ) -> Result<Self, TransactionError> {
         let rangeproof = if features.range_proof_type == RangeProofType::BulletProofPlus {
@@ -123,18 +123,18 @@ impl WalletOutput {
     #[allow(clippy::too_many_arguments)]
     pub fn new_with_rangeproof(
         version: TransactionOutputVersion,
-        value: MicroMinotari,
-        spending_key_id: TariKeyId,
+        value: MicroMinotaiji,
+        spending_key_id: TaijiKeyId,
         features: OutputFeatures,
-        script: TariScript,
+        script: TaijiScript,
         input_data: ExecutionStack,
-        script_key_id: TariKeyId,
+        script_key_id: TaijiKeyId,
         sender_offset_public_key: PublicKey,
         metadata_signature: ComAndPubSignature,
         script_lock_height: u64,
         covenant: Covenant,
         encrypted_data: EncryptedData,
-        minimum_value_promise: MicroMinotari,
+        minimum_value_promise: MicroMinotaiji,
         rangeproof: Option<RangeProof>,
     ) -> Self {
         Self {
@@ -157,18 +157,18 @@ impl WalletOutput {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn new_current_version<KM: TransactionKeyManagerInterface>(
-        value: MicroMinotari,
-        spending_key_id: TariKeyId,
+        value: MicroMinotaiji,
+        spending_key_id: TaijiKeyId,
         features: OutputFeatures,
-        script: TariScript,
+        script: TaijiScript,
         input_data: ExecutionStack,
-        script_key_id: TariKeyId,
+        script_key_id: TaijiKeyId,
         sender_offset_public_key: PublicKey,
         metadata_signature: ComAndPubSignature,
         script_lock_height: u64,
         covenant: Covenant,
         encrypted_data: EncryptedData,
-        minimum_value_promise: MicroMinotari,
+        minimum_value_promise: MicroMinotaiji,
         key_manager: &KM,
     ) -> Result<Self, TransactionError> {
         Self::new(

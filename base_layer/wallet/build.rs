@@ -1,7 +1,7 @@
-// Copyright 2022. The Tari Project
+// Copyright 2022. The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use tari_common::build::StaticApplicationInfo;
+use taiji_common::build::StaticApplicationInfo;
 
 fn main() {
     // generate version info

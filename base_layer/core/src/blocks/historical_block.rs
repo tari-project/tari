@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -23,7 +23,7 @@
 use std::{fmt, fmt::Display, sync::Arc};
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::HashOutput;
+use taiji_common_types::types::HashOutput;
 use tari_utilities::hex::Hex;
 
 use crate::blocks::{error::BlockError, Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock};

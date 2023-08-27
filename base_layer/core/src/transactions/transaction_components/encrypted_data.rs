@@ -1,4 +1,4 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -38,7 +38,7 @@ use chacha20poly1305::{
 };
 use digest::{consts::U32, generic_array::GenericArray, FixedOutput};
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{Commitment, PrivateKey};
+use taiji_common_types::types::{Commitment, PrivateKey};
 use tari_crypto::{hashing::DomainSeparatedHasher, keys::SecretKey};
 use tari_utilities::{
     hex::{from_hex, to_hex, Hex, HexError},
@@ -50,7 +50,7 @@ use thiserror::Error;
 use zeroize::{Zeroize, Zeroizing};
 
 use super::EncryptedDataKey;
-use crate::transactions::{tari_amount::MicroMinotari, TransactionSecureNonceKdfDomain};
+use crate::transactions::{taiji_amount::MicroMinotaiji, TransactionSecureNonceKdfDomain};
 
 // Useful size constants, each in bytes
 const SIZE_NONCE: usize = size_of::<XNonce>();
@@ -82,7 +82,7 @@ impl EncryptedData {
     pub fn encrypt_data(
         encryption_key: &PrivateKey,
         commitment: &Commitment,
-        value: MicroMinotari,
+        value: MicroMinotaiji,
         mask: &PrivateKey,
     ) -> Result<EncryptedData, EncryptedDataError> {
         // Encode the value and mask
@@ -116,7 +116,7 @@ impl EncryptedData {
         encryption_key: &PrivateKey,
         commitment: &Commitment,
         encrypted_data: &EncryptedData,
-    ) -> Result<(MicroMinotari, PrivateKey), EncryptedDataError> {
+    ) -> Result<(MicroMinotaiji, PrivateKey), EncryptedDataError> {
         // Extract the nonce, ciphertext, and tag
         let nonce = XNonce::from_slice(&encrypted_data.as_bytes()[..SIZE_NONCE]);
         let mut bytes = Zeroizing::new([0u8; SIZE_VALUE + SIZE_MASK]);
@@ -243,7 +243,7 @@ fn kdf_aead(encryption_key: &PrivateKey, commitment: &Commitment) -> EncryptedDa
 #[cfg(test)]
 mod test {
     use rand::rngs::OsRng;
-    use tari_common_types::types::{CommitmentFactory, PrivateKey};
+    use taiji_common_types::types::{CommitmentFactory, PrivateKey};
     use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey};
 
     use super::*;
@@ -259,7 +259,7 @@ mod test {
         ] {
             let commitment = CommitmentFactory::default().commit(&mask, &PrivateKey::from(value));
             let encryption_key = PrivateKey::random(&mut OsRng);
-            let amount = MicroMinotari::from(value);
+            let amount = MicroMinotaiji::from(value);
             let encrypted_data = EncryptedData::encrypt_data(&encryption_key, &commitment, amount, &mask).unwrap();
             let (decrypted_value, decrypted_mask) =
                 EncryptedData::decrypt_data(&encryption_key, &commitment, &encrypted_data).unwrap();
@@ -285,7 +285,7 @@ mod test {
         ] {
             let commitment = CommitmentFactory::default().commit(&mask, &PrivateKey::from(value));
             let encryption_key = PrivateKey::random(&mut OsRng);
-            let amount = MicroMinotari::from(value);
+            let amount = MicroMinotaiji::from(value);
             let encrypted_data = EncryptedData::encrypt_data(&encryption_key, &commitment, amount, &mask).unwrap();
             let bytes = encrypted_data.to_byte_vec();
             let encrypted_data_from_bytes = EncryptedData::from_bytes(&bytes).unwrap();

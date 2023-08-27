@@ -1,1 +1,1 @@
-cat ../common/config/presets/*.toml >./tari_config_example.toml
+cat ../common/config/presets/*.toml >./taiji_config_example.toml

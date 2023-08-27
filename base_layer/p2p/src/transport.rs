@@ -1,4 +1,4 @@
-//  Copyright 2022. The Tari Project
+//  Copyright 2022. The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -22,7 +22,7 @@
 use std::{num::NonZeroU16, sync::Arc};
 
 use serde::{Deserialize, Serialize};
-use tari_comms::{
+use taiji_comms::{
     multiaddr::Multiaddr,
     socks,
     tor,
@@ -91,7 +91,7 @@ impl TransportConfig {
 pub enum TransportType {
     /// Memory transport. Supports a single address type in the form '/memory/x' and can only communicate in-process.
     Memory,
-    /// Use TCP to join the Tari network. By default, this transport can only contact TCP/IP nodes, however it can be
+    /// Use TCP to join the Taiji network. By default, this transport can only contact TCP/IP nodes, however it can be
     /// configured to allow communication with peers using the tor transport.
     Tcp,
     /// Configures the node to run over a tor hidden service using the Tor proxy. This transport can connect to TCP/IP,

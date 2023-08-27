@@ -1,4 +1,4 @@
-//  Copyright 2022, The Tari Project
+//  Copyright 2022, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -21,12 +21,12 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use once_cell::sync::Lazy;
-use tari_comms::peer_manager::NodeId;
-use tari_metrics::{IntCounter, IntCounterVec, IntGauge};
+use taiji_comms::peer_manager::NodeId;
+use taiji_metrics::{IntCounter, IntCounterVec, IntGauge};
 
 pub fn inbound_transactions(sent_by: Option<&NodeId>) -> IntCounter {
     static METER: Lazy<IntCounterVec> = Lazy::new(|| {
-        tari_metrics::register_int_counter_vec(
+        taiji_metrics::register_int_counter_vec(
             "base_node::mempool::inbound_transactions",
             "Number of valid inbound transactions in the mempool",
             &["peer_id"],
@@ -40,7 +40,7 @@ pub fn inbound_transactions(sent_by: Option<&NodeId>) -> IntCounter {
 
 pub fn rejected_inbound_transactions(sent_by: Option<&NodeId>) -> IntCounter {
     static METER: Lazy<IntCounterVec> = Lazy::new(|| {
-        tari_metrics::register_int_counter_vec(
+        taiji_metrics::register_int_counter_vec(
             "base_node::mempool::rejected_inbound_transactions",
             "Number of valid inbound transactions in the mempool",
             &["peer_id"],
@@ -54,7 +54,7 @@ pub fn rejected_inbound_transactions(sent_by: Option<&NodeId>) -> IntCounter {
 
 pub fn unconfirmed_pool_size() -> IntGauge {
     static METER: Lazy<IntGauge> = Lazy::new(|| {
-        tari_metrics::register_int_gauge(
+        taiji_metrics::register_int_gauge(
             "base_node::mempool::unconfirmed",
             "Number of unconfirmed transactions in the mempool",
         )
@@ -66,7 +66,7 @@ pub fn unconfirmed_pool_size() -> IntGauge {
 
 pub fn reorg_pool_size() -> IntGauge {
     static METER: Lazy<IntGauge> = Lazy::new(|| {
-        tari_metrics::register_int_gauge(
+        taiji_metrics::register_int_gauge(
             "base_node::mempool::reorg",
             "Number of published transactions in the reorg mempool",
         )

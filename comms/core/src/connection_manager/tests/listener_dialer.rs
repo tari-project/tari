@@ -1,4 +1,4 @@
-// Copyright 2020, The Tari Project
+// Copyright 2020, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -23,8 +23,8 @@
 use std::{error::Error, time::Duration};
 
 use multiaddr::Protocol;
-use tari_shutdown::Shutdown;
-use tari_test_utils::unpack_enum;
+use taiji_shutdown::Shutdown;
+use taiji_test_utils::unpack_enum;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     sync::{mpsc, oneshot},
@@ -86,7 +86,7 @@ async fn smoke() {
 
     let node_identity1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let noise_config1 = NoiseConfig::new(node_identity1.clone());
-    let expected_proto = ProtocolId::from_static(b"/tari/test-proto");
+    let expected_proto = ProtocolId::from_static(b"/taiji/test-proto");
     let supported_protocols = vec![expected_proto.clone()];
     let peer_manager1 = build_peer_manager();
     let mut listener = PeerListener::new(
@@ -138,7 +138,7 @@ async fn smoke() {
     // Open a substream
     {
         let mut out_stream = outbound_peer_conn
-            .open_substream(&ProtocolId::from_static(b"/tari/test-proto"))
+            .open_substream(&ProtocolId::from_static(b"/taiji/test-proto"))
             .await
             .unwrap();
         out_stream.stream.write_all(b"HELLO").await.unwrap();
@@ -189,7 +189,7 @@ async fn banned() {
 
     let node_identity1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let noise_config1 = NoiseConfig::new(node_identity1.clone());
-    let expected_proto = ProtocolId::from_static(b"/tari/test-proto");
+    let expected_proto = ProtocolId::from_static(b"/taiji/test-proto");
     let supported_protocols = vec![expected_proto.clone()];
     let peer_manager1 = build_peer_manager();
     let mut listener = PeerListener::new(

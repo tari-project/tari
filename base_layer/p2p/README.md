@@ -1,1 +1,1 @@
-# Tari P2P
+# Taiji P2P

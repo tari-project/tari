@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2020. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -24,14 +24,14 @@
 use std::{convert::TryInto, time::Duration};
 
 use log::*;
-use tari_common_types::transaction::TxId;
-use tari_comms::types::CommsPublicKey;
-use tari_comms_dht::{
+use taiji_common_types::transaction::TxId;
+use taiji_comms::types::CommsPublicKey;
+use taiji_comms_dht::{
     domain_message::OutboundDomainMessage,
     outbound::{OutboundEncryption, OutboundMessageRequester, SendMessageResponse},
 };
-use tari_core::transactions::{transaction_components::Transaction, transaction_protocol::proto};
-use tari_p2p::tari_message::TariMessageType;
+use taiji_core::transactions::{transaction_components::Transaction, transaction_protocol::proto};
+use taiji_p2p::taiji_message::TaijiMessageType;
 
 use crate::transaction_service::{
     config::TransactionRoutingMechanism,
@@ -111,7 +111,7 @@ pub async fn send_finalized_transaction_message_direct(
         .send_direct_unencrypted(
             destination_public_key.clone(),
             OutboundDomainMessage::new(
-                &TariMessageType::TransactionFinalized,
+                &TaijiMessageType::TransactionFinalized,
                 finalized_transaction_message.clone(),
             ),
             "transaction finalized".to_string(),
@@ -226,7 +226,7 @@ async fn send_transaction_finalized_message_store_and_forward(
             destination_pubkey.clone(),
             OutboundEncryption::encrypt_for(destination_pubkey.clone()),
             vec![],
-            OutboundDomainMessage::new(&TariMessageType::TransactionFinalized, msg.clone()),
+            OutboundDomainMessage::new(&TaijiMessageType::TransactionFinalized, msg.clone()),
         )
         .await
     {

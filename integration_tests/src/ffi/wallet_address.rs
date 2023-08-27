@@ -1,4 +1,4 @@
-//   Copyright 2022. The Tari Project
+//   Copyright 2022. The Taiji Project
 //
 //   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //   following conditions are met:
@@ -32,7 +32,7 @@ pub struct WalletAddress {
 
 impl Drop for WalletAddress {
     fn drop(&mut self) {
-        unsafe { ffi_import::tari_address_destroy(self.ptr) };
+        unsafe { ffi_import::taiji_address_destroy(self.ptr) };
         self.ptr = null_mut();
     }
 }
@@ -47,9 +47,9 @@ impl WalletAddress {
         let mut error = 0;
         let ptr;
         unsafe {
-            ptr = ffi_import::tari_address_from_private_key(private_key.get_ptr(), network, &mut error);
+            ptr = ffi_import::taiji_address_from_private_key(private_key.get_ptr(), network, &mut error);
             if error > 0 {
-                println!("wallet_get_tari_address error {}", error);
+                println!("wallet_get_taiji_address error {}", error);
             }
         }
         Self { ptr }
@@ -59,9 +59,9 @@ impl WalletAddress {
         let mut error = 0;
         let ptr;
         unsafe {
-            ptr = ffi_import::tari_address_from_hex(CString::new(address).unwrap().into_raw(), &mut error);
+            ptr = ffi_import::taiji_address_from_hex(CString::new(address).unwrap().into_raw(), &mut error);
             if error > 0 {
-                println!("wallet_get_tari_address error {}", error);
+                println!("wallet_get_taiji_address error {}", error);
             }
         }
         Self { ptr }
@@ -72,9 +72,9 @@ impl WalletAddress {
         let mut error = 0;
         let ptr;
         unsafe {
-            ptr = ffi_import::emoji_id_to_tari_address(CString::new(emoji_id).unwrap().into_raw(), &mut error);
+            ptr = ffi_import::emoji_id_to_taiji_address(CString::new(emoji_id).unwrap().into_raw(), &mut error);
             if error > 0 {
-                println!("wallet_get_tari_address error {}", error);
+                println!("wallet_get_taiji_address error {}", error);
             }
         }
         Self { ptr }
@@ -84,9 +84,9 @@ impl WalletAddress {
         let mut error = 0;
         let ptr;
         unsafe {
-            ptr = ffi_import::tari_address_get_bytes(self.ptr, &mut error);
+            ptr = ffi_import::taiji_address_get_bytes(self.ptr, &mut error);
             if error > 0 {
-                println!("wallet_get_tari_address error {}", error);
+                println!("wallet_get_taiji_address error {}", error);
             }
         }
         FFIBytes::from_ptr(ptr)
@@ -96,9 +96,9 @@ impl WalletAddress {
         let mut error = 0;
         let ptr;
         unsafe {
-            ptr = ffi_import::tari_address_to_emoji_id(self.ptr, &mut error);
+            ptr = ffi_import::taiji_address_to_emoji_id(self.ptr, &mut error);
             if error > 0 {
-                println!("tari_address_to_emoji_id error {}", error);
+                println!("taiji_address_to_emoji_id error {}", error);
             }
         }
         FFIString::from_ptr(ptr)

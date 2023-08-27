@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -31,8 +31,8 @@ use std::{
 use chrono::Utc;
 use futures::{future, future::Either};
 use log::*;
-use tari_common_types::{chain_metadata::ChainMetadata, types::BlockHash as BlockHashType};
-use tari_comms::{
+use taiji_common_types::{chain_metadata::ChainMetadata, types::BlockHash as BlockHashType};
+use taiji_comms::{
     backoff::{Backoff, ExponentialBackoff},
     protocol::rpc::RpcError,
 };

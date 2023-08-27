@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -24,13 +24,13 @@ use std::sync::Arc;
 
 use futures::Future;
 use log::*;
-use tari_comms::{
+use taiji_comms::{
     connectivity::ConnectivityRequester,
     message::{InboundMessage, OutboundMessage},
     peer_manager::{NodeIdentity, PeerFeatures, PeerManager},
     pipeline::PipelineError,
 };
-use tari_shutdown::ShutdownSignal;
+use taiji_shutdown::ShutdownSignal;
 use tari_utilities::epoch_time::EpochTime;
 use thiserror::Error;
 use tokio::sync::{broadcast, mpsc};
@@ -451,14 +451,14 @@ fn discard_expired_messages(msg: &DhtInboundMessage) -> bool {
 mod test {
     use std::{sync::Arc, time::Duration};
 
-    use tari_comms::{
+    use taiji_comms::{
         message::{MessageExt, MessageTag},
         pipeline::SinkService,
         test_utils::mocks::create_connectivity_mock,
         types::CommsDHKE,
         wrap_in_envelope_body,
     };
-    use tari_shutdown::Shutdown;
+    use taiji_shutdown::Shutdown;
     use tokio::{sync::mpsc, task, time};
     use tower::{layer::Layer, Service};
 

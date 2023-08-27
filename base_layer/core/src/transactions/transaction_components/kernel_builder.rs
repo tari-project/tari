@@ -1,4 +1,4 @@
-// Copyright 2018 The Tari Project
+// Copyright 2018 The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -23,17 +23,17 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-use tari_common_types::types::{Commitment, Signature};
+use taiji_common_types::types::{Commitment, Signature};
 
 use crate::transactions::{
-    tari_amount::MicroMinotari,
+    taiji_amount::MicroMinotaiji,
     transaction_components::{KernelFeatures, TransactionError, TransactionKernel},
 };
 
 /// A version of Transaction kernel with optional fields. This struct is only used in constructing transaction kernels
 pub struct KernelBuilder {
     features: KernelFeatures,
-    fee: MicroMinotari,
+    fee: MicroMinotaiji,
     lock_height: u64,
     excess: Option<Commitment>,
     excess_sig: Option<Signature>,
@@ -54,7 +54,7 @@ impl KernelBuilder {
     }
 
     /// Build a transaction kernel with the provided fee
-    pub fn with_fee(mut self, fee: MicroMinotari) -> KernelBuilder {
+    pub fn with_fee(mut self, fee: MicroMinotaiji) -> KernelBuilder {
         self.fee = fee;
         self
     }
@@ -102,7 +102,7 @@ impl Default for KernelBuilder {
     fn default() -> Self {
         KernelBuilder {
             features: KernelFeatures::empty(),
-            fee: MicroMinotari::from(0),
+            fee: MicroMinotaiji::from(0),
             lock_height: 0,
             excess: None,
             excess_sig: None,

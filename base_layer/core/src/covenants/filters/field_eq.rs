@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -45,7 +45,7 @@ impl Filter for FieldEqFilter {
                 Hash(hash) => field.is_eq(output, hash),
                 PublicKey(pk) => field.is_eq(output, pk),
                 Commitment(commitment) => field.is_eq(output, commitment),
-                TariScript(script) => field.is_eq(output, script),
+                TaijiScript(script) => field.is_eq(output, script),
                 Covenant(covenant) => field.is_eq(output, covenant),
                 OutputType(output_type) => field.is_eq(output, output_type),
                 Uint(int) => {
@@ -76,9 +76,9 @@ impl Filter for FieldEqFilter {
 
 #[cfg(test)]
 mod test {
-    use tari_common_types::types::{Commitment, PublicKey};
-    use tari_script::script;
-    use tari_test_utils::unpack_enum;
+    use taiji_common_types::types::{Commitment, PublicKey};
+    use taiji_script::script;
+    use taiji_test_utils::unpack_enum;
     use tari_utilities::hex::Hex;
 
     use super::*;
@@ -150,7 +150,7 @@ mod test {
     }
 
     #[tokio::test]
-    async fn it_filters_tari_script() {
+    async fn it_filters_taiji_script() {
         let key_manager = create_test_core_key_manager_with_memory_db();
         let script = script!(CheckHeight(100));
         let covenant = covenant!(field_eq(

@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -27,12 +27,12 @@ use std::{
 use borsh::{BorshDeserialize, BorshSerialize};
 use log::*;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::PrivateKey;
+use taiji_common_types::types::PrivateKey;
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
 
 use crate::transactions::{
     crypto_factories::CryptoFactories,
-    tari_amount::MicroMinotari,
+    taiji_amount::MicroMinotaiji,
     transaction_components::{
         KernelFeatures,
         OutputType,
@@ -219,8 +219,8 @@ impl AggregateBody {
         Ok(())
     }
 
-    pub fn get_total_fee(&self) -> MicroMinotari {
-        let mut fee = MicroMinotari::from(0);
+    pub fn get_total_fee(&self) -> MicroMinotaiji {
+        let mut fee = MicroMinotaiji::from(0);
         for kernel in &self.kernels {
             fee += kernel.fee;
         }
@@ -244,7 +244,7 @@ impl AggregateBody {
     /// 1. The reward amount is correct.
     pub fn check_coinbase_output(
         &self,
-        reward: MicroMinotari,
+        reward: MicroMinotaiji,
         coinbase_min_maturity: u64,
         factories: &CryptoFactories,
         height: u64,
@@ -440,8 +440,8 @@ impl Display for AggregateBody {
 
 #[cfg(test)]
 mod test {
-    use tari_common_types::types::{ComAndPubSignature, Commitment, FixedHash, PublicKey, Signature};
-    use tari_script::{ExecutionStack, TariScript};
+    use taiji_common_types::types::{ComAndPubSignature, Commitment, FixedHash, PublicKey, Signature};
+    use taiji_script::{ExecutionStack, TaijiScript};
 
     use super::*;
     use crate::{
@@ -466,7 +466,7 @@ mod test {
             TransactionInputVersion::get_current_version(),
             OutputFeatures::default(),
             Commitment::default(),
-            TariScript::default(),
+            TaijiScript::default(),
             ExecutionStack::default(),
             ComAndPubSignature::default(),
             PublicKey::default(),

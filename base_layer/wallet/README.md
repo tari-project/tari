@@ -1,8 +1,8 @@
-# Minotari Wallet
+# Minotaiji Wallet
 
-Foreign Function interface for the Minotari Android and Minotari iOS Wallets.
+Foreign Function interface for the Minotaiji Android and Minotaiji iOS Wallets.
 
-This crate is part of the [Tari Cryptocurrency](https://tari.com) project.
+This crate is part of the [Taiji Cryptocurrency](https://taiji.com) project.
 
 ## Build setup (Mac)
 

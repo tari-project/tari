@@ -1,4 +1,4 @@
-// Copyright 2021. The Tari Project
+// Copyright 2021. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -21,9 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use serde_json::Error as SerdeJsonError;
-use tari_common_types::types::FixedHashSizeError;
-use tari_comms::{connectivity::ConnectivityError, protocol::rpc::RpcError};
-use tari_service_framework::reply_channel::TransportChannelError;
+use taiji_common_types::types::FixedHashSizeError;
+use taiji_comms::{connectivity::ConnectivityError, protocol::rpc::RpcError};
+use taiji_service_framework::reply_channel::TransportChannelError;
 use tari_utilities::hex::HexError;
 use thiserror::Error;
 

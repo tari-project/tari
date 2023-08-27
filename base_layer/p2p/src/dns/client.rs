@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -24,8 +24,8 @@ use std::{sync::Arc, time::Duration};
 
 use futures::{future, FutureExt};
 use rustls::{ClientConfig, RootCertStore};
-use tari_common::DnsNameServer;
-use tari_shutdown::Shutdown;
+use taiji_common::DnsNameServer;
+use taiji_shutdown::Shutdown;
 use tokio::task;
 use trust_dns_client::{
     client::{AsyncClient, AsyncDnssecClient, ClientHandle},
@@ -206,7 +206,7 @@ fn default_client_config() -> Arc<ClientConfig> {
 mod mock {
     use std::sync::Arc;
 
-    use tari_shutdown::Shutdown;
+    use taiji_shutdown::Shutdown;
     use trust_dns_client::proto::error::ProtoError;
 
     use super::*;

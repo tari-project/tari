@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -21,9 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use lmdb_zero::error;
-use tari_common_types::types::FixedHashSizeError;
-use tari_mmr::{error::MerkleMountainRangeError, MerkleProofError};
-use tari_storage::lmdb_store::LMDBError;
+use taiji_common_types::types::FixedHashSizeError;
+use taiji_mmr::{error::MerkleMountainRangeError, MerkleProofError};
+use taiji_storage::lmdb_store::LMDBError;
 use thiserror::Error;
 use tokio::task;
 

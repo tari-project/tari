@@ -1,4 +1,4 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 use std::str::FromStr;
@@ -28,7 +28,7 @@ pub mod mnemonic_wordlists;
 #[cfg(feature = "key_manager_service")]
 pub mod schema;
 
-hash_domain!(KeyManagerDomain, "com.tari.base_layer.key_manager", 1);
+hash_domain!(KeyManagerDomain, "com.taiji.base_layer.key_manager", 1);
 
 const LABEL_ARGON_ENCODING: &str = "argon2_encoding";
 const LABEL_CHACHA20_ENCODING: &str = "chacha20_encoding";

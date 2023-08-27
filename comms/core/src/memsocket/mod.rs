@@ -1,4 +1,4 @@
-// Copyright 2020, The Tari Project
+// Copyright 2020, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -121,7 +121,7 @@ pub fn release_memsocket_port(port: NonZeroU16) {
 /// use std::io::Result;
 ///
 /// use futures::prelude::*;
-/// use tari_comms::memsocket::{MemoryListener, MemorySocket};
+/// use taiji_comms::memsocket::{MemoryListener, MemorySocket};
 /// use tokio::io::*;
 ///
 /// async fn write_stormlight(mut stream: MemorySocket) -> Result<()> {
@@ -170,7 +170,7 @@ impl MemoryListener {
     /// Create a MemoryListener bound to port 16:
     ///
     /// ```rust,no_run
-    /// use tari_comms::memsocket::MemoryListener;
+    /// use taiji_comms::memsocket::MemoryListener;
     ///
     /// # fn main () -> ::std::io::Result<()> {
     /// let listener = MemoryListener::bind(16)?;
@@ -227,7 +227,7 @@ impl MemoryListener {
     /// # Examples
     ///
     /// ```rust
-    /// use tari_comms::memsocket::MemoryListener;
+    /// use taiji_comms::memsocket::MemoryListener;
     ///
     /// # fn main () -> ::std::io::Result<()> {
     /// let listener = MemoryListener::bind(16)?;
@@ -249,7 +249,7 @@ impl MemoryListener {
     ///
     /// ```rust,no_run
     /// use futures::prelude::*;
-    /// use tari_comms::memsocket::MemoryListener;
+    /// use taiji_comms::memsocket::MemoryListener;
     ///
     /// # async fn work () -> ::std::io::Result<()> {
     /// let mut listener = MemoryListener::bind(16)?;
@@ -310,7 +310,7 @@ impl<'a> Stream for Incoming<'a> {
 ///
 /// ```rust, no_run
 /// use futures::prelude::*;
-/// use tari_comms::memsocket::MemorySocket;
+/// use taiji_comms::memsocket::MemorySocket;
 /// use tokio::io::*;
 ///
 /// # async fn run() -> ::std::io::Result<()> {
@@ -343,7 +343,7 @@ impl MemorySocket {
     /// # Examples
     ///
     /// ```rust
-    /// use tari_comms::memsocket::MemorySocket;
+    /// use taiji_comms::memsocket::MemorySocket;
     ///
     /// let (socket_a, socket_b) = MemorySocket::new_pair();
     /// ```
@@ -374,7 +374,7 @@ impl MemorySocket {
     /// # Examples
     ///
     /// ```rust,no_run
-    /// use tari_comms::memsocket::MemorySocket;
+    /// use taiji_comms::memsocket::MemorySocket;
     ///
     /// # fn main () -> ::std::io::Result<()> {
     /// let socket = MemorySocket::connect(16)?;

@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -25,7 +25,7 @@ use std::{convert::TryInto, sync::Arc, task::Poll, time::Duration};
 use futures::{future::BoxFuture, task::Context};
 use log::*;
 use prost::Message;
-use tari_comms::{
+use taiji_comms::{
     connectivity::ConnectivityRequester,
     message::EnvelopeBody,
     peer_manager::NodeIdentity,
@@ -422,8 +422,8 @@ mod test {
     use std::sync::Mutex;
 
     use futures::{executor::block_on, future};
-    use tari_comms::{message::MessageExt, test_utils::mocks::create_connectivity_mock, wrap_in_envelope_body};
-    use tari_test_utils::counter_context;
+    use taiji_comms::{message::MessageExt, test_utils::mocks::create_connectivity_mock, wrap_in_envelope_body};
+    use taiji_test_utils::counter_context;
     use tokio::time::sleep;
     use tower::service_fn;
 

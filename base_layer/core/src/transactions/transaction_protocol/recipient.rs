@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -23,7 +23,7 @@
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::{
+use taiji_common_types::{
     transaction::TxId,
     types::{FixedHash, PrivateKey, PublicKey, Signature},
 };
@@ -184,10 +184,10 @@ impl ReceiverTransactionProtocol {
 
 #[cfg(test)]
 mod test {
-    use tari_common_types::types::PublicKey;
+    use taiji_common_types::types::PublicKey;
     use tari_crypto::keys::PublicKey as PublicKeyTrait;
-    use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface};
-    use tari_script::TariScript;
+    use taiji_key_manager::key_manager_service::{KeyId, KeyManagerInterface};
+    use taiji_script::TaijiScript;
 
     use crate::{
         covenants::Covenant,
@@ -195,7 +195,7 @@ mod test {
         transactions::{
             crypto_factories::CryptoFactories,
             key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface, TxoStage},
-            tari_amount::*,
+            taiji_amount::*,
             test_helpers::{create_test_core_key_manager_with_memory_db, TestParams, UtxoTestParams},
             transaction_components::{
                 OutputFeatures,
@@ -216,9 +216,9 @@ mod test {
         let key_manager = create_test_core_key_manager_with_memory_db();
         let factories = CryptoFactories::default();
         let sender_test_params = TestParams::new(&key_manager).await;
-        let m = TransactionMetadata::new(MicroMinotari(125), 0);
-        let script = TariScript::default();
-        let amount = MicroMinotari(500);
+        let m = TransactionMetadata::new(MicroMinotaiji(125), 0);
+        let script = TaijiScript::default();
+        let amount = MicroMinotaiji(500);
         let features = OutputFeatures::default();
         let msg = SingleRoundSenderData {
             tx_id: 15u64.into(),
@@ -232,7 +232,7 @@ mod test {
             sender_offset_public_key: sender_test_params.sender_offset_key_pk,
             ephemeral_public_nonce: sender_test_params.ephemeral_public_nonce_key_pk,
             covenant: Covenant::default(),
-            minimum_value_promise: MicroMinotari::zero(),
+            minimum_value_promise: MicroMinotaiji::zero(),
             output_version: TransactionOutputVersion::get_current_version(),
             kernel_version: TransactionKernelVersion::get_current_version(),
         };

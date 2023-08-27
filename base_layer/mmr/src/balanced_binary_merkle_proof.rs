@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -25,7 +25,7 @@ use std::{collections::HashMap, convert::TryFrom, marker::PhantomData};
 use borsh::{BorshDeserialize, BorshSerialize};
 use digest::Digest;
 use serde::{Deserialize, Serialize};
-use tari_common::DomainDigest;
+use taiji_common::DomainDigest;
 use thiserror::Error;
 
 use crate::{common::hash_together, BalancedBinaryMerkleTree, Hash};
@@ -248,7 +248,7 @@ mod test {
 
     use super::*;
 
-    hash_domain!(TestDomain, "com.tari.test.testing", 0);
+    hash_domain!(TestDomain, "com.taiji.test.testing", 0);
 
     type TestHasher = DomainSeparatedHasher<Blake2b<U32>, TestDomain>;
 

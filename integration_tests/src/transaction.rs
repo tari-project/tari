@@ -1,4 +1,4 @@
-//   Copyright 2022. The Tari Project
+//   Copyright 2022. The Taiji Project
 //
 //   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //   following conditions are met:
@@ -22,12 +22,12 @@
 
 use std::default::Default;
 
-use tari_core::{
+use taiji_core::{
     borsh::SerializedSize,
     covenants::Covenant,
     transactions::{
-        key_manager::TariKeyId,
-        tari_amount::MicroMinotari,
+        key_manager::TaijiKeyId,
+        taiji_amount::MicroMinotaiji,
         test_helpers::{create_transaction_with, TestKeyManager, TestParams},
         transaction_components::{
             OutputFeatures,
@@ -40,24 +40,24 @@ use tari_core::{
         weight::TransactionWeight,
     },
 };
-use tari_script::{inputs, script, TariScript};
+use taiji_script::{inputs, script, TaijiScript};
 
 #[derive(Clone)]
 struct TestTransactionBuilder {
-    amount: MicroMinotari,
-    fee_per_gram: MicroMinotari,
+    amount: MicroMinotaiji,
+    fee_per_gram: MicroMinotaiji,
     inputs_max_height: u64,
     inputs: Vec<(TransactionInput, WalletOutput)>,
     keys: TestParams,
     lock_height: u64,
-    output: Option<(TransactionOutput, WalletOutput, TariKeyId)>,
+    output: Option<(TransactionOutput, WalletOutput, TaijiKeyId)>,
 }
 
 impl TestTransactionBuilder {
     pub async fn new(key_manager: &TestKeyManager) -> Self {
         Self {
-            amount: MicroMinotari(0),
-            fee_per_gram: MicroMinotari(1),
+            amount: MicroMinotaiji(0),
+            fee_per_gram: MicroMinotaiji(1),
             inputs_max_height: 0,
             inputs: vec![],
             keys: TestParams::new(key_manager).await,
@@ -66,7 +66,7 @@ impl TestTransactionBuilder {
         }
     }
 
-    pub fn fee_per_gram(&mut self, fee: MicroMinotari) -> &mut Self {
+    pub fn fee_per_gram(&mut self, fee: MicroMinotaiji) -> &mut Self {
         self.fee_per_gram = fee;
         self
     }
@@ -76,7 +76,7 @@ impl TestTransactionBuilder {
         self
     }
 
-    fn update_amount(&mut self, amount: MicroMinotari) {
+    fn update_amount(&mut self, amount: MicroMinotaiji) {
         self.amount += amount
     }
 
@@ -139,14 +139,14 @@ impl TestTransactionBuilder {
         &self,
         num_inputs: usize,
         features: OutputFeatures,
-        script: TariScript,
+        script: TaijiScript,
         covenant: Covenant,
-    ) -> std::io::Result<MicroMinotari> {
+    ) -> std::io::Result<MicroMinotaiji> {
         let features_and_scripts_bytes =
             features.get_serialized_size()? + script.get_serialized_size()? + covenant.get_serialized_size()?;
         let weights = TransactionWeight::v1();
         let fee = self.fee_per_gram.0 * weights.calculate(1, num_inputs, 1 + 1, features_and_scripts_bytes);
-        Ok(MicroMinotari(fee))
+        Ok(MicroMinotaiji(fee))
     }
 }
 
@@ -159,7 +159,7 @@ pub async fn build_transaction_with_output_and_fee_per_gram(
     for wallet_output in utxos {
         builder.add_input(wallet_output, key_manager).await;
     }
-    builder.fee_per_gram(MicroMinotari(fee_per_gram));
+    builder.fee_per_gram(MicroMinotaiji(fee_per_gram));
 
     builder.build(key_manager).await
 }

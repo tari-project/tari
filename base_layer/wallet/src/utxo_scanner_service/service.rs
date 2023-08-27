@@ -1,4 +1,4 @@
-// Copyright 2021. The Tari Project
+// Copyright 2021. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -23,10 +23,10 @@
 use chrono::NaiveDateTime;
 use futures::FutureExt;
 use log::*;
-use tari_common_types::types::HashOutput;
-use tari_comms::{connectivity::ConnectivityRequester, peer_manager::Peer, types::CommsPublicKey};
-use tari_core::transactions::{tari_amount::MicroMinotari, CryptoFactories};
-use tari_shutdown::{Shutdown, ShutdownSignal};
+use taiji_common_types::types::HashOutput;
+use taiji_comms::{connectivity::ConnectivityRequester, peer_manager::Peer, types::CommsPublicKey};
+use taiji_core::transactions::{taiji_amount::MicroMinotaiji, CryptoFactories};
+use taiji_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{
     sync::{broadcast, watch},
     task,
@@ -205,6 +205,6 @@ pub struct ScannedBlock {
     pub header_hash: HashOutput,
     pub height: u64,
     pub num_outputs: Option<u64>,
-    pub amount: Option<MicroMinotari>,
+    pub amount: Option<MicroMinotaiji>,
     pub timestamp: NaiveDateTime,
 }

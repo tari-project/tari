@@ -1,4 +1,4 @@
-// Copyright 2021. The Tari Project
+// Copyright 2021. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -22,8 +22,8 @@
 
 use std::time::Duration;
 
-use tari_comms::peer_manager::NodeId;
-use tari_core::transactions::tari_amount::MicroMinotari;
+use taiji_comms::peer_manager::NodeId;
+use taiji_core::transactions::taiji_amount::MicroMinotaiji;
 use tokio::sync::{broadcast, watch};
 
 use crate::util::watch::Watch;
@@ -52,7 +52,7 @@ pub enum UtxoScannerEvent {
     Completed {
         final_height: u64,
         num_recovered: u64,
-        value_recovered: MicroMinotari,
+        value_recovered: MicroMinotaiji,
         time_taken: Duration,
     },
     /// Scanning process has failed and scanning process has exited

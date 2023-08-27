@@ -1,4 +1,4 @@
-//  Copyright 2022, The Tari Project
+//  Copyright 2022, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -23,7 +23,7 @@
 use std::collections::HashSet;
 
 use log::warn;
-use tari_common_types::types::FixedHash;
+use taiji_common_types::types::FixedHash;
 use tari_utilities::hex::Hex;
 
 use crate::{
@@ -34,7 +34,7 @@ use crate::{
         transaction_components::{TransactionError, TransactionInput, TransactionOutput},
     },
     validation::{
-        helpers::{check_input_is_utxo, check_not_duplicate_txo, check_tari_script_byte_size},
+        helpers::{check_input_is_utxo, check_not_duplicate_txo, check_taiji_script_byte_size},
         ValidationError,
     },
 };
@@ -235,7 +235,7 @@ fn check_inputs_are_utxos<B: BlockchainBackend>(db: &B, body: &AggregateBody) ->
 
 /// This function checks:
 /// 1. that the output type is permitted
-/// 2. the byte size of TariScript does not exceed the maximum
+/// 2. the byte size of TaijiScript does not exceed the maximum
 /// 3. that the outputs do not already exist in the UTxO set.
 pub fn check_outputs<B: BlockchainBackend>(
     db: &B,
@@ -244,7 +244,7 @@ pub fn check_outputs<B: BlockchainBackend>(
 ) -> Result<(), ValidationError> {
     let max_script_size = constants.max_script_byte_size();
     for output in body.outputs() {
-        check_tari_script_byte_size(&output.script, max_script_size)?;
+        check_taiji_script_byte_size(&output.script, max_script_size)?;
         check_not_duplicate_txo(db, output)?;
         check_validator_node_registration_utxo(constants, output)?;
     }

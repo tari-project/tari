@@ -1,4 +1,4 @@
-//  Copyright 2022, The Tari Project
+//  Copyright 2022, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -24,7 +24,7 @@ use std::{collections::VecDeque, sync::Arc};
 
 use chrono::{NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::HashOutput;
+use taiji_common_types::types::HashOutput;
 
 use crate::blocks::ChainBlock;
 

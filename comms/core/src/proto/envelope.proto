@@ -1,9 +1,9 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 syntax = "proto3";
 
-package tari.comms.envelope;
+package taiji.comms.envelope;
 
 // Parts contained within an Envelope. This is used to tell if an encrypted
 // message was successfully decrypted, by decrypting the envelope body and checking

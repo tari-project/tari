@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -24,8 +24,8 @@ use std::{marker::PhantomData, sync::Arc};
 
 use futures::{Stream, StreamExt};
 use log::*;
-use tari_comms_dht::Dht;
-use tari_core::{
+use taiji_comms_dht::Dht;
+use taiji_core::{
     consensus::ConsensusManager,
     proto::base_node as base_node_proto,
     transactions::{
@@ -34,13 +34,13 @@ use tari_core::{
         CryptoFactories,
     },
 };
-use tari_p2p::{
+use taiji_p2p::{
     comms_connector::SubscriptionFactory,
     domain_message::DomainMessage,
     services::utils::{map_decode, ok_or_skip_result},
-    tari_message::TariMessageType,
+    taiji_message::TaijiMessageType,
 };
-use tari_service_framework::{
+use taiji_service_framework::{
     async_trait,
     reply_channel,
     ServiceInitializationError,
@@ -124,10 +124,10 @@ where
             target: LOG_TARGET,
             "Subscription '{}' for topic '{:?}' created.",
             SUBSCRIPTION_LABEL,
-            TariMessageType::SenderPartialTransaction
+            TaijiMessageType::SenderPartialTransaction
         );
         self.subscription_factory
-            .get_subscription(TariMessageType::SenderPartialTransaction, SUBSCRIPTION_LABEL)
+            .get_subscription(TaijiMessageType::SenderPartialTransaction, SUBSCRIPTION_LABEL)
             .map(map_decode::<proto::TransactionSenderMessage>)
             .filter_map(ok_or_skip_result)
     }
@@ -137,10 +137,10 @@ where
             target: LOG_TARGET,
             "Subscription '{}' for topic '{:?}' created.",
             SUBSCRIPTION_LABEL,
-            TariMessageType::ReceiverPartialTransactionReply
+            TaijiMessageType::ReceiverPartialTransactionReply
         );
         self.subscription_factory
-            .get_subscription(TariMessageType::ReceiverPartialTransactionReply, SUBSCRIPTION_LABEL)
+            .get_subscription(TaijiMessageType::ReceiverPartialTransactionReply, SUBSCRIPTION_LABEL)
             .map(map_decode::<proto::RecipientSignedMessage>)
             .filter_map(ok_or_skip_result)
     }
@@ -150,10 +150,10 @@ where
             target: LOG_TARGET,
             "Subscription '{}' for topic '{:?}' created.",
             SUBSCRIPTION_LABEL,
-            TariMessageType::TransactionFinalized
+            TaijiMessageType::TransactionFinalized
         );
         self.subscription_factory
-            .get_subscription(TariMessageType::TransactionFinalized, SUBSCRIPTION_LABEL)
+            .get_subscription(TaijiMessageType::TransactionFinalized, SUBSCRIPTION_LABEL)
             .map(map_decode::<proto::TransactionFinalizedMessage>)
             .filter_map(ok_or_skip_result)
     }
@@ -163,10 +163,10 @@ where
             target: LOG_TARGET,
             "Subscription '{}' for topic '{:?}' created.",
             SUBSCRIPTION_LABEL,
-            TariMessageType::BaseNodeResponse
+            TaijiMessageType::BaseNodeResponse
         );
         self.subscription_factory
-            .get_subscription(TariMessageType::BaseNodeResponse, SUBSCRIPTION_LABEL)
+            .get_subscription(TaijiMessageType::BaseNodeResponse, SUBSCRIPTION_LABEL)
             .map(map_decode::<base_node_proto::BaseNodeServiceResponse>)
             .filter_map(ok_or_skip_result)
     }
@@ -176,10 +176,10 @@ where
             target: LOG_TARGET,
             "Subscription '{}' for topic '{:?}' created.",
             SUBSCRIPTION_LABEL,
-            TariMessageType::TransactionCancelled
+            TaijiMessageType::TransactionCancelled
         );
         self.subscription_factory
-            .get_subscription(TariMessageType::TransactionCancelled, SUBSCRIPTION_LABEL)
+            .get_subscription(TaijiMessageType::TransactionCancelled, SUBSCRIPTION_LABEL)
             .map(map_decode::<proto::TransactionCancelledMessage>)
             .filter_map(ok_or_skip_result)
     }

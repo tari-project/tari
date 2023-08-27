@@ -1,4 +1,4 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 syntax = "proto3";
@@ -7,7 +7,7 @@ import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
 import "envelope.proto";
 
-package tari.dht.store_forward;
+package taiji.dht.store_forward;
 
 // The RetrieveMessageRequest is used for requesting the set of stored messages from neighbouring peer nodes. If a
 // start_time is provided then only messages after the specified time will be sent, otherwise all applicable messages
@@ -21,7 +21,7 @@ message StoredMessagesRequest {
 message StoredMessage {
     google.protobuf.Timestamp stored_at = 1;
     uint32 version = 2;
-    tari.dht.envelope.DhtHeader dht_header = 3;
+    taiji.dht.envelope.DhtHeader dht_header = 3;
     bytes body = 4;
 }
 

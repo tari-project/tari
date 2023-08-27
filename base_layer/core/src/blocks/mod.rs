@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -64,4 +64,4 @@ mod new_blockheader_template;
 #[cfg(feature = "base_node")]
 pub use new_blockheader_template::NewBlockHeaderTemplate;
 
-hash_domain!(BlocksHashDomain, "com.tari.base_layer.core.blocks", 0);
+hash_domain!(BlocksHashDomain, "com.taiji.base_layer.core.blocks", 0);

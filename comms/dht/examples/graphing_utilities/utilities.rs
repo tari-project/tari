@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2020. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -28,8 +28,8 @@ use petgraph::{
     stable_graph::{NodeIndex, StableGraph},
     visit::{Bfs, IntoNodeReferences},
 };
-use tari_comms::{connectivity::ConnectivitySelection, peer_manager::NodeId};
-use tari_test_utils::streams::convert_unbounded_mpsc_to_stream;
+use taiji_comms::{connectivity::ConnectivitySelection, peer_manager::NodeId};
+use taiji_test_utils::streams::convert_unbounded_mpsc_to_stream;
 
 use crate::memory_net::{
     utilities::{get_short_name, NodeEventRx, TestNode},

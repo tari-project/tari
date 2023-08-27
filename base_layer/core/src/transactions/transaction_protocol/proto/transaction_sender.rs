@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -24,8 +24,8 @@ use std::convert::{TryFrom, TryInto};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use proto::transaction_sender_message::Message as ProtoTxnSenderMessage;
-use tari_common_types::types::PublicKey;
-use tari_script::TariScript;
+use taiji_common_types::types::PublicKey;
+use taiji_script::TaijiScript;
 use tari_utilities::ByteArray;
 
 use super::{protocol as proto, protocol::transaction_sender_message::Message as ProtoTransactionSenderMessage};
@@ -125,7 +125,7 @@ impl TryFrom<proto::SingleRoundSenderData> for SingleRoundSenderData {
             metadata,
             message,
             features,
-            script: TariScript::from_bytes(&data.script).map_err(|err| err.to_string())?,
+            script: TaijiScript::from_bytes(&data.script).map_err(|err| err.to_string())?,
             sender_offset_public_key,
             ephemeral_public_nonce,
             covenant,

@@ -1,4 +1,4 @@
-// Copyright 2020, The Tari Project
+// Copyright 2020, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -27,7 +27,7 @@ use std::{
 
 use futures::future::FusedFuture;
 use log::*;
-use tari_shutdown::ShutdownSignal;
+use taiji_shutdown::ShutdownSignal;
 use tokio::{sync::mpsc, time};
 use tower::{Service, ServiceExt};
 
@@ -140,8 +140,8 @@ mod test {
     use std::time::Duration;
 
     use futures::future;
-    use tari_shutdown::Shutdown;
-    use tari_test_utils::collect_recv;
+    use taiji_shutdown::Shutdown;
+    use taiji_test_utils::collect_recv;
     use tokio::{sync::mpsc, time};
     use tower::service_fn;
 

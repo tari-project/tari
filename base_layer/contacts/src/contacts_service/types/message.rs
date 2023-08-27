@@ -1,4 +1,4 @@
-// Copyright 2023. The Tari Project
+// Copyright 2023. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -22,9 +22,9 @@
 
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
-use tari_common_types::tari_address::TariAddress;
-use tari_comms_dht::domain_message::OutboundDomainMessage;
-use tari_p2p::tari_message::TariMessageType;
+use taiji_common_types::taiji_address::TaijiAddress;
+use taiji_comms_dht::domain_message::OutboundDomainMessage;
+use taiji_p2p::taiji_message::TaijiMessageType;
 use tari_utilities::ByteArray;
 
 use crate::contacts_service::proto;
@@ -32,7 +32,7 @@ use crate::contacts_service::proto;
 #[derive(Clone, Debug, Default)]
 pub struct Message {
     pub body: Vec<u8>,
-    pub address: TariAddress,
+    pub address: TaijiAddress,
     pub direction: Direction,
     pub stored_at: u64,
     pub message_id: Vec<u8>,
@@ -65,7 +65,7 @@ impl From<proto::Message> for Message {
     fn from(message: proto::Message) -> Self {
         Self {
             body: message.body,
-            address: TariAddress::from_bytes(&message.address).expect("Couldn't parse address"),
+            address: TaijiAddress::from_bytes(&message.address).expect("Couldn't parse address"),
             // A Message from a proto::Message will always be an inbound message
             direction: Direction::Inbound,
             stored_at: message.stored_at,
@@ -88,6 +88,6 @@ impl From<Message> for proto::Message {
 
 impl From<Message> for OutboundDomainMessage<proto::Message> {
     fn from(message: Message) -> Self {
-        Self::new(&TariMessageType::Chat, message.into())
+        Self::new(&TaijiMessageType::Chat, message.into())
     }
 }

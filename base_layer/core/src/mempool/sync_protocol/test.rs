@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2020, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -23,8 +23,8 @@
 use std::{fmt, io, sync::Arc};
 
 use futures::{Sink, SinkExt, Stream, StreamExt};
-use tari_common::configuration::Network;
-use tari_comms::{
+use taiji_common::configuration::Network;
+use taiji_comms::{
     connectivity::ConnectivityEvent,
     framing,
     memsocket::MemorySocket,
@@ -52,7 +52,7 @@ use crate::{
         Mempool,
     },
     transactions::{
-        tari_amount::uT,
+        taiji_amount::uT,
         test_helpers::{create_test_core_key_manager_with_memory_db, create_tx},
         transaction_components::Transaction,
     },

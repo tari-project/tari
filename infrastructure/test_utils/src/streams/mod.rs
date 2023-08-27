@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -47,7 +47,7 @@ where
 /// # use tokio::runtime::Runtime;
 /// # use futures::stream;
 /// # use std::time::Duration;
-/// # use tari_test_utils::collect_stream;
+/// # use taiji_test_utils::collect_stream;
 ///
 /// let mut rt = Runtime::new().unwrap();
 /// let mut stream = stream::iter(1..10);
@@ -182,7 +182,7 @@ macro_rules! collect_try_recv {
 /// # use tokio::runtime::Runtime;
 /// # use futures::stream;
 /// # use std::time::Duration;
-/// # use tari_test_utils::collect_stream_count;
+/// # use taiji_test_utils::collect_stream_count;
 ///
 /// let rt = Runtime::new().unwrap();
 /// let mut stream = stream::iter(vec![1, 2, 2, 3, 2]);

@@ -1,4 +1,4 @@
-// Copyright 2019 The Tari Project
+// Copyright 2019 The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -28,18 +28,18 @@ use std::{
 use futures::{pin_mut, stream::StreamExt, Stream};
 use log::*;
 use rand::rngs::OsRng;
-use tari_common_types::{
+use taiji_common_types::{
     types::BlockHash,
     waiting_requests::{generate_request_key, RequestKey, WaitingRequests},
 };
-use tari_comms::peer_manager::NodeId;
-use tari_comms_dht::{
+use taiji_comms::peer_manager::NodeId;
+use taiji_comms_dht::{
     domain_message::OutboundDomainMessage,
     envelope::NodeDestination,
     outbound::{DhtOutboundError, OutboundEncryption, OutboundMessageRequester, SendMessageParams},
 };
-use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
-use tari_service_framework::reply_channel::RequestContext;
+use taiji_p2p::{domain_message::DomainMessage, taiji_message::TaijiMessageType};
+use taiji_service_framework::reply_channel::RequestContext;
 use tari_utilities::hex::Hex;
 use tokio::{
     sync::{
@@ -393,7 +393,7 @@ async fn handle_incoming_request<B: BlockchainBackend + 'static>(
     let send_message_response = outbound_message_service
         .send_direct_unencrypted(
             origin_public_key,
-            OutboundDomainMessage::new(&TariMessageType::BaseNodeResponse, message),
+            OutboundDomainMessage::new(&TaijiMessageType::BaseNodeResponse, message),
             "Outbound response message from base node".to_string(),
         )
         .await?;
@@ -504,7 +504,7 @@ async fn handle_outbound_request(
     let send_result = outbound_message_service
         .send_message(
             send_msg_params.finish(),
-            OutboundDomainMessage::new(&TariMessageType::BaseNodeRequest, service_request.clone()),
+            OutboundDomainMessage::new(&TaijiMessageType::BaseNodeRequest, service_request.clone()),
         )
         .await?;
 
@@ -577,7 +577,7 @@ async fn handle_outbound_block(
             OutboundEncryption::ClearText,
             exclude_peers,
             OutboundDomainMessage::new(
-                &TariMessageType::NewBlock,
+                &TaijiMessageType::NewBlock,
                 shared_protos::core::NewBlock::try_from(new_block).map_err(CommsInterfaceError::InternalError)?,
             ),
             "Outbound new block from base node".to_string(),

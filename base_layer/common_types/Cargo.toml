@@ -1,7 +1,7 @@
 [package]
-name = "tari_common_types"
-authors = ["The Tari Development Community"]
-description = "Tari cryptocurrency common types"
+name = "taiji_common_types"
+authors = ["The Taiji Development Community"]
+description = "Taiji cryptocurrency common types"
 license = "BSD-3-Clause"
 version = "0.52.0-pre.0"
 edition = "2018"
@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 tari_crypto = { version = "0.18" }
 tari_utilities = { version = "0.5" }
-tari_common = {  path = "../../common" }
+taiji_common = {  path = "../../common" }
 
 
 chacha20poly1305 = "0.10.1"

@@ -1,23 +1,23 @@
 [package]
-name = "tari_comms_dht"
+name = "taiji_comms_dht"
 version = "0.52.0-pre.0"
-authors = ["The Tari Development Community"]
-description = "Tari comms DHT module"
+authors = ["The Taiji Development Community"]
+description = "Taiji comms DHT module"
 repository = "https://github.com/tari-project/tari"
-homepage = "https://tari.com"
+homepage = "https://taiji.com"
 readme = "README.md"
 license = "BSD-3-Clause"
 edition = "2018"
 
 [dependencies]
-tari_comms = {  path = "../core", features = ["rpc"] }
-tari_common = { path = "../../common" }
-tari_comms_rpc_macros = {  path = "../rpc_macros" }
+taiji_comms = {  path = "../core", features = ["rpc"] }
+taiji_common = { path = "../../common" }
+taiji_comms_rpc_macros = {  path = "../rpc_macros" }
 tari_crypto = { version = "0.18" }
 tari_utilities = { version = "0.5" }
-tari_shutdown = {  path = "../../infrastructure/shutdown" }
-tari_storage = {  path = "../../infrastructure/storage" }
-tari_common_sqlite = { path = "../../common_sqlite" }
+taiji_shutdown = {  path = "../../infrastructure/shutdown" }
+taiji_storage = {  path = "../../infrastructure/storage" }
+taiji_common_sqlite = { path = "../../common_sqlite" }
 
 anyhow = "1.0.53"
 bitflags = "1.2.0"
@@ -48,7 +48,7 @@ tokio = { version = "1.23", features = ["rt", "macros"] }
 pin-project = "0.4"
 
 [dev-dependencies]
-tari_test_utils = {  path = "../../infrastructure/test_utils" }
+taiji_test_utils = {  path = "../../infrastructure/test_utils" }
 
 env_logger = "0.7.0"
 futures-test = { version = "0.3.5" }
@@ -62,7 +62,7 @@ clap = "3.2"
 
 
 [build-dependencies]
-tari_common = {  path = "../../common" }
+taiji_common = {  path = "../../common" }
 
 [features]
 test-mocks = []

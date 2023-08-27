@@ -1,4 +1,4 @@
-//  Copyright 2022. The Tari Project
+//  Copyright 2022. The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -22,17 +22,17 @@
 #![cfg(feature = "rpc")]
 
 // Run as normal, --nocapture for some extra output
-// cargo test --package tari_comms --test rpc_stress run  --all-features --release -- --exact --nocapture
+// cargo test --package taiji_comms --test rpc_stress run  --all-features --release -- --exact --nocapture
 
 use std::{future::Future, time::Duration};
 
 use futures::{future, StreamExt};
-use tari_comms::{
+use taiji_comms::{
     protocol::rpc::{RpcClient, RpcServer},
     transports::TcpTransport,
     CommsNode,
 };
-use tari_shutdown::{Shutdown, ShutdownSignal};
+use taiji_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{task, time::Instant};
 
 use crate::tests::{

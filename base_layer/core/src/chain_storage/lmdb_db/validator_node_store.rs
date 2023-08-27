@@ -1,4 +1,4 @@
-//  Copyright 2022. The Tari Project
+//  Copyright 2022. The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -23,8 +23,8 @@
 use std::{collections::HashMap, ops::Deref};
 
 use lmdb_zero::{ConstTransaction, WriteTransaction};
-use tari_common_types::types::{Commitment, PublicKey};
-use tari_storage::lmdb_store::DatabaseRef;
+use taiji_common_types::types::{Commitment, PublicKey};
+use taiji_storage::lmdb_store::DatabaseRef;
 use tari_utilities::ByteArray;
 
 use crate::chain_storage::{
@@ -220,7 +220,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
 
 #[cfg(test)]
 mod tests {
-    use tari_test_utils::unpack_enum;
+    use taiji_test_utils::unpack_enum;
 
     use super::*;
     use crate::{

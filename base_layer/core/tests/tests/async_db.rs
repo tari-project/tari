@@ -1,4 +1,4 @@
-//  Copyright 2022. The Tari Project
+//  Copyright 2022. The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -22,19 +22,19 @@
 
 use std::ops::Deref;
 
-use tari_common::configuration::Network;
-use tari_core::{
+use taiji_common::configuration::Network;
+use taiji_core::{
     blocks::Block,
     chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, PrunedOutput},
     transactions::{
         key_manager::TransactionKeyManagerInterface,
-        tari_amount::T,
+        taiji_amount::T,
         test_helpers::{schema_to_transaction, TestKeyManager},
         transaction_components::{TransactionOutput, WalletOutput},
     },
     txn_schema,
 };
-use tari_test_utils::runtime::test_async;
+use taiji_test_utils::runtime::test_async;
 
 use crate::helpers::{
     block_builders::chain_block_with_new_coinbase,

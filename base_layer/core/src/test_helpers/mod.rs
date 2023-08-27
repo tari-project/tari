@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -29,12 +29,12 @@ use blake2::Blake2b;
 pub use block_spec::{BlockSpec, BlockSpecs};
 use digest::consts::U32;
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
-use tari_common::configuration::Network;
-use tari_common_types::types::PublicKey;
-use tari_comms::PeerManager;
+use taiji_common::configuration::Network;
+use taiji_common_types::types::PublicKey;
+use taiji_comms::PeerManager;
 use tari_crypto::keys::PublicKey as PublicKeyT;
-use tari_key_manager::key_manager_service::KeyId;
-use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
+use taiji_key_manager::key_manager_service::KeyId;
+use taiji_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
 
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainHeader},

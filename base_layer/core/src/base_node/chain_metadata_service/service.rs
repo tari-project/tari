@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -25,10 +25,10 @@ use std::{convert::TryFrom, sync::Arc};
 use log::*;
 use num_format::{Locale, ToFormattedString};
 use prost::Message;
-use tari_common::log_if_error;
-use tari_common_types::chain_metadata::ChainMetadata;
-use tari_comms::message::MessageExt;
-use tari_p2p::services::liveness::{LivenessEvent, LivenessHandle, MetadataKey, PingPongEvent};
+use taiji_common::log_if_error;
+use taiji_common_types::chain_metadata::ChainMetadata;
+use taiji_comms::message::MessageExt;
+use taiji_p2p::services::liveness::{LivenessEvent, LivenessHandle, MetadataKey, PingPongEvent};
 use tokio::sync::broadcast;
 
 use super::{error::ChainMetadataSyncError, LOG_TARGET};
@@ -215,15 +215,15 @@ mod test {
     use std::convert::TryInto;
 
     use futures::StreamExt;
-    use tari_comms::peer_manager::NodeId;
-    use tari_p2p::services::liveness::{
+    use taiji_comms::peer_manager::NodeId;
+    use taiji_p2p::services::liveness::{
         mock::{create_p2p_liveness_mock, LivenessMockState},
         LivenessRequest,
         Metadata,
         PingPongEvent,
     };
-    use tari_service_framework::reply_channel;
-    use tari_test_utils::unpack_enum;
+    use taiji_service_framework::reply_channel;
+    use taiji_test_utils::unpack_enum;
     use tokio::{sync::broadcast, task};
 
     use super::*;

@@ -80,7 +80,7 @@ root:
 
 loggers:
   # Route log events common to every application to all appenders
-  minotari::application:
+  minotaiji::application:
     level: info
     appenders:
       - base_layer
@@ -93,7 +93,7 @@ loggers:
     level: info
     appenders:
       - base_layer
-  minotari:
+  minotaiji:
     level: info
     appenders:
       - base_layer
@@ -141,8 +141,8 @@ loggers:
     level: warn
     appenders:
       - other
-  # Route log events sent to the "minotari_mm_proxy" logger to the "base_layer" appender
-  minotari_mm_proxy:
+  # Route log events sent to the "minotaiji_mm_proxy" logger to the "base_layer" appender
+  minotaiji_mm_proxy:
     level: info
     appenders:
       - base_layer

@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -23,19 +23,19 @@
 use diesel::result::Error as DieselError;
 use log::SetLoggerError;
 use serde_json::Error as SerdeJsonError;
-use tari_common::exit_codes::{ExitCode, ExitError};
-use tari_common_sqlite::error::SqliteStorageError;
-use tari_comms::{
+use taiji_common::exit_codes::{ExitCode, ExitError};
+use taiji_common_sqlite::error::SqliteStorageError;
+use taiji_comms::{
     connectivity::ConnectivityError,
     multiaddr,
     peer_manager::{node_id::NodeIdError, PeerManagerError},
 };
-use tari_comms_dht::store_forward::StoreAndForwardError;
-use tari_contacts::contacts_service::error::ContactsServiceError;
-use tari_core::transactions::transaction_components::TransactionError;
-use tari_key_manager::{error::KeyManagerError, key_manager_service::KeyManagerServiceError};
-use tari_p2p::{initialization::CommsInitializationError, services::liveness::error::LivenessError};
-use tari_service_framework::{reply_channel::TransportChannelError, ServiceInitializationError};
+use taiji_comms_dht::store_forward::StoreAndForwardError;
+use taiji_contacts::contacts_service::error::ContactsServiceError;
+use taiji_core::transactions::transaction_components::TransactionError;
+use taiji_key_manager::{error::KeyManagerError, key_manager_service::KeyManagerServiceError};
+use taiji_p2p::{initialization::CommsInitializationError, services::liveness::error::LivenessError};
+use taiji_service_framework::{reply_channel::TransportChannelError, ServiceInitializationError};
 use tari_utilities::{hex::HexError, ByteArrayError};
 use thiserror::Error;
 
@@ -105,7 +105,7 @@ pub enum WalletError {
     PublicAddressNotSet,
 }
 
-pub const LOG_TARGET: &str = "minotari::application";
+pub const LOG_TARGET: &str = "minotaiji::application";
 impl From<ByteArrayError> for WalletError {
     fn from(err: ByteArrayError) -> Self {
         Self::ByteArrayError(err.to_string())

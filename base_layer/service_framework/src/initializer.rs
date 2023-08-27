@@ -1,4 +1,4 @@
-// Copyright 2019 The Tari Project
+// Copyright 2019 The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -40,7 +40,7 @@ pub trait ServiceInitializer {
 /// This allows the following "short-hand" syntax to be used:
 ///
 /// ```edition2018
-/// # use tari_service_framework::ServiceInitializerContext;
+/// # use taiji_service_framework::ServiceInitializerContext;
 /// # use tokio::runtime;
 /// let my_initializer = |context: ServiceInitializerContext| {
 ///     // initialization code

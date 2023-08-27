@@ -1,4 +1,4 @@
-// Copyright 2019 The Tari Project
+// Copyright 2019 The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -22,8 +22,8 @@
 
 use std::{sync::Arc, time::Duration};
 
-use tari_comms::peer_manager::NodeId;
-use tari_service_framework::reply_channel::SenderService;
+use taiji_comms::peer_manager::NodeId;
+use taiji_service_framework::reply_channel::SenderService;
 use tokio::sync::broadcast;
 use tower::Service;
 

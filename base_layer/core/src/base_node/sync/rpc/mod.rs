@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2020, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -31,8 +31,8 @@ pub use service::BaseNodeSyncRpcService;
 #[cfg(test)]
 mod tests;
 
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
-use tari_comms_rpc_macros::tari_rpc;
+use taiji_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
+use taiji_comms_rpc_macros::taiji_rpc;
 
 #[cfg(feature = "base_node")]
 use crate::{
@@ -52,7 +52,7 @@ use crate::{
     },
 };
 
-#[tari_rpc(protocol_name = b"t/blksync/1", server_struct = BaseNodeSyncRpcServer, client_struct = BaseNodeSyncRpcClient)]
+#[taiji_rpc(protocol_name = b"t/blksync/1", server_struct = BaseNodeSyncRpcServer, client_struct = BaseNodeSyncRpcClient)]
 pub trait BaseNodeSyncService: Send + Sync + 'static {
     #[rpc(method = 1)]
     async fn sync_blocks(

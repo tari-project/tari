@@ -1,4 +1,4 @@
-# Copyright 2022 The Tari Project
+# Copyright 2022 The Taiji Project
 # SPDX-License-Identifier: BSD-3-Clause
 
 @stress-test
@@ -18,7 +18,7 @@ Feature: Stress Test
         # Then all nodes are on the same chain tip
         # When I wait for wallet WALLET_A to have at least 5100000000 uT
 
-        # Then I coin split tari in wallet WALLET_A to produce <NumTransactions> UTXOs of 5000 uT each with fee_per_gram 20 uT
+        # Then I coin split taiji in wallet WALLET_A to produce <NumTransactions> UTXOs of 5000 uT each with fee_per_gram 20 uT
         # When mining node MINER mines 3 blocks
         # When mining node MINER mines <NumCoinsplitsNeeded> blocks
         # Then all nodes are on the same chain tip
@@ -65,7 +65,7 @@ Feature: Stress Test
         # Then all nodes are on the same chain tip
         # When I wait for wallet WALLET_A to have at least 15100000000 uT
 
-        # Then I coin split tari in wallet WALLET_A to produce 2000 UTXOs of 5000 uT each with fee_per_gram 4 uT
+        # Then I coin split taiji in wallet WALLET_A to produce 2000 UTXOs of 5000 uT each with fee_per_gram 4 uT
 
         # # Make sure enough blocks are mined for the coin split transaction to be confirmed
         # When mining node MINER mines 8 blocks

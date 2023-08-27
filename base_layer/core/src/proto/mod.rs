@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -27,24 +27,24 @@ mod types_impls;
 
 #[allow(clippy::large_enum_variant)]
 pub mod base_node {
-    include!(concat!(env!("OUT_DIR"), "/tari.base_node.rs"));
+    include!(concat!(env!("OUT_DIR"), "/taiji.base_node.rs"));
 }
 
 pub mod core {
-    include!(concat!(env!("OUT_DIR"), "/tari.core.rs"));
+    include!(concat!(env!("OUT_DIR"), "/taiji.core.rs"));
 }
 
 pub mod mempool {
-    include!(concat!(env!("OUT_DIR"), "/tari.mempool.rs"));
+    include!(concat!(env!("OUT_DIR"), "/taiji.mempool.rs"));
 }
 
 #[allow(clippy::large_enum_variant)]
 pub mod transaction_protocol {
-    include!(concat!(env!("OUT_DIR"), "/tari.transaction_protocol.rs"));
+    include!(concat!(env!("OUT_DIR"), "/taiji.transaction_protocol.rs"));
 }
 
 pub mod types {
-    include!(concat!(env!("OUT_DIR"), "/tari.types.rs"));
+    include!(concat!(env!("OUT_DIR"), "/taiji.types.rs"));
 }
 
 #[cfg(feature = "base_node")]

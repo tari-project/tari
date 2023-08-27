@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2020. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -32,7 +32,7 @@ use std::{
 use futures::future;
 use lazy_static::lazy_static;
 use rand::{distributions, rngs::OsRng, Rng};
-use tari_comms::{
+use taiji_comms::{
     backoff::ConstantBackoff,
     connection_manager::{ConnectionDirection, ConnectionManagerEvent},
     connectivity::ConnectivitySelection,
@@ -49,7 +49,7 @@ use tari_comms::{
     CommsNode,
     PeerConnection,
 };
-use tari_comms_dht::{
+use taiji_comms_dht::{
     domain_message::OutboundDomainMessage,
     envelope::NodeDestination,
     inbound::DecryptedDhtMessage,
@@ -59,12 +59,12 @@ use tari_comms_dht::{
     Dht,
     DhtConfig,
 };
-use tari_shutdown::{Shutdown, ShutdownSignal};
-use tari_storage::{
+use taiji_shutdown::{Shutdown, ShutdownSignal};
+use taiji_storage::{
     lmdb_store::{LMDBBuilder, LMDBConfig},
     LMDBWrapper,
 };
-use tari_test_utils::{paths::create_temporary_data_path, random, streams::convert_unbounded_mpsc_to_stream};
+use taiji_test_utils::{paths::create_temporary_data_path, random, streams::convert_unbounded_mpsc_to_stream};
 use tokio::{
     runtime,
     sync::{broadcast, mpsc},

@@ -1,7 +1,7 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use tari_comms::peer_manager::Peer;
+use taiji_comms::peer_manager::Peer;
 
 #[derive(Debug)]
 pub enum PeerType {

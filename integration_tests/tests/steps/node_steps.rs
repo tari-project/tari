@@ -1,4 +1,4 @@
-//   Copyright 2023. The Tari Project
+//   Copyright 2023. The Taiji Project
 //
 //   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //   following conditions are met:
@@ -25,34 +25,34 @@ use std::{convert::TryFrom, time::Duration};
 use cucumber::{given, then, when};
 use futures::StreamExt;
 use indexmap::IndexMap;
-use minotari_app_grpc::tari_rpc::{self as grpc, GetBlocksRequest, ListHeadersRequest};
-use minotari_node::BaseNodeConfig;
-use minotari_wallet_grpc_client::grpc::{Empty, GetIdentityRequest};
-use tari_core::blocks::Block;
-use tari_integration_tests::{
+use minotaiji_app_grpc::taiji_rpc::{self as grpc, GetBlocksRequest, ListHeadersRequest};
+use minotaiji_node::BaseNodeConfig;
+use minotaiji_wallet_grpc_client::grpc::{Empty, GetIdentityRequest};
+use taiji_core::blocks::Block;
+use taiji_integration_tests::{
     base_node_process::{spawn_base_node, spawn_base_node_with_config},
     get_peer_addresses,
     miner::mine_block_before_submit,
     world::NodeClient,
-    TariWorld,
+    TaijiWorld,
 };
 
 use crate::steps::{HALF_SECOND, TWO_MINUTES_WITH_HALF_SECOND_SLEEP};
 
 #[given(expr = "I have a seed node {word}")]
 #[when(expr = "I have a seed node {word}")]
-async fn start_base_node(world: &mut TariWorld, name: String) {
+async fn start_base_node(world: &mut TaijiWorld, name: String) {
     spawn_base_node(world, true, name, vec![]).await;
 }
 
 #[given(expr = "I have a base node {word} connected to all seed nodes")]
 #[when(expr = "I have a base node {word} connected to all seed nodes")]
-async fn start_base_node_connected_to_all_seed_nodes(world: &mut TariWorld, name: String) {
+async fn start_base_node_connected_to_all_seed_nodes(world: &mut TaijiWorld, name: String) {
     spawn_base_node(world, false, name, world.all_seed_nodes().to_vec()).await;
 }
 
 #[when(expr = "I start base node {word}")]
-async fn start_base_node_step(world: &mut TariWorld, name: String) {
+async fn start_base_node_step(world: &mut TaijiWorld, name: String) {
     let mut is_seed_node = false;
     let mut seed_nodes = world.all_seed_nodes().to_vec();
     if let Some(node_ps) = world.base_nodes.get(&name) {
@@ -63,7 +63,7 @@ async fn start_base_node_step(world: &mut TariWorld, name: String) {
 }
 
 #[when(expr = "I have {int} base nodes connected to all seed nodes")]
-async fn multiple_base_nodes_connected_to_all_seeds(world: &mut TariWorld, nodes: u64) {
+async fn multiple_base_nodes_connected_to_all_seeds(world: &mut TaijiWorld, nodes: u64) {
     for i in 0..nodes {
         let node = format!("Node_{}", i);
         println!("Initializing node {}", node.clone());
@@ -73,7 +73,7 @@ async fn multiple_base_nodes_connected_to_all_seeds(world: &mut TariWorld, nodes
 
 #[when(expr = "I wait for {word} to connect to {word}")]
 #[then(expr = "I wait for {word} to connect to {word}")]
-async fn node_pending_connection_to(world: &mut TariWorld, first_node: String, second_node: String) {
+async fn node_pending_connection_to(world: &mut TaijiWorld, first_node: String, second_node: String) {
     let mut node_client = world.get_base_node_or_wallet_client(&first_node).await.unwrap();
     let second_client = world.get_base_node_or_wallet_client(&second_node).await.unwrap();
 
@@ -106,7 +106,7 @@ async fn node_pending_connection_to(world: &mut TariWorld, first_node: String, s
 }
 
 #[when(expr = "I wait for {word} to have {int} connections")]
-async fn wait_for_node_have_x_connections(world: &mut TariWorld, node: String, num_connections: usize) {
+async fn wait_for_node_have_x_connections(world: &mut TaijiWorld, node: String, num_connections: usize) {
     let mut node_client = world.get_base_node_or_wallet_client(&node).await.unwrap();
 
     for _i in 0..100 {
@@ -126,7 +126,7 @@ async fn wait_for_node_have_x_connections(world: &mut TariWorld, node: String, n
 }
 
 #[then(expr = "all nodes are on the same chain at height {int}")]
-async fn all_nodes_on_same_chain_at_height(world: &mut TariWorld, height: u64) {
+async fn all_nodes_on_same_chain_at_height(world: &mut TaijiWorld, height: u64) {
     let mut nodes_at_height: IndexMap<&String, (u64, Vec<u8>)> = IndexMap::new();
 
     for (name, _) in world.base_nodes.iter() {
@@ -165,7 +165,7 @@ async fn all_nodes_on_same_chain_at_height(world: &mut TariWorld, height: u64) {
 
 #[then(expr = "all nodes are at height {int}")]
 #[when(expr = "all nodes are at height {int}")]
-async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) {
+async fn all_nodes_are_at_height(world: &mut TaijiWorld, height: u64) {
     let mut nodes_at_height: IndexMap<&String, u64> = IndexMap::new();
 
     for (name, _) in world.base_nodes.iter() {
@@ -202,7 +202,7 @@ async fn all_nodes_are_at_height(world: &mut TariWorld, height: u64) {
 
 #[when(expr = "node {word} is at height {int}")]
 #[then(expr = "node {word} is at height {int}")]
-async fn node_is_at_height(world: &mut TariWorld, base_node: String, height: u64) {
+async fn node_is_at_height(world: &mut TaijiWorld, base_node: String, height: u64) {
     let mut client = world.get_node_client(&base_node).await.unwrap();
     let mut chain_hgt = 0;
 
@@ -225,7 +225,7 @@ async fn node_is_at_height(world: &mut TariWorld, base_node: String, height: u64
 }
 
 #[then(expr = "node {word} has a pruned height of {int}")]
-async fn pruned_height_of(world: &mut TariWorld, node: String, height: u64) {
+async fn pruned_height_of(world: &mut TaijiWorld, node: String, height: u64) {
     let mut client = world.get_node_client(&node).await.unwrap();
     let mut last_pruned_height = 0;
 
@@ -248,18 +248,18 @@ async fn pruned_height_of(world: &mut TariWorld, node: String, height: u64) {
 
 #[given(expr = "I have a base node {word} connected to seed {word}")]
 #[when(expr = "I have a base node {word} connected to seed {word}")]
-async fn base_node_connected_to_seed(world: &mut TariWorld, base_node: String, seed: String) {
+async fn base_node_connected_to_seed(world: &mut TaijiWorld, base_node: String, seed: String) {
     spawn_base_node(world, false, base_node, vec![seed]).await;
 }
 
 #[when(expr = "I have a base node {word}")]
 #[given(expr = "I have a base node {word}")]
-async fn create_and_add_base_node(world: &mut TariWorld, base_node: String) {
+async fn create_and_add_base_node(world: &mut TaijiWorld, base_node: String) {
     spawn_base_node(world, false, base_node, vec![]).await;
 }
 
 #[given(expr = "I have {int} seed nodes")]
-async fn have_seed_nodes(world: &mut TariWorld, seed_nodes: u64) {
+async fn have_seed_nodes(world: &mut TaijiWorld, seed_nodes: u64) {
     for node in 0..seed_nodes {
         spawn_base_node(world, true, format!("seed_node_{}", node), vec![]).await;
     }
@@ -267,7 +267,7 @@ async fn have_seed_nodes(world: &mut TariWorld, seed_nodes: u64) {
 
 #[then(expr = "{word} has {word} in {word} state")]
 async fn transaction_in_state(
-    world: &mut TariWorld,
+    world: &mut TaijiWorld,
     node: String,
     tx_name: String,
     state: String,
@@ -312,7 +312,7 @@ async fn transaction_in_state(
 }
 
 #[then(expr = "I wait until base node {word} has {int} unconfirmed transactions in its mempool")]
-async fn base_node_has_unconfirmed_transaction_in_mempool(world: &mut TariWorld, node: String, num_transactions: u64) {
+async fn base_node_has_unconfirmed_transaction_in_mempool(world: &mut TaijiWorld, node: String, num_transactions: u64) {
     let mut client = world.get_node_client(&node).await.unwrap();
     let mut unconfirmed_txs = 0;
 
@@ -336,14 +336,14 @@ async fn base_node_has_unconfirmed_transaction_in_mempool(world: &mut TariWorld,
 }
 
 #[then(expr = "{word} is in the {word} of all nodes")]
-async fn tx_in_state_all_nodes(world: &mut TariWorld, tx_name: String, pool: String) -> anyhow::Result<()> {
+async fn tx_in_state_all_nodes(world: &mut TaijiWorld, tx_name: String, pool: String) -> anyhow::Result<()> {
     tx_in_state_all_nodes_with_allowed_failure(world, tx_name, pool, 0).await
 }
 // casting is okay in tests
 #[allow(clippy::cast_possible_truncation)]
 #[then(expr = "{word} is in the {word} of all nodes, where {int}% can fail")]
 async fn tx_in_state_all_nodes_with_allowed_failure(
-    world: &mut TariWorld,
+    world: &mut TaijiWorld,
     tx_name: String,
     pool: String,
     can_fail_percent: u64,
@@ -407,7 +407,7 @@ async fn tx_in_state_all_nodes_with_allowed_failure(
 
 #[then(expr = "I submit transaction {word} to {word}")]
 #[when(expr = "I submit transaction {word} to {word}")]
-pub async fn submit_transaction_to(world: &mut TariWorld, tx_name: String, node: String) -> anyhow::Result<()> {
+pub async fn submit_transaction_to(world: &mut TaijiWorld, tx_name: String, node: String) -> anyhow::Result<()> {
     let mut client = world.get_node_client(&node).await?;
     let tx = world
         .transactions
@@ -429,7 +429,7 @@ pub async fn submit_transaction_to(world: &mut TariWorld, tx_name: String, node:
 }
 
 #[when(expr = "I submit transaction {word} to {word} and it does not succeed")]
-pub async fn submit_failed_transaction_to(world: &mut TariWorld, tx_name: String, node: String) -> anyhow::Result<()> {
+pub async fn submit_failed_transaction_to(world: &mut TaijiWorld, tx_name: String, node: String) -> anyhow::Result<()> {
     let mut client = world.get_node_client(&node).await?;
     let tx = world
         .transactions
@@ -456,7 +456,7 @@ pub async fn submit_failed_transaction_to(world: &mut TariWorld, tx_name: String
 #[when(expr = "I have a pruned node {word} connected to node {word} with pruning horizon set to {int}")]
 #[given(expr = "I have a pruned node {word} connected to node {word} with pruning horizon set to {int}")]
 async fn prune_node_connected_to_base_node(
-    world: &mut TariWorld,
+    world: &mut TaijiWorld,
     pruned_node: String,
     base_node: String,
     pruning_horizon: u64,
@@ -468,18 +468,18 @@ async fn prune_node_connected_to_base_node(
 }
 
 #[when(expr = "I have a base node {word} connected to node {word}")]
-async fn base_node_connected_to_node(world: &mut TariWorld, base_node: String, peer_node: String) {
+async fn base_node_connected_to_node(world: &mut TaijiWorld, base_node: String, peer_node: String) {
     spawn_base_node(world, false, base_node, vec![peer_node]).await;
 }
 
 #[when(expr = "I have a base node {word} connected to nodes {word}")]
-async fn base_node_connected_to_nodes(world: &mut TariWorld, base_node: String, nodes: String) {
+async fn base_node_connected_to_nodes(world: &mut TaijiWorld, base_node: String, nodes: String) {
     let nodes = nodes.split(',').map(|s| s.to_string()).collect::<Vec<String>>();
     spawn_base_node(world, false, base_node, nodes).await;
 }
 
 #[then(expr = "node {word} is in state {word}")]
-async fn node_state(world: &mut TariWorld, node_name: String, state: String) {
+async fn node_state(world: &mut TaijiWorld, node_name: String, state: String) {
     let mut node_client = world.get_node_client(&node_name).await.unwrap();
     let tip = node_client.get_tip_info(Empty {}).await.unwrap().into_inner();
     let state = match state.as_str() {
@@ -496,7 +496,7 @@ async fn node_state(world: &mut TariWorld, node_name: String, state: String) {
 }
 
 #[then(expr = "node {word} is at the same height as node {word}")]
-async fn base_node_is_at_same_height_as_node(world: &mut TariWorld, base_node: String, peer_node: String) {
+async fn base_node_is_at_same_height_as_node(world: &mut TaijiWorld, base_node: String, peer_node: String) {
     let mut peer_node_client = world.get_node_client(&peer_node).await.unwrap();
     let req = Empty {};
     let mut expected_height = peer_node_client
@@ -567,14 +567,14 @@ async fn base_node_is_at_same_height_as_node(world: &mut TariWorld, base_node: S
 
 #[when(expr = "I stop node {word}")]
 #[then(expr = "I stop node {word}")]
-async fn stop_node(world: &mut TariWorld, node: String) {
+async fn stop_node(world: &mut TaijiWorld, node: String) {
     let base_ps = world.base_nodes.get_mut(&node).unwrap();
     println!("Stopping node {}", node);
     base_ps.kill();
 }
 
 #[then(expr = "node {word} lists heights {int} to {int}")]
-async fn node_lists_heights(world: &mut TariWorld, node: String, start: u64, end: u64) {
+async fn node_lists_heights(world: &mut TaijiWorld, node: String, start: u64, end: u64) {
     let mut node_client = world.get_node_client(&node).await.unwrap();
     let heights = (start..=end).collect::<Vec<_>>();
     let blocks_req = GetBlocksRequest { heights };
@@ -596,7 +596,7 @@ async fn node_lists_heights(world: &mut TariWorld, node: String, start: u64, end
 }
 
 #[then(expr = "node {word} lists headers {int} to {int} with correct heights")]
-async fn node_lists_headers_with_correct_heights(world: &mut TariWorld, node: String, start: u64, end: u64) {
+async fn node_lists_headers_with_correct_heights(world: &mut TaijiWorld, node: String, start: u64, end: u64) {
     let mut node_client = world.get_node_client(&node).await.unwrap();
     let list_headers_req = ListHeadersRequest {
         from_height: start,
@@ -623,12 +623,12 @@ async fn node_lists_headers_with_correct_heights(world: &mut TariWorld, node: St
 
 #[then(expr = "all nodes are at height {int}*{int}")]
 #[when(expr = "all nodes are at height {int}*{int}")]
-async fn all_nodes_are_at_product_height(world: &mut TariWorld, a: u64, b: u64) {
+async fn all_nodes_are_at_product_height(world: &mut TaijiWorld, a: u64, b: u64) {
     all_nodes_are_at_height(world, a * b).await;
 }
 
 #[when(expr = "I connect node {word} to node {word}")]
-async fn connect_node_to_other_node(world: &mut TariWorld, node_a: String, node_b: String) {
+async fn connect_node_to_other_node(world: &mut TaijiWorld, node_a: String, node_b: String) {
     let node_a_ps = world.base_nodes.get_mut(&node_a).unwrap();
     let mut node_a_peers = node_a_ps.seed_nodes.clone();
     let is_seed_node = node_a_ps.is_seed_node;
@@ -639,7 +639,7 @@ async fn connect_node_to_other_node(world: &mut TariWorld, node_a: String, node_
 }
 
 #[then(expr = "meddling with block template data from node {word} is not allowed")]
-async fn no_meddling_with_data(world: &mut TariWorld, node: String) {
+async fn no_meddling_with_data(world: &mut TaijiWorld, node: String) {
     let mut client = world.get_node_client(&node).await.unwrap();
 
     // No meddling
@@ -688,7 +688,7 @@ async fn no_meddling_with_data(world: &mut TariWorld, node: String) {
 
 #[when(expr = "I have a lagging delayed node {word} connected to node {word} with \
                blocks_behind_before_considered_lagging {int}")]
-async fn lagging_delayed_node(world: &mut TariWorld, delayed_node: String, node: String, delay: u64) {
+async fn lagging_delayed_node(world: &mut TaijiWorld, delayed_node: String, node: String, delay: u64) {
     let mut base_node_config = BaseNodeConfig::default();
     base_node_config.state_machine.blocks_behind_before_considered_lagging = delay;
 
@@ -696,7 +696,7 @@ async fn lagging_delayed_node(world: &mut TariWorld, delayed_node: String, node:
 }
 
 #[then(expr = "node {word} has reached initial sync")]
-async fn node_reached_sync(world: &mut TariWorld, node: String) {
+async fn node_reached_sync(world: &mut TaijiWorld, node: String) {
     let mut client = world.get_node_client(&node).await.unwrap();
     let mut longest_chain = 0;
 
@@ -720,7 +720,7 @@ async fn node_reached_sync(world: &mut TariWorld, node: String) {
 
 #[when(expr = "I have {int} base nodes with pruning horizon {int} force syncing on node {word}")]
 async fn force_sync_node_with_an_army_of_pruned_nodes(
-    world: &mut TariWorld,
+    world: &mut TaijiWorld,
     nodes_count: u64,
     horizon: u64,
     node: String,
@@ -738,7 +738,7 @@ async fn force_sync_node_with_an_army_of_pruned_nodes(
 }
 
 #[then(expr = "{word} has at least {int} peers")]
-async fn has_at_least_num_peers(world: &mut TariWorld, node: String, num_peers: u64) {
+async fn has_at_least_num_peers(world: &mut TaijiWorld, node: String, num_peers: u64) {
     let mut client = world.get_node_client(&node).await.unwrap();
     let mut last_num_of_peers = 0;
 

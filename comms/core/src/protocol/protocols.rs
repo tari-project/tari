@@ -1,4 +1,4 @@
-// Copyright 2020, The Tari Project
+// Copyright 2020, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -145,7 +145,7 @@ impl ProtocolExtension for Protocols<Substream> {
 
 #[cfg(test)]
 mod test {
-    use tari_test_utils::unpack_enum;
+    use taiji_test_utils::unpack_enum;
 
     use super::*;
 
@@ -153,8 +153,8 @@ mod test {
     fn add() {
         let (tx, _) = mpsc::channel(1);
         let protos = [
-            ProtocolId::from_static(b"/tari/test/1"),
-            ProtocolId::from_static(b"/tari/test/2"),
+            ProtocolId::from_static(b"/taiji/test/1"),
+            ProtocolId::from_static(b"/taiji/test/2"),
         ];
         let mut protocols = Protocols::<()>::new();
         protocols.add(&protos, &tx);
@@ -165,7 +165,7 @@ mod test {
     #[tokio::test]
     async fn notify() {
         let (tx, mut rx) = mpsc::channel(1);
-        let protos = [ProtocolId::from_static(b"/tari/test/1")];
+        let protos = [ProtocolId::from_static(b"/taiji/test/1")];
         let mut protocols = Protocols::<()>::new();
         protocols.add(&protos, &tx);
 
@@ -185,7 +185,7 @@ mod test {
 
         let err = protocols
             .notify(
-                &ProtocolId::from_static(b"/tari/test/0"),
+                &ProtocolId::from_static(b"/taiji/test/0"),
                 ProtocolEvent::NewInboundSubstream(NodeId::new(), ()),
             )
             .await

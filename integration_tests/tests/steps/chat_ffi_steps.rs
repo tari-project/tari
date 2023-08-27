@@ -1,4 +1,4 @@
-//   Copyright 2023. The Tari Project
+//   Copyright 2023. The Taiji Project
 //
 //   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //   following conditions are met:
@@ -23,15 +23,15 @@
 use std::time::Duration;
 
 use cucumber::{then, when};
-use tari_integration_tests::{
+use taiji_integration_tests::{
     chat_ffi::{spawn_ffi_chat_client, ChatCallback},
-    TariWorld,
+    TaijiWorld,
 };
 
 use crate::steps::{HALF_SECOND, TWO_MINUTES_WITH_HALF_SECOND_SLEEP};
 
 #[when(expr = "I have a chat FFI client {word} connected to seed node {word}")]
-async fn chat_ffi_client_connected_to_base_node(world: &mut TariWorld, name: String, seed_node_name: String) {
+async fn chat_ffi_client_connected_to_base_node(world: &mut TaijiWorld, name: String, seed_node_name: String) {
     let base_node = world.get_node(&seed_node_name).unwrap();
 
     let client = spawn_ffi_chat_client(
@@ -44,7 +44,7 @@ async fn chat_ffi_client_connected_to_base_node(world: &mut TariWorld, name: Str
 }
 
 #[then(expr = "there will be a contact status update callback of at least {int}")]
-async fn contact_status_update_callback(_world: &mut TariWorld, callback_count: usize) {
+async fn contact_status_update_callback(_world: &mut TaijiWorld, callback_count: usize) {
     let mut count = 0;
     for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
         count = *ChatCallback::instance().contact_status_change.lock().unwrap();
@@ -63,7 +63,7 @@ async fn contact_status_update_callback(_world: &mut TariWorld, callback_count: 
 }
 
 #[then(expr = "there will be a MessageReceived callback of at least {int}")]
-async fn message_reveived_callback(_world: &mut TariWorld, callback_count: usize) {
+async fn message_reveived_callback(_world: &mut TaijiWorld, callback_count: usize) {
     let mut count = 0;
     for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
         count = *ChatCallback::instance().message_received.lock().unwrap();

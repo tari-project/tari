@@ -1,12 +1,12 @@
 {
-  "name": "@tari/base-node-grpc-client",
+  "name": "@taiji/base-node-grpc-client",
   "version": "0.0.1",
-  "description": "GRPC client for Tari Base Node",
+  "description": "GRPC client for Taiji Base Node",
   "main": "./src/index.js",
   "scripts": {
     "test": "jest"
   },
-  "author": "Tari development community",
+  "author": "Taiji development community",
   "dependencies": {
     "@grpc/grpc-js": "^1.2.3",
     "@grpc/proto-loader": "^0.7.0",

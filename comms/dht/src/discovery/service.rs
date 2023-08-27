@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -29,7 +29,7 @@ use std::{
 
 use log::*;
 use rand::{rngs::OsRng, RngCore};
-use tari_comms::{
+use taiji_comms::{
     log_if_error,
     multiaddr::Multiaddr,
     net_address::PeerAddressSource,
@@ -37,7 +37,7 @@ use tari_comms::{
     types::CommsPublicKey,
     validate_addresses,
 };
-use tari_shutdown::ShutdownSignal;
+use taiji_shutdown::ShutdownSignal;
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{
     sync::{mpsc, oneshot},
@@ -359,7 +359,7 @@ impl DhtDiscoveryService {
 mod test {
     use std::time::Duration;
 
-    use tari_shutdown::Shutdown;
+    use taiji_shutdown::Shutdown;
 
     use super::*;
     use crate::{

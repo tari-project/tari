@@ -1,4 +1,4 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 //! Future types
@@ -11,7 +11,7 @@ use std::{
 
 use futures::ready;
 use pin_project::pin_project;
-use tari_comms::pipeline::PipelineError;
+use taiji_comms::pipeline::PipelineError;
 use tower::Service;
 
 /// Filtered response future

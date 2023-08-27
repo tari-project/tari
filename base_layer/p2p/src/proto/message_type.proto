@@ -1,38 +1,38 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 syntax = "proto3";
 
-package tari.p2p.message_type;
+package taiji.p2p.message_type;
 
-// A tari message type is an immutable 32-bit signed integer indicating the type of message being received or sent
+// A taiji message type is an immutable 32-bit signed integer indicating the type of message being received or sent
 // over the network.
-enum TariMessageType {
-    TariMessageTypeNone = 0;
+enum TaijiMessageType {
+    TaijiMessageTypeNone = 0;
 
     // -- NetMessages --
 
-    TariMessageTypePingPong = 1;
-    TariMessageTypeChat = 2;
+    TaijiMessageTypePingPong = 1;
+    TaijiMessageTypeChat = 2;
 
     // -- Blockchain messages --
 
-    TariMessageTypeNewTransaction = 65;
-    TariMessageTypeNewBlock = 66;
-    TariMessageTypeSenderPartialTransaction = 67;
-    TariMessageTypeReceiverPartialTransactionReply = 68;
-    TariMessageTypeBaseNodeRequest = 69;
-    TariMessageTypeBaseNodeResponse = 70;
-    TariMessageTypeMempoolRequest= 71;
-    TariMessageTypeMempoolResponse = 72;
-    TariMessageTypeTransactionFinalized = 73;
-    TariMessageTypeTransactionCancelled = 74;
+    TaijiMessageTypeNewTransaction = 65;
+    TaijiMessageTypeNewBlock = 66;
+    TaijiMessageTypeSenderPartialTransaction = 67;
+    TaijiMessageTypeReceiverPartialTransactionReply = 68;
+    TaijiMessageTypeBaseNodeRequest = 69;
+    TaijiMessageTypeBaseNodeResponse = 70;
+    TaijiMessageTypeMempoolRequest= 71;
+    TaijiMessageTypeMempoolResponse = 72;
+    TaijiMessageTypeTransactionFinalized = 73;
+    TaijiMessageTypeTransactionCancelled = 74;
 
     // -- DAN Messages --
-    TariMessageTypeDanConsensusMessage = 101;
+    TaijiMessageTypeDanConsensusMessage = 101;
     // -- Extended --
 
-    TariMessageTypeText = 225;
-    TariMessageTypeTextAck = 226;
+    TaijiMessageTypeText = 225;
+    TaijiMessageTypeTextAck = 226;
 
 }

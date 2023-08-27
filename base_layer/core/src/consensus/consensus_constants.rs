@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -26,9 +26,9 @@ use std::{
 };
 
 use chrono::{DateTime, Duration, Utc};
-use tari_common::configuration::Network;
-use tari_common_types::epoch::VnEpoch;
-use tari_script::{script, OpcodeVersion};
+use taiji_common::configuration::Network;
+use taiji_common_types::epoch::VnEpoch;
+use taiji_script::{script, OpcodeVersion};
 use tari_utilities::epoch_time::EpochTime;
 
 use crate::{
@@ -36,7 +36,7 @@ use crate::{
     consensus::network::NetworkConsensus,
     proof_of_work::{Difficulty, PowAlgorithm},
     transactions::{
-        tari_amount::{uT, MicroMinotari, T},
+        taiji_amount::{uT, MicroMinotaiji, T},
         transaction_components::{
             OutputFeatures,
             OutputFeaturesVersion,
@@ -73,12 +73,12 @@ pub struct ConsensusConstants {
     /// forward
     median_timestamp_count: usize,
     /// This is the initial emission curve amount
-    pub(in crate::consensus) emission_initial: MicroMinotari,
+    pub(in crate::consensus) emission_initial: MicroMinotaiji,
     /// This is the emission curve decay factor as a sum of fraction powers of two. e.g. [1,2] would be 1/2 + 1/4. [2]
     /// would be 1/4
     pub(in crate::consensus) emission_decay: &'static [u64],
     /// This is the emission curve tail amount
-    pub(in crate::consensus) emission_tail: MicroMinotari,
+    pub(in crate::consensus) emission_tail: MicroMinotaiji,
     /// This is the maximum age a Monero merge mined seed can be reused
     /// Monero forces a change every height mod 2048 blocks
     max_randomx_seed_height: u64,
@@ -86,10 +86,10 @@ pub struct ConsensusConstants {
     /// Ideally this should count up to 100. If this does not you will reduce your target time.
     proof_of_work: HashMap<PowAlgorithm, PowAlgorithmConstants>,
     /// This is to keep track of the value inside of the genesis block
-    faucet_value: MicroMinotari,
+    faucet_value: MicroMinotaiji,
     /// Transaction Weight params
     transaction_weight: TransactionWeight,
-    /// Maximum byte size of TariScript
+    /// Maximum byte size of TaijiScript
     max_script_byte_size: usize,
     /// Range of valid transaction input versions
     input_version_range: RangeInclusive<TransactionInputVersion>,
@@ -109,8 +109,8 @@ pub struct ConsensusConstants {
     vn_epoch_length: u64,
     /// The number of Epochs that a validator node registration is valid
     vn_validity_period_epochs: VnEpoch,
-    /// The min amount of micro Minotari to deposit for a registration transaction to be allowed onto the blockchain
-    vn_registration_min_deposit_amount: MicroMinotari,
+    /// The min amount of micro Minotaiji to deposit for a registration transaction to be allowed onto the blockchain
+    vn_registration_min_deposit_amount: MicroMinotaiji,
     /// The period that the registration funds are required to be locked up.
     vn_registration_lock_height: u64,
     /// The period after which the VNs will be reshuffled.
@@ -160,7 +160,7 @@ impl ConsensusConstants {
     }
 
     /// This gets the emission curve values as (initial, decay, tail)
-    pub fn emission_amounts(&self) -> (MicroMinotari, &'static [u64], MicroMinotari) {
+    pub fn emission_amounts(&self) -> (MicroMinotaiji, &'static [u64], MicroMinotaiji) {
         (self.emission_initial, self.emission_decay, self.emission_tail)
     }
 
@@ -230,7 +230,7 @@ impl ConsensusConstants {
         self.coinbase_output_features_extra_max_length
     }
 
-    /// The amount of PoW algorithms used by the Tari chain.
+    /// The amount of PoW algorithms used by the Taiji chain.
     pub fn pow_algo_count(&self) -> u64 {
         self.proof_of_work.len() as u64
     }
@@ -249,7 +249,7 @@ impl ConsensusConstants {
         self.median_timestamp_count
     }
 
-    /// The maximum serialized byte size of TariScript
+    /// The maximum serialized byte size of TaijiScript
     pub fn max_script_byte_size(&self) -> usize {
         self.max_script_byte_size
     }
@@ -263,7 +263,7 @@ impl ConsensusConstants {
     }
 
     /// This will return the value of the genesis block faucets
-    pub fn faucet_value(&self) -> MicroMinotari {
+    pub fn faucet_value(&self) -> MicroMinotaiji {
         self.faucet_value
     }
 
@@ -322,7 +322,7 @@ impl ConsensusConstants {
         self.vn_registration_shuffle_interval
     }
 
-    pub fn validator_node_registration_min_deposit_amount(&self) -> MicroMinotari {
+    pub fn validator_node_registration_min_deposit_amount(&self) -> MicroMinotaiji {
         self.vn_registration_min_deposit_amount
     }
 
@@ -383,7 +383,7 @@ impl ConsensusConstants {
             max_covenant_length: 100,
             vn_epoch_length: 10,
             vn_validity_period_epochs: VnEpoch(100),
-            vn_registration_min_deposit_amount: MicroMinotari(0),
+            vn_registration_min_deposit_amount: MicroMinotaiji(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 64,
@@ -446,7 +446,7 @@ impl ConsensusConstants {
             max_covenant_length: 100,
             vn_epoch_length: 10,
             vn_validity_period_epochs: VnEpoch(3),
-            vn_registration_min_deposit_amount: MicroMinotari(0),
+            vn_registration_min_deposit_amount: MicroMinotaiji(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 64,
@@ -506,7 +506,7 @@ impl ConsensusConstants {
             max_covenant_length: 0,
             vn_epoch_length: 60,
             vn_validity_period_epochs: VnEpoch(100),
-            vn_registration_min_deposit_amount: MicroMinotari(0),
+            vn_registration_min_deposit_amount: MicroMinotaiji(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 64,
@@ -560,7 +560,7 @@ impl ConsensusConstants {
             max_covenant_length: 0,
             vn_epoch_length: 60,
             vn_validity_period_epochs: VnEpoch(100),
-            vn_registration_min_deposit_amount: MicroMinotari(0),
+            vn_registration_min_deposit_amount: MicroMinotaiji(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 64,
@@ -608,7 +608,7 @@ impl ConsensusConstants {
             max_covenant_length: 0,
             vn_epoch_length: 60,
             vn_validity_period_epochs: VnEpoch(100),
-            vn_registration_min_deposit_amount: MicroMinotari(0),
+            vn_registration_min_deposit_amount: MicroMinotaiji(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 64,
@@ -647,7 +647,7 @@ impl ConsensusConstants {
             emission_tail: 100.into(),
             max_randomx_seed_height: u64::MAX,
             proof_of_work: algos,
-            faucet_value: MicroMinotari::from(0),
+            faucet_value: MicroMinotaiji::from(0),
             transaction_weight: TransactionWeight::v1(),
             max_script_byte_size: 2048,
             input_version_range,
@@ -658,7 +658,7 @@ impl ConsensusConstants {
             max_covenant_length: 0,
             vn_epoch_length: 60,
             vn_validity_period_epochs: VnEpoch(100),
-            vn_registration_min_deposit_amount: MicroMinotari(0),
+            vn_registration_min_deposit_amount: MicroMinotaiji(0),
             vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 64,
@@ -686,7 +686,7 @@ enum CheckDifficultyRatio {
 
 // Assert the hybrid POW constants.
 // Note: The math and constants in this function should not be changed without ample consideration that should include
-//       discussion with the Tari community, modelling and system level tests.
+//       discussion with the Taiji community, modelling and system level tests.
 // For SHA3/Monero to have a 40/60 split:
 //   > sha3x_target_time = randomx_target_time * (100 - 40) / 40
 //   > randomx_target_time = sha3x_target_time * (100 - 60) / 60
@@ -816,16 +816,16 @@ impl ConsensusConstantsBuilder {
         self
     }
 
-    pub fn with_faucet_value(mut self, value: MicroMinotari) -> Self {
+    pub fn with_faucet_value(mut self, value: MicroMinotaiji) -> Self {
         self.consensus.faucet_value = value;
         self
     }
 
     pub fn with_emission_amounts(
         mut self,
-        intial_amount: MicroMinotari,
+        intial_amount: MicroMinotaiji,
         decay: &'static [u64],
-        tail_amount: MicroMinotari,
+        tail_amount: MicroMinotaiji,
     ) -> Self {
         self.consensus.emission_initial = intial_amount;
         self.consensus.emission_decay = decay;
@@ -862,7 +862,7 @@ mod test {
             emission::{Emission, EmissionSchedule},
             ConsensusConstants,
         },
-        transactions::tari_amount::{uT, MicroMinotari},
+        transactions::taiji_amount::{uT, MicroMinotaiji},
     };
 
     #[test]
@@ -884,7 +884,7 @@ mod test {
             esmeralda[0].emission_tail,
         );
         // No genesis block coinbase
-        assert_eq!(schedule.block_reward(0), MicroMinotari(0));
+        assert_eq!(schedule.block_reward(0), MicroMinotaiji(0));
         // Coinbases starts at block 1
         let coinbase_offset = 1;
         let first_reward = schedule.block_reward(coinbase_offset);
@@ -912,7 +912,7 @@ mod test {
         let igor = ConsensusConstants::igor();
         let schedule = EmissionSchedule::new(igor[0].emission_initial, igor[0].emission_decay, igor[0].emission_tail);
         // No genesis block coinbase
-        assert_eq!(schedule.block_reward(0), MicroMinotari(0));
+        assert_eq!(schedule.block_reward(0), MicroMinotaiji(0));
         // Coinbases starts at block 1
         let coinbase_offset = 1;
         let first_reward = schedule.block_reward(coinbase_offset);
@@ -925,14 +925,14 @@ mod test {
         );
         // Tail emission starts after block 11_084_819
         let rewards = schedule.iter().skip(11_084_819 - 25);
-        let mut previous_reward = MicroMinotari(0);
+        let mut previous_reward = MicroMinotaiji(0);
         for (block_num, reward, supply) in rewards {
             if reward == previous_reward {
                 assert_eq!(block_num, 11_084_819 + 1);
-                assert_eq!(supply, MicroMinotari(6_326_198_792_915_738));
+                assert_eq!(supply, MicroMinotaiji(6_326_198_792_915_738));
                 // These set of constants does not result in a tail emission equal to the specified tail emission
                 assert_ne!(reward, igor[0].emission_tail);
-                assert_eq!(reward, MicroMinotari(2_097_151));
+                assert_eq!(reward, MicroMinotaiji(2_097_151));
                 break;
             }
             previous_reward = reward;

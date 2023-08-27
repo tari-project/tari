@@ -1,4 +1,4 @@
-//  Copyright 2021. The Tari Project
+//  Copyright 2021. The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -48,7 +48,7 @@ use super::ffi::{
 use crate::{
     ffi::{self},
     get_port,
-    TariWorld,
+    TaijiWorld,
 };
 
 #[derive(Debug)]
@@ -80,14 +80,14 @@ impl WalletFFI {
     }
 
     pub fn identify(&self) -> String {
-        let tari_address = self.get_address();
-        let key = tari_address.address();
+        let taiji_address = self.get_address();
+        let key = taiji_address.address();
         key.get_as_hex()
     }
 
     pub fn get_emoji_id(&self) -> String {
-        let tari_address = self.get_address();
-        let emoji_id = tari_address.emoji_id();
+        let taiji_address = self.get_address();
+        let emoji_id = taiji_address.emoji_id();
         emoji_id.as_string()
     }
 
@@ -188,7 +188,7 @@ impl WalletFFI {
     }
 }
 
-pub fn spawn_wallet_ffi(world: &mut TariWorld, wallet_name: String, seed_words_ptr: *const c_void) {
+pub fn spawn_wallet_ffi(world: &mut TaijiWorld, wallet_name: String, seed_words_ptr: *const c_void) {
     let wallet_ffi = WalletFFI::spawn(
         wallet_name.clone(),
         seed_words_ptr,

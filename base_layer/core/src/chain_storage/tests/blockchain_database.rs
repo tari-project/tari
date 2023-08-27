@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2020, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that
 // the  following conditions are met:
@@ -32,7 +32,7 @@ use crate::{
         BlockSpec,
     },
     transactions::{
-        tari_amount::T,
+        taiji_amount::T,
         test_helpers::{create_test_core_key_manager_with_memory_db, schema_to_transaction, TestKeyManager},
         transaction_components::{Transaction, WalletOutput},
     },
@@ -276,7 +276,7 @@ mod fetch_headers {
 }
 
 mod find_headers_after_hash {
-    use tari_common_types::types::FixedHash;
+    use taiji_common_types::types::FixedHash;
 
     use super::*;
 
@@ -614,7 +614,7 @@ mod validator_node_merkle_root {
     use std::convert::TryFrom;
 
     use rand::rngs::OsRng;
-    use tari_common_types::types::PublicKey;
+    use taiji_common_types::types::PublicKey;
     use tari_crypto::keys::PublicKey as PublicKeyTrait;
 
     use super::*;

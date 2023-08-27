@@ -1,4 +1,4 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 syntax = "proto3";
@@ -6,7 +6,7 @@ syntax = "proto3";
 import "block.proto";
 import "types.proto";
 
-package tari.base_node;
+package taiji.base_node;
 
 // Request type for a received BaseNodeService request.
 message BaseNodeServiceRequest {
@@ -31,11 +31,11 @@ message GetBlockFromAllChainsRequest {
 }
 
 message Signatures {
-    repeated tari.types.Signature sigs = 1;
+    repeated taiji.types.Signature sigs = 1;
 }
 
 message Commitments{
-    repeated tari.types.Commitment commitments = 1;
+    repeated taiji.types.Commitment commitments = 1;
 }
 
 message NewBlockTemplateRequest{

@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -24,8 +24,8 @@
 
 use std::{sync::Arc, time::Duration};
 
-use tari_comms::{connectivity::ConnectivityRequester, NodeIdentity, PeerManager};
-use tari_shutdown::ShutdownSignal;
+use taiji_comms::{connectivity::ConnectivityRequester, NodeIdentity, PeerManager};
+use taiji_shutdown::ShutdownSignal;
 use tokio::sync::mpsc;
 
 use crate::{
@@ -40,7 +40,7 @@ use crate::{
 /// Builder for the DHT.
 ///
 /// ```rust
-/// # use tari_comms_dht::{DbConnectionUrl, Dht};
+/// # use taiji_comms_dht::{DbConnectionUrl, Dht};
 /// let builder = Dht::builder()
 ///     .mainnet()
 ///     .with_database_url(DbConnectionUrl::Memory);

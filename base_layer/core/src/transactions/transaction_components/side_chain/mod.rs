@@ -1,4 +1,4 @@
-//  Copyright 2022. The Tari Project
+//  Copyright 2022. The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -38,7 +38,7 @@ pub use validator_node_signature::{ValidatorNodeHashDomain, ValidatorNodeSignatu
 
 hash_domain!(
     ContractAcceptanceHashDomain,
-    "com.tari.base_layer.core.transactions.side_chain.contract_acceptance_challenge",
+    "com.taiji.base_layer.core.transactions.side_chain.contract_acceptance_challenge",
     1
 );
 
@@ -46,7 +46,7 @@ pub type ContractAcceptanceHasherBlake256 = DomainSeparatedHasher<Blake2b<U32>, 
 
 hash_domain!(
     SignerSignatureHashDomain,
-    "com.tari.base_layer.core.transactions.side_chain.signer_signature",
+    "com.taiji.base_layer.core.transactions.side_chain.signer_signature",
     1
 );
 

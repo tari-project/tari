@@ -1,4 +1,4 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 syntax = "proto3";
@@ -6,11 +6,11 @@ syntax = "proto3";
 import "transaction.proto";
 import "types.proto";
 
-package tari.mempool;
+package taiji.mempool;
 
 message StateResponse{
     // List of transactions in unconfirmed pool.
-    repeated tari.types.Transaction unconfirmed_pool = 1;
+    repeated taiji.types.Transaction unconfirmed_pool = 1;
     // List of transactions in reorg pool.
-    repeated tari.types.Signature reorg_pool = 4;
+    repeated taiji.types.Signature reorg_pool = 4;
 }

@@ -1,4 +1,4 @@
-// Copyright 2018 The Tari Project
+// Copyright 2018 The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -31,7 +31,7 @@ use std::{
 use borsh::{BorshDeserialize, BorshSerialize};
 use log::*;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{FixedHash, PrivateKey};
+use taiji_common_types::types::{FixedHash, PrivateKey};
 use tari_utilities::hex::Hex;
 use thiserror::Error;
 
@@ -41,7 +41,7 @@ use crate::{
     proof_of_work::ProofOfWork,
     transactions::{
         aggregated_body::AggregateBody,
-        tari_amount::MicroMinotari,
+        taiji_amount::MicroMinotaiji,
         transaction_components::{
             KernelFeatures,
             OutputType,
@@ -71,7 +71,7 @@ pub enum BlockValidationError {
     },
 }
 
-/// A Minotari block. Blocks are linked together into a blockchain.
+/// A Minotaiji block. Blocks are linked together into a blockchain.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
 pub struct Block {
     /// The BlockHeader contains all the metadata for the block, including proof of work, a link to the previous block
@@ -92,7 +92,7 @@ impl Block {
     }
 
     /// This function will calculate the total fees contained in a block
-    pub fn calculate_fees(&self) -> MicroMinotari {
+    pub fn calculate_fees(&self) -> MicroMinotaiji {
         self.body.kernels().iter().fold(0.into(), |sum, x| sum + x.fee)
     }
 
@@ -108,7 +108,7 @@ impl Block {
     /// 3. The amount is correct.
     pub fn check_coinbase_output(
         &self,
-        reward: MicroMinotari,
+        reward: MicroMinotaiji,
         consensus_constants: &ConsensusConstants,
         factories: &CryptoFactories,
     ) -> Result<(), BlockValidationError> {
@@ -180,7 +180,7 @@ pub struct BlockBuilder {
     inputs: Vec<TransactionInput>,
     outputs: Vec<TransactionOutput>,
     kernels: Vec<TransactionKernel>,
-    total_fee: MicroMinotari,
+    total_fee: MicroMinotaiji,
 }
 
 impl BlockBuilder {
@@ -190,7 +190,7 @@ impl BlockBuilder {
             inputs: Vec::new(),
             outputs: Vec::new(),
             kernels: Vec::new(),
-            total_fee: MicroMinotari::from(0),
+            total_fee: MicroMinotaiji::from(0),
         }
     }
 

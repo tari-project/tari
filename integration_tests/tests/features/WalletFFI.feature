@@ -1,4 +1,4 @@
-# Copyright 2022 The Tari Project
+# Copyright 2022 The Taiji Project
 # SPDX-License-Identifier: BSD-3-Clause
 
 @wallet-ffi
@@ -130,7 +130,7 @@ Feature: Wallet FFI
 
 
     @critical @broken
-    Scenario: As a client I want to receive Tari via my Public Key sent while I am offline when I come back online
+    Scenario: As a client I want to receive Taiji via my Public Key sent while I am offline when I come back online
         Given I have a seed node SEED
         When I have a base node BASE1 connected to all seed nodes
         When I have wallet SENDER connected to base node BASE1

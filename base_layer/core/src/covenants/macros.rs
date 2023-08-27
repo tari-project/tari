@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -167,9 +167,9 @@ macro_rules! __covenant_inner {
 
 #[cfg(test)]
 mod test {
-    use tari_common_types::types::PublicKey;
-    use tari_script::script;
-    use tari_test_utils::unpack_enum;
+    use taiji_common_types::types::PublicKey;
+    use taiji_script::script;
+    use taiji_test_utils::unpack_enum;
     use tari_utilities::{
         hex::{from_hex, Hex},
         ByteArray,
@@ -202,7 +202,7 @@ mod test {
 
         let decoded = Covenant::from_bytes(&mut covenant.to_bytes().as_bytes()).unwrap();
         assert_eq!(covenant, decoded);
-        unpack_enum!(CovenantArg::TariScript(decoded_script) = decoded.tokens()[2].as_arg().unwrap());
+        unpack_enum!(CovenantArg::TaijiScript(decoded_script) = decoded.tokens()[2].as_arg().unwrap());
         assert_eq!(script, *decoded_script);
     }
 }

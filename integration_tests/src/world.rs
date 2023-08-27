@@ -1,4 +1,4 @@
-//   Copyright 2023. The Tari Project
+//   Copyright 2023. The Taiji Project
 //
 //   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //   following conditions are met:
@@ -29,8 +29,8 @@ use std::{
 use cucumber::gherkin::{Feature, Scenario};
 use indexmap::IndexMap;
 use serde_json::Value;
-use tari_chat_client::ChatClient;
-use tari_core::{
+use taiji_chat_client::ChatClient;
+use taiji_core::{
     blocks::Block,
     transactions::{
         test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager},
@@ -50,7 +50,7 @@ use crate::{
 };
 
 #[derive(Error, Debug)]
-pub enum TariWorldError {
+pub enum TaijiWorldError {
     #[error("Base node process not found: {0}")]
     BaseNodeProcessNotFound(String),
     #[error("Wallet process not found: {0}")]
@@ -66,7 +66,7 @@ pub enum TariWorldError {
 }
 
 #[derive(cucumber::World)]
-pub struct TariWorld {
+pub struct TaijiWorld {
     pub current_scenario_name: Option<String>,
     pub current_feature_name: Option<String>,
     pub current_base_dir: Option<PathBuf>,
@@ -78,7 +78,7 @@ pub struct TariWorld {
     pub chat_clients: IndexMap<String, Box<dyn ChatClient>>,
     pub merge_mining_proxies: IndexMap<String, MergeMiningProxyProcess>,
     pub transactions: IndexMap<String, Transaction>,
-    pub wallet_addresses: IndexMap<String, String>, // values are strings representing tari addresses
+    pub wallet_addresses: IndexMap<String, String>, // values are strings representing taiji addresses
     pub utxos: IndexMap<String, WalletOutput>,
     pub output_hash: Option<String>,
     pub pre_image: Option<String>,
@@ -94,7 +94,7 @@ pub struct TariWorld {
     pub key_manager: TestKeyManager,
 }
 
-impl Default for TariWorld {
+impl Default for TaijiWorld {
     fn default() -> Self {
         println!("\nWorld initialized - remove this line when called!\n");
         Self {
@@ -124,7 +124,7 @@ impl Default for TariWorld {
     }
 }
 
-impl Debug for TariWorld {
+impl Debug for TaijiWorld {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Client")
             .field("base_nodes", &self.base_nodes)
@@ -150,15 +150,15 @@ impl Debug for TariWorld {
 }
 
 pub enum NodeClient {
-    BaseNode(minotari_node_grpc_client::BaseNodeGrpcClient<tonic::transport::Channel>),
-    Wallet(minotari_wallet_grpc_client::WalletGrpcClient<tonic::transport::Channel>),
+    BaseNode(minotaiji_node_grpc_client::BaseNodeGrpcClient<tonic::transport::Channel>),
+    Wallet(minotaiji_wallet_grpc_client::WalletGrpcClient<tonic::transport::Channel>),
 }
 
-impl TariWorld {
+impl TaijiWorld {
     pub async fn get_node_client<S: AsRef<str>>(
         &self,
         name: &S,
-    ) -> anyhow::Result<minotari_node_grpc_client::BaseNodeGrpcClient<tonic::transport::Channel>> {
+    ) -> anyhow::Result<minotaiji_node_grpc_client::BaseNodeGrpcClient<tonic::transport::Channel>> {
         self.get_node(name)?.get_grpc_client().await
     }
 
@@ -170,7 +170,7 @@ impl TariWorld {
             Ok(client) => Ok(NodeClient::BaseNode(client)),
             Err(_) => match self.get_wallet_client(&name).await {
                 Ok(wallet) => Ok(NodeClient::Wallet(wallet)),
-                Err(e) => Err(TariWorldError::ClientNotFound(e.to_string()).into()),
+                Err(e) => Err(TaijiWorldError::ClientNotFound(e.to_string()).into()),
             },
         }
     }
@@ -184,7 +184,7 @@ impl TariWorld {
                 let mut wallet = wallet;
 
                 Ok(wallet
-                    .get_address(minotari_wallet_grpc_client::grpc::Empty {})
+                    .get_address(minotaiji_wallet_grpc_client::grpc::Empty {})
                     .await
                     .unwrap()
                     .into_inner()
@@ -203,7 +203,7 @@ impl TariWorld {
     pub async fn get_wallet_client<S: AsRef<str>>(
         &self,
         name: &S,
-    ) -> anyhow::Result<minotari_wallet_grpc_client::WalletGrpcClient<tonic::transport::Channel>> {
+    ) -> anyhow::Result<minotaiji_wallet_grpc_client::WalletGrpcClient<tonic::transport::Channel>> {
         self.get_wallet(name)?.get_grpc_client().await
     }
 
@@ -211,42 +211,42 @@ impl TariWorld {
         Ok(self
             .base_nodes
             .get(node_name.as_ref())
-            .ok_or_else(|| TariWorldError::BaseNodeProcessNotFound(node_name.as_ref().to_string()))?)
+            .ok_or_else(|| TaijiWorldError::BaseNodeProcessNotFound(node_name.as_ref().to_string()))?)
     }
 
     pub fn get_wallet<S: AsRef<str>>(&self, wallet_name: &S) -> anyhow::Result<&WalletProcess> {
         Ok(self
             .wallets
             .get(wallet_name.as_ref())
-            .ok_or_else(|| TariWorldError::WalletProcessNotFound(wallet_name.as_ref().to_string()))?)
+            .ok_or_else(|| TaijiWorldError::WalletProcessNotFound(wallet_name.as_ref().to_string()))?)
     }
 
     pub fn get_ffi_wallet<S: AsRef<str>>(&self, wallet_name: &S) -> anyhow::Result<&WalletFFI> {
         Ok(self
             .ffi_wallets
             .get(wallet_name.as_ref())
-            .ok_or_else(|| TariWorldError::FFIWalletNotFound(wallet_name.as_ref().to_string()))?)
+            .ok_or_else(|| TaijiWorldError::FFIWalletNotFound(wallet_name.as_ref().to_string()))?)
     }
 
     pub fn get_mut_ffi_wallet<S: AsRef<str>>(&mut self, wallet_name: &S) -> anyhow::Result<&mut WalletFFI> {
         Ok(self
             .ffi_wallets
             .get_mut(wallet_name.as_ref())
-            .ok_or_else(|| TariWorldError::FFIWalletNotFound(wallet_name.as_ref().to_string()))?)
+            .ok_or_else(|| TaijiWorldError::FFIWalletNotFound(wallet_name.as_ref().to_string()))?)
     }
 
     pub fn get_miner<S: AsRef<str>>(&self, miner_name: S) -> anyhow::Result<&MinerProcess> {
         Ok(self
             .miners
             .get(miner_name.as_ref())
-            .ok_or_else(|| TariWorldError::MinerProcessNotFound(miner_name.as_ref().to_string()))?)
+            .ok_or_else(|| TaijiWorldError::MinerProcessNotFound(miner_name.as_ref().to_string()))?)
     }
 
     pub fn get_merge_miner<S: AsRef<str>>(&self, miner_name: S) -> anyhow::Result<&MergeMiningProxyProcess> {
         Ok(self
             .merge_mining_proxies
             .get(miner_name.as_ref())
-            .ok_or_else(|| TariWorldError::MergeMinerProcessNotFound(miner_name.as_ref().to_string()))?)
+            .ok_or_else(|| TaijiWorldError::MergeMinerProcessNotFound(miner_name.as_ref().to_string()))?)
     }
 
     pub fn get_mut_merge_miner<S: AsRef<str>>(
@@ -256,7 +256,7 @@ impl TariWorld {
         Ok(self
             .merge_mining_proxies
             .get_mut(miner_name.as_ref())
-            .ok_or_else(|| TariWorldError::MergeMinerProcessNotFound(miner_name.as_ref().to_string()))?)
+            .ok_or_else(|| TaijiWorldError::MergeMinerProcessNotFound(miner_name.as_ref().to_string()))?)
     }
 
     pub fn all_seed_nodes(&self) -> &[String] {
@@ -280,7 +280,7 @@ impl TariWorld {
         }
         for (name, mut p) in self.base_nodes.drain(..) {
             println!("Shutting down base node {}", name);
-            // You have explicitly trigger the shutdown now because of the change to use Arc/Mutex in tari_shutdown
+            // You have explicitly trigger the shutdown now because of the change to use Arc/Mutex in taiji_shutdown
             p.kill_signal.trigger();
         }
     }

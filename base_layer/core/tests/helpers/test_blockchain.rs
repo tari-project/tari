@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2020. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -25,9 +25,9 @@ use std::{collections::HashMap, sync::Arc};
 
 use log::*;
 use rand::{rngs::OsRng, RngCore};
-use tari_common::configuration::Network;
-use tari_common_types::types::FixedHash;
-use tari_core::{
+use taiji_common::configuration::Network;
+use taiji_common_types::types::FixedHash;
+use taiji_core::{
     blocks::Block,
     chain_storage::{BlockAddResult, BlockchainDatabase, ChainStorageError},
     consensus::ConsensusManager,
@@ -43,7 +43,7 @@ use crate::helpers::{
     test_block_builder::{TestBlockBuilder, TestBlockBuilderInner},
 };
 
-const LOG_TARGET: &str = "tari_core::tests::helpers::test_blockchain";
+const LOG_TARGET: &str = "taiji_core::tests::helpers::test_blockchain";
 
 pub struct TestBlockchain {
     store: BlockchainDatabase<TempDatabase>,

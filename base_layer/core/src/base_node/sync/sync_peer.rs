@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2020, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -25,8 +25,8 @@ use std::{
     time::Duration,
 };
 
-use tari_common_types::chain_metadata::ChainMetadata;
-use tari_comms::peer_manager::NodeId;
+use taiji_common_types::chain_metadata::ChainMetadata;
+use taiji_comms::peer_manager::NodeId;
 
 use crate::{base_node::chain_metadata_service::PeerChainMetadata, common::rolling_avg::RollingAverageTime};
 

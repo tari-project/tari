@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2020. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -28,7 +28,7 @@ pub mod encryption;
 pub mod epoch;
 pub mod grpc_authentication;
 pub mod serializers;
-pub mod tari_address;
+pub mod taiji_address;
 pub mod transaction;
 mod tx_id;
 pub mod types;

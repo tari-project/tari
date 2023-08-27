@@ -1,4 +1,4 @@
-// Copyright 2022. The Tari Project
+// Copyright 2022. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,11 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common_types::{chain_metadata::ChainMetadata, types::HashOutput};
+use taiji_common_types::{chain_metadata::ChainMetadata, types::HashOutput};
 
 use crate::{
     consensus::ConsensusManager,
-    transactions::{tari_amount::MicroMinotari, transaction_components::Transaction, CryptoFactories},
+    transactions::{taiji_amount::MicroMinotaiji, transaction_components::Transaction, CryptoFactories},
     validation::{aggregate_body::AggregateBodyInternalConsistencyValidator, ValidationError},
 };
 
@@ -56,7 +56,7 @@ impl TransactionInternalConsistencyValidator {
     pub fn validate(
         &self,
         tx: &Transaction,
-        reward: Option<MicroMinotari>,
+        reward: Option<MicroMinotaiji>,
         prev_header: Option<HashOutput>,
         height: u64,
     ) -> Result<(), ValidationError> {

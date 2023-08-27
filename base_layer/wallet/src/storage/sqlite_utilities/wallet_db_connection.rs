@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2020. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -26,7 +26,7 @@ use diesel::{
     r2d2::{ConnectionManager, PooledConnection},
     SqliteConnection,
 };
-use tari_common_sqlite::{
+use taiji_common_sqlite::{
     error::SqliteStorageError,
     sqlite_connection_pool::{PooledDbConnection, SqliteConnectionPool},
 };

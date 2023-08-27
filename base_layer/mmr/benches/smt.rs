@@ -1,10 +1,10 @@
-// Copyright 2023. The Tari Project
+// Copyright 2023. The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 use blake2::Blake2b;
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use digest::consts::U32;
-use tari_mmr::sparse_merkle_tree::{NodeKey, SparseMerkleTree, ValueHash};
+use taiji_mmr::sparse_merkle_tree::{NodeKey, SparseMerkleTree, ValueHash};
 
 fn random_key() -> NodeKey {
     let key = rand::random::<[u8; 32]>();

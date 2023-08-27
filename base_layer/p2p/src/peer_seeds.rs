@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -28,8 +28,8 @@ use std::{
 
 use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
-use tari_common::DnsNameServer;
-use tari_comms::{
+use taiji_common::DnsNameServer;
+use taiji_comms::{
     multiaddr::Multiaddr,
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{NodeId, Peer, PeerFeatures},
@@ -245,7 +245,7 @@ mod test {
             let mut resolver = DnsSeedResolver::connect(DEFAULT_DNS_NAME_SERVER.parse().unwrap())
                 .await
                 .unwrap();
-            let seeds = resolver.resolve("seeds.esmeralda.tari.com").await.unwrap();
+            let seeds = resolver.resolve("seeds.esmeralda.taiji.com").await.unwrap();
             println!("{:?}", seeds);
             assert!(!seeds.is_empty());
         }

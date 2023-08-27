@@ -3,7 +3,7 @@ authors = ["Philip Robinson", "Byron Hambly", "SW van Heerden"]
 language = "en"
 multilingual = false
 src = "src"
-title = "Tari Protocol Developer Documentation"
+title = "Taiji Protocol Developer Documentation"
 
 [output.html]
 mathjax-support=true

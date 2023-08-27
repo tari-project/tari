@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -45,7 +45,7 @@ pub const ARG_HASH: u8 = 0x01;
 pub const ARG_PUBLIC_KEY: u8 = 0x02;
 /// Covenant arg commitment byte code.
 pub const ARG_COMMITMENT: u8 = 0x03;
-/// Covenant arg tari script byte code.
+/// Covenant arg taiji script byte code.
 pub const ARG_TARI_SCRIPT: u8 = 0x04;
 /// Covenant arg covenant byte code.
 pub const ARG_COVENANT: u8 = 0x05;

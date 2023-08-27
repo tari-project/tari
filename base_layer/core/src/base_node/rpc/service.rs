@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2020, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that
 // the  following conditions are met:
@@ -24,8 +24,8 @@
 use std::convert::{TryFrom, TryInto};
 
 use log::*;
-use tari_common_types::types::{FixedHash, Signature};
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus, RpcStatusResultExt, Streaming};
+use taiji_common_types::types::{FixedHash, Signature};
+use taiji_comms::protocol::rpc::{Request, Response, RpcStatus, RpcStatusResultExt, Streaming};
 use tari_utilities::hex::Hex;
 use tokio::sync::mpsc;
 
@@ -172,7 +172,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
     }
 }
 
-#[tari_comms::async_trait]
+#[taiji_comms::async_trait]
 impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpcService<B> {
     async fn submit_transaction(
         &self,

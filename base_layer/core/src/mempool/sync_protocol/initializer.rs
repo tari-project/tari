@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2020, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -23,12 +23,12 @@
 use std::time::Duration;
 
 use log::*;
-use tari_comms::{
+use taiji_comms::{
     connectivity::ConnectivityRequester,
     protocol::{ProtocolExtension, ProtocolExtensionContext, ProtocolExtensionError, ProtocolNotification},
     Substream,
 };
-use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
+use taiji_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tokio::{sync::mpsc, time::sleep};
 
 use crate::{

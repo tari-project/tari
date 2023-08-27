@@ -1,4 +1,4 @@
-//  Copyright 2022. The Tari Project
+//  Copyright 2022. The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -32,13 +32,13 @@ mod benches {
     use std::sync::Arc;
 
     use criterion::{criterion_group, Criterion};
-    use tari_common::configuration::Network;
-    use tari_core::{
+    use taiji_common::configuration::Network;
+    use taiji_core::{
         consensus::ConsensusManager,
         mempool::{Mempool, MempoolConfig},
         test_helpers::blockchain::create_new_blockchain,
         transactions::{
-            tari_amount::{uT, T},
+            taiji_amount::{uT, T},
             test_helpers::create_test_core_key_manager_with_memory_db,
             transaction_components::{OutputFeatures, Transaction, MAX_TRANSACTION_OUTPUTS},
             CryptoFactories,

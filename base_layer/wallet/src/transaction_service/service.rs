@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -33,15 +33,15 @@ use futures::{pin_mut, stream::FuturesUnordered, Stream, StreamExt};
 use log::*;
 use rand::rngs::OsRng;
 use sha2::Sha256;
-use tari_common_types::{
+use taiji_common_types::{
     burnt_proof::BurntProof,
-    tari_address::TariAddress,
+    taiji_address::TaijiAddress,
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
     types::{PrivateKey, PublicKey, Signature},
 };
-use tari_comms::types::CommsPublicKey;
-use tari_comms_dht::outbound::OutboundMessageRequester;
-use tari_core::{
+use taiji_comms::types::CommsPublicKey;
+use taiji_comms_dht::outbound::OutboundMessageRequester;
+use taiji_core::{
     consensus::ConsensusManager,
     covenants::Covenant,
     mempool::FeePerGramStat,
@@ -54,7 +54,7 @@ use tari_core::{
     proto::base_node as base_node_proto,
     transactions::{
         key_manager::TransactionKeyManagerInterface,
-        tari_amount::MicroMinotari,
+        taiji_amount::MicroMinotaiji,
         transaction_components::{
             CodeTemplateRegistration,
             KernelFeatures,
@@ -77,11 +77,11 @@ use tari_crypto::{
     keys::{PublicKey as PKtrait, SecretKey},
     tari_utilities::ByteArray,
 };
-use tari_key_manager::key_manager_service::KeyId;
-use tari_p2p::domain_message::DomainMessage;
-use tari_script::{inputs, one_sided_payment_script, script, stealth_payment_script, TariScript};
-use tari_service_framework::{reply_channel, reply_channel::Receiver};
-use tari_shutdown::ShutdownSignal;
+use taiji_key_manager::key_manager_service::KeyId;
+use taiji_p2p::domain_message::DomainMessage;
+use taiji_script::{inputs, one_sided_payment_script, script, stealth_payment_script, TaijiScript};
+use taiji_service_framework::{reply_channel, reply_channel::Receiver};
+use taiji_shutdown::ShutdownSignal;
 use tokio::{
     sync::{mpsc, mpsc::Sender, oneshot, Mutex},
     task::JoinHandle,
@@ -170,7 +170,7 @@ pub struct TransactionService<
     pending_transaction_reply_senders: HashMap<TxId, Sender<(CommsPublicKey, RecipientSignedMessage)>>,
     base_node_response_senders: HashMap<TxId, (TxId, Sender<base_node_proto::BaseNodeServiceResponse>)>,
     send_transaction_cancellation_senders: HashMap<TxId, oneshot::Sender<()>>,
-    finalized_transaction_senders: HashMap<TxId, Sender<(TariAddress, TxId, Transaction)>>,
+    finalized_transaction_senders: HashMap<TxId, Sender<(TaijiAddress, TxId, Transaction)>>,
     receiver_transaction_cancellation_senders: HashMap<TxId, oneshot::Sender<()>>,
     active_transaction_broadcast_protocols: HashSet<TxId>,
     timeout_update_watch: Watch<Duration>,
@@ -647,14 +647,14 @@ where
                 )
                 .await
                 .map(TransactionServiceResponse::TransactionSent),
-            TransactionServiceRequest::BurnTari {
+            TransactionServiceRequest::BurnTaiji {
                 amount,
                 selection_criteria,
                 fee_per_gram,
                 message,
                 claim_public_key,
             } => self
-                .burn_tari(
+                .burn_taiji(
                     amount,
                     selection_criteria,
                     fee_per_gram,
@@ -949,15 +949,15 @@ where
     /// Sends a new transaction to a single recipient
     /// # Arguments
     /// 'dest_pubkey': The Comms pubkey of the recipient node
-    /// 'amount': The amount of Tari to send to the recipient
+    /// 'amount': The amount of Taiji to send to the recipient
     /// 'fee_per_gram': The amount of fee per transaction gram to be included in transaction
     pub async fn send_transaction(
         &mut self,
-        destination: TariAddress,
-        amount: MicroMinotari,
+        destination: TaijiAddress,
+        amount: MicroMinotaiji,
         selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
-        fee_per_gram: MicroMinotari,
+        fee_per_gram: MicroMinotaiji,
         message: String,
         tx_meta: TransactionMetadata,
         join_handles: &mut FuturesUnordered<
@@ -1055,15 +1055,15 @@ where
     /// broadcasts a SHA-XTR atomic swap transaction
     /// # Arguments
     /// 'dest_pubkey': The Comms pubkey of the recipient node
-    /// 'amount': The amount of Tari to send to the recipient
+    /// 'amount': The amount of Taiji to send to the recipient
     /// 'fee_per_gram': The amount of fee per transaction gram to be included in transaction
     #[allow(clippy::too_many_lines)]
     pub async fn send_sha_atomic_swap_transaction(
         &mut self,
-        destination: TariAddress,
-        amount: MicroMinotari,
+        destination: TaijiAddress,
+        amount: MicroMinotaiji,
         selection_criteria: UtxoSelectionCriteria,
-        fee_per_gram: MicroMinotari,
+        fee_per_gram: MicroMinotaiji,
         message: String,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
@@ -1092,7 +1092,7 @@ where
         let covenant = Covenant::default();
 
         // Default range proof
-        let minimum_value_promise = MicroMinotari::zero();
+        let minimum_value_promise = MicroMinotaiji::zero();
 
         // Prepare sender part of the transaction
         let mut stp = self
@@ -1168,7 +1168,7 @@ where
             .import_key(spending_key)
             .await?;
 
-        let minimum_value_promise = MicroMinotari::zero();
+        let minimum_value_promise = MicroMinotaiji::zero();
         let output = WalletOutputBuilder::new(amount, spending_key_id)
             .with_features(
                 sender_message
@@ -1276,16 +1276,16 @@ where
     #[allow(clippy::too_many_lines)]
     async fn send_one_sided_or_stealth(
         &mut self,
-        dest_address: TariAddress,
-        amount: MicroMinotari,
+        dest_address: TaijiAddress,
+        amount: MicroMinotaiji,
         selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
-        fee_per_gram: MicroMinotari,
+        fee_per_gram: MicroMinotaiji,
         message: String,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
-        script: TariScript,
+        script: TaijiScript,
     ) -> Result<TxId, TransactionServiceError> {
         let tx_id = TxId::new_random();
 
@@ -1303,7 +1303,7 @@ where
                 message.clone(),
                 script.clone(),
                 Covenant::default(),
-                MicroMinotari::zero(),
+                MicroMinotaiji::zero(),
             )
             .await?;
 
@@ -1364,7 +1364,7 @@ where
             .get_public_key_at_key_id(&sender_offset_private_key)
             .await?;
 
-        let minimum_value_promise = MicroMinotari::zero();
+        let minimum_value_promise = MicroMinotaiji::zero();
         let output = WalletOutputBuilder::new(amount, spending_key_id)
             .with_features(
                 sender_message
@@ -1461,15 +1461,15 @@ where
     /// Sends a one side payment transaction to a recipient
     /// # Arguments
     /// 'dest_pubkey': The Comms pubkey of the recipient node
-    /// 'amount': The amount of Tari to send to the recipient
+    /// 'amount': The amount of Taiji to send to the recipient
     /// 'fee_per_gram': The amount of fee per transaction gram to be included in transaction
     pub async fn send_one_sided_transaction(
         &mut self,
-        destination: TariAddress,
-        amount: MicroMinotari,
+        destination: TaijiAddress,
+        amount: MicroMinotaiji,
         selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
-        fee_per_gram: MicroMinotari,
+        fee_per_gram: MicroMinotaiji,
         message: String,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
@@ -1498,18 +1498,18 @@ where
         .await
     }
 
-    /// Creates a transaction to burn some Minotari. The optional _claim public key_ parameter is used in the challenge
+    /// Creates a transaction to burn some Minotaiji. The optional _claim public key_ parameter is used in the challenge
     /// of the
     // corresponding optional _ownership proof_ return value. Burn commitments and ownership proofs will exclusively be
     // used in the 2nd layer (DAN layer). When such an _ownership proof_ is presented later on as part of some
     // transaction metadata, the _claim public key_ can be revealed to enable verification of the _ownership proof_
     // and the transaction can be signed with the private key corresponding to the claim public key.
     #[allow(clippy::too_many_lines)]
-    pub async fn burn_tari(
+    pub async fn burn_taiji(
         &mut self,
-        amount: MicroMinotari,
+        amount: MicroMinotaiji,
         selection_criteria: UtxoSelectionCriteria,
-        fee_per_gram: MicroMinotari,
+        fee_per_gram: MicroMinotaiji,
         message: String,
         claim_public_key: Option<PublicKey>,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
@@ -1536,9 +1536,9 @@ where
                 fee_per_gram,
                 tx_meta,
                 message.clone(),
-                TariScript::default(),
+                TaijiScript::default(),
                 Covenant::default(),
-                MicroMinotari::zero(),
+                MicroMinotaiji::zero(),
             )
             .await?;
 
@@ -1702,7 +1702,7 @@ where
             CompletedTransaction::new(
                 tx_id,
                 self.resources.wallet_identity.address.clone(),
-                TariAddress::default(),
+                TaijiAddress::default(),
                 amount,
                 fee,
                 tx.clone(),
@@ -1728,11 +1728,11 @@ where
 
     pub async fn register_validator_node(
         &mut self,
-        amount: MicroMinotari,
+        amount: MicroMinotaiji,
         validator_node_public_key: CommsPublicKey,
         validator_node_signature: Signature,
         selection_criteria: UtxoSelectionCriteria,
-        fee_per_gram: MicroMinotari,
+        fee_per_gram: MicroMinotaiji,
         message: String,
         join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
@@ -1761,7 +1761,7 @@ where
 
     pub async fn register_code_template(
         &mut self,
-        fee_per_gram: MicroMinotari,
+        fee_per_gram: MicroMinotaiji,
         template_registration: CodeTemplateRegistration,
         selection_criteria: UtxoSelectionCriteria,
         message: String,
@@ -1791,15 +1791,15 @@ where
     /// Sends a one side payment transaction to a recipient
     /// # Arguments
     /// 'dest_pubkey': The Comms pubkey of the recipient node
-    /// 'amount': The amount of Tari to send to the recipient
+    /// 'amount': The amount of Taiji to send to the recipient
     /// 'fee_per_gram': The amount of fee per transaction gram to be included in transaction
     pub async fn send_one_sided_to_stealth_address_transaction(
         &mut self,
-        destination: TariAddress,
-        amount: MicroMinotari,
+        destination: TaijiAddress,
+        amount: MicroMinotaiji,
         selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
-        fee_per_gram: MicroMinotari,
+        fee_per_gram: MicroMinotaiji,
         message: String,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
@@ -2271,7 +2271,7 @@ where
             self.receiver_transaction_cancellation_senders
                 .insert(data.tx_id, cancellation_sender);
             // we are making the assumption that because we received this transaction, its on the same network as us.
-            let source_address = TariAddress::new(source_pubkey, self.resources.wallet_identity.network);
+            let source_address = TaijiAddress::new(source_pubkey, self.resources.wallet_identity.network);
             let protocol = TransactionReceiveProtocol::new(
                 data.tx_id,
                 source_address,
@@ -2318,7 +2318,7 @@ where
             })?;
 
         // assuming since we talked to the node, it has the same identity than
-        let source_address = TariAddress::new(source_pubkey, self.resources.wallet_identity.network);
+        let source_address = TaijiAddress::new(source_pubkey, self.resources.wallet_identity.network);
         let sender = match self.finalized_transaction_senders.get_mut(&tx_id) {
             None => {
                 // First check if perhaps we know about this inbound transaction but it was cancelled
@@ -2444,7 +2444,7 @@ where
     fn restart_receive_transaction_protocol(
         &mut self,
         tx_id: TxId,
-        source_address: TariAddress,
+        source_address: TaijiAddress,
         join_handles: &mut FuturesUnordered<JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>>,
     ) {
         if !self.pending_transaction_reply_senders.contains_key(&tx_id) {
@@ -2767,8 +2767,8 @@ where
     /// Add a completed transaction to the Transaction Manager to record directly importing a spendable UTXO.
     pub async fn add_utxo_import_transaction_with_status(
         &mut self,
-        value: MicroMinotari,
-        source_address: TariAddress,
+        value: MicroMinotaiji,
+        source_address: TaijiAddress,
         message: String,
         maturity: Option<u64>,
         import_status: ImportStatus,
@@ -2851,8 +2851,8 @@ where
         >,
         tx_id: TxId,
         tx: Transaction,
-        fee: MicroMinotari,
-        amount: MicroMinotari,
+        fee: MicroMinotaiji,
+        amount: MicroMinotaiji,
         message: String,
     ) -> Result<(), TransactionServiceError> {
         self.submit_transaction(
@@ -2878,8 +2878,8 @@ where
 
     async fn generate_coinbase_transaction(
         &mut self,
-        reward: MicroMinotari,
-        fees: MicroMinotari,
+        reward: MicroMinotaiji,
+        fees: MicroMinotaiji,
         block_height: u64,
         extra: Vec<u8>,
     ) -> Result<Transaction, TransactionServiceError> {
@@ -2913,7 +2913,7 @@ where
                     self.resources.wallet_identity.address.clone(),
                     self.resources.wallet_identity.address.clone(),
                     amount,
-                    MicroMinotari::from(0),
+                    MicroMinotaiji::from(0),
                     tx.clone(),
                     TransactionStatus::Coinbase,
                     format!("Coinbase Transaction for Block #{}", block_height),
@@ -3003,7 +3003,7 @@ pub struct TransactionSendResult {
 #[cfg(test)]
 mod tests {
     use tari_crypto::ristretto::RistrettoSecretKey;
-    use tari_script::{stealth_payment_script, Opcode};
+    use taiji_script::{stealth_payment_script, Opcode};
 
     use super::*;
 

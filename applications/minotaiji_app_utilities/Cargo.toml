@@ -1,0 +1,26 @@
+[package]
+name = "minotaiji_app_utilities"
+version = "0.52.0-pre.0"
+authors = ["The Taiji Development Community"]
+edition = "2018"
+license = "BSD-3-Clause"
+
+[dependencies]
+taiji_common = { path = "../../common" }
+taiji_common_types = { path = "../../base_layer/common_types" }
+taiji_comms = { path = "../../comms/core" }
+taiji_features = { path = "../../common/taiji_features"}
+tari_utilities = { version = "0.5" }
+
+clap = { version = "3.2", features = ["derive", "env"] }
+futures = { version = "^0.3.16", default-features = false, features = ["alloc"] }
+json5 = "0.4"
+log = { version = "0.4.8", features = ["std"] }
+rand = "0.8"
+tokio = { version = "1.23", features = ["signal"] }
+serde = "1.0.126"
+thiserror = "^1.0.26"
+
+[build-dependencies]
+taiji_common = { path = "../../common", features = ["build", "static-application-info"] }
+taiji_features = { path = "../../common/taiji_features"}

@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2020. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -172,7 +172,7 @@ impl PooledDbConnection for DbConnection {
 mod test {
     use diesel::{dsl::sql, sql_types::Integer, RunQueryDsl};
     use diesel_migrations::embed_migrations;
-    use tari_test_utils::random;
+    use taiji_test_utils::random;
 
     use super::*;
 

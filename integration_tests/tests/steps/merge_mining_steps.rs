@@ -1,4 +1,4 @@
-//   Copyright 2023. The Tari Project
+//   Copyright 2023. The Taiji Project
 //
 //   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //   following conditions are met:
@@ -21,13 +21,13 @@
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use cucumber::{then, when};
-use tari_integration_tests::{merge_mining_proxy::register_merge_mining_proxy_process, TariWorld};
+use taiji_integration_tests::{merge_mining_proxy::register_merge_mining_proxy_process, TaijiWorld};
 
 // Merge mining proxy steps
 
 #[when(expr = "I have a merge mining proxy {word} connected to {word} and {word} with origin submission {word}")]
 async fn merge_mining_proxy_with_submission(
-    world: &mut TariWorld,
+    world: &mut TaijiWorld,
     mining_proxy_name: String,
     base_node_name: String,
     wallet_name: String,
@@ -43,7 +43,7 @@ async fn merge_mining_proxy_with_submission(
 
 #[when(expr = "I have a merge mining proxy {word} connected to {word} and {word} with default config")]
 async fn merge_mining_proxy_with_default_config(
-    world: &mut TariWorld,
+    world: &mut TaijiWorld,
     mining_proxy_name: String,
     base_node_name: String,
     wallet_name: String,
@@ -52,13 +52,13 @@ async fn merge_mining_proxy_with_default_config(
 }
 
 #[when(expr = "I ask for a block height from proxy {word}")]
-async fn merge_mining_ask_for_block_height(world: &mut TariWorld, mining_proxy_name: String) {
+async fn merge_mining_ask_for_block_height(world: &mut TaijiWorld, mining_proxy_name: String) {
     let merge_miner = world.get_merge_miner(&mining_proxy_name).unwrap();
     world.last_merge_miner_response = merge_miner.get_height().await;
 }
 
 #[then(expr = "Proxy response height is valid")]
-async fn merge_mining_response_height(world: &mut TariWorld) {
+async fn merge_mining_response_height(world: &mut TaijiWorld) {
     let height = world.last_merge_miner_response.get("height");
     assert!(
         height.is_some(),
@@ -70,13 +70,13 @@ async fn merge_mining_response_height(world: &mut TariWorld) {
 }
 
 #[when(expr = "I ask for a block template from proxy {word}")]
-async fn merge_mining_ask_for_block_template(world: &mut TariWorld, mining_proxy_name: String) {
+async fn merge_mining_ask_for_block_template(world: &mut TaijiWorld, mining_proxy_name: String) {
     let merge_miner = world.get_mut_merge_miner(&mining_proxy_name).unwrap();
     world.last_merge_miner_response = merge_miner.get_block_template().await;
 }
 
 #[then(expr = "Proxy response block template is valid")]
-async fn merge_mining_response_block_template_is_valid(world: &mut TariWorld) {
+async fn merge_mining_response_block_template_is_valid(world: &mut TaijiWorld) {
     let result = world.last_merge_miner_response.get("result");
     assert!(
         result.is_some(),
@@ -94,7 +94,7 @@ async fn merge_mining_response_block_template_is_valid(world: &mut TariWorld) {
 }
 
 #[when(expr = "I submit a block through proxy {word}")]
-async fn merge_mining_submit_block(world: &mut TariWorld, mining_proxy_name: String) {
+async fn merge_mining_submit_block(world: &mut TaijiWorld, mining_proxy_name: String) {
     let block_template_blob = world
         .last_merge_miner_response
         .get("result")
@@ -115,7 +115,7 @@ async fn merge_mining_submit_block(world: &mut TariWorld, mining_proxy_name: Str
 }
 
 #[then(expr = "Proxy response block submission is valid {word} submitting to origin")]
-async fn merge_mining_submission_is_valid(world: &mut TariWorld, how: String) {
+async fn merge_mining_submission_is_valid(world: &mut TaijiWorld, how: String) {
     let result = world.last_merge_miner_response.get("result");
     assert!(
         result.is_some(),
@@ -137,7 +137,7 @@ async fn merge_mining_submission_is_valid(world: &mut TariWorld, how: String) {
 }
 
 #[when(expr = "I merge mine {int} blocks via {word}")]
-async fn merge_mining_mine(world: &mut TariWorld, count: u64, mining_proxy_name: String) {
+async fn merge_mining_mine(world: &mut TaijiWorld, count: u64, mining_proxy_name: String) {
     let merge_miner = world.get_mut_merge_miner(&mining_proxy_name).unwrap();
     for _ in 0..count {
         merge_miner.mine().await;
@@ -145,13 +145,13 @@ async fn merge_mining_mine(world: &mut TariWorld, count: u64, mining_proxy_name:
 }
 
 #[when(expr = "I ask for the last block header from proxy {word}")]
-async fn merge_mining_ask_for_last_block_header(world: &mut TariWorld, mining_proxy_name: String) {
+async fn merge_mining_ask_for_last_block_header(world: &mut TaijiWorld, mining_proxy_name: String) {
     let merge_miner = world.get_mut_merge_miner(&mining_proxy_name).unwrap();
     world.last_merge_miner_response = merge_miner.get_last_block_header().await;
 }
 
 #[then(expr = "Proxy response for block header by hash is valid")]
-async fn merge_mining_bloch_header_by_hash_is_valid(world: &mut TariWorld) {
+async fn merge_mining_bloch_header_by_hash_is_valid(world: &mut TaijiWorld) {
     let result = world.last_merge_miner_response.get("result");
     assert!(
         result.is_some(),
@@ -170,7 +170,7 @@ async fn merge_mining_bloch_header_by_hash_is_valid(world: &mut TariWorld) {
 }
 
 #[then(expr = "Proxy response for last block header is valid")]
-async fn merge_mining_response_last_block_header_is_valid(world: &mut TariWorld) {
+async fn merge_mining_response_last_block_header_is_valid(world: &mut TaijiWorld) {
     let result = world.last_merge_miner_response.get("result");
     assert!(
         result.is_some(),
@@ -198,7 +198,7 @@ async fn merge_mining_response_last_block_header_is_valid(world: &mut TariWorld)
 }
 
 #[when(expr = "I ask for a block header by hash using last block header from proxy {word}")]
-async fn merge_mining_ask_for_block_header_by_hash(world: &mut TariWorld, mining_proxy_name: String) {
+async fn merge_mining_ask_for_block_header_by_hash(world: &mut TaijiWorld, mining_proxy_name: String) {
     let hash = world
         .last_merge_miner_response
         .get("result")

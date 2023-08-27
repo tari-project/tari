@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -45,9 +45,9 @@ macro_rules! copy_slice {
 }
 
 #[derive(Default)]
-pub struct TariCryptoResolver(DefaultResolver);
+pub struct TaijiCryptoResolver(DefaultResolver);
 
-impl CryptoResolver for TariCryptoResolver {
+impl CryptoResolver for TaijiCryptoResolver {
     fn resolve_rng(&self) -> Option<Box<dyn Random>> {
         self.0.resolve_rng()
     }
@@ -137,7 +137,7 @@ mod test {
     fn build_keypair() -> Keypair {
         snow::Builder::with_resolver(
             NOISE_IX_PARAMETER.parse().unwrap(),
-            Box::<TariCryptoResolver>::default(),
+            Box::<TaijiCryptoResolver>::default(),
         )
         .generate_keypair()
         .unwrap()

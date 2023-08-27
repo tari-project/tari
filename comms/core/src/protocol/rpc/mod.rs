@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2020, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -90,7 +90,7 @@ pub use status::{RpcStatus, RpcStatusCode, RpcStatusResultExt};
 
 mod not_found;
 
-// Re-exports used to keep things orderly in the #[tari_rpc] proc macro
+// Re-exports used to keep things orderly in the #[taiji_rpc] proc macro
 pub mod __macro_reexports {
     pub use futures::{future, future::BoxFuture};
     pub use tokio::io::{AsyncRead, AsyncWrite};

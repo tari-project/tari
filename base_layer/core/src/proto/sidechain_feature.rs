@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -24,7 +24,7 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use tari_common_types::types::{PublicKey, Signature};
+use taiji_common_types::types::{PublicKey, Signature};
 use tari_utilities::ByteArray;
 
 use crate::{

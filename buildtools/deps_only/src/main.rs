@@ -1,4 +1,4 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 //! This is a dummy application that does nothing useful. BUT building it will download and compile all the crates if
@@ -7,5 +7,5 @@
 //! of other app-specific images
 
 fn main() {
-    log::info!("Hi Tari. This app does nothing except build all the dependencies");
+    log::info!("Hi Taiji. This app does nothing except build all the dependencies");
 }

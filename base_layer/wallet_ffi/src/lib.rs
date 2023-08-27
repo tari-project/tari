@@ -1,8 +1,8 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 //! # LibWallet API Definition
-//! This module contains the Rust backend implementations of the functionality that a wallet for the Tari Base Layer
+//! This module contains the Rust backend implementations of the functionality that a wallet for the Taiji Base Layer
 //! will require. The module contains a number of sub-modules that are implemented as async services. These services are
 //! collected into the main Wallet container struct which manages spinning up all the component services and maintains a
 //! collection of the handles required to interact with those services.
@@ -67,7 +67,7 @@ use std::{
 
 use chrono::{DateTime, Local};
 use error::LibWalletError;
-use ffi_basenode_state::TariBaseNodeState;
+use ffi_basenode_state::TaijiBaseNodeState;
 use itertools::Itertools;
 use libc::{c_char, c_int, c_uchar, c_uint, c_ulonglong, c_ushort, c_void};
 use log::{LevelFilter, *};
@@ -83,7 +83,7 @@ use log4rs::{
     config::{Appender, Config, Logger, Root},
     encode::pattern::PatternEncoder,
 };
-use minotari_wallet::{
+use minotaiji_wallet::{
     base_node_service::config::BaseNodeServiceConfig,
     connectivity_service::{WalletConnectivityHandle, WalletConnectivityInterface},
     error::{WalletError, WalletStorageError},
@@ -117,26 +117,26 @@ use minotari_wallet::{
 };
 use num_traits::FromPrimitive;
 use rand::rngs::OsRng;
-use tari_common::configuration::{MultiaddrList, StringList};
-use tari_common_types::{
+use taiji_common::configuration::{MultiaddrList, StringList};
+use taiji_common_types::{
     emoji::emoji_set,
-    tari_address::{TariAddress, TariAddressError},
+    taiji_address::{TaijiAddress, TaijiAddressError},
     transaction::{TransactionDirection, TransactionStatus, TxId},
     types::{ComAndPubSignature, Commitment, PublicKey, SignatureWithDomain},
 };
-use tari_comms::{
+use taiji_comms::{
     multiaddr::Multiaddr,
     peer_manager::NodeIdentity,
     transports::MemoryTransport,
     types::CommsPublicKey,
 };
-use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
-use tari_contacts::contacts_service::types::Contact;
-use tari_core::{
+use taiji_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
+use taiji_contacts::contacts_service::types::Contact;
+use taiji_core::{
     borsh::FromBytes,
     consensus::ConsensusManager,
     transactions::{
-        tari_amount::MicroMinotari,
+        taiji_amount::MicroMinotaiji,
         transaction_components::{OutputFeatures, OutputFeaturesVersion, OutputType, RangeProofType, UnblindedOutput},
         CryptoFactories,
     },
@@ -145,8 +145,8 @@ use tari_crypto::{
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     tari_utilities::{ByteArray, Hidden},
 };
-use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage, SeedWords};
-use tari_p2p::{
+use taiji_key_manager::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage, SeedWords};
+use taiji_p2p::{
     auto_update::AutoUpdateConfig,
     transport::MemoryTransportConfig,
     Network,
@@ -159,8 +159,8 @@ use tari_p2p::{
     TransportType,
     DEFAULT_DNS_NAME_SERVER,
 };
-use tari_script::TariScript;
-use tari_shutdown::Shutdown;
+use taiji_script::TaijiScript;
+use taiji_shutdown::Shutdown;
 use tari_utilities::{
     hex,
     hex::{Hex, HexError},
@@ -193,40 +193,40 @@ mod consts {
 
 const LOG_TARGET: &str = "wallet_ffi";
 
-pub type TariTransportConfig = tari_p2p::TransportConfig;
-pub type TariPublicKey = tari_common_types::types::PublicKey;
-pub type TariWalletAddress = tari_common_types::tari_address::TariAddress;
-pub type TariNodeId = tari_comms::peer_manager::NodeId;
-pub type TariPrivateKey = tari_common_types::types::PrivateKey;
-pub type TariOutputFeatures = tari_core::transactions::transaction_components::OutputFeatures;
-pub type TariCommsConfig = tari_p2p::P2pConfig;
-pub type TariTransactionKernel = tari_core::transactions::transaction_components::TransactionKernel;
-pub type TariCovenant = tari_core::covenants::Covenant;
-pub type TariEncryptedOpenings = tari_core::transactions::transaction_components::EncryptedData;
-pub type TariComAndPubSignature = tari_common_types::types::ComAndPubSignature;
-pub type TariUnblindedOutput = tari_core::transactions::transaction_components::UnblindedOutput;
+pub type TaijiTransportConfig = taiji_p2p::TransportConfig;
+pub type TaijiPublicKey = taiji_common_types::types::PublicKey;
+pub type TaijiWalletAddress = taiji_common_types::taiji_address::TaijiAddress;
+pub type TaijiNodeId = taiji_comms::peer_manager::NodeId;
+pub type TaijiPrivateKey = taiji_common_types::types::PrivateKey;
+pub type TaijiOutputFeatures = taiji_core::transactions::transaction_components::OutputFeatures;
+pub type TaijiCommsConfig = taiji_p2p::P2pConfig;
+pub type TaijiTransactionKernel = taiji_core::transactions::transaction_components::TransactionKernel;
+pub type TaijiCovenant = taiji_core::covenants::Covenant;
+pub type TaijiEncryptedOpenings = taiji_core::transactions::transaction_components::EncryptedData;
+pub type TaijiComAndPubSignature = taiji_common_types::types::ComAndPubSignature;
+pub type TaijiUnblindedOutput = taiji_core::transactions::transaction_components::UnblindedOutput;
 
-pub struct TariUnblindedOutputs(Vec<UnblindedOutput>);
+pub struct TaijiUnblindedOutputs(Vec<UnblindedOutput>);
 
-pub struct TariContacts(Vec<TariContact>);
+pub struct TaijiContacts(Vec<TaijiContact>);
 
-pub type TariContact = tari_contacts::contacts_service::types::Contact;
-pub type TariCompletedTransaction = minotari_wallet::transaction_service::storage::models::CompletedTransaction;
-pub type TariTransactionSendStatus = minotari_wallet::transaction_service::handle::TransactionSendStatus;
-pub type TariFeePerGramStats = minotari_wallet::transaction_service::handle::FeePerGramStatsResponse;
-pub type TariFeePerGramStat = tari_core::mempool::FeePerGramStat;
-pub type TariContactsLivenessData = tari_contacts::contacts_service::handle::ContactsLivenessData;
-pub type TariBalance = minotari_wallet::output_manager_service::service::Balance;
-pub type TariMnemonicLanguage = tari_key_manager::mnemonic::MnemonicLanguage;
+pub type TaijiContact = taiji_contacts::contacts_service::types::Contact;
+pub type TaijiCompletedTransaction = minotaiji_wallet::transaction_service::storage::models::CompletedTransaction;
+pub type TaijiTransactionSendStatus = minotaiji_wallet::transaction_service::handle::TransactionSendStatus;
+pub type TaijiFeePerGramStats = minotaiji_wallet::transaction_service::handle::FeePerGramStatsResponse;
+pub type TaijiFeePerGramStat = taiji_core::mempool::FeePerGramStat;
+pub type TaijiContactsLivenessData = taiji_contacts::contacts_service::handle::ContactsLivenessData;
+pub type TaijiBalance = minotaiji_wallet::output_manager_service::service::Balance;
+pub type TaijiMnemonicLanguage = taiji_key_manager::mnemonic::MnemonicLanguage;
 
-pub struct TariCompletedTransactions(Vec<TariCompletedTransaction>);
+pub struct TaijiCompletedTransactions(Vec<TaijiCompletedTransaction>);
 
-pub type TariPendingInboundTransaction = minotari_wallet::transaction_service::storage::models::InboundTransaction;
-pub type TariPendingOutboundTransaction = minotari_wallet::transaction_service::storage::models::OutboundTransaction;
+pub type TaijiPendingInboundTransaction = minotaiji_wallet::transaction_service::storage::models::InboundTransaction;
+pub type TaijiPendingOutboundTransaction = minotaiji_wallet::transaction_service::storage::models::OutboundTransaction;
 
-pub struct TariPendingInboundTransactions(Vec<TariPendingInboundTransaction>);
+pub struct TaijiPendingInboundTransactions(Vec<TaijiPendingInboundTransaction>);
 
-pub struct TariPendingOutboundTransactions(Vec<TariPendingOutboundTransaction>);
+pub struct TaijiPendingOutboundTransactions(Vec<TaijiPendingOutboundTransaction>);
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct ByteVector(Vec<c_uchar>); // declared like this so that it can be exposed to external header
@@ -235,12 +235,12 @@ pub struct ByteVector(Vec<c_uchar>); // declared like this so that it can be exp
 pub struct EmojiSet(Vec<ByteVector>);
 
 #[derive(Debug, PartialEq)]
-pub struct TariSeedWords(SeedWords);
+pub struct TaijiSeedWords(SeedWords);
 
 #[derive(Debug, PartialEq)]
-pub struct TariPublicKeys(Vec<TariPublicKey>);
+pub struct TaijiPublicKeys(Vec<TaijiPublicKey>);
 
-pub struct TariWallet {
+pub struct TaijiWallet {
     wallet: WalletSqlite,
     runtime: Runtime,
     shutdown: Shutdown,
@@ -248,14 +248,14 @@ pub struct TariWallet {
 
 #[derive(Debug)]
 #[repr(C)]
-pub struct TariCoinPreview {
-    pub expected_outputs: *mut TariVector,
+pub struct TaijiCoinPreview {
+    pub expected_outputs: *mut TaijiVector,
     pub fee: u64,
 }
 
 #[derive(Debug)]
 #[repr(C)]
-pub enum TariUtxoSort {
+pub enum TaijiUtxoSort {
     ValueAsc = 0,
     ValueDesc = 1,
     MinedHeightAsc = 2,
@@ -264,7 +264,7 @@ pub enum TariUtxoSort {
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 #[repr(C)]
-pub enum TariTypeTag {
+pub enum TaijiTypeTag {
     Text = 0,
     Utxo = 1,
     Commitment = 2,
@@ -272,21 +272,21 @@ pub enum TariTypeTag {
     I64 = 4,
 }
 
-impl Display for TariTypeTag {
+impl Display for TaijiTypeTag {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            TariTypeTag::Text => write!(f, "Text"),
-            TariTypeTag::Utxo => write!(f, "Utxo"),
-            TariTypeTag::Commitment => write!(f, "Commitment"),
-            TariTypeTag::U64 => write!(f, "U64"),
-            TariTypeTag::I64 => write!(f, "I64"),
+            TaijiTypeTag::Text => write!(f, "Text"),
+            TaijiTypeTag::Utxo => write!(f, "Utxo"),
+            TaijiTypeTag::Commitment => write!(f, "Commitment"),
+            TaijiTypeTag::U64 => write!(f, "U64"),
+            TaijiTypeTag::I64 => write!(f, "I64"),
         }
     }
 }
 
 #[derive(Debug, Clone)]
 #[repr(C)]
-pub struct TariUtxo {
+pub struct TaijiUtxo {
     pub commitment: *const c_char,
     pub value: u64,
     pub mined_height: u64,
@@ -294,7 +294,7 @@ pub struct TariUtxo {
     pub status: u8,
 }
 
-impl From<DbWalletOutput> for TariUtxo {
+impl From<DbWalletOutput> for TaijiUtxo {
     fn from(x: DbWalletOutput) -> Self {
         Self {
             commitment: CString::new(x.commitment.to_hex())
@@ -328,19 +328,19 @@ impl From<DbWalletOutput> for TariUtxo {
 
 #[derive(Debug, Clone)]
 #[repr(C)]
-pub struct TariVector {
-    pub tag: TariTypeTag,
+pub struct TaijiVector {
+    pub tag: TaijiTypeTag,
     pub len: usize,
     pub cap: usize,
     pub ptr: *mut c_void,
 }
 
-impl From<Vec<i64>> for TariVector {
+impl From<Vec<i64>> for TaijiVector {
     fn from(v: Vec<i64>) -> Self {
         let mut v = ManuallyDrop::new(v);
 
         Self {
-            tag: TariTypeTag::I64,
+            tag: TaijiTypeTag::I64,
             len: v.len(),
             cap: v.capacity(),
             ptr: v.as_mut_ptr() as *mut c_void,
@@ -348,12 +348,12 @@ impl From<Vec<i64>> for TariVector {
     }
 }
 
-impl From<Vec<u64>> for TariVector {
+impl From<Vec<u64>> for TaijiVector {
     fn from(v: Vec<u64>) -> Self {
         let mut v = ManuallyDrop::new(v);
 
         Self {
-            tag: TariTypeTag::U64,
+            tag: TaijiTypeTag::U64,
             len: v.len(),
             cap: v.capacity(),
             ptr: v.as_mut_ptr() as *mut c_void,
@@ -361,7 +361,7 @@ impl From<Vec<u64>> for TariVector {
     }
 }
 
-impl From<Vec<String>> for TariVector {
+impl From<Vec<String>> for TaijiVector {
     fn from(v: Vec<String>) -> Self {
         let mut v = ManuallyDrop::new(
             v.into_iter()
@@ -370,7 +370,7 @@ impl From<Vec<String>> for TariVector {
         );
 
         Self {
-            tag: TariTypeTag::Text,
+            tag: TaijiTypeTag::Text,
             len: v.len(),
             cap: v.capacity(),
             ptr: v.as_mut_ptr() as *mut c_void,
@@ -378,7 +378,7 @@ impl From<Vec<String>> for TariVector {
     }
 }
 
-impl From<Vec<Commitment>> for TariVector {
+impl From<Vec<Commitment>> for TaijiVector {
     fn from(v: Vec<Commitment>) -> Self {
         let mut v = ManuallyDrop::new(
             v.into_iter()
@@ -387,7 +387,7 @@ impl From<Vec<Commitment>> for TariVector {
         );
 
         Self {
-            tag: TariTypeTag::Commitment,
+            tag: TaijiTypeTag::Commitment,
             len: v.len(),
             cap: v.capacity(),
             ptr: v.as_mut_ptr() as *mut c_void,
@@ -395,12 +395,12 @@ impl From<Vec<Commitment>> for TariVector {
     }
 }
 
-impl From<Vec<DbWalletOutput>> for TariVector {
-    fn from(v: Vec<DbWalletOutput>) -> TariVector {
-        let mut v = ManuallyDrop::new(v.into_iter().map(TariUtxo::from).collect_vec());
+impl From<Vec<DbWalletOutput>> for TaijiVector {
+    fn from(v: Vec<DbWalletOutput>) -> TaijiVector {
+        let mut v = ManuallyDrop::new(v.into_iter().map(TaijiUtxo::from).collect_vec());
 
         Self {
-            tag: TariTypeTag::Utxo,
+            tag: TaijiTypeTag::Utxo,
             len: v.len(),
             cap: v.capacity(),
             ptr: v.as_mut_ptr() as *mut c_void,
@@ -408,12 +408,12 @@ impl From<Vec<DbWalletOutput>> for TariVector {
     }
 }
 
-impl From<Vec<OutputStatus>> for TariVector {
-    fn from(v: Vec<OutputStatus>) -> TariVector {
+impl From<Vec<OutputStatus>> for TaijiVector {
+    fn from(v: Vec<OutputStatus>) -> TaijiVector {
         let mut v = ManuallyDrop::new(v.into_iter().map(|x| x as i32 as u64).collect_vec());
 
         Self {
-            tag: TariTypeTag::U64,
+            tag: TaijiTypeTag::U64,
             len: v.len(),
             cap: v.capacity(),
             ptr: v.as_mut_ptr() as *mut c_void,
@@ -422,9 +422,9 @@ impl From<Vec<OutputStatus>> for TariVector {
 }
 
 #[allow(dead_code)]
-impl TariVector {
+impl TaijiVector {
     fn to_string_vec(&self) -> Result<Vec<String>, InterfaceError> {
-        if self.tag != TariTypeTag::Text {
+        if self.tag != TaijiTypeTag::Text {
             return Err(InterfaceError::InvalidArgument(format!(
                 "expecting String, got {}",
                 self.tag
@@ -433,7 +433,7 @@ impl TariVector {
 
         if self.ptr.is_null() {
             return Err(InterfaceError::NullError(String::from(
-                "tari vector of strings has null pointer",
+                "taiji vector of strings has null pointer",
             )));
         }
 
@@ -461,8 +461,8 @@ impl TariVector {
     }
 
     #[allow(dead_code)]
-    fn to_utxo_vec(&self) -> Result<Vec<TariUtxo>, InterfaceError> {
-        if self.tag != TariTypeTag::Utxo {
+    fn to_utxo_vec(&self) -> Result<Vec<TaijiUtxo>, InterfaceError> {
+        if self.tag != TaijiTypeTag::Utxo {
             return Err(InterfaceError::InvalidArgument(format!(
                 "expecting Utxo, got {}",
                 self.tag
@@ -471,28 +471,28 @@ impl TariVector {
 
         if self.ptr.is_null() {
             return Err(InterfaceError::NullError(String::from(
-                "tari vector of utxos has null pointer",
+                "taiji vector of utxos has null pointer",
             )));
         }
 
-        Ok(unsafe { Vec::from_raw_parts(self.ptr as *mut TariUtxo, self.len, self.cap) })
+        Ok(unsafe { Vec::from_raw_parts(self.ptr as *mut TaijiUtxo, self.len, self.cap) })
     }
 }
 
-/// Initialize a new `TariVector`
+/// Initialize a new `TaijiVector`
 ///
 /// ## Arguments
 /// `tag` - A predefined type-tag of the vector's payload.
 ///
 /// ## Returns
-/// `*mut TariVector` - Returns a pointer to a `TariVector`.
+/// `*mut TaijiVector` - Returns a pointer to a `TaijiVector`.
 ///
 /// # Safety
-/// `destroy_tari_vector()` must be called to free the allocated memory.
+/// `destroy_taiji_vector()` must be called to free the allocated memory.
 #[no_mangle]
-pub unsafe extern "C" fn create_tari_vector(tag: TariTypeTag) -> *mut TariVector {
+pub unsafe extern "C" fn create_taiji_vector(tag: TaijiTypeTag) -> *mut TaijiVector {
     let mut v = ManuallyDrop::new(Vec::with_capacity(2));
-    Box::into_raw(Box::new(TariVector {
+    Box::into_raw(Box::new(TaijiVector {
         tag,
         len: v.len(),
         cap: v.capacity(),
@@ -509,11 +509,11 @@ pub unsafe extern "C" fn create_tari_vector(tag: TariTypeTag) -> *mut TariVector
 ///
 ///
 /// # Safety
-/// `destroy_tari_vector()` must be called to free the allocated memory.
+/// `destroy_taiji_vector()` must be called to free the allocated memory.
 #[no_mangle]
-pub unsafe extern "C" fn tari_vector_push_string(tv: *mut TariVector, s: *const c_char, error_ptr: *mut i32) {
+pub unsafe extern "C" fn taiji_vector_push_string(tv: *mut TaijiVector, s: *const c_char, error_ptr: *mut i32) {
     if tv.is_null() {
-        error!(target: LOG_TARGET, "tari vector pointer is null");
+        error!(target: LOG_TARGET, "taiji vector pointer is null");
         ptr::replace(
             error_ptr,
             LibWalletError::from(InterfaceError::NullError("vector".to_string())).code,
@@ -559,10 +559,10 @@ pub unsafe extern "C" fn tari_vector_push_string(tv: *mut TariVector, s: *const 
     ptr::replace(error_ptr, 0);
 }
 
-/// Frees memory allocated for `TariVector`.
+/// Frees memory allocated for `TaijiVector`.
 ///
 /// ## Arguments
-/// `v` - The pointer to `TariVector`
+/// `v` - The pointer to `TaijiVector`
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -570,17 +570,17 @@ pub unsafe extern "C" fn tari_vector_push_string(tv: *mut TariVector, s: *const 
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn destroy_tari_vector(v: *mut TariVector) {
+pub unsafe extern "C" fn destroy_taiji_vector(v: *mut TaijiVector) {
     if !v.is_null() {
         let x = Box::from_raw(v);
         let _ = x.ptr;
     }
 }
 
-/// Frees memory allocated for `TariCoinPreview`.
+/// Frees memory allocated for `TaijiCoinPreview`.
 ///
 /// ## Arguments
-/// `v` - The pointer to `TariCoinPreview`
+/// `v` - The pointer to `TaijiCoinPreview`
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -588,10 +588,10 @@ pub unsafe extern "C" fn destroy_tari_vector(v: *mut TariVector) {
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn destroy_tari_coin_preview(p: *mut TariCoinPreview) {
+pub unsafe extern "C" fn destroy_taiji_coin_preview(p: *mut TaijiCoinPreview) {
     if !p.is_null() {
         let x = Box::from_raw(p);
-        destroy_tari_vector(x.expected_outputs);
+        destroy_taiji_vector(x.expected_outputs);
     }
 }
 
@@ -618,10 +618,10 @@ pub unsafe extern "C" fn string_destroy(ptr: *mut c_char) {
 
 /// ----------------------------------- Transaction Kernel ------------------------------------- ///
 
-/// Gets the excess for a TariTransactionKernel
+/// Gets the excess for a TaijiTransactionKernel
 ///
 /// ## Arguments
-/// `x` - The pointer to a  TariTransactionKernel
+/// `x` - The pointer to a  TaijiTransactionKernel
 ///
 /// ## Returns
 /// `*mut c_char` - Returns a pointer to a char array. Note that it returns empty if there
@@ -631,7 +631,7 @@ pub unsafe extern "C" fn string_destroy(ptr: *mut c_char) {
 /// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn transaction_kernel_get_excess_hex(
-    kernel: *mut TariTransactionKernel,
+    kernel: *mut TaijiTransactionKernel,
     error_out: *mut c_int,
 ) -> *mut c_char {
     let mut error = 0;
@@ -654,10 +654,10 @@ pub unsafe extern "C" fn transaction_kernel_get_excess_hex(
     result.into_raw()
 }
 
-/// Gets the public nonce for a TariTransactionKernel
+/// Gets the public nonce for a TaijiTransactionKernel
 ///
 /// ## Arguments
-/// `x` - The pointer to a  TariTransactionKernel
+/// `x` - The pointer to a  TaijiTransactionKernel
 ///
 /// ## Returns
 /// `*mut c_char` - Returns a pointer to a char array. Note that it returns empty if there
@@ -667,7 +667,7 @@ pub unsafe extern "C" fn transaction_kernel_get_excess_hex(
 /// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn transaction_kernel_get_excess_public_nonce_hex(
-    kernel: *mut TariTransactionKernel,
+    kernel: *mut TaijiTransactionKernel,
     error_out: *mut c_int,
 ) -> *mut c_char {
     let mut error = 0;
@@ -691,10 +691,10 @@ pub unsafe extern "C" fn transaction_kernel_get_excess_public_nonce_hex(
     result.into_raw()
 }
 
-/// Gets the signature for a TariTransactionKernel
+/// Gets the signature for a TaijiTransactionKernel
 ///
 /// ## Arguments
-/// `x` - The pointer to a TariTransactionKernel
+/// `x` - The pointer to a TaijiTransactionKernel
 ///
 /// ## Returns
 /// `*mut c_char` - Returns a pointer to a char array. Note that it returns empty if there
@@ -704,7 +704,7 @@ pub unsafe extern "C" fn transaction_kernel_get_excess_public_nonce_hex(
 /// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn transaction_kernel_get_excess_signature_hex(
-    kernel: *mut TariTransactionKernel,
+    kernel: *mut TaijiTransactionKernel,
     error_out: *mut c_int,
 ) -> *mut c_char {
     let mut error = 0;
@@ -720,10 +720,10 @@ pub unsafe extern "C" fn transaction_kernel_get_excess_signature_hex(
     result.into_raw()
 }
 
-/// Frees memory for a TariTransactionKernel
+/// Frees memory for a TaijiTransactionKernel
 ///
 /// ## Arguments
-/// `x` - The pointer to a  TariTransactionKernel
+/// `x` - The pointer to a  TaijiTransactionKernel
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -731,7 +731,7 @@ pub unsafe extern "C" fn transaction_kernel_get_excess_signature_hex(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn transaction_kernel_destroy(x: *mut TariTransactionKernel) {
+pub unsafe extern "C" fn transaction_kernel_destroy(x: *mut TaijiTransactionKernel) {
     if !x.is_null() {
         drop(Box::from_raw(x))
     }
@@ -864,7 +864,7 @@ pub unsafe extern "C" fn byte_vector_get_length(vec: *const ByteVector, error_ou
 
 /// -------------------------------- Public Key ------------------------------------------------ ///
 
-/// Creates a TariPublicKey from a ByteVector
+/// Creates a TaijiPublicKey from a ByteVector
 ///
 /// ## Arguments
 /// `bytes` - The pointer to a ByteVector
@@ -872,13 +872,13 @@ pub unsafe extern "C" fn byte_vector_get_length(vec: *const ByteVector, error_ou
 /// as an out parameter.
 ///
 /// ## Returns
-/// `TariPublicKey` - Returns a public key. Note that it will be ptr::null_mut() if bytes is null or
+/// `TaijiPublicKey` - Returns a public key. Note that it will be ptr::null_mut() if bytes is null or
 /// if there was an error with the contents of bytes
 ///
 /// # Safety
-/// The ```public_key_destroy``` function must be called when finished with a TariPublicKey to prevent a memory leak
+/// The ```public_key_destroy``` function must be called when finished with a TaijiPublicKey to prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn public_key_create(bytes: *mut ByteVector, error_out: *mut c_int) -> *mut TariPublicKey {
+pub unsafe extern "C" fn public_key_create(bytes: *mut ByteVector, error_out: *mut c_int) -> *mut TaijiPublicKey {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if bytes.is_null() {
@@ -887,7 +887,7 @@ pub unsafe extern "C" fn public_key_create(bytes: *mut ByteVector, error_out: *m
         return ptr::null_mut();
     }
     let v = (*bytes).0.clone();
-    let pk = TariPublicKey::from_bytes(&v);
+    let pk = TaijiPublicKey::from_bytes(&v);
     match pk {
         Ok(pk) => Box::into_raw(Box::new(pk)),
         Err(e) => {
@@ -898,10 +898,10 @@ pub unsafe extern "C" fn public_key_create(bytes: *mut ByteVector, error_out: *m
     }
 }
 
-/// Frees memory for a TariPublicKey
+/// Frees memory for a TaijiPublicKey
 ///
 /// ## Arguments
-/// `pk` - The pointer to a TariPublicKey
+/// `pk` - The pointer to a TaijiPublicKey
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -909,16 +909,16 @@ pub unsafe extern "C" fn public_key_create(bytes: *mut ByteVector, error_out: *m
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn public_key_destroy(pk: *mut TariPublicKey) {
+pub unsafe extern "C" fn public_key_destroy(pk: *mut TaijiPublicKey) {
     if !pk.is_null() {
         drop(Box::from_raw(pk))
     }
 }
 
-/// Frees memory for TariPublicKeys
+/// Frees memory for TaijiPublicKeys
 ///
 /// ## Arguments
-/// `pks` - The pointer to TariPublicKeys
+/// `pks` - The pointer to TaijiPublicKeys
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -926,16 +926,16 @@ pub unsafe extern "C" fn public_key_destroy(pk: *mut TariPublicKey) {
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn public_keys_destroy(pks: *mut TariPublicKeys) {
+pub unsafe extern "C" fn public_keys_destroy(pks: *mut TaijiPublicKeys) {
     if !pks.is_null() {
         drop(Box::from_raw(pks))
     }
 }
 
-/// Gets a ByteVector from a TariPublicKey
+/// Gets a ByteVector from a TaijiPublicKey
 ///
 /// ## Arguments
-/// `pk` - The pointer to a TariPublicKey
+/// `pk` - The pointer to a TaijiPublicKey
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -945,7 +945,7 @@ pub unsafe extern "C" fn public_keys_destroy(pks: *mut TariPublicKeys) {
 /// # Safety
 /// The ```byte_vector_destroy``` function must be called when finished with the ByteVector to prevent a memory leak.
 #[no_mangle]
-pub unsafe extern "C" fn public_key_get_bytes(pk: *mut TariPublicKey, error_out: *mut c_int) -> *mut ByteVector {
+pub unsafe extern "C" fn public_key_get_bytes(pk: *mut TaijiPublicKey, error_out: *mut c_int) -> *mut ByteVector {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     let mut bytes = ByteVector(Vec::new());
@@ -959,23 +959,23 @@ pub unsafe extern "C" fn public_key_get_bytes(pk: *mut TariPublicKey, error_out:
     Box::into_raw(Box::new(bytes))
 }
 
-/// Creates a TariPublicKey from a TariPrivateKey
+/// Creates a TaijiPublicKey from a TaijiPrivateKey
 ///
 /// ## Arguments
-/// `secret_key` - The pointer to a TariPrivateKey
+/// `secret_key` - The pointer to a TaijiPrivateKey
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariPublicKey` - Returns a pointer to a TariPublicKey
+/// `*mut TaijiPublicKey` - Returns a pointer to a TaijiPublicKey
 ///
 /// # Safety
 /// The ```private_key_destroy``` method must be called when finished with a private key to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn public_key_from_private_key(
-    secret_key: *mut TariPrivateKey,
+    secret_key: *mut TaijiPrivateKey,
     error_out: *mut c_int,
-) -> *mut TariPublicKey {
+) -> *mut TaijiPublicKey {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if secret_key.is_null() {
@@ -983,11 +983,11 @@ pub unsafe extern "C" fn public_key_from_private_key(
         ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
-    let m = TariPublicKey::from_secret_key(&(*secret_key));
+    let m = TaijiPublicKey::from_secret_key(&(*secret_key));
     Box::into_raw(Box::new(m))
 }
 
-/// Creates a TariPublicKey from a char array
+/// Creates a TaijiPublicKey from a char array
 ///
 /// ## Arguments
 /// `key` - The pointer to a char array which is hex encoded
@@ -995,13 +995,13 @@ pub unsafe extern "C" fn public_key_from_private_key(
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariPublicKey` - Returns a pointer to a TariPublicKey. Note that it returns ptr::null_mut()
-/// if key is null or if there was an error creating the TariPublicKey from key
+/// `*mut TaijiPublicKey` - Returns a pointer to a TaijiPublicKey. Note that it returns ptr::null_mut()
+/// if key is null or if there was an error creating the TaijiPublicKey from key
 ///
 /// # Safety
-/// The ```public_key_destroy``` method must be called when finished with a TariPublicKey to prevent a memory leak
+/// The ```public_key_destroy``` method must be called when finished with a TaijiPublicKey to prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn public_key_from_hex(key: *const c_char, error_out: *mut c_int) -> *mut TariPublicKey {
+pub unsafe extern "C" fn public_key_from_hex(key: *const c_char, error_out: *mut c_int) -> *mut TaijiPublicKey {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     let key_str;
@@ -1022,7 +1022,7 @@ pub unsafe extern "C" fn public_key_from_hex(key: *const c_char, error_out: *mut
         }
     }
 
-    let public_key = TariPublicKey::from_hex(key_str.as_str());
+    let public_key = TaijiPublicKey::from_hex(key_str.as_str());
     match public_key {
         Ok(public_key) => Box::into_raw(Box::new(public_key)),
         Err(e) => {
@@ -1036,9 +1036,9 @@ pub unsafe extern "C" fn public_key_from_hex(key: *const c_char, error_out: *mut
 
 /// -------------------------------------------------------------------------------------------- ///
 
-/// -------------------------------- Tari Address ---------------------------------------------- ///
+/// -------------------------------- Taiji Address ---------------------------------------------- ///
 
-/// Creates a TariWalletAddress from a ByteVector
+/// Creates a TaijiWalletAddress from a ByteVector
 ///
 /// ## Arguments
 /// `bytes` - The pointer to a ByteVector
@@ -1046,13 +1046,13 @@ pub unsafe extern "C" fn public_key_from_hex(key: *const c_char, error_out: *mut
 /// as an out parameter.
 ///
 /// ## Returns
-/// `TariWalletAddress` - Returns a public key. Note that it will be ptr::null_mut() if bytes is null or
+/// `TaijiWalletAddress` - Returns a public key. Note that it will be ptr::null_mut() if bytes is null or
 /// if there was an error with the contents of bytes
 ///
 /// # Safety
-/// The ```public_key_destroy``` function must be called when finished with a TariWalletAddress to prevent a memory leak
+/// The ```public_key_destroy``` function must be called when finished with a TaijiWalletAddress to prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn tari_address_create(bytes: *mut ByteVector, error_out: *mut c_int) -> *mut TariWalletAddress {
+pub unsafe extern "C" fn taiji_address_create(bytes: *mut ByteVector, error_out: *mut c_int) -> *mut TaijiWalletAddress {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if bytes.is_null() {
@@ -1061,7 +1061,7 @@ pub unsafe extern "C" fn tari_address_create(bytes: *mut ByteVector, error_out: 
         return ptr::null_mut();
     }
     let v = (*bytes).0.clone();
-    let address = TariWalletAddress::from_bytes(&v);
+    let address = TaijiWalletAddress::from_bytes(&v);
     match address {
         Ok(address) => Box::into_raw(Box::new(address)),
         Err(e) => {
@@ -1072,10 +1072,10 @@ pub unsafe extern "C" fn tari_address_create(bytes: *mut ByteVector, error_out: 
     }
 }
 
-/// Frees memory for a TariWalletAddress
+/// Frees memory for a TaijiWalletAddress
 ///
 /// ## Arguments
-/// `pk` - The pointer to a TariWalletAddress
+/// `pk` - The pointer to a TaijiWalletAddress
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -1083,16 +1083,16 @@ pub unsafe extern "C" fn tari_address_create(bytes: *mut ByteVector, error_out: 
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn tari_address_destroy(address: *mut TariWalletAddress) {
+pub unsafe extern "C" fn taiji_address_destroy(address: *mut TaijiWalletAddress) {
     if !address.is_null() {
         drop(Box::from_raw(address))
     }
 }
 
-/// Gets a ByteVector from a TariWalletAddress
+/// Gets a ByteVector from a TaijiWalletAddress
 ///
 /// ## Arguments
-/// `address` - The pointer to a TariWalletAddress
+/// `address` - The pointer to a TaijiWalletAddress
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -1102,8 +1102,8 @@ pub unsafe extern "C" fn tari_address_destroy(address: *mut TariWalletAddress) {
 /// # Safety
 /// The ```byte_vector_destroy``` function must be called when finished with the ByteVector to prevent a memory leak.
 #[no_mangle]
-pub unsafe extern "C" fn tari_address_get_bytes(
-    address: *mut TariWalletAddress,
+pub unsafe extern "C" fn taiji_address_get_bytes(
+    address: *mut TaijiWalletAddress,
     error_out: *mut c_int,
 ) -> *mut ByteVector {
     let mut error = 0;
@@ -1119,27 +1119,27 @@ pub unsafe extern "C" fn tari_address_get_bytes(
     Box::into_raw(Box::new(bytes))
 }
 
-/// Creates a TariWalletAddress from a TariPrivateKey
+/// Creates a TaijiWalletAddress from a TaijiPrivateKey
 ///
 /// ## Arguments
-/// `secret_key` - The pointer to a TariPrivateKey
+/// `secret_key` - The pointer to a TaijiPrivateKey
 /// `network` - an u8 indicating the network
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariWalletAddress` - Returns a pointer to a TariWalletAddress
+/// `*mut TaijiWalletAddress` - Returns a pointer to a TaijiWalletAddress
 ///
 /// # Safety
 /// The ```private_key_destroy``` method must be called when finished with a private key to prevent a memory leak
 // casting here is network is a u8
 #[allow(clippy::cast_possible_truncation)]
 #[no_mangle]
-pub unsafe extern "C" fn tari_address_from_private_key(
-    secret_key: *mut TariPrivateKey,
+pub unsafe extern "C" fn taiji_address_from_private_key(
+    secret_key: *mut TaijiPrivateKey,
     network: c_uint,
     error_out: *mut c_int,
-) -> *mut TariWalletAddress {
+) -> *mut TaijiWalletAddress {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if secret_key.is_null() {
@@ -1156,11 +1156,11 @@ pub unsafe extern "C" fn tari_address_from_private_key(
             return ptr::null_mut();
         },
     };
-    let address = TariWalletAddress::new(key, network);
+    let address = TaijiWalletAddress::new(key, network);
     Box::into_raw(Box::new(address))
 }
 
-/// Creates a TariWalletAddress from a char array
+/// Creates a TaijiWalletAddress from a char array
 ///
 /// ## Arguments
 /// `address` - The pointer to a char array which is hex encoded
@@ -1168,16 +1168,16 @@ pub unsafe extern "C" fn tari_address_from_private_key(
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariWalletAddress` - Returns a pointer to a TariWalletAddress. Note that it returns ptr::null_mut()
-/// if key is null or if there was an error creating the TariWalletAddress from key
+/// `*mut TaijiWalletAddress` - Returns a pointer to a TaijiWalletAddress. Note that it returns ptr::null_mut()
+/// if key is null or if there was an error creating the TaijiWalletAddress from key
 ///
 /// # Safety
-/// The ```public_key_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
+/// The ```public_key_destroy``` method must be called when finished with a TaijiWalletAddress to prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn tari_address_from_hex(
+pub unsafe extern "C" fn taiji_address_from_hex(
     address: *const c_char,
     error_out: *mut c_int,
-) -> *mut TariWalletAddress {
+) -> *mut TaijiWalletAddress {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     let key_str;
@@ -1198,11 +1198,11 @@ pub unsafe extern "C" fn tari_address_from_hex(
         }
     }
 
-    let address = TariWalletAddress::from_hex(key_str.as_str());
+    let address = TaijiWalletAddress::from_hex(key_str.as_str());
     match address {
         Ok(address) => Box::into_raw(Box::new(address)),
         Err(e) => {
-            error!(target: LOG_TARGET, "Error creating a Tari Address from Hex: {:?}", e);
+            error!(target: LOG_TARGET, "Error creating a Taiji Address from Hex: {:?}", e);
             error = LibWalletError::from(e).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             ptr::null_mut()
@@ -1210,22 +1210,22 @@ pub unsafe extern "C" fn tari_address_from_hex(
     }
 }
 
-/// Creates a char array from a TariWalletAddress in emoji format
+/// Creates a char array from a TaijiWalletAddress in emoji format
 ///
 /// ## Arguments
-/// `address` - The pointer to a TariWalletAddress
+/// `address` - The pointer to a TaijiWalletAddress
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
 /// ## Returns
 /// `*mut c_char` - Returns a pointer to a char array. Note that it returns empty
-/// if emoji is null or if there was an error creating the emoji string from TariWalletAddress
+/// if emoji is null or if there was an error creating the emoji string from TaijiWalletAddress
 ///
 /// # Safety
 /// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn tari_address_to_emoji_id(
-    address: *mut TariWalletAddress,
+pub unsafe extern "C" fn taiji_address_to_emoji_id(
+    address: *mut TaijiWalletAddress,
     error_out: *mut c_int,
 ) -> *mut c_char {
     let mut error = 0;
@@ -1241,23 +1241,23 @@ pub unsafe extern "C" fn tari_address_to_emoji_id(
     CString::into_raw(result)
 }
 
-/// Creates a TariWalletAddress from a char array in emoji format
+/// Creates a TaijiWalletAddress from a char array in emoji format
 ///
 /// ## Arguments
-/// `const *c_char` - The pointer to a TariWalletAddress
+/// `const *c_char` - The pointer to a TaijiWalletAddress
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut c_char` - Returns a pointer to a TariWalletAddress. Note that it returns null on error.
+/// `*mut c_char` - Returns a pointer to a TaijiWalletAddress. Note that it returns null on error.
 ///
 /// # Safety
-/// The ```public_key_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
+/// The ```public_key_destroy``` method must be called when finished with a TaijiWalletAddress to prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn emoji_id_to_tari_address(
+pub unsafe extern "C" fn emoji_id_to_taiji_address(
     emoji: *const c_char,
     error_out: *mut c_int,
-) -> *mut TariWalletAddress {
+) -> *mut TaijiWalletAddress {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if emoji.is_null() {
@@ -1268,8 +1268,8 @@ pub unsafe extern "C" fn emoji_id_to_tari_address(
 
     match CStr::from_ptr(emoji)
         .to_str()
-        .map_err(|_| TariAddressError::InvalidEmoji)
-        .and_then(TariAddress::from_emoji_string)
+        .map_err(|_| TaijiAddressError::InvalidEmoji)
+        .and_then(TaijiAddress::from_emoji_string)
     {
         Ok(address) => Box::into_raw(Box::new(address)),
         Err(_) => {
@@ -1284,7 +1284,7 @@ pub unsafe extern "C" fn emoji_id_to_tari_address(
 ///
 /// ------------------------------- ComAndPubSignature Signature ---------------------------------------///
 
-/// Creates a TariComAndPubSignature from `u_a`. `u_x`, `u_y`, `ephemeral_pubkey` and `ephemeral_commitment_bytes`
+/// Creates a TaijiComAndPubSignature from `u_a`. `u_x`, `u_y`, `ephemeral_pubkey` and `ephemeral_commitment_bytes`
 /// ByteVectors
 ///
 /// ## Arguments
@@ -1297,11 +1297,11 @@ pub unsafe extern "C" fn emoji_id_to_tari_address(
 /// as an out parameter.
 ///
 /// ## Returns
-/// `TariComAndPubSignature` - Returns a ComAndPubS signature. Note that it will be ptr::null_mut() if any argument is
+/// `TaijiComAndPubSignature` - Returns a ComAndPubS signature. Note that it will be ptr::null_mut() if any argument is
 /// null or if there was an error with the contents of bytes
 ///
 /// # Safety
-/// The ```commitment_signature_destroy``` function must be called when finished with a TariComAndPubSignature to
+/// The ```commitment_signature_destroy``` function must be called when finished with a TaijiComAndPubSignature to
 /// prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn commitment_and_public_signature_create_from_bytes(
@@ -1311,7 +1311,7 @@ pub unsafe extern "C" fn commitment_and_public_signature_create_from_bytes(
     u_x_bytes: *const ByteVector,
     u_y_bytes: *const ByteVector,
     error_out: *mut c_int,
-) -> *mut TariComAndPubSignature {
+) -> *mut TaijiComAndPubSignature {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if ephemeral_pubkey_bytes.is_null() {
@@ -1365,7 +1365,7 @@ pub unsafe extern "C" fn commitment_and_public_signature_create_from_bytes(
         },
     };
 
-    let u_a = match TariPrivateKey::from_bytes(&(*u_a_bytes).0.clone()) {
+    let u_a = match TaijiPrivateKey::from_bytes(&(*u_a_bytes).0.clone()) {
         Ok(u) => u,
         Err(e) => {
             error!(
@@ -1377,7 +1377,7 @@ pub unsafe extern "C" fn commitment_and_public_signature_create_from_bytes(
             return ptr::null_mut();
         },
     };
-    let u_x = match TariPrivateKey::from_bytes(&(*u_x_bytes).0.clone()) {
+    let u_x = match TaijiPrivateKey::from_bytes(&(*u_x_bytes).0.clone()) {
         Ok(u) => u,
         Err(e) => {
             error!(
@@ -1389,7 +1389,7 @@ pub unsafe extern "C" fn commitment_and_public_signature_create_from_bytes(
             return ptr::null_mut();
         },
     };
-    let u_y = match TariPrivateKey::from_bytes(&(*u_y_bytes).0.clone()) {
+    let u_y = match TaijiPrivateKey::from_bytes(&(*u_y_bytes).0.clone()) {
         Ok(u) => u,
         Err(e) => {
             error!(
@@ -1406,10 +1406,10 @@ pub unsafe extern "C" fn commitment_and_public_signature_create_from_bytes(
     Box::into_raw(Box::new(sig))
 }
 
-/// Frees memory for a TariComAndPubSignature
+/// Frees memory for a TaijiComAndPubSignature
 ///
 /// ## Arguments
-/// `compub_sig` - The pointer to a TariComAndPubSignature
+/// `compub_sig` - The pointer to a TaijiComAndPubSignature
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -1417,7 +1417,7 @@ pub unsafe extern "C" fn commitment_and_public_signature_create_from_bytes(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn commitment_and_public_signature_destroy(compub_sig: *mut TariComAndPubSignature) {
+pub unsafe extern "C" fn commitment_and_public_signature_destroy(compub_sig: *mut TaijiComAndPubSignature) {
     if !compub_sig.is_null() {
         drop(Box::from_raw(compub_sig))
     }
@@ -1430,13 +1430,13 @@ pub unsafe extern "C" fn commitment_and_public_signature_destroy(compub_sig: *mu
 /// Creates an unblinded output
 ///
 /// ## Arguments
-/// `amount` - The value of the UTXO in MicroMinotari
+/// `amount` - The value of the UTXO in MicroMinotaiji
 /// `spending_key` - The private spending key
-/// `source_address` - The tari address of the source of the transaction
+/// `source_address` - The taiji address of the source of the transaction
 /// `features` - Options for an output's structure or use
 /// `metadata_signature` - UTXO signature with the script offset private key, k_O
-/// `sender_offset_public_key` - Tari script offset pubkey, K_O
-/// `script_private_key` - Tari script private key, k_S, is used to create the script signature
+/// `sender_offset_public_key` - Taiji script offset pubkey, K_O
+/// `script_private_key` - Taiji script private key, k_S, is used to create the script signature
 /// `covenant` - The covenant that will be executed when spending this output
 /// `message` - The message that the transaction will have
 /// `encrypted_data` - Encrypted data.
@@ -1445,29 +1445,29 @@ pub unsafe extern "C" fn commitment_and_public_signature_destroy(compub_sig: *mu
 /// as an out parameter.
 ///
 /// ## Returns
-/// TariUnblindedOutput -  Returns the TransactionID of the generated transaction, note that it will be zero if the
+/// TaijiUnblindedOutput -  Returns the TransactionID of the generated transaction, note that it will be zero if the
 /// transaction is null
 ///
 /// # Safety
-///  The ```tari_unblinded_output_destroy``` function must be called when finished with a TariUnblindedOutput to
+///  The ```taiji_unblinded_output_destroy``` function must be called when finished with a TaijiUnblindedOutput to
 /// prevent a memory leak
 #[no_mangle]
 #[allow(clippy::too_many_lines)]
-pub unsafe extern "C" fn create_tari_unblinded_output(
+pub unsafe extern "C" fn create_taiji_unblinded_output(
     amount: c_ulonglong,
-    spending_key: *mut TariPrivateKey,
-    features: *mut TariOutputFeatures,
+    spending_key: *mut TaijiPrivateKey,
+    features: *mut TaijiOutputFeatures,
     script: *const c_char,
     input_data: *const c_char,
-    metadata_signature: *mut TariComAndPubSignature,
-    sender_offset_public_key: *mut TariPublicKey,
-    script_private_key: *mut TariPrivateKey,
-    covenant: *mut TariCovenant,
-    encrypted_data: *mut TariEncryptedOpenings,
+    metadata_signature: *mut TaijiComAndPubSignature,
+    sender_offset_public_key: *mut TaijiPublicKey,
+    script_private_key: *mut TaijiPrivateKey,
+    covenant: *mut TaijiCovenant,
+    encrypted_data: *mut TaijiEncryptedOpenings,
     minimum_value_promise: c_ulonglong,
     script_lock_height: c_ulonglong,
     error_out: *mut c_int,
-) -> *mut TariUnblindedOutput {
+) -> *mut TaijiUnblindedOutput {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -1517,7 +1517,7 @@ pub unsafe extern "C" fn create_tari_unblinded_output(
             },
         }
     }
-    let script = match TariScript::from_hex(&script_str) {
+    let script = match TaijiScript::from_hex(&script_str) {
         Ok(v) => v,
         Err(e) => {
             error = LibWalletError::from(e).code;
@@ -1542,7 +1542,7 @@ pub unsafe extern "C" fn create_tari_unblinded_output(
             },
         }
     }
-    let input_data = match tari_script::ExecutionStack::from_hex(&input_str) {
+    let input_data = match taiji_script::ExecutionStack::from_hex(&input_str) {
         Ok(v) => v,
         Err(e) => {
             error = LibWalletError::from(e).code;
@@ -1552,13 +1552,13 @@ pub unsafe extern "C" fn create_tari_unblinded_output(
     };
 
     let covenant = if covenant.is_null() {
-        TariCovenant::default()
+        TaijiCovenant::default()
     } else {
         (*covenant).clone()
     };
 
     let encrypted_data = if encrypted_data.is_null() {
-        TariEncryptedOpenings::default()
+        TaijiEncryptedOpenings::default()
     } else {
         *encrypted_data
     };
@@ -1581,10 +1581,10 @@ pub unsafe extern "C" fn create_tari_unblinded_output(
     Box::into_raw(Box::new(unblinded_output))
 }
 
-/// Frees memory for a TariUnblindedOutput
+/// Frees memory for a TaijiUnblindedOutput
 ///
 /// ## Arguments
-/// `output` - The pointer to a TariUnblindedOutput
+/// `output` - The pointer to a TaijiUnblindedOutput
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -1592,27 +1592,27 @@ pub unsafe extern "C" fn create_tari_unblinded_output(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn tari_unblinded_output_destroy(output: *mut TariUnblindedOutput) {
+pub unsafe extern "C" fn taiji_unblinded_output_destroy(output: *mut TaijiUnblindedOutput) {
     if !output.is_null() {
         drop(Box::from_raw(output))
     }
 }
 
-/// returns the TariUnblindedOutput as a json string
+/// returns the TaijiUnblindedOutput as a json string
 ///
 /// ## Arguments
-/// `output` - The pointer to a TariUnblindedOutput
+/// `output` - The pointer to a TaijiUnblindedOutput
 ///
 /// ## Returns
 /// `*mut c_char` - Returns a pointer to a char array. Note that it returns an empty char array if
-/// TariUnblindedOutput is null or the position is invalid
+/// TaijiUnblindedOutput is null or the position is invalid
 ///
 /// # Safety
-///  The ```tari_unblinded_output_destroy``` function must be called when finished with a TariUnblindedOutput to
+///  The ```taiji_unblinded_output_destroy``` function must be called when finished with a TaijiUnblindedOutput to
 /// prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn tari_unblinded_output_to_json(
-    output: *mut TariUnblindedOutput,
+pub unsafe extern "C" fn taiji_unblinded_output_to_json(
+    output: *mut TaijiUnblindedOutput,
     error_out: *mut c_int,
 ) -> *mut c_char {
     let mut error = 0;
@@ -1639,25 +1639,25 @@ pub unsafe extern "C" fn tari_unblinded_output_to_json(
     CString::into_raw(hex_bytes)
 }
 
-/// Creates a TariUnblindedOutput from a char array
+/// Creates a TaijiUnblindedOutput from a char array
 ///
 /// ## Arguments
-/// `output_json` - The pointer to a char array which is json of the TariUnblindedOutput
+/// `output_json` - The pointer to a char array which is json of the TaijiUnblindedOutput
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariUnblindedOutput` - Returns a pointer to a TariUnblindedOutput. Note that it returns ptr::null_mut()
-/// if key is null or if there was an error creating the TariUnblindedOutput from key
+/// `*mut TaijiUnblindedOutput` - Returns a pointer to a TaijiUnblindedOutput. Note that it returns ptr::null_mut()
+/// if key is null or if there was an error creating the TaijiUnblindedOutput from key
 ///
 /// # Safety
-/// The ```tari_unblinded_output_destroy``` function must be called when finished with a TariUnblindedOutput to
+/// The ```taiji_unblinded_output_destroy``` function must be called when finished with a TaijiUnblindedOutput to
 // /// prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn create_tari_unblinded_output_from_json(
+pub unsafe extern "C" fn create_taiji_unblinded_output_from_json(
     output_json: *const c_char,
     error_out: *mut c_int,
-) -> *mut TariUnblindedOutput {
+) -> *mut TaijiUnblindedOutput {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     let output_json_str;
@@ -1677,7 +1677,7 @@ pub unsafe extern "C" fn create_tari_unblinded_output_from_json(
             },
         };
     }
-    let output: Result<TariUnblindedOutput, _> = serde_json::from_str(&output_json_str);
+    let output: Result<TaijiUnblindedOutput, _> = serde_json::from_str(&output_json_str);
 
     match output {
         Ok(output) => Box::into_raw(Box::new(output)),
@@ -1693,12 +1693,12 @@ pub unsafe extern "C" fn create_tari_unblinded_output_from_json(
 
 /// -------------------------------------------------------------------------------------------- ///
 
-/// ----------------------------------- TariUnblindedOutputs ------------------------------------///
+/// ----------------------------------- TaijiUnblindedOutputs ------------------------------------///
 
-/// Gets the length of TariUnblindedOutputs
+/// Gets the length of TaijiUnblindedOutputs
 ///
 /// ## Arguments
-/// `outputs` - The pointer to a TariUnblindedOutputs
+/// `outputs` - The pointer to a TaijiUnblindedOutputs
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -1711,7 +1711,7 @@ pub unsafe extern "C" fn create_tari_unblinded_output_from_json(
 #[allow(clippy::cast_possible_truncation)]
 #[no_mangle]
 pub unsafe extern "C" fn unblinded_outputs_get_length(
-    outputs: *mut TariUnblindedOutputs,
+    outputs: *mut TaijiUnblindedOutputs,
     error_out: *mut c_int,
 ) -> c_uint {
     let mut error = 0;
@@ -1726,28 +1726,28 @@ pub unsafe extern "C" fn unblinded_outputs_get_length(
     len as c_uint
 }
 
-/// Gets a TariUnblindedOutput from TariUnblindedOutputs at position
+/// Gets a TaijiUnblindedOutput from TaijiUnblindedOutputs at position
 ///
 /// ## Arguments
-/// `outputs` - The pointer to a TariUnblindedOutputs
+/// `outputs` - The pointer to a TaijiUnblindedOutputs
 /// `position` - The integer position
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariUnblindedOutput` - Returns a TariUnblindedOutput, note that it returns ptr::null_mut() if
-/// TariUnblindedOutputs is null or position is invalid
+/// `*mut TaijiUnblindedOutput` - Returns a TaijiUnblindedOutput, note that it returns ptr::null_mut() if
+/// TaijiUnblindedOutputs is null or position is invalid
 ///
 /// # Safety
-/// The ```contact_destroy``` method must be called when finished with a TariContact to prevent a memory leak
+/// The ```contact_destroy``` method must be called when finished with a TaijiContact to prevent a memory leak
 // converting between here is fine as its used to clamp the the array to length
 #[allow(clippy::cast_possible_wrap)]
 #[no_mangle]
 pub unsafe extern "C" fn unblinded_outputs_get_at(
-    outputs: *mut TariUnblindedOutputs,
+    outputs: *mut TaijiUnblindedOutputs,
     position: c_uint,
     error_out: *mut c_int,
-) -> *mut TariUnblindedOutput {
+) -> *mut TaijiUnblindedOutput {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if outputs.is_null() {
@@ -1764,10 +1764,10 @@ pub unsafe extern "C" fn unblinded_outputs_get_at(
     Box::into_raw(Box::new((*outputs).0[position as usize].clone()))
 }
 
-/// Frees memory for a TariUnblindedOutputs
+/// Frees memory for a TaijiUnblindedOutputs
 ///
 /// ## Arguments
-/// `outputs` - The pointer to a TariUnblindedOutputs
+/// `outputs` - The pointer to a TaijiUnblindedOutputs
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -1775,7 +1775,7 @@ pub unsafe extern "C" fn unblinded_outputs_get_at(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn unblinded_outputs_destroy(outputs: *mut TariUnblindedOutputs) {
+pub unsafe extern "C" fn unblinded_outputs_destroy(outputs: *mut TaijiUnblindedOutputs) {
     if !outputs.is_null() {
         drop(Box::from_raw(outputs))
     }
@@ -1785,14 +1785,14 @@ pub unsafe extern "C" fn unblinded_outputs_destroy(outputs: *mut TariUnblindedOu
 /// UTXO (as EncumberedToBeReceived) and create a faux completed transaction to record the event.
 ///
 /// ## Arguments
-/// `wallet` - The TariWallet pointer
-/// `amount` - The value of the UTXO in MicroMinotari
+/// `wallet` - The TaijiWallet pointer
+/// `amount` - The value of the UTXO in MicroMinotaiji
 /// `spending_key` - The private spending key
-/// `source_address` - The tari address of the source of the transaction
+/// `source_address` - The taiji address of the source of the transaction
 /// `features` - Options for an output's structure or use
 /// `metadata_signature` - UTXO signature with the script offset private key, k_O
-/// `sender_offset_public_key` - Tari script offset pubkey, K_O
-/// `script_private_key` - Tari script private key, k_S, is used to create the script signature
+/// `sender_offset_public_key` - Taiji script offset pubkey, K_O
+/// `script_private_key` - Taiji script private key, k_S, is used to create the script signature
 /// `covenant` - The covenant that will be executed when spending this output
 /// `message` - The message that the transaction will have
 /// `encrypted_data` - Encrypted data.
@@ -1808,9 +1808,9 @@ pub unsafe extern "C" fn unblinded_outputs_destroy(outputs: *mut TariUnblindedOu
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn wallet_import_external_utxo_as_non_rewindable(
-    wallet: *mut TariWallet,
-    output: *mut TariUnblindedOutput,
-    source_address: *mut TariWalletAddress,
+    wallet: *mut TaijiWallet,
+    output: *mut TaijiUnblindedOutput,
+    source_address: *mut TaijiWalletAddress,
     message: *const c_char,
     error_out: *mut c_int,
 ) -> c_ulonglong {
@@ -1822,7 +1822,7 @@ pub unsafe extern "C" fn wallet_import_external_utxo_as_non_rewindable(
         return 0;
     }
     let source_address = if source_address.is_null() {
-        TariWalletAddress::default()
+        TaijiWalletAddress::default()
     } else {
         (*source_address).clone()
     };
@@ -1867,25 +1867,25 @@ pub unsafe extern "C" fn wallet_import_external_utxo_as_non_rewindable(
     }
 }
 
-/// Get the TariUnblindedOutputs from a TariWallet
+/// Get the TaijiUnblindedOutputs from a TaijiWallet
 ///
 /// ## Arguments
-/// `wallet` - The TariWallet pointer
+/// `wallet` - The TaijiWallet pointer
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariUnblindedOutputs` - returns the unspent unblinded outputs, note that it returns ptr::null_mut() if
+/// `*mut TaijiUnblindedOutputs` - returns the unspent unblinded outputs, note that it returns ptr::null_mut() if
 /// wallet is null
 ///
 /// # Safety
-/// The ```unblinded_outputs_destroy``` method must be called when finished with a TariUnblindedOutput to prevent a
+/// The ```unblinded_outputs_destroy``` method must be called when finished with a TaijiUnblindedOutput to prevent a
 /// memory leak
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_unspent_outputs(
-    wallet: *mut TariWallet,
+    wallet: *mut TaijiWallet,
     error_out: *mut c_int,
-) -> *mut TariUnblindedOutputs {
+) -> *mut TaijiUnblindedOutputs {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     let mut outputs = Vec::new();
@@ -1916,7 +1916,7 @@ pub unsafe extern "C" fn wallet_get_unspent_outputs(
                     },
                 }
             }
-            Box::into_raw(Box::new(TariUnblindedOutputs(outputs)))
+            Box::into_raw(Box::new(TaijiUnblindedOutputs(outputs)))
         },
         Err(e) => {
             error = LibWalletError::from(WalletError::OutputManagerError(e)).code;
@@ -1930,7 +1930,7 @@ pub unsafe extern "C" fn wallet_get_unspent_outputs(
 
 /// -------------------------------- Private Key ----------------------------------------------- ///
 
-/// Creates a TariPrivateKey from a ByteVector
+/// Creates a TaijiPrivateKey from a ByteVector
 ///
 /// ## Arguments
 /// `bytes` - The pointer to a ByteVector
@@ -1938,13 +1938,13 @@ pub unsafe extern "C" fn wallet_get_unspent_outputs(
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariPrivateKey` - Returns a pointer to a TariPrivateKey. Note that it returns ptr::null_mut()
-/// if bytes is null or if there was an error creating the TariPrivateKey from bytes
+/// `*mut TaijiPrivateKey` - Returns a pointer to a TaijiPrivateKey. Note that it returns ptr::null_mut()
+/// if bytes is null or if there was an error creating the TaijiPrivateKey from bytes
 ///
 /// # Safety
-/// The ```private_key_destroy``` method must be called when finished with a TariPrivateKey to prevent a memory leak
+/// The ```private_key_destroy``` method must be called when finished with a TaijiPrivateKey to prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn private_key_create(bytes: *mut ByteVector, error_out: *mut c_int) -> *mut TariPrivateKey {
+pub unsafe extern "C" fn private_key_create(bytes: *mut ByteVector, error_out: *mut c_int) -> *mut TaijiPrivateKey {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if bytes.is_null() {
@@ -1953,7 +1953,7 @@ pub unsafe extern "C" fn private_key_create(bytes: *mut ByteVector, error_out: *
         return ptr::null_mut();
     }
     let v = (*bytes).0.clone();
-    let pk = TariPrivateKey::from_bytes(&v);
+    let pk = TaijiPrivateKey::from_bytes(&v);
     match pk {
         Ok(pk) => Box::into_raw(Box::new(pk)),
         Err(e) => {
@@ -1964,10 +1964,10 @@ pub unsafe extern "C" fn private_key_create(bytes: *mut ByteVector, error_out: *
     }
 }
 
-/// Frees memory for a TariPrivateKey
+/// Frees memory for a TaijiPrivateKey
 ///
 /// ## Arguments
-/// `pk` - The pointer to a TariPrivateKey
+/// `pk` - The pointer to a TaijiPrivateKey
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -1975,16 +1975,16 @@ pub unsafe extern "C" fn private_key_create(bytes: *mut ByteVector, error_out: *
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn private_key_destroy(pk: *mut TariPrivateKey) {
+pub unsafe extern "C" fn private_key_destroy(pk: *mut TaijiPrivateKey) {
     if !pk.is_null() {
         drop(Box::from_raw(pk))
     }
 }
 
-/// Gets a ByteVector from a TariPrivateKey
+/// Gets a ByteVector from a TaijiPrivateKey
 ///
 /// ## Arguments
-/// `pk` - The pointer to a TariPrivateKey
+/// `pk` - The pointer to a TaijiPrivateKey
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -1995,7 +1995,7 @@ pub unsafe extern "C" fn private_key_destroy(pk: *mut TariPrivateKey) {
 /// # Safety
 /// The ```byte_vector_destroy``` must be called when finished with a ByteVector to prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn private_key_get_bytes(pk: *mut TariPrivateKey, error_out: *mut c_int) -> *mut ByteVector {
+pub unsafe extern "C" fn private_key_get_bytes(pk: *mut TaijiPrivateKey, error_out: *mut c_int) -> *mut ByteVector {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     let mut bytes = ByteVector(Vec::new());
@@ -2009,23 +2009,23 @@ pub unsafe extern "C" fn private_key_get_bytes(pk: *mut TariPrivateKey, error_ou
     Box::into_raw(Box::new(bytes))
 }
 
-/// Generates a TariPrivateKey
+/// Generates a TaijiPrivateKey
 ///
 /// ## Arguments
 /// `()` - Does  not take any arguments
 ///
 /// ## Returns
-/// `*mut TariPrivateKey` - Returns a pointer to a TariPrivateKey
+/// `*mut TaijiPrivateKey` - Returns a pointer to a TaijiPrivateKey
 ///
 /// # Safety
-/// The ```private_key_destroy``` method must be called when finished with a TariPrivateKey to prevent a memory leak.
+/// The ```private_key_destroy``` method must be called when finished with a TaijiPrivateKey to prevent a memory leak.
 #[no_mangle]
-pub unsafe extern "C" fn private_key_generate() -> *mut TariPrivateKey {
-    let secret_key = TariPrivateKey::random(&mut OsRng);
+pub unsafe extern "C" fn private_key_generate() -> *mut TaijiPrivateKey {
+    let secret_key = TaijiPrivateKey::random(&mut OsRng);
     Box::into_raw(Box::new(secret_key))
 }
 
-/// Creates a TariPrivateKey from a char array
+/// Creates a TaijiPrivateKey from a char array
 ///
 /// ## Arguments
 /// `key` - The pointer to a char array which is hex encoded
@@ -2033,13 +2033,13 @@ pub unsafe extern "C" fn private_key_generate() -> *mut TariPrivateKey {
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariPrivateKey` - Returns a pointer to a TariPrivateKey. Note that it returns ptr::null_mut()
-/// if key is null or if there was an error creating the TariPrivateKey from key
+/// `*mut TaijiPrivateKey` - Returns a pointer to a TaijiPrivateKey. Note that it returns ptr::null_mut()
+/// if key is null or if there was an error creating the TaijiPrivateKey from key
 ///
 /// # Safety
-/// The ```private_key_destroy``` method must be called when finished with a TariPrivateKey to prevent a memory leak
+/// The ```private_key_destroy``` method must be called when finished with a TaijiPrivateKey to prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn private_key_from_hex(key: *const c_char, error_out: *mut c_int) -> *mut TariPrivateKey {
+pub unsafe extern "C" fn private_key_from_hex(key: *const c_char, error_out: *mut c_int) -> *mut TaijiPrivateKey {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     let key_str;
@@ -2060,7 +2060,7 @@ pub unsafe extern "C" fn private_key_from_hex(key: *const c_char, error_out: *mu
         };
     }
 
-    let secret_key = TariPrivateKey::from_hex(key_str.as_str());
+    let secret_key = TaijiPrivateKey::from_hex(key_str.as_str());
 
     match secret_key {
         Ok(secret_key) => Box::into_raw(Box::new(secret_key)),
@@ -2077,22 +2077,22 @@ pub unsafe extern "C" fn private_key_from_hex(key: *const c_char, error_out: *mu
 /// -------------------------------------------------------------------------------------------- ///
 /// --------------------------------------- Covenant --------------------------------------------///
 
-/// Creates a TariCovenant from a ByteVector containing the covenant bytes
+/// Creates a TaijiCovenant from a ByteVector containing the covenant bytes
 ///
 /// ## Arguments
 /// `covenant_bytes` - The covenant bytes as a ByteVector
 ///
 /// ## Returns
-/// `TariCovenant` - Returns a commitment signature. Note that it will be ptr::null_mut() if any argument is
+/// `TaijiCovenant` - Returns a commitment signature. Note that it will be ptr::null_mut() if any argument is
 /// null or if there was an error with the contents of bytes
 ///
 /// # Safety
-/// The ```covenant_destroy``` function must be called when finished with a TariCovenant to prevent a memory leak
+/// The ```covenant_destroy``` function must be called when finished with a TaijiCovenant to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn covenant_create_from_bytes(
     covenant_bytes: *const ByteVector,
     error_out: *mut c_int,
-) -> *mut TariCovenant {
+) -> *mut TaijiCovenant {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -2103,7 +2103,7 @@ pub unsafe extern "C" fn covenant_create_from_bytes(
     }
     let mut decoded_covenant_bytes = (*covenant_bytes).0.as_bytes();
 
-    match TariCovenant::borsh_from_bytes(&mut decoded_covenant_bytes) {
+    match TaijiCovenant::borsh_from_bytes(&mut decoded_covenant_bytes) {
         Ok(covenant) => Box::into_raw(Box::new(covenant)),
         Err(e) => {
             error!(target: LOG_TARGET, "Error creating a Covenant: {:?}", e);
@@ -2114,10 +2114,10 @@ pub unsafe extern "C" fn covenant_create_from_bytes(
     }
 }
 
-/// Frees memory for a TariCovenant
+/// Frees memory for a TaijiCovenant
 ///
 /// ## Arguments
-/// `covenant` - The pointer to a TariCovenant
+/// `covenant` - The pointer to a TaijiCovenant
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -2125,7 +2125,7 @@ pub unsafe extern "C" fn covenant_create_from_bytes(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn covenant_destroy(covenant: *mut TariCovenant) {
+pub unsafe extern "C" fn covenant_destroy(covenant: *mut TaijiCovenant) {
     if !covenant.is_null() {
         drop(Box::from_raw(covenant))
     }
@@ -2134,23 +2134,23 @@ pub unsafe extern "C" fn covenant_destroy(covenant: *mut TariCovenant) {
 /// -------------------------------------------------------------------------------------------- ///
 /// --------------------------------------- EncryptedOpenings --------------------------------------------///
 
-/// Creates a TariEncryptedOpenings from a ByteVector containing the encrypted_data bytes
+/// Creates a TaijiEncryptedOpenings from a ByteVector containing the encrypted_data bytes
 ///
 /// ## Arguments
 /// `encrypted_data_bytes` - The encrypted_data bytes as a ByteVector
 ///
 /// ## Returns
-/// `TariEncryptedOpenings` - Returns  encrypted data. Note that it will be ptr::null_mut() if any argument is
+/// `TaijiEncryptedOpenings` - Returns  encrypted data. Note that it will be ptr::null_mut() if any argument is
 /// null or if there was an error with the contents of bytes
 ///
 /// # Safety
-/// The ```encrypted_data_destroy``` function must be called when finished with a TariEncryptedOpenings to prevent a
+/// The ```encrypted_data_destroy``` function must be called when finished with a TaijiEncryptedOpenings to prevent a
 /// memory leak
 #[no_mangle]
 pub unsafe extern "C" fn encrypted_data_create_from_bytes(
     encrypted_data_bytes: *const ByteVector,
     error_out: *mut c_int,
-) -> *mut TariEncryptedOpenings {
+) -> *mut TaijiEncryptedOpenings {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -2161,7 +2161,7 @@ pub unsafe extern "C" fn encrypted_data_create_from_bytes(
     }
     let decoded_encrypted_data_bytes = (*encrypted_data_bytes).0.clone();
 
-    match TariEncryptedOpenings::from_bytes(&decoded_encrypted_data_bytes) {
+    match TaijiEncryptedOpenings::from_bytes(&decoded_encrypted_data_bytes) {
         Ok(encrypted_data) => Box::into_raw(Box::new(encrypted_data)),
         Err(e) => {
             error!(target: LOG_TARGET, "Error creating an encrypted_data: {:?}", e);
@@ -2172,21 +2172,21 @@ pub unsafe extern "C" fn encrypted_data_create_from_bytes(
     }
 }
 
-/// Creates a ByteVector containing the encrypted_data bytes from a TariEncryptedOpenings
+/// Creates a ByteVector containing the encrypted_data bytes from a TaijiEncryptedOpenings
 ///
 /// ## Arguments
-/// `encrypted_data` - The encrypted_data as a TariEncryptedOpenings
+/// `encrypted_data` - The encrypted_data as a TaijiEncryptedOpenings
 ///
 /// ## Returns
 /// `ByteVector` - Returns a ByteVector containing the encrypted_data bytes. Note that it will be ptr::null_mut() if
 /// any argument is null or if there was an error with the contents of bytes
 ///
 /// # Safety
-/// The `encrypted_data_destroy` function must be called when finished with a TariEncryptedOpenings to prevent a
+/// The `encrypted_data_destroy` function must be called when finished with a TaijiEncryptedOpenings to prevent a
 /// memory leak
 #[no_mangle]
 pub unsafe extern "C" fn encrypted_data_as_bytes(
-    encrypted_data: *const TariEncryptedOpenings,
+    encrypted_data: *const TaijiEncryptedOpenings,
     error_out: *mut c_int,
 ) -> *mut ByteVector {
     let mut error = 0;
@@ -2198,15 +2198,15 @@ pub unsafe extern "C" fn encrypted_data_as_bytes(
         return ptr::null_mut();
     }
 
-    let encrypted_data_bytes = TariEncryptedOpenings::to_byte_vec(&(*encrypted_data)).to_vec();
+    let encrypted_data_bytes = TaijiEncryptedOpenings::to_byte_vec(&(*encrypted_data)).to_vec();
     let encrypted_byte_vector = ByteVector(encrypted_data_bytes);
     Box::into_raw(Box::new(encrypted_byte_vector))
 }
 
-/// Frees memory for a TariEncryptedOpenings
+/// Frees memory for a TaijiEncryptedOpenings
 ///
 /// ## Arguments
-/// `encrypted_data` - The pointer to a TariEncryptedOpenings
+/// `encrypted_data` - The pointer to a TaijiEncryptedOpenings
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -2214,7 +2214,7 @@ pub unsafe extern "C" fn encrypted_data_as_bytes(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn encrypted_data_destroy(encrypted_data: *mut TariEncryptedOpenings) {
+pub unsafe extern "C" fn encrypted_data_destroy(encrypted_data: *mut TaijiEncryptedOpenings) {
     if !encrypted_data.is_null() {
         // zeroize the data content of encrypted_data, as to prevent memory leaks
         (*encrypted_data).zeroize();
@@ -2224,7 +2224,7 @@ pub unsafe extern "C" fn encrypted_data_destroy(encrypted_data: *mut TariEncrypt
 /// -------------------------------------------------------------------------------------------- ///
 /// ---------------------------------- Output Features ------------------------------------------///
 
-/// Creates a TariOutputFeatures from byte values
+/// Creates a TaijiOutputFeatures from byte values
 ///
 /// ## Arguments
 /// `version` - The encoded value of the version as a byte
@@ -2236,11 +2236,11 @@ pub unsafe extern "C" fn encrypted_data_destroy(encrypted_data: *mut TariEncrypt
 /// as an out parameter.
 ///
 /// ## Returns
-/// `TariOutputFeatures` - Returns an output features object. Note that it will be ptr::null_mut() if any mandatory
+/// `TaijiOutputFeatures` - Returns an output features object. Note that it will be ptr::null_mut() if any mandatory
 /// arguments are null or if there was an error with the contents of bytes
 ///
 /// # Safety
-/// The ```output_features_destroy``` function must be called when finished with a TariOutputFeatures to
+/// The ```output_features_destroy``` function must be called when finished with a TaijiOutputFeatures to
 /// prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn output_features_create_from_bytes(
@@ -2250,7 +2250,7 @@ pub unsafe extern "C" fn output_features_create_from_bytes(
     metadata: *const ByteVector,
     range_proof_type: c_ushort,
     error_out: *mut c_int,
-) -> *mut TariOutputFeatures {
+) -> *mut TaijiOutputFeatures {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if metadata.is_null() {
@@ -2294,7 +2294,7 @@ pub unsafe extern "C" fn output_features_create_from_bytes(
 
     let decoded_metadata = (*metadata).0.clone();
 
-    let output_features = TariOutputFeatures::new(
+    let output_features = TaijiOutputFeatures::new(
         decoded_version,
         decoded_output_type,
         maturity,
@@ -2305,10 +2305,10 @@ pub unsafe extern "C" fn output_features_create_from_bytes(
     Box::into_raw(Box::new(output_features))
 }
 
-/// Frees memory for a TariOutputFeatures
+/// Frees memory for a TaijiOutputFeatures
 ///
 /// ## Arguments
-/// `output_features` - The pointer to a TariOutputFeatures
+/// `output_features` - The pointer to a TaijiOutputFeatures
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -2316,7 +2316,7 @@ pub unsafe extern "C" fn output_features_create_from_bytes(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn output_features_destroy(output_features: *mut TariOutputFeatures) {
+pub unsafe extern "C" fn output_features_destroy(output_features: *mut TaijiOutputFeatures) {
     if !output_features.is_null() {
         drop(Box::from_raw(output_features))
     }
@@ -2326,23 +2326,23 @@ pub unsafe extern "C" fn output_features_destroy(output_features: *mut TariOutpu
 
 /// ----------------------------------- Seed Words ----------------------------------------------///
 
-/// Create an empty instance of TariSeedWords
+/// Create an empty instance of TaijiSeedWords
 ///
 /// ## Arguments
 /// None
 ///
 /// ## Returns
-/// `TariSeedWords` - Returns an empty TariSeedWords instance
+/// `TaijiSeedWords` - Returns an empty TaijiSeedWords instance
 ///
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn seed_words_create() -> *mut TariSeedWords {
+pub unsafe extern "C" fn seed_words_create() -> *mut TaijiSeedWords {
     let seed_words = SeedWords::new(vec![]);
-    Box::into_raw(Box::new(TariSeedWords(seed_words)))
+    Box::into_raw(Box::new(TaijiSeedWords(seed_words)))
 }
 
-/// Create a TariSeedWords instance containing the entire mnemonic wordlist for the requested language
+/// Create a TaijiSeedWords instance containing the entire mnemonic wordlist for the requested language
 ///
 /// ## Arguments
 /// `language` - The required language as a string
@@ -2350,18 +2350,18 @@ pub unsafe extern "C" fn seed_words_create() -> *mut TariSeedWords {
 /// as an out parameter.
 ///
 /// ## Returns
-/// `TariSeedWords` - Returns the TariSeedWords instance containing the entire mnemonic wordlist for the
+/// `TaijiSeedWords` - Returns the TaijiSeedWords instance containing the entire mnemonic wordlist for the
 /// requested language.
 ///
 /// # Safety
-/// The `seed_words_destroy` method must be called when finished with a TariSeedWords instance from rust to prevent a
+/// The `seed_words_destroy` method must be called when finished with a TaijiSeedWords instance from rust to prevent a
 /// memory leak
 #[no_mangle]
 pub unsafe extern "C" fn seed_words_get_mnemonic_word_list_for_language(
     language: *const c_char,
     error_out: *mut c_int,
-) -> *mut TariSeedWords {
-    use tari_key_manager::mnemonic_wordlists;
+) -> *mut TaijiSeedWords {
+    use taiji_key_manager::mnemonic_wordlists;
 
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
@@ -2379,15 +2379,15 @@ pub unsafe extern "C" fn seed_words_get_mnemonic_word_list_for_language(
                 not_supported.as_str()
             },
         };
-        let mnemonic_word_list = match TariMnemonicLanguage::from_str(language_string) {
+        let mnemonic_word_list = match TaijiMnemonicLanguage::from_str(language_string) {
             Ok(language) => match language {
-                TariMnemonicLanguage::ChineseSimplified => mnemonic_wordlists::MNEMONIC_CHINESE_SIMPLIFIED_WORDS,
-                TariMnemonicLanguage::English => mnemonic_wordlists::MNEMONIC_ENGLISH_WORDS,
-                TariMnemonicLanguage::French => mnemonic_wordlists::MNEMONIC_FRENCH_WORDS,
-                TariMnemonicLanguage::Italian => mnemonic_wordlists::MNEMONIC_ITALIAN_WORDS,
-                TariMnemonicLanguage::Japanese => mnemonic_wordlists::MNEMONIC_JAPANESE_WORDS,
-                TariMnemonicLanguage::Korean => mnemonic_wordlists::MNEMONIC_KOREAN_WORDS,
-                TariMnemonicLanguage::Spanish => mnemonic_wordlists::MNEMONIC_SPANISH_WORDS,
+                TaijiMnemonicLanguage::ChineseSimplified => mnemonic_wordlists::MNEMONIC_CHINESE_SIMPLIFIED_WORDS,
+                TaijiMnemonicLanguage::English => mnemonic_wordlists::MNEMONIC_ENGLISH_WORDS,
+                TaijiMnemonicLanguage::French => mnemonic_wordlists::MNEMONIC_FRENCH_WORDS,
+                TaijiMnemonicLanguage::Italian => mnemonic_wordlists::MNEMONIC_ITALIAN_WORDS,
+                TaijiMnemonicLanguage::Japanese => mnemonic_wordlists::MNEMONIC_JAPANESE_WORDS,
+                TaijiMnemonicLanguage::Korean => mnemonic_wordlists::MNEMONIC_KOREAN_WORDS,
+                TaijiMnemonicLanguage::Spanish => mnemonic_wordlists::MNEMONIC_SPANISH_WORDS,
             },
             Err(_) => {
                 error!(
@@ -2411,13 +2411,13 @@ pub unsafe extern "C" fn seed_words_get_mnemonic_word_list_for_language(
             SeedWords::new(mnemonic_word_list.iter().map(|s| Hidden::hide(s.to_string())).collect());
     }
 
-    Box::into_raw(Box::new(TariSeedWords(mnemonic_word_list_vec)))
+    Box::into_raw(Box::new(TaijiSeedWords(mnemonic_word_list_vec)))
 }
 
-/// Gets the length of TariSeedWords
+/// Gets the length of TaijiSeedWords
 ///
 /// ## Arguments
-/// `seed_words` - The pointer to a TariSeedWords
+/// `seed_words` - The pointer to a TaijiSeedWords
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -2429,7 +2429,7 @@ pub unsafe extern "C" fn seed_words_get_mnemonic_word_list_for_language(
 // casting here is okay as we wont get more than u32 seed words
 #[allow(clippy::cast_possible_truncation)]
 #[no_mangle]
-pub unsafe extern "C" fn seed_words_get_length(seed_words: *const TariSeedWords, error_out: *mut c_int) -> c_uint {
+pub unsafe extern "C" fn seed_words_get_length(seed_words: *const TaijiSeedWords, error_out: *mut c_int) -> c_uint {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     let mut len = 0;
@@ -2442,17 +2442,17 @@ pub unsafe extern "C" fn seed_words_get_length(seed_words: *const TariSeedWords,
     len as c_uint
 }
 
-/// Gets a seed word from TariSeedWords at position
+/// Gets a seed word from TaijiSeedWords at position
 ///
 /// ## Arguments
-/// `seed_words` - The pointer to a TariSeedWords
+/// `seed_words` - The pointer to a TaijiSeedWords
 /// `position` - The integer position
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
 /// ## Returns
 /// `*mut c_char` - Returns a pointer to a char array. Note that it returns an empty char array if
-/// TariSeedWords collection is null or the position is invalid
+/// TaijiSeedWords collection is null or the position is invalid
 ///
 /// # Safety
 /// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
@@ -2460,7 +2460,7 @@ pub unsafe extern "C" fn seed_words_get_length(seed_words: *const TariSeedWords,
 #[allow(clippy::cast_possible_truncation)]
 #[no_mangle]
 pub unsafe extern "C" fn seed_words_get_at(
-    seed_words: *mut TariSeedWords,
+    seed_words: *mut TaijiSeedWords,
     position: c_uint,
     error_out: *mut c_int,
 ) -> *mut c_char {
@@ -2491,10 +2491,10 @@ pub unsafe extern "C" fn seed_words_get_at(
     CString::into_raw(word)
 }
 
-/// Add a word to the provided TariSeedWords instance
+/// Add a word to the provided TaijiSeedWords instance
 ///
 /// ## Arguments
-/// `seed_words` - The pointer to a TariSeedWords
+/// `seed_words` - The pointer to a TaijiSeedWords
 /// `word` - Word to add
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
@@ -2512,11 +2512,11 @@ pub unsafe extern "C" fn seed_words_get_at(
 /// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn seed_words_push_word(
-    seed_words: *mut TariSeedWords,
+    seed_words: *mut TaijiSeedWords,
     word: *const c_char,
     error_out: *mut c_int,
 ) -> c_uchar {
-    use tari_key_manager::mnemonic::Mnemonic;
+    use taiji_key_manager::mnemonic::Mnemonic;
 
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
@@ -2622,10 +2622,10 @@ pub unsafe extern "C" fn seed_words_push_word(
     }
 }
 
-/// Frees memory for a TariSeedWords
+/// Frees memory for a TaijiSeedWords
 ///
 /// ## Arguments
-/// `seed_words` - The pointer to a TariSeedWords
+/// `seed_words` - The pointer to a TaijiSeedWords
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -2633,7 +2633,7 @@ pub unsafe extern "C" fn seed_words_push_word(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn seed_words_destroy(seed_words: *mut TariSeedWords) {
+pub unsafe extern "C" fn seed_words_destroy(seed_words: *mut TaijiSeedWords) {
     if !seed_words.is_null() {
         drop(Box::from_raw(seed_words))
     }
@@ -2643,27 +2643,27 @@ pub unsafe extern "C" fn seed_words_destroy(seed_words: *mut TariSeedWords) {
 
 /// ----------------------------------- Contact -------------------------------------------------///
 
-/// Creates a TariContact
+/// Creates a TaijiContact
 ///
 /// ## Arguments
 /// `alias` - The pointer to a char array
-/// `address` - The pointer to a TariWalletAddress
+/// `address` - The pointer to a TaijiWalletAddress
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariContact` - Returns a pointer to a TariContact. Note that it returns ptr::null_mut()
+/// `*mut TaijiContact` - Returns a pointer to a TaijiContact. Note that it returns ptr::null_mut()
 /// if alias is null or if pk is null
 ///
 /// # Safety
-/// The ```contact_destroy``` method must be called when finished with a TariContact
+/// The ```contact_destroy``` method must be called when finished with a TaijiContact
 #[no_mangle]
 pub unsafe extern "C" fn contact_create(
     alias: *const c_char,
-    address: *mut TariWalletAddress,
+    address: *mut TaijiWalletAddress,
     favourite: bool,
     error_out: *mut c_int,
-) -> *mut TariContact {
+) -> *mut TaijiContact {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     let alias_string;
@@ -2694,10 +2694,10 @@ pub unsafe extern "C" fn contact_create(
     Box::into_raw(Box::new(contact))
 }
 
-/// Gets the alias of the TariContact
+/// Gets the alias of the TaijiContact
 ///
 /// ## Arguments
-/// `contact` - The pointer to a TariContact
+/// `contact` - The pointer to a TaijiContact
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -2708,7 +2708,7 @@ pub unsafe extern "C" fn contact_create(
 /// # Safety
 /// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn contact_get_alias(contact: *mut TariContact, error_out: *mut c_int) -> *mut c_char {
+pub unsafe extern "C" fn contact_get_alias(contact: *mut TaijiContact, error_out: *mut c_int) -> *mut c_char {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     let mut a = CString::new("").expect("Blank CString will not fail.");
@@ -2727,10 +2727,10 @@ pub unsafe extern "C" fn contact_get_alias(contact: *mut TariContact, error_out:
     CString::into_raw(a)
 }
 
-/// Gets the favourite status of the TariContact
+/// Gets the favourite status of the TaijiContact
 ///
 /// ## Arguments
-/// `contact` - The pointer to a TariContact
+/// `contact` - The pointer to a TaijiContact
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -2741,7 +2741,7 @@ pub unsafe extern "C" fn contact_get_alias(contact: *mut TariContact, error_out:
 /// # Safety
 /// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn contact_get_favourite(contact: *mut TariContact, error_out: *mut c_int) -> bool {
+pub unsafe extern "C" fn contact_get_favourite(contact: *mut TaijiContact, error_out: *mut c_int) -> bool {
     let mut error = 0;
     let mut favourite = false;
     ptr::swap(error_out, &mut error as *mut c_int);
@@ -2755,24 +2755,24 @@ pub unsafe extern "C" fn contact_get_favourite(contact: *mut TariContact, error_
     favourite
 }
 
-/// Gets the TariWalletAddress of the TariContact
+/// Gets the TaijiWalletAddress of the TaijiContact
 ///
 /// ## Arguments
-/// `contact` - The pointer to a TariContact
+/// `contact` - The pointer to a TaijiContact
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariWalletAddress` - Returns a pointer to a TariWalletAddress. Note that it returns
+/// `*mut TaijiWalletAddress` - Returns a pointer to a TaijiWalletAddress. Note that it returns
 /// ptr::null_mut() if contact is null
 ///
 /// # Safety
-/// The ```tari_address_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
+/// The ```taiji_address_destroy``` method must be called when finished with a TaijiWalletAddress to prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn contact_get_tari_address(
-    contact: *mut TariContact,
+pub unsafe extern "C" fn contact_get_taiji_address(
+    contact: *mut TaijiContact,
     error_out: *mut c_int,
-) -> *mut TariWalletAddress {
+) -> *mut TaijiWalletAddress {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if contact.is_null() {
@@ -2783,10 +2783,10 @@ pub unsafe extern "C" fn contact_get_tari_address(
     Box::into_raw(Box::new((*contact).address.clone()))
 }
 
-/// Frees memory for a TariContact
+/// Frees memory for a TaijiContact
 ///
 /// ## Arguments
-/// `contact` - The pointer to a TariContact
+/// `contact` - The pointer to a TaijiContact
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -2794,7 +2794,7 @@ pub unsafe extern "C" fn contact_get_tari_address(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn contact_destroy(contact: *mut TariContact) {
+pub unsafe extern "C" fn contact_destroy(contact: *mut TaijiContact) {
     if !contact.is_null() {
         drop(Box::from_raw(contact))
     }
@@ -2804,10 +2804,10 @@ pub unsafe extern "C" fn contact_destroy(contact: *mut TariContact) {
 
 /// ----------------------------------- Contacts -------------------------------------------------///
 
-/// Gets the length of TariContacts
+/// Gets the length of TaijiContacts
 ///
 /// ## Arguments
-/// `contacts` - The pointer to a TariContacts
+/// `contacts` - The pointer to a TaijiContacts
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -2819,7 +2819,7 @@ pub unsafe extern "C" fn contact_destroy(contact: *mut TariContact) {
 // casting here is okay as we dont have more thant u32 contacts
 #[allow(clippy::cast_possible_truncation)]
 #[no_mangle]
-pub unsafe extern "C" fn contacts_get_length(contacts: *mut TariContacts, error_out: *mut c_int) -> c_uint {
+pub unsafe extern "C" fn contacts_get_length(contacts: *mut TaijiContacts, error_out: *mut c_int) -> c_uint {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     let mut len = 0;
@@ -2832,28 +2832,28 @@ pub unsafe extern "C" fn contacts_get_length(contacts: *mut TariContacts, error_
     len as c_uint
 }
 
-/// Gets a TariContact from TariContacts at position
+/// Gets a TaijiContact from TaijiContacts at position
 ///
 /// ## Arguments
-/// `contacts` - The pointer to a TariContacts
+/// `contacts` - The pointer to a TaijiContacts
 /// `position` - The integer position
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariContact` - Returns a TariContact, note that it returns ptr::null_mut() if contacts is
+/// `*mut TaijiContact` - Returns a TaijiContact, note that it returns ptr::null_mut() if contacts is
 /// null or position is invalid
 ///
 /// # Safety
-/// The ```contact_destroy``` method must be called when finished with a TariContact to prevent a memory leak
+/// The ```contact_destroy``` method must be called when finished with a TaijiContact to prevent a memory leak
 // converting between here is fine as its used to clamp the the array to length
 #[allow(clippy::cast_possible_wrap)]
 #[no_mangle]
 pub unsafe extern "C" fn contacts_get_at(
-    contacts: *mut TariContacts,
+    contacts: *mut TaijiContacts,
     position: c_uint,
     error_out: *mut c_int,
-) -> *mut TariContact {
+) -> *mut TaijiContact {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if contacts.is_null() {
@@ -2870,10 +2870,10 @@ pub unsafe extern "C" fn contacts_get_at(
     Box::into_raw(Box::new((*contacts).0[position as usize].clone()))
 }
 
-/// Frees memory for a TariContacts
+/// Frees memory for a TaijiContacts
 ///
 /// ## Arguments
-/// `contacts` - The pointer to a TariContacts
+/// `contacts` - The pointer to a TaijiContacts
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -2881,7 +2881,7 @@ pub unsafe extern "C" fn contacts_get_at(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn contacts_destroy(contacts: *mut TariContacts) {
+pub unsafe extern "C" fn contacts_destroy(contacts: *mut TaijiContacts) {
     if !contacts.is_null() {
         drop(Box::from_raw(contacts))
     }
@@ -2891,25 +2891,25 @@ pub unsafe extern "C" fn contacts_destroy(contacts: *mut TariContacts) {
 
 /// ----------------------------------- Contacts Liveness Data ----------------------------------///
 
-/// Gets the public_key from a TariContactsLivenessData
+/// Gets the public_key from a TaijiContactsLivenessData
 ///
 /// ## Arguments
-/// `liveness_data` - The pointer to a TariContactsLivenessData
+/// `liveness_data` - The pointer to a TaijiContactsLivenessData
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariWalletAddress` - Returns a pointer to a TariWalletAddress. Note that it returns ptr::null_mut() if
+/// `*mut TaijiWalletAddress` - Returns a pointer to a TaijiWalletAddress. Note that it returns ptr::null_mut() if
 /// liveness_data is null.
 ///
 /// # Safety
-/// The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
+/// The ```liveness_data_destroy``` method must be called when finished with a TaijiContactsLivenessData to prevent a
 /// memory leak
 #[no_mangle]
 pub unsafe extern "C" fn liveness_data_get_public_key(
-    liveness_data: *mut TariContactsLivenessData,
+    liveness_data: *mut TaijiContactsLivenessData,
     error_out: *mut c_int,
-) -> *mut TariWalletAddress {
+) -> *mut TaijiWalletAddress {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if liveness_data.is_null() {
@@ -2920,10 +2920,10 @@ pub unsafe extern "C" fn liveness_data_get_public_key(
     Box::into_raw(Box::new((*liveness_data).address().clone()))
 }
 
-/// Gets the latency in milli-seconds (ms) from a TariContactsLivenessData
+/// Gets the latency in milli-seconds (ms) from a TaijiContactsLivenessData
 ///
 /// ## Arguments
-/// `liveness_data` - The pointer to a TariContactsLivenessData
+/// `liveness_data` - The pointer to a TaijiContactsLivenessData
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -2932,12 +2932,12 @@ pub unsafe extern "C" fn liveness_data_get_public_key(
 /// value of '0' if it is None. Note that it also returns '0' if liveness_data is null.
 ///
 /// # Safety
-/// The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
+/// The ```liveness_data_destroy``` method must be called when finished with a TaijiContactsLivenessData to prevent a
 /// memory leak
 
 #[no_mangle]
 pub unsafe extern "C" fn liveness_data_get_latency(
-    liveness_data: *mut TariContactsLivenessData,
+    liveness_data: *mut TaijiContactsLivenessData,
     error_out: *mut c_int,
 ) -> c_uint {
     let mut error = 0;
@@ -2954,10 +2954,10 @@ pub unsafe extern "C" fn liveness_data_get_latency(
     }
 }
 
-/// Gets the last_seen time (in local time) from a TariContactsLivenessData
+/// Gets the last_seen time (in local time) from a TaijiContactsLivenessData
 ///
 /// ## Arguments
-/// `liveness_data` - The pointer to a TariContactsLivenessData
+/// `liveness_data` - The pointer to a TaijiContactsLivenessData
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -2966,11 +2966,11 @@ pub unsafe extern "C" fn liveness_data_get_latency(
 /// is None. Note that it returns ptr::null_mut() if liveness_data is null.
 ///
 /// # Safety
-/// The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
+/// The ```liveness_data_destroy``` method must be called when finished with a TaijiContactsLivenessData to prevent a
 /// memory leak
 #[no_mangle]
 pub unsafe extern "C" fn liveness_data_get_last_seen(
-    liveness_data: *mut TariContactsLivenessData,
+    liveness_data: *mut TaijiContactsLivenessData,
     error_out: *mut c_int,
 ) -> *mut c_char {
     let mut error = 0;
@@ -3000,10 +3000,10 @@ pub unsafe extern "C" fn liveness_data_get_last_seen(
     }
 }
 
-/// Gets the message_type (ContactMessageType enum) from a TariContactsLivenessData
+/// Gets the message_type (ContactMessageType enum) from a TaijiContactsLivenessData
 ///
 /// ## Arguments
-/// `liveness_data` - The pointer to a TariContactsLivenessData
+/// `liveness_data` - The pointer to a TaijiContactsLivenessData
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -3017,11 +3017,11 @@ pub unsafe extern "C" fn liveness_data_get_last_seen(
 /// |   2 | NoMessage        |
 ///
 /// # Safety
-/// The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
+/// The ```liveness_data_destroy``` method must be called when finished with a TaijiContactsLivenessData to prevent a
 /// memory leak
 #[no_mangle]
 pub unsafe extern "C" fn liveness_data_get_message_type(
-    liveness_data: *mut TariContactsLivenessData,
+    liveness_data: *mut TaijiContactsLivenessData,
     error_out: *mut c_int,
 ) -> c_int {
     let mut error = 0;
@@ -3035,10 +3035,10 @@ pub unsafe extern "C" fn liveness_data_get_message_type(
     status as c_int
 }
 
-/// Gets the online_status (ContactOnlineStatus enum) from a TariContactsLivenessData
+/// Gets the online_status (ContactOnlineStatus enum) from a TaijiContactsLivenessData
 ///
 /// ## Arguments
-/// `liveness_data` - The pointer to a TariContactsLivenessData
+/// `liveness_data` - The pointer to a TaijiContactsLivenessData
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -3053,11 +3053,11 @@ pub unsafe extern "C" fn liveness_data_get_message_type(
 /// |   3 | Banned           |
 ///
 /// # Safety
-/// The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
+/// The ```liveness_data_destroy``` method must be called when finished with a TaijiContactsLivenessData to prevent a
 /// memory leak
 #[no_mangle]
 pub unsafe extern "C" fn liveness_data_get_online_status(
-    liveness_data: *mut TariContactsLivenessData,
+    liveness_data: *mut TaijiContactsLivenessData,
     error_out: *mut c_int,
 ) -> *const c_char {
     let mut error = 0;
@@ -3079,10 +3079,10 @@ pub unsafe extern "C" fn liveness_data_get_online_status(
     result.into_raw()
 }
 
-/// Frees memory for a TariContactsLivenessData
+/// Frees memory for a TaijiContactsLivenessData
 ///
 /// ## Arguments
-/// `liveness_data` - The pointer to a TariContactsLivenessData
+/// `liveness_data` - The pointer to a TaijiContactsLivenessData
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -3090,7 +3090,7 @@ pub unsafe extern "C" fn liveness_data_get_online_status(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn liveness_data_destroy(liveness_data: *mut TariContactsLivenessData) {
+pub unsafe extern "C" fn liveness_data_destroy(liveness_data: *mut TaijiContactsLivenessData) {
     if !liveness_data.is_null() {
         drop(Box::from_raw(liveness_data))
     }
@@ -3099,15 +3099,15 @@ pub unsafe extern "C" fn liveness_data_destroy(liveness_data: *mut TariContactsL
 
 /// ----------------------------------- CompletedTransactions ----------------------------------- ///
 
-/// Gets the length of a TariCompletedTransactions
+/// Gets the length of a TaijiCompletedTransactions
 ///
 /// ## Arguments
-/// `transactions` - The pointer to a TariCompletedTransactions
+/// `transactions` - The pointer to a TaijiCompletedTransactions
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
 /// ## Returns
-/// `c_uint` - Returns the number of elements in a TariCompletedTransactions, note that it will be
+/// `c_uint` - Returns the number of elements in a TaijiCompletedTransactions, note that it will be
 /// zero if transactions is null
 ///
 /// # Safety
@@ -3116,7 +3116,7 @@ pub unsafe extern "C" fn liveness_data_destroy(liveness_data: *mut TariContactsL
 #[allow(clippy::cast_possible_truncation)]
 #[no_mangle]
 pub unsafe extern "C" fn completed_transactions_get_length(
-    transactions: *mut TariCompletedTransactions,
+    transactions: *mut TaijiCompletedTransactions,
     error_out: *mut c_int,
 ) -> c_uint {
     let mut error = 0;
@@ -3131,29 +3131,29 @@ pub unsafe extern "C" fn completed_transactions_get_length(
     len as c_uint
 }
 
-/// Gets a TariCompletedTransaction from a TariCompletedTransactions at position
+/// Gets a TaijiCompletedTransaction from a TaijiCompletedTransactions at position
 ///
 /// ## Arguments
-/// `transactions` - The pointer to a TariCompletedTransactions
+/// `transactions` - The pointer to a TaijiCompletedTransactions
 /// `position` - The integer position
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariCompletedTransaction` - Returns a pointer to a TariCompletedTransaction,
+/// `*mut TaijiCompletedTransaction` - Returns a pointer to a TaijiCompletedTransaction,
 /// note that ptr::null_mut() is returned if transactions is null or position is invalid
 ///
 /// # Safety
-/// The ```completed_transaction_destroy``` method must be called when finished with a TariCompletedTransaction to
+/// The ```completed_transaction_destroy``` method must be called when finished with a TaijiCompletedTransaction to
 /// prevent a memory leak
 // converting between here is fine as its used to clamp the the array to length
 #[allow(clippy::cast_possible_wrap)]
 #[no_mangle]
 pub unsafe extern "C" fn completed_transactions_get_at(
-    transactions: *mut TariCompletedTransactions,
+    transactions: *mut TaijiCompletedTransactions,
     position: c_uint,
     error_out: *mut c_int,
-) -> *mut TariCompletedTransaction {
+) -> *mut TaijiCompletedTransaction {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if transactions.is_null() {
@@ -3170,10 +3170,10 @@ pub unsafe extern "C" fn completed_transactions_get_at(
     Box::into_raw(Box::new((*transactions).0[position as usize].clone()))
 }
 
-/// Frees memory for a TariCompletedTransactions
+/// Frees memory for a TaijiCompletedTransactions
 ///
 /// ## Arguments
-/// `transactions` - The pointer to a TariCompletedTransaction
+/// `transactions` - The pointer to a TaijiCompletedTransaction
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -3181,7 +3181,7 @@ pub unsafe extern "C" fn completed_transactions_get_at(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn completed_transactions_destroy(transactions: *mut TariCompletedTransactions) {
+pub unsafe extern "C" fn completed_transactions_destroy(transactions: *mut TaijiCompletedTransactions) {
     if !transactions.is_null() {
         drop(Box::from_raw(transactions))
     }
@@ -3191,15 +3191,15 @@ pub unsafe extern "C" fn completed_transactions_destroy(transactions: *mut TariC
 
 /// ----------------------------------- OutboundTransactions ------------------------------------ ///
 
-/// Gets the length of a TariPendingOutboundTransactions
+/// Gets the length of a TaijiPendingOutboundTransactions
 ///
 /// ## Arguments
-/// `transactions` - The pointer to a TariPendingOutboundTransactions
+/// `transactions` - The pointer to a TaijiPendingOutboundTransactions
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
 /// ## Returns
-/// `c_uint` - Returns the number of elements in a TariPendingOutboundTransactions, note that it will be
+/// `c_uint` - Returns the number of elements in a TaijiPendingOutboundTransactions, note that it will be
 /// zero if transactions is null
 ///
 /// # Safety
@@ -3208,7 +3208,7 @@ pub unsafe extern "C" fn completed_transactions_destroy(transactions: *mut TariC
 #[allow(clippy::cast_possible_truncation)]
 #[no_mangle]
 pub unsafe extern "C" fn pending_outbound_transactions_get_length(
-    transactions: *mut TariPendingOutboundTransactions,
+    transactions: *mut TaijiPendingOutboundTransactions,
     error_out: *mut c_int,
 ) -> c_uint {
     let mut error = 0;
@@ -3224,29 +3224,29 @@ pub unsafe extern "C" fn pending_outbound_transactions_get_length(
     len as c_uint
 }
 
-/// Gets a TariPendingOutboundTransaction of a TariPendingOutboundTransactions
+/// Gets a TaijiPendingOutboundTransaction of a TaijiPendingOutboundTransactions
 ///
 /// ## Arguments
-/// `transactions` - The pointer to a TariPendingOutboundTransactions
+/// `transactions` - The pointer to a TaijiPendingOutboundTransactions
 /// `position` - The integer position
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariPendingOutboundTransaction` - Returns a pointer to a TariPendingOutboundTransaction,
+/// `*mut TaijiPendingOutboundTransaction` - Returns a pointer to a TaijiPendingOutboundTransaction,
 /// note that ptr::null_mut() is returned if transactions is null or position is invalid
 ///
 /// # Safety
 /// The ```pending_outbound_transaction_destroy``` method must be called when finished with a
-/// TariPendingOutboundTransaction to prevent a memory leak
+/// TaijiPendingOutboundTransaction to prevent a memory leak
 // converting between here is fine as its used to clamp the the array to length
 #[allow(clippy::cast_possible_wrap)]
 #[no_mangle]
 pub unsafe extern "C" fn pending_outbound_transactions_get_at(
-    transactions: *mut TariPendingOutboundTransactions,
+    transactions: *mut TaijiPendingOutboundTransactions,
     position: c_uint,
     error_out: *mut c_int,
-) -> *mut TariPendingOutboundTransaction {
+) -> *mut TaijiPendingOutboundTransaction {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if transactions.is_null() {
@@ -3263,10 +3263,10 @@ pub unsafe extern "C" fn pending_outbound_transactions_get_at(
     Box::into_raw(Box::new((*transactions).0[position as usize].clone()))
 }
 
-/// Frees memory for a TariPendingOutboundTransactions
+/// Frees memory for a TaijiPendingOutboundTransactions
 ///
 /// ## Arguments
-/// `transactions` - The pointer to a TariPendingOutboundTransactions
+/// `transactions` - The pointer to a TaijiPendingOutboundTransactions
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -3274,7 +3274,7 @@ pub unsafe extern "C" fn pending_outbound_transactions_get_at(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn pending_outbound_transactions_destroy(transactions: *mut TariPendingOutboundTransactions) {
+pub unsafe extern "C" fn pending_outbound_transactions_destroy(transactions: *mut TaijiPendingOutboundTransactions) {
     if !transactions.is_null() {
         drop(Box::from_raw(transactions))
     }
@@ -3284,15 +3284,15 @@ pub unsafe extern "C" fn pending_outbound_transactions_destroy(transactions: *mu
 
 /// ----------------------------------- InboundTransactions ------------------------------------- ///
 
-/// Gets the length of a TariPendingInboundTransactions
+/// Gets the length of a TaijiPendingInboundTransactions
 ///
 /// ## Arguments
-/// `transactions` - The pointer to a TariPendingInboundTransactions
+/// `transactions` - The pointer to a TaijiPendingInboundTransactions
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
 /// ## Returns
-/// `c_uint` - Returns the number of elements in a TariPendingInboundTransactions, note that
+/// `c_uint` - Returns the number of elements in a TaijiPendingInboundTransactions, note that
 /// it will be zero if transactions is null
 ///
 /// # Safety
@@ -3301,7 +3301,7 @@ pub unsafe extern "C" fn pending_outbound_transactions_destroy(transactions: *mu
 #[allow(clippy::cast_possible_truncation)]
 #[no_mangle]
 pub unsafe extern "C" fn pending_inbound_transactions_get_length(
-    transactions: *mut TariPendingInboundTransactions,
+    transactions: *mut TaijiPendingInboundTransactions,
     error_out: *mut c_int,
 ) -> c_uint {
     let mut error = 0;
@@ -3316,29 +3316,29 @@ pub unsafe extern "C" fn pending_inbound_transactions_get_length(
     len as c_uint
 }
 
-/// Gets a TariPendingInboundTransaction of a TariPendingInboundTransactions
+/// Gets a TaijiPendingInboundTransaction of a TaijiPendingInboundTransactions
 ///
 /// ## Arguments
-/// `transactions` - The pointer to a TariPendingInboundTransactions
+/// `transactions` - The pointer to a TaijiPendingInboundTransactions
 /// `position` - The integer position
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariPendingOutboundTransaction` - Returns a pointer to a TariPendingInboundTransaction,
+/// `*mut TaijiPendingOutboundTransaction` - Returns a pointer to a TaijiPendingInboundTransaction,
 /// note that ptr::null_mut() is returned if transactions is null or position is invalid
 ///
 /// # Safety
 /// The ```pending_inbound_transaction_destroy``` method must be called when finished with a
-/// TariPendingOutboundTransaction to prevent a memory leak
+/// TaijiPendingOutboundTransaction to prevent a memory leak
 // converting between here is fine as its used to clamp the the array to length
 #[allow(clippy::cast_possible_wrap)]
 #[no_mangle]
 pub unsafe extern "C" fn pending_inbound_transactions_get_at(
-    transactions: *mut TariPendingInboundTransactions,
+    transactions: *mut TaijiPendingInboundTransactions,
     position: c_uint,
     error_out: *mut c_int,
-) -> *mut TariPendingInboundTransaction {
+) -> *mut TaijiPendingInboundTransaction {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if transactions.is_null() {
@@ -3355,10 +3355,10 @@ pub unsafe extern "C" fn pending_inbound_transactions_get_at(
     Box::into_raw(Box::new((*transactions).0[position as usize].clone()))
 }
 
-/// Frees memory for a TariPendingInboundTransactions
+/// Frees memory for a TaijiPendingInboundTransactions
 ///
 /// ## Arguments
-/// `transactions` - The pointer to a TariPendingInboundTransactions
+/// `transactions` - The pointer to a TaijiPendingInboundTransactions
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -3366,7 +3366,7 @@ pub unsafe extern "C" fn pending_inbound_transactions_get_at(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn pending_inbound_transactions_destroy(transactions: *mut TariPendingInboundTransactions) {
+pub unsafe extern "C" fn pending_inbound_transactions_destroy(transactions: *mut TaijiPendingInboundTransactions) {
     if !transactions.is_null() {
         drop(Box::from_raw(transactions))
     }
@@ -3376,10 +3376,10 @@ pub unsafe extern "C" fn pending_inbound_transactions_destroy(transactions: *mut
 
 /// ----------------------------------- CompletedTransaction ------------------------------------- ///
 
-/// Gets the TransactionID of a TariCompletedTransaction
+/// Gets the TransactionID of a TaijiCompletedTransaction
 ///
 /// ## Arguments
-/// `transaction` - The pointer to a TariCompletedTransaction
+/// `transaction` - The pointer to a TaijiCompletedTransaction
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -3390,7 +3390,7 @@ pub unsafe extern "C" fn pending_inbound_transactions_destroy(transactions: *mut
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn completed_transaction_get_transaction_id(
-    transaction: *mut TariCompletedTransaction,
+    transaction: *mut TaijiCompletedTransaction,
     error_out: *mut c_int,
 ) -> c_ulonglong {
     let mut error = 0;
@@ -3403,24 +3403,24 @@ pub unsafe extern "C" fn completed_transaction_get_transaction_id(
     (*transaction).tx_id.as_u64() as c_ulonglong
 }
 
-/// Gets the destination TariWalletAddress of a TariCompletedTransaction
+/// Gets the destination TaijiWalletAddress of a TaijiCompletedTransaction
 ///
 /// ## Arguments
-/// `transaction` - The pointer to a TariCompletedTransaction
+/// `transaction` - The pointer to a TaijiCompletedTransaction
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariWalletAddress` - Returns the destination TariWalletAddress, note that it will be
+/// `*mut TaijiWalletAddress` - Returns the destination TaijiWalletAddress, note that it will be
 /// ptr::null_mut() if transaction is null
 ///
 /// # Safety
-/// The ```tari_address_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
+/// The ```taiji_address_destroy``` method must be called when finished with a TaijiWalletAddress to prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn completed_transaction_get_destination_tari_address(
-    transaction: *mut TariCompletedTransaction,
+pub unsafe extern "C" fn completed_transaction_get_destination_taiji_address(
+    transaction: *mut TaijiCompletedTransaction,
     error_out: *mut c_int,
-) -> *mut TariWalletAddress {
+) -> *mut TaijiWalletAddress {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
@@ -3432,26 +3432,26 @@ pub unsafe extern "C" fn completed_transaction_get_destination_tari_address(
     Box::into_raw(Box::new(address))
 }
 
-/// Gets the TariTransactionKernel of a TariCompletedTransaction
+/// Gets the TaijiTransactionKernel of a TaijiCompletedTransaction
 ///
 /// ## Arguments
-/// `transaction` - The pointer to a TariCompletedTransaction
+/// `transaction` - The pointer to a TaijiCompletedTransaction
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariTransactionKernel` - Returns the transaction kernel, note that it will be
+/// `*mut TaijiTransactionKernel` - Returns the transaction kernel, note that it will be
 /// ptr::null_mut() if transaction is null, if the transaction status is Pending, or if the number of kernels is not
 /// exactly one.
 ///
 /// # Safety
-/// The ```transaction_kernel_destroy``` method must be called when finished with a TariTransactionKernel to prevent a
+/// The ```transaction_kernel_destroy``` method must be called when finished with a TaijiTransactionKernel to prevent a
 /// memory leak
 #[no_mangle]
 pub unsafe extern "C" fn completed_transaction_get_transaction_kernel(
-    transaction: *mut TariCompletedTransaction,
+    transaction: *mut TaijiCompletedTransaction,
     error_out: *mut c_int,
-) -> *mut TariTransactionKernel {
+) -> *mut TaijiTransactionKernel {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
@@ -3486,24 +3486,24 @@ pub unsafe extern "C" fn completed_transaction_get_transaction_kernel(
     Box::into_raw(Box::new(x))
 }
 
-/// Gets the source TariWalletAddress of a TariCompletedTransaction
+/// Gets the source TaijiWalletAddress of a TaijiCompletedTransaction
 ///
 /// ## Arguments
-/// `transaction` - The pointer to a TariCompletedTransaction
+/// `transaction` - The pointer to a TaijiCompletedTransaction
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariWalletAddress` - Returns the source TariWalletAddress, note that it will be
+/// `*mut TaijiWalletAddress` - Returns the source TaijiWalletAddress, note that it will be
 /// ptr::null_mut() if transaction is null
 ///
 /// # Safety
-/// The ```tari_address_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
+/// The ```taiji_address_destroy``` method must be called when finished with a TaijiWalletAddress to prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn completed_transaction_get_source_tari_address(
-    transaction: *mut TariCompletedTransaction,
+pub unsafe extern "C" fn completed_transaction_get_source_taiji_address(
+    transaction: *mut TaijiCompletedTransaction,
     error_out: *mut c_int,
-) -> *mut TariWalletAddress {
+) -> *mut TaijiWalletAddress {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
@@ -3515,10 +3515,10 @@ pub unsafe extern "C" fn completed_transaction_get_source_tari_address(
     Box::into_raw(Box::new(m))
 }
 
-/// Gets the status of a TariCompletedTransaction
+/// Gets the status of a TaijiCompletedTransaction
 ///
 /// ## Arguments
-/// `transaction` - The pointer to a TariCompletedTransaction
+/// `transaction` - The pointer to a TaijiCompletedTransaction
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -3539,7 +3539,7 @@ pub unsafe extern "C" fn completed_transaction_get_source_tari_address(
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn completed_transaction_get_status(
-    transaction: *mut TariCompletedTransaction,
+    transaction: *mut TaijiCompletedTransaction,
     error_out: *mut c_int,
 ) -> c_int {
     let mut error = 0;
@@ -3553,10 +3553,10 @@ pub unsafe extern "C" fn completed_transaction_get_status(
     status as c_int
 }
 
-/// Gets the amount of a TariCompletedTransaction
+/// Gets the amount of a TaijiCompletedTransaction
 ///
 /// ## Arguments
-/// `transaction` - The pointer to a TariCompletedTransaction
+/// `transaction` - The pointer to a TaijiCompletedTransaction
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -3567,7 +3567,7 @@ pub unsafe extern "C" fn completed_transaction_get_status(
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn completed_transaction_get_amount(
-    transaction: *mut TariCompletedTransaction,
+    transaction: *mut TaijiCompletedTransaction,
     error_out: *mut c_int,
 ) -> c_ulonglong {
     let mut error = 0;
@@ -3580,10 +3580,10 @@ pub unsafe extern "C" fn completed_transaction_get_amount(
     c_ulonglong::from((*transaction).amount)
 }
 
-/// Gets the fee of a TariCompletedTransaction
+/// Gets the fee of a TaijiCompletedTransaction
 ///
 /// ## Arguments
-/// `transaction` - The pointer to a TariCompletedTransaction
+/// `transaction` - The pointer to a TaijiCompletedTransaction
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -3594,7 +3594,7 @@ pub unsafe extern "C" fn completed_transaction_get_amount(
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn completed_transaction_get_fee(
-    transaction: *mut TariCompletedTransaction,
+    transaction: *mut TaijiCompletedTransaction,
     error_out: *mut c_int,
 ) -> c_ulonglong {
     let mut error = 0;
@@ -3607,10 +3607,10 @@ pub unsafe extern "C" fn completed_transaction_get_fee(
     c_ulonglong::from((*transaction).fee)
 }
 
-/// Gets the timestamp of a TariCompletedTransaction
+/// Gets the timestamp of a TaijiCompletedTransaction
 ///
 /// ## Arguments
-/// `transaction` - The pointer to a TariCompletedTransaction
+/// `transaction` - The pointer to a TaijiCompletedTransaction
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -3621,7 +3621,7 @@ pub unsafe extern "C" fn completed_transaction_get_fee(
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn completed_transaction_get_timestamp(
-    transaction: *mut TariCompletedTransaction,
+    transaction: *mut TaijiCompletedTransaction,
     error_out: *mut c_int,
 ) -> c_ulonglong {
     let mut error = 0;
@@ -3634,10 +3634,10 @@ pub unsafe extern "C" fn completed_transaction_get_timestamp(
     (*transaction).timestamp.timestamp() as c_ulonglong
 }
 
-/// Gets the message of a TariCompletedTransaction
+/// Gets the message of a TaijiCompletedTransaction
 ///
 /// ## Arguments
-/// `transaction` - The pointer to a TariCompletedTransaction
+/// `transaction` - The pointer to a TaijiCompletedTransaction
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -3649,7 +3649,7 @@ pub unsafe extern "C" fn completed_transaction_get_timestamp(
 /// The ```string_destroy``` method must be called when finished with string coming from rust to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn completed_transaction_get_message(
-    transaction: *mut TariCompletedTransaction,
+    transaction: *mut TaijiCompletedTransaction,
     error_out: *mut c_int,
 ) -> *const c_char {
     let mut error = 0;
@@ -3673,10 +3673,10 @@ pub unsafe extern "C" fn completed_transaction_get_message(
     result.into_raw()
 }
 
-/// This function checks to determine if a TariCompletedTransaction was originally a TariPendingOutboundTransaction
+/// This function checks to determine if a TaijiCompletedTransaction was originally a TaijiPendingOutboundTransaction
 ///
 /// ## Arguments
-/// `tx` - The TariCompletedTransaction
+/// `tx` - The TaijiCompletedTransaction
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -3687,7 +3687,7 @@ pub unsafe extern "C" fn completed_transaction_get_message(
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn completed_transaction_is_outbound(
-    tx: *mut TariCompletedTransaction,
+    tx: *mut TaijiCompletedTransaction,
     error_out: *mut c_int,
 ) -> bool {
     let mut error = 0;
@@ -3706,10 +3706,10 @@ pub unsafe extern "C" fn completed_transaction_is_outbound(
     false
 }
 
-/// Gets the number of confirmations of a TariCompletedTransaction
+/// Gets the number of confirmations of a TaijiCompletedTransaction
 ///
 /// ## Arguments
-/// `tx` - The TariCompletedTransaction
+/// `tx` - The TaijiCompletedTransaction
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -3720,7 +3720,7 @@ pub unsafe extern "C" fn completed_transaction_is_outbound(
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn completed_transaction_get_confirmations(
-    tx: *mut TariCompletedTransaction,
+    tx: *mut TaijiCompletedTransaction,
     error_out: *mut c_int,
 ) -> c_ulonglong {
     let mut error = 0;
@@ -3735,10 +3735,10 @@ pub unsafe extern "C" fn completed_transaction_get_confirmations(
     (*tx).confirmations.unwrap_or(0)
 }
 
-/// Gets the reason a TariCompletedTransaction is cancelled, if it is indeed cancelled
+/// Gets the reason a TaijiCompletedTransaction is cancelled, if it is indeed cancelled
 ///
 /// ## Arguments
-/// `tx` - The TariCompletedTransaction
+/// `tx` - The TaijiCompletedTransaction
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -3759,7 +3759,7 @@ pub unsafe extern "C" fn completed_transaction_get_confirmations(
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn completed_transaction_get_cancellation_reason(
-    tx: *mut TariCompletedTransaction,
+    tx: *mut TaijiCompletedTransaction,
     error_out: *mut c_int,
 ) -> c_int {
     let mut error = 0;
@@ -3777,21 +3777,21 @@ pub unsafe extern "C" fn completed_transaction_get_cancellation_reason(
     }
 }
 
-/// returns the TariCompletedTransaction as a json string
+/// returns the TaijiCompletedTransaction as a json string
 ///
 /// ## Arguments
-/// `tx` - The pointer to a TariCompletedTransaction
+/// `tx` - The pointer to a TaijiCompletedTransaction
 ///
 /// ## Returns
 /// `*mut c_char` - Returns a pointer to a char array. Note that it returns an empty char array if
-/// TariCompletedTransaction is null or the position is invalid
+/// TaijiCompletedTransaction is null or the position is invalid
 ///
 /// # Safety
-///  The ```completed_transaction_destroy``` function must be called when finished with a TariCompletedTransaction to
+///  The ```completed_transaction_destroy``` function must be called when finished with a TaijiCompletedTransaction to
 /// prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn tari_completed_transaction_to_json(
-    tx: *mut TariCompletedTransaction,
+pub unsafe extern "C" fn taiji_completed_transaction_to_json(
+    tx: *mut TaijiCompletedTransaction,
     error_out: *mut c_int,
 ) -> *mut c_char {
     let mut error = 0;
@@ -3818,25 +3818,25 @@ pub unsafe extern "C" fn tari_completed_transaction_to_json(
     CString::into_raw(hex_bytes)
 }
 
-/// Creates a TariUnblindedOutput from a char array
+/// Creates a TaijiUnblindedOutput from a char array
 ///
 /// ## Arguments
-/// `tx_json` - The pointer to a char array which is json of the TariCompletedTransaction
+/// `tx_json` - The pointer to a char array which is json of the TaijiCompletedTransaction
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariCompletedTransaction` - Returns a pointer to a TariCompletedTransaction. Note that it returns
-/// ptr::null_mut() if key is null or if there was an error creating the TariCompletedTransaction from key
+/// `*mut TaijiCompletedTransaction` - Returns a pointer to a TaijiCompletedTransaction. Note that it returns
+/// ptr::null_mut() if key is null or if there was an error creating the TaijiCompletedTransaction from key
 ///
 /// # Safety
-/// The ```completed_transaction_destroy``` function must be called when finished with a TariCompletedTransaction to
+/// The ```completed_transaction_destroy``` function must be called when finished with a TaijiCompletedTransaction to
 // /// prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn create_tari_completed_transaction_from_json(
+pub unsafe extern "C" fn create_taiji_completed_transaction_from_json(
     tx_json: *const c_char,
     error_out: *mut c_int,
-) -> *mut TariCompletedTransaction {
+) -> *mut TaijiCompletedTransaction {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     let tx_json_str;
@@ -3856,7 +3856,7 @@ pub unsafe extern "C" fn create_tari_completed_transaction_from_json(
             },
         };
     }
-    let tx: Result<TariCompletedTransaction, _> = serde_json::from_str(&tx_json_str);
+    let tx: Result<TaijiCompletedTransaction, _> = serde_json::from_str(&tx_json_str);
 
     match tx {
         Ok(tx) => Box::into_raw(Box::new(tx)),
@@ -3870,10 +3870,10 @@ pub unsafe extern "C" fn create_tari_completed_transaction_from_json(
     }
 }
 
-/// Frees memory for a TariCompletedTransaction
+/// Frees memory for a TaijiCompletedTransaction
 ///
 /// ## Arguments
-/// `transaction` - The pointer to a TariCompletedTransaction
+/// `transaction` - The pointer to a TaijiCompletedTransaction
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -3881,7 +3881,7 @@ pub unsafe extern "C" fn create_tari_completed_transaction_from_json(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn completed_transaction_destroy(transaction: *mut TariCompletedTransaction) {
+pub unsafe extern "C" fn completed_transaction_destroy(transaction: *mut TaijiCompletedTransaction) {
     if !transaction.is_null() {
         drop(Box::from_raw(transaction))
     }
@@ -3891,10 +3891,10 @@ pub unsafe extern "C" fn completed_transaction_destroy(transaction: *mut TariCom
 
 /// ----------------------------------- OutboundTransaction ------------------------------------- ///
 
-/// Gets the TransactionId of a TariPendingOutboundTransaction
+/// Gets the TransactionId of a TaijiPendingOutboundTransaction
 ///
 /// ## Arguments
-/// `transaction` - The pointer to a TariPendingOutboundTransaction
+/// `transaction` - The pointer to a TaijiPendingOutboundTransaction
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -3905,7 +3905,7 @@ pub unsafe extern "C" fn completed_transaction_destroy(transaction: *mut TariCom
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn pending_outbound_transaction_get_transaction_id(
-    transaction: *mut TariPendingOutboundTransaction,
+    transaction: *mut TaijiPendingOutboundTransaction,
     error_out: *mut c_int,
 ) -> c_ulonglong {
     let mut error = 0;
@@ -3918,24 +3918,24 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_transaction_id(
     (*transaction).tx_id.as_u64() as c_ulonglong
 }
 
-/// Gets the destination TariWalletAddress of a TariPendingOutboundTransaction
+/// Gets the destination TaijiWalletAddress of a TaijiPendingOutboundTransaction
 ///
 /// ## Arguments
-/// `transaction` - The pointer to a TariPendingOutboundTransaction
+/// `transaction` - The pointer to a TaijiPendingOutboundTransaction
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariWalletAddress` - Returns the destination TariWalletAddress, note that it will be
+/// `*mut TaijiWalletAddress` - Returns the destination TaijiWalletAddress, note that it will be
 /// ptr::null_mut() if transaction is null
 ///
 /// # Safety
-/// The ```tari_address_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
+/// The ```taiji_address_destroy``` method must be called when finished with a TaijiWalletAddress to prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn pending_outbound_transaction_get_destination_tari_address(
-    transaction: *mut TariPendingOutboundTransaction,
+pub unsafe extern "C" fn pending_outbound_transaction_get_destination_taiji_address(
+    transaction: *mut TaijiPendingOutboundTransaction,
     error_out: *mut c_int,
-) -> *mut TariWalletAddress {
+) -> *mut TaijiWalletAddress {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
@@ -3947,10 +3947,10 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_destination_tari_addre
     Box::into_raw(Box::new(m))
 }
 
-/// Gets the amount of a TariPendingOutboundTransaction
+/// Gets the amount of a TaijiPendingOutboundTransaction
 ///
 /// ## Arguments
-/// `transaction` - The pointer to a TariPendingOutboundTransaction
+/// `transaction` - The pointer to a TaijiPendingOutboundTransaction
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -3961,7 +3961,7 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_destination_tari_addre
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn pending_outbound_transaction_get_amount(
-    transaction: *mut TariPendingOutboundTransaction,
+    transaction: *mut TaijiPendingOutboundTransaction,
     error_out: *mut c_int,
 ) -> c_ulonglong {
     let mut error = 0;
@@ -3974,10 +3974,10 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_amount(
     c_ulonglong::from((*transaction).amount)
 }
 
-/// Gets the fee of a TariPendingOutboundTransaction
+/// Gets the fee of a TaijiPendingOutboundTransaction
 ///
 /// ## Arguments
-/// `transaction` - The pointer to a TariPendingOutboundTransaction
+/// `transaction` - The pointer to a TaijiPendingOutboundTransaction
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -3988,7 +3988,7 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_amount(
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn pending_outbound_transaction_get_fee(
-    transaction: *mut TariPendingOutboundTransaction,
+    transaction: *mut TaijiPendingOutboundTransaction,
     error_out: *mut c_int,
 ) -> c_ulonglong {
     let mut error = 0;
@@ -4001,10 +4001,10 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_fee(
     c_ulonglong::from((*transaction).fee)
 }
 
-/// Gets the timestamp of a TariPendingOutboundTransaction
+/// Gets the timestamp of a TaijiPendingOutboundTransaction
 ///
 /// ## Arguments
-/// `transaction` - The pointer to a TariPendingOutboundTransaction
+/// `transaction` - The pointer to a TaijiPendingOutboundTransaction
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -4015,7 +4015,7 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_fee(
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn pending_outbound_transaction_get_timestamp(
-    transaction: *mut TariPendingOutboundTransaction,
+    transaction: *mut TaijiPendingOutboundTransaction,
     error_out: *mut c_int,
 ) -> c_ulonglong {
     let mut error = 0;
@@ -4028,10 +4028,10 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_timestamp(
     (*transaction).timestamp.timestamp() as c_ulonglong
 }
 
-/// Gets the message of a TariPendingOutboundTransaction
+/// Gets the message of a TaijiPendingOutboundTransaction
 ///
 /// ## Arguments
-/// `transaction` - The pointer to a TariPendingOutboundTransaction
+/// `transaction` - The pointer to a TaijiPendingOutboundTransaction
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -4044,7 +4044,7 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_timestamp(
 /// leak
 #[no_mangle]
 pub unsafe extern "C" fn pending_outbound_transaction_get_message(
-    transaction: *mut TariPendingOutboundTransaction,
+    transaction: *mut TaijiPendingOutboundTransaction,
     error_out: *mut c_int,
 ) -> *const c_char {
     let mut error = 0;
@@ -4068,10 +4068,10 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_message(
     result.into_raw()
 }
 
-/// Gets the status of a TariPendingOutboundTransaction
+/// Gets the status of a TaijiPendingOutboundTransaction
 ///
 /// ## Arguments
-/// `transaction` - The pointer to a TariPendingOutboundTransaction
+/// `transaction` - The pointer to a TaijiPendingOutboundTransaction
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -4090,7 +4090,7 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_message(
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn pending_outbound_transaction_get_status(
-    transaction: *mut TariPendingOutboundTransaction,
+    transaction: *mut TaijiPendingOutboundTransaction,
     error_out: *mut c_int,
 ) -> c_int {
     let mut error = 0;
@@ -4104,10 +4104,10 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_status(
     status as c_int
 }
 
-/// Frees memory for a TariPendingOutboundTransaction
+/// Frees memory for a TaijiPendingOutboundTransaction
 ///
 /// ## Arguments
-/// `transaction` - The pointer to a TariPendingOutboundTransaction
+/// `transaction` - The pointer to a TaijiPendingOutboundTransaction
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -4115,7 +4115,7 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_status(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn pending_outbound_transaction_destroy(transaction: *mut TariPendingOutboundTransaction) {
+pub unsafe extern "C" fn pending_outbound_transaction_destroy(transaction: *mut TaijiPendingOutboundTransaction) {
     if !transaction.is_null() {
         drop(Box::from_raw(transaction))
     }
@@ -4125,10 +4125,10 @@ pub unsafe extern "C" fn pending_outbound_transaction_destroy(transaction: *mut 
 ///
 /// ----------------------------------- InboundTransaction ------------------------------------- ///
 
-/// Gets the TransactionId of a TariPendingInboundTransaction
+/// Gets the TransactionId of a TaijiPendingInboundTransaction
 ///
 /// ## Arguments
-/// `transaction` - The pointer to a TariPendingInboundTransaction
+/// `transaction` - The pointer to a TaijiPendingInboundTransaction
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -4139,7 +4139,7 @@ pub unsafe extern "C" fn pending_outbound_transaction_destroy(transaction: *mut 
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn pending_inbound_transaction_get_transaction_id(
-    transaction: *mut TariPendingInboundTransaction,
+    transaction: *mut TaijiPendingInboundTransaction,
     error_out: *mut c_int,
 ) -> c_ulonglong {
     let mut error = 0;
@@ -4152,25 +4152,25 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_transaction_id(
     (*transaction).tx_id.as_u64() as c_ulonglong
 }
 
-/// Gets the source TariWalletAddress of a TariPendingInboundTransaction
+/// Gets the source TaijiWalletAddress of a TaijiPendingInboundTransaction
 ///
 /// ## Arguments
-/// `transaction` - The pointer to a TariPendingInboundTransaction
+/// `transaction` - The pointer to a TaijiPendingInboundTransaction
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariWalletAddress` - Returns a pointer to the source TariWalletAddress, note that it will be
+/// `*mut TaijiWalletAddress` - Returns a pointer to the source TaijiWalletAddress, note that it will be
 /// ptr::null_mut() if transaction is null
 ///
 /// # Safety
-///  The ```tari_address_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory
+///  The ```taiji_address_destroy``` method must be called when finished with a TaijiWalletAddress to prevent a memory
 /// leak
 #[no_mangle]
-pub unsafe extern "C" fn pending_inbound_transaction_get_source_tari_address(
-    transaction: *mut TariPendingInboundTransaction,
+pub unsafe extern "C" fn pending_inbound_transaction_get_source_taiji_address(
+    transaction: *mut TaijiPendingInboundTransaction,
     error_out: *mut c_int,
-) -> *mut TariWalletAddress {
+) -> *mut TaijiWalletAddress {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if transaction.is_null() {
@@ -4182,10 +4182,10 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_source_tari_address(
     Box::into_raw(Box::new(m))
 }
 
-/// Gets the amount of a TariPendingInboundTransaction
+/// Gets the amount of a TaijiPendingInboundTransaction
 ///
 /// ## Arguments
-/// `transaction` - The pointer to a TariPendingInboundTransaction
+/// `transaction` - The pointer to a TaijiPendingInboundTransaction
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -4196,7 +4196,7 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_source_tari_address(
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn pending_inbound_transaction_get_amount(
-    transaction: *mut TariPendingInboundTransaction,
+    transaction: *mut TaijiPendingInboundTransaction,
     error_out: *mut c_int,
 ) -> c_ulonglong {
     let mut error = 0;
@@ -4209,10 +4209,10 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_amount(
     c_ulonglong::from((*transaction).amount)
 }
 
-/// Gets the timestamp of a TariPendingInboundTransaction
+/// Gets the timestamp of a TaijiPendingInboundTransaction
 ///
 /// ## Arguments
-/// `transaction` - The pointer to a TariPendingInboundTransaction
+/// `transaction` - The pointer to a TaijiPendingInboundTransaction
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -4223,7 +4223,7 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_amount(
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn pending_inbound_transaction_get_timestamp(
-    transaction: *mut TariPendingInboundTransaction,
+    transaction: *mut TaijiPendingInboundTransaction,
     error_out: *mut c_int,
 ) -> c_ulonglong {
     let mut error = 0;
@@ -4236,10 +4236,10 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_timestamp(
     (*transaction).timestamp.timestamp() as c_ulonglong
 }
 
-/// Gets the message of a TariPendingInboundTransaction
+/// Gets the message of a TaijiPendingInboundTransaction
 ///
 /// ## Arguments
-/// `transaction` - The pointer to a TariPendingInboundTransaction
+/// `transaction` - The pointer to a TaijiPendingInboundTransaction
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -4252,7 +4252,7 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_timestamp(
 /// leak
 #[no_mangle]
 pub unsafe extern "C" fn pending_inbound_transaction_get_message(
-    transaction: *mut TariPendingInboundTransaction,
+    transaction: *mut TaijiPendingInboundTransaction,
     error_out: *mut c_int,
 ) -> *const c_char {
     let mut error = 0;
@@ -4276,10 +4276,10 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_message(
     result.into_raw()
 }
 
-/// Gets the status of a TariPendingInboundTransaction
+/// Gets the status of a TaijiPendingInboundTransaction
 ///
 /// ## Arguments
-/// `transaction` - The pointer to a TariPendingInboundTransaction
+/// `transaction` - The pointer to a TaijiPendingInboundTransaction
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -4298,7 +4298,7 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_message(
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn pending_inbound_transaction_get_status(
-    transaction: *mut TariPendingInboundTransaction,
+    transaction: *mut TaijiPendingInboundTransaction,
     error_out: *mut c_int,
 ) -> c_int {
     let mut error = 0;
@@ -4312,10 +4312,10 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_status(
     status as c_int
 }
 
-/// Frees memory for a TariPendingInboundTransaction
+/// Frees memory for a TaijiPendingInboundTransaction
 ///
 /// ## Arguments
-/// `transaction` - The pointer to a TariPendingInboundTransaction
+/// `transaction` - The pointer to a TaijiPendingInboundTransaction
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -4323,7 +4323,7 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_status(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn pending_inbound_transaction_destroy(transaction: *mut TariPendingInboundTransaction) {
+pub unsafe extern "C" fn pending_inbound_transaction_destroy(transaction: *mut TaijiPendingInboundTransaction) {
     if !transaction.is_null() {
         drop(Box::from_raw(transaction))
     }
@@ -4333,10 +4333,10 @@ pub unsafe extern "C" fn pending_inbound_transaction_destroy(transaction: *mut T
 
 /// ----------------------------------- Transport Send Status -----------------------------------///
 
-/// Decode the transaction send status of a TariTransactionSendStatus
+/// Decode the transaction send status of a TaijiTransactionSendStatus
 ///
 /// ## Arguments
-/// `status` - The pointer to a TariTransactionSendStatus
+/// `status` - The pointer to a TaijiTransactionSendStatus
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -4352,7 +4352,7 @@ pub unsafe extern "C" fn pending_inbound_transaction_destroy(transaction: *mut T
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn transaction_send_status_decode(
-    status: *const TariTransactionSendStatus,
+    status: *const TaijiTransactionSendStatus,
     error_out: *mut c_int,
 ) -> c_uint {
     let mut error = 0;
@@ -4385,10 +4385,10 @@ pub unsafe extern "C" fn transaction_send_status_decode(
     send_status
 }
 
-/// Frees memory for a TariTransactionSendStatus
+/// Frees memory for a TaijiTransactionSendStatus
 ///
 /// ## Arguments
-/// `status` - The pointer to a TariPendingInboundTransaction
+/// `status` - The pointer to a TaijiPendingInboundTransaction
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -4396,7 +4396,7 @@ pub unsafe extern "C" fn transaction_send_status_decode(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn transaction_send_status_destroy(status: *mut TariTransactionSendStatus) {
+pub unsafe extern "C" fn transaction_send_status_destroy(status: *mut TaijiTransactionSendStatus) {
     if !status.is_null() {
         drop(Box::from_raw(status))
     }
@@ -4412,13 +4412,13 @@ pub unsafe extern "C" fn transaction_send_status_destroy(status: *mut TariTransa
 /// `()` - Does not take any arguments
 ///
 /// ## Returns
-/// `*mut TariTransportConfig` - Returns a pointer to a memory TariTransportConfig
+/// `*mut TaijiTransportConfig` - Returns a pointer to a memory TaijiTransportConfig
 ///
 /// # Safety
-/// The ```transport_type_destroy``` method must be called when finished with a TariTransportConfig to prevent a memory
+/// The ```transport_type_destroy``` method must be called when finished with a TaijiTransportConfig to prevent a memory
 /// leak
 #[no_mangle]
-pub unsafe extern "C" fn transport_memory_create() -> *mut TariTransportConfig {
+pub unsafe extern "C" fn transport_memory_create() -> *mut TaijiTransportConfig {
     let port = MemoryTransport::acquire_next_memsocket_port();
     let listener_address: Multiaddr = format!("/memory/{}", port)
         .parse()
@@ -4439,16 +4439,16 @@ pub unsafe extern "C" fn transport_memory_create() -> *mut TariTransportConfig {
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariTransportConfig` - Returns a pointer to a tcp TariTransportConfig, null on error.
+/// `*mut TaijiTransportConfig` - Returns a pointer to a tcp TaijiTransportConfig, null on error.
 ///
 /// # Safety
-/// The ```transport_type_destroy``` method must be called when finished with a TariTransportConfig to prevent a memory
+/// The ```transport_type_destroy``` method must be called when finished with a TaijiTransportConfig to prevent a memory
 /// leak
 #[no_mangle]
 pub unsafe extern "C" fn transport_tcp_create(
     listener_address: *const c_char,
     error_out: *mut c_int,
-) -> *mut TariTransportConfig {
+) -> *mut TaijiTransportConfig {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -4472,7 +4472,7 @@ pub unsafe extern "C" fn transport_tcp_create(
 
     match listener_address_str.parse() {
         Ok(v) => {
-            let transport = TariTransportConfig {
+            let transport = TaijiTransportConfig {
                 transport_type: TransportType::Tcp,
                 tcp: TcpTransportConfig {
                     listener_address: v,
@@ -4503,10 +4503,10 @@ pub unsafe extern "C" fn transport_tcp_create(
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariTransportConfig` - Returns a pointer to a tor TariTransportConfig, null on error.
+/// `*mut TaijiTransportConfig` - Returns a pointer to a tor TaijiTransportConfig, null on error.
 ///
 /// # Safety
-/// The ```transport_config_destroy``` method must be called when finished with a TariTransportConfig to prevent a
+/// The ```transport_config_destroy``` method must be called when finished with a TaijiTransportConfig to prevent a
 /// memory leak
 #[no_mangle]
 pub unsafe extern "C" fn transport_tor_create(
@@ -4517,7 +4517,7 @@ pub unsafe extern "C" fn transport_tor_create(
     socks_username: *const c_char,
     socks_password: *const c_char,
     error_out: *mut c_int,
-) -> *mut TariTransportConfig {
+) -> *mut TaijiTransportConfig {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -4591,7 +4591,7 @@ pub unsafe extern "C" fn transport_tor_create(
 
     match control_address_str.parse() {
         Ok(v) => {
-            let transport = TariTransportConfig {
+            let transport = TaijiTransportConfig {
                 transport_type: TransportType::Tor,
                 tor: TorTransportConfig {
                     control_address: v,
@@ -4619,7 +4619,7 @@ pub unsafe extern "C" fn transport_tor_create(
 /// Gets the address for a memory transport type
 ///
 /// ## Arguments
-/// `transport` - Pointer to a TariTransportConfig
+/// `transport` - Pointer to a TaijiTransportConfig
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -4630,7 +4630,7 @@ pub unsafe extern "C" fn transport_tor_create(
 /// Can only be used with a memory transport type, will crash otherwise
 #[no_mangle]
 pub unsafe extern "C" fn transport_memory_get_address(
-    transport: *const TariTransportConfig,
+    transport: *const TaijiTransportConfig,
     error_out: *mut c_int,
 ) -> *mut c_char {
     let mut error = 0;
@@ -4658,10 +4658,10 @@ pub unsafe extern "C" fn transport_memory_get_address(
     address.into_raw()
 }
 
-/// Frees memory for a TariTransportConfig
+/// Frees memory for a TaijiTransportConfig
 ///
 /// ## Arguments
-/// `transport` - The pointer to a TariTransportConfig
+/// `transport` - The pointer to a TaijiTransportConfig
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -4669,21 +4669,21 @@ pub unsafe extern "C" fn transport_memory_get_address(
 /// # Safety
 #[no_mangle]
 #[deprecated(note = "use transport_config_destroy instead")]
-pub unsafe extern "C" fn transport_type_destroy(transport: *mut TariTransportConfig) {
+pub unsafe extern "C" fn transport_type_destroy(transport: *mut TaijiTransportConfig) {
     transport_config_destroy(transport);
 }
 
-/// Frees memory for a TariTransportConfig
+/// Frees memory for a TaijiTransportConfig
 ///
 /// ## Arguments
-/// `transport` - The pointer to a TariTransportConfig
+/// `transport` - The pointer to a TaijiTransportConfig
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
 ///
 /// # Safety
 #[no_mangle]
-pub unsafe extern "C" fn transport_config_destroy(transport: *mut TariTransportConfig) {
+pub unsafe extern "C" fn transport_config_destroy(transport: *mut TaijiTransportConfig) {
     if !transport.is_null() {
         drop(Box::from_raw(transport))
     }
@@ -4693,12 +4693,12 @@ pub unsafe extern "C" fn transport_config_destroy(transport: *mut TariTransportC
 
 /// ----------------------------------- CommsConfig ---------------------------------------------///
 
-/// Creates a TariCommsConfig. The result from this function is required when initializing a TariWallet.
+/// Creates a TaijiCommsConfig. The result from this function is required when initializing a TaijiWallet.
 ///
 /// ## Arguments
 /// `public_address` - The public address char array pointer. This is the address that the wallet advertises publicly to
 /// peers
-/// `transport` - TariTransportConfig that specifies the type of comms transport to be used.
+/// `transport` - TaijiTransportConfig that specifies the type of comms transport to be used.
 /// connections are moved to after initial connection. Default if null is 0.0.0.0:7898 which will accept connections
 /// from all IP address on port 7898
 /// `database_name` - The database name char array pointer. This is the unique name of this
@@ -4711,22 +4711,22 @@ pub unsafe extern "C" fn transport_config_destroy(transport: *mut TariTransportC
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariCommsConfig` - Returns a pointer to a TariCommsConfig, if any of the parameters are
+/// `*mut TaijiCommsConfig` - Returns a pointer to a TaijiCommsConfig, if any of the parameters are
 /// null or a problem is encountered when constructing the NetAddress a ptr::null_mut() is returned
 ///
 /// # Safety
-/// The ```comms_config_destroy``` method must be called when finished with a TariCommsConfig to prevent a memory leak
+/// The ```comms_config_destroy``` method must be called when finished with a TaijiCommsConfig to prevent a memory leak
 #[no_mangle]
 #[allow(clippy::too_many_lines)]
 pub unsafe extern "C" fn comms_config_create(
     public_address: *const c_char,
-    transport: *const TariTransportConfig,
+    transport: *const TaijiTransportConfig,
     database_name: *const c_char,
     datastore_path: *const c_char,
     discovery_timeout_in_secs: c_ulonglong,
     saf_message_duration_in_secs: c_ulonglong,
     error_out: *mut c_int,
-) -> *mut TariCommsConfig {
+) -> *mut TaijiCommsConfig {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     let public_address_str;
@@ -4802,7 +4802,7 @@ pub unsafe extern "C" fn comms_config_create(
                 MultiaddrList::from(vec![public_address])
             };
 
-            let config = TariCommsConfig {
+            let config = TaijiCommsConfig {
                 override_from: None,
                 public_addresses: addresses,
                 transport: (*transport).clone(),
@@ -4826,7 +4826,7 @@ pub unsafe extern "C" fn comms_config_create(
                 allow_test_addresses: true,
                 listener_liveness_allowlist_cidrs: StringList::new(),
                 listener_liveness_max_sessions: 0,
-                user_agent: format!("tari/mobile_wallet/{}", env!("CARGO_PKG_VERSION")),
+                user_agent: format!("taiji/mobile_wallet/{}", env!("CARGO_PKG_VERSION")),
                 rpc_max_simultaneous_sessions: 0,
                 rpc_max_sessions_per_peer: 0,
                 listener_liveness_check_interval: None,
@@ -4842,10 +4842,10 @@ pub unsafe extern "C" fn comms_config_create(
     }
 }
 
-/// Frees memory for a TariCommsConfig
+/// Frees memory for a TaijiCommsConfig
 ///
 /// ## Arguments
-/// `wc` - The TariCommsConfig pointer
+/// `wc` - The TaijiCommsConfig pointer
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -4853,7 +4853,7 @@ pub unsafe extern "C" fn comms_config_create(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn comms_config_destroy(wc: *mut TariCommsConfig) {
+pub unsafe extern "C" fn comms_config_destroy(wc: *mut TaijiCommsConfig) {
     if !wc.is_null() {
         drop(Box::from_raw(wc))
     }
@@ -4862,20 +4862,20 @@ pub unsafe extern "C" fn comms_config_destroy(wc: *mut TariCommsConfig) {
 /// This function lists the public keys of all connected peers
 ///
 /// ## Arguments
-/// `wallet` - The TariWallet pointer
+/// `wallet` - The TaijiWallet pointer
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
 /// ## Returns
-/// `TariPublicKeys` -  Returns a list of connected public keys. Note the result will be null if there was an error
+/// `TaijiPublicKeys` -  Returns a list of connected public keys. Note the result will be null if there was an error
 ///
 /// # Safety
 /// The caller is responsible for null checking and deallocating the returned object using public_keys_destroy.
 #[no_mangle]
 pub unsafe extern "C" fn comms_list_connected_public_keys(
-    wallet: *mut TariWallet,
+    wallet: *mut TaijiWallet,
     error_out: *mut c_int,
-) -> *mut TariPublicKeys {
+) -> *mut TaijiPublicKeys {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
@@ -4897,7 +4897,7 @@ pub unsafe extern "C" fn comms_list_connected_public_keys(
         }
         Result::<_, WalletError>::Ok(public_keys)
     }) {
-        Ok(public_keys) => Box::into_raw(Box::new(TariPublicKeys(public_keys))),
+        Ok(public_keys) => Box::into_raw(Box::new(TaijiPublicKeys(public_keys))),
         Err(e) => {
             error = LibWalletError::from(e).code;
             ptr::swap(error_out, &mut error as *mut c_int);
@@ -4909,17 +4909,17 @@ pub unsafe extern "C" fn comms_list_connected_public_keys(
 /// Gets the length of the public keys vector
 ///
 /// ## Arguments
-/// `public_keys` - Pointer to TariPublicKeys
+/// `public_keys` - Pointer to TaijiPublicKeys
 ///
 /// ## Returns
-/// `c_uint` - Length of the TariPublicKeys vector, 0 if is null
+/// `c_uint` - Length of the TaijiPublicKeys vector, 0 if is null
 ///
 /// # Safety
 /// None
 // casting here is okay as we wont have more than u32 public keys
 #[allow(clippy::cast_possible_truncation)]
 #[no_mangle]
-pub unsafe extern "C" fn public_keys_get_length(public_keys: *const TariPublicKeys, error_out: *mut c_int) -> c_uint {
+pub unsafe extern "C" fn public_keys_get_length(public_keys: *const TaijiPublicKeys, error_out: *mut c_int) -> c_uint {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if public_keys.is_null() {
@@ -4933,7 +4933,7 @@ pub unsafe extern "C" fn public_keys_get_length(public_keys: *const TariPublicKe
 /// Gets a ByteVector at position in a EmojiSet
 ///
 /// ## Arguments
-/// `public_keys` - The pointer to a TariPublicKeys
+/// `public_keys` - The pointer to a TaijiPublicKeys
 /// `position` - The integer position
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
@@ -4946,10 +4946,10 @@ pub unsafe extern "C" fn public_keys_get_length(public_keys: *const TariPublicKe
 /// The ```byte_vector_destroy``` function must be called when finished with the ByteVector to prevent a memory leak.
 #[no_mangle]
 pub unsafe extern "C" fn public_keys_get_at(
-    public_keys: *const TariPublicKeys,
+    public_keys: *const TaijiPublicKeys,
     position: c_uint,
     error_out: *mut c_int,
-) -> *mut TariPublicKey {
+) -> *mut TaijiPublicKey {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if public_keys.is_null() {
@@ -5105,10 +5105,10 @@ unsafe fn init_logging(
     }
 }
 
-/// Creates a TariWallet
+/// Creates a TaijiWallet
 ///
 /// ## Arguments
-/// `config` - The TariCommsConfig pointer
+/// `config` - The TaijiCommsConfig pointer
 /// `log_path` - An optional file path to the file where the logs will be written. If no log is required pass *null*
 /// pointer.
 /// `num_rolling_log_files` - Specifies how many rolling log files to produce, if no rolling files are wanted then set
@@ -5118,7 +5118,7 @@ unsafe fn init_logging(
 /// `passphrase` - An optional string that represents the passphrase used to
 /// encrypt/decrypt the databases for this wallet. If it is left Null no encryption is used. If the databases have been
 /// encrypted then the correct passphrase is required or this function will fail.
-/// `seed_words` - An optional instance of TariSeedWords, used to create a wallet for recovery purposes.
+/// `seed_words` - An optional instance of TaijiSeedWords, used to create a wallet for recovery purposes.
 /// If this is null, then a new master key is created for the wallet.
 /// `callback_received_transaction` - The callback function pointer matching the function signature. This will be
 /// called when an inbound transaction is received.
@@ -5192,43 +5192,43 @@ unsafe fn init_logging(
 /// `error_out` - Pointer to an int which will be modified
 /// to an error code should one occur, may not be null. Functions as an out parameter.
 /// ## Returns
-/// `*mut TariWallet` - Returns a pointer to a TariWallet, note that it returns ptr::null_mut()
+/// `*mut TaijiWallet` - Returns a pointer to a TaijiWallet, note that it returns ptr::null_mut()
 /// if config is null, a wallet error was encountered or if the runtime could not be created
 ///
 /// # Safety
-/// The ```wallet_destroy``` method must be called when finished with a TariWallet to prevent a memory leak
+/// The ```wallet_destroy``` method must be called when finished with a TaijiWallet to prevent a memory leak
 #[no_mangle]
 #[allow(clippy::cognitive_complexity)]
 #[allow(clippy::too_many_lines)]
 pub unsafe extern "C" fn wallet_create(
-    config: *mut TariCommsConfig,
+    config: *mut TaijiCommsConfig,
     log_path: *const c_char,
     num_rolling_log_files: c_uint,
     size_per_log_file_bytes: c_uint,
     passphrase: *const c_char,
-    seed_words: *const TariSeedWords,
+    seed_words: *const TaijiSeedWords,
     network_str: *const c_char,
-    callback_received_transaction: unsafe extern "C" fn(*mut TariPendingInboundTransaction),
-    callback_received_transaction_reply: unsafe extern "C" fn(*mut TariCompletedTransaction),
-    callback_received_finalized_transaction: unsafe extern "C" fn(*mut TariCompletedTransaction),
-    callback_transaction_broadcast: unsafe extern "C" fn(*mut TariCompletedTransaction),
-    callback_transaction_mined: unsafe extern "C" fn(*mut TariCompletedTransaction),
-    callback_transaction_mined_unconfirmed: unsafe extern "C" fn(*mut TariCompletedTransaction, u64),
-    callback_faux_transaction_confirmed: unsafe extern "C" fn(*mut TariCompletedTransaction),
-    callback_faux_transaction_unconfirmed: unsafe extern "C" fn(*mut TariCompletedTransaction, u64),
-    callback_transaction_send_result: unsafe extern "C" fn(c_ulonglong, *mut TariTransactionSendStatus),
-    callback_transaction_cancellation: unsafe extern "C" fn(*mut TariCompletedTransaction, u64),
+    callback_received_transaction: unsafe extern "C" fn(*mut TaijiPendingInboundTransaction),
+    callback_received_transaction_reply: unsafe extern "C" fn(*mut TaijiCompletedTransaction),
+    callback_received_finalized_transaction: unsafe extern "C" fn(*mut TaijiCompletedTransaction),
+    callback_transaction_broadcast: unsafe extern "C" fn(*mut TaijiCompletedTransaction),
+    callback_transaction_mined: unsafe extern "C" fn(*mut TaijiCompletedTransaction),
+    callback_transaction_mined_unconfirmed: unsafe extern "C" fn(*mut TaijiCompletedTransaction, u64),
+    callback_faux_transaction_confirmed: unsafe extern "C" fn(*mut TaijiCompletedTransaction),
+    callback_faux_transaction_unconfirmed: unsafe extern "C" fn(*mut TaijiCompletedTransaction, u64),
+    callback_transaction_send_result: unsafe extern "C" fn(c_ulonglong, *mut TaijiTransactionSendStatus),
+    callback_transaction_cancellation: unsafe extern "C" fn(*mut TaijiCompletedTransaction, u64),
     callback_txo_validation_complete: unsafe extern "C" fn(u64, u64),
-    callback_contacts_liveness_data_updated: unsafe extern "C" fn(*mut TariContactsLivenessData),
-    callback_balance_updated: unsafe extern "C" fn(*mut TariBalance),
+    callback_contacts_liveness_data_updated: unsafe extern "C" fn(*mut TaijiContactsLivenessData),
+    callback_balance_updated: unsafe extern "C" fn(*mut TaijiBalance),
     callback_transaction_validation_complete: unsafe extern "C" fn(u64, u64),
     callback_saf_messages_received: unsafe extern "C" fn(),
     callback_connectivity_status: unsafe extern "C" fn(u64),
-    callback_base_node_state: unsafe extern "C" fn(*mut TariBaseNodeState),
+    callback_base_node_state: unsafe extern "C" fn(*mut TaijiBaseNodeState),
     recovery_in_progress: *mut bool,
     error_out: *mut c_int,
-) -> *mut TariWallet {
-    use tari_key_manager::mnemonic::Mnemonic;
+) -> *mut TaijiWallet {
+    use taiji_key_manager::mnemonic::Mnemonic;
 
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
@@ -5247,7 +5247,7 @@ pub unsafe extern "C" fn wallet_create(
     }
     info!(
         target: LOG_TARGET,
-        "Starting Tari Wallet FFI version: {}",
+        "Starting Taiji Wallet FFI version: {}",
         consts::APP_VERSION
     );
 
@@ -5453,7 +5453,7 @@ pub unsafe extern "C" fn wallet_create(
                     warn!(target: LOG_TARGET, "Could not save tor identity to db: {:?}", e);
                 }
             }
-            let wallet_address = TariAddress::new(w.comms.node_identity().public_key().clone(), w.network.as_network());
+            let wallet_address = TaijiAddress::new(w.comms.node_identity().public_key().clone(), w.network.as_network());
 
             // Start Callback Handler
             let callback_handler = CallbackHandler::new(
@@ -5498,13 +5498,13 @@ pub unsafe extern "C" fn wallet_create(
                 }
             });
 
-            let tari_wallet = TariWallet {
+            let taiji_wallet = TaijiWallet {
                 wallet: w,
                 runtime,
                 shutdown,
             };
 
-            Box::into_raw(Box::new(tari_wallet))
+            Box::into_raw(Box::new(taiji_wallet))
         },
         Err(e) => {
             error = LibWalletError::from(e).code;
@@ -5517,7 +5517,7 @@ pub unsafe extern "C" fn wallet_create(
 /// Retrieves the version of an app that last accessed the wallet database
 ///
 /// ## Arguments
-/// `config` - The TariCommsConfig pointer
+/// `config` - The TaijiCommsConfig pointer
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 /// ## Returns
@@ -5526,7 +5526,7 @@ pub unsafe extern "C" fn wallet_create(
 /// # Safety
 /// The ```string_destroy``` method must be called when finished with a string coming from rust to prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn wallet_get_last_version(config: *mut TariCommsConfig, error_out: *mut c_int) -> *mut c_char {
+pub unsafe extern "C" fn wallet_get_last_version(config: *mut TaijiCommsConfig, error_out: *mut c_int) -> *mut c_char {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if config.is_null() {
@@ -5556,7 +5556,7 @@ pub unsafe extern "C" fn wallet_get_last_version(config: *mut TariCommsConfig, e
 /// Retrieves the network of an app that last accessed the wallet database
 ///
 /// ## Arguments
-/// `config` - The TariCommsConfig pointer
+/// `config` - The TaijiCommsConfig pointer
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 /// ## Returns
@@ -5565,7 +5565,7 @@ pub unsafe extern "C" fn wallet_get_last_version(config: *mut TariCommsConfig, e
 /// # Safety
 /// The ```string_destroy``` method must be called when finished with a string coming from rust to prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn wallet_get_last_network(config: *mut TariCommsConfig, error_out: *mut c_int) -> *mut c_char {
+pub unsafe extern "C" fn wallet_get_last_network(config: *mut TaijiCommsConfig, error_out: *mut c_int) -> *mut c_char {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if config.is_null() {
@@ -5595,16 +5595,16 @@ pub unsafe extern "C" fn wallet_get_last_network(config: *mut TariCommsConfig, e
 /// Retrieves the balance from a wallet
 ///
 /// ## Arguments
-/// `wallet` - The TariWallet pointer.
+/// `wallet` - The TaijiWallet pointer.
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 /// ## Returns
-/// `*mut Balance` - Returns the pointer to the TariBalance or null if error occurs
+/// `*mut Balance` - Returns the pointer to the TaijiBalance or null if error occurs
 ///
 /// # Safety
-/// The ```balance_destroy``` method must be called when finished with a TariBalance to prevent a memory leak
+/// The ```balance_destroy``` method must be called when finished with a TaijiBalance to prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn wallet_get_balance(wallet: *mut TariWallet, error_out: *mut c_int) -> *mut TariBalance {
+pub unsafe extern "C" fn wallet_get_balance(wallet: *mut TaijiWallet, error_out: *mut c_int) -> *mut TaijiBalance {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
@@ -5628,7 +5628,7 @@ pub unsafe extern "C" fn wallet_get_balance(wallet: *mut TariWallet, error_out: 
 /// This function returns a list of unspent UTXO values and commitments.
 ///
 /// ## Arguments
-/// * `wallet` - The TariWallet pointer,
+/// * `wallet` - The TaijiWallet pointer,
 /// * `page` - Page offset,
 /// * `page_size` - A number of items per page,
 /// * `sorting` - An enum representing desired sorting,
@@ -5638,25 +5638,25 @@ pub unsafe extern "C" fn wallet_get_balance(wallet: *mut TariWallet, error_out: 
 /// Functions as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariVector` - Returns a struct with an array pointer, length and capacity (needed for proper destruction
+/// `*mut TaijiVector` - Returns a struct with an array pointer, length and capacity (needed for proper destruction
 /// after use).
 ///
 /// # Safety
-/// `destroy_tari_vector()` must be called after use.
+/// `destroy_taiji_vector()` must be called after use.
 /// Items that fail to produce `.as_transaction_output()` are omitted from the list and a `warn!()` message is logged to
 /// LOG_TARGET.
 // casting here is okay as we wont have more than u32 utxos
 #[allow(clippy::cast_possible_truncation)]
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_utxos(
-    wallet: *mut TariWallet,
+    wallet: *mut TaijiWallet,
     page: usize,
     page_size: usize,
-    sorting: TariUtxoSort,
-    states: *mut TariVector,
+    sorting: TaijiUtxoSort,
+    states: *mut TaijiVector,
     dust_threshold: u64,
     error_ptr: *mut i32,
-) -> *mut TariVector {
+) -> *mut TaijiVector {
     if wallet.is_null() {
         error!(target: LOG_TARGET, "wallet pointer is null");
         ptr::replace(
@@ -5690,17 +5690,17 @@ pub unsafe extern "C" fn wallet_get_utxos(
         value_min: Some((dust_threshold, false)),
         value_max: None,
         sorting: vec![match sorting {
-            TariUtxoSort::MinedHeightAsc => ("mined_height", Asc),
-            TariUtxoSort::MinedHeightDesc => ("mined_height", Desc),
-            TariUtxoSort::ValueAsc => ("value", Asc),
-            TariUtxoSort::ValueDesc => ("value", Desc),
+            TaijiUtxoSort::MinedHeightAsc => ("mined_height", Asc),
+            TaijiUtxoSort::MinedHeightDesc => ("mined_height", Desc),
+            TaijiUtxoSort::ValueAsc => ("value", Asc),
+            TaijiUtxoSort::ValueDesc => ("value", Desc),
         }],
     };
 
     match (*wallet).wallet.output_db.fetch_outputs_by(q) {
         Ok(outputs) => {
             ptr::replace(error_ptr, 0);
-            Box::into_raw(Box::new(TariVector::from(outputs)))
+            Box::into_raw(Box::new(TaijiVector::from(outputs)))
         },
 
         Err(e) => {
@@ -5720,12 +5720,12 @@ pub unsafe extern "C" fn wallet_get_utxos(
 /// This function returns a list of all UTXO values, commitment's hex values and states.
 ///
 /// ## Arguments
-/// * `wallet` - The TariWallet pointer,
+/// * `wallet` - The TaijiWallet pointer,
 /// * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null.
 /// Functions as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariVector` - Returns a struct with an array pointer, length and capacity (needed for proper destruction
+/// `*mut TaijiVector` - Returns a struct with an array pointer, length and capacity (needed for proper destruction
 /// after use).
 ///
 /// ## States
@@ -5743,11 +5743,11 @@ pub unsafe extern "C" fn wallet_get_utxos(
 /// 11 - NotStored
 ///
 /// # Safety
-/// `destroy_tari_vector()` must be called after use.
+/// `destroy_taiji_vector()` must be called after use.
 /// Items that fail to produce `.as_transaction_output()` are omitted from the list and a `warn!()` message is logged to
 /// LOG_TARGET.
 #[no_mangle]
-pub unsafe extern "C" fn wallet_get_all_utxos(wallet: *mut TariWallet, error_ptr: *mut i32) -> *mut TariVector {
+pub unsafe extern "C" fn wallet_get_all_utxos(wallet: *mut TaijiWallet, error_ptr: *mut i32) -> *mut TaijiVector {
     if wallet.is_null() {
         error!(target: LOG_TARGET, "wallet pointer is null");
         ptr::replace(
@@ -5770,7 +5770,7 @@ pub unsafe extern "C" fn wallet_get_all_utxos(wallet: *mut TariWallet, error_ptr
     match (*wallet).wallet.output_db.fetch_outputs_by(q) {
         Ok(outputs) => {
             ptr::replace(error_ptr, 0);
-            Box::into_raw(Box::new(TariVector::from(outputs)))
+            Box::into_raw(Box::new(TaijiVector::from(outputs)))
         },
 
         Err(e) => {
@@ -5790,8 +5790,8 @@ pub unsafe extern "C" fn wallet_get_all_utxos(wallet: *mut TariWallet, error_ptr
 /// This function will tell the wallet to do a coin split.
 ///
 /// ## Arguments
-/// * `wallet` - The TariWallet pointer
-/// * `commitments` - A `TariVector` of "strings", tagged as `TariTypeTag::String`, containing commitment's hex values
+/// * `wallet` - The TaijiWallet pointer
+/// * `commitments` - A `TaijiVector` of "strings", tagged as `TaijiTypeTag::String`, containing commitment's hex values
 ///   (see `Commitment::to_hex()`)
 /// * `number_of_splits` - The number of times to split the amount
 /// * `fee_per_gram` - The transaction fee
@@ -5802,11 +5802,11 @@ pub unsafe extern "C" fn wallet_get_all_utxos(wallet: *mut TariWallet, error_ptr
 /// `c_ulonglong` - Returns the transaction id.
 ///
 /// # Safety
-/// `TariVector` must be freed after use with `destroy_tari_vector()`
+/// `TaijiVector` must be freed after use with `destroy_taiji_vector()`
 #[no_mangle]
 pub unsafe extern "C" fn wallet_coin_split(
-    wallet: *mut TariWallet,
-    commitments: *mut TariVector,
+    wallet: *mut TaijiWallet,
+    commitments: *mut TaijiVector,
     number_of_splits: usize,
     fee_per_gram: u64,
     error_ptr: *mut i32,
@@ -5832,7 +5832,7 @@ pub unsafe extern "C" fn wallet_coin_split(
         Some(cs) => match cs.to_commitment_vec() {
             Ok(cs) => cs,
             Err(e) => {
-                error!(target: LOG_TARGET, "failed to convert from tari vector: {:?}", e);
+                error!(target: LOG_TARGET, "failed to convert from taiji vector: {:?}", e);
                 ptr::replace(error_ptr, LibWalletError::from(e).code as c_int);
                 return 0;
             },
@@ -5842,7 +5842,7 @@ pub unsafe extern "C" fn wallet_coin_split(
     match (*wallet).runtime.block_on((*wallet).wallet.coin_split_even(
         commitments,
         number_of_splits,
-        MicroMinotari(fee_per_gram),
+        MicroMinotaiji(fee_per_gram),
         String::new(),
     )) {
         Ok(tx_id) => {
@@ -5861,22 +5861,22 @@ pub unsafe extern "C" fn wallet_coin_split(
 /// the fee.
 ///
 /// ## Arguments
-/// * `wallet` - The TariWallet pointer
-/// * `commitments` - A `TariVector` of "strings", tagged as `TariTypeTag::String`, containing commitment's hex values
+/// * `wallet` - The TaijiWallet pointer
+/// * `commitments` - A `TaijiVector` of "strings", tagged as `TaijiTypeTag::String`, containing commitment's hex values
 ///   (see `Commitment::to_hex()`)
 /// * `fee_per_gram` - The transaction fee
 /// * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null.
 /// Functions as an out parameter.
 ///
 /// ## Returns
-/// `TariVector` - Returns the transaction id.
+/// `TaijiVector` - Returns the transaction id.
 ///
 /// # Safety
-/// `TariVector` must be freed after use with `destroy_tari_vector()`
+/// `TaijiVector` must be freed after use with `destroy_taiji_vector()`
 #[no_mangle]
 pub unsafe extern "C" fn wallet_coin_join(
-    wallet: *mut TariWallet,
-    commitments: *mut TariVector,
+    wallet: *mut TaijiWallet,
+    commitments: *mut TaijiVector,
     fee_per_gram: u64,
     error_ptr: *mut i32,
 ) -> u64 {
@@ -5901,7 +5901,7 @@ pub unsafe extern "C" fn wallet_coin_join(
         Some(cs) => match cs.to_commitment_vec() {
             Ok(cs) => cs,
             Err(e) => {
-                error!(target: LOG_TARGET, "failed to convert from tari vector: {:?}", e);
+                error!(target: LOG_TARGET, "failed to convert from taiji vector: {:?}", e);
                 ptr::replace(error_ptr, LibWalletError::from(e).code as c_int);
                 return 0;
             },
@@ -5928,25 +5928,25 @@ pub unsafe extern "C" fn wallet_coin_join(
 /// This function will tell what the outcome of a coin join would be.
 ///
 /// ## Arguments
-/// * `wallet` - The TariWallet pointer
-/// * `commitments` - A `TariVector` of "strings", tagged as `TariTypeTag::String`, containing commitment's hex values
+/// * `wallet` - The TaijiWallet pointer
+/// * `commitments` - A `TaijiVector` of "strings", tagged as `TaijiTypeTag::String`, containing commitment's hex values
 ///   (see `Commitment::to_hex()`)
 /// * `fee_per_gram` - The transaction fee
 /// * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null.
 ///   Functions as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariCoinPreview` - A struct with expected output values and the fee.
+/// `*mut TaijiCoinPreview` - A struct with expected output values and the fee.
 ///
 /// # Safety
-/// `TariVector` must be freed after use with `destroy_tari_vector()`
+/// `TaijiVector` must be freed after use with `destroy_taiji_vector()`
 #[no_mangle]
 pub unsafe extern "C" fn wallet_preview_coin_join(
-    wallet: *mut TariWallet,
-    commitments: *mut TariVector,
+    wallet: *mut TaijiWallet,
+    commitments: *mut TaijiVector,
     fee_per_gram: u64,
     error_ptr: *mut i32,
-) -> *mut TariCoinPreview {
+) -> *mut TaijiCoinPreview {
     if wallet.is_null() {
         error!(target: LOG_TARGET, "wallet pointer is null");
         ptr::replace(
@@ -5968,7 +5968,7 @@ pub unsafe extern "C" fn wallet_preview_coin_join(
         Some(cs) => match cs.to_commitment_vec() {
             Ok(cs) => cs,
             Err(e) => {
-                error!(target: LOG_TARGET, "failed to convert from tari vector: {:?}", e);
+                error!(target: LOG_TARGET, "failed to convert from taiji vector: {:?}", e);
                 ptr::replace(error_ptr, LibWalletError::from(e).code as c_int);
                 return ptr::null_mut();
             },
@@ -5978,15 +5978,15 @@ pub unsafe extern "C" fn wallet_preview_coin_join(
     match (*wallet).runtime.block_on(
         (*wallet)
             .wallet
-            .preview_coin_join_with_commitments(commitments, MicroMinotari(fee_per_gram)),
+            .preview_coin_join_with_commitments(commitments, MicroMinotaiji(fee_per_gram)),
     ) {
         Ok((expected_outputs, fee)) => {
             ptr::replace(error_ptr, 0);
             let mut expected_outputs = ManuallyDrop::new(expected_outputs);
 
-            Box::into_raw(Box::new(TariCoinPreview {
-                expected_outputs: Box::into_raw(Box::new(TariVector {
-                    tag: TariTypeTag::U64,
+            Box::into_raw(Box::new(TaijiCoinPreview {
+                expected_outputs: Box::into_raw(Box::new(TaijiVector {
+                    tag: TaijiTypeTag::U64,
                     len: expected_outputs.len(),
                     cap: expected_outputs.capacity(),
                     ptr: expected_outputs.as_mut_ptr() as *mut c_void,
@@ -6008,8 +6008,8 @@ pub unsafe extern "C" fn wallet_preview_coin_join(
 /// This function will tell what the outcome of a coin split would be.
 ///
 /// ## Arguments
-/// * `wallet` - The TariWallet pointer
-/// * `commitments` - A `TariVector` of "strings", tagged as `TariTypeTag::String`, containing commitment's hex values
+/// * `wallet` - The TaijiWallet pointer
+/// * `commitments` - A `TaijiVector` of "strings", tagged as `TaijiTypeTag::String`, containing commitment's hex values
 ///   (see `Commitment::to_hex()`)
 /// * `number_of_splits` - The number of times to split the amount
 /// * `fee_per_gram` - The transaction fee
@@ -6017,18 +6017,18 @@ pub unsafe extern "C" fn wallet_preview_coin_join(
 ///   Functions as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariCoinPreview` - A struct with expected output values and the fee.
+/// `*mut TaijiCoinPreview` - A struct with expected output values and the fee.
 ///
 /// # Safety
-/// `TariVector` must be freed after use with `destroy_tari_vector()`
+/// `TaijiVector` must be freed after use with `destroy_taiji_vector()`
 #[no_mangle]
 pub unsafe extern "C" fn wallet_preview_coin_split(
-    wallet: *mut TariWallet,
-    commitments: *mut TariVector,
+    wallet: *mut TaijiWallet,
+    commitments: *mut TaijiVector,
     number_of_splits: usize,
     fee_per_gram: u64,
     error_ptr: *mut i32,
-) -> *mut TariCoinPreview {
+) -> *mut TaijiCoinPreview {
     if wallet.is_null() {
         error!(target: LOG_TARGET, "wallet pointer is null");
         ptr::replace(
@@ -6050,7 +6050,7 @@ pub unsafe extern "C" fn wallet_preview_coin_split(
         Some(cs) => match cs.to_commitment_vec() {
             Ok(cs) => cs,
             Err(e) => {
-                error!(target: LOG_TARGET, "failed to convert from tari vector: {:?}", e);
+                error!(target: LOG_TARGET, "failed to convert from taiji vector: {:?}", e);
                 ptr::replace(error_ptr, LibWalletError::from(e).code as c_int);
                 return ptr::null_mut();
             },
@@ -6062,15 +6062,15 @@ pub unsafe extern "C" fn wallet_preview_coin_split(
         .block_on((*wallet).wallet.preview_coin_split_with_commitments_no_amount(
             commitments,
             number_of_splits,
-            MicroMinotari(fee_per_gram),
+            MicroMinotaiji(fee_per_gram),
         )) {
         Ok((expected_outputs, fee)) => {
             ptr::replace(error_ptr, 0);
             let mut expected_outputs = ManuallyDrop::new(expected_outputs);
 
-            Box::into_raw(Box::new(TariCoinPreview {
-                expected_outputs: Box::into_raw(Box::new(TariVector {
-                    tag: TariTypeTag::U64,
+            Box::into_raw(Box::new(TaijiCoinPreview {
+                expected_outputs: Box::into_raw(Box::new(TaijiVector {
+                    tag: TaijiTypeTag::U64,
                     len: expected_outputs.len(),
                     cap: expected_outputs.capacity(),
                     ptr: expected_outputs.as_mut_ptr() as *mut c_void,
@@ -6089,10 +6089,10 @@ pub unsafe extern "C" fn wallet_preview_coin_split(
     }
 }
 
-/// Signs a message using the public key of the TariWallet
+/// Signs a message using the public key of the TaijiWallet
 ///
 /// ## Arguments
-/// `wallet` - The TariWallet pointer.
+/// `wallet` - The TaijiWallet pointer.
 /// `msg` - The message pointer.
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
@@ -6104,7 +6104,7 @@ pub unsafe extern "C" fn wallet_preview_coin_split(
 /// The ```string_destroy``` method must be called when finished with a string coming from rust to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn wallet_sign_message(
-    wallet: *mut TariWallet,
+    wallet: *mut TaijiWallet,
     msg: *const c_char,
     error_out: *mut c_int,
 ) -> *mut c_char {
@@ -6148,11 +6148,11 @@ pub unsafe extern "C" fn wallet_sign_message(
     result.into_raw()
 }
 
-/// Verifies the signature of the message signed by a TariWallet
+/// Verifies the signature of the message signed by a TaijiWallet
 ///
 /// ## Arguments
-/// `wallet` - The TariWallet pointer.
-/// `public_key` - The pointer to the TariPublicKey of the wallet which originally signed the message
+/// `wallet` - The TaijiWallet pointer.
+/// `public_key` - The pointer to the TaijiPublicKey of the wallet which originally signed the message
 /// `hex_sig_nonce` - The pointer to the sting containing the hexadecimal representation of the
 /// signature and public nonce seperated by a pipe character.
 /// `msg` - The pointer to the msg the signature will be checked against.
@@ -6165,8 +6165,8 @@ pub unsafe extern "C" fn wallet_sign_message(
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn wallet_verify_message_signature(
-    wallet: *mut TariWallet,
-    public_key: *mut TariPublicKey,
+    wallet: *mut TaijiWallet,
+    public_key: *mut TaijiPublicKey,
     hex_sig_nonce: *const c_char,
     msg: *const c_char,
     error_out: *mut c_int,
@@ -6220,10 +6220,10 @@ pub unsafe extern "C" fn wallet_verify_message_signature(
 
     if let Some(key1) = hex_keys.first() {
         if let Some(key2) = hex_keys.get(1) {
-            let secret = TariPrivateKey::from_hex(key1);
+            let secret = TaijiPrivateKey::from_hex(key1);
             match secret {
                 Ok(p) => {
-                    let public_nonce = TariPublicKey::from_hex(key2);
+                    let public_nonce = TaijiPublicKey::from_hex(key2);
                     match public_nonce {
                         Ok(pn) => {
                             let sig = SignatureWithDomain::<WalletMessageSigningDomain>::new(pn, p);
@@ -6252,11 +6252,11 @@ pub unsafe extern "C" fn wallet_verify_message_signature(
     result
 }
 
-/// Adds a base node peer to the TariWallet
+/// Adds a base node peer to the TaijiWallet
 ///
 /// ## Arguments
-/// `wallet` - The TariWallet pointer
-/// `public_key` - The TariPublicKey pointer
+/// `wallet` - The TaijiWallet pointer
+/// `public_key` - The TaijiPublicKey pointer
 /// `address` - The pointer to a char array
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
@@ -6268,8 +6268,8 @@ pub unsafe extern "C" fn wallet_verify_message_signature(
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn wallet_add_base_node_peer(
-    wallet: *mut TariWallet,
-    public_key: *mut TariPublicKey,
+    wallet: *mut TaijiWallet,
+    public_key: *mut TaijiPublicKey,
     address: *const c_char,
     error_out: *mut c_int,
 ) -> bool {
@@ -6324,12 +6324,12 @@ pub unsafe extern "C" fn wallet_add_base_node_peer(
     true
 }
 
-/// Upserts a TariContact to the TariWallet. If the contact does not exist it will be Inserted. If it does exist the
+/// Upserts a TaijiContact to the TaijiWallet. If the contact does not exist it will be Inserted. If it does exist the
 /// Alias will be updated.
 ///
 /// ## Arguments
-/// `wallet` - The TariWallet pointer
-/// `contact` - The TariContact pointer
+/// `wallet` - The TaijiWallet pointer
+/// `contact` - The TaijiContact pointer
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -6340,8 +6340,8 @@ pub unsafe extern "C" fn wallet_add_base_node_peer(
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn wallet_upsert_contact(
-    wallet: *mut TariWallet,
-    contact: *mut TariContact,
+    wallet: *mut TaijiWallet,
+    contact: *mut TaijiContact,
     error_out: *mut c_int,
 ) -> bool {
     let mut error = 0;
@@ -6370,11 +6370,11 @@ pub unsafe extern "C" fn wallet_upsert_contact(
     }
 }
 
-/// Removes a TariContact from the TariWallet
+/// Removes a TaijiContact from the TaijiWallet
 ///
 /// ## Arguments
-/// `wallet` - The TariWallet pointer
-/// `tx` - The TariPendingInboundTransaction pointer
+/// `wallet` - The TaijiWallet pointer
+/// `tx` - The TaijiPendingInboundTransaction pointer
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -6385,8 +6385,8 @@ pub unsafe extern "C" fn wallet_upsert_contact(
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn wallet_remove_contact(
-    wallet: *mut TariWallet,
-    contact: *mut TariContact,
+    wallet: *mut TaijiWallet,
+    contact: *mut TaijiContact,
     error_out: *mut c_int,
 ) -> bool {
     let mut error = 0;
@@ -6417,10 +6417,10 @@ pub unsafe extern "C" fn wallet_remove_contact(
     }
 }
 
-/// Gets the available balance from a TariBalance. This is the balance the user can spend.
+/// Gets the available balance from a TaijiBalance. This is the balance the user can spend.
 ///
 /// ## Arguments
-/// `balance` - The TariBalance pointer
+/// `balance` - The TaijiBalance pointer
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -6430,7 +6430,7 @@ pub unsafe extern "C" fn wallet_remove_contact(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn balance_get_available(balance: *mut TariBalance, error_out: *mut c_int) -> c_ulonglong {
+pub unsafe extern "C" fn balance_get_available(balance: *mut TaijiBalance, error_out: *mut c_int) -> c_ulonglong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if balance.is_null() {
@@ -6442,10 +6442,10 @@ pub unsafe extern "C" fn balance_get_available(balance: *mut TariBalance, error_
     c_ulonglong::from((*balance).available_balance)
 }
 
-/// Gets the time locked balance from a TariBalance. This is the balance the user can spend.
+/// Gets the time locked balance from a TaijiBalance. This is the balance the user can spend.
 ///
 /// ## Arguments
-/// `balance` - The TariBalance pointer
+/// `balance` - The TaijiBalance pointer
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -6455,7 +6455,7 @@ pub unsafe extern "C" fn balance_get_available(balance: *mut TariBalance, error_
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn balance_get_time_locked(balance: *mut TariBalance, error_out: *mut c_int) -> c_ulonglong {
+pub unsafe extern "C" fn balance_get_time_locked(balance: *mut TaijiBalance, error_out: *mut c_int) -> c_ulonglong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if balance.is_null() {
@@ -6467,15 +6467,15 @@ pub unsafe extern "C" fn balance_get_time_locked(balance: *mut TariBalance, erro
     let b = if let Some(bal) = (*balance).time_locked_balance {
         bal
     } else {
-        MicroMinotari::from(0)
+        MicroMinotaiji::from(0)
     };
     c_ulonglong::from(b)
 }
 
-/// Gets the pending incoming balance from a TariBalance. This is the balance the user can spend.
+/// Gets the pending incoming balance from a TaijiBalance. This is the balance the user can spend.
 ///
 /// ## Arguments
-/// `balance` - The TariBalance pointer
+/// `balance` - The TaijiBalance pointer
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -6485,7 +6485,7 @@ pub unsafe extern "C" fn balance_get_time_locked(balance: *mut TariBalance, erro
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn balance_get_pending_incoming(balance: *mut TariBalance, error_out: *mut c_int) -> c_ulonglong {
+pub unsafe extern "C" fn balance_get_pending_incoming(balance: *mut TaijiBalance, error_out: *mut c_int) -> c_ulonglong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if balance.is_null() {
@@ -6497,10 +6497,10 @@ pub unsafe extern "C" fn balance_get_pending_incoming(balance: *mut TariBalance,
     c_ulonglong::from((*balance).pending_incoming_balance)
 }
 
-/// Gets the pending outgoing balance from a TariBalance. This is the balance the user can spend.
+/// Gets the pending outgoing balance from a TaijiBalance. This is the balance the user can spend.
 ///
 /// ## Arguments
-/// `balance` - The TariBalance pointer
+/// `balance` - The TaijiBalance pointer
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -6510,7 +6510,7 @@ pub unsafe extern "C" fn balance_get_pending_incoming(balance: *mut TariBalance,
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn balance_get_pending_outgoing(balance: *mut TariBalance, error_out: *mut c_int) -> c_ulonglong {
+pub unsafe extern "C" fn balance_get_pending_outgoing(balance: *mut TaijiBalance, error_out: *mut c_int) -> c_ulonglong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if balance.is_null() {
@@ -6522,10 +6522,10 @@ pub unsafe extern "C" fn balance_get_pending_outgoing(balance: *mut TariBalance,
     c_ulonglong::from((*balance).pending_outgoing_balance)
 }
 
-/// Frees memory for a TariBalance
+/// Frees memory for a TaijiBalance
 ///
 /// ## Arguments
-/// `balance` - The pointer to a TariBalance
+/// `balance` - The pointer to a TaijiBalance
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -6533,19 +6533,19 @@ pub unsafe extern "C" fn balance_get_pending_outgoing(balance: *mut TariBalance,
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn balance_destroy(balance: *mut TariBalance) {
+pub unsafe extern "C" fn balance_destroy(balance: *mut TaijiBalance) {
     if !balance.is_null() {
         drop(Box::from_raw(balance))
     }
 }
 
-/// Sends a TariPendingOutboundTransaction
+/// Sends a TaijiPendingOutboundTransaction
 ///
 /// ## Arguments
-/// `wallet` - The TariWallet pointer
-/// `destination` - The TariWalletAddress pointer of the peer
+/// `wallet` - The TaijiWallet pointer
+/// `destination` - The TaijiWalletAddress pointer of the peer
 /// `amount` - The amount
-/// `commitments` - A `TariVector` of "strings", tagged as `TariTypeTag::String`, containing commitment's hex values
+/// `commitments` - A `TaijiVector` of "strings", tagged as `TaijiTypeTag::String`, containing commitment's hex values
 ///   (see `Commitment::to_hex()`)
 /// `fee_per_gram` - The transaction fee
 /// `message` - The pointer to a char array
@@ -6559,10 +6559,10 @@ pub unsafe extern "C" fn balance_destroy(balance: *mut TariBalance) {
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn wallet_send_transaction(
-    wallet: *mut TariWallet,
-    destination: *mut TariWalletAddress,
+    wallet: *mut TaijiWallet,
+    destination: *mut TaijiWalletAddress,
     amount: c_ulonglong,
-    commitments: *mut TariVector,
+    commitments: *mut TaijiVector,
     fee_per_gram: c_ulonglong,
     message: *const c_char,
     one_sided: bool,
@@ -6587,7 +6587,7 @@ pub unsafe extern "C" fn wallet_send_transaction(
         Some(cs) => match cs.to_commitment_vec() {
             Ok(cs) => UtxoSelectionCriteria::specific(cs),
             Err(e) => {
-                error!(target: LOG_TARGET, "failed to convert from tari vector: {:?}", e);
+                error!(target: LOG_TARGET, "failed to convert from taiji vector: {:?}", e);
                 ptr::replace(error_out, LibWalletError::from(e).code as c_int);
                 return 0;
             },
@@ -6627,10 +6627,10 @@ pub unsafe extern "C" fn wallet_send_transaction(
                 .transaction_service
                 .send_one_sided_to_stealth_address_transaction(
                     (*destination).clone(),
-                    MicroMinotari::from(amount),
+                    MicroMinotaiji::from(amount),
                     selection_criteria,
                     OutputFeatures::default(),
-                    MicroMinotari::from(fee_per_gram),
+                    MicroMinotaiji::from(fee_per_gram),
                     message_string,
                 ),
         ) {
@@ -6646,10 +6646,10 @@ pub unsafe extern "C" fn wallet_send_transaction(
             .runtime
             .block_on((*wallet).wallet.transaction_service.send_transaction(
                 (*destination).clone(),
-                MicroMinotari::from(amount),
+                MicroMinotaiji::from(amount),
                 selection_criteria,
                 OutputFeatures::default(),
-                MicroMinotari::from(fee_per_gram),
+                MicroMinotaiji::from(fee_per_gram),
                 message_string,
             )) {
             Ok(tx_id) => tx_id.as_u64(),
@@ -6665,9 +6665,9 @@ pub unsafe extern "C" fn wallet_send_transaction(
 /// Gets a fee estimate for an amount
 ///
 /// ## Arguments
-/// `wallet` - The TariWallet pointer
+/// `wallet` - The TaijiWallet pointer
 /// `amount` - The amount
-/// `commitments` - A `TariVector` of "strings", tagged as `TariTypeTag::String`, containing commitment's hex values
+/// `commitments` - A `TaijiVector` of "strings", tagged as `TaijiTypeTag::String`, containing commitment's hex values
 ///   (see `Commitment::to_hex()`)
 /// `fee_per_gram` - The fee per gram
 /// `num_kernels` - The number of transaction kernels
@@ -6676,15 +6676,15 @@ pub unsafe extern "C" fn wallet_send_transaction(
 /// as an out parameter.
 ///
 /// ## Returns
-/// `unsigned long long` - Returns 0 if unsuccessful or the fee estimate in MicroMinotari if successful
+/// `unsigned long long` - Returns 0 if unsuccessful or the fee estimate in MicroMinotaiji if successful
 ///
 /// # Safety
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_fee_estimate(
-    wallet: *mut TariWallet,
+    wallet: *mut TaijiWallet,
     amount: c_ulonglong,
-    commitments: *mut TariVector,
+    commitments: *mut TaijiVector,
     fee_per_gram: c_ulonglong,
     num_kernels: c_uint,
     num_outputs: c_uint,
@@ -6703,7 +6703,7 @@ pub unsafe extern "C" fn wallet_get_fee_estimate(
         Some(cs) => match cs.to_commitment_vec() {
             Ok(cs) => UtxoSelectionCriteria::specific(cs),
             Err(e) => {
-                error!(target: LOG_TARGET, "failed to convert from tari vector: {:?}", e);
+                error!(target: LOG_TARGET, "failed to convert from taiji vector: {:?}", e);
                 ptr::replace(error_out, LibWalletError::from(e).code as c_int);
                 return 0;
             },
@@ -6713,9 +6713,9 @@ pub unsafe extern "C" fn wallet_get_fee_estimate(
     match (*wallet)
         .runtime
         .block_on((*wallet).wallet.output_manager_service.fee_estimate(
-            MicroMinotari::from(amount),
+            MicroMinotaiji::from(amount),
             selection_criteria,
-            MicroMinotari::from(fee_per_gram),
+            MicroMinotaiji::from(fee_per_gram),
             num_kernels as usize,
             num_outputs as usize,
         )) {
@@ -6731,7 +6731,7 @@ pub unsafe extern "C" fn wallet_get_fee_estimate(
 /// Gets the number of mining confirmations required
 ///
 /// ## Arguments
-/// `wallet` - The TariWallet pointer
+/// `wallet` - The TaijiWallet pointer
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -6742,7 +6742,7 @@ pub unsafe extern "C" fn wallet_get_fee_estimate(
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_num_confirmations_required(
-    wallet: *mut TariWallet,
+    wallet: *mut TaijiWallet,
     error_out: *mut c_int,
 ) -> c_ulonglong {
     let mut error = 0;
@@ -6769,7 +6769,7 @@ pub unsafe extern "C" fn wallet_get_num_confirmations_required(
 /// Sets the number of mining confirmations required
 ///
 /// ## Arguments
-/// `wallet` - The TariWallet pointer
+/// `wallet` - The TaijiWallet pointer
 /// `num` - The number of confirmations to require
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
@@ -6781,7 +6781,7 @@ pub unsafe extern "C" fn wallet_get_num_confirmations_required(
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn wallet_set_num_confirmations_required(
-    wallet: *mut TariWallet,
+    wallet: *mut TaijiWallet,
     num: c_ulonglong,
     error_out: *mut c_int,
 ) {
@@ -6804,21 +6804,21 @@ pub unsafe extern "C" fn wallet_set_num_confirmations_required(
     }
 }
 
-/// Get the TariContacts from a TariWallet
+/// Get the TaijiContacts from a TaijiWallet
 ///
 /// ## Arguments
-/// `wallet` - The TariWallet pointer
+/// `wallet` - The TaijiWallet pointer
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariContacts` - returns the contacts, note that it returns ptr::null_mut() if
+/// `*mut TaijiContacts` - returns the contacts, note that it returns ptr::null_mut() if
 /// wallet is null
 ///
 /// # Safety
-/// The ```contacts_destroy``` method must be called when finished with a TariContacts to prevent a memory leak
+/// The ```contacts_destroy``` method must be called when finished with a TaijiContacts to prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn wallet_get_contacts(wallet: *mut TariWallet, error_out: *mut c_int) -> *mut TariContacts {
+pub unsafe extern "C" fn wallet_get_contacts(wallet: *mut TaijiWallet, error_out: *mut c_int) -> *mut TaijiContacts {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     let mut contacts = Vec::new();
@@ -6834,7 +6834,7 @@ pub unsafe extern "C" fn wallet_get_contacts(wallet: *mut TariWallet, error_out:
     match retrieved_contacts {
         Ok(mut retrieved_contacts) => {
             contacts.append(&mut retrieved_contacts);
-            Box::into_raw(Box::new(TariContacts(contacts)))
+            Box::into_raw(Box::new(TaijiContacts(contacts)))
         },
         Err(e) => {
             error = LibWalletError::from(WalletError::ContactsServiceError(e)).code;
@@ -6844,25 +6844,25 @@ pub unsafe extern "C" fn wallet_get_contacts(wallet: *mut TariWallet, error_out:
     }
 }
 
-/// Get the TariCompletedTransactions from a TariWallet
+/// Get the TaijiCompletedTransactions from a TaijiWallet
 ///
 /// ## Arguments
-/// `wallet` - The TariWallet pointer
+/// `wallet` - The TaijiWallet pointer
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariCompletedTransactions` - returns the transactions, note that it returns ptr::null_mut() if
+/// `*mut TaijiCompletedTransactions` - returns the transactions, note that it returns ptr::null_mut() if
 /// wallet is null or an error is encountered
 ///
 /// # Safety
-/// The ```completed_transactions_destroy``` method must be called when finished with a TariCompletedTransactions to
+/// The ```completed_transactions_destroy``` method must be called when finished with a TaijiCompletedTransactions to
 /// prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_completed_transactions(
-    wallet: *mut TariWallet,
+    wallet: *mut TaijiWallet,
     error_out: *mut c_int,
-) -> *mut TariCompletedTransactions {
+) -> *mut TaijiCompletedTransactions {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     let mut completed = Vec::new();
@@ -6889,7 +6889,7 @@ pub unsafe extern "C" fn wallet_get_completed_transactions(
             {
                 completed.push(tx.clone());
             }
-            Box::into_raw(Box::new(TariCompletedTransactions(completed)))
+            Box::into_raw(Box::new(TaijiCompletedTransactions(completed)))
         },
         Err(e) => {
             error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
@@ -6899,27 +6899,27 @@ pub unsafe extern "C" fn wallet_get_completed_transactions(
     }
 }
 
-/// Get the TariPendingInboundTransactions from a TariWallet
+/// Get the TaijiPendingInboundTransactions from a TaijiWallet
 ///
 /// Currently a CompletedTransaction with the Status of Completed and Broadcast is considered Pending by the frontend
 ///
 /// ## Arguments
-/// `wallet` - The TariWallet pointer
+/// `wallet` - The TaijiWallet pointer
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariPendingInboundTransactions` - returns the transactions, note that it returns ptr::null_mut() if
+/// `*mut TaijiPendingInboundTransactions` - returns the transactions, note that it returns ptr::null_mut() if
 /// wallet is null or and error is encountered
 ///
 /// # Safety
 /// The ```pending_inbound_transactions_destroy``` method must be called when finished with a
-/// TariPendingInboundTransactions to prevent a memory leak
+/// TaijiPendingInboundTransactions to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_pending_inbound_transactions(
-    wallet: *mut TariWallet,
+    wallet: *mut TaijiWallet,
     error_out: *mut c_int,
-) -> *mut TariPendingInboundTransactions {
+) -> *mut TaijiPendingInboundTransactions {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     let mut pending = Vec::new();
@@ -6960,7 +6960,7 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transactions(
                 }
             }
 
-            Box::into_raw(Box::new(TariPendingInboundTransactions(pending)))
+            Box::into_raw(Box::new(TaijiPendingInboundTransactions(pending)))
         },
         Err(e) => {
             error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
@@ -6970,27 +6970,27 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transactions(
     }
 }
 
-/// Get the TariPendingOutboundTransactions from a TariWallet
+/// Get the TaijiPendingOutboundTransactions from a TaijiWallet
 ///
 /// Currently a CompletedTransaction with the Status of Completed and Broadcast is considered Pending by the frontend
 ///
 /// ## Arguments
-/// `wallet` - The TariWallet pointer
+/// `wallet` - The TaijiWallet pointer
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariPendingOutboundTransactions` - returns the transactions, note that it returns ptr::null_mut() if
+/// `*mut TaijiPendingOutboundTransactions` - returns the transactions, note that it returns ptr::null_mut() if
 /// wallet is null or and error is encountered
 ///
 /// # Safety
 /// The ```pending_outbound_transactions_destroy``` method must be called when finished with a
-/// TariPendingOutboundTransactions to prevent a memory leak
+/// TaijiPendingOutboundTransactions to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_pending_outbound_transactions(
-    wallet: *mut TariWallet,
+    wallet: *mut TaijiWallet,
     error_out: *mut c_int,
-) -> *mut TariPendingOutboundTransactions {
+) -> *mut TaijiPendingOutboundTransactions {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     let mut pending = Vec::new();
@@ -7024,7 +7024,7 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transactions(
                     pending.push(OutboundTransaction::from(ct.clone()));
                 }
             }
-            Box::into_raw(Box::new(TariPendingOutboundTransactions(pending)))
+            Box::into_raw(Box::new(TaijiPendingOutboundTransactions(pending)))
         },
         Err(e) => {
             error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
@@ -7034,26 +7034,26 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transactions(
     }
 }
 
-/// Get the all Cancelled Transactions from a TariWallet. This function will also get cancelled pending inbound and
+/// Get the all Cancelled Transactions from a TaijiWallet. This function will also get cancelled pending inbound and
 /// outbound transaction and include them in this list by converting them to CompletedTransactions
 ///
 /// ## Arguments
-/// `wallet` - The TariWallet pointer
+/// `wallet` - The TaijiWallet pointer
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariCompletedTransactions` - returns the transactions, note that it returns ptr::null_mut() if
+/// `*mut TaijiCompletedTransactions` - returns the transactions, note that it returns ptr::null_mut() if
 /// wallet is null or an error is encountered
 ///
 /// # Safety
-/// The ```completed_transactions_destroy``` method must be called when finished with a TariCompletedTransactions to
+/// The ```completed_transactions_destroy``` method must be called when finished with a TaijiCompletedTransactions to
 /// prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_cancelled_transactions(
-    wallet: *mut TariWallet,
+    wallet: *mut TaijiWallet,
     error_out: *mut c_int,
-) -> *mut TariCompletedTransactions {
+) -> *mut TaijiCompletedTransactions {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -7107,7 +7107,7 @@ pub unsafe extern "C" fn wallet_get_cancelled_transactions(
     for tx in completed_transactions.values() {
         completed.push(tx.clone());
     }
-    let wallet_address = TariAddress::new(
+    let wallet_address = TaijiAddress::new(
         (*wallet).wallet.comms.node_identity().public_key().clone(),
         (*wallet).wallet.network.as_network(),
     );
@@ -7122,30 +7122,30 @@ pub unsafe extern "C" fn wallet_get_cancelled_transactions(
         completed.push(outbound_tx);
     }
 
-    Box::into_raw(Box::new(TariCompletedTransactions(completed)))
+    Box::into_raw(Box::new(TaijiCompletedTransactions(completed)))
 }
 
-/// Get the TariCompletedTransaction from a TariWallet by its' TransactionId
+/// Get the TaijiCompletedTransaction from a TaijiWallet by its' TransactionId
 ///
 /// ## Arguments
-/// `wallet` - The TariWallet pointer
+/// `wallet` - The TaijiWallet pointer
 /// `transaction_id` - The TransactionId
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariCompletedTransaction` - returns the transaction, note that it returns ptr::null_mut() if
+/// `*mut TaijiCompletedTransaction` - returns the transaction, note that it returns ptr::null_mut() if
 /// wallet is null, an error is encountered or if the transaction is not found
 ///
 /// # Safety
-/// The ```completed_transaction_destroy``` method must be called when finished with a TariCompletedTransaction to
+/// The ```completed_transaction_destroy``` method must be called when finished with a TaijiCompletedTransaction to
 /// prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_completed_transaction_by_id(
-    wallet: *mut TariWallet,
+    wallet: *mut TaijiWallet,
     transaction_id: c_ulonglong,
     error_out: *mut c_int,
-) -> *mut TariCompletedTransaction {
+) -> *mut TaijiCompletedTransaction {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
@@ -7178,27 +7178,27 @@ pub unsafe extern "C" fn wallet_get_completed_transaction_by_id(
     ptr::null_mut()
 }
 
-/// Get the TariPendingInboundTransaction from a TariWallet by its' TransactionId
+/// Get the TaijiPendingInboundTransaction from a TaijiWallet by its' TransactionId
 ///
 /// ## Arguments
-/// `wallet` - The TariWallet pointer
+/// `wallet` - The TaijiWallet pointer
 /// `transaction_id` - The TransactionId
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariPendingInboundTransaction` - returns the transaction, note that it returns ptr::null_mut() if
+/// `*mut TaijiPendingInboundTransaction` - returns the transaction, note that it returns ptr::null_mut() if
 /// wallet is null, an error is encountered or if the transaction is not found
 ///
 /// # Safety
 /// The ```pending_inbound_transaction_destroy``` method must be called when finished with a
-/// TariPendingInboundTransaction to prevent a memory leak
+/// TaijiPendingInboundTransaction to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_pending_inbound_transaction_by_id(
-    wallet: *mut TariWallet,
+    wallet: *mut TaijiWallet,
     transaction_id: c_ulonglong,
     error_out: *mut c_int,
-) -> *mut TariPendingInboundTransaction {
+) -> *mut TaijiPendingInboundTransaction {
     let mut error = 0;
     let transaction_id = TxId::from(transaction_id);
     ptr::swap(error_out, &mut error as *mut c_int);
@@ -7223,7 +7223,7 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transaction_by_id(
                     tx.direction == TransactionDirection::Inbound
                 {
                     let completed = tx.clone();
-                    let pending_tx = TariPendingInboundTransaction::from(completed);
+                    let pending_tx = TaijiPendingInboundTransaction::from(completed);
                     return Box::into_raw(Box::new(pending_tx));
                 }
             }
@@ -7252,27 +7252,27 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transaction_by_id(
     ptr::null_mut()
 }
 
-/// Get the TariPendingOutboundTransaction from a TariWallet by its' TransactionId
+/// Get the TaijiPendingOutboundTransaction from a TaijiWallet by its' TransactionId
 ///
 /// ## Arguments
-/// `wallet` - The TariWallet pointer
+/// `wallet` - The TaijiWallet pointer
 /// `transaction_id` - The TransactionId
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariPendingOutboundTransaction` - returns the transaction, note that it returns ptr::null_mut() if
+/// `*mut TaijiPendingOutboundTransaction` - returns the transaction, note that it returns ptr::null_mut() if
 /// wallet is null, an error is encountered or if the transaction is not found
 ///
 /// # Safety
 /// The ```pending_outbound_transaction_destroy``` method must be called when finished with a
-/// TariPendingOutboundtransaction to prevent a memory leak
+/// TaijiPendingOutboundtransaction to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_pending_outbound_transaction_by_id(
-    wallet: *mut TariWallet,
+    wallet: *mut TaijiWallet,
     transaction_id: c_ulonglong,
     error_out: *mut c_int,
-) -> *mut TariPendingOutboundTransaction {
+) -> *mut TaijiPendingOutboundTransaction {
     let mut error = 0;
     let transaction_id = TxId::from(transaction_id);
     ptr::swap(error_out, &mut error as *mut c_int);
@@ -7297,7 +7297,7 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transaction_by_id(
                     tx.direction == TransactionDirection::Outbound
                 {
                     let completed = tx.clone();
-                    let pending_tx = TariPendingOutboundTransaction::from(completed);
+                    let pending_tx = TaijiPendingOutboundTransaction::from(completed);
                     return Box::into_raw(Box::new(pending_tx));
                 }
             }
@@ -7326,28 +7326,28 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transaction_by_id(
     ptr::null_mut()
 }
 
-/// Get a Cancelled transaction from a TariWallet by its TransactionId. Pending Inbound or Outbound transaction will be
+/// Get a Cancelled transaction from a TaijiWallet by its TransactionId. Pending Inbound or Outbound transaction will be
 /// converted to a CompletedTransaction
 ///
 /// ## Arguments
-/// `wallet` - The TariWallet pointer
+/// `wallet` - The TaijiWallet pointer
 /// `transaction_id` - The TransactionId
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariCompletedTransaction` - returns the transaction, note that it returns ptr::null_mut() if
+/// `*mut TaijiCompletedTransaction` - returns the transaction, note that it returns ptr::null_mut() if
 /// wallet is null, an error is encountered or if the transaction is not found
 ///
 /// # Safety
-/// The ```completed_transaction_destroy``` method must be called when finished with a TariCompletedTransaction to
+/// The ```completed_transaction_destroy``` method must be called when finished with a TaijiCompletedTransaction to
 /// prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_cancelled_transaction_by_id(
-    wallet: *mut TariWallet,
+    wallet: *mut TaijiWallet,
     transaction_id: c_ulonglong,
     error_out: *mut c_int,
-) -> *mut TariCompletedTransaction {
+) -> *mut TaijiCompletedTransaction {
     let mut error = 0;
     let transaction_id = TxId::from(transaction_id);
     ptr::swap(error_out, &mut error as *mut c_int);
@@ -7390,7 +7390,7 @@ pub unsafe extern "C" fn wallet_get_cancelled_transaction_by_id(
             },
         };
         let network = (*wallet).wallet.network.as_network();
-        let address = TariWalletAddress::new((*wallet).wallet.comms.node_identity().public_key().clone(), network);
+        let address = TaijiWalletAddress::new((*wallet).wallet.comms.node_identity().public_key().clone(), network);
         if let Some(tx) = outbound_transactions.remove(&transaction_id) {
             let mut outbound_tx = CompletedTransaction::from(tx);
             outbound_tx.source_address = address;
@@ -7433,24 +7433,24 @@ pub unsafe extern "C" fn wallet_get_cancelled_transaction_by_id(
     ptr::null_mut()
 }
 
-/// Get the TariWalletAddress from a TariWallet
+/// Get the TaijiWalletAddress from a TaijiWallet
 ///
 /// ## Arguments
-/// `wallet` - The TariWallet pointer
+/// `wallet` - The TaijiWallet pointer
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariWalletAddress` - returns the address, note that ptr::null_mut() is returned
+/// `*mut TaijiWalletAddress` - returns the address, note that ptr::null_mut() is returned
 /// if wc is null
 ///
 /// # Safety
-/// The ```tari_address_destroy``` method must be called when finished with a TariWalletAddress to prevent a memory leak
+/// The ```taiji_address_destroy``` method must be called when finished with a TaijiWalletAddress to prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn wallet_get_tari_address(
-    wallet: *mut TariWallet,
+pub unsafe extern "C" fn wallet_get_taiji_address(
+    wallet: *mut TaijiWallet,
     error_out: *mut c_int,
-) -> *mut TariWalletAddress {
+) -> *mut TaijiWalletAddress {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
@@ -7460,14 +7460,14 @@ pub unsafe extern "C" fn wallet_get_tari_address(
     }
     let network = (*wallet).wallet.network.as_network();
     let pk = (*wallet).wallet.comms.node_identity().public_key().clone();
-    let address = TariWalletAddress::new(pk, network);
+    let address = TaijiWalletAddress::new(pk, network);
     Box::into_raw(Box::new(address))
 }
 
 /// Cancel a Pending Transaction
 ///
 /// ## Arguments
-/// `wallet` - The TariWallet pointer
+/// `wallet` - The TaijiWallet pointer
 /// `transaction_id` - The TransactionId
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
@@ -7479,7 +7479,7 @@ pub unsafe extern "C" fn wallet_get_tari_address(
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn wallet_cancel_pending_transaction(
-    wallet: *mut TariWallet,
+    wallet: *mut TaijiWallet,
     transaction_id: c_ulonglong,
     error_out: *mut c_int,
 ) -> bool {
@@ -7510,7 +7510,7 @@ pub unsafe extern "C" fn wallet_cancel_pending_transaction(
 /// (TXOs).
 ///
 /// ## Arguments
-/// `wallet` - The TariWallet pointer
+/// `wallet` - The TaijiWallet pointer
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -7521,7 +7521,7 @@ pub unsafe extern "C" fn wallet_cancel_pending_transaction(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn wallet_start_txo_validation(wallet: *mut TariWallet, error_out: *mut c_int) -> c_ulonglong {
+pub unsafe extern "C" fn wallet_start_txo_validation(wallet: *mut TaijiWallet, error_out: *mut c_int) -> c_ulonglong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
@@ -7557,7 +7557,7 @@ pub unsafe extern "C" fn wallet_start_txo_validation(wallet: *mut TariWallet, er
 /// This function will tell the wallet to query the set base node to confirm the status of mined transactions.
 ///
 /// ## Arguments
-/// `wallet` - The TariWallet pointer
+/// `wallet` - The TaijiWallet pointer
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -7569,7 +7569,7 @@ pub unsafe extern "C" fn wallet_start_txo_validation(wallet: *mut TariWallet, er
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn wallet_start_transaction_validation(
-    wallet: *mut TariWallet,
+    wallet: *mut TaijiWallet,
     error_out: *mut c_int,
 ) -> c_ulonglong {
     let mut error = 0;
@@ -7608,7 +7608,7 @@ pub unsafe extern "C" fn wallet_start_transaction_validation(
 /// called after a successfuly Transaction Validation is complete
 ///
 /// ## Arguments
-/// `wallet` - The TariWallet pointer
+/// `wallet` - The TaijiWallet pointer
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -7618,7 +7618,7 @@ pub unsafe extern "C" fn wallet_start_transaction_validation(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn wallet_restart_transaction_broadcast(wallet: *mut TariWallet, error_out: *mut c_int) -> bool {
+pub unsafe extern "C" fn wallet_restart_transaction_broadcast(wallet: *mut TaijiWallet, error_out: *mut c_int) -> bool {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
@@ -7651,21 +7651,21 @@ pub unsafe extern "C" fn wallet_restart_transaction_broadcast(wallet: *mut TariW
     }
 }
 
-/// Gets the seed words representing the seed private key of the provided `TariWallet`.
+/// Gets the seed words representing the seed private key of the provided `TaijiWallet`.
 ///
 /// ## Arguments
-/// `wallet` - The TariWallet pointer
+/// `wallet` - The TaijiWallet pointer
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariSeedWords` - A collection of the seed words
+/// `*mut TaijiSeedWords` - A collection of the seed words
 ///
 /// # Safety
-/// The ```tari_seed_words_destroy``` method must be called when finished with a
-/// TariSeedWords to prevent a memory leak
+/// The ```taiji_seed_words_destroy``` method must be called when finished with a
+/// TaijiSeedWords to prevent a memory leak
 #[no_mangle]
-pub unsafe extern "C" fn wallet_get_seed_words(wallet: *mut TariWallet, error_out: *mut c_int) -> *mut TariSeedWords {
+pub unsafe extern "C" fn wallet_get_seed_words(wallet: *mut TaijiWallet, error_out: *mut c_int) -> *mut TaijiSeedWords {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -7676,7 +7676,7 @@ pub unsafe extern "C" fn wallet_get_seed_words(wallet: *mut TariWallet, error_ou
     }
 
     match (*wallet).wallet.get_seed_words(&MnemonicLanguage::English) {
-        Ok(seed_words) => Box::into_raw(Box::new(TariSeedWords(seed_words))),
+        Ok(seed_words) => Box::into_raw(Box::new(TaijiSeedWords(seed_words))),
         Err(e) => {
             error = LibWalletError::from(e).code;
             ptr::swap(error_out, &mut error as *mut c_int);
@@ -7689,13 +7689,13 @@ pub unsafe extern "C" fn wallet_get_seed_words(wallet: *mut TariWallet, error_ou
 /// performs to conserve power
 ///
 /// ## Arguments
-/// `wallet` - The TariWallet pointer
+/// `wallet` - The TaijiWallet pointer
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn wallet_set_low_power_mode(wallet: *mut TariWallet, error_out: *mut c_int) {
+pub unsafe extern "C" fn wallet_set_low_power_mode(wallet: *mut TaijiWallet, error_out: *mut c_int) {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
@@ -7716,13 +7716,13 @@ pub unsafe extern "C" fn wallet_set_low_power_mode(wallet: *mut TariWallet, erro
 /// Set the power mode of the wallet to Normal Power mode which will then use the standard level of network traffic
 ///
 /// ## Arguments
-/// `wallet` - The TariWallet pointer
+/// `wallet` - The TaijiWallet pointer
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn wallet_set_normal_power_mode(wallet: *mut TariWallet, error_out: *mut c_int) {
+pub unsafe extern "C" fn wallet_set_normal_power_mode(wallet: *mut TaijiWallet, error_out: *mut c_int) {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
@@ -7743,7 +7743,7 @@ pub unsafe extern "C" fn wallet_set_normal_power_mode(wallet: *mut TariWallet, e
 /// Set a Key Value in the Wallet storage used for Client Key Value store
 ///
 /// ## Arguments
-/// `wallet` - The TariWallet pointer.
+/// `wallet` - The TaijiWallet pointer.
 /// `key` - The pointer to a Utf8 string representing the Key
 /// `value` - The pointer to a Utf8 string representing the Value ot be stored
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
@@ -7757,7 +7757,7 @@ pub unsafe extern "C" fn wallet_set_normal_power_mode(wallet: *mut TariWallet, e
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn wallet_set_key_value(
-    wallet: *mut TariWallet,
+    wallet: *mut TaijiWallet,
     key: *const c_char,
     value: *const c_char,
     error_out: *mut c_int,
@@ -7820,7 +7820,7 @@ pub unsafe extern "C" fn wallet_set_key_value(
 /// get a stored Value that was previously stored in the Wallet storage used for Client Key Value store
 ///
 /// ## Arguments
-/// `wallet` - The TariWallet pointer.
+/// `wallet` - The TaijiWallet pointer.
 /// `key` - The pointer to a Utf8 string representing the Key
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
@@ -7833,7 +7833,7 @@ pub unsafe extern "C" fn wallet_set_key_value(
 /// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_value(
-    wallet: *mut TariWallet,
+    wallet: *mut TaijiWallet,
     key: *const c_char,
     error_out: *mut c_int,
 ) -> *mut c_char {
@@ -7887,7 +7887,7 @@ pub unsafe extern "C" fn wallet_get_value(
 /// Clears a Value for the provided Key Value in the Wallet storage used for Client Key Value store
 ///
 /// ## Arguments
-/// `wallet` - The TariWallet pointer.
+/// `wallet` - The TaijiWallet pointer.
 /// `key` - The pointer to a Utf8 string representing the Key
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
@@ -7900,7 +7900,7 @@ pub unsafe extern "C" fn wallet_get_value(
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn wallet_clear_value(
-    wallet: *mut TariWallet,
+    wallet: *mut TaijiWallet,
     key: *const c_char,
     error_out: *mut c_int,
 ) -> bool {
@@ -7944,7 +7944,7 @@ pub unsafe extern "C" fn wallet_clear_value(
 /// Check if a Wallet has the data of an In Progress Recovery in its database.
 ///
 /// ## Arguments
-/// `wallet` - The TariWallet pointer.
+/// `wallet` - The TaijiWallet pointer.
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -7955,7 +7955,7 @@ pub unsafe extern "C" fn wallet_clear_value(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn wallet_is_recovery_in_progress(wallet: *mut TariWallet, error_out: *mut c_int) -> bool {
+pub unsafe extern "C" fn wallet_is_recovery_in_progress(wallet: *mut TaijiWallet, error_out: *mut c_int) -> bool {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -7978,8 +7978,8 @@ pub unsafe extern "C" fn wallet_is_recovery_in_progress(wallet: *mut TariWallet,
 /// Starts the Wallet recovery process.
 ///
 /// ## Arguments
-/// `wallet` - The TariWallet pointer.
-/// `base_node_public_key` - The TariPublicKey pointer of the Base Node the recovery process will use
+/// `wallet` - The TaijiWallet pointer.
+/// `base_node_public_key` - The TaijiPublicKey pointer of the Base Node the recovery process will use
 /// `recovery_progress_callback` - The callback function pointer that will be used to asynchronously communicate
 /// progress to the client. The first argument of the callback is an event enum encoded as a u8 as follows:
 /// ```
@@ -7999,7 +7999,7 @@ pub unsafe extern "C" fn wallet_is_recovery_in_progress(wallet: *mut TariWallet,
 ///     - ConnectedToBaseNode, 0, 1
 ///     - ConnectionToBaseNodeFailed, number of retries, retry limit
 ///     - Progress, current block, total number of blocks
-///     - Completed, total number of UTXO's recovered, MicroMinotari recovered,
+///     - Completed, total number of UTXO's recovered, MicroMinotaiji recovered,
 ///     - ScanningRoundFailed, number of retries, retry limit
 ///     - RecoveryFailed, 0, 0
 ///
@@ -8010,7 +8010,7 @@ pub unsafe extern "C" fn wallet_is_recovery_in_progress(wallet: *mut TariWallet,
 ///       started
 ///     - In Progress callbacks will be of the form (n, m) where n < m
 ///     - If the process completed successfully then the final `Completed` callback will return how many UTXO's were
-///       scanned and how much MicroMinotari was recovered
+///       scanned and how much MicroMinotaiji was recovered
 ///     - If there is an error in the connection process then the `ConnectionToBaseNodeFailed` will be returned
 ///     - If there is a minor error in scanning then `ScanningRoundFailed` will be returned and another connection/sync
 ///       attempt will be made
@@ -8032,8 +8032,8 @@ pub unsafe extern "C" fn wallet_is_recovery_in_progress(wallet: *mut TariWallet,
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn wallet_start_recovery(
-    wallet: *mut TariWallet,
-    base_node_public_key: *mut TariPublicKey,
+    wallet: *mut TaijiWallet,
+    base_node_public_key: *mut TaijiPublicKey,
     recovery_progress_callback: unsafe extern "C" fn(u8, u64, u64),
     recovered_output_message: *const c_char,
     error_out: *mut c_int,
@@ -8048,7 +8048,7 @@ pub unsafe extern "C" fn wallet_start_recovery(
     }
 
     let shutdown_signal = (*wallet).shutdown.to_signal();
-    let peer_public_keys: Vec<TariPublicKey> = vec![(*base_node_public_key).clone()];
+    let peer_public_keys: Vec<TaijiPublicKey> = vec![(*base_node_public_key).clone()];
     let mut recovery_task_builder = UtxoScannerService::<WalletSqliteDatabase, WalletConnectivityHandle>::builder();
 
     if !recovered_output_message.is_null() {
@@ -8085,7 +8085,7 @@ pub unsafe extern "C" fn wallet_start_recovery(
 /// blockchain
 ///
 /// ## Arguments
-/// `wallet` - The TariWallet pointer.
+/// `wallet` - The TaijiWallet pointer.
 /// `message` - The pointer to a Utf8 string representing the Message
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
@@ -8098,7 +8098,7 @@ pub unsafe extern "C" fn wallet_start_recovery(
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn wallet_set_one_sided_payment_message(
-    wallet: *mut TariWallet,
+    wallet: *mut TaijiWallet,
     message: *const c_char,
     error_out: *mut c_int,
 ) -> bool {
@@ -8238,10 +8238,10 @@ pub unsafe extern "C" fn emoji_set_destroy(emoji_set: *mut EmojiSet) {
     }
 }
 
-/// Frees memory for a TariWallet
+/// Frees memory for a TaijiWallet
 ///
 /// ## Arguments
-/// `wallet` - The TariWallet pointer
+/// `wallet` - The TaijiWallet pointer
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -8249,7 +8249,7 @@ pub unsafe extern "C" fn emoji_set_destroy(emoji_set: *mut EmojiSet) {
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn wallet_destroy(wallet: *mut TariWallet) {
+pub unsafe extern "C" fn wallet_destroy(wallet: *mut TaijiWallet) {
     if !wallet.is_null() {
         let mut w = Box::from_raw(wallet);
         w.shutdown.trigger();
@@ -8289,27 +8289,27 @@ pub unsafe extern "C" fn log_debug_message(msg: *const c_char, error_out: *mut c
 
 /// ------------------------------------- FeePerGramStats ------------------------------------ ///
 
-/// Get the TariFeePerGramStats from a TariWallet.
+/// Get the TaijiFeePerGramStats from a TaijiWallet.
 ///
 /// ## Arguments
-/// `wallet` - The TariWallet pointer
+/// `wallet` - The TaijiWallet pointer
 /// `count` - The maximum number of blocks to be checked
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter
 ///
 /// ## Returns
-/// `*mut TariCompletedTransactions` - returns the transactions, note that it returns ptr::null_mut() if
+/// `*mut TaijiCompletedTransactions` - returns the transactions, note that it returns ptr::null_mut() if
 /// wallet is null or an error is encountered.
 ///
 /// # Safety
-/// The ```fee_per_gram_stats_destroy``` method must be called when finished with a TariFeePerGramStats to prevent
+/// The ```fee_per_gram_stats_destroy``` method must be called when finished with a TaijiFeePerGramStats to prevent
 /// a memory leak.
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_fee_per_gram_stats(
-    wallet: *mut TariWallet,
+    wallet: *mut TaijiWallet,
     count: c_uint,
     error_out: *mut c_int,
-) -> *mut TariFeePerGramStats {
+) -> *mut TaijiFeePerGramStats {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -8335,15 +8335,15 @@ pub unsafe extern "C" fn wallet_get_fee_per_gram_stats(
     }
 }
 
-/// Get length of stats from the TariFeePerGramStats.
+/// Get length of stats from the TaijiFeePerGramStats.
 ///
 /// ## Arguments
-/// `fee_per_gram_stats` - The pointer to a TariFeePerGramStats
+/// `fee_per_gram_stats` - The pointer to a TaijiFeePerGramStats
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter
 ///
 /// ## Returns
-/// `c_uint` - length of stats in TariFeePerGramStats
+/// `c_uint` - length of stats in TaijiFeePerGramStats
 ///
 /// # Safety
 /// None
@@ -8351,7 +8351,7 @@ pub unsafe extern "C" fn wallet_get_fee_per_gram_stats(
 #[allow(clippy::cast_possible_truncation)]
 #[no_mangle]
 pub unsafe extern "C" fn fee_per_gram_stats_get_length(
-    fee_per_gram_stats: *mut TariFeePerGramStats,
+    fee_per_gram_stats: *mut TaijiFeePerGramStats,
     error_out: *mut c_int,
 ) -> c_uint {
     let mut error = 0;
@@ -8366,27 +8366,27 @@ pub unsafe extern "C" fn fee_per_gram_stats_get_length(
     len as c_uint
 }
 
-/// Get TariFeePerGramStat at position from the TariFeePerGramStats.
+/// Get TaijiFeePerGramStat at position from the TaijiFeePerGramStats.
 ///
 /// ## Arguments
-/// `fee_per_gram_stats` - The pointer to a TariFeePerGramStats.
+/// `fee_per_gram_stats` - The pointer to a TaijiFeePerGramStats.
 /// `position` - The integer position.
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariCompletedTransactions` - returns the TariFeePerGramStat, note that it returns ptr::null_mut() if
+/// `*mut TaijiCompletedTransactions` - returns the TaijiFeePerGramStat, note that it returns ptr::null_mut() if
 /// fee_per_gram_stats is null or an error is encountered.
 ///
 /// # Safety
-/// The ```fee_per_gram_stat_destroy``` method must be called when finished with a TariCompletedTransactions to 4prevent
+/// The ```fee_per_gram_stat_destroy``` method must be called when finished with a TaijiCompletedTransactions to 4prevent
 /// a memory leak.
 #[no_mangle]
 pub unsafe extern "C" fn fee_per_gram_stats_get_at(
-    fee_per_gram_stats: *mut TariFeePerGramStats,
+    fee_per_gram_stats: *mut TaijiFeePerGramStats,
     position: c_uint,
     error_out: *mut c_int,
-) -> *mut TariFeePerGramStat {
+) -> *mut TaijiFeePerGramStat {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if fee_per_gram_stats.is_null() {
@@ -8406,10 +8406,10 @@ pub unsafe extern "C" fn fee_per_gram_stats_get_at(
     Box::into_raw(Box::new((*fee_per_gram_stats).stats[position as usize].clone()))
 }
 
-/// Frees memory for a TariFeePerGramStats
+/// Frees memory for a TaijiFeePerGramStats
 ///
 /// ## Arguments
-/// `fee_per_gram_stats` - The TariFeePerGramStats pointer
+/// `fee_per_gram_stats` - The TaijiFeePerGramStats pointer
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -8417,7 +8417,7 @@ pub unsafe extern "C" fn fee_per_gram_stats_get_at(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn fee_per_gram_stats_destroy(fee_per_gram_stats: *mut TariFeePerGramStats) {
+pub unsafe extern "C" fn fee_per_gram_stats_destroy(fee_per_gram_stats: *mut TaijiFeePerGramStats) {
     if !fee_per_gram_stats.is_null() {
         drop(Box::from_raw(fee_per_gram_stats))
     }
@@ -8427,10 +8427,10 @@ pub unsafe extern "C" fn fee_per_gram_stats_destroy(fee_per_gram_stats: *mut Tar
 
 /// ------------------------------------- FeePerGramStat ------------------------------------- ///
 
-/// Get the order of TariFeePerGramStat
+/// Get the order of TaijiFeePerGramStat
 ///
 /// ## Arguments
-/// `fee_per_gram_stats` - The TariFeePerGramStat pointer
+/// `fee_per_gram_stats` - The TaijiFeePerGramStat pointer
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -8441,7 +8441,7 @@ pub unsafe extern "C" fn fee_per_gram_stats_destroy(fee_per_gram_stats: *mut Tar
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn fee_per_gram_stat_get_order(
-    fee_per_gram_stat: *mut TariFeePerGramStat,
+    fee_per_gram_stat: *mut TaijiFeePerGramStat,
     error_out: *mut c_int,
 ) -> c_ulonglong {
     let mut error = 0;
@@ -8456,10 +8456,10 @@ pub unsafe extern "C" fn fee_per_gram_stat_get_order(
     order
 }
 
-/// Get the minimum fee per gram of TariFeePerGramStat
+/// Get the minimum fee per gram of TaijiFeePerGramStat
 ///
 /// ## Arguments
-/// `fee_per_gram_stats` - The TariFeePerGramStat pointer
+/// `fee_per_gram_stats` - The TaijiFeePerGramStat pointer
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -8470,7 +8470,7 @@ pub unsafe extern "C" fn fee_per_gram_stat_get_order(
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn fee_per_gram_stat_get_min_fee_per_gram(
-    fee_per_gram_stat: *mut TariFeePerGramStat,
+    fee_per_gram_stat: *mut TaijiFeePerGramStat,
     error_out: *mut c_int,
 ) -> c_ulonglong {
     let mut error = 0;
@@ -8485,10 +8485,10 @@ pub unsafe extern "C" fn fee_per_gram_stat_get_min_fee_per_gram(
     fee_per_gram
 }
 
-/// Get the average fee per gram of TariFeePerGramStat
+/// Get the average fee per gram of TaijiFeePerGramStat
 ///
 /// ## Arguments
-/// `fee_per_gram_stats` - The TariFeePerGramStat pointer
+/// `fee_per_gram_stats` - The TaijiFeePerGramStat pointer
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -8499,7 +8499,7 @@ pub unsafe extern "C" fn fee_per_gram_stat_get_min_fee_per_gram(
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn fee_per_gram_stat_get_avg_fee_per_gram(
-    fee_per_gram_stat: *mut TariFeePerGramStat,
+    fee_per_gram_stat: *mut TaijiFeePerGramStat,
     error_out: *mut c_int,
 ) -> c_ulonglong {
     let mut error = 0;
@@ -8514,10 +8514,10 @@ pub unsafe extern "C" fn fee_per_gram_stat_get_avg_fee_per_gram(
     fee_per_gram
 }
 
-/// Get the maximum fee per gram of TariFeePerGramStat
+/// Get the maximum fee per gram of TaijiFeePerGramStat
 ///
 /// ## Arguments
-/// `fee_per_gram_stats` - The TariFeePerGramStat pointer
+/// `fee_per_gram_stats` - The TaijiFeePerGramStat pointer
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -8528,7 +8528,7 @@ pub unsafe extern "C" fn fee_per_gram_stat_get_avg_fee_per_gram(
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn fee_per_gram_stat_get_max_fee_per_gram(
-    fee_per_gram_stat: *mut TariFeePerGramStat,
+    fee_per_gram_stat: *mut TaijiFeePerGramStat,
     error_out: *mut c_int,
 ) -> c_ulonglong {
     let mut error = 0;
@@ -8543,10 +8543,10 @@ pub unsafe extern "C" fn fee_per_gram_stat_get_max_fee_per_gram(
     fee_per_gram
 }
 
-/// Frees memory for a TariFeePerGramStat
+/// Frees memory for a TaijiFeePerGramStat
 ///
 /// ## Arguments
-/// `fee_per_gram_stats` - The TariFeePerGramStat pointer
+/// `fee_per_gram_stats` - The TaijiFeePerGramStat pointer
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -8554,7 +8554,7 @@ pub unsafe extern "C" fn fee_per_gram_stat_get_max_fee_per_gram(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn fee_per_gram_stat_destroy(fee_per_gram_stat: *mut TariFeePerGramStat) {
+pub unsafe extern "C" fn fee_per_gram_stat_destroy(fee_per_gram_stat: *mut TaijiFeePerGramStat) {
     if !fee_per_gram_stat.is_null() {
         drop(Box::from_raw(fee_per_gram_stat))
     }
@@ -8572,13 +8572,13 @@ mod test {
 
     use borsh::BorshSerialize;
     use libc::{c_char, c_uchar, c_uint};
-    use minotari_wallet::{
+    use minotaiji_wallet::{
         storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
         transaction_service::handle::TransactionSendStatus,
     };
-    use tari_common_types::{emoji, transaction::TransactionStatus, types::PrivateKey};
-    use tari_comms::peer_manager::PeerFeatures;
-    use tari_core::{
+    use taiji_common_types::{emoji, transaction::TransactionStatus, types::PrivateKey};
+    use taiji_comms::peer_manager::PeerFeatures;
+    use taiji_core::{
         covenant,
         transactions::{
             key_manager::SecretTransactionKeyManagerInterface,
@@ -8590,9 +8590,9 @@ mod test {
             },
         },
     };
-    use tari_key_manager::{mnemonic::MnemonicLanguage, mnemonic_wordlists};
-    use tari_script::script;
-    use tari_test_utils::random;
+    use taiji_key_manager::{mnemonic::MnemonicLanguage, mnemonic_wordlists};
+    use taiji_script::script;
+    use taiji_test_utils::random;
     use tempfile::tempdir;
 
     use crate::*;
@@ -8648,11 +8648,11 @@ mod test {
         static ref CALLBACK_STATE_FFI: Mutex<CallbackState> = Mutex::new(CallbackState::new());
     }
 
-    unsafe extern "C" fn received_tx_callback(tx: *mut TariPendingInboundTransaction) {
+    unsafe extern "C" fn received_tx_callback(tx: *mut TaijiPendingInboundTransaction) {
         assert!(!tx.is_null());
         assert_eq!(
             type_of((*tx).clone()),
-            std::any::type_name::<TariPendingInboundTransaction>()
+            std::any::type_name::<TaijiPendingInboundTransaction>()
         );
         let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
         lock.received_tx_callback_called = true;
@@ -8660,11 +8660,11 @@ mod test {
         pending_inbound_transaction_destroy(tx);
     }
 
-    unsafe extern "C" fn received_tx_reply_callback(tx: *mut TariCompletedTransaction) {
+    unsafe extern "C" fn received_tx_reply_callback(tx: *mut TaijiCompletedTransaction) {
         assert!(!tx.is_null());
         assert_eq!(
             type_of((*tx).clone()),
-            std::any::type_name::<TariCompletedTransaction>()
+            std::any::type_name::<TaijiCompletedTransaction>()
         );
         assert_eq!((*tx).status, TransactionStatus::Completed);
         let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
@@ -8673,11 +8673,11 @@ mod test {
         completed_transaction_destroy(tx);
     }
 
-    unsafe extern "C" fn received_tx_finalized_callback(tx: *mut TariCompletedTransaction) {
+    unsafe extern "C" fn received_tx_finalized_callback(tx: *mut TaijiCompletedTransaction) {
         assert!(!tx.is_null());
         assert_eq!(
             type_of((*tx).clone()),
-            std::any::type_name::<TariCompletedTransaction>()
+            std::any::type_name::<TaijiCompletedTransaction>()
         );
         assert_eq!((*tx).status, TransactionStatus::Completed);
         let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
@@ -8686,11 +8686,11 @@ mod test {
         completed_transaction_destroy(tx);
     }
 
-    unsafe extern "C" fn broadcast_callback(tx: *mut TariCompletedTransaction) {
+    unsafe extern "C" fn broadcast_callback(tx: *mut TaijiCompletedTransaction) {
         assert!(!tx.is_null());
         assert_eq!(
             type_of((*tx).clone()),
-            std::any::type_name::<TariCompletedTransaction>()
+            std::any::type_name::<TaijiCompletedTransaction>()
         );
         let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
         lock.broadcast_tx_callback_called = true;
@@ -8699,11 +8699,11 @@ mod test {
         completed_transaction_destroy(tx);
     }
 
-    unsafe extern "C" fn mined_callback(tx: *mut TariCompletedTransaction) {
+    unsafe extern "C" fn mined_callback(tx: *mut TaijiCompletedTransaction) {
         assert!(!tx.is_null());
         assert_eq!(
             type_of((*tx).clone()),
-            std::any::type_name::<TariCompletedTransaction>()
+            std::any::type_name::<TaijiCompletedTransaction>()
         );
         assert_eq!((*tx).status, TransactionStatus::MinedUnconfirmed);
         let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
@@ -8712,11 +8712,11 @@ mod test {
         completed_transaction_destroy(tx);
     }
 
-    unsafe extern "C" fn mined_unconfirmed_callback(tx: *mut TariCompletedTransaction, _confirmations: u64) {
+    unsafe extern "C" fn mined_unconfirmed_callback(tx: *mut TaijiCompletedTransaction, _confirmations: u64) {
         assert!(!tx.is_null());
         assert_eq!(
             type_of((*tx).clone()),
-            std::any::type_name::<TariCompletedTransaction>()
+            std::any::type_name::<TaijiCompletedTransaction>()
         );
         assert_eq!((*tx).status, TransactionStatus::MinedUnconfirmed);
         let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
@@ -8741,11 +8741,11 @@ mod test {
         completed_transaction_destroy(tx);
     }
 
-    unsafe extern "C" fn scanned_callback(tx: *mut TariCompletedTransaction) {
+    unsafe extern "C" fn scanned_callback(tx: *mut TaijiCompletedTransaction) {
         assert!(!tx.is_null());
         assert_eq!(
             type_of((*tx).clone()),
-            std::any::type_name::<TariCompletedTransaction>()
+            std::any::type_name::<TaijiCompletedTransaction>()
         );
         assert_eq!((*tx).status, TransactionStatus::FauxConfirmed);
         let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
@@ -8754,11 +8754,11 @@ mod test {
         completed_transaction_destroy(tx);
     }
 
-    unsafe extern "C" fn scanned_unconfirmed_callback(tx: *mut TariCompletedTransaction, _confirmations: u64) {
+    unsafe extern "C" fn scanned_unconfirmed_callback(tx: *mut TaijiCompletedTransaction, _confirmations: u64) {
         assert!(!tx.is_null());
         assert_eq!(
             type_of((*tx).clone()),
-            std::any::type_name::<TariCompletedTransaction>()
+            std::any::type_name::<TaijiCompletedTransaction>()
         );
         assert_eq!((*tx).status, TransactionStatus::FauxUnconfirmed);
         let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
@@ -8792,11 +8792,11 @@ mod test {
         transaction_send_status_destroy(status);
     }
 
-    unsafe extern "C" fn tx_cancellation_callback(tx: *mut TariCompletedTransaction, _reason: u64) {
+    unsafe extern "C" fn tx_cancellation_callback(tx: *mut TaijiCompletedTransaction, _reason: u64) {
         assert!(!tx.is_null());
         assert_eq!(
             type_of((*tx).clone()),
-            std::any::type_name::<TariCompletedTransaction>()
+            std::any::type_name::<TaijiCompletedTransaction>()
         );
         completed_transaction_destroy(tx);
     }
@@ -8805,11 +8805,11 @@ mod test {
         // assert!(true); //optimized out by compiler
     }
 
-    unsafe extern "C" fn contacts_liveness_data_updated_callback(_balance: *mut TariContactsLivenessData) {
+    unsafe extern "C" fn contacts_liveness_data_updated_callback(_balance: *mut TaijiContactsLivenessData) {
         // assert!(true); //optimized out by compiler
     }
 
-    unsafe extern "C" fn balance_updated_callback(_balance: *mut TariBalance) {
+    unsafe extern "C" fn balance_updated_callback(_balance: *mut TaijiBalance) {
         // assert!(true); //optimized out by compiler
     }
 
@@ -8825,7 +8825,7 @@ mod test {
         // assert!(true); //optimized out by compiler
     }
 
-    unsafe extern "C" fn base_node_state_callback(_state: *mut TariBaseNodeState) {
+    unsafe extern "C" fn base_node_state_callback(_state: *mut TaijiBaseNodeState) {
         // assert!(true); //optimized out by compiler
     }
 
@@ -8917,7 +8917,7 @@ mod test {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
 
-            let status = Box::into_raw(Box::new(TariTransactionSendStatus {
+            let status = Box::into_raw(Box::new(TaijiTransactionSendStatus {
                 direct_send_result: false,
                 store_and_forward_send_result: false,
                 queued_for_retry: true,
@@ -8927,7 +8927,7 @@ mod test {
             assert_eq!(error, 0);
             assert_eq!(transaction_status, 0);
 
-            let status = Box::into_raw(Box::new(TariTransactionSendStatus {
+            let status = Box::into_raw(Box::new(TaijiTransactionSendStatus {
                 direct_send_result: true,
                 store_and_forward_send_result: true,
                 queued_for_retry: false,
@@ -8937,7 +8937,7 @@ mod test {
             assert_eq!(error, 0);
             assert_eq!(transaction_status, 1);
 
-            let status = Box::into_raw(Box::new(TariTransactionSendStatus {
+            let status = Box::into_raw(Box::new(TaijiTransactionSendStatus {
                 direct_send_result: true,
                 store_and_forward_send_result: false,
                 queued_for_retry: false,
@@ -8947,7 +8947,7 @@ mod test {
             assert_eq!(error, 0);
             assert_eq!(transaction_status, 2);
 
-            let status = Box::into_raw(Box::new(TariTransactionSendStatus {
+            let status = Box::into_raw(Box::new(TaijiTransactionSendStatus {
                 direct_send_result: false,
                 store_and_forward_send_result: true,
                 queued_for_retry: false,
@@ -8957,7 +8957,7 @@ mod test {
             assert_eq!(error, 0);
             assert_eq!(transaction_status, 3);
 
-            let status = Box::into_raw(Box::new(TariTransactionSendStatus {
+            let status = Box::into_raw(Box::new(TaijiTransactionSendStatus {
                 direct_send_result: false,
                 store_and_forward_send_result: false,
                 queued_for_retry: false,
@@ -8967,7 +8967,7 @@ mod test {
             assert_eq!(error, 1);
             assert_eq!(transaction_status, 4);
 
-            let status = Box::into_raw(Box::new(TariTransactionSendStatus {
+            let status = Box::into_raw(Box::new(TaijiTransactionSendStatus {
                 direct_send_result: true,
                 store_and_forward_send_result: true,
                 queued_for_retry: true,
@@ -8977,7 +8977,7 @@ mod test {
             assert_eq!(error, 1);
             assert_eq!(transaction_status, 4);
 
-            let status = Box::into_raw(Box::new(TariTransactionSendStatus {
+            let status = Box::into_raw(Box::new(TaijiTransactionSendStatus {
                 direct_send_result: true,
                 store_and_forward_send_result: false,
                 queued_for_retry: true,
@@ -8987,7 +8987,7 @@ mod test {
             assert_eq!(error, 1);
             assert_eq!(transaction_status, 4);
 
-            let status = Box::into_raw(Box::new(TariTransactionSendStatus {
+            let status = Box::into_raw(Box::new(TaijiTransactionSendStatus {
                 direct_send_result: false,
                 store_and_forward_send_result: true,
                 queued_for_retry: true,
@@ -9055,33 +9055,33 @@ mod test {
             let private_key = private_key_generate();
             let public_key = public_key_from_private_key(private_key, error_ptr);
             assert_eq!(error, 0);
-            let address = tari_address_from_private_key(private_key, 0x26, error_ptr);
+            let address = taiji_address_from_private_key(private_key, 0x26, error_ptr);
             assert_eq!(error, 0);
             let private_bytes = private_key_get_bytes(private_key, error_ptr);
             assert_eq!(error, 0);
             let public_bytes = public_key_get_bytes(public_key, error_ptr);
             assert_eq!(error, 0);
-            let address_bytes = tari_address_get_bytes(address, error_ptr);
+            let address_bytes = taiji_address_get_bytes(address, error_ptr);
             assert_eq!(error, 0);
             let private_key_length = byte_vector_get_length(private_bytes, error_ptr);
             assert_eq!(error, 0);
             let public_key_length = byte_vector_get_length(public_bytes, error_ptr);
             assert_eq!(error, 0);
-            let tari_address_length = byte_vector_get_length(address_bytes, error_ptr);
+            let taiji_address_length = byte_vector_get_length(address_bytes, error_ptr);
             assert_eq!(error, 0);
             assert_eq!(private_key_length, 32);
             assert_eq!(public_key_length, 32);
-            assert_eq!(tari_address_length, 33);
+            assert_eq!(taiji_address_length, 33);
             assert_ne!((*private_bytes), (*public_bytes));
-            let emoji = tari_address_to_emoji_id(address, error_ptr) as *mut c_char;
+            let emoji = taiji_address_to_emoji_id(address, error_ptr) as *mut c_char;
             let emoji_str = CStr::from_ptr(emoji).to_str().unwrap();
-            assert!(TariAddress::from_emoji_string(emoji_str).is_ok());
-            let address_emoji = emoji_id_to_tari_address(emoji, error_ptr);
+            assert!(TaijiAddress::from_emoji_string(emoji_str).is_ok());
+            let address_emoji = emoji_id_to_taiji_address(emoji, error_ptr);
             assert_eq!((*address), (*address_emoji));
             private_key_destroy(private_key);
             public_key_destroy(public_key);
-            tari_address_destroy(address_emoji);
-            tari_address_destroy(address);
+            taiji_address_destroy(address_emoji);
+            taiji_address_destroy(address);
             byte_vector_destroy(public_bytes);
             byte_vector_destroy(private_bytes);
             byte_vector_destroy(address_bytes);
@@ -9149,9 +9149,9 @@ mod test {
             let spending_key = PrivateKey::random(&mut OsRng);
             let commitment = Commitment::from_public_key(&PublicKey::from_secret_key(&spending_key));
             let encryption_key = PrivateKey::random(&mut OsRng);
-            let amount = MicroMinotari::from(123456);
+            let amount = MicroMinotaiji::from(123456);
             let encrypted_data =
-                TariEncryptedOpenings::encrypt_data(&encryption_key, &commitment, amount, &spending_key).unwrap();
+                TaijiEncryptedOpenings::encrypt_data(&encryption_key, &commitment, amount, &spending_key).unwrap();
             let encrypted_data_bytes = encrypted_data.to_byte_vec();
 
             let encrypted_data_1 = Box::into_raw(Box::new(encrypted_data));
@@ -9296,7 +9296,7 @@ mod test {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
             let test_contact_private_key = private_key_generate();
-            let test_address = tari_address_from_private_key(test_contact_private_key, 0x10, error_ptr);
+            let test_address = taiji_address_from_private_key(test_contact_private_key, 0x10, error_ptr);
             let test_str = "Test Contact";
             let test_contact_str = CString::new(test_str).unwrap();
             let test_contact_alias: *const c_char = CString::into_raw(test_contact_str) as *const c_char;
@@ -9306,12 +9306,12 @@ mod test {
             let alias = contact_get_alias(test_contact, error_ptr);
             let alias_string = CString::from_raw(alias).to_str().unwrap().to_owned();
             assert_eq!(alias_string, test_str);
-            let contact_address = contact_get_tari_address(test_contact, error_ptr);
-            let contact_key_bytes = tari_address_get_bytes(contact_address, error_ptr);
+            let contact_address = contact_get_taiji_address(test_contact, error_ptr);
+            let contact_key_bytes = taiji_address_get_bytes(contact_address, error_ptr);
             let contact_bytes_len = byte_vector_get_length(contact_key_bytes, error_ptr);
             assert_eq!(contact_bytes_len, 33);
             contact_destroy(test_contact);
-            tari_address_destroy(test_address);
+            taiji_address_destroy(test_address);
             private_key_destroy(test_contact_private_key);
             string_destroy(test_contact_alias as *mut c_char);
             byte_vector_destroy(contact_key_bytes);
@@ -9324,7 +9324,7 @@ mod test {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
             let test_contact_private_key = private_key_generate();
-            let test_contact_address = tari_address_from_private_key(test_contact_private_key, 0x00, error_ptr);
+            let test_contact_address = taiji_address_from_private_key(test_contact_private_key, 0x00, error_ptr);
             let test_str = "Test Contact";
             let test_contact_str = CString::new(test_str).unwrap();
             let test_contact_alias: *const c_char = CString::into_raw(test_contact_str) as *const c_char;
@@ -9343,7 +9343,7 @@ mod test {
                 error,
                 LibWalletError::from(InterfaceError::NullError("contact_ptr".to_string())).code
             );
-            let _contact_address = contact_get_tari_address(ptr::null_mut(), error_ptr);
+            let _contact_address = contact_get_taiji_address(ptr::null_mut(), error_ptr);
             assert_eq!(
                 error,
                 LibWalletError::from(InterfaceError::NullError("contact_ptr".to_string())).code
@@ -9365,7 +9365,7 @@ mod test {
             );
             assert_eq!(contact_bytes_len, 0);
             contact_destroy(_test_contact);
-            tari_address_destroy(test_contact_address);
+            taiji_address_destroy(test_contact_address);
             private_key_destroy(test_contact_private_key);
             string_destroy(test_contact_alias as *mut c_char);
             byte_vector_destroy(contact_key_bytes);
@@ -9670,13 +9670,13 @@ mod test {
                 let mnemonic_wordlist_ffi = seed_words_get_mnemonic_word_list_for_language(language_str, error_ptr);
                 assert_eq!(error, 0);
                 let mnemonic_wordlist = match *(language) {
-                    TariMnemonicLanguage::ChineseSimplified => mnemonic_wordlists::MNEMONIC_CHINESE_SIMPLIFIED_WORDS,
-                    TariMnemonicLanguage::English => mnemonic_wordlists::MNEMONIC_ENGLISH_WORDS,
-                    TariMnemonicLanguage::French => mnemonic_wordlists::MNEMONIC_FRENCH_WORDS,
-                    TariMnemonicLanguage::Italian => mnemonic_wordlists::MNEMONIC_ITALIAN_WORDS,
-                    TariMnemonicLanguage::Japanese => mnemonic_wordlists::MNEMONIC_JAPANESE_WORDS,
-                    TariMnemonicLanguage::Korean => mnemonic_wordlists::MNEMONIC_KOREAN_WORDS,
-                    TariMnemonicLanguage::Spanish => mnemonic_wordlists::MNEMONIC_SPANISH_WORDS,
+                    TaijiMnemonicLanguage::ChineseSimplified => mnemonic_wordlists::MNEMONIC_CHINESE_SIMPLIFIED_WORDS,
+                    TaijiMnemonicLanguage::English => mnemonic_wordlists::MNEMONIC_ENGLISH_WORDS,
+                    TaijiMnemonicLanguage::French => mnemonic_wordlists::MNEMONIC_FRENCH_WORDS,
+                    TaijiMnemonicLanguage::Italian => mnemonic_wordlists::MNEMONIC_ITALIAN_WORDS,
+                    TaijiMnemonicLanguage::Japanese => mnemonic_wordlists::MNEMONIC_JAPANESE_WORDS,
+                    TaijiMnemonicLanguage::Korean => mnemonic_wordlists::MNEMONIC_KOREAN_WORDS,
+                    TaijiMnemonicLanguage::Spanish => mnemonic_wordlists::MNEMONIC_SPANISH_WORDS,
                 };
                 // Compare from Rust's perspective
                 assert_eq!(
@@ -9727,7 +9727,7 @@ mod test {
 
             // To create a new seed word sequence, uncomment below
             // let seed = CipherSeed::new();
-            // use tari_key_manager::mnemonic::{Mnemonic, MnemonicLanguage};
+            // use taiji_key_manager::mnemonic::{Mnemonic, MnemonicLanguage};
             // let mnemonic_seq = seed
             //     .to_mnemonic(MnemonicLanguage::English, None)
             //     .expect("Couldn't convert CipherSeed to Mnemonic");
@@ -9824,7 +9824,7 @@ mod test {
             assert_eq!(error, 0);
             let seed_words = wallet_get_seed_words(wallet, error_ptr);
             assert_eq!(error, 0);
-            let public_address = wallet_get_tari_address(wallet, error_ptr);
+            let public_address = wallet_get_taiji_address(wallet, error_ptr);
             assert_eq!(error, 0);
 
             // use seed words to create recovery wallet
@@ -9886,7 +9886,7 @@ mod test {
 
             let recovered_seed_words = wallet_get_seed_words(recovered_wallet, error_ptr);
             assert_eq!(error, 0);
-            let recovered_address = wallet_get_tari_address(recovered_wallet, error_ptr);
+            let recovered_address = wallet_get_taiji_address(recovered_wallet, error_ptr);
             assert_eq!(error, 0);
 
             assert_eq!(*seed_words, *recovered_seed_words);
@@ -9975,12 +9975,12 @@ mod test {
                 alice_wallet,
                 0,
                 20,
-                TariUtxoSort::ValueAsc,
+                TaijiUtxoSort::ValueAsc,
                 ptr::null_mut(),
                 3000,
                 error_ptr,
             );
-            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TariUtxo, (*outputs).len);
+            let utxos: &[TaijiUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TaijiUtxo, (*outputs).len);
             assert_eq!(error, 0);
             assert_eq!((*outputs).len, 6);
             assert_eq!(utxos.len(), 6);
@@ -9991,19 +9991,19 @@ mod test {
                     .fold((true, utxos[0].value), |acc, x| { (acc.0 && x.value > acc.1, x.value) })
                     .0
             );
-            destroy_tari_vector(outputs);
+            destroy_taiji_vector(outputs);
 
             // descending order
             let outputs = wallet_get_utxos(
                 alice_wallet,
                 0,
                 20,
-                TariUtxoSort::ValueDesc,
+                TaijiUtxoSort::ValueDesc,
                 ptr::null_mut(),
                 3000,
                 error_ptr,
             );
-            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TariUtxo, (*outputs).len);
+            let utxos: &[TaijiUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TaijiUtxo, (*outputs).len);
             assert_eq!(error, 0);
             assert_eq!((*outputs).len, 6);
             assert_eq!(utxos.len(), 6);
@@ -10014,23 +10014,23 @@ mod test {
                     .fold((true, utxos[0].value), |acc, x| (acc.0 && x.value < acc.1, x.value))
                     .0
             );
-            destroy_tari_vector(outputs);
+            destroy_taiji_vector(outputs);
 
             // result must be empty due to high dust threshold
             let outputs = wallet_get_utxos(
                 alice_wallet,
                 0,
                 20,
-                TariUtxoSort::ValueAsc,
+                TaijiUtxoSort::ValueAsc,
                 ptr::null_mut(),
                 15000,
                 error_ptr,
             );
-            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TariUtxo, (*outputs).len);
+            let utxos: &[TaijiUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TaijiUtxo, (*outputs).len);
             assert_eq!(error, 0);
             assert_eq!((*outputs).len, 0);
             assert_eq!(utxos.len(), 0);
-            destroy_tari_vector(outputs);
+            destroy_taiji_vector(outputs);
 
             string_destroy(network_str as *mut c_char);
             string_destroy(db_name_alice_str as *mut c_char);
@@ -10123,12 +10123,12 @@ mod test {
                 alice_wallet,
                 0,
                 100,
-                TariUtxoSort::ValueAsc,
+                TaijiUtxoSort::ValueAsc,
                 ptr::null_mut(),
                 0,
                 error_ptr,
             );
-            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TariUtxo, (*outputs).len);
+            let utxos: &[TaijiUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TaijiUtxo, (*outputs).len);
             assert_eq!(error, 0);
 
             let payload = utxos[0..3]
@@ -10136,17 +10136,17 @@ mod test {
                 .map(|x| CStr::from_ptr(x.commitment).to_str().unwrap().to_owned())
                 .collect::<Vec<String>>();
 
-            let commitments = Box::into_raw(Box::new(TariVector::from(payload))) as *mut TariVector;
+            let commitments = Box::into_raw(Box::new(TaijiVector::from(payload))) as *mut TaijiVector;
             let result = wallet_coin_join(alice_wallet, commitments, 5, error_ptr);
             assert_eq!(error, 0);
             assert!(result > 0);
 
             let outputs = wallet_get_all_utxos(alice_wallet, error_ptr);
-            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TariUtxo, (*outputs).len);
+            let utxos: &[TaijiUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TaijiUtxo, (*outputs).len);
             assert_eq!(error, 0);
             assert_eq!((*outputs).len, 11);
             assert_eq!(utxos.len(), 11);
-            destroy_tari_vector(outputs);
+            destroy_taiji_vector(outputs);
 
             string_destroy(network_str as *mut c_char);
             string_destroy(db_name_alice_str as *mut c_char);
@@ -10246,12 +10246,12 @@ mod test {
                 alice_wallet,
                 0,
                 100,
-                TariUtxoSort::ValueAsc,
+                TaijiUtxoSort::ValueAsc,
                 ptr::null_mut(),
                 0,
                 error_ptr,
             );
-            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TariUtxo, (*outputs).len);
+            let utxos: &[TaijiUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TaijiUtxo, (*outputs).len);
             assert_eq!(error, 0);
 
             let pre_join_total_amount = utxos[0..3].iter().fold(0u64, |acc, x| acc + x.value);
@@ -10261,7 +10261,7 @@ mod test {
                 .map(|x| CStr::from_ptr(x.commitment).to_str().unwrap().to_owned())
                 .collect::<Vec<String>>();
 
-            let commitments = Box::into_raw(Box::new(TariVector::from(payload))) as *mut TariVector;
+            let commitments = Box::into_raw(Box::new(TaijiVector::from(payload))) as *mut TaijiVector;
             let preview = wallet_preview_coin_join(alice_wallet, commitments, 5, error_ptr);
             assert_eq!(error, 0);
 
@@ -10272,12 +10272,12 @@ mod test {
                 alice_wallet,
                 0,
                 100,
-                TariUtxoSort::ValueAsc,
+                TaijiUtxoSort::ValueAsc,
                 ptr::null_mut(),
                 0,
                 error_ptr,
             );
-            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TariUtxo, (*outputs).len);
+            let utxos: &[TaijiUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TaijiUtxo, (*outputs).len);
             assert_eq!(error, 0);
 
             let payload = utxos[0..3]
@@ -10285,7 +10285,7 @@ mod test {
                 .map(|x| CStr::from_ptr(x.commitment).to_str().unwrap().to_owned())
                 .collect::<Vec<String>>();
 
-            let commitments = Box::into_raw(Box::new(TariVector::from(payload))) as *mut TariVector;
+            let commitments = Box::into_raw(Box::new(TaijiVector::from(payload))) as *mut TaijiVector;
             let result = wallet_coin_join(alice_wallet, commitments, 5, error_ptr);
             assert_eq!(error, 0);
             assert!(result > 0);
@@ -10300,7 +10300,7 @@ mod test {
                 .unwrap()
                 .into_iter()
                 .map(|x| x.wallet_output.value)
-                .collect::<Vec<MicroMinotari>>();
+                .collect::<Vec<MicroMinotaiji>>();
 
             let new_pending_outputs = (*alice_wallet)
                 .wallet
@@ -10312,7 +10312,7 @@ mod test {
                 .unwrap()
                 .into_iter()
                 .map(|x| x.wallet_output.value)
-                .collect::<Vec<MicroMinotari>>();
+                .collect::<Vec<MicroMinotaiji>>();
 
             let post_join_total_amount = new_pending_outputs.iter().fold(0u64, |acc, x| acc + x.as_u64());
             let expected_output_values: Vec<u64> = Vec::from_raw_parts(
@@ -10325,12 +10325,12 @@ mod test {
                 alice_wallet,
                 0,
                 20,
-                TariUtxoSort::ValueAsc,
-                Box::into_raw(Box::new(TariVector::from(vec![OutputStatus::Unspent]))),
+                TaijiUtxoSort::ValueAsc,
+                Box::into_raw(Box::new(TaijiVector::from(vec![OutputStatus::Unspent]))),
                 0,
                 error_ptr,
             );
-            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TariUtxo, (*outputs).len);
+            let utxos: &[TaijiUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TaijiUtxo, (*outputs).len);
             assert_eq!(error, 0);
             assert_eq!(utxos.len(), 2);
             assert_eq!(unspent_outputs.len(), 2);
@@ -10345,9 +10345,9 @@ mod test {
             // checking fee
             assert_eq!(pre_join_total_amount - post_join_total_amount, (*preview).fee);
 
-            destroy_tari_vector(outputs);
-            destroy_tari_vector(commitments);
-            destroy_tari_coin_preview(preview);
+            destroy_taiji_vector(outputs);
+            destroy_taiji_vector(commitments);
+            destroy_taiji_coin_preview(preview);
 
             string_destroy(network_str as *mut c_char);
             string_destroy(db_name_alice_str as *mut c_char);
@@ -10445,12 +10445,12 @@ mod test {
                 alice_wallet,
                 0,
                 100,
-                TariUtxoSort::ValueAsc,
+                TaijiUtxoSort::ValueAsc,
                 ptr::null_mut(),
                 0,
                 error_ptr,
             );
-            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TariUtxo, (*outputs).len);
+            let utxos: &[TaijiUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TaijiUtxo, (*outputs).len);
             assert_eq!(error, 0);
 
             let pre_split_total_amount = utxos[0..3].iter().fold(0u64, |acc, x| acc + x.value);
@@ -10460,11 +10460,11 @@ mod test {
                 .map(|x| CStr::from_ptr(x.commitment).to_str().unwrap().to_owned())
                 .collect::<Vec<String>>();
 
-            let commitments = Box::into_raw(Box::new(TariVector::from(payload))) as *mut TariVector;
+            let commitments = Box::into_raw(Box::new(TaijiVector::from(payload))) as *mut TaijiVector;
 
             let preview = wallet_preview_coin_split(alice_wallet, commitments, 3, 5, error_ptr);
             assert_eq!(error, 0);
-            destroy_tari_vector(commitments);
+            destroy_taiji_vector(commitments);
 
             // ----------------------------------------------------------------------------
             // split
@@ -10473,12 +10473,12 @@ mod test {
                 alice_wallet,
                 0,
                 100,
-                TariUtxoSort::ValueAsc,
+                TaijiUtxoSort::ValueAsc,
                 ptr::null_mut(),
                 0,
                 error_ptr,
             );
-            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TariUtxo, (*outputs).len);
+            let utxos: &[TaijiUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TaijiUtxo, (*outputs).len);
             assert_eq!(error, 0);
 
             let payload = utxos[0..3]
@@ -10486,7 +10486,7 @@ mod test {
                 .map(|x| CStr::from_ptr(x.commitment).to_str().unwrap().to_owned())
                 .collect::<Vec<String>>();
 
-            let commitments = Box::into_raw(Box::new(TariVector::from(payload))) as *mut TariVector;
+            let commitments = Box::into_raw(Box::new(TaijiVector::from(payload))) as *mut TaijiVector;
 
             let result = wallet_coin_split(alice_wallet, commitments, 3, 5, error_ptr);
             assert_eq!(error, 0);
@@ -10527,12 +10527,12 @@ mod test {
                 alice_wallet,
                 0,
                 20,
-                TariUtxoSort::ValueAsc,
-                Box::into_raw(Box::new(TariVector::from(vec![OutputStatus::Unspent]))),
+                TaijiUtxoSort::ValueAsc,
+                Box::into_raw(Box::new(TaijiVector::from(vec![OutputStatus::Unspent]))),
                 0,
                 error_ptr,
             );
-            let utxos: &[TariUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TariUtxo, (*outputs).len);
+            let utxos: &[TaijiUtxo] = slice::from_raw_parts_mut((*outputs).ptr as *mut TaijiUtxo, (*outputs).len);
             assert_eq!(error, 0);
             assert_eq!(utxos.len(), 2);
             assert_eq!(unspent_outputs.len(), 2);
@@ -10543,7 +10543,7 @@ mod test {
 
             // comparing resulting output values relative to itself
             assert_eq!(new_pending_outputs[0], new_pending_outputs[1]);
-            assert_eq!(new_pending_outputs[2], new_pending_outputs[1] + MicroMinotari(1));
+            assert_eq!(new_pending_outputs[2], new_pending_outputs[1] + MicroMinotaiji(1));
 
             // comparing resulting output values to the expected
             assert_eq!(new_pending_outputs[0].as_u64(), expected_output_values[0]);
@@ -10553,9 +10553,9 @@ mod test {
             // checking fee
             assert_eq!(pre_split_total_amount - post_split_total_amount, (*preview).fee);
 
-            destroy_tari_vector(outputs);
-            destroy_tari_vector(commitments);
-            destroy_tari_coin_preview(preview);
+            destroy_taiji_vector(outputs);
+            destroy_taiji_vector(commitments);
+            destroy_taiji_coin_preview(preview);
 
             string_destroy(network_str as *mut c_char);
             string_destroy(db_name_alice_str as *mut c_char);
@@ -10662,46 +10662,46 @@ mod test {
     }
 
     #[test]
-    fn test_tari_vector() {
+    fn test_taiji_vector() {
         let mut error = 0;
 
         unsafe {
-            let tv = create_tari_vector(TariTypeTag::Text);
-            assert_eq!((*tv).tag, TariTypeTag::Text);
+            let tv = create_taiji_vector(TaijiTypeTag::Text);
+            assert_eq!((*tv).tag, TaijiTypeTag::Text);
             assert_eq!((*tv).len, 0);
             assert_eq!((*tv).cap, 2);
 
-            tari_vector_push_string(
+            taiji_vector_push_string(
                 tv,
                 CString::new("test string 1").unwrap().into_raw() as *const c_char,
                 &mut error as *mut c_int,
             );
             assert_eq!(error, 0);
-            assert_eq!((*tv).tag, TariTypeTag::Text);
+            assert_eq!((*tv).tag, TaijiTypeTag::Text);
             assert_eq!((*tv).len, 1);
             assert_eq!((*tv).cap, 1);
 
-            tari_vector_push_string(
+            taiji_vector_push_string(
                 tv,
                 CString::new("test string 2").unwrap().into_raw() as *const c_char,
                 &mut error as *mut c_int,
             );
             assert_eq!(error, 0);
-            assert_eq!((*tv).tag, TariTypeTag::Text);
+            assert_eq!((*tv).tag, TaijiTypeTag::Text);
             assert_eq!((*tv).len, 2);
             assert_eq!((*tv).cap, 2);
 
-            tari_vector_push_string(
+            taiji_vector_push_string(
                 tv,
                 CString::new("test string 3").unwrap().into_raw() as *const c_char,
                 &mut error as *mut c_int,
             );
             assert_eq!(error, 0);
-            assert_eq!((*tv).tag, TariTypeTag::Text);
+            assert_eq!((*tv).tag, TaijiTypeTag::Text);
             assert_eq!((*tv).len, 3);
             assert_eq!((*tv).cap, 3);
 
-            destroy_tari_vector(tv);
+            destroy_taiji_vector(tv);
         }
     }
 
@@ -10760,7 +10760,7 @@ mod test {
                     script!(Nop),
                     OutputFeatures::default(),
                     &runtime.block_on(TestParams::new(&key_manager)),
-                    MicroMinotari(1234u64),
+                    MicroMinotaiji(1234u64),
                     &key_manager,
                 ))
                 .unwrap();
@@ -10782,7 +10782,7 @@ mod test {
             let script_ptr = CString::into_raw(CString::new(script!(Nop).to_hex()).unwrap()) as *const c_char;
             let input_data_ptr = CString::into_raw(CString::new(utxo_1.input_data.to_hex()).unwrap()) as *const c_char;
 
-            let tari_utxo = create_tari_unblinded_output(
+            let taiji_utxo = create_taiji_unblinded_output(
                 amount,
                 spending_key_ptr,
                 features_ptr,
@@ -10799,8 +10799,8 @@ mod test {
             );
 
             assert_eq!(error, 0);
-            assert_eq!((*tari_utxo).sender_offset_public_key, utxo_1.sender_offset_public_key);
-            tari_unblinded_output_destroy(tari_utxo);
+            assert_eq!((*taiji_utxo).sender_offset_public_key, utxo_1.sender_offset_public_key);
+            taiji_unblinded_output_destroy(taiji_utxo);
 
             // Cleanup
             string_destroy(script_ptr as *mut c_char);
@@ -10901,7 +10901,7 @@ mod test {
                     script!(Nop),
                     OutputFeatures::default(),
                     &runtime.block_on(TestParams::new(&key_manager)),
-                    MicroMinotari(1234u64),
+                    MicroMinotaiji(1234u64),
                     &key_manager,
                 ))
                 .unwrap();
@@ -10926,7 +10926,7 @@ mod test {
             let script_ptr = CString::into_raw(CString::new(script!(Nop).to_hex()).unwrap()) as *const c_char;
             let input_data_ptr = CString::into_raw(CString::new(utxo_1.input_data.to_hex()).unwrap()) as *const c_char;
 
-            let tari_utxo = create_tari_unblinded_output(
+            let taiji_utxo = create_taiji_unblinded_output(
                 amount,
                 spending_key_ptr,
                 features_ptr,
@@ -10943,7 +10943,7 @@ mod test {
             );
             let tx_id = wallet_import_external_utxo_as_non_rewindable(
                 wallet_ptr,
-                tari_utxo,
+                taiji_utxo,
                 source_address_ptr,
                 message_ptr,
                 error_ptr,
@@ -10957,7 +10957,7 @@ mod test {
             assert_eq!(unblinded_outputs_get_length(outputs, error_ptr), 0);
 
             // Cleanup
-            tari_unblinded_output_destroy(tari_utxo);
+            taiji_unblinded_output_destroy(taiji_utxo);
             unblinded_outputs_destroy(outputs);
             string_destroy(message_ptr as *mut c_char);
             string_destroy(script_ptr as *mut c_char);
@@ -10997,7 +10997,7 @@ mod test {
                     script!(Nop),
                     OutputFeatures::default(),
                     &runtime.block_on(TestParams::new(&key_manager)),
-                    MicroMinotari(1234u64),
+                    MicroMinotaiji(1234u64),
                     &key_manager,
                 ))
                 .unwrap();
@@ -11010,7 +11010,7 @@ mod test {
                 .unwrap();
             let spending_key_ptr = Box::into_raw(Box::new(spending_key));
             let features_ptr = Box::into_raw(Box::new(utxo_1.features.clone()));
-            let source_address_ptr = Box::into_raw(Box::<TariWalletAddress>::default());
+            let source_address_ptr = Box::into_raw(Box::<TaijiWalletAddress>::default());
             let metadata_signature_ptr = Box::into_raw(Box::new(utxo_1.metadata_signature.clone()));
             let sender_offset_public_key_ptr = Box::into_raw(Box::new(utxo_1.sender_offset_public_key.clone()));
             let script_private_key_ptr = Box::into_raw(Box::new(script_private_key));
@@ -11021,7 +11021,7 @@ mod test {
             let script_ptr = CString::into_raw(CString::new(script!(Nop).to_hex()).unwrap()) as *const c_char;
             let input_data_ptr = CString::into_raw(CString::new(utxo_1.input_data.to_hex()).unwrap()) as *const c_char;
 
-            let tari_utxo = create_tari_unblinded_output(
+            let taiji_utxo = create_taiji_unblinded_output(
                 amount,
                 spending_key_ptr,
                 features_ptr,
@@ -11036,14 +11036,14 @@ mod test {
                 0,
                 error_ptr,
             );
-            let json_string = tari_unblinded_output_to_json(tari_utxo, error_ptr);
+            let json_string = taiji_unblinded_output_to_json(taiji_utxo, error_ptr);
             assert_eq!(error, 0);
-            let tari_utxo2 = create_tari_unblinded_output_from_json(json_string, error_ptr);
+            let taiji_utxo2 = create_taiji_unblinded_output_from_json(json_string, error_ptr);
             assert_eq!(error, 0);
-            assert_eq!(*tari_utxo, *tari_utxo2);
+            assert_eq!(*taiji_utxo, *taiji_utxo2);
             // Cleanup
-            tari_unblinded_output_destroy(tari_utxo);
-            tari_unblinded_output_destroy(tari_utxo2);
+            taiji_unblinded_output_destroy(taiji_utxo);
+            taiji_unblinded_output_destroy(taiji_utxo2);
             string_destroy(message_ptr as *mut c_char);
             string_destroy(script_ptr as *mut c_char);
             string_destroy(input_data_ptr as *mut c_char);

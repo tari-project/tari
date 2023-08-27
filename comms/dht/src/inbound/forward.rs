@@ -1,4 +1,4 @@
-//  Copyright 2022. The Tari Project
+//  Copyright 2022. The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -25,7 +25,7 @@ use std::task::Poll;
 use futures::{future::BoxFuture, task::Context};
 use log::*;
 use prost::bytes::BufMut;
-use tari_comms::{peer_manager::Peer, pipeline::PipelineError, BytesMut};
+use taiji_comms::{peer_manager::Peer, pipeline::PipelineError, BytesMut};
 use tari_utilities::epoch_time::EpochTime;
 use tower::{layer::Layer, Service, ServiceExt};
 
@@ -259,7 +259,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 mod test {
     use std::time::Duration;
 
-    use tari_comms::{message::MessageExt, wrap_in_envelope_body};
+    use taiji_comms::{message::MessageExt, wrap_in_envelope_body};
     use tokio::{sync::mpsc, task};
 
     use super::*;

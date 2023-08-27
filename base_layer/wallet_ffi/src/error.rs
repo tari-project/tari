@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,20 +20,20 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use log::*;
-use minotari_wallet::{
+use minotaiji_wallet::{
     error::{WalletError, WalletStorageError},
     output_manager_service::error::{OutputManagerError, OutputManagerStorageError},
     transaction_service::error::{TransactionServiceError, TransactionStorageError},
 };
-use tari_common_types::tari_address::TariAddressError;
-use tari_comms::multiaddr;
-use tari_comms_dht::store_forward::StoreAndForwardError;
-use tari_contacts::contacts_service::error::{ContactsServiceError, ContactsServiceStorageError};
+use taiji_common_types::taiji_address::TaijiAddressError;
+use taiji_comms::multiaddr;
+use taiji_comms_dht::store_forward::StoreAndForwardError;
+use taiji_contacts::contacts_service::error::{ContactsServiceError, ContactsServiceStorageError};
 use tari_crypto::{
     signatures::SchnorrSignatureError,
     tari_utilities::{hex::HexError, ByteArrayError},
 };
-use tari_key_manager::error::{KeyManagerError, MnemonicError};
+use taiji_key_manager::error::{KeyManagerError, MnemonicError};
 use thiserror::Error;
 
 const LOG_TARGET: &str = "wallet_ffi::error";
@@ -392,25 +392,25 @@ impl From<ByteArrayError> for LibWalletError {
     }
 }
 
-/// This implementation maps the internal TariAddressError to a set of LibWalletErrors.
+/// This implementation maps the internal TaijiAddressError to a set of LibWalletErrors.
 /// The mapping is explicitly managed here.
-impl From<TariAddressError> for LibWalletError {
-    fn from(e: TariAddressError) -> Self {
+impl From<TaijiAddressError> for LibWalletError {
+    fn from(e: TaijiAddressError) -> Self {
         error!(target: LOG_TARGET, "{}", format!("{:?}", e));
         match e {
-            TariAddressError::InvalidNetworkOrChecksum => Self {
+            TaijiAddressError::InvalidNetworkOrChecksum => Self {
                 code: 701,
                 message: format!("{:?}", e),
             },
-            TariAddressError::CannotRecoverPublicKey => Self {
+            TaijiAddressError::CannotRecoverPublicKey => Self {
                 code: 702,
                 message: format!("{:?}", e),
             },
-            TariAddressError::InvalidSize => Self {
+            TaijiAddressError::InvalidSize => Self {
                 code: 703,
                 message: format!("{:?}", e),
             },
-            TariAddressError::InvalidEmoji => Self {
+            TaijiAddressError::InvalidEmoji => Self {
                 code: 704,
                 message: format!("{:?}", e),
             },

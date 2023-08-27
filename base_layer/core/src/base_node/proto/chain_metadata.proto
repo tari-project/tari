@@ -1,11 +1,11 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 syntax = "proto3";
 
 import "google/protobuf/wrappers.proto";
 
-package tari.base_node;
+package taiji.base_node;
 
 message ChainMetadata {
     // The current chain height, or the block number of the longest valid chain, or `None` if there is no chain

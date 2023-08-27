@@ -1,4 +1,4 @@
-//   Copyright 2022. The Tari Project
+//   Copyright 2022. The Taiji Project
 //
 //   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //   following conditions are met:
@@ -34,12 +34,12 @@ use super::{
     ffi_import::{
         self,
         wallet_create,
-        TariBalance,
-        TariCompletedTransaction,
-        TariContactsLivenessData,
-        TariPendingInboundTransaction,
-        TariTransactionSendStatus,
-        TariWallet,
+        TaijiBalance,
+        TaijiCompletedTransaction,
+        TaijiContactsLivenessData,
+        TaijiPendingInboundTransaction,
+        TaijiTransactionSendStatus,
+        TaijiWallet,
     },
     Balance,
     CommsConfig,
@@ -54,54 +54,54 @@ use super::{
     PublicKeys,
     WalletAddress,
 };
-use crate::ffi::{callbacks, ffi_import::TariBaseNodeState};
+use crate::ffi::{callbacks, ffi_import::TaijiBaseNodeState};
 
-extern "C" fn callback_received_transaction(ptr: *mut TariPendingInboundTransaction) {
+extern "C" fn callback_received_transaction(ptr: *mut TaijiPendingInboundTransaction) {
     let callbacks = Callbacks::instance();
     callbacks.on_received_transaction(ptr);
     // println!("callback_received_transaction");
 }
-extern "C" fn callback_received_transaction_reply(ptr: *mut TariCompletedTransaction) {
+extern "C" fn callback_received_transaction_reply(ptr: *mut TaijiCompletedTransaction) {
     let callbacks = Callbacks::instance();
     callbacks.on_received_transaction_reply(ptr);
     // println!("callback_received_transaction_reply");
 }
-extern "C" fn callback_received_finalized_transaction(ptr: *mut TariCompletedTransaction) {
+extern "C" fn callback_received_finalized_transaction(ptr: *mut TaijiCompletedTransaction) {
     let callbacks = Callbacks::instance();
     callbacks.on_received_finalized_transaction(ptr);
     // println!("callback_received_finalized_transaction");
 }
-extern "C" fn callback_transaction_broadcast(ptr: *mut TariCompletedTransaction) {
+extern "C" fn callback_transaction_broadcast(ptr: *mut TaijiCompletedTransaction) {
     let callbacks = Callbacks::instance();
     callbacks.on_transaction_broadcast(ptr);
     // println!("callback_transaction_broadcast");
 }
-extern "C" fn callback_transaction_mined(ptr: *mut TariCompletedTransaction) {
+extern "C" fn callback_transaction_mined(ptr: *mut TaijiCompletedTransaction) {
     let callbacks = Callbacks::instance();
     callbacks.on_transaction_mined(ptr);
     // println!("callback_transaction_mined");
 }
-extern "C" fn callback_transaction_mined_unconfirmed(ptr: *mut TariCompletedTransaction, confirmations: u64) {
+extern "C" fn callback_transaction_mined_unconfirmed(ptr: *mut TaijiCompletedTransaction, confirmations: u64) {
     let callbacks = Callbacks::instance();
     callbacks.on_transaction_mined_unconfirmed(ptr, confirmations);
     // println!("callback_transaction_mined_unconfirmed");
 }
-extern "C" fn callback_faux_transaction_confirmed(ptr: *mut TariCompletedTransaction) {
+extern "C" fn callback_faux_transaction_confirmed(ptr: *mut TaijiCompletedTransaction) {
     let callbacks = Callbacks::instance();
     callbacks.on_faux_transaction_confirmed(ptr);
     // println!("callback_faux_transaction_confirmed");
 }
-extern "C" fn callback_faux_transaction_unconfirmed(ptr: *mut TariCompletedTransaction, confirmations: u64) {
+extern "C" fn callback_faux_transaction_unconfirmed(ptr: *mut TaijiCompletedTransaction, confirmations: u64) {
     let callbacks = Callbacks::instance();
     callbacks.on_faux_transaction_mined_unconfirmed(ptr, confirmations);
     // println!("callback_faux_transaction_unconfirmed");
 }
-extern "C" fn callback_transaction_send_result(tx_id: c_ulonglong, ptr: *mut TariTransactionSendStatus) {
+extern "C" fn callback_transaction_send_result(tx_id: c_ulonglong, ptr: *mut TaijiTransactionSendStatus) {
     let callbacks = Callbacks::instance();
     callbacks.on_transaction_send_result(tx_id, ptr);
     // println!("callback_transaction_send_result");
 }
-extern "C" fn callback_transaction_cancellation(ptr: *mut TariCompletedTransaction, reason: u64) {
+extern "C" fn callback_transaction_cancellation(ptr: *mut TaijiCompletedTransaction, reason: u64) {
     let callbacks = Callbacks::instance();
     callbacks.on_transaction_cancellation(ptr, reason);
     // println!("callback_transaction_cancellation");
@@ -111,12 +111,12 @@ extern "C" fn callback_txo_validation_complete(request_key: u64, validation_resu
     callbacks.on_txo_validation_complete(request_key, validation_results);
     // println!("callback_txo_validation_complete");
 }
-extern "C" fn callback_contacts_liveness_data_updated(ptr: *mut TariContactsLivenessData) {
+extern "C" fn callback_contacts_liveness_data_updated(ptr: *mut TaijiContactsLivenessData) {
     let callbacks = Callbacks::instance();
     callbacks.on_contacts_liveness_data_updated(ptr);
     // println!("callback_contacts_liveness_data_updated");
 }
-extern "C" fn callback_balance_updated(ptr: *mut TariBalance) {
+extern "C" fn callback_balance_updated(ptr: *mut TaijiBalance) {
     let callbacks = Callbacks::instance();
     callbacks.on_balance_updated(ptr);
     // println!("callback_balance_updated");
@@ -136,7 +136,7 @@ extern "C" fn callback_connectivity_status(status: u64) {
     callbacks.on_connectivity_status(status);
     // println!("callback_connectivity_status");
 }
-extern "C" fn callback_base_node_state(state: *mut TariBaseNodeState) {
+extern "C" fn callback_base_node_state(state: *mut TaijiBaseNodeState) {
     let callbacks = Callbacks::instance();
     callbacks.on_basenode_state_update(state);
 }
@@ -151,7 +151,7 @@ struct CachedBalance {
 
 #[derive(Debug)]
 pub struct Wallet {
-    ptr: *mut TariWallet,
+    ptr: *mut TaijiWallet,
     liveness_data: Arc<Mutex<IndexMap<String, ContactsLivenessData>>>,
     balance: CachedBalance,
 }
@@ -251,9 +251,9 @@ impl Wallet {
         let ptr;
         let mut error = 0;
         unsafe {
-            ptr = ffi_import::wallet_get_tari_address(self.ptr, &mut error);
+            ptr = ffi_import::wallet_get_taiji_address(self.ptr, &mut error);
             if error > 0 {
-                println!("wallet_get_tari_address error {}", error);
+                println!("wallet_get_taiji_address error {}", error);
             }
         }
         WalletAddress::from_ptr(ptr)

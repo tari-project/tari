@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -29,7 +29,7 @@ use std::{
     fmt::{Display, Formatter},
 };
 
-use tari_comms::{peer_manager::node_id::NodeId, types::CommsPublicKey};
+use taiji_comms::{peer_manager::node_id::NodeId, types::CommsPublicKey};
 
 use crate::envelope::NodeDestination;
 

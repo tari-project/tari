@@ -1,4 +1,4 @@
-// Copyright 2022. The Tari Project
+// Copyright 2022. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -29,8 +29,8 @@ use chacha20poly1305::XChaCha20Poly1305;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 pub use key_manager_state::{KeyManagerStateSql, NewKeyManagerStateSql};
 use log::*;
-use tari_common_sqlite::{error::SqliteStorageError, sqlite_connection_pool::PooledDbConnection};
-use tari_common_types::encryption::Encryptable;
+use taiji_common_sqlite::{error::SqliteStorageError, sqlite_connection_pool::PooledDbConnection};
+use taiji_common_types::encryption::Encryptable;
 use tari_crypto::keys::PublicKey;
 use tari_utilities::acquire_read_lock;
 use tokio::time::Instant;

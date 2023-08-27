@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2020, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -23,7 +23,7 @@
 use std::{iter::repeat_with, sync::Arc, time::Duration};
 
 use rand::{rngs::OsRng, seq::SliceRandom};
-use tari_comms::{
+use taiji_comms::{
     connectivity::ConnectivityEvent,
     peer_manager::{Peer, PeerFeatures},
     test_utils::{
@@ -34,8 +34,8 @@ use tari_comms::{
     NodeIdentity,
     PeerManager,
 };
-use tari_shutdown::Shutdown;
-use tari_test_utils::async_assert;
+use taiji_shutdown::Shutdown;
+use taiji_test_utils::async_assert;
 use tokio::sync::broadcast;
 
 use crate::{
@@ -265,7 +265,7 @@ async fn insert_neighbour() {
 
 mod metrics {
     mod collector {
-        use tari_comms::peer_manager::NodeId;
+        use taiji_comms::peer_manager::NodeId;
 
         use crate::connectivity::MetricsCollector;
 

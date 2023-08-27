@@ -1,4 +1,4 @@
-// Copyright 2020, The Tari Project
+// Copyright 2020, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -122,7 +122,7 @@ mod test {
     use std::time::Duration;
 
     use bytes::Bytes;
-    use tari_test_utils::collect_recv;
+    use taiji_test_utils::collect_recv;
     use tokio::{sync::mpsc, time};
 
     use super::*;

@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -21,22 +21,22 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use diesel::result::Error as DieselError;
-use tari_common::exit_codes::{ExitCode, ExitError};
-use tari_common_sqlite::error::SqliteStorageError;
-use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
-use tari_comms_dht::outbound::DhtOutboundError;
-use tari_core::transactions::{
+use taiji_common::exit_codes::{ExitCode, ExitError};
+use taiji_common_sqlite::error::SqliteStorageError;
+use taiji_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
+use taiji_comms_dht::outbound::DhtOutboundError;
+use taiji_core::transactions::{
     transaction_components::{EncryptedDataError, TransactionError},
     transaction_protocol::TransactionProtocolError,
     CoinbaseBuildError,
 };
 use tari_crypto::errors::RangeProofError;
-use tari_key_manager::{
+use taiji_key_manager::{
     error::{KeyManagerError, MnemonicError},
     key_manager_service::KeyManagerServiceError,
 };
-use tari_script::ScriptError;
-use tari_service_framework::reply_channel::TransportChannelError;
+use taiji_script::ScriptError;
+use taiji_service_framework::reply_channel::TransportChannelError;
 use tari_utilities::{hex::HexError, ByteArrayError};
 use thiserror::Error;
 
@@ -120,7 +120,7 @@ pub enum OutputManagerError {
     InvalidCovenant,
     #[error("Unsupported Output Features")]
     InvalidOutputFeatures,
-    #[error("Tari script error: {0}")]
+    #[error("Taiji script error: {0}")]
     ScriptError(#[from] ScriptError),
     #[error("Master secret key does not match persisted key manager state")]
     MasterSeedMismatch,
@@ -205,7 +205,7 @@ pub enum OutputManagerStorageError {
     AeadError(String),
     #[error("Tried to insert a script that already exists in the database")]
     DuplicateScript,
-    #[error("Tari script error: {0}")]
+    #[error("Taiji script error: {0}")]
     ScriptError(#[from] ScriptError),
     #[error("Binary not stored as valid hex:{0}")]
     HexError(String),

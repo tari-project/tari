@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2020, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -23,7 +23,7 @@
 use std::convert::{TryFrom, TryInto};
 
 use log::*;
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
+use taiji_comms::protocol::rpc::{Request, Response, RpcStatus};
 
 use crate::{
     mempool::{rpc::MempoolService, service::MempoolHandle},
@@ -53,7 +53,7 @@ fn to_internal_error<T: std::error::Error>(err: T) -> RpcStatus {
     RpcStatus::general_default()
 }
 
-#[tari_comms::async_trait]
+#[taiji_comms::async_trait]
 impl MempoolService for MempoolRpcService {
     async fn get_stats(&self, _: Request<()>) -> Result<Response<proto::mempool::StatsResponse>, RpcStatus> {
         let stats = self.mempool().get_stats().await.map_err(to_internal_error)?;

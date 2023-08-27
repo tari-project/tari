@@ -1,4 +1,4 @@
-//  Copyright 2022. The Tari Project
+//  Copyright 2022. The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -24,9 +24,9 @@ use std::time::Duration;
 
 use blake2::{Blake2b, Digest};
 use digest::consts::U32;
-use tari_common::configuration::Network;
-use tari_common_types::chain_metadata::ChainMetadata;
-use tari_core::{
+use taiji_common::configuration::Network;
+use taiji_common_types::chain_metadata::ChainMetadata;
+use taiji_core::{
     base_node::{
         chain_metadata_service::PeerChainMetadata,
         state_machine_service::{
@@ -43,9 +43,9 @@ use tari_core::{
     transactions::test_helpers::create_test_core_key_manager_with_memory_db,
     validation::mocks::MockValidator,
 };
-use tari_p2p::services::liveness::config::LivenessConfig;
-use tari_shutdown::Shutdown;
-use tari_test_utils::unpack_enum;
+use taiji_p2p::services::liveness::config::LivenessConfig;
+use taiji_shutdown::Shutdown;
+use taiji_test_utils::unpack_enum;
 use tari_utilities::ByteArray;
 use tempfile::tempdir;
 use tokio::{

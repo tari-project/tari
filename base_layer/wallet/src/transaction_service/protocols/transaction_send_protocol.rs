@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2020. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -25,20 +25,20 @@ use std::{convert::TryInto, sync::Arc};
 use chrono::Utc;
 use futures::FutureExt;
 use log::*;
-use tari_common_types::{
-    tari_address::TariAddress,
+use taiji_common_types::{
+    taiji_address::TaijiAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
 };
-use tari_comms::types::CommsPublicKey;
-use tari_comms_dht::{
+use taiji_comms::types::CommsPublicKey;
+use taiji_comms_dht::{
     domain_message::OutboundDomainMessage,
     outbound::{OutboundEncryption, SendMessageResponse},
 };
-use tari_core::{
+use taiji_core::{
     covenants::Covenant,
     transactions::{
         key_manager::TransactionKeyManagerInterface,
-        tari_amount::MicroMinotari,
+        taiji_amount::MicroMinotaiji,
         transaction_components::OutputFeatures,
         transaction_protocol::{
             proto::protocol as proto,
@@ -49,8 +49,8 @@ use tari_core::{
         SenderTransactionProtocol,
     },
 };
-use tari_p2p::tari_message::TariMessageType;
-use tari_script::script;
+use taiji_p2p::taiji_message::TaijiMessageType;
+use taiji_script::script;
 use tokio::{
     sync::{mpsc::Receiver, oneshot},
     time::sleep,
@@ -88,9 +88,9 @@ pub enum TransactionSendProtocolStage {
 
 pub struct TransactionSendProtocol<TBackend, TWalletConnectivity, TKeyManagerInterface> {
     id: TxId,
-    dest_address: TariAddress,
-    amount: MicroMinotari,
-    fee_per_gram: MicroMinotari,
+    dest_address: TaijiAddress,
+    amount: MicroMinotaiji,
+    fee_per_gram: MicroMinotaiji,
     message: String,
     service_request_reply_channel: Option<oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>>,
     stage: TransactionSendProtocolStage,
@@ -113,9 +113,9 @@ where
         resources: TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManagerInterface>,
         transaction_reply_receiver: Receiver<(CommsPublicKey, RecipientSignedMessage)>,
         cancellation_receiver: oneshot::Receiver<()>,
-        dest_address: TariAddress,
-        amount: MicroMinotari,
-        fee_per_gram: MicroMinotari,
+        dest_address: TaijiAddress,
+        amount: MicroMinotaiji,
+        fee_per_gram: MicroMinotaiji,
         message: String,
         tx_meta: TransactionMetadata,
         service_request_reply_channel: Option<
@@ -226,7 +226,7 @@ where
                 self.message.clone(),
                 script!(Nop),
                 Covenant::default(),
-                MicroMinotari::zero(),
+                MicroMinotaiji::zero(),
             )
             .await
         {
@@ -677,7 +677,7 @@ where
             .outbound_message_service
             .send_direct_unencrypted(
                 self.dest_address.public_key().clone(),
-                OutboundDomainMessage::new(&TariMessageType::SenderPartialTransaction, proto_message.clone()),
+                OutboundDomainMessage::new(&TaijiMessageType::SenderPartialTransaction, proto_message.clone()),
                 "transaction send".to_string(),
             )
             .await
@@ -824,7 +824,7 @@ where
                 self.dest_address.public_key().clone(),
                 OutboundEncryption::encrypt_for(self.dest_address.public_key().clone()),
                 vec![],
-                OutboundDomainMessage::new(&TariMessageType::SenderPartialTransaction, proto_message),
+                OutboundDomainMessage::new(&TaijiMessageType::SenderPartialTransaction, proto_message),
             )
             .await
         {

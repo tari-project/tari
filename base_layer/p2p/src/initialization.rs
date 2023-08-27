@@ -1,4 +1,4 @@
-//  Copyright 2019 The Tari Project
+//  Copyright 2019 The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -35,11 +35,11 @@ use futures::future;
 use lmdb_zero::open;
 use log::*;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
-use tari_common::{
+use taiji_common::{
     configuration::Network,
     exit_codes::{ExitCode, ExitError},
 };
-use tari_comms::{
+use taiji_comms::{
     backoff::ConstantBackoff,
     multiaddr::multiaddr,
     peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManagerError},
@@ -59,10 +59,10 @@ use tari_comms::{
     PeerManager,
     UnspawnedCommsNode,
 };
-use tari_comms_dht::{Dht, DhtInitializationError};
-use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
-use tari_shutdown::ShutdownSignal;
-use tari_storage::{
+use taiji_comms_dht::{Dht, DhtInitializationError};
+use taiji_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
+use taiji_shutdown::ShutdownSignal;
+use taiji_storage::{
     lmdb_store::{LMDBBuilder, LMDBConfig},
     LMDBWrapper,
 };
@@ -123,7 +123,7 @@ impl CommsInitializationError {
     }
 }
 
-/// Initialize Tari Comms configured for tests
+/// Initialize Taiji Comms configured for tests
 pub async fn initialize_local_test_comms<P: AsRef<Path>>(
     node_identity: Arc<NodeIdentity>,
     connector: InboundDomainConnector,

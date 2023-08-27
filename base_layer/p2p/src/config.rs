@@ -1,4 +1,4 @@
-//  Copyright 2022. The Tari Project
+//  Copyright 2022. The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -26,7 +26,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tari_common::{
+use taiji_common::{
     configuration::{
         serializers,
         utils::{deserialize_string_or_struct, serialize_string},
@@ -36,8 +36,8 @@ use tari_common::{
     DnsNameServer,
     SubConfigPath,
 };
-use tari_comms::multiaddr::Multiaddr;
-use tari_comms_dht::{DbConnectionUrl, DhtConfig};
+use taiji_comms::multiaddr::Multiaddr;
+use taiji_comms_dht::{DbConnectionUrl, DhtConfig};
 
 use crate::{transport::TransportConfig, DEFAULT_DNS_NAME_SERVER};
 

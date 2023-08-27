@@ -1,4 +1,4 @@
-//  Copyright 2022. The Tari Project
+//  Copyright 2022. The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -24,7 +24,7 @@ pub mod seconds {
     //! Helper module for serialising configuration variables from `Duration` to integers representing seconds and back.
     //! Use this converter by employing
     //! ```ignore
-    //! use tari_common::configuration::serializers::seconds;
+    //! use taiji_common::configuration::serializers::seconds;
     //! ...
     //! #[serde(with="seconds")]
     //! pub my_var: Duration
@@ -48,7 +48,7 @@ pub mod optional_seconds {
     //! Helper module for serialising configuration variables from `Duration` to integers representing seconds and back.
     //! Use this converter by employing
     //! ```ignore
-    //! use tari_common::configuration::serializers::seconds;
+    //! use taiji_common::configuration::serializers::seconds;
     //! ...
     //! #[serde(with="optional_seconds")]
     //! pub my_var: Option<Duration>

@@ -1,4 +1,4 @@
-//   Copyright 2022. The Tari Project
+//   Copyright 2022. The Taiji Project
 //
 //   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //   following conditions are met:
@@ -32,7 +32,7 @@ pub struct Vector {
 
 impl Drop for Vector {
     fn drop(&mut self) {
-        unsafe { ffi_import::destroy_tari_vector(self.ptr) };
+        unsafe { ffi_import::destroy_taiji_vector(self.ptr) };
         self.ptr = null_mut();
     }
 }
@@ -49,9 +49,9 @@ impl Vector {
     pub fn push_string(&self, s: String) {
         let mut error = 0;
         unsafe {
-            ffi_import::tari_vector_push_string(self.ptr, CString::new(s).unwrap().into_raw(), &mut error);
+            ffi_import::taiji_vector_push_string(self.ptr, CString::new(s).unwrap().into_raw(), &mut error);
             if error > 0 {
-                println!("tari_vector_push_string error {}", error);
+                println!("taiji_vector_push_string error {}", error);
             }
         }
     }

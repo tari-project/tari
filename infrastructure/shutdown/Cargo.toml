@@ -1,9 +1,9 @@
 [package]
-name = "tari_shutdown"
+name = "taiji_shutdown"
 description = "A convenient shutdown signal"
-authors = ["The Tari Development Community"]
+authors = ["The Taiji Development Community"]
 repository = "https://github.com/tari-project/tari"
-homepage = "https://tari.com"
+homepage = "https://taiji.com"
 readme = "README.md"
 license = "BSD-3-Clause"
 version = "0.52.0-pre.0"

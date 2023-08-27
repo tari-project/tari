@@ -1,42 +1,42 @@
-# Tari Vulnerability Disclosure Policy
+# Taiji Vulnerability Disclosure Policy
 _Last Updated: April 24, 2023_
 
 ## Introduction
 
-[Tari Labs](https://tarilabs.com) guides the development of the [Tari open source project](https://tari.com). As the stewards of Tari, we welcome feedback from security researchers and the general public. If you believe you have discovered a vulnerability, privacy issue, exposed data, or other security issues in Tari software or Tari Labs infrastructure, we want to hear from you. This policy outlines steps for reporting vulnerabilities to us, what we expect, and what you can expect from us.
+[Taiji Labs](https://taijilabs.com) guides the development of the [Taiji open source project](https://taiji.com). As the stewards of Taiji, we welcome feedback from security researchers and the general public. If you believe you have discovered a vulnerability, privacy issue, exposed data, or other security issues in Taiji software or Taiji Labs infrastructure, we want to hear from you. This policy outlines steps for reporting vulnerabilities to us, what we expect, and what you can expect from us.
 
 ## Scope
 
 This policy applies to:
 
-* Code implementation as seen in the `tari-project` [GitHub repositories](https://github.com/tari-project). This includes code in the `development` branches and any release branch.
-* Written research from Tari Labs which dictates the above-referenced Tari code implementation. This includes [Tari RFCs](https://github.com/tari-project/rfcs) and any published academic or journal articles.
-* Infrastructure owned, operated, or maintained by Tari Labs. This includes websites and public-facing applications.
+* Code implementation as seen in the `taiji-project` [GitHub repositories](https://github.com/taiji-project). This includes code in the `development` branches and any release branch.
+* Written research from Taiji Labs which dictates the above-referenced Taiji code implementation. This includes [Taiji RFCs](https://github.com/taiji-project/rfcs) and any published academic or journal articles.
+* Infrastructure owned, operated, or maintained by Taiji Labs. This includes websites and public-facing applications.
 
 ### Out of Scope
 
 This policy does not apply to:
 
 * Archived repositories;
-* End-user documentation and educational or "help" materials (e.g., [Tari Labs University](https://tlu.tarilabs.com/));
+* End-user documentation and educational or "help" materials (e.g., [Taiji Labs University](https://tlu.taijilabs.com/));
 * Support, marketing, and social media channels (e.g., Telegram or Discord);
-* Social engineering of Tari users and Tari Labs staff or contractors;
+* Social engineering of Taiji users and Taiji Labs staff or contractors;
 * Yat vulnerabilities (which should be disclosed via the [Yat Bug Bounty](https://bugcrowd.com/yat-og) program);
 * Services, applications, and mix networks run by volunteers (e.g., Tor hidden services);
 * Attacks which require more than 50% of network hash rate (or equivalent luck for enough blocks to execute);
-* Assets, equipment, and systems not owned by Tari Labs; and
+* Assets, equipment, and systems not owned by Taiji Labs; and
 * [Commonplace Reports](#commonplace-reports) as described in this policy.
 
-Vulnerabilities discovered or suspected in systems not owned by Tari Labs should be reported to the appropriate owner, vendor, or applicable authority. We emphasize that researchers should not engage in Denial of Service, active exploits against networks, or any physical or electronic attempts against property and/or data centers.
+Vulnerabilities discovered or suspected in systems not owned by Taiji Labs should be reported to the appropriate owner, vendor, or applicable authority. We emphasize that researchers should not engage in Denial of Service, active exploits against networks, or any physical or electronic attempts against property and/or data centers.
 
 ## Disclosure
 
-Please report any **non-sensitive issue unrelated to security** as a [GitHub issue here](https://github.com/tari-project/tari/issues/new?assignees=&labels=bug-report&template=bug_report.md&title=%5BThanks%20for%20making%20Tari%20better%5D). Thank you for helping to make Tari more robust and reliable.
+Please report any **non-sensitive issue unrelated to security** as a [GitHub issue here](https://github.com/taiji-project/taiji/issues/new?assignees=&labels=bug-report&template=bug_report.md&title=%5BThanks%20for%20making%20Taiji%20better%5D). Thank you for helping to make Taiji more robust and reliable.
 
-* [Tari Issues](https://github.com/tari-project/tari/issues)
-* [iOS Issues](https://github.com/tari-project/wallet-ios/issues)
-* [RFC Docs](https://rfc.tari.com/)
-* [Contributing Guidelines](https://github.com/tari-project/tari/blob/55481043b99ef0381289e9ac85973dc1b603ba81/Contributing.md)
+* [Taiji Issues](https://github.com/taiji-project/taiji/issues)
+* [iOS Issues](https://github.com/taiji-project/wallet-ios/issues)
+* [RFC Docs](https://rfc.taiji.com/)
+* [Contributing Guidelines](https://github.com/taiji-project/taiji/blob/55481043b99ef0381289e9ac85973dc1b603ba81/Contributing.md)
 
 ### Security Issues
 
@@ -44,10 +44,10 @@ The following information applies to vulnerabilities, exploits, or undesirable b
 
 #### Official Channels
 
-Please report security issues to [professor@tari.com](mailto:professor@tari.com), providing all relevant information.
+Please report security issues to [professor@taiji.com](mailto:professor@taiji.com), providing all relevant information.
 
 ```
-professor@tari.com
+professor@taiji.com
 PGP fingerprint = 5410 7BD9 02F0 A865 3DDF F4CD 7A4A 432E C35C 9C7E
 
 If pasting GPG encrypted data, use paste.debian.net or paste.ubuntu.com
@@ -65,7 +65,7 @@ as these do not introduce issues with Tor via Cloudflare.
 * Affected software versions; and
 * If known, mitigations for the issue.
 
-The more detail you provide, the easier it will be for us to triage and fix the issue. Tari follows a **60 day disclosure timeline** as described in this policy.
+The more detail you provide, the easier it will be for us to triage and fix the issue. Taiji follows a **60 day disclosure timeline** as described in this policy.
 
 #### Yat Issues
 
@@ -146,11 +146,11 @@ The following requirements must be adhered to in order to for any report to qual
 
 * **Don't disclose too early:** To protect our users, please keep all identified vulnerability details between you and us until we've had a chance to fix the issue. This includes things like posting an obscured video of an issue on social media prior to confirmation of a deployed fix. Though you may think you have concealed critical details, doing so at minimum alerts potentially malicious actors that an issue exists and at worst unintentionally creates early disclosure. Public disclosure prior to us notifying you of the fix may result in a ban. If you have questions regarding the remediation timeline, please inquire on the relevant report.
 
-* **No social engineering:** Bugs that require social engineering to exploit (e.g., tricking someone into clicking a link) may qualify, but please do not actually attempt to socially engineer another user, Tari Labs staff, Tari open source volunteers, etc. during your testing. Providing a clear explanation of how social engineering could be used in conjunction with an identified vulnerability is sufficient.
+* **No social engineering:** Bugs that require social engineering to exploit (e.g., tricking someone into clicking a link) may qualify, but please do not actually attempt to socially engineer another user, Taiji Labs staff, Taiji open source volunteers, etc. during your testing. Providing a clear explanation of how social engineering could be used in conjunction with an identified vulnerability is sufficient.
 
 ### Commonplace Reports
 
-In addition to the areas defined as [Out of Scope](#out-of-scope) in this policy, the following commonplace reports do not qualify for a bounty reward. Such issues may be disclosed as a [GitHub issue here](https://github.com/tari-project/tari/issues/new?assignees=&labels=bug-report&template=bug_report.md&title=%5BThanks%20for%20making%20Tari%20better%5D).
+In addition to the areas defined as [Out of Scope](#out-of-scope) in this policy, the following commonplace reports do not qualify for a bounty reward. Such issues may be disclosed as a [GitHub issue here](https://github.com/taiji-project/taiji/issues/new?assignees=&labels=bug-report&template=bug_report.md&title=%5BThanks%20for%20making%20Taiji%20better%5D).
 
 * Lack of a security feature that is not critical to the system's operation
 * Configuration issues that are not relevant to the network or application
@@ -170,9 +170,9 @@ In addition to the areas defined as [Out of Scope](#out-of-scope) in this policy
 * XSS that does not allow for the execution of arbitrary code, such as reflected or non-persistent XSS
 * Reports resulting from automated scanning utilities without additional details or a PoC demonstrating a specific exploit
 * Attacks requiring physical access to a user’s device
-* Attacks dependent upon social engineering of Tari Labs staff, contractors, or vendors
-* Attacks dependent upon social engineering of Tari open source volunteers
-* Attacks dependent upon social engineering of Tari users
+* Attacks dependent upon social engineering of Taiji Labs staff, contractors, or vendors
+* Attacks dependent upon social engineering of Taiji open source volunteers
+* Attacks dependent upon social engineering of Taiji users
 * Username enumeration based on login or "forgot password" pages
 * Enforcement policies for brute force, rate limiting, or account lockout
 * SSL/TLS best practices

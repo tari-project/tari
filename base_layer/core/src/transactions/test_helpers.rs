@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -24,18 +24,18 @@ use std::{iter, mem::size_of, sync::Arc};
 
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng, RngCore};
-use tari_common::configuration::Network;
-use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
-use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
+use taiji_common::configuration::Network;
+use taiji_common_sqlite::connection::{DbConnection, DbConnectionUrl};
+use taiji_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
 use tari_crypto::keys::{PublicKey as PK, SecretKey};
-use tari_key_manager::{
+use taiji_key_manager::{
     cipher_seed::CipherSeed,
     key_manager_service::{
         storage::{database::KeyManagerDatabase, sqlite_db::KeyManagerSqliteDatabase},
         KeyManagerInterface,
     },
 };
-use tari_script::{inputs, script, ExecutionStack, TariScript};
+use taiji_script::{inputs, script, ExecutionStack, TaijiScript};
 
 use super::transaction_components::{TransactionInputVersion, TransactionOutputVersion};
 use crate::{
@@ -46,13 +46,13 @@ use crate::{
         crypto_factories::CryptoFactories,
         fee::Fee,
         key_manager::{
-            TariKeyId,
+            TaijiKeyId,
             TransactionKeyManagerBranch,
             TransactionKeyManagerInterface,
             TransactionKeyManagerWrapper,
             TxoStage,
         },
-        tari_amount::MicroMinotari,
+        taiji_amount::MicroMinotaiji,
         transaction_components::{
             KernelBuilder,
             KernelFeatures,
@@ -71,7 +71,7 @@ use crate::{
     },
 };
 
-pub async fn create_test_input(amount: MicroMinotari, maturity: u64, key_manager: &TestKeyManager) -> WalletOutput {
+pub async fn create_test_input(amount: MicroMinotaiji, maturity: u64, key_manager: &TestKeyManager) -> WalletOutput {
     let params = TestParams::new(key_manager).await;
     params
         .create_input(
@@ -90,17 +90,17 @@ pub async fn create_test_input(amount: MicroMinotari, maturity: u64, key_manager
 
 #[derive(Clone)]
 pub struct TestParams {
-    pub spend_key_id: TariKeyId,
+    pub spend_key_id: TaijiKeyId,
     pub spend_key_pk: PublicKey,
-    pub script_key_id: TariKeyId,
+    pub script_key_id: TaijiKeyId,
     pub script_key_pk: PublicKey,
-    pub sender_offset_key_id: TariKeyId,
+    pub sender_offset_key_id: TaijiKeyId,
     pub sender_offset_key_pk: PublicKey,
-    pub kernel_nonce_key_id: TariKeyId,
+    pub kernel_nonce_key_id: TaijiKeyId,
     pub kernel_nonce_key_pk: PublicKey,
-    pub public_nonce_key_id: TariKeyId,
+    pub public_nonce_key_id: TaijiKeyId,
     pub public_nonce_key_pk: PublicKey,
-    pub ephemeral_public_nonce_key_id: TariKeyId,
+    pub ephemeral_public_nonce_key_id: TaijiKeyId,
     pub ephemeral_public_nonce_key_pk: PublicKey,
     pub transaction_weight: TransactionWeight,
 }
@@ -196,17 +196,17 @@ impl TestParams {
 
 #[derive(Clone)]
 pub struct UtxoTestParams {
-    pub value: MicroMinotari,
-    pub script: TariScript,
+    pub value: MicroMinotaiji,
+    pub script: TaijiScript,
     pub features: OutputFeatures,
     pub input_data: Option<ExecutionStack>,
     pub covenant: Covenant,
     pub output_version: Option<TransactionOutputVersion>,
-    pub minimum_value_promise: MicroMinotari,
+    pub minimum_value_promise: MicroMinotaiji,
 }
 
 impl UtxoTestParams {
-    pub fn with_value(value: MicroMinotari) -> Self {
+    pub fn with_value(value: MicroMinotaiji) -> Self {
         Self {
             value,
             ..Default::default()
@@ -223,7 +223,7 @@ impl Default for UtxoTestParams {
             input_data: None,
             covenant: Covenant::default(),
             output_version: None,
-            minimum_value_promise: MicroMinotari::zero(),
+            minimum_value_promise: MicroMinotaiji::zero(),
         }
     }
 }
@@ -248,7 +248,7 @@ pub fn generate_keys() -> TestKeySet {
 
 /// Generate a random transaction signature, returning the public key (excess) and the signature.
 pub fn create_random_signature(
-    fee: MicroMinotari,
+    fee: MicroMinotaiji,
     lock_height: u64,
     features: KernelFeatures,
 ) -> (PublicKey, Signature) {
@@ -257,7 +257,7 @@ pub fn create_random_signature(
 }
 
 /// Generate a random transaction signature, returning the public key (excess) and the signature.
-pub fn create_signature(k: PrivateKey, fee: MicroMinotari, lock_height: u64, features: KernelFeatures) -> Signature {
+pub fn create_signature(k: PrivateKey, fee: MicroMinotaiji, lock_height: u64, features: KernelFeatures) -> Signature {
     let r = PrivateKey::random(&mut OsRng);
     let tx_meta = TransactionMetadata::new_with_features(fee, lock_height, features);
     let e = TransactionKernel::build_kernel_challenge_from_tx_meta(
@@ -272,8 +272,8 @@ pub fn create_signature(k: PrivateKey, fee: MicroMinotari, lock_height: u64, fea
 /// Generate a random transaction signature given a key, returning the public key (excess) and the signature.
 pub async fn create_random_signature_from_secret_key(
     key_manager: &TestKeyManager,
-    secret_key_id: TariKeyId,
-    fee: MicroMinotari,
+    secret_key_id: TaijiKeyId,
+    fee: MicroMinotaiji,
     lock_height: u64,
     kernel_features: KernelFeatures,
     txo_type: TxoStage,
@@ -334,10 +334,10 @@ pub async fn create_coinbase_wallet_output(
 }
 
 pub async fn create_wallet_output_with_data(
-    script: TariScript,
+    script: TaijiScript,
     output_features: OutputFeatures,
     test_params: &TestParams,
-    value: MicroMinotari,
+    value: MicroMinotaiji,
     key_manager: &TestKeyManager,
 ) -> Result<WalletOutput, String> {
     test_params
@@ -407,7 +407,7 @@ macro_rules! txn_schema {
             fee: $fee,
             lock_height: $lock,
             features: $features.clone(),
-            script: tari_script::script![Nop],
+            script: taiji_script::script![Nop],
             covenant: Default::default(),
             input_data: None,
             input_version: $input_version.clone(),
@@ -478,12 +478,12 @@ macro_rules! txn_schema {
 #[derive(Clone, Debug)]
 pub struct TransactionSchema {
     pub from: Vec<WalletOutput>,
-    pub to: Vec<MicroMinotari>,
+    pub to: Vec<MicroMinotaiji>,
     pub to_outputs: Vec<WalletOutput>,
-    pub fee: MicroMinotari,
+    pub fee: MicroMinotaiji,
     pub lock_height: u64,
     pub features: OutputFeatures,
-    pub script: TariScript,
+    pub script: TaijiScript,
     pub input_data: Option<ExecutionStack>,
     pub covenant: Covenant,
     pub input_version: Option<TransactionInputVersion>,
@@ -493,8 +493,8 @@ pub struct TransactionSchema {
 /// Create an unconfirmed transaction for testing with a valid fee, unique access_sig, random inputs and outputs, the
 /// transaction is only partially constructed
 pub async fn create_tx(
-    amount: MicroMinotari,
-    fee_per_gram: MicroMinotari,
+    amount: MicroMinotaiji,
+    fee_per_gram: MicroMinotaiji,
     lock_height: u64,
     input_count: usize,
     input_maturity: u64,
@@ -519,16 +519,16 @@ pub async fn create_tx(
 }
 
 pub async fn create_wallet_outputs(
-    amount: MicroMinotari,
+    amount: MicroMinotaiji,
     input_count: usize,
     input_maturity: u64,
     output_count: usize,
-    fee_per_gram: MicroMinotari,
+    fee_per_gram: MicroMinotaiji,
     output_features: &OutputFeatures,
-    output_script: &TariScript,
+    output_script: &TaijiScript,
     output_covenant: &Covenant,
     key_manager: &TestKeyManager,
-) -> std::io::Result<(Vec<WalletOutput>, Vec<(WalletOutput, TariKeyId)>)> {
+) -> std::io::Result<(Vec<WalletOutput>, Vec<(WalletOutput, TaijiKeyId)>)> {
     let weighting = TransactionWeight::latest();
     // This is a best guess to not underestimate metadata size
     let output_features_and_scripts_size = weighting.round_up_features_and_scripts_size(
@@ -601,9 +601,9 @@ pub async fn create_wallet_outputs(
 /// transaction is only partially constructed
 pub async fn create_transaction_with(
     lock_height: u64,
-    fee_per_gram: MicroMinotari,
+    fee_per_gram: MicroMinotaiji,
     inputs: Vec<WalletOutput>,
-    outputs: Vec<(WalletOutput, TariKeyId)>,
+    outputs: Vec<(WalletOutput, TaijiKeyId)>,
     key_manager: &TestKeyManager,
 ) -> Transaction {
     let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
@@ -744,7 +744,7 @@ pub async fn create_stx_protocol(
     (stx_protocol, outputs)
 }
 
-pub async fn create_coinbase_kernel(spending_key_id: &TariKeyId, key_manager: &TestKeyManager) -> TransactionKernel {
+pub async fn create_coinbase_kernel(spending_key_id: &TaijiKeyId, key_manager: &TestKeyManager) -> TransactionKernel {
     let kernel_version = TransactionKernelVersion::get_current_version();
     let kernel_features = KernelFeatures::COINBASE_KERNEL;
     let kernel_message =
@@ -778,7 +778,7 @@ pub async fn create_coinbase_kernel(spending_key_id: &TariKeyId, key_manager: &T
 }
 
 /// Create a transaction kernel with the given fee, using random keys to generate the signature
-pub fn create_test_kernel(fee: MicroMinotari, lock_height: u64, features: KernelFeatures) -> TransactionKernel {
+pub fn create_test_kernel(fee: MicroMinotaiji, lock_height: u64, features: KernelFeatures) -> TransactionKernel {
     let (excess, s) = create_random_signature(fee, lock_height, features);
     KernelBuilder::new()
         .with_fee(fee)
@@ -792,13 +792,13 @@ pub fn create_test_kernel(fee: MicroMinotari, lock_height: u64, features: Kernel
 
 /// Create a new UTXO for the specified value and return the output and spending key
 pub async fn create_utxo(
-    value: MicroMinotari,
+    value: MicroMinotaiji,
     key_manager: &TestKeyManager,
     features: &OutputFeatures,
-    script: &TariScript,
+    script: &TaijiScript,
     covenant: &Covenant,
-    minimum_value_promise: MicroMinotari,
-) -> (TransactionOutput, TariKeyId, TariKeyId) {
+    minimum_value_promise: MicroMinotaiji,
+) -> (TransactionOutput, TaijiKeyId, TaijiKeyId) {
     let (spending_key_id, _) = key_manager
         .get_next_key(TransactionKeyManagerBranch::CommitmentMask.get_branch_key())
         .await

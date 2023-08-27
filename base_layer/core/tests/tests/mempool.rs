@@ -1,4 +1,4 @@
-//  Copyright 2022. The Tari Project
+//  Copyright 2022. The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -23,10 +23,10 @@
 use std::{convert::TryFrom, ops::Deref, panic, sync::Arc, time::Duration};
 
 use randomx_rs::RandomXFlag;
-use tari_common::configuration::Network;
-use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
-use tari_comms_dht::domain_message::OutboundDomainMessage;
-use tari_core::{
+use taiji_common::configuration::Network;
+use taiji_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
+use taiji_comms_dht::domain_message::OutboundDomainMessage;
+use taiji_core::{
     base_node::state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
     consensus::{ConsensusConstantsBuilder, ConsensusManager},
     mempool::{Mempool, MempoolConfig, MempoolServiceConfig, TxStorageResponse},
@@ -35,7 +35,7 @@ use tari_core::{
     transactions::{
         fee::Fee,
         key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface, TxoStage},
-        tari_amount::{uT, MicroMinotari, T},
+        taiji_amount::{uT, MicroMinotaiji, T},
         test_helpers::{
             create_test_core_key_manager_with_memory_db,
             create_wallet_output_with_data,
@@ -68,10 +68,10 @@ use tari_core::{
         ValidationError,
     },
 };
-use tari_key_manager::key_manager_service::KeyManagerInterface;
-use tari_p2p::{services::liveness::LivenessConfig, tari_message::TariMessageType};
-use tari_script::script;
-use tari_test_utils::async_assert_eventually;
+use taiji_key_manager::key_manager_service::KeyManagerInterface;
+use taiji_p2p::{services::liveness::LivenessConfig, taiji_message::TaijiMessageType};
+use taiji_script::script;
+use taiji_test_utils::async_assert_eventually;
 use tempfile::tempdir;
 
 use crate::helpers::{
@@ -1036,7 +1036,7 @@ async fn test_reorg() {
     let reorg_block4 = db.prepare_new_block(template).unwrap();
 
     // test that process_reorg can handle the case when removed_blocks is empty
-    // see https://github.com/tari-project/tari/issues/2101#issuecomment-680726940
+    // see https://github.com/taiji-project/taiji/issues/2101#issuecomment-680726940
     mempool.process_reorg(vec![], vec![reorg_block4.into()]).await.unwrap();
 }
 
@@ -1101,7 +1101,7 @@ async fn receive_and_propagate_transaction() {
         .send_direct_unencrypted(
             bob_node.node_identity.public_key().clone(),
             OutboundDomainMessage::new(
-                &TariMessageType::NewTransaction,
+                &TaijiMessageType::NewTransaction,
                 proto::types::Transaction::try_from(tx).unwrap(),
             ),
             "mempool tests".to_string(),
@@ -1113,7 +1113,7 @@ async fn receive_and_propagate_transaction() {
         .send_direct_unencrypted(
             carol_node.node_identity.public_key().clone(),
             OutboundDomainMessage::new(
-                &TariMessageType::NewTransaction,
+                &TaijiMessageType::NewTransaction,
                 proto::types::Transaction::try_from(orphan).unwrap(),
             ),
             "mempool tests".to_string(),
@@ -1204,7 +1204,7 @@ async fn consensus_validation_large_tx() {
     let fee_per_gram = 15;
     let input_count = 1;
     let output_count = 39;
-    let amount = MicroMinotari::from(5_000_000);
+    let amount = MicroMinotaiji::from(5_000_000);
 
     let input = outputs[1][0].clone();
     let inputs = vec![input.to_transaction_input(&key_manager).await.unwrap()];
@@ -1505,7 +1505,7 @@ async fn validation_reject_min_fee() {
 #[allow(clippy::identity_op)]
 #[allow(clippy::too_many_lines)]
 async fn consensus_validation_versions() {
-    use tari_core::transactions::transaction_components::{
+    use taiji_core::transactions::transaction_components::{
         OutputFeaturesVersion,
         TransactionInputVersion,
         TransactionKernelVersion,

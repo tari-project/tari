@@ -1,4 +1,4 @@
-//  Copyright 2022, The Tari Project
+//  Copyright 2022, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -31,14 +31,14 @@ use std::{
 
 use propagation::node;
 use rand::{rngs::OsRng, Rng};
-use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, CommsNode, NodeIdentity};
-use tari_comms_dht::{
+use taiji_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, CommsNode, NodeIdentity};
+use taiji_comms_dht::{
     domain_message::OutboundDomainMessage,
     inbound::DecryptedDhtMessage,
     outbound::{MessageSendStates, OutboundEncryption},
     Dht,
 };
-use tari_shutdown::Shutdown;
+use taiji_shutdown::Shutdown;
 use tempfile::tempdir;
 use tokio::{sync::mpsc, task};
 

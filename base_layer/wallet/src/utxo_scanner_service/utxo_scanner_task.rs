@@ -1,4 +1,4 @@
-// Copyright 2021. The Tari Project
+// Copyright 2021. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -28,29 +28,29 @@ use std::{
 use chrono::{NaiveDateTime, Utc};
 use futures::StreamExt;
 use log::*;
-use tari_common_types::{
-    tari_address::TariAddress,
+use taiji_common_types::{
+    taiji_address::TaijiAddress,
     transaction::{ImportStatus, TxId},
     types::HashOutput,
 };
-use tari_comms::{
+use taiji_comms::{
     peer_manager::NodeId,
     protocol::rpc::RpcClientLease,
     traits::OrOptional,
     types::CommsPublicKey,
     PeerConnection,
 };
-use tari_core::{
+use taiji_core::{
     base_node::rpc::BaseNodeWalletRpcClient,
     blocks::BlockHeader,
     proto::base_node::SyncUtxosByBlockRequest,
     transactions::{
-        tari_amount::MicroMinotari,
+        taiji_amount::MicroMinotaiji,
         transaction_components::{TransactionOutput, WalletOutput},
     },
 };
-use tari_key_manager::get_birthday_from_unix_epoch_in_seconds;
-use tari_shutdown::ShutdownSignal;
+use taiji_key_manager::get_birthday_from_unix_epoch_in_seconds;
+use taiji_shutdown::ShutdownSignal;
 use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;
 
@@ -150,7 +150,7 @@ where
         &self,
         num_outputs_recovered: u64,
         final_height: u64,
-        total_value: MicroMinotari,
+        total_value: MicroMinotaiji,
         elapsed: Duration,
     ) -> Result<(), UtxoScannerError> {
         self.publish_event(UtxoScannerEvent::Progress {
@@ -197,7 +197,7 @@ where
         }
     }
 
-    async fn attempt_sync(&mut self, peer: NodeId) -> Result<(u64, u64, MicroMinotari, Duration), UtxoScannerError> {
+    async fn attempt_sync(&mut self, peer: NodeId) -> Result<(u64, u64, MicroMinotaiji, Duration), UtxoScannerError> {
         self.publish_event(UtxoScannerEvent::ConnectingToBaseNode(peer.clone()));
         let selected_peer = self.resources.wallet_connectivity.get_current_base_node_id();
 
@@ -237,7 +237,7 @@ where
                     return Ok((
                         last_scanned_block.num_outputs.unwrap_or(0),
                         last_scanned_block.height,
-                        last_scanned_block.amount.unwrap_or_else(|| MicroMinotari::from(0)),
+                        last_scanned_block.amount.unwrap_or_else(|| MicroMinotaiji::from(0)),
                         timer.elapsed(),
                     ));
                 }
@@ -273,7 +273,7 @@ where
                 return Ok((
                     next_block_to_scan.num_outputs.unwrap_or(0),
                     next_block_to_scan.height,
-                    next_block_to_scan.amount.unwrap_or_else(|| MicroMinotari::from(0)),
+                    next_block_to_scan.amount.unwrap_or_else(|| MicroMinotaiji::from(0)),
                     timer.elapsed(),
                 ));
             }
@@ -351,13 +351,13 @@ where
         }
 
         // Run through the cached blocks and check which are not found in the current chain anymore
-        // Accumulate number of outputs and recovered Tari in the valid blocks
+        // Accumulate number of outputs and recovered Taiji in the valid blocks
         // Assumption: The blocks are ordered and a reorg will occur to the most recent blocks. Once you have found a
         // valid block the blocks before it are also valid and don't need to be checked
         let mut last_missing_scanned_block = None;
         let mut found_scanned_block = None;
         let mut num_outputs = 0u64;
-        let mut amount = MicroMinotari::from(0);
+        let mut amount = MicroMinotaiji::from(0);
         for sb in scanned_blocks {
             // The scanned block has a higher height than the current tip, meaning the previously scanned block was
             // reorged out.
@@ -391,7 +391,7 @@ where
             if found_scanned_block.is_some() {
                 num_outputs = num_outputs.saturating_add(sb.num_outputs.unwrap_or(0));
                 amount = amount
-                    .checked_add(sb.amount.unwrap_or_else(|| MicroMinotari::from(0)))
+                    .checked_add(sb.amount.unwrap_or_else(|| MicroMinotaiji::from(0)))
                     .ok_or(UtxoScannerError::OverflowError)?;
             }
         }
@@ -437,12 +437,12 @@ where
         start_header_hash: HashOutput,
         end_header_hash: HashOutput,
         tip_height: u64,
-    ) -> Result<(u64, u64, MicroMinotari), UtxoScannerError> {
+    ) -> Result<(u64, u64, MicroMinotaiji), UtxoScannerError> {
         // Setting how often the progress event and log should occur during scanning. Defined in blocks
         const PROGRESS_REPORT_INTERVAL: u64 = 100;
 
         let mut num_recovered = 0u64;
-        let mut total_amount = MicroMinotari::from(0);
+        let mut total_amount = MicroMinotaiji::from(0);
         let mut total_scanned = 0;
 
         let request = SyncUtxosByBlockRequest {
@@ -598,9 +598,9 @@ where
         utxos: Vec<(WalletOutput, String, ImportStatus, TxId)>,
         current_height: u64,
         mined_timestamp: NaiveDateTime,
-    ) -> Result<(u64, MicroMinotari), UtxoScannerError> {
+    ) -> Result<(u64, MicroMinotaiji), UtxoScannerError> {
         let mut num_recovered = 0u64;
-        let mut total_amount = MicroMinotari::from(0);
+        let mut total_amount = MicroMinotaiji::from(0);
         for (uo, message, import_status, tx_id) in utxos {
             let source_address = if uo.features.is_coinbase() {
                 // its a coinbase, so we know we mined it and it comes from us.
@@ -608,7 +608,7 @@ where
             } else {
                 // Because we do not know the source public key we are making it the default key of zeroes to make it
                 // clear this value is a placeholder.
-                TariAddress::default()
+                TaijiAddress::default()
             };
             match self
                 .import_key_manager_utxo_to_transaction_service(
@@ -671,7 +671,7 @@ where
     pub async fn import_key_manager_utxo_to_transaction_service(
         &mut self,
         wallet_output: WalletOutput,
-        source_address: TariAddress,
+        source_address: TaijiAddress,
         message: String,
         import_status: ImportStatus,
         tx_id: TxId,

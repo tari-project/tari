@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -33,17 +33,17 @@ use diesel::{
 use log::*;
 pub use new_output_sql::NewOutputSql;
 pub use output_sql::OutputSql;
-use tari_common_sqlite::{sqlite_connection_pool::PooledDbConnection, util::diesel_ext::ExpectedRowsExtension};
-use tari_common_types::{
+use taiji_common_sqlite::{sqlite_connection_pool::PooledDbConnection, util::diesel_ext::ExpectedRowsExtension};
+use taiji_common_types::{
     transaction::TxId,
     types::{Commitment, FixedHash},
 };
-use tari_core::transactions::{
-    key_manager::TariKeyId,
+use taiji_core::transactions::{
+    key_manager::TaijiKeyId,
     transaction_components::{OutputType, TransactionOutput},
 };
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
-use tari_script::{ExecutionStack, TariScript};
+use taiji_script::{ExecutionStack, TaijiScript};
 use tokio::time::Instant;
 
 use crate::{
@@ -1257,14 +1257,14 @@ impl KnownOneSidedPaymentScriptSql {
     pub fn to_known_one_sided_payment_script(self) -> Result<KnownOneSidedPaymentScript, OutputManagerStorageError> {
         let script_hash = self.script_hash.clone();
         let private_key =
-            TariKeyId::from_str(&self.private_key).map_err(|_| OutputManagerStorageError::ConversionError {
-                reason: "Could not convert private key to TariKeyId".to_string(),
+            TaijiKeyId::from_str(&self.private_key).map_err(|_| OutputManagerStorageError::ConversionError {
+                reason: "Could not convert private key to TaijiKeyId".to_string(),
             })?;
 
-        let script = TariScript::from_bytes(&self.script).map_err(|_| {
-            error!(target: LOG_TARGET, "Could not create tari script from stored bytes");
+        let script = TaijiScript::from_bytes(&self.script).map_err(|_| {
+            error!(target: LOG_TARGET, "Could not create taiji script from stored bytes");
             OutputManagerStorageError::ConversionError {
-                reason: "Tari Script could not be converted from bytes".to_string(),
+                reason: "Taiji Script could not be converted from bytes".to_string(),
             }
         })?;
         let input = ExecutionStack::from_bytes(&self.input).map_err(|_| {
@@ -1312,8 +1312,8 @@ mod test {
     use diesel::{sql_query, Connection, RunQueryDsl, SqliteConnection};
     use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
     use rand::{rngs::OsRng, RngCore};
-    use tari_core::transactions::{
-        tari_amount::MicroMinotari,
+    use taiji_core::transactions::{
+        taiji_amount::MicroMinotaiji,
         test_helpers::{
             create_test_core_key_manager_with_memory_db,
             create_wallet_output_with_data,
@@ -1322,8 +1322,8 @@ mod test {
         },
         transaction_components::{OutputFeatures, TransactionInput, WalletOutput},
     };
-    use tari_script::script;
-    use tari_test_utils::random;
+    use taiji_script::script;
+    use taiji_test_utils::random;
     use tempfile::tempdir;
 
     use crate::output_manager_service::storage::{
@@ -1332,7 +1332,7 @@ mod test {
         OutputSource,
     };
 
-    pub async fn make_input(val: MicroMinotari, key_manager: &TestKeyManager) -> (TransactionInput, WalletOutput) {
+    pub async fn make_input(val: MicroMinotaiji, key_manager: &TestKeyManager) -> (TransactionInput, WalletOutput) {
         let test_params = TestParams::new(key_manager).await;
 
         let wallet_output =
@@ -1379,7 +1379,7 @@ mod test {
 
         let key_manager = create_test_core_key_manager_with_memory_db();
         for _i in 0..2 {
-            let (_, uo) = make_input(MicroMinotari::from(100 + OsRng.next_u64() % 1000), &key_manager).await;
+            let (_, uo) = make_input(MicroMinotaiji::from(100 + OsRng.next_u64() % 1000), &key_manager).await;
             let uo = DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Unknown, None, None)
                 .await
                 .unwrap();
@@ -1390,7 +1390,7 @@ mod test {
         }
 
         for _i in 0..3 {
-            let (_, uo) = make_input(MicroMinotari::from(100 + OsRng.next_u64() % 1000), &key_manager).await;
+            let (_, uo) = make_input(MicroMinotaiji::from(100 + OsRng.next_u64() % 1000), &key_manager).await;
             let uo = DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Unknown, None, None)
                 .await
                 .unwrap();

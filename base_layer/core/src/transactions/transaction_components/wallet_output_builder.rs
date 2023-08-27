@@ -1,4 +1,4 @@
-//  Copyright 2021. The Tari Project
+//  Copyright 2021. The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -21,14 +21,14 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use derivative::Derivative;
-use tari_common_types::types::{ComAndPubSignature, PublicKey};
-use tari_script::{ExecutionStack, TariScript};
+use taiji_common_types::types::{ComAndPubSignature, PublicKey};
+use taiji_script::{ExecutionStack, TaijiScript};
 
 use crate::{
     covenants::Covenant,
     transactions::{
-        key_manager::{TariKeyId, TransactionKeyManagerInterface},
-        tari_amount::MicroMinotari,
+        key_manager::{TaijiKeyId, TransactionKeyManagerInterface},
+        taiji_amount::MicroMinotaiji,
         transaction_components::{
             EncryptedData,
             OutputFeatures,
@@ -44,25 +44,25 @@ use crate::{
 #[derivative(Debug)]
 pub struct WalletOutputBuilder {
     version: TransactionOutputVersion,
-    value: MicroMinotari,
-    spending_key_id: TariKeyId,
+    value: MicroMinotaiji,
+    spending_key_id: TaijiKeyId,
     features: OutputFeatures,
-    script: Option<TariScript>,
+    script: Option<TaijiScript>,
     covenant: Covenant,
     input_data: Option<ExecutionStack>,
-    script_key_id: Option<TariKeyId>,
+    script_key_id: Option<TaijiKeyId>,
     sender_offset_public_key: Option<PublicKey>,
     metadata_signature: Option<ComAndPubSignature>,
     metadata_signed_by_receiver: bool,
     metadata_signed_by_sender: bool,
     encrypted_data: EncryptedData,
-    custom_recovery_key_id: Option<TariKeyId>,
-    minimum_value_promise: MicroMinotari,
+    custom_recovery_key_id: Option<TaijiKeyId>,
+    minimum_value_promise: MicroMinotaiji,
 }
 
 #[allow(dead_code)]
 impl WalletOutputBuilder {
-    pub fn new(value: MicroMinotari, spending_key_id: TariKeyId) -> Self {
+    pub fn new(value: MicroMinotaiji, spending_key_id: TaijiKeyId) -> Self {
         Self {
             version: TransactionOutputVersion::get_current_version(),
             value,
@@ -78,7 +78,7 @@ impl WalletOutputBuilder {
             metadata_signed_by_sender: false,
             encrypted_data: EncryptedData::default(),
             custom_recovery_key_id: None,
-            minimum_value_promise: MicroMinotari::zero(),
+            minimum_value_promise: MicroMinotaiji::zero(),
         }
     }
 
@@ -92,7 +92,7 @@ impl WalletOutputBuilder {
         self
     }
 
-    pub fn with_script(mut self, script: TariScript) -> Self {
+    pub fn with_script(mut self, script: TaijiScript) -> Self {
         self.script = Some(script);
         self
     }
@@ -110,7 +110,7 @@ impl WalletOutputBuilder {
     pub async fn encrypt_data_for_recovery<KM: TransactionKeyManagerInterface>(
         mut self,
         key_manager: &KM,
-        custom_recovery_key_id: Option<&TariKeyId>,
+        custom_recovery_key_id: Option<&TaijiKeyId>,
     ) -> Result<Self, TransactionError> {
         self.encrypted_data = key_manager
             .encrypt_data_for_recovery(&self.spending_key_id, custom_recovery_key_id, self.value.as_u64())
@@ -118,7 +118,7 @@ impl WalletOutputBuilder {
         Ok(self)
     }
 
-    pub fn with_script_key(mut self, script_key_id: TariKeyId) -> Self {
+    pub fn with_script_key(mut self, script_key_id: TaijiKeyId) -> Self {
         self.script_key_id = Some(script_key_id);
         self
     }
@@ -128,12 +128,12 @@ impl WalletOutputBuilder {
         self
     }
 
-    pub fn with_minimum_value_promise(mut self, minimum_value_promise: MicroMinotari) -> Self {
+    pub fn with_minimum_value_promise(mut self, minimum_value_promise: MicroMinotaiji) -> Self {
         self.minimum_value_promise = minimum_value_promise;
         self
     }
 
-    pub fn value(&self) -> MicroMinotari {
+    pub fn value(&self) -> MicroMinotaiji {
         self.value
     }
 
@@ -141,7 +141,7 @@ impl WalletOutputBuilder {
         &self.features
     }
 
-    pub fn script(&self) -> Option<&TariScript> {
+    pub fn script(&self) -> Option<&TaijiScript> {
         self.script.as_ref()
     }
 
@@ -152,7 +152,7 @@ impl WalletOutputBuilder {
     pub async fn sign_as_sender_and_receiver<KM: TransactionKeyManagerInterface>(
         mut self,
         key_manager: &KM,
-        sender_offset_key_id: &TariKeyId,
+        sender_offset_key_id: &TaijiKeyId,
     ) -> Result<Self, TransactionError> {
         let script = self
             .script
@@ -226,7 +226,7 @@ impl WalletOutputBuilder {
 
 #[cfg(test)]
 mod test {
-    use tari_key_manager::key_manager_service::KeyManagerInterface;
+    use taiji_key_manager::key_manager_service::KeyManagerInterface;
 
     use super::*;
     use crate::transactions::{
@@ -238,9 +238,9 @@ mod test {
     async fn test_try_build() {
         let key_manager = create_test_core_key_manager_with_memory_db();
         let (spending_key_id, _, script_key_id, _) = key_manager.get_next_spend_and_script_key_ids().await.unwrap();
-        let value = MicroMinotari(100);
+        let value = MicroMinotaiji(100);
         let kmob = WalletOutputBuilder::new(value, spending_key_id.clone());
-        let kmob = kmob.with_script(TariScript::new(vec![]));
+        let kmob = kmob.with_script(TaijiScript::new(vec![]));
         assert!(kmob.clone().try_build(&key_manager).await.is_err());
         let (sender_offset_private_key_id, sender_offset_public_key) = key_manager
             .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
@@ -280,9 +280,9 @@ mod test {
     async fn test_partial_metadata_signatures() {
         let key_manager = create_test_core_key_manager_with_memory_db();
         let (spending_key_id, _, script_key_id, _) = key_manager.get_next_spend_and_script_key_ids().await.unwrap();
-        let value = MicroMinotari(100);
+        let value = MicroMinotaiji(100);
         let kmob = WalletOutputBuilder::new(value, spending_key_id.clone());
-        let kmob = kmob.with_script(TariScript::new(vec![]));
+        let kmob = kmob.with_script(TaijiScript::new(vec![]));
         let (sender_offset_private_key_id, sender_offset_public_key) = key_manager
             .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
             .await

@@ -1,4 +1,4 @@
-// Copyright 2020, The Tari Project
+// Copyright 2020, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -28,7 +28,7 @@
 //! find the spec here: <https://gitweb.torproject.org/torspec.git/tree/control-spec.txt>.
 //!
 //! The [hidden_service](crate::tor::HiddenService) module contains code which sets up hidden services required for
-//! `tari_comms` to function over Tor.
+//! `taiji_comms` to function over Tor.
 
 mod control_client;
 pub use control_client::{

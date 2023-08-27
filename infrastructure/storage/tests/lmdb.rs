@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -32,7 +32,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tari_storage::{
+use taiji_storage::{
     lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBDatabase, LMDBError, LMDBStore},
     IterationResult,
 };

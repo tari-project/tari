@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2020. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -31,12 +31,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-use tari_common_types::types::{HashOutput, Signature};
-use tari_comms::{
+use taiji_common_types::types::{HashOutput, Signature};
+use taiji_comms::{
     protocol::rpc::{NamedProtocolService, Request, Response, RpcClient, RpcStatus, Streaming},
     PeerConnection,
 };
-use tari_core::{
+use taiji_core::{
     base_node::{
         proto::wallet_rpc::{TxLocation, TxQueryResponse, TxSubmissionRejectionReason, TxSubmissionResponse},
         rpc::BaseNodeWalletService,
@@ -551,7 +551,7 @@ impl Default for BaseNodeWalletRpcMockService {
     }
 }
 
-#[tari_comms::async_trait]
+#[taiji_comms::async_trait]
 impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
     async fn submit_transaction(
         &self,
@@ -865,13 +865,13 @@ pub struct UtxosByBlock {
 mod test {
     use std::convert::{TryFrom, TryInto};
 
-    use tari_common_types::types::PrivateKey;
-    use tari_comms::{
+    use taiji_common_types::types::PrivateKey;
+    use taiji_comms::{
         peer_manager::PeerFeatures,
         protocol::rpc::{mock::MockRpcServer, NamedProtocolService},
         test_utils::node_identity::build_node_identity,
     };
-    use tari_core::{
+    use taiji_core::{
         base_node::{
             proto::wallet_rpc::{TxSubmissionRejectionReason, TxSubmissionResponse},
             rpc::{BaseNodeWalletRpcClient, BaseNodeWalletRpcServer},

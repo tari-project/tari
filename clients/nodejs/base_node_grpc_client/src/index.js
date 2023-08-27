@@ -1,4 +1,4 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 const grpc = require("@grpc/grpc-js");
@@ -9,7 +9,7 @@ const path = require("path");
 const packageDefinition = protoLoader.loadSync(
   path.resolve(
     __dirname,
-    "../../../../applications/minotari_app_grpc/proto/base_node.proto"
+    "../../../../applications/minotaiji_app_grpc/proto/base_node.proto"
   ),
   {
     keepCase: true,
@@ -20,10 +20,10 @@ const packageDefinition = protoLoader.loadSync(
   }
 );
 const protoDescriptor = grpc.loadPackageDefinition(packageDefinition);
-const tariGrpc = protoDescriptor.tari.rpc;
+const taijiGrpc = protoDescriptor.taiji.rpc;
 
 function connect(address) {
-  const client = new tariGrpc.BaseNode(
+  const client = new taijiGrpc.BaseNode(
     address,
     grpc.credentials.createInsecure()
   );
@@ -54,5 +54,5 @@ Client.connect = (address) => new Client(address);
 
 module.exports = {
   Client,
-  types: tariGrpc,
+  types: taijiGrpc,
 };

@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -26,7 +26,7 @@ use std::{
 };
 
 use log::*;
-use tari_comms::{
+use taiji_comms::{
     message::MessageExt,
     multiaddr::Multiaddr,
     net_address::{MultiaddressesWithStats, PeerAddressSource},

@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -93,8 +93,8 @@ impl BorshDeserialize for MoneroPowData {
 
 impl MoneroPowData {
     /// Create a new MoneroPowData struct from the given header
-    pub fn from_header(tari_header: &BlockHeader) -> Result<MoneroPowData, MergeMineError> {
-        let mut v = tari_header.pow.pow_data.as_slice();
+    pub fn from_header(taiji_header: &BlockHeader) -> Result<MoneroPowData, MergeMineError> {
+        let mut v = taiji_header.pow.pow_data.as_slice();
         let pow_data =
             BorshDeserialize::deserialize(&mut v).map_err(|e| MergeMineError::DeserializeError(format!("{:?}", e)))?;
         if !v.is_empty() {

@@ -1,4 +1,4 @@
-//  Copyright 2022, The Tari Project
+//  Copyright 2022, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -21,16 +21,16 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use rand::{self, rngs::OsRng};
-use tari_common_types::types::{ComAndPubSignature, PrivateKey, PublicKey, Signature};
+use taiji_common_types::types::{ComAndPubSignature, PrivateKey, PublicKey, Signature};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::SecretKey as SecretKeyTrait,
     range_proof::RangeProofService,
     tari_utilities::hex::Hex,
 };
-use tari_p2p::Network;
-use tari_script::{inputs, script, ExecutionStack, StackItem};
-use tari_test_utils::unpack_enum;
+use taiji_p2p::Network;
+use taiji_script::{inputs, script, ExecutionStack, StackItem};
+use taiji_test_utils::unpack_enum;
 
 use super::*;
 use crate::{
@@ -38,7 +38,7 @@ use crate::{
     transactions::{
         aggregated_body::AggregateBody,
         key_manager::TransactionKeyManagerInterface,
-        tari_amount::{uT, MicroMinotari, T},
+        taiji_amount::{uT, MicroMinotaiji, T},
         test_helpers,
         test_helpers::{
             create_test_core_key_manager_with_memory_db,
@@ -256,7 +256,7 @@ async fn sender_signature_verification() {
 
     let mut tx_output = wallet_output.to_transaction_output(&key_manager).await.unwrap();
     assert!(tx_output.verify_metadata_signature().is_ok());
-    tx_output.script = TariScript::default();
+    tx_output.script = TaijiScript::default();
     assert!(tx_output.verify_metadata_signature().is_err());
 
     tx_output = wallet_output.to_transaction_output(&key_manager).await.unwrap();
@@ -315,7 +315,7 @@ fn check_timelocks() {
     let v = PrivateKey::from(2u64.pow(32) + 1);
     let c = factories.commitment.commit(&k, &v);
 
-    let script = TariScript::default();
+    let script = TaijiScript::default();
     let input_data = ExecutionStack::default();
     let script_signature = ComAndPubSignature::default();
     let offset_pub_key = PublicKey::default();
@@ -331,7 +331,7 @@ fn check_timelocks() {
         EncryptedData::default(),
         Default::default(),
         Default::default(),
-        MicroMinotari::zero(),
+        MicroMinotaiji::zero(),
     );
 
     let mut kernel = test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::empty());
@@ -485,7 +485,7 @@ async fn inputs_not_malleable() {
     let mut tx = test_helpers::create_transaction_with(1, 15.into(), inputs, outputs, &key_manager).await;
 
     stack
-        .push(StackItem::Hash(*b"Pls put this on tha tari network"))
+        .push(StackItem::Hash(*b"Pls put this on tha taiji network"))
         .unwrap();
 
     let mut inputs = tx.body().inputs().clone();
@@ -504,7 +504,7 @@ async fn inputs_not_malleable() {
 async fn test_output_recover_openings() {
     let key_manager = create_test_core_key_manager_with_memory_db();
     let test_params = TestParams::new(&key_manager).await;
-    let v = MicroMinotari::from(42);
+    let v = MicroMinotaiji::from(42);
 
     let wallet_output = test_params
         .create_output(
@@ -528,7 +528,7 @@ mod validate_internal_consistency {
     use blake2::Blake2b;
     use borsh::BorshSerialize;
     use digest::{consts::U32, Digest};
-    use tari_common_types::types::FixedHash;
+    use taiji_common_types::types::FixedHash;
     use tari_crypto::hashing::DomainSeparation;
 
     use super::*;

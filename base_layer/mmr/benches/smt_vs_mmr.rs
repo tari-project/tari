@@ -1,4 +1,4 @@
-// Copyright 2023. The Tari Project
+// Copyright 2023. The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 use std::convert::TryFrom;
@@ -13,12 +13,12 @@ use tari_crypto::hash_domain;
 use tari_crypto::hashing::DomainSeparatedHasher;
 #[cfg(feature = "native_bitmap")]
 use tari_crypto::tari_utilities::hex::Hex;
-use tari_mmr::sparse_merkle_tree::{NodeKey, SparseMerkleTree, ValueHash};
+use taiji_mmr::sparse_merkle_tree::{NodeKey, SparseMerkleTree, ValueHash};
 #[cfg(feature = "native_bitmap")]
-use tari_mmr::{Hash, MutableMmr};
+use taiji_mmr::{Hash, MutableMmr};
 
 #[cfg(feature = "native_bitmap")]
-hash_domain!(MmrBenchTestHashDomain, "com.tari.base_layer.mmr.benches", 1);
+hash_domain!(MmrBenchTestHashDomain, "com.taiji.base_layer.mmr.benches", 1);
 #[cfg(feature = "native_bitmap")]
 pub type MmrTestHasherBlake256 = DomainSeparatedHasher<Blake2b<U32>, MmrBenchTestHashDomain>;
 #[cfg(feature = "native_bitmap")]

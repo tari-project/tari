@@ -1,4 +1,4 @@
-//   Copyright 2022. The Tari Project
+//   Copyright 2022. The Taiji Project
 //
 //   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //   following conditions are met:
@@ -36,7 +36,7 @@ pub mod wallet_ffi;
 pub mod wallet_process;
 pub mod world;
 
-pub use world::TariWorld;
+pub use world::TaijiWorld;
 
 pub fn get_port(range: Range<u16>) -> Option<u64> {
     let min = range.clone().min().expect("A minimum possible port number");
@@ -76,7 +76,7 @@ pub async fn wait_for_service(port: u64) {
     }
 }
 
-pub async fn get_peer_addresses(world: &TariWorld, peers: &[String]) -> Vec<String> {
+pub async fn get_peer_addresses(world: &TaijiWorld, peers: &[String]) -> Vec<String> {
     peers
         .iter()
         .map(|peer_string| {

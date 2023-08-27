@@ -1,4 +1,4 @@
-// Copyright 2021. The Tari Project
+// Copyright 2021. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -23,7 +23,7 @@
 
 use tari_crypto::signatures::CommitmentAndPublicKeySignatureError;
 use thiserror::Error;
-use tari_key_manager::error::KeyManagerError;
+use taiji_key_manager::error::KeyManagerError;
 use crate::transactions::transaction_components::TransactionError;
 
 #[derive(Debug, Error, PartialEq)]

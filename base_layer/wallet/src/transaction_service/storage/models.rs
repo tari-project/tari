@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2020. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -27,13 +27,13 @@ use std::{
 
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
-use tari_common_types::{
-    tari_address::TariAddress,
+use taiji_common_types::{
+    taiji_address::TaijiAddress,
     transaction::{TransactionConversionError, TransactionDirection, TransactionStatus, TxId},
     types::{BlockHash, PrivateKey, Signature},
 };
-use tari_core::transactions::{
-    tari_amount::MicroMinotari,
+use taiji_core::transactions::{
+    taiji_amount::MicroMinotaiji,
     transaction_components::Transaction,
     ReceiverTransactionProtocol,
     SenderTransactionProtocol,
@@ -42,8 +42,8 @@ use tari_core::transactions::{
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct InboundTransaction {
     pub tx_id: TxId,
-    pub source_address: TariAddress,
-    pub amount: MicroMinotari,
+    pub source_address: TaijiAddress,
+    pub amount: MicroMinotaiji,
     pub receiver_protocol: ReceiverTransactionProtocol,
     pub status: TransactionStatus,
     pub message: String,
@@ -57,8 +57,8 @@ pub struct InboundTransaction {
 impl InboundTransaction {
     pub fn new(
         tx_id: TxId,
-        source_address: TariAddress,
-        amount: MicroMinotari,
+        source_address: TaijiAddress,
+        amount: MicroMinotaiji,
         receiver_protocol: ReceiverTransactionProtocol,
         status: TransactionStatus,
         message: String,
@@ -83,9 +83,9 @@ impl InboundTransaction {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct OutboundTransaction {
     pub tx_id: TxId,
-    pub destination_address: TariAddress,
-    pub amount: MicroMinotari,
-    pub fee: MicroMinotari,
+    pub destination_address: TaijiAddress,
+    pub amount: MicroMinotaiji,
+    pub fee: MicroMinotaiji,
     pub sender_protocol: SenderTransactionProtocol,
     pub status: TransactionStatus,
     pub message: String,
@@ -99,9 +99,9 @@ pub struct OutboundTransaction {
 impl OutboundTransaction {
     pub fn new(
         tx_id: TxId,
-        destination_address: TariAddress,
-        amount: MicroMinotari,
-        fee: MicroMinotari,
+        destination_address: TaijiAddress,
+        amount: MicroMinotaiji,
+        fee: MicroMinotaiji,
         sender_protocol: SenderTransactionProtocol,
         status: TransactionStatus,
         message: String,
@@ -128,10 +128,10 @@ impl OutboundTransaction {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CompletedTransaction {
     pub tx_id: TxId,
-    pub source_address: TariAddress,
-    pub destination_address: TariAddress,
-    pub amount: MicroMinotari,
-    pub fee: MicroMinotari,
+    pub source_address: TaijiAddress,
+    pub destination_address: TaijiAddress,
+    pub amount: MicroMinotaiji,
+    pub fee: MicroMinotaiji,
     pub transaction: Transaction,
     pub status: TransactionStatus,
     pub message: String,
@@ -151,10 +151,10 @@ pub struct CompletedTransaction {
 impl CompletedTransaction {
     pub fn new(
         tx_id: TxId,
-        source_address: TariAddress,
-        destination_address: TariAddress,
-        amount: MicroMinotari,
-        fee: MicroMinotari,
+        source_address: TaijiAddress,
+        destination_address: TaijiAddress,
+        amount: MicroMinotaiji,
+        fee: MicroMinotaiji,
         transaction: Transaction,
         status: TransactionStatus,
         message: String,
@@ -288,7 +288,7 @@ impl From<InboundTransaction> for CompletedTransaction {
             source_address: tx.source_address,
             destination_address: Default::default(),
             amount: tx.amount,
-            fee: MicroMinotari::from(0),
+            fee: MicroMinotaiji::from(0),
             status: tx.status,
             message: tx.message,
             timestamp: tx.timestamp,

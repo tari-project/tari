@@ -1,4 +1,4 @@
-// Copyright 2023. The Tari Project
+// Copyright 2023. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common_types::tari_address::TariAddress;
+use taiji_common_types::taiji_address::TaijiAddress;
 use tari_utilities::ByteArray;
 use uuid::Uuid;
 
@@ -43,7 +43,7 @@ impl MessageBuilder {
         }
     }
 
-    pub fn address(&self, address: TariAddress) -> Self {
+    pub fn address(&self, address: TaijiAddress) -> Self {
         Self {
             inner: Message {
                 address,

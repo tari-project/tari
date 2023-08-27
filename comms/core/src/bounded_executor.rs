@@ -1,4 +1,4 @@
-// Copyright 2020, The Tari Project
+// Copyright 2020, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -102,7 +102,7 @@ impl BoundedExecutor {
     ///
     /// ```
     /// use tokio::runtime::Handle;
-    /// use tari_comms::bounded_executor::BoundedExecutor;
+    /// use taiji_comms::bounded_executor::BoundedExecutor;
     ///
     /// # fn dox() {
     /// // Create the runtime

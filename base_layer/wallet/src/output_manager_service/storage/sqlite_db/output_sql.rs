@@ -1,4 +1,4 @@
-//  Copyright 2021. The Tari Project
+//  Copyright 2021. The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -30,18 +30,18 @@ use chrono::NaiveDateTime;
 use derivative::Derivative;
 use diesel::{prelude::*, sql_query, SqliteConnection};
 use log::*;
-use tari_common_sqlite::util::diesel_ext::ExpectedRowsExtension;
-use tari_common_types::{
+use taiji_common_sqlite::util::diesel_ext::ExpectedRowsExtension;
+use taiji_common_types::{
     transaction::TxId,
     types::{ComAndPubSignature, Commitment, FixedHash, PrivateKey, PublicKey, RangeProof},
 };
-use tari_core::transactions::{
-    tari_amount::MicroMinotari,
+use taiji_core::transactions::{
+    taiji_amount::MicroMinotaiji,
     transaction_components::{EncryptedData, OutputFeatures, OutputType, TransactionOutputVersion, WalletOutput},
 };
 use tari_crypto::tari_utilities::ByteArray;
-use tari_key_manager::key_manager_service::KeyId;
-use tari_script::{ExecutionStack, TariScript};
+use taiji_key_manager::key_manager_service::KeyId;
+use taiji_script::{ExecutionStack, TaijiScript};
 
 use crate::{
     output_manager_service::{
@@ -457,13 +457,13 @@ impl OutputSql {
         let mut pending_outgoing_balance = None;
         for balance in balance_query_result {
             match balance.category.as_str() {
-                "available_balance" => available_balance = Some(MicroMinotari::from(balance.amount as u64)),
-                "time_locked_balance" => time_locked_balance = Some(Some(MicroMinotari::from(balance.amount as u64))),
+                "available_balance" => available_balance = Some(MicroMinotaiji::from(balance.amount as u64)),
+                "time_locked_balance" => time_locked_balance = Some(Some(MicroMinotaiji::from(balance.amount as u64))),
                 "pending_incoming_balance" => {
-                    pending_incoming_balance = Some(MicroMinotari::from(balance.amount as u64))
+                    pending_incoming_balance = Some(MicroMinotaiji::from(balance.amount as u64))
                 },
                 "pending_outgoing_balance" => {
-                    pending_outgoing_balance = Some(MicroMinotari::from(balance.amount as u64))
+                    pending_outgoing_balance = Some(MicroMinotaiji::from(balance.amount as u64))
                 },
                 _ => {
                     return Err(OutputManagerStorageError::UnexpectedResult(
@@ -657,7 +657,7 @@ impl OutputSql {
         let encrypted_data = EncryptedData::from_bytes(&self.encrypted_data)?;
         let wallet_output = WalletOutput::new_with_rangeproof(
             TransactionOutputVersion::get_current_version(),
-            MicroMinotari::from(self.value as u64),
+            MicroMinotaiji::from(self.value as u64),
             KeyId::from_str(&self.spending_key).map_err(|e| {
                 error!(
                     target: LOG_TARGET,
@@ -668,7 +668,7 @@ impl OutputSql {
                 }
             })?,
             features,
-            TariScript::from_bytes(self.script.as_slice())?,
+            TaijiScript::from_bytes(self.script.as_slice())?,
             ExecutionStack::from_bytes(self.input_data.as_slice())?,
             KeyId::from_str(&self.script_private_key).map_err(|e| {
                 error!(
@@ -738,7 +738,7 @@ impl OutputSql {
             self.script_lock_height as u64,
             covenant,
             encrypted_data,
-            MicroMinotari::from(self.minimum_value_promise as u64),
+            MicroMinotaiji::from(self.minimum_value_promise as u64),
             match self.rangeproof {
                 Some(bytes) => Some(RangeProof::from_bytes(&bytes)?),
                 None => None,

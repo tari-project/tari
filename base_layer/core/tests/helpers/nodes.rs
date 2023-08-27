@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -23,15 +23,15 @@
 use std::{path::Path, sync::Arc, time::Duration};
 
 use rand::rngs::OsRng;
-use tari_common::configuration::Network;
-use tari_comms::{
+use taiji_common::configuration::Network;
+use taiji_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
     protocol::messaging::MessagingEventSender,
     transports::MemoryTransport,
     CommsNode,
 };
-use tari_comms_dht::{outbound::OutboundMessageRequester, Dht};
-use tari_core::{
+use taiji_comms_dht::{outbound::OutboundMessageRequester, Dht};
+use taiji_core::{
     base_node::{
         chain_metadata_service::{ChainMetadataHandle, ChainMetadataServiceInitializer},
         comms_interface::OutboundNodeCommsInterface,
@@ -59,13 +59,13 @@ use tari_core::{
         InternalConsistencyValidator,
     },
 };
-use tari_p2p::{
+use taiji_p2p::{
     comms_connector::{pubsub_connector, InboundDomainConnector},
     initialization::initialize_local_test_comms,
     services::liveness::{config::LivenessConfig, LivenessHandle, LivenessInitializer},
 };
-use tari_service_framework::{RegisterHandle, StackBuilder};
-use tari_shutdown::Shutdown;
+use taiji_service_framework::{RegisterHandle, StackBuilder};
+use taiji_shutdown::Shutdown;
 
 use crate::helpers::mock_state_machine::MockBaseNodeStateMachine;
 

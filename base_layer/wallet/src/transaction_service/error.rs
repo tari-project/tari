@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -23,22 +23,22 @@
 use diesel::result::Error as DieselError;
 use futures::channel::oneshot::Canceled;
 use serde_json::Error as SerdeJsonError;
-use tari_common_sqlite::error::SqliteStorageError;
-use tari_common_types::{
-    tari_address::TariAddressError,
+use taiji_common_sqlite::error::SqliteStorageError;
+use taiji_common_types::{
+    taiji_address::TaijiAddressError,
     transaction::{TransactionConversionError, TransactionDirectionError, TxId},
     types::FixedHashSizeError,
 };
-use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
-use tari_comms_dht::outbound::DhtOutboundError;
-use tari_core::transactions::{
+use taiji_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
+use taiji_comms_dht::outbound::DhtOutboundError;
+use taiji_core::transactions::{
     transaction_components::{EncryptedDataError, TransactionError},
     transaction_protocol::TransactionProtocolError,
 };
 use tari_crypto::{errors::RangeProofError, signatures::CommitmentSignatureError};
-use tari_key_manager::key_manager_service::KeyManagerServiceError;
-use tari_p2p::services::liveness::error::LivenessError;
-use tari_service_framework::reply_channel::TransportChannelError;
+use taiji_key_manager::key_manager_service::KeyManagerServiceError;
+use taiji_p2p::services::liveness::error::LivenessError;
+use taiji_service_framework::reply_channel::TransportChannelError;
 use tari_utilities::ByteArrayError;
 use thiserror::Error;
 use tokio::sync::broadcast::error::RecvError;
@@ -212,9 +212,9 @@ impl From<ByteArrayError> for TransactionServiceError {
 #[derive(Debug, Error)]
 pub enum TransactionKeyError {
     #[error("Invalid source address")]
-    Source(TariAddressError),
+    Source(TaijiAddressError),
     #[error("Invalid destination address")]
-    Destination(TariAddressError),
+    Destination(TaijiAddressError),
     #[error("Invalid transaction signature nonce")]
     SignatureNonce(ByteArrayError),
     #[error("Invalid transaction signature key")]
@@ -265,8 +265,8 @@ pub enum TransactionStorageError {
     TransactionNotMined(TxId),
     #[error("Conversion error: `{0}`")]
     ByteArrayError(String),
-    #[error("Tari address error: `{0}`")]
-    TariAddressError(#[from] TariAddressError),
+    #[error("Taiji address error: `{0}`")]
+    TaijiAddressError(#[from] TaijiAddressError),
     #[error("Not a coinbase transaction so cannot be abandoned")]
     NotCoinbase,
     #[error("Db error: `{0}`")]

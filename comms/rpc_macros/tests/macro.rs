@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2020, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -24,7 +24,7 @@ use std::{collections::HashMap, ops::AddAssign, sync::Arc};
 
 use futures::StreamExt;
 use prost::Message;
-use tari_comms::{
+use taiji_comms::{
     framing,
     message::MessageExt,
     protocol::{
@@ -33,15 +33,15 @@ use tari_comms::{
     },
     test_utils::transport::build_multiplexed_connections,
 };
-use tari_comms_rpc_macros::tari_rpc;
-use tari_test_utils::unpack_enum;
+use taiji_comms_rpc_macros::taiji_rpc;
+use taiji_test_utils::unpack_enum;
 use tokio::{
     sync::{mpsc, RwLock},
     task,
 };
 use tower_service::Service;
 
-#[tari_rpc(protocol_name = b"/test/protocol/123", server_struct = TestServer, client_struct = TestClient)]
+#[taiji_rpc(protocol_name = b"/test/protocol/123", server_struct = TestServer, client_struct = TestClient)]
 pub trait Test: Sync + Send + 'static {
     #[rpc(method = 1)]
     async fn request_response(&self, request: Request<u32>) -> Result<Response<u32>, RpcStatus>;
@@ -75,7 +75,7 @@ impl TestService {
     }
 }
 
-#[tari_comms::async_trait]
+#[taiji_comms::async_trait]
 impl Test for TestService {
     async fn request_response(&self, request: Request<u32>) -> Result<Response<u32>, RpcStatus> {
         self.add_call("request_response").await;

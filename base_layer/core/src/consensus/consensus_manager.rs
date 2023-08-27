@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -22,7 +22,7 @@
 
 use std::sync::Arc;
 
-use tari_common::configuration::Network;
+use taiji_common::configuration::Network;
 use thiserror::Error;
 
 #[cfg(feature = "base_node")]
@@ -39,7 +39,7 @@ use crate::{
         NetworkConsensus,
     },
     proof_of_work::DifficultyAdjustmentError,
-    transactions::{tari_amount::MicroMinotari, transaction_components::TransactionKernel},
+    transactions::{taiji_amount::MicroMinotaiji, transaction_components::TransactionKernel},
 };
 
 #[derive(Debug, Error)]
@@ -90,13 +90,13 @@ impl ConsensusManager {
     }
 
     /// Gets the block reward for the height
-    pub fn get_block_reward_at(&self, height: u64) -> MicroMinotari {
+    pub fn get_block_reward_at(&self, height: u64) -> MicroMinotaiji {
         self.emission_schedule().block_reward(height)
     }
 
     /// Get the emission reward at height
     /// Returns None if the total supply > u64::MAX
-    pub fn get_total_emission_at(&self, height: u64) -> MicroMinotari {
+    pub fn get_total_emission_at(&self, height: u64) -> MicroMinotaiji {
         self.inner.emission.supply_at_block(height)
     }
 
@@ -131,7 +131,7 @@ impl ConsensusManager {
     }
 
     /// Creates a total_coinbase offset containing all fees for the validation from the height and kernel set
-    pub fn calculate_coinbase_and_fees(&self, height: u64, kernels: &[TransactionKernel]) -> MicroMinotari {
+    pub fn calculate_coinbase_and_fees(&self, height: u64, kernels: &[TransactionKernel]) -> MicroMinotaiji {
         let coinbase = self.emission_schedule().block_reward(height);
         kernels.iter().fold(coinbase, |total, k| total + k.fee)
     }

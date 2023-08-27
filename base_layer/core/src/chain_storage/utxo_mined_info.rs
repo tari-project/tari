@@ -1,4 +1,4 @@
-// Copyright 2021. The Tari Project
+// Copyright 2021. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::BlockHash;
+use taiji_common_types::types::BlockHash;
 
 use crate::chain_storage::PrunedOutput;
 
@@ -36,7 +36,7 @@ pub struct UtxoMinedInfo {
 
 #[cfg(test)]
 mod test {
-    use tari_common_types::types::FixedHash;
+    use taiji_common_types::types::FixedHash;
 
     use super::*;
 

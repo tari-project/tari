@@ -1,4 +1,4 @@
-// Copyright 2019 The Tari Project
+// Copyright 2019 The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -23,19 +23,19 @@
 use std::{sync::Arc, time::Duration};
 
 use rand::rngs::OsRng;
-use tari_comms::{
+use taiji_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
     transports::MemoryTransport,
     CommsNode,
 };
-use tari_comms_dht::Dht;
-use tari_p2p::{
+use taiji_comms_dht::Dht;
+use taiji_p2p::{
     comms_connector::pubsub_connector,
     services::liveness::{LivenessEvent, LivenessHandle, LivenessInitializer},
 };
-use tari_service_framework::{RegisterHandle, StackBuilder};
-use tari_shutdown::Shutdown;
-use tari_test_utils::collect_try_recv;
+use taiji_service_framework::{RegisterHandle, StackBuilder};
+use taiji_shutdown::Shutdown;
+use taiji_test_utils::collect_try_recv;
 use tempfile::tempdir;
 
 use crate::support::comms_and_services::setup_comms_services;

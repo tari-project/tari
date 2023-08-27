@@ -1,4 +1,4 @@
-//   Copyright 2023. The Tari Project
+//   Copyright 2023. The Taiji Project
 //
 //   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //   following conditions are met:
@@ -23,16 +23,16 @@
 use std::{convert::TryFrom, io::BufRead, ptr::null, time::Duration};
 
 use cucumber::{given, then, when};
-use tari_integration_tests::{
+use taiji_integration_tests::{
     wallet_ffi::{create_contact, create_seed_words, get_mnemonic_word_list_for_language, spawn_wallet_ffi},
-    TariWorld,
+    TaijiWorld,
 };
 use tari_utilities::hex::Hex;
 
 #[when(expr = "I have a ffi wallet {word} connected to base node {word}")]
 #[then(expr = "I have a ffi wallet {word} connected to base node {word}")]
 #[given(expr = "I have a ffi wallet {word} connected to base node {word}")]
-async fn ffi_start_wallet_connected_to_base_node(world: &mut TariWorld, wallet: String, base_node: String) {
+async fn ffi_start_wallet_connected_to_base_node(world: &mut TaijiWorld, wallet: String, base_node: String) {
     spawn_wallet_ffi(world, wallet.clone(), null());
     let base_node = world.get_node(&base_node).unwrap();
     world.get_ffi_wallet(&wallet).unwrap().add_base_node(
@@ -42,7 +42,7 @@ async fn ffi_start_wallet_connected_to_base_node(world: &mut TariWorld, wallet: 
 }
 
 #[given(expr = "I have a ffi wallet {word} connected to seed node {word}")]
-async fn ffi_start_wallet_connected_to_seed_node(world: &mut TariWorld, wallet: String, seed_node: String) {
+async fn ffi_start_wallet_connected_to_seed_node(world: &mut TaijiWorld, wallet: String, seed_node: String) {
     spawn_wallet_ffi(world, wallet.clone(), null());
     assert!(world.all_seed_nodes().contains(&seed_node), "Seed node not found.");
     let seed_node = world.get_node(&seed_node).unwrap();
@@ -53,7 +53,7 @@ async fn ffi_start_wallet_connected_to_seed_node(world: &mut TariWorld, wallet: 
 }
 
 #[given(expr = "I set base node {word} for ffi wallet {word}")]
-async fn ffi_set_base_node(world: &mut TariWorld, base_node: String, wallet: String) {
+async fn ffi_set_base_node(world: &mut TaijiWorld, base_node: String, wallet: String) {
     let base_node = world.get_node(&base_node).unwrap();
     world.get_ffi_wallet(&wallet).unwrap().add_base_node(
         base_node.identity.public_key().to_hex(),
@@ -62,14 +62,14 @@ async fn ffi_set_base_node(world: &mut TariWorld, base_node: String, wallet: Str
 }
 
 #[then(expr = "I want to get public key of ffi wallet {word}")]
-async fn ffi_get_public_key(world: &mut TariWorld, wallet: String) {
+async fn ffi_get_public_key(world: &mut TaijiWorld, wallet: String) {
     let wallet = world.get_ffi_wallet(&wallet).unwrap();
     let public_key = wallet.identify();
     println!("public_key {}", public_key);
 }
 
 #[then(expr = "I want to get emoji id of ffi wallet {word}")]
-async fn ffi_get_emoji_id(world: &mut TariWorld, wallet: String) {
+async fn ffi_get_emoji_id(world: &mut TaijiWorld, wallet: String) {
     let wallet = world.get_ffi_wallet(&wallet).unwrap();
     let emoji_id = wallet.get_emoji_id();
     assert_eq!(
@@ -81,7 +81,7 @@ async fn ffi_get_emoji_id(world: &mut TariWorld, wallet: String) {
 }
 
 #[then(expr = "I stop ffi wallet {word}")]
-async fn ffi_stop_wallet(world: &mut TariWorld, wallet: String) {
+async fn ffi_stop_wallet(world: &mut TaijiWorld, wallet: String) {
     let address = world.get_wallet_address(&wallet).await.unwrap();
     let ffi_wallet = world.ffi_wallets.get_mut(&wallet).unwrap();
     println!("Adding wallet {}", wallet);
@@ -90,7 +90,7 @@ async fn ffi_stop_wallet(world: &mut TariWorld, wallet: String) {
 }
 
 #[then(expr = "I retrieve the mnemonic word list for {word}")]
-async fn ffi_retrieve_mnemonic_words(_world: &mut TariWorld, language: String) {
+async fn ffi_retrieve_mnemonic_words(_world: &mut TaijiWorld, language: String) {
     println!("Mnemonic words for language {}:", language);
     let words = get_mnemonic_word_list_for_language(language);
     for i in 0..words.get_length() {
@@ -101,7 +101,7 @@ async fn ffi_retrieve_mnemonic_words(_world: &mut TariWorld, language: String) {
 }
 
 #[then(expr = "I wait for ffi wallet {word} to connect to {word}")]
-async fn ffi_wait_wallet_to_connect(world: &mut TariWorld, wallet: String, node: String) {
+async fn ffi_wait_wallet_to_connect(world: &mut TaijiWorld, wallet: String, node: String) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
     let node = world.get_node(&node).unwrap().identity.public_key();
     for _ in 0..10 {
@@ -118,7 +118,7 @@ async fn ffi_wait_wallet_to_connect(world: &mut TariWorld, wallet: String, node:
 }
 
 #[then(expr = "I wait for ffi wallet {word} to have at least {int} uT")]
-async fn ffi_wait_for_balance(world: &mut TariWorld, wallet: String, balance: u64) {
+async fn ffi_wait_for_balance(world: &mut TaijiWorld, wallet: String, balance: u64) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
     let mut ffi_balance = ffi_wallet.get_balance();
     let mut cnt = 0;
@@ -147,7 +147,7 @@ async fn ffi_wait_for_balance(world: &mut TariWorld, wallet: String, balance: u6
 }
 
 #[when(expr = "I add contact with alias {word} and address of {word} to ffi wallet {word}")]
-async fn ffi_add_contact(world: &mut TariWorld, alias: String, pubkey: String, wallet: String) {
+async fn ffi_add_contact(world: &mut TaijiWorld, alias: String, pubkey: String, wallet: String) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
 
     let address = world.get_wallet_address(&pubkey).await.unwrap();
@@ -156,7 +156,7 @@ async fn ffi_add_contact(world: &mut TariWorld, alias: String, pubkey: String, w
     assert!(ffi_wallet.upsert_contact(contact));
 }
 
-async fn check_contact(world: &mut TariWorld, alias: String, pubkey: Option<String>, wallet: String) -> bool {
+async fn check_contact(world: &mut TaijiWorld, alias: String, pubkey: Option<String>, wallet: String) -> bool {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
     let address: Option<String> = match pubkey {
         Some(pubkey) => Some(world.get_wallet_address(&pubkey).await.unwrap()),
@@ -177,12 +177,12 @@ async fn check_contact(world: &mut TariWorld, alias: String, pubkey: Option<Stri
 }
 
 #[then(expr = "I have contact with alias {word} and address of {word} in ffi wallet {word}")]
-async fn ffi_check_contact(world: &mut TariWorld, alias: String, pubkey: String, wallet: String) {
+async fn ffi_check_contact(world: &mut TaijiWorld, alias: String, pubkey: String, wallet: String) {
     assert!(check_contact(world, alias, Some(pubkey), wallet).await);
 }
 
 #[when(expr = "I remove contact with alias {word} from ffi wallet {word}")]
-async fn ffi_remove_contact(world: &mut TariWorld, alias: String, wallet: String) {
+async fn ffi_remove_contact(world: &mut TaijiWorld, alias: String, wallet: String) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
     let contacts = ffi_wallet.get_contacts();
     let mut contact_to_remove = None;
@@ -198,13 +198,13 @@ async fn ffi_remove_contact(world: &mut TariWorld, alias: String, wallet: String
 }
 
 #[then(expr = "I don't have contact with alias {word} in ffi wallet {word}")]
-async fn ffi_check_no_contact(world: &mut TariWorld, alias: String, wallet: String) {
+async fn ffi_check_no_contact(world: &mut TaijiWorld, alias: String, wallet: String) {
     assert!(!check_contact(world, alias, None, wallet).await);
 }
 
 #[when(expr = "I send {int} uT from ffi wallet {word} to wallet {word} at fee {int}")]
 #[then(expr = "I send {int} uT from ffi wallet {word} to wallet {word} at fee {int}")]
-async fn ffi_send_transaction(world: &mut TariWorld, amount: u64, wallet: String, dest: String, fee: u64) {
+async fn ffi_send_transaction(world: &mut TaijiWorld, amount: u64, wallet: String, dest: String, fee: u64) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
     let dest_pub_key = world.get_wallet_address(&dest).await.unwrap();
     let message = format!("Send from ffi {} to ${} at fee ${}", wallet, dest, fee);
@@ -214,7 +214,7 @@ async fn ffi_send_transaction(world: &mut TariWorld, amount: u64, wallet: String
 
 #[when(expr = "I send {int} uT from ffi wallet {word} to wallet {word} at fee {int} via one-sided transactions")]
 #[then(expr = "I send {int} uT from ffi wallet {word} to wallet {word} at fee {int} via one-sided transactions")]
-async fn ffi_send_one_sided_transaction(world: &mut TariWorld, amount: u64, wallet: String, dest: String, fee: u64) {
+async fn ffi_send_one_sided_transaction(world: &mut TaijiWorld, amount: u64, wallet: String, dest: String, fee: u64) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
     let dest_pub_key = world.get_wallet_address(&dest).await.unwrap();
     let message = format!("Send from ffi {} to ${} at fee ${}", wallet, dest, fee);
@@ -224,7 +224,7 @@ async fn ffi_send_one_sided_transaction(world: &mut TariWorld, amount: u64, wall
 
 #[when(expr = "I have {int} received and {int} send transaction in ffi wallet {word}")]
 #[then(expr = "I have {int} received and {int} send transaction in ffi wallet {word}")]
-async fn ffi_check_number_of_transactions(world: &mut TariWorld, received: u32, send: u32, wallet: String) {
+async fn ffi_check_number_of_transactions(world: &mut TaijiWorld, received: u32, send: u32, wallet: String) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
     let inbound_txs = ffi_wallet.get_pending_inbound_transactions();
     let mut inbound_cnt = inbound_txs.get_length();
@@ -244,7 +244,7 @@ async fn ffi_check_number_of_transactions(world: &mut TariWorld, received: u32, 
 }
 
 #[then(expr = "I wait for ffi wallet {word} to have {int} pending outbound transaction(s)")]
-async fn ffi_check_number_of_outbound_transactions(world: &mut TariWorld, wallet: String, cnt: u32) {
+async fn ffi_check_number_of_outbound_transactions(world: &mut TaijiWorld, wallet: String, cnt: u32) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
     let mut found_cnt = 0;
     let num_retries = 120;
@@ -260,7 +260,7 @@ async fn ffi_check_number_of_outbound_transactions(world: &mut TariWorld, wallet
 }
 
 #[then(expr = "I wait for ffi wallet {word} to have at least {int} contacts to be {word}")]
-async fn ffi_check_contacts(world: &mut TariWorld, wallet: String, cnt: u64, status: String) {
+async fn ffi_check_contacts(world: &mut TaijiWorld, wallet: String, cnt: u64, status: String) {
     assert!(
         vec!["Online", "Offline", "NeverSeen"].contains(&status.as_str()),
         "Unknown status: {}",
@@ -296,7 +296,7 @@ async fn ffi_check_contacts(world: &mut TariWorld, wallet: String, cnt: u64, sta
 }
 
 #[then(expr = "I want to view the transaction kernels for completed transactions in ffi wallet {word}")]
-async fn ffi_view_transaction_kernels_for_completed(world: &mut TariWorld, wallet: String) {
+async fn ffi_view_transaction_kernels_for_completed(world: &mut TaijiWorld, wallet: String) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
     let completed_transactions = ffi_wallet.get_completed_transactions();
     for i in 0..completed_transactions.get_length() {
@@ -313,7 +313,7 @@ async fn ffi_view_transaction_kernels_for_completed(world: &mut TariWorld, walle
 }
 
 #[then(expr = "I cancel all outbound transactions on ffi wallet {word} and it will cancel {int} transaction")]
-async fn ffi_cancel_outbound_transactions(world: &mut TariWorld, wallet: String, cnt: u64) {
+async fn ffi_cancel_outbound_transactions(world: &mut TaijiWorld, wallet: String, cnt: u64) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
     let pending_outbound_transactions = ffi_wallet.get_pending_outbound_transactions();
     let mut cancelled = 0;
@@ -327,7 +327,7 @@ async fn ffi_cancel_outbound_transactions(world: &mut TariWorld, wallet: String,
 }
 
 #[then(expr = "I wait for ffi wallet {word} to receive {int} transaction")]
-async fn ffi_wait_for_transaction_received(world: &mut TariWorld, wallet: String, cnt: u64) {
+async fn ffi_wait_for_transaction_received(world: &mut TaijiWorld, wallet: String, cnt: u64) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
     let num_retries = 120;
     let mut found_cnt = 0;
@@ -342,7 +342,7 @@ async fn ffi_wait_for_transaction_received(world: &mut TariWorld, wallet: String
 }
 
 #[then(expr = "I wait for ffi wallet {word} to receive {int} finalization")]
-async fn ffi_wait_for_transaction_finalized(world: &mut TariWorld, wallet: String, cnt: u64) {
+async fn ffi_wait_for_transaction_finalized(world: &mut TaijiWorld, wallet: String, cnt: u64) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
     let num_retries = 120;
     let mut found_cnt = 0;
@@ -357,7 +357,7 @@ async fn ffi_wait_for_transaction_finalized(world: &mut TariWorld, wallet: Strin
 }
 
 #[then(expr = "I wait for ffi wallet {word} to receive {int} broadcast")]
-async fn ffi_wait_for_transaction_broadcast(world: &mut TariWorld, wallet: String, cnt: u64) {
+async fn ffi_wait_for_transaction_broadcast(world: &mut TaijiWorld, wallet: String, cnt: u64) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
     let num_retries = 120;
     let mut found_cnt = 0;
@@ -372,7 +372,7 @@ async fn ffi_wait_for_transaction_broadcast(world: &mut TariWorld, wallet: Strin
 }
 
 #[then(expr = "I start TXO validation on ffi wallet {word}")]
-async fn ffi_start_txo_validation(world: &mut TariWorld, wallet: String) {
+async fn ffi_start_txo_validation(world: &mut TaijiWorld, wallet: String) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
     ffi_wallet.start_txo_validation();
     let num_retries = 120;
@@ -388,7 +388,7 @@ async fn ffi_start_txo_validation(world: &mut TariWorld, wallet: String) {
 }
 
 #[then(expr = "I start TX validation on ffi wallet {word}")]
-async fn ffi_start_tx_validation(world: &mut TariWorld, wallet: String) {
+async fn ffi_start_tx_validation(world: &mut TaijiWorld, wallet: String) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
     ffi_wallet.start_transaction_validation();
     let num_retries = 120;
@@ -405,7 +405,7 @@ async fn ffi_start_tx_validation(world: &mut TariWorld, wallet: String) {
 
 #[then(expr = "ffi wallet {word} detects {word} {int} ffi transactions to be {word}")]
 async fn ffi_detects_transaction(
-    world: &mut TariWorld,
+    world: &mut TaijiWorld,
     wallet: String,
     comparison: String,
     count: u64,
@@ -456,7 +456,7 @@ async fn ffi_detects_transaction(
 }
 
 #[then(expr = "I wait for ffi wallet {word} to receive {int} mined")]
-async fn ffi_wait_for_received_mined(world: &mut TariWorld, wallet: String, count: u64) {
+async fn ffi_wait_for_received_mined(world: &mut TaijiWorld, wallet: String, count: u64) {
     let ffi_wallet = world.get_ffi_wallet(&wallet).unwrap();
     println!("Waiting for {} to receive {} transaction(s) mined", wallet, count);
 
@@ -472,7 +472,7 @@ async fn ffi_wait_for_received_mined(world: &mut TariWorld, wallet: String, coun
 }
 
 #[then(expr = "I recover wallet {word} into ffi wallet {word} from seed words on node {word}")]
-async fn ffi_recover_wallet(world: &mut TariWorld, wallet_name: String, ffi_wallet_name: String, base_node: String) {
+async fn ffi_recover_wallet(world: &mut TaijiWorld, wallet_name: String, ffi_wallet_name: String, base_node: String) {
     let wallet = world.get_wallet(&wallet_name).unwrap();
     let seed_words_path = wallet.temp_dir_path.clone().join("seed_words.txt");
     let seed_words_file = std::fs::File::open(seed_words_path).unwrap();
@@ -491,7 +491,7 @@ async fn ffi_recover_wallet(world: &mut TariWorld, wallet_name: String, ffi_wall
 }
 
 #[then(expr = "I restart ffi wallet {word} connected to base node {word}")]
-async fn ffi_restart_wallet(world: &mut TariWorld, wallet: String, base_node: String) {
+async fn ffi_restart_wallet(world: &mut TaijiWorld, wallet: String, base_node: String) {
     let ffi_wallet = world.get_mut_ffi_wallet(&wallet).unwrap();
     ffi_wallet.restart();
     let base_node = world.get_node(&base_node).unwrap();
@@ -504,7 +504,7 @@ async fn ffi_restart_wallet(world: &mut TariWorld, wallet: String, base_node: St
 
 #[then(expr = "The fee per gram stats for {word} are {int}, {int}, {int}")]
 #[when(expr = "The fee per gram stats for {word} are {int}, {int}, {int}")]
-async fn ffi_fee_per_gram_stats(world: &mut TariWorld, wallet: String, min: u64, avg: u64, max: u64) {
+async fn ffi_fee_per_gram_stats(world: &mut TaijiWorld, wallet: String, min: u64, avg: u64, max: u64) {
     let ffi_wallet = world.get_mut_ffi_wallet(&wallet).unwrap();
     let fee_per_gram_stats = ffi_wallet.get_fee_per_gram_stats(5);
     for i in 0..fee_per_gram_stats.get_length() {

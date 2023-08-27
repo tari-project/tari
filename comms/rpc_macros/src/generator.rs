@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2020, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -54,7 +54,7 @@ impl RpcCodeGenerator {
         let server_struct = self.options.server_struct.as_ref().unwrap();
         let trait_ident = &self.trait_ident;
         let protocol_name = &self.options.protocol_name;
-        let dep_mod = quote!(tari_comms::protocol::rpc::__macro_reexports);
+        let dep_mod = quote!(taiji_comms::protocol::rpc::__macro_reexports);
 
         let match_branches = self
             .rpc_methods
@@ -154,7 +154,7 @@ impl RpcCodeGenerator {
     fn generate_client_code(&self) -> TokenStream {
         let client_struct = self.options.client_struct.as_ref().unwrap();
         let protocol_name = &self.options.protocol_name;
-        let dep_mod = quote!(::tari_comms::protocol::rpc::__macro_reexports);
+        let dep_mod = quote!(::taiji_comms::protocol::rpc::__macro_reexports);
 
         let client_methods = self
             .rpc_methods

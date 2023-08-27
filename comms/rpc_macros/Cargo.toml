@@ -1,9 +1,9 @@
 [package]
-name = "tari_comms_rpc_macros"
+name = "taiji_comms_rpc_macros"
 description = "RPC service proc macro"
-authors = ["The Tari Development Community"]
+authors = ["The Taiji Development Community"]
 repository = "https://github.com/tari-project/tari"
-homepage = "https://tari.com"
+homepage = "https://taiji.com"
 readme = "README.md"
 license = "BSD-3-Clause"
 version = "0.52.0-pre.0"
@@ -19,8 +19,8 @@ quote = "1.0.7"
 syn = { version = "1.0.38", features = ["fold"] }
 
 [dev-dependencies]
-tari_comms = {  path = "../core", features = ["rpc"] }
-tari_test_utils = {  path = "../../infrastructure/test_utils" }
+taiji_comms = {  path = "../core", features = ["rpc"] }
+taiji_test_utils = {  path = "../../infrastructure/test_utils" }
 
 futures = "0.3.5"
 prost = "0.9.0"

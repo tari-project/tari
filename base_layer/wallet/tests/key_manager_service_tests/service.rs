@@ -1,4 +1,4 @@
-// Copyright 2022. The Tari Project
+// Copyright 2022. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -22,10 +22,10 @@
 use std::mem::size_of;
 
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
-use minotari_wallet::storage::sqlite_utilities::WalletDbConnection;
+use minotaiji_wallet::storage::sqlite_utilities::WalletDbConnection;
 use rand::{rngs::OsRng, RngCore};
-use tari_common_types::types::PublicKey;
-use tari_key_manager::{
+use taiji_common_types::types::PublicKey;
+use taiji_key_manager::{
     cipher_seed::CipherSeed,
     key_manager_service::{
         storage::{database::KeyManagerDatabase, sqlite_db::KeyManagerSqliteDatabase},

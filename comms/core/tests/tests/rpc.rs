@@ -1,4 +1,4 @@
-//  Copyright 2022. The Tari Project
+//  Copyright 2022. The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -23,13 +23,13 @@
 use std::time::Duration;
 
 use futures::StreamExt;
-use tari_comms::{
+use taiji_comms::{
     protocol::rpc::{RpcServer, RpcServerHandle},
     transports::TcpTransport,
     CommsNode,
 };
-use tari_shutdown::{Shutdown, ShutdownSignal};
-use tari_test_utils::async_assert_eventually;
+use taiji_shutdown::{Shutdown, ShutdownSignal};
+use taiji_test_utils::async_assert_eventually;
 use tokio::time;
 
 use crate::tests::{

@@ -1,4 +1,4 @@
-//  Copyright 2022. The Tari Project
+//  Copyright 2022. The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -22,7 +22,7 @@
 
 use croaring::Bitmap;
 use digest::Digest;
-use tari_mmr::{common::LeafIndex, Hash, HashSlice};
+use taiji_mmr::{common::LeafIndex, Hash, HashSlice};
 use tari_utilities::hex::Hex;
 
 use crate::support::{create_mmr, int_to_hash, MmrTestHasherBlake256, MutableTestMmr};

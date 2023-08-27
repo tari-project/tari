@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -79,7 +79,7 @@ pub fn initialize_logging(config_file: &Path, base_path: &Path, default: &str) -
 /// `log_if_error!(my_error_call())`
 ///
 /// ```edition2018
-/// # use tari_common::log_if_error;
+/// # use taiji_common::log_if_error;
 /// let opt = log_if_error!(level: debug, target: "docs", "Error sending reply: {}", Result::<(), _>::Err("this will be logged"));
 /// assert_eq!(opt, None);
 /// ```
@@ -108,7 +108,7 @@ macro_rules! log_if_error {
 /// See [log_if_error!](./log_if_error.macro.html).
 ///
 /// ```edition2018
-/// # use tari_common::log_if_error_fmt;
+/// # use taiji_common::log_if_error_fmt;
 /// let opt = log_if_error_fmt!(level: debug, target: "docs", "Error sending reply - custom: {}", Result::<(), _>::Err(()), "this is logged");
 /// assert_eq!(opt, None);
 /// ```

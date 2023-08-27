@@ -1,9 +1,9 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 syntax = "proto3";
 
-package tari.dht.rpc;
+package taiji.dht.rpc;
 
 import "common.proto";
 
@@ -47,5 +47,5 @@ message PeerInfoAddress {
 message PeerIdentityClaim {
   repeated bytes addresses = 1;
   uint64 peer_features = 2;
-  tari.dht.common.IdentitySignature identity_signature = 3;
+  taiji.dht.common.IdentitySignature identity_signature = 3;
 }

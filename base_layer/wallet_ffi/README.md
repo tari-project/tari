@@ -1,8 +1,8 @@
-# Tari Wallet FFI
+# Taiji Wallet FFI
 
-Foreign Function interface for the Tari Android and Tari iOS Wallets.
+Foreign Function interface for the Taiji Android and Taiji iOS Wallets.
 
-This crate is part of the [Tari Cryptocurrency](https://tari.com) project.
+This crate is part of the [Taiji Cryptocurrency](https://taiji.com) project.
 
 # Build setup (Mac)
 
@@ -116,11 +116,11 @@ killall Finder
 ## The Code
 
 Clone the following git repositories
-1. [Tari](https://github.com/tari-project/tari.git)
-2. [Wallet-Android](https://github.com/tari-project/wallet-android.git)
-3. [Wallet-iOS](https://github.com/tari-project/wallet-ios.git)
+1. [Taiji](https://github.com/taiji-project/taiji.git)
+2. [Wallet-Android](https://github.com/taiji-project/wallet-android.git)
+3. [Wallet-iOS](https://github.com/taiji-project/wallet-ios.git)
 
-Afterwards ```cd``` into the Tari repository and run the following
+Afterwards ```cd``` into the Taiji repository and run the following
 ```Shell Script
 git submodule init
 git config submodule.recurse true
@@ -142,7 +142,7 @@ rustup target add x86_64-linux-android aarch64-linux-android armv7-linux-android
 
 ## Build Configuration
 
-To configure the build, ```cd``` to the Tari repository and then
+To configure the build, ```cd``` to the Taiji repository and then
 ```Shell Script
 cd base_layer/wallet_ffi
 open build.sample.config
@@ -158,14 +158,14 @@ NDK_PATH=$HOME/android-ndk-r20
 PKG_PATH=/usr/local/opt/openssl@1.1/lib/pkgconfig
 ANDROID_WALLET_PATH=$HOME/wallet-android
 IOS_WALLET_PATH=$HOME/wallet-ios
-TARI_REPO_PATH=$HOME/tari-main
+TARI_REPO_PATH=$HOME/taiji-main
 ```
 The following changes need to be made to the file
 1. ```NDK_PATH``` needs to be changed to the directory of the Android NDK Bundle.
 1. ```ANDROID_WALLET``` needs to be changed to the path of the Android-Wallet repository
 1. ```IOS_WALLET_PATH``` needs to be changed to the path of the Wallet-iOS repository
 1. ```CARGO_CLEAN``` if set to 1, the cargo clean command will be run before the build
-1. ```TARI_REPO_PATH``` needs to be changed to the path of the Tari repository (Optional - defaults to current repo)
+1. ```TARI_REPO_PATH``` needs to be changed to the path of the Taiji repository (Optional - defaults to current repo)
 1. ```BUILD_ANDROID``` can be set to ```0``` to disable Android library build
 1. ```BUILD_IOS``` can be set to ```0``` to disable iOS library build
 1. ```PKG_PATH``` needs to be changed to OpenSSL 1.1 pkgconfig path (only necessary for iOS build)
@@ -174,7 +174,7 @@ Save the file and rename it to ```build.config```
 
 ## Building the Libraries
 
-To build the libraries, ```cd``` to the Tari repository and then
+To build the libraries, ```cd``` to the Taiji repository and then
 ```Shell Script
 cd base_layer/wallet_ffi
 sh mobile_build.sh

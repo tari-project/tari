@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2020. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -43,22 +43,22 @@ pub type BlockHash = FixedHash;
 
 pub use fixed_hash::{FixedHash, FixedHashSizeError};
 
-/// Define the explicit Signature implementation for the Tari base layer. A different signature scheme can be
+/// Define the explicit Signature implementation for the Taiji base layer. A different signature scheme can be
 /// employed by redefining this type.
 pub type Signature = RistrettoSchnorr;
 /// Define a generic signature type using a hash domain.
 pub type SignatureWithDomain<H> = RistrettoSchnorrWithDomain<H>;
-/// Define the explicit Commitment Signature implementation for the Tari base layer.
+/// Define the explicit Commitment Signature implementation for the Taiji base layer.
 pub type ComAndPubSignature = RistrettoComAndPubSig;
 
-/// Define the explicit Commitment implementation for the Tari base layer.
+/// Define the explicit Commitment implementation for the Taiji base layer.
 pub type Commitment = PedersenCommitment;
 pub type CommitmentFactory = ExtendedPedersenCommitmentFactory;
 
-/// Define the explicit Public key implementation for the Tari base layer
+/// Define the explicit Public key implementation for the Taiji base layer
 pub type PublicKey = RistrettoPublicKey;
 
-/// Define the explicit Secret key implementation for the Tari base layer.
+/// Define the explicit Secret key implementation for the Taiji base layer.
 pub type PrivateKey = RistrettoSecretKey;
 
 /// Define the hash function that will be used to produce a signature challenge
@@ -84,14 +84,14 @@ use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
 hasher!(
     Blake2b<U32>,
     WalletHasher,
-    "com.tari.base_layer.wallet",
+    "com.taiji.base_layer.wallet",
     1,
     wallet_hasher
 );
 
 hash_domain!(
     BulletRangeProofHashDomain,
-    "com.tari.base_layer.common_types.bullet_rangeproofs"
+    "com.taiji.base_layer.common_types.bullet_rangeproofs"
 );
 
 pub type BulletRangeProofHasherBlake256 = DomainSeparatedHasher<Blake2b<U32>, BulletRangeProofHashDomain>;

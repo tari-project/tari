@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2020. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -25,11 +25,11 @@ use std::sync::Arc;
 use chrono::Utc;
 use futures::future::FutureExt;
 use log::*;
-use tari_common_types::{
-    tari_address::TariAddress,
+use taiji_common_types::{
+    taiji_address::TaijiAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
 };
-use tari_core::transactions::{
+use taiji_core::transactions::{
     key_manager::TransactionKeyManagerInterface,
     transaction_components::Transaction,
     transaction_protocol::{recipient::RecipientState, sender::TransactionSenderMessage},
@@ -64,11 +64,11 @@ pub enum TransactionReceiveProtocolStage {
 
 pub struct TransactionReceiveProtocol<TBackend, TWalletConnectivity, TKeyManagerInterface> {
     id: TxId,
-    source_address: TariAddress,
+    source_address: TaijiAddress,
     sender_message: TransactionSenderMessage,
     stage: TransactionReceiveProtocolStage,
     resources: TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManagerInterface>,
-    transaction_finalize_receiver: Option<mpsc::Receiver<(TariAddress, TxId, Transaction)>>,
+    transaction_finalize_receiver: Option<mpsc::Receiver<(TaijiAddress, TxId, Transaction)>>,
     cancellation_receiver: Option<oneshot::Receiver<()>>,
 }
 
@@ -81,11 +81,11 @@ where
 {
     pub fn new(
         id: TxId,
-        source_address: TariAddress,
+        source_address: TaijiAddress,
         sender_message: TransactionSenderMessage,
         stage: TransactionReceiveProtocolStage,
         resources: TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManagerInterface>,
-        transaction_finalize_receiver: mpsc::Receiver<(TariAddress, TxId, Transaction)>,
+        transaction_finalize_receiver: mpsc::Receiver<(TaijiAddress, TxId, Transaction)>,
         cancellation_receiver: oneshot::Receiver<()>,
     ) -> Self {
         Self {

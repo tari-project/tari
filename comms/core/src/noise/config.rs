@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -32,7 +32,7 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use crate::{
     connection_manager::ConnectionDirection,
     noise::{
-        crypto_resolver::TariCryptoResolver,
+        crypto_resolver::TaijiCryptoResolver,
         error::NoiseError,
         socket::{Handshake, NoiseSocket},
     },
@@ -72,7 +72,7 @@ impl NoiseConfig {
         TSocket: AsyncWrite + AsyncRead + Unpin,
     {
         let handshake_state = {
-            let builder = snow::Builder::with_resolver(self.parameters.clone(), Box::<TariCryptoResolver>::default())
+            let builder = snow::Builder::with_resolver(self.parameters.clone(), Box::<TaijiCryptoResolver>::default())
                 .local_private_key(self.node_identity.secret_key().as_bytes());
 
             match direction {

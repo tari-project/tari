@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2020. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -22,7 +22,7 @@
 
 use std::sync::Arc;
 
-use tari_shutdown::ShutdownSignal;
+use taiji_shutdown::ShutdownSignal;
 use tokio::sync::{broadcast, watch};
 
 use crate::base_node::state_machine_service::states::{StateEvent, StatusInfo};

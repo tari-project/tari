@@ -1,11 +1,11 @@
 [package]
-name = "tari_metrics"
-description = "Tari metrics"
+name = "taiji_metrics"
+description = "Taiji metrics"
 version = "0.1.0"
 edition = "2021"
-authors = ["The Tari Development Community"]
-repository = "https://github.com/tari-project/tari"
-homepage = "https://tari.com"
+authors = ["The Taiji Development Community"]
+repository = "https://github.com/taiji-project/taiji"
+homepage = "https://taiji.com"
 readme = "README.md"
 license = "BSD-3-Clause"
 

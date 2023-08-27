@@ -1,4 +1,4 @@
-// Copyright 2018 The Tari Project
+// Copyright 2018 The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -74,27 +74,27 @@ mod domain_hashing {
     use blake2::Blake2b;
     use digest::consts::U32;
     use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
-    use tari_mmr::{pruned_hashset::PrunedHashSet, BalancedBinaryMerkleTree, Hash, MerkleMountainRange, MutableMmr};
+    use taiji_mmr::{pruned_hashset::PrunedHashSet, BalancedBinaryMerkleTree, Hash, MerkleMountainRange, MutableMmr};
 
-    hash_domain!(KernelMmrHashDomain, "com.tari.base_layer.core.kernel_mmr", 1);
+    hash_domain!(KernelMmrHashDomain, "com.taiji.base_layer.core.kernel_mmr", 1);
 
     pub type KernelMmrHasherBlake256 = DomainSeparatedHasher<Blake2b<U32>, KernelMmrHashDomain>;
     pub type KernelMmr = MerkleMountainRange<KernelMmrHasherBlake256, Vec<Hash>>;
     pub type PrunedKernelMmr = MerkleMountainRange<KernelMmrHasherBlake256, PrunedHashSet>;
 
-    hash_domain!(OutputMmrHashDomain, "com.tari.base_layer.core.output_mmr", 1);
+    hash_domain!(OutputMmrHashDomain, "com.taiji.base_layer.core.output_mmr", 1);
     pub type OutputMmrHasherBlake256 = DomainSeparatedHasher<Blake2b<U32>, OutputMmrHashDomain>;
     pub type MutableOutputMmr = MutableMmr<OutputMmrHasherBlake256, Vec<Hash>>;
     pub type PrunedOutputMmr = MerkleMountainRange<OutputMmrHasherBlake256, PrunedHashSet>;
     pub type MutablePrunedOutputMmr = MutableMmr<OutputMmrHasherBlake256, PrunedHashSet>;
 
-    hash_domain!(InputMmrHashDomain, "com.tari.base_layer.core.input_mmr", 1);
+    hash_domain!(InputMmrHashDomain, "com.taiji.base_layer.core.input_mmr", 1);
     pub type InputMmrHasherBlake256 = DomainSeparatedHasher<Blake2b<U32>, InputMmrHashDomain>;
     pub type PrunedInputMmr = MerkleMountainRange<InputMmrHasherBlake256, PrunedHashSet>;
 
     hash_domain!(
         ValidatorNodeBmtHashDomain,
-        "com.tari.base_layer.core.validator_node_mmr",
+        "com.taiji.base_layer.core.validator_node_mmr",
         1
     );
     pub type ValidatorNodeBmtHasherBlake256 = DomainSeparatedHasher<Blake2b<U32>, ValidatorNodeBmtHashDomain>;

@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -28,7 +28,7 @@ use std::{
 
 use anyhow::anyhow;
 use futures::future;
-use tari_common::configuration::bootstrap::ApplicationType;
+use taiji_common::configuration::bootstrap::ApplicationType;
 use tari_utilities::hex::{from_hex, Hex, HexError};
 use thiserror::Error;
 
@@ -254,11 +254,11 @@ mod test {
                     name_server: DEFAULT_DNS_NAME_SERVER.parse().unwrap(),
                     update_uris: vec!["test.local".to_string()],
                     use_dnssec: true,
-                    download_base_url: "https://tari-binaries.s3.amazonaws.com/latest".to_string(),
-                    hashes_url: "https://raw.githubusercontent.com/tari-project/tari/development/meta/hashes.txt"
+                    download_base_url: "https://taiji-binaries.s3.amazonaws.com/latest".to_string(),
+                    hashes_url: "https://raw.githubusercontent.com/taiji-project/taiji/development/meta/hashes.txt"
                         .to_string(),
                     hashes_sig_url:
-                        "https://raw.githubusercontent.com/tari-project/tari/development/meta/hashes.txt.sig"
+                        "https://raw.githubusercontent.com/taiji-project/taiji/development/meta/hashes.txt.sig"
                             .to_string(),
                     check_interval: Some(Duration::from_secs(30)),
                 }

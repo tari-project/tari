@@ -1,12 +1,12 @@
 # BTC Atomic swap
 
-This is a short document detailing how to do a Bitcoin - Tari atomic swap
+This is a short document detailing how to do a Bitcoin - Taiji atomic swap
 
 ## BTC setup
 
 The following dependencies are required:
 
-* Tari wallet
+* Taiji wallet
 
 * Bitcoind (only for BTC atomic swaps, replace with other wallets for other coins)
 
@@ -67,14 +67,14 @@ Replace `<crypto coin>` with the desired tool folder, for example: `btcatomicswa
 ### Atomic swap process
 
 This example will use bitcoin but can be any of the other coins supported by decred atomic swap ci programs.
-Alice starts the process by sending a tari HTLC transaction with:
+Alice starts the process by sending a taiji HTLC transaction with:
 
 ```cli,ignore
-tari_console_wallet --command "init-sha-atomic-swap <Amount> <Bob pubkey> <Message>"
+taiji_console_wallet --command "init-sha-atomic-swap <Amount> <Bob pubkey> <Message>"
 ```
-`<Amount>` is the Tari amount that is swapped
+`<Amount>` is the Taiji amount that is swapped
 `<Bob pubkey>` is the public key used by Bob's wallet
-`<Message>` is the desired Tari transaction message
+`<Message>` is the desired Taiji transaction message
 
 This will print out the following information:
 ```cli,ignore
@@ -178,14 +178,14 @@ Secret: <pre_image>
 
 Bob can then claim the XTR with:
 ```cli,ignore
-tari_console_wallet --command "finalise-sha-atomic-swap <Output hash> <pre_image hex>"
+taiji_console_wallet --command "finalise-sha-atomic-swap <Output hash> <pre_image hex>"
 ```
 `<pre_image hex:` is the hex of the actual pre-image that Bob retrieved from the BTC transaction.
 `<Output hash>` is the hash of the XTR output that contains the HTLC script
 
 ### Ref guide to documentation
 
-* Tari atomic swap RFC: <https://rfc.tari.com/RFC-0240_AtomicSwap.html>
+* Taiji atomic swap RFC: <https://rfc.taiji.com/RFC-0240_AtomicSwap.html>
 
 * Bitcoind RPC interface: <https://developer.bitcoin.org/reference/rpc/index.html>
 

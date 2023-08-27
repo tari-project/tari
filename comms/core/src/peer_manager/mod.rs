@@ -1,4 +1,4 @@
-//  Copyright 2019 The Tari Project
+//  Copyright 2019 The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -31,15 +31,15 @@
 //! implementation.
 //!
 //! ```no_compile
-//! # use tari_comms::peer_manager::{NodeId, Peer, PeerManager, PeerFlags, PeerFeatures};
-//! # use tari_comms::types::CommsPublicKey;
-//! # use tari_comms::connection::{NetAddress, NetAddressesWithStats};
+//! # use taiji_comms::peer_manager::{NodeId, Peer, PeerManager, PeerFlags, PeerFeatures};
+//! # use taiji_comms::types::CommsPublicKey;
+//! # use taiji_comms::connection::{NetAddress, NetAddressesWithStats};
 //! # use tari_crypto::keys::PublicKey;
-//! # use tari_storage::lmdb_store::LMDBBuilder;
+//! # use taiji_storage::lmdb_store::LMDBBuilder;
 //! # use lmdb_zero::db;
 //! # use std::sync::Arc;
-//! # use tari_storage::LMDBWrapper;
-//! # use tari_storage::lmdb_store::LMDBConfig;
+//! # use taiji_storage::LMDBWrapper;
+//! # use taiji_storage::lmdb_store::LMDBConfig;
 //!
 //! let mut rng = rand::rngs::OsRng;
 //! let (dest_sk, pk) = CommsPublicKey::random_keypair(&mut rng);

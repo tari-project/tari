@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2020, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -25,7 +25,7 @@ use std::{env, net::Ipv4Addr, path::Path, process, sync::Arc, time::Duration};
 
 use futures::{future, future::Either};
 use stress::{error::Error, prompt::user_prompt};
-use tari_shutdown::Shutdown;
+use taiji_shutdown::Shutdown;
 use tari_utilities::message_format::MessageFormat;
 use tempfile::Builder;
 use tokio::{sync::oneshot, time};

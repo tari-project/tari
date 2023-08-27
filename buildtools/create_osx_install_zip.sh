@@ -13,7 +13,7 @@ rm -f "./$1.tar.gz" >/dev/null
 target_release=${target_release:-target/release}
 
 tarball_parent=${tarball_parent:-/tmp}
-tarball_source=${tarball_source:-tari_testnet}
+tarball_source=${tarball_source:-taiji_testnet}
 tarball_folder=${tarball_parent}/${tarball_source}
 if [ -d "${tarball_folder}" ]; then
     rm -f -r "${tarball_folder:?}"
@@ -29,7 +29,7 @@ local_dir="$(
     pwd -P
 )"
 project_dir="$(dirname "$(greadlink -e "$local_dir")")"
-app_dir="$(dirname "$(greadlink -e "$project_dir/applications/tari_base_node")")"
+app_dir="$(dirname "$(greadlink -e "$project_dir/applications/taiji_base_node")")"
 
 if [ ! "${app_dir}" == "${project_dir}/applications" ]; then
     echo
@@ -46,32 +46,32 @@ else
 fi
 
 # One click miner
-# cp -f -P "${app_dir}/tari_base_node/osx/start_all" "${tarball_folder}/start_all"
-# cp -f "${app_dir}/tari_base_node/osx/runtime/start_all.sh" "${tarball_folder}/runtime/start_all.sh"
+# cp -f -P "${app_dir}/taiji_base_node/osx/start_all" "${tarball_folder}/start_all"
+# cp -f "${app_dir}/taiji_base_node/osx/runtime/start_all.sh" "${tarball_folder}/runtime/start_all.sh"
 
 # Base Node
-cp -f -P "${app_dir}/tari_base_node/osx/start_minotari_node" "${tarball_folder}/start_minotari_node"
-cp -f -P "${app_dir}/tari_base_node/osx/start_tor" "${tarball_folder}/start_tor"
-cp -f "${app_dir}/tari_base_node/osx/runtime/start_minotari_node.sh" "${tarball_folder}/runtime/start_minotari_node.sh"
-cp -f "${app_dir}/tari_base_node/osx/runtime/start_tor.sh" "${tarball_folder}/runtime/start_tor.sh"
-cp -f "${project_dir}/${target_release}/tari_base_node" "${tarball_folder}/runtime/tari_base_node"
+cp -f -P "${app_dir}/taiji_base_node/osx/start_minotaiji_node" "${tarball_folder}/start_minotaiji_node"
+cp -f -P "${app_dir}/taiji_base_node/osx/start_tor" "${tarball_folder}/start_tor"
+cp -f "${app_dir}/taiji_base_node/osx/runtime/start_minotaiji_node.sh" "${tarball_folder}/runtime/start_minotaiji_node.sh"
+cp -f "${app_dir}/taiji_base_node/osx/runtime/start_tor.sh" "${tarball_folder}/runtime/start_tor.sh"
+cp -f "${project_dir}/${target_release}/taiji_base_node" "${tarball_folder}/runtime/taiji_base_node"
 
 # Console Wallet
-cp -f -P "${app_dir}/tari_console_wallet/osx/start_tari_console_wallet" "${tarball_folder}/start_tari_console_wallet"
-cp -f "${app_dir}/tari_console_wallet/osx/runtime/start_tari_console_wallet.sh" "${tarball_folder}/runtime/start_tari_console_wallet.sh"
-cp -f "${project_dir}/${target_release}/tari_console_wallet" "${tarball_folder}/runtime/tari_console_wallet"
+cp -f -P "${app_dir}/taiji_console_wallet/osx/start_taiji_console_wallet" "${tarball_folder}/start_taiji_console_wallet"
+cp -f "${app_dir}/taiji_console_wallet/osx/runtime/start_taiji_console_wallet.sh" "${tarball_folder}/runtime/start_taiji_console_wallet.sh"
+cp -f "${project_dir}/${target_release}/taiji_console_wallet" "${tarball_folder}/runtime/taiji_console_wallet"
 
 # Miner
-cp -f -P "${app_dir}/tari_miner/osx/start_tari_miner" "${tarball_folder}/start_tari_miner"
-cp -f "${app_dir}/tari_miner/osx/runtime/start_tari_miner.sh" "${tarball_folder}/runtime/start_tari_miner.sh"
-cp -f "${project_dir}/${target_release}/tari_miner" "${tarball_folder}/runtime/tari_miner"
+cp -f -P "${app_dir}/taiji_miner/osx/start_taiji_miner" "${tarball_folder}/start_taiji_miner"
+cp -f "${app_dir}/taiji_miner/osx/runtime/start_taiji_miner.sh" "${tarball_folder}/runtime/start_taiji_miner.sh"
+cp -f "${project_dir}/${target_release}/taiji_miner" "${tarball_folder}/runtime/taiji_miner"
 
 # Merge Mining Proxy
-cp -f -P "${app_dir}/tari_merge_mining_proxy/osx/start_tari_merge_mining_proxy" "${tarball_folder}/start_tari_merge_mining_proxy"
-cp -f -P "${app_dir}/tari_merge_mining_proxy/osx/start_xmrig" "${tarball_folder}/start_xmrig"
-cp -f "${app_dir}/tari_merge_mining_proxy/osx/runtime/start_tari_merge_mining_proxy.sh" "${tarball_folder}/runtime/start_tari_merge_mining_proxy.sh"
-cp -f "${app_dir}/tari_merge_mining_proxy/osx/runtime/start_xmrig.sh" "${tarball_folder}/runtime/start_xmrig.sh"
-cp -f "${project_dir}/${target_release}/tari_merge_mining_proxy" "${tarball_folder}/runtime/tari_merge_mining_proxy"
+cp -f -P "${app_dir}/taiji_merge_mining_proxy/osx/start_taiji_merge_mining_proxy" "${tarball_folder}/start_taiji_merge_mining_proxy"
+cp -f -P "${app_dir}/taiji_merge_mining_proxy/osx/start_xmrig" "${tarball_folder}/start_xmrig"
+cp -f "${app_dir}/taiji_merge_mining_proxy/osx/runtime/start_taiji_merge_mining_proxy.sh" "${tarball_folder}/runtime/start_taiji_merge_mining_proxy.sh"
+cp -f "${app_dir}/taiji_merge_mining_proxy/osx/runtime/start_xmrig.sh" "${tarball_folder}/runtime/start_xmrig.sh"
+cp -f "${project_dir}/${target_release}/taiji_merge_mining_proxy" "${tarball_folder}/runtime/taiji_merge_mining_proxy"
 
 # 3rd party install
 cp -f "${local_dir}/install_xmrig.sh" "${tarball_folder}/runtime/install_xmrig.sh"

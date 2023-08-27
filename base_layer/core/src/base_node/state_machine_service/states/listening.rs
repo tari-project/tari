@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -30,7 +30,7 @@ use std::{
 use log::*;
 use num_format::{Locale, ToFormattedString};
 use serde::{Deserialize, Serialize};
-use tari_common_types::chain_metadata::ChainMetadata;
+use taiji_common_types::chain_metadata::ChainMetadata;
 use tari_utilities::epoch_time::EpochTime;
 use tokio::sync::broadcast;
 
@@ -344,8 +344,8 @@ fn determine_sync_mode(
 #[cfg(test)]
 mod test {
     use rand::rngs::OsRng;
-    use tari_common_types::types::FixedHash;
-    use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
+    use taiji_common_types::types::FixedHash;
+    use taiji_comms::{peer_manager::NodeId, types::CommsPublicKey};
     use tari_crypto::keys::PublicKey;
 
     use super::*;

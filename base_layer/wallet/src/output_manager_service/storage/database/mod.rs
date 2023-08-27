@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -28,12 +28,12 @@ use std::{
 
 pub use backend::OutputManagerBackend;
 use log::*;
-use tari_common_types::{
+use taiji_common_types::{
     transaction::TxId,
     types::{Commitment, HashOutput},
 };
-use tari_core::transactions::{
-    tari_amount::MicroMinotari,
+use taiji_core::transactions::{
+    taiji_amount::MicroMinotaiji,
     transaction_components::{OutputType, TransactionOutput},
 };
 use tari_utilities::hex::Hex;
@@ -255,7 +255,7 @@ where T: OutputManagerBackend + 'static
     pub fn fetch_unspent_outputs_for_spending(
         &self,
         selection_criteria: &UtxoSelectionCriteria,
-        amount: MicroMinotari,
+        amount: MicroMinotaiji,
         tip_height: Option<u64>,
     ) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError> {
         let utxos = self

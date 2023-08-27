@@ -1,9 +1,9 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 syntax = "proto3";
 
-package tari.dht;
+package taiji.dht;
 
 import "common.proto";
 
@@ -18,7 +18,7 @@ message JoinMessage {
     repeated bytes addresses = 2;
     uint64 peer_features = 3;
     uint64 nonce = 4;
-    tari.dht.common.IdentitySignature identity_signature = 5;
+    taiji.dht.common.IdentitySignature identity_signature = 5;
 }
 
 // The DiscoverMessage stores the information required for a network discover request.
@@ -31,7 +31,7 @@ message DiscoveryMessage {
     repeated bytes addresses = 2;
     uint64 peer_features = 3;
     uint64 nonce = 4;
-    tari.dht.common.IdentitySignature identity_signature = 5;
+    taiji.dht.common.IdentitySignature identity_signature = 5;
 }
 
 message DiscoveryResponseMessage {
@@ -39,5 +39,5 @@ message DiscoveryResponseMessage {
     repeated bytes addresses = 2;
     uint64 peer_features = 3;
     uint64 nonce = 4;
-    tari.dht.common.IdentitySignature identity_signature = 5;
+    taiji.dht.common.IdentitySignature identity_signature = 5;
 }

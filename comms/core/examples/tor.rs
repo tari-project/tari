@@ -1,4 +1,4 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 use std::{collections::HashMap, convert::identity, env, net::SocketAddr, path::Path, process, sync::Arc};
@@ -7,7 +7,7 @@ use anyhow::anyhow;
 use bytes::Bytes;
 use chrono::Utc;
 use rand::{rngs::OsRng, thread_rng, RngCore};
-use tari_comms::{
+use taiji_comms::{
     message::{InboundMessage, OutboundMessage},
     multiaddr::Multiaddr,
     net_address::{MultiaddressesWithStats, PeerAddressSource},
@@ -19,7 +19,7 @@ use tari_comms::{
     CommsBuilder,
     CommsNode,
 };
-use tari_storage::{
+use taiji_storage::{
     lmdb_store::{LMDBBuilder, LMDBConfig},
     LMDBWrapper,
 };
@@ -30,7 +30,7 @@ use tokio::{
     sync::{broadcast, mpsc},
 };
 
-// Tor example for tari_comms.
+// Tor example for taiji_comms.
 //
 // _Note:_ A running tor proxy with `ControlPort` set is required for this example to work.
 

@@ -10,39 +10,39 @@ fi
 
 ignored_crates=(
 deps_only
-minotari_app_grpc
-minotari_app_utilities
-minotari_node
-minotari_node_grpc_client
-tari_chat_client
-tari_chat_ffi
-minotari_console_wallet
-tari_contacts
-tari_features
-tari_integration_tests
-tari_libtor
-minotari_merge_mining_proxy
-tari_metrics
-minotari_miner
-minotari_mining_helper_ffi
-tari_test_utils
-minotari_wallet_ffi
-minotari_wallet_grpc_client
+minotaiji_app_grpc
+minotaiji_app_utilities
+minotaiji_node
+minotaiji_node_grpc_client
+taiji_chat_client
+taiji_chat_ffi
+minotaiji_console_wallet
+taiji_contacts
+taiji_features
+taiji_integration_tests
+taiji_libtor
+minotaiji_merge_mining_proxy
+taiji_metrics
+minotaiji_miner
+minotaiji_mining_helper_ffi
+taiji_test_utils
+minotaiji_wallet_ffi
+minotaiji_wallet_grpc_client
 )
 
 # Included:
-# tari_common
-# tari_comms
-# tari_core
-# tari_common_sqlite
-# tari_common_types
-# tari_comms
-# tari_comms_dht
-# tari_comms_rpc_macros
-# tari_p2p
-# tari_service_framework
-# tari_storage
-# tari_wallet
+# taiji_common
+# taiji_comms
+# taiji_core
+# taiji_common_sqlite
+# taiji_common_types
+# taiji_comms
+# taiji_comms_dht
+# taiji_comms_rpc_macros
+# taiji_p2p
+# taiji_service_framework
+# taiji_storage
+# taiji_wallet
 
 echo "Check for cargo-llvm-cov"
 if [ "$(cargo llvm-cov --version)" ]

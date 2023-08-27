@@ -1,4 +1,4 @@
-// Copyright 2019 The Tari Project
+// Copyright 2019 The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -28,7 +28,7 @@ use std::{
 };
 
 use futures::{future, future::Either, Future, FutureExt};
-use tari_shutdown::{Shutdown, ShutdownSignal};
+use taiji_shutdown::{Shutdown, ShutdownSignal};
 use tokio::task;
 
 use crate::context::LazyService;
@@ -208,7 +208,7 @@ impl ServiceHandles {
 
 #[cfg(test)]
 mod test {
-    use tari_shutdown::Shutdown;
+    use taiji_shutdown::Shutdown;
 
     use super::*;
 

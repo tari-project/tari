@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -25,8 +25,8 @@ use std::{pin::Pin, sync::Arc, task::Poll};
 use anyhow::anyhow;
 use futures::{task::Context, Future};
 use log::*;
-use tari_comms::pipeline::PipelineError;
-use tari_comms_dht::{domain_message::MessageHeader, inbound::DecryptedDhtMessage};
+use taiji_comms::pipeline::PipelineError;
+use taiji_comms_dht::{domain_message::MessageHeader, inbound::DecryptedDhtMessage};
 use tokio::sync::mpsc;
 use tower::Service;
 
@@ -109,8 +109,8 @@ impl InboundDomainConnector {
 #[cfg(test)]
 mod test {
     use futures::executor::block_on;
-    use tari_comms::{message::MessageExt, wrap_in_envelope_body};
-    use tari_comms_dht::domain_message::MessageHeader;
+    use taiji_comms::{message::MessageExt, wrap_in_envelope_body};
+    use taiji_comms_dht::domain_message::MessageHeader;
     use tokio::sync::mpsc;
     use tower::ServiceExt;
 

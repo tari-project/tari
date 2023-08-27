@@ -1,4 +1,4 @@
-//  Copyright 2019 The Tari Project
+//  Copyright 2019 The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::waiting_requests::RequestKey;
+use taiji_common_types::waiting_requests::RequestKey;
 
 use crate::base_node::comms_interface::NodeCommsRequest;
 

@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -273,7 +273,7 @@ where
 mod test {
     use futures::{future, StreamExt};
     use prost::Message;
-    use tari_test_utils::unpack_enum;
+    use taiji_test_utils::unpack_enum;
     use tower::util::BoxService;
 
     use super::*;

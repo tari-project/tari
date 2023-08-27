@@ -1,11 +1,11 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 syntax = "proto3";
 
 import "types.proto";
 
-package tari.transaction_protocol;
+package taiji.transaction_protocol;
 
 message TransactionMetadata {
     // The absolute fee for the transaction
@@ -15,6 +15,6 @@ message TransactionMetadata {
     // features of the kernel for this transaction
     uint32 kernel_features = 3;
     // optional burn commitment if present
-    tari.types.Commitment burned_commitment = 4;
+    taiji.types.Commitment burned_commitment = 4;
 }
 

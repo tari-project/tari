@@ -1,4 +1,4 @@
-// Copyright 2021. The Tari Project
+// Copyright 2021. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -24,14 +24,14 @@ use std::sync::{Arc, Mutex};
 
 use futures::StreamExt;
 use log::*;
-use minotari_wallet::output_manager_service::{
+use minotaiji_wallet::output_manager_service::{
     error::OutputManagerError,
     handle::{OutputManagerEvent, OutputManagerHandle, OutputManagerRequest, OutputManagerResponse, RecoveredOutput},
     storage::models::DbWalletOutput,
 };
-use tari_common_types::transaction::TxId;
-use tari_service_framework::{reply_channel, reply_channel::Receiver};
-use tari_shutdown::ShutdownSignal;
+use taiji_common_types::transaction::TxId;
+use taiji_service_framework::{reply_channel, reply_channel::Receiver};
+use taiji_shutdown::ShutdownSignal;
 use tokio::sync::{broadcast, broadcast::Sender, oneshot};
 
 const LOG_TARGET: &str = "wallet::output_manager_service_mock";

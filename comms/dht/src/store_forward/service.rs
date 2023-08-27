@@ -1,4 +1,4 @@
-// Copyright 2020, The Tari Project
+// Copyright 2020, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -24,13 +24,13 @@ use std::{convert::TryFrom, sync::Arc, time::Duration};
 
 use chrono::{DateTime, NaiveDateTime, Utc};
 use log::*;
-use tari_comms::{
+use taiji_comms::{
     connectivity::{ConnectivityEvent, ConnectivityEventRx, ConnectivityRequester},
     peer_manager::{NodeId, PeerFeatures},
     types::CommsPublicKey,
     PeerManager,
 };
-use tari_shutdown::ShutdownSignal;
+use taiji_shutdown::ShutdownSignal;
 use tokio::{
     sync::{mpsc, oneshot},
     task,

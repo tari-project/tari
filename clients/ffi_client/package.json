@@ -2,7 +2,7 @@
   "name": "ffi_client",
   "version": "1.0.0",
   "description": "",
-  "author": "The Tari Development Community",
+  "author": "The Taiji Development Community",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

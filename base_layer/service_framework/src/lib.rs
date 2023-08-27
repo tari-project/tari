@@ -1,4 +1,4 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 //! # Service framework
@@ -41,7 +41,7 @@
 //! # use futures::executor::block_on;
 //! # use futures::StreamExt;
 //! # use futures::join;
-//! use tari_service_framework::{reply_channel, tower::ServiceExt};
+//! use taiji_service_framework::{reply_channel, tower::ServiceExt};
 //!
 //! block_on(async {
 //!     let (mut sender, mut receiver) = reply_channel::unbounded();

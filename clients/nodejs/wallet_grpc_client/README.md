@@ -1,11 +1,11 @@
-# Tari Wallet GRPC client
+# Taiji Wallet GRPC client
 
-Async GRPC client library for the Tari Console Wallet.
+Async GRPC client library for the Taiji Console Wallet.
 
 ## Usage
 
 ```javascript
-    const {Client} = require('@tari/wallet-grpc-client');
+    const {Client} = require('@taiji/wallet-grpc-client');
 
     const walletAddress = 'localhost:18143';
     const client = Client.connect(walletAddress);

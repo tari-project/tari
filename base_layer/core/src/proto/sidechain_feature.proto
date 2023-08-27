@@ -1,11 +1,11 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 syntax = "proto3";
 
 import "types.proto";
 
-package tari.types;
+package taiji.types;
 
 message SideChainFeature {
     oneof side_chain_feature {

@@ -1,4 +1,4 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 syntax = "proto3";
@@ -8,7 +8,7 @@ import "chain_metadata.proto";
 import "types.proto";
 import "transaction.proto";
 
-package tari.base_node;
+package taiji.base_node;
 
 enum TxSubmissionRejectionReason {
   TxSubmissionRejectionReasonNone = 0;
@@ -43,7 +43,7 @@ message TxQueryResponse {
 }
 
 message TxQueryBatchResponse {
-  tari.types.Signature signature = 1;
+  taiji.types.Signature signature = 1;
   TxLocation location = 2;
   google.protobuf.BytesValue block_hash = 3;
   uint64 confirmations = 4;
@@ -64,7 +64,7 @@ message FetchMatchingUtxos {
 }
 
 message FetchUtxosResponse {
-  repeated tari.types.TransactionOutput outputs = 1;
+  repeated taiji.types.TransactionOutput outputs = 1;
   bool is_synced = 2;
 }
 
@@ -94,7 +94,7 @@ message UtxoQueryResponses {
 }
 
 message UtxoQueryResponse {
-  tari.types.TransactionOutput output = 1;
+  taiji.types.TransactionOutput output = 1;
   uint64 mmr_position = 2;
   uint64 mined_height = 3;
   bytes mined_in_block = 4;

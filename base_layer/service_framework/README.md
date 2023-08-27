@@ -1,1 +1,1 @@
-# Tari Service framework
+# Taiji Service framework

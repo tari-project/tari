@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2020, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -21,9 +21,9 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use futures::StreamExt;
-use tari_comms::protocol::rpc::{mock::RpcRequestMock, RpcStatusCode};
-use tari_service_framework::reply_channel;
-use tari_test_utils::{streams::convert_mpsc_to_stream, unpack_enum};
+use taiji_comms::protocol::rpc::{mock::RpcRequestMock, RpcStatusCode};
+use taiji_service_framework::reply_channel;
+use taiji_test_utils::{streams::convert_mpsc_to_stream, unpack_enum};
 use tempfile::{tempdir, TempDir};
 use tokio::sync::broadcast;
 

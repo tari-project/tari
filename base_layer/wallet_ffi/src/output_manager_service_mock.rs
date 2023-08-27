@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -23,13 +23,13 @@
 use std::sync::{Arc, Mutex};
 
 use futures::StreamExt;
-use minotari_wallet::output_manager_service::{
+use minotaiji_wallet::output_manager_service::{
     error::OutputManagerError,
     handle::{OutputManagerRequest, OutputManagerResponse},
     service::Balance,
 };
-use tari_service_framework::reply_channel::Receiver;
-use tari_shutdown::ShutdownSignal;
+use taiji_service_framework::reply_channel::Receiver;
+use taiji_shutdown::ShutdownSignal;
 
 /// This macro unlocks a Mutex or RwLock. If the lock is poisoned (i.e. panic while unlocked) the last value
 /// before the panic is used.

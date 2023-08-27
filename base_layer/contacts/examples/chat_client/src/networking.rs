@@ -1,4 +1,4 @@
-//   Copyright 2023. The Tari Project
+//   Copyright 2023. The Taiji Project
 //
 //   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //   following conditions are met:
@@ -23,20 +23,20 @@
 use std::{str::FromStr, sync::Arc, time::Duration};
 
 // Re-exports
-pub use tari_comms::{
+pub use taiji_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeIdentity, PeerFeatures},
 };
-use tari_comms::{peer_manager::Peer, CommsNode, UnspawnedCommsNode};
-use tari_contacts::contacts_service::{handle::ContactsServiceHandle, ContactsServiceInitializer};
-use tari_p2p::{
+use taiji_comms::{peer_manager::Peer, CommsNode, UnspawnedCommsNode};
+use taiji_contacts::contacts_service::{handle::ContactsServiceHandle, ContactsServiceInitializer};
+use taiji_p2p::{
     comms_connector::pubsub_connector,
     initialization::{spawn_comms_using_transport, P2pInitializer},
     peer_seeds::SeedPeer,
     services::liveness::{LivenessConfig, LivenessInitializer},
 };
-use tari_service_framework::StackBuilder;
-use tari_shutdown::ShutdownSignal;
+use taiji_service_framework::StackBuilder;
+use taiji_shutdown::ShutdownSignal;
 
 use crate::{config::ApplicationConfig, database::connect_to_db};
 

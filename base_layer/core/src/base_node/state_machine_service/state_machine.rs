@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -25,8 +25,8 @@ use futures::{future, future::Either};
 use log::*;
 use randomx_rs::RandomXFlag;
 use serde::{Deserialize, Serialize};
-use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
-use tari_shutdown::ShutdownSignal;
+use taiji_comms::{connectivity::ConnectivityRequester, PeerManager};
+use taiji_shutdown::ShutdownSignal;
 use tokio::sync::{broadcast, watch};
 
 use crate::{
@@ -67,7 +67,7 @@ impl Default for BaseNodeStateMachineConfig {
     }
 }
 
-/// A Minotari full node, aka Base Node.
+/// A Minotaiji full node, aka Base Node.
 ///
 /// This service is essentially a finite state machine that synchronises its blockchain state with its peers and
 /// then listens for new blocks to add to the blockchain. See the [SynchronizationState] documentation for more details.

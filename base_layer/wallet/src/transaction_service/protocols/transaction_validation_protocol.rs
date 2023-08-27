@@ -1,4 +1,4 @@
-// Copyright 2021. The Tari Project
+// Copyright 2021. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -27,12 +27,12 @@ use std::{
 };
 
 use log::*;
-use tari_common_types::{
+use taiji_common_types::{
     transaction::{TransactionStatus, TxId},
     types::{BlockHash, Signature},
 };
-use tari_comms::protocol::rpc::{RpcError::RequestFailed, RpcStatusCode::NotFound};
-use tari_core::{
+use taiji_comms::protocol::rpc::{RpcError::RequestFailed, RpcStatusCode::NotFound};
+use taiji_core::{
     base_node::{
         proto::wallet_rpc::{TxLocation, TxQueryBatchResponse},
         rpc::BaseNodeWalletRpcClient,

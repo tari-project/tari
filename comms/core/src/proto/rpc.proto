@@ -1,9 +1,9 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 syntax = "proto3";
 
-package tari.comms.rpc;
+package taiji.comms.rpc;
 
 // Message type for all RPC requests
 message RpcRequest {

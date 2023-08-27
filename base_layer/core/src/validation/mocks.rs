@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -25,7 +25,7 @@ use std::sync::{
     Arc,
 };
 
-use tari_common_types::{chain_metadata::ChainMetadata, types::Commitment};
+use taiji_common_types::{chain_metadata::ChainMetadata, types::Commitment};
 use tari_utilities::epoch_time::EpochTime;
 
 use super::{

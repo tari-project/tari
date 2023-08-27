@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -26,7 +26,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{BlockHash, Commitment, HashOutput, PrivateKey, PublicKey, Signature};
+use taiji_common_types::types::{BlockHash, Commitment, HashOutput, PrivateKey, PublicKey, Signature};
 use tari_utilities::hex::Hex;
 
 use crate::{blocks::NewBlockTemplate, chain_storage::MmrTree, proof_of_work::PowAlgorithm};

@@ -1,4 +1,4 @@
-// Copyright 2021. The Tari Project
+// Copyright 2021. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,9 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_comms::{connectivity::ConnectivityRequester, types::CommsPublicKey};
-use tari_core::transactions::CryptoFactories;
-use tari_shutdown::ShutdownSignal;
+use taiji_comms::{connectivity::ConnectivityRequester, types::CommsPublicKey};
+use taiji_core::transactions::CryptoFactories;
+use taiji_shutdown::ShutdownSignal;
 use tokio::sync::{broadcast, watch};
 
 use crate::{

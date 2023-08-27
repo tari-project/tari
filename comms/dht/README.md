@@ -1,3 +1,3 @@
-# Tari comms DHT module
+# Taiji comms DHT module
 
-The Tari network messaging library. See CommsBuilder for more information on using this library.
+The Taiji network messaging library. See CommsBuilder for more information on using this library.

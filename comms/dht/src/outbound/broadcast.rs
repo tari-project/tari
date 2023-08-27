@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -31,7 +31,7 @@ use futures::{
 };
 use log::*;
 use rand::rngs::OsRng;
-use tari_comms::{
+use taiji_comms::{
     message::{MessageExt, MessageTag},
     peer_manager::{NodeId, NodeIdentity, Peer},
     pipeline::PipelineError,
@@ -560,14 +560,14 @@ mod test {
     use std::time::Duration;
 
     use rand::rngs::OsRng;
-    use tari_comms::{
+    use taiji_comms::{
         multiaddr::Multiaddr,
         net_address::{MultiaddressesWithStats, PeerAddressSource},
         peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
         types::CommsPublicKey,
     };
     use tari_crypto::keys::PublicKey;
-    use tari_test_utils::unpack_enum;
+    use taiji_test_utils::unpack_enum;
     use tokio::{sync::oneshot, task};
 
     use super::*;
@@ -652,7 +652,7 @@ mod test {
 
     #[tokio::test]
     async fn test_send_message_direct_not_found() {
-        // Test for issue https://github.com/tari-project/tari/issues/959
+        // Test for issue https://github.com/taiji-project/taiji/issues/959
 
         let pk = CommsPublicKey::default();
         let node_identity = NodeIdentity::random(

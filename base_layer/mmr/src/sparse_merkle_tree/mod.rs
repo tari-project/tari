@@ -45,7 +45,7 @@
 //! ```rust
 //! use blake2::Blake2b;
 //! use digest::consts::U32;
-//! use tari_mmr::sparse_merkle_tree::{NodeKey, SparseMerkleTree, ValueHash};
+//! use taiji_mmr::sparse_merkle_tree::{NodeKey, SparseMerkleTree, ValueHash};
 //!
 //! fn new_key(v: u8) -> NodeKey {
 //!     let mut key = [0u8; 32];
@@ -73,7 +73,7 @@
 //! tree.delete(&new_key(79)).unwrap();
 //! assert!(tree.is_empty());
 //! ```
-//! Copyright 2023. The Tari Project
+//! Copyright 2023. The Taiji Project
 //! SPDX-License-Identifier: BSD-3-Clause
 
 mod bit_utils;

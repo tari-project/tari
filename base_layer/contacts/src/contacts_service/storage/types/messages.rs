@@ -1,4 +1,4 @@
-// Copyright 2023. The Tari Project
+// Copyright 2023. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -24,7 +24,7 @@ use std::convert::TryFrom;
 
 use chrono::NaiveDateTime;
 use diesel::{prelude::*, SqliteConnection};
-use tari_common_types::tari_address::TariAddress;
+use taiji_common_types::taiji_address::TaijiAddress;
 
 use crate::{
     contacts_service::{
@@ -90,7 +90,7 @@ impl TryFrom<MessagesSql> for Message {
 
     #[allow(clippy::cast_sign_loss)]
     fn try_from(o: MessagesSql) -> Result<Self, Self::Error> {
-        let address = TariAddress::from_bytes(&o.address).map_err(|_| ContactsServiceStorageError::ConversionError)?;
+        let address = TaijiAddress::from_bytes(&o.address).map_err(|_| ContactsServiceStorageError::ConversionError)?;
         Ok(Self {
             address,
             direction: Direction::from_byte(

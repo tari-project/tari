@@ -1,4 +1,4 @@
-// Copyright 2020, The Tari Project
+// Copyright 2020, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -24,9 +24,9 @@ use std::{collections::HashSet, convert::identity, hash::Hash, time::Duration};
 
 use bytes::Bytes;
 use futures::stream::FuturesUnordered;
-use tari_shutdown::{Shutdown, ShutdownSignal};
-use tari_storage::HashmapDatabase;
-use tari_test_utils::{collect_recv, collect_stream, unpack_enum};
+use taiji_shutdown::{Shutdown, ShutdownSignal};
+use taiji_storage::HashmapDatabase;
+use taiji_test_utils::{collect_recv, collect_stream, unpack_enum};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     sync::{broadcast, mpsc, oneshot},
@@ -110,9 +110,9 @@ async fn spawn_node(
 
 #[tokio::test]
 async fn peer_to_peer_custom_protocols() {
-    static TEST_PROTOCOL: Bytes = Bytes::from_static(b"/tari/test");
-    static ANOTHER_TEST_PROTOCOL: Bytes = Bytes::from_static(b"/tari/test-again");
-    const TEST_MSG: &[u8] = b"Hello Tari";
+    static TEST_PROTOCOL: Bytes = Bytes::from_static(b"/taiji/test");
+    static ANOTHER_TEST_PROTOCOL: Bytes = Bytes::from_static(b"/taiji/test-again");
+    const TEST_MSG: &[u8] = b"Hello Taiji";
     const ANOTHER_TEST_MSG: &[u8] = b"Comms is running smoothly";
 
     // Setup test protocols

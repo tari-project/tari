@@ -1,6 +1,6 @@
-# Tari developer public keys
+# Taiji developer public keys
 
-This folder contains the public keys for Tari developers
+This folder contains the public keys for Taiji developers
 
 ## Why use public keys
 

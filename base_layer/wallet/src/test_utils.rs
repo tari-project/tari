@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2020. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -24,8 +24,8 @@ use core::iter;
 use std::path::Path;
 
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
-use tari_common::configuration::Network;
-use tari_core::consensus::{ConsensusConstants, ConsensusManager};
+use taiji_common::configuration::Network;
+use taiji_core::consensus::{ConsensusConstants, ConsensusManager};
 use tempfile::{tempdir, TempDir};
 
 use crate::storage::sqlite_utilities::{

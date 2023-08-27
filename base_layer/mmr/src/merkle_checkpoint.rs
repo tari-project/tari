@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -28,7 +28,7 @@ use serde::{
     de::{self, Deserialize, Deserializer, MapAccess, SeqAccess, Visitor},
     ser::{Serialize, SerializeStruct, Serializer},
 };
-use tari_common::DomainDigest;
+use taiji_common::DomainDigest;
 
 use crate::{backend::ArrayLike, error::MerkleMountainRangeError, mutable_mmr::MutableMmr, Hash};
 

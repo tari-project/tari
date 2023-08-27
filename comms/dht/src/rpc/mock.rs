@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2020, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_comms::protocol::rpc::{
+use taiji_comms::protocol::rpc::{
     mock::{RpcMock, RpcMockMethodState},
     Request,
     RpcStatus,
@@ -44,7 +44,7 @@ impl DhtRpcServiceMock {
     }
 }
 
-#[tari_comms::async_trait]
+#[taiji_comms::async_trait]
 impl DhtRpcService for DhtRpcServiceMock {
     async fn get_closer_peers(
         &self,

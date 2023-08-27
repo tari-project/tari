@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -28,16 +28,16 @@ use std::{
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use tari_common_types::types::{BulletRangeProof, Commitment, PrivateKey, PublicKey};
+use taiji_common_types::types::{BulletRangeProof, Commitment, PrivateKey, PublicKey};
 use tari_crypto::tari_utilities::{ByteArray, ByteArrayError};
-use tari_script::{ExecutionStack, TariScript};
+use taiji_script::{ExecutionStack, TaijiScript};
 use tari_utilities::convert::try_convert_all;
 
 use crate::{
     proto,
     transactions::{
         aggregated_body::AggregateBody,
-        tari_amount::MicroMinotari,
+        taiji_amount::MicroMinotaiji,
         transaction_components::{
             EncryptedData,
             KernelFeatures,
@@ -87,7 +87,7 @@ impl TryFrom<proto::types::TransactionKernel> for TransactionKernel {
             )?,
             KernelFeatures::from_bits(kernel_features)
                 .ok_or_else(|| "Invalid or unrecognised kernel feature flag".to_string())?,
-            MicroMinotari::from(kernel.fee),
+            MicroMinotaiji::from(kernel.fee),
             kernel.lock_height,
             excess,
             excess_sig,
@@ -151,7 +151,7 @@ impl TryFrom<proto::types::TransactionInput> for TransactionInput {
                 )?,
                 features,
                 commitment,
-                TariScript::from_bytes(input.script.as_slice()).map_err(|err| format!("{:?}", err))?,
+                TaijiScript::from_bytes(input.script.as_slice()).map_err(|err| format!("{:?}", err))?,
                 ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{:?}", err))?,
                 script_signature,
                 sender_offset_public_key,
@@ -276,7 +276,7 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
             None
         };
 
-        let script = TariScript::from_bytes(&output.script).map_err(|err| err.to_string())?;
+        let script = TaijiScript::from_bytes(&output.script).map_err(|err| err.to_string())?;
 
         let metadata_signature = output
             .metadata_signature

@@ -1,4 +1,4 @@
-//  Copyright 2022. The Tari Project
+//  Copyright 2022. The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -22,7 +22,7 @@
 use chacha20poly1305::XChaCha20Poly1305;
 use chrono::{NaiveDateTime, Utc};
 use diesel::{prelude::*, SqliteConnection};
-use tari_common_types::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce};
+use taiji_common_types::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce};
 use tari_crypto::keys::PublicKey;
 use tari_utilities::{hex::Hex, ByteArray, Hidden};
 use zeroize::Zeroize;

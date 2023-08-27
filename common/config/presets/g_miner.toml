@@ -25,8 +25,8 @@
 # set to true (default = 30 s)
 #validate_tip_timeout_sec = 30
 
-# Stratum Mode configuration - mining pool address (e.g. "miningcore.tari.com:3052")
-# mining_pool_address = "miningcore.tari.com:3052"
+# Stratum Mode configuration - mining pool address (e.g. "miningcore.taiji.com:3052")
+# mining_pool_address = "miningcore.taiji.com:3052"
 
 # Stratum Mode configuration - mining wallet address/public key
 # (e.g. "20B19870ABEE8ABC6ACC77AE4E6CA169057645B27C35334B74446B4D3EE52150")

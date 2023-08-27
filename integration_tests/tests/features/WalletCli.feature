@@ -1,4 +1,4 @@
-# Copyright 2022 The Tari Project
+# Copyright 2022 The Taiji Project
 # SPDX-License-Identifier: BSD-3-Clause
 
 @wallet-cli
@@ -26,7 +26,7 @@ Feature: Wallet CLI
         Then I get balance of wallet WALLET is at least 1000000 uT via command line
 
     @long-running
-    Scenario: As a user I want to send tari via command line
+    Scenario: As a user I want to send taiji via command line
         Given I have a seed node SEED
         When I have a base node BASE connected to seed SEED
         When I have wallet SENDER connected to base node BASE
@@ -43,7 +43,7 @@ Feature: Wallet CLI
 
     #This is flaky, passes on local run time, but fails CI
     @critical @broken
-    Scenario: As a user I want to burn tari via command line
+    Scenario: As a user I want to burn taiji via command line
         Given I have a seed node SEED
         When I have a base node BASE connected to seed SEED
         When I have wallet WALLET connected to base node BASE

@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -343,7 +343,7 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + 'static
 mod test {
     use std::{io, sync::Arc, time::Duration};
 
-    use tari_test_utils::collect_stream;
+    use taiji_test_utils::collect_stream;
     use tokio::{
         io::{AsyncReadExt, AsyncWriteExt},
         sync::Barrier,

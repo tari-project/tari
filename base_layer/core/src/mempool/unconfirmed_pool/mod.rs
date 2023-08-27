@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -31,6 +31,6 @@ pub use unconfirmed_pool::{UnconfirmedPool, UnconfirmedPoolConfig};
 
 hash_domain!(
     UnconfirmedPoolOutputTokenIdHashDomain,
-    "com.tari.base_layer.core.mempool.unconfirmed_pool_output_token_id",
+    "com.taiji.base_layer.core.mempool.unconfirmed_pool_output_token_id",
     1
 );

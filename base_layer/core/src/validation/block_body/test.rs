@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -21,10 +21,10 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use std::sync::Arc;
 
-use tari_common::configuration::Network;
-use tari_key_manager::key_manager_service::KeyId;
-use tari_script::script;
-use tari_test_utils::unpack_enum;
+use taiji_common::configuration::Network;
+use taiji_key_manager::key_manager_service::KeyId;
+use taiji_script::script;
+use taiji_test_utils::unpack_enum;
 use tokio::time::Instant;
 
 use super::BlockBodyFullValidator;
@@ -37,7 +37,7 @@ use crate::{
     transactions::{
         aggregated_body::AggregateBody,
         key_manager::TransactionKeyManagerBranch,
-        tari_amount::{uT, T},
+        taiji_amount::{uT, T},
         test_helpers::schema_to_transaction,
         transaction_components::TransactionError,
         CoinbaseBuilder,
@@ -336,7 +336,7 @@ async fn it_limits_the_script_byte_size() {
 
     let txn = blockchain.db().db_read_access().unwrap();
     let err = validator.validate_body(&*txn, block.block()).unwrap_err();
-    assert!(matches!(err, ValidationError::TariScriptExceedsMaxSize { .. }));
+    assert!(matches!(err, ValidationError::TaijiScriptExceedsMaxSize { .. }));
 }
 
 #[tokio::test]

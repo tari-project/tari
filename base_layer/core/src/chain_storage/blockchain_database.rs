@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -34,11 +34,11 @@ use std::{
 use croaring::Bitmap;
 use log::*;
 use serde::{Deserialize, Serialize};
-use tari_common_types::{
+use taiji_common_types::{
     chain_metadata::ChainMetadata,
     types::{BlockHash, Commitment, FixedHash, HashOutput, PublicKey, Signature},
 };
-use tari_mmr::pruned_hashset::PrunedHashSet;
+use taiji_mmr::pruned_hashset::PrunedHashSet;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
 
 use super::TemplateRegistrationEntry;
@@ -192,7 +192,7 @@ macro_rules! try_fetch {
     }};
 }
 
-/// A generic blockchain storage mechanism. This struct defines the API for storing and retrieving Tari blockchain
+/// A generic blockchain storage mechanism. This struct defines the API for storing and retrieving Taiji blockchain
 /// components without being opinionated about the actual backend used.
 ///
 /// `BlockChainDatabase` is thread-safe, since the backend must implement `Sync` and `Send`.
@@ -1385,7 +1385,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
     Ok(mmr_roots)
 }
 
-pub fn calculate_validator_node_mr(validator_nodes: &[(PublicKey, [u8; 32])]) -> tari_mmr::Hash {
+pub fn calculate_validator_node_mr(validator_nodes: &[(PublicKey, [u8; 32])]) -> taiji_mmr::Hash {
     fn hash_node((pk, s): &(PublicKey, [u8; 32])) -> Vec<u8> {
         DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("validator_node")
             .chain(pk)
@@ -2019,7 +2019,7 @@ fn swap_to_highest_pow_chain<T: BlockchainBackend>(
     let num_removed_blocks = removed_blocks.len();
 
     // reorg is required when any blocks are removed or more than one are added
-    // see https://github.com/tari-project/tari/issues/2101
+    // see https://github.com/taiji-project/taiji/issues/2101
     if num_removed_blocks > 0 || num_added_blocks > 1 {
         if config.track_reorgs {
             let mut txn = DbTransaction::new();
@@ -2526,8 +2526,8 @@ mod test {
     use std::{collections::HashMap, sync};
 
     use rand::seq::SliceRandom;
-    use tari_common::configuration::Network;
-    use tari_test_utils::unpack_enum;
+    use taiji_common::configuration::Network;
+    use taiji_test_utils::unpack_enum;
 
     use super::*;
     use crate::{

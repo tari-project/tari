@@ -1,4 +1,4 @@
-// Copyright 2018 The Tari Project
+// Copyright 2018 The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -23,11 +23,11 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-use tari_common_types::types::PrivateKey;
+use taiji_common_types::types::PrivateKey;
 
 use crate::transactions::{
     aggregated_body::AggregateBody,
-    tari_amount::MicroMinotari,
+    taiji_amount::MicroMinotaiji,
     transaction_components::{Transaction, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
 };
 
@@ -36,7 +36,7 @@ pub struct TransactionBuilder {
     body: AggregateBody,
     offset: Option<PrivateKey>,
     script_offset: Option<PrivateKey>,
-    reward: Option<MicroMinotari>,
+    reward: Option<MicroMinotaiji>,
 }
 
 impl TransactionBuilder {
@@ -87,7 +87,7 @@ impl TransactionBuilder {
         self
     }
 
-    pub fn with_reward(&mut self, reward: MicroMinotari) -> &mut Self {
+    pub fn with_reward(&mut self, reward: MicroMinotaiji) -> &mut Self {
         self.reward = Some(reward);
         self
     }

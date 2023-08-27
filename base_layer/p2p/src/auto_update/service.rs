@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -24,8 +24,8 @@ use std::env::consts;
 
 use futures::{future::Either, stream, StreamExt};
 use log::*;
-use tari_common::configuration::bootstrap::ApplicationType;
-use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
+use taiji_common::configuration::bootstrap::ApplicationType;
+use taiji_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tokio::{
     sync::{mpsc, oneshot, watch},
     time,

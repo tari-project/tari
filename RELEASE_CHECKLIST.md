@@ -29,7 +29,7 @@ THings to do before pushing a new commit to `master`:
 | common                       | 0.2.5   |  |
 | comms                        | 0.2.5   |  |
 | comms/dht                    | 0.2.5   |  |
-| applications/tari_base_node  | 0.5.4   |  |
-| applications/tari_app_grpc   | 0.5.2 |  | 
-| applications/tari_console_wallet | 0.5.0 |  | 
-| applications/tari_merge_mining_proxy | 0.5.4 |  |
+| applications/taiji_base_node  | 0.5.4   |  |
+| applications/taiji_app_grpc   | 0.5.2 |  | 
+| applications/taiji_console_wallet | 0.5.0 |  | 
+| applications/taiji_merge_mining_proxy | 0.5.4 |  |

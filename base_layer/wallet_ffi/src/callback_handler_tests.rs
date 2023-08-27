@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 #[cfg(test)]
@@ -12,7 +12,7 @@ mod test {
 
     use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
     use chrono::{NaiveDateTime, Utc};
-    use minotari_wallet::{
+    use minotaiji_wallet::{
         base_node_service::{handle::BaseNodeEvent, service::BaseNodeState},
         connectivity_service::OnlineStatus,
         output_manager_service::{
@@ -30,29 +30,29 @@ mod test {
         },
     };
     use rand::{rngs::OsRng, RngCore};
-    use tari_common::configuration::Network;
-    use tari_common_types::{
+    use taiji_common::configuration::Network;
+    use taiji_common_types::{
         chain_metadata::ChainMetadata,
-        tari_address::TariAddress,
+        taiji_address::TaijiAddress,
         transaction::{TransactionDirection, TransactionStatus},
         types::{PrivateKey, PublicKey},
     };
-    use tari_comms::peer_manager::NodeId;
-    use tari_comms_dht::event::DhtEvent;
-    use tari_contacts::contacts_service::{
+    use taiji_comms::peer_manager::NodeId;
+    use taiji_comms_dht::event::DhtEvent;
+    use taiji_contacts::contacts_service::{
         handle::{ContactsLivenessData, ContactsLivenessEvent},
         service::{ContactMessageType, ContactOnlineStatus},
         types::Contact,
     };
-    use tari_core::transactions::{
-        tari_amount::{uT, MicroMinotari},
+    use taiji_core::transactions::{
+        taiji_amount::{uT, MicroMinotaiji},
         transaction_components::Transaction,
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
     };
     use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
-    use tari_service_framework::reply_channel;
-    use tari_shutdown::Shutdown;
+    use taiji_service_framework::reply_channel;
+    use taiji_shutdown::Shutdown;
     use tokio::{
         runtime::Runtime,
         sync::{broadcast, watch},
@@ -61,7 +61,7 @@ mod test {
 
     use crate::{
         callback_handler::CallbackHandler,
-        ffi_basenode_state::TariBaseNodeState,
+        ffi_basenode_state::TaijiBaseNodeState,
         output_manager_service_mock::MockOutputManagerService,
     };
 
@@ -256,7 +256,7 @@ mod test {
         drop(lock);
     }
 
-    unsafe extern "C" fn base_node_state_changed_callback(state: *mut TariBaseNodeState) {
+    unsafe extern "C" fn base_node_state_changed_callback(state: *mut TaijiBaseNodeState) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.base_node_state_changed_callback_invoked = true;
         drop(lock);
@@ -280,7 +280,7 @@ mod test {
         let db = TransactionDatabase::new(TransactionServiceSqliteDatabase::new(connection, cipher));
 
         let rtp = ReceiverTransactionProtocol::new_placeholder();
-        let source_address = TariAddress::new(
+        let source_address = TaijiAddress::new(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -296,11 +296,11 @@ mod test {
         db.add_pending_inbound_transaction(1u64.into(), inbound_tx.clone())
             .unwrap();
 
-        let source_address = TariAddress::new(
+        let source_address = TaijiAddress::new(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
-        let destination_address = TariAddress::new(
+        let destination_address = TaijiAddress::new(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -308,8 +308,8 @@ mod test {
             2u64.into(),
             source_address,
             destination_address,
-            MicroMinotari::from(100),
-            MicroMinotari::from(2000),
+            MicroMinotaiji::from(100),
+            MicroMinotaiji::from(2000),
             Transaction::new(
                 Vec::new(),
                 Vec::new(),
@@ -329,7 +329,7 @@ mod test {
             .unwrap();
 
         let stp = SenderTransactionProtocol::new_placeholder();
-        let destination_address = TariAddress::new(
+        let destination_address = TaijiAddress::new(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -364,11 +364,11 @@ mod test {
             .unwrap();
         db.reject_completed_transaction(5u64.into(), TxCancellationReason::Unknown)
             .unwrap();
-        let source_address = TariAddress::new(
+        let source_address = TaijiAddress::new(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
-        let destination_address = TariAddress::new(
+        let destination_address = TaijiAddress::new(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -376,8 +376,8 @@ mod test {
             6u64.into(),
             source_address,
             destination_address,
-            MicroMinotari::from(100),
-            MicroMinotari::from(2000),
+            MicroMinotaiji::from(100),
+            MicroMinotaiji::from(2000),
             Transaction::new(
                 Vec::new(),
                 Vec::new(),
@@ -396,11 +396,11 @@ mod test {
         db.insert_completed_transaction(6u64.into(), faux_unconfirmed_tx.clone())
             .unwrap();
 
-        let source_address = TariAddress::new(
+        let source_address = TaijiAddress::new(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
-        let destination_address = TariAddress::new(
+        let destination_address = TaijiAddress::new(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -408,8 +408,8 @@ mod test {
             7u64.into(),
             source_address,
             destination_address,
-            MicroMinotari::from(100),
-            MicroMinotari::from(2000),
+            MicroMinotaiji::from(100),
+            MicroMinotaiji::from(2000),
             Transaction::new(
                 Vec::new(),
                 Vec::new(),
@@ -456,7 +456,7 @@ mod test {
         let (connectivity_tx, connectivity_rx) = watch::channel(OnlineStatus::Offline);
         let (contacts_liveness_events_sender, _) = broadcast::channel(250);
         let contacts_liveness_events = contacts_liveness_events_sender.subscribe();
-        let comms_address = TariAddress::new(
+        let comms_address = TaijiAddress::new(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );

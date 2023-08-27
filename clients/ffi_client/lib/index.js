@@ -1,4 +1,4 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 const ffi = require("ffi-napi");
@@ -27,7 +27,7 @@ const {
 
 
 console.log("Set up library...");
-const libWallet = ffi.Library("./libminotari_wallet_ffi.dylib", {
+const libWallet = ffi.Library("./libminotaiji_wallet_ffi.dylib", {
   byte_vector_create: [byteVectorRef, [u8ArrayPtr, u32, errPtr]],
   comms_config_create: [
     commsConfigRef,

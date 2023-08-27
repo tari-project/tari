@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -26,7 +26,7 @@ use tari_crypto::{
     hashing::{DomainSeparatedHasher, LengthExtensionAttackResistant},
 };
 
-hash_domain!(CommsCorePeerManagerDomain, "com.tari.comms.core.peer_manager", 1);
+hash_domain!(CommsCorePeerManagerDomain, "com.taiji.comms.core.peer_manager", 1);
 
 pub(crate) const IDENTITY_SIGNATURE: &str = "identity_signature";
 

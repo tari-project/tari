@@ -1,9 +1,9 @@
 [package]
-name = "tari_core"
-description = "Core Tari protocol components"
-authors = ["The Tari Development Community"]
+name = "taiji_core"
+description = "Core Taiji protocol components"
+authors = ["The Taiji Development Community"]
 repository = "https://github.com/tari-project/tari"
-homepage = "https://tari.com"
+homepage = "https://taiji.com"
 readme = "README.md"
 license = "BSD-3-Clause"
 version = "0.52.0-pre.0"
@@ -13,28 +13,28 @@ edition = "2018"
 default = ["base_node"]
 transactions = []
 mempool_proto = []
-base_node = ["croaring", "tari_mmr", "transactions", "mempool_proto", "base_node_proto", "monero", "randomx-rs"]
+base_node = ["croaring", "taiji_mmr", "transactions", "mempool_proto", "base_node_proto", "monero", "randomx-rs"]
 base_node_proto = []
 benches = ["base_node", "criterion"]
 
 [dependencies]
-tari_common = {  path = "../../common" }
-tari_common_types = {  path = "../../base_layer/common_types" }
-tari_comms = {  path = "../../comms/core" }
-tari_comms_dht = {  path = "../../comms/dht" }
-tari_comms_rpc_macros = {  path = "../../comms/rpc_macros" }
+taiji_common = {  path = "../../common" }
+taiji_common_types = {  path = "../../base_layer/common_types" }
+taiji_comms = {  path = "../../comms/core" }
+taiji_comms_dht = {  path = "../../comms/dht" }
+taiji_comms_rpc_macros = {  path = "../../comms/rpc_macros" }
 tari_crypto = { version = "0.18", features = ["borsh"] }
-tari_metrics = { path = "../../infrastructure/metrics" }
-tari_mmr = {  path = "../../base_layer/mmr", optional = true, features = ["native_bitmap"] }
-tari_p2p = {  path = "../../base_layer/p2p" }
-tari_script = { path = "../../infrastructure/tari_script" }
-tari_service_framework = {  path = "../service_framework" }
-tari_shutdown = {  path = "../../infrastructure/shutdown" }
-tari_storage = {  path = "../../infrastructure/storage" }
-tari_test_utils = {  path = "../../infrastructure/test_utils" }
+taiji_metrics = { path = "../../infrastructure/metrics" }
+taiji_mmr = {  path = "../../base_layer/mmr", optional = true, features = ["native_bitmap"] }
+taiji_p2p = {  path = "../../base_layer/p2p" }
+taiji_script = { path = "../../infrastructure/taiji_script" }
+taiji_service_framework = {  path = "../service_framework" }
+taiji_shutdown = {  path = "../../infrastructure/shutdown" }
+taiji_storage = {  path = "../../infrastructure/storage" }
+taiji_test_utils = {  path = "../../infrastructure/test_utils" }
 tari_utilities = { version = "0.5", features = ["borsh"] }
-tari_key_manager = {  path = "../key_manager", features = ["key_manager_service"] }
-tari_common_sqlite = { path = "../../common_sqlite" }
+taiji_key_manager = {  path = "../key_manager", features = ["key_manager_service"] }
+taiji_common_sqlite = { path = "../../common_sqlite" }
 
 async-trait = {version = "0.1.50"}
 bincode = "1.1.4"
@@ -79,8 +79,8 @@ uint = { version = "0.9", default-features = false }
 zeroize = "1"
 
 [dev-dependencies]
-tari_p2p = {  path = "../../base_layer/p2p", features = ["test-mocks"] }
-tari_test_utils = {  path = "../../infrastructure/test_utils" }
+taiji_p2p = {  path = "../../base_layer/p2p", features = ["test-mocks"] }
+taiji_test_utils = {  path = "../../infrastructure/test_utils" }
 curve25519-dalek = { package = "tari-curve25519-dalek", version = "4.0.3" }
 # SQLite required for the integration tests
 libsqlite3-sys = { version = "0.25.1", features = ["bundled"] }
@@ -89,7 +89,7 @@ env_logger = "0.7.0"
 tempfile = "3.1.0"
 
 [build-dependencies]
-tari_common = {  path = "../../common", features = ["build"] }
+taiji_common = {  path = "../../common", features = ["build"] }
 
 [[bench]]
 name = "mempool"

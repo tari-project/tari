@@ -1,4 +1,4 @@
-//   Copyright 2023. The Tari Project
+//   Copyright 2023. The Taiji Project
 //
 //   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //   following conditions are met:
@@ -23,11 +23,11 @@
 use std::{convert::TryFrom, time::Duration};
 
 use cucumber::{given, then, when};
-use minotari_app_grpc::tari_rpc::{self as grpc, GetTransactionInfoRequest};
+use minotaiji_app_grpc::taiji_rpc::{self as grpc, GetTransactionInfoRequest};
 use rand::Rng;
-use tari_common_types::types::BlockHash;
-use tari_core::blocks::Block;
-use tari_integration_tests::{
+use taiji_common_types::types::BlockHash;
+use taiji_core::blocks::Block;
+use taiji_integration_tests::{
     base_node_process::spawn_base_node,
     miner::{
         mine_block,
@@ -37,20 +37,20 @@ use tari_integration_tests::{
         register_miner_process,
     },
     wallet_process::{create_wallet_client, spawn_wallet},
-    TariWorld,
+    TaijiWorld,
 };
 
 use crate::steps::{node_steps::submit_transaction_to, wallet_steps::create_tx_spending_coinbase};
 
 #[when(expr = "I have mine-before-tip mining node {word} connected to base node {word} and wallet {word}")]
 #[when(expr = "I have mining node {word} connected to base node {word} and wallet {word}")]
-pub async fn create_miner(world: &mut TariWorld, miner_name: String, bn_name: String, wallet_name: String) {
+pub async fn create_miner(world: &mut TaijiWorld, miner_name: String, bn_name: String, wallet_name: String) {
     register_miner_process(world, miner_name, bn_name, wallet_name);
 }
 
 #[when(expr = "mining node {word} mines {int} blocks")]
 #[given(expr = "mining node {word} mines {int} blocks")]
-async fn run_miner(world: &mut TariWorld, miner_name: String, num_blocks: u64) {
+async fn run_miner(world: &mut TaijiWorld, miner_name: String, num_blocks: u64) {
     world
         .get_miner(miner_name)
         .unwrap()
@@ -60,7 +60,7 @@ async fn run_miner(world: &mut TariWorld, miner_name: String, num_blocks: u64) {
 
 #[then(expr = "I mine {int} blocks on {word}")]
 #[when(expr = "I mine {int} blocks on {word}")]
-async fn mine_blocks_on(world: &mut TariWorld, blocks: u64, base_node: String) {
+async fn mine_blocks_on(world: &mut TaijiWorld, blocks: u64, base_node: String) {
     let mut client = world
         .get_node_client(&base_node)
         .await
@@ -71,7 +71,7 @@ async fn mine_blocks_on(world: &mut TariWorld, blocks: u64, base_node: String) {
 #[when(expr = "mining node {word} mines {int} blocks with min difficulty {int} and max difficulty {int}")]
 #[then(expr = "mining node {word} mines {int} blocks with min difficulty {int} and max difficulty {int}")]
 async fn mining_node_mines_blocks_with_difficulty(
-    world: &mut TariWorld,
+    world: &mut TaijiWorld,
     miner: String,
     blocks: u64,
     min_difficulty: u64,
@@ -84,12 +84,12 @@ async fn mining_node_mines_blocks_with_difficulty(
 }
 
 #[when(expr = "I mine a block on {word} with coinbase {word}")]
-async fn mine_block_with_coinbase_on_node_step(world: &mut TariWorld, base_node: String, coinbase_name: String) {
+async fn mine_block_with_coinbase_on_node_step(world: &mut TaijiWorld, base_node: String, coinbase_name: String) {
     mine_block_with_coinbase_on_node(world, base_node, coinbase_name).await;
 }
 
 #[when(expr = "I mine {int} custom weight blocks on {word} with weight {int}")]
-async fn mine_custom_weight_blocks_with_height(world: &mut TariWorld, num_blocks: u64, node_name: String, weight: u64) {
+async fn mine_custom_weight_blocks_with_height(world: &mut TaijiWorld, num_blocks: u64, node_name: String, weight: u64) {
     let mut client = world
         .get_node_client(&node_name)
         .await
@@ -99,7 +99,7 @@ async fn mine_custom_weight_blocks_with_height(world: &mut TariWorld, num_blocks
 
 #[then(expr = "I have a SHA3 miner {word} connected to node {word}")]
 #[when(expr = "I have a SHA3 miner {word} connected to node {word}")]
-async fn sha3_miner_connected_to_base_node(world: &mut TariWorld, miner: String, base_node: String) {
+async fn sha3_miner_connected_to_base_node(world: &mut TaijiWorld, miner: String, base_node: String) {
     spawn_base_node(world, false, miner.clone(), vec![base_node.clone()]).await;
     let base_node = world.base_nodes.get(&base_node).unwrap();
     let peers = base_node.seed_nodes.clone();
@@ -109,7 +109,7 @@ async fn sha3_miner_connected_to_base_node(world: &mut TariWorld, miner: String,
 }
 
 #[then(expr = "while mining via SHA3 miner {word} all transactions in wallet {word} are found to be Mined_Confirmed")]
-async fn while_mining_all_txs_in_wallet_are_mined_confirmed(world: &mut TariWorld, miner: String, wallet: String) {
+async fn while_mining_all_txs_in_wallet_are_mined_confirmed(world: &mut TaijiWorld, miner: String, wallet: String) {
     let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
     let wallet_address = world.get_wallet_address(&wallet).await.unwrap();
     let wallet_tx_ids = world.wallet_tx_ids.get(&wallet_address).unwrap();
@@ -159,7 +159,7 @@ async fn while_mining_all_txs_in_wallet_are_mined_confirmed(world: &mut TariWorl
 
 #[then(expr = "while mining via node {word} all transactions in wallet {word} are found to be Mined_Confirmed")]
 async fn while_mining_in_node_all_txs_in_wallet_are_mined_confirmed(
-    world: &mut TariWorld,
+    world: &mut TaijiWorld,
     node: String,
     wallet: String,
 ) {
@@ -220,7 +220,7 @@ async fn while_mining_in_node_all_txs_in_wallet_are_mined_confirmed(
 }
 
 #[when(expr = "I have a SHA3 miner {word} connected to all seed nodes")]
-async fn sha3_miner_connected_to_all_seed_nodes(world: &mut TariWorld, sha3_miner: String) {
+async fn sha3_miner_connected_to_all_seed_nodes(world: &mut TaijiWorld, sha3_miner: String) {
     spawn_base_node(world, false, sha3_miner.clone(), world.seed_nodes.clone()).await;
 
     spawn_wallet(
@@ -238,7 +238,7 @@ async fn sha3_miner_connected_to_all_seed_nodes(world: &mut TariWorld, sha3_mine
 
 #[given(expr = "I have a SHA3 miner {word} connected to seed node {word}")]
 #[when(expr = "I have a SHA3 miner {word} connected to seed node {word}")]
-async fn sha3_miner_connected_to_seed_node(world: &mut TariWorld, sha3_miner: String, seed_node: String) {
+async fn sha3_miner_connected_to_seed_node(world: &mut TaijiWorld, sha3_miner: String, seed_node: String) {
     println!("Create base node for SHA3 miner {}", &sha3_miner);
     spawn_base_node(world, false, sha3_miner.clone(), vec![seed_node.clone()]).await;
 
@@ -258,7 +258,7 @@ async fn sha3_miner_connected_to_seed_node(world: &mut TariWorld, sha3_miner: St
 }
 
 #[when(expr = "I have individual mining nodes connected to each wallet and base node {word}")]
-async fn mining_nodes_connected_to_each_wallet_and_base_node(world: &mut TariWorld, base_node: String) {
+async fn mining_nodes_connected_to_each_wallet_and_base_node(world: &mut TaijiWorld, base_node: String) {
     let wallets = world.wallets.clone();
 
     for (ind, wallet_name) in wallets.keys().enumerate() {
@@ -268,7 +268,7 @@ async fn mining_nodes_connected_to_each_wallet_and_base_node(world: &mut TariWor
 }
 
 #[then(expr = "I have each mining node mine {int} blocks")]
-async fn mining_node_mine_blocks(world: &mut TariWorld, blocks: u64) {
+async fn mining_node_mine_blocks(world: &mut TaijiWorld, blocks: u64) {
     let miners = world.miners.clone();
     for (miner, miner_ps) in miners {
         println!("Miner {} is mining {} blocks", miner, blocks);
@@ -278,7 +278,7 @@ async fn mining_node_mine_blocks(world: &mut TariWorld, blocks: u64) {
 }
 
 #[when(expr = "I mine but do not submit a block {word} on {word}")]
-async fn mine_without_submit(world: &mut TariWorld, block: String, node: String) {
+async fn mine_without_submit(world: &mut TaijiWorld, block: String, node: String) {
     let mut client = world.get_node_client(&node).await.unwrap();
 
     let unmined_block: Block =
@@ -287,21 +287,21 @@ async fn mine_without_submit(world: &mut TariWorld, block: String, node: String)
 }
 
 #[then(expr = "I update the parent of block {word} to be an orphan")]
-async fn make_block_orphan(world: &mut TariWorld, block_name: String) {
+async fn make_block_orphan(world: &mut TaijiWorld, block_name: String) {
     let mut block = world.blocks.remove(&block_name).expect("Couldn't find unmined block");
     block.header.prev_hash = BlockHash::zero();
     world.blocks.insert(block_name, block);
 }
 
 #[then(expr = "I update block {word} to have an invalid mmr")]
-async fn make_block_invalid(world: &mut TariWorld, block_name: String) {
+async fn make_block_invalid(world: &mut TaijiWorld, block_name: String) {
     let mut block = world.blocks.remove(&block_name).expect("Couldn't find unmined block");
     block.header.output_mr = BlockHash::zero();
     world.blocks.insert(block_name, block);
 }
 
 #[when(expr = "I submit block {word} to {word}")]
-async fn submit_block_after(world: &mut TariWorld, block_name: String, node: String) {
+async fn submit_block_after(world: &mut TaijiWorld, block_name: String, node: String) {
     let mut client = world.get_node_client(&node).await.unwrap();
     let block = world.blocks.get(&block_name).expect("Couldn't find unmined block");
     match client.submit_block(grpc::Block::try_from(block.clone()).unwrap()).await {
@@ -314,7 +314,7 @@ async fn submit_block_after(world: &mut TariWorld, block_name: String, node: Str
 }
 
 #[when(expr = "I spend outputs {word} via {word}")]
-async fn spend_outputs_via(world: &mut TariWorld, inputs: String, node: String) {
+async fn spend_outputs_via(world: &mut TaijiWorld, inputs: String, node: String) {
     let num = rand::thread_rng().gen::<u8>();
     let tx_name = format!("TX-{}", num);
     let utxo_name = format!("UTXO-{}", num);
@@ -324,7 +324,7 @@ async fn spend_outputs_via(world: &mut TariWorld, inputs: String, node: String) 
 }
 
 #[when(expr = "I mine {int} blocks with difficulty {int} on {word}")]
-async fn num_blocks_with_difficulty(world: &mut TariWorld, num_blocks: u64, difficulty: u64, node: String) {
+async fn num_blocks_with_difficulty(world: &mut TaijiWorld, num_blocks: u64, difficulty: u64, node: String) {
     let wallet_name = format!("wallet-{}", &node);
     if world.wallets.get(&wallet_name).is_none() {
         spawn_wallet(world, wallet_name.clone(), Some(node.clone()), vec![], None, None).await;

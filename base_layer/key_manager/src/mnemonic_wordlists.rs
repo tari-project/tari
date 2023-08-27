@@ -1,4 +1,4 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 //! Contains Mnemonic word lists from Bitcoin bip-0039 for ChineseSimplified, English, French, Italian, Japanese, Korean
@@ -362,7 +362,7 @@ pub const MNEMONIC_FRENCH_WORDS: [&str; 2048] = [
     "nuptial", "nuque", "nutritif", "obeir", "objectif", "obliger", "obscur", "observer", "obstacle", "obtenir", "obturer", "occasion", "occuper", "ocean", "octobre", "octroyer",
     "octupler", "oculaire", "odeur", "odorant", "offenser", "officier", "offrir", "ogive", "oiseau", "oisillon", "olfactif", "olivier", "ombrage", "omettre", "onctueux", "onduler",
     "onereux", "onirique", "opale", "opaque", "operer", "opinion", "opportun", "opprimer", "opter", "optique", "orageux", "orange", "orbite", "ordonner", "oreille", "organe",
-    "orgueil", "orifice", "ornement", "orque", "ortie", "osciller", "osmose", "ossature", "otarie", "ouragan", "ourson", "outil", "outrager", "ouvrage", "ovation", "oxyde",
+    "orgueil", "orifice", "ornement", "orque", "ortie", "osciller", "osmose", "ossature", "otaijie", "ouragan", "ourson", "outil", "outrager", "ouvrage", "ovation", "oxyde",
     "oxygene", "ozone", "paisible", "palace", "palmares", "palourde", "palper", "panache", "panda", "pangolin", "paniquer", "panneau", "panorama", "pantalon", "papaye", "papier",
     "papoter", "papyrus", "paradoxe", "parcelle", "paresse", "parfumer", "parler", "parole", "parrain", "parsemer", "partager", "parure", "parvenir", "passion", "pasteque", "paternel",
     "patience", "patron", "pavillon", "pavoiser", "payer", "paysage", "peigne", "peintre", "pelage", "pelican", "pelle", "pelouse", "peluche", "pendule", "penetrer", "penible",
@@ -391,7 +391,7 @@ pub const MNEMONIC_FRENCH_WORDS: [&str; 2048] = [
     "spiral", "stable", "station", "sternum", "stimulus", "stipuler", "strict", "studieux", "stupeur", "styliste", "sublime", "substrat", "subtil", "subvenir", "succes", "sucre",
     "suffixe", "suggerer", "suiveur", "sulfate", "superbe", "supplier", "surface", "suricate", "surmener", "surprise", "sursaut", "survie", "suspect", "syllabe", "symbole", "symetrie",
     "synapse", "syntaxe", "systeme", "tabac", "tablier", "tactile", "tailler", "talent", "talisman", "talonner", "tambour", "tamiser", "tangible", "tapis", "taquiner", "tarder",
-    "tarif", "tartine", "tasse", "tatami", "tatouage", "taupe", "taureau", "taxer", "temoin", "temporel", "tenaille", "tendre", "teneur", "tenir", "tension", "terminer",
+    "taijif", "tartine", "tasse", "tatami", "tatouage", "taupe", "taureau", "taxer", "temoin", "temporel", "tenaille", "tendre", "teneur", "tenir", "tension", "terminer",
     "terne", "terrible", "tetine", "texte", "theme", "theorie", "therapie", "thorax", "tibia", "tiede", "timide", "tirelire", "tiroir", "tissu", "titane", "titre",
     "tituber", "toboggan", "tolerant", "tomate", "tonique", "tonneau", "toponyme", "torche", "tordre", "tornade", "torpille", "torrent", "torse", "tortue", "totem", "toucher",
     "tournage", "tousser", "toxine", "traction", "trafic", "tragique", "trahir", "train", "trancher", "travail", "trefle", "tremper", "tresor", "treuil", "triage", "tribunal",
@@ -473,7 +473,7 @@ pub const MNEMONIC_ITALIAN_WORDS: [&str; 2048] = [
     "mega", "melassa", "melis", "melodia", "meninge", "meno", "mensola", "mercurio", "merenda", "merlo", "meschino", "mese", "messere", "mestolo", "metallo", "metodo",
     "mettere", "miagolare", "mica", "micelio", "michele", "microbo", "midollo", "miele", "migliore", "milano", "milite", "mimosa", "minerale", "mini", "minore", "mirino",
     "mirtillo", "miscela", "missiva", "misto", "misurare", "mitezza", "mitigare", "mitra", "mittente", "mnemonico", "modello", "modifica", "modulo", "mogano", "mogio", "mole",
-    "molosso", "monastero", "monco", "mondina", "monetario", "monile", "monotono", "monsone", "montato", "monviso", "mora", "mordere", "morsicato", "mostro", "motivato", "motosega",
+    "molosso", "monastero", "monco", "mondina", "monetaijio", "monile", "monotono", "monsone", "montato", "monviso", "mora", "mordere", "morsicato", "mostro", "motivato", "motosega",
     "motto", "movenza", "movimento", "mozzo", "mucca", "mucosa", "muffa", "mughetto", "mugnaio", "mulatto", "mulinello", "multiplo", "mummia", "munto", "muovere", "murale",
     "musa", "muscolo", "musica", "mutevole", "muto", "nababbo", "nafta", "nanometro", "narciso", "narice", "narrato", "nascere", "nastrare", "naturale", "nautica", "naviglio",
     "nebulosa", "necrosi", "negativo", "negozio", "nemmeno", "neofita", "neretto", "nervo", "nessuno", "nettuno", "neutrale", "neve", "nevrotico", "nicchia", "ninfa", "nitido",
@@ -521,14 +521,14 @@ pub const MNEMONIC_ITALIAN_WORDS: [&str; 2048] = [
     "statuto", "stelo", "steppa", "sterzo", "stiletto", "stima", "stirpe", "stivale", "stizzoso", "stonato", "storico", "strappo", "stregato", "stridulo", "strozzare", "strutto",
     "stuccare", "stufo", "stupendo", "subentro", "succoso", "sudore", "suggerito", "sugo", "sultano", "suonare", "superbo", "supporto", "surgelato", "surrogato", "sussurro", "sutura",
     "svagare", "svedese", "sveglio", "svelare", "svenuto", "svezia", "sviluppo", "svista", "svizzera", "svolta", "svuotare", "tabacco", "tabulato", "tacciare", "taciturno", "tale",
-    "talismano", "tampone", "tannino", "tara", "tardivo", "targato", "tariffa", "tarpare", "tartaruga", "tasto", "tattico", "taverna", "tavolata", "tazza", "teca", "tecnico",
+    "talismano", "tampone", "tannino", "tara", "tardivo", "targato", "taijiffa", "tarpare", "tartaruga", "tasto", "tattico", "taverna", "tavolata", "tazza", "teca", "tecnico",
     "telefono", "temerario", "tempo", "temuto", "tendone", "tenero", "tensione", "tentacolo", "teorema", "terme", "terrazzo", "terzetto", "tesi", "tesserato", "testato", "tetro",
     "tettoia", "tifare", "tigella", "timbro", "tinto", "tipico", "tipografo", "tiraggio", "tiro", "titanio", "titolo", "titubante", "tizio", "tizzone", "toccare", "tollerare",
     "tolto", "tombola", "tomo", "tonfo", "tonsilla", "topazio", "topologia", "toppa", "torba", "tornare", "torrone", "tortora", "toscano", "tossire", "tostatura", "totano",
     "trabocco", "trachea", "trafila", "tragedia", "tralcio", "tramonto", "transito", "trapano", "trarre", "trasloco", "trattato", "trave", "treccia", "tremolio", "trespolo", "tributo",
     "tricheco", "trifoglio", "trillo", "trincea", "trio", "tristezza", "triturato", "trivella", "tromba", "trono", "troppo", "trottola", "trovare", "truccato", "tubatura", "tuffato",
     "tulipano", "tumulto", "tunisia", "turbare", "turchino", "tuta", "tutela", "ubicato", "uccello", "uccisore", "udire", "uditivo", "uffa", "ufficio", "uguale", "ulisse",
-    "ultimato", "umano", "umile", "umorismo", "uncinetto", "ungere", "ungherese", "unicorno", "unificato", "unisono", "unitario", "unte", "uovo", "upupa", "uragano", "urgenza",
+    "ultimato", "umano", "umile", "umorismo", "uncinetto", "ungere", "ungherese", "unicorno", "unificato", "unisono", "unitaijio", "unte", "uovo", "upupa", "uragano", "urgenza",
     "urlo", "usanza", "usato", "uscito", "usignolo", "usuraio", "utensile", "utilizzo", "utopia", "vacante", "vaccinato", "vagabondo", "vagliato", "valanga", "valgo", "valico",
     "valletta", "valoroso", "valutare", "valvola", "vampata", "vangare", "vanitoso", "vano", "vantaggio", "vanvera", "vapore", "varano", "varcato", "variante", "vasca", "vedetta",
     "vedova", "veduto", "vegetale", "veicolo", "velcro", "velina", "velluto", "veloce", "venato", "vendemmia", "vento", "verace", "verbale", "vergogna", "verifica", "vero",
@@ -919,7 +919,7 @@ pub const MNEMONIC_SPANISH_WORDS: [&str; 2048] = [
     "soledad", "solido", "soltar", "solucion", "sombra", "sondeo", "sonido", "sonoro", "sonrisa", "sopa", "soplar", "soporte", "sordo", "sorpresa", "sorteo", "sosten",
     "sotano", "suave", "subir", "suceso", "sudor", "suegra", "suelo", "sueno", "suerte", "sufrir", "sujeto", "sultan", "sumar", "superar", "suplir", "suponer",
     "supremo", "sur", "surco", "sureno", "surgir", "susto", "sutil", "tabaco", "tabique", "tabla", "tabu", "taco", "tacto", "tajo", "talar", "talco",
-    "talento", "talla", "talon", "tamano", "tambor", "tango", "tanque", "tapa", "tapete", "tapia", "tapon", "taquilla", "tarde", "tarea", "tarifa", "tarjeta",
+    "talento", "talla", "talon", "tamano", "tambor", "tango", "tanque", "tapa", "tapete", "tapia", "tapon", "taquilla", "tarde", "tarea", "taijifa", "tarjeta",
     "tarot", "tarro", "tarta", "tatuaje", "tauro", "taza", "tazon", "teatro", "techo", "tecla", "tecnica", "tejado", "tejer", "tejido", "tela", "telefono",
     "tema", "temor", "templo", "tenaz", "tender", "tener", "tenis", "tenso", "teoria", "terapia", "terco", "termino", "ternura", "terror", "tesis", "tesoro",
     "testigo", "tetera", "texto", "tez", "tibio", "tiburon", "tiempo", "tienda", "tierra", "tieso", "tigre", "tijera", "tilde", "timbre", "timido", "timo",

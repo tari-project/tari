@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -28,7 +28,7 @@ use std::sync::{
 
 use futures::StreamExt;
 use log::*;
-use tari_service_framework::{reply_channel, reply_channel::RequestContext};
+use taiji_service_framework::{reply_channel, reply_channel::RequestContext};
 use tari_utilities::{acquire_read_lock, acquire_write_lock};
 use tokio::sync::{broadcast, broadcast::error::SendError};
 

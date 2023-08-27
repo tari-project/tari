@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2020, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -24,7 +24,7 @@
 //!
 //! See `Either` documentation for more details.
 //!
-//! Tari changes:
+//! Taiji changes:
 //! 1. Instead of defining a new private boxed error that all users of Either must "comply" with, this implementation
 //!    requires that `A` and `B` both have the same error type. This suits our implementation as all errors are
 //!    `RpcStatus` and removes the need for (often inelegant) error conversions.

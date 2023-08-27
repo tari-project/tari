@@ -1,4 +1,4 @@
-// Copyright 2022, The Tari Project
+// Copyright 2022, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -32,12 +32,12 @@ use tonic::{
 
 pub type Client<TTransport> = grpc::wallet_client::WalletClient<TTransport>;
 
-// Re-export so that users don't have to depend on minotari_app_grpc
-pub use minotari_app_grpc::{
+// Re-export so that users don't have to depend on minotaiji_app_grpc
+pub use minotaiji_app_grpc::{
     authentication::{BasicAuthError, ClientAuthenticationInterceptor},
-    tari_rpc as grpc,
+    taiji_rpc as grpc,
 };
-pub use tari_common_types::grpc_authentication::GrpcAuthentication;
+pub use taiji_common_types::grpc_authentication::GrpcAuthentication;
 
 #[derive(Debug, Clone)]
 pub struct WalletGrpcClient<TTransport> {

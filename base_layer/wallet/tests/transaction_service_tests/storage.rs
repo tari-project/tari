@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -25,7 +25,7 @@ use std::mem::size_of;
 
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use chrono::{NaiveDateTime, Utc};
-use minotari_wallet::{
+use minotaiji_wallet::{
     storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
     test_utils::create_consensus_constants,
     transaction_service::storage::{
@@ -41,17 +41,17 @@ use minotari_wallet::{
     },
 };
 use rand::{rngs::OsRng, RngCore};
-use tari_common::configuration::Network;
-use tari_common_types::{
-    tari_address::TariAddress,
+use taiji_common::configuration::Network;
+use taiji_common_types::{
+    taiji_address::TaijiAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
     types::{FixedHash, PrivateKey, PublicKey, Signature},
 };
-use tari_core::{
+use taiji_core::{
     covenants::Covenant,
     transactions::{
         key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface},
-        tari_amount::{uT, MicroMinotari},
+        taiji_amount::{uT, MicroMinotaiji},
         test_helpers::{create_test_core_key_manager_with_memory_db, create_wallet_output_with_data, TestParams},
         transaction_components::{
             OutputFeatures,
@@ -67,19 +67,19 @@ use tari_core::{
     },
 };
 use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
-use tari_key_manager::key_manager_service::KeyManagerInterface;
-use tari_script::{inputs, script, TariScript};
-use tari_test_utils::random;
+use taiji_key_manager::key_manager_service::KeyManagerInterface;
+use taiji_script::{inputs, script, TaijiScript};
+use taiji_test_utils::random;
 use tempfile::tempdir;
 
 pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let mut db = TransactionDatabase::new(backend);
     let key_manager = create_test_core_key_manager_with_memory_db();
     let input = create_wallet_output_with_data(
-        TariScript::default(),
+        TaijiScript::default(),
         OutputFeatures::default(),
         &TestParams::new(&key_manager).await,
-        MicroMinotari::from(100_000),
+        MicroMinotaiji::from(100_000),
         &key_manager,
     )
     .await
@@ -87,10 +87,10 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let constants = create_consensus_constants(0);
     let key_manager = create_test_core_key_manager_with_memory_db();
     let mut builder = SenderTransactionProtocol::builder(constants.clone(), key_manager.clone());
-    let amount = MicroMinotari::from(10_000);
+    let amount = MicroMinotaiji::from(10_000);
     builder
         .with_lock_height(0)
-        .with_fee_per_gram(MicroMinotari::from(177 / 5))
+        .with_fee_per_gram(MicroMinotaiji::from(177 / 5))
         .with_message("Yo!".to_string())
         .with_input(input)
         .await
@@ -99,7 +99,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             script!(Nop),
             Default::default(),
             Covenant::default(),
-            MicroMinotari::zero(),
+            MicroMinotaiji::zero(),
             amount,
         )
         .await
@@ -117,16 +117,16 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
 
     let messages = vec!["Hey!".to_string(), "Yo!".to_string(), "Sup!".to_string()];
     let amounts = vec![
-        MicroMinotari::from(10_000),
-        MicroMinotari::from(23_000),
-        MicroMinotari::from(5_000),
+        MicroMinotaiji::from(10_000),
+        MicroMinotaiji::from(23_000),
+        MicroMinotaiji::from(5_000),
     ];
 
     let mut outbound_txs = Vec::new();
 
     for i in 0..messages.len() {
         let tx_id = TxId::from(i + 10);
-        let address = TariAddress::new(
+        let address = TaijiAddress::new(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -200,7 +200,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         0,
         Covenant::default(),
         encrypted_data,
-        MicroMinotari::zero(),
+        MicroMinotaiji::zero(),
         &key_manager,
     )
     .await
@@ -230,7 +230,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let mut inbound_txs = Vec::new();
 
     for i in 0..messages.len() {
-        let address = TariAddress::new(
+        let address = TaijiAddress::new(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -299,11 +299,11 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     );
 
     for i in 0..messages.len() {
-        let source_address = TariAddress::new(
+        let source_address = TaijiAddress::new(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
-        let dest_address = TariAddress::new(
+        let dest_address = TaijiAddress::new(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -312,7 +312,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             source_address,
             destination_address: dest_address,
             amount: outbound_txs[i].amount,
-            fee: MicroMinotari::from(200),
+            fee: MicroMinotaiji::from(200),
             transaction: tx.clone(),
             status: match i {
                 0 => TransactionStatus::Completed,
@@ -410,7 +410,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     } else {
         panic!("Should have found cancelled completed tx");
     }
-    let address = TariAddress::new(
+    let address = TaijiAddress::new(
         PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
     );
@@ -461,7 +461,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let mut cancelled_txs = db.get_cancelled_pending_inbound_transactions().unwrap();
     assert_eq!(cancelled_txs.len(), 1);
     assert!(cancelled_txs.remove(&999u64.into()).is_some());
-    let address = TariAddress::new(
+    let address = TaijiAddress::new(
         PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
     );
@@ -559,10 +559,10 @@ async fn import_tx_and_read_it_from_db() {
 
     let transaction = CompletedTransaction::new(
         TxId::from(1u64),
-        TariAddress::default(),
-        TariAddress::default(),
-        MicroMinotari::from(100000),
-        MicroMinotari::from(0),
+        TaijiAddress::default(),
+        TaijiAddress::default(),
+        MicroMinotaiji::from(100000),
+        MicroMinotaiji::from(0),
         Transaction::new(
             Vec::new(),
             Vec::new(),
@@ -588,10 +588,10 @@ async fn import_tx_and_read_it_from_db() {
 
     let transaction = CompletedTransaction::new(
         TxId::from(2u64),
-        TariAddress::default(),
-        TariAddress::default(),
-        MicroMinotari::from(100000),
-        MicroMinotari::from(0),
+        TaijiAddress::default(),
+        TaijiAddress::default(),
+        MicroMinotaiji::from(100000),
+        MicroMinotaiji::from(0),
         Transaction::new(
             Vec::new(),
             Vec::new(),
@@ -617,10 +617,10 @@ async fn import_tx_and_read_it_from_db() {
 
     let transaction = CompletedTransaction::new(
         TxId::from(3u64),
-        TariAddress::default(),
-        TariAddress::default(),
-        MicroMinotari::from(100000),
-        MicroMinotari::from(0),
+        TaijiAddress::default(),
+        TaijiAddress::default(),
+        MicroMinotaiji::from(100000),
+        MicroMinotaiji::from(0),
         Transaction::new(
             Vec::new(),
             Vec::new(),

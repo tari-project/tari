@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -27,8 +27,8 @@ use std::{
 
 use chrono::NaiveDateTime;
 use log::*;
-use tari_common_types::tari_address::TariAddress;
-use tari_comms::peer_manager::NodeId;
+use taiji_common_types::taiji_address::TaijiAddress;
+use taiji_comms::peer_manager::NodeId;
 
 use crate::contacts_service::{
     error::ContactsServiceStorageError,
@@ -47,23 +47,23 @@ pub trait ContactsBackend: Send + Sync + Clone {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DbKey {
-    Contact(TariAddress),
+    Contact(TaijiAddress),
     ContactId(NodeId),
     Contacts,
-    Messages(TariAddress, i64, i64),
+    Messages(TaijiAddress, i64, i64),
 }
 
 pub enum DbValue {
     Contact(Box<Contact>),
     Contacts(Vec<Contact>),
-    TariAddress(Box<TariAddress>),
+    TaijiAddress(Box<TaijiAddress>),
     Message(Box<Message>),
     Messages(Vec<Message>),
 }
 
 #[allow(clippy::large_enum_variant)]
 pub enum DbKeyValuePair {
-    Contact(TariAddress, Contact),
+    Contact(TaijiAddress, Contact),
     LastSeen(NodeId, NaiveDateTime, Option<i32>),
 }
 
@@ -100,7 +100,7 @@ where T: ContactsBackend + 'static
         Self { db: Arc::new(db) }
     }
 
-    pub fn get_contact(&self, address: TariAddress) -> Result<Contact, ContactsServiceStorageError> {
+    pub fn get_contact(&self, address: TaijiAddress) -> Result<Contact, ContactsServiceStorageError> {
         let db_clone = self.db.clone();
         fetch!(db_clone, address, Contact)
     }
@@ -133,7 +133,7 @@ where T: ContactsBackend + 'static
         node_id: &NodeId,
         last_seen: NaiveDateTime,
         latency: Option<u32>,
-    ) -> Result<TariAddress, ContactsServiceStorageError> {
+    ) -> Result<TaijiAddress, ContactsServiceStorageError> {
         let result = self
             .db
             .write(WriteOperation::UpdateLastSeen(Box::new(DbKeyValuePair::LastSeen(
@@ -143,14 +143,14 @@ where T: ContactsBackend + 'static
             ))))?
             .ok_or_else(|| ContactsServiceStorageError::ValueNotFound(DbKey::ContactId(node_id.clone())))?;
         match result {
-            DbValue::TariAddress(k) => Ok(*k),
+            DbValue::TaijiAddress(k) => Ok(*k),
             _ => Err(ContactsServiceStorageError::UnexpectedResult(
                 "Incorrect response from backend.".to_string(),
             )),
         }
     }
 
-    pub fn remove_contact(&self, address: TariAddress) -> Result<Contact, ContactsServiceStorageError> {
+    pub fn remove_contact(&self, address: TaijiAddress) -> Result<Contact, ContactsServiceStorageError> {
         let result = self
             .db
             .write(WriteOperation::Remove(DbKey::Contact(address.clone())))?
@@ -165,7 +165,7 @@ where T: ContactsBackend + 'static
 
     pub fn get_messages(
         &self,
-        address: TariAddress,
+        address: TaijiAddress,
         limit: i64,
         page: i64,
     ) -> Result<Vec<Message>, ContactsServiceStorageError> {
@@ -212,7 +212,7 @@ impl Display for DbValue {
         match self {
             DbValue::Contact(_) => f.write_str("Contact"),
             DbValue::Contacts(_) => f.write_str("Contacts"),
-            DbValue::TariAddress(_) => f.write_str("Address"),
+            DbValue::TaijiAddress(_) => f.write_str("Address"),
             DbValue::Messages(_) => f.write_str("Messages"),
             DbValue::Message(_) => f.write_str("Message"),
         }

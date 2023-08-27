@@ -1,4 +1,4 @@
-//  Copyright 2022, The Tari Project
+//  Copyright 2022, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -23,20 +23,20 @@
 use std::{collections::HashSet, convert::TryInto};
 
 use log::{trace, warn};
-use tari_common_types::types::{Commitment, CommitmentFactory, HashOutput, PrivateKey, PublicKey, RangeProofService};
+use taiji_common_types::types::{Commitment, CommitmentFactory, HashOutput, PrivateKey, PublicKey, RangeProofService};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::PublicKey as PublicKeyTrait,
     ristretto::pedersen::PedersenCommitment,
 };
-use tari_script::ScriptContext;
+use taiji_script::ScriptContext;
 use tari_utilities::hex::Hex;
 
 use crate::{
     consensus::{ConsensusConstants, ConsensusManager},
     transactions::{
         aggregated_body::AggregateBody,
-        tari_amount::MicroMinotari,
+        taiji_amount::MicroMinotaiji,
         transaction_components::{
             transaction_output::batch_verify_range_proofs,
             KernelSum,
@@ -52,7 +52,7 @@ use crate::{
             check_covenant_length,
             check_permitted_output_types,
             check_permitted_range_proof_types,
-            check_tari_script_byte_size,
+            check_taiji_script_byte_size,
             is_all_unique_and_sorted,
             validate_input_version,
             validate_kernel_version,
@@ -90,18 +90,18 @@ impl AggregateBodyInternalConsistencyValidator {
     /// 1. Range proofs of the outputs are valid
     ///
     /// This function does NOT check that inputs come from the UTXO set
-    /// The reward is the total amount of MicroTari rewarded for this block (block reward + total fees), this should be
+    /// The reward is the total amount of MicroTaiji rewarded for this block (block reward + total fees), this should be
     /// 0 for a transaction
     pub fn validate(
         &self,
         body: &AggregateBody,
         tx_offset: &PrivateKey,
         script_offset: &PrivateKey,
-        total_reward: Option<MicroMinotari>,
+        total_reward: Option<MicroMinotaiji>,
         prev_header: Option<HashOutput>,
         height: u64,
     ) -> Result<(), ValidationError> {
-        let total_reward = total_reward.unwrap_or(MicroMinotari::zero());
+        let total_reward = total_reward.unwrap_or(MicroMinotaiji::zero());
 
         // old internal validator
         verify_kernel_signatures(body)?;
@@ -156,9 +156,9 @@ fn verify_kernel_signatures(body: &AggregateBody) -> Result<(), ValidationError>
     Ok(())
 }
 
-/// Verify that the TariScript is not larger than the max size
+/// Verify that the TaijiScript is not larger than the max size
 fn check_script_size(output: &TransactionOutput, max_script_size: usize) -> Result<(), ValidationError> {
-    check_tari_script_byte_size(output.script(), max_script_size).map_err(|e| {
+    check_taiji_script_byte_size(output.script(), max_script_size).map_err(|e| {
         warn!(
             target: LOG_TARGET,
             "output ({}) script size exceeded max size {:?}.", output, e
@@ -219,7 +219,7 @@ fn sum_kernels(body: &AggregateBody, offset_with_fee: PedersenCommitment) -> Ker
     // Sum all kernel excesses and fees
     body.kernels().iter().fold(
         KernelSum {
-            fees: MicroMinotari(0),
+            fees: MicroMinotaiji(0),
             sum: offset_with_fee,
         },
         |acc, val| KernelSum {
@@ -425,9 +425,9 @@ mod test {
 
     use futures::StreamExt;
     use rand::seq::SliceRandom;
-    use tari_common::configuration::Network;
-    use tari_common_types::types::RANGE_PROOF_AGGREGATION_FACTOR;
-    use tari_script::TariScript;
+    use taiji_common::configuration::Network;
+    use taiji_common_types::types::RANGE_PROOF_AGGREGATION_FACTOR;
+    use taiji_script::TaijiScript;
 
     use super::*;
     use crate::{
@@ -476,7 +476,7 @@ mod test {
                 Default::default(),
                 Default::default(),
                 Default::default(),
-                MicroMinotari::zero(),
+                MicroMinotaiji::zero(),
             );
 
             assert!(matches!(
@@ -504,7 +504,7 @@ mod test {
             100.into(),
             &key_manager,
             &OutputFeatures::create_burn_output(),
-            &TariScript::default(),
+            &TaijiScript::default(),
             &Covenant::default(),
             0.into(),
         )
@@ -513,7 +513,7 @@ mod test {
             101.into(),
             &key_manager,
             &OutputFeatures::create_burn_output(),
-            &TariScript::default(),
+            &TaijiScript::default(),
             &Covenant::default(),
             0.into(),
         )
@@ -522,7 +522,7 @@ mod test {
             102.into(),
             &key_manager,
             &OutputFeatures::create_burn_output(),
-            &TariScript::default(),
+            &TaijiScript::default(),
             &Covenant::default(),
             0.into(),
         )
@@ -567,7 +567,7 @@ mod test {
                     100.into(),
                     &key_manager,
                     &OutputFeatures::create_burn_output(),
-                    &TariScript::default(),
+                    &TaijiScript::default(),
                     &Covenant::default(),
                     0.into(),
                 )

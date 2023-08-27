@@ -1,4 +1,4 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 use std::{
@@ -47,13 +47,13 @@ impl ApplicationType {
         #[allow(clippy::enum_glob_use)]
         use ApplicationType::*;
         match self {
-            BaseNode => "Minotari Base Node",
-            ConsoleWallet => "Minotari Wallet",
-            MergeMiningProxy => "Minotari Merge Mining Proxy",
-            Miner => "Minotari Miner",
+            BaseNode => "Minotaiji Base Node",
+            ConsoleWallet => "Minotaiji Wallet",
+            MergeMiningProxy => "Minotaiji Merge Mining Proxy",
+            Miner => "Minotaiji Miner",
             ValidatorNode => "Digital Assets Network Validator Node",
-            StratumTranscoder => "Minotari Stratum Transcoder",
-            Collectibles => "Tari Collectibles",
+            StratumTranscoder => "Minotaiji Stratum Transcoder",
+            Collectibles => "Taiji Collectibles",
         }
     }
 
@@ -137,13 +137,13 @@ mod test {
         let collectibles = ApplicationType::Collectibles;
 
         // test `as_str` method
-        assert_eq!(base_node.as_str(), "Minotari Base Node");
-        assert_eq!(console_wallet.as_str(), "Minotari Wallet");
-        assert_eq!(mm_proxy.as_str(), "Minotari Merge Mining Proxy");
-        assert_eq!(miner.as_str(), "Minotari Miner");
-        assert_eq!(stratum_transcoder.as_str(), "Minotari Stratum Transcoder");
+        assert_eq!(base_node.as_str(), "Minotaiji Base Node");
+        assert_eq!(console_wallet.as_str(), "Minotaiji Wallet");
+        assert_eq!(mm_proxy.as_str(), "Minotaiji Merge Mining Proxy");
+        assert_eq!(miner.as_str(), "Minotaiji Miner");
+        assert_eq!(stratum_transcoder.as_str(), "Minotaiji Stratum Transcoder");
         assert_eq!(validator_node.as_str(), "Digital Assets Network Validator Node");
-        assert_eq!(collectibles.as_str(), "Tari Collectibles");
+        assert_eq!(collectibles.as_str(), "Taiji Collectibles");
 
         // test `as_config_str` method
         assert_eq!(base_node.as_config_str(), "base_node");

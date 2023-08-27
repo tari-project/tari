@@ -1,4 +1,4 @@
-//  Copyright 2022. The Tari Project
+//  Copyright 2022. The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -23,7 +23,7 @@
 use std::time::Duration;
 
 use futures::{future, SinkExt, StreamExt};
-use tari_comms::{
+use taiji_comms::{
     framing,
     protocol::{ProtocolEvent, ProtocolId, ProtocolNotificationRx},
     transports::TcpTransport,
@@ -31,8 +31,8 @@ use tari_comms::{
     CommsNode,
     Substream,
 };
-use tari_shutdown::{Shutdown, ShutdownSignal};
-use tari_test_utils::unpack_enum;
+use taiji_shutdown::{Shutdown, ShutdownSignal};
+use taiji_test_utils::unpack_enum;
 use tokio::{sync::mpsc, task, time::Instant};
 
 use crate::tests::helpers::create_comms;

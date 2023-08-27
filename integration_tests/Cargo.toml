@@ -1,35 +1,35 @@
 [package]
-name = "tari_integration_tests"
-authors = ["The Tari Development Community"]
+name = "taiji_integration_tests"
+authors = ["The Taiji Development Community"]
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
 version = "0.35.1"
 edition = "2018"
 
 [dependencies]
-minotari_app_grpc = { path = "../applications/minotari_app_grpc" }
-minotari_app_utilities = { path = "../applications/minotari_app_utilities" }
-minotari_node = { path = "../applications/minotari_node" }
-minotari_node_grpc_client = { path = "../clients/rust/base_node_grpc_client" }
-tari_chat_client = { path = "../base_layer/contacts/examples/chat_client" }
-tari_chat_ffi = { path = "../base_layer/chat_ffi" }
+minotaiji_app_grpc = { path = "../applications/minotaiji_app_grpc" }
+minotaiji_app_utilities = { path = "../applications/minotaiji_app_utilities" }
+minotaiji_node = { path = "../applications/minotaiji_node" }
+minotaiji_node_grpc_client = { path = "../clients/rust/base_node_grpc_client" }
+taiji_chat_client = { path = "../base_layer/contacts/examples/chat_client" }
+taiji_chat_ffi = { path = "../base_layer/chat_ffi" }
 tari_crypto = { version = "0.18" }
-tari_common = { path = "../common" }
-tari_common_types = { path = "../base_layer/common_types" }
-tari_comms = { path = "../comms/core" }
-tari_comms_dht = { path = "../comms/dht" }
-minotari_console_wallet = { path = "../applications/minotari_console_wallet" }
-tari_contacts = { path = "../base_layer/contacts" }
-tari_core = { path = "../base_layer/core" }
-minotari_merge_mining_proxy = { path = "../applications/minotari_merge_mining_proxy" }
-minotari_miner = { path = "../applications/minotari_miner" }
-tari_p2p = { path = "../base_layer/p2p" }
-tari_script = { path = "../infrastructure/tari_script" }
-tari_shutdown = { path = "../infrastructure/shutdown" }
+taiji_common = { path = "../common" }
+taiji_common_types = { path = "../base_layer/common_types" }
+taiji_comms = { path = "../comms/core" }
+taiji_comms_dht = { path = "../comms/dht" }
+minotaiji_console_wallet = { path = "../applications/minotaiji_console_wallet" }
+taiji_contacts = { path = "../base_layer/contacts" }
+taiji_core = { path = "../base_layer/core" }
+minotaiji_merge_mining_proxy = { path = "../applications/minotaiji_merge_mining_proxy" }
+minotaiji_miner = { path = "../applications/minotaiji_miner" }
+taiji_p2p = { path = "../base_layer/p2p" }
+taiji_script = { path = "../infrastructure/taiji_script" }
+taiji_shutdown = { path = "../infrastructure/shutdown" }
 tari_utilities = { version = "0.5" }
-minotari_wallet = { path = "../base_layer/wallet" }
-minotari_wallet_ffi = { path = "../base_layer/wallet_ffi" }
-minotari_wallet_grpc_client = { path = "../clients/rust/wallet_grpc_client" }
+minotaiji_wallet = { path = "../base_layer/wallet" }
+minotaiji_wallet_ffi = { path = "../base_layer/wallet_ffi" }
+minotaiji_wallet_grpc_client = { path = "../clients/rust/wallet_grpc_client" }
 
 anyhow = "1.0.53"
 async-trait = "0.1.50"
@@ -51,7 +51,7 @@ tokio = { version = "1.10", features = ["macros", "time", "sync", "rt-multi-thre
 tonic = "0.6.2"
 
 [package.metadata.cargo-machete]
-ignored = ["minotari_wallet_ffi", "tari_chat_ffi"]
+ignored = ["minotaiji_wallet_ffi", "taiji_chat_ffi"]
 
 [[test]]
 name = "cucumber" # this should be the same as the filename of your test target

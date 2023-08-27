@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2020, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -22,7 +22,7 @@
 
 use std::{io::stdin, str::FromStr};
 
-use tari_comms::{
+use taiji_comms::{
     multiaddr::Multiaddr,
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{NodeId, Peer},
@@ -152,6 +152,6 @@ pub fn parse_from_short_str(s: &String) -> Option<Peer> {
         Default::default(),
         Default::default(),
         Default::default(),
-        "tari/stress-test/1.0".to_string(),
+        "taiji/stress-test/1.0".to_string(),
     ))
 }

@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -22,12 +22,12 @@
 
 use std::time::Duration;
 
-use tari_comms::{
+use taiji_comms::{
     peer_manager::{NodeId, Peer},
     protocol::rpc::RpcClientLease,
     types::CommsPublicKey,
 };
-use tari_core::base_node::{rpc::BaseNodeWalletRpcClient, sync::rpc::BaseNodeSyncRpcClient};
+use taiji_core::base_node::{rpc::BaseNodeWalletRpcClient, sync::rpc::BaseNodeSyncRpcClient};
 use tokio::sync::watch;
 
 use crate::connectivity_service::OnlineStatus;

@@ -1,19 +1,19 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 #![doc(html_root_url = "https://docs.rs/tower-filter/0.3.0-alpha.2")]
 
-//! # Tari Comms DHT
+//! # Taiji Comms DHT
 //!
 //! ## Overview
 //!
-//! The `tari_comms_dht` crate adds DHT functionality to `tari_comms`.
+//! The `taiji_comms_dht` crate adds DHT functionality to `taiji_comms`.
 //! It provides two sets of middleware (_inbound_ and _outbound_) which
 //! process incoming requests and outgoing messages respectively.
 //!
 //! ### Attaching to comms
 //!
-//! In `tari_comms`, incoming and outgoing messages are connected using two mpsc sender/receiver pairs.
+//! In `taiji_comms`, incoming and outgoing messages are connected using two mpsc sender/receiver pairs.
 //! One for incoming messages (receiving `InboundMessage`s) and one for outbound messages (sending `OutboundMessage`s).
 //!
 //! The DHT module consists of two middleware layers (as in `tower_layer::Layer`) which form
@@ -23,7 +23,7 @@
 //!
 //! `InboundMessage`s are received from the incoming comms channel (as in the receiver side of
 //! of the mpsc channel which goes into `CommsBuilder::new().incoming_message_sink(sender)`).
-//! Typically, a `ServicePipeline` from the `tari_comms::middleware` crate is used to connect
+//! Typically, a `ServicePipeline` from the `taiji_comms::middleware` crate is used to connect
 //! a stream from comms to the middleware service.
 //!
 //! `InboundMessage`(comms) -> _DHT Inbound Middleware_ -> `DhtInboundMessage`(domain)
@@ -43,7 +43,7 @@
 //!
 //! `OutboundMessage`s are sent to the outgoing comms channel (as in the receiver side of
 //! of the mpsc channel which goes into `CommsBuilder::new().outgoing_message_stream(receiver)`).
-//! Typically, a `ServicePipeline` from the `tari_comms::middleware` crate is used to connect
+//! Typically, a `ServicePipeline` from the `taiji_comms::middleware` crate is used to connect
 //! a stream from the domain-level to the middleware service and a `SinkMiddleware` to connect
 //! the middleware to the OMS in comms. Outbound requests to the DHT middleware are furnished by
 //! the `OutboundMessageRequester`, obtained from the `Dht::outbound_requester` factory method.
@@ -122,10 +122,10 @@ pub mod inbound;
 pub mod outbound;
 pub mod store_forward;
 
-use tari_comms::types::CommsChallenge;
+use taiji_comms::types::CommsChallenge;
 use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
 
-hash_domain!(DHTCommsHashDomain, "com.tari.comms.dht");
+hash_domain!(DHTCommsHashDomain, "com.taiji.comms.dht");
 
 pub fn comms_dht_hash_domain_challenge() -> DomainSeparatedHasher<CommsChallenge, DHTCommsHashDomain> {
     DomainSeparatedHasher::<CommsChallenge, DHTCommsHashDomain>::new_with_label("challenge")

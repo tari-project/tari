@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -38,18 +38,18 @@ use diesel::{prelude::*, result::Error, SqliteConnection};
 use digest::{consts::U32, generic_array::GenericArray, FixedOutput};
 use itertools::Itertools;
 use log::*;
-use tari_common_sqlite::sqlite_connection_pool::PooledDbConnection;
-use tari_common_types::{
+use taiji_common_sqlite::sqlite_connection_pool::PooledDbConnection;
+use taiji_common_types::{
     chain_metadata::ChainMetadata,
     encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
 };
-use tari_comms::{
+use taiji_comms::{
     multiaddr::Multiaddr,
     peer_manager::{IdentitySignature, PeerFeatures},
     tor::TorIdentity,
 };
 use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
-use tari_key_manager::cipher_seed::CipherSeed;
+use taiji_key_manager::cipher_seed::CipherSeed;
 use tari_utilities::{
     hex::{from_hex, Hex},
     hidden_type,
@@ -89,10 +89,10 @@ hidden_type!(WalletSecondaryEncryptionKey, SafeArray<u8, { size_of::<Key>() }>);
 const MAIN_KEY_AAD_PREFIX: &str = "wallet_main_key_encryption_v";
 
 // Hash domains for secondary key derivation
-hash_domain!(SecondaryKeyDomain, "com.tari.base_layer.wallet.secondary_key", 0);
+hash_domain!(SecondaryKeyDomain, "com.taiji.base_layer.wallet.secondary_key", 0);
 hash_domain!(
     SecondaryKeyHashDomain,
-    "com.tari.base_layer.wallet.secondary_key_hash_commitment",
+    "com.taiji.base_layer.wallet.secondary_key_hash_commitment",
     0
 );
 
@@ -1077,10 +1077,10 @@ impl Encryptable<XChaCha20Poly1305> for BurntProofSql {
 
 #[cfg(test)]
 mod test {
-    use tari_common_sqlite::sqlite_connection_pool::PooledDbConnection;
-    use tari_common_types::encryption::{decrypt_bytes_integral_nonce, Encryptable};
-    use tari_key_manager::cipher_seed::CipherSeed;
-    use tari_test_utils::random::string;
+    use taiji_common_sqlite::sqlite_connection_pool::PooledDbConnection;
+    use taiji_common_types::encryption::{decrypt_bytes_integral_nonce, Encryptable};
+    use taiji_key_manager::cipher_seed::CipherSeed;
+    use taiji_test_utils::random::string;
     use tari_utilities::{
         hex::{from_hex, Hex},
         ByteArray,

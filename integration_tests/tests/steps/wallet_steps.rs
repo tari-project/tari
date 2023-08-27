@@ -1,4 +1,4 @@
-//   Copyright 2023. The Tari Project
+//   Copyright 2023. The Taiji Project
 //
 //   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //   following conditions are met:
@@ -38,16 +38,16 @@ use grpc::{
     SendShaAtomicSwapRequest,
     TransferRequest,
 };
-use minotari_app_grpc::tari_rpc::{self as grpc};
-use minotari_console_wallet::{CliCommands, ExportUtxosArgs};
-use minotari_wallet::transaction_service::config::TransactionRoutingMechanism;
-use tari_common::configuration::Network;
-use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey};
-use tari_core::{
+use minotaiji_app_grpc::taiji_rpc::{self as grpc};
+use minotaiji_console_wallet::{CliCommands, ExportUtxosArgs};
+use minotaiji_wallet::transaction_service::config::TransactionRoutingMechanism;
+use taiji_common::configuration::Network;
+use taiji_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey};
+use taiji_core::{
     consensus::ConsensusManager,
     covenants::Covenant,
     transactions::{
-        tari_amount::MicroMinotari,
+        taiji_amount::MicroMinotaiji,
         transaction_components::{
             EncryptedData,
             OutputFeatures,
@@ -59,22 +59,22 @@ use tari_core::{
     },
 };
 use tari_crypto::{commitment::HomomorphicCommitment, keys::PublicKey as PublicKeyTrait};
-use tari_integration_tests::{
+use taiji_integration_tests::{
     transaction::{
         build_transaction_with_output,
         build_transaction_with_output_and_fee_per_gram,
         build_transaction_with_output_and_lockheight,
     },
     wallet_process::{create_wallet_client, get_default_cli, spawn_wallet},
-    TariWorld,
+    TaijiWorld,
 };
-use tari_script::{ExecutionStack, StackItem, TariScript};
+use taiji_script::{ExecutionStack, StackItem, TaijiScript};
 use tari_utilities::hex::Hex;
 
 use crate::steps::{mining_steps::create_miner, CONFIRMATION_PERIOD, HALF_SECOND, TWO_MINUTES_WITH_HALF_SECOND_SLEEP};
 
 #[given(expr = "a wallet {word} connected to base node {word}")]
-async fn start_wallet(world: &mut TariWorld, wallet_name: String, node_name: String) {
+async fn start_wallet(world: &mut TaijiWorld, wallet_name: String, node_name: String) {
     let seeds = world.base_nodes.get(&node_name).unwrap().seed_nodes.clone();
     world
         .wallet_connected_to_base_node
@@ -83,7 +83,7 @@ async fn start_wallet(world: &mut TariWorld, wallet_name: String, node_name: Str
 }
 
 #[when(expr = "I have wallet {word} connected to all seed nodes")]
-async fn start_wallet_connected_to_all_seed_nodes(world: &mut TariWorld, name: String) {
+async fn start_wallet_connected_to_all_seed_nodes(world: &mut TaijiWorld, name: String) {
     // assuming we have deployed at least a base node, we take the first one as base node for wallet to connect to
     let nodes = world.all_seed_nodes().to_vec();
     let node = nodes.first().unwrap();
@@ -101,7 +101,7 @@ async fn start_wallet_connected_to_all_seed_nodes(world: &mut TariWorld, name: S
 
 #[when(expr = "I wait for wallet {word} to have at least {int} uT")]
 #[then(expr = "I wait for wallet {word} to have at least {int} uT")]
-async fn wait_for_wallet_to_have_micro_tari(world: &mut TariWorld, wallet: String, amount: u64) {
+async fn wait_for_wallet_to_have_micro_taiji(world: &mut TaijiWorld, wallet: String, amount: u64) {
     let wallet_ps = world.wallets.get(&wallet).unwrap();
     let num_retries = 100;
 
@@ -131,7 +131,7 @@ async fn wait_for_wallet_to_have_micro_tari(world: &mut TariWorld, wallet: Strin
 }
 
 #[when(expr = "I have wallet {word} connected to base node {word}")]
-async fn wallet_connected_to_base_node(world: &mut TariWorld, wallet: String, base_node: String) {
+async fn wallet_connected_to_base_node(world: &mut TaijiWorld, wallet: String, base_node: String) {
     let bn = world.base_nodes.get(&base_node).unwrap();
     let peer_seeds = bn.seed_nodes.clone();
     world
@@ -144,7 +144,7 @@ async fn wallet_connected_to_base_node(world: &mut TariWorld, wallet: String, ba
 }
 
 #[when(expr = "I have wallet {word} connected to seed node {word}")]
-async fn have_wallet_connect_to_seed_node(world: &mut TariWorld, wallet: String, seed_node: String) {
+async fn have_wallet_connect_to_seed_node(world: &mut TaijiWorld, wallet: String, seed_node: String) {
     world
         .wallet_connected_to_base_node
         .insert(wallet.clone(), seed_node.clone());
@@ -153,7 +153,7 @@ async fn have_wallet_connect_to_seed_node(world: &mut TariWorld, wallet: String,
 
 #[when(expr = "wallet {word} detects all transactions as {word}")]
 #[then(expr = "wallet {word} detects all transactions as {word}")]
-async fn wallet_detects_all_txs_as_mined_confirmed(world: &mut TariWorld, wallet_name: String, status: String) {
+async fn wallet_detects_all_txs_as_mined_confirmed(world: &mut TaijiWorld, wallet_name: String, status: String) {
     let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
 
     let mut completed_tx_stream = client
@@ -245,7 +245,7 @@ async fn wallet_detects_all_txs_as_mined_confirmed(world: &mut TariWorld, wallet
 #[when(expr = "wallet {word} detects all transactions are at least {word}")]
 #[then(expr = "wallet {word} detects all transactions are at least {word}")]
 async fn wallet_detects_all_txs_are_at_least_in_some_status(
-    world: &mut TariWorld,
+    world: &mut TaijiWorld,
     wallet_name: String,
     status: String,
 ) {
@@ -320,7 +320,7 @@ async fn wallet_detects_all_txs_are_at_least_in_some_status(
 }
 
 #[then(expr = "wallet {word} detects all transactions are Broadcast")]
-async fn wallet_detects_all_txs_as_broadcast(world: &mut TariWorld, wallet_name: String) {
+async fn wallet_detects_all_txs_as_broadcast(world: &mut TaijiWorld, wallet_name: String) {
     let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
     let wallet_address = client
         .get_address(Empty {})
@@ -373,7 +373,7 @@ async fn wallet_detects_all_txs_as_broadcast(world: &mut TariWorld, wallet_name:
 }
 
 #[when(expr = "wallet {word} detects last transaction is Pending")]
-async fn wallet_detects_last_tx_as_pending(world: &mut TariWorld, wallet: String) {
+async fn wallet_detects_last_tx_as_pending(world: &mut TaijiWorld, wallet: String) {
     let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
     let wallet_address = client
         .get_address(Empty {})
@@ -419,7 +419,7 @@ async fn wallet_detects_last_tx_as_pending(world: &mut TariWorld, wallet: String
 }
 
 #[when(expr = "wallet {word} detects last transaction is Cancelled")]
-async fn wallet_detects_last_tx_as_cancelled(world: &mut TariWorld, wallet: String) {
+async fn wallet_detects_last_tx_as_cancelled(world: &mut TaijiWorld, wallet: String) {
     let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
     let wallet_address = client
         .get_address(Empty {})
@@ -463,7 +463,7 @@ async fn wallet_detects_last_tx_as_cancelled(world: &mut TariWorld, wallet: Stri
 
 #[when(expr = "I list all {word} transactions for wallet {word}")]
 #[then(expr = "I list all {word} transactions for wallet {word}")]
-async fn list_all_txs_for_wallet(world: &mut TariWorld, transaction_type: String, wallet: String) {
+async fn list_all_txs_for_wallet(world: &mut TaijiWorld, transaction_type: String, wallet: String) {
     if transaction_type.as_str() != "COINBASE" && transaction_type.as_str() != "NORMAL" {
         panic!(
             "Invalid transaction type. Values should be COINBASE or NORMAL, value passed is {}",
@@ -493,7 +493,7 @@ async fn list_all_txs_for_wallet(world: &mut TariWorld, transaction_type: String
 
 #[when(expr = "wallet {word} has at least {int} transactions that are all {word} and not cancelled")]
 #[then(expr = "wallet {word} has at least {int} transactions that are all {word} and not cancelled")]
-async fn wallet_has_at_least_num_txs(world: &mut TariWorld, wallet: String, num_txs: u64, transaction_status: String) {
+async fn wallet_has_at_least_num_txs(world: &mut TaijiWorld, wallet: String, num_txs: u64, transaction_status: String) {
     let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
     let transaction_status = match transaction_status.as_str() {
         "TRANSACTION_STATUS_COMPLETED" => 0,
@@ -541,7 +541,7 @@ async fn wallet_has_at_least_num_txs(world: &mut TariWorld, wallet: String, num_
 }
 
 #[when(expr = "I create a transaction {word} spending {word} to {word}")]
-pub async fn create_tx_spending_coinbase(world: &mut TariWorld, transaction: String, inputs: String, output: String) {
+pub async fn create_tx_spending_coinbase(world: &mut TaijiWorld, transaction: String, inputs: String, output: String) {
     let inputs = inputs.split(',').collect::<Vec<&str>>();
     let utxos = inputs
         .iter()
@@ -555,7 +555,7 @@ pub async fn create_tx_spending_coinbase(world: &mut TariWorld, transaction: Str
 
 #[when(expr = "I create a custom fee transaction {word} spending {word} to {word} with fee per gram {word}")]
 async fn create_tx_custom_fee_per_gram(
-    world: &mut TariWorld,
+    world: &mut TaijiWorld,
     transaction: String,
     inputs: String,
     output: String,
@@ -574,7 +574,7 @@ async fn create_tx_custom_fee_per_gram(
 
 #[when(expr = "I create a custom locked transaction {word} spending {word} to {word} with lockheight {word}")]
 async fn create_tx_custom_lock(
-    world: &mut TariWorld,
+    world: &mut TaijiWorld,
     transaction: String,
     inputs: String,
     output: String,
@@ -592,7 +592,7 @@ async fn create_tx_custom_lock(
 }
 
 #[when(expr = "I wait for wallet {word} to have less than {int} uT")]
-async fn wait_for_wallet_to_have_less_than_micro_tari(world: &mut TariWorld, wallet: String, amount: u64) {
+async fn wait_for_wallet_to_have_less_than_micro_taiji(world: &mut TaijiWorld, wallet: String, amount: u64) {
     let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
     println!("Waiting for wallet {} to have less than {} uT", wallet, amount);
 
@@ -620,7 +620,7 @@ async fn wait_for_wallet_to_have_less_than_micro_tari(world: &mut TariWorld, wal
 
 #[when(expr = "I have non-default wallet {word} connected to all seed nodes using {word}")]
 #[given(expr = "I have non-default wallet {word} connected to all seed nodes using {word}")]
-async fn non_default_wallet_connected_to_all_seed_nodes(world: &mut TariWorld, wallet: String, mechanism: String) {
+async fn non_default_wallet_connected_to_all_seed_nodes(world: &mut TaijiWorld, wallet: String, mechanism: String) {
     let routing_mechanism = TransactionRoutingMechanism::from(mechanism);
     // assuming we have at least one base node as seed node, we use the first to connect wallet to
     let nodes = world.all_seed_nodes().to_vec();
@@ -638,7 +638,7 @@ async fn non_default_wallet_connected_to_all_seed_nodes(world: &mut TariWorld, w
 }
 
 #[when(expr = "I have {int} non-default wallets connected to all seed nodes using {word}")]
-async fn non_default_wallets_connected_to_all_seed_nodes(world: &mut TariWorld, num: u64, mechanism: String) {
+async fn non_default_wallets_connected_to_all_seed_nodes(world: &mut TaijiWorld, num: u64, mechanism: String) {
     let routing_mechanism = TransactionRoutingMechanism::from(mechanism);
     let nodes = world.all_seed_nodes().to_vec();
     let node = nodes.first().unwrap();
@@ -662,7 +662,7 @@ async fn non_default_wallets_connected_to_all_seed_nodes(world: &mut TariWorld, 
 #[when(expr = "I send {int} uT without waiting for broadcast from wallet {word} to wallet {word} at fee {int}")]
 #[then(expr = "I send {int} uT without waiting for broadcast from wallet {word} to wallet {word} at fee {int}")]
 async fn send_amount_from_source_wallet_to_dest_wallet_without_broadcast(
-    world: &mut TariWorld,
+    world: &mut TaijiWorld,
     amount: u64,
     source_wallet: String,
     dest_wallet: String,
@@ -722,7 +722,7 @@ async fn send_amount_from_source_wallet_to_dest_wallet_without_broadcast(
 
 #[then(expr = "I send a one-sided transaction of {int} uT from {word} to {word} at fee {int}")]
 async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
-    world: &mut TariWorld,
+    world: &mut TaijiWorld,
     amount: u64,
     source_wallet: String,
     dest_wallet: String,
@@ -821,7 +821,7 @@ async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
 #[then(expr = "I send {int} uT from wallet {word} to wallet {word} at fee {int}")]
 #[when(expr = "I send {int} uT from wallet {word} to wallet {word} at fee {int}")]
 async fn send_amount_from_wallet_to_wallet_at_fee(
-    world: &mut TariWorld,
+    world: &mut TaijiWorld,
     amount: u64,
     sender: String,
     receiver: String,
@@ -917,7 +917,7 @@ async fn send_amount_from_wallet_to_wallet_at_fee(
 }
 
 #[then(expr = "wallet {word} detects at least {int} coinbase transactions as Mined_Confirmed")]
-async fn wallet_detects_at_least_coinbase_transactions(world: &mut TariWorld, wallet_name: String, coinbases: u64) {
+async fn wallet_detects_at_least_coinbase_transactions(world: &mut TaijiWorld, wallet_name: String, coinbases: u64) {
     let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
     let mut completed_tx_res = client
         .get_completed_transactions(GetCompletedTransactionsRequest {})
@@ -969,7 +969,7 @@ async fn wallet_detects_at_least_coinbase_transactions(world: &mut TariWorld, wa
 }
 
 #[then(expr = "wallet {word} detects at least {int} coinbase transactions as Mined_Unconfirmed")]
-async fn wallet_detects_at_least_unmined_transactions(world: &mut TariWorld, wallet_name: String, coinbases: u64) {
+async fn wallet_detects_at_least_unmined_transactions(world: &mut TaijiWorld, wallet_name: String, coinbases: u64) {
     let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
     let mut completed_tx_res = client
         .get_completed_transactions(GetCompletedTransactionsRequest {})
@@ -1021,7 +1021,7 @@ async fn wallet_detects_at_least_unmined_transactions(world: &mut TariWorld, wal
 }
 
 #[then(expr = "wallet {word} detects exactly {int} coinbase transactions as Mined_Confirmed")]
-async fn wallet_detects_exactly_coinbase_transactions(world: &mut TariWorld, wallet_name: String, coinbases: u64) {
+async fn wallet_detects_exactly_coinbase_transactions(world: &mut TaijiWorld, wallet_name: String, coinbases: u64) {
     let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
     let wallet_address = world.get_wallet_address(&wallet_name).await.unwrap();
     let tx_ids = world.wallet_tx_ids.get(&wallet_address).unwrap();
@@ -1066,7 +1066,7 @@ async fn wallet_detects_exactly_coinbase_transactions(world: &mut TariWorld, wal
 }
 
 #[then(expr = "I stop all wallets")]
-async fn stop_all_wallets(world: &mut TariWorld) {
+async fn stop_all_wallets(world: &mut TaijiWorld) {
     for (wallet, wallet_ps) in &mut world.wallets {
         println!("Stopping wallet {}", wallet);
 
@@ -1076,7 +1076,7 @@ async fn stop_all_wallets(world: &mut TariWorld) {
 
 #[then(expr = "I stop wallet {word}")]
 #[when(expr = "I stop wallet {word}")]
-async fn stop_wallet(world: &mut TariWorld, wallet: String) {
+async fn stop_wallet(world: &mut TaijiWorld, wallet: String) {
     // conveniently, register wallet address
     let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
     let wallet_address = wallet_client
@@ -1094,7 +1094,7 @@ async fn stop_wallet(world: &mut TariWorld, wallet: String) {
 
 #[when(expr = "I start wallet {word}")]
 #[then(expr = "I start wallet {word}")]
-async fn start_wallet_without_node(world: &mut TariWorld, wallet: String) {
+async fn start_wallet_without_node(world: &mut TaijiWorld, wallet: String) {
     match world.wallet_connected_to_base_node.get(&wallet) {
         None => spawn_wallet(world, wallet, None, vec![], None, None).await,
         Some(base_node) => {
@@ -1107,7 +1107,7 @@ async fn start_wallet_without_node(world: &mut TariWorld, wallet: String) {
 }
 
 #[then(expr = "all wallets detect all transactions as Mined_Confirmed")]
-async fn all_wallets_detect_all_txs_as_mined_confirmed(world: &mut TariWorld) {
+async fn all_wallets_detect_all_txs_as_mined_confirmed(world: &mut TaijiWorld) {
     for wallet in world.wallets.keys() {
         let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
         let wallet_address = world.get_wallet_address(&wallet).await.unwrap();
@@ -1158,7 +1158,7 @@ async fn all_wallets_detect_all_txs_as_mined_confirmed(world: &mut TariWorld) {
 
 #[then(expr = "wallets {word} should have {word} {int} spendable coinbase outputs")]
 async fn wallets_should_have_at_least_num_spendable_coinbase_outs(
-    world: &mut TariWorld,
+    world: &mut TaijiWorld,
     wallets: String,
     comparison: String,
     amount_of_coinbases: u64,
@@ -1236,7 +1236,7 @@ async fn wallets_should_have_at_least_num_spendable_coinbase_outs(
 
 #[when(expr = "I send {int} transactions of {int} uT each from wallet {word} to wallet {word} at fee_per_gram {int}")]
 async fn send_num_transactions_to_wallets_at_fee(
-    world: &mut TariWorld,
+    world: &mut TaijiWorld,
     num_txs: u64,
     amount: u64,
     sender_wallet: String,
@@ -1330,7 +1330,7 @@ async fn send_num_transactions_to_wallets_at_fee(
 }
 
 #[then(expr = "I wait for {word} to have {int} node connections")]
-async fn wait_for_wallet_to_have_num_connections(world: &mut TariWorld, wallet: String, connections: u64) {
+async fn wait_for_wallet_to_have_num_connections(world: &mut TaijiWorld, wallet: String, connections: u64) {
     let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
     let num_retries = 100;
 
@@ -1353,7 +1353,7 @@ async fn wait_for_wallet_to_have_num_connections(world: &mut TariWorld, wallet: 
 }
 
 #[then(expr = "I wait for {word} to have {word} connectivity")]
-async fn wait_for_wallet_to_have_specific_connectivity(world: &mut TariWorld, wallet: String, connectivity: String) {
+async fn wait_for_wallet_to_have_specific_connectivity(world: &mut TaijiWorld, wallet: String, connectivity: String) {
     let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
     let num_retries = 100;
 
@@ -1385,7 +1385,7 @@ async fn wait_for_wallet_to_have_specific_connectivity(world: &mut TariWorld, wa
 }
 
 #[when(expr = "I transfer {int}T from {word} to {word}")]
-async fn transfer_tari_from_wallet_to_receiver(world: &mut TariWorld, amount: u64, sender: String, receiver: String) {
+async fn transfer_taiji_from_wallet_to_receiver(world: &mut TaijiWorld, amount: u64, sender: String, receiver: String) {
     let mut sender_wallet_client = create_wallet_client(world, sender.clone()).await.unwrap();
     let sender_wallet_address = world.get_wallet_address(&sender).await.unwrap();
     let receiver_wallet_address = world.get_wallet_address(&receiver).await.unwrap();
@@ -1477,7 +1477,7 @@ async fn transfer_tari_from_wallet_to_receiver(world: &mut TariWorld, amount: u6
 
 #[when(expr = "wallet {word} has {int}T")]
 #[then(expr = "wallet {word} has {int}T")]
-async fn wallet_has_tari(world: &mut TariWorld, wallet: String, amount: u64) {
+async fn wallet_has_taiji(world: &mut TaijiWorld, wallet: String, amount: u64) {
     let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
     let num_retries = 100;
 
@@ -1506,8 +1506,8 @@ async fn wallet_has_tari(world: &mut TariWorld, wallet: String, amount: u64) {
 }
 
 #[when(expr = "I have wallet {word} with {int}T connected to base node {word}")]
-async fn wallet_with_tari_connected_to_base_node(
-    world: &mut TariWorld,
+async fn wallet_with_taiji_connected_to_base_node(
+    world: &mut TaijiWorld,
     wallet: String,
     amount: u64,
     base_node: String,
@@ -1571,7 +1571,7 @@ async fn wallet_with_tari_connected_to_base_node(
 #[when(expr = "I transfer {int} uT from {word} to {word} and {word} at fee {int}")]
 #[allow(clippy::too_many_lines)]
 async fn transfer_from_wallet_to_two_recipients_at_fee(
-    world: &mut TariWorld,
+    world: &mut TaijiWorld,
     amount: u64,
     sender: String,
     receiver1: String,
@@ -1708,7 +1708,7 @@ async fn transfer_from_wallet_to_two_recipients_at_fee(
 }
 
 #[when(expr = "I transfer {int} uT to self from wallet {word} at fee {int}")]
-async fn transfer_tari_to_self(world: &mut TariWorld, amount: u64, sender: String, fee_per_gram: u64) {
+async fn transfer_taiji_to_self(world: &mut TaijiWorld, amount: u64, sender: String, fee_per_gram: u64) {
     let mut sender_wallet_client = create_wallet_client(world, sender.clone()).await.unwrap();
     let sender_wallet_address = world.get_wallet_address(&sender).await.unwrap();
 
@@ -1786,7 +1786,7 @@ async fn transfer_tari_to_self(world: &mut TariWorld, amount: u64, sender: Strin
 }
 
 #[when(expr = "I broadcast HTLC transaction with {int} uT from wallet {word} to wallet {word} at fee {int}")]
-async fn htlc_transaction(world: &mut TariWorld, amount: u64, sender: String, receiver: String, fee_per_gram: u64) {
+async fn htlc_transaction(world: &mut TaijiWorld, amount: u64, sender: String, receiver: String, fee_per_gram: u64) {
     let mut sender_wallet_client = create_wallet_client(world, sender.clone()).await.unwrap();
     let sender_wallet_address = world.get_wallet_address(&sender).await.unwrap();
     let receiver_wallet_address = world.get_wallet_address(&receiver).await.unwrap();
@@ -1881,7 +1881,7 @@ async fn htlc_transaction(world: &mut TariWorld, amount: u64, sender: String, re
 }
 
 #[when(expr = "I claim an HTLC refund transaction with wallet {word} at fee {int}")]
-async fn claim_htlc_refund_transaction_with_wallet_at_fee(world: &mut TariWorld, wallet: String, fee_per_gram: u64) {
+async fn claim_htlc_refund_transaction_with_wallet_at_fee(world: &mut TaijiWorld, wallet: String, fee_per_gram: u64) {
     let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
     let wallet_address = world.get_wallet_address(&wallet).await.unwrap();
     let output_hash = world.output_hash.clone().unwrap();
@@ -1951,7 +1951,7 @@ async fn claim_htlc_refund_transaction_with_wallet_at_fee(world: &mut TariWorld,
 }
 
 #[when(expr = "I claim an HTLC transaction with wallet {word} at fee {int}")]
-async fn wallet_claims_htlc_transaction_at_fee(world: &mut TariWorld, wallet: String, fee_per_gram: u64) {
+async fn wallet_claims_htlc_transaction_at_fee(world: &mut TaijiWorld, wallet: String, fee_per_gram: u64) {
     let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
     let wallet_address = world.get_wallet_address(&wallet).await.unwrap();
     let output_hash = world.output_hash.clone().unwrap();
@@ -2023,7 +2023,7 @@ async fn wallet_claims_htlc_transaction_at_fee(world: &mut TariWorld, wallet: St
 }
 
 #[then(expr = "I wait for wallet {word} to have less than {int} uT")]
-async fn wait_for_wallet_to_have_less_than_amount(world: &mut TariWorld, wallet: String, amount: u64) {
+async fn wait_for_wallet_to_have_less_than_amount(world: &mut TaijiWorld, wallet: String, amount: u64) {
     let wallet_ps = world.wallets.get(&wallet).unwrap();
     let num_retries = 100;
 
@@ -2056,7 +2056,7 @@ async fn wait_for_wallet_to_have_less_than_amount(world: &mut TariWorld, wallet:
 
 #[then(expr = "I send a one-sided stealth transaction of {int} uT from {word} to {word} at fee {int}")]
 async fn send_one_sided_stealth_transaction(
-    world: &mut TariWorld,
+    world: &mut TaijiWorld,
     amount: u64,
     sender: String,
     receiver: String,
@@ -2166,7 +2166,7 @@ async fn send_one_sided_stealth_transaction(
 }
 
 #[then(expr = "I import {word} unspent outputs to {word}")]
-async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, wallet_b: String) {
+async fn import_wallet_unspent_outputs(world: &mut TaijiWorld, wallet_a: String, wallet_b: String) {
     let wallet_a_ps = world.wallets.get_mut(&wallet_a).unwrap();
 
     let temp_dir_path = wallet_a_ps.temp_dir_path.clone();
@@ -2199,7 +2199,7 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
             "V1" => TransactionOutputVersion::V1,
             _ => panic!("Invalid output version"),
         };
-        let value = MicroMinotari(output[2].parse::<u64>().unwrap());
+        let value = MicroMinotaiji(output[2].parse::<u64>().unwrap());
         let spending_key = PrivateKey::from_hex(&output[3]).unwrap();
         let flags = match &output[5] {
             "Standard" => OutputType::Standard,
@@ -2211,7 +2211,7 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
         };
         let maturity = output[6].parse::<u64>().unwrap();
         let coinbase_extra = Vec::from_hex(&output[7]).unwrap();
-        let script = TariScript::from_hex(&output[8]).unwrap();
+        let script = TaijiScript::from_hex(&output[8]).unwrap();
         let covenant = Covenant::from_bytes(&mut Vec::from_hex(&output[9]).unwrap().as_slice()).unwrap();
         let input_data = ExecutionStack::from_hex(&output[10]).unwrap();
         let script_private_key = PrivateKey::from_hex(&output[11]).unwrap();
@@ -2224,7 +2224,7 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
         let signature_u_y = PrivateKey::from_hex(&output[17]).unwrap();
         let script_lock_height = output[18].parse::<u64>().unwrap();
         let encrypted_data = EncryptedData::from_hex(&output[19]).unwrap();
-        let minimum_value_promise = MicroMinotari(output[20].parse::<u64>().unwrap());
+        let minimum_value_promise = MicroMinotaiji(output[20].parse::<u64>().unwrap());
 
         let features =
             OutputFeatures::new_current_version(flags, maturity, coinbase_extra, None, RangeProofType::BulletProofPlus);
@@ -2271,7 +2271,7 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
 }
 
 #[then(expr = "I import {word} spent outputs to {word}")]
-async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wallet_b: String) {
+async fn import_wallet_spent_outputs(world: &mut TaijiWorld, wallet_a: String, wallet_b: String) {
     let wallet_a_ps = world.wallets.get_mut(&wallet_a).unwrap();
 
     let temp_dir_path = wallet_a_ps.temp_dir_path.clone();
@@ -2303,7 +2303,7 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
             "V1" => TransactionOutputVersion::V1,
             _ => panic!("Invalid output version"),
         };
-        let value = MicroMinotari(output[2].parse::<u64>().unwrap());
+        let value = MicroMinotaiji(output[2].parse::<u64>().unwrap());
         let spending_key = PrivateKey::from_hex(&output[3]).unwrap();
         let flags = match &output[5] {
             "Standard" => OutputType::Standard,
@@ -2315,7 +2315,7 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
         };
         let maturity = output[6].parse::<u64>().unwrap();
         let coinbase_extra = Vec::from_hex(&output[7]).unwrap();
-        let script = TariScript::from_hex(&output[8]).unwrap();
+        let script = TaijiScript::from_hex(&output[8]).unwrap();
         let covenant = Covenant::from_bytes(&mut Vec::from_hex(&output[9]).unwrap().as_slice()).unwrap();
         let input_data = ExecutionStack::from_hex(&output[10]).unwrap();
         let script_private_key = PrivateKey::from_hex(&output[11]).unwrap();
@@ -2328,7 +2328,7 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
         let signature_u_y = PrivateKey::from_hex(&output[17]).unwrap();
         let script_lock_height = output[18].parse::<u64>().unwrap();
         let encrypted_data = EncryptedData::from_hex(&output[19]).unwrap();
-        let minimum_value_promise = MicroMinotari(output[20].parse::<u64>().unwrap());
+        let minimum_value_promise = MicroMinotaiji(output[20].parse::<u64>().unwrap());
 
         let features =
             OutputFeatures::new_current_version(flags, maturity, coinbase_extra, None, RangeProofType::BulletProofPlus);
@@ -2375,7 +2375,7 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
 }
 #[allow(clippy::too_many_lines)]
 #[then(expr = "I import {word} unspent outputs as faucet outputs to {word}")]
-async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: String, wallet_b: String) {
+async fn import_unspent_outputs_as_faucets(world: &mut TaijiWorld, wallet_a: String, wallet_b: String) {
     let wallet_a_ps = world.wallets.get_mut(&wallet_a).unwrap();
 
     let temp_dir_path = wallet_a_ps.temp_dir_path.clone();
@@ -2407,7 +2407,7 @@ async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: Stri
             "V1" => TransactionOutputVersion::V1,
             _ => panic!("Invalid output version"),
         };
-        let value = MicroMinotari(output[2].parse::<u64>().unwrap());
+        let value = MicroMinotaiji(output[2].parse::<u64>().unwrap());
         let spending_key = PrivateKey::from_hex(&output[3]).unwrap();
         let flags = match &output[5] {
             "Standard" => OutputType::Standard,
@@ -2419,7 +2419,7 @@ async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: Stri
         };
         let maturity = output[6].parse::<u64>().unwrap();
         let coinbase_extra = Vec::from_hex(&output[7]).unwrap();
-        let script = TariScript::from_hex(&output[8]).unwrap();
+        let script = TaijiScript::from_hex(&output[8]).unwrap();
         let covenant = Covenant::from_bytes(&mut Vec::from_hex(&output[9]).unwrap().as_slice()).unwrap();
         let input_data = ExecutionStack::from_hex(&output[10]).unwrap();
         let script_private_key = PrivateKey::from_hex(&output[11]).unwrap();
@@ -2432,7 +2432,7 @@ async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: Stri
         let signature_u_y = PrivateKey::from_hex(&output[17]).unwrap();
         let script_lock_height = output[18].parse::<u64>().unwrap();
         let encrypted_data = EncryptedData::from_hex(&output[19]).unwrap();
-        let minimum_value_promise = MicroMinotari(output[20].parse::<u64>().unwrap());
+        let minimum_value_promise = MicroMinotaiji(output[20].parse::<u64>().unwrap());
 
         let features =
             OutputFeatures::new_current_version(flags, maturity, coinbase_extra, None, RangeProofType::BulletProofPlus);
@@ -2490,7 +2490,7 @@ async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: Stri
 }
 
 #[then(expr = "I restart wallet {word}")]
-async fn restart_wallet(world: &mut TariWorld, wallet: String) {
+async fn restart_wallet(world: &mut TaijiWorld, wallet: String) {
     let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
     // stop wallet
     wallet_ps.kill();
@@ -2506,7 +2506,7 @@ async fn restart_wallet(world: &mut TariWorld, wallet: String) {
 }
 
 #[then(expr = "I check if wallet {word} has {int} transactions")]
-async fn check_if_wallet_has_num_transactions(world: &mut TariWorld, wallet: String, num_txs: u64) {
+async fn check_if_wallet_has_num_transactions(world: &mut TaijiWorld, wallet: String, num_txs: u64) {
     let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
     let mut get_completed_txs_res = client
         .get_completed_transactions(GetCompletedTransactionsRequest {})
@@ -2532,7 +2532,7 @@ async fn check_if_wallet_has_num_transactions(world: &mut TariWorld, wallet: Str
 
 #[when(expr = "I multi-send {int} transactions of {int} uT from wallet {word} to wallet {word} at fee {int}")]
 async fn multi_send_txs_from_wallet(
-    world: &mut TariWorld,
+    world: &mut TaijiWorld,
     num_txs: u64,
     amount: u64,
     sender: String,
@@ -2653,7 +2653,7 @@ async fn multi_send_txs_from_wallet(
 }
 
 #[then(expr = "I check if last imported transactions are invalid in wallet {word}")]
-async fn check_if_last_imported_txs_are_invalid_in_wallet(world: &mut TariWorld, wallet: String) {
+async fn check_if_last_imported_txs_are_invalid_in_wallet(world: &mut TaijiWorld, wallet: String) {
     let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
     let mut get_completed_txs_res = client
         .get_completed_transactions(GetCompletedTransactionsRequest {})
@@ -2676,7 +2676,7 @@ async fn check_if_last_imported_txs_are_invalid_in_wallet(world: &mut TariWorld,
 }
 
 #[then(expr = "I check if last imported transactions are valid in wallet {word}")]
-async fn check_if_last_imported_txs_are_valid_in_wallet(world: &mut TariWorld, wallet: String) {
+async fn check_if_last_imported_txs_are_valid_in_wallet(world: &mut TaijiWorld, wallet: String) {
     let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
     let mut get_completed_txs_res = client
         .get_completed_transactions(GetCompletedTransactionsRequest {})
@@ -2699,7 +2699,7 @@ async fn check_if_last_imported_txs_are_valid_in_wallet(world: &mut TariWorld, w
 }
 
 #[then(expr = "I cancel last transaction in wallet {word}")]
-async fn cancel_last_transaction_in_wallet(world: &mut TariWorld, wallet: String) {
+async fn cancel_last_transaction_in_wallet(world: &mut TaijiWorld, wallet: String) {
     let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
     let wallet_address = client
         .get_address(Empty {})
@@ -2723,14 +2723,14 @@ async fn cancel_last_transaction_in_wallet(world: &mut TariWorld, wallet: String
 }
 
 #[when(expr = "I create a burn transaction of {int} uT from {word} at fee {int}")]
-async fn burn_transaction(world: &mut TariWorld, amount: u64, wallet: String, fee: u64) {
+async fn burn_transaction(world: &mut TaijiWorld, amount: u64, wallet: String, fee: u64) {
     let mut client = world.get_wallet_client(&wallet).await.unwrap();
     let identity = client.identify(GetIdentityRequest {}).await.unwrap().into_inner();
 
     let req = grpc::CreateBurnTransactionRequest {
         amount,
         fee_per_gram: fee,
-        message: "Burning some tari".to_string(),
+        message: "Burning some taiji".to_string(),
         claim_public_key: identity.public_key,
     };
 

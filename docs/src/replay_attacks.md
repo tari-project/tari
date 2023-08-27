@@ -32,9 +32,9 @@ where
 
 In order to replay the initial transaction exactly, a second identical commitment would have to be constructed with the same value and spending key.
 
-### TariScript
+### TaijiScript
 
-In the TariScript enhanced version of the Mimblewimble blockchain [Tari](https://tari.com), a transaction input is updated to include additional fields [[5]]:
+In the TaijiScript enhanced version of the Mimblewimble blockchain [Taiji](https://taiji.com), a transaction input is updated to include additional fields [[5]]:
 
 - output script
 - input data
@@ -44,13 +44,13 @@ In the TariScript enhanced version of the Mimblewimble blockchain [Tari](https:/
 
 For the described replay attack to work here, all fields of the transaction input would need to be identical. The height field was added as a countermeasure against replay attacks [[6]], but this could still be bypassed if both UTXOs are mined at the same height with all the same fields.
 
-In [David Burkett]'s TariScript Review [[7]] he also notes the downsides of this approach, instead suggesting a windowed approach.
+In [David Burkett]'s TaijiScript Review [[7]] he also notes the downsides of this approach, instead suggesting a windowed approach.
 
 ## Mitigations
 
 To prevent replay attacks the implementation **must guarantee that no two UTXOs exist concurrently with the same commitment**.
 
-Presently this is ensured in the Tari Base Node at the database level [[8]]. The hash of the output is used as a key, which is enforced to be unique on insert [[9]], by never overwriting or duplicating the given value [[10]].
+Presently this is ensured in the Taiji Base Node at the database level [[8]]. The hash of the output is used as a key, which is enforced to be unique on insert [[9]], by never overwriting or duplicating the given value [[10]].
 
 [Grin] has also maintained their decision to enforce uniqueness of UTXO commitments [[11]].
 
@@ -58,17 +58,17 @@ Presently this is ensured in the Tari Base Node at the database level [[8]]. The
 ### References
 
 - [[1]] - [https://en.wikipedia.org/wiki/Replay_attack](https://en.wikipedia.org/wiki/Replay_attack)
-- [[2]] - [https://tlu.tarilabs.com/protocols/mimblewimble-1/MainReport.html](https://tlu.tarilabs.com/protocols/mimblewimble-1/MainReport.html)
+- [[2]] - [https://tlu.taijilabs.com/protocols/mimblewimble-1/MainReport.html](https://tlu.taijilabs.com/protocols/mimblewimble-1/MainReport.html)
 - [[3]] - [https://en.wikipedia.org/wiki/Unspent_transaction_output#UTXO_model](https://en.wikipedia.org/wiki/Unspent_transaction_output#UTXO_model)
-- [[4]] - [https://tlu.tarilabs.com/protocols/mimblewimble-1/MainReport.html#blinding-factors](https://tlu.tarilabs.com/protocols/mimblewimble-1/MainReport.html#blinding-factors)
-- [[5]] - [https://rfc.tari.com/RFC-0201_TariScript.html#transaction-input-changes](https://rfc.tari.com/RFC-0201_TariScript.html#transaction-input-changes)
-- [[6]] - [https://rfc.tari.com/RFC-0201_TariScript.html#replay-attacks](https://rfc.tari.com/RFC-0201_TariScript.html#replay-attacks)
+- [[4]] - [https://tlu.taijilabs.com/protocols/mimblewimble-1/MainReport.html#blinding-factors](https://tlu.taijilabs.com/protocols/mimblewimble-1/MainReport.html#blinding-factors)
+- [[5]] - [https://rfc.taiji.com/RFC-0201_TaijiScript.html#transaction-input-changes](https://rfc.taiji.com/RFC-0201_TaijiScript.html#transaction-input-changes)
+- [[6]] - [https://rfc.taiji.com/RFC-0201_TaijiScript.html#replay-attacks](https://rfc.taiji.com/RFC-0201_TaijiScript.html#replay-attacks)
 - [[7]] - [https://gist.github.com/DavidBurkett/b2ace786c6298179607b1337c3657a78#replay-attacks](https://gist.github.com/DavidBurkett/b2ace786c6298179607b1337c3657a78#replay-attacks)
-- [[8]] - [https://github.com/tari-project/tari/blob/c873d77.../base_layer/core/src/chain_storage/lmdb_db/lmdb_db.rs#L354](https://github.com/tari-project/tari/blob/c873d778f009cc68ec40e9d663ceaa4092bba14b/base_layer/core/src/chain_storage/lmdb_db/lmdb_db.rs#L354)
-- [[9]] - [https://github.com/tari-project/tari/blob/77081d3.../base_layer/core/src/chain_storage/lmdb_db/lmdb.rs#L80](https://github.com/tari-project/tari/blob/77081d37ff0ab8b168605f7fb5d10c1f14bfe76b/base_layer/core/src/chain_storage/lmdb_db/lmdb.rs#L80)
+- [[8]] - [https://github.com/taiji-project/taiji/blob/c873d77.../base_layer/core/src/chain_storage/lmdb_db/lmdb_db.rs#L354](https://github.com/taiji-project/taiji/blob/c873d778f009cc68ec40e9d663ceaa4092bba14b/base_layer/core/src/chain_storage/lmdb_db/lmdb_db.rs#L354)
+- [[9]] - [https://github.com/taiji-project/taiji/blob/77081d3.../base_layer/core/src/chain_storage/lmdb_db/lmdb.rs#L80](https://github.com/taiji-project/taiji/blob/77081d37ff0ab8b168605f7fb5d10c1f14bfe76b/base_layer/core/src/chain_storage/lmdb_db/lmdb.rs#L80)
 - [[10]] - [https://docs.rs/lmdb-zero/0.4.4/lmdb_zero/put/constant.NOOVERWRITE.html](https://docs.rs/lmdb-zero/0.4.4/lmdb_zero/put/constant.NOOVERWRITE.html)
 - [[11]] - [https://github.com/mimblewimble/grin/issues/3271](https://github.com/mimblewimble/grin/issues/3271)
-- [[notation]] - [https://rfc.tari.com/RFC-0201_TariScript.html#notation](https://rfc.tari.com/RFC-0201_TariScript.html#notation)
+- [[notation]] - [https://rfc.taiji.com/RFC-0201_TaijiScript.html#notation](https://rfc.taiji.com/RFC-0201_TaijiScript.html#notation)
 - [[Grin]] - [https://grin.mw](https://grin.mw)
 - [[David Burkett]] - [https://github.com/DavidBurkett](https://github.com/DavidBurkett)
 
@@ -79,22 +79,22 @@ Presently this is ensured in the Tari Base Node at the database level [[8]]. The
 - [MingleJingle replay attacks](https://gist.github.com/tevador/f3a66a2f15a8a3a04a1dde1ea65f9205#55-replay-attacks)
 
 [1]: https://en.wikipedia.org/wiki/Replay_attack
-[2]: https://tlu.tarilabs.com/protocols/mimblewimble-1/MainReport.html
+[2]: https://tlu.taijilabs.com/protocols/mimblewimble-1/MainReport.html
 [3]: https://en.wikipedia.org/wiki/Unspent_transaction_output#UTXO_model
-[4]: https://tlu.tarilabs.com/protocols/mimblewimble-1/MainReport.html#blinding-factors
-[5]: https://rfc.tari.com/RFC-0201_TariScript.html#transaction-input-changes
-[6]: https://rfc.tari.com/RFC-0201_TariScript.html#replay-attacks
+[4]: https://tlu.taijilabs.com/protocols/mimblewimble-1/MainReport.html#blinding-factors
+[5]: https://rfc.taiji.com/RFC-0201_TaijiScript.html#transaction-input-changes
+[6]: https://rfc.taiji.com/RFC-0201_TaijiScript.html#replay-attacks
 [7]: https://gist.github.com/DavidBurkett/b2ace786c6298179607b1337c3657a78#replay-attacks
-[8]: https://github.com/tari-project/tari/blob/c873d778f009cc68ec40e9d663ceaa4092bba14b/base_layer/core/src/chain_storage/lmdb_db/lmdb_db.rs#L354
-[9]: https://github.com/tari-project/tari/blob/77081d37ff0ab8b168605f7fb5d10c1f14bfe76b/base_layer/core/src/chain_storage/lmdb_db/lmdb.rs#L80
+[8]: https://github.com/taiji-project/taiji/blob/c873d778f009cc68ec40e9d663ceaa4092bba14b/base_layer/core/src/chain_storage/lmdb_db/lmdb_db.rs#L354
+[9]: https://github.com/taiji-project/taiji/blob/77081d37ff0ab8b168605f7fb5d10c1f14bfe76b/base_layer/core/src/chain_storage/lmdb_db/lmdb.rs#L80
 [10]: https://docs.rs/lmdb-zero/0.4.4/lmdb_zero/put/constant.NOOVERWRITE.html
 [11]: https://github.com/mimblewimble/grin/issues/3271
-[notation]: https://rfc.tari.com/RFC-0201_TariScript.html#notation
+[notation]: https://rfc.taiji.com/RFC-0201_TaijiScript.html#notation
 [Grin]: https://grin.mw
 [David Burkett]: https://github.com/DavidBurkett
 
 
-<!-- #### TariScript Notation
+<!-- #### TaijiScript Notation
 
 | Field             | Symbol                  | Definition                                                                                                                                    |
 | :---------------- | :---------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------- |

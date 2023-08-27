@@ -1,4 +1,4 @@
-//  Copyright 2019 The Tari Project
+//  Copyright 2019 The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -113,7 +113,7 @@ macro_rules! acquire_write_lock {
 /// `log_if_error!(my_error_call())`
 ///
 /// ```edition2018,no_compile
-/// # use tari_common::log_if_error;
+/// # use taiji_common::log_if_error;
 /// let opt = log_if_error!(target: "docs", level: debug, Result::<(), _>::Err("this will be logged as 'error' tag"), "Error: {error}");
 /// assert_eq!(opt, None);
 /// ```

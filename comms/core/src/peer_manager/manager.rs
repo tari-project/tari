@@ -1,4 +1,4 @@
-//  Copyright 2019 The Tari Project
+//  Copyright 2019 The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -23,7 +23,7 @@
 use std::{fmt, fs::File, time::Duration};
 
 use multiaddr::Multiaddr;
-use tari_storage::{lmdb_store::LMDBDatabase, CachedStore, IterationResult};
+use taiji_storage::{lmdb_store::LMDBDatabase, CachedStore, IterationResult};
 use tokio::sync::RwLock;
 
 #[cfg(feature = "metrics")]
@@ -369,7 +369,7 @@ mod test {
 
     use rand::{rngs::OsRng, Rng};
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
-    use tari_storage::HashmapDatabase;
+    use taiji_storage::HashmapDatabase;
 
     use super::*;
     use crate::{

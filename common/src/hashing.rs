@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -55,7 +55,7 @@ mod test {
 
     use crate::{hashing::mac_domain_hasher, DomainDigest};
 
-    hash_domain!(HashDomain, "com.tari.test.hash_domain", 1);
+    hash_domain!(HashDomain, "com.taiji.test.hash_domain", 1);
     type DomainHasher<D> = DomainSeparatedHasher<D, HashDomain>;
 
     fn use_as_digest_function<D>(data: &[u8]) -> Output<DomainHasher<D>>
@@ -97,7 +97,7 @@ mod test {
 
     #[test]
     fn test_mac_domain_digest() {
-        hash_domain!(MacDomain, "com.tari.test.mac_domain.my_function", 1);
+        hash_domain!(MacDomain, "com.taiji.test.mac_domain.my_function", 1);
         let some_data = b"some data";
 
         // The 'mac_domain_hasher' introduce specific trait bounds

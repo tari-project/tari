@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -27,12 +27,12 @@ use fs2::FileExt;
 use lmdb_zero::{open, ConstTransaction, Database, Environment, ReadTransaction, WriteTransaction};
 use log::*;
 use serde::{Deserialize, Serialize};
-use tari_common_types::{
+use taiji_common_types::{
     chain_metadata::ChainMetadata,
     epoch::VnEpoch,
     types::{BlockHash, Commitment, FixedHash, HashOutput, PublicKey, Signature},
 };
-use tari_storage::lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBStore};
+use taiji_storage::lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBStore};
 use tari_utilities::{
     hex::{to_hex, Hex},
     ByteArray,

@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -24,7 +24,7 @@
 //!
 //! Allows rules to be specified that restrict _future_ spending of subsequent transactions.
 //!
-//! <https://rfc.tari.com/RFC-0250_Covenants.html>
+//! <https://rfc.taiji.com/RFC-0250_Covenants.html>
 
 mod arguments;
 mod byte_codes;
@@ -54,6 +54,6 @@ mod test;
 
 use tari_crypto::hash_domain;
 
-hash_domain!(BaseLayerCovenantsDomain, "com.tari.base_layer.covenants", 1);
+hash_domain!(BaseLayerCovenantsDomain, "com.taiji.base_layer.covenants", 1);
 
 pub(crate) const COVENANTS_FIELD_HASHER_LABEL: &str = "fields";

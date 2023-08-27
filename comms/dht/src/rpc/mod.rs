@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2020, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -31,15 +31,15 @@ mod test;
 
 mod service;
 pub use service::DhtRpcServiceImpl;
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
-use tari_comms_rpc_macros::tari_rpc;
+use taiji_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
+use taiji_comms_rpc_macros::taiji_rpc;
 
 use crate::proto::rpc::{GetCloserPeersRequest, GetPeersRequest, GetPeersResponse};
 
 mod peer_info;
 pub use peer_info::{PeerInfo, PeerInfoAddress};
 
-#[tari_rpc(protocol_name = b"t/dht/1", server_struct = DhtService, client_struct = DhtClient)]
+#[taiji_rpc(protocol_name = b"t/dht/1", server_struct = DhtService, client_struct = DhtClient)]
 pub trait DhtRpcService: Send + Sync + 'static {
     /// Fetches and returns nodes (as in PeerFeatures::COMMUNICATION_NODE)  as per `GetCloserPeersRequest`
     #[rpc(method = 1)]

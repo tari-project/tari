@@ -1,4 +1,4 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 const lib = require("./lib");
@@ -56,27 +56,27 @@ try {
     err
   );
 
-  // callback_received_transaction: unsafe extern "C" fn(*mut TariPendingInboundTransaction),
+  // callback_received_transaction: unsafe extern "C" fn(*mut TaijiPendingInboundTransaction),
   const receivedTx = ffi.Callback("void", ["pointer"], function (ptr) {
     console.log("receivedTx: ", ptr);
   });
-  // callback_received_transaction_reply: unsafe extern "C" fn(*mut TariCompletedTransaction),
+  // callback_received_transaction_reply: unsafe extern "C" fn(*mut TaijiCompletedTransaction),
   const receivedTxReply = ffi.Callback("void", ["pointer"], function (ptr) {
     console.log("receivedTxReply: ", ptr);
   });
-  // callback_received_finalized_transaction: unsafe extern "C" fn(*mut TariCompletedTransaction),
+  // callback_received_finalized_transaction: unsafe extern "C" fn(*mut TaijiCompletedTransaction),
   const receivedFinalized = ffi.Callback("void", ["pointer"], function (ptr) {
     console.log("receivedFinalized: ", ptr);
   });
-  // callback_transaction_broadcast: unsafe extern "C" fn(*mut TariCompletedTransaction),
+  // callback_transaction_broadcast: unsafe extern "C" fn(*mut TaijiCompletedTransaction),
   const txBroadcast = ffi.Callback("void", ["pointer"], function (ptr) {
     console.log("txBroadcast: ", ptr);
   });
-  // callback_transaction_mined: unsafe extern "C" fn(*mut TariCompletedTransaction),
+  // callback_transaction_mined: unsafe extern "C" fn(*mut TaijiCompletedTransaction),
   const txMined = ffi.Callback("void", ["pointer"], function (ptr) {
     console.log("txMined: ", ptr);
   });
-  // callback_transaction_mined_unconfirmed: unsafe extern "C" fn(*mut TariCompletedTransaction, u64),
+  // callback_transaction_mined_unconfirmed: unsafe extern "C" fn(*mut TaijiCompletedTransaction, u64),
   const txMinedUnconfirmed = ffi.Callback(
     "void",
     ["pointer"],
@@ -84,11 +84,11 @@ try {
       console.log("txMinedUnconfirmed: ", ptr, confirmations);
     }
   );
-  // callback_faux_transaction_confirmed: unsafe extern "C" fn(*mut TariCompletedTransaction),
+  // callback_faux_transaction_confirmed: unsafe extern "C" fn(*mut TaijiCompletedTransaction),
   const txFauxConfirmed = ffi.Callback("void", ["pointer"], function (ptr) {
     console.log("txFauxConfirmed: ", ptr);
   });
-  // callback_faux_transaction_unconfirmed: unsafe extern "C" fn(*mut TariCompletedTransaction, u64),
+  // callback_faux_transaction_unconfirmed: unsafe extern "C" fn(*mut TaijiCompletedTransaction, u64),
   const txFauxUnconfirmed = ffi.Callback(
       "void",
       ["pointer"],
@@ -96,10 +96,10 @@ try {
         console.log("txFauxUnconfirmed: ", ptr, confirmations);
       }
   );
-  // callback_transaction_send_result: unsafe extern "C" fn(c_ulonglong, *mut TariTransactionSendStatus),
+  // callback_transaction_send_result: unsafe extern "C" fn(c_ulonglong, *mut TaijiTransactionSendStatus),
   const transactionSendResult = ffi.Callback("void", [u64, ["pointer"]], function (i, ptr) {
     console.log("transactionSendResult: ", i, ptr);
-  // callback_transaction_cancellation: unsafe extern "C" fn(*mut TariCompletedTransaction),
+  // callback_transaction_cancellation: unsafe extern "C" fn(*mut TaijiCompletedTransaction),
   const txCancelled = ffi.Callback("void", ["pointer"], function (ptr) {
     console.log("txCancelled: ", ptr);
   });

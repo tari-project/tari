@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -46,7 +46,7 @@ impl Filter for FieldsHashedEqFilter {
 mod test {
     use borsh::BorshSerialize;
     use digest::Update;
-    use tari_common_types::types::Challenge;
+    use taiji_common_types::types::Challenge;
     use tari_crypto::hashing::DomainSeparation;
 
     use super::*;

@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -22,7 +22,7 @@
 
 use std::cmp::{min, Ordering};
 
-use tari_storage::{IterationResult, KeyValueStore};
+use taiji_storage::{IterationResult, KeyValueStore};
 
 use crate::peer_manager::{peer_id::PeerId, NodeId, Peer, PeerManagerError};
 
@@ -210,7 +210,7 @@ mod test {
     use multiaddr::Multiaddr;
     use rand::rngs::OsRng;
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
-    use tari_storage::HashmapDatabase;
+    use taiji_storage::HashmapDatabase;
 
     use super::*;
     use crate::{

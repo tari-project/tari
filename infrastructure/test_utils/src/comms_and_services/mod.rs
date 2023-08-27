@@ -1,4 +1,4 @@
-// Copyright 2023. The Tari Project
+// Copyright 2023. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -19,7 +19,7 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use tari_comms::{multiaddr::Multiaddr, transports::MemoryTransport};
+use taiji_comms::{multiaddr::Multiaddr, transports::MemoryTransport};
 
 pub fn get_next_memory_address() -> Multiaddr {
     let port = MemoryTransport::acquire_next_memsocket_port();

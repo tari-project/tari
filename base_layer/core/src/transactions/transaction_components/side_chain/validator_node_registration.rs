@@ -1,4 +1,4 @@
-//  Copyright 2022. The Tari Project
+//  Copyright 2022. The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -22,7 +22,7 @@
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
-use tari_common_types::{
+use taiji_common_types::{
     epoch::VnEpoch,
     types::{FixedHash, PublicKey, Signature},
 };
@@ -93,7 +93,7 @@ fn generate_shard_key(public_key: &PublicKey, entropy: &[u8; 32]) -> [u8; 32] {
 #[cfg(test)]
 mod test {
     use rand::rngs::OsRng;
-    use tari_common_types::types::PrivateKey;
+    use taiji_common_types::types::PrivateKey;
     use tari_crypto::keys::SecretKey;
 
     use super::*;

@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -24,8 +24,8 @@ use core::result::Result;
 
 use blake2::Blake2b;
 use digest::consts::U32;
-use tari_common_types::types::{PrivateKey, PublicKey, WalletHasher};
-use tari_comms::types::CommsDHKE;
+use taiji_common_types::types::{PrivateKey, PublicKey, WalletHasher};
+use taiji_comms::types::CommsDHKE;
 use tari_crypto::{
     hash_domain,
     hashing::{DomainSeparatedHash, DomainSeparatedHasher},
@@ -35,19 +35,19 @@ use tari_utilities::{byte_array::ByteArrayError, ByteArray};
 
 hash_domain!(
     WalletOutputRewindKeysDomain,
-    "com.tari.base_layer.wallet.output_rewind_keys",
+    "com.taiji.base_layer.wallet.output_rewind_keys",
     1
 );
 
 hash_domain!(
     WalletOutputEncryptionKeysDomain,
-    "com.tari.base_layer.wallet.output_encryption_keys",
+    "com.taiji.base_layer.wallet.output_encryption_keys",
     1
 );
 
 hash_domain!(
     WalletOutputSpendingKeysDomain,
-    "com.tari.base_layer.wallet.output_spending_keys",
+    "com.taiji.base_layer.wallet.output_spending_keys",
     1
 );
 

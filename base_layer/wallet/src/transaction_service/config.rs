@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2020. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -24,7 +24,7 @@ use std::{fmt, time::Duration};
 
 use log::*;
 use serde::{Deserialize, Serialize};
-use tari_common::configuration::serializers;
+use taiji_common::configuration::serializers;
 
 const LOG_TARGET: &str = "wallet::transaction_service::config";
 

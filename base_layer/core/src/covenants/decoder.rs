@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -23,7 +23,7 @@
 use std::io;
 
 use integer_encoding::VarIntReader;
-use tari_script::ScriptError;
+use taiji_script::ScriptError;
 
 use crate::covenants::token::CovenantToken;
 
@@ -78,7 +78,7 @@ pub enum CovenantDecodeError {
     UnknownByteCode { code: u8 },
     #[error("Unexpected EoF, expected {expected}")]
     UnexpectedEof { expected: &'static str },
-    #[error("Tari script error: {0}")]
+    #[error("Taiji script error: {0}")]
     ScriptError(#[from] ScriptError),
     #[error("Covenant exceeded maximum bytes")]
     ExceededMaxBytes,
@@ -130,8 +130,8 @@ impl<R: io::Read> CovenantReadExt for R {
 
 #[cfg(test)]
 mod test {
-    use tari_common_types::types::FixedHash;
-    use tari_test_utils::unpack_enum;
+    use taiji_common_types::types::FixedHash;
+    use taiji_test_utils::unpack_enum;
     use tari_utilities::hex::{to_hex, Hex};
 
     use super::*;

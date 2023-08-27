@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use log::*;
-use tari_comms::{peer_manager::NodeId, types::CommsPublicKey, wrap_in_envelope_body, BytesMut};
+use taiji_comms::{peer_manager::NodeId, types::CommsPublicKey, wrap_in_envelope_body, BytesMut};
 use tokio::sync::{mpsc, oneshot};
 
 use super::message::DhtOutboundRequest;

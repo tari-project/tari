@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -49,7 +49,7 @@ use crate::{
 };
 
 #[async_trait]
-// #[tari_rpc(protocol_name = "/tari/greeting/1.0", server_struct = GreetingServer, client_struct = GreetingClient)]
+// #[taiji_rpc(protocol_name = "/taiji/greeting/1.0", server_struct = GreetingServer, client_struct = GreetingClient)]
 pub trait GreetingRpc: Send + Sync + 'static {
     // #[rpc(method = 1)]
     async fn say_hello(&self, request: Request<SayHelloRequest>) -> Result<Response<SayHelloResponse>, RpcStatus>;
@@ -258,7 +258,7 @@ pub struct SayHelloResponse {
     pub greeting: String,
 }
 
-// This is approximately what is generated from the #[tari_rpc(...)] macro.
+// This is approximately what is generated from the #[taiji_rpc(...)] macro.
 mod __rpc_deps {
     pub use crate::protocol::rpc::__macro_reexports::*;
 }

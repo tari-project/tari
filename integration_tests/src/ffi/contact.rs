@@ -1,4 +1,4 @@
-//   Copyright 2022. The Tari Project
+//   Copyright 2022. The Taiji Project
 //
 //   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //   following conditions are met:
@@ -79,9 +79,9 @@ impl Contact {
         let mut error = 0;
         let ptr;
         unsafe {
-            ptr = ffi_import::contact_get_tari_address(self.ptr, &mut error);
+            ptr = ffi_import::contact_get_taiji_address(self.ptr, &mut error);
             if error > 0 {
-                println!("contact_get_tari_address error {}", error);
+                println!("contact_get_taiji_address error {}", error);
             }
         }
         WalletAddress::from_ptr(ptr)

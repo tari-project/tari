@@ -1,9 +1,9 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-//! # Tari Test Utilities
+//! # Taiji Test Utilities
 //!
-//! This crate contains some commonly useful test utilities for testing Tari codebase.
+//! This crate contains some commonly useful test utilities for testing Taiji codebase.
 //!
 //! ## Modules
 //!

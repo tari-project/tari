@@ -1,4 +1,4 @@
-// Copyright 2018 The Tari Project
+// Copyright 2018 The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -23,14 +23,14 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-use tari_common_types::types::Commitment;
+use taiji_common_types::types::Commitment;
 
-use crate::transactions::tari_amount::MicroMinotari;
+use crate::transactions::taiji_amount::MicroMinotaiji;
 
 /// This struct holds the result of calculating the sum of the kernels in a Transaction
 /// and returns the summed commitments and the total fees
 #[derive(Default)]
 pub struct KernelSum {
     pub sum: Commitment,
-    pub fees: MicroMinotari,
+    pub fees: MicroMinotaiji,
 }

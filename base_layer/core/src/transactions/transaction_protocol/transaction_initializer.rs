@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -24,12 +24,12 @@ use std::fmt::{Debug, Error, Formatter};
 
 use log::*;
 use serde::{Deserialize, Serialize};
-use tari_common_types::{
+use taiji_common_types::{
     transaction::TxId,
     types::{Commitment, PrivateKey, PublicKey, Signature},
 };
-use tari_key_manager::key_manager_service::KeyManagerServiceError;
-use tari_script::{ExecutionStack, TariScript};
+use taiji_key_manager::key_manager_service::KeyManagerServiceError;
+use taiji_script::{ExecutionStack, TaijiScript};
 
 use crate::{
     borsh::SerializedSize,
@@ -37,8 +37,8 @@ use crate::{
     covenants::Covenant,
     transactions::{
         fee::Fee,
-        key_manager::{TariKeyId, TransactionKeyManagerBranch, TransactionKeyManagerInterface},
-        tari_amount::*,
+        key_manager::{TaijiKeyId, TransactionKeyManagerBranch, TransactionKeyManagerInterface},
+        taiji_amount::*,
         transaction_components::{
             OutputFeatures,
             TransactionOutput,
@@ -59,22 +59,22 @@ pub const LOG_TARGET: &str = "c::tx::tx_protocol::tx_initializer";
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub(super) struct ChangeDetails {
-    change_spending_key_id: TariKeyId,
-    change_script: TariScript,
+    change_spending_key_id: TaijiKeyId,
+    change_script: TaijiScript,
     change_input_data: ExecutionStack,
-    change_script_key_id: TariKeyId,
+    change_script_key_id: TaijiKeyId,
     change_covenant: Covenant,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub(super) struct RecipientDetails {
-    pub amount: MicroMinotari,
+    pub amount: MicroMinotaiji,
     pub recipient_output_features: OutputFeatures,
-    pub recipient_script: TariScript,
-    pub recipient_sender_offset_key_id: TariKeyId,
+    pub recipient_script: TaijiScript,
+    pub recipient_sender_offset_key_id: TaijiKeyId,
     pub recipient_covenant: Covenant,
-    pub recipient_minimum_value_promise: MicroMinotari,
-    pub recipient_ephemeral_public_key_nonce: TariKeyId,
+    pub recipient_minimum_value_promise: MicroMinotaiji,
+    pub recipient_ephemeral_public_key_nonce: TaijiKeyId,
 }
 
 /// The SenderTransactionProtocolBuilder is a Builder that helps set up the initial state for the Sender party of a new
@@ -88,7 +88,7 @@ pub(super) struct RecipientDetails {
 #[derive(Debug, Clone)]
 pub struct SenderTransactionInitializer<KM> {
     lock_height: Option<u64>,
-    fee_per_gram: Option<MicroMinotari>,
+    fee_per_gram: Option<MicroMinotaiji>,
     inputs: Vec<OutputPair>,
     sender_custom_outputs: Vec<OutputPair>,
     change: Option<ChangeDetails>,
@@ -136,7 +136,7 @@ where KM: TransactionKeyManagerInterface
 
     /// Set the fee per weight for the transaction. See (Fee::calculate)[Struct.Fee.html#calculate] for how the
     /// absolute fee is calculated from the fee-per-gram value.
-    pub fn with_fee_per_gram(&mut self, fee_per_gram: MicroMinotari) -> &mut Self {
+    pub fn with_fee_per_gram(&mut self, fee_per_gram: MicroMinotaiji) -> &mut Self {
         self.fee_per_gram = Some(fee_per_gram);
         self
     }
@@ -145,11 +145,11 @@ where KM: TransactionKeyManagerInterface
     /// the same time. This method will silently fail if `receiver_index` >= num_receivers.
     pub async fn with_recipient_data(
         &mut self,
-        recipient_script: TariScript,
+        recipient_script: TaijiScript,
         recipient_output_features: OutputFeatures,
         recipient_covenant: Covenant,
-        recipient_minimum_value_promise: MicroMinotari,
-        amount: MicroMinotari,
+        recipient_minimum_value_promise: MicroMinotaiji,
+        amount: MicroMinotaiji,
     ) -> Result<&mut Self, KeyManagerServiceError> {
         let (recipient_ephemeral_public_key_nonce, _) = self
             .key_manager
@@ -197,7 +197,7 @@ where KM: TransactionKeyManagerInterface
     pub async fn with_output(
         &mut self,
         output: WalletOutput,
-        sender_offset_key_id: TariKeyId,
+        sender_offset_key_id: TaijiKeyId,
     ) -> Result<&mut Self, KeyManagerServiceError> {
         let (nonce_id, _) = self
             .key_manager
@@ -216,10 +216,10 @@ where KM: TransactionKeyManagerInterface
     /// calculated when the transaction is built.
     pub fn with_change_data(
         &mut self,
-        change_script: TariScript,
+        change_script: TaijiScript,
         change_input_data: ExecutionStack,
-        change_script_key_id: TariKeyId,
-        change_spending_key_id: TariKeyId,
+        change_script_key_id: TaijiKeyId,
+        change_spending_key_id: TaijiKeyId,
         change_covenant: Covenant,
     ) -> &mut Self {
         let details = ChangeDetails {
@@ -290,16 +290,16 @@ where KM: TransactionKeyManagerInterface
     #[allow(clippy::too_many_lines)]
     async fn add_change_if_required(
         &mut self,
-    ) -> Result<(MicroMinotari, MicroMinotari, Option<(WalletOutput, TariKeyId)>), String> {
+    ) -> Result<(MicroMinotaiji, MicroMinotaiji, Option<(WalletOutput, TaijiKeyId)>), String> {
         // The number of outputs excluding a possible residual change output
         let num_outputs = self.sender_custom_outputs.len() + usize::from(self.recipient.is_some());
         let num_inputs = self.inputs.len();
-        let total_being_spent = self.inputs.iter().map(|i| i.output.value).sum::<MicroMinotari>();
+        let total_being_spent = self.inputs.iter().map(|i| i.output.value).sum::<MicroMinotaiji>();
         let total_to_self = self
             .sender_custom_outputs
             .iter()
             .map(|o| o.output.value)
-            .sum::<MicroMinotari>();
+            .sum::<MicroMinotaiji>();
         let total_amount = match &self.recipient {
             Some(data) => data.amount,
             None => 0.into(),
@@ -343,14 +343,14 @@ where KM: TransactionKeyManagerInterface
                 "You are spending ({}) more than you're providing ({}).",
                 total_input_value, total_being_spent
             )),
-            Some(MicroMinotari(0)) => Ok((fee_without_change, MicroMinotari(0), None)),
+            Some(MicroMinotaiji(0)) => Ok((fee_without_change, MicroMinotaiji(0), None)),
             Some(v) => {
                 let change_amount = v.checked_sub(change_fee);
                 match change_amount {
                     // You can't win. Just add the change to the fee (which is less than the cost of adding another
                     // output and go without a change output
-                    None => Ok((fee_without_change + v, MicroMinotari(0), None)),
-                    Some(MicroMinotari(0)) => Ok((fee_without_change + v, MicroMinotari(0), None)),
+                    None => Ok((fee_without_change + v, MicroMinotaiji(0), None)),
+                    Some(MicroMinotaiji(0)) => Ok((fee_without_change + v, MicroMinotaiji(0), None)),
                     Some(v) => {
                         let change_data = self.change.as_ref().ok_or("Change data was not provided")?;
                         let change_script = change_data.change_script.clone();
@@ -376,7 +376,7 @@ where KM: TransactionKeyManagerInterface
                             .await
                             .map_err(|e| e.to_string())?;
 
-                        let minimum_value_promise = MicroMinotari::zero();
+                        let minimum_value_promise = MicroMinotaiji::zero();
 
                         let output_version = TransactionOutputVersion::get_current_version();
 
@@ -547,7 +547,7 @@ where KM: TransactionKeyManagerInterface
 
         // cached data
 
-        // Everything is here. Let's send some Minotari!
+        // Everything is here. Let's send some Minotaiji!
         let sender_info = RawTransactionInfo {
             tx_id,
             recipient_data: self.recipient,
@@ -581,14 +581,14 @@ where KM: TransactionKeyManagerInterface
 
 #[cfg(test)]
 mod test {
-    use tari_script::{inputs, script, TariScript};
+    use taiji_script::{inputs, script, TaijiScript};
 
     use crate::{
         covenants::Covenant,
         test_helpers::create_consensus_constants,
         transactions::{
             fee::Fee,
-            tari_amount::*,
+            taiji_amount::*,
             test_helpers::{
                 create_test_core_key_manager_with_memory_db,
                 create_test_input,
@@ -622,7 +622,7 @@ mod test {
                     script.clone(),
                     OutputFeatures::default(),
                     &p,
-                    MicroMinotari(100),
+                    MicroMinotaiji(100),
                     &key_manager,
                 )
                 .await
@@ -635,16 +635,16 @@ mod test {
             .await
             .create_input(
                 UtxoTestParams {
-                    value: MicroMinotari(5_000),
+                    value: MicroMinotaiji(5_000),
                     ..Default::default()
                 },
                 &key_manager,
             )
             .await;
         builder.with_input(input).await.unwrap();
-        builder.with_fee_per_gram(MicroMinotari(20));
+        builder.with_fee_per_gram(MicroMinotaiji(20));
         let expected_fee = builder.fee().calculate(
-            MicroMinotari(20),
+            MicroMinotaiji(20),
             1,
             1,
             2,
@@ -684,10 +684,10 @@ mod test {
         // Create some inputs
         let key_manager = create_test_core_key_manager_with_memory_db();
         let p = TestParams::new(&key_manager).await;
-        let input = create_test_input(MicroMinotari(5000), 0, &key_manager).await;
+        let input = create_test_input(MicroMinotaiji(5000), 0, &key_manager).await;
         let constants = create_consensus_constants(0);
         let expected_fee = Fee::from(*constants.transaction_weight_params()).calculate(
-            MicroMinotari(4),
+            MicroMinotaiji(4),
             1,
             1,
             1,
@@ -696,10 +696,10 @@ mod test {
         );
 
         let output = create_wallet_output_with_data(
-            TariScript::default(),
+            TaijiScript::default(),
             OutputFeatures::default(),
             &p,
-            MicroMinotari(5000) - expected_fee,
+            MicroMinotaiji(5000) - expected_fee,
             &key_manager,
         )
         .await
@@ -714,7 +714,7 @@ mod test {
             .with_input(input)
             .await
             .unwrap()
-            .with_fee_per_gram(MicroMinotari(4))
+            .with_fee_per_gram(MicroMinotaiji(4))
             .with_prevent_fee_gt_amount(false);
         let result = builder.build().await.unwrap();
         // Peek inside and check the results
@@ -770,7 +770,7 @@ mod test {
             .with_input(input)
             .await
             .unwrap()
-            .with_fee_per_gram(MicroMinotari(1))
+            .with_fee_per_gram(MicroMinotaiji(1))
             .with_prevent_fee_gt_amount(false);
         let result = builder.build().await.unwrap();
         // Peek inside and check the results
@@ -791,10 +791,10 @@ mod test {
         let p = TestParams::new(&key_manager).await;
 
         let output = create_wallet_output_with_data(
-            TariScript::default(),
+            TaijiScript::default(),
             OutputFeatures::default(),
             &p,
-            MicroMinotari(500),
+            MicroMinotaiji(500),
             &key_manager,
         )
         .await
@@ -807,8 +807,8 @@ mod test {
             .with_output(output, p.sender_offset_key_id)
             .await
             .unwrap()
-            .with_fee_per_gram(MicroMinotari(2));
-        let input_base = create_test_input(MicroMinotari(50), 0, &key_manager).await;
+            .with_fee_per_gram(MicroMinotaiji(2));
+        let input_base = create_test_input(MicroMinotaiji(50), 0, &key_manager).await;
         for _ in 0..=MAX_TRANSACTION_INPUTS {
             builder.with_input(input_base.clone()).await.unwrap();
         }
@@ -822,7 +822,7 @@ mod test {
         let key_manager = create_test_core_key_manager_with_memory_db();
         let p = TestParams::new(&key_manager).await;
         let tx_fee = p.fee().calculate(
-            MicroMinotari(1),
+            MicroMinotaiji(1),
             1,
             1,
             1,
@@ -847,13 +847,13 @@ mod test {
                 change.spend_key_id.clone(),
                 Covenant::default(),
             )
-            .with_fee_per_gram(MicroMinotari(1))
+            .with_fee_per_gram(MicroMinotaiji(1))
             .with_recipient_data(
                 script,
                 Default::default(),
                 Default::default(),
                 0.into(),
-                MicroMinotari(500),
+                MicroMinotaiji(500),
             )
             .await
             .unwrap();
@@ -866,13 +866,13 @@ mod test {
         // Create some inputs
         let key_manager = create_test_core_key_manager_with_memory_db();
         let p = TestParams::new(&key_manager).await;
-        let input = create_test_input(MicroMinotari(400), 0, &key_manager).await;
+        let input = create_test_input(MicroMinotaiji(400), 0, &key_manager).await;
         let script = script!(Nop);
         let output = create_wallet_output_with_data(
             script.clone(),
             OutputFeatures::default(),
             &p,
-            MicroMinotari(400),
+            MicroMinotaiji(400),
             &key_manager,
         )
         .await
@@ -896,13 +896,13 @@ mod test {
                 change.spend_key_id.clone(),
                 Covenant::default(),
             )
-            .with_fee_per_gram(MicroMinotari(1))
+            .with_fee_per_gram(MicroMinotaiji(1))
             .with_recipient_data(
                 script.clone(),
                 Default::default(),
                 Default::default(),
                 0.into(),
-                MicroMinotari::zero(),
+                MicroMinotaiji::zero(),
             )
             .await
             .unwrap();
@@ -918,9 +918,9 @@ mod test {
         // Create some inputs
         let key_manager = create_test_core_key_manager_with_memory_db();
         let p = TestParams::new(&key_manager).await;
-        let input1 = create_test_input(MicroMinotari(2000), 0, &key_manager).await;
-        let input2 = create_test_input(MicroMinotari(3000), 0, &key_manager).await;
-        let fee_per_gram = MicroMinotari(6);
+        let input1 = create_test_input(MicroMinotaiji(2000), 0, &key_manager).await;
+        let input2 = create_test_input(MicroMinotaiji(3000), 0, &key_manager).await;
+        let fee_per_gram = MicroMinotaiji(6);
 
         let script = script!(Nop);
         let constants = create_consensus_constants(0);
@@ -936,7 +936,7 @@ mod test {
             script.clone(),
             OutputFeatures::default(),
             &p,
-            MicroMinotari(1500) - expected_fee,
+            MicroMinotaiji(1500) - expected_fee,
             &key_manager,
         )
         .await
@@ -968,7 +968,7 @@ mod test {
                 Default::default(),
                 Default::default(),
                 0.into(),
-                MicroMinotari(2500),
+                MicroMinotaiji(2500),
             )
             .await
             .unwrap();

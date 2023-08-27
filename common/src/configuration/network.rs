@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -31,7 +31,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::ConfigurationError;
 
-/// Represents the available Tari p2p networks. Only nodes with matching byte values will be able to connect, so these
+/// Represents the available Taiji p2p networks. Only nodes with matching byte values will be able to connect, so these
 /// should never be changed once released.
 #[repr(u8)]
 #[derive(Clone, Debug, PartialEq, Eq, Copy, Serialize, Deserialize)]
@@ -66,17 +66,17 @@ impl Network {
 
 /// The default network for all applications
 impl Default for Network {
-    #[cfg(tari_network_mainnet)]
+    #[cfg(taiji_network_mainnet)]
     fn default() -> Self {
         Network::StageNet
     }
 
-    #[cfg(tari_network_nextnet)]
+    #[cfg(taiji_network_nextnet)]
     fn default() -> Self {
         Network::NextNet
     }
 
-    #[cfg(all(not(tari_network_mainnet), not(tari_network_nextnet)))]
+    #[cfg(all(not(taiji_network_mainnet), not(taiji_network_nextnet)))]
     fn default() -> Self {
         Network::Esmeralda
     }

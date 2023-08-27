@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -252,7 +252,7 @@ mod test {
         blockdata::block::BlockHeader,
         consensus::encode::{serialize, VarInt},
     };
-    use tari_test_utils::unpack_enum;
+    use taiji_test_utils::unpack_enum;
     use tari_utilities::hex::{from_hex, Hex};
 
     use super::*;

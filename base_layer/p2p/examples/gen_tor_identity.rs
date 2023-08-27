@@ -1,4 +1,4 @@
-//  Copyright 2019 The Tari Project
+//  Copyright 2019 The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -26,7 +26,7 @@ use std::{env::current_dir, fs, path::Path};
 /// id and an address used to establish peer connections. The files generated from this example are used to
 /// populate the peer manager in other examples.
 use clap::{App, Arg};
-use tari_comms::{multiaddr::Multiaddr, tor};
+use taiji_comms::{multiaddr::Multiaddr, tor};
 use tari_utilities::message_format::MessageFormat;
 
 fn to_abs_path(path: &str) -> String {

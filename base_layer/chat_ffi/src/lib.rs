@@ -1,4 +1,4 @@
-// Copyright 2023, The Tari Project
+// Copyright 2023, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -38,16 +38,16 @@ use log4rs::{
     config::{Appender, Config, Logger, Root},
     encode::pattern::PatternEncoder,
 };
-use minotari_app_utilities::identity_management::load_from_json;
-use tari_chat_client::{
+use minotaiji_app_utilities::identity_management::load_from_json;
+use taiji_chat_client::{
     config::{ApplicationConfig, ChatClientConfig},
     ChatClient,
     Client,
 };
-use tari_common::configuration::{MultiaddrList, Network};
-use tari_common_types::tari_address::TariAddress;
-use tari_comms::{multiaddr::Multiaddr, NodeIdentity};
-use tari_contacts::contacts_service::{
+use taiji_common::configuration::{MultiaddrList, Network};
+use taiji_common_types::taiji_address::TaijiAddress;
+use taiji_comms::{multiaddr::Multiaddr, NodeIdentity};
+use taiji_contacts::contacts_service::{
     handle::{DEFAULT_MESSAGE_LIMIT, DEFAULT_MESSAGE_PAGE},
     types::Message,
 };
@@ -115,7 +115,7 @@ pub unsafe extern "C" fn create_chat_client(
     }
     info!(
         target: LOG_TARGET,
-        "Starting Tari Chat FFI version: {}",
+        "Starting Taiji Chat FFI version: {}",
         consts::APP_VERSION
     );
 
@@ -461,7 +461,7 @@ unsafe fn init_logging(log_path: PathBuf, error_out: *mut c_int) {
 ///
 /// ## Arguments
 /// `client` - The Client pointer
-/// `receiver` - A string containing a tari address
+/// `receiver` - A string containing a taiji address
 /// `message` - The peer seeds config for the node
 /// `error_out` - Pointer to an int which will be modified
 ///
@@ -473,7 +473,7 @@ unsafe fn init_logging(log_path: PathBuf, error_out: *mut c_int) {
 #[no_mangle]
 pub unsafe extern "C" fn send_message(
     client: *mut ClientFFI,
-    receiver: *mut TariAddress,
+    receiver: *mut TaijiAddress,
     message_c_char: *const c_char,
     error_out: *mut c_int,
 ) {
@@ -508,7 +508,7 @@ pub unsafe extern "C" fn send_message(
 ///
 /// ## Arguments
 /// `client` - The Client pointer
-/// `address` - A TariAddress ptr
+/// `address` - A TaijiAddress ptr
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
@@ -517,7 +517,7 @@ pub unsafe extern "C" fn send_message(
 /// # Safety
 /// The ```address``` should be destroyed after use
 #[no_mangle]
-pub unsafe extern "C" fn add_contact(client: *mut ClientFFI, receiver: *mut TariAddress, error_out: *mut c_int) {
+pub unsafe extern "C" fn add_contact(client: *mut ClientFFI, receiver: *mut TaijiAddress, error_out: *mut c_int) {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -538,7 +538,7 @@ pub unsafe extern "C" fn add_contact(client: *mut ClientFFI, receiver: *mut Tari
 ///
 /// ## Arguments
 /// `client` - The Client pointer
-/// `address` - A TariAddress ptr
+/// `address` - A TaijiAddress ptr
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
@@ -549,7 +549,7 @@ pub unsafe extern "C" fn add_contact(client: *mut ClientFFI, receiver: *mut Tari
 #[no_mangle]
 pub unsafe extern "C" fn check_online_status(
     client: *mut ClientFFI,
-    receiver: *mut TariAddress,
+    receiver: *mut TaijiAddress,
     error_out: *mut c_int,
 ) -> c_int {
     let mut error = 0;
@@ -575,7 +575,7 @@ pub unsafe extern "C" fn check_online_status(
 ///
 /// ## Arguments
 /// `client` - The Client pointer
-/// `address` - A TariAddress ptr
+/// `address` - A TaijiAddress ptr
 /// `limit` - The amount of messages you want to fetch. Default to 35, max 2500
 /// `page` - The page of results you'd like returned. Default to 0, maximum of u64 max
 /// `error_out` - Pointer to an int which will be modified
@@ -589,7 +589,7 @@ pub unsafe extern "C" fn check_online_status(
 #[no_mangle]
 pub unsafe extern "C" fn get_messages(
     client: *mut ClientFFI,
-    address: *mut TariAddress,
+    address: *mut TaijiAddress,
     limit: *mut c_int,
     page: *mut c_int,
     error_out: *mut c_int,
@@ -637,27 +637,27 @@ pub unsafe extern "C" fn destroy_messages(messages_ptr: *mut ChatMessages) {
     }
 }
 
-/// Creates a TariAddress and returns a ptr
+/// Creates a TaijiAddress and returns a ptr
 ///
 /// ## Arguments
-/// `receiver_c_char` - A string containing a tari address hex value
+/// `receiver_c_char` - A string containing a taiji address hex value
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
-/// `*mut TariAddress` - A ptr to a TariAddress
+/// `*mut TaijiAddress` - A ptr to a TaijiAddress
 ///
 /// # Safety
-/// The ```destroy_tari_address``` function should be called when finished with the TariAddress
+/// The ```destroy_taiji_address``` function should be called when finished with the TaijiAddress
 #[no_mangle]
-pub unsafe extern "C" fn create_tari_address(
+pub unsafe extern "C" fn create_taiji_address(
     receiver_c_char: *const c_char,
     error_out: *mut c_int,
-) -> *mut TariAddress {
+) -> *mut TaijiAddress {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
     let receiver = match CStr::from_ptr(receiver_c_char).to_str() {
-        Ok(str) => match TariAddress::from_str(str) {
+        Ok(str) => match TaijiAddress::from_str(str) {
             Ok(address) => address,
             Err(e) => {
                 error = LibChatError::from(InterfaceError::InvalidArgument(e.to_string())).code;
@@ -675,10 +675,10 @@ pub unsafe extern "C" fn create_tari_address(
     Box::into_raw(Box::new(receiver))
 }
 
-/// Frees memory for a TariAddress
+/// Frees memory for a TaijiAddress
 ///
 /// ## Arguments
-/// `address` - The pointer of a TariAddress
+/// `address` - The pointer of a TaijiAddress
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -686,7 +686,7 @@ pub unsafe extern "C" fn create_tari_address(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn destroy_tari_address(address: *mut TariAddress) {
+pub unsafe extern "C" fn destroy_taiji_address(address: *mut TaijiAddress) {
     if !address.is_null() {
         drop(Box::from_raw(address))
     }

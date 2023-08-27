@@ -1,8 +1,8 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 use croaring::Bitmap;
-use tari_common_types::{
+use taiji_common_types::{
     chain_metadata::ChainMetadata,
     types::{Commitment, HashOutput, PublicKey, Signature},
 };

@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2020, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -26,8 +26,8 @@ pub use service::MempoolRpcService;
 #[cfg(test)]
 mod test;
 
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
-use tari_comms_rpc_macros::tari_rpc;
+use taiji_comms::protocol::rpc::{Request, Response, RpcStatus};
+use taiji_comms_rpc_macros::taiji_rpc;
 
 use crate::{
     mempool::service::MempoolHandle,
@@ -37,7 +37,7 @@ use crate::{
     },
 };
 
-#[tari_rpc(protocol_name = b"t/mempool/1", server_struct = MempoolRpcServer, client_struct = MempoolRpcClient)]
+#[taiji_rpc(protocol_name = b"t/mempool/1", server_struct = MempoolRpcServer, client_struct = MempoolRpcClient)]
 pub trait MempoolService: Send + Sync + 'static {
     #[rpc(method = 1)]
     async fn get_stats(&self, request: Request<()>) -> Result<Response<StatsResponse>, RpcStatus>;

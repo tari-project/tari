@@ -1,4 +1,4 @@
-// Copyright 2021. The Tari Project
+// Copyright 2021. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use log::*;
-use minotari_wallet::{error::WalletError, utxo_scanner_service::handle::UtxoScannerEvent};
+use minotaiji_wallet::{error::WalletError, utxo_scanner_service::handle::UtxoScannerEvent};
 use tari_utilities::hex::Hex;
 use tokio::{sync::broadcast, task::JoinHandle};
 

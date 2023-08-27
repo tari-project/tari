@@ -1,4 +1,4 @@
-//  Copyright 2019 The Tari Project
+//  Copyright 2019 The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -25,7 +25,7 @@ use std::{collections::HashMap, time::Duration};
 use chrono::Utc;
 use log::*;
 use rand::{rngs::OsRng, seq::SliceRandom};
-use tari_storage::{IterationResult, KeyValueStore};
+use taiji_storage::{IterationResult, KeyValueStore};
 use tari_utilities::ByteArray;
 
 use crate::{
@@ -524,7 +524,7 @@ mod test {
     use multiaddr::Multiaddr;
     use rand::Rng;
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
-    use tari_storage::HashmapDatabase;
+    use taiji_storage::HashmapDatabase;
 
     use super::*;
     use crate::{

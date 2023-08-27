@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2020, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -24,7 +24,7 @@ use std::convert::TryInto;
 
 use futures::StreamExt;
 use log::*;
-use tari_comms::{connectivity::ConnectivityEvent, peer_manager::NodeId, PeerConnection};
+use taiji_comms::{connectivity::ConnectivityEvent, peer_manager::NodeId, PeerConnection};
 use tokio::sync::broadcast;
 
 use crate::{

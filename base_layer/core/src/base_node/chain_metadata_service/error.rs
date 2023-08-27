@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -21,8 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use prost::DecodeError;
-use tari_comms::{connectivity::ConnectivityError, message::MessageError, peer_manager::NodeId};
-use tari_p2p::services::liveness::error::LivenessError;
+use taiji_comms::{connectivity::ConnectivityError, message::MessageError, peer_manager::NodeId};
+use taiji_p2p::services::liveness::error::LivenessError;
 use thiserror::Error;
 
 use crate::base_node::comms_interface::CommsInterfaceError;

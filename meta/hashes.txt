@@ -1,7 +1,7 @@
 ## Base Node
-6e77da12535e0ed7851761ae6c6729f2dd3ae8050840e8c08e10e279dadfde8a  osx/tari_base_node-0.8.10-65fc65a-release.pkg
-fa2623588f0891caa39344d4b1b6ca1ba6256fede52b0f7cb96b285a125dff6d  linux/tari_base_node-ubuntu-18.04-x64-0.8.10-65fc65a-release.zip
-952b04d1f79d5712133d78fbc0f2dbfb80dac199c782ac7884ec36c10f4bd623  windows/tari_base_node-Windows-0.8.11-3b00f2d-release.exe
+6e77da12535e0ed7851761ae6c6729f2dd3ae8050840e8c08e10e279dadfde8a  osx/taiji_base_node-0.8.10-65fc65a-release.pkg
+fa2623588f0891caa39344d4b1b6ca1ba6256fede52b0f7cb96b285a125dff6d  linux/taiji_base_node-ubuntu-18.04-x64-0.8.10-65fc65a-release.zip
+952b04d1f79d5712133d78fbc0f2dbfb80dac199c782ac7884ec36c10f4bd623  windows/taiji_base_node-Windows-0.8.11-3b00f2d-release.exe
 
 ## Console wallet (these need updating)
 6e77da12535e0ed7851761ae6c6729f2dd3ae8050840e8c08e10e279dadfde8a  osx/console_wallet-0.8.10-65fc65a-release.pkg

@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Script to build libraries for Tari Wallet
+# Script to build libraries for Taiji Wallet
 #
 
 #Terminal colors
@@ -76,7 +76,7 @@ if [ -n "${DEPENDENCIES}" ] && [ -n "${PKG_PATH}" ] && [ "${BUILD_IOS}" -eq 1 ] 
   if [ "${CARGO_CLEAN}" -eq "1" ]; then
       cargo clean >> "${IOS_LOG_PATH}/cargo.txt" 2>&1
   fi
-  cp wallet.h "${DEPENDENCIES}/MobileWallet/TariLib/"
+  cp wallet.h "${DEPENDENCIES}/MobileWallet/TaijiLib/"
   export PKG_CONFIG_PATH=${PKG_PATH}
   # shellcheck disable=SC2028
   echo "\t${CYAN}Building Wallet FFI${NC}"
@@ -88,12 +88,12 @@ if [ -n "${DEPENDENCIES}" ] && [ -n "${PKG_PATH}" ] && [ "${BUILD_IOS}" -eq 1 ] 
   cd universal || exit
   cd release || exit
   # Create the fat library from the thin ones.
-  cp "../../x86_64-apple-ios/release/libminotari_wallet_ffi.a" "${PWD}/libminotari_wallet_ffi_x86_64.a" || exit
-  cp "../../aarch64-apple-ios/release/libminotari_wallet_ffi.a" "${PWD}/libminotari_wallet_ffi_aarch64.a" || exit
-  lipo -create libtari_wallet_ffi_x86_64.a libtari_wallet_ffi_aarch64.a -output libtari_wallet_ffi.a
+  cp "../../x86_64-apple-ios/release/libminotaiji_wallet_ffi.a" "${PWD}/libminotaiji_wallet_ffi_x86_64.a" || exit
+  cp "../../aarch64-apple-ios/release/libminotaiji_wallet_ffi.a" "${PWD}/libminotaiji_wallet_ffi_aarch64.a" || exit
+  lipo -create libtaiji_wallet_ffi_x86_64.a libtaiji_wallet_ffi_aarch64.a -output libtaiji_wallet_ffi.a
   # Copy the fat library (which contains symbols for all built iOS architectures) created by the lipo tool
   # XCode will select the relevant set of symbols to be included in the mobile application depending on which arch is built
-  cp libminotari_wallet_ffi.a "${DEPENDENCIES}/MobileWallet/TariLib/" || exit
+  cp libminotaiji_wallet_ffi.a "${DEPENDENCIES}/MobileWallet/TaijiLib/" || exit
   cd ../../.. || exit
   if [ "${TARGET_CLEAN}" -eq 1 ]; then
     rm -rf target
@@ -433,7 +433,7 @@ EOF
       cd target || exit
       cd ${PLATFORMABI} || exit
       cd release || exit
-      cp libminotari_wallet_ffi.a "${OUTPUT_DIR}"
+      cp libminotaiji_wallet_ffi.a "${OUTPUT_DIR}"
       cd ../..
       if [ "${TARGET_CLEAN}" -eq 1 ]; then
         rm -rf target
@@ -448,7 +448,7 @@ EOF
         cp "${OUTPUT_DIR}/usr/local/lib/libcrypto.a" "${PWD}"
         cp "${OUTPUT_DIR}/usr/local/lib/libssl.a" "${PWD}"
       fi
-      cp "${OUTPUT_DIR}/libminotari_wallet_ffi.a" "${PWD}"
+      cp "${OUTPUT_DIR}/libminotaiji_wallet_ffi.a" "${PWD}"
       # shellcheck disable=SC2028
       echo "\t${GREEN}Wallet library built for android architecture ${PLATFORM_OUTDIR} with minimum platform level support of ${LEVEL}${NC}"
     done

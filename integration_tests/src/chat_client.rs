@@ -1,4 +1,4 @@
-//   Copyright 2023. The Tari Project
+//   Copyright 2023. The Taiji Project
 //
 //   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //   following conditions are met:
@@ -22,14 +22,14 @@
 
 use std::{path::PathBuf, str::FromStr};
 
-use minotari_app_utilities::identity_management::setup_node_identity;
-use tari_chat_client::{
+use minotaiji_app_utilities::identity_management::setup_node_identity;
+use taiji_chat_client::{
     config::{ApplicationConfig, ChatClientConfig},
     database,
     Client,
 };
-use tari_common::configuration::MultiaddrList;
-use tari_comms::{
+use taiji_common::configuration::MultiaddrList;
+use taiji_comms::{
     multiaddr::Multiaddr,
     peer_manager::{Peer, PeerFeatures},
 };

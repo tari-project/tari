@@ -1,4 +1,4 @@
-# Tari integration cucumber tests
+# Taiji integration cucumber tests
 
 ## Procedure to run
 

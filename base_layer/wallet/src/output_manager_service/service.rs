@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -26,12 +26,12 @@ use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use futures::{pin_mut, StreamExt};
 use log::*;
 use rand::{rngs::OsRng, RngCore};
-use tari_common_types::{
+use taiji_common_types::{
     transaction::TxId,
     types::{BlockHash, Commitment, HashOutput, PrivateKey, PublicKey},
 };
-use tari_comms::types::CommsDHKE;
-use tari_core::{
+use taiji_comms::types::CommsDHKE;
+use taiji_core::{
     borsh::SerializedSize,
     consensus::ConsensusConstants,
     covenants::Covenant,
@@ -39,8 +39,8 @@ use tari_core::{
     proto::base_node::FetchMatchingUtxos,
     transactions::{
         fee::Fee,
-        key_manager::{TariKeyId, TransactionKeyManagerBranch, TransactionKeyManagerInterface},
-        tari_amount::MicroMinotari,
+        key_manager::{TaijiKeyId, TransactionKeyManagerBranch, TransactionKeyManagerInterface},
+        taiji_amount::MicroMinotaiji,
         transaction_components::{
             EncryptedData,
             KernelFeatures,
@@ -59,9 +59,9 @@ use tari_core::{
         SenderTransactionProtocol,
     },
 };
-use tari_script::{inputs, script, Opcode, TariScript};
-use tari_service_framework::reply_channel;
-use tari_shutdown::ShutdownSignal;
+use taiji_script::{inputs, script, Opcode, TaijiScript};
+use taiji_service_framework::reply_channel;
+use taiji_shutdown::ShutdownSignal;
 use tari_utilities::{hex::Hex, ByteArray};
 use tokio::sync::Mutex;
 
@@ -454,7 +454,7 @@ where
         &mut self,
         output_hash: HashOutput,
         pre_image: PublicKey,
-        fee_per_gram: MicroMinotari,
+        fee_per_gram: MicroMinotaiji,
     ) -> Result<OutputManagerResponse, OutputManagerError> {
         let output = self
             .fetch_outputs_from_node(vec![output_hash])
@@ -658,7 +658,7 @@ where
 
     async fn create_output_with_features(
         &mut self,
-        value: MicroMinotari,
+        value: MicroMinotaiji,
         features: OutputFeatures,
     ) -> Result<WalletOutputBuilder, OutputManagerError> {
         let (spending_key_id, _, script_key_id, script_public_key) =
@@ -784,16 +784,16 @@ where
         Ok(rtp)
     }
 
-    /// Get a fee estimate for an amount of MicroMinotari, at a specified fee per gram and given number of kernels and
+    /// Get a fee estimate for an amount of MicroMinotaiji, at a specified fee per gram and given number of kernels and
     /// outputs.
     async fn fee_estimate(
         &mut self,
-        amount: MicroMinotari,
+        amount: MicroMinotaiji,
         selection_criteria: UtxoSelectionCriteria,
-        fee_per_gram: MicroMinotari,
+        fee_per_gram: MicroMinotaiji,
         num_kernels: usize,
         num_outputs: usize,
-    ) -> Result<MicroMinotari, OutputManagerError> {
+    ) -> Result<MicroMinotaiji, OutputManagerError> {
         debug!(
             target: LOG_TARGET,
             "Getting fee estimate. Amount: {}. Fee per gram: {}. Num kernels: {}. Num outputs: {}",
@@ -802,7 +802,7 @@ where
             num_kernels,
             num_outputs
         );
-        // We assume that default OutputFeatures and Nop TariScript is used
+        // We assume that default OutputFeatures and Nop TaijiScript is used
         let features_and_scripts_byte_size = self
             .resources
             .consensus_constants
@@ -869,15 +869,15 @@ where
     pub async fn prepare_transaction_to_send(
         &mut self,
         tx_id: TxId,
-        amount: MicroMinotari,
+        amount: MicroMinotaiji,
         selection_criteria: UtxoSelectionCriteria,
-        fee_per_gram: MicroMinotari,
+        fee_per_gram: MicroMinotaiji,
         tx_meta: TransactionMetadata,
         message: String,
         recipient_output_features: OutputFeatures,
-        recipient_script: TariScript,
+        recipient_script: TaijiScript,
         recipient_covenant: Covenant,
-        recipient_minimum_value_promise: MicroMinotari,
+        recipient_minimum_value_promise: MicroMinotaiji,
     ) -> Result<SenderTransactionProtocol, OutputManagerError> {
         debug!(
             target: LOG_TARGET,
@@ -996,8 +996,8 @@ where
     async fn get_coinbase_transaction(
         &mut self,
         tx_id: TxId,
-        reward: MicroMinotari,
-        fees: MicroMinotari,
+        reward: MicroMinotaiji,
+        fees: MicroMinotaiji,
         block_height: u64,
         extra: Vec<u8>,
     ) -> Result<Transaction, OutputManagerError> {
@@ -1058,7 +1058,7 @@ where
         &mut self,
         outputs: Vec<WalletOutputBuilder>,
         selection_criteria: UtxoSelectionCriteria,
-        fee_per_gram: MicroMinotari,
+        fee_per_gram: MicroMinotaiji,
     ) -> Result<(TxId, Transaction), OutputManagerError> {
         let total_value = outputs.iter().map(|o| o.value()).sum();
         let nop_script = script![Nop];
@@ -1180,12 +1180,12 @@ where
     async fn create_pay_to_self_transaction(
         &mut self,
         tx_id: TxId,
-        amount: MicroMinotari,
+        amount: MicroMinotaiji,
         selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
-        fee_per_gram: MicroMinotari,
+        fee_per_gram: MicroMinotaiji,
         lock_height: Option<u64>,
-    ) -> Result<(MicroMinotari, Transaction), OutputManagerError> {
+    ) -> Result<(MicroMinotaiji, Transaction), OutputManagerError> {
         let script = script!(Nop);
         let covenant = Covenant::default();
 
@@ -1320,9 +1320,9 @@ where
     #[allow(clippy::too_many_lines)]
     async fn select_utxos(
         &mut self,
-        amount: MicroMinotari,
+        amount: MicroMinotaiji,
         mut selection_criteria: UtxoSelectionCriteria,
-        fee_per_gram: MicroMinotari,
+        fee_per_gram: MicroMinotaiji,
         num_outputs: usize,
         total_output_features_and_scripts_byte_size: usize,
     ) -> Result<UtxoSelection, OutputManagerError> {
@@ -1382,9 +1382,9 @@ where
         trace!(target: LOG_TARGET, "We found {} UTXOs to select from", uo.len());
 
         let mut requires_change_output = false;
-        let mut utxos_total_value = MicroMinotari::from(0);
-        let mut fee_without_change = MicroMinotari::from(0);
-        let mut fee_with_change = MicroMinotari::from(0);
+        let mut utxos_total_value = MicroMinotaiji::from(0);
+        let mut fee_without_change = MicroMinotaiji::from(0);
+        let mut fee_with_change = MicroMinotaiji::from(0);
         for o in uo {
             utxos_total_value += o.wallet_output.value;
 
@@ -1478,17 +1478,17 @@ where
     pub async fn preview_coin_join_with_commitments(
         &self,
         commitments: Vec<Commitment>,
-        fee_per_gram: MicroMinotari,
-    ) -> Result<(Vec<MicroMinotari>, MicroMinotari), OutputManagerError> {
+        fee_per_gram: MicroMinotaiji,
+    ) -> Result<(Vec<MicroMinotaiji>, MicroMinotaiji), OutputManagerError> {
         let src_outputs = self.resources.db.fetch_unspent_outputs_for_spending(
             &UtxoSelectionCriteria::specific(commitments),
-            MicroMinotari::zero(),
+            MicroMinotaiji::zero(),
             None,
         )?;
 
         let accumulated_amount = src_outputs
             .iter()
-            .fold(MicroMinotari::zero(), |acc, x| acc + x.wallet_output.value);
+            .fold(MicroMinotaiji::zero(), |acc, x| acc + x.wallet_output.value);
 
         let fee = self.get_fee_calc().calculate(
             fee_per_gram,
@@ -1506,8 +1506,8 @@ where
         &mut self,
         commitments: Vec<Commitment>,
         number_of_splits: usize,
-        fee_per_gram: MicroMinotari,
-    ) -> Result<(Vec<MicroMinotari>, MicroMinotari), OutputManagerError> {
+        fee_per_gram: MicroMinotaiji,
+    ) -> Result<(Vec<MicroMinotaiji>, MicroMinotaiji), OutputManagerError> {
         if commitments.is_empty() {
             return Err(OutputManagerError::NoCommitmentsProvided);
         }
@@ -1520,7 +1520,7 @@ where
 
         let src_outputs = self.resources.db.fetch_unspent_outputs_for_spending(
             &UtxoSelectionCriteria::specific(commitments),
-            MicroMinotari::zero(),
+            MicroMinotaiji::zero(),
             None,
         )?;
 
@@ -1536,11 +1536,11 @@ where
 
         let accumulated_amount = src_outputs
             .iter()
-            .fold(MicroMinotari::zero(), |acc, x| acc + x.wallet_output.value);
+            .fold(MicroMinotaiji::zero(), |acc, x| acc + x.wallet_output.value);
 
         let aftertax_amount = accumulated_amount.saturating_sub(fee);
-        let amount_per_split = MicroMinotari(aftertax_amount.as_u64() / number_of_splits as u64);
-        let unspent_remainder = MicroMinotari(aftertax_amount.as_u64() % amount_per_split.as_u64());
+        let amount_per_split = MicroMinotaiji(aftertax_amount.as_u64() / number_of_splits as u64);
+        let unspent_remainder = MicroMinotaiji(aftertax_amount.as_u64() % amount_per_split.as_u64());
         let mut expected_outputs = vec![];
 
         for i in 1..=number_of_splits {
@@ -1557,17 +1557,17 @@ where
     async fn create_coin_split_with_commitments(
         &mut self,
         commitments: Vec<Commitment>,
-        amount_per_split: Option<MicroMinotari>,
+        amount_per_split: Option<MicroMinotaiji>,
         number_of_splits: usize,
-        fee_per_gram: MicroMinotari,
-    ) -> Result<(TxId, Transaction, MicroMinotari), OutputManagerError> {
+        fee_per_gram: MicroMinotaiji,
+    ) -> Result<(TxId, Transaction, MicroMinotaiji), OutputManagerError> {
         if commitments.is_empty() {
             return Err(OutputManagerError::NoCommitmentsProvided);
         }
 
         let src_outputs = self.resources.db.fetch_unspent_outputs_for_spending(
             &UtxoSelectionCriteria::specific(commitments),
-            MicroMinotari::zero(),
+            MicroMinotaiji::zero(),
             None,
         )?;
 
@@ -1585,10 +1585,10 @@ where
 
     async fn create_coin_split_auto(
         &mut self,
-        amount_per_split: Option<MicroMinotari>,
+        amount_per_split: Option<MicroMinotaiji>,
         number_of_splits: usize,
-        fee_per_gram: MicroMinotari,
-    ) -> Result<(TxId, Transaction, MicroMinotari), OutputManagerError> {
+        fee_per_gram: MicroMinotaiji,
+    ) -> Result<(TxId, Transaction, MicroMinotaiji), OutputManagerError> {
         match amount_per_split {
             None => Err(OutputManagerError::InvalidArgument(
                 "coin split without `amount_per_split` is not supported yet".to_string(),
@@ -1596,7 +1596,7 @@ where
             Some(amount_per_split) => {
                 let selection = self
                     .select_utxos(
-                        amount_per_split * MicroMinotari(number_of_splits as u64),
+                        amount_per_split * MicroMinotaiji(number_of_splits as u64),
                         UtxoSelectionCriteria::largest_first(),
                         fee_per_gram,
                         number_of_splits,
@@ -1617,8 +1617,8 @@ where
         &mut self,
         src_outputs: Vec<DbWalletOutput>,
         number_of_splits: usize,
-        fee_per_gram: MicroMinotari,
-    ) -> Result<(TxId, Transaction, MicroMinotari), OutputManagerError> {
+        fee_per_gram: MicroMinotaiji,
+    ) -> Result<(TxId, Transaction, MicroMinotaiji), OutputManagerError> {
         if number_of_splits == 0 {
             return Err(OutputManagerError::InvalidArgument(
                 "number_of_splits must be greater than 0".to_string(),
@@ -1631,7 +1631,7 @@ where
         // accumulated value amount from given source outputs
         let accumulated_amount_with_fee = src_outputs
             .iter()
-            .fold(MicroMinotari::zero(), |acc, x| acc + x.wallet_output.value);
+            .fold(MicroMinotaiji::zero(), |acc, x| acc + x.wallet_output.value);
 
         let fee = self.get_fee_calc().calculate(
             fee_per_gram,
@@ -1643,8 +1643,8 @@ where
         );
 
         let accumulated_amount = accumulated_amount_with_fee.saturating_sub(fee);
-        let amount_per_split = MicroMinotari(accumulated_amount.as_u64() / number_of_splits as u64);
-        let unspent_remainder = MicroMinotari(accumulated_amount.as_u64() % amount_per_split.as_u64());
+        let amount_per_split = MicroMinotaiji(accumulated_amount.as_u64() / number_of_splits as u64);
+        let unspent_remainder = MicroMinotaiji(accumulated_amount.as_u64() % amount_per_split.as_u64());
 
         // preliminary balance check
         if self.get_balance(None)?.available_balance < (accumulated_amount + fee) {
@@ -1734,17 +1734,17 @@ where
     async fn create_coin_split(
         &mut self,
         src_outputs: Vec<DbWalletOutput>,
-        amount_per_split: MicroMinotari,
+        amount_per_split: MicroMinotaiji,
         number_of_splits: usize,
-        fee_per_gram: MicroMinotari,
-    ) -> Result<(TxId, Transaction, MicroMinotari), OutputManagerError> {
+        fee_per_gram: MicroMinotaiji,
+    ) -> Result<(TxId, Transaction, MicroMinotaiji), OutputManagerError> {
         if number_of_splits == 0 {
             return Err(OutputManagerError::InvalidArgument(
                 "number_of_splits must be greater than 0".to_string(),
             ));
         }
 
-        if amount_per_split == MicroMinotari::zero() {
+        if amount_per_split == MicroMinotaiji::zero() {
             return Err(OutputManagerError::InvalidArgument(
                 "amount_per_split must be greater than 0".to_string(),
             ));
@@ -1754,12 +1754,12 @@ where
             .default_features_and_scripts_size()
             .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?;
         let mut dest_outputs = Vec::with_capacity(number_of_splits + 1);
-        let total_split_amount = MicroMinotari::from(amount_per_split.as_u64() * number_of_splits as u64);
+        let total_split_amount = MicroMinotaiji::from(amount_per_split.as_u64() * number_of_splits as u64);
 
         // accumulated value amount from given source outputs
         let accumulated_amount = src_outputs
             .iter()
-            .fold(MicroMinotari::zero(), |acc, x| acc + x.wallet_output.value);
+            .fold(MicroMinotaiji::zero(), |acc, x| acc + x.wallet_output.value);
 
         if total_split_amount >= accumulated_amount {
             return Err(OutputManagerError::NotEnoughFunds);
@@ -1857,7 +1857,7 @@ where
             dest_outputs.push(output);
         }
 
-        let has_leftover_change = change > MicroMinotari::zero();
+        let has_leftover_change = change > MicroMinotaiji::zero();
 
         // extending transaction if there is some `change` left over
         if has_leftover_change {
@@ -1937,10 +1937,10 @@ where
     async fn output_to_self(
         &mut self,
         output_features: OutputFeatures,
-        amount: MicroMinotari,
+        amount: MicroMinotaiji,
         covenant: Covenant,
-        script: TariScript,
-    ) -> Result<(DbWalletOutput, TariKeyId), OutputManagerError> {
+        script: TaijiScript,
+    ) -> Result<(DbWalletOutput, TaijiKeyId), OutputManagerError> {
         let (spending_key_id, _, script_key_id, script_public_key) =
             self.resources.key_manager.get_next_spend_and_script_key_ids().await?;
 
@@ -1949,7 +1949,7 @@ where
             .key_manager
             .encrypt_data_for_recovery(&spending_key_id, None, amount.as_u64())
             .await?;
-        let minimum_value_promise = MicroMinotari::zero();
+        let minimum_value_promise = MicroMinotaiji::zero();
         let metadata_message = TransactionOutput::metadata_signature_message_from_parts(
             &TransactionOutputVersion::get_current_version(),
             &script,
@@ -2008,21 +2008,21 @@ where
     pub async fn create_coin_join(
         &mut self,
         commitments: Vec<Commitment>,
-        fee_per_gram: MicroMinotari,
-    ) -> Result<(TxId, Transaction, MicroMinotari), OutputManagerError> {
+        fee_per_gram: MicroMinotaiji,
+    ) -> Result<(TxId, Transaction, MicroMinotaiji), OutputManagerError> {
         let default_features_and_scripts_size = self
             .default_features_and_scripts_size()
             .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?;
 
         let src_outputs = self.resources.db.fetch_unspent_outputs_for_spending(
             &UtxoSelectionCriteria::specific(commitments),
-            MicroMinotari::zero(),
+            MicroMinotaiji::zero(),
             None,
         )?;
 
         let accumulated_amount_with_fee = src_outputs
             .iter()
-            .fold(MicroMinotari::zero(), |acc, x| acc + x.wallet_output.value);
+            .fold(MicroMinotaiji::zero(), |acc, x| acc + x.wallet_output.value);
 
         let fee =
             self.get_fee_calc()
@@ -2031,7 +2031,7 @@ where
         let accumulated_amount = accumulated_amount_with_fee.saturating_sub(fee);
 
         // checking, again, whether a total output value is enough
-        if accumulated_amount == MicroMinotari::zero() {
+        if accumulated_amount == MicroMinotaiji::zero() {
             error!(target: LOG_TARGET, "failed to join coins, not enough funds");
             return Err(OutputManagerError::NotEnoughFunds);
         }
@@ -2144,8 +2144,8 @@ where
         &mut self,
         output: TransactionOutput,
         pre_image: PublicKey,
-        fee_per_gram: MicroMinotari,
-    ) -> Result<(TxId, MicroMinotari, MicroMinotari, Transaction), OutputManagerError> {
+        fee_per_gram: MicroMinotaiji,
+    ) -> Result<(TxId, MicroMinotaiji, MicroMinotaiji, Transaction), OutputManagerError> {
         let shared_secret = self
             .resources
             .key_manager
@@ -2255,8 +2255,8 @@ where
     pub async fn create_htlc_refund_transaction(
         &mut self,
         output_hash: HashOutput,
-        fee_per_gram: MicroMinotari,
-    ) -> Result<(TxId, MicroMinotari, MicroMinotari, Transaction), OutputManagerError> {
+        fee_per_gram: MicroMinotaiji,
+    ) -> Result<(TxId, MicroMinotaiji, MicroMinotaiji, Transaction), OutputManagerError> {
         let output = self.resources.db.get_unspent_output(output_hash)?.wallet_output;
 
         let amount = output.value;
@@ -2396,7 +2396,7 @@ where
                 // ----------------------------------------------------------------------------
                 // one-sided stealth address
                 // NOTE: Extracting the nonce R and a spending (public aka scan_key) key from the script
-                // NOTE: [RFC 203 on Stealth Addresses](https://rfc.tari.com/RFC-0203_StealthAddresses.html)
+                // NOTE: [RFC 203 on Stealth Addresses](https://rfc.taiji.com/RFC-0203_StealthAddresses.html)
                 [Opcode::PushPubKey(nonce), Opcode::Drop, Opcode::PushPubKey(scanned_pk)] => {
                     // matching spending (public) keys
                     let stealth_address_hasher = self
@@ -2441,7 +2441,7 @@ where
     // Import scanned outputs into the wallet
     async fn import_onesided_outputs(
         &self,
-        scanned_outputs: Vec<(TransactionOutput, OutputSource, TariKeyId, CommsDHKE)>,
+        scanned_outputs: Vec<(TransactionOutput, OutputSource, TaijiKeyId, CommsDHKE)>,
     ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
         let mut rewound_outputs = Vec::with_capacity(scanned_outputs.len());
 
@@ -2462,7 +2462,7 @@ where
                         spending_key_id,
                         output.features,
                         output.script,
-                        tari_script::ExecutionStack::new(vec![]),
+                        taiji_script::ExecutionStack::new(vec![]),
                         script_private_key,
                         output.sender_offset_public_key,
                         output.metadata_signature,
@@ -2525,13 +2525,13 @@ where
 #[derive(Debug, Clone, PartialEq)]
 pub struct Balance {
     /// The current balance that is available to spend
-    pub available_balance: MicroMinotari,
+    pub available_balance: MicroMinotaiji,
     /// The amount of the available balance that is current time-locked, None if no chain tip is provided
-    pub time_locked_balance: Option<MicroMinotari>,
+    pub time_locked_balance: Option<MicroMinotaiji>,
     /// The current balance of funds that are due to be received but have not yet been confirmed
-    pub pending_incoming_balance: MicroMinotari,
+    pub pending_incoming_balance: MicroMinotaiji,
     /// The current balance of funds encumbered in pending outbound transactions that have not been confirmed
-    pub pending_outgoing_balance: MicroMinotari,
+    pub pending_outgoing_balance: MicroMinotaiji,
 }
 
 impl Balance {
@@ -2561,14 +2561,14 @@ impl fmt::Display for Balance {
 struct UtxoSelection {
     utxos: Vec<DbWalletOutput>,
     requires_change_output: bool,
-    total_value: MicroMinotari,
-    fee_without_change: MicroMinotari,
-    fee_with_change: MicroMinotari,
+    total_value: MicroMinotaiji,
+    fee_without_change: MicroMinotaiji,
+    fee_with_change: MicroMinotaiji,
 }
 
 #[allow(dead_code)]
 impl UtxoSelection {
-    pub fn as_final_fee(&self) -> MicroMinotari {
+    pub fn as_final_fee(&self) -> MicroMinotaiji {
         if self.requires_change_output {
             return self.fee_with_change;
         }
@@ -2580,7 +2580,7 @@ impl UtxoSelection {
     }
 
     /// Total value of the selected inputs
-    pub fn total_value(&self) -> MicroMinotari {
+    pub fn total_value(&self) -> MicroMinotaiji {
         self.total_value
     }
 

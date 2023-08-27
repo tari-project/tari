@@ -13,7 +13,7 @@ Using Vagrant and VirtualBox has a baseline for building needs, including tools,
 Linux ARM64 can be built using Vagrant and VirtualBox or Docker and cross
 
 # Prep Ubuntu for development
-# From - https://github.com/tari-project/tari/blob/development/scripts/install_ubuntu_dependencies.sh
+# From - https://github.com/taiji-project/taiji/blob/development/scripts/install_ubuntu_dependencies.sh
 ```bash
 sudo apt-get update
 sudo apt-get install \
@@ -71,8 +71,8 @@ rustup toolchain list
 ```bash
 mkdir -p ~/src
 cd ~/src
-git clone git@github.com:tari-project/tari.git
-cd tari
+git clone git@github.com:taiji-project/taiji.git
+cd taiji
 ```
 
 # Needed for RandomX
@@ -82,15 +82,15 @@ export BINDGEN_EXTRA_CLANG_ARGS='--sysroot /usr/aarch64-linux-gnu/include/'
 ```
 Sample of the errors seen, if the above envs are not set
 ```
-Compiling randomx-rs v1.1.13 (https://github.com/tari-project/randomx-rs?tag=v1.1.13#c33f8679)
+Compiling randomx-rs v1.1.13 (https://github.com/taiji-project/randomx-rs?tag=v1.1.13#c33f8679)
 error: linking with `cc` failed: exit status: 1
 |
-= note: "cc" "-Wl,--version-script=/tmp/rustcsAUjg7/list" "/tmp/rustcsAUjg7/symbols.o" "/home/vagrant/src/tari/target/aarch64-unknown-linux-gnu/debug/deps/randomx_rs-aa21b69d885376e9.randomx_rs.a9fc037b-cgu.0.rcgu.o"
+= note: "cc" "-Wl,--version-script=/tmp/rustcsAUjg7/list" "/tmp/rustcsAUjg7/symbols.o" "/home/vagrant/src/taiji/target/aarch64-unknown-linux-gnu/debug/deps/randomx_rs-aa21b69d885376e9.randomx_rs.a9fc037b-cgu.0.rcgu.o"
 ```
 ...
 ```
-/usr/bin/ld: /home/vagrant/src/tari/target/aarch64-unknown-linux-gnu/debug/deps/randomx_rs-aa21b69d885376e9.randomx_rs.a9fc037b-cgu.0.rcgu.o: Relocations in generic ELF (EM: 183)
-/home/vagrant/src/tari/target/aarch64-unknown-linux-gnu/debug/deps/randomx_rs-aa21b69d885376e9.randomx_rs.a9fc037b-cgu.0.rcgu.o: error adding symbols: File in wrong format
+/usr/bin/ld: /home/vagrant/src/taiji/target/aarch64-unknown-linux-gnu/debug/deps/randomx_rs-aa21b69d885376e9.randomx_rs.a9fc037b-cgu.0.rcgu.o: Relocations in generic ELF (EM: 183)
+/home/vagrant/src/taiji/target/aarch64-unknown-linux-gnu/debug/deps/randomx_rs-aa21b69d885376e9.randomx_rs.a9fc037b-cgu.0.rcgu.o: error adding symbols: File in wrong format
 collect2: error: ld returned 1 exit status
 
 error: could not compile `randomx-rs` due to previous error
@@ -115,7 +115,7 @@ export CROSS_COMPILE=true
 ```bash
 cargo build \
   --target aarch64-unknown-linux-gnu \
-  --bin tari_miner
+  --bin taiji_miner
 ```
 
 # Build target Release
@@ -135,6 +135,6 @@ cross build --locked \
 cross build --locked \
   --release --features safe \
   --target aarch64-unknown-linux-gnu \
-  --bin tari_base_node --bin tari_console_wallet \
-  --bin tari_merge_mining_proxy --bin tari_miner
+  --bin taiji_base_node --bin taiji_console_wallet \
+  --bin taiji_merge_mining_proxy --bin taiji_miner
 ```

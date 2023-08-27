@@ -3,7 +3,7 @@
 # Besides making sure the code compiles (duh) and the tests/clippy pass (obviously)
 # Please note that you'll have to update all the toolchain references in the codebase!
 # AND build new docker images for:
-# - rust_tari-build-with-deps
+# - rust_taiji-build-with-deps
 # - rust-ndk
 # AND update the action-buildlibs dockerfile.
 

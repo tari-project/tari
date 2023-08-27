@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2020, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -23,7 +23,7 @@
 use std::{cmp, sync::Arc};
 
 use log::*;
-use tari_comms::{
+use taiji_comms::{
     peer_manager::{NodeId, Peer, PeerFeatures},
     protocol::rpc::{Request, RpcError, RpcStatus, Streaming},
     utils,
@@ -82,7 +82,7 @@ impl DhtRpcServiceImpl {
     }
 }
 
-#[tari_comms::async_trait]
+#[taiji_comms::async_trait]
 impl DhtRpcService for DhtRpcServiceImpl {
     async fn get_closer_peers(
         &self,

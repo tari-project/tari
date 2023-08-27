@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -23,12 +23,12 @@
 use std::sync::Arc;
 
 use rand::rngs::OsRng;
-use tari_comms::{
+use taiji_comms::{
     message::MessageTag,
     net_address::MultiaddressesWithStats,
     peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerFlags},
 };
-use tari_comms_dht::{
+use taiji_comms_dht::{
     envelope::{DhtMessageFlags, DhtMessageHeader, DhtMessageType, NodeDestination},
     inbound::DhtInboundMessage,
     DhtProtocolVersion,
@@ -37,7 +37,7 @@ use tari_comms_dht::{
 macro_rules! unwrap_oms_send_msg {
     ($var:expr, reply_value=$reply_value:expr) => {
         match $var {
-            tari_comms_dht::outbound::DhtOutboundRequest::SendMessage(boxed, body, reply_tx) => {
+            taiji_comms_dht::outbound::DhtOutboundRequest::SendMessage(boxed, body, reply_tx) => {
                 let _result = reply_tx.send($reply_value);
                 (*boxed, body)
             },
@@ -46,7 +46,7 @@ macro_rules! unwrap_oms_send_msg {
     ($var:expr) => {
         unwrap_oms_send_msg!(
             $var,
-            reply_value = tari_comms_dht::outbound::SendMessageResponse::Queued(vec![].into())
+            reply_value = taiji_comms_dht::outbound::SendMessageResponse::Queued(vec![].into())
         );
     };
 }

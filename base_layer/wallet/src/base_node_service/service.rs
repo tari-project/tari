@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2020. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -25,10 +25,10 @@ use std::{sync::Arc, time::Duration};
 use chrono::NaiveDateTime;
 use futures::{future, StreamExt};
 use log::*;
-use tari_common_types::chain_metadata::ChainMetadata;
-use tari_comms::peer_manager::NodeId;
-use tari_service_framework::reply_channel::Receiver;
-use tari_shutdown::ShutdownSignal;
+use taiji_common_types::chain_metadata::ChainMetadata;
+use taiji_comms::peer_manager::NodeId;
+use taiji_service_framework::reply_channel::Receiver;
+use taiji_shutdown::ShutdownSignal;
 use tokio::sync::RwLock;
 
 use super::{

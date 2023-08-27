@@ -96,7 +96,7 @@
 # - transaction cancelled
 # - transaction mined but unconfirmed
 # - transaction mined and confirmed
-# An example script is available here: applications/minotari_console_wallet/src/notifier/notify_example.sh
+# An example script is available here: applications/minotaiji_console_wallet/src/notifier/notify_example.sh
 #notify_file = "/path/to/script"
 
 [wallet.transactions]
@@ -167,7 +167,7 @@ event_channel_size = 3500
 # automatically configured
 #public_addresses = ["/ip4/172.2.3.4/tcp/18189",]
 
-# Optionally bind an additional TCP socket for inbound Tari P2P protocol commms.
+# Optionally bind an additional TCP socket for inbound Taiji P2P protocol commms.
 # Use cases include:
 # - allowing wallets to locally connect to their base node, rather than through tor, when used in conjunction with
 #   `tor_proxy_bypass_addresses`
@@ -206,7 +206,7 @@ event_channel_size = 3500
 
 [wallet.p2p.transport]
 # -------------- Transport configuration --------------
-# Use TCP to connect to the Tari network. This transport can only communicate with TCP/IP addresses, so peers with
+# Use TCP to connect to the Taiji network. This transport can only communicate with TCP/IP addresses, so peers with
 # e.g. tor onion addresses will not be contactable. (default = "tor")
 #type = "tor"
 

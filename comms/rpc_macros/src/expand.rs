@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2020, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -32,7 +32,7 @@ pub fn expand_trait(node: ItemTrait, options: RpcTraitOptions) -> TokenStream {
     let generator = RpcCodeGenerator::new(options, collector.expect_trait_ident(), collector.rpc_methods);
     let rpc_code = generator.generate();
     quote::quote! {
-        #[::tari_comms::async_trait]
+        #[::taiji_comms::async_trait]
         #trait_code
         #rpc_code
     }

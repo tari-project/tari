@@ -1,4 +1,4 @@
-//  Copyright 2022, The Tari Project
+//  Copyright 2022, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -26,7 +26,7 @@ use crate::PeerManager;
 
 #[cfg(test)]
 pub fn build_peer_manager() -> Arc<PeerManager> {
-    Arc::new(PeerManager::new(tari_storage::HashmapDatabase::new(), None).unwrap())
+    Arc::new(PeerManager::new(taiji_storage::HashmapDatabase::new(), None).unwrap())
 }
 
 #[cfg(not(test))]
@@ -37,7 +37,7 @@ mod not_test {
     use std::{iter, path::Path};
 
     use rand::{distributions::Alphanumeric, Rng};
-    use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
+    use taiji_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
 
     use super::*;
 

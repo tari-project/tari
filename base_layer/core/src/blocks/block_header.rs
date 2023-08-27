@@ -1,4 +1,4 @@
-// Copyright 2018 The Tari Project
+// Copyright 2018 The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -25,7 +25,7 @@
 
 //! Blockchain state
 //!
-//! For [technical reasons](https://www.tari.com/2019/07/15/tari-protocol-discussion-42.html), the commitment in
+//! For [technical reasons](https://www.taiji.com/2019/07/15/taiji-protocol-discussion-42.html), the commitment in
 //! block headers commits to the entire TXO set, rather than just UTXOs using a merkle mountain range.
 //! However, it's really important to commit to the actual UTXO set at a given height and have the ability to
 //! distinguish between spent and unspent outputs in the MMR.
@@ -46,7 +46,7 @@ use std::{
 use borsh::{BorshDeserialize, BorshSerialize};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{BlockHash, FixedHash, PrivateKey};
+use taiji_common_types::types::{BlockHash, FixedHash, PrivateKey};
 use tari_utilities::{epoch_time::EpochTime, hex::Hex};
 use thiserror::Error;
 

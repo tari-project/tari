@@ -1,11 +1,11 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 syntax = "proto3";
 
 import "transaction.proto";
 
-package tari.mempool;
+package taiji.mempool;
 
 message TransactionInventory {
     // A list of kernel excess sigs used to identify transactions
@@ -13,7 +13,7 @@ message TransactionInventory {
 }
 
 message TransactionItem {
-    tari.types.Transaction transaction = 1;
+    taiji.types.Transaction transaction = 1;
 }
 
 message InventoryIndexes {

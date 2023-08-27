@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -21,8 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use rand::rngs::OsRng;
-use tari_common::configuration::Network;
-use tari_common_types::types::{
+use taiji_common::configuration::Network;
+use taiji_common_types::types::{
     ComAndPubSignature,
     Commitment,
     FixedHash,
@@ -31,7 +31,7 @@ use tari_common_types::types::{
     RangeProof,
     Signature,
 };
-use tari_core::{
+use taiji_core::{
     blocks::{BlockAccumulatedData, BlockHeader, BlockHeaderAccumulatedData, ChainHeader, UpdateBlockAccumulatedData},
     chain_storage::{create_lmdb_database, BlockchainBackend, ChainStorageError, DbKey, DbTransaction, DbValue},
     consensus::{ConsensusManager, ConsensusManagerBuilder},
@@ -49,9 +49,9 @@ use tari_core::{
     tx,
 };
 use tari_crypto::keys::{PublicKey as PKtrait, SecretKey as SKtrait};
-use tari_script::TariScript;
-use tari_storage::lmdb_store::LMDBConfig;
-use tari_test_utils::paths::create_temporary_data_path;
+use taiji_script::TaijiScript;
+use taiji_storage::lmdb_store::LMDBConfig;
+use taiji_test_utils::paths::create_temporary_data_path;
 
 use crate::helpers::database::create_orphan_block;
 
@@ -126,7 +126,7 @@ fn test_utxo_order() {
     let mut utxos = Vec::with_capacity(2000);
     let version = TransactionOutputVersion::V0;
     let features = OutputFeatures::default();
-    let script = TariScript::default();
+    let script = TaijiScript::default();
     let proof = RangeProof::default();
     let sig = ComAndPubSignature::default();
     let covenant = Covenant::default();

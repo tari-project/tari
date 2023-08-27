@@ -1,4 +1,4 @@
-// Copyright 2021. The Tari Project
+// Copyright 2021. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -25,45 +25,45 @@ use std::{mem::size_of, panic, path::Path, sync::Arc, time::Duration};
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use rand::{rngs::OsRng, RngCore};
 use support::utils::make_non_recoverable_input;
-use tari_common::configuration::{MultiaddrList, StringList};
-use tari_common_types::{
+use taiji_common::configuration::{MultiaddrList, StringList};
+use taiji_common_types::{
     chain_metadata::ChainMetadata,
-    tari_address::TariAddress,
+    taiji_address::TaijiAddress,
     transaction::TransactionStatus,
     types::{FixedHash, PrivateKey, PublicKey},
 };
-use tari_comms::{
+use taiji_comms::{
     multiaddr::Multiaddr,
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
     test_utils::node_identity::build_node_identity,
     types::CommsPublicKey,
 };
-use tari_comms_dht::{store_forward::SafConfig, DhtConfig};
-use tari_contacts::contacts_service::{
+use taiji_comms_dht::{store_forward::SafConfig, DhtConfig};
+use taiji_contacts::contacts_service::{
     handle::ContactsLivenessEvent,
     service::ContactMessageType,
     storage::sqlite_db::ContactsServiceSqliteDatabase,
     types::Contact,
 };
-use tari_core::{
+use taiji_core::{
     consensus::ConsensusManager,
     covenants::Covenant,
     transactions::{
-        tari_amount::{uT, MicroMinotari},
+        taiji_amount::{uT, MicroMinotaiji},
         test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::OutputFeatures,
         CryptoFactories,
     },
 };
 use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
-use tari_key_manager::{
+use taiji_key_manager::{
     cipher_seed::CipherSeed,
     key_manager_service::storage::sqlite_db::KeyManagerSqliteDatabase,
     mnemonic::Mnemonic,
     SeedWords,
 };
-use tari_p2p::{
+use taiji_p2p::{
     auto_update::AutoUpdateConfig,
     comms_connector::InboundDomainConnector,
     initialization::initialize_local_test_comms,
@@ -74,11 +74,11 @@ use tari_p2p::{
     TcpTransportConfig,
     TransportConfig,
 };
-use tari_script::{inputs, script};
-use tari_shutdown::{Shutdown, ShutdownSignal};
-use tari_test_utils::{collect_recv, comms_and_services::get_next_memory_address, random};
+use taiji_script::{inputs, script};
+use taiji_shutdown::{Shutdown, ShutdownSignal};
+use taiji_test_utils::{collect_recv, comms_and_services::get_next_memory_address, random};
 use tari_utilities::{Hidden, SafePassword};
-use minotari_wallet::{
+use minotaiji_wallet::{
     error::{WalletError, WalletStorageError},
     output_manager_service::{
         storage::{database::OutputManagerDatabase, sqlite_db::OutputManagerSqliteDatabase},
@@ -102,7 +102,7 @@ use minotari_wallet::{
 };
 use tempfile::tempdir;
 use tokio::{sync::mpsc, time::sleep};
-use tari_core::test_helpers::create_test_core_key_manager_with_memory_db;
+use taiji_core::test_helpers::create_test_core_key_manager_with_memory_db;
 
 use crate::support::utils::make_input;
 
@@ -151,7 +151,7 @@ async fn create_wallet(
         allow_test_addresses: true,
         listener_liveness_allowlist_cidrs: StringList::new(),
         listener_liveness_max_sessions: 0,
-        user_agent: "tari/test-wallet".to_string(),
+        user_agent: "taiji/test-wallet".to_string(),
         auxiliary_tcp_listener_address: None,
         rpc_max_simultaneous_sessions: 0,
         rpc_max_sessions_per_peer: 0,
@@ -251,7 +251,7 @@ async fn test_wallet() {
     .await
     .unwrap();
     let bob_identity = (*bob_wallet.comms.node_identity()).clone();
-    let bob_address = TariAddress::new(bob_identity.public_key().clone(), network);
+    let bob_address = TaijiAddress::new(bob_identity.public_key().clone(), network);
 
     alice_wallet
         .comms
@@ -283,9 +283,9 @@ async fn test_wallet() {
 
     let mut alice_event_stream = alice_wallet.transaction_service.get_event_stream();
 
-    let value = MicroMinotari::from(1000);
+    let value = MicroMinotaiji::from(1000);
     let key_manager = create_test_core_key_manager_with_memory_db();
-    let (_utxo, uo1) = make_non_recoverable_input(&mut OsRng, MicroMinotari(2500), &OutputFeatures::default(), &key_manager).await;
+    let (_utxo, uo1) = make_non_recoverable_input(&mut OsRng, MicroMinotaiji(2500), &OutputFeatures::default(), &key_manager).await;
 
     alice_wallet.output_manager_service.add_output(uo1, None).await.unwrap();
 
@@ -296,7 +296,7 @@ async fn test_wallet() {
             value,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
-            MicroMinotari::from(5),
+            MicroMinotaiji::from(5),
             "".to_string(),
         )
         .await
@@ -321,7 +321,7 @@ async fn test_wallet() {
     let mut contacts = Vec::new();
     for i in 0..2 {
         let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
-        let address = TariAddress::new(public_key, Network::LocalNet);
+        let address = TaijiAddress::new(public_key, Network::LocalNet);
 
         contacts.push(Contact::new(random::string(8), address, None, None, false));
 
@@ -572,7 +572,7 @@ async fn test_store_and_forward_send_tx() {
     .unwrap();
 
     let carol_identity = carol_wallet.comms.node_identity();
-    let carol_address = TariAddress::new(carol_identity.public_key().clone(), network);
+    let carol_address = TaijiAddress::new(carol_identity.public_key().clone(), network);
     let mut carol_event_stream = carol_wallet.transaction_service.get_event_stream();
 
     alice_wallet
@@ -589,9 +589,9 @@ async fn test_store_and_forward_send_tx() {
         .await
         .unwrap();
 
-    let value = MicroMinotari::from(1000);
+    let value = MicroMinotaiji::from(1000);
     let key_manager = create_test_core_key_manager_with_memory_db();
-    let (_utxo, uo1) = make_non_recoverable_input(&mut OsRng, MicroMinotari(2500), &OutputFeatures::default(), &key_manager).await;
+    let (_utxo, uo1) = make_non_recoverable_input(&mut OsRng, MicroMinotaiji(2500), &OutputFeatures::default(), &key_manager).await;
 
     alice_wallet.output_manager_service.add_output(uo1, None).await.unwrap();
 
@@ -603,7 +603,7 @@ async fn test_store_and_forward_send_tx() {
             value,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
-            MicroMinotari::from(3),
+            MicroMinotaiji::from(3),
             "Store and Forward!".to_string(),
         )
         .await
@@ -689,7 +689,7 @@ async fn test_import_utxo() {
         allow_test_addresses: true,
         listener_liveness_allowlist_cidrs: StringList::new(),
         listener_liveness_max_sessions: 0,
-        user_agent: "tari/test-wallet".to_string(),
+        user_agent: "taiji/test-wallet".to_string(),
         auxiliary_tcp_listener_address: None,
         rpc_max_simultaneous_sessions: 0,
         rpc_max_sessions_per_peer: 0,
@@ -739,7 +739,7 @@ async fn test_import_utxo() {
     let utxo = create_wallet_output_with_data(script.clone(), temp_features, &p, 20000 * uT, &key_manager).await.unwrap();
     let output = utxo.as_transaction_output(&key_manager).unwrap();
     let expected_output_hash = output.hash();
-    let node_address = TariAddress::new(node_identity.public_key().clone(), network);
+    let node_address = TaijiAddress::new(node_identity.public_key().clone(), network);
     alice_wallet
         .set_base_node_peer(
             node_identity.public_key().clone(),
@@ -861,7 +861,7 @@ async fn test_contacts_service_liveness() {
     .await
     .unwrap();
     let alice_identity = alice_wallet.comms.node_identity();
-    let alice_address = TariAddress::new(alice_identity.public_key().clone(), network);
+    let alice_address = TaijiAddress::new(alice_identity.public_key().clone(), network);
 
     let mut bob_wallet = create_wallet(
         bob_db_tempdir.path(),
@@ -875,7 +875,7 @@ async fn test_contacts_service_liveness() {
     .await
     .unwrap();
     let bob_identity = (*bob_wallet.comms.node_identity()).clone();
-    let bob_address = TariAddress::new(bob_identity.public_key().clone(), network);
+    let bob_address = TaijiAddress::new(bob_identity.public_key().clone(), network);
 
     alice_wallet
         .comms

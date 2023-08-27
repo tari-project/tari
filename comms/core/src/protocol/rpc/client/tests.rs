@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -22,8 +22,8 @@
 
 use std::{env, time::Duration};
 
-use tari_shutdown::Shutdown;
-use tari_test_utils::{async_assert_eventually, unpack_enum};
+use taiji_shutdown::Shutdown;
+use taiji_test_utils::{async_assert_eventually, unpack_enum};
 use tokio::sync::mpsc;
 use tokio_stream::StreamExt;
 

@@ -1,9 +1,9 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 syntax = "proto3";
 
-package tari.types;
+package taiji.types;
 
 // Define the data type that is used to store results of `Blake2b<U32>`
 message HashOutput {
@@ -15,7 +15,7 @@ message Commitment {
     bytes data = 1;
 }
 
-// Define the explicit Signature implementation for the Tari base layer. A different signature scheme can be
+// Define the explicit Signature implementation for the Taiji base layer. A different signature scheme can be
 // employed by redefining this type.
 message Signature {
     bytes public_nonce = 1;
@@ -28,7 +28,7 @@ message SignerSignature {
     Signature signature = 2;
 }
 
-// Define the explicit ComAndPubSignature implementation for the Tari base layer. A different signature scheme 
+// Define the explicit ComAndPubSignature implementation for the Taiji base layer. A different signature scheme 
 // can be employed by redefining this type.
 message ComAndPubSignature {
     bytes ephemeral_commitment = 1;

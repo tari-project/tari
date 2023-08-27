@@ -1,4 +1,4 @@
-// Copyright 2021. The Tari Project
+// Copyright 2021. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -96,7 +96,7 @@ pub const CIPHER_SEED_CHECKSUM_BYTES: usize = 4;
 /// The corresponding derived key has output of length 64-bytes, and we use the first and last 32-bytes for
 /// the MAC and ChaCha20 encryption. In such way, we follow the motto of not reusing the same derived keys more
 /// than once. Another key ingredient in our approach is the use of domain separation, via the current hashing API.
-/// See https://github.com/tari-project/tari/issues/4182 for more information.
+/// See https://github.com/taiji-project/taiji/issues/4182 for more information.
 ///
 /// The version and salt are associated data that are included in the MAC but not encrypted.
 /// The enciphered data will look as follows:

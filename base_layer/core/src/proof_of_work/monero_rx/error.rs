@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -25,7 +25,7 @@ use tari_utilities::hex::HexError;
 
 use crate::proof_of_work::DifficultyError;
 
-/// Errors that can occur when merging Monero PoW data with Tari PoW data
+/// Errors that can occur when merging Monero PoW data with Taiji PoW data
 #[derive(Debug, thiserror::Error)]
 pub enum MergeMineError {
     #[error("Serialization error: {0}")]

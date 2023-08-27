@@ -1,4 +1,4 @@
-//  Copyright 2022. The Tari Project
+//  Copyright 2022. The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -26,7 +26,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tari_comms::socks;
+use taiji_comms::socks;
 
 #[derive(Default, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

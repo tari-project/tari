@@ -1,4 +1,4 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 // #![allow(elided_lifetimes_in_paths)]
@@ -16,7 +16,7 @@ use future::ResponseFuture;
 use futures::ready;
 pub use layer::FilterLayer;
 pub use predicate::Predicate;
-use tari_comms::pipeline::PipelineError;
+use taiji_comms::pipeline::PipelineError;
 use tower::Service;
 
 /// Conditionally dispatch requests to the inner service based on a predicate.

@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -29,7 +29,7 @@ use chrono::{DateTime, NaiveDateTime, Utc};
 use futures::{future, stream, StreamExt};
 use log::*;
 use prost::Message;
-use tari_comms::{
+use taiji_comms::{
     message::{EnvelopeBody, MessageTag},
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerManagerError},
     pipeline::PipelineError,
@@ -622,8 +622,8 @@ mod test {
     use std::time::Duration;
 
     use chrono::{Timelike, Utc};
-    use tari_comms::{message::MessageExt, wrap_in_envelope_body};
-    use tari_test_utils::collect_recv;
+    use taiji_comms::{message::MessageExt, wrap_in_envelope_body};
+    use taiji_test_utils::collect_recv;
     use tari_utilities::{hex, hex::Hex};
     use tokio::{sync::mpsc, task, time::sleep};
 

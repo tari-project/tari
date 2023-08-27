@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -37,11 +37,11 @@ use std::marker::PhantomData;
 
 use futures::future;
 use log::*;
-use tari_core::{
+use taiji_core::{
     consensus::NetworkConsensus,
     transactions::{key_manager::TransactionKeyManagerInterface, CryptoFactories},
 };
-use tari_service_framework::{
+use taiji_service_framework::{
     async_trait,
     reply_channel,
     ServiceInitializationError,

@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2020, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -33,6 +33,6 @@ pub mod rolling_avg;
 #[cfg(feature = "base_node")]
 pub mod rolling_vec;
 
-hash_domain!(ConfidentialOutputHashDomain, "com.tari.dan.confidential_output", 1);
+hash_domain!(ConfidentialOutputHashDomain, "com.taiji.dan.confidential_output", 1);
 /// Hasher used in the DAN to derive masks and encrypted value keys
 pub type ConfidentialOutputHasher = DomainSeparatedConsensusHasher<ConfidentialOutputHashDomain>;

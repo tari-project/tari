@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -22,7 +22,7 @@
 //
 //! # Application configuration
 //!
-//! Tari is using config crate which allows to extend config file with application level configs.
+//! Taiji is using config crate which allows to extend config file with application level configs.
 //! To allow deriving configuration from a Config via [`ConfigLoader`] trait application configuration
 //! struct should implements [`Deserialize`][serde::Deserialize] and [`SubConfigPath`] traits.
 //!
@@ -37,7 +37,7 @@
 //! ```
 //! # use config::Config;
 //! # use serde::{Deserialize, Serialize};
-//! # use tari_common::{SubConfigPath, DefaultConfigLoader};
+//! # use taiji_common::{SubConfigPath, DefaultConfigLoader};
 //! #[derive(Deserialize, Serialize, Default)]
 //! struct MyNodeConfig {
 //!     welcome_message: String,
@@ -175,7 +175,7 @@ impl<C: SubConfigPath> ConfigPath for C {
 /// ```
 /// # use config::Config;
 /// # use serde::{Deserialize, Serialize};
-/// use tari_common::{DefaultConfigLoader, SubConfigPath};
+/// use taiji_common::{DefaultConfigLoader, SubConfigPath};
 ///
 /// #[derive(Deserialize, Serialize)]
 /// struct MyNodeConfig {
@@ -193,7 +193,7 @@ impl<C: SubConfigPath> ConfigPath for C {
 ///     }
 /// }
 /// fn welcome() -> String {
-///     "welcome to tari".into()
+///     "welcome to taiji".into()
 /// }
 /// fn bye() -> String {
 ///     "bye bye".into()
@@ -231,7 +231,7 @@ pub trait ConfigLoader: ConfigPath + Sized {
 /// ```
 /// use config::Config;
 /// use serde::{Deserialize, Serialize};
-/// use tari_common::{DefaultConfigLoader, SubConfigPath};
+/// use taiji_common::{DefaultConfigLoader, SubConfigPath};
 ///
 /// #[derive(Serialize, Deserialize)]
 /// struct MyNodeConfig {
@@ -241,7 +241,7 @@ pub trait ConfigLoader: ConfigPath + Sized {
 /// impl Default for MyNodeConfig {
 ///     fn default() -> Self {
 ///         Self {
-///             welcome_message: "welcome from tari".into(),
+///             welcome_message: "welcome from taiji".into(),
 ///             goodbye_message: "bye bye".into(),
 ///         }
 ///     }
@@ -368,10 +368,10 @@ mod test {
 
     // test SubConfigPath both with Default and without Default
     #[derive(Serialize, Deserialize)]
-    struct SubTari {
+    struct SubTaiji {
         monero: String,
     }
-    impl Default for SubTari {
+    impl Default for SubTaiji {
         fn default() -> Self {
             Self {
                 monero: "isprivate".into(),
@@ -379,17 +379,17 @@ mod test {
         }
     }
     #[derive(Default, Serialize, Deserialize)]
-    struct SuperTari {
+    struct SuperTaiji {
         #[serde(flatten)]
-        pub within: SubTari,
-        pub over: SubTari,
+        pub within: SubTaiji,
+        pub over: SubTaiji,
         #[serde(default = "serde_default_string")]
         bitcoin: String,
     }
     fn serde_default_string() -> String {
         "ispublic".into()
     }
-    impl SubConfigPath for SuperTari {
+    impl SubConfigPath for SuperTaiji {
         fn main_key_prefix() -> &'static str {
             "crypto"
         }

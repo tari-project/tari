@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -23,7 +23,7 @@
 use std::{sync::Arc, time::Duration};
 
 use rand::rngs::OsRng;
-use tari_comms::{
+use taiji_comms::{
     backoff::ConstantBackoff,
     connectivity::ConnectivityEvent,
     message::MessageExt,
@@ -36,7 +36,7 @@ use tari_comms::{
     CommsBuilder,
     CommsNode,
 };
-use tari_comms_dht::{
+use taiji_comms_dht::{
     domain_message::OutboundDomainMessage,
     envelope::{DhtMessageType, NodeDestination},
     event::DhtEvent,
@@ -46,12 +46,12 @@ use tari_comms_dht::{
     Dht,
     DhtConfig,
 };
-use tari_shutdown::{Shutdown, ShutdownSignal};
-use tari_storage::{
+use taiji_shutdown::{Shutdown, ShutdownSignal};
+use taiji_storage::{
     lmdb_store::{LMDBBuilder, LMDBConfig},
     LMDBWrapper,
 };
-use tari_test_utils::{
+use taiji_test_utils::{
     async_assert_eventually,
     collect_try_recv,
     paths::create_temporary_data_path,

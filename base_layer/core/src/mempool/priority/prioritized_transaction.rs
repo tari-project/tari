@@ -1,4 +1,4 @@
-//  Copyright 2019 The Tari Project
+//  Copyright 2019 The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -26,7 +26,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use tari_common_types::types::{HashOutput, PrivateKey, PublicKey};
+use taiji_common_types::types::{HashOutput, PrivateKey, PublicKey};
 use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::transactions::{transaction_components::Transaction, weight::TransactionWeight};
@@ -119,11 +119,11 @@ impl Display for PrioritizedTransaction {
 mod tests {
     use super::*;
     use crate::transactions::{
-        tari_amount::{uT, MicroMinotari, T},
+        taiji_amount::{uT, MicroMinotaiji, T},
         test_helpers::{create_test_core_key_manager_with_memory_db, create_tx, TestKeyManager},
     };
 
-    async fn create_tx_with_fee(fee_per_gram: MicroMinotari, key_manager: &TestKeyManager) -> Transaction {
+    async fn create_tx_with_fee(fee_per_gram: MicroMinotaiji, key_manager: &TestKeyManager) -> Transaction {
         let (tx, _, _) = create_tx(10 * T, fee_per_gram, 0, 1, 0, 1, Default::default(), key_manager)
             .await
             .expect("Failed to get tx");

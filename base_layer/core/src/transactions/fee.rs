@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -22,14 +22,14 @@
 
 use std::cmp::max;
 
-use super::{tari_amount::MicroMinotari, weight::TransactionWeight};
+use super::{taiji_amount::MicroMinotaiji, weight::TransactionWeight};
 use crate::transactions::aggregated_body::AggregateBody;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Fee(TransactionWeight);
 
 impl Fee {
-    pub(crate) const MINIMUM_TRANSACTION_FEE: MicroMinotari = MicroMinotari(101);
+    pub(crate) const MINIMUM_TRANSACTION_FEE: MicroMinotaiji = MicroMinotaiji(101);
 
     pub fn new(weight: TransactionWeight) -> Self {
         Self(weight)
@@ -40,28 +40,28 @@ impl Fee {
     /// are guaranteed to hold between calculations. for e.g. fee(1,1,1,4) + fee(1,1,1,12) != fee(1,1,1,16)
     pub fn calculate(
         &self,
-        fee_per_gram: MicroMinotari,
+        fee_per_gram: MicroMinotaiji,
         num_kernels: usize,
         num_inputs: usize,
         num_outputs: usize,
         rounded_features_and_scripts_byte_size: usize,
-    ) -> MicroMinotari {
+    ) -> MicroMinotaiji {
         let weight = self.weighting().calculate(
             num_kernels,
             num_inputs,
             num_outputs,
             rounded_features_and_scripts_byte_size,
         );
-        MicroMinotari::from(weight) * fee_per_gram
+        MicroMinotaiji::from(weight) * fee_per_gram
     }
 
-    pub fn calculate_body(&self, fee_per_gram: MicroMinotari, body: &AggregateBody) -> std::io::Result<MicroMinotari> {
+    pub fn calculate_body(&self, fee_per_gram: MicroMinotaiji, body: &AggregateBody) -> std::io::Result<MicroMinotaiji> {
         let weight = self.weighting().calculate_body(body)?;
-        Ok(MicroMinotari::from(weight) * fee_per_gram)
+        Ok(MicroMinotaiji::from(weight) * fee_per_gram)
     }
 
     /// Normalizes the given fee returning a fee that is equal to or above the minimum fee
-    pub fn normalize(fee: MicroMinotari) -> MicroMinotari {
+    pub fn normalize(fee: MicroMinotaiji) -> MicroMinotaiji {
         max(Self::MINIMUM_TRANSACTION_FEE, fee)
     }
 
@@ -81,7 +81,7 @@ mod test {
     use std::convert::TryInto;
 
     use tari_crypto::ristretto::RistrettoComAndPubSig;
-    use tari_script::ExecutionStack;
+    use taiji_script::ExecutionStack;
 
     use super::*;
     use crate::transactions::transaction_components::{SpentOutput, TransactionInput};

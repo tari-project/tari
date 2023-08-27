@@ -1,4 +1,4 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 use std::fmt;
@@ -51,7 +51,7 @@ tor --allow-missing-torrc --ignore-missing-torrc --clientonly 1 --socksport 9050
 
 const TOR_CONFIG_AUTH_HINT: &str = r#"Unable to authenticate to the Tor control port.
 
-Please check the Tor control port configuration in your torrc and update your Tari configuration to match the configured authentication method.
+Please check the Tor control port configuration in your torrc and update your Taiji configuration to match the configured authentication method.
 
 If you are unsure of what to do, use the following command to start the Tor proxy:
 tor --allow-missing-torrc --ignore-missing-torrc --clientonly 1 --socksport 9050 --controlport 127.0.0.1:9051 --log "warn stdout" --clientuseipv6 1 --cookieauthentication 1"#;

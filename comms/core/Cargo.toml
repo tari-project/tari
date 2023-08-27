@@ -1,9 +1,9 @@
 [package]
-name = "tari_comms"
+name = "taiji_comms"
 description = "A peer-to-peer messaging system"
-authors = ["The Tari Development Community"]
-repository = "https://github.com/tari-project/tari"
-homepage = "https://tari.com"
+authors = ["The Taiji Development Community"]
+repository = "https://github.com/taiji-project/taiji"
+homepage = "https://taiji.com"
 readme = "README.md"
 license = "BSD-3-Clause"
 version = "0.52.0-pre.0"
@@ -11,9 +11,9 @@ edition = "2018"
 
 [dependencies]
 tari_crypto = { version = "0.18" }
-tari_metrics = { path = "../../infrastructure/metrics" }
-tari_storage = {  path = "../../infrastructure/storage" }
-tari_shutdown = {  path = "../../infrastructure/shutdown" }
+taiji_metrics = { path = "../../infrastructure/metrics" }
+taiji_storage = {  path = "../../infrastructure/storage" }
+taiji_shutdown = {  path = "../../infrastructure/shutdown" }
 tari_utilities = { version = "0.5" }
 
 anyhow = "1.0.53"
@@ -51,15 +51,15 @@ yamux = "=0.10.2"
 zeroize = "1"
 
 [dev-dependencies]
-tari_test_utils = {  path = "../../infrastructure/test_utils" }
-tari_comms_rpc_macros = { path = "../rpc_macros" }
+taiji_test_utils = {  path = "../../infrastructure/test_utils" }
+taiji_comms_rpc_macros = { path = "../rpc_macros" }
 
 env_logger = "0.7.0"
 serde_json = "1.0.39"
 tempfile = "3.1.0"
 
 [build-dependencies]
-tari_common = {  path = "../../common", features = ["build"] }
+taiji_common = {  path = "../../common", features = ["build"] }
 
 [features]
 c_integration = []

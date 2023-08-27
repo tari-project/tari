@@ -1,10 +1,10 @@
-// Copyright 2023. The Tari Project
+// Copyright 2023. The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 use std::{env, path::PathBuf};
 
 use cbindgen::{Config, ExportConfig, Language, LineEndingStyle, ParseConfig, Style};
-use tari_common::build::StaticApplicationInfo;
+use taiji_common::build::StaticApplicationInfo;
 
 fn main() {
     let crate_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
@@ -18,16 +18,16 @@ fn main() {
 
     let config = Config {
         language: Language::C,
-        header: Some("// Copyright 2023. The Tari Project\n// SPDX-License-Identifier: BSD-3-Clause".to_string()),
+        header: Some("// Copyright 2023. The Taiji Project\n// SPDX-License-Identifier: BSD-3-Clause".to_string()),
         parse: ParseConfig {
             parse_deps: true,
             include: Some(vec![
-                "tari_core".to_string(),
-                "tari_common_types".to_string(),
+                "taiji_core".to_string(),
+                "taiji_common_types".to_string(),
                 "tari_crypto".to_string(),
-                "tari_p2p".to_string(),
-                "minotari_wallet".to_string(),
-                "tari_contacts".to_string(),
+                "taiji_p2p".to_string(),
+                "minotaiji_wallet".to_string(),
+                "taiji_contacts".to_string(),
             ]),
             ..Default::default()
         },
@@ -35,7 +35,7 @@ fn main() {
         style: Style::Tag,
         cpp_compat: true,
         export: ExportConfig {
-            include: vec!["TariUtxo".to_string()],
+            include: vec!["TaijiUtxo".to_string()],
             ..Default::default()
         },
         line_endings: LineEndingStyle::Native,

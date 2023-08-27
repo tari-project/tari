@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -30,23 +30,23 @@ use tempfile::Builder;
 
 use crate::random;
 
-pub const RELATIVE_TARI_PATH: &str = "tari-tests/";
+pub const RELATIVE_TARI_PATH: &str = "taiji-tests/";
 
 pub fn create_temporary_data_path() -> PathBuf {
-    let path = temp_tari_path().join(random::prefixed_string("data-", 20));
+    let path = temp_taiji_path().join(random::prefixed_string("data-", 20));
     fs::create_dir_all(&path).unwrap();
     path
 }
 
 pub fn with_temp_dir<F, R>(f: F) -> R
 where F: FnOnce(&Path) -> R {
-    let tmp = Builder::new().prefix("tari-test").tempdir().unwrap();
+    let tmp = Builder::new().prefix("taiji-test").tempdir().unwrap();
     let r = f(tmp.path());
     drop(tmp);
     r
 }
 
-pub fn temp_tari_path() -> PathBuf {
+pub fn temp_taiji_path() -> PathBuf {
     temp_dir().join(RELATIVE_TARI_PATH)
 }
 

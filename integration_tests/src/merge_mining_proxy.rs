@@ -1,4 +1,4 @@
-//   Copyright 2022. The Tari Project
+//   Copyright 2022. The Taiji Project
 //
 //   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //   following conditions are met:
@@ -22,14 +22,14 @@
 
 use std::{convert::TryInto, thread};
 
-use minotari_app_utilities::common_cli_args::CommonCliArgs;
-use minotari_merge_mining_proxy::{merge_miner, Cli};
+use minotaiji_app_utilities::common_cli_args::CommonCliArgs;
+use minotaiji_merge_mining_proxy::{merge_miner, Cli};
 use serde_json::{json, Value};
 use tempfile::tempdir;
 use tokio::runtime;
 
 use super::get_port;
-use crate::TariWorld;
+use crate::TaijiWorld;
 
 #[derive(Clone, Debug)]
 pub struct MergeMiningProxyProcess {
@@ -42,7 +42,7 @@ pub struct MergeMiningProxyProcess {
 }
 
 pub async fn register_merge_mining_proxy_process(
-    world: &mut TariWorld,
+    world: &mut TaijiWorld,
     merge_mining_proxy_name: String,
     base_node_name: String,
     wallet_name: String,
@@ -64,7 +64,7 @@ pub async fn register_merge_mining_proxy_process(
 }
 
 impl MergeMiningProxyProcess {
-    pub async fn start(&self, world: &mut TariWorld) {
+    pub async fn start(&self, world: &mut TaijiWorld) {
         let temp_dir = tempdir().unwrap();
         let data_dir = temp_dir.path().join("data/miner");
         let data_dir_str = data_dir.clone().into_os_string().into_string().unwrap();

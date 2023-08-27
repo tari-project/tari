@@ -1,6 +1,6 @@
 # Contributing Guidelines
 
-You want to contribute to Tari, and we want you to contribute! So why is it sometimes hard to get this done?
+You want to contribute to Taiji, and we want you to contribute! So why is it sometimes hard to get this done?
 
 This is financial software, so we have to take precautions to ensure that harmful code doesn't slip in anywhere. 
 We know that _you_ are a great person and are just trying to help. But there are not-so-nice people 
@@ -27,9 +27,9 @@ The goals of having these guidelines are fourfold:
 
 These guidelines are split up into a few main topics:
 
-* [The Release Process](#the-tari-release-process). This explains how the release schedule for Tari works post-mainnet 
+* [The Release Process](#the-taiji-release-process). This explains how the release schedule for Taiji works post-mainnet 
   launch. 
-* The [Feature RFC process](#feature-rfc-process) describes how new features get into Tari, from conception 
+* The [Feature RFC process](#feature-rfc-process) describes how new features get into Taiji, from conception 
   to implementation.
 * [Pull requests](#pull-requests). This section offers guidelines on how to get your code merged into the code base 
   with the minimum of fuss. 
@@ -37,9 +37,9 @@ These guidelines are split up into a few main topics:
   offers tips for effective preventing bugs from scuttling past your gimlet gaze. 
 * Bug bounty and disclosure policy.
 
-# The Minotari release process
+# The Minotaiji release process
 
-The Minotari release process draws inspiration from the Rust [compiler release process] and borrows some of its key 
+The Minotaiji release process draws inspiration from the Rust [compiler release process] and borrows some of its key 
 ideas.
 
 The process is well-suited for a large open-source project that desires a regular release schedule but also needs 
@@ -47,7 +47,7 @@ the flexibility of having features being "in development" over several cycles. S
 
 ## Release branches
 
-Post mainnet, there are 4 release branches in the Minotari repo:
+Post mainnet, there are 4 release branches in the Minotaiji repo:
 
 * `mainnet` - the code on this branch represents the latest "official release". Almost every commit on this branch 
   will be tagged with a version number.
@@ -84,7 +84,7 @@ There will also be three testnets in addition to mainnet:
 
 ## Feature gates
 
-When developing a new feature in Tari, it will initially be placed behind a feature gate. This offers the comfort and 
+When developing a new feature in Taiji, it will initially be placed behind a feature gate. This offers the comfort and 
 flexibility that should a feature not be ready in the first 6-8 months of development (i.e. by the time it first hits 
 the `mainnet` branch), it will not be active on mainnet, since the feature will not be active.
 
@@ -146,7 +146,7 @@ _The dev community is currently evaluating bots to employ for this purpose_.
 ## Feature RFC process
 
 Standard issue management is used for bug fixes, performance improvements, and technical debt repayments. Larger
-features, and substantial changes to how Tari works get implemented via the RFC process.
+features, and substantial changes to how Taiji works get implemented via the RFC process.
 
 A very rough outline of the flow goes as follows:
 
@@ -175,7 +175,7 @@ If an RFC ever becomes redundant, DO NOT delete it. Mark the RFC as
 ![deprecated](./meta/img/status-deprecated.svg) and move it to the _Deprecated_ chapter of the RFC handbook.
 
 
-The source code must ultimately be the source of truth for the Tari implementation.
+The source code must ultimately be the source of truth for the Taiji implementation.
 If the code and RFC have deviated substantially, mark it ![out of date](./meta/img/status-outofdate.svg).
 Then file an issue asking someone to kindly update the RFC and bring it back in line with the code.
 
@@ -183,12 +183,12 @@ Taking on this thankless task is an excellent way for new contributors to learn 
 to the project!
 
 [Discord]: https://discord.gg/q3Sfzb8S2V
-[RFC repo]: https://github.com/tari-project/rfcs
+[RFC repo]: https://github.com/taiji-project/rfcs
 
 ## Pull requests
 
-You're submitting your first, or hundredth, PR to the Tari codebase. Congratulations! The core team could really use 
-the help. But they also need to be super careful since after mainnet launch, the Tari code is managing real money. 
+You're submitting your first, or hundredth, PR to the Taiji codebase. Congratulations! The core team could really use 
+the help. But they also need to be super careful since after mainnet launch, the Taiji code is managing real money. 
 
 It's therefore typical and even expected for Pull Requests to undergo several revisions before being merged. You 
 can expect (constructive) feedback and suggestions for improvements that will typically reflect the ideas espoused 
@@ -374,7 +374,7 @@ Describes the functional area of the code the PR or issue covers predominantly. 
 * `A-wallet`
 * `A-templates`
 * `A-dan`
-* `A-tari_engine`
+* `A-taiji_engine`
 
 ### Process-related (P)
 
@@ -402,11 +402,11 @@ These labels indicate the level or type of experience needed to address. Example
 * `W-transaction_breaking` - This PR changes data that wallets use to send transactions. This might not cause 
 a hard fork, but wallets may not be able to recover funds or interact with each other.
 
-[git commit farming]: https://www.tari.com/git-farming/ "The Tari Blog: Git farming or, How to get your PRs merged into Tari"
+[git commit farming]: https://www.taiji.com/git-farming/ "The Taiji Blog: Git farming or, How to get your PRs merged into Taiji"
 
 # Automated CI checks
 
-The Tari CI process carries out several checks that must pass before a PR will be merged, or even reviewed:
+The Taiji CI process carries out several checks that must pass before a PR will be merged, or even reviewed:
 
 * PR title
 * Licence information
@@ -425,7 +425,7 @@ If you fall afoul of this, simply edit your PR title, and the test will automati
 ## License information
 
 All new source files MUST have relevant license information at the top of the file. Use the BSD-3 license for all 
-Tari code.
+Taiji code.
 
 Scripts, HTML, CSS, binary files, configuration files, and other non-source types are not subject to this
 requirement. See the [license check script] for the complete list of extensions that are ignored for this check.
@@ -433,7 +433,7 @@ requirement. See the [license check script] for the complete list of extensions 
 The following text is recommended:
 
 ```text
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 ```
 
@@ -464,9 +464,9 @@ If this does not work:
 
 # Code style
 
-Tari uses Clippy to encourage consistent and idiomatic Rust code.
+Taiji uses Clippy to encourage consistent and idiomatic Rust code.
 
-Clippy does not support project-wide Clippy configuration files at the moment. Tari uses `cargo-lints` instead and 
+Clippy does not support project-wide Clippy configuration files at the moment. Taiji uses `cargo-lints` instead and 
 defines global linting rules in `lints.toml`.
 
 The CI enforces these lints, so check your code with:

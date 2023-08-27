@@ -1,4 +1,4 @@
-// Copyright 2018 The Tari Project
+// Copyright 2018 The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -29,15 +29,15 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{ComAndPubSignature, PrivateKey, PublicKey};
-use tari_script::{ExecutionStack, TariScript};
+use taiji_common_types::types::{ComAndPubSignature, PrivateKey, PublicKey};
+use taiji_script::{ExecutionStack, TaijiScript};
 
 use super::TransactionOutputVersion;
 use crate::{
     covenants::Covenant,
     transactions::{
         key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface},
-        tari_amount::MicroMinotari,
+        taiji_amount::MicroMinotaiji,
         transaction_components::{EncryptedData, OutputFeatures, TransactionError, WalletOutput},
     },
 };
@@ -48,10 +48,10 @@ use crate::{
 #[derive(Clone, Serialize, Deserialize)]
 pub struct UnblindedOutput {
     pub version: TransactionOutputVersion,
-    pub value: MicroMinotari,
+    pub value: MicroMinotaiji,
     pub spending_key: PrivateKey,
     pub features: OutputFeatures,
-    pub script: TariScript,
+    pub script: TaijiScript,
     pub covenant: Covenant,
     pub input_data: ExecutionStack,
     pub script_private_key: PrivateKey,
@@ -59,7 +59,7 @@ pub struct UnblindedOutput {
     pub metadata_signature: ComAndPubSignature,
     pub script_lock_height: u64,
     pub encrypted_data: EncryptedData,
-    pub minimum_value_promise: MicroMinotari,
+    pub minimum_value_promise: MicroMinotaiji,
 }
 
 impl UnblindedOutput {
@@ -68,10 +68,10 @@ impl UnblindedOutput {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         version: TransactionOutputVersion,
-        value: MicroMinotari,
+        value: MicroMinotaiji,
         spending_key: PrivateKey,
         features: OutputFeatures,
-        script: TariScript,
+        script: TaijiScript,
         input_data: ExecutionStack,
         script_private_key: PrivateKey,
         sender_offset_public_key: PublicKey,
@@ -79,7 +79,7 @@ impl UnblindedOutput {
         script_lock_height: u64,
         covenant: Covenant,
         encrypted_data: EncryptedData,
-        minimum_value_promise: MicroMinotari,
+        minimum_value_promise: MicroMinotaiji,
     ) -> Self {
         Self {
             version,
@@ -99,10 +99,10 @@ impl UnblindedOutput {
     }
 
     pub fn new_current_version(
-        value: MicroMinotari,
+        value: MicroMinotaiji,
         spending_key: PrivateKey,
         features: OutputFeatures,
-        script: TariScript,
+        script: TaijiScript,
         input_data: ExecutionStack,
         script_private_key: PrivateKey,
         sender_offset_public_key: PublicKey,
@@ -110,7 +110,7 @@ impl UnblindedOutput {
         script_lock_height: u64,
         covenant: Covenant,
         encrypted_data: EncryptedData,
-        minimum_value_promise: MicroMinotari,
+        minimum_value_promise: MicroMinotaiji,
     ) -> Self {
         Self::new(
             TransactionOutputVersion::get_current_version(),

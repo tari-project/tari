@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2020. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -23,8 +23,8 @@
 use std::sync::Arc;
 
 use log::*;
-use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
-use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
+use taiji_comms::{connectivity::ConnectivityRequester, PeerManager};
+use taiji_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tokio::sync::{broadcast, watch};
 
 use crate::{

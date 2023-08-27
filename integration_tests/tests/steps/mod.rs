@@ -1,4 +1,4 @@
-//   Copyright 2023. The Tari Project
+//   Copyright 2023. The Taiji Project
 //
 //   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //   following conditions are met:
@@ -23,7 +23,7 @@
 use std::time::Duration;
 
 use cucumber::{then, when};
-use tari_integration_tests::TariWorld;
+use taiji_integration_tests::TaijiWorld;
 
 pub mod chat_ffi_steps;
 pub mod chat_steps;
@@ -39,12 +39,12 @@ pub const TWO_MINUTES_WITH_HALF_SECOND_SLEEP: u64 = 240;
 pub const HALF_SECOND: u64 = 500;
 
 #[when(expr = "I wait {int} seconds")]
-async fn wait_seconds(_world: &mut TariWorld, seconds: u64) {
+async fn wait_seconds(_world: &mut TaijiWorld, seconds: u64) {
     tokio::time::sleep(Duration::from_secs(seconds)).await;
 }
 
 #[then(regex = r"I receive an error containing '(.*)'")]
-async fn receive_an_error(world: &mut TariWorld, error: String) {
+async fn receive_an_error(world: &mut TaijiWorld, error: String) {
     match world.errors.back() {
         Some(err) => assert_eq!(err, &error),
         None => panic!("Should have received an error"),

@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -31,7 +31,7 @@ use std::{
     },
 };
 
-use tari_comms::peer_manager::Peer;
+use taiji_comms::peer_manager::Peer;
 use tokio::{sync::mpsc, task};
 
 use crate::{

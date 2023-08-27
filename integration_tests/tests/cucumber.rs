@@ -1,4 +1,4 @@
-//   Copyright 2022. The Tari Project
+//   Copyright 2022. The Taiji Project
 //
 //   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //   following conditions are met:
@@ -32,8 +32,8 @@ use std::{
 
 use cucumber::{event::ScenarioFinished, writer, writer::Verbosity, World as _};
 use log::*;
-use tari_common::initialize_logging;
-use tari_integration_tests::TariWorld;
+use taiji_common::initialize_logging;
+use taiji_integration_tests::TaijiWorld;
 use tokio::runtime::Runtime;
 
 pub mod steps;
@@ -66,7 +66,7 @@ fn main() {
     let stdout_buffer_clone = stdout_buffer.clone();
     let runtime = Runtime::new().unwrap();
     runtime.block_on(async {
-        let world = TariWorld::cucumber()
+        let world = TaijiWorld::cucumber()
         .repeat_failed()
         // following config needed to use eprint statements in the tests
         .max_concurrent_scenarios(5)

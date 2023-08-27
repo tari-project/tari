@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -26,13 +26,13 @@ use blake2::Blake2b;
 use digest::consts::U32;
 use log::*;
 use rand::rngs::OsRng;
-use tari_common::configuration::bootstrap::ApplicationType;
-use tari_common_types::{
-    tari_address::TariAddress,
+use taiji_common::configuration::bootstrap::ApplicationType;
+use taiji_common_types::{
+    taiji_address::TaijiAddress,
     transaction::{ImportStatus, TxId},
     types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, SignatureWithDomain},
 };
-use tari_comms::{
+use taiji_comms::{
     multiaddr::Multiaddr,
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
@@ -41,31 +41,31 @@ use tari_comms::{
     NodeIdentity,
     UnspawnedCommsNode,
 };
-use tari_comms_dht::{store_forward::StoreAndForwardRequester, Dht};
-use tari_contacts::contacts_service::{
+use taiji_comms_dht::{store_forward::StoreAndForwardRequester, Dht};
+use taiji_contacts::contacts_service::{
     handle::ContactsServiceHandle,
     storage::database::ContactsBackend,
     ContactsServiceInitializer,
 };
-use tari_core::{
+use taiji_core::{
     consensus::{ConsensusManager, NetworkConsensus},
     covenants::Covenant,
     transactions::{
         key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInitializer},
-        tari_amount::MicroMinotari,
+        taiji_amount::MicroMinotaiji,
         transaction_components::{EncryptedData, OutputFeatures, UnblindedOutput},
         CryptoFactories,
     },
 };
 use tari_crypto::{hash_domain, signatures::SchnorrSignatureError};
-use tari_key_manager::{
+use taiji_key_manager::{
     cipher_seed::CipherSeed,
     key_manager::KeyManager,
     key_manager_service::{storage::database::KeyManagerBackend, KeyDigest},
     mnemonic::{Mnemonic, MnemonicLanguage},
     SeedWords,
 };
-use tari_p2p::{
+use taiji_p2p::{
     auto_update::{AutoUpdateConfig, SoftwareUpdaterHandle, SoftwareUpdaterService},
     comms_connector::pubsub_connector,
     initialization,
@@ -73,9 +73,9 @@ use tari_p2p::{
     services::liveness::{config::LivenessConfig, LivenessInitializer},
     PeerSeedsConfig,
 };
-use tari_script::{one_sided_payment_script, ExecutionStack, TariScript};
-use tari_service_framework::StackBuilder;
-use tari_shutdown::ShutdownSignal;
+use taiji_script::{one_sided_payment_script, ExecutionStack, TaijiScript};
+use taiji_service_framework::StackBuilder;
+use taiji_shutdown::ShutdownSignal;
 use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::{
@@ -108,7 +108,7 @@ const LOG_TARGET: &str = "wallet";
 const WALLET_BUFFER_MIN_SIZE: usize = 300;
 
 // Domain separator for signing arbitrary messages with a wallet secret key
-hash_domain!(WalletMessageSigningDomain, "com.tari.base_layer.wallet.message_signing");
+hash_domain!(WalletMessageSigningDomain, "com.taiji.base_layer.wallet.message_signing");
 
 /// A structure containing the config and services that a Wallet application will require. This struct will start up all
 /// the services and provide the APIs that applications will use to interact with the services
@@ -430,11 +430,11 @@ where
     /// provide a record of the event. The TxId of the generated transaction is returned.
     pub async fn import_external_utxo_as_non_rewindable(
         &mut self,
-        amount: MicroMinotari,
+        amount: MicroMinotaiji,
         spending_key: &PrivateKey,
-        script: TariScript,
+        script: TaijiScript,
         input_data: ExecutionStack,
-        source_address: TariAddress,
+        source_address: TaijiAddress,
         features: OutputFeatures,
         message: String,
         metadata_signature: ComAndPubSignature,
@@ -443,7 +443,7 @@ where
         script_lock_height: u64,
         covenant: Covenant,
         encrypted_data: EncryptedData,
-        minimum_value_promise: MicroMinotari,
+        minimum_value_promise: MicroMinotaiji,
     ) -> Result<TxId, WalletError> {
         // lets import the private keys
         let unblinded_output = UnblindedOutput::new_current_version(
@@ -470,7 +470,7 @@ where
     pub async fn import_unblinded_output_as_non_rewindable(
         &mut self,
         unblinded_output: UnblindedOutput,
-        source_address: TariAddress,
+        source_address: TaijiAddress,
         message: String,
     ) -> Result<TxId, WalletError> {
         let tx_id = self
@@ -523,8 +523,8 @@ where
         &mut self,
         commitments: Vec<Commitment>,
         split_count: usize,
-        fee_per_gram: MicroMinotari,
-    ) -> Result<(Vec<MicroMinotari>, MicroMinotari), WalletError> {
+        fee_per_gram: MicroMinotaiji,
+    ) -> Result<(Vec<MicroMinotaiji>, MicroMinotaiji), WalletError> {
         self.output_manager_service
             .preview_coin_split_with_commitments_no_amount(commitments, split_count, fee_per_gram)
             .await
@@ -535,8 +535,8 @@ where
     pub async fn preview_coin_join_with_commitments(
         &mut self,
         commitments: Vec<Commitment>,
-        fee_per_gram: MicroMinotari,
-    ) -> Result<(Vec<MicroMinotari>, MicroMinotari), WalletError> {
+        fee_per_gram: MicroMinotaiji,
+    ) -> Result<(Vec<MicroMinotaiji>, MicroMinotaiji), WalletError> {
         self.output_manager_service
             .preview_coin_join_with_commitments(commitments, fee_per_gram)
             .await
@@ -547,9 +547,9 @@ where
     pub async fn coin_split(
         &mut self,
         commitments: Vec<Commitment>,
-        amount_per_split: MicroMinotari,
+        amount_per_split: MicroMinotaiji,
         split_count: usize,
-        fee_per_gram: MicroMinotari,
+        fee_per_gram: MicroMinotaiji,
         message: String,
     ) -> Result<TxId, WalletError> {
         let coin_split_tx = self
@@ -577,7 +577,7 @@ where
         &mut self,
         commitments: Vec<Commitment>,
         split_count: usize,
-        fee_per_gram: MicroMinotari,
+        fee_per_gram: MicroMinotaiji,
         message: String,
     ) -> Result<TxId, WalletError> {
         let coin_split_tx = self
@@ -605,7 +605,7 @@ where
         &mut self,
         commitments: Vec<Commitment>,
         split_count: usize,
-        fee_per_gram: MicroMinotari,
+        fee_per_gram: MicroMinotaiji,
         message: String,
     ) -> Result<TxId, WalletError> {
         let coin_split_tx = self
@@ -631,7 +631,7 @@ where
     pub async fn coin_join(
         &mut self,
         commitments: Vec<Commitment>,
-        fee_per_gram: MicroMinotari,
+        fee_per_gram: MicroMinotaiji,
         msg: Option<String>,
     ) -> Result<TxId, WalletError> {
         let coin_join_tx = self

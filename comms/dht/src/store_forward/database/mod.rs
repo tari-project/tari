@@ -1,4 +1,4 @@
-// Copyright 2020, The Tari Project
+// Copyright 2020, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -24,7 +24,7 @@ mod stored_message;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use diesel::{dsl, result::DatabaseErrorKind, BoolExpressionMethods, ExpressionMethods, QueryDsl, RunQueryDsl};
 pub use stored_message::{NewStoredMessage, StoredMessage};
-use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
+use taiji_comms::{peer_manager::NodeId, types::CommsPublicKey};
 use tari_utilities::hex::Hex;
 
 use crate::{
@@ -227,7 +227,7 @@ impl StoreAndForwardDatabase {
 
 #[cfg(test)]
 mod test {
-    use tari_test_utils::random;
+    use taiji_test_utils::random;
 
     use super::*;
 

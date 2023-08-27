@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -21,9 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 pub(crate) mod liveness {
-    tari_comms::outdir_include!("tari.p2p.liveness.rs");
+    taiji_comms::outdir_include!("taiji.p2p.liveness.rs");
 }
 
 pub(crate) mod message_type {
-    tari_comms::outdir_include!("tari.p2p.message_type.rs");
+    taiji_comms::outdir_include!("taiji.p2p.message_type.rs");
 }

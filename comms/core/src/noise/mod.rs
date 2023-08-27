@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 //! An implementation of the [Noise protocol](https://noiseprotocol.org/) using the [snow crate](https://crates.io/crates/snow)
-//! using the Ristretto curve from dalek via [tari_crypto](https://github.com/tari-project/tari-crypto).
+//! using the Ristretto curve from dalek via [tari_crypto](https://github.com/taiji-project/taiji-crypto).
 
 mod config;
 pub use config::NoiseConfig;

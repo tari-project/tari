@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -24,7 +24,7 @@ use std::{cmp, fmt::Debug, sync::Arc, time::Duration};
 
 use futures::{future, Stream, StreamExt};
 use log::*;
-use tari_comms::rate_limit::RateLimit;
+use taiji_comms::rate_limit::RateLimit;
 use tokio::{
     sync::{broadcast, mpsc},
     task,
@@ -32,7 +32,7 @@ use tokio::{
 use tokio_stream::wrappers;
 
 use super::peer_message::PeerMessage;
-use crate::{comms_connector::InboundDomainConnector, tari_message::TariMessageType};
+use crate::{comms_connector::InboundDomainConnector, taiji_message::TaijiMessageType};
 
 const LOG_TARGET: &str = "comms::middleware::pubsub";
 
@@ -42,9 +42,9 @@ const RATE_LIMIT_RESTOCK_INTERVAL: Duration = Duration::from_millis(1000);
 
 /// Alias for a pubsub-type domain connector
 pub type PubsubDomainConnector = InboundDomainConnector;
-pub type SubscriptionFactory = TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>;
+pub type SubscriptionFactory = TopicSubscriptionFactory<TaijiMessageType, Arc<PeerMessage>>;
 
-/// Connects `InboundDomainConnector` to a `tari_pubsub::TopicPublisher` through a buffered broadcast channel
+/// Connects `InboundDomainConnector` to a `taiji_pubsub::TopicPublisher` through a buffered broadcast channel
 pub fn pubsub_connector(buf_size: usize, rate_limit: usize) -> (PubsubDomainConnector, SubscriptionFactory) {
     let (publisher, subscription_factory) = pubsub_channel(buf_size);
     let (sender, receiver) = mpsc::channel(buf_size);
@@ -62,7 +62,7 @@ pub fn pubsub_connector(buf_size: usize, rate_limit: usize) -> (PubsubDomainConn
             .rate_limit(cmp::max(rate_limit, RATE_LIMIT_MIN_CAPACITY), RATE_LIMIT_RESTOCK_INTERVAL)
             // Map DomainMessage into a TopicPayload
             .filter_map(move |msg: Arc<PeerMessage>| {
-                let opt = match TariMessageType::from_i32(msg.message_header.message_type) {
+                let opt = match TaijiMessageType::from_i32(msg.message_header.message_type) {
                     Some(msg_type) => {
                         let message_tag_trace = msg.dht_header.message_tag;
                         let payload = TopicPayload::new(msg_type, msg);
@@ -74,7 +74,7 @@ pub fn pubsub_connector(buf_size: usize, rate_limit: usize) -> (PubsubDomainConn
                         Some(payload)
                     }
                     None => {
-                        warn!(target: LOG_TARGET, "Invalid or unrecognised Tari message type '{}'", msg.message_header.message_type);
+                        warn!(target: LOG_TARGET, "Invalid or unrecognised Taiji message type '{}'", msg.message_header.message_type);
                         None
                     }
                 };
@@ -172,7 +172,7 @@ mod test {
     use std::time::Duration;
 
     use futures::stream;
-    use tari_test_utils::collect_stream;
+    use taiji_test_utils::collect_stream;
 
     use super::*;
 

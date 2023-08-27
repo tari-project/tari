@@ -1,4 +1,4 @@
-//  Copyright 2019 The Tari Project
+//  Copyright 2019 The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -23,7 +23,7 @@
 use core::fmt::{Display, Error, Formatter};
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::{types::Signature, waiting_requests::RequestKey};
+use taiji_common_types::{types::Signature, waiting_requests::RequestKey};
 use tari_utilities::hex::Hex;
 
 use crate::transactions::transaction_components::Transaction;

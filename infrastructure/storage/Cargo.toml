@@ -1,9 +1,9 @@
 [package]
-name = "tari_storage"
-authors = ["The Tari Development Community"]
-description = "Key-Value store API for the Tari project"
+name = "taiji_storage"
+authors = ["The Taiji Development Community"]
+description = "Key-Value store API for the Taiji project"
 repository = "https://github.com/tari-project/tari"
-homepage = "https://tari.com"
+homepage = "https://taiji.com"
 readme = "README.md"
 license = "BSD-3-Clause"
 version = "0.52.0-pre.0"

@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -24,7 +24,7 @@ use core::convert;
 use std::{iter, sync::Arc};
 
 use futures::future;
-use tari_comms::{
+use taiji_comms::{
     peer_manager::PeerFeatures,
     protocol::rpc::{
         mock::{MockRpcImpl, MockRpcServer},
@@ -35,8 +35,8 @@ use tari_comms::{
         node_identity::build_node_identity,
     },
 };
-use tari_shutdown::Shutdown;
-use tari_test_utils::runtime::spawn_until_shutdown;
+use taiji_shutdown::Shutdown;
+use taiji_test_utils::runtime::spawn_until_shutdown;
 use tokio::{
     sync::{mpsc, Barrier},
     task,

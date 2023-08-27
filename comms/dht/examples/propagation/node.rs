@@ -1,4 +1,4 @@
-//  Copyright 2022, The Tari Project
+//  Copyright 2022, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -23,7 +23,7 @@
 use std::{path::Path, sync::Arc, time::Duration};
 
 use rand::rngs::OsRng;
-use tari_comms::{
+use taiji_comms::{
     backoff::ConstantBackoff,
     peer_manager::PeerFeatures,
     pipeline,
@@ -35,9 +35,9 @@ use tari_comms::{
     CommsNode,
     NodeIdentity,
 };
-use tari_comms_dht::{inbound::DecryptedDhtMessage, DbConnectionUrl, Dht};
-use tari_shutdown::ShutdownSignal;
-use tari_storage::{
+use taiji_comms_dht::{inbound::DecryptedDhtMessage, DbConnectionUrl, Dht};
+use taiji_shutdown::ShutdownSignal;
+use taiji_storage::{
     lmdb_store::{LMDBBuilder, LMDBConfig},
     LMDBWrapper,
 };
@@ -82,7 +82,7 @@ pub async fn create<P: AsRef<Path>>(
             major_version: 0,
             minor_version: 0,
             network_byte: 0x25,
-            user_agent: "/tari/propagator/0.0.1".to_string(),
+            user_agent: "/taiji/propagator/0.0.1".to_string(),
         })
         .with_node_identity(node_identity.clone())
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(500)))
@@ -108,7 +108,7 @@ pub async fn create<P: AsRef<Path>>(
 
     let comms_node = builder.with_listener_address(hs_ctl.proxied_address()).build()?;
 
-    let dht = tari_comms_dht::Dht::builder()
+    let dht = taiji_comms_dht::Dht::builder()
         .with_database_url(DbConnectionUrl::File(database_path.as_ref().join("dht.sqlite")))
         .set_auto_store_and_forward_requests(false)
         .with_outbound_sender(outbound_tx)

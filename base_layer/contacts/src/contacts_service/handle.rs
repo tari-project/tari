@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -27,9 +27,9 @@ use std::{
 };
 
 use chrono::{DateTime, Local, NaiveDateTime};
-use tari_common_types::tari_address::TariAddress;
-use tari_comms::peer_manager::NodeId;
-use tari_service_framework::reply_channel::SenderService;
+use taiji_common_types::taiji_address::TaijiAddress;
+use taiji_comms::peer_manager::NodeId;
+use taiji_service_framework::reply_channel::SenderService;
 use tokio::sync::broadcast;
 use tower::Service;
 
@@ -45,7 +45,7 @@ pub static DEFAULT_MESSAGE_PAGE: u64 = 0;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContactsLivenessData {
-    address: TariAddress,
+    address: TaijiAddress,
     node_id: NodeId,
     latency: Option<u32>,
     last_seen: Option<NaiveDateTime>,
@@ -55,7 +55,7 @@ pub struct ContactsLivenessData {
 
 impl ContactsLivenessData {
     pub fn new(
-        address: TariAddress,
+        address: TaijiAddress,
         node_id: NodeId,
         latency: Option<u32>,
         last_seen: Option<NaiveDateTime>,
@@ -72,7 +72,7 @@ impl ContactsLivenessData {
         }
     }
 
-    pub fn address(&self) -> &TariAddress {
+    pub fn address(&self) -> &TaijiAddress {
         &self.address
     }
 
@@ -130,13 +130,13 @@ pub enum ContactsLivenessEvent {
 
 #[derive(Debug)]
 pub enum ContactsServiceRequest {
-    GetContact(TariAddress),
+    GetContact(TaijiAddress),
     UpsertContact(Contact),
-    RemoveContact(TariAddress),
+    RemoveContact(TaijiAddress),
     GetContacts,
     GetContactOnlineStatus(Contact),
-    SendMessage(TariAddress, Message),
-    GetMessages(TariAddress, i64, i64),
+    SendMessage(TaijiAddress, Message),
+    GetMessages(TaijiAddress, i64, i64),
 }
 
 #[derive(Debug)]
@@ -174,7 +174,7 @@ impl ContactsServiceHandle {
         }
     }
 
-    pub async fn get_contact(&mut self, address: TariAddress) -> Result<Contact, ContactsServiceError> {
+    pub async fn get_contact(&mut self, address: TaijiAddress) -> Result<Contact, ContactsServiceError> {
         match self
             .request_response_service
             .call(ContactsServiceRequest::GetContact(address))
@@ -207,7 +207,7 @@ impl ContactsServiceHandle {
         }
     }
 
-    pub async fn remove_contact(&mut self, address: TariAddress) -> Result<Contact, ContactsServiceError> {
+    pub async fn remove_contact(&mut self, address: TaijiAddress) -> Result<Contact, ContactsServiceError> {
         match self
             .request_response_service
             .call(ContactsServiceRequest::RemoveContact(address))
@@ -243,7 +243,7 @@ impl ContactsServiceHandle {
 
     pub async fn get_messages(
         &mut self,
-        pk: TariAddress,
+        pk: TaijiAddress,
         mut limit: u64,
         mut page: u64,
     ) -> Result<Vec<Message>, ContactsServiceError> {

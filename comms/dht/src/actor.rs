@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -32,14 +32,14 @@ use std::{cmp, fmt, fmt::Display, sync::Arc, time::Instant};
 use chrono::{DateTime, Utc};
 use futures::{future::BoxFuture, stream::FuturesUnordered, StreamExt};
 use log::*;
-use tari_comms::{
+use taiji_comms::{
     connection_manager::ConnectionManagerError,
     connectivity::{ConnectivityError, ConnectivityRequester, ConnectivitySelection},
     peer_manager::{NodeId, NodeIdentity, PeerFeatures, PeerManager, PeerManagerError, PeerQuery, PeerQuerySortBy},
     types::CommsPublicKey,
     PeerConnection,
 };
-use tari_shutdown::ShutdownSignal;
+use taiji_shutdown::ShutdownSignal;
 use tari_utilities::{
     hex::Hex,
     message_format::{MessageFormat, MessageFormatError},
@@ -829,13 +829,13 @@ mod test {
     use std::{convert::TryFrom, time::Duration};
 
     use chrono::{DateTime, Utc};
-    use tari_comms::test_utils::mocks::{
+    use taiji_comms::test_utils::mocks::{
         create_connectivity_mock,
         create_peer_connection_mock_pair,
         ConnectivityManagerMockState,
     };
-    use tari_shutdown::Shutdown;
-    use tari_test_utils::random;
+    use taiji_shutdown::Shutdown;
+    use taiji_test_utils::random;
 
     use super::*;
     use crate::{

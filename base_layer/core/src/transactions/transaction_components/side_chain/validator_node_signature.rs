@@ -1,4 +1,4 @@
-//  Copyright 2022. The Tari Project
+//  Copyright 2022. The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -25,13 +25,13 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use digest::consts::U32;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{FixedHash, PrivateKey, PublicKey, Signature};
+use taiji_common_types::types::{FixedHash, PrivateKey, PublicKey, Signature};
 use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher, keys::PublicKey as PublicKeyT};
 use tari_utilities::ByteArray;
 
 hash_domain!(
     ValidatorNodeHashDomain,
-    "com.tari.base_layer.core.transactions.side_chain.validator_node",
+    "com.taiji.base_layer.core.transactions.side_chain.validator_node",
     0
 );
 

@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -108,7 +108,7 @@ impl RpcRequestMock {
 ///
 ///
 /// ```edition2018
-/// # use tari_comms::protocol::rpc::mock::{RpcMock, RpcMockMethodState};
+/// # use taiji_comms::protocol::rpc::mock::{RpcMock, RpcMockMethodState};
 /// struct MyServiceMock {
 ///     // Each method has a field where it's call state (requests, number of calls etc) and canned response are stored
 ///     my_method: RpcMockMethodState<(), ()>,

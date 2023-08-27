@@ -1,4 +1,4 @@
-//   Copyright 2023. The Tari Project
+//   Copyright 2023. The Taiji Project
 //
 //   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //   following conditions are met:
@@ -28,14 +28,14 @@ use std::{
 
 use async_trait::async_trait;
 use log::debug;
-use tari_common_types::tari_address::TariAddress;
-use tari_comms::{CommsNode, NodeIdentity};
-use tari_contacts::contacts_service::{
+use taiji_common_types::taiji_address::TaijiAddress;
+use taiji_comms::{CommsNode, NodeIdentity};
+use taiji_contacts::contacts_service::{
     handle::ContactsServiceHandle,
     service::ContactOnlineStatus,
     types::{Message, MessageBuilder},
 };
-use tari_shutdown::Shutdown;
+use taiji_shutdown::Shutdown;
 
 use crate::{config::ApplicationConfig, networking};
 
@@ -43,10 +43,10 @@ const LOG_TARGET: &str = "contacts::chat_client";
 
 #[async_trait]
 pub trait ChatClient {
-    async fn add_contact(&self, address: &TariAddress);
-    async fn check_online_status(&self, address: &TariAddress) -> ContactOnlineStatus;
-    async fn send_message(&self, receiver: TariAddress, message: String);
-    async fn get_messages(&self, sender: &TariAddress, limit: u64, page: u64) -> Vec<Message>;
+    async fn add_contact(&self, address: &TaijiAddress);
+    async fn check_online_status(&self, address: &TaijiAddress) -> ContactOnlineStatus;
+    async fn send_message(&self, receiver: TaijiAddress, message: String);
+    async fn get_messages(&self, sender: &TaijiAddress, limit: u64, page: u64) -> Vec<Message>;
     fn identity(&self) -> &NodeIdentity;
     fn shutdown(&mut self);
 }
@@ -123,7 +123,7 @@ impl ChatClient for Client {
         self.shutdown.trigger();
     }
 
-    async fn add_contact(&self, address: &TariAddress) {
+    async fn add_contact(&self, address: &TaijiAddress) {
         if let Some(mut contacts_service) = self.contacts.clone() {
             contacts_service
                 .upsert_contact(address.into())
@@ -132,7 +132,7 @@ impl ChatClient for Client {
         }
     }
 
-    async fn check_online_status(&self, address: &TariAddress) -> ContactOnlineStatus {
+    async fn check_online_status(&self, address: &TaijiAddress) -> ContactOnlineStatus {
         if let Some(mut contacts_service) = self.contacts.clone() {
             let contact = contacts_service
                 .get_contact(address.clone())
@@ -148,7 +148,7 @@ impl ChatClient for Client {
         ContactOnlineStatus::Offline
     }
 
-    async fn send_message(&self, receiver: TariAddress, message: String) {
+    async fn send_message(&self, receiver: TaijiAddress, message: String) {
         if let Some(mut contacts_service) = self.contacts.clone() {
             contacts_service
                 .send_message(MessageBuilder::new().message(message).address(receiver).build())
@@ -157,7 +157,7 @@ impl ChatClient for Client {
         }
     }
 
-    async fn get_messages(&self, sender: &TariAddress, limit: u64, page: u64) -> Vec<Message> {
+    async fn get_messages(&self, sender: &TaijiAddress, limit: u64, page: u64) -> Vec<Message> {
         let mut messages = vec![];
         if let Some(mut contacts_service) = self.contacts.clone() {
             messages = contacts_service

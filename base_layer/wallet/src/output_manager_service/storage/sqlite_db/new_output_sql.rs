@@ -1,5 +1,5 @@
 use borsh::BorshSerialize;
-//  Copyright 2021. The Tari Project
+//  Copyright 2021. The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that
 // the  following conditions are met:
@@ -23,7 +23,7 @@ use borsh::BorshSerialize;
 // DAMAGE.
 use derivative::Derivative;
 use diesel::{prelude::*, SqliteConnection};
-use tari_common_types::transaction::TxId;
+use taiji_common_types::transaction::TxId;
 use tari_utilities::ByteArray;
 
 use crate::{

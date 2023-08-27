@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -21,13 +21,13 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use once_cell::sync::Lazy;
-use tari_metrics::{IntCounter, IntCounterVec, IntGauge, IntGaugeVec};
+use taiji_metrics::{IntCounter, IntCounterVec, IntGauge, IntGaugeVec};
 
 use crate::{connection_manager::ConnectionDirection, peer_manager::NodeId};
 
 pub fn connections(direction: ConnectionDirection) -> IntGauge {
     static METER: Lazy<IntGaugeVec> = Lazy::new(|| {
-        tari_metrics::register_int_gauge_vec(
+        taiji_metrics::register_int_gauge_vec(
             "comms::connectivity::num_connections",
             "Number of active connections by direction",
             &["direction"],
@@ -40,14 +40,14 @@ pub fn connections(direction: ConnectionDirection) -> IntGauge {
 
 pub fn uptime() -> IntGauge {
     static METER: Lazy<IntGauge> =
-        Lazy::new(|| tari_metrics::register_int_gauge("comms::uptime", "Comms uptime").unwrap());
+        Lazy::new(|| taiji_metrics::register_int_gauge("comms::uptime", "Comms uptime").unwrap());
 
     METER.clone()
 }
 
 pub fn banned_peers_counter(peer: &NodeId) -> IntCounter {
     static METER: Lazy<IntCounterVec> = Lazy::new(|| {
-        tari_metrics::register_int_counter_vec(
+        taiji_metrics::register_int_counter_vec(
             "comms::connectivity::banned_peers",
             "The number of peer bans by peer",
             &["peer_id"],

@@ -1,4 +1,4 @@
-//  Copyright 2022. The Tari Project
+//  Copyright 2022. The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -23,13 +23,13 @@
 use std::sync::Arc;
 
 use rand::rngs::OsRng;
-use tari_comms::{peer_manager::PeerFeatures, types::CommsDatabase, CommsBuilder, NodeIdentity, UnspawnedCommsNode};
-use tari_shutdown::ShutdownSignal;
-use tari_storage::{
+use taiji_comms::{peer_manager::PeerFeatures, types::CommsDatabase, CommsBuilder, NodeIdentity, UnspawnedCommsNode};
+use taiji_shutdown::ShutdownSignal;
+use taiji_storage::{
     lmdb_store::{LMDBBuilder, LMDBConfig},
     LMDBWrapper,
 };
-use tari_test_utils::{paths::create_temporary_data_path, random};
+use taiji_test_utils::{paths::create_temporary_data_path, random};
 
 pub fn create_peer_storage() -> CommsDatabase {
     let database_name = random::string(8);

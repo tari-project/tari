@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -29,7 +29,7 @@ pub use helpers::{
     create_blockhashing_blob_from_block,
     create_ordered_transaction_hashes_from_block,
     deserialize_monero_block_from_hex,
-    extract_tari_hash,
+    extract_taiji_hash,
     randomx_difficulty,
     serialize_monero_block_to_hex,
     verify_header,

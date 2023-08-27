@@ -1,4 +1,4 @@
-// Copyright 2019 The Tari Project
+// Copyright 2019 The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -27,7 +27,7 @@ mod async_assert_eventually;
 /// ## Usage
 /// ```edition2018
 /// # use futures::future::{self, FutureExt};
-/// # use tari_test_utils::counter_context;
+/// # use taiji_test_utils::counter_context;
 ///
 /// {
 ///     let mut my_fut = future::ready(());
@@ -61,7 +61,7 @@ macro_rules! counter_context {
 /// ## Usage
 /// ```edition2018
 /// # use futures::future::{self, FutureExt};
-/// # use tari_test_utils::panic_context;
+/// # use taiji_test_utils::panic_context;
 ///
 /// let mut my_fut = future::ready(());
 /// panic_context!(cx); // cx variable in scope

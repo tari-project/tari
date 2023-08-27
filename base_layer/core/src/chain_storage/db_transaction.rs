@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -27,7 +27,7 @@ use std::{
 };
 
 use croaring::Bitmap;
-use tari_common_types::types::{BlockHash, Commitment, HashOutput};
+use taiji_common_types::types::{BlockHash, Commitment, HashOutput};
 use tari_utilities::hex::Hex;
 
 use crate::{

@@ -1,13 +1,13 @@
 [package]
-name = "tari_libtor"
+name = "taiji_libtor"
 version = "0.24.0"
 edition = "2021"
 license = "BSD-3-Clause"
 
 [dependencies]
-tari_common = { path = "../../common" }
-tari_p2p = { path = "../../base_layer/p2p" }
-tari_shutdown = {  path = "../shutdown"}
+taiji_common = { path = "../../common" }
+taiji_p2p = { path = "../../base_layer/p2p" }
+taiji_shutdown = {  path = "../shutdown"}
 
 derivative = "2.2.0"
 log = "0.4.8"

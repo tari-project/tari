@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# Run the Tari test suite locally inside a suitable docker container
+# Run the Taiji test suite locally inside a suitable docker container
 
-IMAGE=quay.io/tarilabs/rust_tari-build-with-deps:nightly-2023-06-04
+IMAGE=quay.io/taijilabs/rust_taiji-build-with-deps:nightly-2023-06-04
 TOOLCHAIN_VERSION=nightly-2023-06-04
-CONTAINER=tari_test
+CONTAINER=taiji_test
 
 echo "Deleting old container"
 docker rm -f $CONTAINER

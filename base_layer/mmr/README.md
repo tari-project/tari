@@ -1,6 +1,6 @@
 # Merkle Mountain Range
 
-This crate is part of the [Tari Cryptocurrency](https://tari.com) project.
+This crate is part of the [Taiji Cryptocurrency](https://taiji.com) project.
 
 The Merkle mountain range was invented by Peter Todd. More about them can be read
 [here](https://github.com/opentimestamps/opentimestamps-server/blob/master/doc/merkle-mountain-range.md) and

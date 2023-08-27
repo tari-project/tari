@@ -1,4 +1,4 @@
-// Copyright 2018 The Tari Project
+// Copyright 2018 The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -34,8 +34,8 @@ pub use output_features_version::OutputFeaturesVersion;
 pub use output_type::OutputType;
 pub use range_proof_type::RangeProofType;
 pub use side_chain::*;
-use tari_common_types::types::{ComAndPubSignature, Commitment, FixedHash, PublicKey};
-use tari_script::TariScript;
+use taiji_common_types::types::{ComAndPubSignature, Commitment, FixedHash, PublicKey};
+use taiji_script::TaijiScript;
 use tari_utilities::{hidden_type, safe_array::SafeArray, Hidden};
 pub use transaction::Transaction;
 pub use transaction_builder::TransactionBuilder;
@@ -88,7 +88,7 @@ hidden_type!(EncryptedDataKey, SafeArray<u8, AEAD_KEY_LEN>);
 
 //----------------------------------------     Crate functions   ----------------------------------------------------//
 
-use super::tari_amount::MicroMinotari;
+use super::taiji_amount::MicroMinotaiji;
 use crate::{consensus::DomainSeparatedConsensusHasher, covenants::Covenant, transactions::TransactionHashDomain};
 
 /// Implement the canonical hashing function for TransactionOutput and WalletOutput for use in
@@ -102,12 +102,12 @@ pub(super) fn hash_output(
     features: &OutputFeatures,
     commitment: &Commitment,
     rangeproof_hash: &FixedHash,
-    script: &TariScript,
+    script: &TaijiScript,
     sender_offset_public_key: &PublicKey,
     metadata_signature: &ComAndPubSignature,
     covenant: &Covenant,
     encrypted_data: &EncryptedData,
-    minimum_value_promise: MicroMinotari,
+    minimum_value_promise: MicroMinotaiji,
 ) -> FixedHash {
     let common_hash = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("transaction_output")
         .chain(&version)

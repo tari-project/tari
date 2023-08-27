@@ -1,4 +1,4 @@
-//   Copyright 2023. The Tari Project
+//   Copyright 2023. The Taiji Project
 //
 //   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //   following conditions are met:
@@ -23,18 +23,18 @@
 use std::time::Duration;
 
 use cucumber::{then, when};
-use tari_common::configuration::Network;
-use tari_common_types::tari_address::TariAddress;
-use tari_contacts::contacts_service::{
+use taiji_common::configuration::Network;
+use taiji_common_types::taiji_address::TaijiAddress;
+use taiji_contacts::contacts_service::{
     handle::{DEFAULT_MESSAGE_LIMIT, DEFAULT_MESSAGE_PAGE},
     service::ContactOnlineStatus,
 };
-use tari_integration_tests::{chat_client::spawn_chat_client, TariWorld};
+use taiji_integration_tests::{chat_client::spawn_chat_client, TaijiWorld};
 
 use crate::steps::{HALF_SECOND, TWO_MINUTES_WITH_HALF_SECOND_SLEEP};
 
 #[when(expr = "I have a chat client {word} connected to seed node {word}")]
-async fn chat_client_connected_to_base_node(world: &mut TariWorld, name: String, seed_node_name: String) {
+async fn chat_client_connected_to_base_node(world: &mut TaijiWorld, name: String, seed_node_name: String) {
     let base_node = world.get_node(&seed_node_name).unwrap();
 
     let client = spawn_chat_client(
@@ -48,7 +48,7 @@ async fn chat_client_connected_to_base_node(world: &mut TariWorld, name: String,
 }
 
 #[when(expr = "I have a chat client {word} with no peers")]
-async fn chat_client_with_no_peers(world: &mut TariWorld, name: String) {
+async fn chat_client_with_no_peers(world: &mut TaijiWorld, name: String) {
     let client = spawn_chat_client(
         &name,
         vec![],
@@ -60,19 +60,19 @@ async fn chat_client_with_no_peers(world: &mut TariWorld, name: String) {
 }
 
 #[when(regex = r"^I use (.+) to send a message '(.+)' to (.*)$")]
-async fn send_message_to(world: &mut TariWorld, sender: String, message: String, receiver: String) {
+async fn send_message_to(world: &mut TaijiWorld, sender: String, message: String, receiver: String) {
     let sender = world.chat_clients.get(&sender).unwrap();
     let receiver = world.chat_clients.get(&receiver).unwrap();
-    let address = TariAddress::from_public_key(receiver.identity().public_key(), Network::LocalNet);
+    let address = TaijiAddress::from_public_key(receiver.identity().public_key(), Network::LocalNet);
 
     sender.send_message(address, message).await;
 }
 
 #[then(expr = "{word} will have {int} message(s) with {word}")]
-async fn receive_n_messages(world: &mut TariWorld, receiver: String, message_count: u64, sender: String) {
+async fn receive_n_messages(world: &mut TaijiWorld, receiver: String, message_count: u64, sender: String) {
     let receiver = world.chat_clients.get(&receiver).unwrap();
     let sender = world.chat_clients.get(&sender).unwrap();
-    let address = TariAddress::from_public_key(sender.identity().public_key(), Network::LocalNet);
+    let address = TaijiAddress::from_public_key(sender.identity().public_key(), Network::LocalNet);
 
     let mut messages = vec![];
     for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
@@ -96,21 +96,21 @@ async fn receive_n_messages(world: &mut TariWorld, receiver: String, message_cou
 }
 
 #[when(expr = "{word} adds {word} as a contact")]
-async fn add_as_contact(world: &mut TariWorld, sender: String, receiver: String) {
+async fn add_as_contact(world: &mut TaijiWorld, sender: String, receiver: String) {
     let receiver = world.chat_clients.get(&receiver).unwrap();
     let sender = world.chat_clients.get(&sender).unwrap();
 
-    let address = TariAddress::from_public_key(receiver.identity().public_key(), Network::LocalNet);
+    let address = TaijiAddress::from_public_key(receiver.identity().public_key(), Network::LocalNet);
 
     sender.add_contact(&address).await;
 }
 
 #[when(expr = "{word} waits for contact {word} to be online")]
-async fn wait_for_contact_to_be_online(world: &mut TariWorld, client: String, contact: String) {
+async fn wait_for_contact_to_be_online(world: &mut TaijiWorld, client: String, contact: String) {
     let client = world.chat_clients.get(&client).unwrap();
     let contact = world.chat_clients.get(&contact).unwrap();
 
-    let address = TariAddress::from_public_key(contact.identity().public_key(), Network::LocalNet);
+    let address = TaijiAddress::from_public_key(contact.identity().public_key(), Network::LocalNet);
     let mut last_status = ContactOnlineStatus::Banned("No result came back".to_string());
 
     for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP / 4) {

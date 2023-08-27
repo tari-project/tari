@@ -1,4 +1,4 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 syntax = "proto3";
@@ -8,7 +8,7 @@ import "google/protobuf/timestamp.proto";
 import "transaction.proto";
 import "types.proto";
 
-package tari.core;
+package taiji.core;
 
 // The proof of work data structure that is included in the block header.
 message ProofOfWork {
@@ -56,14 +56,14 @@ message BlockHeader {
     bytes validator_node_merkle_root = 16;
 }
 
-// A Tari block. Blocks are linked together into a blockchain.
+// A Taiji block. Blocks are linked together into a blockchain.
 message Block {
     // The BlockHeader contains all the metadata for the block, including proof of work, a link to the previous block
     // and the transaction kernels.
     BlockHeader header = 1;
     // The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,
     // blocks consist of inputs, outputs and kernels, rather than transactions.
-    tari.types.AggregateBody body = 2;
+    taiji.types.AggregateBody body = 2;
 }
 
 // A new block message. This is the message that is propagated around the network. It contains the
@@ -72,9 +72,9 @@ message NewBlock {
     // The block header.
     BlockHeader header = 1;
     // Coinbase kernel of the block.
-    tari.types.TransactionKernel coinbase_kernel = 2;
+    taiji.types.TransactionKernel coinbase_kernel = 2;
     // Coinbase output of the block.
-    tari.types.TransactionOutput coinbase_output = 3;
+    taiji.types.TransactionOutput coinbase_output = 3;
     // The scalar `s` component of the kernel excess signatures of the transactions contained in the block.
     repeated bytes kernel_excess_sigs = 4;
 }
@@ -137,7 +137,7 @@ message NewBlockTemplate {
     NewBlockHeaderTemplate header = 1;
     // This flag indicates if the inputs, outputs and kernels have been sorted internally, that is, the sort() method
     // has been called. This may be false even if all components are sorted.
-    tari.types.AggregateBody body = 2;
+    taiji.types.AggregateBody body = 2;
     // The difficulty is defined as the maximum target divided by the block hash.
     uint64 target_difficulty = 3;
     // The reward is the sum of the coinbase utxo and the total fees.

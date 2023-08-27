@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -374,8 +374,8 @@ impl FromIterator<OutputField> for OutputFields {
 #[cfg(test)]
 mod test {
 
-    use tari_common_types::types::{Commitment, PublicKey};
-    use tari_script::script;
+    use taiji_common_types::types::{Commitment, PublicKey};
+    use taiji_script::script;
 
     use super::*;
     use crate::{
@@ -393,7 +393,7 @@ mod test {
         mod is_eq {
             use super::*;
             use crate::transactions::{
-                tari_amount::MicroMinotari,
+                taiji_amount::MicroMinotaiji,
                 test_helpers::create_test_core_key_manager_with_memory_db,
                 transaction_components::RangeProofType,
             };
@@ -455,8 +455,8 @@ mod test {
                             ..Default::default()
                         },
                         script: script![Drop Nop],
-                        minimum_value_promise: MicroMinotari(123456),
-                        value: MicroMinotari(123456),
+                        minimum_value_promise: MicroMinotaiji(123456),
+                        value: MicroMinotaiji(123456),
                         ..Default::default()
                     },
                     &key_manager,
@@ -483,7 +483,7 @@ mod test {
                     .is_eq(&output, &RangeProofType::BulletProofPlus)
                     .unwrap());
                 assert!(!OutputField::MinimumValuePromise
-                    .is_eq(&output, &MicroMinotari::default())
+                    .is_eq(&output, &MicroMinotaiji::default())
                     .unwrap());
             }
         }
@@ -569,7 +569,7 @@ mod test {
 
             use super::*;
             use crate::transactions::{
-                tari_amount::MicroMinotari,
+                taiji_amount::MicroMinotaiji,
                 test_helpers::create_test_core_key_manager_with_memory_db,
                 transaction_components::RangeProofType,
             };
@@ -588,8 +588,8 @@ mod test {
                     UtxoTestParams {
                         features,
                         script: script![Drop Nop],
-                        minimum_value_promise: MicroMinotari(123456),
-                        value: MicroMinotari(123456),
+                        minimum_value_promise: MicroMinotaiji(123456),
+                        value: MicroMinotaiji(123456),
                         ..Default::default()
                     },
                     &key_manager,
@@ -621,7 +621,7 @@ mod test {
         mod get_field_value_ref {
             use super::*;
             use crate::transactions::{
-                tari_amount::MicroMinotari,
+                taiji_amount::MicroMinotaiji,
                 test_helpers::create_test_core_key_manager_with_memory_db,
                 transaction_components::RangeProofType,
             };
@@ -638,8 +638,8 @@ mod test {
                     1,
                     UtxoTestParams {
                         features: features.clone(),
-                        minimum_value_promise: MicroMinotari(123456),
-                        value: MicroMinotari(123456),
+                        minimum_value_promise: MicroMinotaiji(123456),
+                        value: MicroMinotaiji(123456),
                         ..Default::default()
                     },
                     &key_manager,
@@ -649,8 +649,8 @@ mod test {
                 .unwrap();
                 let r = OutputField::Features.get_field_value_ref::<OutputFeatures>(&output);
                 assert_eq!(*r.unwrap(), features);
-                let r = OutputField::MinimumValuePromise.get_field_value_ref::<MicroMinotari>(&output);
-                assert_eq!(*r.unwrap(), MicroMinotari(123456));
+                let r = OutputField::MinimumValuePromise.get_field_value_ref::<MicroMinotaiji>(&output);
+                assert_eq!(*r.unwrap(), MicroMinotaiji(123456));
             }
         }
     }

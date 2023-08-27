@@ -1,4 +1,4 @@
-//  Copyright 2019 The Tari Project
+//  Copyright 2019 The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -63,9 +63,9 @@ use std::sync::Arc;
 
 use futures::{Stream, StreamExt};
 use log::*;
-use tari_comms::connectivity::ConnectivityRequester;
-use tari_comms_dht::Dht;
-use tari_service_framework::{
+use taiji_comms::connectivity::ConnectivityRequester;
+use taiji_comms_dht::Dht;
+use taiji_service_framework::{
     async_trait,
     reply_channel,
     ServiceInitializationError,
@@ -83,7 +83,7 @@ use crate::{
         liveness::state::LivenessState,
         utils::{map_decode, ok_or_skip_result},
     },
-    tari_message::TariMessageType,
+    taiji_message::TaijiMessageType,
 };
 
 const LOG_TARGET: &str = "p2p::services::liveness";
@@ -91,14 +91,14 @@ const LOG_TARGET: &str = "p2p::services::liveness";
 /// Initializer for the Liveness service handle and service future.
 pub struct LivenessInitializer {
     config: Option<LivenessConfig>,
-    inbound_message_subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
+    inbound_message_subscription_factory: Arc<TopicSubscriptionFactory<TaijiMessageType, Arc<PeerMessage>>>,
 }
 
 impl LivenessInitializer {
     /// Create a new LivenessInitializer from the inbound message subscriber
     pub fn new(
         config: LivenessConfig,
-        inbound_message_subscription_factory: Arc<TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>>,
+        inbound_message_subscription_factory: Arc<TopicSubscriptionFactory<TaijiMessageType, Arc<PeerMessage>>>,
     ) -> Self {
         Self {
             config: Some(config),
@@ -109,7 +109,7 @@ impl LivenessInitializer {
     /// Get a stream of inbound PingPong messages
     fn ping_stream(&self) -> impl Stream<Item = DomainMessage<PingPongMessage>> {
         self.inbound_message_subscription_factory
-            .get_subscription(TariMessageType::PingPong, "Liveness")
+            .get_subscription(TaijiMessageType::PingPong, "Liveness")
             .map(map_decode::<PingPongMessage>)
             .filter_map(ok_or_skip_result)
     }

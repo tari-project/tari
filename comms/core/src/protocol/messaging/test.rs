@@ -1,4 +1,4 @@
-// Copyright 2020, The Tari Project
+// Copyright 2020, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -26,8 +26,8 @@ use bytes::Bytes;
 use futures::{stream::FuturesUnordered, SinkExt, StreamExt};
 use rand::rngs::OsRng;
 use tari_crypto::keys::PublicKey;
-use tari_shutdown::Shutdown;
-use tari_test_utils::{collect_stream, unpack_enum};
+use taiji_shutdown::Shutdown;
+use taiji_test_utils::{collect_stream, unpack_enum};
 use tokio::{
     sync::{broadcast, mpsc, oneshot},
     time,

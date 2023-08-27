@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -27,8 +27,8 @@ use crate::{
     proof_of_work::{error::DifficultyError, Difficulty},
 };
 
-/// The Tari Sha3X proof-of-work algorithm. This is the reference implementation of Tari's standalone mining
-/// algorithm as described in [RFC-0131](https://rfc.tari.com/RFC-0131_Mining.html).
+/// The Taiji Sha3X proof-of-work algorithm. This is the reference implementation of Taiji's standalone mining
+/// algorithm as described in [RFC-0131](https://rfc.taiji.com/RFC-0131_Mining.html).
 ///
 /// In short Sha3X is a triple Keccak Sha3-256 hash of the nonce, mining hash and PoW mode byte.
 /// Mining using this CPU version of the algorithm is unlikely to be profitable, but is included for reference and
@@ -37,7 +37,7 @@ pub fn sha3x_difficulty(header: &BlockHeader) -> Result<Difficulty, DifficultyEr
     Ok(sha3x_difficulty_with_hash(header)?.0)
 }
 
-/// Calculate the Tari Sha3 mining hash
+/// Calculate the Taiji Sha3 mining hash
 pub fn sha3_hash(header: &BlockHeader) -> Vec<u8> {
     Sha3_256::new()
         .chain_update(header.nonce.to_le_bytes())
@@ -47,7 +47,7 @@ pub fn sha3_hash(header: &BlockHeader) -> Vec<u8> {
         .to_vec()
 }
 
-/// Calculate the Tari Sha3X mining hash and achieved difficulty
+/// Calculate the Taiji Sha3X mining hash and achieved difficulty
 fn sha3x_difficulty_with_hash(header: &BlockHeader) -> Result<(Difficulty, Vec<u8>), DifficultyError> {
     let hash = sha3_hash(header);
     let hash = Sha3_256::digest(hash);

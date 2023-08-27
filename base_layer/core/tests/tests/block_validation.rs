@@ -1,4 +1,4 @@
-//  Copyright 2022. The Tari Project
+//  Copyright 2022. The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -25,9 +25,9 @@ use std::{iter, sync::Arc};
 use borsh::BorshSerialize;
 use monero::blockdata::block::Block as MoneroBlock;
 use rand::{rngs::OsRng, RngCore};
-use tari_common::configuration::Network;
-use tari_common_types::types::FixedHash;
-use tari_core::{
+use taiji_common::configuration::Network;
+use taiji_common_types::types::FixedHash;
+use taiji_core::{
     blocks::{Block, BlockHeaderAccumulatedData, BlockHeaderValidationError, BlockValidationError, ChainBlock},
     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, ChainStorageError, Validators},
     consensus::{consensus_constants::PowAlgorithmConstants, ConsensusConstantsBuilder, ConsensusManager},
@@ -42,7 +42,7 @@ use tari_core::{
     transactions::{
         aggregated_body::AggregateBody,
         key_manager::TransactionKeyManagerInterface,
-        tari_amount::{uT, T},
+        taiji_amount::{uT, T},
         test_helpers::{
             create_test_core_key_manager_with_memory_db,
             create_wallet_output_with_data,
@@ -67,9 +67,9 @@ use tari_core::{
         ValidationError,
     },
 };
-use tari_key_manager::key_manager_service::KeyManagerInterface;
-use tari_script::{inputs, script};
-use tari_test_utils::unpack_enum;
+use taiji_key_manager::key_manager_service::KeyManagerInterface;
+use taiji_script::{inputs, script};
+use taiji_test_utils::unpack_enum;
 use tari_utilities::hex::Hex;
 use tokio::time::Instant;
 

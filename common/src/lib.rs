@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -22,9 +22,9 @@
 
 //! # Common logging and configuration utilities
 //!
-//! ## The global Tari configuration file
+//! ## The global Taiji configuration file
 //!
-//! A single configuration file (usually `~/.tari/config.toml` is used to manage settings for all Tari applications
+//! A single configuration file (usually `~/.taiji/config.toml` is used to manage settings for all Taiji applications
 //! and nodes running on a single system, whether it's a base node, validator node, or wallet.
 //!
 //! Setting of configuration parameters is applied using the following order of precedence:
@@ -34,20 +34,20 @@
 //! 3. `config.toml` file value (see details: [configuration])
 //! 4. Configuration default
 //!
-//! The utilities exposed in this crate are opinionated, but flexible. In general, all data is stored in a `.tari`
+//! The utilities exposed in this crate are opinionated, but flexible. In general, all data is stored in a `.taiji`
 //! folder under your home folder.
 //!
 //! ## Custom application configuration
 //!
-//! Tari configuration file allows adding custom application specific sections. Tari is using [config] crate
+//! Taiji configuration file allows adding custom application specific sections. Taiji is using [config] crate
 //! to load configurations and gives access to [`config::Config`] struct so that apps might be flexible.
-//! Though as tari apps follow certain configurability assumptions, tari_common provides helper traits
+//! Though as taiji apps follow certain configurability assumptions, taiji_common provides helper traits
 //! which automate those with minimal code.
 //!
 //! ## CLI helpers
 //!
-//! Bootstrapping tari configuration files might be customized via CLI or env settings. To help with building
-//! tari-enabled CLI from scratch as easy as possible this crate exposes [ConfigBootstrap] struct which
+//! Bootstrapping taiji configuration files might be customized via CLI or env settings. To help with building
+//! taiji-enabled CLI from scratch as easy as possible this crate exposes [ConfigBootstrap] struct which
 //! implements [structopt::StructOpt] trait and can be easily reused in any CLI.
 
 #[cfg(any(feature = "build", feature = "static-application-info"))]

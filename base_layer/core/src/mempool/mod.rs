@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -74,11 +74,11 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "base_node")]
 pub use sync_protocol::MempoolSyncInitializer;
-use tari_common_types::types::Signature;
+use taiji_common_types::types::Signature;
 
 use crate::{
     proto::base_node as base_node_proto,
-    transactions::{tari_amount::MicroMinotari, transaction_components::Transaction},
+    transactions::{taiji_amount::MicroMinotaiji, transaction_components::Transaction},
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -143,9 +143,9 @@ impl Display for TxStorageResponse {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FeePerGramStat {
     pub order: u64,
-    pub min_fee_per_gram: MicroMinotari,
-    pub avg_fee_per_gram: MicroMinotari,
-    pub max_fee_per_gram: MicroMinotari,
+    pub min_fee_per_gram: MicroMinotaiji,
+    pub avg_fee_per_gram: MicroMinotaiji,
+    pub max_fee_per_gram: MicroMinotaiji,
 }
 
 impl From<base_node_proto::MempoolFeePerGramStat> for FeePerGramStat {

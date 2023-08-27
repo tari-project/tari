@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -22,7 +22,7 @@
 
 pub use lmdb_db::{create_lmdb_database, create_recovery_lmdb_database, LMDBDatabase};
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::HashOutput;
+use taiji_common_types::types::HashOutput;
 use tari_crypto::hash_domain;
 
 use crate::transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput};
@@ -73,4 +73,4 @@ pub(crate) struct TransactionKernelRowData {
     pub hash: HashOutput,
 }
 
-hash_domain!(CoreChainStorageHashDomain, "com.tari.base_layer.core.lmdb_db", 1);
+hash_domain!(CoreChainStorageHashDomain, "com.taiji.base_layer.core.lmdb_db", 1);

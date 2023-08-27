@@ -1,4 +1,4 @@
-//  Copyright 2022. The Tari Project
+//  Copyright 2022. The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -23,15 +23,15 @@
 use core::iter;
 use std::{cmp, convert::TryFrom, time::Duration};
 
-use tari_comms::{
+use taiji_comms::{
     async_trait,
     protocol::rpc::{Request, Response, RpcStatus, Streaming},
     utils,
 };
-use tari_comms_rpc_macros::tari_rpc;
+use taiji_comms_rpc_macros::taiji_rpc;
 use tokio::{sync::mpsc, task, time};
 
-#[tari_rpc(protocol_name = b"t/greeting/1", server_struct = GreetingServer, client_struct = GreetingClient)]
+#[taiji_rpc(protocol_name = b"t/greeting/1", server_struct = GreetingServer, client_struct = GreetingClient)]
 pub trait GreetingRpc: Send + Sync + 'static {
     #[rpc(method = 1)]
     async fn say_hello(&self, request: Request<SayHelloRequest>) -> Result<Response<SayHelloResponse>, RpcStatus>;

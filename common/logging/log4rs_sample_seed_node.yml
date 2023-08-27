@@ -96,7 +96,7 @@ root:
 
 loggers:
   # Route log events common to every application to all appenders
-  minotari::application:
+  minotaiji::application:
     level: info
     appenders:
       - base_layer
@@ -115,7 +115,7 @@ loggers:
     appenders:
       - status
     additive: false
-  minotari:
+  minotaiji:
     level: info
     appenders:
       - base_layer

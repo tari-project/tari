@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -47,7 +47,7 @@ const MAX_COVENANT_BYTES: usize = 4096;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 /// A covenant allows a UTXO to specify some restrictions on how it is spent in a future transaction.
-/// See https://rfc.tari.com/RFC-0250_Covenants.html for details.
+/// See https://rfc.taiji.com/RFC-0250_Covenants.html for details.
 pub struct Covenant {
     tokens: Vec<CovenantToken>,
 }

@@ -1,4 +1,4 @@
-// Copyright 2019 The Tari Project
+// Copyright 2019 The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -320,7 +320,7 @@ mod test {
         assert_eq!(my_enum, MnemonicLanguage::Korean);
         let my_enum = MnemonicLanguage::from_str("Spanish").unwrap();
         assert_eq!(my_enum, MnemonicLanguage::Spanish);
-        let my_language = "TariVerse";
+        let my_language = "TaijiVerse";
         match MnemonicLanguage::from_str(my_language) {
             Ok(_) => panic!("Language '{}' is not a member of 'MnemonicLanguage'!", my_language),
             Err(e) => assert_eq!(e, strum::ParseError::VariantNotFound),

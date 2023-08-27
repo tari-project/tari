@@ -1,4 +1,4 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 syntax = "proto3";
@@ -7,7 +7,7 @@ import "transaction.proto";
 import "block.proto";
 import "chain_metadata.proto";
 
-package tari.base_node;
+package taiji.base_node;
 
 // Response type for a received BaseNodeService requests
 message BaseNodeServiceResponse {
@@ -22,37 +22,37 @@ message BaseNodeServiceResponse {
 }
 
 message BlockHeaders {
-    repeated tari.core.BlockHeader headers = 1;
+    repeated taiji.core.BlockHeader headers = 1;
 }
 
 message HistoricalBlockResponse {
-    tari.core.HistoricalBlock block = 1;
+    taiji.core.HistoricalBlock block = 1;
 }
 
 message BlockHeaderResponse {
-    tari.core.BlockHeader header = 1;
+    taiji.core.BlockHeader header = 1;
 }
 
 message TransactionKernels {
-    repeated tari.types.TransactionKernel kernels = 1;
+    repeated taiji.types.TransactionKernel kernels = 1;
 }
 
 message TransactionOutputs {
-    repeated tari.types.TransactionOutput outputs = 1;
+    repeated taiji.types.TransactionOutput outputs = 1;
 }
 
 message HistoricalBlocks {
-    repeated tari.core.HistoricalBlock blocks = 1;
+    repeated taiji.core.HistoricalBlock blocks = 1;
 }
 
 message BlockResponse {
-  tari.core.Block block = 1;
+  taiji.core.Block block = 1;
 }
 
 message NewBlockResponse {
     bool success = 1;
     string error = 2;
-    tari.core.Block block = 3;
+    taiji.core.Block block = 3;
  }
 
  message MmrNodes {
@@ -61,7 +61,7 @@ message NewBlockResponse {
 }
 
 message FetchMempoolTransactionsResponse {
-  repeated tari.types.Transaction transactions = 1;
+  repeated taiji.types.Transaction transactions = 1;
   repeated bytes not_found = 2;
 }
 

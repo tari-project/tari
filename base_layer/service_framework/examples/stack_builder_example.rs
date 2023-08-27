@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2020. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -23,8 +23,8 @@ pub mod services;
 
 use std::time::Duration;
 
-use tari_service_framework::StackBuilder;
-use tari_shutdown::Shutdown;
+use taiji_service_framework::StackBuilder;
+use taiji_shutdown::Shutdown;
 use tokio::time::sleep;
 
 use crate::services::{ServiceAHandle, ServiceAInitializer, ServiceBHandle, ServiceBInitializer};

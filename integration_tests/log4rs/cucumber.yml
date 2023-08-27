@@ -117,12 +117,12 @@ loggers:
     level: debug
     appenders:
       - base_layer_base_node
-  tari:
+  taiji:
     level: debug
     appenders:
       - base_layer_base_node
-  # Route log events sent to the "tari::base_node::grpc" logger to the "network" appender
-  tari::base_node::grpc:
+  # Route log events sent to the "taiji::base_node::grpc" logger to the "network" appender
+  taiji::base_node::grpc:
     level: debug
     appenders:
       - base_layer_base_node
@@ -205,8 +205,8 @@ loggers:
     level: warn
     appenders:
       - other
-  # Route log events sent to the "tari_mm_proxy" logger to the "base_layer" appender
-  tari_mm_proxy:
+  # Route log events sent to the "taiji_mm_proxy" logger to the "base_layer" appender
+  taiji_mm_proxy:
     level: debug
     appenders:
       - base_layer_base_node

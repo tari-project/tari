@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2020, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -22,7 +22,7 @@
 use std::cmp::Ordering;
 
 use log::*;
-use tari_common_types::types::HashOutput;
+use taiji_common_types::types::HashOutput;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex};
 
 use crate::{
@@ -235,8 +235,8 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
 
 #[cfg(test)]
 mod test {
-    use tari_common::configuration::Network;
-    use tari_test_utils::unpack_enum;
+    use taiji_common::configuration::Network;
+    use taiji_test_utils::unpack_enum;
 
     use super::*;
     use crate::{

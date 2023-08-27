@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2020, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -78,7 +78,7 @@ use futures::{stream, SinkExt, Stream, StreamExt};
 pub use initializer::MempoolSyncInitializer;
 use log::*;
 use prost::Message;
-use tari_comms::{
+use taiji_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester, ConnectivitySelection},
     framing,
     framing::CanonicalFraming,

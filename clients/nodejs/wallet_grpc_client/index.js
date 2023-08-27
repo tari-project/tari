@@ -1,4 +1,4 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 const grpc = require("@grpc/grpc-js");
@@ -6,7 +6,7 @@ const protoLoader = require("@grpc/proto-loader");
 const { promisifyAll } = require("grpc-promise");
 
 const packageDefinition = protoLoader.loadSync(
-  `${__dirname}/../../../applications/minotari_app_grpc/proto/wallet.proto`,
+  `${__dirname}/../../../applications/minotaiji_app_grpc/proto/wallet.proto`,
   {
     keepCase: true,
     longs: String,
@@ -16,10 +16,10 @@ const packageDefinition = protoLoader.loadSync(
   }
 );
 const protoDescriptor = grpc.loadPackageDefinition(packageDefinition);
-const tariGrpc = protoDescriptor.tari.rpc;
+const taijiGrpc = protoDescriptor.taiji.rpc;
 
 function connect(address, options = {}) {
-  const client = new tariGrpc.Wallet(
+  const client = new taijiGrpc.Wallet(
     address,
     createAuth(options.authentication || {}),
   );
@@ -86,7 +86,7 @@ function createAuth(auth = {}) {
 
 module.exports = {
   Client,
-  types: tariGrpc,
+  types: taijiGrpc,
 };
 
 // (async () => {

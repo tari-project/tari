@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2020, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use std::{iter, sync::Arc, time::Duration};
 
-use tari_comms::{
+use taiji_comms::{
     connectivity::ConnectivityStatus,
     peer_manager::{Peer, PeerFeatures},
     protocol::rpc::{mock::MockRpcServer, NamedProtocolService},
@@ -32,8 +32,8 @@ use tari_comms::{
     NodeIdentity,
     PeerManager,
 };
-use tari_shutdown::Shutdown;
-use tari_test_utils::unpack_enum;
+use taiji_shutdown::Shutdown;
+use taiji_test_utils::unpack_enum;
 use tokio::sync::broadcast;
 
 use super::{DhtNetworkDiscovery, NetworkDiscoveryConfig};
@@ -163,7 +163,7 @@ mod state_machine {
 }
 
 mod discovery_ready {
-    use tari_comms::test_utils::{mocks::ConnectivityManagerMock, node_identity::build_many_node_identities};
+    use taiji_comms::test_utils::{mocks::ConnectivityManagerMock, node_identity::build_many_node_identities};
 
     use super::*;
     use crate::network_discovery::{

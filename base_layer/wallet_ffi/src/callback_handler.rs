@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 //! # Wallet Callback Handler
@@ -38,7 +38,7 @@
 use std::{ops::Deref, sync::Arc};
 
 use log::*;
-use minotari_wallet::{
+use minotaiji_wallet::{
     base_node_service::{
         handle::{BaseNodeEvent, BaseNodeEventReceiver},
         service::BaseNodeState,
@@ -56,13 +56,13 @@ use minotari_wallet::{
         },
     },
 };
-use tari_common_types::{tari_address::TariAddress, transaction::TxId, types::BlockHash};
-use tari_comms_dht::event::{DhtEvent, DhtEventReceiver};
-use tari_contacts::contacts_service::handle::{ContactsLivenessData, ContactsLivenessEvent};
-use tari_shutdown::ShutdownSignal;
+use taiji_common_types::{taiji_address::TaijiAddress, transaction::TxId, types::BlockHash};
+use taiji_comms_dht::event::{DhtEvent, DhtEventReceiver};
+use taiji_contacts::contacts_service::handle::{ContactsLivenessData, ContactsLivenessEvent};
+use taiji_shutdown::ShutdownSignal;
 use tokio::sync::{broadcast, watch};
 
-use crate::ffi_basenode_state::TariBaseNodeState;
+use crate::ffi_basenode_state::TaijiBaseNodeState;
 
 const LOG_TARGET: &str = "wallet::transaction_service::callback_handler";
 
@@ -85,7 +85,7 @@ where TBackend: TransactionBackend + 'static
     callback_transaction_validation_complete: unsafe extern "C" fn(u64, u64),
     callback_saf_messages_received: unsafe extern "C" fn(),
     callback_connectivity_status: unsafe extern "C" fn(u64),
-    callback_base_node_state: unsafe extern "C" fn(*mut TariBaseNodeState),
+    callback_base_node_state: unsafe extern "C" fn(*mut TaijiBaseNodeState),
     db: TransactionDatabase<TBackend>,
     base_node_service_event_stream: BaseNodeEventReceiver,
     transaction_service_event_stream: TransactionEventReceiver,
@@ -93,7 +93,7 @@ where TBackend: TransactionBackend + 'static
     output_manager_service: OutputManagerHandle,
     dht_event_stream: DhtEventReceiver,
     shutdown_signal: Option<ShutdownSignal>,
-    comms_address: TariAddress,
+    comms_address: TaijiAddress,
     balance_cache: Balance,
     connectivity_status_watch: watch::Receiver<OnlineStatus>,
     contacts_liveness_events: broadcast::Receiver<Arc<ContactsLivenessEvent>>,
@@ -111,7 +111,7 @@ where TBackend: TransactionBackend + 'static
         output_manager_service: OutputManagerHandle,
         dht_event_stream: DhtEventReceiver,
         shutdown_signal: ShutdownSignal,
-        comms_address: TariAddress,
+        comms_address: TaijiAddress,
         connectivity_status_watch: watch::Receiver<OnlineStatus>,
         contacts_liveness_events: broadcast::Receiver<Arc<ContactsLivenessEvent>>,
         callback_received_transaction: unsafe extern "C" fn(*mut InboundTransaction),
@@ -130,7 +130,7 @@ where TBackend: TransactionBackend + 'static
         callback_transaction_validation_complete: unsafe extern "C" fn(u64, u64),
         callback_saf_messages_received: unsafe extern "C" fn(),
         callback_connectivity_status: unsafe extern "C" fn(u64),
-        callback_base_node_state: unsafe extern "C" fn(*mut TariBaseNodeState),
+        callback_base_node_state: unsafe extern "C" fn(*mut TaijiBaseNodeState),
     ) -> Self {
         info!(
             target: LOG_TARGET,
@@ -658,7 +658,7 @@ where TBackend: TransactionBackend + 'static
         debug!(target: LOG_TARGET, "Calling Base Node State changed callback function");
 
         let state = match state.chain_metadata {
-            None => TariBaseNodeState {
+            None => TaijiBaseNodeState {
                 node_id: state.node_id,
                 height_of_longest_chain: 0,
                 best_block: BlockHash::zero(),
@@ -670,7 +670,7 @@ where TBackend: TransactionBackend + 'static
                 latency: 0,
             },
 
-            Some(chain_metadata) => TariBaseNodeState {
+            Some(chain_metadata) => TaijiBaseNodeState {
                 node_id: state.node_id,
                 height_of_longest_chain: chain_metadata.height_of_longest_chain(),
                 best_block: *chain_metadata.best_block(),

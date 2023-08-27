@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -22,20 +22,20 @@
 
 use std::{sync::Arc, time::Duration};
 
-use tari_comms::{
+use taiji_comms::{
     message::MessageTag,
     net_address::MultiaddressesWithStats,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
     types::CommsPublicKey,
     CommsNode,
 };
-use tari_comms_dht::{envelope::DhtMessageHeader, Dht, DhtProtocolVersion};
-use tari_p2p::{
+use taiji_comms_dht::{envelope::DhtMessageHeader, Dht, DhtProtocolVersion};
+use taiji_p2p::{
     comms_connector::InboundDomainConnector,
     domain_message::DomainMessage,
     initialization::initialize_local_test_comms,
 };
-use tari_shutdown::ShutdownSignal;
+use taiji_shutdown::ShutdownSignal;
 
 pub async fn setup_comms_services(
     node_identity: Arc<NodeIdentity>,

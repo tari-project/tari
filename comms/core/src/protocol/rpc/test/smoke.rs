@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2020, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -23,8 +23,8 @@
 use std::{sync::Arc, time::Duration};
 
 use futures::StreamExt;
-use tari_shutdown::Shutdown;
-use tari_test_utils::unpack_enum;
+use taiji_shutdown::Shutdown;
+use taiji_test_utils::unpack_enum;
 use tari_utilities::hex::Hex;
 use tokio::{
     sync::{mpsc, RwLock},

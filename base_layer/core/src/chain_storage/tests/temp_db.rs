@@ -1,4 +1,4 @@
-//  Copyright 2022. The Tari Project
+//  Copyright 2022. The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -23,8 +23,8 @@
 use std::{collections::HashMap, path::PathBuf};
 
 use lmdb_zero::{db, ReadTransaction, WriteTransaction};
-use tari_storage::lmdb_store::{DatabaseRef, LMDBBuilder, LMDBConfig};
-use tari_test_utils::paths::create_temporary_data_path;
+use taiji_storage::lmdb_store::{DatabaseRef, LMDBBuilder, LMDBConfig};
+use taiji_test_utils::paths::create_temporary_data_path;
 
 pub struct TempLmdbDatabase {
     temp_path: PathBuf,

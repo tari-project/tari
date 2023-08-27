@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -31,10 +31,10 @@ use chacha20poly1305::XChaCha20Poly1305;
 use chrono::{NaiveDateTime, Utc};
 use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
 use log::*;
-use tari_common_sqlite::{sqlite_connection_pool::PooledDbConnection, util::diesel_ext::ExpectedRowsExtension};
-use tari_common_types::{
+use taiji_common_sqlite::{sqlite_connection_pool::PooledDbConnection, util::diesel_ext::ExpectedRowsExtension};
+use taiji_common_types::{
     encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce, Encryptable},
-    tari_address::TariAddress,
+    taiji_address::TaijiAddress,
     transaction::{
         TransactionConversionError,
         TransactionDirection,
@@ -44,7 +44,7 @@ use tari_common_types::{
     },
     types::{BlockHash, PrivateKey, PublicKey, Signature},
 };
-use tari_core::transactions::tari_amount::MicroMinotari;
+use taiji_core::transactions::taiji_amount::MicroMinotaiji;
 use tari_utilities::{
     hex::{from_hex, Hex},
     ByteArray,
@@ -466,7 +466,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
     fn get_pending_transaction_counterparty_address_by_tx_id(
         &self,
         tx_id: TxId,
-    ) -> Result<TariAddress, TransactionStorageError> {
+    ) -> Result<TaijiAddress, TransactionStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
@@ -785,7 +785,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
     fn find_coinbase_transaction_at_block_height(
         &self,
         block_height: u64,
-        amount: MicroMinotari,
+        amount: MicroMinotaiji,
     ) -> Result<Option<CompletedTransaction>, TransactionStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
@@ -1127,7 +1127,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
 #[derive(Debug, PartialEq)]
 pub struct InboundTransactionSenderInfo {
     pub(crate) tx_id: TxId,
-    pub(crate) source_address: TariAddress,
+    pub(crate) source_address: TaijiAddress,
 }
 
 impl TryFrom<InboundTransactionSenderInfoSql> for InboundTransactionSenderInfo {
@@ -1136,8 +1136,8 @@ impl TryFrom<InboundTransactionSenderInfoSql> for InboundTransactionSenderInfo {
     fn try_from(i: InboundTransactionSenderInfoSql) -> Result<Self, Self::Error> {
         Ok(Self {
             tx_id: TxId::from(i.tx_id as u64),
-            source_address: TariAddress::from_bytes(&i.source_address)
-                .map_err(TransactionStorageError::TariAddressError)?,
+            source_address: TaijiAddress::from_bytes(&i.source_address)
+                .map_err(TransactionStorageError::TaijiAddressError)?,
         })
     }
 }
@@ -1406,8 +1406,8 @@ impl InboundTransaction {
         let i = i.decrypt(cipher).map_err(TransactionStorageError::AeadError)?;
         Ok(Self {
             tx_id: (i.tx_id as u64).into(),
-            source_address: TariAddress::from_bytes(&i.source_address).map_err(TransactionKeyError::Source)?,
-            amount: MicroMinotari::from(i.amount as u64),
+            source_address: TaijiAddress::from_bytes(&i.source_address).map_err(TransactionKeyError::Source)?,
+            amount: MicroMinotaiji::from(i.amount as u64),
             receiver_protocol: serde_json::from_str(&i.receiver_protocol.clone())?,
             status: TransactionStatus::Pending,
             message: i.message,
@@ -1665,10 +1665,10 @@ impl OutboundTransaction {
 
         let outbound_tx = Self {
             tx_id: (o.tx_id as u64).into(),
-            destination_address: TariAddress::from_bytes(&o.destination_address)
+            destination_address: TaijiAddress::from_bytes(&o.destination_address)
                 .map_err(TransactionKeyError::Destination)?,
-            amount: MicroMinotari::from(o.amount as u64),
-            fee: MicroMinotari::from(o.fee as u64),
+            amount: MicroMinotaiji::from(o.amount as u64),
+            fee: MicroMinotaiji::from(o.fee as u64),
             sender_protocol: serde_json::from_str(&o.sender_protocol.clone())?,
             status: TransactionStatus::Pending,
             message: o.message,
@@ -2121,11 +2121,11 @@ impl CompletedTransaction {
 
         let output = Self {
             tx_id: (c.tx_id as u64).into(),
-            source_address: TariAddress::from_bytes(&c.source_address).map_err(TransactionKeyError::Source)?,
-            destination_address: TariAddress::from_bytes(&c.destination_address)
+            source_address: TaijiAddress::from_bytes(&c.source_address).map_err(TransactionKeyError::Source)?,
+            destination_address: TaijiAddress::from_bytes(&c.destination_address)
                 .map_err(TransactionKeyError::Destination)?,
-            amount: MicroMinotari::from(c.amount as u64),
-            fee: MicroMinotari::from(c.fee as u64),
+            amount: MicroMinotaiji::from(c.amount as u64),
+            fee: MicroMinotaiji::from(c.fee as u64),
             transaction: serde_json::from_str(&c.transaction_protocol.clone())?,
             status: TransactionStatus::try_from(c.status)?,
             message: c.message,
@@ -2252,16 +2252,16 @@ mod test {
     use diesel::{sql_query, Connection, RunQueryDsl, SqliteConnection};
     use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
     use rand::{rngs::OsRng, RngCore};
-    use tari_common::configuration::Network;
-    use tari_common_sqlite::sqlite_connection_pool::SqliteConnectionPool;
-    use tari_common_types::{
+    use taiji_common::configuration::Network;
+    use taiji_common_sqlite::sqlite_connection_pool::SqliteConnectionPool;
+    use taiji_common_types::{
         encryption::Encryptable,
-        tari_address::TariAddress,
+        taiji_address::TaijiAddress,
         transaction::{TransactionDirection, TransactionStatus, TxId},
         types::{PrivateKey, PublicKey, Signature},
     };
-    use tari_core::transactions::{
-        tari_amount::MicroMinotari,
+    use taiji_core::transactions::{
+        taiji_amount::MicroMinotaiji,
         test_helpers::{create_test_core_key_manager_with_memory_db, create_wallet_output_with_data, TestParams},
         transaction_components::{OutputFeatures, Transaction},
         transaction_protocol::sender::TransactionSenderMessage,
@@ -2269,8 +2269,8 @@ mod test {
         SenderTransactionProtocol,
     };
     use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
-    use tari_script::{inputs, script, TariScript};
-    use tari_test_utils::random::string;
+    use taiji_script::{inputs, script, TaijiScript};
+    use taiji_test_utils::random::string;
     use tempfile::tempdir;
 
     use crate::{
@@ -2330,19 +2330,19 @@ mod test {
         let mut builder = SenderTransactionProtocol::builder(constants, key_manager.clone());
         let test_params = TestParams::new(&key_manager).await;
         let input = create_wallet_output_with_data(
-            TariScript::default(),
+            TaijiScript::default(),
             OutputFeatures::default(),
             &test_params,
-            MicroMinotari::from(100_000),
+            MicroMinotaiji::from(100_000),
             &key_manager,
         )
         .await
         .unwrap();
-        let amount = MicroMinotari::from(10_000);
+        let amount = MicroMinotaiji::from(10_000);
         let change = TestParams::new(&key_manager).await;
         builder
             .with_lock_height(0)
-            .with_fee_per_gram(MicroMinotari::from(177 / 5))
+            .with_fee_per_gram(MicroMinotaiji::from(177 / 5))
             .with_message("Yo!".to_string())
             .with_input(input)
             .await
@@ -2351,7 +2351,7 @@ mod test {
                 script!(Nop),
                 OutputFeatures::default(),
                 Default::default(),
-                MicroMinotari::zero(),
+                MicroMinotaiji::zero(),
                 amount,
             )
             .await
@@ -2365,7 +2365,7 @@ mod test {
             );
         let mut stp = builder.build().await.unwrap();
 
-        let address = TariAddress::new(
+        let address = TaijiAddress::new(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -2383,7 +2383,7 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
         };
-        let address = TariAddress::new(
+        let address = TaijiAddress::new(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -2434,10 +2434,10 @@ mod test {
         );
 
         let output = create_wallet_output_with_data(
-            TariScript::default(),
+            TaijiScript::default(),
             OutputFeatures::default(),
             &test_params,
-            MicroMinotari::from(100_000),
+            MicroMinotaiji::from(100_000),
             &key_manager,
         )
         .await
@@ -2450,7 +2450,7 @@ mod test {
             &consensus_constants,
         )
         .await;
-        let address = TariAddress::new(
+        let address = TaijiAddress::new(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -2467,7 +2467,7 @@ mod test {
             send_count: 0,
             last_send_timestamp: None,
         };
-        let address = TariAddress::new(
+        let address = TaijiAddress::new(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -2520,11 +2520,11 @@ mod test {
             PrivateKey::random(&mut OsRng),
             PrivateKey::random(&mut OsRng),
         );
-        let source_address = TariAddress::new(
+        let source_address = TaijiAddress::new(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
-        let destination_address = TariAddress::new(
+        let destination_address = TaijiAddress::new(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -2533,7 +2533,7 @@ mod test {
             source_address,
             destination_address,
             amount,
-            fee: MicroMinotari::from(100),
+            fee: MicroMinotaiji::from(100),
             transaction: tx.clone(),
             status: TransactionStatus::MinedUnconfirmed,
             message: "Yo!".to_string(),
@@ -2549,11 +2549,11 @@ mod test {
             mined_in_block: None,
             mined_timestamp: None,
         };
-        let source_address = TariAddress::new(
+        let source_address = TaijiAddress::new(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
-        let destination_address = TariAddress::new(
+        let destination_address = TaijiAddress::new(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -2562,7 +2562,7 @@ mod test {
             source_address,
             destination_address,
             amount,
-            fee: MicroMinotari::from(100),
+            fee: MicroMinotaiji::from(100),
             transaction: tx.clone(),
             status: TransactionStatus::Broadcast,
             message: "Hey!".to_string(),
@@ -2690,11 +2690,11 @@ mod test {
         assert!(CompletedTransactionSql::find_by_cancelled(completed_tx1.tx_id, false, &mut conn).is_err());
         assert!(CompletedTransactionSql::find_by_cancelled(completed_tx1.tx_id, true, &mut conn).is_ok());
 
-        let source_address = TariAddress::new(
+        let source_address = TaijiAddress::new(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
-        let destination_address = TariAddress::new(
+        let destination_address = TaijiAddress::new(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -2703,7 +2703,7 @@ mod test {
             source_address,
             destination_address,
             amount,
-            fee: MicroMinotari::from(100),
+            fee: MicroMinotaiji::from(100),
             transaction: tx.clone(),
             status: TransactionStatus::Coinbase,
             message: "Hey!".to_string(),
@@ -2720,11 +2720,11 @@ mod test {
             mined_timestamp: None,
         };
 
-        let source_address = TariAddress::new(
+        let source_address = TaijiAddress::new(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
-        let destination_address = TariAddress::new(
+        let destination_address = TaijiAddress::new(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -2733,7 +2733,7 @@ mod test {
             source_address,
             destination_address,
             amount,
-            fee: MicroMinotari::from(100),
+            fee: MicroMinotaiji::from(100),
             transaction: tx.clone(),
             status: TransactionStatus::Coinbase,
             message: "Hey!".to_string(),
@@ -2750,11 +2750,11 @@ mod test {
             mined_timestamp: None,
         };
 
-        let source_address = TariAddress::new(
+        let source_address = TaijiAddress::new(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
-        let destination_address = TariAddress::new(
+        let destination_address = TaijiAddress::new(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -2763,7 +2763,7 @@ mod test {
             source_address,
             destination_address,
             amount,
-            fee: MicroMinotari::from(100),
+            fee: MicroMinotaiji::from(100),
             transaction: tx.clone(),
             status: TransactionStatus::Coinbase,
             message: "Hey!".to_string(),
@@ -2835,14 +2835,14 @@ mod test {
         let key_ga = Key::from_slice(&key);
         let cipher = XChaCha20Poly1305::new(key_ga);
 
-        let source_address = TariAddress::new(
+        let source_address = TaijiAddress::new(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
         let inbound_tx = InboundTransaction {
             tx_id: 1u64.into(),
             source_address,
-            amount: MicroMinotari::from(100),
+            amount: MicroMinotaiji::from(100),
             receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
             status: TransactionStatus::Pending,
             message: "Yo!".to_string(),
@@ -2861,15 +2861,15 @@ mod test {
         let decrypted_inbound_tx = InboundTransaction::try_from(db_inbound_tx, &cipher).unwrap();
         assert_eq!(inbound_tx, decrypted_inbound_tx);
 
-        let destination_address = TariAddress::new(
+        let destination_address = TaijiAddress::new(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
         let outbound_tx = OutboundTransaction {
             tx_id: 2u64.into(),
             destination_address,
-            amount: MicroMinotari::from(100),
-            fee: MicroMinotari::from(10),
+            amount: MicroMinotaiji::from(100),
+            fee: MicroMinotaiji::from(10),
             sender_protocol: SenderTransactionProtocol::new_placeholder(),
             status: TransactionStatus::Pending,
             message: "Yo!".to_string(),
@@ -2889,11 +2889,11 @@ mod test {
         let decrypted_outbound_tx = OutboundTransaction::try_from(db_outbound_tx, &cipher).unwrap();
         assert_eq!(outbound_tx, decrypted_outbound_tx);
 
-        let source_address = TariAddress::new(
+        let source_address = TaijiAddress::new(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
-        let destination_address = TariAddress::new(
+        let destination_address = TaijiAddress::new(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
         );
@@ -2901,8 +2901,8 @@ mod test {
             tx_id: 3u64.into(),
             source_address,
             destination_address,
-            amount: MicroMinotari::from(100),
-            fee: MicroMinotari::from(100),
+            amount: MicroMinotaiji::from(100),
+            fee: MicroMinotaiji::from(100),
             transaction: Transaction::new(
                 vec![],
                 vec![],
@@ -2975,14 +2975,14 @@ mod test {
                 })
                 .expect("Migrations failed");
 
-            let source_address = TariAddress::new(
+            let source_address = TaijiAddress::new(
                 PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 Network::LocalNet,
             );
             let inbound_tx = InboundTransaction {
                 tx_id: 1u64.into(),
                 source_address,
-                amount: MicroMinotari::from(100),
+                amount: MicroMinotaiji::from(100),
                 receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
                 status: TransactionStatus::Pending,
                 message: "Yo!".to_string(),
@@ -2996,15 +2996,15 @@ mod test {
 
             inbound_tx_sql.commit(&mut conn).unwrap();
 
-            let destination_address = TariAddress::new(
+            let destination_address = TaijiAddress::new(
                 PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 Network::LocalNet,
             );
             let outbound_tx = OutboundTransaction {
                 tx_id: 2u64.into(),
                 destination_address,
-                amount: MicroMinotari::from(100),
-                fee: MicroMinotari::from(10),
+                amount: MicroMinotaiji::from(100),
+                fee: MicroMinotaiji::from(10),
                 sender_protocol: SenderTransactionProtocol::new_placeholder(),
                 status: TransactionStatus::Pending,
                 message: "Yo!".to_string(),
@@ -3018,11 +3018,11 @@ mod test {
 
             outbound_tx_sql.commit(&mut conn).unwrap();
 
-            let source_address = TariAddress::new(
+            let source_address = TaijiAddress::new(
                 PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 Network::LocalNet,
             );
-            let destination_address = TariAddress::new(
+            let destination_address = TaijiAddress::new(
                 PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 Network::LocalNet,
             );
@@ -3030,8 +3030,8 @@ mod test {
                 tx_id: 3u64.into(),
                 source_address,
                 destination_address,
-                amount: MicroMinotari::from(100),
-                fee: MicroMinotari::from(100),
+                amount: MicroMinotaiji::from(100),
+                fee: MicroMinotaiji::from(100),
                 transaction: Transaction::new(
                     vec![],
                     vec![],
@@ -3164,11 +3164,11 @@ mod test {
                 10 => (None, TransactionStatus::MinedConfirmed, None),
                 _ => (None, TransactionStatus::Completed, Some(i)),
             };
-            let source_address = TariAddress::new(
+            let source_address = TaijiAddress::new(
                 PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 Network::LocalNet,
             );
-            let destination_address = TariAddress::new(
+            let destination_address = TaijiAddress::new(
                 PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 Network::LocalNet,
             );
@@ -3176,8 +3176,8 @@ mod test {
                 tx_id: TxId::from(i),
                 source_address,
                 destination_address,
-                amount: MicroMinotari::from(100),
-                fee: MicroMinotari::from(100),
+                amount: MicroMinotaiji::from(100),
+                fee: MicroMinotaiji::from(100),
                 transaction: Transaction::new(
                     vec![],
                     vec![],

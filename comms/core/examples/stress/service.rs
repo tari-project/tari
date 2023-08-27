@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2020, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -29,7 +29,7 @@ use std::{
 use bytes::{Buf, Bytes, BytesMut};
 use futures::{stream, SinkExt, StreamExt};
 use rand::{rngs::OsRng, RngCore};
-use tari_comms::{
+use taiji_comms::{
     framing,
     message::{InboundMessage, OutboundMessage},
     peer_manager::{NodeId, Peer},
@@ -39,7 +39,7 @@ use tari_comms::{
     PeerConnection,
     Substream,
 };
-use tari_shutdown::Shutdown;
+use taiji_shutdown::Shutdown;
 use tari_utilities::hex::Hex;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},

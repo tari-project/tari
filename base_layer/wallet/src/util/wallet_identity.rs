@@ -1,4 +1,4 @@
-//  Copyright 2022, The Tari Project
+//  Copyright 2022, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -22,23 +22,23 @@
 
 use std::{fmt, fmt::Display, sync::Arc};
 
-use tari_common::configuration::Network;
-use tari_common_types::tari_address::TariAddress;
-use tari_comms::peer_manager::NodeIdentity;
-use tari_core::transactions::key_manager::TariKeyId;
+use taiji_common::configuration::Network;
+use taiji_common_types::taiji_address::TaijiAddress;
+use taiji_comms::peer_manager::NodeIdentity;
+use taiji_core::transactions::key_manager::TaijiKeyId;
 
 #[derive(Clone, Debug)]
 pub struct WalletIdentity {
     pub node_identity: Arc<NodeIdentity>,
     pub network: Network,
-    pub address: TariAddress,
-    pub wallet_node_key_id: TariKeyId,
+    pub address: TaijiAddress,
+    pub wallet_node_key_id: TaijiKeyId,
 }
 
 impl WalletIdentity {
     pub fn new(node_identity: Arc<NodeIdentity>, network: Network) -> Self {
-        let address = TariAddress::new(node_identity.public_key().clone(), network);
-        let wallet_node_key_id = TariKeyId::Imported {
+        let address = TaijiAddress::new(node_identity.public_key().clone(), network);
+        let wallet_node_key_id = TaijiKeyId::Imported {
             key: node_identity.public_key().clone(),
         };
         WalletIdentity {

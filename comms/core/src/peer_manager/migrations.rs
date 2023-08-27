@@ -1,4 +1,4 @@
-// Copyright 2020, The Tari Project
+// Copyright 2020, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -23,7 +23,7 @@
 mod v7;
 
 use log::*;
-use tari_storage::lmdb_store::{LMDBDatabase, LMDBError};
+use taiji_storage::lmdb_store::{LMDBDatabase, LMDBError};
 
 const LOG_TARGET: &str = "comms::peer_manager::migrations";
 

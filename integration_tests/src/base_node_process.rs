@@ -1,4 +1,4 @@
-//   Copyright 2022. The Tari Project
+//   Copyright 2022. The Taiji Project
 //
 //   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //   following conditions are met:
@@ -29,19 +29,19 @@ use std::{
     time::Duration,
 };
 
-use minotari_app_utilities::identity_management::save_as_json;
-use minotari_node::{run_base_node, BaseNodeConfig, MetricsConfig};
-use minotari_node_grpc_client::BaseNodeGrpcClient;
+use minotaiji_app_utilities::identity_management::save_as_json;
+use minotaiji_node::{run_base_node, BaseNodeConfig, MetricsConfig};
+use minotaiji_node_grpc_client::BaseNodeGrpcClient;
 use rand::rngs::OsRng;
-use tari_common::configuration::{CommonConfig, MultiaddrList};
-use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, NodeIdentity};
-use tari_comms_dht::{DbConnectionUrl, DhtConfig};
-use tari_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig, TransportType};
-use tari_shutdown::Shutdown;
+use taiji_common::configuration::{CommonConfig, MultiaddrList};
+use taiji_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, NodeIdentity};
+use taiji_comms_dht::{DbConnectionUrl, DhtConfig};
+use taiji_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig, TransportType};
+use taiji_shutdown::Shutdown;
 use tokio::task;
 use tonic::transport::Channel;
 
-use crate::{get_peer_addresses, get_port, wait_for_service, TariWorld};
+use crate::{get_peer_addresses, get_port, wait_for_service, TaijiWorld};
 
 #[derive(Clone)]
 pub struct BaseNodeProcess {
@@ -76,12 +76,12 @@ impl Debug for BaseNodeProcess {
     }
 }
 
-pub async fn spawn_base_node(world: &mut TariWorld, is_seed_node: bool, bn_name: String, peers: Vec<String>) {
+pub async fn spawn_base_node(world: &mut TaijiWorld, is_seed_node: bool, bn_name: String, peers: Vec<String>) {
     spawn_base_node_with_config(world, is_seed_node, bn_name, peers, BaseNodeConfig::default()).await;
 }
 
 pub async fn spawn_base_node_with_config(
-    world: &mut TariWorld,
+    world: &mut TaijiWorld,
     is_seed_node: bool,
     bn_name: String,
     peers: Vec<String>,
@@ -140,7 +140,7 @@ pub async fn spawn_base_node_with_config(
     let mut common_config = CommonConfig::default();
     common_config.base_path = temp_dir_path.clone();
     task::spawn(async move {
-        let mut base_node_config = minotari_node::ApplicationConfig {
+        let mut base_node_config = minotaiji_node::ApplicationConfig {
             common: common_config,
             auto_update: AutoUpdateConfig::default(),
             base_node: base_node_config,

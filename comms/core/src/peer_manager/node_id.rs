@@ -1,4 +1,4 @@
-//  Copyright 2019 The Tari Project
+//  Copyright 2019 The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -55,7 +55,7 @@ pub enum NodeIdError {
     InvalidDigestOutputSize,
 }
 
-/// A Node Identity is used as a unique identifier for a node in the Tari communications network.
+/// A Node Identity is used as a unique identifier for a node in the Taiji communications network.
 #[derive(Clone, Eq, Deserialize, Serialize, Default)]
 pub struct NodeId(NodeIdArray);
 

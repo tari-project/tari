@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -22,11 +22,11 @@
 
 use std::{ops::RangeInclusive, sync::Arc};
 
-use tari_common_types::{
+use taiji_common_types::{
     chain_metadata::ChainMetadata,
     types::{BlockHash, Commitment, HashOutput, PublicKey, Signature},
 };
-use tari_service_framework::{reply_channel::SenderService, Service};
+use taiji_service_framework::{reply_channel::SenderService, Service};
 use tokio::sync::broadcast;
 
 use crate::{

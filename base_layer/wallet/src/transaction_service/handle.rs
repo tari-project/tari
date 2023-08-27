@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -28,19 +28,19 @@ use std::{
 };
 
 use chrono::NaiveDateTime;
-use tari_common_types::{
+use taiji_common_types::{
     burnt_proof::BurntProof,
-    tari_address::TariAddress,
+    taiji_address::TaijiAddress,
     transaction::{ImportStatus, TxId},
     types::{PublicKey, Signature},
 };
-use tari_comms::types::CommsPublicKey;
-use tari_core::{
+use taiji_comms::types::CommsPublicKey;
+use taiji_core::{
     consensus::{MaxSizeBytes, MaxSizeString},
     mempool::FeePerGramStat,
     proto,
     transactions::{
-        tari_amount::MicroMinotari,
+        taiji_amount::MicroMinotaiji,
         transaction_components::{
             BuildInfo,
             CodeTemplateRegistration,
@@ -51,7 +51,7 @@ use tari_core::{
         },
     },
 };
-use tari_service_framework::reply_channel::SenderService;
+use taiji_service_framework::reply_channel::SenderService;
 use tokio::sync::broadcast;
 use tower::Service;
 
@@ -83,26 +83,26 @@ pub enum TransactionServiceRequest {
     GetCompletedTransaction(TxId),
     GetAnyTransaction(TxId),
     SendTransaction {
-        destination: TariAddress,
-        amount: MicroMinotari,
+        destination: TaijiAddress,
+        amount: MicroMinotaiji,
         selection_criteria: UtxoSelectionCriteria,
         output_features: Box<OutputFeatures>,
-        fee_per_gram: MicroMinotari,
+        fee_per_gram: MicroMinotaiji,
         message: String,
     },
-    BurnTari {
-        amount: MicroMinotari,
+    BurnTaiji {
+        amount: MicroMinotaiji,
         selection_criteria: UtxoSelectionCriteria,
-        fee_per_gram: MicroMinotari,
+        fee_per_gram: MicroMinotaiji,
         message: String,
         claim_public_key: Option<PublicKey>,
     },
     RegisterValidatorNode {
-        amount: MicroMinotari,
+        amount: MicroMinotaiji,
         validator_node_public_key: CommsPublicKey,
         validator_node_signature: Signature,
         selection_criteria: UtxoSelectionCriteria,
-        fee_per_gram: MicroMinotari,
+        fee_per_gram: MicroMinotaiji,
         message: String,
     },
     RegisterCodeTemplate {
@@ -114,29 +114,29 @@ pub enum TransactionServiceRequest {
         build_info: BuildInfo,
         binary_sha: MaxSizeBytes<32>,
         binary_url: MaxSizeString<255>,
-        fee_per_gram: MicroMinotari,
+        fee_per_gram: MicroMinotaiji,
     },
     SendOneSidedTransaction {
-        destination: TariAddress,
-        amount: MicroMinotari,
+        destination: TaijiAddress,
+        amount: MicroMinotaiji,
         selection_criteria: UtxoSelectionCriteria,
         output_features: Box<OutputFeatures>,
-        fee_per_gram: MicroMinotari,
+        fee_per_gram: MicroMinotaiji,
         message: String,
     },
     SendOneSidedToStealthAddressTransaction {
-        destination: TariAddress,
-        amount: MicroMinotari,
+        destination: TaijiAddress,
+        amount: MicroMinotaiji,
         selection_criteria: UtxoSelectionCriteria,
         output_features: Box<OutputFeatures>,
-        fee_per_gram: MicroMinotari,
+        fee_per_gram: MicroMinotaiji,
         message: String,
     },
-    SendShaAtomicSwapTransaction(TariAddress, MicroMinotari, UtxoSelectionCriteria, MicroMinotari, String),
+    SendShaAtomicSwapTransaction(TaijiAddress, MicroMinotaiji, UtxoSelectionCriteria, MicroMinotaiji, String),
     CancelTransaction(TxId),
     ImportUtxoWithStatus {
-        amount: MicroMinotari,
-        source_address: TariAddress,
+        amount: MicroMinotaiji,
+        source_address: TaijiAddress,
         message: String,
         maturity: Option<u64>,
         import_status: ImportStatus,
@@ -144,12 +144,12 @@ pub enum TransactionServiceRequest {
         current_height: Option<u64>,
         mined_timestamp: Option<NaiveDateTime>,
     },
-    SubmitTransactionToSelf(TxId, Transaction, MicroMinotari, MicroMinotari, String),
+    SubmitTransactionToSelf(TxId, Transaction, MicroMinotaiji, MicroMinotaiji, String),
     SetLowPowerMode,
     SetNormalPowerMode,
     GenerateCoinbaseTransaction {
-        reward: MicroMinotari,
-        fees: MicroMinotari,
+        reward: MicroMinotaiji,
+        fees: MicroMinotaiji,
         block_height: u64,
         extra: Vec<u8>,
     },
@@ -181,7 +181,7 @@ impl fmt::Display for TransactionServiceRequest {
                 message,
                 ..
             } => write!(f, "SendTransaction (to {}, {}, {})", destination, amount, message),
-            Self::BurnTari { amount, message, .. } => write!(f, "Burning Tari ({}, {})", amount, message),
+            Self::BurnTaiji { amount, message, .. } => write!(f, "Burning Taiji ({}, {})", amount, message),
             Self::RegisterValidatorNode {
                 validator_node_public_key,
                 message,
@@ -468,11 +468,11 @@ impl TransactionServiceHandle {
 
     pub async fn send_transaction(
         &mut self,
-        destination: TariAddress,
-        amount: MicroMinotari,
+        destination: TaijiAddress,
+        amount: MicroMinotaiji,
         selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
-        fee_per_gram: MicroMinotari,
+        fee_per_gram: MicroMinotaiji,
         message: String,
     ) -> Result<TxId, TransactionServiceError> {
         match self
@@ -494,11 +494,11 @@ impl TransactionServiceHandle {
 
     pub async fn register_validator_node(
         &mut self,
-        amount: MicroMinotari,
+        amount: MicroMinotaiji,
         validator_node_public_key: PublicKey,
         validator_node_signature: Signature,
         selection_criteria: UtxoSelectionCriteria,
-        fee_per_gram: MicroMinotari,
+        fee_per_gram: MicroMinotaiji,
         message: String,
     ) -> Result<TxId, TransactionServiceError> {
         match self
@@ -528,7 +528,7 @@ impl TransactionServiceHandle {
         build_info: BuildInfo,
         binary_sha: MaxSizeBytes<32>,
         binary_url: MaxSizeString<255>,
-        fee_per_gram: MicroMinotari,
+        fee_per_gram: MicroMinotaiji,
     ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
@@ -552,11 +552,11 @@ impl TransactionServiceHandle {
 
     pub async fn send_one_sided_transaction(
         &mut self,
-        destination: TariAddress,
-        amount: MicroMinotari,
+        destination: TaijiAddress,
+        amount: MicroMinotaiji,
         selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
-        fee_per_gram: MicroMinotari,
+        fee_per_gram: MicroMinotaiji,
         message: String,
     ) -> Result<TxId, TransactionServiceError> {
         match self
@@ -576,18 +576,18 @@ impl TransactionServiceHandle {
         }
     }
 
-    /// Burns the given amount of Tari from the wallet
-    pub async fn burn_tari(
+    /// Burns the given amount of Taiji from the wallet
+    pub async fn burn_taiji(
         &mut self,
-        amount: MicroMinotari,
+        amount: MicroMinotaiji,
         selection_criteria: UtxoSelectionCriteria,
-        fee_per_gram: MicroMinotari,
+        fee_per_gram: MicroMinotaiji,
         message: String,
         claim_public_key: Option<PublicKey>,
     ) -> Result<(TxId, BurntProof), TransactionServiceError> {
         match self
             .handle
-            .call(TransactionServiceRequest::BurnTari {
+            .call(TransactionServiceRequest::BurnTaiji {
                 amount,
                 selection_criteria,
                 fee_per_gram,
@@ -603,11 +603,11 @@ impl TransactionServiceHandle {
 
     pub async fn send_one_sided_to_stealth_address_transaction(
         &mut self,
-        destination: TariAddress,
-        amount: MicroMinotari,
+        destination: TaijiAddress,
+        amount: MicroMinotaiji,
         selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
-        fee_per_gram: MicroMinotari,
+        fee_per_gram: MicroMinotaiji,
         message: String,
     ) -> Result<TxId, TransactionServiceError> {
         match self
@@ -746,8 +746,8 @@ impl TransactionServiceHandle {
 
     pub async fn import_utxo_with_status(
         &mut self,
-        amount: MicroMinotari,
-        source_address: TariAddress,
+        amount: MicroMinotaiji,
+        source_address: TaijiAddress,
         message: String,
         maturity: Option<u64>,
         import_status: ImportStatus,
@@ -778,7 +778,7 @@ impl TransactionServiceHandle {
         &mut self,
         tx_id: TxId,
         tx: Transaction,
-        amount: MicroMinotari,
+        amount: MicroMinotaiji,
         message: String,
     ) -> Result<(), TransactionServiceError> {
         let fee = tx.body.get_total_fee();
@@ -847,8 +847,8 @@ impl TransactionServiceHandle {
 
     pub async fn generate_coinbase_transaction(
         &mut self,
-        reward: MicroMinotari,
-        fees: MicroMinotari,
+        reward: MicroMinotaiji,
+        fees: MicroMinotaiji,
         block_height: u64,
         extra: Vec<u8>,
     ) -> Result<Transaction, TransactionServiceError> {
@@ -902,10 +902,10 @@ impl TransactionServiceHandle {
 
     pub async fn send_sha_atomic_swap_transaction(
         &mut self,
-        destination: TariAddress,
-        amount: MicroMinotari,
+        destination: TaijiAddress,
+        amount: MicroMinotaiji,
         selection_criteria: UtxoSelectionCriteria,
-        fee_per_gram: MicroMinotari,
+        fee_per_gram: MicroMinotaiji,
         message: String,
     ) -> Result<(TxId, PublicKey, TransactionOutput), TransactionServiceError> {
         match self

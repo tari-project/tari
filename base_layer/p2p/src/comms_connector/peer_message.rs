@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -21,11 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use log::*;
-use tari_comms::{
+use taiji_comms::{
     peer_manager::{NodeId, Peer},
     types::CommsPublicKey,
 };
-use tari_comms_dht::{domain_message::MessageHeader, envelope::DhtMessageHeader};
+use taiji_comms_dht::{domain_message::MessageHeader, envelope::DhtMessageHeader};
 
 const LOG_TARGET: &str = "comms::dht::requests::inbound";
 

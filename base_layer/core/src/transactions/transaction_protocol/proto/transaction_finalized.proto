@@ -1,16 +1,16 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 syntax = "proto3";
 
 import "transaction.proto";
 
-package tari.transaction_protocol;
+package taiji.transaction_protocol;
 
 message TransactionFinalizedMessage {
     // The transaction id for the recipient
     uint64 tx_id = 1;
     // The actual transaction;
-    tari.types.Transaction transaction = 2;
+    taiji.types.Transaction transaction = 2;
 }
 

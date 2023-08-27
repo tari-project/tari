@@ -1,4 +1,4 @@
-//  Copyright 2022, The Tari Project
+//  Copyright 2022, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// use tari_common_types::types::{PrivateKey, PublicKey};
+// use taiji_common_types::types::{PrivateKey, PublicKey};
 
 use std::{fmt, str::FromStr};
 
@@ -175,7 +175,7 @@ mod test {
     use std::str::FromStr;
 
     use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
-    use tari_common_types::types::{PrivateKey, PublicKey};
+    use taiji_common_types::types::{PrivateKey, PublicKey};
     use tari_crypto::keys::{PublicKey as PK, SecretKey as SK};
 
     use crate::key_manager_service::KeyId;

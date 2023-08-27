@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2020, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -27,8 +27,8 @@ pub mod sync_utxos_by_block_task;
 
 #[cfg(feature = "base_node")]
 pub use service::BaseNodeWalletRpcService;
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
-use tari_comms_rpc_macros::tari_rpc;
+use taiji_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
+use taiji_comms_rpc_macros::taiji_rpc;
 
 #[cfg(feature = "base_node")]
 use crate::base_node::StateMachineHandle;
@@ -61,7 +61,7 @@ use crate::{
     },
 };
 
-#[tari_rpc(protocol_name = b"t/bnwallet/1", server_struct = BaseNodeWalletRpcServer, client_struct = BaseNodeWalletRpcClient)]
+#[taiji_rpc(protocol_name = b"t/bnwallet/1", server_struct = BaseNodeWalletRpcServer, client_struct = BaseNodeWalletRpcClient)]
 pub trait BaseNodeWalletService: Send + Sync + 'static {
     #[rpc(method = 1)]
     async fn submit_transaction(

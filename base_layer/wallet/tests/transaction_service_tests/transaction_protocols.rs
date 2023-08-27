@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2020. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -25,7 +25,7 @@ use std::{collections::HashMap, mem::size_of, sync::Arc, time::Duration};
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use chrono::Utc;
 use futures::StreamExt;
-use minotari_wallet::{
+use minotaiji_wallet::{
     connectivity_service::{create_wallet_connectivity_mock, WalletConnectivityMock},
     output_manager_service::{
         error::OutputManagerError,
@@ -50,19 +50,19 @@ use minotari_wallet::{
     util::{wallet_identity::WalletIdentity, watch::Watch},
 };
 use rand::{rngs::OsRng, RngCore};
-use tari_common::configuration::Network;
-use tari_common_types::{
-    tari_address::TariAddress,
+use taiji_common::configuration::Network;
+use taiji_common_types::{
+    taiji_address::TaijiAddress,
     transaction::{TransactionDirection, TransactionStatus, TxId},
 };
-use tari_comms::{
+use taiji_comms::{
     peer_manager::PeerFeatures,
     protocol::rpc::{mock::MockRpcServer, NamedProtocolService},
     test_utils::node_identity::build_node_identity,
     NodeIdentity,
 };
-use tari_comms_dht::outbound::mock::{create_outbound_service_mock, OutboundServiceMockState};
-use tari_core::{
+use taiji_comms_dht::outbound::mock::{create_outbound_service_mock, OutboundServiceMockState};
+use taiji_core::{
     base_node::{
         proto::wallet_rpc::{TxLocation, TxQueryResponse, TxSubmissionRejectionReason, TxSubmissionResponse},
         rpc::BaseNodeWalletRpcServer,
@@ -78,16 +78,16 @@ use tari_core::{
         types::Signature as SignatureProto,
     },
     transactions::{
-        tari_amount::{uT, MicroMinotari, T},
+        taiji_amount::{uT, MicroMinotaiji, T},
         test_helpers::{create_test_core_key_manager_with_memory_db, schema_to_transaction, TestKeyManager},
         transaction_components::OutputFeatures,
         CryptoFactories,
     },
     txn_schema,
 };
-use tari_service_framework::{reply_channel, reply_channel::Receiver};
-use tari_shutdown::Shutdown;
-use tari_test_utils::random;
+use taiji_service_framework::{reply_channel, reply_channel::Receiver};
+use taiji_shutdown::Shutdown;
+use taiji_test_utils::random;
 use tempfile::{tempdir, TempDir};
 use tokio::{sync::broadcast, task, time::sleep};
 
@@ -190,7 +190,7 @@ pub async fn setup() -> (
 
 pub async fn add_transaction_to_database(
     tx_id: TxId,
-    amount: MicroMinotari,
+    amount: MicroMinotaiji,
     status: Option<TransactionStatus>,
     coinbase_block_height: Option<u64>,
     db: TransactionDatabase<TransactionServiceSqliteDatabase>,
@@ -202,8 +202,8 @@ pub async fn add_transaction_to_database(
     let tx1 = (*txs1[0]).clone();
     let completed_tx1 = CompletedTransaction::new(
         tx_id,
-        TariAddress::default(),
-        TariAddress::default(),
+        TaijiAddress::default(),
+        TaijiAddress::default(),
         amount,
         200 * uT,
         tx1,

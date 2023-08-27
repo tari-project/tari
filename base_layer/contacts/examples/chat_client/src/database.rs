@@ -1,4 +1,4 @@
-//   Copyright 2023. The Tari Project
+//   Copyright 2023. The Taiji Project
 //
 //   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //   following conditions are met:
@@ -23,12 +23,12 @@
 use std::{convert::TryInto, path::PathBuf};
 
 use diesel::{Connection, SqliteConnection};
-use tari_common_sqlite::{
+use taiji_common_sqlite::{
     connection::{DbConnection, DbConnectionUrl},
     error::StorageError,
 };
-use tari_contacts::contacts_service::storage::sqlite_db::ContactsServiceSqliteDatabase;
-use tari_storage::lmdb_store::{LMDBBuilder, LMDBConfig};
+use taiji_contacts::contacts_service::storage::sqlite_db::ContactsServiceSqliteDatabase;
+use taiji_storage::lmdb_store::{LMDBBuilder, LMDBConfig};
 
 pub fn connect_to_db(db_path: PathBuf) -> Result<ContactsServiceSqliteDatabase<DbConnection>, StorageError> {
     let url: DbConnectionUrl = db_path.into_os_string().into_string().unwrap().try_into().unwrap();

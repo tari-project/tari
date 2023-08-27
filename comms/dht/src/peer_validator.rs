@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use log::*;
-use tari_comms::{
+use taiji_comms::{
     connection_manager::validate_address_and_source,
     net_address::{MultiaddrWithStats, MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{NodeId, Peer, PeerFlags, PeerManagerError},
@@ -126,14 +126,14 @@ fn validate_node_id(public_key: &CommsPublicKey, node_id: &NodeId) -> Result<Nod
 mod tests {
     use std::str::FromStr;
 
-    use tari_comms::{
+    use taiji_comms::{
         multiaddr::Multiaddr,
         net_address::MultiaddressesWithStats,
         peer_manager::{IdentitySignature, PeerFeatures, PeerIdentityClaim},
         types::Signature,
     };
     use tari_crypto::ristretto::{RistrettoPublicKey, RistrettoSecretKey};
-    use tari_test_utils::unpack_enum;
+    use taiji_test_utils::unpack_enum;
     use tari_utilities::ByteArray;
 
     use super::*;

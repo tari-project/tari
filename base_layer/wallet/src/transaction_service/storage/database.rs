@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -30,12 +30,12 @@ use std::{
 
 use chrono::{NaiveDateTime, Utc};
 use log::*;
-use tari_common_types::{
-    tari_address::TariAddress,
+use taiji_common_types::{
+    taiji_address::TaijiAddress,
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
     types::{BlockHash, PrivateKey},
 };
-use tari_core::transactions::{tari_amount::MicroMinotari, transaction_components::Transaction};
+use taiji_core::transactions::{taiji_amount::MicroMinotaiji, transaction_components::Transaction};
 
 use crate::transaction_service::{
     error::TransactionStorageError,
@@ -112,7 +112,7 @@ pub trait TransactionBackend: Send + Sync + Clone {
     fn get_pending_transaction_counterparty_address_by_tx_id(
         &self,
         tx_id: TxId,
-    ) -> Result<TariAddress, TransactionStorageError>;
+    ) -> Result<TaijiAddress, TransactionStorageError>;
     /// Mark a pending transaction direct send attempt as a success
     fn mark_direct_send_success(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
     /// Cancel coinbase transactions at a specific block height
@@ -121,7 +121,7 @@ pub trait TransactionBackend: Send + Sync + Clone {
     fn find_coinbase_transaction_at_block_height(
         &self,
         block_height: u64,
-        amount: MicroMinotari,
+        amount: MicroMinotaiji,
     ) -> Result<Option<CompletedTransaction>, TransactionStorageError>;
     /// Increment the send counter and timestamp of a transaction
     fn increment_send_count(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
@@ -542,7 +542,7 @@ where T: TransactionBackend + 'static
     pub fn get_pending_transaction_counterparty_address_by_tx_id(
         &mut self,
         tx_id: TxId,
-    ) -> Result<TariAddress, TransactionStorageError> {
+    ) -> Result<TaijiAddress, TransactionStorageError> {
         let address = self.db.get_pending_transaction_counterparty_address_by_tx_id(tx_id)?;
         Ok(address)
     }
@@ -645,9 +645,9 @@ where T: TransactionBackend + 'static
     pub fn add_utxo_import_transaction_with_status(
         &self,
         tx_id: TxId,
-        amount: MicroMinotari,
-        source_address: TariAddress,
-        comms_address: TariAddress,
+        amount: MicroMinotaiji,
+        source_address: TaijiAddress,
+        comms_address: TaijiAddress,
         message: String,
         maturity: Option<u64>,
         import_status: ImportStatus,
@@ -659,7 +659,7 @@ where T: TransactionBackend + 'static
             source_address,
             comms_address,
             amount,
-            MicroMinotari::from(0),
+            MicroMinotaiji::from(0),
             Transaction::new(
                 Vec::new(),
                 Vec::new(),
@@ -694,7 +694,7 @@ where T: TransactionBackend + 'static
     pub fn find_coinbase_transaction_at_block_height(
         &self,
         block_height: u64,
-        amount: MicroMinotari,
+        amount: MicroMinotaiji,
     ) -> Result<Option<CompletedTransaction>, TransactionStorageError> {
         self.db.find_coinbase_transaction_at_block_height(block_height, amount)
     }

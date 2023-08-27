@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -22,7 +22,7 @@
 use std::{convert::TryInto, sync::Arc};
 
 use rand::rngs::OsRng;
-use tari_comms::{
+use taiji_comms::{
     message::{InboundMessage, MessageExt, MessageTag},
     net_address::MultiaddressesWithStats,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
@@ -31,8 +31,8 @@ use tari_comms::{
     Bytes,
 };
 use tari_crypto::keys::PublicKey;
-use tari_storage::lmdb_store::{LMDBBuilder, LMDBConfig};
-use tari_test_utils::{paths::create_temporary_data_path, random};
+use taiji_storage::lmdb_store::{LMDBBuilder, LMDBConfig};
+use taiji_test_utils::{paths::create_temporary_data_path, random};
 use tari_utilities::ByteArray;
 
 use crate::{

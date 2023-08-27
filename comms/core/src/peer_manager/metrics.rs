@@ -1,4 +1,4 @@
-//  Copyright 2022, The Tari Project
+//  Copyright 2022, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -21,11 +21,11 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use once_cell::sync::Lazy;
-use tari_metrics::IntGauge;
+use taiji_metrics::IntGauge;
 
 pub fn peer_list_size() -> IntGauge {
     static METER: Lazy<IntGauge> = Lazy::new(|| {
-        tari_metrics::register_int_gauge("comms::peer_manager::peer_list_size", "The total number of known peers")
+        taiji_metrics::register_int_gauge("comms::peer_manager::peer_list_size", "The total number of known peers")
             .unwrap()
     });
 

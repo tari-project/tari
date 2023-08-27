@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -24,7 +24,7 @@
 /// # Examples
 ///
 /// ```rust
-/// use tari_core::transactions::format_currency;
+/// use taiji_core::transactions::format_currency;
 /// assert_eq!("12,345.12", format_currency("12345.12", ','));
 /// assert_eq!("12,345", format_currency("12345", ','));
 /// ```

@@ -1,4 +1,4 @@
-//  Copyright 2022, The Tari Project
+//  Copyright 2022, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use diesel::result::Error as DieselError;
-use tari_common_sqlite::error::SqliteStorageError;
+use taiji_common_sqlite::error::SqliteStorageError;
 use tari_crypto::errors::RangeProofError;
 use tari_utilities::{hex::HexError, ByteArrayError};
 
@@ -45,8 +45,8 @@ pub enum KeyManagerServiceError {
     ByteArrayError(String),
     #[error("Invalid range proof: `{0}`")]
     RangeProofError(String),
-    #[error("Tari Key Manager error: `{0}`")]
-    TariKeyManagerError(#[from] KMError),
+    #[error("Taiji Key Manager error: `{0}`")]
+    TaijiKeyManagerError(#[from] KMError),
 }
 
 impl From<RangeProofError> for KeyManagerServiceError {
@@ -94,8 +94,8 @@ pub enum KeyManagerStorageError {
     AeadError(String),
     #[error("Binary not stored as valid hex:{0}")]
     HexError(String),
-    #[error("Tari Key Manager error: `{0}`")]
-    TariKeyManagerError(#[from] KMError),
+    #[error("Taiji Key Manager error: `{0}`")]
+    TaijiKeyManagerError(#[from] KMError),
     #[error("Db error: `{0}`")]
     SqliteStorageError(#[from] SqliteStorageError),
 }

@@ -20,7 +20,7 @@ if [ "$1" == "-h" ] || [ "$1" == "--help" ]; then
 fi
 
 # Env
-distName="tari_base_node"
+distName="taiji_base_node"
 sName=$(basename $0)
 #sPath=$(realpath $0)
 sPath=$(dirname $0)
@@ -169,7 +169,7 @@ gitCommitHash="$(git rev-parse --short HEAD)"
 cargo build --release
 
 # ToDo: Might have multiple consts.rs files?
-rustConsts=$(find target -name "consts.rs" | grep -i "tari_base_node")
+rustConsts=$(find target -name "consts.rs" | grep -i "taiji_base_node")
 if [ -f "$rustConsts" ];then
   rustVer=$(grep -i 'VERSION' "$rustConsts" | cut -d "\"" -f 2)
   archiveBase="$distFullName-$rustVer"
@@ -209,14 +209,14 @@ fi
 mkdir $distDir/dist
 
 COPY_FILES=(
-  "target/release/tari_base_node"
-  "target/release/tari_console_wallet"
-  "target/release/tari_merge_mining_proxy"
-  "target/release/tari_miner"
+  "target/release/taiji_base_node"
+  "target/release/taiji_console_wallet"
+  "target/release/taiji_merge_mining_proxy"
+  "target/release/taiji_miner"
   "common/config/presets/*.toml"
   "common/logging/log4rs_sample_base_node.yml"
-  "applications/tari_base_node/README.md"
-  applications/tari_base_node/$osname/*
+  "applications/taiji_base_node/README.md"
+  applications/taiji_base_node/$osname/*
   "scripts/install_tor.sh"
 )
 
@@ -224,12 +224,12 @@ for COPY_FILE in "${COPY_FILES[@]}"; do
   cp -vr "$COPY_FILE" "$distDir/dist/"
 done
 
-cat common/config/presets/*.toml >"$distDir/dist/tari_config_example.toml"
+cat common/config/presets/*.toml >"$distDir/dist/taiji_config_example.toml"
 
 pushd $distDir/dist
 if [ "$osname" == "osx" ]  && [ -n "${osxsign}" ]; then
   echo "Setup OSX Binaries signing ..."
-  for SIGN_FILE in $(find "${distDir}/dist" -maxdepth 1 -name "tari_*" -type f -perm +111 ); do
+  for SIGN_FILE in $(find "${distDir}/dist" -maxdepth 1 -name "taiji_*" -type f -perm +111 ); do
     echo "Signing OSX Binary - $SIGN_FILE ..."
     codesign --options runtime --force --verify --verbose --sign "${osxsign}" "$SIGN_FILE"
     echo "Verify signed OSX Binary - $SIGN_FILE ..."

@@ -1,6 +1,6 @@
-# Tari Chat Client Example
+# Taiji Chat Client Example
 
-This crate provides an example of setting up a Tari chat client. The client will connect to the Tari network with all necessary p2p intializations needed for network communication. The client itself then exposes a few simple functions like `get_messages`, `send_message`, `check_online_status`, and `add_contact`. With this minimal functionality the client can be used to chat!
+This crate provides an example of setting up a Taiji chat client. The client will connect to the Taiji network with all necessary p2p intializations needed for network communication. The client itself then exposes a few simple functions like `get_messages`, `send_message`, `check_online_status`, and `add_contact`. With this minimal functionality the client can be used to chat!
 
 ## Initialization of the chat client
 
@@ -25,4 +25,4 @@ let mut client = Client::new(
 client.initialize().await;
 ```
 
-This crate is part of the [Tari Cryptocurrency](https://tari.com) project.
+This crate is part of the [Taiji Cryptocurrency](https://taiji.com) project.

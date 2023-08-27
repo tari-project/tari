@@ -1,4 +1,4 @@
-# Tari Key manager
+# Taiji Key manager
 
 ## wasm
 

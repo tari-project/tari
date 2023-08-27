@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -48,7 +48,7 @@ use futures::{
 };
 use log::*;
 use prost::Message;
-use tari_shutdown::{Shutdown, ShutdownSignal};
+use taiji_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     sync::{mpsc, oneshot, watch, Mutex},

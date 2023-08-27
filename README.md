@@ -1,16 +1,16 @@
-[![Coverage Status](https://coveralls.io/repos/github/tari-project/tari/badge.svg?branch=development)](https://coveralls.io/github/tari-project/tari?branch=development)
+[![Coverage Status](https://coveralls.io/repos/github/taiji-project/taiji/badge.svg?branch=development)](https://coveralls.io/github/taiji-project/taiji?branch=development)
 
-# The Tari protocol
+# The Taiji protocol
 
-A number of applications have been developed by the Tari community to implement the Tari protocol. These are:
+A number of applications have been developed by the Taiji community to implement the Taiji protocol. These are:
 
-- Minotari Base Node
-- Minotari Wallet
-- Minotari Miner
-- Minotari Merge Mining Proxy
-- Minotari Aurora wallets for Android and iOS
+- Minotaiji Base Node
+- Minotaiji Wallet
+- Minotaiji Miner
+- Minotaiji Merge Mining Proxy
+- Minotaiji Aurora wallets for Android and iOS
 
-Only the first four applications will be discussed in this README (see [wallet-android](https://github.com/tari-project/wallet-android) and [wallet-ios](https://github.com/tari-project/wallet-ios) for mobile wallets' repos).
+Only the first four applications will be discussed in this README (see [wallet-android](https://github.com/taiji-project/wallet-android) and [wallet-ios](https://github.com/taiji-project/wallet-ios) for mobile wallets' repos).
 
 ## Installing using binaries
 
@@ -23,11 +23,11 @@ The recommended running versions of each network are:
 | Nextnet   | 0.51.0-rc.1     |
 | Esmeralda | 0.52.0-pre.0    |
 
-For more detail about versioning see [Release Ideology](https://github.com/tari-project/tari/blob/development/docs/src/branching_releases.md)
+For more detail about versioning see [Release Ideology](https://github.com/taiji-project/taiji/blob/development/docs/src/branching_releases.md)
 
 ### Download
 
-[Download binaries](https://tari.com/downloads/) from [tari.com](https://www.tari.com/). This is the easiest way to run a Tari node, but you're
+[Download binaries](https://taiji.com/downloads/) from [taiji.com](https://www.taiji.com/). This is the easiest way to run a Taiji node, but you're
 essentially trusting the person that built and uploaded them that nothing untoward has happened.
 
 Hashes of the binaries are available alongside the downloads.
@@ -51,19 +51,19 @@ After you have downloaded the binaries, you need to install them. This is easy t
 
 #### On \*Nix
 
-Assuming you want to install the Tari applications into your home folder, then, from within a terminal:
+Assuming you want to install the Taiji applications into your home folder, then, from within a terminal:
 
     cd ~
     tar -xf <PATH_TO_BINARY_INSTALL_FILE>
 
-After this, the Tari applications will be located in `~/tari_esmeralda_testnet` with a selection of
+After this, the Taiji applications will be located in `~/taiji_esmeralda_testnet` with a selection of
 soft links to run them.
 
 #### On Windows
 
-Just double-click the installer and accept all the default prompts. The Tari applications will be located in the folder
+Just double-click the installer and accept all the default prompts. The Taiji applications will be located in the folder
 you selected during installation, and can be run by double-clicking the various shortcuts or via the Windows menu
-(`Tari Testnet`).
+(`Taiji Testnet`).
 
 ### Runtime links
 
@@ -73,18 +73,18 @@ Execute the `start_all` soft link/shortcut; this will start everything you need
 depending on the choices you make when prompted:
 
 - Tor services started by default
-- Minotari Base Node, or
-- Minotari Base Node & Minotari Wallet, or
-- Minotari Base Node & Minotari Wallet & Minotari Miner, or
-- Minotari Base Node & Minotari Wallet & Minotari Merge Mining Proxy & XMRig
+- Minotaiji Base Node, or
+- Minotaiji Base Node & Minotaiji Wallet, or
+- Minotaiji Base Node & Minotaiji Wallet & Minotaiji Miner, or
+- Minotaiji Base Node & Minotaiji Wallet & Minotaiji Merge Mining Proxy & XMRig
 
 #### Start all applications individually
 
-- Execute the `start_minotari_node` soft link/shortcut; this will also start the Tor
+- Execute the `start_minotaiji_node` soft link/shortcut; this will also start the Tor
   services if not running already that needs to be running before the base node
   can run (do not close the Tor console).
 
-- Execute the `start_minotari_console_wallet` soft link/shortcut; this will also start the
+- Execute the `start_minotaiji_console_wallet` soft link/shortcut; this will also start the
   Tor services that needs to be running before the base node can run (do not
   close the Tor console).
 
@@ -94,14 +94,14 @@ depending on the choices you make when prompted:
 - Depending on your choice of mining:
 
   - SHA3 stand-alone mining
-    - Execute the `start_minotari_miner` soft link/shortcut.
+    - Execute the `start_minotaiji_miner` soft link/shortcut.
   - Merge mining with Monero
-    - Execute the `start_minotari_merge_mining_proxy` soft link/shortcut.
+    - Execute the `start_minotaiji_merge_mining_proxy` soft link/shortcut.
     - Execute the `start_xmrig` shortcut.
 
 ## Building from source
 
-To build the Minotari codebase from source, there are a few dependencies you need to have installed.
+To build the Minotaiji codebase from source, there are a few dependencies you need to have installed.
 
 ### Install development packages
 
@@ -116,7 +116,7 @@ brew install --cask powershell
 ```
 
 #### (macOS M1 chipset)
-It is important to note that RandomX does not work on Xcode version 14.1 and newer. To compile Tari and run properly you need to run XCode version 14.0 or earlier.
+It is important to note that RandomX does not work on Xcode version 14.1 and newer. To compile Taiji and run properly you need to run XCode version 14.0 or earlier.
 To run multiple versions of XCode you can use this guide [here](https://hacknicity.medium.com/working-with-multiple-versions-of-xcode-e331c01aa6bc)
 
 If randomX unit tests are still failing, please update the Mac to ensure its running at least `Darwin Kernel Version 22.3.0`
@@ -193,130 +193,130 @@ sure that `cargo` and `rustc` has been added to your path:
 
 ### Checkout the source code
 
-In your directory of choice (e.g. `%USERPROFILE%\Code` on Windows), clone the Tari repo
+In your directory of choice (e.g. `%USERPROFILE%\Code` on Windows), clone the Taiji repo
 
-    git clone https://github.com/tari-project/tari.git
+    git clone https://github.com/taiji-project/taiji.git
 
 ### Build
 
-Grab a cup of coffee and begin the Tari build
+Grab a cup of coffee and begin the Taiji build
 
 (\*nix)
 
-    cd tari
+    cd taiji
     cargo build --release
 
 (Windows)
 
 This is similar to building in Ubuntu, except the Microsoft Visual Studio environment must be sourced. Open the
-appropriate _x64\x86 Native Tools Command Prompt for VS 2019_, and in your main Tari directory perform the
-build, which will create the executable inside your `%USERPROFILE%\Code\tari\target\release` directory:
+appropriate _x64\x86 Native Tools Command Prompt for VS 2019_, and in your main Taiji directory perform the
+build, which will create the executable inside your `%USERPROFILE%\Code\taiji\target\release` directory:
 
-    cd %USERPROFILE%\Code\tari
+    cd %USERPROFILE%\Code\taiji
     cargo build --release
 
 A successful build should output something as follows
 
 ```
-   Compiling minotari_wallet v0.0.9 (.../tari/base_layer/wallet)
-   Compiling test_faucet v0.0.1 (.../tari/applications/test_faucet)
-   Compiling minotari_wallet_ffi v0.0.9 (.../tari/base_layer/wallet_ffi)
-   Compiling minotari_node v0.0.9 (.../tari/applications/minotari_node)
+   Compiling minotaiji_wallet v0.0.9 (.../taiji/base_layer/wallet)
+   Compiling test_faucet v0.0.1 (.../taiji/applications/test_faucet)
+   Compiling minotaiji_wallet_ffi v0.0.9 (.../taiji/base_layer/wallet_ffi)
+   Compiling minotaiji_node v0.0.9 (.../taiji/applications/minotaiji_node)
     Finished release [optimized] target(s) in 12m 24s
 ```
 
 Compiled executable can be found by following path:
 
-    ./target/release/minotari_node
-    ./target/release/minotari_console_wallet
-    ./target/release/minotari_merge_mining_proxy
-    ./target/release/minotari_miner
+    ./target/release/minotaiji_node
+    ./target/release/minotaiji_console_wallet
+    ./target/release/minotaiji_merge_mining_proxy
+    ./target/release/minotaiji_miner
 
 Alternatively, cargo can build and install the executable into `~/.cargo/bin` (`%USERPROFILE%\.cargo\bin` on Windows), so it will be executable from anywhere
 on your system.
 
-    cargo install --path=applications/minotari_node --force
-    cargo install --path=applications/minotari_console_wallet --force
-    cargo install --path=applications/minotari_merge_mining_proxy --force
-    cargo install --path=applications/minotari_miner --force
+    cargo install --path=applications/minotaiji_node --force
+    cargo install --path=applications/minotaiji_console_wallet --force
+    cargo install --path=applications/minotaiji_merge_mining_proxy --force
+    cargo install --path=applications/minotaiji_miner --force
 
 ---
 
 Alternatively, cargo can build and install the executable into `%USERPROFILE%\.cargo\bin`, so it will be executable from
 anywhere on your system.
 
-    cargo install --path=applications/minotari_node --force
-    cargo install --path=applications/minotari_console_wallet --force
-    cargo install --path=applications/minotari_merge_mining_proxy --force
-    cargo install --path=applications/minotari_miner --force
+    cargo install --path=applications/minotaiji_node --force
+    cargo install --path=applications/minotaiji_console_wallet --force
+    cargo install --path=applications/minotaiji_merge_mining_proxy --force
+    cargo install --path=applications/minotaiji_miner --force
 
 ### Run
 
-The executables will either be inside your `~/tari/target/release` (on Linux) or `%USERPROFILE%\Code\tari\target\release`
+The executables will either be inside your `~/taiji/target/release` (on Linux) or `%USERPROFILE%\Code\taiji\target\release`
 (on Windows) directory, or alternatively, inside your `~/.cargo/bin` (on Linux) `%USERPROFILE%\.cargo\bin` (on Windows)
 directory, depending on the build choice above, and must be run from the command line. If the former build method was
 used, you can run it from that directory, or you more likely want to copy it somewhere more convenient. Make sure to
-start Tor service `~/tari/applications/minotari_node/osx/start_tor` (on Mac),
-`~/tari/applications/minotari_node/linux/start_tor` (on Linux) or
-`%USERPROFILE%\Code\tari\applications\minotari_node\windows\start_tor.lnk` (on Windows).
+start Tor service `~/taiji/applications/minotaiji_node/osx/start_tor` (on Mac),
+`~/taiji/applications/minotaiji_node/linux/start_tor` (on Linux) or
+`%USERPROFILE%\Code\taiji\applications\minotaiji_node\windows\start_tor.lnk` (on Windows).
 
 To run from any directory of your choice, where the executable is visible in the path (first time use):
 
-    minotari_node --init
-    minotari_node
+    minotaiji_node --init
+    minotaiji_node
 
-    minotari_console_wallet --init
+    minotaiji_console_wallet --init
 
-    minotari_merge_mining_proxy
+    minotaiji_merge_mining_proxy
 
-    minotari_miner --init
+    minotaiji_miner --init
 
 Consecutive runs:
 
-    minotari_node
+    minotaiji_node
 
-    minotari_console_wallet
+    minotaiji_console_wallet
 
-    minotari_merge_mining_proxy
+    minotaiji_merge_mining_proxy
 
-    minotari_miner
+    minotaiji_miner
 
-Alternatively, you can run the Tari applications from your source directory using `cargo`, and just omit the `--release`
+Alternatively, you can run the Taiji applications from your source directory using `cargo`, and just omit the `--release`
 flag if you want to run in debug mode (first time use):
 
-    cargo run --bin minotari_node --release --  --init
-    cargo run --bin minotari_node --release
+    cargo run --bin minotaiji_node --release --  --init
+    cargo run --bin minotaiji_node --release
 
-    cargo run --bin minotari_merge_mining_proxy --release
+    cargo run --bin minotaiji_merge_mining_proxy --release
 
-    cargo run --bin minotari_console_wallet --release --  --init
+    cargo run --bin minotaiji_console_wallet --release --  --init
 
-    cargo run --bin minotari_miner --release
+    cargo run --bin minotaiji_miner --release
 
 Consecutive runs:
 
-    cargo run --bin minotari_node --release
+    cargo run --bin minotaiji_node --release
 
-    cargo run --bin minotari_console_wallet --release
+    cargo run --bin minotaiji_console_wallet --release
 
-    cargo run --bin minotari_merge_mining_proxy --release
+    cargo run --bin minotaiji_merge_mining_proxy --release
 
-    cargo run --bin minotari_miner --release
+    cargo run --bin minotaiji_miner --release
 
 Using all the default options, the blockchain database, wallet database, console wallet database, log files and all
-configuration files will be created in the `~/.tari` (on Linux) or `%USERPROFILE%\.tari` (on Windows) directory.
+configuration files will be created in the `~/.taiji` (on Linux) or `%USERPROFILE%\.taiji` (on Windows) directory.
 Alternatively, by specifying `--base-path <base-path>` on the command line as well, all of this will be created in that
 directory.
 
 ## Advanced build configurations
 
-- Vagrant: See [Building with Vagrant](https://github.com/tari-project/tari/issues/1407), using Vagrant to build and run a basenode, as cleanly as possible.
+- Vagrant: See [Building with Vagrant](https://github.com/taiji-project/taiji/issues/1407), using Vagrant to build and run a basenode, as cleanly as possible.
 
 ## Using Docker
 
 ### Running the base node with a docker image
 
-Minotari Base Node Docker images can be found at https://quay.io/repository/tarilabs/tari_base_node
+Minotaiji Base Node Docker images can be found at https://quay.io/repository/taijilabs/taiji_base_node
 
 Using `docker-compose.yaml`
 
@@ -324,11 +324,11 @@ Using `docker-compose.yaml`
 version: "3"
 
 services:
-  tari_base_node:
-    image: quay.io/tarilabs/tari_base_node:v0.5.4
+  taiji_base_node:
+    image: quay.io/taijilabs/taiji_base_node:v0.5.4
     restart: unless-stopped
     volumes:
-      - ./data:/root/.tari
+      - ./data:/root/.taiji
 # These 2 params are required for an interactive docker-compose session
     stdin_open: true
     tty: true
@@ -345,17 +345,17 @@ Check the running state with `docker-compose ps`
 ```
         Name           Command    State            Ports
 ------------------------------------------------------------------
-tbn_tari_base_node_1   start.sh   Up      0.0.0.0:18142->18142/tcp
+tbn_taiji_base_node_1   start.sh   Up      0.0.0.0:18142->18142/tcp
 ```
 
-To connect to the console, use `docker ps` to get the container ID which to attach to the tari_base_node in docker
+To connect to the console, use `docker ps` to get the container ID which to attach to the taiji_base_node in docker
 
 ```
 CONTAINER ID        IMAGE                                    COMMAND             CREATED             STATUS              PORTS                      NAMES
-73427509a4bb        quay.io/tarilabs/tari_base_node:v0.5.4   "start.sh"          45 minutes ago      Up 26 minutes       0.0.0.0:18142->18142/tcp   tbn_tari_base_node_1
+73427509a4bb        quay.io/taijilabs/taiji_base_node:v0.5.4   "start.sh"          45 minutes ago      Up 26 minutes       0.0.0.0:18142->18142/tcp   tbn_taiji_base_node_1
 ```
 
-With the container ID `73427509a4bb`, connect to the minotari_node console as follows `docker attach 73427509a4bb`
+With the container ID `73427509a4bb`, connect to the minotaiji_node console as follows `docker attach 73427509a4bb`
 
 ```
 >> help
@@ -382,80 +382,80 @@ Syncing 5229/5233
 
 If you don't want to use the docker images provided by the community, you can roll your own!
 
-First, clone the Tari repo
+First, clone the Taiji repo
 
 ```bash
-git clone git@github.com:tari-project/tari.git
+git clone git@github.com:taiji-project/taiji.git
 ```
 
 Then build the image using the dockerfile in `buildtools`. The base node docker file build the application and then
 places the binary inside a small container, keeping the executable binary to a minimum.
 
-    docker build -t tari_base_node:latest -f ./buildtools/base_node.Dockerfile .
+    docker build -t taiji_base_node:latest -f ./buildtools/base_node.Dockerfile .
 
 Test your image
 
-    docker run --rm -ti tari_base_node tari_base_node --help
+    docker run --rm -ti taiji_base_node taiji_base_node --help
 
 Run the base node
 
-    docker run -ti -v /path/to/config/dir:/root/.tari tari_base_node
+    docker run -ti -v /path/to/config/dir:/root/.taiji taiji_base_node
 
 Default docker builds for base x86-64 CPU. Better performing builds can be created by passing build options
 
-    docker build -t tari_base_node:performance --build-arg TBN_ARCH=skylake --build-arg TBN_FEATURES=avx2 -f ./buildtools/base_node.Dockerfile .
+    docker build -t taiji_base_node:performance --build-arg TBN_ARCH=skylake --build-arg TBN_FEATURES=avx2 -f ./buildtools/base_node.Dockerfile .
 
 ---
 
 ## Mining
 
-The Tari protocol supports hybrid mining; stand-alone or pooled SHA3 mining using the Minotari Miner or merged mining with
-Monero using the Minotari Merge Mining Proxy in conjunction with XMRig (RandomX-based mining). Blocks to be won by
+The Taiji protocol supports hybrid mining; stand-alone or pooled SHA3 mining using the Minotaiji Miner or merged mining with
+Monero using the Minotaiji Merge Mining Proxy in conjunction with XMRig (RandomX-based mining). Blocks to be won by
 stand-alone and pooled SHA3 mining has been apportioned to approximately 40% and with Monero merged mining to approximately 60%.
-This apportionment is deeply baked into the Tari protocol and part of the consensus rules. The 40/60 split is determined
+This apportionment is deeply baked into the Taiji protocol and part of the consensus rules. The 40/60 split is determined
 by slightly different block target times for each algorithm, that when combined will give an average block time of
 approximately 120s. Each mining algorithms make use of Linear Weighted Moving Average (LWMA) maths to gracefully adjust
 the target difficulties to adhere to the respective target block times. Any block won by either mining algorithm will be
 accepted, and when there is a tie a geometric mean calculation will be used to decide the winner. This system is
 completely fair without any additional empirical meddling to try force a certain outcome.
 
-### Tari SHA3 mining
+### Taiji SHA3 mining
 
-In order to perform SHA3 mining with Tari, the following applications are needed:
+In order to perform SHA3 mining with Taiji, the following applications are needed:
 
-- A Minotari Base Node [_to supply blockchain metadata information_];
-- A Minotari Wallet [_to collect the Minotari block rewards (coinbase transactions)_];
-- A Minotari Miner [_to perform the mining_];
+- A Minotaiji Base Node [_to supply blockchain metadata information_];
+- A Minotaiji Wallet [_to collect the Minotaiji block rewards (coinbase transactions)_];
+- A Minotaiji Miner [_to perform the mining_];
 
-In order to perform pooled SHA3 mining with Tari, the following applications are needed:
+In order to perform pooled SHA3 mining with Taiji, the following applications are needed:
 
 - For a pool operator:
 
-  - A Minotari Base Node [_to supply blockchain metadata information_];
-  - A Minotari Wallet [_to collect the Minotari block rewards (coinbase transactions)_];
-  - Miningcore [_pool software supporting various cryptocurrencies, configured for Tari_]
+  - A Minotaiji Base Node [_to supply blockchain metadata information_];
+  - A Minotaiji Wallet [_to collect the Minotaiji block rewards (coinbase transactions)_];
+  - Miningcore [_pool software supporting various cryptocurrencies, configured for Taiji_]
 
 - For a miner:
-  - A Minotari Wallet [_to collect the share rewards (pool payouts)_];
-  - A Minotari Miner [_to perform the mining_];
+  - A Minotaiji Wallet [_to collect the share rewards (pool payouts)_];
+  - A Minotaiji Miner [_to perform the mining_];
 
 #### Runtime prerequisites
 
-The Minotari Base Node, Minotari Wallet and Minotari Miner can all run in the same directory. By performing the
+The Minotaiji Base Node, Minotaiji Wallet and Minotaiji Miner can all run in the same directory. By performing the
 default installation as described in [Installing using binaries](#installing-using-binaries), all these applications
 will be available.
 
-For MiningCore see the [Linux](https://github.com/tari-project/miningcore/#building-on-debianubuntu) and [Windows](https://github.com/tari-project/miningcore/#building-on-windows) build instructions.
+For MiningCore see the [Linux](https://github.com/taiji-project/miningcore/#building-on-debianubuntu) and [Windows](https://github.com/taiji-project/miningcore/#building-on-windows) build instructions.
 
 #### Configuration prerequisites
 
-The configuration prerequisites are the same for all four Tari applications. After performing a
+The configuration prerequisites are the same for all four Taiji applications. After performing a
 [default installation](#installing-using-binaries), locate the main configuration file (`config.toml`), which
-will be created in the `~/tari_esmeralda_testnet/config` (on Linux) or `%USERPROFILE%\.tari-testnet\config` (on Windows)
+will be created in the `~/taiji_esmeralda_testnet/config` (on Linux) or `%USERPROFILE%\.taiji-testnet\config` (on Windows)
 directory.
 
 With the main configuration file, in addition to the settings already present, the following must also be enabled for
-the Minotari Base Node and the Minotari Wallet, if they are not enabled already. Under sections **`base_node.esmeralda`** and **`wallet`** respectively:
+the Minotaiji Base Node and the Minotaiji Wallet, if they are not enabled already. Under sections **`base_node.esmeralda`** and **`wallet`** respectively:
 
 ```
 [wallet]
@@ -473,9 +473,9 @@ grpc_base_node_address = "127.0.0.1:18142"
 
 For MiningCore:
 
-See example configuration [here](https://github.com/tari-project/miningcore/blob/master/examples/tari_pool.json).
+See example configuration [here](https://github.com/taiji-project/miningcore/blob/master/examples/taiji_pool.json).
 
-For the Minotari Miner there are some additional settings under section **`miner`** that can be changed:
+For the Minotaiji Miner there are some additional settings under section **`miner`** that can be changed:
 
 - For SHA3 Mining:
 
@@ -514,7 +514,7 @@ For pooled SHA3 mining:
 #num_mining_threads=8
 
 # Stratum Mode configuration
-# mining_pool_address = "miningcore.tari.com:3052"
+# mining_pool_address = "miningcore.taiji.com:3052"
 # mining_wallet_address = "YOUR_WALLET_PUBLIC_KEY"
 # mining_worker_name = "worker1"
 ```
@@ -525,41 +525,41 @@ Uncomment `mining_pool_address` and `mining_wallet_address`. Adjust the values t
 #### Perform SHA3 mining
 
 - For SHA3 mining:
-  Tor and the required Tari applications must be started and preferably in this order:
+  Tor and the required Taiji applications must be started and preferably in this order:
 
   - Tor:
 
     - Linux/OSX: Execute `start_tor.sh`.
-    - Windows: `Start Tor Serviecs` menu item or `start_tor` shortcut in the Tari installation folder.
+    - Windows: `Start Tor Serviecs` menu item or `start_tor` shortcut in the Taiji installation folder.
 
-    - Tari Base Node:
+    - Taiji Base Node:
 
     - Linux/OSX: As per [Runtime links](#runtime-links).
     - Windows: As per [Runtime links](#runtime-links) or `Start Base Node` menu item or
-      `start_minotari_node` shortcut in the Tari installation folder.
+      `start_minotaiji_node` shortcut in the Taiji installation folder.
 
-  - Tari Console Wallet:
+  - Taiji Console Wallet:
 
     - Linux/OSX: As per [Runtime links](#runtime-links).
     - Windows: As per [Runtime links](#runtime-links) or `Start Console Wallet` menu item or
-      `start_tari_console_wallet` shortcut in the Tari installation folder.
+      `start_taiji_console_wallet` shortcut in the Taiji installation folder.
 
-  - Tari Miner:
+  - Taiji Miner:
     - Linux/OSX: As per [Runtime links](#runtime-links).
     - Windows: As per [Runtime links](#runtime-links) or `Start Miner` menu item
-      or `start_tari_miner` shortcut in the Tari installation folder.
+      or `start_taiji_miner` shortcut in the Taiji installation folder.
 
-Look out for the following types of messages on the Tari Miner console to confirm that it is connected properly
+Look out for the following types of messages on the Taiji Miner console to confirm that it is connected properly
 and performing mining:
 
 ```
-2021-02-26 11:24:23.604202000 [minotari_miner] INFO  Connecting to base node at http://127.0.0.1:18151
-2021-02-26 11:24:23.606260800 [minotari_miner] INFO  Connecting to wallet at http://127.0.0.1:18161
-2021-02-26 11:24:23.721890400 [minotari_miner::miner] INFO  Mining thread 0 started
-2021-02-26 11:24:23.722287800 [minotari_miner::miner] INFO  Mining thread 1 started
-2021-02-26 11:24:23.722505500 [minotari_miner::miner] INFO  Mining thread 2 started
-2021-02-26 11:28:19.687855700 [minotari_miner::miner] INFO  Mining thread 2 stopped
-2021-02-26 11:28:19.688251200 [minotari_miner] INFO  Miner 2 found block header BlockHeader { hash: [...], version: 1,
+2021-02-26 11:24:23.604202000 [minotaiji_miner] INFO  Connecting to base node at http://127.0.0.1:18151
+2021-02-26 11:24:23.606260800 [minotaiji_miner] INFO  Connecting to wallet at http://127.0.0.1:18161
+2021-02-26 11:24:23.721890400 [minotaiji_miner::miner] INFO  Mining thread 0 started
+2021-02-26 11:24:23.722287800 [minotaiji_miner::miner] INFO  Mining thread 1 started
+2021-02-26 11:24:23.722505500 [minotaiji_miner::miner] INFO  Mining thread 2 started
+2021-02-26 11:28:19.687855700 [minotaiji_miner::miner] INFO  Mining thread 2 stopped
+2021-02-26 11:28:19.688251200 [minotaiji_miner] INFO  Miner 2 found block header BlockHeader { hash: [...], version: 1,
   height: 8493, prev_hash: [...], timestamp: Some(Timestamp { seconds: 1614331698, nanos: 0 }), output_mr: [...],
   witness_mr: [...], total_kernel_offset: [...], nonce: 8415580256943728281, pow: Some(ProofOfWork { pow_algo: 2,
   pow_data: [] }), kernel_mmr_size: 24983, output_mmr_size: 125474 } with difficulty 7316856839
@@ -568,51 +568,51 @@ and performing mining:
 - For pooled SHA3 Mining:
 
   - Pool Operators:
-    Tor and the required Minotari applications must be started in this order:
+    Tor and the required Minotaiji applications must be started in this order:
 
     - Tor:
 
       - Linux/OSX: Execute `start_tor.sh`.
-      - Windows: `Start Tor Serviecs` menu item or `start_tor` shortcut in the Tari installation folder.
+      - Windows: `Start Tor Serviecs` menu item or `start_tor` shortcut in the Taiji installation folder.
 
-    - Minotari Base Node:
+    - Minotaiji Base Node:
 
       - Linux/OSX: As per [Runtime links](#runtime-links).
       - Windows: As per [Runtime links](#runtime-links) or `Start Base Node` menu item or
-        `start_minotari_node` shortcut in the Tari installation folder.
+        `start_minotaiji_node` shortcut in the Taiji installation folder.
 
-    - Minotari Wallet:
+    - Minotaiji Wallet:
 
       - Linux/OSX: As per [Runtime links](#runtime-links).
       - Windows: As per [Runtime links](#runtime-links) or `Start Console Wallet` menu item or
-        `start_tari_console_wallet` shortcut in the Tari installation folder.
+        `start_taiji_console_wallet` shortcut in the Taiji installation folder.
 
     - MiningCore
 
   - Miners:
-    - Minotari Miner:
+    - Minotaiji Miner:
       - Linux/OSX: As per [Runtime links](#runtime-links).
       - Windows: As per [Runtime links](#runtime-links) or `Start Miner` menu item
-        or `start_tari_miner` shortcut in the Tari installation folder.
+        or `start_taiji_miner` shortcut in the Taiji installation folder.
 
-### Tari merge mining
+### Taiji merge mining
 
-In order to perform merge mining with Tari, the following applications are needed:
+In order to perform merge mining with Taiji, the following applications are needed:
 
-- A Minotari Base Node [_to supply blockchain metadata information_];
-- A Minotari Wallet [_to collect the Tari block rewards (coinbase transactions)_];
-- A Minotari Merge Mining Proxy [_to enable communication between all applications_];
+- A Minotaiji Base Node [_to supply blockchain metadata information_];
+- A Minotaiji Wallet [_to collect the Taiji block rewards (coinbase transactions)_];
+- A Minotaiji Merge Mining Proxy [_to enable communication between all applications_];
 - XMRig [_to perform the mining_];
 - Monero wallet (specifically a stagenet wallet address during testnet; the one provided can be used, or a custom
   one can be set up) [_to collect Monero block rewards (coinbase transactions)_].
 
-The Minotari Merge Mining Proxy will be the communication gateway between all these applications and will coordinate all
-activities. It will also submit finalized Minotari and Monero blocks to the respective networks when RandomX is solved at
+The Minotaiji Merge Mining Proxy will be the communication gateway between all these applications and will coordinate all
+activities. It will also submit finalized Minotaiji and Monero blocks to the respective networks when RandomX is solved at
 the respective difficulties.
 
 #### Runtime prerequisites
 
-The Minotari Base Node, Minotari Wallet and Minotari Merge Mining Proxy can all run in the same directory, whereas XMRig
+The Minotaiji Base Node, Minotaiji Wallet and Minotaiji Merge Mining Proxy can all run in the same directory, whereas XMRig
 will run in its own directory. By performing the default installation as described in
 [Installing using binaries](#installing-using-binaries), all these applications will be available.
 
@@ -620,17 +620,17 @@ XMRig can also be build from sources. If that is your preference, follow these i
 
 #### Configuration prerequisites
 
-##### Minotari applications
+##### Minotaiji applications
 
-The configuration prerequisites are the same for all three Minotari applications. After performing a
+The configuration prerequisites are the same for all three Minotaiji applications. After performing a
 [default installation](#installing-using-binaries), locate the main configuration file (`config.toml`), which
-will be created in the `~/tari_esmeralda_testnet/config` (on Linux) or `%USERPROFILE%\.tari-testnet\config` (on Windows)
+will be created in the `~/taiji_esmeralda_testnet/config` (on Linux) or `%USERPROFILE%\.taiji-testnet\config` (on Windows)
 directory.
 
 With the main configuration file, in addition to the settings already present, the following must also be enabled if
 they are not enabled already:
 
-- For the Minotari Base Node and the Minotari Wallet, under sections **`base_node.esmeralda`** and **`wallet`** respectively
+- For the Minotaiji Base Node and the Minotaiji Wallet, under sections **`base_node.esmeralda`** and **`wallet`** respectively
   ```
   [wallet]
   grpc_address = "127.0.0.1:18143"
@@ -646,7 +646,7 @@ And then depending on if you are using solo mining or self-select mining you wil
 
 ###### Solo mining
 
-- For the Minotari Merge Mining Proxy, under section **`merge_mining_proxy`**
+- For the Minotaiji Merge Mining Proxy, under section **`merge_mining_proxy`**
 
   ```
   [merge_mining_proxy]
@@ -667,7 +667,7 @@ And then depending on if you are using solo mining or self-select mining you wil
 
 ###### Self-Select mining
 
-- For the Minotari Merge Mining Proxy, under section **`merge_mining_proxy`**
+- For the Minotaiji Merge Mining Proxy, under section **`merge_mining_proxy`**
 
   ```
   [merge_mining_proxy]
@@ -710,7 +710,7 @@ A typical response would be:
 ```
 
 _**Note:** A guide to setting up a local Monero stagenet on Linux can be found
-[here](https://github.com/tari-project/tari/blob/development/applications/tari_merge_mining_proxy/monero_stagenet_setup.md)._
+[here](https://github.com/taiji-project/taiji/blob/development/applications/taiji_merge_mining_proxy/monero_stagenet_setup.md)._
 
 ##### XMRig configuration
 
@@ -721,7 +721,7 @@ in via the command line upon runtime.
 **Notes:**
 
 - Monero mainnet and stagenet wallet addresses can only be used with the corresponding network. The `monerod_url`
-  configuration setting (see [Minotari applications](#minotari-applications)) must also correspond to the chosen network.
+  configuration setting (see [Minotaiji applications](#minotaiji-applications)) must also correspond to the chosen network.
 - For the solo mining configuration, Monero doesn't currently support requesting templates to mine on with the address
   being a subaddress. It is possible to do with the self-select configuration since the template is requested by the miner
   with the wallet address of the pool.
@@ -736,7 +736,7 @@ in JSON format:
 - Pools -> `+ Add daemon`
 
   - With `Add new daemon for Solo mining`, complete the required information, then `+ Add daemon`:
-    - `Host`, `Port`: This must correspond to the `proxy_host_address` in the Tari configuration file.
+    - `Host`, `Port`: This must correspond to the `proxy_host_address` in the Taiji configuration file.
     - `Secure connection (TLS)`: Uncheck.
     - `Coin`: Monero.
     - `Wallet address`: This must be your own stagenet or mainnet wallet address, or you can use these donation
@@ -774,7 +774,7 @@ Using the public stagenet wallet address above the resulting configuration file 
 ###### Pool mining with Self-Select
 
 For pool mining, the configuration file obtained from the [XMRig configuration wizard](https://xmrig.com/wizard) must
-be augmented with Tari specific settings. Using the wizard, create the following:
+be augmented with Taiji specific settings. Using the wizard, create the following:
 
 - Start -> `+ New configuration`
 
@@ -831,35 +831,35 @@ activity for that address. The configuration file used for this exercise is show
 
 #### Perform merge mining
 
-Tor and the required Minotari applications must be started and preferably in this order:
+Tor and the required Minotaiji applications must be started and preferably in this order:
 
 - Tor:
 
   - Linux/OSX: Execute `start_tor.sh`.
-  - Windows: `Start Tor Serviecs` menu item or `start_tor` shortcut in the Tari installation folder.
+  - Windows: `Start Tor Serviecs` menu item or `start_tor` shortcut in the Taiji installation folder.
 
-- Tari Base Node:
+- Taiji Base Node:
 
   - Linux/OSX: As per [Runtime links](#runtime-links).
   - Windows: As per [Runtime links](#runtime-links) or `Start Base Node` menu item or
-    `start_minotari_node` shortcut in the Tari installation folder.
+    `start_minotaiji_node` shortcut in the Taiji installation folder.
 
-- Tari Console Wallet:
+- Taiji Console Wallet:
 
   - Linux/OSX: As per [Runtime links](#runtime-links).
   - Windows: As per [Runtime links](#runtime-links) or `Start Console Wallet` menu item or
-    `start_minotari_console_wallet` shortcut in the Tari installation folder.
+    `start_minotaiji_console_wallet` shortcut in the Taiji installation folder.
 
-- Tari Merge Mining Proxy:
+- Taiji Merge Mining Proxy:
   - Linux/OSX: As per [Runtime links](#runtime-links).
   - Windows: As per [Runtime links](#runtime-links) or `Start Merge Mining Proxy` menu item
-    or `start_tari_merge_mining_proxy` shortcut in the Tari installation folder.
+    or `start_taiji_merge_mining_proxy` shortcut in the Taiji installation folder.
 
 In addition, select one of the merge mining options as outlined in solo or pool mining in the next paragraphs.
 
 ##### Solo merged mining with Monero
 
-This paragraph is applicable to solo mining Monero on mainnet or stagenet and solo mining Tari on testnet.
+This paragraph is applicable to solo mining Monero on mainnet or stagenet and solo mining Taiji on testnet.
 
 Solo merged mining with Monero is supported using the `daemon` option.
 
@@ -892,7 +892,7 @@ install folder, then start XMRig:
 
 - Linux/OSX: Execute `./xmrig` in the XMRig build or install folder.
 - Windows: Execute `xmrig` in the XMRig build or install folder, or `Start XMRig` menu item or `start_xmrig`
-  shortcut in the Tari installation folder.
+  shortcut in the Taiji installation folder.
 
   **Note**: On modern Windows versions, coin mining software is blocked by default, for example by Windows Defender.
   Ensure that these processes are allowed to run when challenged:
@@ -918,20 +918,20 @@ and accepting jobs:
 ```
 
 The `cpu: rejected` and `cpu: accepted` messages originates from stagenet or mainnet `monerod`, and shows the Monero
-statistics. At this point, the mined and rejected Minotari coinbases should be visible in the Minotari Wallet.
+statistics. At this point, the mined and rejected Minotaiji coinbases should be visible in the Minotaiji Wallet.
 
 ##### Pool merged mining with Monero (self select)
 
-This paragraph is applicable to pool mining Monero on mainnet and solo mining Minotari on testnet.
+This paragraph is applicable to pool mining Monero on mainnet and solo mining Minotaiji on testnet.
 
 Pool merged mining with Monero is supported using the
 [Stratum mode self-select](https://github.com/jtgrassie/monero-pool/blob/master/sss.md) option via XMRig. Two mining
 pools we have tried out that support this feature are [monero-pool](https://github.com/jtgrassie/monero-pool), with
 its reference pool implementation running [here](http://monerop.com/), and
 [cryptonote.social](https://cryptonote.social/xmr). With normal self select mode, XMRig requests a Monero block
-template from a third party and submits the solution to the mining pool. Minotari added a `submit-to-origin` option to the
+template from a third party and submits the solution to the mining pool. Minotaiji added a `submit-to-origin` option to the
 self select mode whereby, if a solution has been found that only matches the pool difficulty, XMRig will submit the
-solution to the pool only, but if the achieved difficulty meets both that of the pool and Minotari, it will be submitted to
+solution to the pool only, but if the achieved difficulty meets both that of the pool and Minotaiji, it will be submitted to
 the Merge Mining Proxy as well as to the mining pool.
 
 ###### Merge Mining Proxy configuration
@@ -969,23 +969,23 @@ Mining Proxy and accepting jobs:
 ```
 
 Status essages `origin: submitted to origin daemon (1/0)` and
-`origin: not submitted to origin daemon, difficulty too low (1/1)` pertains to submissions to the Tari network,
+`origin: not submitted to origin daemon, difficulty too low (1/1)` pertains to submissions to the Taiji network,
 and `cpu: accepted (1/0)` to the pool.
 
-Mined and rejected Tari coinbases should be visible in the Tari Console Wallet, and pool shares in the pool interface.
+Mined and rejected Taiji coinbases should be visible in the Taiji Console Wallet, and pool shares in the pool interface.
 If you are using `cryptonote.social:5555` as in the example above, go to <https://cryptonote.social/xmr> and type in
-your wallet identity under `Username:` to see your shares, or try `taritest` if you used this configuration example.
+your wallet identity under `Username:` to see your shares, or try `taijitest` if you used this configuration example.
 
 # Project documentation
 
-- [RFC documents](https://rfc.tari.com) are hosted on Github Pages. The source markdown is in the `RFC` directory.
+- [RFC documents](https://rfc.taiji.com) are hosted on Github Pages. The source markdown is in the `RFC` directory.
 - Source code documentation is hosted on [docs.rs](https://docs.rs)
-- [RFC repo](https://github.com/tari-project/rfcs)
+- [RFC repo](https://github.com/taiji-project/rfcs)
 
 ## RFC documents
 
-The RFCs are long-form technical documents proposing changes and features to the Tari network and ecosystem. 
-They are hosted at https://rfc.tari.com, and the RFC repo is at https://github.com/tari-project/rfcs
+The RFCs are long-form technical documents proposing changes and features to the Taiji network and ecosystem. 
+They are hosted at https://rfc.taiji.com, and the RFC repo is at https://github.com/taiji-project/rfcs
 
 ### Source code documentation
 

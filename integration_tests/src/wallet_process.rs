@@ -1,4 +1,4 @@
-//   Copyright 2022. The Tari Project
+//   Copyright 2022. The Taiji Project
 //
 //   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //   following conditions are met:
@@ -22,20 +22,20 @@
 
 use std::{path::PathBuf, str::FromStr, thread, time::Duration};
 
-use minotari_app_grpc::tari_rpc::SetBaseNodeRequest;
-use minotari_app_utilities::common_cli_args::CommonCliArgs;
-use minotari_console_wallet::{run_wallet_with_cli, Cli};
-use minotari_wallet::{transaction_service::config::TransactionRoutingMechanism, WalletConfig};
-use minotari_wallet_grpc_client::WalletGrpcClient;
-use tari_common::configuration::{CommonConfig, MultiaddrList};
-use tari_comms::multiaddr::Multiaddr;
-use tari_comms_dht::{DbConnectionUrl, DhtConfig};
-use tari_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig, TransportType};
-use tari_shutdown::Shutdown;
+use minotaiji_app_grpc::taiji_rpc::SetBaseNodeRequest;
+use minotaiji_app_utilities::common_cli_args::CommonCliArgs;
+use minotaiji_console_wallet::{run_wallet_with_cli, Cli};
+use minotaiji_wallet::{transaction_service::config::TransactionRoutingMechanism, WalletConfig};
+use minotaiji_wallet_grpc_client::WalletGrpcClient;
+use taiji_common::configuration::{CommonConfig, MultiaddrList};
+use taiji_comms::multiaddr::Multiaddr;
+use taiji_comms_dht::{DbConnectionUrl, DhtConfig};
+use taiji_p2p::{auto_update::AutoUpdateConfig, Network, PeerSeedsConfig, TransportType};
+use taiji_shutdown::Shutdown;
 use tokio::runtime;
 use tonic::transport::Channel;
 
-use crate::{get_peer_addresses, get_port, wait_for_service, TariWorld};
+use crate::{get_peer_addresses, get_port, wait_for_service, TaijiWorld};
 
 #[derive(Clone, Debug)]
 pub struct WalletProcess {
@@ -55,7 +55,7 @@ impl Drop for WalletProcess {
 
 #[allow(clippy::too_many_lines)]
 pub async fn spawn_wallet(
-    world: &mut TariWorld,
+    world: &mut TaijiWorld,
     wallet_name: String,
     base_node_name: Option<String>,
     peer_seeds: Vec<String>,
@@ -110,7 +110,7 @@ pub async fn spawn_wallet(
     common_config.base_path = temp_dir_path.clone();
     let wallet_cfg = wallet_config.clone();
     thread::spawn(move || {
-        let mut wallet_app_config = minotari_console_wallet::ApplicationConfig {
+        let mut wallet_app_config = minotaiji_console_wallet::ApplicationConfig {
             common: common_config,
             auto_update: AutoUpdateConfig::default(),
             wallet: wallet_cfg,
@@ -227,7 +227,7 @@ pub fn get_default_cli() -> Cli {
     }
 }
 
-pub async fn create_wallet_client(world: &TariWorld, wallet_name: String) -> anyhow::Result<WalletGrpcClient<Channel>> {
+pub async fn create_wallet_client(world: &TaijiWorld, wallet_name: String) -> anyhow::Result<WalletGrpcClient<Channel>> {
     let wallet_grpc_port = world.wallets.get(&wallet_name).unwrap().grpc_port;
     let wallet_addr = format!("http://127.0.0.1:{}", wallet_grpc_port);
 

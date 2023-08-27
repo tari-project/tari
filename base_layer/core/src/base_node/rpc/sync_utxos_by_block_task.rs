@@ -1,4 +1,4 @@
-// Copyright 2021. The Tari Project
+// Copyright 2021. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -23,7 +23,7 @@
 use std::{convert::TryInto, sync::Arc, time::Instant};
 
 use log::*;
-use tari_comms::protocol::rpc::{RpcStatus, RpcStatusResultExt};
+use taiji_comms::protocol::rpc::{RpcStatus, RpcStatusResultExt};
 use tari_utilities::hex::Hex;
 use tokio::{sync::mpsc, task};
 

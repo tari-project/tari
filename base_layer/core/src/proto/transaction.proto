@@ -1,4 +1,4 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 syntax = "proto3";
@@ -6,17 +6,17 @@ syntax = "proto3";
 import "types.proto";
 import "sidechain_feature.proto";
 
-package tari.types;
+package taiji.types;
 
 // The transaction kernel tracks the excess for a given transaction. For an explanation of what the excess is, and
 // why it is necessary, refer to the
-// [Mimblewimble TLU post](https://tlu.tarilabs.com/protocols/mimblewimble-1/sources/PITCHME.link.html?highlight=mimblewimble#mimblewimble).
+// [Mimblewimble TLU post](https://tlu.taijilabs.com/protocols/mimblewimble-1/sources/PITCHME.link.html?highlight=mimblewimble#mimblewimble).
 // The kernel also tracks other transaction metadata, such as the lock height for the transaction (i.e. the earliest
 // this transaction can be mined) and the transaction fee, in cleartext.
 message TransactionKernel {
     // Options for a kernel's structure or use
     uint32 features = 1;
-    /// Fee originally included in the transaction this proof is for (in MicroMinotari)
+    /// Fee originally included in the transaction this proof is for (in MicroMinotaiji)
     uint64 fee = 2;
     // This kernel is not valid earlier than lock_height blocks
     // The max lock_height of all *inputs* to this transaction
@@ -58,7 +58,7 @@ message TransactionInput {
     uint32 version = 10;
     // The encrypted value
     bytes encrypted_data = 11;
-    // The minimum value of the commitment that is proven by the range proof (in MicroMinotari)
+    // The minimum value of the commitment that is proven by the range proof (in MicroMinotaiji)
     uint64 minimum_value_promise = 12;
     // The metadata signature for output this input is spending
     ComAndPubSignature metadata_signature = 13;
@@ -76,9 +76,9 @@ message TransactionOutput {
     Commitment commitment = 2;
     // A proof that the commitment is in the right range
     RangeProof range_proof = 3;
-    // Tari script serialised script
+    // Taiji script serialised script
     bytes script = 4;
-    // Tari script offset pubkey, K_O
+    // Taiji script offset pubkey, K_O
     bytes sender_offset_public_key = 5;
     // UTXO signature with the script offset private key, k_O
     ComAndPubSignature metadata_signature = 6;
@@ -88,7 +88,7 @@ message TransactionOutput {
     uint32 version = 8;
     // Encrypted Pedersen commitment openings (value and mask) for the output
     bytes encrypted_data = 9;
-    // The minimum value of the commitment that is proven by the range proof (in MicroMinotari)
+    // The minimum value of the commitment that is proven by the range proof (in MicroMinotaiji)
     uint64 minimum_value_promise = 10;
 }
 

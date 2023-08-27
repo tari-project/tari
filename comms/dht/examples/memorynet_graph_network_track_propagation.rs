@@ -1,4 +1,4 @@
-// Copyright 2020, The Tari Project
+// Copyright 2020, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -55,7 +55,7 @@ mod graphing_utilities;
 mod memory_net;
 
 use env_logger::Env;
-use tari_comms::peer_manager::PeerFeatures;
+use taiji_comms::peer_manager::PeerFeatures;
 use tokio::sync::mpsc;
 
 use crate::{

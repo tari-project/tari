@@ -6,7 +6,7 @@
 #
 
 # Get package to test
-package_arg="--workspace --exclude tari_integration_tests"
+package_arg="--workspace --exclude taiji_integration_tests"
 
 # If first argument is not empty, set it to package variable
 if [ -n "$1" ]; then
@@ -14,7 +14,7 @@ if [ -n "$1" ]; then
     package_arg="-p $package"
 fi
 
-source_root_dir="tari"
+source_root_dir="taiji"
 build_dir="target/debug/"
 report_dir="report/$package"
 
@@ -26,13 +26,13 @@ if [ "$primary_dir" == "scripts" ]; then
     cd ..
 fi
 
-# Check if in Tari primary folder before proceeding
+# Check if in Taiji primary folder before proceeding
 path=$(pwd)
 primary_dir=$(basename $path)
 if [ "$primary_dir" == "$source_root_dir" ]; then
     echo "    + Correct directory"
 else
-    echo "    + Error: Incorrect directory -> start code_coverage from script or tari folder!"
+    echo "    + Error: Incorrect directory -> start code_coverage from script or taiji folder!"
     exit 1
 fi
 

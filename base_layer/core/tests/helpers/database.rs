@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2020, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -22,11 +22,11 @@
 
 use std::convert::TryInto;
 
-use tari_core::{
+use taiji_core::{
     blocks::{Block, BlockHeader, NewBlockTemplate},
     consensus::{emission::Emission, ConsensusManager},
     proof_of_work::Difficulty,
-    transactions::{tari_amount::MicroMinotari, test_helpers::TestKeyManager, transaction_components::Transaction},
+    transactions::{taiji_amount::MicroMinotaiji, test_helpers::TestKeyManager, transaction_components::Transaction},
 };
 
 use crate::helpers::block_builders::create_coinbase;
@@ -44,7 +44,7 @@ pub async fn create_orphan_block(
     let lock_height = consensus.consensus_constants(block_height).coinbase_min_maturity();
     coinbase_value += transactions
         .iter()
-        .fold(MicroMinotari(0), |acc, x| acc + x.body.get_total_fee());
+        .fold(MicroMinotaiji(0), |acc, x| acc + x.body.get_total_fee());
     let (coinbase_utxo, coinbase_kernel, _coinbase_output) =
         create_coinbase(coinbase_value, block_height + lock_height, None, key_manager).await;
     let mut header = BlockHeader::new(consensus.consensus_constants(block_height).blockchain_version());

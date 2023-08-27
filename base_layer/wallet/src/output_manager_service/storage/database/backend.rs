@@ -1,11 +1,11 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use tari_common_types::{
+use taiji_common_types::{
     transaction::TxId,
     types::{Commitment, FixedHash},
 };
-use tari_core::transactions::transaction_components::{OutputType, TransactionOutput};
+use taiji_core::transactions::transaction_components::{OutputType, TransactionOutput};
 
 use crate::output_manager_service::{
     error::OutputManagerStorageError,

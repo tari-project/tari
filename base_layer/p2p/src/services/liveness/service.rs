@@ -1,4 +1,4 @@
-// Copyright 2019 The Tari Project
+// Copyright 2019 The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -24,17 +24,17 @@ use std::{iter, sync::Arc, time::Instant};
 
 use futures::{future::Either, pin_mut, stream::StreamExt, Stream};
 use log::*;
-use tari_comms::{
+use taiji_comms::{
     connectivity::{ConnectivityRequester, ConnectivitySelection},
     peer_manager::NodeId,
     types::CommsPublicKey,
 };
-use tari_comms_dht::{
+use taiji_comms_dht::{
     domain_message::OutboundDomainMessage,
     outbound::{DhtOutboundError, OutboundMessageRequester},
 };
-use tari_service_framework::reply_channel::RequestContext;
-use tari_shutdown::ShutdownSignal;
+use taiji_service_framework::reply_channel::RequestContext;
+use taiji_shutdown::ShutdownSignal;
 use tokio::{sync::RwLock, time, time::MissedTickBehavior};
 use tokio_stream::wrappers;
 
@@ -50,7 +50,7 @@ use super::{
 use crate::{
     domain_message::DomainMessage,
     services::liveness::{handle::LivenessEventSender, LivenessEvent, PingPongEvent},
-    tari_message::TariMessageType,
+    taiji_message::TaijiMessageType,
 };
 
 /// Service responsible for testing Liveness of Peers.
@@ -214,7 +214,7 @@ where
         self.outbound_messaging
             .send_direct_node_id(
                 node_id,
-                OutboundDomainMessage::new(&TariMessageType::PingPong, msg),
+                OutboundDomainMessage::new(&TaijiMessageType::PingPong, msg),
                 "Send ping".to_string(),
             )
             .await
@@ -228,7 +228,7 @@ where
         self.outbound_messaging
             .send_direct_unencrypted(
                 dest,
-                OutboundDomainMessage::new(&TariMessageType::PingPong, msg),
+                OutboundDomainMessage::new(&TaijiMessageType::PingPong, msg),
                 "Sending pong".to_string(),
             )
             .await
@@ -311,7 +311,7 @@ where
             self.outbound_messaging
                 .send_direct_node_id(
                     peer,
-                    OutboundDomainMessage::new(&TariMessageType::PingPong, msg),
+                    OutboundDomainMessage::new(&TaijiMessageType::PingPong, msg),
                     "Start ping round".to_string(),
                 )
                 .await?;
@@ -366,20 +366,20 @@ mod test {
 
     use futures::stream;
     use rand::rngs::OsRng;
-    use tari_comms::{
+    use taiji_comms::{
         message::MessageTag,
         net_address::MultiaddressesWithStats,
         peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
         test_utils::mocks::create_connectivity_mock,
     };
-    use tari_comms_dht::{
+    use taiji_comms_dht::{
         envelope::{DhtMessageHeader, DhtMessageType},
         outbound::{DhtOutboundRequest, MessageSendState, SendMessageResponse},
         DhtProtocolVersion,
     };
     use tari_crypto::keys::PublicKey;
-    use tari_service_framework::reply_channel;
-    use tari_shutdown::Shutdown;
+    use taiji_service_framework::reply_channel;
+    use taiji_shutdown::Shutdown;
     use tokio::{
         sync::{broadcast, mpsc, oneshot},
         task,

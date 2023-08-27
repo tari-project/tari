@@ -1,4 +1,4 @@
-// Copyright 2020, The Tari Project
+// Copyright 2020, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -24,7 +24,7 @@ use std::sync::Arc;
 
 use bitflags::bitflags;
 use log::*;
-use tari_shutdown::{OptionalShutdownSignal, ShutdownSignal};
+use taiji_shutdown::{OptionalShutdownSignal, ShutdownSignal};
 use thiserror::Error;
 
 use super::controller::HiddenServiceControllerError;

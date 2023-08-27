@@ -1,4 +1,4 @@
-// Copyright 2021. The Tari Project
+// Copyright 2021. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -23,13 +23,13 @@
 use std::time::Instant;
 
 use log::*;
-use tari_common_types::transaction::TxId;
-use tari_core::transactions::{
-    key_manager::{TariKeyId, TransactionKeyManagerBranch, TransactionKeyManagerInterface},
-    tari_amount::MicroMinotari,
+use taiji_common_types::transaction::TxId;
+use taiji_core::transactions::{
+    key_manager::{TaijiKeyId, TransactionKeyManagerBranch, TransactionKeyManagerInterface},
+    taiji_amount::MicroMinotaiji,
     transaction_components::{TransactionError, TransactionOutput, WalletOutput},
 };
-use tari_script::{inputs, script, Opcode};
+use taiji_script::{inputs, script, Opcode};
 use tari_utilities::hex::Hex;
 
 use crate::output_manager_service::{
@@ -172,7 +172,7 @@ where
     async fn attempt_output_recovery(
         &self,
         output: &TransactionOutput,
-    ) -> Result<Option<(TariKeyId, MicroMinotari)>, OutputManagerError> {
+    ) -> Result<Option<(TaijiKeyId, MicroMinotaiji)>, OutputManagerError> {
         // lets first check if the output exists in the db, if it does we dont have to try recovery as we already know
         // about the output.
         match self.db.fetch_by_commitment(output.commitment().clone()) {
@@ -206,7 +206,7 @@ where
                 .master_key_manager
                 .find_key_index(TransactionKeyManagerBranch::Coinbase.get_branch_key(), &public_key)
                 .await?;
-            TariKeyId::Managed {
+            TaijiKeyId::Managed {
                 branch: TransactionKeyManagerBranch::CoinbaseScript.get_branch_key(),
                 index: found_index,
             }
@@ -232,7 +232,7 @@ where
                 )
                 .await?;
 
-            TariKeyId::Managed {
+            TaijiKeyId::Managed {
                 branch: TransactionKeyManagerBranch::ScriptKey.get_branch_key(),
                 index: found_index,
             }

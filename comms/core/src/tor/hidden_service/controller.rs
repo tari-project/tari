@@ -1,4 +1,4 @@
-// Copyright 2020, The Tari Project
+// Copyright 2020, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -24,7 +24,7 @@ use std::{fs, io, net::SocketAddr, sync::Arc, time::Duration};
 
 use futures::{future, future::Either, pin_mut, StreamExt};
 use log::*;
-use tari_shutdown::OptionalShutdownSignal;
+use taiji_shutdown::OptionalShutdownSignal;
 use tari_utilities::hex::Hex;
 use thiserror::Error;
 use tokio::{sync::broadcast, time};

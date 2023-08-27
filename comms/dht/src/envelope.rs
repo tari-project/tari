@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -31,7 +31,7 @@ use bitflags::bitflags;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use prost_types::Timestamp;
 use serde::{Deserialize, Serialize};
-use tari_comms::{message::MessageTag, peer_manager::NodeId, types::CommsPublicKey, NodeIdentity};
+use taiji_comms::{message::MessageTag, peer_manager::NodeId, types::CommsPublicKey, NodeIdentity};
 use tari_utilities::{epoch_time::EpochTime, ByteArray, ByteArrayError};
 use thiserror::Error;
 

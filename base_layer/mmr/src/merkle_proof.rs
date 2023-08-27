@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -25,7 +25,7 @@ use std::fmt::{self, Display, Formatter};
 use digest::Digest;
 use log::error;
 use serde::{Deserialize, Serialize};
-use tari_common::DomainDigest;
+use taiji_common::DomainDigest;
 use tari_utilities::hex::Hex;
 use thiserror::Error;
 
@@ -73,7 +73,7 @@ impl MerkleProof {
     /// Build a Merkle Proof the given MMR at the given *leaf* position. This is usually the version you'll want to
     /// call, since you'll know the leaf index more often than the MMR index.
     ///
-    /// For the difference between leaf node and MMR node indices, see the [mod level](:tari_mmr) documentation.
+    /// For the difference between leaf node and MMR node indices, see the [mod level](:taiji_mmr) documentation.
     ///
     /// See [MerkleProof::for_node] for more details on how the proof is constructed.
     pub fn for_leaf_node<D, B>(

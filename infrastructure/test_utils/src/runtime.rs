@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -23,7 +23,7 @@
 use std::{future::Future, pin::Pin};
 
 use futures::{future, FutureExt};
-use tari_shutdown::Shutdown;
+use taiji_shutdown::Shutdown;
 use tokio::{runtime, runtime::Runtime, task, task::JoinError};
 
 pub fn create_runtime() -> Runtime {

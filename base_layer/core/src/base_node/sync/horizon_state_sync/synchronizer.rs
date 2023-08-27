@@ -1,4 +1,4 @@
-//  Copyright 2022, The Tari Project
+//  Copyright 2022, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -31,8 +31,8 @@ use std::{
 use croaring::Bitmap;
 use futures::{stream::FuturesUnordered, StreamExt};
 use log::*;
-use tari_common_types::types::{Commitment, RangeProofService};
-use tari_comms::{
+use taiji_common_types::types::{Commitment, RangeProofService};
+use taiji_comms::{
     connectivity::ConnectivityRequester,
     peer_manager::NodeId,
     protocol::rpc::{RpcClient, RpcError},
@@ -531,7 +531,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     );
                     height_utxo_counter += 1;
                     let output = TransactionOutput::try_from(output).map_err(HorizonSyncError::ConversionError)?;
-                    helpers::check_tari_script_byte_size(&output.script, constants.max_script_byte_size())?;
+                    helpers::check_taiji_script_byte_size(&output.script, constants.max_script_byte_size())?;
                     unpruned_outputs.push(output.clone());
 
                     output_mmr.push(output.hash().to_vec())?;

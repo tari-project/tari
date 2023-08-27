@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -38,7 +38,7 @@ use futures::{
     FutureExt,
     SinkExt,
 };
-use minotari_wallet::{
+use minotaiji_wallet::{
     base_node_service::{config::BaseNodeServiceConfig, handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
     connectivity_service::{
         create_wallet_connectivity_mock,
@@ -81,14 +81,14 @@ use minotari_wallet::{
 };
 use prost::Message;
 use rand::{rngs::OsRng, RngCore};
-use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
-use tari_common_types::{
+use taiji_common_sqlite::connection::{DbConnection, DbConnectionUrl};
+use taiji_common_types::{
     chain_metadata::ChainMetadata,
-    tari_address::TariAddress,
+    taiji_address::TaijiAddress,
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
     types::{FixedHash, PrivateKey, PublicKey, Signature},
 };
-use tari_comms::{
+use taiji_comms::{
     message::EnvelopeBody,
     peer_manager::{NodeIdentity, PeerFeatures},
     protocol::rpc::{mock::MockRpcServer, NamedProtocolService},
@@ -97,13 +97,13 @@ use tari_comms::{
     CommsNode,
     PeerConnection,
 };
-use tari_comms_dht::outbound::mock::{
+use taiji_comms_dht::outbound::mock::{
     create_outbound_service_mock,
     MockBehaviour,
     OutboundServiceMockState,
     ResponseType,
 };
-use tari_core::{
+use taiji_core::{
     base_node::{
         proto::wallet_rpc::{TxLocation, TxQueryResponse, TxSubmissionRejectionReason, TxSubmissionResponse},
         rpc::BaseNodeWalletRpcServer,
@@ -124,7 +124,7 @@ use tari_core::{
     transactions::{
         fee::Fee,
         key_manager::{TransactionKeyManagerInitializer, TransactionKeyManagerInterface},
-        tari_amount::*,
+        taiji_amount::*,
         test_helpers::{
             create_test_core_key_manager_with_memory_db,
             create_wallet_output_with_data,
@@ -150,15 +150,15 @@ use tari_crypto::{
     keys::{PublicKey as PK, SecretKey as SK},
     ristretto::bulletproofs_plus::RistrettoAggregatedPublicStatement,
 };
-use tari_key_manager::{
+use taiji_key_manager::{
     cipher_seed::CipherSeed,
     key_manager_service::{storage::sqlite_db::KeyManagerSqliteDatabase, KeyId, KeyManagerInterface},
 };
-use tari_p2p::{comms_connector::pubsub_connector, domain_message::DomainMessage, Network};
-use tari_script::{inputs, one_sided_payment_script, script, ExecutionStack, TariScript};
-use tari_service_framework::{reply_channel, RegisterHandle, StackBuilder};
-use tari_shutdown::{Shutdown, ShutdownSignal};
-use tari_test_utils::{comms_and_services::get_next_memory_address, random};
+use taiji_p2p::{comms_connector::pubsub_connector, domain_message::DomainMessage, Network};
+use taiji_script::{inputs, one_sided_payment_script, script, ExecutionStack, TaijiScript};
+use taiji_service_framework::{reply_channel, RegisterHandle, StackBuilder};
+use taiji_shutdown::{Shutdown, ShutdownSignal};
+use taiji_test_utils::{comms_and_services::get_next_memory_address, random};
 use tari_utilities::{ByteArray, SafePassword};
 use tempfile::tempdir;
 use tokio::{
@@ -573,22 +573,22 @@ async fn manage_single_transaction() {
         .await
         .unwrap();
 
-    let value = MicroMinotari::from(1000);
+    let value = MicroMinotaiji::from(1000);
     let uo1 = make_input(
         &mut OsRng,
-        MicroMinotari(2500),
+        MicroMinotaiji(2500),
         &OutputFeatures::default(),
         &alice_key_manager_handle,
     )
     .await;
-    let bob_address = TariAddress::new(bob_node_identity.public_key().clone(), network);
+    let bob_address = TaijiAddress::new(bob_node_identity.public_key().clone(), network);
     assert!(alice_ts
         .send_transaction(
             bob_address.clone(),
             value,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
-            MicroMinotari::from(4),
+            MicroMinotaiji::from(4),
             "".to_string()
         )
         .await
@@ -602,7 +602,7 @@ async fn manage_single_transaction() {
             value,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
-            MicroMinotari::from(4),
+            MicroMinotaiji::from(4),
             message,
         )
         .await
@@ -711,7 +711,7 @@ async fn single_transaction_to_self() {
     alice_oms.add_output(uo1, None).await.unwrap();
     let message = "TAKE MAH _OWN_ MONEYS!".to_string();
     let value = 10000.into();
-    let alice_address = TariAddress::new(alice_node_identity.public_key().clone(), network);
+    let alice_address = TaijiAddress::new(alice_node_identity.public_key().clone(), network);
     let tx_id = alice_ts
         .send_transaction(
             alice_address,
@@ -738,7 +738,7 @@ async fn single_transaction_to_self() {
 }
 
 #[tokio::test]
-async fn single_transaction_burn_tari() {
+async fn single_transaction_burn_taiji() {
     // let _ = env_logger::builder().is_test(true).try_init(); // Need `$env:RUST_LOG = "trace"` for this to work
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManager::builder(network).build().unwrap();
@@ -757,7 +757,7 @@ async fn single_transaction_burn_tari() {
     ));
 
     log::info!(
-        "single_transaction_burn_tari: Alice: '{}', Base: '{}'",
+        "single_transaction_burn_taiji: Alice: '{}', Base: '{}'",
         alice_node_identity.node_id().short_str(),
         base_node_identity.node_id().short_str()
     );
@@ -797,7 +797,7 @@ async fn single_transaction_burn_tari() {
     let burn_value = 10000.into();
     let (claim_private_key, claim_public_key) = PublicKey::random_keypair(&mut OsRng);
     let (tx_id, burn_proof) = alice_ts
-        .burn_tari(
+        .burn_taiji(
             burn_value,
             UtxoSelectionCriteria::default(),
             20.into(),
@@ -837,7 +837,7 @@ async fn single_transaction_burn_tari() {
     let statement = RistrettoAggregatedPublicStatement {
         statements: vec![Statement {
             commitment: burn_proof.commitment.clone(),
-            minimum_value_promise: MicroMinotari::zero().as_u64(),
+            minimum_value_promise: MicroMinotaiji::zero().as_u64(),
         }],
     };
     assert!(factories
@@ -942,7 +942,7 @@ async fn send_one_sided_transaction_to_other() {
     let message = "SEE IF YOU CAN CATCH THIS ONE..... SIDED TX!".to_string();
     let value = 10000.into();
     let mut alice_ts_clone = alice_ts.clone();
-    let bob_address = TariAddress::new(bob_node_identity.public_key().clone(), Network::LocalNet);
+    let bob_address = TaijiAddress::new(bob_node_identity.public_key().clone(), Network::LocalNet);
     let tx_id = alice_ts_clone
         .send_one_sided_transaction(
             bob_address,
@@ -1081,7 +1081,7 @@ async fn recover_one_sided_transaction() {
     let message = "".to_string();
     let value = 10000.into();
     let mut alice_ts_clone = alice_ts.clone();
-    let bob_address = TariAddress::new(bob_node_identity.public_key().clone(), network);
+    let bob_address = TaijiAddress::new(bob_node_identity.public_key().clone(), network);
     let tx_id = alice_ts_clone
         .send_one_sided_transaction(
             bob_address,
@@ -1185,7 +1185,7 @@ async fn test_htlc_send_and_claim() {
     let value = 10000.into();
     let mut alice_ts_clone = alice_ts.clone();
     let bob_pubkey = bob_ts_interface.base_node_identity.public_key().clone();
-    let bob_address = TariAddress::new(bob_pubkey.clone(), Network::LocalNet);
+    let bob_address = TaijiAddress::new(bob_pubkey.clone(), Network::LocalNet);
     let (tx_id, pre_image, output) = alice_ts_clone
         .send_sha_atomic_swap_transaction(
             bob_address,
@@ -1305,7 +1305,7 @@ async fn send_one_sided_transaction_to_self() {
     let message = "SEE IF YOU CAN CATCH THIS ONE..... SIDED TX!".to_string();
     let value = 1000.into();
     let mut alice_ts_clone = alice_ts;
-    let alice_address = TariAddress::new(alice_node_identity.public_key().clone(), network);
+    let alice_address = TaijiAddress::new(alice_node_identity.public_key().clone(), network);
     match alice_ts_clone
         .send_one_sided_transaction(
             alice_address,
@@ -1434,7 +1434,7 @@ async fn manage_multiple_transactions() {
 
     let uo2 = make_input(
         &mut OsRng,
-        MicroMinotari(35000),
+        MicroMinotaiji(35000),
         &OutputFeatures::default(),
         &key_manager_handle,
     )
@@ -1442,7 +1442,7 @@ async fn manage_multiple_transactions() {
     bob_oms.add_output(uo2, None).await.unwrap();
     let uo3 = make_input(
         &mut OsRng,
-        MicroMinotari(45000),
+        MicroMinotaiji(45000),
         &OutputFeatures::default(),
         &key_manager_handle,
     )
@@ -1452,7 +1452,7 @@ async fn manage_multiple_transactions() {
     // Add some funds to Alices wallet
     let uo1a = make_input(
         &mut OsRng,
-        MicroMinotari(55000),
+        MicroMinotaiji(55000),
         &OutputFeatures::default(),
         &key_manager_handle,
     )
@@ -1460,7 +1460,7 @@ async fn manage_multiple_transactions() {
     alice_oms.add_output(uo1a, None).await.unwrap();
     let uo1b = make_input(
         &mut OsRng,
-        MicroMinotari(30000),
+        MicroMinotaiji(30000),
         &OutputFeatures::default(),
         &key_manager_handle,
     )
@@ -1468,7 +1468,7 @@ async fn manage_multiple_transactions() {
     alice_oms.add_output(uo1b, None).await.unwrap();
     let uo1c = make_input(
         &mut OsRng,
-        MicroMinotari(30000),
+        MicroMinotaiji(30000),
         &OutputFeatures::default(),
         &key_manager_handle,
     )
@@ -1476,33 +1476,33 @@ async fn manage_multiple_transactions() {
     alice_oms.add_output(uo1c, None).await.unwrap();
 
     // A series of interleaved transactions. First with Bob and Carol offline and then two with them online
-    let value_a_to_b_1 = MicroMinotari::from(10000);
-    let value_a_to_b_2 = MicroMinotari::from(8000);
-    let value_b_to_a_1 = MicroMinotari::from(11000);
-    let value_a_to_c_1 = MicroMinotari::from(14000);
+    let value_a_to_b_1 = MicroMinotaiji::from(10000);
+    let value_a_to_b_2 = MicroMinotaiji::from(8000);
+    let value_b_to_a_1 = MicroMinotaiji::from(11000);
+    let value_a_to_c_1 = MicroMinotaiji::from(14000);
     log::trace!("Sending A to B 1");
-    let bob_address = TariAddress::new(bob_node_identity.public_key().clone(), Network::LocalNet);
+    let bob_address = TaijiAddress::new(bob_node_identity.public_key().clone(), Network::LocalNet);
     let tx_id_a_to_b_1 = alice_ts
         .send_transaction(
             bob_address.clone(),
             value_a_to_b_1,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
-            MicroMinotari::from(20),
+            MicroMinotaiji::from(20),
             "a to b 1".to_string(),
         )
         .await
         .unwrap();
     log::trace!("A to B 1 TxID: {}", tx_id_a_to_b_1);
     log::trace!("Sending A to C 1");
-    let carol_address = TariAddress::new(carol_node_identity.public_key().clone(), Network::LocalNet);
+    let carol_address = TaijiAddress::new(carol_node_identity.public_key().clone(), Network::LocalNet);
     let tx_id_a_to_c_1 = alice_ts
         .send_transaction(
             carol_address,
             value_a_to_c_1,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
-            MicroMinotari::from(20),
+            MicroMinotaiji::from(20),
             "a to c 1".to_string(),
         )
         .await
@@ -1511,14 +1511,14 @@ async fn manage_multiple_transactions() {
     assert_eq!(alice_completed_tx.len(), 0);
     log::trace!("A to C 1 TxID: {}", tx_id_a_to_c_1);
 
-    let alice_address = TariAddress::new(alice_node_identity.public_key().clone(), Network::LocalNet);
+    let alice_address = TaijiAddress::new(alice_node_identity.public_key().clone(), Network::LocalNet);
     bob_ts
         .send_transaction(
             alice_address,
             value_b_to_a_1,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
-            MicroMinotari::from(20),
+            MicroMinotaiji::from(20),
             "b to a 1".to_string(),
         )
         .await
@@ -1529,7 +1529,7 @@ async fn manage_multiple_transactions() {
             value_a_to_b_2,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
-            MicroMinotari::from(20),
+            MicroMinotaiji::from(20),
             "a to b 2".to_string(),
         )
         .await
@@ -1644,7 +1644,7 @@ async fn test_accepting_unknown_tx_id_and_malformed_reply() {
 
     let uo = make_input(
         &mut OsRng,
-        MicroMinotari(250000),
+        MicroMinotaiji(250000),
         &OutputFeatures::default(),
         &alice_ts_interface.key_manager_handle,
     )
@@ -1656,15 +1656,15 @@ async fn test_accepting_unknown_tx_id_and_malformed_reply() {
         .await
         .unwrap();
 
-    let bob_address = TariAddress::new(bob_node_identity.public_key().clone(), Network::LocalNet);
+    let bob_address = TaijiAddress::new(bob_node_identity.public_key().clone(), Network::LocalNet);
     alice_ts_interface
         .transaction_service_handle
         .send_transaction(
             bob_address,
-            MicroMinotari::from(5000),
+            MicroMinotaiji::from(5000),
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
-            MicroMinotari::from(20),
+            MicroMinotaiji::from(20),
             "".to_string(),
         )
         .await
@@ -1740,7 +1740,7 @@ async fn finalize_tx_with_incorrect_pubkey() {
 
     let uo = make_input(
         &mut OsRng,
-        MicroMinotari(250000),
+        MicroMinotaiji(250000),
         &OutputFeatures::default(),
         &alice_ts_interface.key_manager_handle,
     )
@@ -1754,15 +1754,15 @@ async fn finalize_tx_with_incorrect_pubkey() {
         .output_manager_service_handle
         .prepare_transaction_to_send(
             TxId::new_random(),
-            MicroMinotari::from(5000),
+            MicroMinotaiji::from(5000),
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
-            MicroMinotari::from(25),
+            MicroMinotaiji::from(25),
             TransactionMetadata::default(),
             "".to_string(),
             script!(Nop),
             Covenant::default(),
-            MicroMinotari::zero(),
+            MicroMinotaiji::zero(),
         )
         .await
         .unwrap();
@@ -1860,7 +1860,7 @@ async fn finalize_tx_with_missing_output() {
 
     let uo = make_input(
         &mut OsRng,
-        MicroMinotari(250000),
+        MicroMinotaiji(250000),
         &OutputFeatures::default(),
         &alice_ts_interface.key_manager_handle,
     )
@@ -1876,15 +1876,15 @@ async fn finalize_tx_with_missing_output() {
         .output_manager_service_handle
         .prepare_transaction_to_send(
             TxId::new_random(),
-            MicroMinotari::from(5000),
+            MicroMinotaiji::from(5000),
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
-            MicroMinotari::from(20),
+            MicroMinotaiji::from(20),
             TransactionMetadata::default(),
             "".to_string(),
             script!(Nop),
             Covenant::default(),
-            MicroMinotari::zero(),
+            MicroMinotaiji::zero(),
         )
         .await
         .unwrap();
@@ -2037,7 +2037,7 @@ async fn discovery_async_return_test() {
 
     let uo1a = make_input(
         &mut OsRng,
-        MicroMinotari(55000),
+        MicroMinotaiji(55000),
         &OutputFeatures::default(),
         &key_manager_handle,
     )
@@ -2045,7 +2045,7 @@ async fn discovery_async_return_test() {
     alice_oms.add_output(uo1a, None).await.unwrap();
     let uo1b = make_input(
         &mut OsRng,
-        MicroMinotari(30000),
+        MicroMinotaiji(30000),
         &OutputFeatures::default(),
         &key_manager_handle,
     )
@@ -2053,7 +2053,7 @@ async fn discovery_async_return_test() {
     alice_oms.add_output(uo1b, None).await.unwrap();
     let uo1c = make_input(
         &mut OsRng,
-        MicroMinotari(30000),
+        MicroMinotaiji(30000),
         &OutputFeatures::default(),
         &key_manager_handle,
     )
@@ -2062,15 +2062,15 @@ async fn discovery_async_return_test() {
 
     let initial_balance = alice_oms.get_balance().await.unwrap();
 
-    let value_a_to_c_1 = MicroMinotari::from(14000);
-    let bob_address = TariAddress::new(bob_node_identity.public_key().clone(), network);
+    let value_a_to_c_1 = MicroMinotaiji::from(14000);
+    let bob_address = TaijiAddress::new(bob_node_identity.public_key().clone(), network);
     let tx_id = alice_ts
         .send_transaction(
             bob_address,
             value_a_to_c_1,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
-            MicroMinotari::from(20),
+            MicroMinotaiji::from(20),
             "Discovery Tx!".to_string(),
         )
         .await
@@ -2101,14 +2101,14 @@ async fn discovery_async_return_test() {
     assert_eq!(found_txid, tx_id);
     assert!(!is_direct_send);
 
-    let carol_address = TariAddress::new(carol_node_identity.public_key().clone(), network);
+    let carol_address = TaijiAddress::new(carol_node_identity.public_key().clone(), network);
     let tx_id2 = alice_ts
         .send_transaction(
             carol_address,
             value_a_to_c_1,
             UtxoSelectionCriteria::default(),
             OutputFeatures::default(),
-            MicroMinotari::from(20),
+            MicroMinotaiji::from(20),
             "Discovery Tx2!".to_string(),
         )
         .await
@@ -2182,11 +2182,11 @@ async fn test_power_mode_updates() {
         PrivateKey::random(&mut OsRng),
         PrivateKey::random(&mut OsRng),
     );
-    let source_address = TariAddress::new(
+    let source_address = TaijiAddress::new(
         PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
     );
-    let destination_address = TariAddress::new(
+    let destination_address = TaijiAddress::new(
         PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
     );
@@ -2195,7 +2195,7 @@ async fn test_power_mode_updates() {
         source_address,
         destination_address,
         amount: 5000 * uT,
-        fee: MicroMinotari::from(100),
+        fee: MicroMinotaiji::from(100),
         transaction: tx.clone(),
         status: TransactionStatus::Completed,
         message: "Yo!".to_string(),
@@ -2212,11 +2212,11 @@ async fn test_power_mode_updates() {
         mined_timestamp: None,
     };
 
-    let source_address = TariAddress::new(
+    let source_address = TaijiAddress::new(
         PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
     );
-    let destination_address = TariAddress::new(
+    let destination_address = TaijiAddress::new(
         PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
     );
@@ -2225,7 +2225,7 @@ async fn test_power_mode_updates() {
         source_address,
         destination_address,
         amount: 6000 * uT,
-        fee: MicroMinotari::from(200),
+        fee: MicroMinotaiji::from(200),
         transaction: tx.clone(),
         status: TransactionStatus::Completed,
         message: "Yo!".to_string(),
@@ -2392,7 +2392,7 @@ async fn test_transaction_cancellation() {
         .unwrap();
 
     let amount_sent = 100000 * uT;
-    let bob_address = TariAddress::new(bob_node_identity.public_key().clone(), Network::LocalNet);
+    let bob_address = TaijiAddress::new(bob_node_identity.public_key().clone(), Network::LocalNet);
     let tx_id = alice_ts_interface
         .transaction_service_handle
         .send_transaction(
@@ -2490,10 +2490,10 @@ async fn test_transaction_cancellation() {
 
     let key_manager = create_test_core_key_manager_with_memory_db();
     let input = create_wallet_output_with_data(
-        TariScript::default(),
+        TaijiScript::default(),
         OutputFeatures::default(),
         &TestParams::new(&key_manager).await,
-        MicroMinotari::from(100_000),
+        MicroMinotaiji::from(100_000),
         &key_manager,
     )
     .await
@@ -2502,11 +2502,11 @@ async fn test_transaction_cancellation() {
     let constants = create_consensus_constants(0);
     let key_manager = create_test_core_key_manager_with_memory_db();
     let mut builder = SenderTransactionProtocol::builder(constants, key_manager.clone());
-    let amount = MicroMinotari::from(10_000);
+    let amount = MicroMinotaiji::from(10_000);
     let change = TestParams::new(&key_manager).await;
     builder
         .with_lock_height(0)
-        .with_fee_per_gram(MicroMinotari::from(5))
+        .with_fee_per_gram(MicroMinotaiji::from(5))
         .with_message("Yo!".to_string())
         .with_input(input)
         .await
@@ -2522,7 +2522,7 @@ async fn test_transaction_cancellation() {
             script!(Nop),
             Default::default(),
             Covenant::default(),
-            MicroMinotari::zero(),
+            MicroMinotaiji::zero(),
             amount,
         )
         .await
@@ -2577,21 +2577,21 @@ async fn test_transaction_cancellation() {
 
     // Lets cancel the last one using a Comms stack message
     let input = create_wallet_output_with_data(
-        TariScript::default(),
+        TaijiScript::default(),
         OutputFeatures::default(),
         &TestParams::new(&key_manager.clone()).await,
-        MicroMinotari::from(100_000),
+        MicroMinotaiji::from(100_000),
         &key_manager.clone(),
     )
     .await
     .unwrap();
     let constants = create_consensus_constants(0);
     let mut builder = SenderTransactionProtocol::builder(constants, key_manager.clone());
-    let amount = MicroMinotari::from(10_000);
+    let amount = MicroMinotaiji::from(10_000);
     let change = TestParams::new(&key_manager).await;
     builder
         .with_lock_height(0)
-        .with_fee_per_gram(MicroMinotari::from(5))
+        .with_fee_per_gram(MicroMinotaiji::from(5))
         .with_message("Yo!".to_string())
         .with_input(input)
         .await
@@ -2607,7 +2607,7 @@ async fn test_transaction_cancellation() {
             script!(Nop),
             Default::default(),
             Covenant::default(),
-            MicroMinotari::zero(),
+            MicroMinotaiji::zero(),
             amount,
         )
         .await
@@ -2728,7 +2728,7 @@ async fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
         .unwrap();
 
     let amount_sent = 100000 * uT;
-    let bob_address = TariAddress::new(bob_node_identity.public_key().clone(), Network::LocalNet);
+    let bob_address = TaijiAddress::new(bob_node_identity.public_key().clone(), Network::LocalNet);
     let tx_id = alice_ts_interface
         .transaction_service_handle
         .send_transaction(
@@ -2920,7 +2920,7 @@ async fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
 
     let amount_sent = 20000 * uT;
 
-    let bob_address = TariAddress::new(bob_node_identity.public_key().clone(), Network::LocalNet);
+    let bob_address = TaijiAddress::new(bob_node_identity.public_key().clone(), Network::LocalNet);
     let _tx_id2 = alice_ts_interface
         .transaction_service_handle
         .send_transaction(
@@ -3078,7 +3078,7 @@ async fn test_tx_direct_send_behaviour() {
         })
         .await;
 
-    let bob_address = TariAddress::new(bob_node_identity.public_key().clone(), Network::LocalNet);
+    let bob_address = TaijiAddress::new(bob_node_identity.public_key().clone(), Network::LocalNet);
     let _tx_id = alice_ts_interface
         .transaction_service_handle
         .send_transaction(
@@ -3299,7 +3299,7 @@ async fn test_restarting_transaction_protocols() {
     // Bob is going to send a transaction to Alice
     let input = make_input(
         &mut OsRng,
-        MicroMinotari(2000),
+        MicroMinotaiji(2000),
         &OutputFeatures::default(),
         &alice_ts_interface.key_manager_handle,
     )
@@ -3308,11 +3308,11 @@ async fn test_restarting_transaction_protocols() {
     let fee_calc = Fee::new(*constants.transaction_weight_params());
     let key_manager = create_test_core_key_manager_with_memory_db();
     let mut builder = SenderTransactionProtocol::builder(constants.clone(), key_manager.clone());
-    let fee = fee_calc.calculate(MicroMinotari(4), 1, 1, 1, 0);
+    let fee = fee_calc.calculate(MicroMinotaiji(4), 1, 1, 1, 0);
     let change = TestParams::new(&key_manager).await;
     builder
         .with_lock_height(0)
-        .with_fee_per_gram(MicroMinotari(4))
+        .with_fee_per_gram(MicroMinotaiji(4))
         .with_input(input)
         .await
         .unwrap()
@@ -3320,8 +3320,8 @@ async fn test_restarting_transaction_protocols() {
             script!(Nop),
             Default::default(),
             Covenant::default(),
-            MicroMinotari::zero(),
-            MicroMinotari(2000) - fee - MicroMinotari(10),
+            MicroMinotaiji::zero(),
+            MicroMinotaiji(2000) - fee - MicroMinotaiji(10),
         )
         .await
         .unwrap()
@@ -3356,7 +3356,7 @@ async fn test_restarting_transaction_protocols() {
     };
     let tx = bob_stp.get_transaction().unwrap().clone();
 
-    let bob_address = TariAddress::new(bob_identity.public_key().clone(), network);
+    let bob_address = TaijiAddress::new(bob_identity.public_key().clone(), network);
     let inbound_tx = InboundTransaction {
         tx_id,
         source_address: bob_address,
@@ -3378,7 +3378,7 @@ async fn test_restarting_transaction_protocols() {
         )))
         .unwrap();
 
-    let alice_address = TariAddress::new(alice_identity.public_key().clone(), network);
+    let alice_address = TaijiAddress::new(alice_identity.public_key().clone(), network);
     let outbound_tx = OutboundTransaction {
         tx_id,
         destination_address: alice_address,
@@ -3531,7 +3531,7 @@ async fn test_coinbase_transactions_rejection_same_hash_but_accept_on_same_heigh
             .await
             .unwrap()
             .pending_incoming_balance,
-        MicroMinotari::from(0)
+        MicroMinotaiji::from(0)
     );
 
     // Create a second coinbase txn at the first block height, with same output hash as the previous one
@@ -3559,7 +3559,7 @@ async fn test_coinbase_transactions_rejection_same_hash_but_accept_on_same_heigh
             .await
             .unwrap()
             .pending_incoming_balance,
-        MicroMinotari::from(0)
+        MicroMinotaiji::from(0)
     );
 
     // Create another coinbase Txn at the same block height; the previous one should not be cancelled
@@ -3586,7 +3586,7 @@ async fn test_coinbase_transactions_rejection_same_hash_but_accept_on_same_heigh
             .await
             .unwrap()
             .pending_incoming_balance,
-        MicroMinotari::from(0)
+        MicroMinotaiji::from(0)
     );
 
     // Create a third coinbase Txn at the second block height; all the three should be valid
@@ -3613,7 +3613,7 @@ async fn test_coinbase_transactions_rejection_same_hash_but_accept_on_same_heigh
             .await
             .unwrap()
             .pending_incoming_balance,
-        MicroMinotari::from(0)
+        MicroMinotaiji::from(0)
     );
 
     assert!(transactions.values().any(|tx| tx.amount == fees1 + reward1));
@@ -3669,7 +3669,7 @@ async fn test_coinbase_generation_and_monitoring() {
             .await
             .unwrap()
             .pending_incoming_balance,
-        MicroMinotari::from(0)
+        MicroMinotaiji::from(0)
     );
 
     // Create another coinbase Txn at the next block height
@@ -3696,7 +3696,7 @@ async fn test_coinbase_generation_and_monitoring() {
             .await
             .unwrap()
             .pending_incoming_balance,
-        MicroMinotari::from(0)
+        MicroMinotaiji::from(0)
     );
 
     // Take out a second one at the second height which should not overwrite the initial one
@@ -3723,7 +3723,7 @@ async fn test_coinbase_generation_and_monitoring() {
             .await
             .unwrap()
             .pending_incoming_balance,
-        MicroMinotari::from(0)
+        MicroMinotaiji::from(0)
     );
 
     assert!(transactions.values().any(|tx| tx.amount == fees1 + reward1));
@@ -3911,7 +3911,7 @@ async fn test_coinbase_abandoned() {
             .await
             .unwrap()
             .pending_incoming_balance,
-        MicroMinotari::from(0)
+        MicroMinotaiji::from(0)
     );
 
     let transaction_query_batch_responses = vec![TxQueryBatchResponseProto {
@@ -3940,7 +3940,7 @@ async fn test_coinbase_abandoned() {
         .get_balance()
         .await
         .unwrap();
-    assert_eq!(balance.pending_incoming_balance, MicroMinotari::from(0));
+    assert_eq!(balance.pending_incoming_balance, MicroMinotaiji::from(0));
 
     let validation_id = alice_ts_interface
         .transaction_service_handle
@@ -3994,10 +3994,10 @@ async fn test_coinbase_abandoned() {
         .await
         .unwrap();
     assert_eq!(balance, Balance {
-        available_balance: MicroMinotari(0),
-        time_locked_balance: Some(MicroMinotari(0)),
-        pending_incoming_balance: MicroMinotari(0),
-        pending_outgoing_balance: MicroMinotari(0)
+        available_balance: MicroMinotaiji(0),
+        time_locked_balance: Some(MicroMinotaiji(0)),
+        pending_incoming_balance: MicroMinotaiji(0),
+        pending_outgoing_balance: MicroMinotaiji(0)
     });
 
     let invalid_txs = alice_ts_interface
@@ -4035,7 +4035,7 @@ async fn test_coinbase_abandoned() {
             .await
             .unwrap()
             .pending_incoming_balance,
-        MicroMinotari::from(0)
+        MicroMinotaiji::from(0)
     );
 
     let transaction_query_batch_responses = vec![
@@ -4224,10 +4224,10 @@ async fn test_coinbase_abandoned() {
         .await
         .unwrap();
     assert_eq!(balance, Balance {
-        available_balance: MicroMinotari(0),
-        time_locked_balance: Some(MicroMinotari(0)),
-        pending_incoming_balance: MicroMinotari(0),
-        pending_outgoing_balance: MicroMinotari(0)
+        available_balance: MicroMinotaiji(0),
+        time_locked_balance: Some(MicroMinotaiji(0)),
+        pending_incoming_balance: MicroMinotaiji(0),
+        pending_outgoing_balance: MicroMinotaiji(0)
     });
 
     // Now reorg again and have tx2 be mined
@@ -4355,7 +4355,7 @@ async fn test_coinbase_transaction_reused_for_same_height() {
         .unwrap();
 
     assert_eq!(transactions.len(), 1);
-    let mut amount = MicroMinotari::zero();
+    let mut amount = MicroMinotaiji::zero();
     for tx in transactions.values() {
         amount += tx.amount;
     }
@@ -4367,7 +4367,7 @@ async fn test_coinbase_transaction_reused_for_same_height() {
             .await
             .unwrap()
             .pending_incoming_balance,
-        MicroMinotari::from(0)
+        MicroMinotaiji::from(0)
     );
 
     // a requested coinbase transaction for the same height but new amount should be different
@@ -4384,7 +4384,7 @@ async fn test_coinbase_transaction_reused_for_same_height() {
         .await
         .unwrap();
     assert_eq!(transactions.len(), 2);
-    let mut amount = MicroMinotari::zero();
+    let mut amount = MicroMinotaiji::zero();
     for tx in transactions.values() {
         amount += tx.amount;
     }
@@ -4396,7 +4396,7 @@ async fn test_coinbase_transaction_reused_for_same_height() {
             .await
             .unwrap()
             .pending_incoming_balance,
-        MicroMinotari::from(0)
+        MicroMinotaiji::from(0)
     );
 
     // a requested coinbase transaction for a new height should be different
@@ -4413,7 +4413,7 @@ async fn test_coinbase_transaction_reused_for_same_height() {
         .await
         .unwrap();
     assert_eq!(transactions.len(), 3);
-    let mut amount = MicroMinotari::zero();
+    let mut amount = MicroMinotaiji::zero();
     for tx in transactions.values() {
         amount += tx.amount;
     }
@@ -4425,7 +4425,7 @@ async fn test_coinbase_transaction_reused_for_same_height() {
             .await
             .unwrap()
             .pending_incoming_balance,
-        MicroMinotari::from(0)
+        MicroMinotaiji::from(0)
     );
 }
 
@@ -4468,7 +4468,7 @@ async fn test_transaction_resending() {
 
     let amount_sent = 100000 * uT;
 
-    let bob_address = TariAddress::new(bob_node_identity.public_key().clone(), Network::LocalNet);
+    let bob_address = TaijiAddress::new(bob_node_identity.public_key().clone(), Network::LocalNet);
     let tx_id = alice_ts_interface
         .transaction_service_handle
         .send_transaction(
@@ -4652,7 +4652,7 @@ async fn test_resend_on_startup() {
         script!(Nop),
         OutputFeatures::default(),
         &TestParams::new(&key_manager).await,
-        MicroMinotari::from(100_000),
+        MicroMinotaiji::from(100_000),
         &key_manager,
     )
     .await
@@ -4660,11 +4660,11 @@ async fn test_resend_on_startup() {
     let constants = create_consensus_constants(0);
     let key_manager = create_test_core_key_manager_with_memory_db();
     let mut builder = SenderTransactionProtocol::builder(constants.clone(), key_manager.clone());
-    let amount = MicroMinotari::from(10_000);
+    let amount = MicroMinotaiji::from(10_000);
     let change = TestParams::new(&key_manager).await;
     builder
         .with_lock_height(0)
-        .with_fee_per_gram(MicroMinotari::from(177 / 5))
+        .with_fee_per_gram(MicroMinotaiji::from(177 / 5))
         .with_message("Yo!".to_string())
         .with_input(input)
         .await
@@ -4680,7 +4680,7 @@ async fn test_resend_on_startup() {
             script!(Nop),
             Default::default(),
             Covenant::default(),
-            MicroMinotari::zero(),
+            MicroMinotaiji::zero(),
             amount,
         )
         .await
@@ -4691,7 +4691,7 @@ async fn test_resend_on_startup() {
     let tx_sender_msg = TransactionSenderMessage::Single(Box::new(stp_msg));
 
     let tx_id = stp.get_tx_id().unwrap();
-    let address = TariAddress::new(
+    let address = TaijiAddress::new(
         PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
     );
@@ -4824,7 +4824,7 @@ async fn test_resend_on_startup() {
         &constants,
     )
     .await;
-    let address = TariAddress::new(
+    let address = TaijiAddress::new(
         PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
     );
@@ -4978,7 +4978,7 @@ async fn test_replying_to_cancelled_tx() {
         .unwrap();
 
     let amount_sent = 100000 * uT;
-    let bob_address = TariAddress::new(bob_node_identity.public_key().clone(), Network::LocalNet);
+    let bob_address = TaijiAddress::new(bob_node_identity.public_key().clone(), Network::LocalNet);
     let tx_id = alice_ts_interface
         .transaction_service_handle
         .send_transaction(
@@ -5108,7 +5108,7 @@ async fn test_transaction_timeout_cancellation() {
 
     let amount_sent = 10000 * uT;
 
-    let bob_address = TariAddress::new(bob_node_identity.public_key().clone(), Network::LocalNet);
+    let bob_address = TaijiAddress::new(bob_node_identity.public_key().clone(), Network::LocalNet);
     let tx_id = alice_ts_interface
         .transaction_service_handle
         .send_transaction(
@@ -5156,10 +5156,10 @@ async fn test_transaction_timeout_cancellation() {
     // First we will check the Send Transction message
     let key_manager = create_test_core_key_manager_with_memory_db();
     let input = create_wallet_output_with_data(
-        TariScript::default(),
+        TaijiScript::default(),
         OutputFeatures::default(),
         &TestParams::new(&key_manager).await,
-        MicroMinotari::from(100_000),
+        MicroMinotaiji::from(100_000),
         &key_manager,
     )
     .await
@@ -5167,11 +5167,11 @@ async fn test_transaction_timeout_cancellation() {
     let constants = create_consensus_constants(0);
     let key_manager = create_test_core_key_manager_with_memory_db();
     let mut builder = SenderTransactionProtocol::builder(constants, key_manager.clone());
-    let amount = MicroMinotari::from(10_000);
+    let amount = MicroMinotaiji::from(10_000);
     let change = TestParams::new(&key_manager).await;
     builder
         .with_lock_height(0)
-        .with_fee_per_gram(MicroMinotari::from(177 / 5))
+        .with_fee_per_gram(MicroMinotaiji::from(177 / 5))
         .with_message("Yo!".to_string())
         .with_input(input)
         .await
@@ -5187,7 +5187,7 @@ async fn test_transaction_timeout_cancellation() {
             script!(Nop),
             Default::default(),
             Covenant::default(),
-            MicroMinotari::zero(),
+            MicroMinotaiji::zero(),
             amount,
         )
         .await
@@ -5198,7 +5198,7 @@ async fn test_transaction_timeout_cancellation() {
     let tx_sender_msg = TransactionSenderMessage::Single(Box::new(stp_msg));
 
     let tx_id = stp.get_tx_id().unwrap();
-    let address = TariAddress::new(
+    let address = TaijiAddress::new(
         PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
     );
@@ -5355,7 +5355,7 @@ async fn transaction_service_tx_broadcast() {
     let (connection2, _temp_dir2) = make_wallet_database_connection(None);
     let mut bob_ts_interface = setup_transaction_service_no_comms(factories.clone(), connection2, None).await;
 
-    let alice_output_value = MicroMinotari(250000);
+    let alice_output_value = MicroMinotaiji(250000);
 
     let uo = make_input(
         &mut OsRng,
@@ -5385,7 +5385,7 @@ async fn transaction_service_tx_broadcast() {
 
     let amount_sent1 = 100000 * uT;
 
-    let bob_address = TariAddress::new(bob_node_identity.public_key().clone(), Network::LocalNet);
+    let bob_address = TaijiAddress::new(bob_node_identity.public_key().clone(), Network::LocalNet);
     // Send Tx1
     let tx_id1 = alice_ts_interface
         .transaction_service_handle
@@ -5507,7 +5507,7 @@ async fn transaction_service_tx_broadcast() {
         .get_balance()
         .await
         .unwrap();
-    assert_eq!(balance.available_balance, MicroMinotari(0));
+    assert_eq!(balance.available_balance, MicroMinotaiji(0));
 
     // Give Alice the first of tx reply to start the broadcast process.
     alice_ts_interface
@@ -5719,11 +5719,11 @@ async fn broadcast_all_completed_transactions_on_startup() {
         PrivateKey::random(&mut OsRng),
         PrivateKey::random(&mut OsRng),
     );
-    let source_address = TariAddress::new(
+    let source_address = TaijiAddress::new(
         PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
     );
-    let destination_address = TariAddress::new(
+    let destination_address = TaijiAddress::new(
         PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
         Network::LocalNet,
     );
@@ -5732,7 +5732,7 @@ async fn broadcast_all_completed_transactions_on_startup() {
         source_address,
         destination_address,
         amount: 5000 * uT,
-        fee: MicroMinotari::from(20),
+        fee: MicroMinotaiji::from(20),
         transaction: tx.clone(),
         status: TransactionStatus::Completed,
         message: "Yo!".to_string(),
@@ -5845,14 +5845,14 @@ async fn test_update_faux_tx_on_oms_validation() {
     let (connection, _temp_dir) = make_wallet_database_connection(None);
 
     let mut alice_ts_interface = setup_transaction_service_no_comms(factories.clone(), connection, None).await;
-    let alice_address = TariAddress::new(
+    let alice_address = TaijiAddress::new(
         alice_ts_interface.base_node_identity.public_key().clone(),
         Network::LocalNet,
     );
     let tx_id_1 = alice_ts_interface
         .transaction_service_handle
         .import_utxo_with_status(
-            MicroMinotari::from(10000),
+            MicroMinotaiji::from(10000),
             alice_address.clone(),
             "blah".to_string(),
             None,
@@ -5866,7 +5866,7 @@ async fn test_update_faux_tx_on_oms_validation() {
     let tx_id_2 = alice_ts_interface
         .transaction_service_handle
         .import_utxo_with_status(
-            MicroMinotari::from(20000),
+            MicroMinotaiji::from(20000),
             alice_address.clone(),
             "one-sided 1".to_string(),
             None,
@@ -5881,7 +5881,7 @@ async fn test_update_faux_tx_on_oms_validation() {
     let tx_id_3 = alice_ts_interface
         .transaction_service_handle
         .import_utxo_with_status(
-            MicroMinotari::from(30000),
+            MicroMinotaiji::from(30000),
             alice_address,
             "one-sided 2".to_string(),
             None,
@@ -5895,21 +5895,21 @@ async fn test_update_faux_tx_on_oms_validation() {
 
     let uo_1 = make_input(
         &mut OsRng.clone(),
-        MicroMinotari::from(10000),
+        MicroMinotaiji::from(10000),
         &OutputFeatures::default(),
         &alice_ts_interface.key_manager_handle,
     )
     .await;
     let uo_2 = make_input(
         &mut OsRng.clone(),
-        MicroMinotari::from(20000),
+        MicroMinotaiji::from(20000),
         &OutputFeatures::default(),
         &alice_ts_interface.key_manager_handle,
     )
     .await;
     let uo_3 = make_input(
         &mut OsRng.clone(),
-        MicroMinotari::from(30000),
+        MicroMinotaiji::from(30000),
         &OutputFeatures::default(),
         &alice_ts_interface.key_manager_handle,
     )

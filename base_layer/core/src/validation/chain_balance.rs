@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2020, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -23,13 +23,13 @@
 use std::marker::PhantomData;
 
 use log::*;
-use tari_common_types::types::{Commitment, PrivateKey};
+use taiji_common_types::types::{Commitment, PrivateKey};
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
 
 use crate::{
     chain_storage::BlockchainBackend,
     consensus::ConsensusManager,
-    transactions::{tari_amount::MicroMinotari, CryptoFactories},
+    transactions::{taiji_amount::MicroMinotaiji, CryptoFactories},
     validation::{FinalHorizonStateValidation, ValidationError},
 };
 
@@ -102,7 +102,7 @@ impl<B: BlockchainBackend> ChainBalanceValidator<B> {
     }
 
     #[inline]
-    fn commit_value(&self, v: MicroMinotari) -> Commitment {
+    fn commit_value(&self, v: MicroMinotaiji) -> Commitment {
         self.factories.commitment.commit_value(&PrivateKey::default(), v.into())
     }
 }

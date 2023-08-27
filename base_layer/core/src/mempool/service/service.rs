@@ -1,4 +1,4 @@
-// Copyright 2019 The Tari Project
+// Copyright 2019 The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -24,14 +24,14 @@ use std::{convert::TryFrom, sync::Arc};
 
 use futures::{pin_mut, stream::StreamExt, Stream};
 use log::*;
-use tari_comms::peer_manager::NodeId;
-use tari_comms_dht::{
+use taiji_comms::peer_manager::NodeId;
+use taiji_comms_dht::{
     domain_message::OutboundDomainMessage,
     envelope::NodeDestination,
     outbound::{DhtOutboundError, OutboundEncryption, OutboundMessageRequester},
 };
-use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
-use tari_service_framework::{reply_channel, reply_channel::RequestContext};
+use taiji_p2p::{domain_message::DomainMessage, taiji_message::TaijiMessageType};
+use taiji_service_framework::{reply_channel, reply_channel::RequestContext};
 use tari_utilities::hex::Hex;
 use tokio::{sync::mpsc, task};
 
@@ -206,7 +206,7 @@ impl MempoolService {
                 OutboundEncryption::ClearText,
                 exclude_peers,
                 OutboundDomainMessage::new(
-                    &TariMessageType::NewTransaction,
+                    &TaijiMessageType::NewTransaction,
                     proto::types::Transaction::try_from(tx.clone()).map_err(MempoolServiceError::ConversionError)?,
                 ),
                 format!(

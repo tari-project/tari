@@ -1,4 +1,4 @@
-// Copyright 2020, The Tari Project
+// Copyright 2020, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -32,7 +32,7 @@ use std::fmt;
 use derivative::Derivative;
 pub use proxy_opts::TorProxyOpts;
 use serde_derive::{Deserialize, Serialize};
-use tari_shutdown::OptionalShutdownSignal;
+use taiji_shutdown::OptionalShutdownSignal;
 
 use crate::{
     multiaddr::Multiaddr,

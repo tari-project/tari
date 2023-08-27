@@ -1,4 +1,4 @@
-//   Copyright 2022. The Tari Project
+//   Copyright 2022. The Taiji Project
 //
 //   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //   following conditions are met:
@@ -32,7 +32,7 @@ pub struct CoinPreview {
 
 impl Drop for CoinPreview {
     fn drop(&mut self) {
-        unsafe { ffi_import::destroy_tari_coin_preview(self.ptr) };
+        unsafe { ffi_import::destroy_taiji_coin_preview(self.ptr) };
         self.ptr = null_mut();
     }
 }

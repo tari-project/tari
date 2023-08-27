@@ -1,24 +1,24 @@
 [package]
-name = "tari_chat_client"
-authors = ["The Tari Development Community"]
-description = "Tari cucumber chat client"
+name = "taiji_chat_client"
+authors = ["The Taiji Development Community"]
+description = "Taiji cucumber chat client"
 license = "BSD-3-Clause"
 version = "0.52.0-pre.0"
 
 edition = "2018"
 
 [dependencies]
-minotari_app_utilities = { path = "../../../../applications/minotari_app_utilities" }
-tari_common = { path = "../../../../common" }
-tari_common_sqlite = { path = "../../../../common_sqlite" }
-tari_common_types = { path = "../../../common_types" }
-tari_comms = { path = "../../../../comms/core" }
-tari_comms_dht = { path = "../../../../comms/dht" }
-tari_contacts = { path = "../../../contacts" }
-tari_p2p = { path = "../../../p2p" }
-tari_service_framework= { path = "../../../service_framework" }
-tari_shutdown = { path = "../../../../infrastructure/shutdown" }
-tari_storage = { path = "../../../../infrastructure/storage" }
+minotaiji_app_utilities = { path = "../../../../applications/minotaiji_app_utilities" }
+taiji_common = { path = "../../../../common" }
+taiji_common_sqlite = { path = "../../../../common_sqlite" }
+taiji_common_types = { path = "../../../common_types" }
+taiji_comms = { path = "../../../../comms/core" }
+taiji_comms_dht = { path = "../../../../comms/dht" }
+taiji_contacts = { path = "../../../contacts" }
+taiji_p2p = { path = "../../../p2p" }
+taiji_service_framework= { path = "../../../service_framework" }
+taiji_shutdown = { path = "../../../../infrastructure/shutdown" }
+taiji_storage = { path = "../../../../infrastructure/storage" }
 
 anyhow = "1.0.41"
 async-trait = "0.1.52"

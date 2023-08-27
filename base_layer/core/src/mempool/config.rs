@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2020. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use serde::{Deserialize, Serialize};
-use tari_common::SubConfigPath;
+use taiji_common::SubConfigPath;
 
 use crate::mempool::{reorg_pool::ReorgPoolConfig, unconfirmed_pool::UnconfirmedPoolConfig};
 
@@ -67,7 +67,7 @@ impl Default for MempoolServiceConfig {
 #[cfg(test)]
 mod test {
     use config::Config;
-    use tari_common::DefaultConfigLoader;
+    use taiji_common::DefaultConfigLoader;
 
     use super::MempoolConfig;
     use crate::mempool::reorg_pool::ReorgPoolConfig;

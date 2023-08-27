@@ -1,6 +1,6 @@
 [package]
-name = "tari_mmr"
-authors = ["The Tari Development Community"]
+name = "taiji_mmr"
+authors = ["The Taiji Development Community"]
 description = "A Merkle Mountain Range implementation"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
@@ -14,7 +14,7 @@ native_bitmap = ["croaring"]
 [dependencies]
 tari_utilities = { version = "0.5" }
 tari_crypto = { version = "0.18" }
-tari_common = { path = "../../common" }
+taiji_common = { path = "../../common" }
 thiserror = "1.0"
 borsh = "0.10"
 digest = "0.10"
@@ -46,6 +46,6 @@ name = "smt_vs_mmr"
 harness = false
 
 [[test]]
-name = "tari_mmr_integration_tests"
+name = "taiji_mmr_integration_tests"
 path = "tests/mmr_integration_tests.rs"
 required-features = ["native_bitmap"]

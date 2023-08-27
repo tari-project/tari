@@ -1,4 +1,4 @@
-// Copyright 2012. The Tari Project
+// Copyright 2012. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -24,15 +24,15 @@ use std::cmp::Ordering;
 
 use chrono::NaiveDateTime;
 use derivative::Derivative;
-use tari_common_types::{
+use taiji_common_types::{
     transaction::TxId,
     types::{BlockHash, Commitment, HashOutput},
 };
-use tari_core::transactions::{
-    key_manager::{TariKeyId, TransactionKeyManagerInterface},
+use taiji_core::transactions::{
+    key_manager::{TaijiKeyId, TransactionKeyManagerInterface},
     transaction_components::WalletOutput,
 };
-use tari_script::{ExecutionStack, TariScript};
+use taiji_script::{ExecutionStack, TaijiScript};
 
 use crate::output_manager_service::{
     error::OutputManagerStorageError,
@@ -146,8 +146,8 @@ impl From<SpendingPriority> for u32 {
 #[derivative(Debug)]
 pub struct KnownOneSidedPaymentScript {
     pub script_hash: Vec<u8>,
-    pub script_key_id: TariKeyId,
-    pub script: TariScript,
+    pub script_key_id: TaijiKeyId,
+    pub script: TaijiScript,
     pub input: ExecutionStack,
     pub script_lock_height: u64,
 }

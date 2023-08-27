@@ -1,4 +1,4 @@
-//   Copyright 2023. The Tari Project
+//   Copyright 2023. The Taiji Project
 //
 //   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //   following conditions are met:
@@ -23,30 +23,30 @@
 use std::{convert::TryFrom, path::PathBuf, str::FromStr, time::Duration};
 
 use cucumber::{then, when};
-use minotari_app_grpc::tari_rpc::Empty;
-use minotari_app_utilities::utilities::UniPublicKey;
-use minotari_console_wallet::{
-    BurnMinotariArgs,
+use minotaiji_app_grpc::taiji_rpc::Empty;
+use minotaiji_app_utilities::utilities::UniPublicKey;
+use minotaiji_console_wallet::{
+    BurnMinotaijiArgs,
     CliCommands,
     CoinSplitArgs,
     DiscoverPeerArgs,
     ExportUtxosArgs,
     MakeItRainArgs,
-    SendMinotariArgs,
+    SendMinotaijiArgs,
     SetBaseNodeArgs,
     WhoisArgs,
 };
-use tari_common_types::tari_address::TariAddress;
-use tari_comms::multiaddr::Multiaddr;
-use tari_core::transactions::tari_amount::MicroMinotari;
-use tari_integration_tests::{
+use taiji_common_types::taiji_address::TaijiAddress;
+use taiji_comms::multiaddr::Multiaddr;
+use taiji_core::transactions::taiji_amount::MicroMinotaiji;
+use taiji_integration_tests::{
     wallet_process::{create_wallet_client, get_default_cli, spawn_wallet},
-    TariWorld,
+    TaijiWorld,
 };
 use tari_utilities::hex::Hex;
 
 #[then(expr = "I change base node of {word} to {word} via command line")]
-async fn change_base_node_of_wallet_via_cli(world: &mut TariWorld, wallet: String, node: String) {
+async fn change_base_node_of_wallet_via_cli(world: &mut TaijiWorld, wallet: String, node: String) {
     let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
     wallet_ps.kill();
 
@@ -69,7 +69,7 @@ async fn change_base_node_of_wallet_via_cli(world: &mut TariWorld, wallet: Strin
 }
 
 #[then(expr = "I set custom base node of {word} to {word} via command line")]
-async fn change_custom_base_node_of_wallet_via_cli(world: &mut TariWorld, wallet: String, node: String) {
+async fn change_custom_base_node_of_wallet_via_cli(world: &mut TaijiWorld, wallet: String, node: String) {
     let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
     wallet_ps.kill();
 
@@ -92,7 +92,7 @@ async fn change_custom_base_node_of_wallet_via_cli(world: &mut TariWorld, wallet
 }
 
 #[when(expr = "I clear custom base node of wallet {word} via command line")]
-async fn clear_custom_base_node(world: &mut TariWorld, wallet: String) {
+async fn clear_custom_base_node(world: &mut TaijiWorld, wallet: String) {
     let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
     wallet_ps.kill();
 
@@ -109,13 +109,13 @@ async fn clear_custom_base_node(world: &mut TariWorld, wallet: String) {
 }
 
 #[then(expr = "the password of wallet {word} is not {word}")]
-async fn password_is(world: &mut TariWorld, wallet: String, _password: String) {
+async fn password_is(world: &mut TaijiWorld, wallet: String, _password: String) {
     let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
     let _config_path = wallet_ps.temp_dir_path.clone();
 }
 
 #[then(expr = "I get balance of wallet {word} is at least {int} uT via command line")]
-async fn get_balance_of_wallet(world: &mut TariWorld, wallet: String, _amount: u64) {
+async fn get_balance_of_wallet(world: &mut TaijiWorld, wallet: String, _amount: u64) {
     let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
     wallet_ps.kill();
 
@@ -132,7 +132,7 @@ async fn get_balance_of_wallet(world: &mut TariWorld, wallet: String, _amount: u
 }
 
 #[when(expr = "I send {int} uT from {word} to {word} via command line")]
-async fn send_from_cli(world: &mut TariWorld, amount: u64, wallet_a: String, wallet_b: String) {
+async fn send_from_cli(world: &mut TaijiWorld, amount: u64, wallet_a: String, wallet_b: String) {
     let wallet_ps = world.wallets.get_mut(&wallet_a).unwrap();
     wallet_ps.kill();
 
@@ -146,16 +146,16 @@ async fn send_from_cli(world: &mut TariWorld, amount: u64, wallet_a: String, wal
         .into_inner()
         .address
         .to_hex();
-    let wallet_b_address = TariAddress::from_hex(wallet_b_address.as_str()).unwrap();
+    let wallet_b_address = TaijiAddress::from_hex(wallet_b_address.as_str()).unwrap();
 
     let mut cli = get_default_cli();
 
-    let args = SendMinotariArgs {
-        amount: MicroMinotari(amount),
+    let args = SendMinotaijiArgs {
+        amount: MicroMinotaiji(amount),
         message: format!("Send amount {} from {} to {}", amount, wallet_a, wallet_b),
         destination: wallet_b_address,
     };
-    cli.command2 = Some(CliCommands::SendMinotari(args));
+    cli.command2 = Some(CliCommands::SendMinotaiji(args));
 
     let base_node = world.wallet_connected_to_base_node.get(&wallet_a).unwrap();
     let seed_nodes = world.base_nodes.get(base_node).unwrap().seed_nodes.clone();
@@ -164,7 +164,7 @@ async fn send_from_cli(world: &mut TariWorld, amount: u64, wallet_a: String, wal
 }
 
 #[when(expr = "I create a burn transaction of {int} uT from {word} via command line")]
-async fn create_burn_tx_via_cli(world: &mut TariWorld, amount: u64, wallet: String) {
+async fn create_burn_tx_via_cli(world: &mut TaijiWorld, amount: u64, wallet: String) {
     let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
     wallet_ps.kill();
 
@@ -172,11 +172,11 @@ async fn create_burn_tx_via_cli(world: &mut TariWorld, amount: u64, wallet: Stri
 
     let mut cli = get_default_cli();
 
-    let args = BurnMinotariArgs {
-        amount: MicroMinotari(amount),
+    let args = BurnMinotaijiArgs {
+        amount: MicroMinotaiji(amount),
         message: format!("Burn, burn amount {} !!!", amount,),
     };
-    cli.command2 = Some(CliCommands::BurnMinotari(args));
+    cli.command2 = Some(CliCommands::BurnMinotaiji(args));
 
     let base_node = world.wallet_connected_to_base_node.get(&wallet).unwrap();
     let seed_nodes = world.base_nodes.get(base_node).unwrap().seed_nodes.clone();
@@ -185,7 +185,7 @@ async fn create_burn_tx_via_cli(world: &mut TariWorld, amount: u64, wallet: Stri
 }
 
 #[then(expr = "I send one-sided {int} uT from {word} to {word} via command line")]
-async fn send_one_sided_tx_via_cli(world: &mut TariWorld, amount: u64, wallet_a: String, wallet_b: String) {
+async fn send_one_sided_tx_via_cli(world: &mut TaijiWorld, amount: u64, wallet_a: String, wallet_b: String) {
     let wallet_ps = world.wallets.get_mut(&wallet_a).unwrap();
     wallet_ps.kill();
 
@@ -199,12 +199,12 @@ async fn send_one_sided_tx_via_cli(world: &mut TariWorld, amount: u64, wallet_a:
         .into_inner()
         .address
         .to_hex();
-    let wallet_b_address = TariAddress::from_hex(wallet_b_address.as_str()).unwrap();
+    let wallet_b_address = TaijiAddress::from_hex(wallet_b_address.as_str()).unwrap();
 
     let mut cli = get_default_cli();
 
-    let args = SendMinotariArgs {
-        amount: MicroMinotari(amount),
+    let args = SendMinotaijiArgs {
+        amount: MicroMinotaiji(amount),
         message: format!("Send one sided amount {} from {} to {}", amount, wallet_a, wallet_b),
         destination: wallet_b_address,
     };
@@ -221,7 +221,7 @@ async fn send_one_sided_tx_via_cli(world: &mut TariWorld, amount: u64, wallet_a:
             command line"
 )]
 async fn make_it_rain(
-    world: &mut TariWorld,
+    world: &mut TaijiWorld,
     wallet_a: String,
     txs_per_second: u64,
     duration: u64,
@@ -242,24 +242,24 @@ async fn make_it_rain(
         .into_inner()
         .address
         .to_hex();
-    let wallet_b_address = TariAddress::from_hex(wallet_b_address.as_str()).unwrap();
+    let wallet_b_address = TaijiAddress::from_hex(wallet_b_address.as_str()).unwrap();
 
     let mut cli = get_default_cli();
 
     let args = MakeItRainArgs {
-        start_amount: MicroMinotari(start_amount),
+        start_amount: MicroMinotaiji(start_amount),
         transactions_per_second: u32::try_from(txs_per_second).unwrap(),
         duration: Duration::from_secs(duration),
         message: format!(
             "Make it raing amount {} from {} to {}",
             start_amount, wallet_a, wallet_b
         ),
-        increase_amount: MicroMinotari(increment_amount),
+        increase_amount: MicroMinotaiji(increment_amount),
         destination: wallet_b_address,
         start_time: None,
         one_sided: false,
         stealth: false,
-        burn_tari: false,
+        burn_taiji: false,
     };
 
     cli.command2 = Some(CliCommands::MakeItRain(args));
@@ -271,7 +271,7 @@ async fn make_it_rain(
 }
 
 #[when(expr = "I do coin split on wallet {word} to {int} uT {int} coins via command line")]
-async fn coin_split_via_cli(world: &mut TariWorld, wallet: String, amount: u64, splits: u64) {
+async fn coin_split_via_cli(world: &mut TaijiWorld, wallet: String, amount: u64, splits: u64) {
     let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
     wallet_ps.kill();
 
@@ -280,9 +280,9 @@ async fn coin_split_via_cli(world: &mut TariWorld, wallet: String, amount: u64, 
     let mut cli = get_default_cli();
 
     let args = CoinSplitArgs {
-        amount_per_split: MicroMinotari(amount),
+        amount_per_split: MicroMinotaiji(amount),
         num_splits: usize::try_from(splits).unwrap(),
-        fee_per_gram: MicroMinotari(20),
+        fee_per_gram: MicroMinotaiji(20),
         message: format!("coin split amount {} with splits {}", amount, splits),
     };
 
@@ -295,7 +295,7 @@ async fn coin_split_via_cli(world: &mut TariWorld, wallet: String, amount: u64, 
 }
 
 #[then(expr = "I get count of utxos of wallet {word} and it's at least {int} via command line")]
-async fn count_utxos_of_wallet(world: &mut TariWorld, wallet: String, _amount: u64) {
+async fn count_utxos_of_wallet(world: &mut TaijiWorld, wallet: String, _amount: u64) {
     let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
     wallet_ps.kill();
 
@@ -312,7 +312,7 @@ async fn count_utxos_of_wallet(world: &mut TariWorld, wallet: String, _amount: u
 }
 
 #[when(expr = "I export the utxos of wallet {word} via command line")]
-async fn export_utxos(world: &mut TariWorld, wallet: String) {
+async fn export_utxos(world: &mut TaijiWorld, wallet: String) {
     let wallet_a_ps = world.wallets.get_mut(&wallet).unwrap();
     wallet_a_ps.kill();
 
@@ -338,7 +338,7 @@ async fn export_utxos(world: &mut TariWorld, wallet: String) {
 }
 
 #[when(expr = "I discover peer {word} on wallet {word} via command line")]
-async fn discover_peer(world: &mut TariWorld, node: String, wallet: String) {
+async fn discover_peer(world: &mut TaijiWorld, node: String, wallet: String) {
     let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
     wallet_ps.kill();
 
@@ -361,7 +361,7 @@ async fn discover_peer(world: &mut TariWorld, node: String, wallet: String) {
 }
 
 #[then(expr = "I run whois {word} on wallet {word} via command line")]
-async fn whois(world: &mut TariWorld, node: String, wallet: String) {
+async fn whois(world: &mut TaijiWorld, node: String, wallet: String) {
     let wallet_ps = world.wallets.get_mut(&wallet).unwrap();
     wallet_ps.kill();
 

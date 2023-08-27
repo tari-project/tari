@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -80,7 +80,7 @@ mod test {
         let expect_true = [
             "/ip4/1.2.3.4/tcp/1234",
             "/ip4/127.0.0.1/tcp/9998",
-            "/dns4/tari.com/tcp/80",
+            "/dns4/taiji.com/tcp/80",
         ];
 
         expect_true.iter().for_each(|addr| {
@@ -107,7 +107,7 @@ mod test {
         let expect_true = [
             "/ip4/1.2.3.4/tcp/1234",
             "/ip4/127.0.0.1/tcp/9998",
-            "/dns4/tari.com/tcp/80",
+            "/dns4/taiji.com/tcp/80",
         ]
         .iter()
         .map(|a| a.parse().unwrap())

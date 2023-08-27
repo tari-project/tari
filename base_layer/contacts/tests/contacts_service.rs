@@ -1,4 +1,4 @@
-// Copyright 2021. The Tari Project
+// Copyright 2021. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -23,12 +23,12 @@
 use std::{convert::TryInto, sync::Arc, time::Duration};
 
 use rand::rngs::OsRng;
-use tari_common::configuration::{MultiaddrList, Network, StringList};
-use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
-use tari_common_types::{tari_address::TariAddress, types::PublicKey};
-use tari_comms::{peer_manager::PeerFeatures, NodeIdentity};
-use tari_comms_dht::{store_forward::SafConfig, DhtConfig};
-use tari_contacts::contacts_service::{
+use taiji_common::configuration::{MultiaddrList, Network, StringList};
+use taiji_common_sqlite::connection::{DbConnection, DbConnectionUrl};
+use taiji_common_types::{taiji_address::TaijiAddress, types::PublicKey};
+use taiji_comms::{peer_manager::PeerFeatures, NodeIdentity};
+use taiji_comms_dht::{store_forward::SafConfig, DhtConfig};
+use taiji_contacts::contacts_service::{
     error::{ContactsServiceError, ContactsServiceStorageError},
     handle::{ContactsServiceHandle, DEFAULT_MESSAGE_LIMIT, MAX_MESSAGE_LIMIT},
     storage::{
@@ -39,7 +39,7 @@ use tari_contacts::contacts_service::{
     ContactsServiceInitializer,
 };
 use tari_crypto::keys::PublicKey as PublicKeyTrait;
-use tari_p2p::{
+use taiji_p2p::{
     comms_connector::pubsub_connector,
     initialization::P2pInitializer,
     services::liveness::{LivenessConfig, LivenessInitializer},
@@ -49,9 +49,9 @@ use tari_p2p::{
     TransportConfig,
     TransportType,
 };
-use tari_service_framework::StackBuilder;
-use tari_shutdown::Shutdown;
-use tari_test_utils::{comms_and_services::get_next_memory_address, paths::with_temp_dir, random, random::string};
+use taiji_service_framework::StackBuilder;
+use taiji_shutdown::Shutdown;
+use taiji_test_utils::{comms_and_services::get_next_memory_address, paths::with_temp_dir, random, random::string};
 use tempfile::tempdir;
 use tokio::{runtime::Runtime, sync::broadcast::error::TryRecvError};
 
@@ -93,7 +93,7 @@ pub fn setup_contacts_service<T: ContactsBackend + 'static>(
         allow_test_addresses: true,
         listener_liveness_allowlist_cidrs: StringList::new(),
         listener_liveness_max_sessions: 0,
-        user_agent: "tari/test-contacts-service".to_string(),
+        user_agent: "taiji/test-contacts-service".to_string(),
         rpc_max_simultaneous_sessions: 0,
         rpc_max_sessions_per_peer: 0,
         listener_liveness_check_interval: None,
@@ -150,7 +150,7 @@ pub fn test_contacts_service() {
         let mut contacts = Vec::new();
         for i in 0..5 {
             let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
-            let address = TariAddress::new(public_key, Network::default());
+            let address = TaijiAddress::new(public_key, Network::default());
 
             contacts.push(Contact::new(random::string(8), address, None, None, false));
 
@@ -168,7 +168,7 @@ pub fn test_contacts_service() {
         assert_eq!(contact, contacts[0]);
 
         let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
-        let address = TariAddress::new(public_key, Network::default());
+        let address = TaijiAddress::new(public_key, Network::default());
 
         let contact = runtime.block_on(contacts_service.get_contact(address.clone()));
         match contact {
@@ -233,7 +233,7 @@ pub fn test_message_pagination() {
         let (mut contacts_service, _node_identity, _shutdown) = setup_contacts_service(&mut runtime, backend);
 
         let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
-        let address = TariAddress::new(public_key, Network::default());
+        let address = TaijiAddress::new(public_key, Network::default());
 
         let contact = Contact::new(random::string(8), address.clone(), None, None, false);
         runtime.block_on(contacts_service.upsert_contact(contact)).unwrap();

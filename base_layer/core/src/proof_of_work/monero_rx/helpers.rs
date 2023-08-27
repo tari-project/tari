@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -77,15 +77,15 @@ pub fn verify_header(header: &BlockHeader) -> Result<MoneroPowData, MergeMineErr
     let expected_merge_mining_hash = header.merge_mining_hash();
     let extra_field = ExtraField::try_parse(&monero_data.coinbase_tx.prefix.extra)
         .map_err(|_| MergeMineError::DeserializeError("Invalid extra field".to_string()))?;
-    // Check that the Tari MM hash is found in the monero coinbase transaction
-    // and that only 1 tari header is found
+    // Check that the Taiji MM hash is found in the monero coinbase transaction
+    // and that only 1 taiji header is found
 
     let mut is_found = false;
     for item in extra_field.0 {
         if let SubField::MergeMining(Some(depth), merge_mining_hash) = item {
             if is_found && &merge_mining_hash.as_bytes()[0..4] == b"TARI" {
                 return Err(MergeMineError::ValidationError(
-                    "More than one Tari header found in coinbase".to_string(),
+                    "More than one Taiji header found in coinbase".to_string(),
                 ));
             }
             if depth == VarInt(0) && merge_mining_hash.as_bytes() == expected_merge_mining_hash.as_slice() {
@@ -108,7 +108,7 @@ pub fn verify_header(header: &BlockHeader) -> Result<MoneroPowData, MergeMineErr
 }
 
 /// Extracts the Monero block hash from the coinbase transaction's extra field
-pub fn extract_tari_hash(monero: &monero::Block) -> Result<Option<monero::Hash>, MergeMineError> {
+pub fn extract_taiji_hash(monero: &monero::Block) -> Result<Option<monero::Hash>, MergeMineError> {
     let extra_field = ExtraField::try_parse(&monero.miner_tx.prefix.extra)
         .map_err(|_| MergeMineError::DeserializeError("Invalid extra field".to_string()))?;
     for item in &extra_field.0 {
@@ -220,8 +220,8 @@ mod test {
         TxIn,
         TxOut,
     };
-    use tari_common_types::types::FixedHash;
-    use tari_test_utils::unpack_enum;
+    use taiji_common_types::types::FixedHash;
+    use taiji_test_utils::unpack_enum;
     use tari_utilities::{
         epoch_time::EpochTime,
         hex::{from_hex, Hex},
@@ -582,7 +582,7 @@ mod test {
         block_header.pow = pow;
         let err = verify_header(&block_header).unwrap_err();
         unpack_enum!(MergeMineError::ValidationError(details) = err);
-        assert!(details.contains("More than one Tari header found in coinbase"));
+        assert!(details.contains("More than one Taiji header found in coinbase"));
     }
 
     #[test]

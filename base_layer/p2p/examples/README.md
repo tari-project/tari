@@ -1,6 +1,6 @@
-# Tari p2p examples
+# Taiji p2p examples
 
-Examples for using the `tari_p2p` crate.
+Examples for using the `taiji_p2p` crate.
 
 To run:
 
@@ -29,7 +29,7 @@ cargo run --example gen_node_identity -- --output=examples/sample_identities/nod
 
 ### [`pingpong.rs`](pingpong.rs)
 
-A basic ncurses UI that sends ping and receives pong messages to a single peer using the `tari_p2p` library.
+A basic ncurses UI that sends ping and receives pong messages to a single peer using the `taiji_p2p` library.
 Press 'p' to send a ping.
 
 ```bash

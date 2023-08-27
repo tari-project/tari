@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -21,9 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use tari_common_types::types::{Commitment, PrivateKey};
-use tari_key_manager::key_manager_service::KeyManagerServiceError;
-use tari_script::{inputs, script, TariScript};
+use taiji_common_types::types::{Commitment, PrivateKey};
+use taiji_key_manager::key_manager_service::KeyManagerServiceError;
+use taiji_script::{inputs, script, TaijiScript};
 use thiserror::Error;
 
 use crate::{
@@ -33,8 +33,8 @@ use crate::{
     },
     covenants::Covenant,
     transactions::{
-        key_manager::{TariKeyId, TransactionKeyManagerBranch, TransactionKeyManagerInterface, TxoStage},
-        tari_amount::{uT, MicroMinotari},
+        key_manager::{TaijiKeyId, TransactionKeyManagerBranch, TransactionKeyManagerInterface, TxoStage},
+        taiji_amount::{uT, MicroMinotaiji},
         transaction_components::{
             KernelBuilder,
             KernelFeatures,
@@ -87,10 +87,10 @@ impl From<KeyManagerServiceError> for CoinbaseBuildError {
 pub struct CoinbaseBuilder<TKeyManagerInterface> {
     key_manager: TKeyManagerInterface,
     block_height: Option<u64>,
-    fees: Option<MicroMinotari>,
-    spend_key_id: Option<TariKeyId>,
-    script_key_id: Option<TariKeyId>,
-    script: Option<TariScript>,
+    fees: Option<MicroMinotaiji>,
+    spend_key_id: Option<TaijiKeyId>,
+    script_key_id: Option<TaijiKeyId>,
+    script: Option<TaijiScript>,
     covenant: Covenant,
     extra: Option<Vec<u8>>,
 }
@@ -120,26 +120,26 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
     }
 
     /// Indicates the sum total of all fees that the coinbase transaction earns, over and above the block reward
-    pub fn with_fees(mut self, value: MicroMinotari) -> Self {
+    pub fn with_fees(mut self, value: MicroMinotaiji) -> Self {
         self.fees = Some(value);
         self
     }
 
     /// Provides the spend key for this transaction. This will usually be provided by a miner's wallet instance.
-    pub fn with_spend_key_id(mut self, key: TariKeyId) -> Self {
+    pub fn with_spend_key_id(mut self, key: TaijiKeyId) -> Self {
         self.spend_key_id = Some(key);
         self
     }
 
     /// Provides the script key for this transaction. This will usually be provided by a miner's wallet
     /// instance.
-    pub fn with_script_key_id(mut self, key: TariKeyId) -> Self {
+    pub fn with_script_key_id(mut self, key: TaijiKeyId) -> Self {
         self.script_key_id = Some(key);
         self
     }
 
     /// Provides the script for this transaction, usually by a miner's wallet instance.
-    pub fn with_script(mut self, script: TariScript) -> Self {
+    pub fn with_script(mut self, script: TaijiScript) -> Self {
         self.script = Some(script);
         self
     }
@@ -180,7 +180,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
     pub async fn build_with_reward(
         self,
         constants: &ConsensusConstants,
-        block_reward: MicroMinotari,
+        block_reward: MicroMinotaiji,
     ) -> Result<(Transaction, WalletOutput), CoinbaseBuildError> {
         // gets tx details
         let height = self.block_height.ok_or(CoinbaseBuildError::MissingBlockHeight)?;
@@ -231,7 +231,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             .key_manager
             .encrypt_data_for_recovery(&spending_key_id, None, total_reward.into())
             .await?;
-        let minimum_value_promise = MicroMinotari::zero();
+        let minimum_value_promise = MicroMinotaiji::zero();
 
         let output_version = TransactionOutputVersion::get_current_version();
         let metadata_message = TransactionOutput::metadata_signature_message_from_parts(
@@ -295,7 +295,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             .add_output(output)
             // A coinbase must have 0 offset or the reward balance check will fail.
             .add_offset(PrivateKey::default())
-            // Coinbase has no script offset https://rfc.tari.com/RFC-0201_TariScript.html#script-offset
+            // Coinbase has no script offset https://rfc.taiji.com/RFC-0201_TaijiScript.html#script-offset
             .add_script_offset(PrivateKey::default())
             .with_reward(total_reward)
             .with_kernel(kernel);
@@ -308,8 +308,8 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
 
 #[cfg(test)]
 mod test {
-    use tari_common::configuration::Network;
-    use tari_common_types::types::{Commitment, PrivateKey};
+    use taiji_common::configuration::Network;
+    use taiji_common_types::types::{Commitment, PrivateKey};
     use tari_utilities::ByteArray;
 
     use crate::{
@@ -317,7 +317,7 @@ mod test {
         transactions::{
             coinbase_builder::CoinbaseBuildError,
             crypto_factories::CryptoFactories,
-            tari_amount::uT,
+            taiji_amount::uT,
             test_helpers::TestParams,
             transaction_components::{KernelFeatures, OutputFeatures, OutputType, TransactionError, TransactionKernel},
             CoinbaseBuilder,
@@ -517,7 +517,7 @@ mod test {
             )
             .is_ok());
     }
-    use tari_key_manager::key_manager_service::KeyManagerInterface;
+    use taiji_key_manager::key_manager_service::KeyManagerInterface;
 
     use crate::transactions::{
         aggregated_body::AggregateBody,

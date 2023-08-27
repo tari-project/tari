@@ -1,4 +1,4 @@
-// Copyright 2018 The Tari Project
+// Copyright 2018 The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -31,16 +31,16 @@ use std::{
 use borsh::{BorshDeserialize, BorshSerialize};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{ComAndPubSignature, Commitment, CommitmentFactory, FixedHash, HashOutput, PublicKey};
+use taiji_common_types::types::{ComAndPubSignature, Commitment, CommitmentFactory, FixedHash, HashOutput, PublicKey};
 use tari_crypto::tari_utilities::hex::Hex;
-use tari_script::{ExecutionStack, ScriptContext, StackItem, TariScript};
+use taiji_script::{ExecutionStack, ScriptContext, StackItem, TaijiScript};
 
 use super::{TransactionInputVersion, TransactionOutputVersion};
 use crate::{
     consensus::DomainSeparatedConsensusHasher,
     covenants::Covenant,
     transactions::{
-        tari_amount::MicroMinotari,
+        taiji_amount::MicroMinotaiji,
         transaction_components,
         transaction_components::{
             transaction_output::TransactionOutput,
@@ -109,7 +109,7 @@ impl TransactionInput {
         version: TransactionInputVersion,
         features: OutputFeatures,
         commitment: Commitment,
-        script: TariScript,
+        script: TaijiScript,
         input_data: ExecutionStack,
         script_signature: ComAndPubSignature,
         sender_offset_public_key: PublicKey,
@@ -117,7 +117,7 @@ impl TransactionInput {
         encrypted_data: EncryptedData,
         metadata_signature: ComAndPubSignature,
         rangeproof_hash: FixedHash,
-        minimum_value_promise: MicroMinotari,
+        minimum_value_promise: MicroMinotaiji,
     ) -> TransactionInput {
         TransactionInput::new(
             version,
@@ -144,13 +144,13 @@ impl TransactionInput {
         version: TransactionOutputVersion,
         features: OutputFeatures,
         commitment: Commitment,
-        script: TariScript,
+        script: TaijiScript,
         sender_offset_public_key: PublicKey,
         covenant: Covenant,
         encrypted_data: EncryptedData,
         metadata_signature: ComAndPubSignature,
         rangeproof_hash: FixedHash,
-        minimum_value_promise: MicroMinotari,
+        minimum_value_promise: MicroMinotaiji,
     ) {
         self.spent_output = SpentOutput::OutputData {
             version,
@@ -171,7 +171,7 @@ impl TransactionInput {
         version: &TransactionInputVersion,
         ephemeral_commitment: &Commitment,
         ephemeral_pubkey: &PublicKey,
-        script: &TariScript,
+        script: &TaijiScript,
         input_data: &ExecutionStack,
         script_public_key: &PublicKey,
         commitment: &Commitment,
@@ -215,7 +215,7 @@ impl TransactionInput {
     /// outside of the signing keys and nonces.
     pub fn build_script_signature_message(
         version: &TransactionInputVersion,
-        script: &TariScript,
+        script: &TaijiScript,
         input_data: &ExecutionStack,
     ) -> [u8; 32] {
         match version {
@@ -255,8 +255,8 @@ impl TransactionInput {
         }
     }
 
-    /// Returns a reference to the TariScript of this input. An error is returned if this is a compact input.
-    pub fn script(&self) -> Result<&TariScript, TransactionError> {
+    /// Returns a reference to the TaijiScript of this input. An error is returned if this is a compact input.
+    pub fn script(&self) -> Result<&TaijiScript, TransactionError> {
         match self.spent_output {
             SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
             SpentOutput::OutputData { ref script, .. } => Ok(script),
@@ -312,7 +312,7 @@ impl TransactionInput {
     }
 
     /// Returns a reference to the minimum value promise of this input. An error is returned if this is a compact input.
-    pub fn minimum_value_promise(&self) -> Result<&MicroMinotari, TransactionError> {
+    pub fn minimum_value_promise(&self) -> Result<&MicroMinotaiji, TransactionError> {
         match self.spent_output {
             SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
             SpentOutput::OutputData {
@@ -469,10 +469,10 @@ impl TransactionInput {
         }
     }
 
-    /// Sets the input's Tari script. Only useful in tests.
+    /// Sets the input's Taiji script. Only useful in tests.
     /// An error is returned if this is a compact input.
     #[cfg(test)]
-    pub fn set_script(&mut self, new_script: TariScript) -> Result<(), TransactionError> {
+    pub fn set_script(&mut self, new_script: TaijiScript) -> Result<(), TransactionError> {
         if let SpentOutput::OutputData { ref mut script, .. } = self.spent_output {
             *script = new_script;
             Ok(())
@@ -549,14 +549,14 @@ pub enum SpentOutput {
         version: TransactionOutputVersion,
         features: OutputFeatures,
         commitment: Commitment,
-        script: TariScript,
+        script: TaijiScript,
         sender_offset_public_key: PublicKey,
         /// The transaction covenant
         covenant: Covenant,
         encrypted_data: EncryptedData,
         metadata_signature: ComAndPubSignature,
         rangeproof_hash: FixedHash,
-        minimum_value_promise: MicroMinotari,
+        minimum_value_promise: MicroMinotaiji,
     },
 }
 

@@ -1,4 +1,4 @@
-//  Copyright 2019 The Tari Project
+//  Copyright 2019 The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -27,7 +27,7 @@ use std::{
 
 use log::*;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{PrivateKey, Signature};
+use taiji_common_types::types::{PrivateKey, Signature};
 use tari_utilities::hex::Hex;
 
 use crate::{
@@ -339,13 +339,13 @@ impl ReorgPool {
 #[cfg(test)]
 mod test {
 
-    use tari_common::configuration::Network;
+    use taiji_common::configuration::Network;
 
     use super::*;
     use crate::{
         consensus::ConsensusManagerBuilder,
         test_helpers::create_orphan_block,
-        transactions::{tari_amount::MicroMinotari, test_helpers::create_test_core_key_manager_with_memory_db},
+        transactions::{taiji_amount::MicroMinotaiji, test_helpers::create_test_core_key_manager_with_memory_db},
         tx,
     };
 
@@ -353,32 +353,32 @@ mod test {
     async fn test_insert_expire_by_height() {
         let key_manager = create_test_core_key_manager_with_memory_db();
         let tx1 = Arc::new(
-            tx!(MicroMinotari(100_000), fee: MicroMinotari(100), lock: 4000, inputs: 2, outputs: 1, &key_manager)
+            tx!(MicroMinotaiji(100_000), fee: MicroMinotaiji(100), lock: 4000, inputs: 2, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
                 .0,
         );
         let tx2 = Arc::new(
-            tx!(MicroMinotari(100_000), fee: MicroMinotari(60), lock: 3000, inputs: 2, outputs: 1, &key_manager)
+            tx!(MicroMinotaiji(100_000), fee: MicroMinotaiji(60), lock: 3000, inputs: 2, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
                 .0,
         );
         let tx3 = Arc::new(
-            tx!(MicroMinotari(100_000), fee: MicroMinotari(20), lock: 2500, inputs: 2, outputs: 1, &key_manager)
+            tx!(MicroMinotaiji(100_000), fee: MicroMinotaiji(20), lock: 2500, inputs: 2, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
                 .0,
         );
         let tx4 = Arc::new(
-            tx!(MicroMinotari(100_000), fee: MicroMinotari(40), lock: 1000, inputs: 2, outputs: 1, &key_manager)
+            tx!(MicroMinotaiji(100_000), fee: MicroMinotaiji(40), lock: 1000, inputs: 2, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
                 .0,
         );
         let tx5 = Arc::new(
-            tx!(MicroMinotari(100_000), fee: MicroMinotari(100), lock: 2000, inputs: 2, outputs: 1, &key_manager)
+            tx!(MicroMinotaiji(100_000), fee: MicroMinotaiji(100), lock: 2000, inputs: 2, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
                 .0,
         );
         let tx6 = Arc::new(
-            tx!(MicroMinotari(100_000), fee: MicroMinotari(120), lock: 5500, inputs: 2, outputs: 1, &key_manager)
+            tx!(MicroMinotaiji(100_000), fee: MicroMinotaiji(120), lock: 5500, inputs: 2, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
                 .0,
         );
@@ -413,17 +413,17 @@ mod test {
     async fn test_remove_all() {
         let key_manager = create_test_core_key_manager_with_memory_db();
         let tx1 = Arc::new(
-            tx!(MicroMinotari(100_000), fee: MicroMinotari(100), lock: 4000, inputs: 2, outputs: 1, &key_manager)
+            tx!(MicroMinotaiji(100_000), fee: MicroMinotaiji(100), lock: 4000, inputs: 2, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
                 .0,
         );
         let tx2 = Arc::new(
-            tx!(MicroMinotari(100_000), fee: MicroMinotari(60), lock: 3000, inputs: 2, outputs: 1, &key_manager)
+            tx!(MicroMinotaiji(100_000), fee: MicroMinotaiji(60), lock: 3000, inputs: 2, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
                 .0,
         );
         let tx3 = Arc::new(
-            tx!(MicroMinotari(100_000), fee: MicroMinotari(20), lock: 2500, inputs: 2, outputs: 1, &key_manager)
+            tx!(MicroMinotaiji(100_000), fee: MicroMinotaiji(20), lock: 2500, inputs: 2, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
                 .0,
         );
@@ -452,32 +452,32 @@ mod test {
         let network = Network::LocalNet;
         let consensus = ConsensusManagerBuilder::new(network).build().unwrap();
         let tx1 = Arc::new(
-            tx!(MicroMinotari(10_000), fee: MicroMinotari(10), lock: 4000, inputs: 2, outputs: 1, &key_manager)
+            tx!(MicroMinotaiji(10_000), fee: MicroMinotaiji(10), lock: 4000, inputs: 2, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
                 .0,
         );
         let tx2 = Arc::new(
-            tx!(MicroMinotari(10_000), fee: MicroMinotari(6), lock: 3000, inputs: 2, outputs: 1, &key_manager)
+            tx!(MicroMinotaiji(10_000), fee: MicroMinotaiji(6), lock: 3000, inputs: 2, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
                 .0,
         );
         let tx3 = Arc::new(
-            tx!(MicroMinotari(10_000), fee: MicroMinotari(4), lock: 2500, inputs: 2, outputs: 1, &key_manager)
+            tx!(MicroMinotaiji(10_000), fee: MicroMinotaiji(4), lock: 2500, inputs: 2, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
                 .0,
         );
         let tx4 = Arc::new(
-            tx!(MicroMinotari(10_000), fee: MicroMinotari(4), lock: 1000, inputs: 2, outputs: 1, &key_manager)
+            tx!(MicroMinotaiji(10_000), fee: MicroMinotaiji(4), lock: 1000, inputs: 2, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
                 .0,
         );
         let tx5 = Arc::new(
-            tx!(MicroMinotari(10_000), fee: MicroMinotari(10), lock: 2000, inputs: 2, outputs: 1, &key_manager)
+            tx!(MicroMinotaiji(10_000), fee: MicroMinotaiji(10), lock: 2000, inputs: 2, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
                 .0,
         );
         let tx6 = Arc::new(
-            tx!(MicroMinotari(10_000), fee: MicroMinotari(12), lock: 5500, inputs: 2, outputs: 1, &key_manager)
+            tx!(MicroMinotaiji(10_000), fee: MicroMinotaiji(12), lock: 5500, inputs: 2, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
                 .0,
         );

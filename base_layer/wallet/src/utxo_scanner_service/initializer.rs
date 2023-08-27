@@ -1,4 +1,4 @@
-// Copyright 2022. The Tari Project
+// Copyright 2022. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -22,9 +22,9 @@
 
 use futures::future;
 use log::*;
-use tari_comms::connectivity::ConnectivityRequester;
-use tari_core::transactions::CryptoFactories;
-use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
+use taiji_comms::connectivity::ConnectivityRequester;
+use taiji_core::transactions::CryptoFactories;
+use taiji_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tokio::sync::broadcast;
 
 use crate::{

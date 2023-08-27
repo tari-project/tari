@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -24,8 +24,8 @@ use std::{convert::TryFrom, sync::Arc};
 
 use diesel::result::Error as DieselError;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
-use tari_common_sqlite::{error::SqliteStorageError, sqlite_connection_pool::PooledDbConnection};
-use tari_common_types::tari_address::TariAddress;
+use taiji_common_sqlite::{error::SqliteStorageError, sqlite_connection_pool::PooledDbConnection};
+use taiji_common_types::taiji_address::TaijiAddress;
 use tari_utilities::ByteArray;
 
 use crate::contacts_service::{
@@ -149,8 +149,8 @@ where TContactServiceDbConnection: PooledDbConnection<Error = SqliteStorageError
                             latency: Some(latency),
                             favourite: None,
                         })?;
-                    return Ok(Some(DbValue::TariAddress(Box::new(
-                        TariAddress::from_bytes(&contact.address)
+                    return Ok(Some(DbValue::TaijiAddress(Box::new(
+                        TaijiAddress::from_bytes(&contact.address)
                             .map_err(|_| ContactsServiceStorageError::ConversionError)?,
                     ))));
                 },
@@ -190,14 +190,14 @@ mod test {
     use std::convert::{TryFrom, TryInto};
 
     use rand::rngs::OsRng;
-    use tari_common::configuration::Network;
-    use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
-    use tari_common_types::{
-        tari_address::TariAddress,
+    use taiji_common::configuration::Network;
+    use taiji_common_sqlite::connection::{DbConnection, DbConnectionUrl};
+    use taiji_common_types::{
+        taiji_address::TaijiAddress,
         types::{PrivateKey, PublicKey},
     };
     use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
-    use tari_test_utils::{paths::with_temp_dir, random::string};
+    use taiji_test_utils::{paths::with_temp_dir, random::string};
 
     use super::*;
     use crate::contacts_service::{
@@ -221,7 +221,7 @@ mod test {
             let mut contacts = Vec::new();
             for i in 0..names.len() {
                 let pub_key = PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng));
-                let address = TariAddress::new(pub_key, Network::default());
+                let address = TaijiAddress::new(pub_key, Network::default());
                 contacts.push(Contact::new(names[i].clone(), address, None, None, false));
                 ContactSql::from(contacts[i].clone()).commit(&mut conn).unwrap();
             }

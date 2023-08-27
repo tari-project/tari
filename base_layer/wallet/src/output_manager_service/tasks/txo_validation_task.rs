@@ -1,4 +1,4 @@
-// Copyright 2021. The Tari Project
+// Copyright 2021. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -27,9 +27,9 @@ use std::{
 
 use chrono::{Duration, Utc};
 use log::*;
-use tari_common_types::types::{BlockHash, FixedHash};
-use tari_comms::{peer_manager::Peer, protocol::rpc::RpcError::RequestFailed};
-use tari_core::{
+use taiji_common_types::types::{BlockHash, FixedHash};
+use taiji_comms::{peer_manager::Peer, protocol::rpc::RpcError::RequestFailed};
+use taiji_core::{
     base_node::rpc::BaseNodeWalletRpcClient,
     blocks::BlockHeader,
     proto::base_node::{QueryDeletedRequest, UtxoQueryRequest},

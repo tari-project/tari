@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2020, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -25,7 +25,7 @@ use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
 use crate::stream_id::{Id, StreamId};
 
-/// Tari comms canonical framing
+/// Taiji comms canonical framing
 pub type CanonicalFraming<T> = Framed<T, LengthDelimitedCodec>;
 
 /// Create a length-delimited frame around the given stream reader/writer with the given maximum frame length.

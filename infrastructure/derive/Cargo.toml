@@ -1,9 +1,9 @@
 [package]
-name = "tari_infra_derive"
-description = "Tari derive macros"
-authors = ["The Tari Development Community"]
+name = "taiji_infra_derive"
+description = "Taiji derive macros"
+authors = ["The Taiji Development Community"]
 repository = "https://github.com/tari-project/tari"
-homepage = "https://tari.com"
+homepage = "https://taiji.com"
 readme = "README.md"
 license = "BSD-3-Clause"
 version = "0.52.0-pre.0"

@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2020. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -22,14 +22,14 @@
 
 use async_trait::async_trait;
 use futures::{pin_mut, StreamExt};
-use tari_service_framework::{
+use taiji_service_framework::{
     reply_channel,
     reply_channel::SenderService,
     ServiceInitializationError,
     ServiceInitializer,
     ServiceInitializerContext,
 };
-use tari_shutdown::ShutdownSignal;
+use taiji_shutdown::ShutdownSignal;
 use tower::Service;
 
 use crate::services::ServiceBHandle;

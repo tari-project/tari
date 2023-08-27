@@ -1,16 +1,16 @@
 [package]
-name = "tari_test_utils"
-description = "Utility functions used in Tari test functions"
+name = "taiji_test_utils"
+description = "Utility functions used in Taiji test functions"
 version = "0.52.0-pre.0"
-authors = ["The Tari Development Community"]
+authors = ["The Taiji Development Community"]
 edition = "2018"
 license = "BSD-3-Clause"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tari_shutdown = { path = "../shutdown" }
-tari_comms = { path = "../../comms/core" }
+taiji_shutdown = { path = "../shutdown" }
+taiji_comms = { path = "../../comms/core" }
 
 futures = { version = "^0.3.1" }
 rand = "0.8"

@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -24,7 +24,7 @@
 /// Each extracted variable is decalred as mutable for maximum flexibility.
 ///
 /// ```edition2018
-/// # use tari_test_utils::unpack_enum;
+/// # use taiji_test_utils::unpack_enum;
 ///
 /// #[derive(Debug)]
 /// enum AnyEnum<'a> {

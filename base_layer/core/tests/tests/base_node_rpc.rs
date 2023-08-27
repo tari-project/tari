@@ -1,4 +1,4 @@
-//  Copyright 2022. The Tari Project
+//  Copyright 2022. The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -24,9 +24,9 @@ use std::{convert::TryFrom, sync::Arc, time::Duration};
 
 use futures::StreamExt;
 use randomx_rs::RandomXFlag;
-use tari_common::configuration::Network;
-use tari_comms::protocol::rpc::mock::RpcRequestMock;
-use tari_core::{
+use taiji_common::configuration::Network;
+use taiji_comms::protocol::rpc::mock::RpcRequestMock;
+use taiji_core::{
     base_node::{
         comms_interface::LocalNodeCommsInterface,
         proto::wallet_rpc::{
@@ -48,14 +48,14 @@ use tari_core::{
     },
     test_helpers::blockchain::TempDatabase,
     transactions::{
-        tari_amount::{uT, T},
+        taiji_amount::{uT, T},
         test_helpers::{create_test_core_key_manager_with_memory_db, schema_to_transaction, TestKeyManager},
         transaction_components::{TransactionOutput, WalletOutput},
     },
     txn_schema,
 };
-use tari_service_framework::reply_channel;
-use tari_test_utils::streams::convert_mpsc_to_stream;
+use taiji_service_framework::reply_channel;
+use taiji_test_utils::streams::convert_mpsc_to_stream;
 use tari_utilities::epoch_time::EpochTime;
 use tempfile::{tempdir, TempDir};
 use tokio::sync::broadcast;

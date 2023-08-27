@@ -1,9 +1,9 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-//! # Tari Comms
+//! # Taiji Comms
 //!
-//! The Tari network messaging library.
+//! The Taiji network messaging library.
 //!
 //! See [CommsBuilder] for more information on using this library.
 //!
@@ -55,7 +55,7 @@ pub mod test_utils;
 pub mod traits;
 
 //---------------------------------- Re-exports --------------------------------------------//
-// Rather than requiring dependent crates to import dependencies for use with `tari_comms` we re-export them here.
+// Rather than requiring dependent crates to import dependencies for use with `taiji_comms` we re-export them here.
 
 pub mod multiaddr {
     // Re-export so that client code does not have to have multiaddr as a dependency

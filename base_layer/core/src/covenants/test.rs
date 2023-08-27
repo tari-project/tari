@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -70,11 +70,11 @@ pub fn make_sample_sidechain_feature() -> SideChainFeature {
         template_version: 0,
         template_type: TemplateType::Wasm { abi_version: 0 },
         build_info: BuildInfo {
-            repo_url: "https://github.com/tari-project/tari.git".try_into().unwrap(),
+            repo_url: "https://github.com/taiji-project/taiji.git".try_into().unwrap(),
             commit_hash: Default::default(),
         },
         binary_sha: Default::default(),
-        binary_url: "https://github.com/tari-project/tari.git".try_into().unwrap(),
+        binary_url: "https://github.com/taiji-project/taiji.git".try_into().unwrap(),
     };
     SideChainFeature::CodeTemplateRegistration(template_reg)
 }

@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2020, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -23,7 +23,7 @@
 use std::time::Duration;
 
 use log::*;
-use tari_comms::connectivity::ConnectivityError;
+use taiji_comms::connectivity::ConnectivityError;
 
 use crate::network_discovery::state_machine::{NetworkDiscoveryContext, StateEvent};
 

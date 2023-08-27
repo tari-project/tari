@@ -1,4 +1,4 @@
-// Copyright 2018 The Tari Project
+// Copyright 2018 The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -29,7 +29,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{PrivateKey, Signature};
+use taiji_common_types::types::{PrivateKey, Signature};
 use tari_utilities::hex::Hex;
 
 use crate::transactions::{
@@ -39,7 +39,7 @@ use crate::transactions::{
 };
 
 /// A transaction which consists of a kernel offset and an aggregate body made up of inputs, outputs and kernels.
-/// This struct is used to describe single transactions only. The common part between transactions and Minotari blocks
+/// This struct is used to describe single transactions only. The common part between transactions and Minotaiji blocks
 /// is accessible via the `body` field, but single transactions also need to carry the public offset around with them so
 /// that these can be aggregated into block offsets.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

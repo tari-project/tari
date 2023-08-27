@@ -1,4 +1,4 @@
-//  Copyright 2019 The Tari Project
+//  Copyright 2019 The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -37,7 +37,7 @@ mod tests;
 
 use std::{fs::File, sync::Arc, time::Duration};
 
-use tari_shutdown::ShutdownSignal;
+use taiji_shutdown::ShutdownSignal;
 use tokio::sync::{broadcast, mpsc};
 
 use crate::{
@@ -53,15 +53,15 @@ use crate::{
 
 /// # CommsBuilder
 ///
-/// [CommsBuilder] is used to customize and spawn Tari comms core.
+/// [CommsBuilder] is used to customize and spawn Taiji comms core.
 ///
 /// The following example will get a node customized for your own network up and running.
 ///
 /// ```rust
 /// # use std::{sync::Arc, time::Duration};
 /// # use rand::rngs::OsRng;
-/// # use tari_shutdown::Shutdown;
-/// # use tari_comms::{
+/// # use taiji_shutdown::Shutdown;
+/// # use taiji_comms::{
 /// #     {CommsBuilder, NodeIdentity},
 /// #    peer_manager::{PeerStorage, PeerFeatures},
 /// #    transports::TcpTransport,
@@ -70,7 +70,7 @@ use crate::{
 /// # async fn main() {
 /// use std::env::temp_dir;
 ///
-/// use tari_storage::{
+/// use taiji_storage::{
 ///     lmdb_store::{LMDBBuilder, LMDBConfig},
 ///     LMDBWrapper,
 /// };
@@ -169,19 +169,19 @@ impl CommsBuilder {
         self
     }
 
-    /// Set a network byte as per [RFC-173 Versioning](https://rfc.tari.com/RFC-0173_Versioning.html)
+    /// Set a network byte as per [RFC-173 Versioning](https://rfc.taiji.com/RFC-0173_Versioning.html)
     pub fn with_network_byte(mut self, network_byte: u8) -> Self {
         self.connection_manager_config.network_info.network_byte = network_byte;
         self
     }
 
-    /// Set a network info (versions etc) as per [RFC-173 Versioning](https://rfc.tari.com/RFC-0173_Versioning.html)
+    /// Set a network info (versions etc) as per [RFC-173 Versioning](https://rfc.taiji.com/RFC-0173_Versioning.html)
     pub fn with_node_info(mut self, node_info: NodeNetworkInfo) -> Self {
         self.connection_manager_config.network_info = node_info;
         self
     }
 
-    /// Set a network major and minor version as per [RFC-173 Versioning](https://rfc.tari.com/RFC-0173_Versioning.html)
+    /// Set a network major and minor version as per [RFC-173 Versioning](https://rfc.taiji.com/RFC-0173_Versioning.html)
     pub fn with_node_version(mut self, major_version: u8, minor_version: u8) -> Self {
         self.connection_manager_config.network_info.major_version = major_version;
         self.connection_manager_config.network_info.minor_version = minor_version;

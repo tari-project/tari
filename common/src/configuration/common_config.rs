@@ -1,4 +1,4 @@
-//  Copyright 2022. The Tari Project
+//  Copyright 2022. The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -37,7 +37,7 @@ impl Default for CommonConfig {
     fn default() -> Self {
         let base_path = dirs_next::home_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join(PathBuf::from(".tari"));
+            .join(PathBuf::from(".taiji"));
         Self {
             override_from: None,
             base_path,
@@ -70,7 +70,7 @@ mod test {
             *default_common_config.base_path(),
             dirs_next::home_dir()
                 .unwrap_or_else(|| PathBuf::from("."))
-                .join(PathBuf::from(".tari"))
+                .join(PathBuf::from(".taiji"))
         );
     }
 

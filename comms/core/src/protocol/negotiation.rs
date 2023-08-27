@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -225,7 +225,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
 #[cfg(test)]
 mod test {
     use futures::future;
-    use tari_test_utils::unpack_enum;
+    use taiji_test_utils::unpack_enum;
 
     use super::*;
     use crate::memsocket::MemorySocket;

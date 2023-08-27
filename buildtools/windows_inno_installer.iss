@@ -24,32 +24,32 @@
 ;         "/DMyAppVersion=<base node version>" "windows_inno_installer.iss"
 ;  (4) Windows shortcuts
 ;      - To edit any of the *.lnk* files, first copy their icons 
-;        "<project_root>/buildtools/*.ico" to "%USERPROFILE%\temp\tari_icons"
+;        "<project_root>/buildtools/*.ico" to "%USERPROFILE%\temp\taiji_icons"
 
 
-#define MyOrgName "Tari"
+#define MyOrgName "Taiji"
 ;#define MyAppVersion "?.?.?-???????-release"
-#define MyAppPublisher "The Tari Development Community"
-#define MyAppURL "https://github.com/tari-project/tari"
-#define MyAppSupp "Tari Website"
-#define MyAppSuppURL "http://www.tari.com"
+#define MyAppPublisher "The Taiji Development Community"
+#define MyAppURL "https://github.com/taiji-project/taiji"
+#define MyAppSupp "Taiji Website"
+#define MyAppSuppURL "http://www.taiji.com"
 #define AllName "All"
 #define AllExeName "start_all.bat"
 #define BaseNodeName "Base Node"
-#define BaseNodeExeName "start_minotari_node.bat"
+#define BaseNodeExeName "start_minotaiji_node.bat"
 #define ConsoleWalletName "Console Wallet"
-#define ConsoleWalletExeName "start_minotari_console_wallet.bat"
+#define ConsoleWalletExeName "start_minotaiji_console_wallet.bat"
 #define MinerName "Miner"
-#define MinerExeName "start_minotari_miner.bat"
+#define MinerExeName "start_minotaiji_miner.bat"
 #define TorServicesName "Tor Services"
 #define TorServicesExeName "start_tor.bat"
 #define MergeMiningProxyName "Merge Mining Proxy"
-#define MergeMiningProxyExeName "start_tari_merge_mining_proxy.bat"
+#define MergeMiningProxyExeName "start_taiji_merge_mining_proxy.bat"
 #define MergeMiningName "XMRig"
 #define MergeMiningExeName "start_xmrig.bat"
 #define ReadmeName "README.txt"
-#ifndef TariSuitePath
-#define public TariSuitePath "..\target\release"
+#ifndef TaijiSuitePath
+#define public TaijiSuitePath "..\target\release"
 #endif
 
 [Setup]
@@ -64,25 +64,25 @@ AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppSuppURL}
 AppUpdatesURL={#MyAppURL}
-DefaultDirName={userdocs}\..\.tari-testnet
+DefaultDirName={userdocs}\..\.taiji-testnet
 DefaultGroupName={#MyOrgName} - Testnet
 AllowNoIcons=yes
 LicenseFile=..\LICENSE
-OutputBaseFilename=minotari_suite-Windows-{#MyAppVersion}
-SetupIconFile=.\tari_logo_black.ico
+OutputBaseFilename=minotaiji_suite-Windows-{#MyAppVersion}
+SetupIconFile=.\taiji_logo_black.ico
 Compression=lzma
 SolidCompression=yes
 MinVersion=0,6.1
-VersionInfoCompany=The Tari Developer Community
-VersionInfoProductName=minotari_suite
-InfoAfterFile="..\applications\minotari_node\windows\README.md"
+VersionInfoCompany=The Taiji Developer Community
+VersionInfoProductName=minotaiji_suite
+InfoAfterFile="..\applications\minotaiji_node\windows\README.md"
 ;SignTool=SignTool
 
 PrivilegesRequired=none
 
 [CustomMessages]
-TariGit=Tari on GitHub
-TariWeb=Tari on the web
+TaijiGit=Taiji on GitHub
+TaijiWeb=Taiji on the web
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -97,35 +97,35 @@ Name: ".\generate_config.bat"; Flags: abortonerror cmdprompt redirectoutput
 [Files]
 Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.md"; Flags: ignoreversion
 Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
-Source: "..\applications\minotari_node\windows\README.md"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\applications\minotari_node\windows\README.md"; DestDir: "{app}"; DestName: "README.txt"; Flags: ignoreversion
-Source: "..\applications\minotari_node\windows\start_all.lnk"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\applications\minotari_node\windows\start_minotari_node.lnk"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\applications\minotari_console_wallet\windows\start_minotari_console_wallet.lnk"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\applications\minotari_miner\windows\start_minotari_miner.lnk"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\applications\minotari_merge_mining_proxy\windows\start_tari_merge_mining_proxy.lnk"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\applications\minotari_merge_mining_proxy\windows\start_xmrig.lnk"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\applications\minotari_node\windows\start_tor.lnk"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#TariSuitePath}\minotari_node.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "{#TariSuitePath}\minotari_console_wallet.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "{#TariSuitePath}\minotari_miner.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "{#TariSuitePath}\minotari_merge_mining_proxy.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "..\applications\minotari_node\windows\runtime\start_all.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "..\applications\minotari_node\windows\runtime\start_tor.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "..\applications\minotari_node\windows\runtime\source_minotari_node_env.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "..\applications\minotari_node\windows\runtime\start_minotari_node.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "..\applications\minotari_console_wallet\windows\runtime\source_minotari_console_wallet_env.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "..\applications\minotari_console_wallet\windows\runtime\start_minotari_console_wallet.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "..\applications\minotari_miner\windows\runtime\source_miner_env.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "..\applications\minotari_miner\windows\runtime\start_minotari_miner.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "..\applications\minotari_merge_mining_proxy\windows\runtime\source_merge_mining_proxy_env.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "..\applications\minotari_merge_mining_proxy\windows\runtime\start_minotari_merge_mining_proxy.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "..\applications\minotari_merge_mining_proxy\windows\runtime\source_xmrig_env.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "..\applications\minotari_merge_mining_proxy\windows\runtime\start_xmrig.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: ".\tari_config_example.toml"; DestDir: "{app}\config"; DestName: "config.toml"; Flags: ignoreversion
-Source: "tari_logo_purple.ico"; DestDir: "{userdocs}\..\temp\tari_icons"; Flags: ignoreversion
-Source: "tor.ico"; DestDir: "{userdocs}\..\temp\tari_icons"; Flags: ignoreversion
-Source: "xmr_logo.ico"; DestDir: "{userdocs}\..\temp\tari_icons"; Flags: ignoreversion
+Source: "..\applications\minotaiji_node\windows\README.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\applications\minotaiji_node\windows\README.md"; DestDir: "{app}"; DestName: "README.txt"; Flags: ignoreversion
+Source: "..\applications\minotaiji_node\windows\start_all.lnk"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\applications\minotaiji_node\windows\start_minotaiji_node.lnk"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\applications\minotaiji_console_wallet\windows\start_minotaiji_console_wallet.lnk"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\applications\minotaiji_miner\windows\start_minotaiji_miner.lnk"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\applications\minotaiji_merge_mining_proxy\windows\start_taiji_merge_mining_proxy.lnk"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\applications\minotaiji_merge_mining_proxy\windows\start_xmrig.lnk"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\applications\minotaiji_node\windows\start_tor.lnk"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#TaijiSuitePath}\minotaiji_node.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "{#TaijiSuitePath}\minotaiji_console_wallet.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "{#TaijiSuitePath}\minotaiji_miner.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "{#TaijiSuitePath}\minotaiji_merge_mining_proxy.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\minotaiji_node\windows\runtime\start_all.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\minotaiji_node\windows\runtime\start_tor.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\minotaiji_node\windows\runtime\source_minotaiji_node_env.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\minotaiji_node\windows\runtime\start_minotaiji_node.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\minotaiji_console_wallet\windows\runtime\source_minotaiji_console_wallet_env.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\minotaiji_console_wallet\windows\runtime\start_minotaiji_console_wallet.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\minotaiji_miner\windows\runtime\source_miner_env.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\minotaiji_miner\windows\runtime\start_minotaiji_miner.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\minotaiji_merge_mining_proxy\windows\runtime\source_merge_mining_proxy_env.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\minotaiji_merge_mining_proxy\windows\runtime\start_minotaiji_merge_mining_proxy.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\minotaiji_merge_mining_proxy\windows\runtime\source_xmrig_env.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "..\applications\minotaiji_merge_mining_proxy\windows\runtime\start_xmrig.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: ".\taiji_config_example.toml"; DestDir: "{app}\config"; DestName: "config.toml"; Flags: ignoreversion
+Source: "taiji_logo_purple.ico"; DestDir: "{userdocs}\..\temp\taiji_icons"; Flags: ignoreversion
+Source: "tor.ico"; DestDir: "{userdocs}\..\temp\taiji_icons"; Flags: ignoreversion
+Source: "xmr_logo.ico"; DestDir: "{userdocs}\..\temp\taiji_icons"; Flags: ignoreversion
 Source: "install_tor_services.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "install_vs2019_redist.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "install_xmrig.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
@@ -144,7 +144,7 @@ Name: "{group}\Start {#MergeMiningName}"; Filename: "{app}\runtime\{#MergeMining
 Name: "{group}\Start {#TorServicesName}"; Filename: "{app}\runtime\{#TorServicesExeName}"; WorkingDir: "{app}"
 Name: "{group}\{#ReadmeName}"; Filename: "{app}\{#ReadmeName}"; WorkingDir: "{app}"
 Name: "{group}\{cm:ProgramOnTheWeb,{#BaseNodeName}}"; Filename: "{#MyAppURL}"
-Name: "{group}\{cm:TariWeb,{#MyAppSupp}}"; Filename: "{#MyAppSuppURL}"
+Name: "{group}\{cm:TaijiWeb,{#MyAppSupp}}"; Filename: "{#MyAppSuppURL}"
 Name: "{group}\{cm:UninstallProgram,{#MyOrgName} - Testnet}"; Filename: "{uninstallexe}"
 Name: "{userdesktop}\{#MyOrgName} {#AllName}"; Filename: "{app}\runtime\{#AllExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
 Name: "{userdesktop}\{#MyOrgName} {#BaseNodeName}"; Filename: "{app}\runtime\{#BaseNodeExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
@@ -172,19 +172,19 @@ Type: files; Name: "{app}\LICENSE.txt"
 Type: files; Name: "{app}\README.md"
 Type: files; Name: "{app}\README.txt"
 Type: files; Name: "{app}\start_all.lnk"
-Type: files; Name: "{app}\start_minotari_node.lnk"
-Type: files; Name: "{app}\start_minotari_console_wallet.lnk"
-Type: files; Name: "{app}\start_minotari_miner.lnk"
-Type: files; Name: "{app}\start_tari_merge_mining_proxy.lnk"
+Type: files; Name: "{app}\start_minotaiji_node.lnk"
+Type: files; Name: "{app}\start_minotaiji_console_wallet.lnk"
+Type: files; Name: "{app}\start_minotaiji_miner.lnk"
+Type: files; Name: "{app}\start_taiji_merge_mining_proxy.lnk"
 Type: files; Name: "{app}\start_xmrig.lnk"
 Type: files; Name: "{app}\start_tor.lnk"
-Type: files; Name: "{userdesktop}\Tari All.lnk"
-Type: files; Name: "{userdesktop}\Tari Base Node.lnk"
-Type: files; Name: "{userdesktop}\Tari Console Wallet.lnk"
-Type: files; Name: "{userdesktop}\Tari Miner.lnk"
-Type: files; Name: "{userdesktop}\Tari Merge Mining Proxy.lnk"
-Type: files; Name: "{userdesktop}\Tari XMRig.lnk"
-Type: files; Name: "{userdesktop}\Tari - Tor Services.lnk"
+Type: files; Name: "{userdesktop}\Taiji All.lnk"
+Type: files; Name: "{userdesktop}\Taiji Base Node.lnk"
+Type: files; Name: "{userdesktop}\Taiji Console Wallet.lnk"
+Type: files; Name: "{userdesktop}\Taiji Miner.lnk"
+Type: files; Name: "{userdesktop}\Taiji Merge Mining Proxy.lnk"
+Type: files; Name: "{userdesktop}\Taiji XMRig.lnk"
+Type: files; Name: "{userdesktop}\Taiji - Tor Services.lnk"
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}\config"

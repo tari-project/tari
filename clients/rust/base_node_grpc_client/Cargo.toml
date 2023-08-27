@@ -1,16 +1,16 @@
 [package]
-name = "minotari_node_grpc_client"
+name = "minotaiji_node_grpc_client"
 version = "0.1.0"
 edition = "2021"
 description = "Base node GRPC client"
-authors = ["The Tari Development Community"]
+authors = ["The Taiji Development Community"]
 repository = "https://github.com/tari-project/tari"
-homepage = "https://tari.com"
+homepage = "https://taiji.com"
 readme = "README.md"
 license = "BSD-3-Clause"
 
 [dependencies]
-minotari_app_grpc = { path = "../../../applications/minotari_app_grpc" }
+minotaiji_app_grpc = { path = "../../../applications/minotaiji_app_grpc" }
 
 #tonic = { version = "0.8", default-features = false, features = ["codegen", "transport", "prost"] }
 #prost = "0.11.0"

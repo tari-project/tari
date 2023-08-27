@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -27,8 +27,8 @@ use std::{
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use integer_encoding::VarIntWriter;
-use tari_common_types::types::{Commitment, FixedHash, PublicKey};
-use tari_script::TariScript;
+use taiji_common_types::types::{Commitment, FixedHash, PublicKey};
+use taiji_script::TaijiScript;
 use tari_utilities::{
     hex::{to_hex, Hex},
     ByteArray,
@@ -57,7 +57,7 @@ pub enum CovenantArg {
     Hash(FixedHash),
     PublicKey(PublicKey),
     Commitment(Commitment),
-    TariScript(TariScript),
+    TaijiScript(TaijiScript),
     Covenant(Covenant),
     OutputType(OutputType),
     Uint(u64),
@@ -87,8 +87,8 @@ impl CovenantArg {
             },
             ARG_COMMITMENT => Ok(CovenantArg::Commitment(Commitment::deserialize(reader)?)),
             ARG_TARI_SCRIPT => {
-                let script = TariScript::deserialize(reader)?;
-                Ok(CovenantArg::TariScript(script))
+                let script = TaijiScript::deserialize(reader)?;
+                Ok(CovenantArg::TaijiScript(script))
             },
             ARG_COVENANT => {
                 let buf = reader.read_variable_length_bytes(MAX_COVENANT_ARG_SIZE)?;
@@ -147,7 +147,7 @@ impl CovenantArg {
                 writer.write_u8_fixed(ARG_COMMITMENT)?;
                 commitment.serialize(writer)?;
             },
-            TariScript(script) => {
+            TaijiScript(script) => {
                 writer.write_u8_fixed(ARG_TARI_SCRIPT)?;
                 script.serialize(writer)?;
             },
@@ -217,7 +217,7 @@ impl CovenantArg {
 
     require_x_impl!(require_commitment, Commitment, "commitment");
 
-    require_x_impl!(require_tariscript, TariScript, "script");
+    require_x_impl!(require_taijiscript, TaijiScript, "script");
 
     require_x_impl!(require_covenant, Covenant, "covenant");
 
@@ -240,7 +240,7 @@ impl Display for CovenantArg {
             Hash(hash) => write!(f, "Hash({})", to_hex(&hash[..])),
             PublicKey(public_key) => write!(f, "PublicKey({})", public_key.to_hex()),
             Commitment(commitment) => write!(f, "Commitment({})", commitment.to_hex()),
-            TariScript(_) => write!(f, "TariScript(...)"),
+            TaijiScript(_) => write!(f, "TaijiScript(...)"),
             Covenant(_) => write!(f, "Covenant(...)"),
             Uint(v) => write!(f, "Uint({})", v),
             OutputField(field) => write!(f, "OutputField({})", field.as_byte()),
@@ -253,8 +253,8 @@ impl Display for CovenantArg {
 
 #[cfg(test)]
 mod test {
-    use tari_common_types::types::Commitment;
-    use tari_script::script;
+    use taiji_common_types::types::Commitment;
+    use taiji_script::script;
     use tari_utilities::hex::from_hex;
 
     use super::*;
@@ -276,7 +276,7 @@ mod test {
             arg.clone().require_commitment().unwrap_err();
             arg.clone().require_outputfields().unwrap_err();
             arg.clone().require_publickey().unwrap_err();
-            arg.require_tariscript().unwrap_err();
+            arg.require_taijiscript().unwrap_err();
         }
     }
 
@@ -317,7 +317,7 @@ mod test {
                 CovenantArg::Hash(FixedHash::zero()),
                 &from_hex("010000000000000000000000000000000000000000000000000000000000000000").unwrap(),
             );
-            test_case(CovenantArg::TariScript(script!(Nop)), &[ARG_TARI_SCRIPT, 0x01, 0x73]);
+            test_case(CovenantArg::TaijiScript(script!(Nop)), &[ARG_TARI_SCRIPT, 0x01, 0x73]);
             test_case(CovenantArg::OutputField(OutputField::Covenant), &[
                 ARG_OUTPUT_FIELD,
                 FIELD_COVENANT,

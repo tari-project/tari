@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -21,11 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use diesel::result::Error as DieselError;
-use tari_common_sqlite::error::SqliteStorageError;
-use tari_comms::connectivity::ConnectivityError;
-use tari_comms_dht::outbound::DhtOutboundError;
-use tari_p2p::services::liveness::error::LivenessError;
-use tari_service_framework::reply_channel::TransportChannelError;
+use taiji_common_sqlite::error::SqliteStorageError;
+use taiji_comms::connectivity::ConnectivityError;
+use taiji_comms_dht::outbound::DhtOutboundError;
+use taiji_p2p::services::liveness::error::LivenessError;
+use taiji_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
 
 use crate::contacts_service::storage::database::DbKey;

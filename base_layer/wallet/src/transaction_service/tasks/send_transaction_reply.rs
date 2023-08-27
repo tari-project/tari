@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2020. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -23,14 +23,14 @@
 use std::{convert::TryInto, time::Duration};
 
 use log::*;
-use tari_common_types::transaction::TxId;
-use tari_comms::types::CommsPublicKey;
-use tari_comms_dht::{
+use taiji_common_types::transaction::TxId;
+use taiji_comms::types::CommsPublicKey;
+use taiji_comms_dht::{
     domain_message::OutboundDomainMessage,
     outbound::{OutboundEncryption, OutboundMessageRequester, SendMessageResponse},
 };
-use tari_core::transactions::transaction_protocol::proto;
-use tari_p2p::tari_message::TariMessageType;
+use taiji_core::transactions::transaction_protocol::proto;
+use taiji_p2p::taiji_message::TaijiMessageType;
 
 use crate::transaction_service::{
     config::TransactionRoutingMechanism,
@@ -98,7 +98,7 @@ pub async fn send_transaction_reply_direct(
     match outbound_message_service
         .send_direct_unencrypted(
             inbound_transaction.source_address.public_key().clone(),
-            OutboundDomainMessage::new(&TariMessageType::ReceiverPartialTransactionReply, proto_message.clone()),
+            OutboundDomainMessage::new(&TaijiMessageType::ReceiverPartialTransactionReply, proto_message.clone()),
             "wallet transaction reply".to_string(),
         )
         .await
@@ -208,7 +208,7 @@ async fn send_transaction_reply_store_and_forward(
             destination_pubkey.clone(),
             OutboundEncryption::encrypt_for(destination_pubkey.clone()),
             vec![],
-            OutboundDomainMessage::new(&TariMessageType::ReceiverPartialTransactionReply, msg),
+            OutboundDomainMessage::new(&TaijiMessageType::ReceiverPartialTransactionReply, msg),
         )
         .await
     {

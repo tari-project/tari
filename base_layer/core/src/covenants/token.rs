@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2021, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -22,8 +22,8 @@
 
 use std::{collections::VecDeque, io, iter::FromIterator};
 
-use tari_common_types::types::{Commitment, FixedHash, PublicKey};
-use tari_script::TariScript;
+use taiji_common_types::types::{Commitment, FixedHash, PublicKey};
+use taiji_script::TaijiScript;
 
 use crate::{
     covenants::{
@@ -182,8 +182,8 @@ impl CovenantToken {
 
     #[allow(dead_code)]
     /// Helper for creating a new instance wrapping an `ScriptFilter`.
-    pub fn script(script: TariScript) -> Self {
-        CovenantArg::TariScript(script).into()
+    pub fn script(script: TaijiScript) -> Self {
+        CovenantArg::TaijiScript(script).into()
     }
 
     #[allow(dead_code)]

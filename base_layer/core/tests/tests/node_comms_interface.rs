@@ -1,4 +1,4 @@
-//  Copyright 2022. The Tari Project
+//  Copyright 2022. The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -22,9 +22,9 @@
 
 use std::convert::TryFrom;
 
-use tari_common::configuration::Network;
-use tari_comms::test_utils::mocks::create_connectivity_mock;
-use tari_core::{
+use taiji_common::configuration::Network;
+use taiji_comms::test_utils::mocks::create_connectivity_mock;
+use taiji_core::{
     base_node::comms_interface::{
         InboundNodeCommsHandlers,
         NodeCommsRequest,
@@ -41,16 +41,16 @@ use tari_core::{
         create_consensus_rules,
     },
     transactions::{
-        tari_amount::MicroMinotari,
+        taiji_amount::MicroMinotaiji,
         test_helpers::{create_test_core_key_manager_with_memory_db, create_utxo, spend_utxos},
         transaction_components::{OutputFeatures, TransactionOutputVersion, WalletOutput},
     },
     txn_schema,
     validation::{mocks::MockValidator, transaction::TransactionChainLinkedValidator},
 };
-use tari_key_manager::key_manager_service::KeyManagerInterface;
-use tari_script::{inputs, script, TariScript};
-use tari_service_framework::reply_channel;
+use taiji_key_manager::key_manager_service::KeyManagerInterface;
+use taiji_script::{inputs, script, TaijiScript};
+use taiji_service_framework::reply_channel;
 use tokio::sync::{broadcast, mpsc};
 
 use crate::helpers::block_builders::append_block;
@@ -192,12 +192,12 @@ async fn inbound_fetch_utxos() {
 
     let key_manager = create_test_core_key_manager_with_memory_db();
     let (utxo_2, _, _) = create_utxo(
-        MicroMinotari(10_000),
+        MicroMinotaiji(10_000),
         &key_manager,
         &Default::default(),
-        &TariScript::default(),
+        &TaijiScript::default(),
         &Covenant::default(),
-        MicroMinotari::zero(),
+        MicroMinotaiji::zero(),
     )
     .await;
     let hash_2 = utxo_2.hash();
@@ -290,7 +290,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         randomx_factory,
     );
     let script = script!(Nop);
-    let amount = MicroMinotari(10_000);
+    let amount = MicroMinotaiji(10_000);
     let output_features = OutputFeatures::default();
     let covenant = Covenant::default();
     let (utxo, spending_key_id, sender_offset_key_id) = create_utxo(
@@ -299,7 +299,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         &output_features,
         &script,
         &covenant,
-        MicroMinotari::zero(),
+        MicroMinotaiji::zero(),
     )
     .await;
     let mut txn = DbTransaction::new();
@@ -334,7 +334,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         utxo.proof,
     );
 
-    let txn = txn_schema!(from: vec![wallet_output], to: vec![MicroMinotari(5_000), MicroMinotari(4_000)]);
+    let txn = txn_schema!(from: vec![wallet_output], to: vec![MicroMinotaiji(5_000), MicroMinotaiji(4_000)]);
     let (txn, _) = spend_utxos(txn, &key_manager).await;
     let block1 = append_block(
         &store,

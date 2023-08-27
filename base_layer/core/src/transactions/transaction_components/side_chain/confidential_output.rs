@@ -1,4 +1,4 @@
-//  Copyright 2023. The Tari Project
+//  Copyright 2023. The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -22,7 +22,7 @@
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::PublicKey;
+use taiji_common_types::types::PublicKey;
 
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq, BorshSerialize, BorshDeserialize)]
 pub struct ConfidentialOutputData {

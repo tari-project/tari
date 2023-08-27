@@ -1,4 +1,4 @@
-//  Copyright 2023, The Tari Project
+//  Copyright 2023, The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -28,12 +28,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common_types::types::PublicKey;
-use tari_key_manager::{
+use taiji_common_types::types::PublicKey;
+use taiji_key_manager::{
     cipher_seed::CipherSeed,
     key_manager_service::storage::database::{KeyManagerBackend, KeyManagerDatabase},
 };
-use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
+use taiji_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 
 use crate::transactions::{key_manager::TransactionKeyManagerWrapper, CryptoFactories};
 

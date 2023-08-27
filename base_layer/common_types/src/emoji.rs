@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2020. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -48,7 +48,7 @@ use crate::{
 /// # Example
 ///
 /// ```
-/// use tari_common_types::emoji::EmojiId;
+/// use taiji_common_types::emoji::EmojiId;
 ///
 /// // Construct an emoji ID from an emoji string (this can fail)
 /// let emoji_string = "🌴🐩🔌📌🚑🌰🎓🌴🐊🐌💕💡🐜📉👛🍵👛🐽🎂🐻🌀🍓😿🐭🐼🏀🎪💔💸🍅🔋🎒👡";

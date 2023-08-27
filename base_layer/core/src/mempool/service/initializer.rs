@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -24,13 +24,13 @@ use std::{convert::TryFrom, sync::Arc};
 
 use futures::{Stream, StreamExt};
 use log::*;
-use tari_comms_dht::Dht;
-use tari_p2p::{
+use taiji_comms_dht::Dht;
+use taiji_p2p::{
     comms_connector::{PeerMessage, SubscriptionFactory},
     domain_message::DomainMessage,
-    tari_message::TariMessageType,
+    taiji_message::TaijiMessageType,
 };
-use tari_service_framework::{
+use taiji_service_framework::{
     async_trait,
     reply_channel,
     ServiceInitializationError,
@@ -76,7 +76,7 @@ impl MempoolServiceInitializer {
     /// Create a stream of 'New Transaction` messages
     fn inbound_transaction_stream(&self) -> impl Stream<Item = DomainMessage<Transaction>> {
         self.inbound_message_subscription_factory
-            .get_subscription(TariMessageType::NewTransaction, SUBSCRIPTION_LABEL)
+            .get_subscription(TaijiMessageType::NewTransaction, SUBSCRIPTION_LABEL)
             .filter_map(extract_transaction)
     }
 }

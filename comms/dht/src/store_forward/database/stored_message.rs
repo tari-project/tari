@@ -1,4 +1,4 @@
-// Copyright 2020, The Tari Project
+// Copyright 2020, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use chrono::NaiveDateTime;
-use tari_comms::message::MessageExt;
+use taiji_comms::message::MessageExt;
 use tari_utilities::{hex, hex::Hex};
 
 use crate::{

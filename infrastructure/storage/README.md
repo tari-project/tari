@@ -1,8 +1,8 @@
-# Tari Storage
+# Taiji Storage
 
-This crate is part of the [Tari Cryptocurrency](https://tari.com) project.
+This crate is part of the [Taiji Cryptocurrency](https://taiji.com) project.
 
-An abstraction layer for persistent key-value storage. The Tari domain layer classes should only make use of these
+An abstraction layer for persistent key-value storage. The Taiji domain layer classes should only make use of these
 traits and objects and let the underlying implementations handle the details.
 
 ##  DataStore
@@ -12,12 +12,12 @@ implementation.
 
 ## LMDB
 
-Currently, Tari supports LMDB for local disk persistence.
+Currently, Taiji supports LMDB for local disk persistence.
 
 Use `LMDBBuilder` to open/create a new database.
 
 ```rust,ignore
-# use tari_storage::lmdb::LMDBBuilder;
+# use taiji_storage::lmdb::LMDBBuilder;
 let mut store = LMDBBuilder::new()
     .set_path("/tmp/")
     .set_mapsize(500)

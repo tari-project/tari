@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2020. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -33,7 +33,7 @@ use diesel::{
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
 use log::*;
 use serde::{Deserialize, Serialize};
-use tari_common_sqlite::sqlite_connection_pool::SqliteConnectionPool;
+use taiji_common_sqlite::sqlite_connection_pool::SqliteConnectionPool;
 
 use crate::storage::error::StorageError;
 
@@ -163,7 +163,7 @@ impl DbConnection {
 #[cfg(test)]
 mod test {
     use diesel::{dsl::sql, sql_types::Integer, RunQueryDsl};
-    use tari_test_utils::random;
+    use taiji_test_utils::random;
 
     use super::*;
 

@@ -23,7 +23,7 @@ del /f "%TEMP%\%tor_zip%" 2>null
 powershell Invoke-WebRequest https://archive.torproject.org/tor-package-archive/torbrowser/%tor_version%/%tor_zip% -outfile "%TEMP%\%tor_zip%"
 rem Install 
 powershell Expand-Archive -Force -LiteralPath "%TEMP%\%tor_zip%" -DestinationPath '%tor_folder%'
-rem Set Tari environment variables
+rem Set Taiji environment variables
 set TARI_TOR_SERVICES_DIR=%tor_folder%\Tor
 setx TARI_TOR_SERVICES_DIR %TARI_TOR_SERVICES_DIR%
 setx /m USERNAME %USERNAME%

@@ -1,4 +1,4 @@
-//   Copyright 2022. The Tari Project
+//   Copyright 2022. The Taiji Project
 //
 //   Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //   following conditions are met:
@@ -22,9 +22,9 @@
 
 use std::{convert::TryInto, str::FromStr, time::Duration};
 
-use minotari_app_grpc::{
+use minotaiji_app_grpc::{
     authentication::ClientAuthenticationInterceptor,
-    tari_rpc::{
+    taiji_rpc::{
         pow_algo::PowAlgos,
         wallet_client::WalletClient,
         Block,
@@ -38,12 +38,12 @@ use minotari_app_grpc::{
         TransactionOutput,
     },
 };
-use minotari_app_utilities::common_cli_args::CommonCliArgs;
-use minotari_miner::{run_miner, Cli};
-use minotari_node_grpc_client::BaseNodeGrpcClient;
-use tari_common::configuration::Network;
-use tari_common_types::grpc_authentication::GrpcAuthentication;
-use tari_core::{
+use minotaiji_app_utilities::common_cli_args::CommonCliArgs;
+use minotaiji_miner::{run_miner, Cli};
+use minotaiji_node_grpc_client::BaseNodeGrpcClient;
+use taiji_common::configuration::Network;
+use taiji_common_types::grpc_authentication::GrpcAuthentication;
+use taiji_core::{
     consensus::ConsensusManager,
     transactions::{
         key_manager::TransactionKeyManagerInterface,
@@ -57,7 +57,7 @@ use tonic::{
     transport::{Channel, Endpoint},
 };
 
-use crate::TariWorld;
+use crate::TaijiWorld;
 
 type BaseNodeClient = BaseNodeGrpcClient<Channel>;
 type WalletGrpcClient = WalletClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>;
@@ -70,7 +70,7 @@ pub struct MinerProcess {
     pub mine_until_height: u64,
 }
 
-pub fn register_miner_process(world: &mut TariWorld, miner_name: String, base_node_name: String, wallet_name: String) {
+pub fn register_miner_process(world: &mut TaijiWorld, miner_name: String, base_node_name: String, wallet_name: String) {
     let miner = MinerProcess {
         name: miner_name.clone(),
         base_node_name,
@@ -84,7 +84,7 @@ pub fn register_miner_process(world: &mut TariWorld, miner_name: String, base_no
 impl MinerProcess {
     pub async fn mine(
         &self,
-        world: &TariWorld,
+        world: &TaijiWorld,
         blocks: Option<u64>,
         miner_min_diff: Option<u64>,
         miner_max_diff: Option<u64>,
@@ -131,7 +131,7 @@ impl MinerProcess {
 }
 
 #[allow(dead_code)]
-pub async fn mine_blocks(world: &mut TariWorld, miner_name: String, num_blocks: u64) {
+pub async fn mine_blocks(world: &mut TaijiWorld, miner_name: String, num_blocks: u64) {
     let mut base_client = create_base_node_client(world, &miner_name).await;
     let mut wallet_client = create_wallet_client(world, &miner_name).await;
 
@@ -159,7 +159,7 @@ pub async fn mine_blocks_without_wallet(
     tokio::time::sleep(Duration::from_secs(5)).await;
 }
 
-async fn create_base_node_client(world: &TariWorld, miner_name: &String) -> BaseNodeClient {
+async fn create_base_node_client(world: &TaijiWorld, miner_name: &String) -> BaseNodeClient {
     let miner = world.miners.get(miner_name).unwrap();
     let base_node_grpc_port = world.base_nodes.get(&miner.base_node_name).unwrap().grpc_port;
     let base_node_grpc_url = format!("http://127.0.0.1:{}", base_node_grpc_port);
@@ -167,7 +167,7 @@ async fn create_base_node_client(world: &TariWorld, miner_name: &String) -> Base
     BaseNodeClient::connect(base_node_grpc_url).await.unwrap()
 }
 
-async fn create_wallet_client(world: &TariWorld, miner_name: &String) -> WalletGrpcClient {
+async fn create_wallet_client(world: &TaijiWorld, miner_name: &String) -> WalletGrpcClient {
     let miner = world.miners.get(miner_name).unwrap();
     let wallet_grpc_port = world.wallets.get(&miner.wallet_name).unwrap().grpc_port;
     let wallet_addr = format!("http://127.0.0.1:{}", wallet_grpc_port);
@@ -366,7 +366,7 @@ fn extract_outputs_and_kernels(coinbase: GetCoinbaseResponse) -> (TransactionOut
     (output, kernel)
 }
 
-pub async fn mine_block_with_coinbase_on_node(world: &mut TariWorld, base_node: String, coinbase_name: String) {
+pub async fn mine_block_with_coinbase_on_node(world: &mut TaijiWorld, base_node: String, coinbase_name: String) {
     let mut client = world
         .base_nodes
         .get(&base_node)

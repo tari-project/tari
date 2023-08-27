@@ -1,4 +1,4 @@
-// Copyright 2021. The Tari Project
+// Copyright 2021. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -26,13 +26,13 @@ use derivative::Derivative;
 use libtor::{LogDestination, LogLevel, TorFlag};
 use log::*;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
-use tari_common::exit_codes::{ExitCode, ExitError};
-use tari_p2p::{TorControlAuthentication, TransportConfig, TransportType};
-use tari_shutdown::ShutdownSignal;
+use taiji_common::exit_codes::{ExitCode, ExitError};
+use taiji_p2p::{TorControlAuthentication, TransportConfig, TransportType};
+use taiji_shutdown::ShutdownSignal;
 use tempfile::{tempdir, NamedTempFile, TempDir, TempPath};
 use tor_hash_passwd::EncryptedKey;
 
-const LOG_TARGET: &str = "tari_libtor";
+const LOG_TARGET: &str = "taiji_libtor";
 
 pub struct TorPassword(Option<String>);
 

@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,9 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! The Minotari base node implementation.
+//! The Minotaiji base node implementation.
 //!
-//! Base nodes are the key pieces of infrastructure that maintain the security and integrity of the Tari
+//! Base nodes are the key pieces of infrastructure that maintain the security and integrity of the Taiji
 //! cryptocurrency. The role of the base node is to provide the following services:
 //! * New transaction validation
 //! * New block validation
@@ -30,7 +30,7 @@
 //! * A gRPC API exposing metrics and data about the blockchain state
 //!
 //! More details about the implementation are presented in
-//! [RFC-0111](https://rfc.tari.com/RFC-0111_BaseNodeArchitecture.html).
+//! [RFC-0111](https://rfc.taiji.com/RFC-0111_BaseNodeArchitecture.html).
 
 #[cfg(feature = "base_node")]
 pub mod chain_metadata_service;

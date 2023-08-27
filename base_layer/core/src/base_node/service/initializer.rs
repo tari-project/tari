@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -24,15 +24,15 @@ use std::{convert::TryFrom, sync::Arc, time::Duration};
 
 use futures::{future, Stream, StreamExt};
 use log::*;
-use tari_comms::connectivity::ConnectivityRequester;
-use tari_comms_dht::Dht;
-use tari_p2p::{
+use taiji_comms::connectivity::ConnectivityRequester;
+use taiji_comms_dht::Dht;
+use taiji_p2p::{
     comms_connector::{PeerMessage, SubscriptionFactory},
     domain_message::DomainMessage,
     services::utils::{map_decode, ok_or_skip_result},
-    tari_message::TariMessageType,
+    taiji_message::TaijiMessageType,
 };
-use tari_service_framework::{
+use taiji_service_framework::{
     async_trait,
     reply_channel,
     ServiceInitializationError,
@@ -94,7 +94,7 @@ where T: BlockchainBackend
     /// Get a stream for inbound Base Node request messages
     fn inbound_request_stream(&self) -> impl Stream<Item = DomainMessage<proto::BaseNodeServiceRequest>> {
         self.inbound_message_subscription_factory
-            .get_subscription(TariMessageType::BaseNodeRequest, SUBSCRIPTION_LABEL)
+            .get_subscription(TaijiMessageType::BaseNodeRequest, SUBSCRIPTION_LABEL)
             .map(map_decode::<proto::BaseNodeServiceRequest>)
             .filter_map(ok_or_skip_result)
     }
@@ -102,7 +102,7 @@ where T: BlockchainBackend
     /// Get a stream for inbound Base Node response messages
     fn inbound_response_stream(&self) -> impl Stream<Item = DomainMessage<proto::BaseNodeServiceResponse>> {
         self.inbound_message_subscription_factory
-            .get_subscription(TariMessageType::BaseNodeResponse, SUBSCRIPTION_LABEL)
+            .get_subscription(TaijiMessageType::BaseNodeResponse, SUBSCRIPTION_LABEL)
             .map(map_decode::<proto::BaseNodeServiceResponse>)
             .filter_map(ok_or_skip_result)
     }
@@ -110,7 +110,7 @@ where T: BlockchainBackend
     /// Create a stream of 'New Block` messages
     fn inbound_block_stream(&self) -> impl Stream<Item = DomainMessage<NewBlock>> {
         self.inbound_message_subscription_factory
-            .get_subscription(TariMessageType::NewBlock, SUBSCRIPTION_LABEL)
+            .get_subscription(TaijiMessageType::NewBlock, SUBSCRIPTION_LABEL)
             .filter_map(extract_block)
     }
 }

@@ -1,4 +1,4 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 //! An ergonomic, multithreaded API for an LMDB datastore
@@ -102,7 +102,7 @@ impl Default for LMDBConfig {
 /// Create a new LMDB database of 64MB in the `db` directory with two named databases: "db1" and "db2"
 ///
 /// ```
-/// # use tari_storage::lmdb_store::{LMDBBuilder, LMDBConfig};
+/// # use taiji_storage::lmdb_store::{LMDBBuilder, LMDBConfig};
 /// # use lmdb_zero::db;
 /// # use std::env;
 /// let mut store = LMDBBuilder::new()

@@ -2,11 +2,11 @@
 
 ## Introduction
 
-Tari's releasing philosophy is heavily influenced by Rust's own release process.¹
+Taiji's releasing philosophy is heavily influenced by Rust's own release process.¹
 
 With our own process we hope to achieve a structured release cycle that is consistent, and dependable. For both users of the protocol, and developers of the protocol to have understandable expectations about when and how releases will happen. And what can be expected within each release.
 
-Predominantly the team at Tari uses the Gitflow² branching model for work on the protocol. We won't linger long over the description of this flow unless necessary, but you should consider yourself acquainted with the process before continuing on. 
+Predominantly the team at Taiji uses the Gitflow² branching model for work on the protocol. We won't linger long over the description of this flow unless necessary, but you should consider yourself acquainted with the process before continuing on. 
 
 ## Channels
 
@@ -18,12 +18,12 @@ We run a series of networks for different purposes but each network will have co
 
 ### Networks
 
-- MainNet: The big shebang, the head honcho, the real deal. This is the Tari protocol at work.
+- MainNet: The big shebang, the head honcho, the real deal. This is the Taiji protocol at work.
 - StageNet: A stable network as similar as possible to MainNet available for testing.
 - NextNet: The next release of the network. This should become available 8 weeks prior to going live on MainNet.
 - TestNet(s): Our named test networks used for development. Where we can play a little fast and loose with features where, although we try to avoid it- the networks may see breakages and resets more frequently.
   - Example networks (non-exhaustive):
-    - `Esme`: Has been our stable-er testnet prior to StageNet. It sees new features and enhancements as they come out, and supports our mobile wallets Tari Aurora on iOS and Android.
+    - `Esme`: Has been our stable-er testnet prior to StageNet. It sees new features and enhancements as they come out, and supports our mobile wallets Taiji Aurora on iOS and Android.
     - `Igor`: Is used in the development of the DAN Layer and sees frequent resets to help support the rapid pace of the development team.
 
 ## Releases
@@ -50,7 +50,7 @@ Example: `v1.55.2-rc.7`
 ### Development releases
 
 A developer created a new feature which was added behind a feature gate. They merged it into the `development` environment and want to test it on the `Esme` test network. To do this, they created a temporary branch named `testnet-1.55-pre.5` and made any necessary changes such as upgrading the version. Once complete, they tagged the version as `v1.55.0-pre.5`. The branch can be merged back into development, and then deleted.
-By tagging this new version, it will prompt the release CI to compile Tari applications with the `TARI_NETWORK=esme` flag enabled, which allows all development feature gates to be utilized.
+By tagging this new version, it will prompt the release CI to compile Taiji applications with the `TARI_NETWORK=esme` flag enabled, which allows all development feature gates to be utilized.
 
 Developers can perform this process as often and as many times as they want.
 

@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2020. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -22,8 +22,8 @@
 
 use std::{fmt, fmt::Formatter, sync::Arc, time::Duration};
 
-use tari_common_types::{chain_metadata::ChainMetadata, types::BlockHash};
-use tari_service_framework::reply_channel::SenderService;
+use taiji_common_types::{chain_metadata::ChainMetadata, types::BlockHash};
+use taiji_service_framework::reply_channel::SenderService;
 use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;
 use tower::Service;

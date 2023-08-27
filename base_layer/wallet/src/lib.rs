@@ -1,4 +1,4 @@
-// Copyright 2022 The Tari Project
+// Copyright 2022 The Taiji Project
 // SPDX-License-Identifier: BSD-3-Clause
 
 #![recursion_limit = "2048"]
@@ -19,7 +19,7 @@ pub mod test_utils;
 pub mod transaction_service;
 pub mod types;
 
-pub use tari_common_types::types::WalletHasher;
+pub use taiji_common_types::types::WalletHasher;
 pub mod util;
 pub mod wallet;
 
@@ -34,9 +34,9 @@ mod config;
 pub mod schema;
 pub mod utxo_scanner_service;
 pub use config::{TransactionStage, WalletConfig};
-use tari_contacts::contacts_service::storage::sqlite_db::ContactsServiceSqliteDatabase;
-use tari_core::transactions::key_manager::TransactionKeyManagerWrapper;
-use tari_key_manager::key_manager_service::storage::sqlite_db::KeyManagerSqliteDatabase;
+use taiji_contacts::contacts_service::storage::sqlite_db::ContactsServiceSqliteDatabase;
+use taiji_core::transactions::key_manager::TransactionKeyManagerWrapper;
+use taiji_key_manager::key_manager_service::storage::sqlite_db::KeyManagerSqliteDatabase;
 pub use wallet::Wallet;
 
 use crate::{

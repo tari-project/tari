@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -33,7 +33,7 @@ use crate::{
     },
 };
 
-/// SingleReceiverTransactionProtocol represents the actions taken by the single receiver in the one-round Tari
+/// SingleReceiverTransactionProtocol represents the actions taken by the single receiver in the one-round Taiji
 /// transaction protocol. The procedure is straightforward. Upon receiving the sender's information, the receiver:
 /// * Checks the input for validity
 /// * Constructs his output, range proof and partial signature
@@ -106,7 +106,7 @@ impl SingleReceiverTransactionProtocol {
     ) -> Result<(), TPE> {
         // validate amount
         if sender_info.amount == 0.into() {
-            return Err(TPE::ValidationError("Cannot send zero micro Minotari".into()));
+            return Err(TPE::ValidationError("Cannot send zero micro Minotaiji".into()));
         }
 
         // validate kernel version
@@ -140,17 +140,17 @@ impl SingleReceiverTransactionProtocol {
 
 #[cfg(test)]
 mod test {
-    use tari_common_types::types::PublicKey;
+    use taiji_common_types::types::PublicKey;
     use tari_crypto::{keys::PublicKey as PublicKeyTrait, signatures::CommitmentAndPublicKeySignature};
-    use tari_key_manager::key_manager_service::KeyManagerInterface;
-    use tari_script::{script, ExecutionStack, TariScript};
+    use taiji_key_manager::key_manager_service::KeyManagerInterface;
+    use taiji_script::{script, ExecutionStack, TaijiScript};
 
     use crate::{
         covenants::Covenant,
         test_helpers::create_consensus_constants,
         transactions::{
             key_manager::TransactionKeyManagerInterface,
-            tari_amount::*,
+            taiji_amount::*,
             test_helpers::{create_test_core_key_manager_with_memory_db, TestParams},
             transaction_components::{
                 EncryptedData,
@@ -177,7 +177,7 @@ mod test {
         let consensus_constants = create_consensus_constants(0);
         let info = SingleRoundSenderData::default();
         let bob_output = WalletOutput::new_current_version(
-            MicroMinotari(5000),
+            MicroMinotaiji(5000),
             test_params.spend_key_id,
             OutputFeatures::default(),
             script!(Nop),
@@ -197,7 +197,7 @@ mod test {
         #[allow(clippy::match_wild_err_arm)]
         match SingleReceiverTransactionProtocol::create(&info, bob_output, &key_manager, &consensus_constants).await {
             Ok(_) => panic!("Zero amounts should fail"),
-            Err(TransactionProtocolError::ValidationError(s)) => assert_eq!(s, "Cannot send zero micro Minotari"),
+            Err(TransactionProtocolError::ValidationError(s)) => assert_eq!(s, "Cannot send zero micro Minotaiji"),
             Err(_) => panic!("Protocol fails for the wrong reason"),
         };
     }
@@ -211,13 +211,13 @@ mod test {
         // let's use a sender's output version (V1) outside of the allowed range used by the receiver (V0..V0 by
         // default)
         let info = SingleRoundSenderData {
-            amount: MicroMinotari(5000),
+            amount: MicroMinotaiji(5000),
             output_version: TransactionOutputVersion::V1,
             ..Default::default()
         };
 
         let bob_output = WalletOutput::new_current_version(
-            MicroMinotari(5000),
+            MicroMinotaiji(5000),
             test_params.spend_key_id,
             OutputFeatures::default(),
             script!(Nop),
@@ -247,15 +247,15 @@ mod test {
     #[tokio::test]
     async fn valid_request() {
         let key_manager: crate::transactions::key_manager::TransactionKeyManagerWrapper<
-            tari_key_manager::key_manager_service::storage::sqlite_db::KeyManagerSqliteDatabase<
-                tari_common_sqlite::connection::DbConnection,
+            taiji_key_manager::key_manager_service::storage::sqlite_db::KeyManagerSqliteDatabase<
+                taiji_common_sqlite::connection::DbConnection,
             >,
         > = create_test_core_key_manager_with_memory_db();
         let consensus_constants = create_consensus_constants(0);
-        let m = TransactionMetadata::new(MicroMinotari(100), 0);
+        let m = TransactionMetadata::new(MicroMinotaiji(100), 0);
         let test_params = TestParams::new(&key_manager).await;
         let test_params2 = TestParams::new(&key_manager).await;
-        let script = TariScript::default();
+        let script = TaijiScript::default();
         let sender_offset_public_key = key_manager
             .get_public_key_at_key_id(&test_params.sender_offset_key_id)
             .await
@@ -274,7 +274,7 @@ mod test {
             .unwrap();
         let info = SingleRoundSenderData {
             tx_id: 500u64.into(),
-            amount: MicroMinotari(1500),
+            amount: MicroMinotaiji(1500),
             public_excess: pub_xs.clone(),
             public_nonce: pub_rs.clone(),
             metadata: m.clone(),
@@ -284,7 +284,7 @@ mod test {
             sender_offset_public_key,
             ephemeral_public_nonce: ephemeral_public_nonce.clone(),
             covenant: Default::default(),
-            minimum_value_promise: MicroMinotari::zero(),
+            minimum_value_promise: MicroMinotaiji::zero(),
             output_version: TransactionOutputVersion::get_current_version(),
             kernel_version: TransactionKernelVersion::get_current_version(),
         };
@@ -293,7 +293,7 @@ mod test {
             .await
             .unwrap();
         let mut bob_output = WalletOutput::new_current_version(
-            MicroMinotari(1500),
+            MicroMinotaiji(1500),
             test_params2.spend_key_id.clone(),
             OutputFeatures::default(),
             script.clone(),

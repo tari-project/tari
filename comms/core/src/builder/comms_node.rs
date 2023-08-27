@@ -1,4 +1,4 @@
-// Copyright 2020, The Tari Project
+// Copyright 2020, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -24,7 +24,7 @@ use std::{iter, sync::Arc, time::Duration};
 
 use log::*;
 use multiaddr::{multiaddr, Protocol};
-use tari_shutdown::ShutdownSignal;
+use taiji_shutdown::ShutdownSignal;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     sync::{broadcast, mpsc, watch},
@@ -76,11 +76,11 @@ pub struct UnspawnedCommsNode {
 }
 
 impl UnspawnedCommsNode {
-    /// Add an RPC server/router in this instance of Tari comms.
+    /// Add an RPC server/router in this instance of Taiji comms.
     ///
     /// ```compile_fail
-    /// # use tari_comms::CommsBuilder;
-    /// # use tari_comms::protocol::rpc::RpcServer;
+    /// # use taiji_comms::CommsBuilder;
+    /// # use taiji_comms::protocol::rpc::RpcServer;
     /// let server = RpcServer::new().add_service(MyService).add_service(AnotherService);
     /// CommsBuilder::new().add_rpc_service(server).build();
     /// ```
@@ -99,7 +99,7 @@ impl UnspawnedCommsNode {
     }
 
     /// Adds an implementation of [ProtocolExtension](crate::protocol::ProtocolExtension) to this node.
-    /// This is used to add custom protocols to Tari comms.
+    /// This is used to add custom protocols to Taiji comms.
     pub fn add_protocol_extension<T: ProtocolExtension + 'static>(mut self, extension: T) -> Self {
         self.protocol_extensions.add(extension);
         self
@@ -302,7 +302,7 @@ impl UnspawnedCommsNode {
 
 /// CommsNode is a handle to a comms node.
 ///
-/// It allows communication with the internals of tari_comms.
+/// It allows communication with the internals of taiji_comms.
 #[derive(Clone)]
 pub struct CommsNode {
     /// The `ShutdownSignal` for this node. Use `wait_until_shutdown` to asynchronously block until the

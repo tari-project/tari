@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -22,7 +22,7 @@
 
 use std::{fmt, fmt::Display};
 
-use tari_comms::{message::MessageTag, peer_manager::NodeId, types::CommsPublicKey};
+use taiji_comms::{message::MessageTag, peer_manager::NodeId, types::CommsPublicKey};
 
 use crate::{
     broadcast_strategy::{BroadcastClosestRequest, BroadcastStrategy},
@@ -34,8 +34,8 @@ use crate::{
 /// Configuration for outbound messages.
 ///
 /// ```edition2018
-/// # use tari_comms_dht::outbound::{SendMessageParams, OutboundEncryption};
-/// use tari_comms::types::CommsPublicKey;
+/// # use taiji_comms_dht::outbound::{SendMessageParams, OutboundEncryption};
+/// use taiji_comms::types::CommsPublicKey;
 ///
 /// // These params represent sending to 5 random peers. The message will be able to be decrypted by
 /// // the peer with the corresponding secret key of `dest_public_key`.

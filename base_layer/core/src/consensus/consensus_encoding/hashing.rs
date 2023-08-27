@@ -1,4 +1,4 @@
-//  Copyright 2022. The Tari Project
+//  Copyright 2022. The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -76,7 +76,7 @@ impl Default for ConsensusHasher<Blake2b<U32>> {
     fn default() -> Self {
         hash_domain!(
             DefaultConsensusHashDomain,
-            "com.tari.base_layer.core.consensus.consensus_encoding.hashing",
+            "com.taiji.base_layer.core.consensus.consensus_encoding.hashing",
             0
         );
         DomainSeparatedConsensusHasher::<DefaultConsensusHashDomain>::new("default")
@@ -104,11 +104,11 @@ mod tests {
     use blake2::Blake2b;
     use digest::consts::U32;
     use tari_crypto::hash_domain;
-    use tari_script::script;
+    use taiji_script::script;
 
     use super::*;
 
-    hash_domain!(TestHashDomain, "com.tari.test.test_hash", 0);
+    hash_domain!(TestHashDomain, "com.taiji.test.test_hash", 0);
 
     #[test]
     fn it_hashes_using_the_domain_hasher() {
@@ -125,7 +125,7 @@ mod tests {
 
     #[test]
     fn it_adds_to_hash_challenge_in_complete_chunks() {
-        // Script is chosen because the consensus encoding impl for TariScript has 2 writes
+        // Script is chosen because the consensus encoding impl for TaijiScript has 2 writes
         let test_subject = script!(Nop);
         let mut hasher = Blake2b::<U32>::default();
         TestHashDomain::add_domain_separation_tag(&mut hasher, "foo");

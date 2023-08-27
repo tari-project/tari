@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -24,7 +24,7 @@ use std::{fmt, sync::Arc};
 
 use log::*;
 use multiaddr::Multiaddr;
-use tari_shutdown::{Shutdown, ShutdownSignal};
+use taiji_shutdown::{Shutdown, ShutdownSignal};
 use time::Duration;
 use tokio::{
     io::{AsyncRead, AsyncWrite},

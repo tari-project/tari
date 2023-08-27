@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2019. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -21,14 +21,14 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use tari_common::configuration::Network;
-use tari_core::{
+use taiji_common::configuration::Network;
+use taiji_core::{
     blocks::ChainBlock,
     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, Validators},
     consensus::{ConsensusConstants, ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder},
     test_helpers::blockchain::{create_store_with_consensus, TempDatabase},
     transactions::{
-        tari_amount::{uT, T},
+        taiji_amount::{uT, T},
         test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager},
         transaction_components::WalletOutput,
     },

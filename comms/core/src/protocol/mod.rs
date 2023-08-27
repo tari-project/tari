@@ -1,4 +1,4 @@
-// Copyright 2020, The Tari Project
+// Copyright 2020, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -43,6 +43,6 @@ pub mod rpc;
 
 pub mod messaging;
 
-/// Represents a protocol id string (e.g. /tari/transactions/1.0.0).
+/// Represents a protocol id string (e.g. /taiji/transactions/1.0.0).
 /// This is atomically reference counted, so clones are shallow and cheap
 pub type ProtocolId = bytes::Bytes;

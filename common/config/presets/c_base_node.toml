@@ -5,8 +5,8 @@
 #                                                                                                                      #
 ########################################################################################################################
 
-# If you are not running a Minotari Base node, you can simply leave everything in this section commented out. Base nodes
-# help maintain the security of the Minotari token and are the surest way to preserve your privacy and be 100% sure that
+# If you are not running a Minotaiji Base node, you can simply leave everything in this section commented out. Base nodes
+# help maintain the security of the Minotaiji token and are the surest way to preserve your privacy and be 100% sure that
 # no-one is cheating you out of your money.
 
 [dibbler.base_node]
@@ -150,7 +150,7 @@ track_reorgs = true
 # automatically configured
 #public_addresses = ["/ip4/172.2.3.4/tcp/18189",]
 
-# Optionally bind an additional TCP socket for inbound Tari P2P protocol commms.
+# Optionally bind an additional TCP socket for inbound Taiji P2P protocol commms.
 # Use cases include:
 # - allowing wallets to locally connect to their base node, rather than through tor, when used in conjunction with
 #   `tor_proxy_bypass_addresses`
@@ -191,7 +191,7 @@ listener_liveness_check_interval = 15
 
 [base_node.p2p.transport]
 # -------------- Transport configuration --------------
-# Use TCP to connect to the Tari network. This transport can only communicate with TCP/IP addresses, so peers with
+# Use TCP to connect to the Taiji network. This transport can only communicate with TCP/IP addresses, so peers with
 # e.g. tor onion addresses will not be contactable. (default = "tor")
 #type = "tor"
 

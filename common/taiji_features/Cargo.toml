@@ -1,0 +1,16 @@
+[package]
+name = "taiji_features"
+description = "Compilable features for Taiji applications"
+authors = ["The Taiji Development Community"]
+repository = "https://github.com/tari-project/tari"
+homepage = "https://taiji.com"
+readme = "README.md"
+license = "BSD-3-Clause"
+version = "0.52.0-pre.0"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+# So you're thinking about adding a dependency here?
+# This crate is utilized in the compilation of _most_ of our other crates. You're probably about
+# to create a cyclic depedency. Please think hard whether this change is actually required.

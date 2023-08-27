@@ -1,4 +1,4 @@
-//  Copyright 2022. The Tari Project
+//  Copyright 2022. The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -23,9 +23,9 @@
 use std::{sync::Arc, time::Duration};
 
 use randomx_rs::RandomXFlag;
-use tari_common::configuration::Network;
-use tari_comms::{connectivity::ConnectivityEvent, protocol::messaging::MessagingEvent};
-use tari_core::{
+use taiji_common::configuration::Network;
+use taiji_comms::{connectivity::ConnectivityEvent, protocol::messaging::MessagingEvent};
+use taiji_core::{
     base_node::{
         comms_interface::BlockEvent,
         state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
@@ -35,7 +35,7 @@ use tari_core::{
     mempool::TxStorageResponse,
     proof_of_work::{randomx_factory::RandomXFactory, Difficulty, PowAlgorithm},
     transactions::{
-        tari_amount::{uT, T},
+        taiji_amount::{uT, T},
         test_helpers::{create_test_core_key_manager_with_memory_db, schema_to_transaction, spend_utxos},
         transaction_components::OutputFeatures,
         CryptoFactories,
@@ -48,7 +48,7 @@ use tari_core::{
         DifficultyCalculator,
     },
 };
-use tari_test_utils::unpack_enum;
+use taiji_test_utils::unpack_enum;
 use tempfile::tempdir;
 
 use crate::{

@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2019, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -25,7 +25,7 @@ use std::{convert::TryInto, sync::Arc, task::Poll};
 use futures::{future::BoxFuture, task::Context};
 use log::*;
 use prost::Message;
-use tari_comms::{message::InboundMessage, pipeline::PipelineError, OrNotFound, PeerManager};
+use taiji_comms::{message::InboundMessage, pipeline::PipelineError, OrNotFound, PeerManager};
 use tower::{layer::Layer, Service, ServiceExt};
 
 use crate::{inbound::DhtInboundMessage, proto::envelope::DhtEnvelope};
@@ -131,7 +131,7 @@ impl<S> Layer<S> for DeserializeLayer {
 
 #[cfg(test)]
 mod test {
-    use tari_comms::message::{MessageExt, MessageTag};
+    use taiji_comms::message::{MessageExt, MessageTag};
 
     use super::*;
     use crate::{

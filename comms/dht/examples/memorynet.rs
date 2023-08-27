@@ -1,4 +1,4 @@
-// Copyright 2020, The Tari Project
+// Copyright 2020, The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -41,7 +41,7 @@ use std::{iter::repeat_with, time::Duration};
 
 use futures::future;
 use rand::{rngs::OsRng, Rng};
-use tari_comms::peer_manager::PeerFeatures;
+use taiji_comms::peer_manager::PeerFeatures;
 use tokio::sync::mpsc;
 
 use crate::memory_net::utilities::{

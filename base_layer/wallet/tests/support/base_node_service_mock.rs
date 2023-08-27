@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2020. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -21,15 +21,15 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use futures::StreamExt;
-use minotari_wallet::base_node_service::{
+use minotaiji_wallet::base_node_service::{
     error::BaseNodeServiceError,
     handle::{BaseNodeServiceRequest, BaseNodeServiceResponse},
     service::BaseNodeState,
 };
-use tari_common_types::{chain_metadata::ChainMetadata, types::FixedHash};
-use tari_comms::peer_manager::Peer;
-use tari_service_framework::reply_channel::Receiver;
-use tari_shutdown::ShutdownSignal;
+use taiji_common_types::{chain_metadata::ChainMetadata, types::FixedHash};
+use taiji_comms::peer_manager::Peer;
+use taiji_service_framework::reply_channel::Receiver;
+use taiji_shutdown::ShutdownSignal;
 
 pub struct MockBaseNodeService {
     request_stream: Option<Receiver<BaseNodeServiceRequest, Result<BaseNodeServiceResponse, BaseNodeServiceError>>>,

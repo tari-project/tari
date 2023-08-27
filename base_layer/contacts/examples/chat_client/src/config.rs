@@ -1,4 +1,4 @@
-//  Copyright 2023. The Tari Project
+//  Copyright 2023. The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -27,17 +27,17 @@ use std::{
 };
 
 use config::Config;
-use minotari_app_utilities::consts;
+use minotaiji_app_utilities::consts;
 use serde::{Deserialize, Serialize};
-use tari_common::{
+use taiji_common::{
     configuration::{serializers, CommonConfig, Network, StringList},
     ConfigurationError,
     DefaultConfigLoader,
     SubConfigPath,
 };
-use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig, NetworkDiscoveryConfig};
-use tari_p2p::{P2pConfig, PeerSeedsConfig, TcpTransportConfig, TransportConfig};
-use tari_storage::lmdb_store::LMDBConfig;
+use taiji_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig, NetworkDiscoveryConfig};
+use taiji_p2p::{P2pConfig, PeerSeedsConfig, TcpTransportConfig, TransportConfig};
+use taiji_storage::lmdb_store::LMDBConfig;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ApplicationConfig {
@@ -99,7 +99,7 @@ impl Default for ChatClientConfig {
     fn default() -> Self {
         let p2p = P2pConfig {
             datastore_path: PathBuf::from("peer_db/chat_client"),
-            user_agent: format!("tari/chat_client/{}", consts::APP_VERSION_NUMBER),
+            user_agent: format!("taiji/chat_client/{}", consts::APP_VERSION_NUMBER),
             dht: DhtConfig {
                 database_url: DbConnectionUrl::file("data/chat_client/dht.sqlite"),
                 ..Default::default()
@@ -162,7 +162,7 @@ impl ChatClientConfig {
             network: Network::LocalNet,
             p2p: P2pConfig {
                 datastore_path: PathBuf::from("peer_db/chat_client"),
-                user_agent: format!("tari/chat_client/{}", consts::APP_VERSION_NUMBER),
+                user_agent: format!("taiji/chat_client/{}", consts::APP_VERSION_NUMBER),
                 dht: DhtConfig {
                     database_url: DbConnectionUrl::file("data/chat_client/dht.sqlite"),
                     network_discovery: NetworkDiscoveryConfig {

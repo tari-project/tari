@@ -1,4 +1,4 @@
-// Copyright 2018 The Tari Project
+// Copyright 2018 The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -30,14 +30,14 @@ use std::{
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{Commitment, FixedHash, PublicKey, Signature};
+use taiji_common_types::types::{Commitment, FixedHash, PublicKey, Signature};
 use tari_utilities::{hex::Hex, message_format::MessageFormat};
 
 use super::TransactionKernelVersion;
 use crate::{
     consensus::DomainSeparatedConsensusHasher,
     transactions::{
-        tari_amount::MicroMinotari,
+        taiji_amount::MicroMinotaiji,
         transaction_components::{KernelFeatures, TransactionError},
         transaction_protocol::TransactionMetadata,
         TransactionHashDomain,
@@ -46,7 +46,7 @@ use crate::{
 
 /// The transaction kernel tracks the excess for a given transaction. For an explanation of what the excess is, and
 /// why it is necessary, refer to the
-/// [Mimblewimble TLU post](https://tlu.tarilabs.com/protocols/mimblewimble-1/sources/PITCHME.link.html?highlight=mimblewimble#mimblewimble).
+/// [Mimblewimble TLU post](https://tlu.taijilabs.com/protocols/mimblewimble-1/sources/PITCHME.link.html?highlight=mimblewimble#mimblewimble).
 /// The kernel also tracks other transaction metadata, such as the lock height for the transaction (i.e. the earliest
 /// this transaction can be mined) and the transaction fee, in cleartext.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -55,7 +55,7 @@ pub struct TransactionKernel {
     /// Options for a kernel's structure or use
     pub features: KernelFeatures,
     /// Fee originally included in the transaction this proof is for.
-    pub fee: MicroMinotari,
+    pub fee: MicroMinotaiji,
     /// This kernel is not valid earlier than lock_height blocks
     /// The max lock_height of all *inputs* to this transaction
     pub lock_height: u64,
@@ -73,7 +73,7 @@ impl TransactionKernel {
     pub fn new(
         version: TransactionKernelVersion,
         features: KernelFeatures,
-        fee: MicroMinotari,
+        fee: MicroMinotaiji,
         lock_height: u64,
         excess: Commitment,
         excess_sig: Signature,
@@ -100,7 +100,7 @@ impl TransactionKernel {
 
     pub fn new_current_version(
         features: KernelFeatures,
-        fee: MicroMinotari,
+        fee: MicroMinotaiji,
         lock_height: u64,
         excess: Commitment,
         excess_sig: Signature,
@@ -185,7 +185,7 @@ impl TransactionKernel {
         version: &TransactionKernelVersion,
         sum_public_nonces: &PublicKey,
         total_excess: &PublicKey,
-        fee: MicroMinotari,
+        fee: MicroMinotaiji,
         lock_height: u64,
         features: &KernelFeatures,
         burn_commitment: &Option<Commitment>,
@@ -217,7 +217,7 @@ impl TransactionKernel {
     /// outside of the signing keys and nonces.
     pub fn build_kernel_signature_message(
         version: &TransactionKernelVersion,
-        fee: MicroMinotari,
+        fee: MicroMinotaiji,
         lock_height: u64,
         features: &KernelFeatures,
         burn_commitment: &Option<Commitment>,

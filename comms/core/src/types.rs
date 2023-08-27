@@ -1,4 +1,4 @@
-//  Copyright 2019 The Tari Project
+//  Copyright 2019 The Taiji Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! Common Tari comms types
+//! Common Taiji comms types
 
 use blake2::Blake2b;
 use digest::consts::U32;
@@ -31,11 +31,11 @@ use tari_crypto::{
     ristretto::RistrettoPublicKey,
     signatures::SchnorrSignature,
 };
-use tari_storage::lmdb_store::LMDBStore;
+use taiji_storage::lmdb_store::LMDBStore;
 #[cfg(test)]
-use tari_storage::HashmapDatabase;
+use taiji_storage::HashmapDatabase;
 #[cfg(not(test))]
-use tari_storage::LMDBWrapper;
+use taiji_storage::LMDBWrapper;
 
 use crate::peer_manager::{Peer, PeerId};
 
@@ -62,4 +62,4 @@ pub type CommsDatabase = LMDBWrapper<PeerId, Peer>;
 #[cfg(test)]
 pub type CommsDatabase = HashmapDatabase<PeerId, Peer>;
 
-hash_domain!(CommsCoreHashDomain, "com.tari.comms.core", 0);
+hash_domain!(CommsCoreHashDomain, "com.taiji.comms.core", 0);

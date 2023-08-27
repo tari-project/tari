@@ -1,19 +1,19 @@
 [package]
-name = "tari_chat_ffi"
-authors = ["The Tari Development Community"]
-description = "Tari cryptocurrency chat C FFI bindings"
+name = "taiji_chat_ffi"
+authors = ["The Taiji Development Community"]
+description = "Taiji cryptocurrency chat C FFI bindings"
 license = "BSD-3-Clause"
 version = "0.52.0-pre.0"
 edition = "2018"
 
 [dependencies]
-minotari_app_utilities = { path = "../../applications/minotari_app_utilities" }
-tari_chat_client = { path = "../contacts/examples/chat_client" }
-tari_common = { path = "../../common" }
-tari_common_types = { path = "../common_types" }
-tari_comms = { path = "../../comms/core" }
-tari_contacts = { path = "../contacts" }
-tari_shutdown = { path = "../../infrastructure/shutdown" }
+minotaiji_app_utilities = { path = "../../applications/minotaiji_app_utilities" }
+taiji_chat_client = { path = "../contacts/examples/chat_client" }
+taiji_common = { path = "../../common" }
+taiji_common_types = { path = "../common_types" }
+taiji_comms = { path = "../../comms/core" }
+taiji_contacts = { path = "../contacts" }
+taiji_shutdown = { path = "../../infrastructure/shutdown" }
 
 libc = "0.2.65"
 log = "0.4.6"
@@ -29,4 +29,4 @@ crate-type = ["staticlib","cdylib"]
 
 [build-dependencies]
 cbindgen = "0.24.3"
-tari_common = { path = "../../common", features = ["build", "static-application-info"] }
+taiji_common = { path = "../../common", features = ["build", "static-application-info"] }

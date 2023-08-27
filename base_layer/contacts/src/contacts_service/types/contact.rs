@@ -1,4 +1,4 @@
-// Copyright 2023. The Tari Project
+// Copyright 2023. The Taiji Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -21,13 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use chrono::NaiveDateTime;
-use tari_common_types::tari_address::TariAddress;
-use tari_comms::peer_manager::NodeId;
+use taiji_common_types::taiji_address::TaijiAddress;
+use taiji_comms::peer_manager::NodeId;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Contact {
     pub alias: String,
-    pub address: TariAddress,
+    pub address: TaijiAddress,
     pub node_id: NodeId,
     pub last_seen: Option<NaiveDateTime>,
     pub latency: Option<u32>,
@@ -37,7 +37,7 @@ pub struct Contact {
 impl Contact {
     pub fn new(
         alias: String,
-        address: TariAddress,
+        address: TaijiAddress,
         last_seen: Option<NaiveDateTime>,
         latency: Option<u32>,
         favourite: bool,
@@ -53,8 +53,8 @@ impl Contact {
     }
 }
 
-impl From<&TariAddress> for Contact {
-    fn from(address: &TariAddress) -> Self {
+impl From<&TaijiAddress> for Contact {
+    fn from(address: &TaijiAddress) -> Self {
         Self {
             alias: address.to_emoji_string(),
             address: address.clone(),
