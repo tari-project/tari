@@ -2,7 +2,7 @@
 
 # Top level triggers
 1. New message on messaging layer
-    2. [Common message pipeline](common_message_pipeline.md) 
+    2. [Comms](comms/index.md) 
     3. [Incoming blocks](incoming_blocks.md) 
     1. TODO: breakdown into individual messages
     3. metadata?
