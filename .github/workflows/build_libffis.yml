@@ -17,7 +17,7 @@ env:
   ## Must be a JSon string
   BUILD_LIBFFIS: '["minotari_wallet_ffi","minotari_chat_ffi"]'
   # BUILD_LIBFFIS: '["minotari_chat_ffi"]'
-  matrix-json-file: '.github/workflows/build_libffis_workflow.json'
+  matrix-json-file: '.github/workflows/build_libffis.json'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
