@@ -51,5 +51,4 @@ tari_common = {  path = "../../common", features = ["build"] }
 
 [features]
 test-mocks = []
-auto-update = ["reqwest/default", "pgp" ,"semver"]
-
+auto-update = ["reqwest/default", "pgp", "semver"]
