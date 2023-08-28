@@ -68,7 +68,7 @@ differences in hashing and serialisation. It should be avoided.
 
 #### Atomics
 It is fine to use `AtomicBool`, `AtomicUsize` and the other atomic types, but all `Orderings` must use `Ordering::SeqCst`.
-See [nomicon](https://doc.rust-lang.org/nomicon/atomics.html) for more detail, but most of the ordering enum values have little visible effect on intel based architectures 
+See [nomicon](https://doc.rust-lang.org/nomicon/atomics.html) for more detail, but most of the ordering enum values have little visible effect on intel based architectures([x86](https://simple.wikipedia.org/wiki/X86) and [x86-64](https://en.wikipedia.org/wiki/X86-64)
 and are only seen in arm based systems. It’s also unlikely that any performance is gained from using a different ordering, so rather be on the safe side and use `SeqCst` everywhere.
 
 It is also pretty much impossible to test ordering on intel based systems, so it is best to avoid it.
