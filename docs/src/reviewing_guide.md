@@ -93,3 +93,6 @@ Tokio has many useful channels, and it can be difficult to know what to look out
    2. Sending to a broadcast `Sender` before there are any receivers (or if they have all dropped) will error. If this is happening on startup, it should be 
 handled gracefully and may succeed in future when a receiver is added.
 
+#### Behind-the-scenes panics
+
+Not all methods in the standard and other libraries that return values are guaranteed not to panic, for example, `pub const fn split_at(&self, mid: usize) -> (&[T], &[T])` will panic if `mid` > `self.len()`. Create custom wrappers that will return an error before the underlying function will panic, for example, `pub fn split_at_checked<T>(vec: &[T], n: usize) -> Result<(&[T], &[T]), Error>`.
