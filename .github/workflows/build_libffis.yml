@@ -6,8 +6,7 @@ name: Build ffi libraries
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]*'
     branches:
-      # - 'build-ffis-*'
-      - 'build-*'
+      - 'build-ffis-*'
   schedule:
     - cron: '05 00 * * *'
 
@@ -82,7 +81,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # libffis: [minotari_wallet_ffi, minotari_chat_ffi]
         libffis: ${{ fromJson(needs.matrix-prep.outputs.libffiss) }}
         builds: ${{ fromJson(needs.matrix-prep.outputs.matrix) }}
 
@@ -189,7 +187,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # libffis: [minotari_wallet_ffi, minotari_chat_ffi]
         libffis: ${{ fromJson(needs.matrix-prep.outputs.libffiss) }}
 
     steps:
@@ -327,15 +324,14 @@ jobs:
           cat libffiss.txt.sha256-verify
           sha256sum -c libffiss.txt.sha256-verify
           rm -fv ibffiss.txt.sha256-verify
-          mkdir -p releases
 
       - name: Archive iOS xcframework(s)
-        continue-on-error: true
         shell: bash
         working-directory: libffiss
         run: |
           # Spaces are important - string to array
           FFI_DIRS=( $(echo ${BUILD_LIBFFIS} | jq -r '.[]') )
+          mkdir -p releases
           for FFI_DIR in "${FFI_DIRS[@]}"; do
             echo "xcframework for ${FFI_DIR}"
             if [ -d lib${FFI_DIR}-ios-xcframework ]; then
@@ -348,7 +344,7 @@ jobs:
             fi
           done
 
-      - name: Clean-up
+      - name: Release preparation from assets
         shell: bash
         working-directory: libffiss
         run: |
