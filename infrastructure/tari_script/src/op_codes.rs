@@ -79,52 +79,52 @@ pub fn slice_to_vec_pubkeys(slice: &[u8], num: usize) -> Result<Vec<RistrettoPub
 }
 
 // Opcode constants: Block Height Checks
-const OP_CHECK_HEIGHT_VERIFY: u8 = 0x66;
-const OP_CHECK_HEIGHT: u8 = 0x67;
-const OP_COMPARE_HEIGHT_VERIFY: u8 = 0x68;
-const OP_COMPARE_HEIGHT: u8 = 0x69;
+pub const OP_CHECK_HEIGHT_VERIFY: u8 = 0x66;
+pub const OP_CHECK_HEIGHT: u8 = 0x67;
+pub const OP_COMPARE_HEIGHT_VERIFY: u8 = 0x68;
+pub const OP_COMPARE_HEIGHT: u8 = 0x69;
 
 // Opcode constants: Stack Manipulation
-const OP_DROP: u8 = 0x70;
-const OP_DUP: u8 = 0x71;
-const OP_REV_ROT: u8 = 0x72;
-const OP_PUSH_HASH: u8 = 0x7a;
-const OP_PUSH_ZERO: u8 = 0x7b;
-const OP_NOP: u8 = 0x73;
-const OP_PUSH_ONE: u8 = 0x7c;
-const OP_PUSH_INT: u8 = 0x7d;
-const OP_PUSH_PUBKEY: u8 = 0x7e;
+pub const OP_DROP: u8 = 0x70;
+pub const OP_DUP: u8 = 0x71;
+pub const OP_REV_ROT: u8 = 0x72;
+pub const OP_PUSH_HASH: u8 = 0x7a;
+pub const OP_PUSH_ZERO: u8 = 0x7b;
+pub const OP_NOP: u8 = 0x73;
+pub const OP_PUSH_ONE: u8 = 0x7c;
+pub const OP_PUSH_INT: u8 = 0x7d;
+pub const OP_PUSH_PUBKEY: u8 = 0x7e;
 
 // Opcode constants: Math Operations
-const OP_EQUAL: u8 = 0x80;
-const OP_EQUAL_VERIFY: u8 = 0x81;
-const OP_ADD: u8 = 0x93;
-const OP_SUB: u8 = 0x94;
-const OP_GE_ZERO: u8 = 0x82;
-const OP_GT_ZERO: u8 = 0x83;
-const OP_LE_ZERO: u8 = 0x84;
-const OP_LT_ZERO: u8 = 0x85;
+pub const OP_EQUAL: u8 = 0x80;
+pub const OP_EQUAL_VERIFY: u8 = 0x81;
+pub const OP_ADD: u8 = 0x93;
+pub const OP_SUB: u8 = 0x94;
+pub const OP_GE_ZERO: u8 = 0x82;
+pub const OP_GT_ZERO: u8 = 0x83;
+pub const OP_LE_ZERO: u8 = 0x84;
+pub const OP_LT_ZERO: u8 = 0x85;
 
 // Opcode constants: Boolean Logic
 pub const OP_OR_VERIFY: u8 = 0x64;
 pub const OP_OR: u8 = 0x65;
 
 // Opcode constants: Cryptographic Operations
-const OP_CHECK_SIG: u8 = 0xac;
-const OP_CHECK_SIG_VERIFY: u8 = 0xad;
-const OP_CHECK_MULTI_SIG: u8 = 0xae;
-const OP_CHECK_MULTI_SIG_VERIFY: u8 = 0xaf;
-const OP_HASH_BLAKE256: u8 = 0xb0;
-const OP_HASH_SHA256: u8 = 0xb1;
-const OP_HASH_SHA3: u8 = 0xb2;
-const OP_TO_RISTRETTO_POINT: u8 = 0xb3;
-const OP_CHECK_MULTI_SIG_VERIFY_AGGREGATE_PUB_KEY: u8 = 0xb4;
+pub const OP_CHECK_SIG: u8 = 0xac;
+pub const OP_CHECK_SIG_VERIFY: u8 = 0xad;
+pub const OP_CHECK_MULTI_SIG: u8 = 0xae;
+pub const OP_CHECK_MULTI_SIG_VERIFY: u8 = 0xaf;
+pub const OP_HASH_BLAKE256: u8 = 0xb0;
+pub const OP_HASH_SHA256: u8 = 0xb1;
+pub const OP_HASH_SHA3: u8 = 0xb2;
+pub const OP_TO_RISTRETTO_POINT: u8 = 0xb3;
+pub const OP_CHECK_MULTI_SIG_VERIFY_AGGREGATE_PUB_KEY: u8 = 0xb4;
 
 // Opcode constants: Miscellaneous
-const OP_RETURN: u8 = 0x60;
-const OP_IF_THEN: u8 = 0x61;
-const OP_ELSE: u8 = 0x62;
-const OP_END_IF: u8 = 0x63;
+pub const OP_RETURN: u8 = 0x60;
+pub const OP_IF_THEN: u8 = 0x61;
+pub const OP_ELSE: u8 = 0x62;
+pub const OP_END_IF: u8 = 0x63;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Opcode {

@@ -6,14 +6,16 @@ use tari_script::{self, ScriptError};
 fuzz_target!(|data: &[u8]| {
     match tari_script::TariScript::from_bytes(data) {
         Ok(s) => {
-            if s.is_empty() {
+            if data.len() == 0 {
                 return;
             }
-            use tari_script::op_codes::Opcode::*;
-            match *data[0] {
-                OP_CHECK_HEIGHT_VERIFY | OP_CHECK_HEIGHT | OP_PUSH_INT => {
-                    // Can't check anything really because of nonminimal encoding of varint...
-                },
+            // if s.size() == 0 {
+            //     return;
+            // }
+            use tari_script::Opcode::*;
+            match data[0] {
+                // OP_CHECK_HEIGHT_VERIFY => {
+                // },
                 _ => {
                     // Test round trip
                     let v = s.to_bytes();
