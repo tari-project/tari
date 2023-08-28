@@ -30,6 +30,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use futures::{future::BoxFuture, stream::FuturesUnordered};
 use log::*;
 use multiaddr::Multiaddr;
 use tokio::{
@@ -64,6 +65,8 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "comms::connection_manager::peer_connection";
+
+const PROTOCOL_NEGOTIATION_TIMEOUT: Duration = Duration::from_secs(5);
 
 static ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -358,7 +361,9 @@ struct PeerConnectionActor {
     incoming_substreams: IncomingSubstreams,
     control: Control,
     event_notifier: mpsc::Sender<ConnectionManagerEvent>,
-    our_supported_protocols: Vec<ProtocolId>,
+    our_supported_protocols: Arc<Vec<ProtocolId>>,
+    inbound_protocol_negotiations:
+        FuturesUnordered<BoxFuture<'static, Result<(ProtocolId, Substream), PeerConnectionError>>>,
     their_supported_protocols: Vec<ProtocolId>,
 }
 
@@ -381,7 +386,10 @@ impl PeerConnectionActor {
             incoming_substreams: connection.into_incoming(),
             request_rx,
             event_notifier,
-            our_supported_protocols,
+            // our_supported_protocols never changes so we make it cheap to clone (used in inbound_protocol_negotiations
+            // futures)
+            our_supported_protocols: Arc::new(our_supported_protocols),
+            inbound_protocol_negotiations: FuturesUnordered::new(),
             their_supported_protocols,
         }
     }
@@ -401,22 +409,16 @@ impl PeerConnectionActor {
 
                 maybe_substream = self.incoming_substreams.next() => {
                     match maybe_substream {
-                        Some(substream) => {
-                            if let Err(err) = self.handle_incoming_substream(substream).await {
-                                error!(
-                                    target: LOG_TARGET,
-                                    "[{}] Incoming substream for peer '{}' failed to open because '{error}'",
-                                    self,
-                                    self.peer_node_id.short_str(),
-                                    error = err
-                                )
-                            }
-                        },
+                        Some(substream) => self.handle_incoming_substream(substream).await,
                         None => {
                             debug!(target: LOG_TARGET, "[{}] Peer '{}' closed the connection", self, self.peer_node_id.short_str());
                             break;
                         },
                     }
+                },
+
+                Some(result) = self.inbound_protocol_negotiations.next() => {
+                    self.handle_inbound_protocol_negotiation_result(result).await;
                 }
             }
         }
@@ -461,19 +463,59 @@ impl PeerConnectionActor {
     }
 
     #[tracing::instrument(level="trace", skip(self, stream),fields(comms.direction="inbound"))]
-    async fn handle_incoming_substream(&mut self, mut stream: Substream) -> Result<(), PeerConnectionError> {
-        let selected_protocol = ProtocolNegotiation::new(&mut stream)
-            .negotiate_protocol_inbound(&self.our_supported_protocols)
-            .await?;
+    async fn handle_incoming_substream(&mut self, mut stream: Substream) {
+        let our_supported_protocols = self.our_supported_protocols.clone();
+        self.inbound_protocol_negotiations.push(Box::pin(async move {
+            let mut protocol_negotiation = ProtocolNegotiation::new(&mut stream);
 
-        self.notify_event(ConnectionManagerEvent::NewInboundSubstream(
-            self.peer_node_id.clone(),
-            selected_protocol,
-            stream,
-        ))
-        .await;
+            let selected_protocol = time::timeout(
+                PROTOCOL_NEGOTIATION_TIMEOUT,
+                protocol_negotiation.negotiate_protocol_inbound(&our_supported_protocols),
+            )
+            .await
+            .map_err(|_| PeerConnectionError::ProtocolNegotiationTimeout)??;
+            Ok((selected_protocol, stream))
+        }));
+    }
 
-        Ok(())
+    async fn handle_inbound_protocol_negotiation_result(
+        &mut self,
+        result: Result<(ProtocolId, Substream), PeerConnectionError>,
+    ) {
+        match result {
+            Ok((selected_protocol, stream)) => {
+                self.notify_event(ConnectionManagerEvent::NewInboundSubstream(
+                    self.peer_node_id.clone(),
+                    selected_protocol,
+                    stream,
+                ))
+                .await;
+            },
+            Err(PeerConnectionError::ProtocolError(err)) if err.is_ban_offence() => {
+                error!(
+                    target: LOG_TARGET,
+                    "[{}] PEER VIOLATION: Incoming substream for peer '{}' failed to open because '{}'",
+                    self,
+                    self.peer_node_id.short_str(),
+                    err
+                );
+
+                self.notify_event(ConnectionManagerEvent::PeerViolation {
+                    peer_node_id: self.peer_node_id.clone(),
+                    details: err.to_string(),
+                })
+                .await;
+            },
+            Err(err) => {
+                error!(
+                    target: LOG_TARGET,
+                    "[{}] Incoming substream for peer '{}' failed to open because '{error}'",
+                    self,
+                    self.peer_node_id.short_str(),
+                    error = err
+                );
+            },
+        }
     }
 
     #[tracing::instrument(skip(self))]
@@ -481,7 +523,6 @@ impl PeerConnectionActor {
         &mut self,
         protocol: ProtocolId,
     ) -> Result<NegotiatedSubstream<Substream>, PeerConnectionError> {
-        const PROTOCOL_NEGOTIATION_TIMEOUT: Duration = Duration::from_secs(10);
         debug!(
             target: LOG_TARGET,
             "[{}] Negotiating protocol '{}' on new substream for peer '{}'",
