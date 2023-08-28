@@ -44,7 +44,6 @@ extern "C" {
  * The ```destroy_client``` method must be called when finished with a ClientFFI to prevent a memory leak
  */
 struct ClientFFI *create_chat_client(struct ApplicationConfig *config,
-                                     const char *identity_file_path,
                                      int *error_out,
                                      CallbackContactStatusChange callback_contact_status_change,
                                      CallbackMessageReceived callback_message_received);
@@ -80,6 +79,7 @@ void destroy_client_ffi(struct ClientFFI *client);
 struct ApplicationConfig *create_chat_config(const char *network_str,
                                              const char *public_address,
                                              const char *datastore_path,
+                                             const char *identity_file_path,
                                              const char *log_path,
                                              int *error_out);
 
@@ -96,6 +96,20 @@ struct ApplicationConfig *create_chat_config(const char *network_str,
  * None
  */
 void destroy_config(struct ApplicationConfig *config);
+
+/**
+ * Write an identity file
+ *
+ * ## Arguments
+ * `config` - The pointer of an ApplicationConfig
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * None
+ */
+void create_identity_file(struct ApplicationConfig *config, int *error_out);
 
 /**
  * Sends a message over a client
