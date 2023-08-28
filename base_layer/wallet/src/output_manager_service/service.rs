@@ -802,7 +802,7 @@ where
             num_kernels,
             num_outputs
         );
-        // We assume that default OutputFeatures and Nop TariScript is used
+        // We assume that default OutputFeatures and PushPubKey TariScript is used
         let features_and_scripts_byte_size = self
             .resources
             .consensus_constants

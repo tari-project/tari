@@ -29,7 +29,7 @@ use tari_core::transactions::{
     tari_amount::MicroMinotari,
     transaction_components::{TransactionError, TransactionOutput, WalletOutput},
 };
-use tari_script::{inputs, script, ExecutionStack, Opcode};
+use tari_script::{inputs, script, ExecutionStack, Opcode, TariScript};
 use tari_utilities::hex::Hex;
 
 use crate::output_manager_service::{
@@ -37,7 +37,7 @@ use crate::output_manager_service::{
     handle::RecoveredOutput,
     storage::{
         database::{OutputManagerBackend, OutputManagerDatabase},
-        models::DbWalletOutput,
+        models::{DbWalletOutput, KnownOneSidedPaymentScript},
         OutputSource,
     },
 };
@@ -84,41 +84,14 @@ where
                 Some(recovered) => recovered,
                 None => continue,
             };
-
-            let (input_data, script_key) = if output.script == script!(Nop) {
-                // This is a nop, so we can just create a new key an create the input stack.
-                let (key, public_key) = self
-                    .master_key_manager
-                    .get_next_key(TransactionKeyManagerBranch::ScriptKey.get_branch_key())
-                    .await?;
-                (inputs!(public_key), key)
-            } else {
-                // This is a known script so lets fill in the details
-                if let Some(index) = known_script_index {
-                    (
-                        known_scripts[index].input.clone(),
-                        known_scripts[index].script_key_id.clone(),
-                    )
-                } else {
-                    // this is push public key script, so lets see if we know the public key
-                    if let Some(Opcode::PushPubKey(public_key)) = output.script.opcode(0) {
-                        let result = self
-                            .master_key_manager
-                            .find_script_key_id_from_spend_key_id(&spending_key, Some(&public_key))
-                            .await?;
-                        if let Some(script_key_id) = result {
-                            (ExecutionStack::default(), script_key_id)
-                        } else {
-                            // The spending key is recoverable but we dont know how to calculate the script key
-                            continue;
-                        }
-                    } else {
-                        // this should not happen as the script should have been either nop, known or a pushpubkey
-                        // script, but somehow opcode 0 is not pushPubKey
-                        continue;
-                    }
-                }
+            let (input_data, script_key) = match self
+                .find_script_key(&output.script, &spending_key, known_script_index, &known_scripts)
+                .await?
+            {
+                Some((input_data, script_key)) => (input_data, script_key),
+                None => continue,
             };
+
             let uo = WalletOutput::new_with_rangeproof(
                 output.version,
                 committed_value,
@@ -193,6 +166,50 @@ where
         }
 
         Ok(rewound_outputs_with_tx_id)
+    }
+
+    async fn find_script_key(
+        &self,
+        script: &TariScript,
+        spending_key: &TariKeyId,
+        known_script_index: Option<usize>,
+        known_scripts: &Vec<KnownOneSidedPaymentScript>,
+    ) -> Result<Option<(ExecutionStack, TariKeyId)>, OutputManagerError> {
+        let (input_data, script_key) = if script == &script!(Nop) {
+            // This is a nop, so we can just create a new key an create the input stack.
+            let (key, public_key) = self
+                .master_key_manager
+                .get_next_key(TransactionKeyManagerBranch::ScriptKey.get_branch_key())
+                .await?;
+            (inputs!(public_key), key)
+        } else {
+            // This is a known script so lets fill in the details
+            if let Some(index) = known_script_index {
+                (
+                    known_scripts[index].input.clone(),
+                    known_scripts[index].script_key_id.clone(),
+                )
+            } else {
+                // this is push public key script, so lets see if we know the public key
+                if let Some(Opcode::PushPubKey(public_key)) = script.opcode(0) {
+                    let result = self
+                        .master_key_manager
+                        .find_script_key_id_from_spend_key_id(&spending_key, Some(&public_key))
+                        .await?;
+                    if let Some(script_key_id) = result {
+                        (ExecutionStack::default(), script_key_id)
+                    } else {
+                        // The spending key is recoverable but we dont know how to calculate the script key
+                        return Ok(None);
+                    }
+                } else {
+                    // this should not happen as the script should have been either nop, known or a pushpubkey
+                    // script, but somehow opcode 0 is not pushPubKey
+                    return Ok(None);
+                }
+            }
+        };
+        Ok(Some((input_data, script_key)))
     }
 
     async fn attempt_output_recovery(
