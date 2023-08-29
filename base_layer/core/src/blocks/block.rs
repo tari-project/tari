@@ -115,16 +115,6 @@ impl Block {
         Ok(())
     }
 
-    /// Run through the outputs of the block and check that
-    /// 1. only coinbase outputs may have metadata set,
-    /// 2. coinbase metadata length does not exceed its limit
-    pub fn check_output_features(&self, consensus_constants: &ConsensusConstants) -> Result<(), BlockValidationError> {
-        self.body
-            .check_output_features(consensus_constants.coinbase_output_features_extra_max_length())?;
-
-        Ok(())
-    }
-
     /// Destroys the block and returns the pieces of the block: header, inputs, outputs and kernels
     pub fn dissolve(
         self,
