@@ -15,38 +15,43 @@ See [Common message pipeline](common_message_pipeline.md) for details about how 
 ```mermaid
 
 flowchart TD
-    A[fn reconcile_block] --> AA{is empty?}
+    A[fn reconcile_block] --> AA{1. is empty?}
     AA --yes --> AB[return Block]
-    AA --no --> AC{is orphan?}
+    AA --no --> AC{2. is orphan?}
     AC --yes --> D
-    AC --no --> B["fn mempool::retrieve_by_excess_sigs()"]
+    AC --no --> B[9. fn mempool::retrieve_by_excess_sigs]
     
     subgraph fetching blocks
-        B <--> BA[[fn mempool_storage::retrieve_by_excess_sigs]]
-        BA <--> BB[[fn unconfirmed_pool::retrieve_by_excess_sigs]]
-        BA <--> BC[[fn reorg_pool::retrieve_by_excess_sigs]]
+        B <--> BA[[10. fn mempool_storage::retrieve_by_excess_sigs]]
+        BA <--> BB[[11. fn unconfirmed_pool::retrieve_by_excess_sigs]]
+        BA <--> BC[[12. fn reorg_pool::retrieve_by_excess_sigs]]
     end
     
-    B --> C{has all excess signatures?}
-    C --no --> CA[fn outbound_interface::request_transactions_by_excess_sig]
-    C --yes --> CB[fn calculate_mmr_roots]
-    CA --> CC[(fn mempool::insert_all)]
-    CC --> CD[BlockBuilder with transactions]
+    B --> C{13. has all excess signatures?}
+    C --no --> CA[14. fn outbound_interface::request_transactions_by_excess_sig]
+    CA --> CC[(15. fn mempool::insert_all)]
+    CC --> CE{16. all transactions found?}
+    CE --no --> CF[17. fn outbound_interface::request_full_block_from_peer]
+    CE --yes --> CD[18. BlockBuilder with transactions]
+    C --yes --> CB[19. fn calculate_mmr_roots]
+    CB --> CH{valid roots?}
+    CH --no --> CJ[fn request_full_block_from_peer]
+    CJ --> CK[return Block]
+    CH --yes --> CL[20. fn check_mmr_roots]
+    CL --invalid --> CJ
     CD --> CB
-    CA --> CE{some tansactions not found?}
-    CE --yes --> CF[fn request_full_block_from_peer]
+    CL --valid --> CM[return Block]
     CF --> CG[return Block]
-    CB --> CH{do some more}
 
     subgraph orphan block
-        D{is empty?}
+        D{3. is empty?}
         D --yes --> DA[return Block]
-        D --no --> DB[fn request_full_block_from_peer]
-        DB --> DC[fn outbound_interface::request_blocks_by_hashes_from_peer]
-        DC --> DD{has block?}
+        D --no --> DB[4. fn outbound_interface::request_full_block_from_peer]
+        DB --> DC[5. fn outbound_interface::request_blocks_by_hashes_from_peer]
+        DC --> DD{6. has block?}
         DD --yes --> DE[return Block]
-        DD --ConnectivityError --> DF[fn ban_peer_until]
-        DD --UnexpectedApiResponse --> DG[fn ban_peer]
+        DD --ConnectivityError --> DF[7. fn ban_peer_until]
+        DD --UnexpectedApiResponse --> DG[8. fn ban_peer]
         DD --no --> DH[Err]
     end
     
