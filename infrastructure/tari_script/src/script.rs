@@ -690,20 +690,10 @@ mod test {
         StackItem,
         StackItem::{Commitment, Hash, Number},
         TariScript,
-        DEFAULT_SCRIPT_HASH,
     };
 
     fn context_with_height(height: u64) -> ScriptContext {
         ScriptContext::new(height, &HashValue::default(), &PedersenCommitment::default())
-    }
-
-    #[test]
-    fn default_script() {
-        let script = TariScript::default();
-        let inputs = ExecutionStack::default();
-        assert!(script.execute(&inputs).is_ok());
-        assert_eq!(&script.to_hex(), "7b");
-        assert_eq!(script.as_hash::<Blake2b<U32>>().unwrap(), DEFAULT_SCRIPT_HASH);
     }
 
     #[test]
