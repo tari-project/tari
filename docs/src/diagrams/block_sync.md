@@ -8,10 +8,10 @@ Block sync (`BlockSync::next_event(..)`) is triggered when the state machine (`B
 
 ```mermaid
 flowchart TD
-A[Start] --> B[Client: Initialise block sync]
-B[Client: Initialise block sync] --> C[Client: Synchronize blocks]
-C[Client: Synchronize blocks] --> D[Server: Synchronize blocks]
-D[Server: Synchronize blocks] --> C[Client: Synchronize blocks]
+A[1. Start] --> B[2. Client: Initialise block sync]
+B[2. Client: Initialise block sync] --> C[3. Client: Synchronize blocks]
+C[3. Client: Synchronize blocks] --> D[4. Server: Synchronize blocks]
+D[4. Server: Synchronize blocks] --> C[3. Client: Synchronize blocks]
 A -..- N1>"state_machine.rs (fn next_state_event)"]
 B -..- N2>"block_sync.rs (fn next_event)"]
 C -..- N3>"synchronizer.rs (fn synchronize)"]
@@ -30,29 +30,29 @@ sequenceDiagram
 participant State Machine
 participant Client
 participant Server
-State Machine->>Client: State change to `BlockSync`
-Client->>Client: Initialise block sync
-loop Attempt Block Sync
-  Client->>Client: Select next sync peer
-  Client->>Client: Call on starting hook
-  Client->>Server: Connect to sync peer
+State Machine->>Client: 1. State change to `BlockSync`
+Client->>Client: 2. Initialise block sync
+loop 3. Attempt Block Sync
+  Client->>Client: 3.1 Select next sync peer
+  Client->>Client: 3.2 Call on starting hook
+  Client->>Server: 3.3 Connect to sync peer
   Note right of Client: Abandon block sync on connect error!
-  Client->>Server: Obtain RPC connection
+  Client->>Server: 3.4 Obtain RPC connection
   Note right of Client: Abandon block sync on connect error!
-  Client->>Client: Initialise block sync
-  Client->>Server: Send request `SyncBlocksRequest`
-  loop Stream Blocks Until End
+  Client->>Client: 3.5 Initialise block sync
+  Client->>Server: 3.6 Send request `SyncBlocksRequest`
+  loop 4. Stream Blocks Until End
     Note right of Client: Goto main loop on error, ban peer if malicious
-    Server->>Client: Send next block body
-    Client->>Client: Fetch block header from db
-    Client->>Client: Deserialize block body
-    Client->>Client: Construct full block
-    Client->>Client: Validate block body
-    Client->>Client: Construct chain block
-    Client->>Client: Update block chain in db
-    Client->>Client: Call on progress block hook
+    Server->>Client: 4.1 Send next block body
+    Client->>Client: 4.2 Fetch block header from db
+    Client->>Client: 4.3 Deserialize block body
+    Client->>Client: 4.4 Construct full block
+    Client->>Client: 4.5 Validate block body
+    Client->>Client: 4.6 Construct chain block
+    Client->>Client: 4.7 Update block chain in db
+    Client->>Client: 4.8 Call on progress block hook
   end
-  Client->>Client: If end, call on complete hook, exit loop
+  Client->>Client: 3.7 If end, call on complete hook, exit loop
 end
-Client->>State Machine: `StateEvent::BlocksSynchronized`
+Client->>State Machine: 5. `StateEvent::BlocksSynchronized`
 ```
