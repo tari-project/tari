@@ -40,7 +40,6 @@ flowchart TD
     CL --invalid --> CJ
     CD --> CB
     CL --valid --> CM[return Block]
-    CF --> CG[return Block]
 
     subgraph orphan block
         D{3. is empty?}
