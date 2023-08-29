@@ -80,7 +80,7 @@ impl BorshDeserialize for TariScript {
         if len > MAX_SCRIPT_BYTES {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "Larger than max covenant bytes".to_string(),
+                "Larger than max script bytes".to_string(),
             ));
         }
         let mut data = Vec::with_capacity(len);
