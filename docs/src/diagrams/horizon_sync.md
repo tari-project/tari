@@ -58,7 +58,7 @@ loop 5. Attempt syncing with all peers
         loop 6.3. Process each received kernel 
             HorizonStateSynchronization->>HorizonStateSynchronization: 6.3.1 Validate kernel signature
             HorizonStateSynchronization->>HorizonStateSynchronization: 6.3.2 Insert kernel in database
-            opt Is last kernel in MMR
+            opt Kernel is the last in kernel in the MMR
                 HorizonStateSynchronization->>HorizonStateSynchronization: 6.3.3 Validate MMR
 	            HorizonStateSynchronization->>HorizonStateSynchronization: 6.3.4 Update block accumulated data
 	            HorizonStateSynchronization->>HorizonStateSynchronization: 6.3.5 Update current header
@@ -81,7 +81,7 @@ loop 5. Attempt syncing with all peers
             end
         end
         HorizonStateSynchronization->>HorizonStateSynchronization: 6.6 Update database with the best block, new pruned height and new horizon data
-        Note right of HorizonStateSynchronization: Ignore aany latency or timeout error on the peer, and loop to the next peer
+        Note right of HorizonStateSynchronization: Ignore any latency or timeout error on the peer, and loop to the next peer
         Note right of HorizonStateSynchronization: Exit loop with error on any non-latency or non-timeout error of the peer
     end
     Note right of HorizonStateSynchronization: Increase `max_latency` and loop again if all peers exceed latency
