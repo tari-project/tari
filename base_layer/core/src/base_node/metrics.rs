@@ -138,19 +138,6 @@ pub fn rejected_blocks(height: u64, hash: &FixedHash) -> IntCounter {
     METER.with_label_values(&[&height.to_string(), &hash.to_hex()])
 }
 
-pub fn rejected_local_blocks(height: u64, hash: &FixedHash) -> IntCounter {
-    static METER: Lazy<IntCounterVec> = Lazy::new(|| {
-        tari_metrics::register_int_counter_vec(
-            "base_node::blockchain::rejected_local_blocks",
-            "Number of local block rejected by the base node",
-            &["height", "block_hash"],
-        )
-        .unwrap()
-    });
-
-    METER.with_label_values(&[&height.to_string(), &hash.to_hex()])
-}
-
 pub fn active_sync_peers() -> &'static IntGauge {
     static METER: Lazy<IntGauge> = Lazy::new(|| {
         tari_metrics::register_int_gauge(

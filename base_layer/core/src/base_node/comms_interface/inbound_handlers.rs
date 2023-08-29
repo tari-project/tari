@@ -427,11 +427,8 @@ where B: BlockchainBackend + 'static
         }
     }
 
-    /// Handles a `NewBlock` message. Only a single `NewBlock` message can be handled at once to prevent extraneous
-    /// requests for the full block.
-    /// This may (asynchronously) block until the other request(s) complete or time out and so should typically be
-    /// executed in a dedicated task.
-    pub async fn handle_new_block_message(
+    /// We wrap this in an inner function so we can consolidate all banning after this comes back.
+    async fn handle_new_block_message_inner(
         &mut self,
         new_block: NewBlock,
         source_peer: NodeId,
@@ -448,24 +445,8 @@ where B: BlockchainBackend + 'static
         }
 
         // Lets check if the block exists before we try and ask for a complete block
-        match self.check_exists_and_not_bad_block(block_hash).await? {
-            Some(true) => return Ok(()),
-            Some(false) => {
-                let err = ChainStorageError::ValidationError {
-                    source: ValidationError::BadBlockFound {
-                        hash: block_hash.to_hex(),
-                    },
-                };
-                if let Err(e) = self
-                    .connectivity
-                    .ban_peer(source_peer.clone(), format!("Peer propagated invalid block: {}", err))
-                    .await
-                {
-                    error!(target: LOG_TARGET, "Failed to ban peer: {}", e);
-                }
-                return Err(CommsInterfaceError::ChainStorageError(err));
-            },
-            None => {},
+        if self.check_exists_and_not_bad_block(block_hash).await? {
+            return Ok(());
         }
 
         // lets check that the difficulty at least matches the min required difficulty
@@ -490,24 +471,8 @@ where B: BlockchainBackend + 'static
         }
         {
             let mut write_lock = self.list_of_reconciling_blocks.write().await;
-            match self.check_exists_and_not_bad_block(block_hash).await? {
-                Some(true) => return Ok(()),
-                Some(false) => {
-                    let err = ChainStorageError::ValidationError {
-                        source: ValidationError::BadBlockFound {
-                            hash: block_hash.to_hex(),
-                        },
-                    };
-                    if let Err(e) = self
-                        .connectivity
-                        .ban_peer(source_peer.clone(), format!("Peer propagated invalid block: {}", err))
-                        .await
-                    {
-                        error!(target: LOG_TARGET, "Failed to ban peer: {}", e);
-                    }
-                    return Err(CommsInterfaceError::ChainStorageError(err));
-                },
-                None => {},
+            if self.check_exists_and_not_bad_block(block_hash).await? {
+                return Ok(());
             }
 
             if !write_lock.insert(block_hash) {
@@ -535,6 +500,30 @@ where B: BlockchainBackend + 'static
             write_lock.remove(&block_hash);
         }
         result?;
+        Ok(())
+    }
+
+    /// Handles a `NewBlock` message. Only a single `NewBlock` message can be handled at once to prevent extraneous
+    /// requests for the full block.
+    /// This may (asynchronously) block until the other request(s) complete or time out and so should typically be
+    /// executed in a dedicated task.
+    pub async fn handle_new_block_message(
+        &mut self,
+        new_block: NewBlock,
+        source_peer: NodeId,
+    ) -> Result<(), CommsInterfaceError> {
+        if let Err(err @ CommsInterfaceError::ChainStorageError(ChainStorageError::ValidationError { .. })) =
+            self.handle_new_block_message_inner(new_block, source_peer.clone()).await
+        {
+            if let Err(e) = self
+                .connectivity
+                .ban_peer(source_peer, format!("Peer propagated invalid block: {}", err))
+                .await
+            {
+                error!(target: LOG_TARGET, "Failed to ban peer: {}", e);
+            }
+            return Err(err);
+        }
         Ok(())
     }
 
@@ -571,14 +560,14 @@ where B: BlockchainBackend + 'static
 
     /// Returns Some if the block exists, true if it it just a normal block, false if its a bad block. Returns None if
     /// the block does not exist or is not a bad block
-    async fn check_exists_and_not_bad_block(&self, block: FixedHash) -> Result<Option<bool>, CommsInterfaceError> {
+    async fn check_exists_and_not_bad_block(&self, block: FixedHash) -> Result<bool, CommsInterfaceError> {
         if self.blockchain_db.block_exists(block).await? {
             debug!(
                 target: LOG_TARGET,
                 "Block with hash `{}` already stored",
                 block.to_hex()
             );
-            return Ok(Some(true));
+            return Ok(true);
         }
         if self.blockchain_db.bad_block_exists(block).await? {
             debug!(
@@ -586,9 +575,13 @@ where B: BlockchainBackend + 'static
                 "Block with hash `{}` already validated as a bad block",
                 block.to_hex()
             );
-            return Ok(Some(false));
+            return Err(CommsInterfaceError::ChainStorageError(
+                ChainStorageError::ValidationError {
+                    source: ValidationError::BadBlockFound { hash: block.to_hex() },
+                },
+            ));
         }
-        Ok(None)
+        Ok(false)
     }
 
     async fn reconcile_and_add_block(
@@ -871,19 +864,6 @@ where B: BlockchainBackend + 'static
                         .unwrap_or_else(|| "<local request>".to_string()),
                     e
                 );
-                match source_peer {
-                    Some(ref source_peer) => {
-                        if let Err(e) = self
-                            .connectivity
-                            .ban_peer(source_peer.clone(), format!("Peer propagated invalid block: {}", e))
-                            .await
-                        {
-                            error!(target: LOG_TARGET, "Failed to ban peer: {}", e);
-                        }
-                    },
-                    // SECURITY: This indicates an issue in the transaction validator.
-                    None => metrics::rejected_local_blocks(block.header.height, &block_hash).inc(),
-                }
                 self.publish_block_event(BlockEvent::AddBlockValidationFailed { block, source_peer });
                 Err(e.into())
             },
