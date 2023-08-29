@@ -111,6 +111,8 @@ mod tests {
         assert_eq!(OutputType::from_byte(2), Some(OutputType::Burn));
         assert_eq!(OutputType::from_byte(3), Some(OutputType::ValidatorNodeRegistration));
         assert_eq!(OutputType::from_byte(4), Some(OutputType::CodeTemplateRegistration));
-        assert_eq!(OutputType::from_byte(108), None);
+        for i in 5..=255 {
+            assert_eq!(OutputType::from_byte(i), None);
+        }
     }
 }
