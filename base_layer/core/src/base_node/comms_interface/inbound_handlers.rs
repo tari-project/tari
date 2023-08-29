@@ -512,17 +512,25 @@ where B: BlockchainBackend + 'static
         new_block: NewBlock,
         source_peer: NodeId,
     ) -> Result<(), CommsInterfaceError> {
-        if let Err(err @ CommsInterfaceError::ChainStorageError(ChainStorageError::ValidationError { .. })) =
-            self.handle_new_block_message_inner(new_block, source_peer.clone()).await
+        match self
+            .handle_new_block_message_inner(new_block, source_peer.clone())
+            .await
         {
-            if let Err(e) = self
-                .connectivity
-                .ban_peer(source_peer, format!("Peer propagated invalid block: {}", err))
-                .await
-            {
-                error!(target: LOG_TARGET, "Failed to ban peer: {}", e);
-            }
-            return Err(err);
+            Err(err @ CommsInterfaceError::ChainStorageError(ChainStorageError::ValidationError { .. })) |
+            (err @ CommsInterfaceError::InvalidBlockHeader(_)) => {
+                if let Err(e) = self
+                    .connectivity
+                    .ban_peer(source_peer, format!("Peer propagated invalid block: {}", err))
+                    .await
+                {
+                    error!(target: LOG_TARGET, "Failed to ban peer: {}", e);
+                }
+                return Err(err);
+            },
+            Ok(()) => {},
+            Err(e) => {
+                return Err(e);
+            },
         }
         Ok(())
     }
@@ -546,13 +554,6 @@ where B: BlockchainBackend + 'static
                 )
                 .await?;
             let err = BlockHeaderValidationError::ProofOfWorkError(PowError::AchievedDifficultyBelowMin);
-            if let Err(e) = self
-                .connectivity
-                .ban_peer(source_peer.clone(), format!("Peer propagated invalid block: {}", err))
-                .await
-            {
-                error!(target: LOG_TARGET, "Failed to ban peer: {}", e);
-            }
             return Err(CommsInterfaceError::InvalidBlockHeader(err));
         }
         Ok(())
