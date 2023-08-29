@@ -31,10 +31,10 @@ flowchart TD
     C --no --> CA[14. fn outbound_interface::request_transactions_by_excess_sig]
     CA --> CC[(15. fn mempool::insert_all)]
     CC --> CE{16. all transactions found?}
-    CE --no --> CF[17. fn outbound_interface::request_full_block_from_peer]
+    CE --no --> CJ
     CE --yes --> CD[18. BlockBuilder with transactions]
     C --yes --> CB[19. fn calculate_mmr_roots]
-    CB --invalid --> CJ[fn outbound_interface::request_full_block_from_peer]
+    CB --invalid --> CJ[17. fn outbound_interface::request_full_block_from_peer]
     CJ --> CK[return Block]
     CB --valid --> CL[20. fn check_mmr_roots]
     CL --invalid --> CJ
