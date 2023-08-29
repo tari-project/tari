@@ -34,10 +34,9 @@ flowchart TD
     CE --no --> CF[17. fn outbound_interface::request_full_block_from_peer]
     CE --yes --> CD[18. BlockBuilder with transactions]
     C --yes --> CB[19. fn calculate_mmr_roots]
-    CB --> CH{valid roots?}
-    CH --no --> CJ[fn request_full_block_from_peer]
+    CB --invalid --> CJ[fn outbound_interface::request_full_block_from_peer]
     CJ --> CK[return Block]
-    CH --yes --> CL[20. fn check_mmr_roots]
+    CB --valid --> CL[20. fn check_mmr_roots]
     CL --invalid --> CJ
     CD --> CB
     CL --valid --> CM[return Block]
