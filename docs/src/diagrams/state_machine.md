@@ -1,3 +1,5 @@
+## state machine
+//todo
 ```mermaid
 flowchart TD
     A -..- N1>state_machine.rs line 231]
@@ -5,8 +7,6 @@ flowchart TD
     B --> |FallenBehind| C[HeaderSync]
 
     
-
-
     N1:::note
     N2:::note
     N3:::note
