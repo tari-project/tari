@@ -1,3 +1,4 @@
+## Listing state
 ```mermaid
 flowchart TD
     A -..- N1>listening.rs line 128]
@@ -20,10 +21,8 @@ flowchart TD
     K --> |Yes| A 
     K --> |No| L[return FallenBehind]
     J --> |No| A
-
-
-
+    
     N1:::note
-    N2:::note
+    N2:::not
    classDef note fill:#eee,stroke:#ccc
 ```
