@@ -202,7 +202,7 @@ impl BorshDeserialize for ExecutionStack {
         if len > MAX_STACK_SIZE {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "Larger than max covenant bytes".to_string(),
+                "Larger than max execution stack bytes".to_string(),
             ));
         }
         let mut data = Vec::with_capacity(len);
