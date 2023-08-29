@@ -44,15 +44,7 @@ The following information applies to vulnerabilities, exploits, or undesirable b
 
 #### Official Channels
 
-Please report security issues to [professor@tari.com](mailto:professor@tari.com), providing all relevant information.
-
-```
-professor@tari.com
-PGP fingerprint = 5410 7BD9 02F0 A865 3DDF F4CD 7A4A 432E C35C 9C7E
-
-If pasting GPG encrypted data, use paste.debian.net or paste.ubuntu.com
-as these do not introduce issues with Tor via Cloudflare.
-```
+Please report security issues to [security@tari.com](mailto:security@tari.com), providing all relevant information.
 
 **You must include:**
 

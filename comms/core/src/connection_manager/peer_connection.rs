@@ -85,7 +85,7 @@ pub fn try_create(
     );
     // All requests are request/response, so a channel size of 1 is all that is needed
     let (peer_tx, peer_rx) = mpsc::channel(1);
-    let id = ID_COUNTER.fetch_add(1, Ordering::Relaxed); // Monotonic
+    let id = ID_COUNTER.fetch_add(1, Ordering::SeqCst); // Monotonic
     let substream_counter = connection.substream_counter();
     let peer_conn = PeerConnection::new(
         id,

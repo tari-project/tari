@@ -22,12 +22,13 @@ fn main() {
         parse: ParseConfig {
             parse_deps: true,
             include: Some(vec![
-                "tari_core".to_string(),
+                "minotari_wallet".to_string(),
+                "tari_chat_client".to_string(),
                 "tari_common_types".to_string(),
+                "tari_contacts".to_string(),
+                "tari_core".to_string(),
                 "tari_crypto".to_string(),
                 "tari_p2p".to_string(),
-                "minotari_wallet".to_string(),
-                "tari_contacts".to_string(),
             ]),
             ..Default::default()
         },

@@ -3,7 +3,7 @@ name = "minotari_wallet"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency wallet library"
 license = "BSD-3-Clause"
-version = "0.51.0-pre.4"
+version = "0.52.0-pre.0"
 edition = "2018"
 
 [dependencies]
@@ -68,7 +68,7 @@ env_logger = "0.7.1"
 prost = "0.9.0"
 
 [features]
-default=["bundled_sqlite"]
+default = ["bundled_sqlite"]
 c_integration = []
 bundled_sqlite = ["libsqlite3-sys"]
 
