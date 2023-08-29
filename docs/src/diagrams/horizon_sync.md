@@ -54,7 +54,7 @@ HorizonStateSynchronization->>HorizonStateSynchronization: 4. Fetch header from 
 loop 5. Attempt syncing with all peers
     loop 6. Attempt syncing with each peer
         HorizonStateSynchronization->>Peer: 6.1 Connect with sync peer
-        HorizonStateSynchronization->>Peer: 6.2 Send RPC request to `synchronize_kernels` stream method
+        HorizonStateSynchronization->>Peer: 6.2 Send RPC request to `sync_kernels` stream method
         loop 6.3. Process each received kernel 
             HorizonStateSynchronization->>HorizonStateSynchronization: 6.3.1 Validate kernel signature
             HorizonStateSynchronization->>HorizonStateSynchronization: 6.3.2 Insert kernel in database
@@ -64,7 +64,7 @@ loop 5. Attempt syncing with all peers
 	            HorizonStateSynchronization->>HorizonStateSynchronization: 6.3.5 Update current header
             end
         end
-        HorizonStateSynchronization->>Peer: 6.4 Send RPC request to `synchronize_outputs` stream method
+        HorizonStateSynchronization->>Peer: 6.4 Send RPC request to `sync_utxos` stream method
         loop 6.5. Process each received output 
             opt UTXO is a regular tx output
 	            HorizonStateSynchronization->>HorizonStateSynchronization: 6.5.1 Validate TariScript byte size
