@@ -20,10 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, io, io::Write, ops::Deref};
+use std::{io, io::Write, ops::Deref};
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use tari_utilities::{ByteArray, ByteArrayError};
+use tari_utilities::{hex::Hex, ByteArrayError};
 
 const MAX_ARR_SIZE: usize = 63;
 
@@ -59,8 +59,10 @@ impl BorshDeserialize for FixedByteArray {
         for _ in 0..len {
             bytes.push(u8::deserialize_reader(reader)?);
         }
-        // This unwrap should never fail, the len is checked above.
-        Ok(Self::from_bytes(bytes.as_bytes()).unwrap())
+
+        let mut elems = [0u8; MAX_ARR_SIZE];
+        elems[..len].copy_from_slice(&bytes[..len]);
+        Ok(Self { elems, len: len as u8 })
     }
 }
 
@@ -92,6 +94,28 @@ impl FixedByteArray {
     pub fn is_empty(&self) -> bool {
         self.len == 0
     }
+
+    pub fn to_hex(&self) -> String {
+        self.elems.to_hex()
+    }
+
+    pub fn from_hex(hex: &str) -> Result<Self, ByteArrayError> {
+        let bytes = Vec::<u8>::from_hex(hex).map_err(|e| ByteArrayError::ConversionError {
+            reason: format!("Invalid Hex:{}", e),
+        })?;
+
+        if bytes.len() > MAX_ARR_SIZE {
+            return Err(ByteArrayError::IncorrectLength {});
+        }
+
+        let mut elems = [0u8; MAX_ARR_SIZE];
+        elems[..bytes.len()].copy_from_slice(&bytes[..]);
+
+        Ok(Self {
+            elems,
+            len: bytes.len() as u8,
+        })
+    }
 }
 
 impl Deref for FixedByteArray {
@@ -112,51 +136,15 @@ impl Default for FixedByteArray {
     }
 }
 
-impl ByteArray for FixedByteArray {
-    fn from_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError> {
-        if bytes.len() > MAX_ARR_SIZE {
-            return Err(ByteArrayError::IncorrectLength {});
-        }
-
-        let len = u8::try_from(bytes.len()).map_err(|_| ByteArrayError::IncorrectLength {})?;
-
-        let mut elems = [0u8; MAX_ARR_SIZE];
-        elems[..len as usize].copy_from_slice(&bytes[..len as usize]);
-        Ok(Self { elems, len })
-    }
-
-    fn as_bytes(&self) -> &[u8] {
-        self.as_slice()
-    }
-}
-
 #[cfg(test)]
 mod test {
+    use std::convert::TryFrom;
+
     use super::*;
 
     #[test]
     fn assert_size() {
         assert_eq!(std::mem::size_of::<FixedByteArray>(), MAX_ARR_SIZE + 1);
-    }
-
-    #[test]
-    fn from_bytes() {
-        let arr = FixedByteArray::from_bytes(&[1u8][..]).unwrap();
-        assert_eq!(arr.len(), 1);
-        assert!(arr.iter().all(|b| *b == 1));
-        // Iterates only up to len
-        let mut used = false;
-        for _ in arr.iter() {
-            assert!(!used);
-            used = true;
-        }
-        assert!(used);
-
-        let arr = FixedByteArray::from_bytes(&[1u8; 63][..]).unwrap();
-        assert_eq!(arr.len(), 63);
-        assert!(arr.iter().all(|b| *b == 1));
-
-        FixedByteArray::from_bytes(&[1u8; 64][..]).unwrap_err();
     }
 
     #[test]
@@ -176,7 +164,7 @@ mod test {
 
     #[test]
     fn test_borsh_de_serialization() {
-        let fixed_byte_array = FixedByteArray::from_bytes(&[5, 6, 7]).unwrap();
+        let fixed_byte_array = FixedByteArray::from_hex("050607").unwrap();
         let mut buf = Vec::new();
         fixed_byte_array.serialize(&mut buf).unwrap();
         buf.extend_from_slice(&[1, 2, 3]);

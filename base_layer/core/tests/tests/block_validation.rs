@@ -70,7 +70,6 @@ use tari_core::{
 use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tari_script::{inputs, script};
 use tari_test_utils::unpack_enum;
-use tari_utilities::hex::Hex;
 use tokio::time::Instant;
 
 use crate::{

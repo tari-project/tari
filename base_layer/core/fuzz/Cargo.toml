@@ -1,0 +1,42 @@
+[package]
+name = "tari_core-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2018"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+borsh = { version = "0.10", features = ["const-generics"] }
+prost = "0.9"
+
+[dependencies.tari_core]
+path = ".."
+features = ["base_node","base_node_proto"]
+
+# Prevent this from interfering with workspaces
+[workspace]
+members = ["."]
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "proto_node_comms_request"
+path = "fuzz_targets/proto_node_comms_request.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fixed_byte_array"
+path = "fuzz_targets/fixed_byte_array.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "blockheader"
+path = "fuzz_targets/blockheader.rs"
+test = false
+doc = false
