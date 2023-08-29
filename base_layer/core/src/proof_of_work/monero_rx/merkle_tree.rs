@@ -147,7 +147,7 @@ impl BorshDeserialize for MerkleProof {
         if len > MAX_MERKLE_TREE_BYTES {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "Larger than max covenant bytes".to_string(),
+                "Larger than max merkle tree bytes".to_string(),
             ));
         }
         let mut branch = Vec::with_capacity(len);
