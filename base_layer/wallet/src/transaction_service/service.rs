@@ -2329,7 +2329,7 @@ where
         self.check_recovery_status()?;
 
         if let Err(e) = finalized_transaction {
-            // TODO: Should ban but there is no banning in the wallet...
+            // Should ban but there is no banning in the wallet...
             return Err(TransactionServiceError::InvalidMessageError(format!(
                 "Could not decode TransactionFinalizedMessage: {:?}",
                 e
