@@ -421,6 +421,19 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 },
             };
 
+            if resp.fork_hash_index >= block_hashes.len() as u64 {
+                let _result = self
+                    .ban_peer_long(peer, BanReason::SplitHashGreaterThanHashes {
+                        fork_hash_index: resp.fork_hash_index,
+                        num_block_hashes: block_hashes.len(),
+                    })
+                    .await;
+                return Err(BlockHeaderSyncError::FoundHashIndexOutOfRange(
+                    block_hashes.len() as u64,
+                    resp.fork_hash_index,
+                ));
+            }
+
             let steps_back = resp.fork_hash_index.saturating_add(offset as u64);
             return Ok((resp, block_hashes, steps_back));
         }
@@ -462,19 +475,6 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 headers.len(),
                 sync_peer
             );
-        }
-
-        if fork_hash_index >= block_hashes.len() as u64 {
-            let _result = self
-                .ban_peer_long(sync_peer.node_id(), BanReason::SplitHashGreaterThanHashes {
-                    fork_hash_index,
-                    num_block_hashes: block_hashes.len(),
-                })
-                .await;
-            return Err(BlockHeaderSyncError::FoundHashIndexOutOfRange(
-                block_hashes.len() as u64,
-                fork_hash_index,
-            ));
         }
 
         // If the peer returned no new headers, this means header sync is done.
