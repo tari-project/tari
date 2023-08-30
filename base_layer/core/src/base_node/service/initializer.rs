@@ -99,7 +99,6 @@ where T: BlockchainBackend
         self.inbound_message_subscription_factory
             .get_subscription(TariMessageType::BaseNodeRequest, SUBSCRIPTION_LABEL)
             .map(map_decode::<proto::BaseNodeServiceRequest>)
-        // .filter_map(ok_or_skip_result)
     }
 
     /// Get a stream for inbound Base Node response messages
