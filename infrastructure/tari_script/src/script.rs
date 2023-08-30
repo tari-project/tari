@@ -55,6 +55,7 @@ macro_rules! script {
 }
 
 const MAX_MULTISIG_LIMIT: u8 = 32;
+const MAX_SCRIPT_BYTES: usize = 4096;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TariScript {
@@ -76,6 +77,12 @@ impl BorshDeserialize for TariScript {
     fn deserialize_reader<R>(reader: &mut R) -> Result<Self, io::Error>
     where R: io::Read {
         let len = reader.read_varint()?;
+        if len > MAX_SCRIPT_BYTES {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Larger than max script bytes".to_string(),
+            ));
+        }
         let mut data = Vec::with_capacity(len);
         for _ in 0..len {
             data.push(u8::deserialize_reader(reader)?);
@@ -1719,5 +1726,14 @@ mod test {
         let buf = &mut buf.as_slice();
         assert_eq!(script, TariScript::deserialize(buf).unwrap());
         assert_eq!(buf, &[1, 2, 3]);
+    }
+
+    #[test]
+    fn test_borsh_de_serialization_too_large() {
+        // We dont care about the actual script here, just that its not too large on the varint size
+        // We lie about the size to try and get a mem panic, and say this script is u64::max large.
+        let buf = vec![255, 255, 255, 255, 255, 255, 255, 255, 255, 1, 49, 8, 2, 5, 6];
+        let buf = &mut buf.as_slice();
+        assert!(TariScript::deserialize(buf).is_err());
     }
 }
