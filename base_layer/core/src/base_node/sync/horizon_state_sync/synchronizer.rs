@@ -196,20 +196,21 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 Ok(_) => match self.finalize_horizon_sync(sync_peer).await {
                     Ok(_) => return Ok(()),
                     Err(err) => {
-                        self.ban_peer_on_ban_able_error(sync_peer, &err).await?;
+                        self.ban_peer_on_bannable_error(sync_peer, &err).await?;
                         warn!(target: LOG_TARGET, "Error during sync:{}", err);
                         return Err(err);
                     },
                 },
                 Err(err @ HorizonSyncError::RpcError(RpcError::ReplyTimeout)) |
                 Err(err @ HorizonSyncError::MaxLatencyExceeded { .. }) => {
+                    self.ban_peer_on_bannable_error(sync_peer, &err).await?;
                     warn!(target: LOG_TARGET, "{}", err);
                     if i == self.sync_peers.len() - 1 {
                         return Err(HorizonSyncError::AllSyncPeersExceedLatency);
                     }
                 },
                 Err(err) => {
-                    self.ban_peer_on_ban_able_error(sync_peer, &err).await?;
+                    self.ban_peer_on_bannable_error(sync_peer, &err).await?;
                     warn!(target: LOG_TARGET, "Error during sync:{}", err);
                     return Err(err);
                 },
