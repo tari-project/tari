@@ -37,6 +37,7 @@ use crate::{
         shrink_hashmap::shrink_hashmap,
         unconfirmed_pool::UnconfirmedPoolError,
         FeePerGramStat,
+        MempoolError,
     },
     transactions::{tari_amount::MicroMinotari, transaction_components::Transaction, weight::TransactionWeight},
 };
@@ -401,7 +402,10 @@ impl UnconfirmedPool {
         }
     }
 
-    pub fn retrieve_by_excess_sigs(&self, excess_sigs: &[PrivateKey]) -> (Vec<Arc<Transaction>>, Vec<PrivateKey>) {
+    pub fn retrieve_by_excess_sigs(
+        &self,
+        excess_sigs: &[PrivateKey],
+    ) -> Result<(Vec<Arc<Transaction>>, Vec<PrivateKey>), MempoolError> {
         // Hashset used to prevent duplicates
         let mut found = HashSet::new();
         let mut remaining = Vec::new();
@@ -419,11 +423,11 @@ impl UnconfirmedPool {
                 self.tx_by_key
                     .get(&id)
                     .map(|tx| tx.transaction.clone())
-                    .expect("mempool indexes out of sync: transaction exists in txs_by_signature but not in tx_by_key")
+                    .ok_or(MempoolError::IndexOutOfSync)
             })
-            .collect();
+            .collect::<Result<Vec<_>, _>>()?;
 
-        (found, remaining)
+        Ok((found, remaining))
     }
 
     fn get_all_dependent_transactions(
