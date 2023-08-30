@@ -1849,7 +1849,7 @@ where
         self.check_recovery_status()?;
 
         if let Err(e) = recipient_reply {
-            // TODO: We should ban but there is no banning in the wallet...
+            // We should ban but there is no banning in the wallet...
             return Err(TransactionServiceError::InvalidMessageError(format!(
                 "Could not decode RecipientSignedMessage: {:?}",
                 e
