@@ -420,7 +420,11 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     return Err(err.into());
                 },
             };
-
+            if resp.headers.len() > NUM_INITIAL_HEADERS_TO_REQUEST {
+                self.ban_peer_long(peer, BanReason::PeerSentTooManyHeaders(resp.headers.len()))
+                    .await?;
+                return Err(BlockHeaderSyncError::NotInSync);
+            }
             if resp.fork_hash_index >= block_hashes.len() as u64 {
                 let _result = self
                     .ban_peer_long(peer, BanReason::SplitHashGreaterThanHashes {
@@ -453,14 +457,6 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         let (resp, block_hashes, steps_back) = self
             .find_chain_split(sync_peer.node_id(), client, NUM_INITIAL_HEADERS_TO_REQUEST as u64)
             .await?;
-        if resp.headers.len() > NUM_INITIAL_HEADERS_TO_REQUEST {
-            self.ban_peer_long(
-                sync_peer.node_id(),
-                BanReason::PeerSentTooManyHeaders(resp.headers.len()),
-            )
-            .await?;
-            return Err(BlockHeaderSyncError::NotInSync);
-        }
         let proto::FindChainSplitResponse {
             headers,
             fork_hash_index,
