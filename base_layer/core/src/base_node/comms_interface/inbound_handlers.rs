@@ -454,7 +454,7 @@ where B: BlockchainBackend + 'static
         // All we care here is that bad blocks are not free to make, and that they are more expensive to make then they
         // are to validate. As soon as a block can be linked to the main chain, a proper full proof of work check will
         // be done before any other validation.
-        self.check_min_block_difficulty(&new_block, &source_peer).await?;
+        self.check_min_block_difficulty(&new_block).await?;
 
         {
             // we use a double lock to make sure we can only reconcile one unique block at a time. We may receive the
@@ -517,7 +517,7 @@ where B: BlockchainBackend + 'static
             .await
         {
             Err(err @ CommsInterfaceError::ChainStorageError(ChainStorageError::ValidationError { .. })) |
-            (err @ CommsInterfaceError::InvalidBlockHeader(_)) => {
+            Err(err @ CommsInterfaceError::InvalidBlockHeader(_)) => {
                 if let Err(e) = self
                     .connectivity
                     .ban_peer(source_peer, format!("Peer propagated invalid block: {}", err))
@@ -535,11 +535,7 @@ where B: BlockchainBackend + 'static
         Ok(())
     }
 
-    async fn check_min_block_difficulty(
-        &mut self,
-        new_block: &NewBlock,
-        source_peer: &NodeId,
-    ) -> Result<(), CommsInterfaceError> {
+    async fn check_min_block_difficulty(&mut self, new_block: &NewBlock) -> Result<(), CommsInterfaceError> {
         let constants = self.consensus_manager.consensus_constants(new_block.header.height);
         let min_difficulty = constants.min_pow_difficulty(new_block.header.pow.pow_algo);
         let achieved = match new_block.header.pow_algo() {
