@@ -745,6 +745,7 @@ mod test {
         assert!(script_a.pattern_match(&script_b));
     }
 
+    #[test]
     fn op_or() {
         let script = script!(Or(1));
 
