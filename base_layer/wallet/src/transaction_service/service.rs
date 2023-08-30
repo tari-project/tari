@@ -2771,7 +2771,7 @@ where
         response: Result<base_node_proto::BaseNodeServiceResponse, prost::DecodeError>,
     ) -> Result<(), TransactionServiceError> {
         if let Err(e) = response {
-            //Should we switch base nodes?
+            // Should we switch base nodes?
             return Err(TransactionServiceError::InvalidMessageError(format!(
                 "Could not decode BaseNodeServiceResponse: {:?}",
                 e

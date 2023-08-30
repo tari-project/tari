@@ -24,7 +24,6 @@ use std::sync::Arc;
 
 use crate::{comms_connector::PeerMessage, domain_message::DomainMessage};
 
-
 pub fn map_decode<T>(serialized: Arc<PeerMessage>) -> DomainMessage<Result<T, prost::DecodeError>>
 where T: prost::Message + Default {
     DomainMessage {
