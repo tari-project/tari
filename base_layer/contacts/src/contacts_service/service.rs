@@ -417,7 +417,7 @@ where T: ContactsBackend + 'static
                         "Peer sent illformed message".to_string(),
                     )
                     .await?;
-                return Err(ContactsServiceError::IllFormedMessageError(e.clone()));
+                return Err(ContactsServiceError::MalformedMessageError(e.clone()));
             },
         };
         if let Some(source_public_key) = msg.authenticated_origin {
