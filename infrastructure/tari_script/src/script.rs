@@ -91,6 +91,34 @@ impl TariScript {
         TariScript { script }
     }
 
+    /// This pattern matches two scripts ensure they have the same instructions in the opcodes, but not the same values
+    /// inside example:
+    /// Script A = {PushPubKey(AA)}, Script B = {PushPubKey(BB)} will pattern match, but doing Script A == Script B will
+    /// not match Script A = {PushPubKey(AA)}, Script B = {PushPubKey(AA)} will pattern match, doing Script A ==
+    /// Script B will also match Script A = {PushPubKey(AA)}, Script B = {PushHash(BB)} will not pattern match, and
+    /// doing Script A == Script B will not match
+    pub fn pattern_match(&self, script: &TariScript) -> bool {
+        for (i, opcode) in self.script.iter().enumerate() {
+            if let Some(code) = script.opcode(i) {
+                if std::mem::discriminant(opcode) != std::mem::discriminant(code) {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        }
+        // We need to ensure they are the same length
+        script.opcode(self.script.len()).is_none()
+    }
+
+    /// Retrieve the opcode at the index, returns None if the index does not exist
+    pub fn opcode(&self, i: usize) -> Option<&Opcode> {
+        if i >= self.script.len() {
+            return None;
+        }
+        Some(&self.script[i])
+    }
+
     /// Executes the script using a default context. If successful, returns the final stack item.
     pub fn execute(&self, inputs: &ExecutionStack) -> Result<StackItem, ScriptError> {
         self.execute_with_context(inputs, &ScriptContext::default())
@@ -625,10 +653,10 @@ impl Hex for TariScript {
     }
 }
 
-/// The default Tari script is to push a single zero onto the stack; which will execute successfully with zero inputs.
+/// The default Tari script is to push a sender pubkey onto the stack
 impl Default for TariScript {
     fn default() -> Self {
-        script!(PushZero)
+        script!(PushPubKey(Box::default()))
     }
 }
 
@@ -694,6 +722,27 @@ mod test {
 
     fn context_with_height(height: u64) -> ScriptContext {
         ScriptContext::new(height, &HashValue::default(), &PedersenCommitment::default())
+    }
+
+    #[test]
+    fn pattern_match() {
+        let script_a = script!(Or(1));
+        let script_b = script!(Or(1));
+        assert_eq!(script_a, script_b);
+        assert!(script_a.pattern_match(&script_b));
+
+        let script_b = script!(Or(2));
+        assert_ne!(script_a, script_b);
+        assert!(script_a.pattern_match(&script_b));
+
+        let script_b = script!(Or(2) Or(2));
+        assert_ne!(script_a, script_b);
+        assert!(!script_a.pattern_match(&script_b));
+
+        let script_a = script!(Or(2) Or(1));
+        let script_b = script!(Or(3) Or(5));
+        assert_ne!(script_a, script_b);
+        assert!(script_a.pattern_match(&script_b));
     }
 
     #[test]

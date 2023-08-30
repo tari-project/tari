@@ -427,7 +427,7 @@ mod test {
     use rand::seq::SliceRandom;
     use tari_common::configuration::Network;
     use tari_common_types::types::RANGE_PROOF_AGGREGATION_FACTOR;
-    use tari_script::TariScript;
+    use tari_script::script;
 
     use super::*;
     use crate::{
@@ -504,7 +504,7 @@ mod test {
             100.into(),
             &key_manager,
             &OutputFeatures::create_burn_output(),
-            &TariScript::default(),
+            &script!(Nop),
             &Covenant::default(),
             0.into(),
         )
@@ -513,7 +513,7 @@ mod test {
             101.into(),
             &key_manager,
             &OutputFeatures::create_burn_output(),
-            &TariScript::default(),
+            &script!(Nop),
             &Covenant::default(),
             0.into(),
         )
@@ -522,7 +522,7 @@ mod test {
             102.into(),
             &key_manager,
             &OutputFeatures::create_burn_output(),
-            &TariScript::default(),
+            &script!(Nop),
             &Covenant::default(),
             0.into(),
         )
@@ -567,7 +567,7 @@ mod test {
                     100.into(),
                     &key_manager,
                     &OutputFeatures::create_burn_output(),
-                    &TariScript::default(),
+                    &script!(Nop),
                     &Covenant::default(),
                     0.into(),
                 )

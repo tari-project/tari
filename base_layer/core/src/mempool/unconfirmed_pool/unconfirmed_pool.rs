@@ -798,7 +798,7 @@ impl UnconfirmedPool {
 #[cfg(test)]
 mod test {
     use tari_common::configuration::Network;
-    use tari_script::{inputs, script};
+    use tari_script::{ExecutionStack, TariScript};
 
     use super::*;
     use crate::{
@@ -924,8 +924,8 @@ mod test {
             .with_lock_height(0)
             .with_fee_per_gram(5.into())
             .with_change_data(
-                script!(Nop),
-                inputs!(change.script_key_pk),
+                TariScript::default(),
+                ExecutionStack::default(),
                 change.script_key_id.clone(),
                 change.spend_key_id.clone(),
                 Covenant::default(),

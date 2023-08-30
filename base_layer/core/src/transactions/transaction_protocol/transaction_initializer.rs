@@ -581,7 +581,7 @@ where KM: TransactionKeyManagerInterface
 
 #[cfg(test)]
 mod test {
-    use tari_script::{inputs, script, TariScript};
+    use tari_script::{inputs, script};
 
     use crate::{
         covenants::Covenant,
@@ -696,7 +696,7 @@ mod test {
         );
 
         let output = create_wallet_output_with_data(
-            TariScript::default(),
+            script!(Nop),
             OutputFeatures::default(),
             &p,
             MicroMinotari(5000) - expected_fee,
@@ -791,7 +791,7 @@ mod test {
         let p = TestParams::new(&key_manager).await;
 
         let output = create_wallet_output_with_data(
-            TariScript::default(),
+            script!(Nop),
             OutputFeatures::default(),
             &p,
             MicroMinotari(500),
