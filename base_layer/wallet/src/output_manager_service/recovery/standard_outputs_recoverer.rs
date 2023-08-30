@@ -173,7 +173,7 @@ where
         script: &TariScript,
         spending_key: &TariKeyId,
         known_script_index: Option<usize>,
-        known_scripts: &Vec<KnownOneSidedPaymentScript>,
+        known_scripts: &[KnownOneSidedPaymentScript],
     ) -> Result<Option<(ExecutionStack, TariKeyId)>, OutputManagerError> {
         let (input_data, script_key) = if script == &script!(Nop) {
             // This is a nop, so we can just create a new key an create the input stack.
@@ -194,7 +194,7 @@ where
                 if let Some(Opcode::PushPubKey(public_key)) = script.opcode(0) {
                     let result = self
                         .master_key_manager
-                        .find_script_key_id_from_spend_key_id(&spending_key, Some(&public_key))
+                        .find_script_key_id_from_spend_key_id(spending_key, Some(public_key))
                         .await?;
                     if let Some(script_key_id) = result {
                         (ExecutionStack::default(), script_key_id)
