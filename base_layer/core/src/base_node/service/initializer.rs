@@ -138,7 +138,7 @@ fn extract_block(msg: Arc<PeerMessage>) -> DomainMessage<Result<NewBlock, Extrac
             }
         },
     };
-    let block = NewBlock::try_from(new_block).map_err(ExtractBlockError::IllFormedMessage);
+    let block = NewBlock::try_from(new_block).map_err(ExtractBlockError::MalformedMessage);
     DomainMessage {
         source_peer: msg.source_peer.clone(),
         dht_header: msg.dht_header.clone(),
