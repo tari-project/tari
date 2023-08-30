@@ -2269,7 +2269,7 @@ mod test {
         SenderTransactionProtocol,
     };
     use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
-    use tari_script::{inputs, script, TariScript};
+    use tari_script::{inputs, script};
     use tari_test_utils::random::string;
     use tempfile::tempdir;
 
@@ -2330,7 +2330,7 @@ mod test {
         let mut builder = SenderTransactionProtocol::builder(constants, key_manager.clone());
         let test_params = TestParams::new(&key_manager).await;
         let input = create_wallet_output_with_data(
-            TariScript::default(),
+            script!(Nop),
             OutputFeatures::default(),
             &test_params,
             MicroMinotari::from(100_000),
@@ -2434,7 +2434,7 @@ mod test {
         );
 
         let output = create_wallet_output_with_data(
-            TariScript::default(),
+            script!(Nop),
             OutputFeatures::default(),
             &test_params,
             MicroMinotari::from(100_000),

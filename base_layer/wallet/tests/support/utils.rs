@@ -38,7 +38,7 @@ use tari_core::{
     },
 };
 use tari_key_manager::key_manager_service::KeyManagerInterface;
-use tari_script::{inputs, script};
+use tari_script::{inputs, script, TariScript};
 
 pub async fn make_input<R: Rng + CryptoRng>(
     _rng: &mut R,
@@ -47,7 +47,7 @@ pub async fn make_input<R: Rng + CryptoRng>(
     key_manager: &TestKeyManager,
 ) -> WalletOutput {
     let test_params = TestParams::new(key_manager).await;
-    create_wallet_output_with_data(script!(Nop), features.clone(), &test_params, val, key_manager)
+    create_wallet_output_with_data(TariScript::default(), features.clone(), &test_params, val, key_manager)
         .await
         .unwrap()
 }

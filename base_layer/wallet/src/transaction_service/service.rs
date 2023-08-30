@@ -1523,6 +1523,7 @@ where
             .cloned()
             .map(OutputFeatures::create_burn_confidential_output)
             .unwrap_or_else(OutputFeatures::create_burn_output);
+
         // Prepare sender part of the transaction
         let tx_meta = TransactionMetadata::new_with_features(0.into(), 0, KernelFeatures::create_burn());
         let mut stp = self
@@ -1536,7 +1537,7 @@ where
                 fee_per_gram,
                 tx_meta,
                 message.clone(),
-                TariScript::default(),
+                script!(Nop),
                 Covenant::default(),
                 MicroMinotari::zero(),
             )

@@ -68,7 +68,7 @@ use tari_core::{
 };
 use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
 use tari_key_manager::key_manager_service::KeyManagerInterface;
-use tari_script::{inputs, script, TariScript};
+use tari_script::{inputs, script};
 use tari_test_utils::random;
 use tempfile::tempdir;
 
@@ -76,7 +76,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let mut db = TransactionDatabase::new(backend);
     let key_manager = create_test_core_key_manager_with_memory_db();
     let input = create_wallet_output_with_data(
-        TariScript::default(),
+        script!(Nop),
         OutputFeatures::default(),
         &TestParams::new(&key_manager).await,
         MicroMinotari::from(100_000),

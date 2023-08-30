@@ -310,7 +310,7 @@ async fn test_orphan_validator() {
     let key_manager = create_test_core_key_manager_with_memory_db();
     let network = Network::Igor;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_max_block_transaction_weight(321)
+        .with_max_block_transaction_weight(325)
         .build();
     let (genesis, outputs) = create_genesis_block_with_utxos(&[T, T, T], &consensus_constants, &key_manager).await;
     let network = Network::LocalNet;
@@ -885,7 +885,7 @@ async fn test_block_sync_body_validator() {
         matches!(
             err,
             ValidationError::BlockTooLarge { actual_weight, max_weight } if
-            actual_weight == 449 && max_weight == 400
+            actual_weight == 455 && max_weight == 400
         ),
         "{}",
         err

@@ -206,6 +206,18 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
+    async fn find_script_key_id_from_spend_key_id(
+        &self,
+        spend_key_id: &TariKeyId,
+        public_script_key: Option<&PublicKey>,
+    ) -> Result<Option<TariKeyId>, KeyManagerServiceError> {
+        self.transaction_key_manager_inner
+            .read()
+            .await
+            .find_script_key_id_from_spend_key_id(spend_key_id, public_script_key)
+            .await
+    }
+
     async fn get_diffie_hellman_shared_secret(
         &self,
         secret_key_id: &TariKeyId,

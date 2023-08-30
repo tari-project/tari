@@ -50,7 +50,7 @@ use tari_core::{
     },
 };
 use tari_p2p::tari_message::TariMessageType;
-use tari_script::script;
+use tari_script::TariScript;
 use tokio::{
     sync::{mpsc::Receiver, oneshot},
     time::sleep,
@@ -224,7 +224,7 @@ where
                 self.fee_per_gram,
                 self.tx_meta.clone(),
                 self.message.clone(),
-                script!(Nop),
+                TariScript::default(),
                 Covenant::default(),
                 MicroMinotari::zero(),
             )
