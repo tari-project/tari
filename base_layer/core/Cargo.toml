@@ -63,7 +63,6 @@ num-derive = "0.3.3"
 num-format = "0.4.0"
 once_cell = "1.8.0"
 prost = "0.9"
-prost-types = "0.9"
 rand = "0.8"
 randomx-rs = { git = "https://github.com/tari-project/randomx-rs", tag = "v1.1.15", optional = true }
 serde = { version = "1.0.106", features = ["derive"] }
