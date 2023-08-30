@@ -20,47 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fmt::Debug, sync::Arc};
-
-use log::*;
+use std::sync::Arc;
 
 use crate::{comms_connector::PeerMessage, domain_message::DomainMessage};
 
-const LOG_TARGET: &str = "p2p::services";
+// const LOG_TARGET: &str = "p2p::services";
 
-/// For use with `StreamExt::filter_map`. Log and filter any errors.
-pub async fn ok_or_skip_result<T, E>(res: Result<T, E>) -> Option<T>
-where E: Debug {
-    match res {
-        Ok(t) => Some(t),
-        Err(err) => {
-            warn!(target: LOG_TARGET, "{:?}", err);
-            None
-        },
-    }
-}
-
-pub fn map_decode<T>(serialized: Arc<PeerMessage>) -> Result<DomainMessage<T>, prost::DecodeError>
+pub fn map_decode<T>(serialized: Arc<PeerMessage>) -> DomainMessage<Result<T, prost::DecodeError>>
 where T: prost::Message + Default {
-    Ok(DomainMessage {
+    DomainMessage {
         source_peer: serialized.source_peer.clone(),
         dht_header: serialized.dht_header.clone(),
         authenticated_origin: serialized.authenticated_origin.clone(),
-        inner: serialized.decode_message()?,
-    })
-}
-
-#[cfg(test)]
-mod test {
-    use futures::executor::block_on;
-
-    #[test]
-    fn ok_or_skip_result() {
-        block_on(async {
-            let res = Result::<_, ()>::Ok(());
-            assert!(super::ok_or_skip_result(res).await.is_some());
-            let res = Result::<(), _>::Err(());
-            assert!(super::ok_or_skip_result(res).await.is_none());
-        });
+        inner: serialized.decode_message(),
     }
 }

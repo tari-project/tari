@@ -29,7 +29,7 @@ use tari_comms_dht::Dht;
 use tari_p2p::{
     comms_connector::{PeerMessage, SubscriptionFactory},
     domain_message::DomainMessage,
-    services::utils::{map_decode, ok_or_skip_result},
+    services::utils::map_decode,
     tari_message::TariMessageType,
 };
 use tari_service_framework::{
@@ -39,6 +39,7 @@ use tari_service_framework::{
     ServiceInitializer,
     ServiceInitializerContext,
 };
+use thiserror::Error;
 use tokio::sync::{broadcast, mpsc};
 
 use crate::{
@@ -92,45 +93,59 @@ where T: BlockchainBackend
     }
 
     /// Get a stream for inbound Base Node request messages
-    fn inbound_request_stream(&self) -> impl Stream<Item = Result<DomainMessage<proto::BaseNodeServiceRequest>, prost::DecodeError>> {
+    fn inbound_request_stream(
+        &self,
+    ) -> impl Stream<Item = DomainMessage<Result<proto::BaseNodeServiceRequest, prost::DecodeError>>> {
         self.inbound_message_subscription_factory
             .get_subscription(TariMessageType::BaseNodeRequest, SUBSCRIPTION_LABEL)
             .map(map_decode::<proto::BaseNodeServiceRequest>)
-            // .filter_map(ok_or_skip_result)
+        // .filter_map(ok_or_skip_result)
     }
 
     /// Get a stream for inbound Base Node response messages
-    fn inbound_response_stream(&self) -> impl Stream<Item = Result<DomainMessage<proto::BaseNodeServiceResponse>, prost::DecodeError>> {
+    fn inbound_response_stream(
+        &self,
+    ) -> impl Stream<Item = DomainMessage<Result<proto::BaseNodeServiceResponse, prost::DecodeError>>> {
         self.inbound_message_subscription_factory
             .get_subscription(TariMessageType::BaseNodeResponse, SUBSCRIPTION_LABEL)
             .map(map_decode::<proto::BaseNodeServiceResponse>)
     }
 
     /// Create a stream of 'New Block` messages
-    fn inbound_block_stream(&self) -> impl Stream<Item = Result<DomainMessage<NewBlock>, ExtractBlockError> {
+    fn inbound_block_stream(&self) -> impl Stream<Item = DomainMessage<Result<NewBlock, ExtractBlockError>>> {
         self.inbound_message_subscription_factory
             .get_subscription(TariMessageType::NewBlock, SUBSCRIPTION_LABEL)
             .map(extract_block)
     }
 }
 
-#[derive(Error)]
+#[derive(Error, Debug)]
 pub enum ExtractBlockError {
     #[error("Could not decode inbound block message. {0}")]
     DecodeError(#[from] prost::DecodeError),
-    #[error("Inbound block message from {0} was ill-formed. {1}")]
-    IllFormedMessage(String, String),
+    #[error("Inbound block message was ill-formed. {0}")]
+    IllFormedMessage(String),
 }
 
-async fn extract_block(msg: Arc<PeerMessage>) -> Result<DomainMessage<NewBlock>, ExtractBlockError> {
-    let new_block = msg.decode_message::<shared_protos::core::NewBlock>()? ;
-            let block = match NewBlock::try_from(new_block)? ;
-            Ok(DomainMessage {
+fn extract_block(msg: Arc<PeerMessage>) -> DomainMessage<Result<NewBlock, ExtractBlockError>> {
+    let new_block = match msg.decode_message::<shared_protos::core::NewBlock>() {
+        Ok(block) => block,
+        Err(e) => {
+            return DomainMessage {
                 source_peer: msg.source_peer.clone(),
                 dht_header: msg.dht_header.clone(),
                 authenticated_origin: msg.authenticated_origin.clone(),
-                inner: block,
-            })
+                inner: Err(e.into()),
+            }
+        },
+    };
+    let block = NewBlock::try_from(new_block).map_err(ExtractBlockError::IllFormedMessage);
+    DomainMessage {
+        source_peer: msg.source_peer.clone(),
+        dht_header: msg.dht_header.clone(),
+        authenticated_origin: msg.authenticated_origin.clone(),
+        inner: block,
+    }
 }
 
 #[async_trait]
@@ -180,7 +195,7 @@ where T: BlockchainBackend + 'static
                 mempool,
                 consensus_manager,
                 outbound_nci.clone(),
-                connectivity,
+                connectivity.clone(),
                 randomx_factory,
             );
 
@@ -198,6 +213,7 @@ where T: BlockchainBackend + 'static
                 inbound_nch,
                 service_request_timeout,
                 state_machine,
+                connectivity,
             )
             .start(streams);
             futures::pin_mut!(service);

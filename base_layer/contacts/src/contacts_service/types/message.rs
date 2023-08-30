@@ -20,9 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::convert::TryFrom;
+
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
-use tari_common_types::tari_address::TariAddress;
+use tari_common_types::tari_address::{TariAddress, TariAddressError};
 use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_p2p::tari_message::TariMessageType;
 use tari_utilities::ByteArray;
@@ -61,16 +63,18 @@ impl Default for Direction {
     }
 }
 
-impl From<proto::Message> for Message {
-    fn from(message: proto::Message) -> Self {
-        Self {
+impl TryFrom<proto::Message> for Message {
+    type Error = TariAddressError;
+
+    fn try_from(message: proto::Message) -> Result<Self, Self::Error> {
+        Ok(Self {
             body: message.body,
-            address: TariAddress::from_bytes(&message.address).expect("Couldn't parse address"),
+            address: TariAddress::from_bytes(&message.address)?,
             // A Message from a proto::Message will always be an inbound message
             direction: Direction::Inbound,
             stored_at: message.stored_at,
             message_id: message.message_id,
-        }
+        })
     }
 }
 

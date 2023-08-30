@@ -285,11 +285,15 @@ pub struct TransactionServiceNoCommsInterface {
     output_manager_service_handle: OutputManagerHandle,
     key_manager_handle: TestKeyManager,
     outbound_service_mock_state: OutboundServiceMockState,
-    transaction_send_message_channel: Sender<DomainMessage<proto::TransactionSenderMessage>>,
-    transaction_ack_message_channel: Sender<DomainMessage<proto::RecipientSignedMessage>>,
-    transaction_finalize_message_channel: Sender<DomainMessage<proto::TransactionFinalizedMessage>>,
-    _base_node_response_message_channel: Sender<DomainMessage<base_node_proto::BaseNodeServiceResponse>>,
-    transaction_cancelled_message_channel: Sender<DomainMessage<proto::TransactionCancelledMessage>>,
+    transaction_send_message_channel:
+        Sender<DomainMessage<Result<proto::TransactionSenderMessage, prost::DecodeError>>>,
+    transaction_ack_message_channel: Sender<DomainMessage<Result<proto::RecipientSignedMessage, prost::DecodeError>>>,
+    transaction_finalize_message_channel:
+        Sender<DomainMessage<Result<proto::TransactionFinalizedMessage, prost::DecodeError>>>,
+    _base_node_response_message_channel:
+        Sender<DomainMessage<Result<base_node_proto::BaseNodeServiceResponse, prost::DecodeError>>>,
+    transaction_cancelled_message_channel:
+        Sender<DomainMessage<Result<proto::TransactionCancelledMessage, prost::DecodeError>>>,
     _shutdown: Shutdown,
     _mock_rpc_server: MockRpcServer<BaseNodeWalletRpcServer<BaseNodeWalletRpcMockService>>,
     base_node_identity: Arc<NodeIdentity>,
