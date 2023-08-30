@@ -124,7 +124,7 @@ pub enum ExtractBlockError {
     #[error("Could not decode inbound block message. {0}")]
     DecodeError(#[from] prost::DecodeError),
     #[error("Inbound block message was ill-formed. {0}")]
-    IllFormedMessage(String),
+    MalformedMessage(String),
 }
 
 fn extract_block(msg: Arc<PeerMessage>) -> DomainMessage<Result<NewBlock, ExtractBlockError>> {
