@@ -1,3 +1,5 @@
+## decide next sync
+```mermaid
 flowchart TD
     A -..- N1>sync_decide.rs line 46]
     A[next_event] --> B[(get_chain_metadata)]
@@ -13,3 +15,4 @@ flowchart TD
 
     N1:::note
    classDef note fill:#eee,stroke:#ccc
+```
