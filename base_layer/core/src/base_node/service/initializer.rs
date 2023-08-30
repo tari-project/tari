@@ -92,59 +92,45 @@ where T: BlockchainBackend
     }
 
     /// Get a stream for inbound Base Node request messages
-    fn inbound_request_stream(&self) -> impl Stream<Item = DomainMessage<proto::BaseNodeServiceRequest>> {
+    fn inbound_request_stream(&self) -> impl Stream<Item = Result<DomainMessage<proto::BaseNodeServiceRequest>, prost::DecodeError>> {
         self.inbound_message_subscription_factory
             .get_subscription(TariMessageType::BaseNodeRequest, SUBSCRIPTION_LABEL)
             .map(map_decode::<proto::BaseNodeServiceRequest>)
-            .filter_map(ok_or_skip_result)
+            // .filter_map(ok_or_skip_result)
     }
 
     /// Get a stream for inbound Base Node response messages
-    fn inbound_response_stream(&self) -> impl Stream<Item = DomainMessage<proto::BaseNodeServiceResponse>> {
+    fn inbound_response_stream(&self) -> impl Stream<Item = Result<DomainMessage<proto::BaseNodeServiceResponse>, prost::DecodeError>> {
         self.inbound_message_subscription_factory
             .get_subscription(TariMessageType::BaseNodeResponse, SUBSCRIPTION_LABEL)
             .map(map_decode::<proto::BaseNodeServiceResponse>)
-            .filter_map(ok_or_skip_result)
     }
 
     /// Create a stream of 'New Block` messages
-    fn inbound_block_stream(&self) -> impl Stream<Item = DomainMessage<NewBlock>> {
+    fn inbound_block_stream(&self) -> impl Stream<Item = Result<DomainMessage<NewBlock>, ExtractBlockError> {
         self.inbound_message_subscription_factory
             .get_subscription(TariMessageType::NewBlock, SUBSCRIPTION_LABEL)
-            .filter_map(extract_block)
+            .map(extract_block)
     }
 }
 
-async fn extract_block(msg: Arc<PeerMessage>) -> Option<DomainMessage<NewBlock>> {
-    match msg.decode_message::<shared_protos::core::NewBlock>() {
-        Err(e) => {
-            warn!(
-                target: LOG_TARGET,
-                "Could not decode inbound block message. {}",
-                e.to_string()
-            );
-            None
-        },
-        Ok(new_block) => {
-            let block = match NewBlock::try_from(new_block) {
-                Err(e) => {
-                    let origin = &msg.source_peer.node_id;
-                    warn!(
-                        target: LOG_TARGET,
-                        "Inbound block message from {} was ill-formed. {}", origin, e
-                    );
-                    return None;
-                },
-                Ok(b) => b,
-            };
-            Some(DomainMessage {
+#[derive(Error)]
+pub enum ExtractBlockError {
+    #[error("Could not decode inbound block message. {0}")]
+    DecodeError(#[from] prost::DecodeError),
+    #[error("Inbound block message from {0} was ill-formed. {1}")]
+    IllFormedMessage(String, String),
+}
+
+async fn extract_block(msg: Arc<PeerMessage>) -> Result<DomainMessage<NewBlock>, ExtractBlockError> {
+    let new_block = msg.decode_message::<shared_protos::core::NewBlock>()? ;
+            let block = match NewBlock::try_from(new_block)? ;
+            Ok(DomainMessage {
                 source_peer: msg.source_peer.clone(),
                 dht_header: msg.dht_header.clone(),
                 authenticated_origin: msg.authenticated_origin.clone(),
                 inner: block,
             })
-        },
-    }
 }
 
 #[async_trait]
