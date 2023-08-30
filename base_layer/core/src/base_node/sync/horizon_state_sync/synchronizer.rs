@@ -219,7 +219,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         Err(HorizonSyncError::FailedSyncAllPeers)
     }
 
-    async fn ban_peer_on_ban_able_error(
+    async fn ban_peer_on_bannable_error(
         &mut self,
         peer: &SyncPeer,
         error: &HorizonSyncError,
