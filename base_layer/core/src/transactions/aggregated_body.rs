@@ -227,17 +227,6 @@ impl AggregateBody {
         fee
     }
 
-    /// This function will check spent kernel rules like tx lock height etc
-    pub fn check_kernel_rules(&self, height: u64) -> Result<(), TransactionError> {
-        for kernel in self.kernels() {
-            if kernel.lock_height > height {
-                warn!(target: LOG_TARGET, "Kernel lock height was not reached: {}", kernel);
-                return Err(TransactionError::InvalidKernel("Invalid lock height".to_string()));
-            }
-        }
-        Ok(())
-    }
-
     /// Run through the outputs of the block and check that
     /// 1. There is exactly ONE coinbase output
     /// 1. The coinbase output's maturity is correctly set

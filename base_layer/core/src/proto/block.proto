@@ -111,36 +111,3 @@ message BlockHeaderAccumulatedData {
     // The total accumulated difficulty for all blocks since Genesis, but not including this block, tracked separately.
     bytes total_accumulated_difficulty = 7;
 }
-
-// The NewBlockHeaderTemplate is used for the construction of a new mineable block. It contains all the metadata for the block that the Base Node is able to complete on behalf of a Miner.
-message NewBlockHeaderTemplate {
-    // Version of the block
-    uint32 version = 1;
-    // Height of this block since the genesis block (height 0)
-    uint64 height = 2;
-    // Hash of the block previous to this in the chain.
-    bytes prev_hash = 3;
-    // Total accumulated sum of kernel offsets since genesis block. We can derive the kernel offset sum for *this*
-    // block from the total kernel offset of the previous block header.
-    bytes total_kernel_offset = 4;
-    // Proof of work metadata
-    ProofOfWork pow = 5;
-    // Sum of script offsets for all kernels in this block.
-    bytes total_script_offset = 6;
-}
-
-// The new block template is used constructing a new partial block, allowing a miner to added the coinbase utxo and as a final step the Base node to add the MMR roots to the header.
-message NewBlockTemplate {
-    // The NewBlockHeaderTemplate is used for the construction of a new mineable block. It contains all the metadata for
-    // the block that the Base Node is able to complete on behalf of a Miner.
-    NewBlockHeaderTemplate header = 1;
-    // This flag indicates if the inputs, outputs and kernels have been sorted internally, that is, the sort() method
-    // has been called. This may be false even if all components are sorted.
-    tari.types.AggregateBody body = 2;
-    // The difficulty is defined as the maximum target divided by the block hash.
-    uint64 target_difficulty = 3;
-    // The reward is the sum of the coinbase utxo and the total fees.
-    uint64 reward = 4;
-    // The total fees is the sum of all the fees in the block.
-    uint64 total_fees  = 5;
-}

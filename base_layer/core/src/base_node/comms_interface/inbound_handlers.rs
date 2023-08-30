@@ -744,7 +744,7 @@ where B: BlockchainBackend + 'static
                 );
                 if let Err(e) = self
                     .connectivity
-                    .ban_peer(source_peer.clone(), format!("Peer sen invalid API response"))
+                    .ban_peer(source_peer.clone(), "Peer sent invalid API response".to_string())
                     .await
                 {
                     error!(target: LOG_TARGET, "Failed to ban peer: {}", e);
