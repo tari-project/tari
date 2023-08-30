@@ -100,9 +100,7 @@ impl TransactionBuilder {
             tx.body.sort();
             Ok(tx)
         } else {
-            Err(TransactionError::ValidationError(
-                "Transaction validation failed".into(),
-            ))
+            Err(TransactionError::BuilderError("Transaction validation failed".into()))
         }
     }
 }

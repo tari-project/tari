@@ -85,7 +85,9 @@ impl KernelBuilder {
 
     pub fn build(self) -> Result<TransactionKernel, TransactionError> {
         if self.excess.is_none() || self.excess_sig.is_none() {
-            return Err(TransactionError::NoSignatureError);
+            return Err(TransactionError::BuilderError(
+                "Kernel does not contain an excess or signature".to_string(),
+            ));
         }
         Ok(TransactionKernel::new_current_version(
             self.features,

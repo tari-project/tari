@@ -155,7 +155,7 @@ async fn test_monero_blocks() {
     add_bad_monero_data(&mut extra_bytes_block_3, seed2);
     match db.add_block(Arc::new(extra_bytes_block_3)) {
         Err(ChainStorageError::ValidationError {
-            source: ValidationError::CustomError(_),
+            source: ValidationError::MergeMineError(_),
         }) => (),
         Err(e) => {
             panic!("Failed due to other error:{:?}", e);

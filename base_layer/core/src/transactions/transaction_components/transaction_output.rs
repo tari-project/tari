@@ -226,7 +226,7 @@ impl TransactionOutput {
         match self.features.range_proof_type {
             RangeProofType::RevealedValue => match self.revealed_value_range_proof_check() {
                 Ok(_) => Ok(()),
-                Err(e) => Err(TransactionError::ValidationError(format!(
+                Err(e) => Err(TransactionError::RangeProofError(format!(
                     "Recipient output RevealedValue range proof for commitment {} failed to verify ({})",
                     self.commitment.to_hex(),
                     e
@@ -241,7 +241,7 @@ impl TransactionOutput {
                 };
                 match prover.verify_batch(vec![&self.proof_result()?.0], vec![&statement]) {
                     Ok(_) => Ok(()),
-                    Err(e) => Err(TransactionError::ValidationError(format!(
+                    Err(e) => Err(TransactionError::RangeProofError(format!(
                         "Recipient output BulletProofPlus range proof for commitment {} failed to verify ({})",
                         self.commitment.to_hex(),
                         e
@@ -736,7 +736,7 @@ mod test {
         .await
         {
             Ok(_) => panic!("Should not have been able to create output"),
-            Err(e) => assert_eq!(e, "Invalid revealed value: Expected 20 µT, received 0 µT"),
+            Err(e) => assert_eq!(e, "A range proof construction or verification has produced an error: Invalid revealed value: Expected 20 µT, received 0 µT"),
         }
     }
 
