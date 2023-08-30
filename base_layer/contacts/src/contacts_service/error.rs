@@ -51,7 +51,7 @@ pub enum ContactsServiceError {
     #[error("Error parsing address: `{source}`")]
     MessageParsingError { source: TariAddressError },
     #[error("Error decoding message: `{0}`")]
-    IllFormedMessageError(#[from] prost::DecodeError),
+    MalformedMessageError(#[from] prost::DecodeError),
     #[error("Message source does not match authenticated origin")]
     MessageSourceDoesNotMatchOrigin,
 }
