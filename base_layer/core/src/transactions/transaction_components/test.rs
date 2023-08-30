@@ -635,7 +635,7 @@ mod validate_internal_consistency {
         .await
         .unwrap_err();
 
-        unpack_enum!(TransactionProtocolError::ValidationError(err) = err);
+        unpack_enum!(TransactionProtocolError::TransactionBuildError(err) = err);
         unpack_enum!(TransactionError::BuilderError(_s) = err);
 
         //---------------------------------- Case4 - PASS --------------------------------------------//
