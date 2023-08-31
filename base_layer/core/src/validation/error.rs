@@ -20,10 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common_types::types::{FixedHash, FixedHashSizeError, HashOutput};
-use tari_crypto::errors::RangeProofError;
+use tari_common_types::types::HashOutput;
 use thiserror::Error;
-use tokio::task;
 
 use crate::{
     blocks::{BlockHeaderValidationError, BlockValidationError},
@@ -38,6 +36,8 @@ use crate::{
 
 #[derive(Debug, Error)]
 pub enum ValidationError {
+    #[error("Serialization failed: {0}")]
+    SerializationError(String),
     #[error("Block header validation failed: {0}")]
     BlockHeaderError(#[from] BlockHeaderValidationError),
     #[error("Block validation error: {0}")]
@@ -52,10 +52,6 @@ pub enum ValidationError {
     UnknownInput,
     #[error("The transaction is invalid: {0}")]
     TransactionError(#[from] TransactionError),
-    #[error("A range proof verification has produced an error: {0}")]
-    RangeProofError(String),
-    #[error("Error: {0}")]
-    CustomError(String),
     #[error("Fatal storage error during validation: {0}")]
     FatalStorageError(String),
     #[error(
@@ -69,22 +65,12 @@ pub enum ValidationError {
     ContainsTxO,
     #[error("Transaction contains an output commitment that already exists")]
     ContainsDuplicateUtxoCommitment,
-    #[error("Transaction contains an output unique_id that already exists")]
-    ContainsDuplicateUtxoUniqueID,
-    #[error("Unique ID in input is not present in outputs")]
-    UniqueIdInInputNotPresentInOutputs,
-    #[error("Unique ID was present in more than one output")]
-    DuplicateUniqueIdInOutputs,
-    #[error("Unique ID was marked as burned, but was present in a new output")]
-    UniqueIdBurnedButPresentInOutputs,
     #[error("Final state validation failed: The UTXO set did not balance with the expected emission at height {0}")]
     ChainBalanceValidationFailed(u64),
     #[error("Proof of work error: {0}")]
     ProofOfWorkError(#[from] PowError),
     #[error("Attempted to validate genesis block")]
     ValidatingGenesis,
-    #[error("Previous block hash not found")]
-    PreviousHashNotFound,
     #[error("Duplicate or unsorted input found in block body")]
     UnsortedOrDuplicateInput,
     #[error("Duplicate or unsorted output found in block body")]
@@ -93,20 +79,12 @@ pub enum ValidationError {
     UnsortedOrDuplicateKernel,
     #[error("Error in merge mine data:{0}")]
     MergeMineError(#[from] MergeMineError),
-    #[error("Contains an input with an invalid mined-height in body")]
-    InvalidMinedHeight,
     #[error("Maximum transaction weight exceeded")]
     MaxTransactionWeightExceeded,
     #[error("Expected block height to be {expected}, but was {block_height}")]
     IncorrectHeight { expected: u64, block_height: u64 },
     #[error("Expected block previous hash to be {expected}, but was {block_hash}")]
     IncorrectPreviousHash { expected: String, block_hash: String },
-    #[error("Async validation task failed: {0}")]
-    AsyncTaskFailed(#[from] task::JoinError),
-    #[error("Could not find the Output being spent by Transaction Input")]
-    TransactionInputSpentOutputMissing,
-    #[error("Output being spent by Transaction Input has already been pruned")]
-    TransactionInputSpendsPrunedOutput,
     #[error("Bad block with hash {hash} found")]
     BadBlockFound { hash: String },
     #[error("Script exceeded maximum script size, expected less than {max_script_size} but was {actual_script_size}")]
@@ -122,25 +100,12 @@ pub enum ValidationError {
     CovenantError(#[from] CovenantError),
     #[error("Invalid or unsupported blockchain version {version}")]
     InvalidBlockchainVersion { version: u16 },
-    #[error("Standard transaction contains coinbase output")]
-    ErroneousCoinbaseOutput,
-    #[error(
-        "Output was flagged as a {output_type} but contained sidechain feature data with contract_id {contract_id}"
-    )]
-    NonContractOutputContainsSidechainFeatures {
-        output_type: OutputType,
-        contract_id: FixedHash,
-    },
     #[error("Contains Invalid Burn: {0}")]
     InvalidBurnError(String),
     #[error("Output type '{output_type}' is not permitted")]
     OutputTypeNotPermitted { output_type: OutputType },
     #[error("Range proof type '{range_proof_type}' is not permitted")]
     RangeProofTypeNotPermitted { range_proof_type: RangeProofType },
-    #[error("FixedHash size error: {0}")]
-    FixedHashSizeError(#[from] FixedHashSizeError),
-    #[error("Validator node MMR is not correct")]
-    ValidatorNodeMmmrError,
     #[error("Validator registration has invalid minimum amount {actual}, must be at least {min}")]
     ValidatorNodeRegistrationMinDepositAmount { min: MicroMinotari, actual: MicroMinotari },
     #[error("Validator registration has invalid maturity {actual}, must be at least {min}")]
@@ -163,17 +128,5 @@ pub enum ValidationError {
 impl From<ChainStorageError> for ValidationError {
     fn from(err: ChainStorageError) -> Self {
         Self::FatalStorageError(err.to_string())
-    }
-}
-
-impl ValidationError {
-    pub fn custom_error<T: Into<String>>(err: T) -> Self {
-        ValidationError::CustomError(err.into())
-    }
-}
-
-impl From<RangeProofError> for ValidationError {
-    fn from(e: RangeProofError) -> Self {
-        ValidationError::RangeProofError(e.to_string())
     }
 }

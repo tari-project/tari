@@ -95,13 +95,7 @@ use crate::{
     consensus::{ConsensusConstants, ConsensusManager},
     transactions::{
         aggregated_body::AggregateBody,
-        transaction_components::{
-            TransactionError,
-            TransactionInput,
-            TransactionKernel,
-            TransactionOutput,
-            ValidatorNodeRegistration,
-        },
+        transaction_components::{TransactionInput, TransactionKernel, TransactionOutput, ValidatorNodeRegistration},
     },
     MutablePrunedOutputMmr,
     PrunedKernelMmr,
@@ -1032,11 +1026,12 @@ impl LMDBDatabase {
             })?;
 
             match utxo_mined_info.output {
-                PrunedOutput::Pruned { .. } => {
+                PrunedOutput::Pruned { output_hash } => {
                     debug!(target: LOG_TARGET, "Output Transaction Input is spending is pruned");
-                    return Err(ChainStorageError::TransactionError(
-                        TransactionError::MissingTransactionInputData,
-                    ));
+                    return Err(ChainStorageError::InvalidOperation(format!(
+                        "Output Transaction Input: {} is spending is pruned",
+                        output_hash,
+                    )));
                 },
                 PrunedOutput::NotPruned { output } => {
                     let rp_hash = match output.proof {

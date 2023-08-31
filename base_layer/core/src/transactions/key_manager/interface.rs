@@ -101,6 +101,12 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
         &self,
     ) -> Result<(TariKeyId, PublicKey, TariKeyId, PublicKey), KeyManagerServiceError>;
 
+    async fn find_script_key_id_from_spend_key_id(
+        &self,
+        spend_key_id: &TariKeyId,
+        public_script_key: Option<&PublicKey>,
+    ) -> Result<Option<TariKeyId>, KeyManagerServiceError>;
+
     async fn get_diffie_hellman_shared_secret(
         &self,
         secret_key_id: &TariKeyId,

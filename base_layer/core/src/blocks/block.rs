@@ -59,8 +59,6 @@ use crate::{
 pub enum BlockValidationError {
     #[error("A transaction in the block failed to validate: `{0}`")]
     TransactionError(#[from] TransactionError),
-    #[error("Invalid input in block")]
-    InvalidInput,
     #[error("Mismatched {kind} MMR roots")]
     MismatchedMmrRoots { kind: &'static str },
     #[error("MMR size for {mmr_tree} does not match. Expected: {expected}, received: {actual}")]

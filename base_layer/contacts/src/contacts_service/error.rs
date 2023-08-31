@@ -22,6 +22,7 @@
 
 use diesel::result::Error as DieselError;
 use tari_common_sqlite::error::SqliteStorageError;
+use tari_common_types::tari_address::TariAddressError;
 use tari_comms::connectivity::ConnectivityError;
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_p2p::services::liveness::error::LivenessError;
@@ -47,6 +48,12 @@ pub enum ContactsServiceError {
     ConnectivityError(#[from] ConnectivityError),
     #[error("Outbound comms error: `{0}`")]
     OutboundCommsError(#[from] DhtOutboundError),
+    #[error("Error parsing address: `{source}`")]
+    MessageParsingError { source: TariAddressError },
+    #[error("Error decoding message: `{0}`")]
+    MalformedMessageError(#[from] prost::DecodeError),
+    #[error("Message source does not match authenticated origin")]
+    MessageSourceDoesNotMatchOrigin,
 }
 
 #[derive(Debug, Error)]

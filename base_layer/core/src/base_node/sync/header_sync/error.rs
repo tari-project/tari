@@ -58,8 +58,6 @@ pub enum BlockHeaderSyncError {
     InvalidBlockHeight { expected: u64, actual: u64 },
     #[error("Unable to find chain split from peer `{0}`")]
     ChainSplitNotFound(NodeId),
-    #[error("Node could not find any other node with which to sync. Silence.")]
-    NetworkSilence,
     #[error("Invalid protocol response: {0}")]
     InvalidProtocolResponse(String),
     #[error("Header at height {height} did not form a chain. Expected {actual} to equal the previous hash {expected}")]

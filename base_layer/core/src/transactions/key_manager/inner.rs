@@ -217,6 +217,33 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         Ok((spend_key_id, spend_public_key, script_key_id, script_public_key))
     }
 
+    /// Calculates a script key id from the spend key id, if a public key is provided, it will only return a result of
+    /// the public keys match
+    pub async fn find_script_key_id_from_spend_key_id(
+        &self,
+        spend_key_id: &TariKeyId,
+        public_script_key: Option<&PublicKey>,
+    ) -> Result<Option<TariKeyId>, KeyManagerServiceError> {
+        let index = match spend_key_id {
+            KeyId::Managed { index, .. } => *index,
+            KeyId::Imported { .. } => return Ok(None),
+            KeyId::Zero => return Ok(None),
+        };
+        let script_key_id = KeyId::Managed {
+            branch: TransactionKeyManagerBranch::ScriptKey.get_branch_key(),
+            index,
+        };
+
+        if let Some(key) = public_script_key {
+            let script_public_key = self.get_public_key_at_key_id(&script_key_id).await?;
+            if *key == script_public_key {
+                return Ok(Some(script_key_id));
+            }
+            return Ok(None);
+        }
+        Ok(Some(script_key_id))
+    }
+
     /// Search the specified branch key manager key chain to find the index of the specified key.
     pub async fn find_key_index(&self, branch: &str, key: &PublicKey) -> Result<u64, KeyManagerServiceError> {
         let km = self
@@ -467,7 +494,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         if self.crypto_factories.range_proof.range() < 64 &&
             value >= 1u64.shl(&self.crypto_factories.range_proof.range())
         {
-            return Err(TransactionError::ValidationError(
+            return Err(TransactionError::BuilderError(
                 "Value provided is outside the range allowed by the range proof".into(),
             ));
         }
@@ -533,7 +560,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
                 );
                 let a_hash = hasher_a.chain(nonce_private_key.as_bytes()).finalize();
                 PrivateKey::from_bytes(a_hash.as_ref()).map_err(|_| {
-                    TransactionError::ConversionError("Invalid private key for sender offset private key".to_string())
+                    TransactionError::KeyManagerError("Invalid private key for sender offset private key".to_string())
                 })
             },
             RangeProofType::RevealedValue => Ok(PrivateKey::default()),
@@ -544,7 +571,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         );
         let b_hash = hasher_b.chain(nonce_private_key.as_bytes()).finalize();
         let nonce_b = PrivateKey::from_bytes(b_hash.as_ref()).map_err(|_| {
-            TransactionError::ConversionError("Invalid private key for sender offset private key".to_string())
+            TransactionError::KeyManagerError("Invalid private key for sender offset private key".to_string())
         })?;
         Ok((nonce_a, nonce_b))
     }
@@ -734,7 +761,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .chain(nonce_private_key.as_bytes())
             .finalize();
         PrivateKey::from_bytes(key_hash.as_ref()).map_err(|_| {
-            TransactionError::ConversionError("Invalid private key for kernel signature nonce".to_string())
+            TransactionError::KeyManagerError("Invalid private key for kernel signature nonce".to_string())
         })
     }
 

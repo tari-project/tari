@@ -95,7 +95,7 @@ use crate::support::{
 
 fn default_features_and_scripts_size_byte_size() -> std::io::Result<usize> {
     Ok(TransactionWeight::latest().round_up_features_and_scripts_size(
-        OutputFeatures::default().get_serialized_size()? + script![Nop].get_serialized_size()?,
+        OutputFeatures::default().get_serialized_size()? + TariScript::default().get_serialized_size()?,
     ))
 }
 
@@ -379,7 +379,7 @@ async fn fee_estimate() {
         )
         .await
         .unwrap();
-    assert_eq!(fee, MicroMinotari::from(365));
+    assert_eq!(fee, MicroMinotari::from(375));
 }
 
 #[allow(clippy::identity_op)]
@@ -477,14 +477,14 @@ async fn test_utxo_selection_no_chain_metadata() {
         .fee_estimate(spendable_amount, UtxoSelectionCriteria::default(), fee_per_gram, 1, 2)
         .await
         .unwrap();
-    assert_eq!(fee, MicroMinotari::from(252));
+    assert_eq!(fee, MicroMinotari::from(256));
 
     let broke_amount = spendable_amount + MicroMinotari::from(2000);
     let fee = oms
         .fee_estimate(broke_amount, UtxoSelectionCriteria::default(), fee_per_gram, 1, 2)
         .await
         .unwrap();
-    assert_eq!(fee, MicroMinotari::from(252));
+    assert_eq!(fee, MicroMinotari::from(256));
 
     // coin split uses the "Largest" selection strategy
     let (_, tx, utxos_total_value) = oms.create_coin_split(vec![], amount, 5, fee_per_gram).await.unwrap();
@@ -585,7 +585,7 @@ async fn test_utxo_selection_with_chain_metadata() {
         .fee_estimate(spendable_amount, UtxoSelectionCriteria::default(), fee_per_gram, 1, 2)
         .await
         .unwrap();
-    assert_eq!(fee, MicroMinotari::from(252));
+    assert_eq!(fee, MicroMinotari::from(256));
 
     // test coin split is maturity aware
     let (_, tx, utxos_total_value) = oms.create_coin_split(vec![], amount, 5, fee_per_gram).await.unwrap();
@@ -830,7 +830,7 @@ async fn send_no_change() {
             fee_per_gram,
             TransactionMetadata::default(),
             "".to_string(),
-            script!(Nop),
+            TariScript::default(),
             Covenant::default(),
             MicroMinotari::zero(),
         )
@@ -862,7 +862,7 @@ async fn send_not_enough_for_change() {
     oms.output_manager_handle
         .add_output(
             create_wallet_output_with_data(
-                TariScript::default(),
+                script!(Nop),
                 OutputFeatures::default(),
                 &TestParams::new(&key_manager).await,
                 value1,
@@ -878,7 +878,7 @@ async fn send_not_enough_for_change() {
     oms.output_manager_handle
         .add_output(
             create_wallet_output_with_data(
-                TariScript::default(),
+                script!(Nop),
                 OutputFeatures::default(),
                 &TestParams::new(&key_manager).await,
                 value2,
@@ -1203,7 +1203,7 @@ async fn coin_split_no_change() {
     let backend = OutputManagerSqliteDatabase::new(connection.clone());
     let mut oms = setup_output_manager_service(backend, true).await;
 
-    let fee_per_gram = MicroMinotari::from(4);
+    let fee_per_gram = MicroMinotari::from(5);
     let split_count = 15;
     let constants = create_consensus_constants(0);
     let fee_calc = Fee::new(*constants.transaction_weight_params());
@@ -1439,7 +1439,7 @@ async fn test_txo_validation() {
             MicroMinotari::from(10),
             TransactionMetadata::default(),
             "".to_string(),
-            script!(Nop),
+            TariScript::default(),
             Covenant::default(),
             MicroMinotari::zero(),
         )
@@ -1509,7 +1509,7 @@ async fn test_txo_validation() {
         balance.pending_incoming_balance,
         MicroMinotari::from(output1_value) -
                 MicroMinotari::from(900_000) -
-                MicroMinotari::from(1280) + //Output4 = output 1 -900_000 and 1280 for fees
+                MicroMinotari::from(1320) + //Output4 = output 1 -900_000 and 1320 for fees
                 MicroMinotari::from(8_000_000)
     );
 
@@ -1659,7 +1659,7 @@ async fn test_txo_validation() {
         balance.available_balance,
         MicroMinotari::from(output2_value) + MicroMinotari::from(output3_value) + MicroMinotari::from(output1_value) -
                 MicroMinotari::from(900_000) -
-                MicroMinotari::from(1280) + //spent 900_000 and 1280 for fees
+                MicroMinotari::from(1320) + //spent 900_000 and 1320 for fees
                 MicroMinotari::from(8_000_000) +    //output 5
                 MicroMinotari::from(16_000_000) // output 6
     );
@@ -1804,7 +1804,7 @@ async fn test_txo_validation() {
     assert_eq!(balance.pending_outgoing_balance, MicroMinotari::from(output1_value));
     assert_eq!(
         balance.pending_incoming_balance,
-        MicroMinotari::from(output1_value) - MicroMinotari::from(901_280)
+        MicroMinotari::from(output1_value) - MicroMinotari::from(901_320)
     );
     assert_eq!(MicroMinotari::from(0), balance.time_locked_balance.unwrap());
 
@@ -1866,7 +1866,7 @@ async fn test_txo_validation() {
     assert_eq!(
         balance.available_balance,
         MicroMinotari::from(output2_value) + MicroMinotari::from(output3_value) + MicroMinotari::from(output1_value) -
-            MicroMinotari::from(901_280)
+            MicroMinotari::from(901_320)
     );
     assert_eq!(balance.pending_outgoing_balance, MicroMinotari::from(0));
     assert_eq!(balance.pending_incoming_balance, MicroMinotari::from(0));

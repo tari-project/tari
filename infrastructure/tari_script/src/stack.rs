@@ -199,6 +199,12 @@ impl BorshDeserialize for ExecutionStack {
     fn deserialize_reader<R>(reader: &mut R) -> Result<Self, io::Error>
     where R: io::Read {
         let len = reader.read_varint()?;
+        if len > MAX_STACK_SIZE {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Larger than max execution stack bytes".to_string(),
+            ));
+        }
         let mut data = Vec::with_capacity(len);
         for _ in 0..len {
             data.push(u8::deserialize_reader(reader)?);
@@ -519,5 +525,14 @@ mod test {
         let buf = &mut buf.as_slice();
         assert_eq!(stack, ExecutionStack::deserialize(buf).unwrap());
         assert_eq!(buf, &[1, 2, 3]);
+    }
+
+    #[test]
+    fn test_borsh_de_serialization_too_large() {
+        // We dont care about the actual stack here, just that its not too large on the varint size
+        // We lie about the size to try and get a mem panic, and say this stack is u64::max large.
+        let buf = vec![255, 255, 255, 255, 255, 255, 255, 255, 255, 1, 49, 8, 2, 5, 6];
+        let buf = &mut buf.as_slice();
+        assert!(ExecutionStack::deserialize(buf).is_err());
     }
 }
