@@ -136,13 +136,21 @@ impl ConsensusManager {
         height: u64,
         kernels: &[TransactionKernel],
     ) -> Result<MicroMinotari, String> {
-        let coinbase = self.emission_schedule().block_reward(height);
-        Ok(kernels.iter().fold(coinbase, |total, k| {
-            total.checked_add(k.fee).expect(&format!(
-                "Kernal's total ({}) + fee ({}) exceeds max transactions allowance",
-                total, k.fee
-            ))
-        }))
+        let mut total = self.emission_schedule().block_reward(height);
+
+        for kernel in kernels {
+            match total.checked_add(kernel.fee) {
+                Some(t) => total = t,
+                None => {
+                    return Err(format!(
+                        "Coinbase total ({}) + fee ({}) exceeds max transactions allowance",
+                        total, kernel.fee
+                    ))
+                },
+            }
+        }
+
+        Ok(total)
     }
 
     /// Returns a ref to the chain strength comparer

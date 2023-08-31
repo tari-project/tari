@@ -401,17 +401,18 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                             data.into_iter()
                                 .map(|chain_block| {
                                     let (block, acc_data, confirmations, _) = chain_block.dissolve();
-                                    let total_block_reward = consensus_rules
+                                    match consensus_rules
                                         .calculate_coinbase_and_fees(block.header.height, block.body.kernels())
-                                        .unwrap(); // This makes the
-
-                                    Ok(tari_rpc::BlockHeaderResponse {
-                                        difficulty: acc_data.achieved_difficulty.into(),
-                                        num_transactions: block.body.kernels().len() as u32,
-                                        confirmations,
-                                        header: Some(block.header.into()),
-                                        reward: total_block_reward.into(),
-                                    })
+                                    {
+                                        Ok(total_block_reward) => Ok(tari_rpc::BlockHeaderResponse {
+                                            difficulty: acc_data.achieved_difficulty.into(),
+                                            num_transactions: block.body.kernels().len() as u32,
+                                            confirmations,
+                                            header: Some(block.header.into()),
+                                            reward: total_block_reward.into(),
+                                        }),
+                                        Err(e) => Err(e),
+                                    }
                                 })
                                 .rev()
                                 .collect::<Result<Vec<_>, String>>()
@@ -419,17 +420,18 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                             data.into_iter()
                                 .map(|chain_block| {
                                     let (block, acc_data, confirmations, _) = chain_block.dissolve();
-                                    let total_block_reward = consensus_rules
+                                    match consensus_rules
                                         .calculate_coinbase_and_fees(block.header.height, block.body.kernels())
-                                        .unwrap();
-
-                                    Ok(tari_rpc::BlockHeaderResponse {
-                                        difficulty: acc_data.achieved_difficulty.into(),
-                                        num_transactions: block.body.kernels().len() as u32,
-                                        confirmations,
-                                        header: Some(block.header.into()),
-                                        reward: total_block_reward.into(),
-                                    })
+                                    {
+                                        Ok(total_block_reward) => Ok(tari_rpc::BlockHeaderResponse {
+                                            difficulty: acc_data.achieved_difficulty.into(),
+                                            num_transactions: block.body.kernels().len() as u32,
+                                            confirmations,
+                                            header: Some(block.header.into()),
+                                            reward: total_block_reward.into(),
+                                        }),
+                                        Err(e) => Err(e),
+                                    }
                                 })
                                 .collect::<Result<Vec<_>, String>>()
                         }
