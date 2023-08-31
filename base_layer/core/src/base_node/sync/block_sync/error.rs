@@ -104,7 +104,6 @@ impl BlockSyncError {
             BlockSyncError::ConnectivityError(_) |
             BlockSyncError::NoMoreSyncPeers(_) |
             BlockSyncError::AllSyncPeersExceedLatency |
-            BlockSyncError::FailedToConstructChainBlock |
             BlockSyncError::SyncRoundFailed => None,
 
             err @ BlockSyncError::MaxLatencyExceeded { .. } => Some(BanReason {
@@ -112,6 +111,7 @@ impl BlockSyncError {
                 ban_duration: short_ban,
             }),
 
+            err @ BlockSyncError::FailedToConstructChainBlock |
             err @ BlockSyncError::BlockWithoutParent { .. } |
             err @ BlockSyncError::UnknownHeaderHash(_) |
             err @ BlockSyncError::InvalidBlockBody(_) |
