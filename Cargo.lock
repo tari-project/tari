@@ -4509,9 +4509,9 @@ dependencies = [
 
 [[package]]
 name = "randomx-rs"
-version = "1.2.0"
+version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8d6fcc689527781ca1f479f071991aff39b2571401dbf7ba70af51e8607ca862"
+checksum = "ebdae2c085f3467f5681c26d3e835ca89a022b18c84c777d69e12c9100176f98"
 dependencies = [
  "bitflags 1.3.2",
  "libc",
