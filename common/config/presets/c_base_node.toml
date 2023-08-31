@@ -140,8 +140,17 @@ track_reorgs = true
 # The maximum amount of VMs that RandomX will be use (default = 0)
 #max_randomx_vms = 0
 # The amount of blocks this node can be behind a peer before considered to be lagging (to test the block
-# propagation by delaying lagging) (default = 0)
-#blocks_behind_before_considered_lagging = 0
+# propagation by delaying lagging, but also to give it time to receive the block via propagation, which is more network
+# efficient)
+# Note that time_before_considered_lagging will override this setting if the node sees a stronger chain for longer than
+# that configured time.
+# (default = 1)
+#blocks_behind_before_considered_lagging = 1
+# The amount of time this node can know about a stronger chain before considered to be lagging.
+# This is to give a node time to receive the block via propagation, which is usually less network
+# intensive. Be careful of setting this higher than the block time, which would potentially cause it
+# to always be behind the network (default = 10) (in seconds)
+#time_before_considered_lagging = 10
 
 [base_node.p2p]
 # The node's publicly-accessible hostname. This is the host name that is advertised on the network so that
