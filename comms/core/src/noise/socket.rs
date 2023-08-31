@@ -228,9 +228,12 @@ where
         let mut read_buf = ReadBuf::new(&mut buf[*offset..]);
         let prev_rem = read_buf.remaining();
         ready!(socket.as_mut().poll_read(context, &mut read_buf))?;
-        let n = prev_rem
-            .checked_sub(read_buf.remaining())
-            .expect("buffer underflow: prev_rem < read_buf.remaining()");
+        let n = prev_rem.checked_sub(read_buf.remaining()).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::Other,
+                "buffer underflow: prev_rem < read_buf.remaining()",
+            )
+        })?;
         trace!(
             target: LOG_TARGET,
             "poll_read_exact: read {}/{} bytes",
@@ -404,7 +407,9 @@ where TSocket: AsyncWrite + Unpin
                             &mut self.buffers.write_encrypted,
                         ) {
                             Ok(encrypted_len) => {
-                                let frame_len = encrypted_len.try_into().expect("offset should be able to fit in u16");
+                                let frame_len = encrypted_len.try_into().map_err(|_| {
+                                    io::Error::new(io::ErrorKind::Other, "offset should be able to fit in u16")
+                                })?;
                                 self.write_state = WriteState::WriteFrameLen {
                                     frame_len,
                                     buf: u16::to_be_bytes(frame_len),
