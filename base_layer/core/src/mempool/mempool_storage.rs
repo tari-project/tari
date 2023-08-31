@@ -289,10 +289,7 @@ impl MempoolStorage {
         &self,
         excess_sigs: &[PrivateKey],
     ) -> Result<(Vec<Arc<Transaction>>, Vec<PrivateKey>), MempoolError> {
-        let (found_txns, remaining) = match self.unconfirmed_pool.retrieve_by_excess_sigs(excess_sigs) {
-            Ok((found_txns, remaining)) => (found_txns, remaining),
-            Err(e) => return Err(e),
-        };
+        let (found_txns, remaining) = self.unconfirmed_pool.retrieve_by_excess_sigs(excess_sigs)?;
 
         match self.reorg_pool.retrieve_by_excess_sigs(&remaining) {
             Ok((found_published_transactions, remaining)) => Ok((
