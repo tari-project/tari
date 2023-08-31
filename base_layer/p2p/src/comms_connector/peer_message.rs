@@ -26,7 +26,6 @@ use tari_comms::{
 };
 use tari_comms_dht::{domain_message::MessageHeader, envelope::DhtMessageHeader};
 
-
 /// A domain-level message
 #[derive(Debug)]
 pub struct PeerMessage {
