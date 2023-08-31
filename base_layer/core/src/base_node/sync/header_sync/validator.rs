@@ -138,8 +138,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
             // We dont want to mark a block as bad for internal failures
             Err(
                 e @ ValidationError::FatalStorageError(_) |
-                e @ ValidationError::IncorrectNumberOfTimestampsProvided { .. } |
-                e @ ValidationError::AsyncTaskFailed(_),
+                e @ ValidationError::IncorrectNumberOfTimestampsProvided { .. },
             ) => return Err(e.into()),
             // We dont have to mark the block twice
             Err(e @ ValidationError::BadBlockFound { .. }) => return Err(e.into()),

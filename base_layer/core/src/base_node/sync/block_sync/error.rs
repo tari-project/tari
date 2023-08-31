@@ -32,6 +32,8 @@ use tari_comms::{
 use crate::{chain_storage::ChainStorageError, validation::ValidationError};
 #[derive(Debug, thiserror::Error)]
 pub enum BlockSyncError {
+    #[error("Async validation task failed: {0}")]
+    AsyncTaskFailed(#[from] tokio::task::JoinError),
     #[error("RPC error: {0}")]
     RpcError(#[from] RpcError),
     #[error("RPC request failed: {0}")]
@@ -70,6 +72,7 @@ impl BlockSyncError {
                 "RpcTimeout"
             },
             BlockSyncError::RpcRequestError(_) => "RpcRequestError",
+            BlockSyncError::AsyncTaskFailed(_) => "AsyncTaskFailed",
             BlockSyncError::ChainStorageError(_) => "ChainStorageError",
             BlockSyncError::PeerSentBlockThatDidNotFormAChain { .. } => "PeerSentBlockThatDidNotFormAChain",
             BlockSyncError::ConnectivityError(_) => "ConnectivityError",

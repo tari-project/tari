@@ -160,12 +160,6 @@ impl HeaderSyncState {
                         warn!(target: LOG_TARGET, "{}. Continuing...", err);
                         StateEvent::Continue
                     },
-                    BlockHeaderSyncError::NetworkSilence => {
-                        log_mdc::extend(mdc);
-                        warn!(target: LOG_TARGET, "{}", err);
-                        self.is_synced = true;
-                        StateEvent::NetworkSilence
-                    },
                     _ => {
                         log_mdc::extend(mdc);
                         debug!(target: LOG_TARGET, "Header sync failed: {}", err);
