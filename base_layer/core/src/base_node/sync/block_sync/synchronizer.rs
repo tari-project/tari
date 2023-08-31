@@ -157,7 +157,6 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
                     self.db.cleanup_orphans().await?;
                     return Ok(());
                 },
-                Err(err @ BlockSyncError::ValidationError(ValidationError::AsyncTaskFailed(_))) => return Err(err),
                 Err(BlockSyncError::ValidationError(err)) => {
                     match &err {
                         ValidationError::BlockHeaderError(_) => {},
@@ -306,15 +305,13 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
                 let txn = db.db_read_access()?;
                 validator.validate_body(&*txn, &task_block)
             })
-            .await
-            .map_err(|err| ValidationError::CustomError(err.to_string()))?;
+            .await?;
 
             let block = match res {
                 Ok(block) => block,
-                Err(err @ ValidationError::BadBlockFound { .. }) |
-                Err(err @ ValidationError::FatalStorageError(_)) |
-                Err(err @ ValidationError::AsyncTaskFailed(_)) |
-                Err(err @ ValidationError::CustomError(_)) => return Err(err.into()),
+                Err(err @ ValidationError::BadBlockFound { .. }) | Err(err @ ValidationError::FatalStorageError(_)) => {
+                    return Err(err.into());
+                },
                 Err(err) => {
                     // Add to bad blocks
                     if let Err(err) = self
