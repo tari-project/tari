@@ -22,7 +22,7 @@
 
 use tari_comms::{connectivity::ConnectivityError, peer_manager::PeerManagerError, protocol::rpc::RpcError};
 
-use crate::peer_validator::PeerValidatorError;
+use crate::peer_validator::DhtPeerValidatorError;
 
 #[derive(thiserror::Error, Debug)]
 pub enum NetworkDiscoveryError {
@@ -35,5 +35,5 @@ pub enum NetworkDiscoveryError {
     #[error("No sync peers available")]
     NoSyncPeers,
     #[error("Sync peer sent invalid peer: {0}")]
-    PeerValidationError(#[from] PeerValidatorError),
+    PeerValidationError(#[from] DhtPeerValidatorError),
 }

@@ -24,6 +24,7 @@ use std::{sync::Arc, task::Poll};
 
 use futures::{future::BoxFuture, task::Context};
 use tari_comms::{
+    connectivity::ConnectivityRequester,
     peer_manager::{NodeIdentity, PeerManager},
     pipeline::PipelineError,
 };
@@ -42,6 +43,7 @@ pub struct DhtHandlerMiddleware<S> {
     next_service: S,
     peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
+    connectivity: ConnectivityRequester,
     outbound_service: OutboundMessageRequester,
     discovery_requester: DhtDiscoveryRequester,
     config: Arc<DhtConfig>,
@@ -53,6 +55,7 @@ impl<S> DhtHandlerMiddleware<S> {
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
         outbound_service: OutboundMessageRequester,
+        connectivity: ConnectivityRequester,
         discovery_requester: DhtDiscoveryRequester,
         config: Arc<DhtConfig>,
     ) -> Self {
@@ -60,6 +63,7 @@ impl<S> DhtHandlerMiddleware<S> {
             next_service,
             peer_manager,
             node_identity,
+            connectivity,
             outbound_service,
             discovery_requester,
             config,
@@ -87,6 +91,7 @@ where
                 Arc::clone(&self.peer_manager),
                 self.outbound_service.clone(),
                 Arc::clone(&self.node_identity),
+                self.connectivity.clone(),
                 self.discovery_requester.clone(),
                 message,
                 self.config.clone(),

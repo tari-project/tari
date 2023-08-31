@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{cmp, sync::Arc};
+use std::{cmp, convert::TryInto, sync::Arc};
 
 use log::*;
 use tari_comms::{
@@ -34,7 +34,7 @@ use tokio::{sync::mpsc, task};
 
 use crate::{
     proto::rpc::{GetCloserPeersRequest, GetPeersRequest, GetPeersResponse},
-    rpc::{DhtRpcService, PeerInfo},
+    rpc::{DhtRpcService, UnvalidatedPeerInfo},
 };
 
 const LOG_TARGET: &str = "comms::dht::rpc";
@@ -51,7 +51,12 @@ impl DhtRpcServiceImpl {
         Self { peer_manager }
     }
 
-    pub fn stream_peers(&self, peers: Vec<Peer>) -> Streaming<GetPeersResponse> {
+    pub fn stream_peers(
+        &self,
+        peers: Vec<Peer>,
+        max_claims: usize,
+        max_addresses_per_claim: usize,
+    ) -> Streaming<GetPeersResponse> {
         if peers.is_empty() {
             return Streaming::empty();
         }
@@ -63,9 +68,10 @@ impl DhtRpcServiceImpl {
             let iter = peers
                 .into_iter()
                 .filter_map(|peer| {
-                    let peer_info: PeerInfo = peer.into();
+                    let peer_info =
+                        UnvalidatedPeerInfo::from_peer_limited_claims(peer, max_claims, max_addresses_per_claim);
 
-                    if peer_info.addresses.is_empty() {
+                    if peer_info.claims.is_empty() {
                         None
                     } else {
                         Some(GetPeersResponse {
@@ -98,6 +104,24 @@ impl DhtRpcService for DhtRpcServiceImpl {
                 "Requested too many peers ({}). Cannot request more than `{}` peers",
                 message.n, MAX_NUM_PEERS
             )));
+        }
+
+        let max_claims = message.max_claims.try_into().map_err(|_|
+            // This can't happen on a >= 32-bit arch
+            RpcStatus::bad_request("max_claims is too large"))?;
+
+        if max_claims == 0 {
+            return Err(RpcStatus::bad_request("max_claims must be greater than zero"));
+        }
+
+        let max_addresses_per_claim = message.max_addresses_per_claim.try_into().map_err(|_|
+            // This can't happen on a >= 32-bit arch
+            RpcStatus::bad_request("max_addresses_per_claim is too large"))?;
+
+        if max_addresses_per_claim == 0 {
+            return Err(RpcStatus::bad_request(
+                "max_addresses_per_claim must be greater than zero",
+            ));
         }
 
         let node_id = if message.closer_to.is_empty() {
@@ -146,7 +170,7 @@ impl DhtRpcService for DhtRpcServiceImpl {
             node_id.short_str()
         );
 
-        Ok(self.stream_peers(peers))
+        Ok(self.stream_peers(peers, max_claims, max_addresses_per_claim))
     }
 
     async fn get_peers(&self, request: Request<GetPeersRequest>) -> Result<Streaming<GetPeersResponse>, RpcStatus> {
@@ -155,6 +179,22 @@ impl DhtRpcService for DhtRpcServiceImpl {
         let mut features = Some(PeerFeatures::COMMUNICATION_NODE);
         if message.include_clients {
             features = None;
+        }
+
+        let max_claims = message.max_claims.try_into().map_err(|_|
+            // This can't happen on a >= 32-bit arch
+            RpcStatus::bad_request("max_claims is too large"))?;
+        if max_claims == 0 {
+            return Err(RpcStatus::bad_request("max_claims must be greater than zero"));
+        }
+        let max_addresses_per_claim = message.max_addresses_per_claim.try_into().map_err(|_|
+            // This can't happen on a >= 32-bit arch
+            RpcStatus::bad_request("max_addresses_per_claim is too large"))?;
+
+        if max_addresses_per_claim == 0 {
+            return Err(RpcStatus::bad_request(
+                "max_addresses_per_claim must be greater than zero",
+            ));
         }
 
         let peers = self
@@ -176,6 +216,6 @@ impl DhtRpcService for DhtRpcServiceImpl {
             node_id.short_str()
         );
 
-        Ok(self.stream_peers(peers))
+        Ok(self.stream_peers(peers, max_claims, max_addresses_per_claim))
     }
 }

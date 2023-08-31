@@ -22,7 +22,10 @@
 
 use std::sync::Arc;
 
-use tari_comms::peer_manager::{NodeIdentity, PeerManager};
+use tari_comms::{
+    connectivity::ConnectivityRequester,
+    peer_manager::{NodeIdentity, PeerManager},
+};
 use tower::layer::Layer;
 
 use super::middleware::DhtHandlerMiddleware;
@@ -32,6 +35,7 @@ pub struct DhtHandlerLayer {
     config: Arc<DhtConfig>,
     peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
+    connectivity: ConnectivityRequester,
     outbound_service: OutboundMessageRequester,
     discovery_requester: DhtDiscoveryRequester,
 }
@@ -41,6 +45,7 @@ impl DhtHandlerLayer {
         config: Arc<DhtConfig>,
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
+        connectivity: ConnectivityRequester,
         discovery_requester: DhtDiscoveryRequester,
         outbound_service: OutboundMessageRequester,
     ) -> Self {
@@ -48,6 +53,7 @@ impl DhtHandlerLayer {
             config,
             peer_manager,
             node_identity,
+            connectivity,
             outbound_service,
             discovery_requester,
         }
@@ -63,6 +69,7 @@ impl<S> Layer<S> for DhtHandlerLayer {
             Arc::clone(&self.node_identity),
             Arc::clone(&self.peer_manager),
             self.outbound_service.clone(),
+            self.connectivity.clone(),
             self.discovery_requester.clone(),
             self.config.clone(),
         )

@@ -24,6 +24,7 @@ use std::{path::Path, time::Duration};
 
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::serializers;
+use tari_comms::peer_validator::PeerValidatorConfig;
 
 use crate::{
     network_discovery::NetworkDiscoveryConfig,
@@ -89,9 +90,7 @@ pub struct DhtConfig {
     /// Default: 30 mins
     #[serde(with = "serializers::seconds")]
     pub ban_duration_short: Duration,
-    /// This allows the use of test addresses in the network.
-    /// Default: false
-    pub allow_test_addresses: bool,
+
     /// The maximum number of messages over `flood_ban_timespan` to allow before banning the peer (for
     /// `ban_duration_short`) Default: 100_000 messages
     pub flood_ban_max_msg_count: usize,
@@ -106,6 +105,9 @@ pub struct DhtConfig {
     /// Default: 24 hours
     #[serde(with = "serializers::seconds")]
     pub offline_peer_cooldown: Duration,
+
+    pub max_permitted_peer_claims: usize,
+    pub peer_validator_config: PeerValidatorConfig,
 }
 
 impl DhtConfig {
@@ -133,7 +135,10 @@ impl DhtConfig {
                 enabled: false,
                 ..Default::default()
             },
-            allow_test_addresses: true,
+            peer_validator_config: PeerValidatorConfig {
+                allow_test_addresses: true,
+                ..Default::default()
+            },
             ..Default::default()
         }
     }
@@ -166,10 +171,11 @@ impl Default for DhtConfig {
             network_discovery: Default::default(),
             ban_duration: Duration::from_secs(6 * 60 * 60),
             ban_duration_short: Duration::from_secs(60 * 60),
-            allow_test_addresses: false,
             flood_ban_max_msg_count: 100_000,
             flood_ban_timespan: Duration::from_secs(100),
+            max_permitted_peer_claims: 5,
             offline_peer_cooldown: Duration::from_secs(24 * 60 * 60),
+            peer_validator_config: Default::default(),
         }
     }
 }

@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2023, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -19,42 +19,13 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//! # ConnectionManager
-//!
-//! This component is responsible for orchestrating PeerConnections, specifically:
-//! - dialing peers,
-//! - listening for peer connections on the configured transport,
-//! - performing connection upgrades (noise protocol, identity and multiplexing),
-//! - and, notifying the connectivity manager of changes in connection state (new connections, disconnects, etc)
-
-mod dial_state;
-mod dialer;
-mod listener;
-mod metrics;
-
-mod common;
-
-mod direction;
-pub use direction::ConnectionDirection;
-
-mod requester;
-pub use requester::{ConnectionManagerRequest, ConnectionManagerRequester};
-
-mod manager;
-pub(crate) use manager::ConnectionManager;
-pub use manager::{ConnectionManagerConfig, ConnectionManagerEvent, ListenerInfo};
 
 mod error;
-pub use error::{ConnectionManagerError, PeerConnectionError};
+pub use error::*;
 
-mod peer_connection;
-pub use peer_connection::{ConnectionId, NegotiatedSubstream, PeerConnection, PeerConnectionRequest};
+mod config;
+pub use config::*;
 
-mod liveness;
-pub(crate) use liveness::LivenessCheck;
-pub use liveness::LivenessStatus;
+mod helpers;
 
-mod wire_mode;
-
-#[cfg(test)]
-mod tests;
+pub use helpers::*;

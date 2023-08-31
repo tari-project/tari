@@ -47,6 +47,7 @@ use crate::{
     multiplexing::Substream,
     noise::NoiseConfig,
     peer_manager::{NodeId, NodeIdentity, PeerManagerError},
+    peer_validator::PeerValidatorConfig,
     protocol::{NodeNetworkInfo, ProtocolEvent, ProtocolId, Protocols},
     transports::{TcpTransport, Transport},
     PeerManager,
@@ -100,9 +101,6 @@ pub struct ConnectionManagerConfig {
     /// The maximum number of connection tasks that will be spawned at the same time. Once this limit is reached, peers
     /// attempting to connect will have to wait for another connection attempt to complete. Default: 100
     pub max_simultaneous_inbound_connects: usize,
-    /// Set to true to allow peers to send loopback, local-link and other addresses normally not considered valid for
-    /// peer-to-peer comms. Default: false
-    pub allow_test_addresses: bool,
     /// Version information for this node
     pub network_info: NodeNetworkInfo,
     /// The maximum time to wait for the first byte before closing the connection. Default: 45s
@@ -116,6 +114,7 @@ pub struct ConnectionManagerConfig {
     /// If set, an additional TCP-only p2p listener will be started. This is useful for local wallet connections.
     /// Default: None (disabled)
     pub auxiliary_tcp_listener_address: Option<Multiaddr>,
+    pub peer_validation_config: PeerValidatorConfig,
 }
 
 impl Default for ConnectionManagerConfig {
@@ -130,16 +129,12 @@ impl Default for ConnectionManagerConfig {
             max_dial_attempts: 1,
             max_simultaneous_inbound_connects: 100,
             network_info: Default::default(),
-            #[cfg(not(test))]
-            allow_test_addresses: false,
-            // This must always be true for internal crate tests
-            #[cfg(test)]
-            allow_test_addresses: true,
             liveness_max_sessions: 1,
             time_to_first_byte: Duration::from_secs(45),
             liveness_cidr_allowlist: vec![cidr::AnyIpCidr::V4("127.0.0.1/32".parse().unwrap())],
             liveness_self_check_interval: None,
             auxiliary_tcp_listener_address: None,
+            peer_validation_config: PeerValidatorConfig::default(),
         }
     }
 }

@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2023 The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -19,42 +19,36 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//! # ConnectionManager
-//!
-//! This component is responsible for orchestrating PeerConnections, specifically:
-//! - dialing peers,
-//! - listening for peer connections on the configured transport,
-//! - performing connection upgrades (noise protocol, identity and multiplexing),
-//! - and, notifying the connectivity manager of changes in connection state (new connections, disconnects, etc)
 
-mod dial_state;
-mod dialer;
-mod listener;
-mod metrics;
+use serde_derive::{Deserialize, Serialize};
 
-mod common;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PeerValidatorConfig {
+    /// The maximum size of the peer's user agent string. Some unicode characters use more than a single byte
+    /// and this specifies the maximum in bytes, as opposed to unicode characters.
+    pub max_user_agent_byte_length: usize,
+    pub max_permitted_peer_addresses_per_claim: usize,
+    pub max_supported_protocols: usize,
+    pub max_protocol_id_length: usize,
 
-mod direction;
-pub use direction::ConnectionDirection;
+    /// Set to true to allow peers to send loopback, local-link and other addresses normally not considered valid for
+    /// peer-to-peer comms. Default: false
+    pub allow_test_addresses: bool,
+}
 
-mod requester;
-pub use requester::{ConnectionManagerRequest, ConnectionManagerRequester};
-
-mod manager;
-pub(crate) use manager::ConnectionManager;
-pub use manager::{ConnectionManagerConfig, ConnectionManagerEvent, ListenerInfo};
-
-mod error;
-pub use error::{ConnectionManagerError, PeerConnectionError};
-
-mod peer_connection;
-pub use peer_connection::{ConnectionId, NegotiatedSubstream, PeerConnection, PeerConnectionRequest};
-
-mod liveness;
-pub(crate) use liveness::LivenessCheck;
-pub use liveness::LivenessStatus;
-
-mod wire_mode;
-
-#[cfg(test)]
-mod tests;
+impl Default for PeerValidatorConfig {
+    fn default() -> Self {
+        Self {
+            max_user_agent_byte_length: 50,
+            max_permitted_peer_addresses_per_claim: 5,
+            max_supported_protocols: 20,
+            max_protocol_id_length: 50,
+            #[cfg(not(test))]
+            allow_test_addresses: false,
+            // This must always be true for internal crate tests
+            #[cfg(test)]
+            allow_test_addresses: true,
+        }
+    }
+}

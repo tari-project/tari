@@ -35,13 +35,7 @@ use super::{
     state_machine::{DhtNetworkDiscoveryRoundInfo, DiscoveryParams, NetworkDiscoveryContext, StateEvent},
     NetworkDiscoveryError,
 };
-use crate::{
-    peer_validator::{PeerValidator, PeerValidatorError},
-    proto::rpc::GetPeersRequest,
-    rpc,
-    rpc::PeerInfo,
-    DhtConfig,
-};
+use crate::{peer_validator::PeerValidator, proto::rpc::GetPeersRequest, rpc, rpc::UnvalidatedPeerInfo, DhtConfig};
 
 const LOG_TARGET: &str = "comms::dht::network_discovery";
 
@@ -160,6 +154,19 @@ impl Discovering {
                     .map(|v| u32::try_from(v).unwrap())
                     .unwrap_or_default(),
                 include_clients: true,
+                max_claims: self.config().max_permitted_peer_claims.try_into().unwrap_or_else(|_| {
+                    error!(target: LOG_TARGET, "Node configured to accept more than u32::MAX claims per peer");
+                    u32::MAX
+                }),
+                max_addresses_per_claim: self
+                    .config()
+                    .peer_validator_config
+                    .max_permitted_peer_addresses_per_claim
+                    .try_into()
+                    .unwrap_or_else(|_| {
+                        error!(target: LOG_TARGET, "Node configured to accept more than u32::MAX addresses per claim");
+                        u32::MAX
+                    }),
             })
             .await
         {
@@ -194,7 +201,7 @@ impl Discovering {
     async fn validate_and_add_peer(
         &mut self,
         sync_peer: &NodeId,
-        new_peer: PeerInfo,
+        new_peer: UnvalidatedPeerInfo,
     ) -> Result<(), NetworkDiscoveryError> {
         let node_id = NodeId::from_public_key(&new_peer.public_key);
         if self.context.node_identity.node_id() == &node_id {
@@ -202,18 +209,20 @@ impl Discovering {
             return Ok(());
         }
 
-        let peer_validator = PeerValidator::new(self.peer_manager(), self.config());
+        let maybe_existing_peer = self.peer_manager().find_by_public_key(&new_peer.public_key).await?;
+        let peer_exists = maybe_existing_peer.is_some();
 
-        match peer_validator.validate_and_add_peer(new_peer).await {
-            Ok(true) => {
-                self.stats.num_new_peers += 1;
+        let peer_validator = PeerValidator::new(self.config());
+        match peer_validator.validate_peer(new_peer, maybe_existing_peer) {
+            Ok(valid_peer) => {
+                if peer_exists {
+                    self.stats.num_duplicate_peers += 1;
+                } else {
+                    self.stats.num_new_peers += 1;
+                }
+                self.peer_manager().add_peer(valid_peer).await?;
                 Ok(())
             },
-            Ok(false) => {
-                self.stats.num_duplicate_peers += 1;
-                Ok(())
-            },
-            Err(err @ PeerValidatorError::PeerManagerError(_)) => Err(err.into()),
             Err(err) => {
                 warn!(
                     target: LOG_TARGET,

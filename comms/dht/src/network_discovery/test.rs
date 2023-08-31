@@ -48,7 +48,7 @@ use crate::{
 
 mod state_machine {
     use super::*;
-    use crate::rpc::PeerInfo;
+    use crate::rpc::UnvalidatedPeerInfo;
 
     async fn setup(
         mut config: DhtConfig,
@@ -113,7 +113,7 @@ mod state_machine {
         };
         let peers = iter::repeat_with(|| make_node_identity().to_peer())
             .map(|p| GetPeersResponse {
-                peer: Some(PeerInfo::from(p).into()),
+                peer: Some(UnvalidatedPeerInfo::from_peer_limited_claims(p, 5, 5).into()),
             })
             .take(NUM_PEERS)
             .collect();

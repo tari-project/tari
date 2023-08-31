@@ -26,9 +26,9 @@ use multiaddr::Multiaddr;
 use serde_derive::{Deserialize, Serialize};
 
 use crate::{
-    peer_manager::{IdentitySignature, PeerFeatures, PeerManagerError, MAX_USER_AGENT_LEN},
+    peer_manager::{IdentitySignature, PeerFeatures, PeerManagerError},
     proto::identity::PeerIdentityMsg,
-    protocol::ProtocolId,
+    types::CommsPublicKey,
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -36,51 +36,31 @@ pub struct PeerIdentityClaim {
     pub addresses: Vec<Multiaddr>,
     pub features: PeerFeatures,
     pub signature: IdentitySignature,
-    pub unverified_data: Option<PeerIdentityClaimUnverifiedData>,
 }
 
 impl PeerIdentityClaim {
-    pub fn new(
-        addresses: Vec<Multiaddr>,
-        features: PeerFeatures,
-        signature: IdentitySignature,
-        unverified_data: Option<PeerIdentityClaimUnverifiedData>,
-    ) -> Self {
+    pub fn new(addresses: Vec<Multiaddr>, features: PeerFeatures, signature: IdentitySignature) -> Self {
         Self {
             addresses,
             features,
             signature,
-            unverified_data,
         }
     }
 
-    pub fn supported_protocols(&self) -> Vec<ProtocolId> {
-        self.unverified_data
-            .as_ref()
-            .map(|d| d.supported_protocols.clone())
-            .unwrap_or_default()
+    pub fn is_valid(&self, public_key: &CommsPublicKey) -> bool {
+        self.signature.is_valid(public_key, self.features, &self.addresses)
     }
-
-    pub fn user_agent(&self) -> Option<String> {
-        self.unverified_data.as_ref().map(|d| d.user_agent.clone())
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
-pub struct PeerIdentityClaimUnverifiedData {
-    pub user_agent: String,
-    pub supported_protocols: Vec<ProtocolId>,
 }
 
 impl TryFrom<PeerIdentityMsg> for PeerIdentityClaim {
     type Error = PeerManagerError;
 
     fn try_from(value: PeerIdentityMsg) -> Result<Self, Self::Error> {
-        let addresses: Vec<Multiaddr> = value
+        let addresses = value
             .addresses
-            .iter()
-            .map(|addr_bytes| Multiaddr::try_from(addr_bytes.clone()))
-            .collect::<Result<_, _>>()
+            .into_iter()
+            .map(Multiaddr::try_from)
+            .collect::<Result<Vec<_>, _>>()
             .map_err(|e| PeerManagerError::MultiaddrError(e.to_string()))?;
 
         if addresses.is_empty() {
@@ -88,24 +68,11 @@ impl TryFrom<PeerIdentityMsg> for PeerIdentityClaim {
         }
         let features = PeerFeatures::from_bits_truncate(value.features);
 
-        let supported_protocols = value
-            .supported_protocols
-            .iter()
-            .map(|p| bytes::Bytes::from(p.clone()))
-            .collect::<Vec<_>>();
-
-        let mut user_agent = value.user_agent;
-        user_agent.truncate(MAX_USER_AGENT_LEN);
-
         if let Some(signature) = value.identity_signature {
             Ok(Self {
                 addresses,
                 features,
                 signature: signature.try_into()?,
-                unverified_data: Some(PeerIdentityClaimUnverifiedData {
-                    user_agent,
-                    supported_protocols,
-                }),
             })
         } else {
             Err(PeerManagerError::MissingIdentitySignature)

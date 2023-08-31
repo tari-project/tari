@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2023, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,46 +20,37 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_comms::{
-    connectivity::ConnectivityError,
-    message::MessageError,
-    peer_manager::{NodeId, PeerManagerError},
-};
-use thiserror::Error;
+use std::time::Duration;
 
-use crate::{
-    discovery::DhtDiscoveryError,
-    error::DhtEncryptError,
-    outbound::DhtOutboundError,
-    peer_validator::DhtPeerValidatorError,
-};
+use crate::{bans::BAN_DURATION_LONG, peer_manager::NodeId};
 
-#[derive(Debug, Error)]
-pub enum DhtInboundError {
-    #[error("MessageError: {0}")]
-    MessageError(#[from] MessageError),
-    #[error("PeerManagerError: {0}")]
-    PeerManagerError(#[from] PeerManagerError),
-    #[error("DhtOutboundError: {0}")]
-    DhtOutboundError(#[from] DhtOutboundError),
-    #[error("DhtEncryptError: {0}")]
-    DhtEncryptError(#[from] DhtEncryptError),
-    #[error("Message body invalid")]
-    InvalidMessageBody,
+/// Validation errors for peers shared on the network
+#[derive(Debug, Clone, thiserror::Error)]
+pub enum PeerValidatorError {
+    #[error("Peer signature was invalid for peer '{peer}'")]
+    InvalidPeerSignature { peer: NodeId },
     #[error("One or more peer addresses were invalid for '{peer}'")]
     InvalidPeerAddresses { peer: NodeId },
-    #[error("DhtDiscoveryError: {0}")]
-    DhtDiscoveryError(#[from] DhtDiscoveryError),
-    #[error("OriginRequired: {0}")]
-    OriginRequired(String),
-    #[error("Invalid peer identity signature: {0}")]
-    InvalidPeerIdentitySignature(String),
-    #[error("No peer identity signature")]
-    NoPeerIdentitySignature,
-    #[error("Peer validation failed: {0}")]
-    PeerValidatorError(#[from] DhtPeerValidatorError),
-    #[error("Invalid discovery message {0}")]
-    InvalidDiscoveryMessage(#[from] anyhow::Error),
-    #[error("ConnectivityError: {0}")]
-    ConnectivityError(#[from] ConnectivityError),
+    #[error("Peer '{peer}' was banned")]
+    PeerHasNoAddresses { peer: NodeId },
+    #[error("Invalid multiaddr: {0}")]
+    InvalidMultiaddr(String),
+    #[error("No public addresses provided")]
+    PeerIdentityNoAddresses,
+    #[error("Onion v2 is deprecated and not supported")]
+    OnionV2NotSupported,
+    #[error("Peer provided too many supported protocols: expected max {max} but got {length}")]
+    PeerIdentityTooManyProtocols { length: usize, max: usize },
+    #[error("Peer provided too many addresses: expected max {max} but got {length}")]
+    PeerIdentityTooManyAddresses { length: usize, max: usize },
+    #[error("Peer provided a protocol id that exceeds the maximum length: expected max {max} but got {length}")]
+    PeerIdentityProtocolIdTooLong { length: usize, max: usize },
+    #[error("Peer provided a user agent that exceeds the maximum length: expected max {max} but got {length}")]
+    PeerIdentityUserAgentTooLong { length: usize, max: usize },
+}
+
+impl PeerValidatorError {
+    pub fn as_ban_duration(&self) -> Option<Duration> {
+        Some(BAN_DURATION_LONG)
+    }
 }

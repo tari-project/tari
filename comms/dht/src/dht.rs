@@ -197,6 +197,7 @@ impl Dht {
             self.config.clone(),
             Arc::clone(&self.node_identity),
             Arc::clone(&self.peer_manager),
+            self.connectivity.clone(),
             self.outbound_requester(),
             request_receiver,
             shutdown_signal,
@@ -336,6 +337,7 @@ impl Dht {
                 self.config.clone(),
                 self.node_identity.clone(),
                 self.peer_manager.clone(),
+                self.connectivity.clone(),
                 self.discovery_service_requester(),
                 self.outbound_requester(),
             ))

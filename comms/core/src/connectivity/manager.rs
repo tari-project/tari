@@ -265,7 +265,7 @@ impl ConnectivityManagerActor {
                 } else if let Err(err) = self.ban_peer(&node_id, duration, reason).await {
                     error!(target: LOG_TARGET, "Error when banning peer: {:?}", err);
                 } else {
-                    // we ban the peer
+                    // we banned the peer
                 }
             },
             AddPeerToAllowList(node_id) => {

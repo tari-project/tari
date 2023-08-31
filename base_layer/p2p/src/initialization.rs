@@ -555,11 +555,11 @@ impl ServiceInitializer for P2pInitializer {
             })
             .set_liveness_check(config.listener_liveness_check_interval);
 
-        if config.allow_test_addresses || config.dht.allow_test_addresses {
+        if config.allow_test_addresses || config.dht.peer_validator_config.allow_test_addresses {
             // The default is false, so ensure that both settings are true in this case
             config.allow_test_addresses = true;
-            config.dht.allow_test_addresses = true;
             builder = builder.allow_test_addresses();
+            config.dht.peer_validator_config = builder.peer_validator_config().clone();
         }
 
         let (comms, dht) = configure_comms_and_dht(builder, &config, connector).await?;

@@ -159,20 +159,11 @@ impl Peer {
     }
 
     pub fn last_connect_attempt(&self) -> Option<NaiveDateTime> {
-        let mut last_connected_attempt = None;
-        for address in self.addresses.addresses() {
-            if let Some(address_time) = address.last_attempted {
-                match last_connected_attempt {
-                    Some(last_time) => {
-                        if last_time < address_time {
-                            last_connected_attempt = address.last_attempted
-                        }
-                    },
-                    None => last_connected_attempt = address.last_attempted,
-                }
-            }
-        }
-        last_connected_attempt
+        self.addresses
+            .addresses()
+            .iter()
+            .max_by_key(|a| a.last_attempted())
+            .and_then(|a| a.last_attempted())
     }
 
     /// Returns true if the peer is marked as offline
@@ -210,11 +201,6 @@ impl Peer {
     pub fn last_seen_since(&self) -> Option<Duration> {
         self.last_seen()
             .and_then(|dt| Utc::now().naive_utc().signed_duration_since(dt).to_std().ok())
-    }
-
-    /// Returns true if this peer has the given feature, otherwise false
-    pub fn has_features(&self, features: PeerFeatures) -> bool {
-        self.features.contains(features)
     }
 
     /// Returns the ban status of the peer

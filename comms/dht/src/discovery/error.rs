@@ -24,7 +24,10 @@ use tari_comms::peer_manager::PeerManagerError;
 use thiserror::Error;
 use tokio::sync::mpsc::error::SendError;
 
-use crate::outbound::{message::SendFailure, DhtOutboundError};
+use crate::{
+    outbound::{message::SendFailure, DhtOutboundError},
+    peer_validator::DhtPeerValidatorError,
+};
 
 #[derive(Debug, Error)]
 pub enum DhtDiscoveryError {
@@ -48,6 +51,10 @@ pub enum DhtDiscoveryError {
     NoSignatureProvided,
     #[error("Invalid signature: {0}")]
     InvalidSignature(String),
+    #[error("Invalid discovery response: {details}")]
+    InvalidDiscoveryResponse { details: anyhow::Error },
+    #[error("DHT peer validator error: {0}")]
+    PeerValidatorError(#[from] DhtPeerValidatorError),
 }
 
 impl DhtDiscoveryError {
