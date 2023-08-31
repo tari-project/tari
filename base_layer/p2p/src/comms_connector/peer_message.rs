@@ -26,7 +26,6 @@ use tari_comms::{
 };
 use tari_comms_dht::{domain_message::MessageHeader, envelope::DhtMessageHeader};
 
-// const LOG_TARGET: &str = "comms::dht::requests::inbound";
 
 /// A domain-level message
 #[derive(Debug)]
