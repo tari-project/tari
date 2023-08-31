@@ -575,7 +575,7 @@ mod test {
         let msg = create_dummy_message(PingPongMessage::pong_with_metadata(123, metadata.clone()));
 
         state.add_inflight_ping(
-            msg.inner.as_ref().map(|i| i.nonce.clone()).unwrap(),
+            msg.inner.as_ref().map(|i| i.nonce).unwrap(),
             msg.source_peer.node_id.clone(),
         );
 
