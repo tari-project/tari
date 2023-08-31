@@ -186,11 +186,23 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         );
         for (i, sync_peer) in self.sync_peers.iter().enumerate() {
             self.hooks.call_on_starting_hook(sync_peer);
-            let mut connection = self.connectivity.dial_peer(sync_peer.node_id().clone()).await?;
+            let mut connection = match self.connectivity.dial_peer(sync_peer.node_id().clone()).await {
+                Ok(conn) => conn,
+                Err(err) => {
+                    warn!(target: LOG_TARGET, "Failed to connect to sync peer `{}`: {}", sync_peer.node_id(), err);
+                    continue;
+                },
+            };
             let config = RpcClient::builder()
                 .with_deadline(self.config.rpc_deadline)
                 .with_deadline_grace_period(Duration::from_secs(3));
-            let mut client = connection.connect_rpc_using_builder(config).await?;
+            let mut client = match connection.connect_rpc_using_builder(config).await {
+                Ok(rpc_client) => rpc_client,
+                Err(err) => {
+                    warn!(target: LOG_TARGET, "Failed to establish RPC coonection with sync peer `{}`: {}", sync_peer.node_id(), err);
+                    continue;
+                },
+            };
 
             match self.begin_sync(sync_peer.clone(), &mut client, header).await {
                 Ok(_) => match self.finalize_horizon_sync(sync_peer).await {
@@ -198,7 +210,6 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     Err(err) => {
                         self.ban_peer_on_bannable_error(sync_peer, &err).await?;
                         warn!(target: LOG_TARGET, "Error during sync:{}", err);
-                        return Err(err);
                     },
                 },
                 Err(err @ HorizonSyncError::RpcError(RpcError::ReplyTimeout)) |
@@ -212,7 +223,6 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 Err(err) => {
                     self.ban_peer_on_bannable_error(sync_peer, &err).await?;
                     warn!(target: LOG_TARGET, "Error during sync:{}", err);
-                    return Err(err);
                 },
             }
         }
