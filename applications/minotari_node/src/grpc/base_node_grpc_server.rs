@@ -181,8 +181,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let mut randomx_hash_rate_moving_average =
             HashRateMovingAverage::new(PowAlgorithm::RandomX, self.consensus_rules.clone());
 
+        let page_iter = NonOverlappingIntegerPairIter::new(start_height, end_height + 1, GET_DIFFICULTY_PAGE_SIZE)
+            .map_err(Status::invalid_argument)?;
         task::spawn(async move {
-            let page_iter = NonOverlappingIntegerPairIter::new(start_height, end_height + 1, GET_DIFFICULTY_PAGE_SIZE);
             for (start, end) in page_iter {
                 // headers are returned by height
                 let headers = match handler.get_headers(start..=end).await {
@@ -373,17 +374,15 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             }
         };
         let consensus_rules = self.consensus_rules.clone();
+        let page_iter =
+            NonOverlappingIntegerPairIter::new(*header_range.start(), *header_range.end() + 1, LIST_HEADERS_PAGE_SIZE)
+                .map_err(Status::invalid_argument)?;
         task::spawn(async move {
             debug!(
                 target: LOG_TARGET,
                 "Starting base node request {}-{}",
                 header_range.start(),
                 header_range.end()
-            );
-            let page_iter = NonOverlappingIntegerPairIter::new(
-                *header_range.start(),
-                *header_range.end() + 1,
-                LIST_HEADERS_PAGE_SIZE,
             );
             let page_iter = if is_reversed {
                 Either::Left(page_iter.rev())
@@ -864,8 +863,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let mut handler = self.node_service.clone();
         let (mut tx, rx) = mpsc::channel(GET_BLOCKS_PAGE_SIZE);
+        let page_iter = NonOverlappingIntegerPairIter::new(start, end + 1, GET_BLOCKS_PAGE_SIZE)
+            .map_err(Status::invalid_argument)?;
         task::spawn(async move {
-            let page_iter = NonOverlappingIntegerPairIter::new(start, end + 1, GET_BLOCKS_PAGE_SIZE);
             for (start, end) in page_iter {
                 let blocks = match handler.get_blocks(start..=end, false).await {
                     Err(err) => {
