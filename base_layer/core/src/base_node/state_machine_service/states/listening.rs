@@ -209,6 +209,11 @@ impl Listening {
                                 sync_peers: sync_peers.clone(),
                             });
                         }
+                    } else {
+                        // We might have gotten up to date via propagation outside of this state, so reset the timer
+                        if sync_mode == SyncStatus::UpToDate {
+                            time_since_better_block = None;
+                        }
                     }
 
                     if sync_mode.is_lagging() {
@@ -390,6 +395,6 @@ mod test {
         assert!(sync_mode.is_lagging());
 
         let sync_mode = determine_sync_mode(2, behind_node.claimed_chain_metadata(), &archival_node);
-        assert!(sync_mode.is_up_to_date());
+        assert!(matches!(sync_mode, SyncStatus::BehindButNotYetLagging { .. }));
     }
 }
