@@ -174,6 +174,7 @@ impl ValidationError {
             err @ ValidationError::ValidatorNodeRegistrationMinLockHeight { .. } |
             err @ ValidationError::InvalidValidatorNodeSignature |
             err @ ValidationError::DifficultyError(_) |
+            err @ ValidationError::CoinbaseExceedsMaxLimit |
             err @ ValidationError::CovenantTooLarge { .. } => Some(BanReason {
                 reason: format!("{}", err),
                 ban_duration: long_ban_duration.unwrap_or_else(|| Duration::from_secs(2 * 60 * 60)),
