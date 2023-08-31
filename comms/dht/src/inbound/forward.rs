@@ -152,7 +152,11 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 message.tag,
                 message.dht_header.message_tag
             );
-            self.forward(&message).await?;
+
+            // Only forward DHT discovery, Join and any encrypted Domain messages
+            if message.dht_header.message_type.is_forwardable() {
+                self.forward(&message).await?;
+            }
         }
 
         // The message has been forwarded, but downstream middleware may be interested
@@ -222,8 +226,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                     node_id, dht_header.message_tag
                 );
                 debug!(target: LOG_TARGET, "{}", &debug_info);
-                send_params.with_debug_info(debug_info);
-                send_params.direct_or_closest_connected(node_id, excluded_peers);
+                send_params
+                    .with_debug_info(debug_info)
+                    .direct_or_closest_connected(node_id, excluded_peers);
             },
             _ => {
                 let debug_info = format!(
@@ -231,8 +236,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                     dht_header.destination, dht_header.message_tag
                 );
                 debug!(target: LOG_TARGET, "{}", debug_info);
-                send_params.with_debug_info(debug_info);
-                send_params.propagate(dht_header.destination.clone(), excluded_peers);
+                send_params
+                    .with_debug_info(debug_info)
+                    .propagate(dht_header.destination.clone(), excluded_peers);
             },
         };
 

@@ -20,19 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_comms::{
-    connectivity::ConnectivityError,
-    message::MessageError,
-    peer_manager::{NodeId, PeerManagerError},
-};
+use tari_comms::{connectivity::ConnectivityError, message::MessageError, peer_manager::PeerManagerError};
 use thiserror::Error;
 
-use crate::{
-    discovery::DhtDiscoveryError,
-    error::DhtEncryptError,
-    outbound::DhtOutboundError,
-    peer_validator::DhtPeerValidatorError,
-};
+use crate::{discovery::DhtDiscoveryError, outbound::DhtOutboundError, peer_validator::DhtPeerValidatorError};
 
 #[derive(Debug, Error)]
 pub enum DhtInboundError {
@@ -42,20 +33,12 @@ pub enum DhtInboundError {
     PeerManagerError(#[from] PeerManagerError),
     #[error("DhtOutboundError: {0}")]
     DhtOutboundError(#[from] DhtOutboundError),
-    #[error("DhtEncryptError: {0}")]
-    DhtEncryptError(#[from] DhtEncryptError),
     #[error("Message body invalid")]
     InvalidMessageBody,
-    #[error("One or more peer addresses were invalid for '{peer}'")]
-    InvalidPeerAddresses { peer: NodeId },
     #[error("DhtDiscoveryError: {0}")]
     DhtDiscoveryError(#[from] DhtDiscoveryError),
     #[error("OriginRequired: {0}")]
     OriginRequired(String),
-    #[error("Invalid peer identity signature: {0}")]
-    InvalidPeerIdentitySignature(String),
-    #[error("No peer identity signature")]
-    NoPeerIdentitySignature,
     #[error("Peer validation failed: {0}")]
     PeerValidatorError(#[from] DhtPeerValidatorError),
     #[error("Invalid discovery message {0}")]
