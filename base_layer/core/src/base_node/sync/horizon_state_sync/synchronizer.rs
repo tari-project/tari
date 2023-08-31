@@ -739,6 +739,12 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             last_sync_timer = Instant::now();
         }
 
+        if !unpruned_outputs.is_empty() {
+            return Err(HorizonSyncError::IncorrectResponse(
+                "Sync node sent leftover unpruned outputs".to_string(),
+            ));
+        }
+
         if mmr_position != end {
             return Err(HorizonSyncError::IncorrectResponse(
                 "Sync node did not send all utxos requested".to_string(),
