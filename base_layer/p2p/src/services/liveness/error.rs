@@ -51,4 +51,6 @@ pub enum LivenessError {
     InvalidPingPongType,
     #[error("NodeId does not exist")]
     NodeIdDoesNotExist,
+    #[error("PingPongDecodeError: {0}")]
+    PingPongDecodeError(#[from] prost::DecodeError),
 }

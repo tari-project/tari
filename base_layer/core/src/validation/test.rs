@@ -25,7 +25,7 @@ use std::{cmp, sync::Arc};
 use tari_common::configuration::Network;
 use tari_common_types::types::Commitment;
 use tari_crypto::commitment::HomomorphicCommitment;
-use tari_script::script;
+use tari_script::TariScript;
 use tari_test_utils::unpack_enum;
 
 use crate::{
@@ -182,7 +182,7 @@ async fn chain_balance_validation() {
         faucet_value,
         &key_manager,
         &OutputFeatures::default(),
-        &script!(Nop),
+        &TariScript::default(),
         &Covenant::default(),
         MicroMinotari::zero(),
     )
@@ -240,7 +240,7 @@ async fn chain_balance_validation() {
         coinbase_value,
         &key_manager,
         &OutputFeatures::create_coinbase(1, None),
-        &script!(Nop),
+        &TariScript::default(),
         &Covenant::default(),
         MicroMinotari::zero(),
     )
@@ -302,7 +302,7 @@ async fn chain_balance_validation() {
         v,
         &key_manager,
         &OutputFeatures::create_coinbase(1, None),
-        &script!(Nop),
+        &TariScript::default(),
         &Covenant::default(),
         MicroMinotari::zero(),
     )
@@ -367,7 +367,7 @@ async fn chain_balance_validation_burned() {
         faucet_value,
         &key_manager,
         &OutputFeatures::default(),
-        &script!(Nop),
+        &TariScript::default(),
         &Covenant::default(),
         MicroMinotari::zero(),
     )
@@ -425,7 +425,7 @@ async fn chain_balance_validation_burned() {
         coinbase_value,
         &key_manager,
         &OutputFeatures::create_coinbase(1, None),
-        &script!(Nop),
+        &TariScript::default(),
         &Covenant::default(),
         MicroMinotari::zero(),
     )
@@ -451,7 +451,7 @@ async fn chain_balance_validation_burned() {
         100.into(),
         &key_manager,
         &OutputFeatures::create_burn_output(),
-        &script!(Nop),
+        &TariScript::default(),
         &Covenant::default(),
         MicroMinotari::zero(),
     )
@@ -518,7 +518,7 @@ mod transaction_validator {
     use crate::{
         transactions::{
             test_helpers::create_test_core_key_manager_with_memory_db,
-            transaction_components::TransactionError,
+            transaction_components::{OutputType, TransactionError},
         },
         validation::transaction::TransactionInternalConsistencyValidator,
     };
@@ -538,7 +538,11 @@ mod transaction_validator {
         };
         let tip = db.get_chain_metadata().unwrap();
         let err = validator.validate_with_current_tip(&tx, tip).unwrap_err();
-        unpack_enum!(ValidationError::ErroneousCoinbaseOutput = err);
+        unpack_enum!(
+            ValidationError::OutputTypeNotPermitted {
+                output_type: OutputType::Coinbase
+            } = err
+        );
     }
 
     #[tokio::test]

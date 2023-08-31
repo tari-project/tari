@@ -59,8 +59,6 @@ use crate::{
 pub enum BlockValidationError {
     #[error("A transaction in the block failed to validate: `{0}`")]
     TransactionError(#[from] TransactionError),
-    #[error("Invalid input in block")]
-    InvalidInput,
     #[error("Mismatched {kind} MMR roots")]
     MismatchedMmrRoots { kind: &'static str },
     #[error("MMR size for {mmr_tree} does not match. Expected: {expected}, received: {actual}")]
@@ -96,12 +94,6 @@ impl Block {
         self.body.kernels().iter().fold(0.into(), |sum, x| sum + x.fee)
     }
 
-    /// This function will check spent kernel rules like tx lock height etc
-    pub fn check_kernel_rules(&self) -> Result<(), BlockValidationError> {
-        self.body.check_kernel_rules(self.header.height)?;
-        Ok(())
-    }
-
     /// Run through the outputs of the block and check that
     /// 1. There is exactly ONE coinbase output
     /// 2. The output's maturity is correctly set
@@ -118,16 +110,6 @@ impl Block {
             factories,
             self.header.height,
         )?;
-        Ok(())
-    }
-
-    /// Run through the outputs of the block and check that
-    /// 1. only coinbase outputs may have metadata set,
-    /// 2. coinbase metadata length does not exceed its limit
-    pub fn check_output_features(&self, consensus_constants: &ConsensusConstants) -> Result<(), BlockValidationError> {
-        self.body
-            .check_output_features(consensus_constants.coinbase_output_features_extra_max_length())?;
-
         Ok(())
     }
 

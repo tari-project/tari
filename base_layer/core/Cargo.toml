@@ -38,7 +38,7 @@ tari_common_sqlite = { path = "../../common_sqlite" }
 
 async-trait = {version = "0.1.50"}
 bincode = "1.1.4"
-bitflags = "1.0.4"
+bitflags = "1"
 blake2 = "0.10"
 borsh = { version = "0.10", features = ["const-generics"] }
 bytes = "0.5"
@@ -56,7 +56,7 @@ integer-encoding = "3.0.2"
 lmdb-zero = "0.4.4"
 log = "0.4"
 log-mdc = "0.1.0"
-monero = { version = "0.18" , features = ["serde-crate"], optional = true }
+monero = { version = "0.18", features = ["serde-crate"], optional = true }
 newtype-ops = "0.1.4"
 num-traits = "0.2.15"
 num-derive = "0.3.3"
@@ -65,7 +65,7 @@ once_cell = "1.8.0"
 prost = "0.9"
 prost-types = "0.9"
 rand = "0.8"
-randomx-rs = { git = "https://github.com/tari-project/randomx-rs", tag = "v1.1.15", optional = true }
+randomx-rs = { version = "1.2.1", optional = true }
 serde = { version = "1.0.106", features = ["derive"] }
 serde_json = "1.0"
 serde_repr = "0.1.8"

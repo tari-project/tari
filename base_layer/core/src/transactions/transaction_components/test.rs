@@ -135,7 +135,7 @@ async fn range_proof_verification() {
     match wallet_output2 {
         Ok(_) => panic!("Range proof should have failed to verify"),
         Err(e) => {
-            unpack_enum!(TransactionError::ValidationError(s) = e);
+            unpack_enum!(TransactionError::BuilderError(s) = e);
             assert_eq!(s, "Value provided is outside the range allowed by the range proof");
         },
     }
@@ -566,7 +566,7 @@ mod validate_internal_consistency {
         let validator = TransactionInternalConsistencyValidator::new(false, rules, CryptoFactories::default());
         validator
             .validate(&tx, None, None, height)
-            .map_err(|err| TransactionError::ValidationError(err.to_string()))?;
+            .map_err(|err| TransactionError::BuilderError(err.to_string()))?;
         Ok(())
     }
 
@@ -636,7 +636,7 @@ mod validate_internal_consistency {
         .unwrap_err();
 
         unpack_enum!(TransactionProtocolError::TransactionBuildError(err) = err);
-        unpack_enum!(TransactionError::ValidationError(_s) = err);
+        unpack_enum!(TransactionError::BuilderError(_s) = err);
 
         //---------------------------------- Case4 - PASS --------------------------------------------//
         // Pass because maturity is set
