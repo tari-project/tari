@@ -32,7 +32,7 @@ use tari_utilities::hex::Hex;
 
 use crate::{
     blocks::Block,
-    mempool::shrink_hashmap::shrink_hashmap,
+    mempool::{shrink_hashmap::shrink_hashmap, MempoolError},
     transactions::transaction_components::Transaction,
 };
 
@@ -144,7 +144,10 @@ impl ReorgPool {
         result
     }
 
-    pub fn retrieve_by_excess_sigs(&self, excess_sigs: &[PrivateKey]) -> (Vec<Arc<Transaction>>, Vec<PrivateKey>) {
+    pub fn retrieve_by_excess_sigs(
+        &self,
+        excess_sigs: &[PrivateKey],
+    ) -> Result<(Vec<Arc<Transaction>>, Vec<PrivateKey>), MempoolError> {
         // Hashset used to prevent duplicates
         let mut found = HashSet::new();
         let mut remaining = Vec::new();
@@ -158,15 +161,10 @@ impl ReorgPool {
 
         let found = found
             .into_iter()
-            .map(|id| {
-                self.tx_by_key
-                    .get(id)
-                    .expect("mempool indexes out of sync: transaction exists in txs_by_signature but not in tx_by_key")
-            })
-            .cloned()
-            .collect();
+            .map(|id| self.tx_by_key.get(id).cloned().ok_or(MempoolError::IndexOutOfSync))
+            .collect::<Result<Vec<_>, _>>()?;
 
-        (found, remaining)
+        Ok((found, remaining))
     }
 
     /// Check if a transaction is stored in the ReorgPool
