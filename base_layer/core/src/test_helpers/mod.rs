@@ -79,14 +79,16 @@ pub async fn create_block(
     header.height = block_height;
     // header.prev_hash = prev_block.hash();
     let reward = spec.reward_override.unwrap_or_else(|| {
-        rules.calculate_coinbase_and_fees(
-            header.height,
-            &spec
-                .transactions
-                .iter()
-                .flat_map(|tx| tx.body.kernels().clone())
-                .collect::<Vec<_>>(),
-        )
+        rules
+            .calculate_coinbase_and_fees(
+                header.height,
+                &spec
+                    .transactions
+                    .iter()
+                    .flat_map(|tx| tx.body.kernels().clone())
+                    .collect::<Vec<_>>(),
+            )
+            .unwrap()
     });
 
     let spend_key_id = KeyId::Managed {

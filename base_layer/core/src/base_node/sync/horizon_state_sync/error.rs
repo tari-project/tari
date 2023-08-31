@@ -34,7 +34,6 @@ use thiserror::Error;
 use tokio::task;
 
 use crate::{
-    base_node::comms_interface::CommsInterfaceError,
     chain_storage::{ChainStorageError, MmrTree},
     transactions::transaction_components::TransactionError,
     validation::ValidationError,
@@ -46,8 +45,6 @@ pub enum HorizonSyncError {
     IncorrectResponse(String),
     #[error("Chain storage error: {0}")]
     ChainStorageError(#[from] ChainStorageError),
-    #[error("Comms interface error: {0}")]
-    CommsInterfaceError(#[from] CommsInterfaceError),
     #[error("Final state validation failed: {0}")]
     FinalStateValidationFailed(ValidationError),
     #[error("Join error: {0}")]
@@ -56,8 +53,6 @@ pub enum HorizonSyncError {
     RangeProofError(String),
     #[error("An invalid transaction has been encountered: {0}")]
     TransactionError(#[from] TransactionError),
-    #[error("Invalid kernel signature: {0}")]
-    InvalidKernelSignature(TransactionError),
     #[error("MMR did not match for {mmr_tree} at height {at_height}. Expected {actual_hex} to equal {expected_hex}")]
     InvalidMmrRoot {
         mmr_tree: MmrTree,
@@ -67,8 +62,6 @@ pub enum HorizonSyncError {
     },
     #[error("Invalid MMR position {mmr_position} at height {at_height}")]
     InvalidMmrPosition { at_height: u64, mmr_position: u64 },
-    #[error("Invalid range proof for output: {0} : {1}")]
-    InvalidRangeProof(String, String),
     #[error("RPC error: {0}")]
     RpcError(#[from] RpcError),
     #[error("RPC status: {0}")]

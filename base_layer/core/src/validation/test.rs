@@ -518,7 +518,7 @@ mod transaction_validator {
     use crate::{
         transactions::{
             test_helpers::create_test_core_key_manager_with_memory_db,
-            transaction_components::TransactionError,
+            transaction_components::{OutputType, TransactionError},
         },
         validation::transaction::TransactionInternalConsistencyValidator,
     };
@@ -538,7 +538,11 @@ mod transaction_validator {
         };
         let tip = db.get_chain_metadata().unwrap();
         let err = validator.validate_with_current_tip(&tx, tip).unwrap_err();
-        unpack_enum!(ValidationError::ErroneousCoinbaseOutput = err);
+        unpack_enum!(
+            ValidationError::OutputTypeNotPermitted {
+                output_type: OutputType::Coinbase
+            } = err
+        );
     }
 
     #[tokio::test]

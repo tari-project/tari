@@ -657,6 +657,14 @@ fn connection_manager_logger(
                     node_name
                 );
             },
+            PeerViolation { peer_node_id, details } => {
+                println!(
+                    "'{}' violated protocol with '{}' because '{}'",
+                    node_name,
+                    get_name(peer_node_id),
+                    details
+                );
+            },
         }
         event
     }

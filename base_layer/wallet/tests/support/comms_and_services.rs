@@ -60,7 +60,7 @@ pub async fn setup_comms_services(
     (comms, dht)
 }
 
-pub fn create_dummy_message<T>(inner: T, public_key: &CommsPublicKey) -> DomainMessage<T> {
+pub fn create_dummy_message<T>(inner: T, public_key: &CommsPublicKey) -> DomainMessage<Result<T, prost::DecodeError>> {
     let peer_source = Peer::new(
         public_key.clone(),
         NodeId::from_key(public_key),
@@ -83,6 +83,6 @@ pub fn create_dummy_message<T>(inner: T, public_key: &CommsPublicKey) -> DomainM
         },
         authenticated_origin: None,
         source_peer: peer_source,
-        inner,
+        inner: Ok(inner),
     }
 }

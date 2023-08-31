@@ -540,11 +540,12 @@ impl ConnectivityManagerActor {
         Ok(())
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn update_state_on_connectivity_event(
         &mut self,
         event: &ConnectionManagerEvent,
     ) -> Result<(), ConnectivityError> {
-        use ConnectionManagerEvent::{PeerConnectFailed, PeerConnected, PeerDisconnected};
+        use ConnectionManagerEvent::*;
         match event {
             PeerConnected(new_conn) => {
                 match self.on_new_connection(new_conn).await {
@@ -572,6 +573,15 @@ impl ConnectivityManagerActor {
                         return Ok(());
                     }
                 }
+            },
+            PeerViolation { peer_node_id, details } => {
+                self.ban_peer(
+                    peer_node_id,
+                    Duration::from_secs(2 * 60 * 60),
+                    format!("Peer violation: {details}"),
+                )
+                .await?;
+                return Ok(());
             },
             _ => {},
         }

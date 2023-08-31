@@ -108,7 +108,17 @@ fn validate_block_aggregate_body(
 ) -> Result<(), ValidationError> {
     let offset = &block.header.total_kernel_offset;
     let script_offset = &block.header.total_script_offset;
-    let total_coinbase = consensus_manager.calculate_coinbase_and_fees(block.header.height, block.body.kernels());
+    let total_coinbase = consensus_manager
+        .calculate_coinbase_and_fees(block.header.height, block.body.kernels())
+        .map_err(|err| {
+            warn!(
+                target: LOG_TARGET,
+                "Validation failed on block:{}:{:?}",
+                block.hash().to_hex(),
+                err
+            );
+            ValidationError::CoinbaseExceedsMaxLimit
+        })?;
     validator
         .validate(
             &block.body,
@@ -136,7 +146,18 @@ fn check_coinbase_output(
     rules: &ConsensusManager,
     factories: &CryptoFactories,
 ) -> Result<(), ValidationError> {
-    let total_coinbase = rules.calculate_coinbase_and_fees(block.header.height, block.body.kernels());
+    let total_coinbase = rules
+        .calculate_coinbase_and_fees(block.header.height, block.body.kernels())
+        .map_err(|err| {
+            warn!(
+                target: LOG_TARGET,
+                "Validation failed on block:{}:{:?}",
+                block.hash().to_hex(),
+                err
+            );
+            ValidationError::CoinbaseExceedsMaxLimit
+        })?;
+
     block
         .check_coinbase_output(
             total_coinbase,
