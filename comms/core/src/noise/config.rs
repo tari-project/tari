@@ -40,7 +40,7 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "comms::noise";
-pub(super) const NOISE_IX_PARAMETER: &str = "Noise_IX_25519_ChaChaPoly_BLAKE2b";
+pub(super) const NOISE_PARAMETERS: &str = "Noise_XX_25519_ChaChaPoly_BLAKE2b";
 
 /// The Noise protocol configuration to be used to perform a protocol upgrade on an underlying
 /// socket.
@@ -53,7 +53,7 @@ pub struct NoiseConfig {
 impl NoiseConfig {
     /// Create a new NoiseConfig with the provided keypair
     pub fn new(node_identity: Arc<NodeIdentity>) -> Self {
-        let parameters: NoiseParams = NOISE_IX_PARAMETER.parse().expect("Invalid noise parameters");
+        let parameters: NoiseParams = NOISE_PARAMETERS.parse().expect("Invalid noise parameters");
         Self {
             node_identity,
             parameters,
@@ -71,8 +71,11 @@ impl NoiseConfig {
     where
         TSocket: AsyncWrite + AsyncRead + Unpin,
     {
+        const TARI_PROLOGUE: &[u8] = b"com.tari.comms.noise.prologue";
+
         let handshake_state = {
             let builder = snow::Builder::with_resolver(self.parameters.clone(), Box::<TariCryptoResolver>::default())
+                .prologue(TARI_PROLOGUE)
                 .local_private_key(self.node_identity.secret_key().as_bytes());
 
             match direction {
@@ -88,7 +91,10 @@ impl NoiseConfig {
         };
 
         let handshake = Handshake::new(socket, handshake_state);
-        let socket = handshake.handshake_1rt().await.map_err(NoiseError::HandshakeFailed)?;
+        let socket = handshake
+            .perform_handshake()
+            .await
+            .map_err(NoiseError::HandshakeFailed)?;
 
         Ok(socket)
     }
@@ -105,11 +111,11 @@ mod test {
 
     fn check_noise_params(config: &NoiseConfig) {
         assert_eq!(config.parameters.hash, HashChoice::Blake2b);
-        assert_eq!(config.parameters.name, NOISE_IX_PARAMETER);
+        assert_eq!(config.parameters.name, NOISE_PARAMETERS);
         assert_eq!(config.parameters.cipher, CipherChoice::ChaChaPoly);
         assert_eq!(config.parameters.base, BaseChoice::Noise);
         assert_eq!(config.parameters.dh, DHChoice::Curve25519);
-        assert_eq!(config.parameters.handshake.pattern, HandshakePattern::IX);
+        assert_eq!(config.parameters.handshake.pattern, HandshakePattern::XX);
     }
 
     #[test]

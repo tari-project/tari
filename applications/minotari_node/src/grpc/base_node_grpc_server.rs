@@ -181,8 +181,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let mut randomx_hash_rate_moving_average =
             HashRateMovingAverage::new(PowAlgorithm::RandomX, self.consensus_rules.clone());
 
+        let page_iter = NonOverlappingIntegerPairIter::new(start_height, end_height + 1, GET_DIFFICULTY_PAGE_SIZE)
+            .map_err(Status::invalid_argument)?;
         task::spawn(async move {
-            let page_iter = NonOverlappingIntegerPairIter::new(start_height, end_height + 1, GET_DIFFICULTY_PAGE_SIZE);
             for (start, end) in page_iter {
                 // headers are returned by height
                 let headers = match handler.get_headers(start..=end).await {
@@ -373,17 +374,15 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             }
         };
         let consensus_rules = self.consensus_rules.clone();
+        let page_iter =
+            NonOverlappingIntegerPairIter::new(*header_range.start(), *header_range.end() + 1, LIST_HEADERS_PAGE_SIZE)
+                .map_err(Status::invalid_argument)?;
         task::spawn(async move {
             debug!(
                 target: LOG_TARGET,
                 "Starting base node request {}-{}",
                 header_range.start(),
                 header_range.end()
-            );
-            let page_iter = NonOverlappingIntegerPairIter::new(
-                *header_range.start(),
-                *header_range.end() + 1,
-                LIST_HEADERS_PAGE_SIZE,
             );
             let page_iter = if is_reversed {
                 Either::Left(page_iter.rev())
@@ -402,56 +401,68 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                             data.into_iter()
                                 .map(|chain_block| {
                                     let (block, acc_data, confirmations, _) = chain_block.dissolve();
-                                    let total_block_reward = consensus_rules
-                                        .calculate_coinbase_and_fees(block.header.height, block.body.kernels());
-
-                                    tari_rpc::BlockHeaderResponse {
-                                        difficulty: acc_data.achieved_difficulty.into(),
-                                        num_transactions: block.body.kernels().len() as u32,
-                                        confirmations,
-                                        header: Some(block.header.into()),
-                                        reward: total_block_reward.into(),
+                                    match consensus_rules
+                                        .calculate_coinbase_and_fees(block.header.height, block.body.kernels())
+                                    {
+                                        Ok(total_block_reward) => Ok(tari_rpc::BlockHeaderResponse {
+                                            difficulty: acc_data.achieved_difficulty.into(),
+                                            num_transactions: block.body.kernels().len() as u32,
+                                            confirmations,
+                                            header: Some(block.header.into()),
+                                            reward: total_block_reward.into(),
+                                        }),
+                                        Err(e) => Err(e),
                                     }
                                 })
                                 .rev()
-                                .collect::<Vec<_>>()
+                                .collect::<Result<Vec<_>, String>>()
                         } else {
                             data.into_iter()
                                 .map(|chain_block| {
                                     let (block, acc_data, confirmations, _) = chain_block.dissolve();
-                                    let total_block_reward = consensus_rules
-                                        .calculate_coinbase_and_fees(block.header.height, block.body.kernels());
-
-                                    tari_rpc::BlockHeaderResponse {
-                                        difficulty: acc_data.achieved_difficulty.into(),
-                                        num_transactions: block.body.kernels().len() as u32,
-                                        confirmations,
-                                        header: Some(block.header.into()),
-                                        reward: total_block_reward.into(),
+                                    match consensus_rules
+                                        .calculate_coinbase_and_fees(block.header.height, block.body.kernels())
+                                    {
+                                        Ok(total_block_reward) => Ok(tari_rpc::BlockHeaderResponse {
+                                            difficulty: acc_data.achieved_difficulty.into(),
+                                            num_transactions: block.body.kernels().len() as u32,
+                                            confirmations,
+                                            header: Some(block.header.into()),
+                                            reward: total_block_reward.into(),
+                                        }),
+                                        Err(e) => Err(e),
                                     }
                                 })
-                                .collect()
+                                .collect::<Result<Vec<_>, String>>()
                         }
                     },
                 };
-                let result_size = result_data.len();
-                debug!(target: LOG_TARGET, "Result headers: {}", result_size);
 
-                for response in result_data {
-                    // header wont be none here as we just filled it in above
-                    debug!(
-                        target: LOG_TARGET,
-                        "Sending block header: {}",
-                        response.header.as_ref().map(|h| h.height).unwrap_or(0)
-                    );
-                    if tx.send(Ok(response)).await.is_err() {
-                        // Sender has closed i.e the connection has dropped/request was abandoned
-                        warn!(
-                            target: LOG_TARGET,
-                            "[list_headers] GRPC request cancelled while sending response"
-                        );
-                        return;
-                    }
+                match result_data {
+                    Err(e) => {
+                        error!(target: LOG_TARGET, "No result headers transmitted due to error: {}", e)
+                    },
+                    Ok(result_data) => {
+                        let result_size = result_data.len();
+                        debug!(target: LOG_TARGET, "Result headers: {}", result_size);
+
+                        for response in result_data {
+                            // header wont be none here as we just filled it in above
+                            debug!(
+                                target: LOG_TARGET,
+                                "Sending block header: {}",
+                                response.header.as_ref().map( | h| h.height).unwrap_or(0)
+                            );
+                            if tx.send(Ok(response)).await.is_err() {
+                                // Sender has closed i.e the connection has dropped/request was abandoned
+                                warn!(
+                                    target: LOG_TARGET,
+                                    "[list_headers] GRPC request cancelled while sending response"
+                                );
+                                return;
+                            }
+                        }
+                    },
                 }
             }
         });
@@ -864,8 +875,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let mut handler = self.node_service.clone();
         let (mut tx, rx) = mpsc::channel(GET_BLOCKS_PAGE_SIZE);
+        let page_iter = NonOverlappingIntegerPairIter::new(start, end + 1, GET_BLOCKS_PAGE_SIZE)
+            .map_err(Status::invalid_argument)?;
         task::spawn(async move {
-            let page_iter = NonOverlappingIntegerPairIter::new(start, end + 1, GET_BLOCKS_PAGE_SIZE);
             for (start, end) in page_iter {
                 let blocks = match handler.get_blocks(start..=end, false).await {
                     Err(err) => {
@@ -1349,7 +1361,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let (block, acc_data, confirmations, _) = block.dissolve();
         let total_block_reward = self
             .consensus_rules
-            .calculate_coinbase_and_fees(block.header.height, block.body.kernels());
+            .calculate_coinbase_and_fees(block.header.height, block.body.kernels())
+            .map_err(Status::out_of_range)?;
 
         let resp = tari_rpc::BlockHeaderResponse {
             difficulty: acc_data.achieved_difficulty.into(),

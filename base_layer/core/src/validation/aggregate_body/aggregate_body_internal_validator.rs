@@ -207,9 +207,7 @@ fn validate_kernel_sum(
         fees.to_hex()
     );
     if excess != &sum_io + &fees {
-        return Err(ValidationError::CustomError(
-            "Sum of inputs and outputs did not equal sum of kernels with fees".into(),
-        ));
+        return Err(ValidationError::InvalidAccountingBalance);
     }
 
     Ok(())
@@ -306,7 +304,9 @@ fn check_weight(
 ) -> Result<(), ValidationError> {
     let block_weight = body
         .calculate_weight(consensus_constants.transaction_weight_params())
-        .map_err(|e| ValidationError::CustomError(e.to_string()))?;
+        .map_err(|e| {
+            ValidationError::SerializationError(format!("Unable to calculate body weight: {}", e.to_string()))
+        })?;
     let max_weight = consensus_constants.max_block_transaction_weight();
     if block_weight <= max_weight {
         trace!(

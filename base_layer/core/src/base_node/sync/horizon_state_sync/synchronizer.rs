@@ -186,11 +186,23 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         );
         for (i, sync_peer) in self.sync_peers.iter().enumerate() {
             self.hooks.call_on_starting_hook(sync_peer);
-            let mut connection = self.connectivity.dial_peer(sync_peer.node_id().clone()).await?;
+            let mut connection = match self.connectivity.dial_peer(sync_peer.node_id().clone()).await {
+                Ok(conn) => conn,
+                Err(err) => {
+                    warn!(target: LOG_TARGET, "Failed to connect to sync peer `{}`: {}", sync_peer.node_id(), err);
+                    continue;
+                },
+            };
             let config = RpcClient::builder()
                 .with_deadline(self.config.rpc_deadline)
                 .with_deadline_grace_period(Duration::from_secs(3));
-            let mut client = connection.connect_rpc_using_builder(config).await?;
+            let mut client = match connection.connect_rpc_using_builder(config).await {
+                Ok(rpc_client) => rpc_client,
+                Err(err) => {
+                    warn!(target: LOG_TARGET, "Failed to establish RPC coonection with sync peer `{}`: {}", sync_peer.node_id(), err);
+                    continue;
+                },
+            };
 
             match self.begin_sync(sync_peer.clone(), &mut client, header).await {
                 Ok(_) => match self.finalize_horizon_sync(sync_peer).await {
@@ -198,7 +210,6 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     Err(err) => {
                         self.ban_peer_on_bannable_error(sync_peer, &err).await?;
                         warn!(target: LOG_TARGET, "Error during sync:{}", err);
-                        return Err(err);
                     },
                 },
                 Err(err @ HorizonSyncError::RpcError(RpcError::ReplyTimeout)) |
@@ -212,7 +223,6 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 Err(err) => {
                     self.ban_peer_on_bannable_error(sync_peer, &err).await?;
                     warn!(target: LOG_TARGET, "Error during sync:{}", err);
-                    return Err(err);
                 },
             }
         }
@@ -359,6 +369,12 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             kernel.verify_signature()?;
 
             kernel_hashes.push(kernel.hash());
+
+            if mmr_position > end {
+                return Err(HorizonSyncError::IncorrectResponse(format!(
+                    "Peer sent too many kernels",
+                )));
+            }
 
             let mmr_position_u32 = u32::try_from(mmr_position).map_err(|_| HorizonSyncError::InvalidMmrPosition {
                 at_height: current_header.height(),
@@ -549,6 +565,12 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             avg_latency.add_sample(latency);
             let res: SyncUtxosResponse = response?;
 
+            if mmr_position > end {
+                return Err(HorizonSyncError::IncorrectResponse(format!(
+                    "Peer sent too many outputs",
+                )));
+            }
+
             if res.mmr_index != 0 && res.mmr_index != mmr_position {
                 return Err(HorizonSyncError::IncorrectResponse(format!(
                     "Expected MMR position of {} but got {}",
@@ -725,6 +747,12 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             self.check_latency(sync_peer.node_id(), &avg_latency)?;
 
             last_sync_timer = Instant::now();
+        }
+
+        if !unpruned_outputs.is_empty() {
+            return Err(HorizonSyncError::IncorrectResponse(
+                "Sync node sent leftover unpruned outputs".to_string(),
+            ));
         }
 
         if mmr_position != end {

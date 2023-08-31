@@ -25,7 +25,10 @@ use std::time::Duration;
 use tari_comms_dht::outbound::DhtOutboundError;
 use thiserror::Error;
 
-use crate::base_node::{comms_interface::CommsInterfaceError, service::initializer::ExtractBlockError};
+use crate::{
+    base_node::{comms_interface::CommsInterfaceError, service::initializer::ExtractBlockError},
+    common::BanReason,
+};
 
 #[derive(Debug, Error)]
 pub enum BaseNodeServiceError {
@@ -95,20 +98,5 @@ impl BaseNodeServiceError {
                 ban_duration: Duration::from_secs(60),
             }),
         }
-    }
-}
-
-pub struct BanReason {
-    reason: String,
-    ban_duration: Duration,
-}
-
-impl BanReason {
-    pub fn reason(&self) -> &str {
-        &self.reason
-    }
-
-    pub fn ban_duration(&self) -> Duration {
-        self.ban_duration
     }
 }

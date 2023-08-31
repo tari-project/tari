@@ -157,7 +157,7 @@ impl WalletOutputBuilder {
         let script = self
             .script
             .as_ref()
-            .ok_or_else(|| TransactionError::ValidationError("Cannot sign metadata without a script".to_string()))?;
+            .ok_or_else(|| TransactionError::BuilderError("Cannot sign metadata without a script".to_string()))?;
         let sender_offset_public_key = key_manager.get_public_key_at_key_id(sender_offset_key_id).await?;
         let metadata_message = TransactionOutput::metadata_signature_message_from_parts(
             &self.version,
@@ -189,12 +189,12 @@ impl WalletOutputBuilder {
         key_manager: &KM,
     ) -> Result<WalletOutput, TransactionError> {
         if !self.metadata_signed_by_receiver {
-            return Err(TransactionError::ValidationError(
+            return Err(TransactionError::BuilderError(
                 "Cannot build output because it has not been signed by the receiver".to_string(),
             ));
         }
         if !self.metadata_signed_by_sender {
-            return Err(TransactionError::ValidationError(
+            return Err(TransactionError::BuilderError(
                 "Cannot build output because it has not been signed by the sender".to_string(),
             ));
         }
@@ -204,15 +204,15 @@ impl WalletOutputBuilder {
             self.spending_key_id,
             self.features,
             self.script
-                .ok_or_else(|| TransactionError::ValidationError("script must be set".to_string()))?,
+                .ok_or_else(|| TransactionError::BuilderError("script must be set".to_string()))?,
             self.input_data
-                .ok_or_else(|| TransactionError::ValidationError("input_data must be set".to_string()))?,
+                .ok_or_else(|| TransactionError::BuilderError("input_data must be set".to_string()))?,
             self.script_key_id
-                .ok_or_else(|| TransactionError::ValidationError("script_private_key must be set".to_string()))?,
+                .ok_or_else(|| TransactionError::BuilderError("script_private_key must be set".to_string()))?,
             self.sender_offset_public_key
-                .ok_or_else(|| TransactionError::ValidationError("sender_offset_public_key must be set".to_string()))?,
+                .ok_or_else(|| TransactionError::BuilderError("sender_offset_public_key must be set".to_string()))?,
             self.metadata_signature
-                .ok_or_else(|| TransactionError::ValidationError("metadata_signature must be set".to_string()))?,
+                .ok_or_else(|| TransactionError::BuilderError("metadata_signature must be set".to_string()))?,
             0,
             self.covenant,
             self.encrypted_data,

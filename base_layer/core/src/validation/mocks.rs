@@ -74,8 +74,8 @@ impl<B: BlockchainBackend> BlockBodyValidator<B> for MockValidator {
         if self.is_valid.load(Ordering::SeqCst) {
             Ok(block.clone())
         } else {
-            Err(ValidationError::custom_error(
-                "This mock validator always returns an error",
+            Err(ValidationError::ConsensusError(
+                "This mock validator always returns an error".to_string(),
             ))
         }
     }
@@ -86,8 +86,8 @@ impl<B: BlockchainBackend> CandidateBlockValidator<B> for MockValidator {
         if self.is_valid.load(Ordering::SeqCst) {
             Ok(())
         } else {
-            Err(ValidationError::custom_error(
-                "This mock validator always returns an error",
+            Err(ValidationError::ConsensusError(
+                "This mock validator always returns an error".to_string(),
             ))
         }
     }
@@ -99,8 +99,8 @@ impl InternalConsistencyValidator for MockValidator {
         if self.is_valid.load(Ordering::SeqCst) {
             Ok(())
         } else {
-            Err(ValidationError::custom_error(
-                "This mock validator always returns an error",
+            Err(ValidationError::ConsensusError(
+                "This mock validator always returns an error".to_string(),
             ))
         }
     }
@@ -121,8 +121,8 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for MockValidator {
             let achieved_target_diff = difficulty_calculator.check_achieved_and_target_difficulty(db, header)?;
             Ok(achieved_target_diff)
         } else {
-            Err(ValidationError::custom_error(
-                "This mock validator always returns an error",
+            Err(ValidationError::ConsensusError(
+                "This mock validator always returns an error".to_string(),
             ))
         }
     }
@@ -133,8 +133,8 @@ impl TransactionValidator for MockValidator {
         if self.is_valid.load(Ordering::SeqCst) {
             Ok(())
         } else {
-            Err(ValidationError::custom_error(
-                "This mock validator always returns an error",
+            Err(ValidationError::ConsensusError(
+                "This mock validator always returns an error".to_string(),
             ))
         }
     }
@@ -152,8 +152,8 @@ impl<B: BlockchainBackend> FinalHorizonStateValidation<B> for MockValidator {
         if self.is_valid.load(Ordering::SeqCst) {
             Ok(())
         } else {
-            Err(ValidationError::custom_error(
-                "This mock validator always returns an error",
+            Err(ValidationError::ConsensusError(
+                "This mock validator always returns an error".to_string(),
             ))
         }
     }
