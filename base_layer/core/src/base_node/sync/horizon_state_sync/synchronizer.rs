@@ -360,6 +360,12 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
             kernel_hashes.push(kernel.hash());
 
+            if mmr_position > end {
+                return Err(HorizonSyncError::IncorrectResponse(format!(
+                    "Peer sent too many kernels",
+                )));
+            }
+
             let mmr_position_u32 = u32::try_from(mmr_position).map_err(|_| HorizonSyncError::InvalidMmrPosition {
                 at_height: current_header.height(),
                 mmr_position,
@@ -548,6 +554,12 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             let latency = last_sync_timer.elapsed();
             avg_latency.add_sample(latency);
             let res: SyncUtxosResponse = response?;
+
+            if mmr_position > end {
+                return Err(HorizonSyncError::IncorrectResponse(format!(
+                    "Peer sent too many outputs",
+                )));
+            }
 
             if res.mmr_index != 0 && res.mmr_index != mmr_position {
                 return Err(HorizonSyncError::IncorrectResponse(format!(
