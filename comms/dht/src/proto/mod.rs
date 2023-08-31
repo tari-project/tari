@@ -82,9 +82,9 @@ impl fmt::Display for dht::JoinMessage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "JoinMessage(PK = {}, Addresses = {:?}, Features = {:?})",
+            "JoinMessage(PK = {}, {} Addresses, Features = {:?})",
             self.public_key.to_hex(),
-            self.addresses,
+            self.addresses.len(),
             PeerFeatures::from_bits_truncate(self.peer_features),
         )
     }

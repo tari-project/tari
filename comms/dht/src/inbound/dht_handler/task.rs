@@ -39,7 +39,7 @@ use crate::{
     envelope::NodeDestination,
     inbound::{error::DhtInboundError, message::DecryptedDhtMessage},
     outbound::{OutboundMessageRequester, SendMessageParams},
-    peer_validator::PeerValidator,
+    peer_validator::{DhtPeerValidatorError, PeerValidator},
     proto::{
         dht::{DiscoveryMessage, DiscoveryResponseMessage, JoinMessage},
         envelope::DhtMessageType,
@@ -152,11 +152,21 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             ..
         } = message;
 
-        let authenticated_pk = authenticated_origin.ok_or_else(|| {
-            DhtInboundError::OriginRequired("Authenticated origin is required for this message type".to_string())
-        })?;
+        // Ban the source peer. They should not have propagated a DHT discover response.
+        let Some(authenticated_pk) = authenticated_origin else {
+            warn!(
+                target: LOG_TARGET,
+                "Received JoinMessage that did not have an authenticated origin from source peer {}. Banning source", source_peer
+            );
+            self.connectivity.ban_peer_until(
+                source_peer.node_id.clone(),
+                self.config.ban_duration,
+                "Received JoinMessage that did not have an authenticated origin",
+            ).await?;
+            return Ok(());
+        };
 
-        if &authenticated_pk == self.node_identity.public_key() {
+        if authenticated_pk == *self.node_identity.public_key() {
             debug!(target: LOG_TARGET, "Received our own join message. Discarding it.");
             return Ok(());
         }
@@ -166,6 +176,31 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             .decode_part::<JoinMessage>(0)?
             .ok_or(DhtInboundError::InvalidMessageBody)?;
 
+        if join_msg.public_key.as_slice() != authenticated_pk.as_bytes() {
+            warn!(
+                target: LOG_TARGET,
+                "Received JoinMessage from peer that mismatches the authenticated origin. \
+                This message was signed by another party which may be attempting to get other nodes banned. \
+                Banning the message signer."
+            );
+
+            let node_to_ban = NodeId::from_public_key(&authenticated_pk);
+            warn!(
+                target: LOG_TARGET,
+                "Authenticated origin: {:#.6}, Source: {:#.6}, join message: {}",
+                authenticated_pk, source_peer.public_key, join_msg.public_key.to_hex()
+            );
+            self.connectivity
+                .ban_peer_until(
+                    node_to_ban,
+                    self.config.ban_duration,
+                    "Received JoinMessage from peer with a public key that does not match the source peer",
+                )
+                .await?;
+
+            return Ok(());
+        }
+
         debug!(
             target: LOG_TARGET,
             "Received join Message from '{}' {}", authenticated_pk, join_msg
@@ -173,7 +208,12 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
         let validator = PeerValidator::new(&self.config);
         let maybe_existing = self.peer_manager.find_by_public_key(&authenticated_pk).await?;
-        let valid_peer = validator.validate_peer(join_msg.try_into()?, maybe_existing)?;
+        let valid_peer = self
+            .ban_on_offence(
+                &authenticated_pk,
+                validator.validate_peer(join_msg.try_into()?, maybe_existing),
+            )
+            .await?;
 
         let is_banned = valid_peer.is_banned();
         let valid_peer_node_id = valid_peer.node_id.clone();
@@ -243,29 +283,35 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             .decode_part::<DiscoveryResponseMessage>(0)?
             .ok_or(DhtInboundError::InvalidMessageBody)?;
 
-        if message.source_peer.public_key.as_bytes() != discover_msg.public_key.as_slice() {
-            let node_to_ban = if let Some(authenticated_origin) = message.authenticated_origin.as_ref() {
-                warn!(
-                    target: LOG_TARGET,
-                    "Received DiscoveryResponseMessage from peer that mismatches the discovery response. \
-                    This message was signed by another party which may be attempting to get other nodes banned. \
-                    POSSIBLE BUG: These message semantics should be refused in the decryption middleware! \
-                    Banning the message signer."
-                );
-                warn!(
-                    target: LOG_TARGET,
-                    "Authenticated origin: {:#.6}, Source: {:#.6}, discovery message: {}",
-                    authenticated_origin, message.source_peer.public_key, discover_msg.public_key.to_hex()
-                );
-                NodeId::from_public_key(authenticated_origin)
-            } else {
-                NodeId::from_key(&message.source_peer.public_key)
-            };
+        // Ban the source peer. They should not have propagated a DHT discover response.
+        let Some(authenticated_origin) = message.authenticated_origin.as_ref() else {
             warn!(
                 target: LOG_TARGET,
-                "Received DiscoveryResponseMessage from peer '{}' with a public key that does not match the source \
-                 peer. This message will be discarded and the source peer banned.",
-                node_to_ban
+                "Received DiscoveryResponseMessage that did not have an authenticated origin: {}. Banning source", message
+            );
+            self.connectivity.ban_peer_until(
+                message.source_peer.node_id.clone(),
+                self.config.ban_duration,
+                "Received DiscoveryResponseMessage that did not have an authenticated origin",
+            ).await?;
+            return Ok(());
+        };
+
+        if *authenticated_origin != message.source_peer.public_key ||
+            authenticated_origin.as_bytes() != discover_msg.public_key.as_slice()
+        {
+            warn!(
+                target: LOG_TARGET,
+                "Received DiscoveryResponseMessage from peer that mismatches the discovery response. \
+                This message was signed by another party which may be attempting to get other nodes banned. \
+                Banning the message signer."
+            );
+
+            let node_to_ban = NodeId::from_public_key(authenticated_origin);
+            warn!(
+                target: LOG_TARGET,
+                "Authenticated origin: {:#.6}, Source: {:#.6}, discovery message: {}",
+                authenticated_origin, message.source_peer.public_key, discover_msg.public_key.to_hex()
             );
             self.connectivity
                 .ban_peer_until(
@@ -359,11 +405,41 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                     .with_debug_info("Sending discovery response".to_string())
                     .with_destination(NodeDestination::Unknown)
                     .with_dht_message_type(DhtMessageType::DiscoveryResponse)
+                    .force_origin()
                     .finish(),
                 response,
             )
             .await?;
 
         Ok(())
+    }
+
+    async fn ban_on_offence<T>(
+        &mut self,
+        authenticated_pk: &CommsPublicKey,
+        result: Result<T, DhtPeerValidatorError>,
+    ) -> Result<T, DhtPeerValidatorError> {
+        match result {
+            Ok(r) => Ok(r),
+            Err(err @ DhtPeerValidatorError::Banned { .. }) => Err(err),
+            Err(err @ DhtPeerValidatorError::ValidatorError(_)) |
+            Err(err @ DhtPeerValidatorError::IdentityTooManyClaims { .. }) => {
+                if let Err(err) = self
+                    .connectivity
+                    .ban_peer_until(
+                        NodeId::from_public_key(authenticated_pk),
+                        self.config.ban_duration,
+                        err.to_string(),
+                    )
+                    .await
+                {
+                    error!(
+                        target: LOG_TARGET,
+                        "Could not ban peer '{}': {}", authenticated_pk, err
+                    );
+                }
+                Err(err)
+            },
+        }
     }
 }
