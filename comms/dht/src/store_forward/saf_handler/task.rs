@@ -41,7 +41,7 @@ use tokio::sync::mpsc;
 use tower::{Service, ServiceExt};
 
 use crate::{
-    actor::DhtRequester,
+    actor::{DhtRequester, OffenceSeverity},
     crypt,
     dedup,
     envelope::{timestamp_to_datetime, DhtMessageHeader, NodeDestination},
@@ -349,6 +349,13 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                             source_peer.node_id.short_str(),
                             err
                         );
+                        self.dht_requester
+                            .ban_peer(
+                                source_peer.public_key.clone(),
+                                OffenceSeverity::High,
+                                format!("Invalid SAF message: {}", err),
+                            )
+                            .await
                     },
                 }
 

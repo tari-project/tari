@@ -27,6 +27,7 @@ use tari_common::configuration::serializers;
 use tari_comms::peer_validator::PeerValidatorConfig;
 
 use crate::{
+    actor::OffenceSeverity,
     network_discovery::NetworkDiscoveryConfig,
     storage::DbConnectionUrl,
     store_forward::SafConfig,
@@ -105,8 +106,11 @@ pub struct DhtConfig {
     /// Default: 24 hours
     #[serde(with = "serializers::seconds")]
     pub offline_peer_cooldown: Duration,
-
+    /// The maximum number of peer claims accepted by this node. Only peer sync sends more than one claim.
+    /// Default: 5
     pub max_permitted_peer_claims: usize,
+    /// Configuration for peer validation
+    /// See [PeerValidatorConfig]
     pub peer_validator_config: PeerValidatorConfig,
 }
 
@@ -146,6 +150,14 @@ impl DhtConfig {
     /// Sets relative paths to use a common base path
     pub fn set_base_path<P: AsRef<Path>>(&mut self, base_path: P) {
         self.database_url.set_base_path(base_path);
+    }
+
+    /// Returns a ban duration from the given severity
+    pub fn ban_duration_from_severity(&self, severity: OffenceSeverity) -> Duration {
+        match severity {
+            OffenceSeverity::Low | OffenceSeverity::Medium => self.ban_duration_short,
+            OffenceSeverity::High => self.ban_duration,
+        }
     }
 }
 

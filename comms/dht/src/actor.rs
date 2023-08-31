@@ -118,6 +118,18 @@ pub enum DhtRequest {
         public_key: CommsPublicKey,
         reply: oneshot::Sender<Result<PeerConnection, DhtActorError>>,
     },
+    BanPeer {
+        public_key: CommsPublicKey,
+        severity: OffenceSeverity,
+        reason: String,
+    },
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum OffenceSeverity {
+    Low,
+    Medium,
+    High,
 }
 
 impl Display for DhtRequest {
@@ -143,6 +155,11 @@ impl Display for DhtRequest {
                 write!(f, "SetMetadata (key={}, value={} bytes)", key, value.len())
             },
             DialDiscoverPeer { public_key, .. } => write!(f, "DialDiscoverPeer(public_key={})", public_key),
+            BanPeer { peer, severity, reason } => write!(
+                f,
+                "BanPeer (peer={:#.5}, severity={:?}, reason={})",
+                peer, severity, reason
+            ),
         }
     }
 }
@@ -231,6 +248,22 @@ impl DhtRequester {
             })
             .await?;
         reply_rx.await.map_err(|_| DhtActorError::ReplyCanceled)?
+    }
+
+    pub async fn ban_peer<T: Into<String>>(
+        &mut self,
+        public_key: CommsPublicKey,
+        severity: OffenceSeverity,
+        reason: T,
+    ) -> Result<(), DhtActorError> {
+        self.sender
+            .send(DhtRequest::BanPeer {
+                public_key,
+                severity,
+                reason: reason.into(),
+            })
+            .await?;
+        Ok(())
     }
 }
 
@@ -432,6 +465,23 @@ impl DhtActor {
                     let mut task = DiscoveryDialTask::new(connectivity, peer_manager, discovery);
                     let result = task.run(public_key).await;
                     let _result = reply.send(result);
+                    Ok(())
+                })
+            },
+            BanPeer {
+                public_key,
+                severity,
+                reason,
+            } => {
+                let mut connectivity = self.connectivity.clone();
+                Box::pin(async move {
+                    connectivity
+                        .ban_peer_until(
+                            NodeId::from_public_key(&public_key),
+                            self.config.ban_duration_from_severity(severity),
+                            reason,
+                        )
+                        .await?;
                     Ok(())
                 })
             },

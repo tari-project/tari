@@ -30,22 +30,26 @@ use tari_utilities::epoch_time::EpochTime;
 use tower::{layer::Layer, Service, ServiceExt};
 
 use crate::{
+    actor::OffenceSeverity,
     envelope::NodeDestination,
     inbound::{error::DhtInboundError, DecryptedDhtMessage},
     outbound::{OutboundMessageRequester, SendMessageParams},
+    DhtRequester,
 };
 
 const LOG_TARGET: &str = "comms::dht::storeforward::forward";
 
 /// This layer is responsible for forwarding messages which have failed to decrypt
 pub struct ForwardLayer {
+    dht: DhtRequester,
     outbound_service: OutboundMessageRequester,
     is_enabled: bool,
 }
 
 impl ForwardLayer {
-    pub fn new(outbound_service: OutboundMessageRequester, is_enabled: bool) -> Self {
+    pub fn new(dht: DhtRequester, outbound_service: OutboundMessageRequester, is_enabled: bool) -> Self {
         Self {
+            dht,
             outbound_service,
             is_enabled,
         }
@@ -71,14 +75,16 @@ impl<S> Layer<S> for ForwardLayer {
 #[derive(Clone)]
 pub struct ForwardMiddleware<S> {
     next_service: S,
+    dht: DhtRequester,
     outbound_service: OutboundMessageRequester,
     is_enabled: bool,
 }
 
 impl<S> ForwardMiddleware<S> {
-    pub fn new(service: S, outbound_service: OutboundMessageRequester, is_enabled: bool) -> Self {
+    pub fn new(service: S, dht: DhtRequester, outbound_service: OutboundMessageRequester, is_enabled: bool) -> Self {
         Self {
             next_service: service,
+            dht,
             outbound_service,
             is_enabled,
         }
@@ -101,6 +107,7 @@ where
     fn call(&mut self, message: DecryptedDhtMessage) -> Self::Future {
         let next_service = self.next_service.clone();
         let outbound_service = self.outbound_service.clone();
+        let dht = self.dht.clone();
         let is_enabled = self.is_enabled;
         Box::pin(async move {
             if !is_enabled {
@@ -119,7 +126,7 @@ where
                 message.tag,
                 message.dht_header.message_tag
             );
-            let forwarder = Forwarder::new(next_service, outbound_service);
+            let forwarder = Forwarder::new(next_service, dht, outbound_service);
             forwarder.handle(message).await
         })
     }
@@ -129,13 +136,15 @@ where
 /// to the next service.
 struct Forwarder<S> {
     next_service: S,
+    dht: DhtRequester,
     outbound_service: OutboundMessageRequester,
 }
 
 impl<S> Forwarder<S> {
-    pub fn new(service: S, outbound_service: OutboundMessageRequester) -> Self {
+    pub fn new(service: S, dht: DhtRequester, outbound_service: OutboundMessageRequester) -> Self {
         Self {
             next_service: service,
+            dht,
             outbound_service,
         }
     }
@@ -177,6 +186,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             dht_header,
             is_saf_stored,
             is_already_forwarded,
+            authenticated_origin,
             ..
         } = message;
 
@@ -184,9 +194,26 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             //       #banheuristic - the origin of this message was the destination. Two things are wrong here:
             //       1. The origin/destination should not have forwarded this (the destination node didnt do this
             //          destination_matches_source check)
-            //       1. The source sent a message that the destination could not decrypt
+            //       1. The origin sent a message that the destination could not decrypt
             //       The authenticated source should be banned (malicious), and origin should be temporarily banned
             //       (bug?)
+            if let Some(authenticated_origin) = authenticated_origin {
+                self.dht
+                    .ban_peer(
+                        authenticated_origin.clone(),
+                        OffenceSeverity::High,
+                        "Received message from peer that is destined for that peer. This peer originally sent it.",
+                    )
+                    .await?;
+            }
+            self.dht
+                .ban_peer(
+                    source_peer.public_key.clone(),
+                    OffenceSeverity::Medium,
+                    "Received message from peer that is destined for that peer. The source peer should not have sent \
+                     this message.",
+                )
+                .await?;
             debug!(
                 target: LOG_TARGET,
                 "Received message {} from peer '{}' that is destined for that peer. Discarding message (Trace: {})",

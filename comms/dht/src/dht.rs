@@ -95,7 +95,7 @@ pub struct Dht {
     dht_sender: mpsc::Sender<DhtRequest>,
     /// Sender for SAF requests
     saf_sender: mpsc::Sender<StoreAndForwardRequest>,
-    /// Sender for SAF repsonse signals
+    /// Sender for SAF response signals
     saf_response_signal_sender: mpsc::Sender<()>,
     /// Sender for DHT discovery requests
     discovery_sender: mpsc::Sender<DhtDiscoveryRequest>,
@@ -322,6 +322,7 @@ impl Dht {
                 self.store_and_forward_requester(),
             ))
             .layer(ForwardLayer::new(
+                self.dht_requester(),
                 self.outbound_requester(),
                 self.node_identity.features().contains(PeerFeatures::DHT_STORE_FORWARD),
             ))
@@ -337,7 +338,7 @@ impl Dht {
                 self.config.clone(),
                 self.node_identity.clone(),
                 self.peer_manager.clone(),
-                self.connectivity.clone(),
+                self.dht_requester(),
                 self.discovery_service_requester(),
                 self.outbound_requester(),
             ))
