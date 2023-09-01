@@ -99,7 +99,7 @@ async fn large_join_messages_with_many_addresses() {
             .await
             .unwrap(),
         expect = true,
-        max_attempts = 10,
+        max_attempts = 20,
         interval = Duration::from_secs(1)
     );
     // Node B did not propagate

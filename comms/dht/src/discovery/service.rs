@@ -303,6 +303,11 @@ impl DhtDiscoveryService {
         reply_tx: oneshot::Sender<Result<Peer, DhtDiscoveryError>>,
     ) -> Result<(), DhtDiscoveryError> {
         let nonce = OsRng.next_u64();
+        if *dest_pubkey == *self.node_identity.public_key() {
+            let _result = reply_tx.send(Err(DhtDiscoveryError::CannotDiscoverThisNode));
+            return Ok(());
+        }
+
         if let Err(err) = self.send_discover(nonce, destination, dest_pubkey.clone()).await {
             let _result = reply_tx.send(Err(err));
             return Ok(());

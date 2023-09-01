@@ -91,6 +91,22 @@ impl DhtInboundMessage {
             body,
         }
     }
+
+    pub fn is_semantically_valid(&self) -> bool {
+        if !self.dht_header.is_semantically_valid() {
+            return false;
+        }
+
+        // If the message is encrypted:
+        // - it must be nonempty
+        if self.dht_header.flags.is_encrypted() {
+            // Body must be nonempty
+            if self.body.is_empty() {
+                return false;
+            }
+        }
+        true
+    }
 }
 
 impl Display for DhtInboundMessage {
