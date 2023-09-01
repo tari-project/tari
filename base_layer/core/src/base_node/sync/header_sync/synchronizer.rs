@@ -60,7 +60,7 @@ pub struct HeaderSynchronizer<'a, B> {
     db: AsyncBlockchainDb<B>,
     header_validator: BlockHeaderSyncValidator<B>,
     connectivity: ConnectivityRequester,
-    sync_peers: Vec<SyncPeer>,
+    sync_peers: &'a mut Vec<SyncPeer>,
     hooks: Hooks,
     local_metadata: &'a ChainMetadata,
     peer_ban_manager: PeerBanManager,
@@ -72,7 +72,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         db: AsyncBlockchainDb<B>,
         consensus_rules: ConsensusManager,
         connectivity: ConnectivityRequester,
-        sync_peers: Vec<SyncPeer>,
+        sync_peers: &'a mut Vec<SyncPeer>,
         randomx_factory: RandomXFactory,
         local_metadata: &'a ChainMetadata,
     ) -> Self {
