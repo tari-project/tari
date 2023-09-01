@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{cmp::Ordering, time::Instant};
-
+use std::mem;
 use log::*;
 use tari_common_types::chain_metadata::ChainMetadata;
 
@@ -81,7 +81,7 @@ impl HeaderSyncState {
             shared.db.clone(),
             shared.consensus_rules.clone(),
             shared.connectivity.clone(),
-            &mut self.sync_peers,
+            mem::take(&mut self.sync_peers),
             shared.randomx_factory.clone(),
             &self.local_metadata,
         );
