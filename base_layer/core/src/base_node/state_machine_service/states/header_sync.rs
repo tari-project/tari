@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{cmp::Ordering, mem, time::Instant};
+use std::{cmp::Ordering, time::Instant};
 
 use log::*;
 use tari_common_types::chain_metadata::ChainMetadata;
@@ -81,7 +81,7 @@ impl HeaderSyncState {
             shared.db.clone(),
             shared.consensus_rules.clone(),
             shared.connectivity.clone(),
-            mem::take(&mut self.sync_peers),
+            self.sync_peers.clone(),
             shared.randomx_factory.clone(),
             &self.local_metadata,
         );
