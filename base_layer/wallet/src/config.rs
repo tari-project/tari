@@ -65,9 +65,6 @@ pub struct WalletConfig {
     pub output_manager_service_config: OutputManagerServiceConfig,
     /// The buffer size for the publish/subscribe connector channel, connecting comms messages to the domain layer
     pub buffer_size: usize,
-    /// The rate limit for the publish/subscribe connector channel, i.e. maximum amount of inbound messages to
-    /// accept - any rate attempting to exceed this limit will be throttled
-    pub buffer_rate_limit: usize,
     /// Selected network
     pub network: Network,
     /// The base_node_service_config config settings
@@ -132,7 +129,6 @@ impl Default for WalletConfig {
             transaction_service_config: Default::default(),
             output_manager_service_config: Default::default(),
             buffer_size: 50_000,
-            buffer_rate_limit: 1_000,
             network: Default::default(),
             base_node_service_config: Default::default(),
             data_dir: PathBuf::from_str("data/wallet").unwrap(),

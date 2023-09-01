@@ -74,10 +74,6 @@ identity_file = "config/base_node_id_nextnet.json"
 # (min value = 30, default value = 1500).
 #buffer_size = 1500
 
-# The rate limit constants for the publish/subscribe connector channel, i.e. maximum amount of inbound messages to
-# accept - any rate attempting to exceed this limit will be throttled (min value = 5, default value = 1000).
-#buffer_rate_limit = 1000
-
 # Liveness meta data auto ping interval between peers (default = 30 s)
 #metadata_auto_ping_interval = 30
 
