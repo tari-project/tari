@@ -357,9 +357,7 @@ impl PeerConnectionActor {
             incoming_substreams: connection.into_incoming(),
             request_rx,
             event_notifier,
-            // our_supported_protocols never changes so we make it cheap to clone (used in inbound_protocol_negotiations
-            // futures)
-            our_supported_protocols: Arc::new(our_supported_protocols),
+            our_supported_protocols,
             inbound_protocol_negotiations: FuturesUnordered::new(),
             their_supported_protocols,
         }
