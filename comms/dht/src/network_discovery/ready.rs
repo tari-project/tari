@@ -97,8 +97,7 @@ impl DiscoveryReady {
             }
 
             return Ok(StateEvent::BeginDiscovery(DiscoveryParams {
-                // All peers
-                num_peers_to_request: None,
+                num_peers_to_request: self.config().network_discovery.max_peers_to_sync_per_round,
                 peers,
             }));
         }
@@ -188,8 +187,7 @@ impl DiscoveryReady {
         }
 
         Ok(StateEvent::BeginDiscovery(DiscoveryParams {
-            // Request all peers
-            num_peers_to_request: None,
+            num_peers_to_request: self.config().network_discovery.max_peers_to_sync_per_round,
             peers,
         }))
     }

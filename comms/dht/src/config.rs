@@ -84,11 +84,11 @@ pub struct DhtConfig {
     /// Network discovery config
     pub network_discovery: NetworkDiscoveryConfig,
     /// Length of time to ban a peer if the peer misbehaves at the DHT-level.
-    /// Default: 6 hrs
+    /// Default: 2 hrs
     #[serde(with = "serializers::seconds")]
     pub ban_duration: Duration,
     /// Length of time to ban a peer for a "short" duration.
-    /// Default: 30 mins
+    /// Default: 10 mins
     #[serde(with = "serializers::seconds")]
     pub ban_duration_short: Duration,
 
@@ -181,8 +181,8 @@ impl Default for DhtConfig {
             auto_join: false,
             join_cooldown_interval: Duration::from_secs(10 * 60),
             network_discovery: Default::default(),
-            ban_duration: Duration::from_secs(6 * 60 * 60),
-            ban_duration_short: Duration::from_secs(60 * 60),
+            ban_duration: Duration::from_secs(2 * 60 * 60),
+            ban_duration_short: Duration::from_secs(10 * 60),
             flood_ban_max_msg_count: 100_000,
             flood_ban_timespan: Duration::from_secs(100),
             max_permitted_peer_claims: 5,

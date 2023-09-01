@@ -62,14 +62,14 @@ pub enum RpcError {
     PeerManagerError(#[from] PeerManagerError),
     #[error("Connectivity error: {0}")]
     ConnectivityError(#[from] ConnectivityError),
-    #[error("Reply Timeout")]
+    #[error("Reply from peer timed out")]
     ReplyTimeout,
     #[error("Received an invalid ping response")]
     InvalidPingResponse,
     #[error("Unexpected ACK response. This is likely because of a previous ACK timeout")]
     UnexpectedAckResponse,
-    #[error("Attempted to send more than {expected} payload chunks")]
-    ExceededMaxChunkCount { expected: usize },
+    #[error("Remote peer attempted to send more than {expected} payload chunks")]
+    RemotePeerExceededMaxChunkCount { expected: usize },
     #[error("Request body was too large. Expected <= {expected} but got {got}")]
     MaxRequestSizeExceeded { got: usize, expected: usize },
     #[error(transparent)]
@@ -79,6 +79,39 @@ pub enum RpcError {
 impl RpcError {
     pub fn client_internal_error<T: ToString>(err: &T) -> Self {
         RpcError::ClientInternalError(err.to_string())
+    }
+
+    /// Returns true if the server directly caused the error, otherwise false
+    pub fn is_caused_by_server(&self) -> bool {
+        match self {
+            RpcError::ReplyTimeout |
+            RpcError::DecodeError(_) |
+            RpcError::RemotePeerExceededMaxChunkCount { .. } |
+            RpcError::HandshakeError(RpcHandshakeError::DecodeError(_)) |
+            RpcError::HandshakeError(RpcHandshakeError::ServerClosedRequest) |
+            RpcError::HandshakeError(RpcHandshakeError::Rejected(_)) |
+            RpcError::HandshakeError(RpcHandshakeError::TimedOut) |
+            RpcError::ServerClosedRequest |
+            RpcError::UnexpectedAckResponse |
+            RpcError::ResponseIdDidNotMatchRequest { .. } => true,
+
+            // Some of these may be caused by the server, but not with 100% certainty
+            RpcError::RequestFailed(_) |
+            RpcError::Io(_) |
+            RpcError::ClientClosed |
+            RpcError::RequestCancelled |
+            RpcError::ClientInternalError(_) |
+            RpcError::ServerError(_) |
+            RpcError::PeerConnectionError(_) |
+            RpcError::PeerManagerError(_) |
+            RpcError::ConnectivityError(_) |
+            RpcError::InvalidPingResponse |
+            RpcError::MaxRequestSizeExceeded { .. } |
+            RpcError::HandshakeError(RpcHandshakeError::Io(_)) |
+            RpcError::HandshakeError(RpcHandshakeError::ClientNoSupportedVersion) |
+            RpcError::HandshakeError(RpcHandshakeError::ClientClosed) |
+            RpcError::UnknownError(_) => false,
+        }
     }
 }
 
