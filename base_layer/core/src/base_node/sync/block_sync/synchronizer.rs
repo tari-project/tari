@@ -182,18 +182,15 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
                     warn!(target: LOG_TARGET, "{}", err);
                     let ban_reason =
                         BlockSyncError::get_ban_reason(&err, self.config.short_ban_period, self.config.ban_period);
-                    match ban_reason {
-                        Some(reason) => {
-                            warn!(target: LOG_TARGET, "{}", err);
-                            self.peer_ban_manager
-                                .ban_peer_if_required(node_id, &Some(reason.clone()))
-                                .await;
+                    if let Some(reason) = ban_reason {
+                        warn!(target: LOG_TARGET, "{}", err);
+                        self.peer_ban_manager
+                            .ban_peer_if_required(node_id, &Some(reason.clone()))
+                            .await;
 
-                            if reason.ban_duration > self.config.short_ban_period {
-                                self.remove_sync_peer(node_id);
-                            }
-                        },
-                        None => (),
+                        if reason.ban_duration > self.config.short_ban_period {
+                            self.remove_sync_peer(node_id);
+                        }
                     }
 
                     if let BlockSyncError::MaxLatencyExceeded { .. } = err {

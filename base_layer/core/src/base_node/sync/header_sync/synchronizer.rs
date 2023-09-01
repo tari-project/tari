@@ -146,18 +146,15 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                         self.config.short_ban_period,
                         self.config.ban_period,
                     );
-                    match ban_reason {
-                        Some(reason) => {
-                            warn!(target: LOG_TARGET, "{}", err);
-                            self.peer_ban_manager
-                                .ban_peer_if_required(node_id, &Some(reason.clone()))
-                                .await;
+                    if let Some(reason) = ban_reason {
+                        warn!(target: LOG_TARGET, "{}", err);
+                        self.peer_ban_manager
+                            .ban_peer_if_required(node_id, &Some(reason.clone()))
+                            .await;
 
-                            if reason.ban_duration > self.config.short_ban_period {
-                                self.remove_sync_peer(node_id);
-                            }
-                        },
-                        None => (),
+                        if reason.ban_duration > self.config.short_ban_period {
+                            self.remove_sync_peer(node_id);
+                        }
                     }
 
                     if let BlockHeaderSyncError::MaxLatencyExceeded { .. } = err {
@@ -168,11 +165,11 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         }
 
         if self.sync_peers.is_empty() {
-            return Err(BlockHeaderSyncError::NoMoreSyncPeers("Header sync failed".to_string()));
+            Err(BlockHeaderSyncError::NoMoreSyncPeers("Header sync failed".to_string()))
         } else if latency_counter >= self.sync_peers.len() {
             Err(BlockHeaderSyncError::AllSyncPeersExceedLatency)
         } else {
-            return Err(BlockHeaderSyncError::SyncFailedAllPeers);
+            Err(BlockHeaderSyncError::SyncFailedAllPeers)
         }
     }
 

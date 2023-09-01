@@ -193,18 +193,16 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<B> {
                 Err(err) => {
                     let ban_reason =
                         HorizonSyncError::get_ban_reason(&err, self.config.short_ban_period, self.config.ban_period);
-                    match ban_reason {
-                        Some(reason) => {
-                            warn!(target: LOG_TARGET, "{}", err);
-                            self.peer_ban_manager
-                                .ban_peer_if_required(node_id, &Some(reason.clone()))
-                                .await;
 
-                            if reason.ban_duration > self.config.short_ban_period {
-                                self.remove_sync_peer(node_id);
-                            }
-                        },
-                        None => (),
+                    if let Some(reason) = ban_reason {
+                        warn!(target: LOG_TARGET, "{}", err);
+                        self.peer_ban_manager
+                            .ban_peer_if_required(node_id, &Some(reason.clone()))
+                            .await;
+
+                        if reason.ban_duration > self.config.short_ban_period {
+                            self.remove_sync_peer(node_id);
+                        }
                     }
 
                     if let HorizonSyncError::MaxLatencyExceeded { .. } = err {
@@ -383,9 +381,9 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<B> {
             kernel_hashes.push(kernel.hash());
 
             if mmr_position > end {
-                return Err(HorizonSyncError::IncorrectResponse(format!(
-                    "Peer sent too many kernels",
-                )));
+                return Err(HorizonSyncError::IncorrectResponse(
+                    "Peer sent too many kernels".to_string(),
+                ));
             }
 
             let mmr_position_u32 = u32::try_from(mmr_position).map_err(|_| HorizonSyncError::InvalidMmrPosition {
@@ -578,9 +576,9 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<B> {
             let res: SyncUtxosResponse = response?;
 
             if mmr_position > end {
-                return Err(HorizonSyncError::IncorrectResponse(format!(
-                    "Peer sent too many outputs",
-                )));
+                return Err(HorizonSyncError::IncorrectResponse(
+                    "Peer sent too many outputs".to_string(),
+                ));
             }
 
             if res.mmr_index != 0 && res.mmr_index != mmr_position {
