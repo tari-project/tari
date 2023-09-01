@@ -117,11 +117,19 @@ impl DhtMessageType {
     }
 
     pub fn is_dht_message(self) -> bool {
-        self.is_dht_discovery() || matches!(self, DhtMessageType::DiscoveryResponse) || self.is_dht_join()
+        self.is_dht_discovery() || self.is_dht_discovery_response() || self.is_dht_join()
+    }
+
+    pub fn is_forwardable(self) -> bool {
+        self.is_domain_message() || self.is_dht_discovery() || self.is_dht_join()
     }
 
     pub fn is_dht_discovery(self) -> bool {
         matches!(self, DhtMessageType::Discovery)
+    }
+
+    pub fn is_dht_discovery_response(self) -> bool {
+        matches!(self, DhtMessageType::DiscoveryResponse)
     }
 
     pub fn is_dht_join(self) -> bool {

@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2023 The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,29 +20,35 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_comms::{connectivity::ConnectivityError, message::MessageError, peer_manager::PeerManagerError};
-use thiserror::Error;
+use serde_derive::{Deserialize, Serialize};
 
-use crate::{discovery::DhtDiscoveryError, outbound::DhtOutboundError, peer_validator::DhtPeerValidatorError};
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PeerValidatorConfig {
+    /// The maximum size of the peer's user agent string. Some unicode characters use more than a single byte
+    /// and this specifies the maximum in bytes, as opposed to unicode characters.
+    pub max_user_agent_byte_length: usize,
+    pub max_permitted_peer_addresses_per_claim: usize,
+    pub max_supported_protocols: usize,
+    pub max_protocol_id_length: usize,
 
-#[derive(Debug, Error)]
-pub enum DhtInboundError {
-    #[error("MessageError: {0}")]
-    MessageError(#[from] MessageError),
-    #[error("PeerManagerError: {0}")]
-    PeerManagerError(#[from] PeerManagerError),
-    #[error("DhtOutboundError: {0}")]
-    DhtOutboundError(#[from] DhtOutboundError),
-    #[error("Message body invalid")]
-    InvalidMessageBody,
-    #[error("DhtDiscoveryError: {0}")]
-    DhtDiscoveryError(#[from] DhtDiscoveryError),
-    #[error("OriginRequired: {0}")]
-    OriginRequired(String),
-    #[error("Peer validation failed: {0}")]
-    PeerValidatorError(#[from] DhtPeerValidatorError),
-    #[error("Invalid discovery message {0}")]
-    InvalidDiscoveryMessage(#[from] anyhow::Error),
-    #[error("ConnectivityError: {0}")]
-    ConnectivityError(#[from] ConnectivityError),
+    /// Set to true to allow peers to send loopback, local-link and other addresses normally not considered valid for
+    /// peer-to-peer comms. Default: false
+    pub allow_test_addresses: bool,
+}
+
+impl Default for PeerValidatorConfig {
+    fn default() -> Self {
+        Self {
+            max_user_agent_byte_length: 50,
+            max_permitted_peer_addresses_per_claim: 5,
+            max_supported_protocols: 20,
+            max_protocol_id_length: 50,
+            #[cfg(not(test))]
+            allow_test_addresses: false,
+            // This must always be true for internal crate tests
+            #[cfg(test)]
+            allow_test_addresses: true,
+        }
+    }
 }

@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 use std::{
+    cmp,
     fmt::{Display, Formatter},
     ops::Index,
     time::Duration,
 };
 
-use chrono::{NaiveDateTime, Utc};
+use chrono::NaiveDateTime;
 use multiaddr::Multiaddr;
 use serde::{Deserialize, Serialize};
 
@@ -48,76 +49,39 @@ impl MultiaddressesWithStats {
 
     /// Provides the date and time of the last successful communication with this peer
     pub fn last_seen(&self) -> Option<NaiveDateTime> {
-        let mut latest_valid_datetime: Option<NaiveDateTime> = None;
-        for curr_address in &self.addresses {
-            if curr_address.last_seen.is_none() {
-                continue;
-            }
-            match latest_valid_datetime {
-                Some(latest_datetime) => {
-                    if latest_datetime < curr_address.last_seen.unwrap() {
-                        latest_valid_datetime = curr_address.last_seen;
-                    }
-                },
-                None => latest_valid_datetime = curr_address.last_seen,
-            }
-        }
-        latest_valid_datetime
+        self.addresses
+            .iter()
+            .max_by_key(|a| a.last_seen())
+            .and_then(|a| a.last_seen())
     }
 
     pub fn offline_at(&self) -> Option<NaiveDateTime> {
-        let mut earliest_offline_at: Option<NaiveDateTime> = None;
-        for curr_address in &self.addresses {
-            // At least one address is online
-            #[allow(clippy::question_mark)]
-            if curr_address.offline_at().is_none() {
-                return None;
-            }
-            match earliest_offline_at {
-                Some(earliest_datetime) => {
-                    if earliest_datetime > curr_address.offline_at().unwrap() {
-                        earliest_offline_at = curr_address.offline_at();
-                    }
-                },
-                None => earliest_offline_at = curr_address.offline_at(),
-            }
-        }
-        earliest_offline_at
+        self.addresses
+            .iter()
+            .min_by_key(|a| a.offline_at())
+            .and_then(|a| a.offline_at())
     }
 
     /// Return the time of last attempted connection to this collection of addresses
     pub fn last_attempted(&self) -> Option<NaiveDateTime> {
-        let mut latest_valid_datetime: Option<NaiveDateTime> = None;
-        for curr_address in &self.addresses {
-            if curr_address.last_attempted.is_none() {
-                continue;
-            }
-            match latest_valid_datetime {
-                Some(latest_datetime) => {
-                    if latest_datetime < curr_address.last_attempted.unwrap() {
-                        latest_valid_datetime = curr_address.last_attempted;
-                    }
-                },
-                None => latest_valid_datetime = curr_address.last_attempted,
-            }
-        }
-        latest_valid_datetime
+        self.addresses
+            .iter()
+            .max_by_key(|a| a.last_attempted())
+            .and_then(|a| a.last_attempted())
     }
 
     /// Adds a new net address to the peer. This function will not add a duplicate if the address
     /// already exists.
     pub fn add_address(&mut self, net_address: &Multiaddr, source: &PeerAddressSource) {
-        if self.addresses.iter().any(|x| x.address() == net_address) {
-            self.addresses
-                .iter_mut()
-                .find(|x| x.address() == net_address)
-                .unwrap()
-                .update_source_if_better(source);
+        if let Some(addr_mut) = self.addresses.iter_mut().find(|x| x.address() == net_address) {
+            addr_mut.update_source_if_better(source);
         } else {
             self.addresses
                 .push(MultiaddrWithStats::new(net_address.clone(), source.clone()));
-            self.addresses.sort();
         }
+
+        // Ensure that the addresses are sorted by quality
+        self.sort_addresses();
     }
 
     pub fn contains(&self, net_address: &Multiaddr) -> bool {
@@ -143,23 +107,19 @@ impl MultiaddressesWithStats {
                 .push(MultiaddrWithStats::new(address.clone(), source.clone()));
         }
 
-        self.addresses.sort();
+        self.sort_addresses();
+    }
+
+    /// Returns an iterator of addresses with states ordered from 'best' to 'worst' according to heuristics such as
+    /// failed connections and latency.
+    pub fn iter(&self) -> impl Iterator<Item = &MultiaddrWithStats> {
+        self.addresses.iter()
     }
 
     /// Returns an iterator of addresses ordered from 'best' to 'worst' according to heuristics such as failed
     /// connections and latency.
-    pub fn iter(&self) -> impl Iterator<Item = &Multiaddr> {
+    pub fn address_iter(&self) -> impl Iterator<Item = &Multiaddr> {
         self.addresses.iter().map(|addr| addr.address())
-    }
-
-    pub fn to_lexicographically_sorted(&self) -> Vec<Multiaddr> {
-        let mut addresses = self.iter().cloned().collect::<Vec<_>>();
-        addresses.sort_by(|a, b| {
-            let bytes_a = a.as_ref();
-            let bytes_b = b.as_ref();
-            bytes_a.cmp(bytes_b)
-        });
-        addresses
     }
 
     pub fn merge(&mut self, other: &MultiaddressesWithStats) {
@@ -185,7 +145,7 @@ impl MultiaddressesWithStats {
         match self.find_address_mut(address) {
             Some(addr) => {
                 addr.update_latency(latency_measurement);
-                self.addresses.sort();
+                self.sort_addresses();
                 true
             },
             None => false,
@@ -196,7 +156,7 @@ impl MultiaddressesWithStats {
     where F: FnOnce(&mut MultiaddrWithStats) {
         if let Some(addr) = self.find_address_mut(address) {
             f(addr);
-            self.addresses.sort();
+            self.sort_addresses();
         }
     }
 
@@ -206,9 +166,8 @@ impl MultiaddressesWithStats {
     pub fn mark_last_seen_now(&mut self, address: &Multiaddr) -> bool {
         match self.find_address_mut(address) {
             Some(addr) => {
-                addr.mark_last_seen_now();
-                addr.last_attempted = Some(Utc::now().naive_utc());
-                self.addresses.sort();
+                addr.mark_last_seen_now().mark_last_attempted_now();
+                self.sort_addresses();
                 true
             },
             None => false,
@@ -222,8 +181,8 @@ impl MultiaddressesWithStats {
         match self.find_address_mut(address) {
             Some(addr) => {
                 addr.mark_failed_connection_attempt(failed_reason);
-                addr.last_attempted = Some(Utc::now().naive_utc());
-                self.addresses.sort();
+                addr.mark_last_attempted_now();
+                self.sort_addresses();
                 true
             },
             None => false,
@@ -237,7 +196,7 @@ impl MultiaddressesWithStats {
         for a in &mut self.addresses {
             a.reset_connection_attempts();
         }
-        self.addresses.sort();
+        self.sort_addresses();
     }
 
     /// Returns the number of addresses
@@ -256,6 +215,11 @@ impl MultiaddressesWithStats {
 
     pub fn addresses(&self) -> &[MultiaddrWithStats] {
         &self.addresses
+    }
+
+    /// Sort the addresses with the greatest quality score first
+    fn sort_addresses(&mut self) {
+        self.addresses.sort_by_key(|addr| cmp::Reverse(addr.quality_score()))
     }
 }
 
@@ -342,8 +306,8 @@ mod test {
         let desired_last_seen = net_addresses
             .addresses
             .iter()
-            .max_by_key(|a| a.last_seen)
-            .map(|a| a.last_seen.unwrap());
+            .max_by_key(|a| a.last_seen())
+            .map(|a| a.last_seen().unwrap());
         let last_seen = net_addresses.last_seen();
         assert_eq!(desired_last_seen.unwrap(), last_seen.unwrap());
     }
@@ -357,7 +321,7 @@ mod test {
             MultiaddressesWithStats::from_addresses_with_source(vec![net_address1.clone()], &PeerAddressSource::Config);
         net_addresses.add_address(&net_address2, &PeerAddressSource::Config);
         net_addresses.add_address(&net_address3, &PeerAddressSource::Config);
-        // Add duplicate address, test add_net_address is idempotent
+        // Add duplicate address, this resets the quality score
         net_addresses.add_address(&net_address2, &PeerAddressSource::Config);
         assert_eq!(net_addresses.addresses.len(), 3);
         assert_eq!(net_addresses.addresses[0].address(), &net_address1);
@@ -375,7 +339,7 @@ mod test {
         net_addresses.add_address(&net_address2, &PeerAddressSource::Config);
         net_addresses.add_address(&net_address3, &PeerAddressSource::Config);
 
-        let priority_address = net_addresses.iter().next().unwrap();
+        let priority_address = net_addresses.address_iter().next().unwrap();
         assert_eq!(priority_address, &net_address1);
 
         net_addresses.mark_last_seen_now(&net_address1);
@@ -384,11 +348,11 @@ mod test {
         assert!(net_addresses.update_latency(&net_address1, Duration::from_millis(250)));
         assert!(net_addresses.update_latency(&net_address2, Duration::from_millis(50)));
         assert!(net_addresses.update_latency(&net_address3, Duration::from_millis(100)));
-        let priority_address = net_addresses.iter().next().unwrap();
+        let priority_address = net_addresses.address_iter().next().unwrap();
         assert_eq!(priority_address, &net_address2);
 
         assert!(net_addresses.mark_failed_connection_attempt(&net_address2, "error".to_string()));
-        let priority_address = net_addresses.iter().next().unwrap();
+        let priority_address = net_addresses.address_iter().next().unwrap();
         assert_eq!(priority_address, &net_address3);
     }
 
@@ -408,12 +372,12 @@ mod test {
         assert!(net_addresses.mark_failed_connection_attempt(&net_address3, "error".to_string()));
         assert!(net_addresses.mark_failed_connection_attempt(&net_address1, "error".to_string()));
 
-        assert_eq!(net_addresses.addresses[0].connection_attempts, 1);
-        assert_eq!(net_addresses.addresses[1].connection_attempts, 1);
-        assert_eq!(net_addresses.addresses[2].connection_attempts, 2);
+        assert_eq!(net_addresses.addresses[0].connection_attempts(), 1);
+        assert_eq!(net_addresses.addresses[1].connection_attempts(), 1);
+        assert_eq!(net_addresses.addresses[2].connection_attempts(), 2);
         net_addresses.reset_connection_attempts();
-        assert_eq!(net_addresses.addresses[0].connection_attempts, 0);
-        assert_eq!(net_addresses.addresses[1].connection_attempts, 0);
-        assert_eq!(net_addresses.addresses[2].connection_attempts, 0);
+        assert_eq!(net_addresses.addresses[0].connection_attempts(), 0);
+        assert_eq!(net_addresses.addresses[1].connection_attempts(), 0);
+        assert_eq!(net_addresses.addresses[2].connection_attempts(), 0);
     }
 }

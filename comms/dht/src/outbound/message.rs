@@ -189,15 +189,21 @@ impl fmt::Display for DhtOutboundMessage {
                     self.dht_flags, self.destination, self.tag,
                 )
             });
-        write!(
+
+        writeln!(
             f,
-            "\n---- Outgoing message ---- \nSize: {} byte(s)\nType: {}\nPeer: {}\nHeader: {}\n{}\n----\n{:?}\n",
+            "\n---- Outgoing message ---- \nSize: {} byte(s)\nType: {}\nPeer: {}\nHeader: {}\n{}\n----",
             self.body.len(),
             self.dht_message_type,
             self.destination,
             header_str,
             self.tag,
-            self.body
-        )
+        )?;
+
+        if f.alternate() {
+            write!(f, "(body omitted)")
+        } else {
+            write!(f, "{:?}", self.body)
+        }
     }
 }

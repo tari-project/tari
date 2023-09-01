@@ -236,24 +236,25 @@ impl PeerManager {
             .closest_peers(node_id, n, excluded_peers, features)
     }
 
-    pub async fn mark_last_seen(
-        &self,
-        node_id: &NodeId,
-        addr: &Multiaddr,
-        source: &PeerAddressSource,
-    ) -> Result<(), PeerManagerError> {
+    pub async fn mark_last_seen(&self, node_id: &NodeId, addr: &Multiaddr) -> Result<(), PeerManagerError> {
         let mut lock = self.peer_storage.write().await;
-        let peer = lock.find_by_node_id(node_id)?;
-        match peer {
-            Some(mut peer) => {
-                // if we have an address, update it
-                peer.addresses.add_address(addr, source);
-                peer.addresses.mark_last_seen_now(addr);
-                lock.add_peer(peer)?;
-                Ok(())
-            },
-            None => Err(PeerManagerError::PeerNotFoundError),
-        }
+        let mut peer = lock
+            .find_by_node_id(node_id)?
+            .ok_or(PeerManagerError::PeerNotFoundError)?;
+        let source = peer
+            .addresses
+            .iter()
+            .find(|a| a.address() == addr)
+            .map(|a| a.source().clone())
+            .ok_or_else(|| PeerManagerError::AddressNotFoundError {
+                address: addr.clone(),
+                node_id: node_id.clone(),
+            })?;
+        // if we have an address, update it
+        peer.addresses.add_address(addr, &source);
+        peer.addresses.mark_last_seen_now(addr);
+        lock.add_peer(peer)?;
+        Ok(())
     }
 
     /// Fetch n random peers

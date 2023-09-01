@@ -35,6 +35,7 @@ use crate::{
     multiplexing::Substream,
     noise::NoiseConfig,
     peer_manager::{NodeIdentity, PeerFeatures, PeerManager},
+    peer_validator::PeerValidatorConfig,
     protocol::Protocols,
     transports::Transport,
 };
@@ -56,7 +57,10 @@ impl Default for TestNodeConfig {
 
         Self {
             connection_manager_config: ConnectionManagerConfig {
-                allow_test_addresses: true,
+                peer_validation_config: PeerValidatorConfig {
+                    allow_test_addresses: true,
+                    ..Default::default()
+                },
                 listener_address: "/memory/0".parse().unwrap(),
                 ..Default::default()
             },

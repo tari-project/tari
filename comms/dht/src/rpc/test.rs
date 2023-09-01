@@ -51,7 +51,7 @@ mod get_closer_peers {
     use std::borrow::BorrowMut;
 
     use super::*;
-    use crate::rpc::PeerInfo;
+    use crate::rpc::UnvalidatedPeerInfo;
 
     #[tokio::test]
     async fn it_returns_empty_peer_stream() {
@@ -62,6 +62,8 @@ mod get_closer_peers {
             excluded: vec![],
             closer_to: node_identity.node_id().to_vec(),
             include_clients: false,
+            max_claims: 5,
+            max_addresses_per_claim: 5,
         };
 
         let req = mock.request_with_context(node_identity.node_id().clone(), req);
@@ -89,6 +91,8 @@ mod get_closer_peers {
             excluded: vec![],
             closer_to: node_identity.node_id().to_vec(),
             include_clients: false,
+            max_claims: 5,
+            max_addresses_per_claim: 5,
         };
 
         let req = mock.request_with_context(node_identity.node_id().clone(), req);
@@ -101,7 +105,7 @@ mod get_closer_peers {
             .map(Result::unwrap)
             .map(|r| r.peer.unwrap())
             .map(|p| p.try_into().unwrap())
-            .collect::<Vec<PeerInfo>>();
+            .collect::<Vec<UnvalidatedPeerInfo>>();
 
         let mut dist = NodeDistance::zero();
         for p in &peers {
@@ -130,6 +134,8 @@ mod get_closer_peers {
             excluded: vec![],
             closer_to: node_identity.node_id().to_vec(),
             include_clients: false,
+            max_claims: 5,
+            max_addresses_per_claim: 5,
         };
 
         let req = mock.request_with_context(node_identity.node_id().clone(), req);
@@ -158,6 +164,8 @@ mod get_closer_peers {
             excluded: vec![excluded_peer.node_id().to_vec()],
             closer_to: node_identity.node_id().to_vec(),
             include_clients: true,
+            max_claims: 5,
+            max_addresses_per_claim: 5,
         };
 
         let req = mock.request_with_context(node_identity.node_id().clone(), req);
@@ -188,7 +196,7 @@ mod get_peers {
     use tari_comms::test_utils::node_identity::build_many_node_identities;
 
     use super::*;
-    use crate::{proto::rpc::GetPeersRequest, rpc::PeerInfo};
+    use crate::{proto::rpc::GetPeersRequest, rpc::UnvalidatedPeerInfo};
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn it_returns_empty_peer_stream() {
@@ -197,6 +205,8 @@ mod get_peers {
         let req = GetPeersRequest {
             n: 10,
             include_clients: false,
+            max_claims: 5,
+            max_addresses_per_claim: 5,
         };
 
         let req = mock.request_with_context(node_identity.node_id().clone(), req);
@@ -222,6 +232,8 @@ mod get_peers {
         let req = GetPeersRequest {
             n: 5,
             include_clients: true,
+            max_claims: 5,
+            max_addresses_per_claim: 5,
         };
 
         let peers_stream = service
@@ -236,10 +248,10 @@ mod get_peers {
             .map(Result::unwrap)
             .map(|r| r.peer.unwrap())
             .map(|p| p.try_into().unwrap())
-            .collect::<Vec<PeerInfo>>();
+            .collect::<Vec<UnvalidatedPeerInfo>>();
 
-        assert_eq!(peers.iter().filter(|p| p.peer_features.is_client()).count(), 2);
-        assert_eq!(peers.iter().filter(|p| p.peer_features.is_node()).count(), 3);
+        assert_eq!(peers.iter().filter(|p| p.claims[0].features.is_client()).count(), 2);
+        assert_eq!(peers.iter().filter(|p| p.claims[0].features.is_node()).count(), 3);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -258,6 +270,8 @@ mod get_peers {
         let req = GetPeersRequest {
             n: 3,
             include_clients: false,
+            max_claims: 5,
+            max_addresses_per_claim: 5,
         };
 
         let peers_stream = service
@@ -272,9 +286,9 @@ mod get_peers {
             .map(Result::unwrap)
             .map(|r| r.peer.unwrap())
             .map(|p| p.try_into().unwrap())
-            .collect::<Vec<PeerInfo>>();
+            .collect::<Vec<UnvalidatedPeerInfo>>();
 
-        assert!(peers.iter().all(|p| p.peer_features.is_node()));
+        assert!(peers.iter().all(|p| p.claims[0].features.is_node()));
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -294,6 +308,8 @@ mod get_peers {
         let req = GetPeersRequest {
             n: 2,
             include_clients: false,
+            max_claims: 5,
+            max_addresses_per_claim: 5,
         };
 
         let req = mock.request_with_context(node_identity.node_id().clone(), req);

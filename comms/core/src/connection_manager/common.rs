@@ -20,17 +20,21 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryInto, net::Ipv6Addr};
+use std::{
+    convert::{TryFrom, TryInto},
+    time::Duration,
+};
 
-use digest::Digest;
 use log::*;
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::{
     connection_manager::error::ConnectionManagerError,
-    multiaddr::{Multiaddr, Protocol},
-    net_address::{MultiaddrWithStats, MultiaddressesWithStats, PeerAddressSource},
-    peer_manager::{NodeId, NodeIdentity, Peer, PeerFlags, PeerIdentityClaim},
+    multiaddr::Multiaddr,
+    net_address::{MultiaddressesWithStats, PeerAddressSource},
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerIdentityClaim, PeerManagerError},
+    peer_validator::{validate_peer_identity_claim, PeerValidatorConfig, PeerValidatorError},
+    proto::identity::PeerIdentityMsg,
     protocol,
     protocol::{NodeNetworkInfo, ProtocolId},
     types::CommsPublicKey,
@@ -38,6 +42,33 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "comms::connection_manager::common";
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ValidatedPeerIdentityExchange {
+    pub claim: PeerIdentityClaim,
+    pub metadata: PeerIdentityMetadata,
+}
+
+impl ValidatedPeerIdentityExchange {
+    // getters
+    pub fn peer_features(&self) -> PeerFeatures {
+        self.claim.features
+    }
+
+    pub fn supported_protocols(&self) -> &[ProtocolId] {
+        &self.metadata.supported_protocols
+    }
+
+    pub fn user_agent(&self) -> &str {
+        self.metadata.user_agent.as_str()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PeerIdentityMetadata {
+    pub user_agent: String,
+    pub supported_protocols: Vec<ProtocolId>,
+}
 
 /// Performs the identity exchange protocol on the given socket.
 pub(super) async fn perform_identity_exchange<
@@ -49,11 +80,11 @@ pub(super) async fn perform_identity_exchange<
     node_identity: &NodeIdentity,
     our_supported_protocols: P,
     network_info: NodeNetworkInfo,
-) -> Result<PeerIdentityClaim, ConnectionManagerError> {
+) -> Result<PeerIdentityMsg, ConnectionManagerError> {
     let peer_identity =
         protocol::identity_exchange(node_identity, our_supported_protocols, network_info, socket).await?;
 
-    Ok(peer_identity.try_into()?)
+    Ok(peer_identity)
 }
 
 /// Validate the peer identity info.
@@ -65,25 +96,84 @@ pub(super) async fn perform_identity_exchange<
 ///
 /// If the `allow_test_addrs` parameter is true, loopback, local link and other addresses normally not considered valid
 /// for p2p comms will be accepted.
-pub(super) async fn validate_peer_identity(
+pub(super) fn validate_peer_identity_message(
+    config: &PeerValidatorConfig,
     authenticated_public_key: &CommsPublicKey,
-    peer_identity: &PeerIdentityClaim,
-    allow_test_addrs: bool,
-) -> Result<(), ConnectionManagerError> {
-    validate_addresses(&peer_identity.addresses, allow_test_addrs)?;
-    if peer_identity.addresses.is_empty() {
-        return Err(ConnectionManagerError::PeerIdentityNoAddresses);
+    peer_identity_msg: PeerIdentityMsg,
+) -> Result<ValidatedPeerIdentityExchange, ConnectionManagerError> {
+    let PeerIdentityMsg {
+        addresses,
+        features,
+        supported_protocols,
+        user_agent,
+        identity_signature,
+    } = peer_identity_msg;
+
+    // Perform basic length checks before parsing
+    if supported_protocols.len() > config.max_supported_protocols {
+        return Err(PeerValidatorError::PeerIdentityTooManyProtocols {
+            length: supported_protocols.len(),
+            max: config.max_supported_protocols,
+        }
+        .into());
     }
 
-    if !peer_identity.signature.is_valid(
-        authenticated_public_key,
-        peer_identity.features,
-        &peer_identity.addresses,
-    ) {
-        return Err(ConnectionManagerError::PeerIdentityInvalidSignature);
+    if let Some(proto) = supported_protocols
+        .iter()
+        .find(|p| p.len() > config.max_protocol_id_length)
+    {
+        return Err(PeerValidatorError::PeerIdentityProtocolIdTooLong {
+            length: proto.len(),
+            max: config.max_protocol_id_length,
+        }
+        .into());
     }
 
-    Ok(())
+    if addresses.is_empty() {
+        return Err(PeerValidatorError::PeerIdentityNoAddresses.into());
+    }
+
+    if addresses.len() > config.max_permitted_peer_addresses_per_claim {
+        return Err(PeerValidatorError::PeerIdentityTooManyAddresses {
+            length: addresses.len(),
+            max: config.max_permitted_peer_addresses_per_claim,
+        }
+        .into());
+    }
+
+    if user_agent.as_bytes().len() > config.max_user_agent_byte_length {
+        return Err(PeerValidatorError::PeerIdentityUserAgentTooLong {
+            length: user_agent.as_bytes().len(),
+            max: config.max_user_agent_byte_length,
+        }
+        .into());
+    }
+
+    let supported_protocols = supported_protocols.into_iter().map(ProtocolId::from).collect();
+
+    let addresses = addresses
+        .into_iter()
+        .map(Multiaddr::try_from)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| PeerManagerError::MultiaddrError(e.to_string()))?;
+
+    let peer_identity_claim = PeerIdentityClaim {
+        addresses,
+        features: PeerFeatures::from_bits(features).ok_or(PeerManagerError::InvalidPeerFeatures { bits: features })?,
+        signature: identity_signature
+            .ok_or(PeerManagerError::MissingIdentitySignature)?
+            .try_into()?,
+    };
+
+    validate_peer_identity_claim(config, authenticated_public_key, &peer_identity_claim)?;
+
+    Ok(ValidatedPeerIdentityExchange {
+        claim: peer_identity_claim,
+        metadata: PeerIdentityMetadata {
+            user_agent,
+            supported_protocols,
+        },
+    })
 }
 
 /// Validate the peer identity info.
@@ -96,25 +186,15 @@ pub(super) async fn validate_peer_identity(
 ///
 /// If the `allow_test_addrs` parameter is true, loopback, local link and other addresses normally not considered valid
 /// for p2p comms will be accepted.
-pub(super) async fn validate_and_add_peer_from_peer_identity(
-    peer_manager: &PeerManager,
+pub(super) fn create_or_update_peer_from_validated_peer_identity(
     known_peer: Option<Peer>,
     authenticated_public_key: CommsPublicKey,
-    peer_identity: &PeerIdentityClaim,
-    allow_test_addrs: bool,
-) -> Result<NodeId, ConnectionManagerError> {
+    peer_identity: &ValidatedPeerIdentityExchange,
+) -> Peer {
     let peer_node_id = NodeId::from_public_key(&authenticated_public_key);
 
-    let addresses = MultiaddressesWithStats::from_addresses_with_source(
-        peer_identity.addresses.clone(),
-        &PeerAddressSource::FromPeerConnection {
-            peer_identity_claim: peer_identity.clone(),
-        },
-    );
-    validate_addresses_and_source(&addresses, &authenticated_public_key, allow_test_addrs)?;
-
     // Note: the peer will be merged in the db if it already exists
-    let peer = match known_peer {
+    match known_peer {
         Some(mut peer) => {
             debug!(
                 target: LOG_TARGET,
@@ -122,13 +202,13 @@ pub(super) async fn validate_and_add_peer_from_peer_identity(
                 peer.node_id.short_str()
             );
             peer.addresses
-                .update_addresses(&peer_identity.addresses, &PeerAddressSource::FromPeerConnection {
-                    peer_identity_claim: peer_identity.clone(),
+                .update_addresses(&peer_identity.claim.addresses, &PeerAddressSource::FromPeerConnection {
+                    peer_identity_claim: peer_identity.claim.clone(),
                 });
 
-            peer.features = peer_identity.features;
-            peer.supported_protocols = peer_identity.supported_protocols();
-            peer.user_agent = peer_identity.user_agent().unwrap_or_default();
+            peer.features = peer_identity.claim.features;
+            peer.supported_protocols = peer_identity.metadata.supported_protocols.clone();
+            peer.user_agent = peer_identity.metadata.user_agent.clone();
 
             peer
         },
@@ -139,25 +219,21 @@ pub(super) async fn validate_and_add_peer_from_peer_identity(
                 peer_node_id.short_str()
             );
             Peer::new(
-                authenticated_public_key.clone(),
-                peer_node_id.clone(),
+                authenticated_public_key,
+                peer_node_id,
                 MultiaddressesWithStats::from_addresses_with_source(
-                    peer_identity.addresses.clone(),
+                    peer_identity.claim.addresses.clone(),
                     &PeerAddressSource::FromPeerConnection {
-                        peer_identity_claim: peer_identity.clone(),
+                        peer_identity_claim: peer_identity.claim.clone(),
                     },
                 ),
                 PeerFlags::empty(),
-                peer_identity.features,
-                peer_identity.supported_protocols(),
-                peer_identity.user_agent().unwrap_or_default(),
+                peer_identity.peer_features(),
+                peer_identity.supported_protocols().to_vec(),
+                peer_identity.user_agent().to_string(),
             )
         },
-    };
-
-    peer_manager.add_peer(peer).await?;
-
-    Ok(peer_node_id)
+    }
 }
 
 pub(super) async fn find_unbanned_peer(
@@ -171,259 +247,37 @@ pub(super) async fn find_unbanned_peer(
     }
 }
 
-/// Checks that the given peer addresses are well-formed and valid. If allow_test_addrs is false, all localhost and
-/// memory addresses will be rejected. Also checks that the source (signature of the address) is correct
-pub fn validate_addresses_and_source(
-    addresses: &MultiaddressesWithStats,
-    public_key: &CommsPublicKey,
-    allow_test_addrs: bool,
-) -> Result<(), ConnectionManagerError> {
-    for addr in addresses.addresses() {
-        validate_address_and_source(public_key, addr, allow_test_addrs)?;
-    }
-
-    Ok(())
-}
-
-/// Checks that the given peer addresses are well-formed and valid. If allow_test_addrs is false, all localhost and
-/// memory addresses will be rejected.
-pub fn validate_addresses(addresses: &[Multiaddr], allow_test_addrs: bool) -> Result<(), ConnectionManagerError> {
-    for addr in addresses {
-        validate_address(addr, allow_test_addrs)?;
-    }
-
-    Ok(())
-}
-
-pub fn validate_address_and_source(
-    public_key: &CommsPublicKey,
-    addr: &MultiaddrWithStats,
-    allow_test_addrs: bool,
-) -> Result<(), ConnectionManagerError> {
-    match addr.source {
-        PeerAddressSource::Config => (),
-        _ => {
-            let claim = addr
-                .source
-                .peer_identity_claim()
-                .ok_or(ConnectionManagerError::PeerIdentityInvalidSignature)?;
-            if !claim.signature.is_valid(public_key, claim.features, &claim.addresses) {
-                return Err(ConnectionManagerError::PeerIdentityInvalidSignature);
-            }
-            if !claim.addresses.contains(addr.address()) {
-                return Err(ConnectionManagerError::PeerIdentityInvalidSignature);
-            }
+pub(super) async fn ban_on_offence<T>(
+    peer_manager: &PeerManager,
+    authenticated_public_key: &CommsPublicKey,
+    result: Result<T, ConnectionManagerError>,
+) -> Result<T, ConnectionManagerError> {
+    match result {
+        Ok(t) => Ok(t),
+        Err(ConnectionManagerError::PeerValidationError(e)) => {
+            maybe_ban(peer_manager, authenticated_public_key, e.as_ban_duration(), e).await
         },
+        Err(ConnectionManagerError::IdentityProtocolError(e)) => {
+            maybe_ban(peer_manager, authenticated_public_key, e.as_ban_duration(), e).await
+        },
+        Err(err) => Err(err),
     }
-    validate_address(addr.address(), allow_test_addrs)?;
-    Ok(())
 }
 
-fn validate_address(addr: &Multiaddr, allow_test_addrs: bool) -> Result<(), ConnectionManagerError> {
-    let mut addr_iter = addr.iter();
-    let proto = addr_iter
-        .next()
-        .ok_or_else(|| ConnectionManagerError::InvalidMultiaddr("Multiaddr was empty".to_string()))?;
-
-    /// Returns [true] if the address is a unicast link-local address (fe80::/10).
-    #[inline]
-    const fn is_unicast_link_local(addr: &Ipv6Addr) -> bool {
-        (addr.segments()[0] & 0xffc0) == 0xfe80
-    }
-
-    match proto {
-        Protocol::Dns4(_) | Protocol::Dns6(_) | Protocol::Dnsaddr(_) => {
-            let tcp = addr_iter.next().ok_or_else(|| {
-                ConnectionManagerError::InvalidMultiaddr("Address does not include a TCP port".to_string())
-            })?;
-
-            validate_tcp_port(tcp)?;
-            expect_end_of_address(addr_iter)
-        },
-
-        Protocol::Ip4(addr)
-            if !allow_test_addrs && (addr.is_loopback() || addr.is_link_local() || addr.is_unspecified()) =>
+async fn maybe_ban<T, E: ToString + Into<ConnectionManagerError>>(
+    peer_manager: &PeerManager,
+    authenticated_public_key: &CommsPublicKey,
+    ban_duration: Option<Duration>,
+    err: E,
+) -> Result<T, ConnectionManagerError> {
+    if let Some(ban_duration) = ban_duration {
+        if let Err(err) = peer_manager
+            .ban_peer(authenticated_public_key, ban_duration, err.to_string())
+            .await
         {
-            Err(ConnectionManagerError::InvalidMultiaddr(
-                "Non-global IP addresses are invalid".to_string(),
-            ))
-        },
-        Protocol::Ip6(addr)
-            if !allow_test_addrs && (addr.is_loopback() || is_unicast_link_local(&addr) || addr.is_unspecified()) =>
-        {
-            Err(ConnectionManagerError::InvalidMultiaddr(
-                "Non-global IP addresses are invalid".to_string(),
-            ))
-        },
-        Protocol::Ip4(_) | Protocol::Ip6(_) => {
-            let tcp = addr_iter.next().ok_or_else(|| {
-                ConnectionManagerError::InvalidMultiaddr("Address does not include a TCP port".to_string())
-            })?;
-
-            validate_tcp_port(tcp)?;
-            expect_end_of_address(addr_iter)
-        },
-        Protocol::Memory(0) => Err(ConnectionManagerError::InvalidMultiaddr(
-            "Cannot connect to a zero memory port".to_string(),
-        )),
-        Protocol::Memory(_) if allow_test_addrs => expect_end_of_address(addr_iter),
-        Protocol::Memory(_) => Err(ConnectionManagerError::InvalidMultiaddr(
-            "Memory addresses are invalid".to_string(),
-        )),
-        // Zero-port onions should have already failed when parsing. Keep these checks here just in case.
-        Protocol::Onion(_, 0) => Err(ConnectionManagerError::InvalidMultiaddr(
-            "A zero onion port is not valid in the onion spec".to_string(),
-        )),
-        Protocol::Onion3(addr) if addr.port() == 0 => Err(ConnectionManagerError::InvalidMultiaddr(
-            "A zero onion port is not valid in the onion spec".to_string(),
-        )),
-        Protocol::Onion(_, _) => Err(ConnectionManagerError::OnionV2NotSupported),
-        Protocol::Onion3(addr) => {
-            expect_end_of_address(addr_iter)?;
-            validate_onion3_address(&addr)
-        },
-        p => Err(ConnectionManagerError::InvalidMultiaddr(format!(
-            "Unsupported address type '{}'",
-            p
-        ))),
-    }
-}
-
-fn expect_end_of_address(mut iter: multiaddr::Iter<'_>) -> Result<(), ConnectionManagerError> {
-    match iter.next() {
-        Some(p) => Err(ConnectionManagerError::InvalidMultiaddr(format!(
-            "Unexpected multiaddress component '{}'",
-            p
-        ))),
-        None => Ok(()),
-    }
-}
-
-fn validate_tcp_port(expected_tcp: Protocol) -> Result<(), ConnectionManagerError> {
-    match expected_tcp {
-        Protocol::Tcp(0) => Err(ConnectionManagerError::InvalidMultiaddr(
-            "Cannot connect to a zero TCP port".to_string(),
-        )),
-        Protocol::Tcp(_) => Ok(()),
-        p => Err(ConnectionManagerError::InvalidMultiaddr(format!(
-            "Expected TCP address component but got '{}'",
-            p
-        ))),
-    }
-}
-
-/// Validates the onion3 version and checksum as per https://github.com/torproject/torspec/blob/main/rend-spec-v3.txt#LL2258C6-L2258C6
-fn validate_onion3_address(addr: &multiaddr::Onion3Addr<'_>) -> Result<(), ConnectionManagerError> {
-    const ONION3_PUBKEY_SIZE: usize = 32;
-    const ONION3_CHECKSUM_SIZE: usize = 2;
-
-    let (pub_key, checksum_version) = addr.hash().split_at(ONION3_PUBKEY_SIZE);
-    let (checksum, version) = checksum_version.split_at(ONION3_CHECKSUM_SIZE);
-
-    if version != b"\x03" {
-        return Err(ConnectionManagerError::InvalidMultiaddr(
-            "Invalid version in onion address".to_string(),
-        ));
-    }
-
-    let calculated_checksum = sha3::Sha3_256::new()
-        .chain_update(".onion checksum")
-        .chain_update(pub_key)
-        .chain_update(version)
-        .finalize();
-
-    if calculated_checksum[..2] != *checksum {
-        return Err(ConnectionManagerError::InvalidMultiaddr(
-            "Invalid checksum in onion address".to_string(),
-        ));
-    }
-
-    Ok(())
-}
-
-#[cfg(test)]
-mod test {
-    use multiaddr::multiaddr;
-
-    use super::*;
-
-    #[test]
-    fn validate_address_strict() {
-        let valid = [
-            multiaddr!(Ip4([172, 0, 0, 1]), Tcp(1u16)),
-            multiaddr!(Ip6([172, 0, 0, 1, 1, 1, 1, 1]), Tcp(1u16)),
-            "/onion3/vww6ybal4bd7szmgncyruucpgfkqahzddi37ktceo3ah7ngmcopnpyyd:1234"
-                .parse()
-                .unwrap(),
-            multiaddr!(Dnsaddr("mike-magic-nodes.com"), Tcp(1u16)),
-        ];
-
-        let invalid = &[
-            "/onion/aaimaq4ygg2iegci:1234".parse().unwrap(),
-            multiaddr!(Ip4([127, 0, 0, 1]), Tcp(1u16)),
-            multiaddr!(Ip4([169, 254, 0, 1]), Tcp(1u16)),
-            multiaddr!(Ip4([172, 0, 0, 1])),
-            "/onion/aaimaq4ygg2iegci:1234/http".parse().unwrap(),
-            multiaddr!(Dnsaddr("mike-magic-nodes.com")),
-            multiaddr!(Memory(1234u64)),
-            multiaddr!(Memory(0u64)),
-        ];
-
-        validate_addresses(&valid, false).unwrap();
-        for addr in invalid {
-            validate_address(addr, false).unwrap_err();
+            error!(target: LOG_TARGET, "Failed to ban peer due to internal error: {}", err);
         }
     }
 
-    #[test]
-    fn validate_address_allow_test_addrs() {
-        let valid = [
-            multiaddr!(Ip4([127, 0, 0, 1]), Tcp(1u16)),
-            multiaddr!(Ip4([169, 254, 0, 1]), Tcp(1u16)),
-            multiaddr!(Ip4([172, 0, 0, 1]), Tcp(1u16)),
-            multiaddr!(Ip6([172, 0, 0, 1, 1, 1, 1, 1]), Tcp(1u16)),
-            "/onion3/vww6ybal4bd7szmgncyruucpgfkqahzddi37ktceo3ah7ngmcopnpyyd:1234"
-                .parse()
-                .unwrap(),
-            multiaddr!(Dnsaddr("mike-magic-nodes.com"), Tcp(1u16)),
-            multiaddr!(Memory(1234u64)),
-        ];
-
-        let invalid = &[
-            "/onion/aaimaq4ygg2iegci:1234".parse().unwrap(),
-            multiaddr!(Ip4([172, 0, 0, 1])),
-            "/onion/aaimaq4ygg2iegci:1234/http".parse().unwrap(),
-            multiaddr!(Dnsaddr("mike-magic-nodes.com")),
-            multiaddr!(Memory(0u64)),
-        ];
-
-        validate_addresses(&valid, true).unwrap();
-        for addr in invalid {
-            validate_address(addr, true).unwrap_err();
-        }
-    }
-
-    #[test]
-    fn validate_onion3_checksum() {
-        let valid: Multiaddr = "/onion3/vww6ybal4bd7szmgncyruucpgfkqahzddi37ktceo3ah7ngmcopnpyyd:1234"
-            .parse()
-            .unwrap();
-
-        validate_address(&valid, false).unwrap();
-
-        // Change one byte
-        let invalid: Multiaddr = "/onion3/www6ybal4bd7szmgncyruucpgfkqahzddi37ktceo3ah7ngmcopnpyyd:1234"
-            .parse()
-            .unwrap();
-
-        validate_address(&invalid, false).unwrap_err();
-
-        // Randomly generated
-        let invalid: Multiaddr = "/onion3/pd6sf3mqkkkfrn4rk5odgcr2j5sn7m523a4tm7pzpuotk2b7rpuhaeym:1234"
-            .parse()
-            .unwrap();
-
-        let err = validate_address(&invalid, false).unwrap_err();
-        assert!(matches!(err, ConnectionManagerError::InvalidMultiaddr(_)));
-    }
+    Err(err.into())
 }

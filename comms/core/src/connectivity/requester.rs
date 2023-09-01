@@ -248,14 +248,14 @@ impl ConnectivityRequester {
     }
 
     /// Ban peer for the given Duration. The ban `reason` is persisted in the peer database for reference.
-    pub async fn ban_peer_until(
+    pub async fn ban_peer_until<T: Into<String>>(
         &mut self,
         node_id: NodeId,
         duration: Duration,
-        reason: String,
+        reason: T,
     ) -> Result<(), ConnectivityError> {
         self.sender
-            .send(ConnectivityRequest::BanPeer(node_id, duration, reason))
+            .send(ConnectivityRequest::BanPeer(node_id, duration, reason.into()))
             .await
             .map_err(|_| ConnectivityError::ActorDisconnected)?;
         Ok(())

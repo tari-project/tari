@@ -124,10 +124,10 @@ impl ConsensusManager {
         let constants = self.consensus_constants(height);
         let block_window = constants.difficulty_block_window();
 
-        TargetDifficultyWindow::new(
-            usize::try_from(block_window).expect("difficulty block window exceeds usize::MAX"),
-            constants.pow_target_block_interval(pow_algo),
-        )
+        let block_window_u = usize::try_from(block_window)
+            .map_err(|e| format!("difficulty block window exceeds usize::MAX: {}", e.to_string()))?;
+
+        TargetDifficultyWindow::new(block_window_u, constants.pow_target_block_interval(pow_algo))
     }
 
     /// Creates a total_coinbase offset containing all fees for the validation from the height and kernel set
