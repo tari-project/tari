@@ -83,9 +83,9 @@ pub fn verify_header(header: &BlockHeader) -> Result<MoneroPowData, MergeMineErr
     let mut is_found = false;
     for item in extra_field.0 {
         if let SubField::MergeMining(Some(depth), merge_mining_hash) = item {
-            if is_found && &merge_mining_hash.as_bytes()[0..4] == b"TARI" {
+            if is_found {
                 return Err(MergeMineError::ValidationError(
-                    "More than one Tari header found in coinbase".to_string(),
+                    "More than one merge mining tag found in coinbase".to_string(),
                 ));
             }
             if depth == VarInt(0) && merge_mining_hash.as_bytes() == expected_merge_mining_hash.as_slice() {
