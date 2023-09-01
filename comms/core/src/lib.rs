@@ -27,8 +27,6 @@ pub use peer_manager::{NodeIdentity, OrNotFound, PeerManager};
 
 pub mod framing;
 
-pub mod rate_limit;
-
 mod multiplexing;
 pub use multiplexing::Substream;
 

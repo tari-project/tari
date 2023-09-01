@@ -20,11 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{cmp, fmt::Debug, sync::Arc, time::Duration};
+use std::{fmt::Debug, sync::Arc};
 
 use futures::{future, Stream, StreamExt};
 use log::*;
-use tari_comms::rate_limit::RateLimit;
 use tokio::{
     sync::{broadcast, mpsc},
     task,
@@ -36,30 +35,18 @@ use crate::{comms_connector::InboundDomainConnector, tari_message::TariMessageTy
 
 const LOG_TARGET: &str = "comms::middleware::pubsub";
 
-/// The minimum amount of inbound messages to accept within the `RATE_LIMIT_RESTOCK_INTERVAL` window
-const RATE_LIMIT_MIN_CAPACITY: usize = 5;
-const RATE_LIMIT_RESTOCK_INTERVAL: Duration = Duration::from_millis(1000);
-
 /// Alias for a pubsub-type domain connector
 pub type PubsubDomainConnector = InboundDomainConnector;
 pub type SubscriptionFactory = TopicSubscriptionFactory<TariMessageType, Arc<PeerMessage>>;
 
 /// Connects `InboundDomainConnector` to a `tari_pubsub::TopicPublisher` through a buffered broadcast channel
-pub fn pubsub_connector(buf_size: usize, rate_limit: usize) -> (PubsubDomainConnector, SubscriptionFactory) {
+pub fn pubsub_connector(buf_size: usize) -> (PubsubDomainConnector, SubscriptionFactory) {
     let (publisher, subscription_factory) = pubsub_channel(buf_size);
     let (sender, receiver) = mpsc::channel(buf_size);
-    trace!(
-        target: LOG_TARGET,
-        "Created pubsub_connector with buf_size '{}' and rate_limit '{}'.",
-        buf_size,
-        rate_limit
-    );
 
     // Spawn a task which forwards messages from the pubsub service to the TopicPublisher
     task::spawn(async move {
         wrappers::ReceiverStream::new(receiver)
-            // Rate limit the receiver; the sender will adhere to the limit
-            .rate_limit(cmp::max(rate_limit, RATE_LIMIT_MIN_CAPACITY), RATE_LIMIT_RESTOCK_INTERVAL)
             // Map DomainMessage into a TopicPayload
             .filter_map(move |msg: Arc<PeerMessage>| {
                 let opt = match TariMessageType::from_i32(msg.message_header.message_type) {
@@ -68,13 +55,14 @@ pub fn pubsub_connector(buf_size: usize, rate_limit: usize) -> (PubsubDomainConn
                         let payload = TopicPayload::new(msg_type, msg);
                         trace!(
                             target: LOG_TARGET,
-                            "Created topic payload message {:?}, Origin: {}, Trace: {}. [n={}, r={}/s]",
-                            payload.topic(), payload.message().origin_node_id(), message_tag_trace, buf_size, rate_limit,
+                            "Created topic payload message {:?}, Origin: {}, Trace: {}. [n={}]",
+                            payload.topic(), payload.message().origin_node_id(), message_tag_trace, buf_size,
                         );
                         Some(payload)
                     }
                     None => {
                         warn!(target: LOG_TARGET, "Invalid or unrecognised Tari message type '{}'", msg.message_header.message_type);
+                        // TODO: Ban node
                         None
                     }
                 };
