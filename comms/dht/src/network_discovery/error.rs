@@ -20,7 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_comms::{connectivity::ConnectivityError, peer_manager::PeerManagerError, protocol::rpc::RpcError};
+use tari_comms::{
+    connectivity::ConnectivityError,
+    peer_manager::PeerManagerError,
+    protocol::rpc::{RpcError, RpcStatus},
+};
 
 use crate::peer_validator::DhtPeerValidatorError;
 
@@ -28,6 +32,8 @@ use crate::peer_validator::DhtPeerValidatorError;
 pub enum NetworkDiscoveryError {
     #[error("RPC error: {0}")]
     RpcError(#[from] RpcError),
+    #[error("RPC status error: {0}")]
+    RpcStatus(#[from] RpcStatus),
     #[error("Peer manager error: {0}")]
     PeerManagerError(#[from] PeerManagerError),
     #[error("Connectivity error: {0}")]
@@ -36,4 +42,8 @@ pub enum NetworkDiscoveryError {
     NoSyncPeers,
     #[error("Sync peer sent invalid peer: {0}")]
     PeerValidationError(#[from] DhtPeerValidatorError),
+    #[error("Sync peer sent empty peer message")]
+    EmptyPeerMessageReceived,
+    #[error("Sync peer sent invalid peer data: {0}")]
+    InvalidPeerDataReceived(anyhow::Error),
 }

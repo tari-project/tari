@@ -212,7 +212,10 @@ mod discovery_ready {
         }
         let state_event = ready.next_event().await;
         unpack_enum!(StateEvent::BeginDiscovery(params) = state_event);
-        assert!(params.num_peers_to_request.is_none());
+        assert_eq!(
+            params.num_peers_to_request,
+            NetworkDiscoveryConfig::default().max_peers_to_sync_per_round
+        );
     }
 
     #[tokio::test]
