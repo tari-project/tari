@@ -295,7 +295,7 @@ where Fut: Future<Output = StateEvent> + Unpin {
 #[derive(Debug, Clone)]
 pub struct DiscoveryParams {
     pub peers: Vec<NodeId>,
-    pub num_peers_to_request: Option<usize>,
+    pub num_peers_to_request: u32,
 }
 
 impl Display for DiscoveryParams {
@@ -306,9 +306,6 @@ impl Display for DiscoveryParams {
             self.peers.len(),
             self.peers.iter().map(|p| format!("{}, ", p)).collect::<String>(),
             self.num_peers_to_request
-                .as_ref()
-                .map(ToString::to_string)
-                .unwrap_or_else(|| "∞".into()),
         )
     }
 }

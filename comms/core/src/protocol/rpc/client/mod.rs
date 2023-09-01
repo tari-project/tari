@@ -938,7 +938,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             }
 
             if chunk_count >= RPC_CHUNKING_MAX_CHUNKS {
-                return Err(RpcError::ExceededMaxChunkCount {
+                return Err(RpcError::RemotePeerExceededMaxChunkCount {
                     expected: RPC_CHUNKING_MAX_CHUNKS,
                 });
             }

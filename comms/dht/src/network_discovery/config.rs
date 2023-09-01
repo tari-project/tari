@@ -50,6 +50,9 @@ pub struct NetworkDiscoveryConfig {
     /// current state.
     /// Default: 5
     pub max_sync_peers: usize,
+    /// The maximum number of peers we allow per round of sync.
+    /// Default: 500
+    pub max_peers_to_sync_per_round: u32,
 }
 
 impl Default for NetworkDiscoveryConfig {
@@ -61,6 +64,7 @@ impl Default for NetworkDiscoveryConfig {
             idle_after_num_rounds: 10,
             on_failure_idle_period: Duration::from_secs(5),
             max_sync_peers: 5,
+            max_peers_to_sync_per_round: 500,
         }
     }
 }
