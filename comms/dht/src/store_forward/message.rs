@@ -40,14 +40,15 @@ impl StoredMessagesRequest {
         Self {
             since: None,
             request_id: OsRng.next_u32(),
+            limit: 0,
         }
     }
 
-    #[allow(unused)]
     pub fn since(since: DateTime<Utc>) -> Self {
         Self {
             since: Some(datetime_to_timestamp(since)),
             request_id: OsRng.next_u32(),
+            limit: 0,
         }
     }
 }

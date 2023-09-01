@@ -67,6 +67,7 @@ pub(crate) fn epochtime_to_datetime(datetime: EpochTime) -> DateTime<Utc> {
     DateTime::from_utc(dt, Utc)
 }
 
+/// Message errors that should be verified by every node
 #[derive(Debug, Error)]
 pub enum DhtMessageError {
     #[error("Invalid node destination")]
@@ -83,8 +84,10 @@ pub enum DhtMessageError {
     InvalidMessageFlags,
     #[error("Invalid ephemeral public key")]
     InvalidEphemeralPublicKey,
-    #[error("Header was omitted from the message")]
+    #[error("Header is omitted from the message")]
     HeaderOmitted,
+    #[error("Message Body is empty")]
+    BodyEmpty,
 }
 
 impl fmt::Display for DhtMessageType {
@@ -157,12 +160,31 @@ pub struct DhtMessageHeader {
 }
 
 impl DhtMessageHeader {
-    pub fn is_valid(&self) -> bool {
+    /// Checks if the DHT header is semantically valid. For example, if the message is flagged as encrypted, but sets a
+    /// empty signature or provides no ephemeral public key, this returns false.
+    pub fn is_semantically_valid(&self) -> bool {
+        // If the message is encrypted:
+        // - it needs a destination
+        // - it needs an ephemeral public key
+        // - it needs a signature
         if self.flags.is_encrypted() {
-            !self.message_signature.is_empty() && self.ephemeral_public_key.is_some()
-        } else {
-            true
+            // Must have a destination
+            if self.destination.is_unknown() {
+                return false;
+            }
+
+            // Must have an ephemeral public key
+            if self.ephemeral_public_key.is_none() {
+                return false;
+            }
+
+            // Must have a signature
+            if self.message_signature.is_empty() {
+                return false;
+            }
         }
+
+        true
     }
 }
 
