@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{num::TryFromIntError, time::Duration};
-use crate::common::BanReason;
+
 use tari_common_types::types::FixedHashSizeError;
 use tari_comms::{
     connectivity::ConnectivityError,
@@ -35,6 +35,7 @@ use tokio::task;
 
 use crate::{
     chain_storage::{ChainStorageError, MmrTree},
+    common::BanReason,
     transactions::transaction_components::TransactionError,
     validation::ValidationError,
 };
@@ -131,7 +132,7 @@ impl HorizonSyncError {
             err @ HorizonSyncError::InvalidMmrRoot { .. } |
             err @ HorizonSyncError::InvalidMmrPosition { .. } |
             err @ HorizonSyncError::ConversionError(_) |
-            err @ HorizonSyncError::MerkleMountainRangeError(_) | 
+            err @ HorizonSyncError::MerkleMountainRangeError(_) |
             err @ HorizonSyncError::ValidationError(_) |
             err @ HorizonSyncError::FixedHashSizeError(_) |
             err @ HorizonSyncError::TransactionError(_) => Some(BanReason {

@@ -180,18 +180,13 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
                 Ok(_) => return Ok(()),
                 Err(err) => {
                     warn!(target: LOG_TARGET, "{}", err);
-                    let ban_reason = BlockSyncError::get_ban_reason(
-                        &err,
-                        self.config.short_ban_period,
-                        self.config.ban_period,
-                    );
+                    let ban_reason =
+                        BlockSyncError::get_ban_reason(&err, self.config.short_ban_period, self.config.ban_period);
                     match ban_reason {
                         Some(reason) => {
                             warn!(target: LOG_TARGET, "{}", err);
                             self.peer_ban_manager
-                                .ban_peer_if_required(
-                                    node_id, &Some(reason.clone()),
-                                )
+                                .ban_peer_if_required(node_id, &Some(reason.clone()))
                                 .await;
 
                             if reason.ban_duration > self.config.short_ban_period {

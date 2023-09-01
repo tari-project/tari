@@ -27,16 +27,12 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use tari_comms::PeerConnection;
+
 use croaring::Bitmap;
 use futures::{stream::FuturesUnordered, StreamExt};
 use log::*;
 use tari_common_types::types::{Commitment, RangeProofService};
-use tari_comms::{
-    connectivity::ConnectivityRequester,
-    peer_manager::NodeId,
-    protocol::rpc::RpcClient,
-};
+use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId, protocol::rpc::RpcClient, PeerConnection};
 use tari_crypto::{commitment::HomomorphicCommitment, tari_utilities::hex::Hex};
 use tokio::task;
 
@@ -126,7 +122,7 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<B> {
             full_bitmap: None,
             hooks: Hooks::default(),
             final_state_validator,
-            peer_ban_manager
+            peer_ban_manager,
         }
     }
 
@@ -195,19 +191,13 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<B> {
                 Ok(_) => return Ok(()),
                 // Try another peer
                 Err(err) => {
-                    let ban_reason = HorizonSyncError::get_ban_reason(
-                        &err,
-                        self.config.short_ban_period,
-                        self.config.ban_period,
-                    );
+                    let ban_reason =
+                        HorizonSyncError::get_ban_reason(&err, self.config.short_ban_period, self.config.ban_period);
                     match ban_reason {
                         Some(reason) => {
                             warn!(target: LOG_TARGET, "{}", err);
                             self.peer_ban_manager
-                                .ban_peer_if_required(
-                                    node_id,
-                                    &Some(reason.clone()),
-                                )
+                                .ban_peer_if_required(node_id, &Some(reason.clone()))
                                 .await;
 
                             if reason.ban_duration > self.config.short_ban_period {
@@ -226,7 +216,7 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<B> {
 
         if self.sync_peers.is_empty() {
             return Err(HorizonSyncError::NoMoreSyncPeers("Header sync failed".to_string()));
-        }  else if latency_counter >= self.sync_peers.len() {
+        } else if latency_counter >= self.sync_peers.len() {
             Err(HorizonSyncError::AllSyncPeersExceedLatency)
         } else {
             return Err(HorizonSyncError::FailedSyncAllPeers);
@@ -237,7 +227,7 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<B> {
         &mut self,
         peer_index: usize,
         node_id: &NodeId,
-        header: &BlockHeader
+        header: &BlockHeader,
     ) -> Result<(), HorizonSyncError> {
         {
             let sync_peer = &self.sync_peers[peer_index];
@@ -253,7 +243,7 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<B> {
         let config = RpcClient::builder()
             .with_deadline(self.config.rpc_deadline)
             .with_deadline_grace_period(Duration::from_secs(3));
-            
+
         let mut client = conn
             .connect_rpc_using_builder::<rpc::BaseNodeSyncRpcClient>(config)
             .await?;
