@@ -55,6 +55,8 @@ pub enum DhtDiscoveryError {
     InvalidDiscoveryResponse { details: anyhow::Error },
     #[error("DHT peer validator error: {0}")]
     PeerValidatorError(#[from] DhtPeerValidatorError),
+    #[error("Cannot send discovery for this node")]
+    CannotDiscoverThisNode,
 }
 
 impl DhtDiscoveryError {

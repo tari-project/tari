@@ -35,6 +35,7 @@ use tokio::task;
 
 use crate::{
     chain_storage::{ChainStorageError, MmrTree},
+    common::BanReason,
     transactions::transaction_components::TransactionError,
     validation::ValidationError,
 };
@@ -88,6 +89,8 @@ pub enum HorizonSyncError {
     AllSyncPeersExceedLatency,
     #[error("FixedHash size error: {0}")]
     FixedHashSizeError(#[from] FixedHashSizeError),
+    #[error("No more sync peers available: {0}")]
+    NoMoreSyncPeers(String),
 }
 
 impl From<TryFromIntError> for HorizonSyncError {
@@ -99,5 +102,43 @@ impl From<TryFromIntError> for HorizonSyncError {
 impl From<RangeProofError> for HorizonSyncError {
     fn from(e: RangeProofError) -> Self {
         HorizonSyncError::RangeProofError(e.to_string())
+    }
+}
+
+impl HorizonSyncError {
+    pub fn get_ban_reason(&self, short_ban: Duration, long_ban: Duration) -> Option<BanReason> {
+        match self {
+            // no ban
+            HorizonSyncError::ChainStorageError(_) |
+            HorizonSyncError::NoSyncPeers |
+            HorizonSyncError::FailedSyncAllPeers |
+            HorizonSyncError::AllSyncPeersExceedLatency |
+            HorizonSyncError::ConnectivityError(_) |
+            HorizonSyncError::RpcError(_) |
+            HorizonSyncError::RpcStatus(_) |
+            HorizonSyncError::NoMoreSyncPeers(_) |
+            HorizonSyncError::JoinError(_) => None,
+
+            // short ban
+            err @ HorizonSyncError::MaxLatencyExceeded { .. } => Some(BanReason {
+                reason: format!("{}", err),
+                ban_duration: short_ban,
+            }),
+
+            // long ban
+            err @ HorizonSyncError::IncorrectResponse(_) |
+            err @ HorizonSyncError::FinalStateValidationFailed(_) |
+            err @ HorizonSyncError::RangeProofError(_) |
+            err @ HorizonSyncError::InvalidMmrRoot { .. } |
+            err @ HorizonSyncError::InvalidMmrPosition { .. } |
+            err @ HorizonSyncError::ConversionError(_) |
+            err @ HorizonSyncError::MerkleMountainRangeError(_) |
+            err @ HorizonSyncError::ValidationError(_) |
+            err @ HorizonSyncError::FixedHashSizeError(_) |
+            err @ HorizonSyncError::TransactionError(_) => Some(BanReason {
+                reason: format!("{}", err),
+                ban_duration: long_ban,
+            }),
+        }
     }
 }
