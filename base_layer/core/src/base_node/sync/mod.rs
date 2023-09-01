@@ -21,6 +21,9 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #[cfg(feature = "base_node")]
+pub mod ban;
+
+#[cfg(feature = "base_node")]
 mod config;
 #[cfg(feature = "base_node")]
 pub use self::config::BlockchainSyncConfig;

@@ -39,7 +39,6 @@ use std::{sync::Arc, time::Instant};
 use log::*;
 pub use metrics::{MetricsCollector, MetricsCollectorHandle};
 use tari_comms::{
-    connection_manager::ConnectionDirection,
     connectivity::{
         ConnectivityError,
         ConnectivityEvent,
@@ -48,7 +47,6 @@ use tari_comms::{
         ConnectivitySelection,
     },
     multiaddr,
-    net_address::PeerAddressSource,
     peer_manager::{NodeDistance, NodeId, PeerManagerError, PeerQuery, PeerQuerySortBy},
     NodeIdentity,
     PeerConnection,
@@ -65,8 +63,6 @@ const LOG_TARGET: &str = "comms::dht::connectivity";
 /// Error type for the DHT connectivity actor.
 #[derive(Debug, Error)]
 pub enum DhtConnectivityError {
-    #[error("Peer connection did not have a peer identity claim")]
-    PeerConnectionMissingPeerIdentityClaim,
     #[error("ConnectivityError: {0}")]
     ConnectivityError(#[from] ConnectivityError),
     #[error("PeerManagerError: {0}")]
@@ -493,20 +489,9 @@ impl DhtConnectivity {
     }
 
     async fn handle_new_peer_connected(&mut self, conn: PeerConnection) -> Result<(), DhtConnectivityError> {
-        if conn.direction() == ConnectionDirection::Outbound {
-            if let Some(peer_identity_claim) = conn.peer_identity_claim() {
-                self.peer_manager
-                    .mark_last_seen(
-                        conn.peer_node_id(),
-                        conn.address(),
-                        &PeerAddressSource::FromPeerConnection {
-                            peer_identity_claim: peer_identity_claim.clone(),
-                        },
-                    )
-                    .await?;
-            } else {
-                return Err(DhtConnectivityError::PeerConnectionMissingPeerIdentityClaim);
-            }
+        // We can only mark the peer as seen if we know which address we are were about to connect to (Outbound).
+        if let Some(addr) = conn.known_address() {
+            self.peer_manager.mark_last_seen(conn.peer_node_id(), addr).await?;
         }
         if conn.peer_features().is_client() {
             debug!(

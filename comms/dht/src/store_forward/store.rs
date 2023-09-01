@@ -34,13 +34,7 @@ use tower::{layer::Layer, Service, ServiceExt};
 use super::StoreAndForwardRequester;
 use crate::{
     inbound::DecryptedDhtMessage,
-    store_forward::{
-        database::NewStoredMessage,
-        error::StoreAndForwardError,
-        message::StoredMessagePriority,
-        SafConfig,
-        SafResult,
-    },
+    store_forward::{database::NewStoredMessage, message::StoredMessagePriority, SafConfig, SafResult},
 };
 
 const LOG_TARGET: &str = "comms::dht::storeforward::store";
@@ -205,10 +199,12 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Se
         }
 
         message.set_saf_stored(false);
-        if let Some(priority) = self.get_storage_priority(&message).await? {
-            message.set_saf_stored(true);
-            let existing = self.store(priority, message.clone()).await?;
-            message.set_already_forwarded(existing);
+        if self.is_valid_for_storage(&message) {
+            if let Some(priority) = self.get_storage_priority(&message).await? {
+                message.set_saf_stored(true);
+                let existing = self.store(priority, message.clone()).await?;
+                message.set_already_forwarded(existing);
+            }
         }
 
         trace!(
@@ -220,6 +216,35 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Se
 
         let service = self.next_service.ready_oneshot().await?;
         service.oneshot(message).await
+    }
+
+    fn is_valid_for_storage(&self, message: &DecryptedDhtMessage) -> bool {
+        if message.body_len() == 0 {
+            debug!(
+                target: LOG_TARGET,
+                "Message {} from peer '{}' not eligible for SAF storage because it has no body (Trace: {})",
+                message.tag,
+                message.source_peer.node_id.short_str(),
+                message.dht_header.message_tag
+            );
+            return false;
+        }
+
+        if let Some(expires) = message.dht_header.expires {
+            let now = EpochTime::now();
+            if expires < now {
+                debug!(
+                    target: LOG_TARGET,
+                    "Message {} from peer '{}' not eligible for SAF storage because it has expired (Trace: {})",
+                    message.tag,
+                    message.source_peer.node_id.short_str(),
+                    message.dht_header.message_tag
+                );
+                return false;
+            }
+        }
+
+        true
     }
 
     async fn get_storage_priority(&self, message: &DecryptedDhtMessage) -> SafResult<Option<StoredMessagePriority>> {
@@ -248,13 +273,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Se
             return Ok(None);
         }
 
-        if message.dht_header.message_type.is_dht_join() {
-            log_not_eligible("it is a join message");
-            return Ok(None);
-        }
-
-        if message.dht_header.message_type.is_dht_discovery() {
-            log_not_eligible("it is a discovery message");
+        if message.dht_header.message_type.is_dht_message() {
+            log_not_eligible(&format!("it is a DHT {} message", message.dht_header.message_type));
             return Ok(None);
         }
 
@@ -388,13 +408,6 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Se
             message.body_len(),
             message.dht_header.message_tag,
         );
-
-        if let Some(expires) = message.dht_header.expires {
-            let now = EpochTime::now();
-            if expires < now {
-                return Err(StoreAndForwardError::NotStoringExpiredMessage { expired: expires, now });
-            }
-        }
 
         let stored_message = NewStoredMessage::new(message, priority);
         self.saf_requester.insert_message(stored_message).await

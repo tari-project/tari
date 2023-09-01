@@ -123,7 +123,7 @@ pub struct ProtoMessageSignature {
 
 #[derive(Debug, thiserror::Error, PartialEq)]
 pub enum MessageSignatureError {
-    #[error("Failed to validate message signature")]
+    #[error("Message signature does not contain valid scalar bytes")]
     InvalidSignatureBytes,
     #[error("Message signature contained an invalid public nonce")]
     InvalidPublicNonceBytes,

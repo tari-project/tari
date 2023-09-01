@@ -32,17 +32,14 @@ use croaring::Bitmap;
 use futures::{stream::FuturesUnordered, StreamExt};
 use log::*;
 use tari_common_types::types::{Commitment, RangeProofService};
-use tari_comms::{
-    connectivity::ConnectivityRequester,
-    peer_manager::NodeId,
-    protocol::rpc::{RpcClient, RpcError},
-};
+use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId, protocol::rpc::RpcClient, PeerConnection};
 use tari_crypto::{commitment::HomomorphicCommitment, tari_utilities::hex::Hex};
 use tokio::task;
 
 use super::error::HorizonSyncError;
 use crate::{
     base_node::sync::{
+        ban::PeerBanManager,
         hooks::Hooks,
         horizon_state_sync::{HorizonSyncInfo, HorizonSyncStatus},
         rpc,
@@ -81,11 +78,11 @@ use crate::{
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::horizon_state_sync";
 
-pub struct HorizonStateSynchronization<'a, B> {
+pub struct HorizonStateSynchronization<B> {
     config: BlockchainSyncConfig,
     db: AsyncBlockchainDb<B>,
     rules: ConsensusManager,
-    sync_peers: &'a [SyncPeer],
+    sync_peers: Vec<SyncPeer>,
     horizon_sync_height: u64,
     prover: Arc<RangeProofService>,
     num_kernels: u64,
@@ -95,20 +92,22 @@ pub struct HorizonStateSynchronization<'a, B> {
     connectivity: ConnectivityRequester,
     final_state_validator: Arc<dyn FinalHorizonStateValidation<B>>,
     max_latency: Duration,
+    peer_ban_manager: PeerBanManager,
 }
 
-impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
+impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<B> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         config: BlockchainSyncConfig,
         db: AsyncBlockchainDb<B>,
         connectivity: ConnectivityRequester,
         rules: ConsensusManager,
-        sync_peers: &'a [SyncPeer],
+        sync_peers: Vec<SyncPeer>,
         horizon_sync_height: u64,
         prover: Arc<RangeProofService>,
         final_state_validator: Arc<dyn FinalHorizonStateValidation<B>>,
     ) -> Self {
+        let peer_ban_manager = PeerBanManager::new(config.clone(), connectivity.clone());
         Self {
             max_latency: config.initial_max_sync_latency,
             config,
@@ -123,6 +122,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             full_bitmap: None,
             hooks: Hooks::default(),
             final_state_validator,
+            peer_ban_manager,
         }
     }
 
@@ -179,95 +179,105 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
     }
 
     async fn sync(&mut self, header: &BlockHeader) -> Result<(), HorizonSyncError> {
+        let sync_peer_node_ids = self.sync_peers.iter().map(|p| p.node_id()).cloned().collect::<Vec<_>>();
         info!(
             target: LOG_TARGET,
-            "Attempting to sync blocks({} sync peers)",
-            self.sync_peers.len()
+            "Attempting to sync horizon state ({} sync peers)",
+            sync_peer_node_ids.len()
         );
-        for (i, sync_peer) in self.sync_peers.iter().enumerate() {
-            self.hooks.call_on_starting_hook(sync_peer);
-            let mut connection = match self.connectivity.dial_peer(sync_peer.node_id().clone()).await {
-                Ok(conn) => conn,
+        let mut latency_counter = 0usize;
+        for (i, node_id) in sync_peer_node_ids.iter().enumerate() {
+            match self.connect_and_attempt_sync(i, node_id, header).await {
+                Ok(_) => return Ok(()),
+                // Try another peer
                 Err(err) => {
-                    warn!(target: LOG_TARGET, "Failed to connect to sync peer `{}`: {}", sync_peer.node_id(), err);
-                    continue;
-                },
-            };
-            let config = RpcClient::builder()
-                .with_deadline(self.config.rpc_deadline)
-                .with_deadline_grace_period(Duration::from_secs(3));
-            let mut client = match connection.connect_rpc_using_builder(config).await {
-                Ok(rpc_client) => rpc_client,
-                Err(err) => {
-                    warn!(target: LOG_TARGET, "Failed to establish RPC coonection with sync peer `{}`: {}", sync_peer.node_id(), err);
-                    continue;
-                },
-            };
+                    let ban_reason =
+                        HorizonSyncError::get_ban_reason(&err, self.config.short_ban_period, self.config.ban_period);
 
-            match self.begin_sync(sync_peer.clone(), &mut client, header).await {
-                Ok(_) => match self.finalize_horizon_sync(sync_peer).await {
-                    Ok(_) => return Ok(()),
-                    Err(err) => {
-                        self.ban_peer_on_bannable_error(sync_peer, &err).await?;
-                        warn!(target: LOG_TARGET, "Error during sync:{}", err);
-                    },
-                },
-                Err(err @ HorizonSyncError::RpcError(RpcError::ReplyTimeout)) |
-                Err(err @ HorizonSyncError::MaxLatencyExceeded { .. }) => {
-                    self.ban_peer_on_bannable_error(sync_peer, &err).await?;
-                    warn!(target: LOG_TARGET, "{}", err);
-                    if i == self.sync_peers.len() - 1 {
-                        return Err(HorizonSyncError::AllSyncPeersExceedLatency);
+                    if let Some(reason) = ban_reason {
+                        warn!(target: LOG_TARGET, "{}", err);
+                        self.peer_ban_manager
+                            .ban_peer_if_required(node_id, &Some(reason.clone()))
+                            .await;
+
+                        if reason.ban_duration > self.config.short_ban_period {
+                            self.remove_sync_peer(node_id);
+                        }
                     }
-                },
-                Err(err) => {
-                    self.ban_peer_on_bannable_error(sync_peer, &err).await?;
-                    warn!(target: LOG_TARGET, "Error during sync:{}", err);
+
+                    if let HorizonSyncError::MaxLatencyExceeded { .. } = err {
+                        latency_counter += 1;
+                    }
                 },
             }
         }
 
-        Err(HorizonSyncError::FailedSyncAllPeers)
+        if self.sync_peers.is_empty() {
+            Err(HorizonSyncError::NoMoreSyncPeers("Header sync failed".to_string()))
+        } else if latency_counter >= self.sync_peers.len() {
+            Err(HorizonSyncError::AllSyncPeersExceedLatency)
+        } else {
+            Err(HorizonSyncError::FailedSyncAllPeers)
+        }
     }
 
-    async fn ban_peer_on_bannable_error(
+    async fn connect_and_attempt_sync(
         &mut self,
-        peer: &SyncPeer,
-        error: &HorizonSyncError,
+        peer_index: usize,
+        node_id: &NodeId,
+        header: &BlockHeader,
     ) -> Result<(), HorizonSyncError> {
-        match error {
-            HorizonSyncError::ChainStorageError(_) |
-            HorizonSyncError::JoinError(_) |
-            HorizonSyncError::RpcError(_) |
-            HorizonSyncError::RpcStatus(_) |
-            HorizonSyncError::ConnectivityError(_) |
-            HorizonSyncError::NoSyncPeers |
-            HorizonSyncError::FailedSyncAllPeers |
-            HorizonSyncError::AllSyncPeersExceedLatency => {
-                // these are local errors so we dont ban die per
-            },
-            HorizonSyncError::MaxLatencyExceeded { .. } => {
-                warn!(target: LOG_TARGET, "Banned sync peer for short while because peer exceeded max latency: {}",error.to_string());
-                if let Err(err) = self
-                    .connectivity
-                    .ban_peer_until(peer.node_id().clone(), self.config.short_ban_period, error.to_string())
-                    .await
-                {
-                    error!(target: LOG_TARGET, "Failed to ban peer: {}", err);
-                }
-            },
-            _ => {
-                warn!(target: LOG_TARGET, "Banned sync peer for because: {}",error.to_string());
-                if let Err(err) = self
-                    .connectivity
-                    .ban_peer_until(peer.node_id().clone(), self.config.ban_period, error.to_string())
-                    .await
-                {
-                    error!(target: LOG_TARGET, "Failed to ban peer: {}", err);
-                }
-            },
+        {
+            let sync_peer = &self.sync_peers[peer_index];
+            self.hooks.call_on_starting_hook(sync_peer);
         }
+
+        let mut conn = self.dial_sync_peer(node_id).await?;
+        debug!(
+            target: LOG_TARGET,
+            "Attempting to synchronize horizon state with `{}`", node_id
+        );
+
+        let config = RpcClient::builder()
+            .with_deadline(self.config.rpc_deadline)
+            .with_deadline_grace_period(Duration::from_secs(3));
+
+        let mut client = conn
+            .connect_rpc_using_builder::<rpc::BaseNodeSyncRpcClient>(config)
+            .await?;
+
+        let latency = client
+            .get_last_request_latency()
+            .expect("unreachable panic: last request latency must be set after connect");
+        self.sync_peers[peer_index].set_latency(latency);
+        if latency > self.max_latency {
+            return Err(HorizonSyncError::MaxLatencyExceeded {
+                peer: conn.peer_node_id().clone(),
+                latency,
+                max_latency: self.max_latency,
+            });
+        }
+
+        debug!(target: LOG_TARGET, "Sync peer latency is {:.2?}", latency);
+        let sync_peer = self.sync_peers[peer_index].clone();
+
+        self.begin_sync(sync_peer.clone(), &mut client, header).await?;
+        self.finalize_horizon_sync(&sync_peer).await?;
+
         Ok(())
+    }
+
+    async fn dial_sync_peer(&self, node_id: &NodeId) -> Result<PeerConnection, HorizonSyncError> {
+        let timer = Instant::now();
+        debug!(target: LOG_TARGET, "Dialing {} sync peer", node_id);
+        let conn = self.connectivity.dial_peer(node_id.clone()).await?;
+        info!(
+            target: LOG_TARGET,
+            "Successfully dialed sync peer {} in {:.2?}",
+            node_id,
+            timer.elapsed()
+        );
+        Ok(conn)
     }
 
     async fn begin_sync(
@@ -371,9 +381,9 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             kernel_hashes.push(kernel.hash());
 
             if mmr_position > end {
-                return Err(HorizonSyncError::IncorrectResponse(format!(
-                    "Peer sent too many kernels",
-                )));
+                return Err(HorizonSyncError::IncorrectResponse(
+                    "Peer sent too many kernels".to_string(),
+                ));
             }
 
             let mmr_position_u32 = u32::try_from(mmr_position).map_err(|_| HorizonSyncError::InvalidMmrPosition {
@@ -566,9 +576,9 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             let res: SyncUtxosResponse = response?;
 
             if mmr_position > end {
-                return Err(HorizonSyncError::IncorrectResponse(format!(
-                    "Peer sent too many outputs",
-                )));
+                return Err(HorizonSyncError::IncorrectResponse(
+                    "Peer sent too many outputs".to_string(),
+                ));
             }
 
             if res.mmr_index != 0 && res.mmr_index != mmr_position {
@@ -959,6 +969,13 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             Ok((utxo_sum, kernel_sum, burned_sum))
         })
         .await?
+    }
+
+    // Sync peers are also removed from the list of sync peers if the ban duration is longer than the short ban period.
+    fn remove_sync_peer(&mut self, node_id: &NodeId) {
+        if let Some(pos) = self.sync_peers.iter().position(|p| p.node_id() == node_id) {
+            self.sync_peers.remove(pos);
+        }
     }
 
     #[inline]

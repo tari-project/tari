@@ -47,7 +47,7 @@ pub async fn start(
 ) -> anyhow::Result<(ContactsServiceHandle, CommsNode)> {
     let backend = connect_to_db(config.chat_client.db_file)?;
 
-    let (publisher, subscription_factory) = pubsub_connector(100, 50);
+    let (publisher, subscription_factory) = pubsub_connector(100);
     let in_msg = Arc::new(subscription_factory);
 
     let fut = StackBuilder::new(shutdown_signal)
