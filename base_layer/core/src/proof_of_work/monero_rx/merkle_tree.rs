@@ -173,6 +173,9 @@ impl MerkleProof {
     }
 
     /// Calculates the merkle root hash from the provide Monero hash
+    /// The coinbase must be the first transaction in the block, so
+    /// that you can't have multiple coinbases in a block. That means the coinbase
+    /// is always the leftmost branch in the merkle tree
     pub fn calculate_root(&self, hash: &Hash) -> Hash {
         if self.branch.is_empty() {
             return *hash;
