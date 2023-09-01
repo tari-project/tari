@@ -40,11 +40,7 @@ use tokio::{
 use tokio_stream::StreamExt;
 use tracing::{self, span, Instrument, Level};
 
-use super::{
-    direction::ConnectionDirection,
-    error::{ConnectionManagerError, PeerConnectionError},
-    manager::ConnectionManagerEvent,
-};
+use super::{direction::ConnectionDirection, error::PeerConnectionError, manager::ConnectionManagerEvent};
 #[cfg(feature = "rpc")]
 use crate::protocol::rpc::{
     pool::RpcClientPool,
@@ -59,7 +55,7 @@ use crate::{
     framing,
     framing::CanonicalFraming,
     multiplexing::{Control, IncomingSubstreams, Substream, Yamux},
-    peer_manager::{NodeId, PeerFeatures, PeerIdentityClaim},
+    peer_manager::{NodeId, PeerFeatures},
     protocol::{ProtocolId, ProtocolNegotiation},
     utils::atomic_ref_counter::AtomicRefCounter,
 };
@@ -70,17 +66,16 @@ const PROTOCOL_NEGOTIATION_TIMEOUT: Duration = Duration::from_secs(5);
 
 static ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
-pub fn try_create(
+pub fn create(
     connection: Yamux,
     peer_addr: Multiaddr,
     peer_node_id: NodeId,
     peer_features: PeerFeatures,
     direction: ConnectionDirection,
     event_notifier: mpsc::Sender<ConnectionManagerEvent>,
-    our_supported_protocols: Vec<ProtocolId>,
+    our_supported_protocols: Arc<Vec<ProtocolId>>,
     their_supported_protocols: Vec<ProtocolId>,
-    peer_identity_claim: PeerIdentityClaim,
-) -> Result<PeerConnection, ConnectionManagerError> {
+) -> PeerConnection {
     trace!(
         target: LOG_TARGET,
         "(Peer={}) Socket successfully upgraded to multiplexed socket",
@@ -98,7 +93,6 @@ pub fn try_create(
         peer_addr,
         direction,
         substream_counter,
-        peer_identity_claim,
     );
     let peer_actor = PeerConnectionActor::new(
         id,
@@ -112,7 +106,7 @@ pub fn try_create(
     );
     tokio::spawn(peer_actor.run());
 
-    Ok(peer_conn)
+    peer_conn
 }
 
 /// Request types for the PeerConnection actor.
@@ -142,7 +136,6 @@ pub struct PeerConnection {
     started_at: Instant,
     substream_counter: AtomicRefCounter,
     handle_counter: Arc<()>,
-    peer_identity_claim: Option<PeerIdentityClaim>,
 }
 
 impl PeerConnection {
@@ -154,7 +147,6 @@ impl PeerConnection {
         address: Multiaddr,
         direction: ConnectionDirection,
         substream_counter: AtomicRefCounter,
-        peer_identity_claim: PeerIdentityClaim,
     ) -> Self {
         Self {
             id,
@@ -166,31 +158,6 @@ impl PeerConnection {
             started_at: Instant::now(),
             substream_counter,
             handle_counter: Arc::new(()),
-            peer_identity_claim: Some(peer_identity_claim),
-        }
-    }
-
-    /// Should only be used in tests
-    pub(crate) fn unverified(
-        id: ConnectionId,
-        request_tx: mpsc::Sender<PeerConnectionRequest>,
-        peer_node_id: NodeId,
-        peer_features: PeerFeatures,
-        address: Multiaddr,
-        direction: ConnectionDirection,
-        substream_counter: AtomicRefCounter,
-    ) -> Self {
-        Self {
-            id,
-            request_tx,
-            peer_node_id,
-            peer_features,
-            address: Arc::new(address),
-            direction,
-            started_at: Instant::now(),
-            substream_counter,
-            handle_counter: Arc::new(()),
-            peer_identity_claim: None,
         }
     }
 
@@ -204,6 +171,14 @@ impl PeerConnection {
 
     pub fn direction(&self) -> ConnectionDirection {
         self.direction
+    }
+
+    pub fn known_address(&self) -> Option<&Multiaddr> {
+        if self.direction.is_outbound() {
+            Some(self.address())
+        } else {
+            None
+        }
     }
 
     pub fn address(&self) -> &Multiaddr {
@@ -234,10 +209,6 @@ impl PeerConnection {
 
     pub fn handle_count(&self) -> usize {
         Arc::strong_count(&self.handle_counter)
-    }
-
-    pub fn peer_identity_claim(&self) -> Option<&PeerIdentityClaim> {
-        self.peer_identity_claim.as_ref()
     }
 
     #[tracing::instrument(level = "trace", "peer_connection::open_substream", skip(self))]
@@ -375,7 +346,7 @@ impl PeerConnectionActor {
         connection: Yamux,
         request_rx: mpsc::Receiver<PeerConnectionRequest>,
         event_notifier: mpsc::Sender<ConnectionManagerEvent>,
-        our_supported_protocols: Vec<ProtocolId>,
+        our_supported_protocols: Arc<Vec<ProtocolId>>,
         their_supported_protocols: Vec<ProtocolId>,
     ) -> Self {
         Self {
@@ -386,9 +357,7 @@ impl PeerConnectionActor {
             incoming_substreams: connection.into_incoming(),
             request_rx,
             event_notifier,
-            // our_supported_protocols never changes so we make it cheap to clone (used in inbound_protocol_negotiations
-            // futures)
-            our_supported_protocols: Arc::new(our_supported_protocols),
+            our_supported_protocols,
             inbound_protocol_negotiations: FuturesUnordered::new(),
             their_supported_protocols,
         }

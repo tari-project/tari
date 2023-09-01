@@ -27,6 +27,7 @@ use crate::{
     connection_manager::PeerConnectionRequest,
     noise,
     peer_manager::PeerManagerError,
+    peer_validator::PeerValidatorError,
     protocol::{IdentityProtocolError, ProtocolError},
 };
 
@@ -81,14 +82,8 @@ pub enum ConnectionManagerError {
     NoiseProtocolTimeout,
     #[error("Listener oneshot cancelled")]
     ListenerOneshotCancelled,
-    #[error("Peer sent invalid identity signature")]
-    PeerIdentityInvalidSignature,
-    #[error("Peer did not provide an identity signature")]
-    PeerIdentityNoSignature,
-    #[error("Peer did not provide any public addresses")]
-    PeerIdentityNoAddresses,
-    #[error("Onion v2 is no longer supported")]
-    OnionV2NotSupported,
+    #[error("Peer validation error: {0}")]
+    PeerValidationError(#[from] PeerValidatorError),
 }
 
 impl From<yamux::ConnectionError> for ConnectionManagerError {

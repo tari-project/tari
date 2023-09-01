@@ -18,7 +18,7 @@ mod builder;
 pub use builder::{CommsBuilder, CommsBuilderError, CommsNode, UnspawnedCommsNode};
 
 pub mod connection_manager;
-pub use connection_manager::{validate_addresses, PeerConnection, PeerConnectionError};
+pub use connection_manager::{PeerConnection, PeerConnectionError};
 
 pub mod connectivity;
 
@@ -51,6 +51,9 @@ pub mod types;
 #[macro_use]
 pub mod utils;
 
+pub mod peer_validator;
+
+mod bans;
 pub mod test_utils;
 pub mod traits;
 
