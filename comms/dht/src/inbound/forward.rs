@@ -186,26 +186,12 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             dht_header,
             is_saf_stored,
             is_already_forwarded,
-            authenticated_origin,
             ..
         } = message;
 
         if self.destination_matches_source(&dht_header.destination, source_peer) {
-            //       #banheuristic - the origin of this message was the destination. Two things are wrong here:
-            //       1. The origin/destination should not have forwarded this (the destination node didnt do this
-            //          destination_matches_source check)
-            //       1. The origin sent a message that the destination could not decrypt
-            //       The authenticated source should be banned (malicious), and origin should be temporarily banned
-            //       (bug?)
-            if let Some(authenticated_origin) = authenticated_origin {
-                self.dht
-                    .ban_peer(
-                        authenticated_origin.clone(),
-                        OffenceSeverity::High,
-                        "Received message from peer that is destined for that peer. This peer originally sent it.",
-                    )
-                    .await;
-            }
+            // The origin/destination should not have forwarded this (the source node didnt do this
+            // destination_matches_source check)
             self.dht
                 .ban_peer(
                     source_peer.public_key.clone(),
