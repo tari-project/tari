@@ -24,7 +24,6 @@ use std::{convert::TryInto, sync::Arc};
 
 use log::*;
 use tari_comms::{
-    connectivity::ConnectivityRequester,
     message::MessageExt,
     peer_manager::{NodeId, NodeIdentity, PeerManager},
     pipeline::PipelineError,
@@ -35,6 +34,7 @@ use tari_utilities::{hex::Hex, ByteArray};
 use tower::{Service, ServiceExt};
 
 use crate::{
+    actor::OffenceSeverity,
     discovery::DhtDiscoveryRequester,
     envelope::NodeDestination,
     inbound::{error::DhtInboundError, message::DecryptedDhtMessage},
@@ -46,6 +46,7 @@ use crate::{
     },
     rpc::UnvalidatedPeerInfo,
     DhtConfig,
+    DhtRequester,
 };
 
 const LOG_TARGET: &str = "comms::dht::dht_handler";
@@ -55,7 +56,7 @@ pub struct ProcessDhtMessage<S> {
     peer_manager: Arc<PeerManager>,
     outbound_service: OutboundMessageRequester,
     node_identity: Arc<NodeIdentity>,
-    connectivity: ConnectivityRequester,
+    dht: DhtRequester,
     message: Option<DecryptedDhtMessage>,
     discovery_requester: DhtDiscoveryRequester,
     config: Arc<DhtConfig>,
@@ -69,7 +70,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         peer_manager: Arc<PeerManager>,
         outbound_service: OutboundMessageRequester,
         node_identity: Arc<NodeIdentity>,
-        connectivity: ConnectivityRequester,
+        dht: DhtRequester,
         discovery_requester: DhtDiscoveryRequester,
         message: DecryptedDhtMessage,
         config: Arc<DhtConfig>,
@@ -79,7 +80,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             peer_manager,
             outbound_service,
             node_identity,
-            connectivity,
+            dht,
             discovery_requester,
             message: Some(message),
             config,
@@ -159,9 +160,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 target: LOG_TARGET,
                 "Received JoinMessage that did not have an authenticated origin from source peer {}. Banning source", source_peer
             );
-            self.ban_peer( &source_peer.public_key,
-                "Received JoinMessage that did not have an authenticated origin",
-            ).await;
+
+            self .dht .ban_peer(source_peer.public_key.clone(), OffenceSeverity::Low, "Received JoinMessage that did not have an authenticated origin", ).await;
             return Ok(());
         };
 
@@ -193,11 +193,13 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 "Authenticated origin: {:#.6}, Source: {:#.6}, join message: {}",
                 authenticated_pk, source_peer.public_key, join_msg.public_key.to_hex()
             );
-            self.ban_peer(
-                &authenticated_pk,
-                "Received JoinMessage from peer with a public key that does not match the source peer",
-            )
-            .await;
+            self.dht
+                .ban_peer(
+                    authenticated_pk,
+                    OffenceSeverity::High,
+                    "Received JoinMessage from peer with a public key that does not match the source peer",
+                )
+                .await;
 
             return Ok(());
         }
@@ -288,8 +290,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 target: LOG_TARGET,
                 "Received DiscoveryResponseMessage that did not have an authenticated origin: {}. Banning source", message
             );
-            self.ban_peer(
-                &message.source_peer.public_key,
+            self.dht .ban_peer(
+                message.source_peer.public_key.clone(),
+                OffenceSeverity::Low,
                 "Received DiscoveryResponseMessage that did not have an authenticated origin",
             ).await;
 
@@ -320,11 +323,13 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 "Authenticated origin: {:#.6}, Source: {:#.6}, discovery message: {}",
                 authenticated_origin, message.source_peer.public_key, discover_msg.public_key.to_hex()
             );
-            self.ban_peer(
-                authenticated_origin,
-                "Received DiscoveryResponseMessage from peer with a public key that does not match the source peer",
-            )
-            .await;
+            self.dht
+                .ban_peer(
+                    authenticated_origin.clone(),
+                    OffenceSeverity::High,
+                    "Received DiscoveryResponseMessage from peer with a public key that does not match the source peer",
+                )
+                .await;
 
             return Ok(());
         }
@@ -346,8 +351,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 target: LOG_TARGET,
                 "Received Discover that did not have an authenticated origin from source peer {}. Banning source", message.source_peer
             );
-            self.ban_peer(
-                &message.source_peer.public_key,
+            self.dht.ban_peer(
+                message.source_peer.public_key.clone(),
+                OffenceSeverity::Low,
                 "Received JoinMessage that did not have an authenticated origin",
             ).await;
 
@@ -451,40 +457,29 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                         DhtPeerValidatorError::Banned { .. } => {},
                         err @ DhtPeerValidatorError::ValidatorError(_) |
                         err @ DhtPeerValidatorError::IdentityTooManyClaims { .. } => {
-                            self.ban_peer(authenticated_pk, err.to_string()).await;
+                            self.dht
+                                .ban_peer(authenticated_pk.clone(), OffenceSeverity::Medium, err)
+                                .await;
                         },
                     },
                     err @ DhtInboundError::MessageError(_) | err @ DhtInboundError::InvalidMessageBody => {
-                        self.ban_peer(authenticated_pk, err.to_string()).await;
+                        self.dht
+                            .ban_peer(authenticated_pk.clone(), OffenceSeverity::High, err)
+                            .await;
                     },
                     DhtInboundError::PeerManagerError(_) => {},
                     DhtInboundError::DhtOutboundError(_) => {},
                     DhtInboundError::DhtDiscoveryError(_) => {},
                     DhtInboundError::OriginRequired(_) => {},
                     err @ DhtInboundError::InvalidDiscoveryMessage(_) => {
-                        self.ban_peer(authenticated_pk, err.to_string()).await;
+                        self.dht
+                            .ban_peer(authenticated_pk.clone(), OffenceSeverity::High, err)
+                            .await;
                     },
                     DhtInboundError::ConnectivityError(_) => {},
                 }
                 Err(err)
             },
-        }
-    }
-
-    async fn ban_peer<T: Into<String>>(&mut self, authenticated_pk: &CommsPublicKey, reason: T) {
-        if let Err(err) = self
-            .connectivity
-            .ban_peer_until(
-                NodeId::from_public_key(authenticated_pk),
-                self.config.ban_duration,
-                reason,
-            )
-            .await
-        {
-            error!(
-                target: LOG_TARGET,
-                "Could not ban peer '{}': {}", authenticated_pk, err
-            );
         }
     }
 }

@@ -341,7 +341,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
                     // Every other error shouldn't happen if the sending node is behaving
                     Err(err) => {
-                        //  #banheuristics
+                        // TODO: #banheuristics
                         warn!(
                             target: LOG_TARGET,
                             "SECURITY: invalid store and forward message was discarded from NodeId={}. Reason: {}. \

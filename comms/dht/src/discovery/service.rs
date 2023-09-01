@@ -25,9 +25,8 @@ use std::{collections::HashMap, convert::TryFrom, sync::Arc, time::Instant};
 use log::*;
 use rand::{rngs::OsRng, RngCore};
 use tari_comms::{
-    connectivity::ConnectivityRequester,
     log_if_error,
-    peer_manager::{NodeId, NodeIdentity, Peer, PeerManager},
+    peer_manager::{NodeIdentity, Peer, PeerManager},
     types::CommsPublicKey,
 };
 use tari_shutdown::ShutdownSignal;
@@ -38,6 +37,7 @@ use tokio::{
 };
 
 use crate::{
+    actor::OffenceSeverity,
     discovery::{requester::DhtDiscoveryRequest, DhtDiscoveryError},
     envelope::{DhtMessageType, NodeDestination},
     outbound::{OutboundEncryption, OutboundMessageRequester, SendMessageParams},
@@ -45,6 +45,7 @@ use crate::{
     proto::dht::{DiscoveryMessage, DiscoveryResponseMessage},
     rpc::UnvalidatedPeerInfo,
     DhtConfig,
+    DhtRequester,
 };
 
 const LOG_TARGET: &str = "comms::dht::discovery_service";
@@ -70,7 +71,7 @@ pub struct DhtDiscoveryService {
     node_identity: Arc<NodeIdentity>,
     outbound_requester: OutboundMessageRequester,
     peer_manager: Arc<PeerManager>,
-    connectivity: ConnectivityRequester,
+    dht: DhtRequester,
     request_rx: mpsc::Receiver<DhtDiscoveryRequest>,
     shutdown_signal: ShutdownSignal,
     inflight_discoveries: HashMap<u64, DiscoveryRequestState>,
@@ -81,7 +82,7 @@ impl DhtDiscoveryService {
         config: Arc<DhtConfig>,
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
-        connectivity: ConnectivityRequester,
+        dht: DhtRequester,
         outbound_requester: OutboundMessageRequester,
         request_rx: mpsc::Receiver<DhtDiscoveryRequest>,
         shutdown_signal: ShutdownSignal,
@@ -90,7 +91,7 @@ impl DhtDiscoveryService {
             config,
             outbound_requester,
             node_identity,
-            connectivity,
+            dht,
             peer_manager,
             shutdown_signal,
             request_rx,
@@ -138,7 +139,14 @@ impl DhtDiscoveryService {
                 );
             },
 
-            NotifyDiscoveryResponseReceived(discovery_msg) => self.handle_discovery_response(discovery_msg).await,
+            NotifyDiscoveryResponseReceived(discovery_msg) => {
+                if let Err(err) = self.handle_discovery_response(discovery_msg).await {
+                    error!(
+                        target: LOG_TARGET,
+                        "Failed to handle discovery response message because '{:?}'", err
+                    );
+                }
+            },
         }
     }
 
@@ -165,7 +173,10 @@ impl DhtDiscoveryService {
         requests
     }
 
-    async fn handle_discovery_response(&mut self, discovery_msg: Box<DiscoveryResponseMessage>) {
+    async fn handle_discovery_response(
+        &mut self,
+        discovery_msg: Box<DiscoveryResponseMessage>,
+    ) -> Result<(), DhtDiscoveryError> {
         match self.inflight_discoveries.remove(&discovery_msg.nonce) {
             Some(request) => {
                 let DiscoveryRequestState {
@@ -181,7 +192,15 @@ impl DhtDiscoveryService {
                         "Received a discovery response does not match the expected public key '{:#.5}'",
                         public_key
                     );
-                    return;
+                    self.dht
+                        .ban_peer(
+                            *public_key,
+                            OffenceSeverity::Medium,
+                            "Received a discovery response does not match the public key we requested",
+                        )
+                        .await;
+
+                    return Ok(());
                 }
                 trace!(
                     target: LOG_TARGET,
@@ -235,6 +254,8 @@ impl DhtDiscoveryService {
                 );
             },
         }
+
+        Ok(())
     }
 
     async fn validate_then_add_peer(
@@ -261,24 +282,15 @@ impl DhtDiscoveryService {
     ) -> Result<T, DhtPeerValidatorError> {
         match result {
             Ok(peer) => Ok(peer),
-            // PeerBanned is an interesting case - if the peer is banned and we reban them, it will modify the original
+            // Banned is an interesting case - if the peer is banned and we reban them, it will modify the original
             // ban either longer or shorter. It is possible for a banned peer to send a secret message to us
-            // through another peer. TODO: perhaps connectivity manager should only extend bans when this is called,
-            // never reduce them
+            // through another peer.
+            // TODO: perhaps connectivity manager should only make longer bans when this is called, or do nothing if
+            // shorter.
             Err(err @ DhtPeerValidatorError::Banned { .. }) => Err(err),
             Err(err @ DhtPeerValidatorError::IdentityTooManyClaims { .. }) |
             Err(err @ DhtPeerValidatorError::ValidatorError(_)) => {
-                let peer_node_id = NodeId::from_public_key(public_key);
-                if let Err(err) = self
-                    .connectivity
-                    .ban_peer_until(peer_node_id.clone(), self.config.ban_duration, err.to_string())
-                    .await
-                {
-                    error!(
-                        target: LOG_TARGET,
-                        "Failed to ban peer '{}' because '{}'", peer_node_id, err
-                    );
-                }
+                self.dht.ban_peer(public_key.clone(), OffenceSeverity::High, &err).await;
                 Err(err)
             },
         }
@@ -371,14 +383,13 @@ impl DhtDiscoveryService {
 mod test {
     use std::time::Duration;
 
-    use tari_comms::test_utils::mocks::create_connectivity_mock;
     use tari_shutdown::Shutdown;
 
     use super::*;
     use crate::{
         discovery::DhtDiscoveryRequester,
         outbound::mock::create_outbound_service_mock,
-        test_utils::{build_peer_manager, make_node_identity},
+        test_utils::{build_peer_manager, create_dht_actor_mock, make_node_identity},
     };
 
     #[tokio::test]
@@ -393,13 +404,13 @@ mod test {
         // Requester which timeout instantly
         let mut requester = DhtDiscoveryRequester::new(sender, Duration::from_millis(1));
         let shutdown = Shutdown::new();
-        let (connectivity, _mock) = create_connectivity_mock();
+        let (dht, _mock) = create_dht_actor_mock(1);
 
         DhtDiscoveryService::new(
             Default::default(),
             node_identity,
             peer_manager,
-            connectivity,
+            dht,
             outbound_requester,
             receiver,
             shutdown.to_signal(),
