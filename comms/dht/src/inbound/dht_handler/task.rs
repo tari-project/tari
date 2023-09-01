@@ -161,7 +161,13 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 "Received JoinMessage that did not have an authenticated origin from source peer {}. Banning source", source_peer
             );
 
-            self .dht .ban_peer(source_peer.public_key.clone(), OffenceSeverity::Low, "Received JoinMessage that did not have an authenticated origin", ).await;
+            self.dht
+                .ban_peer(
+                    source_peer.public_key.clone(),
+                    OffenceSeverity::Low,
+                    "Received JoinMessage that did not have an authenticated origin",
+                )
+                .await;
             return Ok(());
         };
 
@@ -290,11 +296,13 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 target: LOG_TARGET,
                 "Received DiscoveryResponseMessage that did not have an authenticated origin: {}. Banning source", message
             );
-            self.dht .ban_peer(
-                message.source_peer.public_key.clone(),
-                OffenceSeverity::Low,
-                "Received DiscoveryResponseMessage that did not have an authenticated origin",
-            ).await;
+            self.dht
+                .ban_peer(
+                    message.source_peer.public_key.clone(),
+                    OffenceSeverity::Low,
+                    "Received DiscoveryResponseMessage that did not have an authenticated origin",
+                )
+                .await;
 
             return Ok(());
         };
@@ -351,11 +359,13 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 target: LOG_TARGET,
                 "Received Discover that did not have an authenticated origin from source peer {}. Banning source", message.source_peer
             );
-            self.dht.ban_peer(
-                message.source_peer.public_key.clone(),
-                OffenceSeverity::Low,
-                "Received JoinMessage that did not have an authenticated origin",
-            ).await;
+            self.dht
+                .ban_peer(
+                    message.source_peer.public_key.clone(),
+                    OffenceSeverity::Low,
+                    "Received JoinMessage that did not have an authenticated origin",
+                )
+                .await;
 
             return Ok(());
         };

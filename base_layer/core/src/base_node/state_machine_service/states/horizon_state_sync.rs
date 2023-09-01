@@ -91,7 +91,7 @@ impl HorizonStateSync {
             db,
             connectivity,
             rules,
-            &sync_peers,
+            sync_peers,
             horizon_sync_height,
             prover,
             validator,
