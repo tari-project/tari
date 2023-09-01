@@ -109,6 +109,7 @@ impl MoneroPowData {
     /// Returns true if the coinbase merkle proof produces the `merkle_root` hash, otherwise false
     pub fn is_valid_merkle_root(&self) -> bool {
         let coinbase_hash = self.coinbase_tx.hash();
+        // is the coinbase in the tx merkle root and is in position 0
         let merkle_root = self.coinbase_merkle_proof.calculate_root(&coinbase_hash);
         self.merkle_root == merkle_root
     }

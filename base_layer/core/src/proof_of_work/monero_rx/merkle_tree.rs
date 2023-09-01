@@ -173,6 +173,9 @@ impl MerkleProof {
     }
 
     /// Calculates the merkle root hash from the provide Monero hash
+    /// This function assumes that the coinbase is in position 0 in the merkle tree and the way it validates the path,
+    /// the path will only ever be constructed in such a way that the coinbase was in position 0, aka the left most
+    /// position in the merkle tree
     pub fn calculate_root(&self, hash: &Hash) -> Hash {
         if self.branch.is_empty() {
             return *hash;
