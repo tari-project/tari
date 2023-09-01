@@ -132,9 +132,11 @@ impl Peer {
     /// database so that data is not overwritten
     pub fn merge(&mut self, other: &Peer) {
         self.addresses.merge(&other.addresses);
-        self.banned_reason = other.banned_reason.clone();
-        self.added_at = cmp::min(self.added_at, other.added_at);
+        if !other.banned_reason.is_empty() {
+            self.banned_reason = other.banned_reason.clone();
+        }
         self.banned_until = cmp::max(self.banned_until, other.banned_until);
+        self.added_at = cmp::min(self.added_at, other.added_at);
         for protocol in &other.supported_protocols {
             if !self.supported_protocols.contains(protocol) {
                 self.supported_protocols.push(protocol.clone());
