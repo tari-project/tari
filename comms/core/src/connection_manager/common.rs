@@ -271,11 +271,11 @@ async fn maybe_ban<T, E: ToString + Into<ConnectionManagerError>>(
     err: E,
 ) -> Result<T, ConnectionManagerError> {
     if let Some(ban_duration) = ban_duration {
-        if let Err(err) = peer_manager
+        if let Err(pe) = peer_manager
             .ban_peer(authenticated_public_key, ban_duration, err.to_string())
             .await
         {
-            error!(target: LOG_TARGET, "Failed to ban peer due to internal error: {}", err);
+            error!(target: LOG_TARGET, "Failed to ban peer due to internal error: {}. Original ban error: {}", pe, err.to_string());
         }
     }
 
