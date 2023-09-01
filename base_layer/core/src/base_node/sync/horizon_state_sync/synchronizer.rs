@@ -78,11 +78,11 @@ use crate::{
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::horizon_state_sync";
 
-pub struct HorizonStateSynchronization<B> {
+pub struct HorizonStateSynchronization<'a, B> {
     config: BlockchainSyncConfig,
     db: AsyncBlockchainDb<B>,
     rules: ConsensusManager,
-    sync_peers: Vec<SyncPeer>,
+    sync_peers: &'a mut Vec<SyncPeer>,
     horizon_sync_height: u64,
     prover: Arc<RangeProofService>,
     num_kernels: u64,
@@ -95,14 +95,14 @@ pub struct HorizonStateSynchronization<B> {
     peer_ban_manager: PeerBanManager,
 }
 
-impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<B> {
+impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         config: BlockchainSyncConfig,
         db: AsyncBlockchainDb<B>,
         connectivity: ConnectivityRequester,
         rules: ConsensusManager,
-        sync_peers: Vec<SyncPeer>,
+        sync_peers: &'a mut Vec<SyncPeer>,
         horizon_sync_height: u64,
         prover: Arc<RangeProofService>,
         final_state_validator: Arc<dyn FinalHorizonStateValidation<B>>,

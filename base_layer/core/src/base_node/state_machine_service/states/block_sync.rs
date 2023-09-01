@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{mem, time::Instant};
+use std::time::Instant;
 
 use log::*;
 
@@ -54,7 +54,7 @@ impl BlockSync {
             shared.config.blockchain_sync_config.clone(),
             shared.db.clone(),
             shared.connectivity.clone(),
-            mem::take(&mut self.sync_peers),
+            &mut self.sync_peers,
             shared.sync_validators.block_body.clone(),
         );
 

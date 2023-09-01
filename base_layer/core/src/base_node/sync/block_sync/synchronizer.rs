@@ -50,22 +50,22 @@ use crate::{
 
 const LOG_TARGET: &str = "c::bn::block_sync";
 
-pub struct BlockSynchronizer<B> {
+pub struct BlockSynchronizer<'a, B> {
     config: BlockchainSyncConfig,
     db: AsyncBlockchainDb<B>,
     connectivity: ConnectivityRequester,
-    sync_peers: Vec<SyncPeer>,
+    sync_peers: &'a mut Vec<SyncPeer>,
     block_validator: Arc<dyn BlockBodyValidator<B>>,
     hooks: Hooks,
     peer_ban_manager: PeerBanManager,
 }
 
-impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
+impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
     pub fn new(
         config: BlockchainSyncConfig,
         db: AsyncBlockchainDb<B>,
         connectivity: ConnectivityRequester,
-        sync_peers: Vec<SyncPeer>,
+        sync_peers: &'a mut Vec<SyncPeer>,
         block_validator: Arc<dyn BlockBodyValidator<B>>,
     ) -> Self {
         let peer_ban_manager = PeerBanManager::new(config.clone(), connectivity.clone());
