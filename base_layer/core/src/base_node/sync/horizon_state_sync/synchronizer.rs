@@ -213,11 +213,11 @@ impl<B: BlockchainBackend + 'static> HorizonStateSynchronization<B> {
         }
 
         if self.sync_peers.is_empty() {
-            return Err(HorizonSyncError::NoMoreSyncPeers("Header sync failed".to_string()));
+            Err(HorizonSyncError::NoMoreSyncPeers("Header sync failed".to_string()))
         } else if latency_counter >= self.sync_peers.len() {
             Err(HorizonSyncError::AllSyncPeersExceedLatency)
         } else {
-            return Err(HorizonSyncError::FailedSyncAllPeers);
+            Err(HorizonSyncError::FailedSyncAllPeers)
         }
     }
 
