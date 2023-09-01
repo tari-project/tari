@@ -20,12 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::time::Duration;
+
 use tari_common_types::types::HashOutput;
 use thiserror::Error;
 
 use crate::{
     blocks::{BlockHeaderValidationError, BlockValidationError},
     chain_storage::ChainStorageError,
+    common::BanReason,
     covenants::CovenantError,
     proof_of_work::{monero_rx::MergeMineError, DifficultyError, PowError},
     transactions::{
@@ -67,6 +70,8 @@ pub enum ValidationError {
     ContainsDuplicateUtxoCommitment,
     #[error("Final state validation failed: The UTXO set did not balance with the expected emission at height {0}")]
     ChainBalanceValidationFailed(u64),
+    #[error("The total value + fees of the block exceeds the maximum allowance on chain")]
+    CoinbaseExceedsMaxLimit,
     #[error("Proof of work error: {0}")]
     ProofOfWorkError(#[from] PowError),
     #[error("Attempted to validate genesis block")]
@@ -128,5 +133,53 @@ pub enum ValidationError {
 impl From<ChainStorageError> for ValidationError {
     fn from(err: ChainStorageError) -> Self {
         Self::FatalStorageError(err.to_string())
+    }
+}
+
+impl ValidationError {
+    pub fn get_ban_reason(&self, long_ban_duration: Option<Duration>) -> Option<BanReason> {
+        match self {
+            err @ ValidationError::SerializationError(_) |
+            err @ ValidationError::BlockHeaderError(_) |
+            err @ ValidationError::BlockError(_) |
+            err @ ValidationError::MaturityError |
+            err @ ValidationError::BlockTooLarge { .. } |
+            err @ ValidationError::UnknownInputs(_) |
+            err @ ValidationError::UnknownInput |
+            err @ ValidationError::TransactionError(_) |
+            err @ ValidationError::InvalidAccountingBalance |
+            err @ ValidationError::ContainsSTxO |
+            err @ ValidationError::ContainsTxO |
+            err @ ValidationError::ContainsDuplicateUtxoCommitment |
+            err @ ValidationError::ChainBalanceValidationFailed(_) |
+            err @ ValidationError::ProofOfWorkError(_) |
+            err @ ValidationError::ValidatingGenesis |
+            err @ ValidationError::UnsortedOrDuplicateInput |
+            err @ ValidationError::UnsortedOrDuplicateOutput |
+            err @ ValidationError::UnsortedOrDuplicateKernel |
+            err @ ValidationError::MergeMineError(_) |
+            err @ ValidationError::MaxTransactionWeightExceeded |
+            err @ ValidationError::IncorrectHeight { .. } |
+            err @ ValidationError::IncorrectPreviousHash { .. } |
+            err @ ValidationError::BadBlockFound { .. } |
+            err @ ValidationError::TariScriptExceedsMaxSize { .. } |
+            err @ ValidationError::ConsensusError(_) |
+            err @ ValidationError::DuplicateKernelError(_) |
+            err @ ValidationError::CovenantError(_) |
+            err @ ValidationError::InvalidBlockchainVersion { .. } |
+            err @ ValidationError::InvalidBurnError(_) |
+            err @ ValidationError::OutputTypeNotPermitted { .. } |
+            err @ ValidationError::RangeProofTypeNotPermitted { .. } |
+            err @ ValidationError::ValidatorNodeRegistrationMinDepositAmount { .. } |
+            err @ ValidationError::ValidatorNodeRegistrationMinLockHeight { .. } |
+            err @ ValidationError::InvalidValidatorNodeSignature |
+            err @ ValidationError::DifficultyError(_) |
+            err @ ValidationError::CoinbaseExceedsMaxLimit |
+            err @ ValidationError::CovenantTooLarge { .. } => Some(BanReason {
+                reason: format!("{}", err),
+                ban_duration: long_ban_duration.unwrap_or_else(|| Duration::from_secs(2 * 60 * 60)),
+            }),
+            ValidationError::FatalStorageError(_) | ValidationError::IncorrectNumberOfTimestampsProvided { .. } => None,
+        }
     }
 }

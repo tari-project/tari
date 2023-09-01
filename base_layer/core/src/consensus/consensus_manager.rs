@@ -131,9 +131,26 @@ impl ConsensusManager {
     }
 
     /// Creates a total_coinbase offset containing all fees for the validation from the height and kernel set
-    pub fn calculate_coinbase_and_fees(&self, height: u64, kernels: &[TransactionKernel]) -> MicroMinotari {
-        let coinbase = self.emission_schedule().block_reward(height);
-        kernels.iter().fold(coinbase, |total, k| total + k.fee)
+    pub fn calculate_coinbase_and_fees(
+        &self,
+        height: u64,
+        kernels: &[TransactionKernel],
+    ) -> Result<MicroMinotari, String> {
+        let mut total = self.emission_schedule().block_reward(height);
+
+        for kernel in kernels {
+            match total.checked_add(kernel.fee) {
+                Some(t) => total = t,
+                None => {
+                    return Err(format!(
+                        "Coinbase total ({}) + fee ({}) exceeds max transactions allowance",
+                        total, kernel.fee
+                    ))
+                },
+            }
+        }
+
+        Ok(total)
     }
 
     /// Returns a ref to the chain strength comparer

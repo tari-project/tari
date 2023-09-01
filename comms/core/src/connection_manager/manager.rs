@@ -69,6 +69,9 @@ pub enum ConnectionManagerEvent {
 
     // Substreams
     NewInboundSubstream(NodeId, ProtocolId, Substream),
+
+    // Other
+    PeerViolation { peer_node_id: NodeId, details: String },
 }
 
 impl fmt::Display for ConnectionManagerEvent {
@@ -86,6 +89,9 @@ impl fmt::Display for ConnectionManagerEvent {
                 node_id.short_str(),
                 String::from_utf8_lossy(protocol)
             ),
+            PeerViolation { peer_node_id, details } => {
+                write!(f, "PeerViolation({}, {})", peer_node_id.short_str(), details)
+            },
         }
     }
 }
@@ -396,7 +402,7 @@ where
     }
 
     async fn handle_event(&mut self, event: ConnectionManagerEvent) {
-        use ConnectionManagerEvent::{NewInboundSubstream, PeerConnectFailed, PeerConnected, PeerInboundConnectFailed};
+        use ConnectionManagerEvent::*;
 
         match event {
             NewInboundSubstream(node_id, protocol, stream) => {

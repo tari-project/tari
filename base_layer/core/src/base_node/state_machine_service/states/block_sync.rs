@@ -100,7 +100,7 @@ impl BlockSync {
         });
 
         let timer = Instant::now();
-        match synchronizer.synchronize().await {
+        let state_event = match synchronizer.synchronize().await {
             Ok(()) => {
                 info!(target: LOG_TARGET, "Blocks synchronized in {:.0?}", timer.elapsed());
                 self.is_synced = true;
@@ -122,7 +122,25 @@ impl BlockSync {
                 }
                 StateEvent::BlockSyncFailed
             },
+        };
+
+        // Cleanup
+        if let Err(e) = shared.db.cleanup_orphans().await {
+            warn!(target: LOG_TARGET, "Failed to remove orphan blocks: {}", e);
         }
+        match shared.db.clear_all_pending_headers().await {
+            Ok(num_cleared) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Cleared {} pending headers from database", num_cleared
+                );
+            },
+            Err(e) => {
+                warn!(target: LOG_TARGET, "Failed to clear pending headers: {}", e);
+            },
+        }
+
+        state_event
     }
 
     pub fn is_synced(&self) -> bool {
