@@ -243,7 +243,7 @@ where
                     .add_peer(dial_state.peer().clone())
                     .await
                     .map_err(|e| {
-                        error!("Could not update peer data:{}", e);
+                        error!(target: LOG_TARGET, "Could not update peer data:{}", e);
                         let _ = dial_state
                             .send_reply(Err(ConnectionManagerError::PeerManagerError(e)))
                             .map_err(|e| error!(target: LOG_TARGET, "Could not send reply to dial request: {:?}", e));
@@ -266,6 +266,16 @@ where
                     target: LOG_TARGET,
                     "Failed to dial peer '{}' because '{:?}'", node_id, err
                 );
+                let _ = self
+                    .peer_manager
+                    .add_peer(dial_state.peer().clone())
+                    .await
+                    .map_err(|e| {
+                        error!(target: LOG_TARGET, "Could not update peer data:{}", e);
+                        let _ = dial_state
+                            .send_reply(Err(ConnectionManagerError::PeerManagerError(e)))
+                            .map_err(|e| error!(target: LOG_TARGET, "Could not send reply to dial request: {:?}", e));
+                    });
                 self.notify_connection_manager(ConnectionManagerEvent::PeerConnectFailed(node_id.clone(), err.clone()))
                     .await;
 
