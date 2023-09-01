@@ -36,9 +36,10 @@ use tari_comms::{
 };
 use tari_utilities::hex::Hex;
 use tracing;
+
 use super::{validator::BlockHeaderSyncValidator, BlockHeaderSyncError};
 use crate::{
-    base_node::sync::{hooks::Hooks, rpc, BlockchainSyncConfig, SyncPeer, ban::PeerBanManager},
+    base_node::sync::{ban::PeerBanManager, hooks::Hooks, rpc, BlockchainSyncConfig, SyncPeer},
     blocks::{BlockHeader, ChainBlock, ChainHeader},
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     common::rolling_avg::RollingAverageTime,
@@ -135,19 +136,25 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             "Attempting to sync headers ({} sync peers)",
             sync_peer_node_ids.len()
         );
+        let mut latency_counter = 0usize;
         for (i, node_id) in sync_peer_node_ids.iter().enumerate() {
             match self.connect_and_attempt_sync(i, node_id, max_latency).await {
                 Ok(peer) => return Ok(peer),
-                // Try another peer
                 Err(err) => {
-                    let ban_reason = BlockHeaderSyncError::get_ban_reason(&err, self.config.short_ban_period, self.config.ban_period);
+                    let ban_reason = BlockHeaderSyncError::get_ban_reason(
+                        &err,
+                        self.config.short_ban_period,
+                        self.config.ban_period,
+                    );
                     match ban_reason {
                         Some(reason) => {
                             warn!(target: LOG_TARGET, "{}", err);
-                            self.peer_ban_manager.ban_peer_if_required(
-                                node_id,
-                                &BlockHeaderSyncError::get_ban_reason(&err, self.config.short_ban_period, self.config.ban_period)
-                            ).await;
+                            self.peer_ban_manager
+                                .ban_peer_if_required(
+                                    node_id,
+                                    &Some(reason.clone()),
+                                )
+                                .await;
 
                             if reason.ban_duration > self.config.short_ban_period {
                                 self.remove_sync_peer(node_id);
@@ -155,12 +162,18 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                         },
                         None => (),
                     }
-                }
+
+                    if let BlockHeaderSyncError::MaxLatencyExceeded { .. } = err {
+                        latency_counter += 1;
+                    }
+                },
             }
         }
 
         if self.sync_peers.is_empty() {
             return Err(BlockHeaderSyncError::NoMoreSyncPeers("Header sync failed".to_string()));
+        }  else if latency_counter >= self.sync_peers.len() {
+            Err(BlockHeaderSyncError::AllSyncPeersExceedLatency)
         } else {
             return Err(BlockHeaderSyncError::SyncFailedAllPeers);
         }

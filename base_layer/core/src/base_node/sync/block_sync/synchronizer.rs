@@ -33,11 +33,11 @@ use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId, prot
 use tari_utilities::hex::Hex;
 use tokio::task;
 use tracing;
-use crate::base_node::sync::ban::PeerBanManager;
+
 use super::error::BlockSyncError;
 use crate::{
     base_node::{
-        sync::{hooks::Hooks, rpc, SyncPeer},
+        sync::{ban::PeerBanManager, hooks::Hooks, rpc, SyncPeer},
         BlockchainSyncConfig,
     },
     blocks::{Block, ChainBlock},
@@ -178,27 +178,32 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
             );
             match self.synchronize_blocks(sync_peer, client, max_latency).await {
                 Ok(_) => return Ok(()),
-
-                Err(err @ BlockSyncError::MaxLatencyExceeded { .. }) => {
-                    warn!(target: LOG_TARGET, "{}", err);
-                    latency_counter += 1;
-                    self.peer_ban_manager.ban_peer_if_required(
-                        node_id,
-                        &BlockSyncError::get_ban_reason(&err, self.config.short_ban_period, self.config.ban_period),
-                    )
-                    .await;
-                    continue;
-                },
-
                 Err(err) => {
                     warn!(target: LOG_TARGET, "{}", err);
-                    self.peer_ban_manager.ban_peer_if_required(
-                        node_id,
-                        &BlockSyncError::get_ban_reason(&err, self.config.short_ban_period, self.config.ban_period),
-                    )
-                    .await;
-                    self.remove_sync_peer(node_id);
-                    continue;
+                    let ban_reason = BlockSyncError::get_ban_reason(
+                        &err,
+                        self.config.short_ban_period,
+                        self.config.ban_period,
+                    );
+                    match ban_reason {
+                        Some(reason) => {
+                            warn!(target: LOG_TARGET, "{}", err);
+                            self.peer_ban_manager
+                                .ban_peer_if_required(
+                                    node_id, &Some(reason.clone()),
+                                )
+                                .await;
+
+                            if reason.ban_duration > self.config.short_ban_period {
+                                self.remove_sync_peer(node_id);
+                            }
+                        },
+                        None => (),
+                    }
+
+                    if let BlockSyncError::MaxLatencyExceeded { .. } = err {
+                        latency_counter += 1;
+                    }
                 },
             }
         }

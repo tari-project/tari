@@ -21,14 +21,14 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::time::Duration;
-use crate::common::BanReason;
+
 use tari_comms::{
     connectivity::ConnectivityError,
     peer_manager::NodeId,
     protocol::rpc::{RpcError, RpcStatus},
 };
 
-use crate::{blocks::BlockError, chain_storage::ChainStorageError, validation::ValidationError};
+use crate::{blocks::BlockError, chain_storage::ChainStorageError, common::BanReason, validation::ValidationError};
 
 #[derive(Debug, thiserror::Error)]
 pub enum BlockHeaderSyncError {
@@ -100,7 +100,7 @@ impl BlockHeaderSyncError {
             BlockHeaderSyncError::RpcRequestError(_) |
             BlockHeaderSyncError::SyncFailedAllPeers |
             BlockHeaderSyncError::FailedToBan(_) |
-            BlockHeaderSyncError::AllSyncPeersExceedLatency | 
+            BlockHeaderSyncError::AllSyncPeersExceedLatency |
             BlockHeaderSyncError::ConnectivityError(_) |
             BlockHeaderSyncError::NotInSync |
             BlockHeaderSyncError::ChainStorageError(_) => None,
@@ -112,7 +112,7 @@ impl BlockHeaderSyncError {
             }),
 
             // long ban
-            err @ BlockHeaderSyncError::ReceivedInvalidHeader(_) |       
+            err @ BlockHeaderSyncError::ReceivedInvalidHeader(_) |
             err @ BlockHeaderSyncError::ValidationFailed(_) |
             err @ BlockHeaderSyncError::FoundHashIndexOutOfRange(_, _) |
             err @ BlockHeaderSyncError::StartHashNotFound(_) |
