@@ -238,16 +238,6 @@ where
                 peer.supported_protocols = peer_identity.metadata.supported_protocols;
                 peer.user_agent = peer_identity.metadata.user_agent;
 
-                let _ = self
-                    .peer_manager
-                    .add_peer(dial_state.peer().clone())
-                    .await
-                    .map_err(|e| {
-                        error!(target: LOG_TARGET, "Could not update peer data:{}", e);
-                        let _ = dial_state
-                            .send_reply(Err(ConnectionManagerError::PeerManagerError(e)))
-                            .map_err(|e| error!(target: LOG_TARGET, "Could not send reply to dial request: {:?}", e));
-                    });
                 debug!(target: LOG_TARGET, "Successfully dialed peer '{}'", node_id);
                 self.notify_connection_manager(ConnectionManagerEvent::PeerConnected(conn.clone().into()))
                     .await;
@@ -266,16 +256,6 @@ where
                     target: LOG_TARGET,
                     "Failed to dial peer '{}' because '{:?}'", node_id, err
                 );
-                let _ = self
-                    .peer_manager
-                    .add_peer(dial_state.peer().clone())
-                    .await
-                    .map_err(|e| {
-                        error!(target: LOG_TARGET, "Could not update peer data:{}", e);
-                        let _ = dial_state
-                            .send_reply(Err(ConnectionManagerError::PeerManagerError(e)))
-                            .map_err(|e| error!(target: LOG_TARGET, "Could not send reply to dial request: {:?}", e));
-                    });
                 self.notify_connection_manager(ConnectionManagerEvent::PeerConnectFailed(node_id.clone(), err.clone()))
                     .await;
 
@@ -288,6 +268,17 @@ where
                 self.reply_to_pending_requests(&node_id, Err(err));
             },
         }
+
+        let _ = self
+            .peer_manager
+            .add_peer(dial_state.peer().clone())
+            .await
+            .map_err(|e| {
+                error!(target: LOG_TARGET, "Could not update peer data: {}", e);
+                let _ = dial_state
+                    .send_reply(Err(ConnectionManagerError::PeerManagerError(e)))
+                    .map_err(|e| error!(target: LOG_TARGET, "Could not send reply to dial request: {:?}", e));
+            });
 
         metrics::pending_connections(Some(&node_id), ConnectionDirection::Outbound).dec();
 
@@ -451,6 +442,7 @@ where
             config.network_info.clone(),
         )
         .await;
+
         let peer_identity =
             common::ban_on_offence(peer_manager, &authenticated_public_key, peer_identity_result).await?;
 
