@@ -2491,6 +2491,38 @@ impl BlockchainBackend for LMDBDatabase {
         }
         Ok(result)
     }
+
+    fn reset_blockchain_databases(&mut self) -> Result<(), ChainStorageError> {
+        let write_txn = self.write_transaction()?;
+
+        lmdb_clear(&write_txn, &self.metadata_db)?;
+        lmdb_clear(&write_txn, &self.headers_db)?;
+        lmdb_clear(&write_txn, &self.header_accumulated_data_db)?;
+        lmdb_clear(&write_txn, &self.block_accumulated_data_db)?;
+        lmdb_clear(&write_txn, &self.block_hashes_db)?;
+        lmdb_clear(&write_txn, &self.utxos_db)?;
+        lmdb_clear(&write_txn, &self.inputs_db)?;
+        lmdb_clear(&write_txn, &self.txos_hash_to_index_db)?;
+        lmdb_clear(&write_txn, &self.kernels_db)?;
+        lmdb_clear(&write_txn, &self.kernel_excess_index)?;
+        lmdb_clear(&write_txn, &self.kernel_excess_sig_index)?;
+        lmdb_clear(&write_txn, &self.kernel_mmr_size_index)?;
+        lmdb_clear(&write_txn, &self.output_mmr_size_index)?;
+        lmdb_clear(&write_txn, &self.utxo_commitment_index)?;
+        lmdb_clear(&write_txn, &self.unique_id_index)?;
+        lmdb_clear(&write_txn, &self.contract_index)?;
+        lmdb_clear(&write_txn, &self.deleted_txo_mmr_position_to_height_index)?;
+        lmdb_clear(&write_txn, &self.orphans_db)?;
+        lmdb_clear(&write_txn, &self.monero_seed_height_db)?;
+        lmdb_clear(&write_txn, &self.orphan_header_accumulated_data_db)?;
+        lmdb_clear(&write_txn, &self.orphan_chain_tips_db)?;
+        lmdb_clear(&write_txn, &self.orphan_parent_map_index)?;
+        lmdb_clear(&write_txn, &self.reorgs)?;
+        lmdb_clear(&write_txn, &self.validator_nodes)?;
+        lmdb_clear(&write_txn, &self.validator_nodes_mapping)?;
+        lmdb_clear(&write_txn, &self.template_registrations)?;
+        Ok(())
+    }
 }
 
 // Fetch the chain metadata

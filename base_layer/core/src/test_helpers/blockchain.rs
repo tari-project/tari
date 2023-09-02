@@ -432,6 +432,10 @@ impl BlockchainBackend for TempDatabase {
             .unwrap()
             .fetch_template_registrations(start_height, end_height)
     }
+
+    fn reset_blockchain_databases(&mut self) -> Result<(), ChainStorageError> {
+        self.db.as_mut().unwrap().reset_blockchain_databases()
+    }
 }
 
 pub async fn create_chained_blocks<T: Into<BlockSpecs>>(

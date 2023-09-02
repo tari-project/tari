@@ -200,4 +200,8 @@ pub trait BlockchainBackend: Send + Sync {
         start_height: u64,
         end_height: u64,
     ) -> Result<Vec<TemplateRegistrationEntry>, ChainStorageError>;
+
+    /// This will delete and clear out all databases except the list of bad_blocks. This is used when horizon sync
+    /// fails, and we need to reset the blockchain to tip 0 again
+    fn reset_blockchain_databases(&mut self) -> Result<(), ChainStorageError>;
 }

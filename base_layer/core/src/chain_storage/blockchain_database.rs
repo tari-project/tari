@@ -1112,6 +1112,14 @@ where B: BlockchainBackend
         rewind_to_height(&mut *db, height)
     }
 
+    /// This will delete and clear out all databases except the list of bad_blocks. This is used when horizon sync
+    /// fails, and we need to reset the blockchain to tip 0 again
+    pub fn reset_blockchain_databases(&self) -> Result<(), ChainStorageError> {
+        let mut db = self.db_write_access()?;
+        let genesis_block = Arc::new(self.consensus_manager.get_genesis_block());
+        reset_blockchain_databases(&mut *db, self.config.pruning_horizon, genesis_block)
+    }
+
     /// Rewind the blockchain state to the block hash making the block at that hash the new tip.
     /// Returns the removed blocks.
     ///
@@ -1865,6 +1873,35 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
     }
 
     Ok(removed_blocks)
+}
+
+fn reset_blockchain_databases<T: BlockchainBackend>(
+    db: &mut T,
+    pruning_horizon: u64,
+    genesis_block: Arc<ChainBlock>,
+) -> Result<(), ChainStorageError> {
+    db.reset_blockchain_databases()?;
+    // lets add in the gen block again
+
+    info!(
+        target: LOG_TARGET,
+        "Cleared DB. Adding genesis block back in {}.",
+        genesis_block.block().body.to_counts_string()
+    );
+    let mut txn = DbTransaction::new();
+    insert_best_block(&mut txn, genesis_block.clone())?;
+    let body = &genesis_block.block().body;
+    let utxo_sum = body.outputs().iter().map(|k| &k.commitment).sum::<Commitment>();
+    let kernel_sum = body.kernels().iter().map(|k| &k.excess).sum::<Commitment>();
+    txn.update_block_accumulated_data(*genesis_block.hash(), UpdateBlockAccumulatedData {
+        kernel_sum: Some(kernel_sum.clone()),
+        ..Default::default()
+    });
+    txn.set_pruned_height(0);
+    txn.set_horizon_data(kernel_sum, utxo_sum);
+    txn.set_pruning_horizon(pruning_horizon);
+    db.write(txn)?;
+    Ok(())
 }
 
 fn rewind_to_hash<T: BlockchainBackend>(

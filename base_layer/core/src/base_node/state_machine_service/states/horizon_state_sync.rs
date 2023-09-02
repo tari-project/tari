@@ -130,6 +130,12 @@ impl HorizonStateSync {
                     randomx_vm_cnt,
                     randomx_vm_flags,
                 });
+                if let Err(e) = shared.db.reset_blockchain_databases().await {
+                    error!(
+                        target: LOG_TARGET,
+                        "Failed to reset chain to 0: {}", e
+                    );
+                };
                 warn!(target: LOG_TARGET, "Synchronizing horizon state has failed. {}", err);
                 StateEvent::HorizonStateSyncFailure
             },
