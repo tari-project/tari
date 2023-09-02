@@ -36,7 +36,7 @@ use super::{
     TransactionValidator,
 };
 use crate::{
-    blocks::{Block, BlockHeader, ChainBlock},
+    blocks::{Block, BlockHeader, ChainBlock, ChainHeader},
     chain_storage::BlockchainBackend,
     proof_of_work::{randomx_factory::RandomXFactory, AchievedTargetDifficulty, Difficulty},
     test_helpers::create_consensus_rules,
@@ -111,15 +111,15 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for MockValidator {
         &self,
         db: &B,
         header: &BlockHeader,
-        _: &BlockHeader,
+        _: &ChainHeader,
         _: &[EpochTime],
         _: Option<Difficulty>,
-    ) -> Result<AchievedTargetDifficulty, ValidationError> {
+    ) -> Result<(AchievedTargetDifficulty, u128), ValidationError> {
         if self.is_valid.load(Ordering::SeqCst) {
             // this assumes consensus rules are the same as the test rules which is a little brittle
             let difficulty_calculator = DifficultyCalculator::new(create_consensus_rules(), RandomXFactory::default());
             let achieved_target_diff = difficulty_calculator.check_achieved_and_target_difficulty(db, header)?;
-            Ok(achieved_target_diff)
+            Ok((achieved_target_diff, 0))
         } else {
             Err(ValidationError::ConsensusError(
                 "This mock validator always returns an error".to_string(),

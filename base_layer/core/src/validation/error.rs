@@ -126,6 +126,8 @@ pub enum ValidationError {
     DifficultyError(#[from] DifficultyError),
     #[error("Covenant too large. Max size: {max_size}, Actual size: {actual_size}")]
     CovenantTooLarge { max_size: usize, actual_size: usize },
+    #[error("Attempt to add difficulty overflowed")]
+    DifficultyOverflow,
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in
@@ -174,6 +176,7 @@ impl ValidationError {
             err @ ValidationError::ValidatorNodeRegistrationMinLockHeight { .. } |
             err @ ValidationError::InvalidValidatorNodeSignature |
             err @ ValidationError::DifficultyError(_) |
+            err @ ValidationError::DifficultyOverflow |
             err @ ValidationError::CoinbaseExceedsMaxLimit |
             err @ ValidationError::CovenantTooLarge { .. } => Some(BanReason {
                 reason: format!("{}", err),

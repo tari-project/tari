@@ -59,7 +59,7 @@ use crate::{
         PowError,
     },
     transactions::aggregated_body::AggregateBody,
-    validation::{helpers, ValidationError},
+    validation::{header::HeaderFullValidator, helpers, HeaderChainLinkedValidator, ValidationError},
 };
 
 const LOG_TARGET: &str = "c::bn::comms_interface::inbound_handler";
@@ -93,6 +93,7 @@ pub struct InboundNodeCommsHandlers<B> {
     outbound_nci: OutboundNodeCommsInterface,
     connectivity: ConnectivityRequester,
     randomx_factory: RandomXFactory,
+    header_validator: HeaderFullValidator,
 }
 
 impl<B> InboundNodeCommsHandlers<B>
@@ -107,6 +108,7 @@ where B: BlockchainBackend + 'static
         outbound_nci: OutboundNodeCommsInterface,
         connectivity: ConnectivityRequester,
         randomx_factory: RandomXFactory,
+        header_validator: HeaderFullValidator,
     ) -> Self {
         Self {
             block_event_sender,
@@ -117,6 +119,7 @@ where B: BlockchainBackend + 'static
             outbound_nci,
             connectivity,
             randomx_factory,
+            header_validator,
         }
     }
 
@@ -447,17 +450,37 @@ where B: BlockchainBackend + 'static
             return Ok(());
         }
 
-        // Lets check if the block exists before we try and ask for a complete block
-        if self.check_exists_and_not_bad_block(block_hash).await? {
+        if self.check_exists(block_hash).await? {
             return Ok(());
         }
 
-        // lets check that the difficulty at least matches the min required difficulty
-        // We cannot check the target difficulty as orphan blocks dont have a target difficulty.
-        // All we care here is that bad blocks are not free to make, and that they are more expensive to make then they
-        // are to validate. As soon as a block can be linked to the main chain, a proper full proof of work check will
-        // be done before any other validation.
-        self.check_min_block_difficulty(&new_block).await?;
+        // Validate the header
+        match self.blockchain_db.validate_header(new_block.header.clone()).await {
+            Ok(difficulty) => {
+                let our_difficulty = self.blockchain_db.get_chain_metadata().await?.accumulated_difficulty();
+                // Only pay attention to blocks that would be stronger than our current chain.
+                if difficulty <= our_difficulty {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Ignoring block message ({}) because achieved difficulty ({}) is less than our difficulty \
+                         ({})",
+                        block_hash.to_hex(),
+                        difficulty,
+                        our_difficulty
+                    );
+                    return Ok(());
+                }
+            },
+            Err(chain_storage) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Ignoring block message ({}) because header validation failed: {:?}",
+                    block_hash.to_hex(),
+                    chain_storage
+                );
+                return Ok(());
+            },
+        }
 
         {
             // we use a double lock to make sure we can only reconcile one unique block at a time. We may receive the
@@ -474,7 +497,7 @@ where B: BlockchainBackend + 'static
         }
         {
             let mut write_lock = self.list_of_reconciling_blocks.write().await;
-            if self.check_exists_and_not_bad_block(block_hash).await? {
+            if self.check_exists(block_hash).await? {
                 return Ok(());
             }
 
@@ -506,28 +529,7 @@ where B: BlockchainBackend + 'static
         Ok(())
     }
 
-    async fn check_min_block_difficulty(&self, new_block: &NewBlock) -> Result<(), CommsInterfaceError> {
-        let constants = self.consensus_manager.consensus_constants(new_block.header.height);
-        let min_difficulty = constants.min_pow_difficulty(new_block.header.pow.pow_algo);
-        let achieved = match new_block.header.pow_algo() {
-            PowAlgorithm::RandomX => randomx_difficulty(&new_block.header, &self.randomx_factory)?,
-            PowAlgorithm::Sha3x => sha3x_difficulty(&new_block.header)?,
-        };
-        if achieved < min_difficulty {
-            self.blockchain_db
-                .add_bad_block(
-                    new_block.header.hash(),
-                    self.blockchain_db.get_chain_metadata().await?.height_of_longest_chain(),
-                )
-                .await?;
-            return Err(CommsInterfaceError::InvalidBlockHeader(
-                BlockHeaderValidationError::ProofOfWorkError(PowError::AchievedDifficultyBelowMin),
-            ));
-        }
-        Ok(())
-    }
-
-    async fn check_exists_and_not_bad_block(&self, block: FixedHash) -> Result<bool, CommsInterfaceError> {
+    async fn check_exists(&self, block: FixedHash) -> Result<bool, CommsInterfaceError> {
         if self.blockchain_db.block_exists(block).await? {
             debug!(
                 target: LOG_TARGET,
@@ -535,18 +537,6 @@ where B: BlockchainBackend + 'static
                 block.to_hex()
             );
             return Ok(true);
-        }
-        if self.blockchain_db.bad_block_exists(block).await? {
-            debug!(
-                target: LOG_TARGET,
-                "Block with hash `{}` already validated as a bad block",
-                block.to_hex()
-            );
-            return Err(CommsInterfaceError::ChainStorageError(
-                ChainStorageError::ValidationError {
-                    source: ValidationError::BadBlockFound { hash: block.to_hex() },
-                },
-            ));
         }
         Ok(false)
     }
@@ -1003,6 +993,7 @@ impl<B> Clone for InboundNodeCommsHandlers<B> {
             outbound_nci: self.outbound_nci.clone(),
             connectivity: self.connectivity.clone(),
             randomx_factory: self.randomx_factory.clone(),
+            header_validator: self.header_validator.clone(),
         }
     }
 }

@@ -23,7 +23,7 @@ use tari_common_types::{chain_metadata::ChainMetadata, types::Commitment};
 use tari_utilities::epoch_time::EpochTime;
 
 use crate::{
-    blocks::{Block, BlockHeader, ChainBlock},
+    blocks::{Block, BlockHeader, ChainBlock, ChainHeader},
     chain_storage::BlockchainBackend,
     proof_of_work::{AchievedTargetDifficulty, Difficulty},
     transactions::transaction_components::Transaction,
@@ -59,10 +59,10 @@ pub trait HeaderChainLinkedValidator<B: BlockchainBackend>: Send + Sync {
         &self,
         db: &B,
         header: &BlockHeader,
-        prev_header: &BlockHeader,
+        prev_header: &ChainHeader,
         prev_timestamps: &[EpochTime],
         target_difficulty: Option<Difficulty>,
-    ) -> Result<AchievedTargetDifficulty, ValidationError>;
+    ) -> Result<(AchievedTargetDifficulty, u128), ValidationError>;
 }
 
 pub trait FinalHorizonStateValidation<B>: Send + Sync {

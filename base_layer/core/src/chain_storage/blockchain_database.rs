@@ -524,6 +524,14 @@ where B: BlockchainBackend
         Ok(None)
     }
 
+    pub fn fetch_timestamps_from_all_chains(
+        &self,
+        header: &BlockHeader,
+    ) -> Result<RollingVec<EpochTime>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        get_previous_timestamps(&*db, header, &self.consensus_manager)
+    }
+
     pub fn fetch_block_timestamps(&self, start_hash: HashOutput) -> Result<RollingVec<EpochTime>, ChainStorageError> {
         let start_header =
             self.fetch_header_by_block_hash(start_hash)?
@@ -580,6 +588,17 @@ where B: BlockchainBackend
         fetch_headers(&*db, start, end)
     }
 
+    pub fn validate_header(&self, header: BlockHeader) -> Result<u128, ChainStorageError> {
+        let db = self.db_read_access()?;
+        let prev = db.fetch_chain_header_in_all_chains(&header.prev_hash)?;
+        let timestamps = get_previous_timestamps(&*db, &header, &self.consensus_manager)?;
+        let difficulty = self
+            .validators
+            .header
+            .validate(&*db, &header, &prev, &timestamps, None)?;
+        Ok(difficulty.1)
+    }
+
     /// Returns the set of block headers between `start` and up to and including `end_inclusive`
     pub fn fetch_chain_headers<T: RangeBounds<u64>>(&self, bounds: T) -> Result<Vec<ChainHeader>, ChainStorageError> {
         let db = self.db_read_access()?;
@@ -591,6 +610,11 @@ where B: BlockchainBackend
         let (start, end) = (start.unwrap_or(0), end.unwrap());
 
         fetch_chain_headers(&*db, start, end)
+    }
+
+    pub fn fetch_chain_header_in_all_chains(&self, hash: HashOutput) -> Result<ChainHeader, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_chain_header_in_all_chains(&hash)
     }
 
     /// Returns the block header corresponding to the provided BlockHash
@@ -2153,9 +2177,9 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
 
     // validate the block header
     let mut prev_timestamps = get_previous_timestamps(db, &candidate_block.header, rules)?;
-    let result = validator.validate(db, &candidate_block.header, parent.header(), &prev_timestamps, None);
+    let result = validator.validate(db, &candidate_block.header, &parent, &prev_timestamps, None);
 
-    let achieved_target_diff = match result {
+    let (achieved_target_diff, _total_accumulated_diff) = match result {
         Ok(achieved_target_diff) => achieved_target_diff,
         // future timelimit validation can succeed at a later time. As the block is not yet valid, we discard it
         // for now and ban the peer, but wont blacklist the block.
@@ -2247,8 +2271,8 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
         );
 
         // we need to validate the header here because it may never have been validated.
-        match validator.validate(db, &child.header, prev_chain_header.header(), &prev_timestamps, None) {
-            Ok(achieved_target) => {
+        match validator.validate(db, &child.header, &prev_chain_header, &prev_timestamps, None) {
+            Ok((achieved_target, _total_diff)) => {
                 // Append the child timestamp - a RollingVec ensures that the number of timestamps can never be more
                 // than the median timestamp window size.
                 let mut prev_timestamps_for_children = prev_timestamps.clone();
@@ -2293,7 +2317,7 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
     Ok(res)
 }
 fn get_previous_timestamps<T: BlockchainBackend>(
-    db: &mut T,
+    db: &T,
     header: &BlockHeader,
     rules: &ConsensusManager,
 ) -> Result<RollingVec<EpochTime>, ChainStorageError> {

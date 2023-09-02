@@ -55,6 +55,7 @@ use crate::{
     proof_of_work::randomx_factory::RandomXFactory,
     proto as shared_protos,
     proto::base_node as proto,
+    validation::{header::HeaderFullValidator, DifficultyCalculator},
 };
 
 const LOG_TARGET: &str = "c::bn::service::initializer";
@@ -180,6 +181,10 @@ where T: BlockchainBackend + 'static
         let mempool = self.mempool.clone();
         let consensus_manager = self.consensus_manager.clone();
         let randomx_factory = self.randomx_factory.clone();
+        let header_validator = HeaderFullValidator::new(
+            consensus_manager.clone(),
+            DifficultyCalculator::new(consensus_manager.clone(), randomx_factory.clone()),
+        );
 
         context.spawn_when_ready(move |handles| async move {
             let dht = handles.expect_handle::<Dht>();
@@ -196,6 +201,7 @@ where T: BlockchainBackend + 'static
                 outbound_nci.clone(),
                 connectivity.clone(),
                 randomx_factory,
+                header_validator,
             );
 
             let streams = BaseNodeStreams {
