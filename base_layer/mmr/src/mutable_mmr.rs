@@ -70,9 +70,10 @@ where
 
     /// Clear the MutableMmr and assign the MMR state from the set of leaf_hashes and deleted nodes given in `state`.
     pub fn assign(&mut self, state: MutableMmrLeafNodes) -> Result<(), MerkleMountainRangeError> {
+
         self.mmr.assign(state.leaf_hashes)?;
         self.deleted = state.deleted;
-        self.size = u32::try_from(self.mmr.get_leaf_count()?).unwrap();
+        self.size = u32::try_from(self.mmr.get_leaf_count()?).map_err(|_|MerkleMountainRangeError::InvalidMmrSize)?;
         Ok(())
     }
 
@@ -209,13 +210,13 @@ where
     fn get_sub_bitmap(&self, leaf_index: LeafIndex, count: usize) -> Result<Bitmap, MerkleMountainRangeError> {
         let mut deleted = self.deleted.clone();
         if leaf_index.0 > 0 {
-            deleted.remove_range_closed(0..u32::try_from(leaf_index.0 - 1).unwrap())
+            deleted.remove_range(0..u32::try_from(leaf_index.0 - 1).unwrap())
         }
         let leaf_count = self.mmr.get_leaf_count()?;
         if leaf_count > 1 {
             let last_index = leaf_index.0 + count - 1;
             if last_index < leaf_count - 1 {
-                deleted.remove_range_closed(u32::try_from(last_index + 1).unwrap()..u32::try_from(leaf_count).unwrap());
+                deleted.remove_range(u32::try_from(last_index + 1).unwrap()..u32::try_from(leaf_count).unwrap());
             }
         }
         Ok(deleted)
