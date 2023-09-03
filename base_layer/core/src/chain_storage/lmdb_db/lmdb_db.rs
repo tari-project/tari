@@ -2497,11 +2497,17 @@ impl BlockchainBackend for LMDBDatabase {
 
         for (name, db) in self.all_dbs() {
             debug!(target: LOG_TARGET, "Clearing database '{}'", name);
-            lmdb_clear(&write_txn, &db)?;
+            // we dont want to rest bad blocks only data
+            match name {
+                "bad_blocks" => {},
+                _ => {
+                    lmdb_clear(&write_txn, &db)?;
+                },
+            }
         }
-        
+
         write_txn.commit()?;
-       
+
         Ok(())
     }
 }
