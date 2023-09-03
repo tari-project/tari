@@ -133,12 +133,13 @@ impl HorizonSyncError {
             err @ HorizonSyncError::InvalidMmrPosition { .. } |
             err @ HorizonSyncError::ConversionError(_) |
             err @ HorizonSyncError::MerkleMountainRangeError(_) |
-            err @ HorizonSyncError::ValidationError(_) |
             err @ HorizonSyncError::FixedHashSizeError(_) |
             err @ HorizonSyncError::TransactionError(_) => Some(BanReason {
                 reason: format!("{}", err),
                 ban_duration: long_ban,
             }),
+
+            HorizonSyncError::ValidationError(err) => ValidationError::get_ban_reason(err, Some(long_ban)),
         }
     }
 }

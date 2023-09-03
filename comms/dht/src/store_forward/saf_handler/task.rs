@@ -380,7 +380,10 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 .validate_and_decrypt_incoming_stored_message(Arc::clone(&source_peer), msg)
                 .await;
 
-            let Some(result) = self.process_saf_message_validation_result(&source_peer.public_key, result).await else {
+            let Some(result) = self
+                .process_saf_message_validation_result(&source_peer.public_key, result)
+                .await
+            else {
                 // Logging of problems and banning are done inside process_saf_message. We can simply continue
                 continue;
             };
