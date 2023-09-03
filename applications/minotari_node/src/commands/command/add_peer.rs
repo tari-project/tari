@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use anyhow::{anyhow, Error};
+use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
 use minotari_app_utilities::utilities::UniPublicKey;
@@ -45,22 +45,24 @@ pub struct ArgsAddPeer {
 impl HandleCommand<ArgsAddPeer> for CommandContext {
     async fn handle_command(&mut self, args: ArgsAddPeer) -> Result<(), Error> {
         let public_key = args.public_key.into();
-        let peer_manager = self.comms.peer_manager();
-        if peer_manager.exists(&public_key).await {
-            return Err(anyhow!("Peer with public key '{}' already exists", public_key));
+        if *self.comms.node_identity().public_key() == public_key {
+            return Err(Error::msg("Cannot add self as peer"));
         }
+        let peer_manager = self.comms.peer_manager();
         let node_id = NodeId::from_public_key(&public_key);
         let peer = Peer::new(
             public_key,
             node_id.clone(),
             MultiaddressesWithStats::from_addresses_with_source(vec![args.address], &PeerAddressSource::Config),
             PeerFlags::empty(),
-            PeerFeatures::empty(),
+            PeerFeatures::COMMUNICATION_NODE,
             vec![],
             String::new(),
         );
+        // If the peer exists, this will merge the given address
         peer_manager.add_peer(peer).await?;
-        println!("Peer with node id '{}'was added to the base node.", node_id);
+        println!("Peer with node id '{}' was added to the base node.", node_id);
+        self.dial_peer(node_id).await?;
         Ok(())
     }
 }
