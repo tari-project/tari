@@ -351,12 +351,7 @@ where
         );
 
         let timer = Instant::now();
-        let mut noise_socket = time::timeout(
-            Duration::from_secs(30),
-            noise_config.upgrade_socket(socket, CONNECTION_DIRECTION),
-        )
-        .await
-        .map_err(|_| ConnectionManagerError::NoiseProtocolTimeout)??;
+        let mut noise_socket = noise_config.upgrade_socket(socket, CONNECTION_DIRECTION).await?;
 
         let authenticated_public_key = noise_socket
             .get_remote_public_key()

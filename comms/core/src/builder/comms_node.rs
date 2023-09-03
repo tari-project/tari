@@ -43,7 +43,6 @@ use crate::{
     },
     connectivity::{ConnectivityEventRx, ConnectivityManager, ConnectivityRequest, ConnectivityRequester},
     multiaddr::Multiaddr,
-    noise::NoiseConfig,
     peer_manager::{NodeIdentity, PeerManager},
     protocol::{
         ProtocolExtension,
@@ -188,12 +187,9 @@ impl UnspawnedCommsNode {
 
         //---------------------------------- Connection Manager --------------------------------------------//
 
-        let noise_config = NoiseConfig::new(node_identity.clone());
-
         let mut connection_manager = ConnectionManager::new(
             connection_manager_config.clone(),
             transport.clone(),
-            noise_config,
             dial_backoff,
             connection_manager_request_rx,
             node_identity.clone(),

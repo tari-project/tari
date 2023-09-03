@@ -78,8 +78,6 @@ pub enum ConnectionManagerError {
     InvalidMultiaddr(String),
     #[error("Failed to send wire format byte")]
     WireFormatSendFailed,
-    #[error("Noise protocol handshake timed out")]
-    NoiseProtocolTimeout,
     #[error("Listener oneshot cancelled")]
     ListenerOneshotCancelled,
     #[error("Peer validation error: {0}")]
