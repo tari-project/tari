@@ -2492,7 +2492,7 @@ impl BlockchainBackend for LMDBDatabase {
         Ok(result)
     }
 
-    fn reset_blockchain_databases(&mut self) -> Result<(), ChainStorageError> {
+    fn clear_blockchain_databases(&mut self) -> Result<(), ChainStorageError> {
         let write_txn = self.write_transaction()?;
 
         for (name, db) in self.all_dbs() {
