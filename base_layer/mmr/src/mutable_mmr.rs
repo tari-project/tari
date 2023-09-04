@@ -62,7 +62,7 @@ where
     pub fn new(mmr_backend: B, deleted: Bitmap) -> Result<MutableMmr<D, B>, MerkleMountainRangeError> {
         let mmr = MerkleMountainRange::new(mmr_backend);
         Ok(MutableMmr {
-            size: u32::try_from(mmr.get_leaf_count()?).unwrap(),
+            size: u32::try_from(mmr.get_leaf_count()?).map_err(|_|MerkleMountainRangeError::InvalidMmrSize)?,
             mmr,
             deleted,
         })
@@ -83,8 +83,8 @@ where
     /// nodes in the MMR, while this function returns the number of leaf nodes minus the number of nodes marked for
     /// deletion.
     #[allow(clippy::len_without_is_empty)]
-    pub fn len(&self) -> u32 {
-        self.size - u32::try_from(self.deleted.cardinality()).unwrap()
+    pub fn len(&self) -> Result<u32,MerkleMountainRangeError> {
+        Ok(self.size - u32::try_from(self.deleted.cardinality()).map_err(|_|MerkleMountainRangeError::InvalidMmrSize)?)
     }
 
     /// Returns true if the the MMR contains no nodes, OR all nodes have been marked for deletion
@@ -210,13 +210,13 @@ where
     fn get_sub_bitmap(&self, leaf_index: LeafIndex, count: usize) -> Result<Bitmap, MerkleMountainRangeError> {
         let mut deleted = self.deleted.clone();
         if leaf_index.0 > 0 {
-            deleted.remove_range(0..u32::try_from(leaf_index.0 - 1).unwrap())
+            deleted.remove_range(0..u32::try_from(leaf_index.0 - 1).map_err(|_|MerkleMountainRangeError::InvalidMmrSize)?)
         }
         let leaf_count = self.mmr.get_leaf_count()?;
         if leaf_count > 1 {
             let last_index = leaf_index.0 + count - 1;
             if last_index < leaf_count - 1 {
-                deleted.remove_range(u32::try_from(last_index + 1).unwrap()..u32::try_from(leaf_count).unwrap());
+                deleted.remove_range(u32::try_from(last_index + 1).map_err(|_|MerkleMountainRangeError::InvalidMmrSize)?..u32::try_from(leaf_count).map_err(|_|MerkleMountainRangeError::InvalidMmrSize)?);
             }
         }
         Ok(deleted)
