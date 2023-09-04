@@ -552,10 +552,9 @@ mod test {
         };
         let hash = block_header.merge_mining_hash();
         append_merge_mining_tag(&mut block, hash).unwrap();
-        #[allow(clippy::redundant_clone)]
         let mut block_header2 = block_header.clone();
         block_header2.version = 1;
-        let hash2 = block_header.merge_mining_hash();
+        let hash2 = block_header2.merge_mining_hash();
         append_merge_mining_tag(&mut block, hash2).unwrap();
         let count = 1 + (u16::try_from(block.tx_hashes.len()).unwrap());
         let mut hashes = Vec::with_capacity(count as usize);
@@ -584,7 +583,7 @@ mod test {
         block_header.pow = pow;
         let err = verify_header(&block_header).unwrap_err();
         unpack_enum!(MergeMineError::ValidationError(details) = err);
-        assert!(details.contains("More than one Tari header found in coinbase"));
+        assert!(details.contains("More than one merge mining tag found in coinbase"));
     }
 
     #[test]
