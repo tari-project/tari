@@ -639,7 +639,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     );
                     mmr_position += 1;
                 },
-                UtxoOrDeleted::DeletedDiff(diff_bitmap) => {
+                UtxoOrDeleted::DeletedDiff(diff_bitmap_buff) => {
                     if mmr_position != current_header.header().output_mmr_size {
                         return Err(HorizonSyncError::IncorrectResponse(format!(
                             "Peer unexpectedly sent a deleted bitmap. Expected at MMR index {} but it was sent at {}",
@@ -652,17 +652,17 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     // than isize::MAX, however isize::MAX is still an inordinate amount of data. An
                     // arbitrary 4 MiB limit is used.
                     const MAX_DIFF_BITMAP_BYTE_LEN: usize = 4 * 1024 * 1024;
-                    if diff_bitmap.len() > MAX_DIFF_BITMAP_BYTE_LEN {
+                    if diff_bitmap_buff.len() > MAX_DIFF_BITMAP_BYTE_LEN {
                         return Err(HorizonSyncError::IncorrectResponse(format!(
                             "Received difference bitmap (size = {}) that exceeded the maximum size limit of {} from \
                              peer {}",
-                            diff_bitmap.len(),
+                            diff_bitmap_buff.len(),
                             MAX_DIFF_BITMAP_BYTE_LEN,
                             sync_peer.node_id()
                         )));
                     }
 
-                    let diff_bitmap = Bitmap::try_deserialize(&diff_bitmap).ok_or_else(|| {
+                    let diff_bitmap = Bitmap::try_deserialize(&diff_bitmap_buff).ok_or_else(|| {
                         HorizonSyncError::IncorrectResponse(format!(
                             "Peer {} sent an invalid difference bitmap",
                             sync_peer.node_id()
@@ -673,11 +673,14 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     // in the output MMR
                     let bitmap = self.full_bitmap_mut();
                     bitmap.or_inplace(&diff_bitmap);
+                    // let force optimize here as we need to ensure this runs as we compute the merkle root on the
+                    // optimized bitmap.
+                    bitmap.run_optimize();
 
                     let pruned_output_set = output_mmr.get_pruned_hash_set()?;
-                    let output_mmr = MutablePrunedOutputMmr::new(pruned_output_set.clone(), bitmap.clone())?;
+                    let total_output_mmr = MutablePrunedOutputMmr::new(pruned_output_set.clone(), bitmap.clone())?;
 
-                    let mmr_root = output_mmr.get_merkle_root()?;
+                    let mmr_root = total_output_mmr.get_merkle_root()?;
                     if mmr_root.as_slice() != current_header.header().output_mr.as_slice() {
                         return Err(HorizonSyncError::InvalidMmrRoot {
                             mmr_tree: MmrTree::Utxo,
