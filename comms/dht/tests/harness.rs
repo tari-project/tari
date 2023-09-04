@@ -52,7 +52,7 @@ pub struct TestNode {
     pub comms: CommsNode,
     pub dht: Dht,
     pub inbound_messages: mpsc::Receiver<DecryptedDhtMessage>,
-    pub messaging_events: broadcast::Sender<Arc<MessagingEvent>>,
+    pub messaging_events: broadcast::Sender<MessagingEvent>,
     pub shutdown: Shutdown,
 }
 
@@ -197,7 +197,9 @@ pub async fn setup_comms_dht(
 
     let (event_tx, _) = broadcast::channel(100);
     let comms = comms
-        .add_protocol_extension(MessagingProtocolExtension::new(event_tx.clone(), pipeline))
+        .add_protocol_extension(
+            MessagingProtocolExtension::new(event_tx.clone(), pipeline).enable_message_received_event(),
+        )
         .spawn_with_transport(MemoryTransport)
         .await
         .unwrap();

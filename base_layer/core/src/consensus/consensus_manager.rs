@@ -124,8 +124,8 @@ impl ConsensusManager {
         let constants = self.consensus_constants(height);
         let block_window = constants.difficulty_block_window();
 
-        let block_window_u = usize::try_from(block_window)
-            .map_err(|e| format!("difficulty block window exceeds usize::MAX: {}", e.to_string()))?;
+        let block_window_u =
+            usize::try_from(block_window).map_err(|e| format!("difficulty block window exceeds usize::MAX: {}", e))?;
 
         TargetDifficultyWindow::new(block_window_u, constants.pow_target_block_interval(pow_algo))
     }

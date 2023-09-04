@@ -136,9 +136,9 @@ async fn write_protocol_frame<S: AsyncWrite + Unpin>(
     }
 
     let len = u16::try_from(msg_bytes.len()).map_err(|_| {
-        IdentityProtocolError::InvariantError(format!(
-            "This node attempted to send a message of size greater than u16::MAX"
-        ))
+        IdentityProtocolError::InvariantError(
+            "This node attempted to send a message of size greater than u16::MAX".to_string(),
+        )
     })?;
     let version_bytes = [version];
     let len_bytes = len.to_le_bytes();
