@@ -123,7 +123,7 @@ impl OutboundMessaging {
             }
 
             metrics::num_sessions().dec();
-            let _ = messaging_events_tx
+            let _ignore = messaging_events_tx
                 .send(MessagingEvent::OutboundProtocolExited(peer_node_id))
                 .await;
         }

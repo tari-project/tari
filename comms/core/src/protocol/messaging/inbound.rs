@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::io;
+
 use futures::StreamExt;
 use log::*;
 use tokio::{
@@ -102,6 +104,21 @@ impl InboundMessaging {
                             .messaging_events_tx
                             .send(MessagingEvent::MessageReceived(peer.clone(), message_tag));
                     }
+                },
+                // LengthDelimitedCodec emits a InvalidData io error when the message length exceeds the maximum allowed
+                Err(err) if err.kind() == io::ErrorKind::InvalidData => {
+                    metrics::error_count(peer).inc();
+                    debug!(
+                        target: LOG_TARGET,
+                        "Failed to receive from peer '{}' because '{}'",
+                        peer.short_str(),
+                        err
+                    );
+                    let _result = self.messaging_events_tx.send(MessagingEvent::ProtocolViolation {
+                        peer_node_id: peer.clone(),
+                        details: err.to_string(),
+                    });
+                    break;
                 },
                 Err(err) => {
                     metrics::error_count(peer).inc();

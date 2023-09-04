@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::fmt;
+use std::{fmt, time::Duration};
 
 use tokio::sync::mpsc;
 use tower::Service;
@@ -51,6 +51,7 @@ pub struct MessagingProtocolExtension<TInPipe, TOutPipe, TOutReq> {
     event_tx: MessagingEventSender,
     pipeline: pipeline::Config<TInPipe, TOutPipe, TOutReq>,
     enable_message_received_event: bool,
+    ban_duration: Duration,
 }
 
 impl<TInPipe, TOutPipe, TOutReq> MessagingProtocolExtension<TInPipe, TOutPipe, TOutReq> {
@@ -59,6 +60,7 @@ impl<TInPipe, TOutPipe, TOutReq> MessagingProtocolExtension<TInPipe, TOutPipe, T
             event_tx,
             pipeline,
             enable_message_received_event: false,
+            ban_duration: Duration::from_secs(10 * 60),
         }
     }
 
@@ -67,6 +69,12 @@ impl<TInPipe, TOutPipe, TOutReq> MessagingProtocolExtension<TInPipe, TOutPipe, T
     /// usage (not reading the event from the channel).
     pub fn enable_message_received_event(mut self) -> Self {
         self.enable_message_received_event = true;
+        self
+    }
+
+    /// Sets the ban duration for peers that violate protocol. Default is 10 minutes.
+    pub fn with_ban_duration(mut self, ban_duration: Duration) -> Self {
+        self.ban_duration = ban_duration;
         self
     }
 }
@@ -96,7 +104,8 @@ where
             inbound_message_tx,
             context.shutdown_signal(),
         )
-        .set_message_received_event_enabled(self.enable_message_received_event);
+        .set_message_received_event_enabled(self.enable_message_received_event)
+        .with_ban_duration(self.ban_duration);
 
         context.register_complete_signal(messaging.complete_signal());
 

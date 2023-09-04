@@ -23,6 +23,8 @@
 use std::{
     collections::{hash_map::Entry, HashMap},
     fmt,
+    fmt::Display,
+    time::Duration,
 };
 
 use bytes::Bytes;
@@ -81,6 +83,7 @@ pub enum MessagingEvent {
     MessageReceived(NodeId, MessageTag),
     OutboundProtocolExited(NodeId),
     InboundProtocolExited(NodeId),
+    ProtocolViolation { peer_node_id: NodeId, details: String },
 }
 
 impl fmt::Display for MessagingEvent {
@@ -90,6 +93,9 @@ impl fmt::Display for MessagingEvent {
             MessageReceived(node_id, tag) => write!(f, "MessageReceived({}, {})", node_id, tag),
             OutboundProtocolExited(node_id) => write!(f, "OutboundProtocolExited({})", node_id),
             InboundProtocolExited(node_id) => write!(f, "InboundProtocolExited({})", node_id),
+            ProtocolViolation { peer_node_id, details } => {
+                write!(f, "ProtocolViolation({}, {})", peer_node_id, details)
+            },
         }
     }
 }
@@ -103,6 +109,7 @@ pub struct MessagingProtocol {
     outbound_message_rx: mpsc::UnboundedReceiver<OutboundMessage>,
     messaging_events_tx: MessagingEventSender,
     enable_message_received_event: bool,
+    ban_duration: Option<Duration>,
     inbound_message_tx: mpsc::Sender<InboundMessage>,
     internal_messaging_event_tx: mpsc::Sender<MessagingEvent>,
     internal_messaging_event_rx: mpsc::Receiver<MessagingEvent>,
@@ -136,6 +143,7 @@ impl MessagingProtocol {
             enable_message_received_event: false,
             internal_messaging_event_rx,
             internal_messaging_event_tx,
+            ban_duration: None,
             retry_queue_tx,
             retry_queue_rx,
             inbound_message_tx,
@@ -151,6 +159,12 @@ impl MessagingProtocol {
         self
     }
 
+    /// Sets a custom ban duration. Banning is disabled by default.
+    pub fn with_ban_duration(mut self, ban_duration: Duration) -> Self {
+        self.ban_duration = Some(ban_duration);
+        self
+    }
+
     /// Returns a signal that resolves when this actor exits.
     pub fn complete_signal(&self) -> ShutdownSignal {
         self.complete_trigger.to_signal()
@@ -163,7 +177,7 @@ impl MessagingProtocol {
         loop {
             tokio::select! {
                 Some(event) = self.internal_messaging_event_rx.recv() => {
-                    self.handle_internal_messaging_event(event);
+                    self.handle_internal_messaging_event(event).await;
                 },
 
                 Some(msg) = self.retry_queue_rx.recv() => {
@@ -204,7 +218,7 @@ impl MessagingProtocol {
         framing::canonical(socket, MAX_FRAME_LENGTH)
     }
 
-    fn handle_internal_messaging_event(&mut self, event: MessagingEvent) {
+    async fn handle_internal_messaging_event(&mut self, event: MessagingEvent) {
         use MessagingEvent::*;
         trace!(target: LOG_TARGET, "Internal messaging event '{}'", event);
         match &event {
@@ -237,6 +251,9 @@ impl MessagingProtocol {
                         node_id.short_str()
                     );
                 }
+            },
+            ProtocolViolation { peer_node_id, details } => {
+                self.ban_peer(peer_node_id.clone(), details.to_string()).await;
             },
             _ => {},
         }
@@ -340,6 +357,37 @@ impl MessagingProtocol {
                 );
 
                 self.spawn_inbound_handler(node_id, substream);
+            },
+        }
+    }
+
+    async fn ban_peer<T: Display>(&mut self, peer_node_id: NodeId, reason: T) {
+        warn!(
+            target: LOG_TARGET,
+            "Banning peer '{}' because it violated the messaging protocol: {}", peer_node_id.short_str(), reason
+        );
+        if let Some(handle) = self.active_inbound.remove(&peer_node_id) {
+            handle.abort();
+        }
+        drop(self.active_queues.remove(&peer_node_id));
+        match self.ban_duration {
+            Some(ban_duration) => {
+                if let Err(err) = self
+                    .connectivity
+                    .ban_peer_until(peer_node_id.clone(), ban_duration, reason.to_string())
+                    .await
+                {
+                    error!(
+                        target: LOG_TARGET,
+                        "Failed to ban peer '{}' because '{:?}'", peer_node_id.short_str(), err
+                    );
+                }
+            },
+            None => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Banning disabled in MessagingProtocol, so peer '{peer_node_id}' will not be banned (reason: {reason})",
+                );
             },
         }
     }
