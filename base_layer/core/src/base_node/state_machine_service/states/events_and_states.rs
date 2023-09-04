@@ -97,11 +97,18 @@ pub enum SyncStatus {
         sync_peers: Vec<SyncPeer>,
     },
     UpToDate,
+    SyncNotPossible {
+        peers: Vec<SyncPeer>,
+    },
 }
 
 impl SyncStatus {
     pub fn is_lagging(&self) -> bool {
         matches!(self, SyncStatus::Lagging { .. })
+    }
+
+    pub fn is_sync_not_possible(&self) -> bool {
+        matches!(self, SyncStatus::SyncNotPossible { .. })
     }
 
     pub fn is_up_to_date(&self) -> bool {
@@ -124,6 +131,7 @@ impl Display for SyncStatus {
             ),
             UpToDate => f.write_str("UpToDate"),
             SyncStatus::BehindButNotYetLagging { .. } => f.write_str("Behind but not yet lagging"),
+            SyncStatus::SyncNotPossible { .. } => f.write_str("Behind but we cannot sync as we have no viable peers to sync to"),
         }
     }
 }

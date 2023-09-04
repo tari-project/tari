@@ -220,7 +220,10 @@ impl Listening {
                         return StateEvent::FallenBehind(sync_mode);
                     }
 
-                    if !self.is_synced {
+                    // if the mode is SyncNotPossible, we know of peers that have a higher pow than us, but we cannot
+                    // sync from them due to their pruning mode settings as they cannot supply us with the required full
+                    // blocks we require, so we should not enter sync and await better peers who can provide us this
+                    if !self.is_synced && !sync_mode.is_sync_not_possible() {
                         self.is_synced = true;
                         shared.set_state_info(StateInfo::Listening(ListeningInfo::new(true)));
                         debug!(target: LOG_TARGET, "Initial sync achieved");
@@ -278,7 +281,7 @@ fn determine_sync_mode(
     local: &ChainMetadata,
     network: &PeerChainMetadata,
 ) -> SyncStatus {
-    use SyncStatus::{Lagging, UpToDate};
+    use SyncStatus::{Lagging, SyncNotPossible, UpToDate};
     let network_tip_accum_difficulty = network.claimed_chain_metadata().accumulated_difficulty();
     let local_tip_accum_difficulty = local.accumulated_difficulty();
     if local_tip_accum_difficulty < network_tip_accum_difficulty {
@@ -294,6 +297,43 @@ fn determine_sync_mode(
             network_tip_height,
             network_tip_accum_difficulty.to_formatted_string(&Locale::en),
         );
+
+        // If both the local and remote are pruned mode, we need to ensure that the remote pruning horizon is
+        // greater_equal to ours so that we can sync all the data from it. If the remote is a pruned mode, and
+        // we only require some data from it, we need to ensure that they can supply the data we need, as in their
+        // effective pruned horizon is greater than our local current chain tip.
+        let pruned_mode = local.pruning_horizon() > 0;
+        let pruning_horizon_check = network.claimed_chain_metadata().pruning_horizon() > 0 &&
+            network.claimed_chain_metadata().pruning_horizon() < local.pruning_horizon();
+        let pruning_height_check =
+            network.claimed_chain_metadata().pruned_height() > local.height_of_longest_chain();
+        let sync_able_peer = match (pruned_mode, pruning_horizon_check, pruning_height_check) {
+            (true, true, _) => {
+                info!(
+                    target: LOG_TARGET,
+                    "The remote peer is a pruned node, and it's pruning_horizon is less than ours. Remote pruning horizon # {}, current local pruning horizon #{}",
+                    network.claimed_chain_metadata(),
+                    local.pruning_horizon(),
+                );
+                false
+            },
+            (false, _, true) => {
+                info!(
+                    target: LOG_TARGET,
+                    "The remote peer is a pruned node, and it cannot supply the blocks we need. Remote pruned height # {}, current local tip #{}",
+                    network.claimed_chain_metadata().pruned_height(),
+                    local.height_of_longest_chain(),
+                );
+                false
+            },
+            _ => true,
+        };
+
+        if !sync_able_peer {
+            return SyncNotPossible {
+                peers: vec![network.clone().into()],
+            };
+        }
 
         // This is to test the block propagation by delaying lagging.
         if local_tip_height.saturating_add(blocks_behind_before_considered_lagging) > network_tip_height {
