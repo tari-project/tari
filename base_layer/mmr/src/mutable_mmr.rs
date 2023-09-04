@@ -84,7 +84,9 @@ where
     /// deletion.
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> Result<u32,MerkleMountainRangeError> {
-        Ok(self.size - u32::try_from(self.deleted.cardinality()).map_err(|_|MerkleMountainRangeError::InvalidMmrSize)?)
+        let deleted_size = u32::try_from(self.deleted.cardinality()).map_err(|_|MerkleMountainRangeError::InvalidMmrSize)?;
+        let result = self.size.checked_sub(deleted_size).ok_or(MerkleMountainRangeError::InvalidMmrSize)?;
+        Ok(result )
     }
 
     /// Returns true if the the MMR contains no nodes, OR all nodes have been marked for deletion
