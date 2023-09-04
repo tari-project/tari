@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod harness;
-use std::{sync::Arc, time::Duration};
+use std::time::Duration;
 
 use harness::*;
 use tari_comms::{
@@ -244,7 +244,7 @@ async fn test_dht_store_forward() {
         .unwrap();
     // Wait for node C to and receive a response from the SAF request
     let event = collect_try_recv!(node_C_msg_events, take = 1, timeout = Duration::from_secs(20));
-    unpack_enum!(MessagingEvent::MessageReceived(_node_id, _msg) = event.get(0).unwrap().as_ref());
+    unpack_enum!(MessagingEvent::MessageReceived(_node_id, _msg) = event.get(0).unwrap());
 
     let msg = node_C.next_inbound_message(Duration::from_secs(5)).await.unwrap();
     assert_eq!(
@@ -908,21 +908,18 @@ async fn test_dht_header_not_malleable() {
     node_C.shutdown().await;
 }
 
-fn filter_received(events: Vec<Arc<MessagingEvent>>) -> Vec<Arc<MessagingEvent>> {
+fn filter_received(events: Vec<MessagingEvent>) -> Vec<MessagingEvent> {
     events
         .into_iter()
-        .filter(|e| match &**e {
-            MessagingEvent::MessageReceived(_, _) => true,
-            _ => unreachable!(),
-        })
+        .filter(|e| matches!(e, MessagingEvent::MessageReceived(_, _)))
         .collect()
 }
 
-fn count_messages_received(events: &[Arc<MessagingEvent>], node_ids: &[&NodeId]) -> usize {
+fn count_messages_received(events: &[MessagingEvent], node_ids: &[&NodeId]) -> usize {
     events
         .iter()
         .filter(|event| {
-            unpack_enum!(MessagingEvent::MessageReceived(recv_node_id, _tag) = &***event);
+            unpack_enum!(MessagingEvent::MessageReceived(recv_node_id, _tag) = &**event);
             node_ids.iter().any(|n| recv_node_id == *n)
         })
         .count()

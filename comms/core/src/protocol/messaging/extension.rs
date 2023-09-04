@@ -31,7 +31,7 @@ use crate::{
     message::InboundMessage,
     pipeline,
     protocol::{
-        messaging::{protocol::MESSAGING_PROTOCOL, MessagingEventSender},
+        messaging::{protocol::MESSAGING_PROTOCOL_ID, MessagingEventSender},
         ProtocolExtension,
         ProtocolExtensionContext,
         ProtocolExtensionError,
@@ -50,11 +50,24 @@ pub const MESSAGING_PROTOCOL_EVENTS_BUFFER_SIZE: usize = 30;
 pub struct MessagingProtocolExtension<TInPipe, TOutPipe, TOutReq> {
     event_tx: MessagingEventSender,
     pipeline: pipeline::Config<TInPipe, TOutPipe, TOutReq>,
+    enable_message_received_event: bool,
 }
 
 impl<TInPipe, TOutPipe, TOutReq> MessagingProtocolExtension<TInPipe, TOutPipe, TOutReq> {
     pub fn new(event_tx: MessagingEventSender, pipeline: pipeline::Config<TInPipe, TOutPipe, TOutReq>) -> Self {
-        Self { event_tx, pipeline }
+        Self {
+            event_tx,
+            pipeline,
+            enable_message_received_event: false,
+        }
+    }
+
+    /// Enables the MessageReceived event which is disabled by default. This will enable sending the MessageReceived
+    /// event per message received. This is typically used in tests. If unused it should be disabled to reduce memory
+    /// usage (not reading the event from the channel).
+    pub fn enable_message_received_event(mut self) -> Self {
+        self.enable_message_received_event = true;
+        self
     }
 }
 
@@ -70,7 +83,7 @@ where
 {
     fn install(mut self: Box<Self>, context: &mut ProtocolExtensionContext) -> Result<(), ProtocolExtensionError> {
         let (proto_tx, proto_rx) = mpsc::channel(MESSAGING_PROTOCOL_EVENTS_BUFFER_SIZE);
-        context.add_protocol(&[MESSAGING_PROTOCOL.clone()], &proto_tx);
+        context.add_protocol(&[MESSAGING_PROTOCOL_ID.clone()], &proto_tx);
 
         let (inbound_message_tx, inbound_message_rx) = mpsc::channel(INBOUND_MESSAGE_BUFFER_SIZE);
 
@@ -82,7 +95,8 @@ where
             self.event_tx,
             inbound_message_tx,
             context.shutdown_signal(),
-        );
+        )
+        .set_message_received_event_enabled(self.enable_message_received_event);
 
         context.register_complete_signal(messaging.complete_signal());
 

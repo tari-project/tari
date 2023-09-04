@@ -20,8 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
-
 use futures::StreamExt;
 use log::*;
 use tokio::{
@@ -38,19 +36,22 @@ const LOG_TARGET: &str = "comms::protocol::messaging::inbound";
 pub struct InboundMessaging {
     peer: NodeId,
     inbound_message_tx: mpsc::Sender<InboundMessage>,
-    messaging_events_tx: broadcast::Sender<Arc<MessagingEvent>>,
+    messaging_events_tx: broadcast::Sender<MessagingEvent>,
+    enable_message_received_event: bool,
 }
 
 impl InboundMessaging {
     pub fn new(
         peer: NodeId,
         inbound_message_tx: mpsc::Sender<InboundMessage>,
-        messaging_events_tx: broadcast::Sender<Arc<MessagingEvent>>,
+        messaging_events_tx: broadcast::Sender<MessagingEvent>,
+        enable_message_received_event: bool,
     ) -> Self {
         Self {
             peer,
             inbound_message_tx,
             messaging_events_tx,
+            enable_message_received_event,
         }
     }
 
@@ -83,21 +84,24 @@ impl InboundMessaging {
                         msg_len
                     );
 
-                    let event = MessagingEvent::MessageReceived(inbound_msg.source_peer.clone(), inbound_msg.tag);
+                    let message_tag = inbound_msg.tag;
 
-                    if let Err(err) = self.inbound_message_tx.send(inbound_msg).await {
-                        let tag = err.0.tag;
+                    if self.inbound_message_tx.send(inbound_msg).await.is_err() {
                         warn!(
                             target: LOG_TARGET,
                             "Failed to send InboundMessage {} for peer '{}' because inbound message channel closed",
-                            tag,
+                            message_tag,
                             peer.short_str(),
                         );
 
                         break;
                     }
 
-                    let _result = self.messaging_events_tx.send(Arc::new(event));
+                    if self.enable_message_received_event {
+                        let _result = self
+                            .messaging_events_tx
+                            .send(MessagingEvent::MessageReceived(peer.clone(), message_tag));
+                    }
                 },
                 Err(err) => {
                     metrics::error_count(peer).inc();
@@ -112,6 +116,9 @@ impl InboundMessaging {
             }
         }
 
+        let _ignore = self
+            .messaging_events_tx
+            .send(MessagingEvent::InboundProtocolExited(peer.clone()));
         metrics::num_sessions().dec();
         debug!(
             target: LOG_TARGET,

@@ -33,7 +33,7 @@ use crate::{
     message::OutboundMessage,
     multiplexing::Substream,
     peer_manager::NodeId,
-    protocol::messaging::protocol::MESSAGING_PROTOCOL,
+    protocol::messaging::protocol::MESSAGING_PROTOCOL_ID,
     stream_id::StreamId,
 };
 
@@ -223,7 +223,7 @@ impl OutboundMessaging {
         &mut self,
         conn: &mut PeerConnection,
     ) -> Result<NegotiatedSubstream<Substream>, MessagingProtocolError> {
-        match conn.open_substream(&MESSAGING_PROTOCOL).await {
+        match conn.open_substream(&MESSAGING_PROTOCOL_ID).await {
             Ok(substream) => Ok(substream),
             Err(err) => {
                 debug!(

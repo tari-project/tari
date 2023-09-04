@@ -198,7 +198,9 @@ pub async fn initialize_local_test_comms<P: AsRef<Path>>(
         .build();
 
     let comms = comms
-        .add_protocol_extension(MessagingProtocolExtension::new(event_sender.clone(), pipeline))
+        .add_protocol_extension(
+            MessagingProtocolExtension::new(event_sender.clone(), pipeline).enable_message_received_event(),
+        )
         .spawn_with_transport(MemoryTransport)
         .await?;
 
