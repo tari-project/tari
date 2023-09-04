@@ -22,7 +22,7 @@
 
 #![recursion_limit = "1024"]
 
-use std::{convert::TryFrom, ffi::CStr, path::PathBuf, ptr, str::FromStr, sync::Arc};
+use std::{convert::TryFrom, ffi::CStr, path::PathBuf, ptr, str::FromStr};
 
 use callback_handler::CallbackContactStatusChange;
 use libc::{c_char, c_int};
@@ -38,7 +38,7 @@ use log4rs::{
     config::{Appender, Config, Logger, Root},
     encode::pattern::PatternEncoder,
 };
-use minotari_app_utilities::identity_management::{load_from_json, setup_node_identity};
+use minotari_app_utilities::identity_management::setup_node_identity;
 use tari_chat_client::{
     config::{ApplicationConfig, ChatClientConfig},
     networking::PeerFeatures,
@@ -194,6 +194,7 @@ pub unsafe extern "C" fn destroy_client_ffi(client: *mut ClientFFI) {
 ///
 /// # Safety
 /// The ```destroy_config``` method must be called when finished with a Config to prevent a memory leak
+#[allow(clippy::too_many_lines)]
 #[no_mangle]
 pub unsafe extern "C" fn create_chat_config(
     network_str: *const c_char,

@@ -98,20 +98,6 @@ struct ApplicationConfig *create_chat_config(const char *network_str,
 void destroy_config(struct ApplicationConfig *config);
 
 /**
- * Write an identity file
- *
- * ## Arguments
- * `config` - The pointer of an ApplicationConfig
- *
- * ## Returns
- * `()` - Does not return a value, equivalent to void in C
- *
- * # Safety
- * None
- */
-void create_identity_file(struct ApplicationConfig *config, int *error_out);
-
-/**
  * Sends a message over a client
  *
  * ## Arguments
