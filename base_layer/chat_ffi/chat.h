@@ -10,19 +10,19 @@
 
 struct ApplicationConfig;
 
+struct ChatFFIMessage;
+
 struct ChatMessages;
 
 struct ClientFFI;
 
 struct ContactsLivenessData;
 
-struct Message;
-
 struct TariAddress;
 
 typedef void (*CallbackContactStatusChange)(struct ContactsLivenessData*);
 
-typedef void (*CallbackMessageReceived)(struct Message*);
+typedef void (*CallbackMessageReceived)(struct ChatFFIMessage*);
 
 #ifdef __cplusplus
 extern "C" {

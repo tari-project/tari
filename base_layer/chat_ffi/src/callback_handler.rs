@@ -20,9 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::ops::Deref;
+use std::{convert::TryFrom, ffi::CString, ops::Deref};
 
-use log::{debug, info, trace};
+use libc::c_char;
+use log::{debug, error, info, trace};
 use tari_contacts::contacts_service::{
     handle::{ContactsLivenessData, ContactsLivenessEvent, ContactsServiceHandle},
     types::Message,
@@ -32,7 +33,64 @@ use tari_shutdown::ShutdownSignal;
 const LOG_TARGET: &str = "chat_ffi::callback_handler";
 
 pub(crate) type CallbackContactStatusChange = unsafe extern "C" fn(*mut ContactsLivenessData);
-pub(crate) type CallbackMessageReceived = unsafe extern "C" fn(*mut Message);
+pub(crate) type CallbackMessageReceived = unsafe extern "C" fn(*mut ChatFFIMessage);
+
+// pub struct ContactsLivenessData {
+//     address: TariAddress,
+//     node_id: NodeId,
+//     latency: Option<u32>,
+//     last_seen: Option<NaiveDateTime>,
+//     message_type: ContactMessageType,
+//     online_status: ContactOnlineStatus,
+// }
+pub struct ChatFFIContactsLivenessData {
+    address: *const c_char,
+    last_seen: Option<NaiveDateTime>,
+    online_status: ContactOnlineStatus,
+}
+
+impl TryFrom<ContactsLivenessData> for ChatFFIContactsLivenessData {
+    type Error = String;
+
+    fn try_from(value: ContactsLivenessData) -> Result<Self, Self::Error> {
+        todo!()
+    }
+}
+
+pub struct ChatFFIMessage {
+    pub body: *const c_char,
+    pub from_address: *const c_char,
+    pub stored_at: u64,
+    pub message_id: *const c_char,
+}
+
+impl TryFrom<Message> for ChatFFIMessage {
+    type Error = String;
+
+    fn try_from(v: Message) -> Result<Self, Self::Error> {
+        let body = match CString::new(v.body) {
+            Ok(s) => s,
+            Err(e) => return Err(e.to_string()),
+        };
+
+        let address = match CString::new(v.address.to_bytes()) {
+            Ok(s) => s,
+            Err(e) => return Err(e.to_string()),
+        };
+
+        let id = match CString::new(v.message_id) {
+            Ok(s) => s,
+            Err(e) => return Err(e.to_string()),
+        };
+
+        Ok(Self {
+            body: body.as_ptr(),
+            from_address: address.as_ptr(),
+            stored_at: v.stored_at,
+            message_id: id.as_ptr(),
+        })
+    }
+}
 
 #[derive(Clone)]
 pub struct CallbackHandler {
@@ -114,8 +172,12 @@ impl CallbackHandler {
             "Calling MessageReceived callback function for sender {}",
             message.address,
         );
-        unsafe {
-            (self.callback_message_received)(Box::into_raw(Box::new(message)));
+
+        match ChatFFIMessage::try_from(message) {
+            Ok(message) => unsafe {
+                (self.callback_message_received)(Box::into_raw(Box::new(message)));
+            },
+            Err(e) => error!(target: LOG_TARGET, "Error processing message received callback: {}", e.to_string()),
         }
     }
 }
