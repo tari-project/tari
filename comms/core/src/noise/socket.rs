@@ -32,13 +32,17 @@ use std::{
     io,
     pin::Pin,
     task::{Context, Poll},
+    time::Duration,
 };
 
 use futures::ready;
 use log::*;
 use snow::{error::StateProblem, HandshakeState, TransportState};
 use tari_utilities::ByteArray;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf};
+use tokio::{
+    io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf},
+    time,
+};
 
 use crate::types::CommsPublicKey;
 
@@ -515,12 +519,14 @@ where TSocket: AsyncWrite + Unpin
 
 pub struct Handshake<TSocket> {
     socket: NoiseSocket<TSocket>,
+    recv_timeout: Duration,
 }
 
 impl<TSocket> Handshake<TSocket> {
-    pub fn new(socket: TSocket, state: HandshakeState) -> Self {
+    pub fn new(socket: TSocket, state: HandshakeState, recv_timeout: Duration) -> Self {
         Self {
             socket: NoiseSocket::new(socket, state.into()),
+            recv_timeout,
         }
     }
 }
@@ -581,7 +587,9 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
     }
 
     async fn receive(&mut self) -> io::Result<usize> {
-        self.socket.read(&mut []).await
+        time::timeout(self.recv_timeout, self.socket.read(&mut []))
+            .await
+            .map_err(|_| io::Error::from(io::ErrorKind::TimedOut))?
     }
 
     fn build(self) -> io::Result<NoiseSocket<TSocket>> {
@@ -683,8 +691,14 @@ mod test {
         );
 
         Ok((
-            (dialer_keypair, Handshake { socket: dialer }),
-            (listener_keypair, Handshake { socket: listener }),
+            (dialer_keypair, Handshake {
+                socket: dialer,
+                recv_timeout: Duration::from_secs(1),
+            }),
+            (listener_keypair, Handshake {
+                socket: listener,
+                recv_timeout: Duration::from_secs(1),
+            }),
         ))
     }
 

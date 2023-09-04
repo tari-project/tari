@@ -304,9 +304,7 @@ fn check_weight(
 ) -> Result<(), ValidationError> {
     let block_weight = body
         .calculate_weight(consensus_constants.transaction_weight_params())
-        .map_err(|e| {
-            ValidationError::SerializationError(format!("Unable to calculate body weight: {}", e.to_string()))
-        })?;
+        .map_err(|e| ValidationError::SerializationError(format!("Unable to calculate body weight: {}", e)))?;
     let max_weight = consensus_constants.max_block_transaction_weight();
     if block_weight <= max_weight {
         trace!(

@@ -33,7 +33,6 @@ use crate::{
     backoff::ConstantBackoff,
     connection_manager::{ConnectionManager, ConnectionManagerConfig, ConnectionManagerRequester},
     multiplexing::Substream,
-    noise::NoiseConfig,
     peer_manager::{NodeIdentity, PeerFeatures, PeerManager},
     peer_validator::PeerValidatorConfig,
     protocol::Protocols,
@@ -81,7 +80,6 @@ where
     TTransport: Transport + Unpin + Send + Sync + Clone + 'static,
     TTransport::Output: AsyncRead + AsyncWrite + Send + Sync + Unpin + 'static,
 {
-    let noise_config = NoiseConfig::new(config.node_identity.clone());
     let (request_tx, request_rx) = mpsc::channel(10);
     let (event_tx, _) = broadcast::channel(100);
 
@@ -90,7 +88,6 @@ where
     let mut connection_manager = ConnectionManager::new(
         config.connection_manager_config,
         transport,
-        noise_config,
         ConstantBackoff::new(config.dial_backoff_duration),
         request_rx,
         config.node_identity,

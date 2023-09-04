@@ -62,18 +62,7 @@ async fn test_dht_join_propagation() {
     )
     .await;
 
-    node_A
-        .comms
-        .connectivity()
-        .wait_for_connectivity(Duration::from_secs(10))
-        .await
-        .unwrap();
-    node_B
-        .comms
-        .connectivity()
-        .wait_for_connectivity(Duration::from_secs(10))
-        .await
-        .unwrap();
+    wait_for_connectivity(&[&node_A, &node_B, &node_C]).await;
     // Send a join request from Node A, through B to C. As all Nodes are in the same network region, once
     // Node C receives the join request from Node A, it will send a direct join request back
     // to A.
@@ -156,6 +145,8 @@ async fn test_dht_discover_propagation() {
         .await
         .unwrap();
 
+    wait_for_connectivity(&[&node_A, &node_B, &node_C, &node_D]).await;
+
     // Send a discover request from Node A, through B and C, to D. Once Node D
     // receives the discover request from Node A, it should send a  discovery response
     // request back to A at which time this call will resolve (or timeout).
@@ -203,12 +194,7 @@ async fn test_dht_store_forward() {
         node_C_node_identity.node_id().short_str(),
     );
 
-    node_A
-        .comms
-        .connectivity()
-        .wait_for_connectivity(Duration::from_secs(10))
-        .await
-        .unwrap();
+    wait_for_connectivity(&[&node_A, &node_B]).await;
 
     let params = SendMessageParams::new()
         .broadcast(vec![])
@@ -940,4 +926,14 @@ fn count_messages_received(events: &[Arc<MessagingEvent>], node_ids: &[&NodeId])
             node_ids.iter().any(|n| recv_node_id == *n)
         })
         .count()
+}
+
+async fn wait_for_connectivity(nodes: &[&TestNode]) {
+    for node in nodes.iter() {
+        node.comms
+            .connectivity()
+            .wait_for_connectivity(Duration::from_secs(10))
+            .await
+            .unwrap();
+    }
 }

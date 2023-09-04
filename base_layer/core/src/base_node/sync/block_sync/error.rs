@@ -97,6 +97,7 @@ impl BlockSyncError {
 impl BlockSyncError {
     pub fn get_ban_reason(&self, short_ban: Duration, long_ban: Duration) -> Option<BanReason> {
         match self {
+            // no ban
             BlockSyncError::AsyncTaskFailed(_) |
             BlockSyncError::RpcError(_) |
             BlockSyncError::RpcRequestError(_) |
@@ -107,11 +108,13 @@ impl BlockSyncError {
             BlockSyncError::FailedToConstructChainBlock |
             BlockSyncError::SyncRoundFailed => None,
 
+            // short ban
             err @ BlockSyncError::MaxLatencyExceeded { .. } => Some(BanReason {
                 reason: format!("{}", err),
                 ban_duration: short_ban,
             }),
 
+            // long ban
             err @ BlockSyncError::BlockWithoutParent { .. } |
             err @ BlockSyncError::UnknownHeaderHash(_) |
             err @ BlockSyncError::InvalidBlockBody(_) |

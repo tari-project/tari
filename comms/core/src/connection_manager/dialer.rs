@@ -20,11 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    collections::HashMap,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{collections::HashMap, sync::Arc, time::Instant};
 
 use futures::{
     future,
@@ -593,12 +589,9 @@ where
                     .await
                     .map_err(|_| ConnectionManagerError::WireFormatSendFailed)?;
 
-                let noise_socket = time::timeout(
-                    Duration::from_secs(40),
-                    noise_config.upgrade_socket(socket, ConnectionDirection::Outbound),
-                )
-                .await
-                .map_err(|_| ConnectionManagerError::NoiseProtocolTimeout)??;
+                let noise_socket = noise_config
+                    .upgrade_socket(socket, ConnectionDirection::Outbound)
+                    .await?;
 
                 let noise_upgrade_time = timer.elapsed();
                 debug!(

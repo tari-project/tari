@@ -113,7 +113,6 @@ impl BlockHeaderSyncError {
 
             // long ban
             err @ BlockHeaderSyncError::ReceivedInvalidHeader(_) |
-            err @ BlockHeaderSyncError::ValidationFailed(_) |
             err @ BlockHeaderSyncError::FoundHashIndexOutOfRange(_, _) |
             err @ BlockHeaderSyncError::StartHashNotFound(_) |
             err @ BlockHeaderSyncError::InvalidBlockHeight { .. } |
@@ -126,6 +125,8 @@ impl BlockHeaderSyncError {
                 reason: format!("{}", err),
                 ban_duration: long_ban,
             }),
+
+            BlockHeaderSyncError::ValidationFailed(err) => ValidationError::get_ban_reason(err, Some(long_ban)),
         }
     }
 }
