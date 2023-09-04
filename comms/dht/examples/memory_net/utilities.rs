@@ -465,7 +465,7 @@ pub async fn do_store_and_forward_message_propagation(
             let msg = time::timeout(Duration::from_secs(2), s.recv()).await;
             match msg {
                 Ok(Ok(evt)) => {
-                    if let MessagingEvent::MessageReceived(_, tag) = &*evt {
+                    if let MessagingEvent::MessageReceived(_, tag) = &evt {
                         println!("{} received propagated SAF message ({})", neighbour, tag);
                     }
                 },
@@ -745,11 +745,9 @@ impl TestNode {
             loop {
                 let event = messaging_events.recv().await;
                 use MessagingEvent::MessageReceived;
-                match event.as_deref() {
+                match event {
                     Ok(MessageReceived(peer_node_id, _)) => {
-                        messaging_events_tx
-                            .send((Clone::clone(peer_node_id), node_id.clone()))
-                            .unwrap();
+                        messaging_events_tx.send((peer_node_id, node_id.clone())).unwrap();
                     },
                     Err(broadcast::error::RecvError::Closed) => {
                         break;
@@ -970,7 +968,9 @@ async fn setup_comms_dht(
     let (messaging_events_tx, _) = broadcast::channel(100);
     let comms = comms
         .add_rpc_server(RpcServer::new().add_service(dht.rpc_service()))
-        .add_protocol_extension(MessagingProtocolExtension::new(messaging_events_tx.clone(), pipeline))
+        .add_protocol_extension(
+            MessagingProtocolExtension::new(messaging_events_tx.clone(), pipeline).enable_message_received_event(),
+        )
         .spawn_with_transport(MemoryTransport)
         .await
         .unwrap();
