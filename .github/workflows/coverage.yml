@@ -23,7 +23,7 @@ jobs:
     runs-on: [ self-hosted, ubuntu-high-mem ]
     steps:
       - name: checkout source code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: ubuntu dependencies
         run: |
