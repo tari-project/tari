@@ -124,8 +124,13 @@ pub unsafe extern "C" fn create_chat_client(
         ptr::swap(error_out, &mut error as *mut c_int);
     };
 
-    let identity = match load_from_json((*config).chat_client.identity_file.clone()) {
-        Ok(Some(identity)) => Arc::new(identity),
+    let identity = match setup_node_identity(
+        (*config).chat_client.identity_file.clone(),
+        (*config).chat_client.p2p.public_addresses.clone().into_vec(),
+        true,
+        PeerFeatures::COMMUNICATION_NODE,
+    ) {
+        Ok(node_id) => node_id,
         _ => {
             bad_identity("No identity loaded".to_string());
             return ptr::null_mut();
@@ -333,35 +338,6 @@ pub unsafe extern "C" fn destroy_config(config: *mut ApplicationConfig) {
     if !config.is_null() {
         drop(Box::from_raw(config))
     }
-}
-
-/// Write an identity file
-///
-/// ## Arguments
-/// `config` - The pointer of an ApplicationConfig
-///
-/// ## Returns
-/// `()` - Does not return a value, equivalent to void in C
-///
-/// # Safety
-/// None
-#[no_mangle]
-pub unsafe extern "C" fn create_identity_file(config: *mut ApplicationConfig, error_out: *mut c_int) {
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-
-    if config.is_null() {
-        error = LibChatError::from(InterfaceError::NullError("config".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-    }
-
-    setup_node_identity(
-        (*config).chat_client.identity_file.clone(),
-        (*config).chat_client.p2p.public_addresses.clone().into_vec(),
-        true,
-        PeerFeatures::COMMUNICATION_NODE,
-    )
-    .unwrap();
 }
 
 /// Inits logging, this function is deliberately not exposed externally in the header
