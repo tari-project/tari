@@ -22,7 +22,7 @@
 
 // This file is heavily influenced by the Libra Noise protocol implementation.
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use log::*;
 use snow::{self, params::NoiseParams};
@@ -48,6 +48,7 @@ pub(super) const NOISE_PARAMETERS: &str = "Noise_XX_25519_ChaChaPoly_BLAKE2b";
 pub struct NoiseConfig {
     node_identity: Arc<NodeIdentity>,
     parameters: NoiseParams,
+    recv_timeout: Duration,
 }
 
 impl NoiseConfig {
@@ -57,7 +58,14 @@ impl NoiseConfig {
         Self {
             node_identity,
             parameters,
+            recv_timeout: Duration::from_secs(1),
         }
+    }
+
+    /// Sets a custom receive timeout when waiting for handshake responses.
+    pub fn with_recv_timeout(mut self, recv_timeout: Duration) -> Self {
+        self.recv_timeout = recv_timeout;
+        self
     }
 
     /// Upgrades the given socket to using the noise protocol. The upgraded socket and the peer's static key
@@ -90,7 +98,7 @@ impl NoiseConfig {
             }
         };
 
-        let handshake = Handshake::new(socket, handshake_state);
+        let handshake = Handshake::new(socket, handshake_state, self.recv_timeout);
         let socket = handshake
             .perform_handshake()
             .await
