@@ -1120,10 +1120,10 @@ where B: BlockchainBackend
         clear_blockchain_databases(&mut *db)?;
         // lets add in the gen block again
         info!(
-        target: LOG_TARGET,
-        "Cleared DB. Adding genesis block back in {}.",
-        genesis_block.block().body.to_counts_string()
-    );
+            target: LOG_TARGET,
+            "Cleared DB. Adding genesis block back in {}.",
+            genesis_block.block().body.to_counts_string()
+        );
         insert_gen_block(&mut *db, self.config.pruning_horizon, genesis_block)
     }
 
@@ -1882,9 +1882,7 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
     Ok(removed_blocks)
 }
 
-fn clear_blockchain_databases<T: BlockchainBackend>(
-    db: &mut T,
-) -> Result<(), ChainStorageError> {
+fn clear_blockchain_databases<T: BlockchainBackend>(db: &mut T) -> Result<(), ChainStorageError> {
     db.clear_blockchain_databases()?;
     Ok(())
 }
@@ -1894,7 +1892,6 @@ fn insert_gen_block<T: BlockchainBackend>(
     pruning_horizon: u64,
     genesis_block: Arc<ChainBlock>,
 ) -> Result<(), ChainStorageError> {
-
     let mut txn = DbTransaction::new();
     insert_best_block(&mut txn, genesis_block.clone())?;
     let body = &genesis_block.block().body;
