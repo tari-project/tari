@@ -472,6 +472,14 @@ where B: BlockchainBackend + 'static
                 }
             },
             Err(chain_storage) => {
+                match chain_storage {
+                    ChainStorageError::ValidationError { .. } => {
+                        todo!()
+                    },
+                    _ => {
+                        todo!()
+                    },
+                };
                 warn!(
                     target: LOG_TARGET,
                     "Ignoring block message ({}) because header validation failed: {:?}",
