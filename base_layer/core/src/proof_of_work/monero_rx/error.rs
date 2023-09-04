@@ -28,6 +28,8 @@ use crate::proof_of_work::DifficultyError;
 /// Errors that can occur when merging Monero PoW data with Tari PoW data
 #[derive(Debug, thiserror::Error)]
 pub enum MergeMineError {
+    #[error("Serialized POWData does not match provided data: {0}")]
+    SerializedPowDataDoesNotMatch(String),
     #[error("Serialization error: {0}")]
     SerializeError(String),
     #[error("Error deserializing Monero data: {0}")]

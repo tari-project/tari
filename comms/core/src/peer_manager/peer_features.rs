@@ -28,7 +28,7 @@ use serde::{Deserialize, Serialize};
 bitflags! {
     /// Peer feature flags. These advertised the capabilities of peer nodes.
     #[derive(Serialize, Deserialize)]
-    pub struct PeerFeatures: u64 {
+    pub struct PeerFeatures: u32 {
         /// No capabilities
         const NONE = 0b0000_0000;
         /// Node is able to propagate messages

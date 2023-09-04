@@ -56,7 +56,7 @@ pub fn create_dummy_peer_connection(node_id: NodeId) -> (PeerConnection, mpsc::R
     let (tx, rx) = mpsc::channel(1);
     let addr = Multiaddr::from_str("/ip4/23.23.23.23/tcp/80").unwrap();
     (
-        PeerConnection::unverified(
+        PeerConnection::new(
             1,
             tx,
             node_id,
@@ -92,7 +92,7 @@ pub async fn create_peer_connection_mock_pair(
     rt_handle.spawn(mock.run());
 
     (
-        PeerConnection::unverified(
+        PeerConnection::new(
             // ID must be unique since it is used for connection equivalency, so we re-implement this in the mock
             ID_COUNTER.fetch_add(1, Ordering::SeqCst),
             tx1,
@@ -103,7 +103,7 @@ pub async fn create_peer_connection_mock_pair(
             mock_state_in.substream_counter(),
         ),
         mock_state_in,
-        PeerConnection::unverified(
+        PeerConnection::new(
             ID_COUNTER.fetch_add(1, Ordering::SeqCst),
             tx2,
             peer1.node_id,

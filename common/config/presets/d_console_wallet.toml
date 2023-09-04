@@ -10,10 +10,6 @@
 # (min value = 300, default value = 50000).
 #buffer_size = 50000
 
-# The rate limit constants for the publish/subscribe connector channel, i.e. maximum amount of inbound messages to
-# accept - any rate attempting to exceed this limit will be throttled (min value = 5, default value = 1000).
-#buffer_rate_limit = 1000
-
 # The relative path to store persistent data (default = "data/wallet")
 #data_dir = "data/wallet"
 

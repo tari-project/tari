@@ -27,14 +27,12 @@ use tari_comms::{
     message::MessageError,
     peer_manager::{NodeId, PeerManagerError},
 };
-use tari_utilities::{byte_array::ByteArrayError, epoch_time::EpochTime};
 use thiserror::Error;
 
 use crate::{
     actor::DhtActorError,
     envelope::DhtMessageError,
     error::DhtEncryptError,
-    inbound::DhtInboundError,
     message_signature::MessageSignatureError,
     outbound::DhtOutboundError,
     storage::StorageError,
@@ -55,14 +53,12 @@ pub enum StoreAndForwardError {
     DhtEncryptError(#[from] DhtEncryptError),
     #[error("Received stored message has an invalid destination")]
     InvalidDestination,
-    #[error("DhtInboundError: {0}")]
-    DhtInboundError(#[from] DhtInboundError),
     #[error("Received stored message has an invalid origin signature: {0}")]
     InvalidMessageSignature(#[from] MessageSignatureError),
-    #[error("Invalid envelope body")]
-    InvalidEnvelopeBody,
-    #[error("DHT header is invalid")]
-    InvalidDhtHeader,
+    #[error("Envelope body is missing a required message part")]
+    EnvelopeBodyMissingMessagePart,
+    #[error("DHT header did not pass semantic validation rules")]
+    BadDhtHeaderSemanticallyInvalid,
     #[error("Unable to decrypt received stored message")]
     DecryptionFailed,
     #[error("DhtActorError: {0}")]
@@ -71,10 +67,8 @@ pub enum StoreAndForwardError {
     DuplicateMessage,
     #[error("Unable to decode message: {0}")]
     DecodeError(#[from] DecodeError),
-    #[error("Dht header was not provided")]
-    DhtHeaderNotProvided,
-    #[error("The message was malformed")]
-    MalformedMessage,
+    #[error("The message envelope was malformed: {0}")]
+    MalformedEnvelopeBody(DecodeError),
     #[error("StorageError: {0}")]
     StorageError(#[from] StorageError),
     #[error("The store and forward service requester channel closed")]
@@ -83,24 +77,16 @@ pub enum StoreAndForwardError {
     RequestCancelled,
     #[error("The {field} field was not valid, discarding SAF response: {details}")]
     InvalidSafResponseMessage { field: &'static str, details: String },
-    #[error("The message has expired, not storing message in SAF db (expiry: {expired}, now: {now})")]
-    NotStoringExpiredMessage { expired: EpochTime, now: EpochTime },
-    #[error("MalformedNodeId: {0}")]
-    MalformedNodeId(String),
-    #[error("DHT message type should not have been forwarded")]
-    InvalidDhtMessageType,
-    #[error("Failed to send request for store and forward messages: {0}")]
-    RequestMessagesFailed(DhtOutboundError),
+    #[error("DHT message type should not have been stored/forwarded")]
+    PeerSentDhtMessageViaSaf,
+    #[error("SAF message type should not have been stored/forwarded")]
+    PeerSentSafMessageViaSaf,
     #[error("Received SAF messages that were not requested")]
     ReceivedUnrequestedSafMessages,
     #[error("SAF messages received from peer {peer} after deadline. Received after {message_age:.2?}")]
     SafMessagesReceivedAfterDeadline { peer: NodeId, message_age: Duration },
     #[error("Invalid SAF request: `stored_at` cannot be in the future")]
     StoredAtWasInFuture,
-}
-
-impl From<ByteArrayError> for StoreAndForwardError {
-    fn from(e: ByteArrayError) -> Self {
-        StoreAndForwardError::MalformedNodeId(e.to_string())
-    }
+    #[error("Invariant error (POSSIBLE BUG): {0}")]
+    InvariantError(String),
 }

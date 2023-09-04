@@ -28,10 +28,12 @@ use tari_comms::{
     protocol::rpc::{RpcError, RpcStatus},
 };
 
-use crate::{blocks::BlockError, chain_storage::ChainStorageError, validation::ValidationError};
+use crate::{blocks::BlockError, chain_storage::ChainStorageError, common::BanReason, validation::ValidationError};
 
 #[derive(Debug, thiserror::Error)]
 pub enum BlockHeaderSyncError {
+    #[error("No more sync peers available: {0}")]
+    NoMoreSyncPeers(String),
     #[error("RPC error: {0}")]
     RpcError(#[from] RpcError),
     #[error("RPC request failed: {0}")]
@@ -77,6 +79,8 @@ pub enum BlockHeaderSyncError {
         actual: Option<u128>,
         local: u128,
     },
+    #[error("This peer sent too many headers ({0}) in response to a chain split request")]
+    PeerSentTooManyHeaders(usize),
     #[error("Peer {peer} exceeded maximum permitted sync latency. latency: {latency:.2?}s, max: {max_latency:.2?}s")]
     MaxLatencyExceeded {
         peer: NodeId,
@@ -85,4 +89,44 @@ pub enum BlockHeaderSyncError {
     },
     #[error("All sync peers exceeded max allowed latency")]
     AllSyncPeersExceedLatency,
+}
+
+impl BlockHeaderSyncError {
+    pub fn get_ban_reason(&self, short_ban: Duration, long_ban: Duration) -> Option<BanReason> {
+        match self {
+            // no ban
+            BlockHeaderSyncError::NoMoreSyncPeers(_) |
+            BlockHeaderSyncError::RpcError(_) |
+            BlockHeaderSyncError::RpcRequestError(_) |
+            BlockHeaderSyncError::SyncFailedAllPeers |
+            BlockHeaderSyncError::FailedToBan(_) |
+            BlockHeaderSyncError::AllSyncPeersExceedLatency |
+            BlockHeaderSyncError::ConnectivityError(_) |
+            BlockHeaderSyncError::NotInSync |
+            BlockHeaderSyncError::ChainStorageError(_) => None,
+
+            // short ban
+            err @ BlockHeaderSyncError::MaxLatencyExceeded { .. } => Some(BanReason {
+                reason: format!("{}", err),
+                ban_duration: short_ban,
+            }),
+
+            // long ban
+            err @ BlockHeaderSyncError::ReceivedInvalidHeader(_) |
+            err @ BlockHeaderSyncError::FoundHashIndexOutOfRange(_, _) |
+            err @ BlockHeaderSyncError::StartHashNotFound(_) |
+            err @ BlockHeaderSyncError::InvalidBlockHeight { .. } |
+            err @ BlockHeaderSyncError::ChainSplitNotFound(_) |
+            err @ BlockHeaderSyncError::InvalidProtocolResponse(_) |
+            err @ BlockHeaderSyncError::ChainLinkBroken { .. } |
+            err @ BlockHeaderSyncError::BlockError(_) |
+            err @ BlockHeaderSyncError::PeerSentInaccurateChainMetadata { .. } |
+            err @ BlockHeaderSyncError::PeerSentTooManyHeaders(_) => Some(BanReason {
+                reason: format!("{}", err),
+                ban_duration: long_ban,
+            }),
+
+            BlockHeaderSyncError::ValidationFailed(err) => ValidationError::get_ban_reason(err, Some(long_ban)),
+        }
+    }
 }

@@ -60,7 +60,7 @@ pub fn setup_contacts_service<T: ContactsBackend + 'static>(
     backend: T,
 ) -> (ContactsServiceHandle, Arc<NodeIdentity>, Shutdown) {
     let _enter = runtime.enter();
-    let (publisher, subscription_factory) = pubsub_connector(100, 50);
+    let (publisher, subscription_factory) = pubsub_connector(100);
     let node_identity = Arc::new(NodeIdentity::random(
         &mut OsRng,
         get_next_memory_address(),

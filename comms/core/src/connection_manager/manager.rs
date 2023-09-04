@@ -47,6 +47,7 @@ use crate::{
     multiplexing::Substream,
     noise::NoiseConfig,
     peer_manager::{NodeId, NodeIdentity, PeerManagerError},
+    peer_validator::PeerValidatorConfig,
     protocol::{NodeNetworkInfo, ProtocolEvent, ProtocolId, Protocols},
     transports::{TcpTransport, Transport},
     PeerManager,
@@ -106,13 +107,14 @@ pub struct ConnectionManagerConfig {
     /// The maximum number of connection tasks that will be spawned at the same time. Once this limit is reached, peers
     /// attempting to connect will have to wait for another connection attempt to complete. Default: 100
     pub max_simultaneous_inbound_connects: usize,
-    /// Set to true to allow peers to send loopback, local-link and other addresses normally not considered valid for
-    /// peer-to-peer comms. Default: false
-    pub allow_test_addresses: bool,
     /// Version information for this node
     pub network_info: NodeNetworkInfo,
-    /// The maximum time to wait for the first byte before closing the connection. Default: 45s
+    /// The maximum time to wait for the first byte before closing the connection. Default: 3s
     pub time_to_first_byte: Duration,
+    /// The maximum time to wait for a noise protocol handshake message before timing out. For 1.5 RTT XX handshake,
+    /// the responder will wait 2 x this value (1 per receive) before timing out.
+    /// Default: 3s
+    pub noise_handshake_recv_timeout: Duration,
     /// The number of liveness check sessions to allow. Default: 0
     pub liveness_max_sessions: usize,
     /// CIDR blocks that allowlist liveness checks. Default: Localhost only (127.0.0.1/32)
@@ -122,6 +124,8 @@ pub struct ConnectionManagerConfig {
     /// If set, an additional TCP-only p2p listener will be started. This is useful for local wallet connections.
     /// Default: None (disabled)
     pub auxiliary_tcp_listener_address: Option<Multiaddr>,
+    /// Peer validation configuration. See [PeerValidatorConfig]
+    pub peer_validation_config: PeerValidatorConfig,
 }
 
 impl Default for ConnectionManagerConfig {
@@ -136,16 +140,13 @@ impl Default for ConnectionManagerConfig {
             max_dial_attempts: 1,
             max_simultaneous_inbound_connects: 100,
             network_info: Default::default(),
-            #[cfg(not(test))]
-            allow_test_addresses: false,
-            // This must always be true for internal crate tests
-            #[cfg(test)]
-            allow_test_addresses: true,
             liveness_max_sessions: 1,
-            time_to_first_byte: Duration::from_secs(45),
+            time_to_first_byte: Duration::from_secs(3),
             liveness_cidr_allowlist: vec![cidr::AnyIpCidr::V4("127.0.0.1/32".parse().unwrap())],
             liveness_self_check_interval: None,
             auxiliary_tcp_listener_address: None,
+            peer_validation_config: PeerValidatorConfig::default(),
+            noise_handshake_recv_timeout: Duration::from_secs(3),
         }
     }
 }
@@ -196,7 +197,6 @@ where
     pub(crate) fn new(
         mut config: ConnectionManagerConfig,
         transport: TTransport,
-        noise_config: NoiseConfig,
         backoff: TBackoff,
         request_rx: mpsc::Receiver<ConnectionManagerRequest>,
         node_identity: Arc<NodeIdentity>,
@@ -206,6 +206,9 @@ where
     ) -> Self {
         let (internal_event_tx, internal_event_rx) = mpsc::channel(EVENT_CHANNEL_SIZE);
         let (dialer_tx, dialer_rx) = mpsc::channel(DIALER_REQUEST_CHANNEL_SIZE);
+
+        let noise_config =
+            NoiseConfig::new(node_identity.clone()).with_recv_timeout(config.noise_handshake_recv_timeout);
 
         let listener = PeerListener::new(
             config.clone(),

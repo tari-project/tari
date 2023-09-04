@@ -37,12 +37,12 @@ use tracing;
 use super::error::BlockSyncError;
 use crate::{
     base_node::{
-        sync::{hooks::Hooks, rpc, SyncPeer},
+        sync::{ban::PeerBanManager, hooks::Hooks, rpc, SyncPeer},
         BlockchainSyncConfig,
     },
     blocks::{Block, ChainBlock},
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
-    common::{rolling_avg::RollingAverageTime, BanReason},
+    common::rolling_avg::RollingAverageTime,
     proto::base_node::SyncBlocksRequest,
     transactions::aggregated_body::AggregateBody,
     validation::{BlockBodyValidator, ValidationError},
@@ -50,23 +50,25 @@ use crate::{
 
 const LOG_TARGET: &str = "c::bn::block_sync";
 
-pub struct BlockSynchronizer<B> {
+pub struct BlockSynchronizer<'a, B> {
     config: BlockchainSyncConfig,
     db: AsyncBlockchainDb<B>,
     connectivity: ConnectivityRequester,
-    sync_peers: Vec<SyncPeer>,
+    sync_peers: &'a mut Vec<SyncPeer>,
     block_validator: Arc<dyn BlockBodyValidator<B>>,
     hooks: Hooks,
+    peer_ban_manager: PeerBanManager,
 }
 
-impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
+impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
     pub fn new(
         config: BlockchainSyncConfig,
         db: AsyncBlockchainDb<B>,
         connectivity: ConnectivityRequester,
-        sync_peers: Vec<SyncPeer>,
+        sync_peers: &'a mut Vec<SyncPeer>,
         block_validator: Arc<dyn BlockBodyValidator<B>>,
     ) -> Self {
+        let peer_ban_manager = PeerBanManager::new(config.clone(), connectivity.clone());
         Self {
             config,
             db,
@@ -74,6 +76,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
             sync_peers,
             block_validator,
             hooks: Default::default(),
+            peer_ban_manager,
         }
     }
 
@@ -175,27 +178,24 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
             );
             match self.synchronize_blocks(sync_peer, client, max_latency).await {
                 Ok(_) => return Ok(()),
-
-                Err(err @ BlockSyncError::MaxLatencyExceeded { .. }) => {
-                    warn!(target: LOG_TARGET, "{}", err);
-                    latency_counter += 1;
-                    self.ban_peer_if_required(
-                        node_id,
-                        &BlockSyncError::get_ban_reason(&err, self.config.short_ban_period, self.config.ban_period),
-                    )
-                    .await;
-                    continue;
-                },
-
                 Err(err) => {
                     warn!(target: LOG_TARGET, "{}", err);
-                    self.ban_peer_if_required(
-                        node_id,
-                        &BlockSyncError::get_ban_reason(&err, self.config.short_ban_period, self.config.ban_period),
-                    )
-                    .await;
-                    self.remove_sync_peer(node_id);
-                    continue;
+                    let ban_reason =
+                        BlockSyncError::get_ban_reason(&err, self.config.short_ban_period, self.config.ban_period);
+                    if let Some(reason) = ban_reason {
+                        warn!(target: LOG_TARGET, "{}", err);
+                        self.peer_ban_manager
+                            .ban_peer_if_required(node_id, &Some(reason.clone()))
+                            .await;
+
+                        if reason.ban_duration > self.config.short_ban_period {
+                            self.remove_sync_peer(node_id);
+                        }
+                    }
+
+                    if let BlockSyncError::MaxLatencyExceeded { .. } = err {
+                        latency_counter += 1;
+                    }
                 },
             }
         }
@@ -413,32 +413,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
         Ok(())
     }
 
-    // Sync peers are banned if there exists a ban reason for the error and the peer is not on the allow list for sync.
     // Sync peers are also removed from the list of sync peers if the ban duration is longer than the short ban period.
-    async fn ban_peer_if_required(&mut self, node_id: &NodeId, ban_reason: &Option<BanReason>) {
-        if let Some(ban) = ban_reason {
-            if self.config.forced_sync_peers.contains(node_id) {
-                debug!(
-                    target: LOG_TARGET,
-                    "Not banning peer that is on the allow list for sync. Ban reason = {}", ban.reason()
-                );
-                return;
-            }
-            debug!(target: LOG_TARGET, "Sync peer {} removed from the sync peer list because {}", node_id, ban.reason());
-
-            match self
-                .connectivity
-                .ban_peer_until(node_id.clone(), ban.ban_duration, ban.reason().to_string())
-                .await
-            {
-                Ok(_) => {
-                    warn!(target: LOG_TARGET, "Banned sync peer {} for {:?} because {}", node_id, ban.ban_duration, ban.reason())
-                },
-                Err(err) => error!(target: LOG_TARGET, "Failed to ban sync peer {}: {}", node_id, err),
-            }
-        }
-    }
-
     fn remove_sync_peer(&mut self, node_id: &NodeId) {
         if let Some(pos) = self.sync_peers.iter().position(|p| p.node_id() == node_id) {
             self.sync_peers.remove(pos);

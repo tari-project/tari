@@ -31,7 +31,7 @@ message NodeIdentity {
     bytes node_id = 3;
 }
 
-message Peer{
+message Peer {
     /// Public key of the peer
     bytes public_key =1;
     /// NodeId of the peer
@@ -46,7 +46,7 @@ message Peer{
     string banned_reason= 7;
     google.protobuf.Timestamp offline_at = 8;
     /// Features supported by the peer
-    uint64 features = 9;
+    uint32 features = 9;
     /// used as information for more efficient protocol negotiation.
     repeated bytes supported_protocols = 11;
     /// User agent advertised by the peer

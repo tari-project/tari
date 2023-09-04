@@ -46,6 +46,7 @@ use crate::{
     connectivity::{ConnectivityConfig, ConnectivityRequester},
     multiaddr::Multiaddr,
     peer_manager::{NodeIdentity, PeerManager},
+    peer_validator::PeerValidatorConfig,
     protocol::{NodeNetworkInfo, ProtocolExtensions},
     tor,
     types::CommsDatabase,
@@ -195,8 +196,29 @@ impl CommsBuilder {
             target: "comms::builder",
             "Test addresses are enabled! This is invalid and potentially insecure when running a production node."
         );
-        self.connection_manager_config.allow_test_addresses = true;
+        self.connection_manager_config
+            .peer_validation_config
+            .allow_test_addresses = true;
         self
+    }
+
+    /// Sets the PeerValidatorConfig - this will override previous calls to allow_test_addresses() with the value in
+    /// peer_validator_config.allow_test_addresses
+    pub fn with_peer_validator_config(mut self, config: PeerValidatorConfig) -> Self {
+        #[cfg(not(debug_assertions))]
+        if config.allow_test_addresses {
+            log::warn!(
+                target: "comms::builder",
+                "Test addresses are enabled! This is invalid and potentially insecure when running a production node."
+            );
+        }
+        self.connection_manager_config.peer_validation_config = config;
+        self
+    }
+
+    /// Returns the PeerValidatorConfig set in this builder
+    pub fn peer_validator_config(&self) -> &PeerValidatorConfig {
+        &self.connection_manager_config.peer_validation_config
     }
 
     /// Sets the address that the transport will listen on. The address must be compatible with the transport.

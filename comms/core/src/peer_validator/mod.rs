@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2023, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,39 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_comms::{
-    peer_manager::{NodeId, Peer},
-    types::CommsPublicKey,
-};
-use tari_comms_dht::{domain_message::MessageHeader, envelope::DhtMessageHeader};
+mod error;
+pub use error::*;
 
-/// A domain-level message
-#[derive(Debug)]
-pub struct PeerMessage {
-    /// The message envelope header
-    pub dht_header: DhtMessageHeader,
-    /// The connected peer which sent this message
-    pub source_peer: Peer,
-    /// Domain message header
-    pub message_header: MessageHeader,
-    /// This messages authenticated origin, otherwise None
-    pub authenticated_origin: Option<CommsPublicKey>,
-    /// Serialized message data
-    pub body: Vec<u8>,
-}
+mod config;
+pub use config::*;
 
-impl PeerMessage {
-    pub fn decode_message<T>(&self) -> Result<T, prost::DecodeError>
-    where T: prost::Message + Default {
-        let msg = T::decode(self.body.as_slice())?;
-        Ok(msg)
-    }
+mod helpers;
 
-    pub fn origin_node_id(&self) -> NodeId {
-        self.authenticated_origin
-            .as_ref()
-            .map(NodeId::from_public_key)
-            // Otherwise the source peer was the origin of the message
-            .unwrap_or_else(|| self.source_peer.node_id.clone())
-    }
-}
+pub use helpers::*;

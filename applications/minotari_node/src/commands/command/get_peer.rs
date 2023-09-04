@@ -90,14 +90,14 @@ impl CommandContext {
                 println!(
                     "- {} Score: {}  - Source: {} Latency: {:?} - Last Seen: {} - Last Failure:{}",
                     a.address(),
-                    a.quality_score,
-                    a.source,
-                    a.avg_latency,
-                    a.last_seen
+                    a.quality_score(),
+                    a.source(),
+                    a.avg_latency(),
+                    a.last_seen()
                         .as_ref()
                         .map(|t| t.to_string())
                         .unwrap_or_else(|| "Never".to_string()),
-                    a.last_failed_reason.as_ref().unwrap_or(&"None".to_string())
+                    a.last_failed_reason().unwrap_or("None")
                 );
             });
             println!("User agent: {}", peer.user_agent);

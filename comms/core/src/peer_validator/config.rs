@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2023 The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,39 +20,35 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_comms::{
-    peer_manager::{NodeId, Peer},
-    types::CommsPublicKey,
-};
-use tari_comms_dht::{domain_message::MessageHeader, envelope::DhtMessageHeader};
+use serde_derive::{Deserialize, Serialize};
 
-/// A domain-level message
-#[derive(Debug)]
-pub struct PeerMessage {
-    /// The message envelope header
-    pub dht_header: DhtMessageHeader,
-    /// The connected peer which sent this message
-    pub source_peer: Peer,
-    /// Domain message header
-    pub message_header: MessageHeader,
-    /// This messages authenticated origin, otherwise None
-    pub authenticated_origin: Option<CommsPublicKey>,
-    /// Serialized message data
-    pub body: Vec<u8>,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PeerValidatorConfig {
+    /// The maximum size of the peer's user agent string. Some unicode characters use more than a single byte
+    /// and this specifies the maximum in bytes, as opposed to unicode characters.
+    pub max_user_agent_byte_length: usize,
+    pub max_permitted_peer_addresses_per_claim: usize,
+    pub max_supported_protocols: usize,
+    pub max_protocol_id_length: usize,
+
+    /// Set to true to allow peers to send loopback, local-link and other addresses normally not considered valid for
+    /// peer-to-peer comms. Default: false
+    pub allow_test_addresses: bool,
 }
 
-impl PeerMessage {
-    pub fn decode_message<T>(&self) -> Result<T, prost::DecodeError>
-    where T: prost::Message + Default {
-        let msg = T::decode(self.body.as_slice())?;
-        Ok(msg)
-    }
-
-    pub fn origin_node_id(&self) -> NodeId {
-        self.authenticated_origin
-            .as_ref()
-            .map(NodeId::from_public_key)
-            // Otherwise the source peer was the origin of the message
-            .unwrap_or_else(|| self.source_peer.node_id.clone())
+impl Default for PeerValidatorConfig {
+    fn default() -> Self {
+        Self {
+            max_user_agent_byte_length: 50,
+            max_permitted_peer_addresses_per_claim: 5,
+            max_supported_protocols: 20,
+            max_protocol_id_length: 50,
+            #[cfg(not(test))]
+            allow_test_addresses: false,
+            // This must always be true for internal crate tests
+            #[cfg(test)]
+            allow_test_addresses: true,
+        }
     }
 }
