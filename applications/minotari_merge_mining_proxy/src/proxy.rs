@@ -941,7 +941,7 @@ fn try_into_json_block_header(header: grpc::BlockHeaderResponse) -> Result<json:
         "orphan_status": false,
         "prev_hash": header.prev_hash.to_hex(),
         "reward": reward,
-        "timestamp": header.timestamp.map(|ts| ts.seconds.into()).unwrap_or_else(|| json!(null)),
+        "timestamp": header.timestamp
     }))
 }
 

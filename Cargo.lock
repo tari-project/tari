@@ -5649,7 +5649,6 @@ dependencies = [
  "num-traits",
  "once_cell",
  "prost 0.9.0",
- "prost-types 0.9.0",
  "rand 0.8.5",
  "randomx-rs",
  "serde",

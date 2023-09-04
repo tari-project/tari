@@ -4,7 +4,6 @@
 syntax = "proto3";
 
 import "google/protobuf/wrappers.proto";
-import "google/protobuf/timestamp.proto";
 import "transaction.proto";
 import "types.proto";
 
@@ -31,7 +30,7 @@ message BlockHeader {
     // Hash of the block previous to this in the chain.
     bytes prev_hash = 4;
     // Timestamp at which the block was built.
-    google.protobuf.Timestamp timestamp = 5;
+    uint64 timestamp = 5;
     // This is the UTXO merkle root of the outputs
     // This is calculated as Hash (txo MMR root  || roaring bitmap hash of UTXO indices)
     bytes output_mr = 6;
