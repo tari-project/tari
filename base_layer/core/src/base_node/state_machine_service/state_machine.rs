@@ -202,8 +202,8 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         let status = StatusInfo {
             bootstrapped: self.is_bootstrapped(),
             state_info: self.info.clone(),
-            randomx_vm_cnt: self.randomx_factory.get_count(),
-            randomx_vm_flags: self.randomx_factory.get_flags(),
+            randomx_vm_cnt: self.randomx_factory.get_count().unwrap_or(0),
+            randomx_vm_flags: self.randomx_factory.get_flags().unwrap_or_default(),
         };
 
         if let Err(e) = self.status_event_sender.send(status) {
@@ -226,11 +226,11 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
     }
 
     pub fn get_randomx_vm_cnt(&self) -> usize {
-        self.randomx_factory.get_count()
+        self.randomx_factory.get_count().unwrap_or_default()
     }
 
     pub fn get_randomx_vm_flags(&self) -> RandomXFlag {
-        self.randomx_factory.get_flags()
+        self.randomx_factory.get_flags().unwrap_or_default()
     }
 
     /// Start the base node runtime.
