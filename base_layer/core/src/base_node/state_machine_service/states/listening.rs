@@ -305,8 +305,7 @@ fn determine_sync_mode(
         let pruned_mode = local.pruning_horizon() > 0;
         let pruning_horizon_check = network.claimed_chain_metadata().pruning_horizon() > 0 &&
             network.claimed_chain_metadata().pruning_horizon() < local.pruning_horizon();
-        let pruning_height_check =
-            network.claimed_chain_metadata().pruned_height() > local.height_of_longest_chain();
+        let pruning_height_check = network.claimed_chain_metadata().pruned_height() > local.height_of_longest_chain();
         let sync_able_peer = match (pruned_mode, pruning_horizon_check, pruning_height_check) {
             (true, true, _) => {
                 info!(

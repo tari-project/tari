@@ -131,7 +131,9 @@ impl Display for SyncStatus {
             ),
             UpToDate => f.write_str("UpToDate"),
             SyncStatus::BehindButNotYetLagging { .. } => f.write_str("Behind but not yet lagging"),
-            SyncStatus::SyncNotPossible { .. } => f.write_str("Behind but we cannot sync as we have no viable peers to sync to"),
+            SyncStatus::SyncNotPossible { .. } => {
+                f.write_str("Behind but we cannot sync as we have no viable peers to sync to")
+            },
         }
     }
 }
