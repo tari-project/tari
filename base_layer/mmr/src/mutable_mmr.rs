@@ -212,11 +212,14 @@ where
     fn get_sub_bitmap(&self, leaf_index: LeafIndex, count: usize) -> Result<Bitmap, MerkleMountainRangeError> {
         let mut deleted = self.deleted.clone();
         if leaf_index.0 > 0 {
+            //Overflow not possible here as leaf_index.0 will always be greater than 0, min > 1-1=0
             deleted.remove_range(0..u32::try_from(leaf_index.0 - 1).map_err(|_|MerkleMountainRangeError::InvalidMmrSize)?)
         }
         let leaf_count = self.mmr.get_leaf_count()?;
         if leaf_count > 1 {
+            //Overflow not possible here as leaf_index.0 will always be greater than 0, min > 1+0-1=0
             let last_index = leaf_index.0 + count - 1;
+            //Overflow not possible here as leaf_count will always be greater than 0, min > 1-1=0
             if last_index < leaf_count - 1 {
                 deleted.remove_range(u32::try_from(last_index + 1).map_err(|_|MerkleMountainRangeError::InvalidMmrSize)?..u32::try_from(leaf_count).map_err(|_|MerkleMountainRangeError::InvalidMmrSize)?);
             }
