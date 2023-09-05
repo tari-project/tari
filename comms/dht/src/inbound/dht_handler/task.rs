@@ -217,7 +217,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
         let validator = PeerValidator::new(&self.config);
         let maybe_existing = self.peer_manager.find_by_public_key(&authenticated_pk).await?;
-        let mut valid_peer = self
+        let valid_peer = self
             .ban_on_offence(
                 &authenticated_pk,
                 validator
@@ -229,8 +229,6 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let is_banned = valid_peer.is_banned();
         let valid_peer_node_id = valid_peer.node_id.clone();
         let valid_peer_public_key = valid_peer.public_key.clone();
-        // Mark the peer as online
-        valid_peer.addresses.mark_all_addresses_as_last_seen_now();
         // Update peer details. If the peer is banned we preserve the ban but still allow them to update their claims.
         self.peer_manager.add_peer(valid_peer).await?;
 

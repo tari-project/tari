@@ -636,8 +636,6 @@ impl ConnectivityManagerActor {
             (_, Connected) => match self.pool.get_connection(&node_id).cloned() {
                 Some(conn) => {
                     self.mark_connection_success(conn.peer_node_id().clone());
-                    self.mark_peer_last_seen_now(&conn).await?;
-
                     self.publish_event(ConnectivityEvent::PeerConnected(conn.into()));
                 },
                 None => unreachable!(
@@ -661,19 +659,6 @@ impl ConnectivityManagerActor {
             },
         }
 
-        Ok(())
-    }
-
-    async fn mark_peer_last_seen_now(&self, conn: &PeerConnection) -> Result<(), ConnectivityError> {
-        // Can't be None
-        if let Some(mut peer) = self.peer_manager.find_by_node_id(conn.peer_node_id()).await? {
-            if let Some(addr) = conn.known_address() {
-                peer.addresses.mark_last_seen_now(addr);
-            } else {
-                peer.addresses.mark_all_addresses_as_last_seen_now();
-            }
-            self.peer_manager.add_peer(peer).await?;
-        }
         Ok(())
     }
 
