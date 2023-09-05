@@ -174,6 +174,16 @@ impl MultiaddressesWithStats {
         }
     }
 
+    /// Mark all addresses as seen. This can be used in a case where you know the peer is online but you dont have an
+    /// address.
+    /// Prefer using mark_last_seen_now with the actual address.
+    pub fn mark_all_addresses_as_last_seen_now(&mut self) {
+        for addr in &mut self.addresses {
+            addr.mark_last_seen_now().mark_last_attempted_now();
+        }
+        self.sort_addresses();
+    }
+
     /// Mark that a connection could not be established with the specified net address
     ///
     /// Returns true if the address is contained in this instance, otherwise false
