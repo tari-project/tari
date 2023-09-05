@@ -200,7 +200,11 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                             .ban_peer_if_required(node_id, &Some(reason.clone()))
                             .await;
                     }
-                    self.remove_sync_peer(node_id);
+                    if let BlockSyncError::MaxLatencyExceeded { .. } = err {
+                        latency_counter += 1;
+                    } else {
+                        self.remove_sync_peer(node_id);
+                    }
                     if let HorizonSyncError::MaxLatencyExceeded { .. } = err {
                         latency_counter += 1;
                     }
