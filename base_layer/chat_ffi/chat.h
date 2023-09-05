@@ -10,17 +10,17 @@
 
 struct ApplicationConfig;
 
+struct ChatFFIContactsLivenessData;
+
 struct ChatFFIMessage;
 
 struct ChatMessages;
 
 struct ClientFFI;
 
-struct ContactsLivenessData;
-
 struct TariAddress;
 
-typedef void (*CallbackContactStatusChange)(struct ContactsLivenessData*);
+typedef void (*CallbackContactStatusChange)(struct ChatFFIContactsLivenessData*);
 
 typedef void (*CallbackMessageReceived)(struct ChatFFIMessage*);
 

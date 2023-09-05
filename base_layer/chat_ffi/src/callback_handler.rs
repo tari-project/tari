@@ -32,28 +32,37 @@ use tari_shutdown::ShutdownSignal;
 
 const LOG_TARGET: &str = "chat_ffi::callback_handler";
 
-pub(crate) type CallbackContactStatusChange = unsafe extern "C" fn(*mut ContactsLivenessData);
+pub(crate) type CallbackContactStatusChange = unsafe extern "C" fn(*mut ChatFFIContactsLivenessData);
 pub(crate) type CallbackMessageReceived = unsafe extern "C" fn(*mut ChatFFIMessage);
 
-// pub struct ContactsLivenessData {
-//     address: TariAddress,
-//     node_id: NodeId,
-//     latency: Option<u32>,
-//     last_seen: Option<NaiveDateTime>,
-//     message_type: ContactMessageType,
-//     online_status: ContactOnlineStatus,
-// }
 pub struct ChatFFIContactsLivenessData {
-    address: *const c_char,
-    last_seen: Option<NaiveDateTime>,
-    online_status: ContactOnlineStatus,
+    pub address: *const c_char,
+    pub last_seen: u64,
+    pub online_status: u8,
 }
 
 impl TryFrom<ContactsLivenessData> for ChatFFIContactsLivenessData {
     type Error = String;
 
-    fn try_from(value: ContactsLivenessData) -> Result<Self, Self::Error> {
-        todo!()
+    fn try_from(v: ContactsLivenessData) -> Result<Self, Self::Error> {
+        let address = match CString::new(v.address().to_bytes()) {
+            Ok(s) => s,
+            Err(e) => return Err(e.to_string()),
+        };
+
+        let last_seen = match v.last_ping_pong_received() {
+            Some(ts) => match u64::try_from(ts.timestamp_micros()) {
+                Ok(num) => num,
+                Err(e) => return Err(e.to_string()),
+            },
+            None => 0,
+        };
+
+        Ok(Self {
+            address: address.as_ptr(),
+            last_seen,
+            online_status: v.online_status().as_u8(),
+        })
     }
 }
 
@@ -161,8 +170,14 @@ impl CallbackHandler {
             "Calling ContactStatusChanged callback function for contact {}",
             data.address(),
         );
-        unsafe {
-            (self.callback_contact_status_change)(Box::into_raw(Box::new(data)));
+
+        match ChatFFIContactsLivenessData::try_from(data) {
+            Ok(data) => unsafe {
+                (self.callback_contact_status_change)(Box::into_raw(Box::new(data)));
+            },
+            Err(e) => {
+                error!(target: LOG_TARGET, "Error processing contacts liveness data received callback: {}", e)
+            },
         }
     }
 
@@ -177,7 +192,7 @@ impl CallbackHandler {
             Ok(message) => unsafe {
                 (self.callback_message_received)(Box::into_raw(Box::new(message)));
             },
-            Err(e) => error!(target: LOG_TARGET, "Error processing message received callback: {}", e.to_string()),
+            Err(e) => error!(target: LOG_TARGET, "Error processing message received callback: {}", e),
         }
     }
 }
