@@ -58,6 +58,8 @@ jobs:
           echo "matrix=${matrix}" >> $GITHUB_OUTPUT
 
   matrix-check:
+    # Debug matrix
+    if: ${{ false }}
     runs-on: ubuntu-latest
     needs: matrix-prep
     steps:
