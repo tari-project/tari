@@ -187,10 +187,11 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                         self.peer_ban_manager
                             .ban_peer_if_required(node_id, &Some(reason.clone()))
                             .await;
-
-                        if reason.ban_duration > self.config.short_ban_period {
-                            self.remove_sync_peer(node_id);
-                        }
+                    }
+                    if let BlockSyncError::MaxLatencyExceeded { .. } = err {
+                        latency_counter += 1;
+                    } else {
+                        self.remove_sync_peer(node_id);
                     }
 
                     if let BlockSyncError::MaxLatencyExceeded { .. } = err {
