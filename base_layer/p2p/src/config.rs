@@ -141,6 +141,7 @@ impl Default for P2pConfig {
             max_concurrent_outbound_tasks: 4,
             dht: DhtConfig {
                 database_url: DbConnectionUrl::file("dht.sqlite"),
+                auto_join: true,
                 ..Default::default()
             },
             allow_test_addresses: false,
