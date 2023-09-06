@@ -22,10 +22,10 @@
 
 #![recursion_limit = "1024"]
 
-use std::{convert::TryFrom, ffi::CStr, path::PathBuf, ptr, str::FromStr};
+use std::{convert::TryFrom, ffi::CStr, num::NonZeroU16, path::PathBuf, ptr, str::FromStr};
 
 use callback_handler::CallbackContactStatusChange;
-use libc::{c_char, c_int};
+use libc::{c_char, c_int, c_uchar, c_ushort};
 use log::{debug, info, warn, LevelFilter};
 use log4rs::{
     append::{
@@ -52,6 +52,8 @@ use tari_contacts::contacts_service::{
     handle::{DEFAULT_MESSAGE_LIMIT, DEFAULT_MESSAGE_PAGE},
     types::Message,
 };
+use tari_p2p::{SocksAuthentication, TorControlAuthentication, TorTransportConfig, TransportConfig, TransportType};
+use tari_utilities::hex;
 use tokio::runtime::Runtime;
 
 use crate::{
@@ -68,6 +70,9 @@ mod consts {
     // Import the auto-generated const values from the Manifest and Git
     include!(concat!(env!("OUT_DIR"), "/consts.rs"));
 }
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct ByteVector(Vec<c_uchar>); // declared like this so that it can be exposed to external header
 
 #[derive(Clone)]
 pub struct ChatMessages(Vec<Message>);
@@ -201,6 +206,7 @@ pub unsafe extern "C" fn create_chat_config(
     public_address: *const c_char,
     datastore_path: *const c_char,
     identity_file_path: *const c_char,
+    tor_transport_config: *mut TransportConfig,
     log_path: *const c_char,
     error_out: *mut c_int,
 ) -> *mut ApplicationConfig {
@@ -230,6 +236,12 @@ pub unsafe extern "C" fn create_chat_config(
             },
         }
     };
+
+    if tor_transport_config.is_null() {
+        error = LibChatError::from(InterfaceError::NullError("tor_transport_config".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
 
     let datastore_path_string;
     if datastore_path.is_null() {
@@ -310,7 +322,7 @@ pub unsafe extern "C" fn create_chat_config(
 
     let mut chat_client_config = ChatClientConfig::default();
     chat_client_config.network = network;
-    chat_client_config.p2p.transport.tcp.listener_address = address.clone();
+    chat_client_config.p2p.transport = (*tor_transport_config).clone();
     chat_client_config.p2p.public_addresses = MultiaddrList::from(vec![address]);
     chat_client_config.log_path = Some(log_path);
     chat_client_config.identity_file = identity_path;
@@ -703,10 +715,153 @@ pub unsafe extern "C" fn destroy_tari_address(address: *mut TariAddress) {
     }
 }
 
+/// Creates a tor transport type
+///
+/// ## Arguments
+/// `control_server_address` - The pointer to a char array
+/// `tor_cookie` - The pointer to a ByteVector containing the contents of the tor cookie file, can be null
+/// `tor_port` - The tor port
+/// `tor_proxy_bypass_for_outbound` - Whether tor will use a direct tcp connection for a given bypass address instead of
+/// the tor proxy if tcp is available, if not it has no effect
+/// `socks_password` - The pointer to a char array containing the socks password, can be null
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut TransportConfig` - Returns a pointer to a tor TransportConfig, null on error.
+///
+/// # Safety
+/// The ```transport_config_destroy``` method must be called when finished with a TransportConfig to prevent a
+/// memory leak
+#[no_mangle]
+pub unsafe extern "C" fn transport_tor_create(
+    control_server_address: *const c_char,
+    tor_cookie: *const ByteVector,
+    tor_port: c_ushort,
+    tor_proxy_bypass_for_outbound: bool,
+    socks_username: *const c_char,
+    socks_password: *const c_char,
+    error_out: *mut c_int,
+) -> *mut TransportConfig {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    let control_address_str;
+    if control_server_address.is_null() {
+        error = LibChatError::from(InterfaceError::NullError("control_server_address".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    } else {
+        match CStr::from_ptr(control_server_address).to_str() {
+            Ok(v) => {
+                control_address_str = v.to_owned();
+            },
+            _ => {
+                error = LibChatError::from(InterfaceError::InvalidArgument("control_server_address".to_string())).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return ptr::null_mut();
+            },
+        }
+    }
+
+    let username_str;
+    let password_str;
+    let socks_authentication = if !socks_username.is_null() && !socks_password.is_null() {
+        match CStr::from_ptr(socks_username).to_str() {
+            Ok(v) => {
+                username_str = v.to_owned();
+            },
+            _ => {
+                error = LibChatError::from(InterfaceError::InvalidArgument("socks_username".to_string())).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return ptr::null_mut();
+            },
+        }
+        match CStr::from_ptr(socks_password).to_str() {
+            Ok(v) => {
+                password_str = v.to_owned();
+            },
+            _ => {
+                error = LibChatError::from(InterfaceError::InvalidArgument("socks_password".to_string())).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return ptr::null_mut();
+            },
+        };
+        SocksAuthentication::UsernamePassword {
+            username: username_str,
+            password: password_str,
+        }
+    } else {
+        SocksAuthentication::None
+    };
+
+    let tor_authentication = if tor_cookie.is_null() {
+        TorControlAuthentication::None
+    } else {
+        let cookie_hex = hex::to_hex((*tor_cookie).0.as_slice());
+        TorControlAuthentication::hex(cookie_hex)
+    };
+
+    let onion_port = match NonZeroU16::new(tor_port) {
+        Some(p) => p,
+        None => {
+            error = LibChatError::from(InterfaceError::InvalidArgument(
+                "onion_port must be greater than 0".to_string(),
+            ))
+            .code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    };
+
+    match control_address_str.parse() {
+        Ok(v) => {
+            let transport = TransportConfig {
+                transport_type: TransportType::Tor,
+                tor: TorTransportConfig {
+                    control_address: v,
+                    control_auth: tor_authentication,
+                    // The wallet will populate this from the db
+                    identity: None,
+                    onion_port,
+                    socks_auth: socks_authentication,
+                    proxy_bypass_for_outbound_tcp: tor_proxy_bypass_for_outbound,
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+
+            Box::into_raw(Box::new(transport))
+        },
+        Err(_) => {
+            error = LibChatError::from(InterfaceError::InvalidArgument("control_address".to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            ptr::null_mut()
+        },
+    }
+}
+
+/// Frees memory for a TransportConfig
+///
+/// ## Arguments
+/// `transport` - The pointer to a TransportConfig
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn transport_config_destroy(transport: *mut TransportConfig) {
+    if !transport.is_null() {
+        drop(Box::from_raw(transport))
+    }
+}
+
 /// Frees memory for a ChatFFIMessage
 ///
 /// ## Arguments
-/// `address` - The pointer of a ChatFFIMessage
+/// `transport` - The pointer to a ChatFFIMessage
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C

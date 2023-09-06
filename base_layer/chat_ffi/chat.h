@@ -10,11 +10,15 @@
 
 struct ApplicationConfig;
 
+struct ByteVector;
+
 struct ChatMessages;
 
 struct ClientFFI;
 
 struct TariAddress;
+
+struct TransportConfig;
 
 struct ChatFFIContactsLivenessData {
   const char *address;
@@ -89,6 +93,7 @@ struct ApplicationConfig *create_chat_config(const char *network_str,
                                              const char *public_address,
                                              const char *datastore_path,
                                              const char *identity_file_path,
+                                             struct TransportConfig *tor_transport_config,
                                              const char *log_path,
                                              int *error_out);
 
@@ -225,10 +230,52 @@ struct TariAddress *create_tari_address(const char *receiver_c_char, int *error_
 void destroy_tari_address(struct TariAddress *address);
 
 /**
- * Frees memory for a ChatFFIMessage
+ * Creates a tor transport type
  *
  * ## Arguments
- * `address` - The pointer of a ChatFFIMessage
+ * `control_server_address` - The pointer to a char array
+ * `tor_cookie` - The pointer to a ByteVector containing the contents of the tor cookie file, can be null
+ * `tor_port` - The tor port
+ * `tor_proxy_bypass_for_outbound` - Whether tor will use a direct tcp connection for a given bypass address instead of
+ * the tor proxy if tcp is available, if not it has no effect
+ * `socks_password` - The pointer to a char array containing the socks password, can be null
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `*mut TransportConfig` - Returns a pointer to a tor TransportConfig, null on error.
+ *
+ * # Safety
+ * The ```transport_config_destroy``` method must be called when finished with a TransportConfig to prevent a
+ * memory leak
+ */
+struct TransportConfig *transport_tor_create(const char *control_server_address,
+                                             const struct ByteVector *tor_cookie,
+                                             unsigned short tor_port,
+                                             bool tor_proxy_bypass_for_outbound,
+                                             const char *socks_username,
+                                             const char *socks_password,
+                                             int *error_out);
+
+/**
+ * Frees memory for a TransportConfig
+ *
+ * ## Arguments
+ * `transport` - The pointer to a TransportConfig
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * None
+ */
+void transport_config_destroy(struct TransportConfig *transport);
+
+/**
+ * Frees memory for a TransportConfig
+ *
+ * ## Arguments
+ * `transport` - The pointer to a TransportConfig
  *
  * ## Returns
  * `()` - Does not return a value, equivalent to void in C

@@ -13,7 +13,9 @@ tari_common = { path = "../../common" }
 tari_common_types = { path = "../common_types" }
 tari_comms = { path = "../../comms/core" }
 tari_contacts = { path = "../contacts" }
+tari_p2p = { path = "../p2p" }
 tari_shutdown = { path = "../../infrastructure/shutdown" }
+tari_utilities = { version = "0.5" }
 
 libc = "0.2.65"
 libsqlite3-sys = { version = "0.25.1", features = ["bundled"], optional = true }
