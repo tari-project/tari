@@ -1,8 +1,9 @@
 ## state machine
 ```mermaid
 flowchart TD
+    N2[version: v0.1</br>commit: a4b634]
     A -..- N1>state_machine.rs line 231]
-    A[starting_state] --> |Initialized|B[["1.Listen_state (see listen_state.md)"]]
+    A[starting_state] --> |Initialized|B[["1.Listening_state (see listening_state.md)"]]
     B --> |FallenBehind| C[["2.HeaderSync(see header_sync.md)"]]
     C --> |Continue|B
     C --> |HeaderSyncFailed|D[3.Waiting]
@@ -17,5 +18,7 @@ flowchart TD
     G --> |BlocksSyncFailed|D
 
     N1:::note
+    N2:::meta
     classDef note fill:#eee,stroke:#ccc
+    classDef meta fill:#b11,stroke:#ccc
 ```
