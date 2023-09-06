@@ -113,6 +113,7 @@ impl<'a> PeerValidator<'a> {
             peer.update_addresses(&claim.addresses, &PeerAddressSource::FromDiscovery {
                 peer_identity_claim: claim.clone(),
             });
+            peer.addresses.mark_all_addresses_as_last_seen_now(&claim.addresses);
         }
 
         Ok(peer)

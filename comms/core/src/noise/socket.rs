@@ -557,7 +557,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
             self.send().await?;
             self.flush().await?;
 
-            // <- e, ee, se, s, es
+            // <- e, ee, s, es
             self.receive().await?;
 
             //   -> s, se
@@ -567,7 +567,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
             //   -> e
             self.receive().await?;
 
-            // <- e, ee, se, s, es
+            // <- e, ee, s, es
             self.send().await?;
             self.flush().await?;
 
