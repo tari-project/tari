@@ -489,10 +489,6 @@ impl DhtConnectivity {
     }
 
     async fn handle_new_peer_connected(&mut self, conn: PeerConnection) -> Result<(), DhtConnectivityError> {
-        // We can only mark the peer as seen if we know which address we are were about to connect to (Outbound).
-        if let Some(addr) = conn.known_address() {
-            self.peer_manager.mark_last_seen(conn.peer_node_id(), addr).await?;
-        }
         if conn.peer_features().is_client() {
             debug!(
                 target: LOG_TARGET,
@@ -749,6 +745,7 @@ impl DhtConnectivity {
         let peer_manager = &self.peer_manager;
         let node_id = self.node_identity.node_id();
         let connected = self.connected_peers_iter().collect::<Vec<_>>();
+
         // Fetch to all n nearest neighbour Communication Nodes
         // which are eligible for connection.
         // Currently that means:
@@ -779,7 +776,7 @@ impl DhtConnectivity {
                     return false;
                 }
                 // we have tried to connect to this peer, and we have never made a successful attempt at connection
-                if peer.offline_since().is_none() && peer.last_connect_attempt().is_some() {
+                if peer.last_connect_attempt().is_some() && peer.last_seen().is_none() {
                     return false;
                 }
 

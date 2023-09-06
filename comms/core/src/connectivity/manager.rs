@@ -473,7 +473,7 @@ impl ConnectivityManagerActor {
         }
     }
 
-    fn mark_peer_succeeded(&mut self, node_id: NodeId) {
+    fn mark_connection_success(&mut self, node_id: NodeId) {
         let entry = self.get_connection_stat_mut(node_id);
         entry.set_connection_success();
     }
@@ -635,7 +635,7 @@ impl ConnectivityManagerActor {
         match (old_status, new_status) {
             (_, Connected) => match self.pool.get_connection(&node_id).cloned() {
                 Some(conn) => {
-                    self.mark_peer_succeeded(node_id.clone());
+                    self.mark_connection_success(conn.peer_node_id().clone());
                     self.publish_event(ConnectivityEvent::PeerConnected(conn.into()));
                 },
                 None => unreachable!(
