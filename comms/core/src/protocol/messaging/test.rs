@@ -33,13 +33,18 @@ use tokio::{
     time,
 };
 
-use super::protocol::{MessagingEvent, MessagingEventReceiver, MessagingProtocol, MESSAGING_PROTOCOL_ID};
+use super::protocol::{MessagingEventReceiver, MessagingProtocol};
 use crate::{
     message::{InboundMessage, MessageTag, MessagingReplyRx, OutboundMessage},
     multiplexing::Substream,
     net_address::MultiaddressesWithStats,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
-    protocol::{messaging::SendFailReason, ProtocolEvent, ProtocolNotification},
+    protocol::{
+        messaging::{MessagingEvent, SendFailReason},
+        ProtocolEvent,
+        ProtocolId,
+        ProtocolNotification,
+    },
     test_utils::{
         mocks::{create_connectivity_mock, create_peer_connection_mock_pair, ConnectivityManagerMockState},
         node_id,
@@ -50,6 +55,8 @@ use crate::{
 };
 
 static TEST_MSG1: Bytes = Bytes::from_static(b"TEST_MSG1");
+
+static MESSAGING_PROTOCOL_ID: ProtocolId = ProtocolId::from_static(b"test/msg");
 
 async fn spawn_messaging_protocol() -> (
     Arc<PeerManager>,
@@ -75,6 +82,7 @@ async fn spawn_messaging_protocol() -> (
     let (events_tx, events_rx) = broadcast::channel(100);
 
     let msg_proto = MessagingProtocol::new(
+        MESSAGING_PROTOCOL_ID.clone(),
         requester,
         proto_rx,
         request_rx,

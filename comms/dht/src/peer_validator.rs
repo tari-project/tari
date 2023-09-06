@@ -26,7 +26,6 @@ use tari_comms::{
     peer_manager::{NodeId, Peer, PeerFlags},
     peer_validator,
     peer_validator::{find_most_recent_claim, PeerValidatorError},
-    protocol::messaging::MESSAGING_PROTOCOL_ID,
 };
 
 use crate::{rpc::UnvalidatedPeerInfo, DhtConfig};
@@ -90,16 +89,13 @@ impl<'a> PeerValidator<'a> {
         let node_id = NodeId::from_public_key(&new_peer.public_key);
 
         let mut peer = existing_peer.unwrap_or_else(|| {
-            // All peer speak messaging protocol, as an optimisation we'll include it here so that we can do optimistic
-            // protocol negotiation.
-            let default_protocols = vec![MESSAGING_PROTOCOL_ID.clone()];
             Peer::new(
                 new_peer.public_key.clone(),
                 node_id,
                 MultiaddressesWithStats::default(),
                 PeerFlags::default(),
                 most_recent_claim.features,
-                default_protocols,
+                vec![],
                 String::new(),
             )
         });

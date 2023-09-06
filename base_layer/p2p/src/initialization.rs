@@ -48,6 +48,7 @@ use tari_comms::{
         messaging::{MessagingEventSender, MessagingProtocolExtension},
         rpc::RpcServer,
         NodeNetworkInfo,
+        ProtocolId,
     },
     tor,
     tor::HiddenServiceControllerError,
@@ -80,6 +81,9 @@ use crate::{
     MINOR_NETWORK_VERSION,
 };
 const LOG_TARGET: &str = "p2p::initialization";
+
+/// ProtocolId for minotari messaging protocol
+pub static MESSAGING_PROTOCOL_ID: ProtocolId = ProtocolId::from_static(b"t/msg/0.1");
 
 #[derive(Debug, Error)]
 pub enum CommsInitializationError {
@@ -199,7 +203,8 @@ pub async fn initialize_local_test_comms<P: AsRef<Path>>(
 
     let comms = comms
         .add_protocol_extension(
-            MessagingProtocolExtension::new(event_sender.clone(), pipeline).enable_message_received_event(),
+            MessagingProtocolExtension::new(MESSAGING_PROTOCOL_ID.clone(), event_sender.clone(), pipeline)
+                .enable_message_received_event(),
         )
         .spawn_with_transport(MemoryTransport)
         .await?;
@@ -374,8 +379,12 @@ async fn configure_comms_and_dht(
 
     let (messaging_events_sender, _) = broadcast::channel(1);
     comms = comms.add_protocol_extension(
-        MessagingProtocolExtension::new(messaging_events_sender, messaging_pipeline)
-            .with_ban_duration(config.dht.ban_duration_short),
+        MessagingProtocolExtension::new(
+            MESSAGING_PROTOCOL_ID.clone(),
+            messaging_events_sender,
+            messaging_pipeline,
+        )
+        .with_ban_duration(config.dht.ban_duration_short),
     );
 
     Ok((comms, dht))

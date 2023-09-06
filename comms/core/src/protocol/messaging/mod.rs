@@ -37,14 +37,7 @@ mod inbound;
 mod metrics;
 mod outbound;
 mod protocol;
-pub use protocol::{
-    MessagingEvent,
-    MessagingEventReceiver,
-    MessagingEventSender,
-    MessagingProtocol,
-    SendFailReason,
-    MESSAGING_PROTOCOL_ID,
-};
+pub use protocol::{MessagingEvent, MessagingEventReceiver, MessagingEventSender, MessagingProtocol, SendFailReason};
 
 #[cfg(test)]
 mod test;

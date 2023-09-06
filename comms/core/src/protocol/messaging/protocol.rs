@@ -27,7 +27,6 @@ use std::{
     time::Duration,
 };
 
-use bytes::Bytes;
 use log::*;
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use thiserror::Error;
@@ -48,12 +47,12 @@ use crate::{
     protocol::{
         messaging::{inbound::InboundMessaging, outbound::OutboundMessaging},
         ProtocolEvent,
+        ProtocolId,
         ProtocolNotification,
     },
 };
 
 const LOG_TARGET: &str = "comms::protocol::messaging";
-pub static MESSAGING_PROTOCOL_ID: Bytes = Bytes::from_static(b"t/msg/0.1");
 const INTERNAL_MESSAGING_EVENT_CHANNEL_SIZE: usize = 10;
 
 const MAX_FRAME_LENGTH: usize = 8 * 1_024 * 1_024;
@@ -102,6 +101,7 @@ impl fmt::Display for MessagingEvent {
 
 /// Actor responsible for lazily spawning inbound (protocol notifications) and outbound (mpsc channel) messaging actors.
 pub struct MessagingProtocol {
+    protocol_id: ProtocolId,
     connectivity: ConnectivityRequester,
     proto_notification: mpsc::Receiver<ProtocolNotification<Substream>>,
     active_queues: HashMap<NodeId, mpsc::UnboundedSender<OutboundMessage>>,
@@ -122,6 +122,7 @@ pub struct MessagingProtocol {
 impl MessagingProtocol {
     /// Create a new messaging protocol actor.
     pub(super) fn new(
+        protocol_id: ProtocolId,
         connectivity: ConnectivityRequester,
         proto_notification: mpsc::Receiver<ProtocolNotification<Substream>>,
         outbound_message_rx: mpsc::UnboundedReceiver<OutboundMessage>,
@@ -134,6 +135,7 @@ impl MessagingProtocol {
         let (retry_queue_tx, retry_queue_rx) = mpsc::unbounded_channel();
 
         Self {
+            protocol_id,
             connectivity,
             proto_notification,
             outbound_message_rx,
@@ -287,6 +289,7 @@ impl MessagingProtocol {
                         self.internal_messaging_event_tx.clone(),
                         peer_node_id,
                         self.retry_queue_tx.clone(),
+                        self.protocol_id.clone(),
                     );
                     break entry.insert(sender);
                 },
@@ -315,9 +318,17 @@ impl MessagingProtocol {
         events_tx: mpsc::Sender<MessagingEvent>,
         peer_node_id: NodeId,
         retry_queue_tx: mpsc::UnboundedSender<OutboundMessage>,
+        protocol_id: ProtocolId,
     ) -> mpsc::UnboundedSender<OutboundMessage> {
         let (msg_tx, msg_rx) = mpsc::unbounded_channel();
-        let outbound_messaging = OutboundMessaging::new(connectivity, events_tx, msg_rx, retry_queue_tx, peer_node_id);
+        let outbound_messaging = OutboundMessaging::new(
+            connectivity,
+            events_tx,
+            msg_rx,
+            retry_queue_tx,
+            peer_node_id,
+            protocol_id,
+        );
         tokio::spawn(outbound_messaging.run());
         msg_tx
     }

@@ -42,6 +42,7 @@ use tari_comms::{
     protocol::{
         messaging::{MessagingEvent, MessagingEventReceiver, MessagingEventSender, MessagingProtocolExtension},
         rpc::RpcServer,
+        ProtocolId,
     },
     transports::MemoryTransport,
     types::CommsDatabase,
@@ -75,6 +76,7 @@ use tower::ServiceBuilder;
 
 use crate::memory_net::DrainBurst;
 
+pub static MEMORYNET_MSG_PROTOCOL_ID: ProtocolId = ProtocolId::from_static(b"t/msg/1.0");
 pub type NodeEventRx = mpsc::UnboundedReceiver<(NodeId, NodeId)>;
 pub type NodeEventTx = mpsc::UnboundedSender<(NodeId, NodeId)>;
 
@@ -969,7 +971,8 @@ async fn setup_comms_dht(
     let comms = comms
         .add_rpc_server(RpcServer::new().add_service(dht.rpc_service()))
         .add_protocol_extension(
-            MessagingProtocolExtension::new(messaging_events_tx.clone(), pipeline).enable_message_received_event(),
+            MessagingProtocolExtension::new(MEMORYNET_MSG_PROTOCOL_ID.clone(), messaging_events_tx.clone(), pipeline)
+                .enable_message_received_event(),
         )
         .spawn_with_transport(MemoryTransport)
         .await

@@ -28,7 +28,10 @@ use tari_comms::{
     peer_manager::{NodeIdentity, Peer, PeerFeatures},
     pipeline,
     pipeline::SinkService,
-    protocol::messaging::{MessagingEvent, MessagingEventSender, MessagingProtocolExtension},
+    protocol::{
+        messaging::{MessagingEvent, MessagingEventSender, MessagingProtocolExtension},
+        ProtocolId,
+    },
     transports::MemoryTransport,
     types::CommsDatabase,
     CommsBuilder,
@@ -198,7 +201,8 @@ pub async fn setup_comms_dht(
     let (event_tx, _) = broadcast::channel(100);
     let comms = comms
         .add_protocol_extension(
-            MessagingProtocolExtension::new(event_tx.clone(), pipeline).enable_message_received_event(),
+            MessagingProtocolExtension::new(ProtocolId::from_static(b"test"), event_tx.clone(), pipeline)
+                .enable_message_received_event(),
         )
         .spawn_with_transport(MemoryTransport)
         .await
