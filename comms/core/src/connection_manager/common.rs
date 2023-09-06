@@ -206,6 +206,9 @@ pub(super) fn create_or_update_peer_from_validated_peer_identity(
                     peer_identity_claim: peer_identity.claim.clone(),
                 });
 
+            peer.addresses
+                .mark_all_addresses_as_last_seen_now(&peer_identity.claim.addresses);
+
             peer.features = peer_identity.claim.features;
             peer.supported_protocols = peer_identity.metadata.supported_protocols.clone();
             peer.user_agent = peer_identity.metadata.user_agent.clone();

@@ -174,6 +174,21 @@ impl MultiaddressesWithStats {
         }
     }
 
+    /// Mark all addresses as seen. Returns true if all addresses are contained in this instance, otherwise false
+    pub fn mark_all_addresses_as_last_seen_now(&mut self, addresses: &[Multiaddr]) -> bool {
+        let mut all_exist = true;
+        for address in addresses {
+            match self.find_address_mut(address) {
+                Some(addr) => {
+                    addr.mark_last_seen_now().mark_last_attempted_now();
+                },
+                None => all_exist = false,
+            }
+        }
+        self.sort_addresses();
+        all_exist
+    }
+
     /// Mark that a connection could not be established with the specified net address
     ///
     /// Returns true if the address is contained in this instance, otherwise false
