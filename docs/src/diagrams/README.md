@@ -2,25 +2,26 @@
 
 # Top level triggers
 1. New message on messaging layer
-    2. [Comms](comms/index.md) 
-    3. [Incoming blocks](incoming_blocks.md) 
-    1. TODO: breakdown into individual messages
-    3. metadata?
-2. New RPC messages?
-    1. Wallet messages?
-4. Timed triggers
-    1. Are there any of these? (Maybe in state machine)
-    2. Liveness maybe?
-3. Start up triggers
-3. New GRPC messages
-4. New CLI messages  (Maybe these can be compiled out completely)
-
-
-## Other diagrams
-1. Important database access methods
-
+    1. [Comms](comms/index.md) 
+    2. [Incoming blocks](incoming_blocks.md) 
+    3. [metadata service](chain_metadata_service.md)
+2. New RPC messages
+3. Timed triggers
+    1. [state machine](state_machine.md)
+4. Start up triggers
+5. New GRPC messages
+6. New CLI messages
 
 # Schema/Diagram key/legend Notation
+
+Commit link and diagram version
+```mermaid
+flowchart TD
+ N1[version: v0.x</br>commit: xxxxxx]
+ N1:::meta
+ classDef meta fill:#b11,stroke:#ccc
+
+```
 
 Data access is denoted like this, 
 ```mermaid
