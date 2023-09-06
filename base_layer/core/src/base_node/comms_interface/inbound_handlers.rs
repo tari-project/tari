@@ -527,8 +527,6 @@ where B: BlockchainBackend + 'static
         Ok(())
     }
 
-    /// Returns true if the block exists, or will return an error if it's a bad block.
-    /// Returns false if the block does not exist.
     async fn check_exists_and_not_bad_block(&self, block: FixedHash) -> Result<bool, CommsInterfaceError> {
         if self.blockchain_db.block_exists(block).await? {
             debug!(

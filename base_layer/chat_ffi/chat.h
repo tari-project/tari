@@ -8,8 +8,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-struct ApplicationConfig;
-
 struct ChatMessages;
 
 struct ClientFFI;
@@ -43,7 +41,7 @@ extern "C" {
  * # Safety
  * The ```destroy_client``` method must be called when finished with a ClientFFI to prevent a memory leak
  */
-struct ClientFFI *create_chat_client(struct ApplicationConfig *config,
+struct ClientFFI *create_chat_client(ApplicationConfig *config,
                                      const char *identity_file_path,
                                      int *error_out,
                                      CallbackContactStatusChange callback_contact_status_change,
@@ -77,11 +75,11 @@ void destroy_client_ffi(struct ClientFFI *client);
  * # Safety
  * The ```destroy_config``` method must be called when finished with a Config to prevent a memory leak
  */
-struct ApplicationConfig *create_chat_config(const char *network_str,
-                                             const char *public_address,
-                                             const char *datastore_path,
-                                             const char *log_path,
-                                             int *error_out);
+ApplicationConfig *create_chat_config(const char *network_str,
+                                      const char *public_address,
+                                      const char *datastore_path,
+                                      const char *log_path,
+                                      int *error_out);
 
 /**
  * Frees memory for an ApplicationConfig
@@ -95,7 +93,7 @@ struct ApplicationConfig *create_chat_config(const char *network_str,
  * # Safety
  * None
  */
-void destroy_config(struct ApplicationConfig *config);
+void destroy_config(ApplicationConfig *config);
 
 /**
  * Sends a message over a client
