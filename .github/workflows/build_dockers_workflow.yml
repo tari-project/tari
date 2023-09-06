@@ -48,7 +48,7 @@ jobs:
 
     steps:
       - name: checkout tari-launchpad
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: ${{ env.LAUNCHPAD_REPO }}
           ref: ${{ env.LAUNCHPAD_BRANCH }}
@@ -101,12 +101,12 @@ jobs:
 
     steps:
       - name: checkout tari
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           path: tari
 
       - name: checkout tari-launchpad
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: ${{ env.LAUNCHPAD_REPO }}
           ref: ${{ env.LAUNCHPAD_BRANCH }}
