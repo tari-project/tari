@@ -83,6 +83,7 @@ use crate::{
         stats::DbTotalSizeStats,
         utxo_mined_info::UtxoMinedInfo,
         BlockchainBackend,
+        ChainTipData,
         DbBasicStats,
         DbSize,
         HorizonData,
@@ -384,12 +385,15 @@ impl LMDBDatabase {
                         "orphan_chain_tips_db",
                     )?;
                 },
-                InsertOrphanChainTip(hash) => {
+                InsertOrphanChainTip(hash, total_accumulated_difficulty) => {
                     lmdb_insert(
                         &write_txn,
                         &self.orphan_chain_tips_db,
                         hash.deref(),
-                        hash.deref(),
+                        &ChainTipData {
+                            hash: *hash,
+                            total_accumulated_difficulty: *total_accumulated_difficulty,
+                        },
                         "orphan_chain_tips_db",
                     )?;
                 },
@@ -1120,14 +1124,23 @@ impl LMDBDatabase {
             lmdb_delete(txn, &self.orphan_chain_tips_db, hash.as_slice(), "orphan_chain_tips_db")?;
 
             // Parent becomes a tip hash
-            if lmdb_exists(txn, &self.orphans_db, parent_hash.as_slice())? {
-                lmdb_insert(
-                    txn,
-                    &self.orphan_chain_tips_db,
-                    parent_hash.as_slice(),
-                    &parent_hash,
-                    "orphan_chain_tips_db",
-                )?;
+            if lmdb_exists(txn, &self.orphans_db, parent_hash.as_slice())? &&
+                lmdb_exists(txn, &self.orphan_header_accumulated_data_db, parent_hash.as_slice())?
+            {
+                let orphan_parent_accum: Option<BlockHeaderAccumulatedData> =
+                    lmdb_get(txn, &self.orphan_header_accumulated_data_db, parent_hash.as_slice())?;
+                if let Some(val) = orphan_parent_accum {
+                    lmdb_insert(
+                        txn,
+                        &self.orphan_chain_tips_db,
+                        parent_hash.as_slice(),
+                        &ChainTipData {
+                            hash: parent_hash,
+                            total_accumulated_difficulty: val.total_accumulated_difficulty,
+                        },
+                        "orphan_chain_tips_db",
+                    )?;
+                }
             }
         }
 
@@ -2114,9 +2127,10 @@ impl BlockchainBackend for LMDBDatabase {
 
     /// Returns the number of blocks in the block orphan pool.
     fn orphan_count(&self) -> Result<usize, ChainStorageError> {
-        trace!(target: LOG_TARGET, "Get orphan count");
         let txn = self.read_transaction()?;
-        lmdb_len(&txn, &self.orphans_db)
+        let count = lmdb_len(&txn, &self.orphans_db)?;
+        trace!(target: LOG_TARGET, "Get orphan count ...({})", count);
+        Ok(count)
     }
 
     /// Finds and returns the last stored header.
@@ -2228,24 +2242,41 @@ impl BlockchainBackend for LMDBDatabase {
         Ok(Some(chain_header))
     }
 
-    fn fetch_all_orphan_chain_tips(&self) -> Result<Vec<ChainHeader>, ChainStorageError> {
+    fn fetch_strongest_orphan_chain_tips(&self) -> Result<Vec<ChainHeader>, ChainStorageError> {
+        trace!(target: LOG_TARGET, "Call to fetch_strongest_orphan_chain_tips() ...");
+        let timer = Instant::now();
         let txn = self.read_transaction()?;
-        let tips: Vec<HashOutput> = lmdb_filter_map_values(&txn, &self.orphan_chain_tips_db, Some)?;
+        let tips: Vec<ChainTipData> = lmdb_filter_map_values(&txn, &self.orphan_chain_tips_db, Some)?;
+        if tips.is_empty() {
+            return Ok(Vec::new());
+        }
+        let max_value = tips.iter().map(|tip| tip.total_accumulated_difficulty).max();
+        let strongest_tips = if let Some(val) = max_value {
+            tips.iter()
+                .filter(|tip| tip.total_accumulated_difficulty == val)
+                .collect::<Vec<_>>()
+        } else {
+            // This branch should not be possible
+            return Ok(Vec::new());
+        };
+
+        let tips_len = strongest_tips.len();
         let mut result = Vec::new();
-        for hash in tips {
-            let orphan: Block =
-                lmdb_get(&txn, &self.orphans_db, hash.as_slice())?.ok_or_else(|| ChainStorageError::ValueNotFound {
+        for chain_tip in strongest_tips {
+            let orphan: Block = lmdb_get(&txn, &self.orphans_db, chain_tip.hash.as_slice())?.ok_or_else(|| {
+                ChainStorageError::ValueNotFound {
                     entity: "Orphan",
                     field: "hash",
-                    value: hash.to_hex(),
-                })?;
-
-            let accumulated_data = lmdb_get(&txn, &self.orphan_header_accumulated_data_db, hash.as_slice())?
+                    value: chain_tip.hash.to_hex(),
+                }
+            })?;
+            let accumulated_data = lmdb_get(&txn, &self.orphan_header_accumulated_data_db, chain_tip.hash.as_slice())?
                 .ok_or_else(|| ChainStorageError::ValueNotFound {
                     entity: "Orphan accumulated data",
                     field: "hash",
-                    value: hash.to_hex(),
+                    value: chain_tip.hash.to_hex(),
                 })?;
+
             let height = orphan.header.height;
             let chain_header = ChainHeader::try_construct(orphan.header, accumulated_data).ok_or_else(|| {
                 ChainStorageError::DataInconsistencyDetected {
@@ -2255,6 +2286,7 @@ impl BlockchainBackend for LMDBDatabase {
             })?;
             result.push(chain_header);
         }
+        trace!(target: LOG_TARGET, "Call to fetch_strongest_orphan_chain_tips() ({}) completed in {:.2?}", tips_len, timer.elapsed());
         Ok(result)
     }
 
