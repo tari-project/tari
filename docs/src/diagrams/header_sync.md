@@ -1,12 +1,13 @@
 ## header sync
 ```mermaid
 flowchart TD
+    META[version: v0.1</br>commit: 45c20a]
     A -..- N1>header_sync.rs line 130]
-    A -..- N2>header_sync/synchronizer.rs line 105]
+    AB-..- N2>header_sync/synchronizer.rs line 107]
     A[synchronize] --> B[1. try sync from all peers]
     B --> C[2. connect and attempt sync]
     C --> D[3. attemp sync]
-    D -..- N3>header_sync/synchronizer.rs line 284]
+    D -..- N3>header_sync/synchronizer.rs line 231]
     D --> E[(get local tip header)]
     E --> F[["Determine sync status"]]
     F--> G{SyncStatus?}    
@@ -25,27 +26,30 @@ flowchart TD
     N1:::note
     N2:::note
     N3:::note
+    META:::meta
    classDef note fill:#eee,stroke:#ccc
+   classDef meta fill:#b11,stroke:#ccc
 ```
 ## determine sync status
 ```mermaid
 flowchart TD
-    A -..- N1>header_sync/synchronizer.rs line 434]
+    META[version: v0.1</br>commit: 45c20a]
+    A -..- N1>header_sync/synchronizer.rs line 390]
     A[determine sync status] --> B[1. find chain split]
-    B -..- N2>header_sync/synchronizer.rs line 364]
+    B -..- N2>header_sync/synchronizer.rs line 311]
     B --> C[(fetch 500 headers back)]
     C --> D[2.Send headers to remote peer for matching]
     D --> E{Result back}
     E -->|RPC::RequestFailed|C  
-    E -->|Some headers returned|F{3.Too much headers returned}
+    E -->|Some data returned|F{3.Too much headers returned}
     F --> |Yes| G[ban peer]
     F --> |No|I{4.bad data returned}
     I --> |Yes| G
     I --> |No|J{5.No headers returned}
-    J --> |Yes|K{6.returned forked inde > 0}
+    J --> |Yes|K{6.returned forked index > 0}
     K --> |Yes|L[return WereAhead]
     K --> |No|M[return Insync]
-    J --> |No|N[7.validater returned headers]
+    J --> |No|N[7.validate returned headers]
     N --> O{8. remote peer tip height < split height}
     O --> |Yes| G
     O --> |No|P[return Lagging]
@@ -53,13 +57,16 @@ flowchart TD
 
     N1:::note
     N2:::note
+    META:::meta
    classDef note fill:#eee,stroke:#ccc
+   classDef meta fill:#b11,stroke:#ccc
 ```
 
 ## synchronise headers
 ```mermaid
 flowchart TD
-    A -..- N1>header_sync/synchronizer.rs line 566]
+    META[version: v0.1</br>commit: 45c20a]
+    A -..- N1>header_sync/synchronizer.rs line 496]
     A[synchronie_headers] --> B{1. Compare PoW}
     B --> |Yes| C[2.Switch chain to pending chain]
     C --> D[Rewind chain if desired]
@@ -69,9 +76,9 @@ flowchart TD
     F --> |Yes|G{4. Compare PoW}
     G --> |No|H[ban peer]
     F --> |No| I[5. Sync headers stream]
-    G --> |Yes| I
+    G --> |Yes| IA[return ok]
     I --> J[6. Stream get next header]
-    J -->|some header| K[(Get local chain metadata height)]
+    J -->|some header| K[Get local chain metadata height]
     K --> L{7.existing header?}
     L --> |Yes|J
     L --> |No|M[8. validate header]
@@ -87,7 +94,9 @@ flowchart TD
     S --> |No| U[Return Ok]
 
     N1:::note
+    META:::meta
    classDef note fill:#eee,stroke:#ccc
+   classDef meta fill:#b11,stroke:#ccc
 ```
 
 ```mermaid
