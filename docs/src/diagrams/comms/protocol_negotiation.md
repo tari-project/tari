@@ -24,7 +24,7 @@ Messages are the tuple (length (u8), flags (u8), protocol_name (variable 255 (0x
 flowchart TD
 A[Start] --> B[1. New substream opened by remote peer]
 B --> C[2. PeerConnection starts ProtocolNegotiation]
-C --> D[3.⌛️ Inbound ProtocolNegotiation waits for bytes to read]
+C --> D["3.⌛️ Inbound ProtocolNegotiation waits for bytes to read"]
 D --> E["4. Read frame (len, flags, protocol_name)"]
 
 %% Optimistic
