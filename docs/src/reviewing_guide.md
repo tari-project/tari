@@ -15,7 +15,7 @@ This is generally much more effective than trying to look at a file in isolation
 
 ### Trusted vs Untrusted Data
 Data received that is not generated
-ated by the local system should be seen as untrusted and treated very carefully.
+by the local system should be seen as untrusted and treated very carefully.
 
 In addition to data packets received from the network, there are other sources of untrusted data. For example, a config 
 setting may be copied from a post on the internet, or command line interface (CLI) commands may be copied from a forum.
