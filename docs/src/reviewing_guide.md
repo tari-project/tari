@@ -35,6 +35,9 @@ and could be used to crash a node.
 cause an out of memory exception. If a length is received from an untrusted source, it should be checked against a maximum before allocating memory.
 In these cases, it's often best to return an error so that the offending sender can be banned
    1. E.g. `let length = read_u64(stream); let mut buf = vec![0u8; length];` should be replaced with `let mut buf = vec![0u8; min(length, MAX_LENGTH)];`
+In addition, when a length of a vec is provided, check to see that all indexes into that vec or slice are valid. Are there any lengths that could result in a panic?
+
+Another, often missed, thing to look out for is when reading data from a vec - is there any data remaining that is not read. This is an easy way for an attacker to stuff blocks and data structures with data that will fill up the data store.   
 1. Malleability bugs - blockchain data should never change. Check that all relevant data is included in hash or signature challenges.
 1. Cause of forks: Blockchain data used in hashes and signature challenges should have a single valid byte representation.
 
