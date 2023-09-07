@@ -90,6 +90,7 @@ Tokio has many useful channels, and it can be difficult to know what to look out
    1. Watches can block if the reference returned from `borrow()` is held for a long time. Any call to `borrow()` should drop the reference as soon as possible.
 2. When using `broadcast`:
    1. If one receiver is not receiving the values, it will return a `Lagged` error. This should be logged, but in most cases the code can continue as normal.
+   2. When receiving events in a loop, Error::Closed should be used to break out of the loop, because the sender halves have dropped and no more events will be received
    2. Sending to a broadcast `Sender` before there are any receivers (or if they have all dropped) will error. If this is happening on startup, it should be 
 handled gracefully and may succeed in future when a receiver is added.
 
