@@ -895,3 +895,77 @@ pub unsafe extern "C" fn destroy_chat_ffi_liveness_data(address: *mut ChatFFICon
         drop(Box::from_raw(address))
     }
 }
+
+#[cfg(test)]
+mod test {
+    use std::ffi::CString;
+
+    use libc::c_char;
+
+    use crate::*;
+
+    #[test]
+    fn test_create_chat_tor_transport_config() {
+        let mut error = 0;
+        let error_ptr = &mut error as *mut c_int;
+        let address_control = CString::new("/ip4/127.0.0.1/tcp/8080").unwrap();
+        let address_control_str: *const c_char = CString::into_raw(address_control) as *const c_char;
+
+        unsafe {
+            let transport = create_chat_tor_transport_config(
+                address_control_str,
+                ptr::null(),
+                8080,
+                false,
+                ptr::null(),
+                ptr::null(),
+                error_ptr,
+            );
+
+            assert_eq!(error, 0);
+            destroy_tor_transport_config(transport);
+        }
+    }
+
+    #[test]
+    fn test_create_chat_config() {
+        let mut error = 0;
+        let error_ptr = &mut error as *mut c_int;
+        let address_control = CString::new("/ip4/127.0.0.1/tcp/8080").unwrap();
+        let address_control_str: *const c_char = CString::into_raw(address_control) as *const c_char;
+
+        let network = CString::new("localnet").unwrap();
+        let data_path = CString::new("data/chat_ffi_client/").unwrap();
+        let identity_path = CString::new("id_file.json").unwrap();
+        let log_path = CString::new("logs/").unwrap();
+
+        unsafe {
+            let transport_config = create_chat_tor_transport_config(
+                address_control_str,
+                ptr::null(),
+                8080,
+                false,
+                ptr::null(),
+                ptr::null(),
+                error_ptr,
+            );
+
+            assert_eq!(error, 0);
+
+            let chat_config = create_chat_config(
+                network.as_ptr(),
+                address_control_str,
+                data_path.as_ptr(),
+                identity_path.as_ptr(),
+                transport_config,
+                log_path.as_ptr(),
+                error_ptr,
+            );
+
+            assert_eq!(error, 0);
+
+            destroy_chat_config(chat_config);
+            destroy_tor_transport_config(transport_config);
+        }
+    }
+}

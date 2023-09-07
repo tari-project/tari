@@ -246,7 +246,7 @@ void destroy_tari_address(struct TariAddress *address);
  * `*mut TransportConfig` - Returns a pointer to a tor TransportConfig, null on error.
  *
  * # Safety
- * The ```transport_config_destroy``` method must be called when finished with a TransportConfig to prevent a
+ * The ```destroy_tor_transport_config``` method must be called when finished with a TransportConfig to prevent a
  * memory leak
  */
 struct TransportConfig *create_chat_tor_transport_config(const char *control_server_address,
