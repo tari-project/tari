@@ -60,7 +60,6 @@ extern "C" fn callback_message_received(_state: *mut c_void) {
 extern "C" {
     pub fn create_chat_client(
         config: *mut c_void,
-        identity_file_path: *const c_char,
         out_error: *const c_int,
         callback_contact_status_change: unsafe extern "C" fn(*mut c_void),
         callback_message_received: unsafe extern "C" fn(*mut c_void),
@@ -76,6 +75,7 @@ extern "C" {
         out_error: *const c_int,
     ) -> *mut c_void;
     pub fn destroy_client_ffi(client: *mut ClientFFI);
+    pub fn create_identity_file(config: *mut c_void);
 }
 
 #[derive(Debug)]
@@ -181,18 +181,6 @@ pub async fn spawn_ffi_chat_client(name: &str, seed_peers: Vec<Peer>, base_dir: 
         .collect::<Vec<String>>()
         .into();
 
-    let identity_path_c_str = CString::new(
-        config
-            .chat_client
-            .identity_file
-            .clone()
-            .into_os_string()
-            .into_string()
-            .unwrap(),
-    )
-    .unwrap();
-    let identity_path_c_char: *const c_char = CString::into_raw(identity_path_c_str) as *const c_char;
-
     let config_ptr = Box::into_raw(Box::new(config)) as *mut c_void;
 
     let client_ptr;
@@ -204,7 +192,6 @@ pub async fn spawn_ffi_chat_client(name: &str, seed_peers: Vec<Peer>, base_dir: 
 
         client_ptr = create_chat_client(
             config_ptr,
-            identity_path_c_char,
             out_error,
             callback_contact_status_change,
             callback_message_received,
