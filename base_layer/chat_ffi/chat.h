@@ -10,11 +10,11 @@
 
 struct ApplicationConfig;
 
-struct ByteVector;
+struct ChatByteVector;
+
+struct ChatClientFFI;
 
 struct ChatMessages;
-
-struct ClientFFI;
 
 struct TariAddress;
 
@@ -56,16 +56,16 @@ extern "C" {
  * # Safety
  * The ```destroy_client``` method must be called when finished with a ClientFFI to prevent a memory leak
  */
-struct ClientFFI *create_chat_client(struct ApplicationConfig *config,
-                                     int *error_out,
-                                     CallbackContactStatusChange callback_contact_status_change,
-                                     CallbackMessageReceived callback_message_received);
+struct ChatClientFFI *create_chat_client(struct ApplicationConfig *config,
+                                         int *error_out,
+                                         CallbackContactStatusChange callback_contact_status_change,
+                                         CallbackMessageReceived callback_message_received);
 
 /**
- * Frees memory for a ClientFFI
+ * Frees memory for a ChatClientFFI
  *
  * ## Arguments
- * `client` - The pointer of a ClientFFI
+ * `client` - The pointer of a ChatClientFFI
  *
  * ## Returns
  * `()` - Does not return a value, equivalent to void in C
@@ -73,7 +73,7 @@ struct ClientFFI *create_chat_client(struct ApplicationConfig *config,
  * # Safety
  * None
  */
-void destroy_client_ffi(struct ClientFFI *client);
+void destroy_chat_client_ffi(struct ChatClientFFI *client);
 
 /**
  * Creates a Chat Client config
@@ -109,7 +109,7 @@ struct ApplicationConfig *create_chat_config(const char *network_str,
  * # Safety
  * None
  */
-void destroy_config(struct ApplicationConfig *config);
+void destroy_chat_config(struct ApplicationConfig *config);
 
 /**
  * Sends a message over a client
@@ -126,10 +126,10 @@ void destroy_config(struct ApplicationConfig *config);
  * # Safety
  * The ```receiver``` should be destroyed after use
  */
-void send_message(struct ClientFFI *client,
-                  struct TariAddress *receiver,
-                  const char *message_c_char,
-                  int *error_out);
+void send_chat_message(struct ChatClientFFI *client,
+                       struct TariAddress *receiver,
+                       const char *message_c_char,
+                       int *error_out);
 
 /**
  * Add a contact
@@ -145,7 +145,7 @@ void send_message(struct ClientFFI *client,
  * # Safety
  * The ```address``` should be destroyed after use
  */
-void add_contact(struct ClientFFI *client, struct TariAddress *receiver, int *error_out);
+void add_chat_contact(struct ChatClientFFI *client, struct TariAddress *receiver, int *error_out);
 
 /**
  * Check the online status of a contact
@@ -161,7 +161,7 @@ void add_contact(struct ClientFFI *client, struct TariAddress *receiver, int *er
  * # Safety
  * The ```address``` should be destroyed after use
  */
-int check_online_status(struct ClientFFI *client, struct TariAddress *receiver, int *error_out);
+int check_online_status(struct ChatClientFFI *client, struct TariAddress *receiver, int *error_out);
 
 /**
  * Get a ptr to all messages from or to address
@@ -180,11 +180,11 @@ int check_online_status(struct ClientFFI *client, struct TariAddress *receiver, 
  * The ```address``` should be destroyed after use
  * The returned pointer to ```*mut ChatMessages``` should be destroyed after use
  */
-struct ChatMessages *get_messages(struct ClientFFI *client,
-                                  struct TariAddress *address,
-                                  int *limit,
-                                  int *page,
-                                  int *error_out);
+struct ChatMessages *get_chat_messages(struct ChatClientFFI *client,
+                                       struct TariAddress *address,
+                                       int *limit,
+                                       int *page,
+                                       int *error_out);
 
 /**
  * Frees memory for messages
@@ -198,7 +198,7 @@ struct ChatMessages *get_messages(struct ClientFFI *client,
  * # Safety
  * None
  */
-void destroy_messages(struct ChatMessages *messages_ptr);
+void destroy_chat_messages(struct ChatMessages *messages_ptr);
 
 /**
  * Creates a TariAddress and returns a ptr
@@ -230,11 +230,11 @@ struct TariAddress *create_tari_address(const char *receiver_c_char, int *error_
 void destroy_tari_address(struct TariAddress *address);
 
 /**
- * Creates a tor transport type
+ * Creates a tor transport config
  *
  * ## Arguments
  * `control_server_address` - The pointer to a char array
- * `tor_cookie` - The pointer to a ByteVector containing the contents of the tor cookie file, can be null
+ * `tor_cookie` - The pointer to a ChatByteVector containing the contents of the tor cookie file, can be null
  * `tor_port` - The tor port
  * `tor_proxy_bypass_for_outbound` - Whether tor will use a direct tcp connection for a given bypass address instead of
  * the tor proxy if tcp is available, if not it has no effect
@@ -249,13 +249,13 @@ void destroy_tari_address(struct TariAddress *address);
  * The ```transport_config_destroy``` method must be called when finished with a TransportConfig to prevent a
  * memory leak
  */
-struct TransportConfig *transport_tor_create(const char *control_server_address,
-                                             const struct ByteVector *tor_cookie,
-                                             unsigned short tor_port,
-                                             bool tor_proxy_bypass_for_outbound,
-                                             const char *socks_username,
-                                             const char *socks_password,
-                                             int *error_out);
+struct TransportConfig *create_chat_tor_transport_config(const char *control_server_address,
+                                                         const struct ChatByteVector *tor_cookie,
+                                                         unsigned short tor_port,
+                                                         bool tor_proxy_bypass_for_outbound,
+                                                         const char *socks_username,
+                                                         const char *socks_password,
+                                                         int *error_out);
 
 /**
  * Frees memory for a TransportConfig
@@ -269,13 +269,13 @@ struct TransportConfig *transport_tor_create(const char *control_server_address,
  * # Safety
  * None
  */
-void transport_config_destroy(struct TransportConfig *transport);
+void destroy_tor_transport_config(struct TransportConfig *transport);
 
 /**
- * Frees memory for a TransportConfig
+ * Frees memory for a ChatFFIMessage
  *
  * ## Arguments
- * `transport` - The pointer to a TransportConfig
+ * `transport` - The pointer to a ChatFFIMessage
  *
  * ## Returns
  * `()` - Does not return a value, equivalent to void in C

@@ -72,12 +72,12 @@ mod consts {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct ByteVector(Vec<c_uchar>); // declared like this so that it can be exposed to external header
+pub struct ChatByteVector(Vec<c_uchar>); // declared like this so that it can be exposed to external header
 
 #[derive(Clone)]
 pub struct ChatMessages(Vec<Message>);
 
-pub struct ClientFFI {
+pub struct ChatClientFFI {
     client: Client,
     runtime: Runtime,
 }
@@ -101,7 +101,7 @@ pub unsafe extern "C" fn create_chat_client(
     error_out: *mut c_int,
     callback_contact_status_change: CallbackContactStatusChange,
     callback_message_received: CallbackMessageReceived,
-) -> *mut ClientFFI {
+) -> *mut ChatClientFFI {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -165,15 +165,15 @@ pub unsafe extern "C" fn create_chat_client(
         callback_handler.start().await;
     });
 
-    let client_ffi = ClientFFI { client, runtime };
+    let client_ffi = ChatClientFFI { client, runtime };
 
     Box::into_raw(Box::new(client_ffi))
 }
 
-/// Frees memory for a ClientFFI
+/// Frees memory for a ChatClientFFI
 ///
 /// ## Arguments
-/// `client` - The pointer of a ClientFFI
+/// `client` - The pointer of a ChatClientFFI
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -181,7 +181,7 @@ pub unsafe extern "C" fn create_chat_client(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn destroy_client_ffi(client: *mut ClientFFI) {
+pub unsafe extern "C" fn destroy_chat_client_ffi(client: *mut ChatClientFFI) {
     if !client.is_null() {
         drop(Box::from_raw(client))
     }
@@ -347,7 +347,7 @@ pub unsafe extern "C" fn create_chat_config(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn destroy_config(config: *mut ApplicationConfig) {
+pub unsafe extern "C" fn destroy_chat_config(config: *mut ApplicationConfig) {
     if !config.is_null() {
         drop(Box::from_raw(config))
     }
@@ -494,8 +494,8 @@ unsafe fn init_logging(log_path: PathBuf, error_out: *mut c_int) {
 /// # Safety
 /// The ```receiver``` should be destroyed after use
 #[no_mangle]
-pub unsafe extern "C" fn send_message(
-    client: *mut ClientFFI,
+pub unsafe extern "C" fn send_chat_message(
+    client: *mut ChatClientFFI,
     receiver: *mut TariAddress,
     message_c_char: *const c_char,
     error_out: *mut c_int,
@@ -540,7 +540,11 @@ pub unsafe extern "C" fn send_message(
 /// # Safety
 /// The ```address``` should be destroyed after use
 #[no_mangle]
-pub unsafe extern "C" fn add_contact(client: *mut ClientFFI, receiver: *mut TariAddress, error_out: *mut c_int) {
+pub unsafe extern "C" fn add_chat_contact(
+    client: *mut ChatClientFFI,
+    receiver: *mut TariAddress,
+    error_out: *mut c_int,
+) {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -571,7 +575,7 @@ pub unsafe extern "C" fn add_contact(client: *mut ClientFFI, receiver: *mut Tari
 /// The ```address``` should be destroyed after use
 #[no_mangle]
 pub unsafe extern "C" fn check_online_status(
-    client: *mut ClientFFI,
+    client: *mut ChatClientFFI,
     receiver: *mut TariAddress,
     error_out: *mut c_int,
 ) -> c_int {
@@ -610,8 +614,8 @@ pub unsafe extern "C" fn check_online_status(
 /// The ```address``` should be destroyed after use
 /// The returned pointer to ```*mut ChatMessages``` should be destroyed after use
 #[no_mangle]
-pub unsafe extern "C" fn get_messages(
-    client: *mut ClientFFI,
+pub unsafe extern "C" fn get_chat_messages(
+    client: *mut ChatClientFFI,
     address: *mut TariAddress,
     limit: *mut c_int,
     page: *mut c_int,
@@ -654,7 +658,7 @@ pub unsafe extern "C" fn get_messages(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn destroy_messages(messages_ptr: *mut ChatMessages) {
+pub unsafe extern "C" fn destroy_chat_messages(messages_ptr: *mut ChatMessages) {
     if !messages_ptr.is_null() {
         drop(Box::from_raw(messages_ptr))
     }
@@ -715,11 +719,11 @@ pub unsafe extern "C" fn destroy_tari_address(address: *mut TariAddress) {
     }
 }
 
-/// Creates a tor transport type
+/// Creates a tor transport config
 ///
 /// ## Arguments
 /// `control_server_address` - The pointer to a char array
-/// `tor_cookie` - The pointer to a ByteVector containing the contents of the tor cookie file, can be null
+/// `tor_cookie` - The pointer to a ChatByteVector containing the contents of the tor cookie file, can be null
 /// `tor_port` - The tor port
 /// `tor_proxy_bypass_for_outbound` - Whether tor will use a direct tcp connection for a given bypass address instead of
 /// the tor proxy if tcp is available, if not it has no effect
@@ -731,12 +735,12 @@ pub unsafe extern "C" fn destroy_tari_address(address: *mut TariAddress) {
 /// `*mut TransportConfig` - Returns a pointer to a tor TransportConfig, null on error.
 ///
 /// # Safety
-/// The ```transport_config_destroy``` method must be called when finished with a TransportConfig to prevent a
+/// The ```destroy_tor_transport_config``` method must be called when finished with a TransportConfig to prevent a
 /// memory leak
 #[no_mangle]
-pub unsafe extern "C" fn transport_tor_create(
+pub unsafe extern "C" fn create_chat_tor_transport_config(
     control_server_address: *const c_char,
-    tor_cookie: *const ByteVector,
+    tor_cookie: *const ChatByteVector,
     tor_port: c_ushort,
     tor_proxy_bypass_for_outbound: bool,
     socks_username: *const c_char,
@@ -852,7 +856,7 @@ pub unsafe extern "C" fn transport_tor_create(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn transport_config_destroy(transport: *mut TransportConfig) {
+pub unsafe extern "C" fn destroy_tor_transport_config(transport: *mut TransportConfig) {
     if !transport.is_null() {
         drop(Box::from_raw(transport))
     }
