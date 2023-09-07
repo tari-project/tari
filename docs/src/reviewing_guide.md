@@ -38,7 +38,7 @@ cause an out of memory exception. If a length is received from an untrusted sour
 
 ### Comparing to Diagrams
 When reviewing a pull request, it is important to understand the context of the change. Arguably the easiest way to
-achieve this is to review it in the context of the [diagrams](todo). 
+achieve this is to review it in the context of the [diagrams](diagrams/README.md). 
 
 Some questions to ask:
 
