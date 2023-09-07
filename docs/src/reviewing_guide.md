@@ -58,6 +58,7 @@ PRs will need to be checked manually if they change this code.
 the node can hold up the processing on the requesting node.
    2. What happens if the node returns unexpected data?
 8. In cases where we have received data from a node, whether we requested it or not, if it is bad, is the node banned?
+9. Is this added data to the blockchain? Is the data malleable? Is the data committed to in a mining hash or signature?
 
 
 ### More specific things to look out for
