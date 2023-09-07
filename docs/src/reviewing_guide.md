@@ -33,6 +33,7 @@ carefully. Does the third party crate have fuzzing? Does it have tests? Is it ac
 and could be used to crash a node.
 2. Be especially careful when reading the length for a buffer or Vec from untrusted data. If the length is too large, it could
 cause an out of memory exception. If a length is received from an untrusted source, it should be checked against a maximum before allocating memory.
+In these cases, it's often best to return an error so that the offending sender can be banned
    1. E.g. `let length = read_u64(stream); let mut buf = vec![0u8; length];` should be replaced with `let mut buf = vec![0u8; min(length, MAX_LENGTH)];`
 
 
