@@ -15,7 +15,7 @@ flowchart TD
     A[Start] --> B[1. trigger: Protocol Negotiation /t/msg/0.1]
     B --> C[2. protocols::messaging::InboundMessaging]
     C -->|InboundMessage| D[3. Inbound pipeline]
-    D -->|&lt;threads&gt;| E[4. Inbound DHT middlewares]
+    D -->|"&lt;threads&gt;"| E[4. Inbound DHT middlewares]
     E -->|DecryptedDhtMessage| F[5. Pubsub connector]
     F --o|PeerMessage| G[6. ... Domain subscribers ...]
 ```
