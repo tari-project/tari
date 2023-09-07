@@ -573,7 +573,7 @@ where B: BlockchainBackend + 'static
             coinbase_output,
             kernel_excess_sigs: excess_sigs,
         } = new_block;
-        // If the block is empty, we dont have to check ask for the block, as we already have the full block available
+        // If the block is empty, we dont have to ask for the block, as we already have the full block available
         // to us.
         if excess_sigs.is_empty() {
             let block = BlockBuilder::new(header.version)

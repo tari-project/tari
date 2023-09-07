@@ -141,6 +141,8 @@ mod test {
 
     #[test]
     fn from_bytes() {
+        let empty = FixedByteArray::from_bytes(&[]).unwrap();
+        assert_eq!(empty.len(), 0);
         let arr = FixedByteArray::from_bytes(&[1u8][..]).unwrap();
         assert_eq!(arr.len(), 1);
         assert!(arr.iter().all(|b| *b == 1));
@@ -183,5 +185,15 @@ mod test {
         let buf = &mut buf.as_slice();
         assert_eq!(fixed_byte_array, FixedByteArray::deserialize(buf).unwrap());
         assert_eq!(buf, &[1, 2, 3]);
+    }
+
+    #[test]
+    fn test_borsh_deserialize_wrong_length() {
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&[3, 1, 1]);
+        let buf = &mut buf.as_slice();
+        let result = FixedByteArray::deserialize(buf);
+        assert!(result.is_err());
+        assert_eq!(buf, &[1u8; 0]);
     }
 }
