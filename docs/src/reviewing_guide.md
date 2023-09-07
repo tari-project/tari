@@ -88,6 +88,7 @@ shift even if the MSB is set. i.e. `0b1000_0000 << 1` will return `0b0000_0000`.
 Tokio has many useful channels, and it can be difficult to know what to look out for, so here are some things to keep in mind:
 1. When using `watch`:
    1. Watches can block if the reference returned from `borrow()` is held for a long time. Any call to `borrow()` should drop the reference as soon as possible.
+   2. It is generally ok to ignore a failure to `Sender::send` on a `watch`. According to the docs, it only fails when there are no subscribers and it may succeed in future
 2. When using `broadcast`:
    1. If one receiver is not receiving the values, it will return a `Lagged` error. This should be logged, but in most cases the code can continue as normal.
    2. When receiving events in a loop, Error::Closed should be used to break out of the loop, because the sender halves have dropped and no more events will be received
