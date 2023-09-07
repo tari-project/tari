@@ -14,7 +14,7 @@ So a good place to start is to look at the entry points to the system and follow
 This is generally much more effective than trying to look at a file in isolation. 
 
 ### Trusted vs Untrusted Data
-Data received that is not gener
+Data received that is not generated
 ated by the local system should be seen as untrusted and treated very carefully.
 
 In addition to data packets received from the network, there are other sources of untrusted data. For example, a config 
