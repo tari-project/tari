@@ -48,6 +48,7 @@ use crate::{
     protocol::{
         messaging::{MessagingEvent, MessagingEventSender, MessagingProtocolExtension},
         ProtocolEvent,
+        ProtocolId,
         Protocols,
     },
     test_utils::node_identity::build_node_identity,
@@ -91,6 +92,7 @@ async fn spawn_node(
         .add_protocol_extensions(protocols.into())
         .add_protocol_extension(
             MessagingProtocolExtension::new(
+                ProtocolId::from_static(b"test/msg"),
                 messaging_events_sender.clone(),
                 pipeline::Builder::new()
                 // Outbound messages will be forwarded "as is" to outbound messaging

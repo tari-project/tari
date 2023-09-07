@@ -31,10 +31,11 @@ use crate::{
     message::InboundMessage,
     pipeline,
     protocol::{
-        messaging::{protocol::MESSAGING_PROTOCOL_ID, MessagingEventSender},
+        messaging::MessagingEventSender,
         ProtocolExtension,
         ProtocolExtensionContext,
         ProtocolExtensionError,
+        ProtocolId,
     },
 };
 
@@ -52,11 +53,17 @@ pub struct MessagingProtocolExtension<TInPipe, TOutPipe, TOutReq> {
     pipeline: pipeline::Config<TInPipe, TOutPipe, TOutReq>,
     enable_message_received_event: bool,
     ban_duration: Duration,
+    protocol_id: ProtocolId,
 }
 
 impl<TInPipe, TOutPipe, TOutReq> MessagingProtocolExtension<TInPipe, TOutPipe, TOutReq> {
-    pub fn new(event_tx: MessagingEventSender, pipeline: pipeline::Config<TInPipe, TOutPipe, TOutReq>) -> Self {
+    pub fn new(
+        protocol_id: ProtocolId,
+        event_tx: MessagingEventSender,
+        pipeline: pipeline::Config<TInPipe, TOutPipe, TOutReq>,
+    ) -> Self {
         Self {
+            protocol_id,
             event_tx,
             pipeline,
             enable_message_received_event: false,
@@ -91,12 +98,13 @@ where
 {
     fn install(mut self: Box<Self>, context: &mut ProtocolExtensionContext) -> Result<(), ProtocolExtensionError> {
         let (proto_tx, proto_rx) = mpsc::channel(MESSAGING_PROTOCOL_EVENTS_BUFFER_SIZE);
-        context.add_protocol(&[MESSAGING_PROTOCOL_ID.clone()], &proto_tx);
+        context.add_protocol(&[self.protocol_id.clone()], &proto_tx);
 
         let (inbound_message_tx, inbound_message_rx) = mpsc::channel(INBOUND_MESSAGE_BUFFER_SIZE);
 
         let message_receiver = self.pipeline.outbound.out_receiver.take().unwrap();
         let messaging = MessagingProtocol::new(
+            self.protocol_id.clone(),
             context.connectivity(),
             proto_rx,
             message_receiver,
