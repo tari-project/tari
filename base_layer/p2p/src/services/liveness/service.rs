@@ -68,7 +68,7 @@ pub struct LivenessService<THandleStream, TPingStream> {
 
 impl<TRequestStream, TPingStream> LivenessService<TRequestStream, TPingStream>
 where
-    TPingStream: Stream<Item = DomainMessage<PingPongMessage>>,
+    TPingStream: Stream<Item = DomainMessage<Result<PingPongMessage, prost::DecodeError>>>,
     TRequestStream: Stream<Item = RequestContext<LivenessRequest, Result<LivenessResponse, LivenessError>>>,
 {
     pub fn new(
@@ -147,7 +147,10 @@ where
         }
     }
 
-    async fn handle_incoming_message(&mut self, msg: DomainMessage<PingPongMessage>) -> Result<(), LivenessError> {
+    async fn handle_incoming_message(
+        &mut self,
+        msg: DomainMessage<Result<PingPongMessage, prost::DecodeError>>,
+    ) -> Result<(), LivenessError> {
         let DomainMessage::<_> {
             source_peer,
             dht_header,
@@ -157,6 +160,18 @@ where
         let node_id = source_peer.node_id;
         let public_key = source_peer.public_key;
         let message_tag = dht_header.message_tag;
+        let ping_pong_msg = match ping_pong_msg {
+            Ok(p) => p,
+            Err(e) => {
+                self.connectivity
+                    .ban_peer(
+                        node_id.clone(),
+                        format!("Peer sent a badly formed PingPongMessage:{}", e),
+                    )
+                    .await?;
+                return Err(e.into());
+            },
+        };
 
         match ping_pong_msg.kind().ok_or(LivenessError::InvalidPingPongType)? {
             PingPong::Ping => {
@@ -482,7 +497,7 @@ mod test {
         liveness_handle.send_ping(node_id).await.unwrap();
     }
 
-    fn create_dummy_message<T>(inner: T) -> DomainMessage<T> {
+    fn create_dummy_message<T>(inner: T) -> DomainMessage<Result<T, prost::DecodeError>> {
         let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng);
         let source_peer = Peer::new(
             pk.clone(),
@@ -506,7 +521,7 @@ mod test {
             },
             authenticated_origin: None,
             source_peer,
-            inner,
+            inner: Ok(inner),
         }
     }
 
@@ -559,7 +574,11 @@ mod test {
         metadata.insert(MetadataKey::ChainMetadata, b"dummy-data".to_vec());
         let msg = create_dummy_message(PingPongMessage::pong_with_metadata(123, metadata.clone()));
 
-        state.add_inflight_ping(msg.inner.nonce, msg.source_peer.node_id.clone());
+        state.add_inflight_ping(
+            msg.inner.as_ref().map(|i| i.nonce).unwrap(),
+            msg.source_peer.node_id.clone(),
+        );
+
         // A stream which emits an inflight pong message and an unexpected one
         let malicious_msg = create_dummy_message(PingPongMessage::pong_with_metadata(321, metadata));
         let pingpong_stream = stream::iter(vec![msg, malicious_msg]);

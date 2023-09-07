@@ -22,8 +22,11 @@
 
 use std::sync::PoisonError;
 
+use multiaddr::Multiaddr;
 use tari_storage::KeyValStoreError;
 use thiserror::Error;
+
+use crate::peer_manager::NodeId;
 
 /// Error type for [PeerManager](super::PeerManager).
 #[derive(Debug, Error, Clone)]
@@ -46,6 +49,10 @@ pub enum PeerManagerError {
     MultiaddrError(String),
     #[error("Unable to parse any of the network addresses offered by the connecting peer")]
     PeerIdentityNoValidAddresses,
+    #[error("Invalid peer feature bits '{bits:#x}'")]
+    InvalidPeerFeatures { bits: u32 },
+    #[error("Address {address} not found for peer {node_id}")]
+    AddressNotFoundError { address: Multiaddr, node_id: NodeId },
 }
 
 impl PeerManagerError {

@@ -39,13 +39,13 @@ use tari_p2p::{
     domain_message::DomainMessage,
     services::{
         liveness::{LivenessEvent, LivenessHandle, MetadataKey, PingPongEvent},
-        utils::{map_decode, ok_or_skip_result},
+        utils::map_decode,
     },
     tari_message::TariMessageType,
 };
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::ByteArray;
+use tari_utilities::{epoch_time::EpochTime, ByteArray};
 use tokio::sync::broadcast;
 
 use crate::contacts_service::{
@@ -189,8 +189,8 @@ where T: ContactsBackend + 'static
         let chat_messages = self
             .subscription_factory
             .get_subscription(TariMessageType::Chat, SUBSCRIPTION_LABEL)
-            .map(map_decode::<proto::Message>)
-            .filter_map(ok_or_skip_result);
+            .map(map_decode::<proto::Message>);
+
         pin_mut!(chat_messages);
 
         let shutdown = self
@@ -406,22 +406,35 @@ where T: ContactsBackend + 'static
 
     async fn handle_incoming_message(
         &mut self,
-        msg: DomainMessage<crate::contacts_service::proto::Message>,
+        msg: DomainMessage<Result<crate::contacts_service::proto::Message, prost::DecodeError>>,
     ) -> Result<(), ContactsServiceError> {
+        let msg_inner = match &msg.inner {
+            Ok(msg) => msg.clone(),
+            Err(e) => {
+                self.connectivity
+                    .ban_peer(
+                        msg.source_peer.node_id.clone(),
+                        "Peer sent illformed message".to_string(),
+                    )
+                    .await?;
+                return Err(ContactsServiceError::MalformedMessageError(e.clone()));
+            },
+        };
         if let Some(source_public_key) = msg.authenticated_origin {
-            let DomainMessage::<_> { inner: msg, .. } = msg;
+            let message =
+                Message::try_from(msg_inner).map_err(|ta| ContactsServiceError::MessageParsingError { source: ta })?;
 
-            let message = Message::from(msg.clone());
-            let message = Message {
+            let our_message = Message {
                 address: TariAddress::from_public_key(&source_public_key, message.address.network()),
-                stored_at: Utc::now().naive_utc().timestamp() as u64,
-                ..msg.into()
+                stored_at: EpochTime::now().as_u64(),
+                ..message
             };
 
-            self.db
-                .save_message(message.clone())
-                .expect("Couldn't save the message");
-            let _msg = self.message_publisher.send(Arc::new(message));
+            self.db.save_message(our_message.clone())?;
+
+            let _msg = self.message_publisher.send(Arc::new(our_message));
+        } else {
+            return Err(ContactsServiceError::MessageSourceDoesNotMatchOrigin);
         }
 
         Ok(())

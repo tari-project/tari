@@ -29,12 +29,7 @@ use std::{
 use futures::StreamExt;
 use log::*;
 use num_format::{Locale, ToFormattedString};
-use tari_comms::{
-    connectivity::ConnectivityRequester,
-    peer_manager::NodeId,
-    protocol::rpc::{RpcClient, RpcError},
-    PeerConnection,
-};
+use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId, protocol::rpc::RpcClient, PeerConnection};
 use tari_utilities::hex::Hex;
 use tokio::task;
 use tracing;
@@ -42,10 +37,10 @@ use tracing;
 use super::error::BlockSyncError;
 use crate::{
     base_node::{
-        sync::{hooks::Hooks, rpc, SyncPeer},
+        sync::{ban::PeerBanManager, hooks::Hooks, rpc, SyncPeer},
         BlockchainSyncConfig,
     },
-    blocks::{Block, BlockValidationError, ChainBlock},
+    blocks::{Block, ChainBlock},
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     common::rolling_avg::RollingAverageTime,
     proto::base_node::SyncBlocksRequest,
@@ -55,23 +50,25 @@ use crate::{
 
 const LOG_TARGET: &str = "c::bn::block_sync";
 
-pub struct BlockSynchronizer<B> {
+pub struct BlockSynchronizer<'a, B> {
     config: BlockchainSyncConfig,
     db: AsyncBlockchainDb<B>,
     connectivity: ConnectivityRequester,
-    sync_peers: Vec<SyncPeer>,
+    sync_peers: &'a mut Vec<SyncPeer>,
     block_validator: Arc<dyn BlockBodyValidator<B>>,
     hooks: Hooks,
+    peer_ban_manager: PeerBanManager,
 }
 
-impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
+impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
     pub fn new(
         config: BlockchainSyncConfig,
         db: AsyncBlockchainDb<B>,
         connectivity: ConnectivityRequester,
-        sync_peers: Vec<SyncPeer>,
+        sync_peers: &'a mut Vec<SyncPeer>,
         block_validator: Arc<dyn BlockBodyValidator<B>>,
     ) -> Self {
+        let peer_ban_manager = PeerBanManager::new(config.clone(), connectivity.clone());
         Self {
             config,
             db,
@@ -79,6 +76,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
             sync_peers,
             block_validator,
             hooks: Default::default(),
+            peer_ban_manager,
         }
     }
 
@@ -100,18 +98,12 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
     #[tracing::instrument(skip(self), err)]
     pub async fn synchronize(&mut self) -> Result<(), BlockSyncError> {
         let mut max_latency = self.config.initial_max_sync_latency;
+        let mut sync_round = 0;
         loop {
             match self.attempt_block_sync(max_latency).await {
                 Ok(_) => return Ok(()),
                 Err(err @ BlockSyncError::AllSyncPeersExceedLatency) => {
                     warn!(target: LOG_TARGET, "{}", err);
-                    if self.sync_peers.len() <= 2 {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Insufficient sync peers to continue with block sync"
-                        );
-                        return Err(err);
-                    }
                     max_latency += self.config.max_latency_increase;
                     warn!(
                         target: LOG_TARGET,
@@ -119,6 +111,16 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
                         max_latency,
                         self.sync_peers.len()
                     );
+                    // Prohibit using a few slow sync peers only, rather get new sync peers assigned
+                    if self.sync_peers.len() < 2 {
+                        return Err(err);
+                    } else {
+                        continue;
+                    }
+                },
+                Err(err @ BlockSyncError::SyncRoundFailed) => {
+                    sync_round += 1;
+                    warn!(target: LOG_TARGET, "{} ({})", err, sync_round);
                     continue;
                 },
                 Err(err) => return Err(err),
@@ -133,16 +135,38 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
             "Attempting to sync blocks({} sync peers)",
             sync_peer_node_ids.len()
         );
+        let mut latency_counter = 0usize;
         for (i, node_id) in sync_peer_node_ids.iter().enumerate() {
             let sync_peer = &self.sync_peers[i];
             self.hooks.call_on_starting_hook(sync_peer);
-            let mut conn = self.connect_to_sync_peer(node_id.clone()).await?;
+            let mut conn = match self.connect_to_sync_peer(node_id.clone()).await {
+                Ok(val) => val,
+                Err(e) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Failed to connect to sync peer `{}`: {}", node_id, e
+                    );
+                    self.remove_sync_peer(node_id);
+                    continue;
+                },
+            };
             let config = RpcClient::builder()
                 .with_deadline(self.config.rpc_deadline)
                 .with_deadline_grace_period(Duration::from_secs(5));
-            let mut client = conn
+            let mut client = match conn
                 .connect_rpc_using_builder::<rpc::BaseNodeSyncRpcClient>(config)
-                .await?;
+                .await
+            {
+                Ok(val) => val,
+                Err(e) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Failed to obtain RPC connection from sync peer `{}`: {}", node_id, e
+                    );
+                    self.remove_sync_peer(node_id);
+                    continue;
+                },
+            };
             let latency = client
                 .get_last_request_latency()
                 .expect("unreachable panic: last request latency must be set after connect");
@@ -153,50 +177,37 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
                 "Attempting to synchronize blocks with `{}` latency: {:.2?}", node_id, latency
             );
             match self.synchronize_blocks(sync_peer, client, max_latency).await {
-                Ok(_) => {
-                    self.db.cleanup_orphans().await?;
-                    return Ok(());
-                },
-                Err(err @ BlockSyncError::ValidationError(ValidationError::AsyncTaskFailed(_))) => return Err(err),
-                Err(BlockSyncError::ValidationError(err)) => {
-                    match &err {
-                        ValidationError::BlockHeaderError(_) => {},
-                        ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots { .. }) |
-                        ValidationError::BadBlockFound { .. } |
-                        ValidationError::BlockError(BlockValidationError::MismatchedMmrSize { .. }) => {
-                            let num_cleared = self.db.clear_all_pending_headers().await?;
-                            warn!(
-                                target: LOG_TARGET,
-                                "Cleared {} incomplete headers from bad chain", num_cleared
-                            );
-                        },
-                        _ => {},
-                    }
-                    warn!(
-                        target: LOG_TARGET,
-                        "Banning peer because provided block failed validation: {}", err
-                    );
-                    self.ban_peer(node_id, &err).await?;
-                    return Err(err.into());
-                },
-                Err(err @ BlockSyncError::RpcError(RpcError::ReplyTimeout)) |
-                Err(err @ BlockSyncError::MaxLatencyExceeded { .. }) => {
+                Ok(_) => return Ok(()),
+                Err(err) => {
                     warn!(target: LOG_TARGET, "{}", err);
-                    if i == self.sync_peers.len() - 1 {
-                        return Err(BlockSyncError::AllSyncPeersExceedLatency);
+                    let ban_reason =
+                        BlockSyncError::get_ban_reason(&err, self.config.short_ban_period, self.config.ban_period);
+                    if let Some(reason) = ban_reason {
+                        warn!(target: LOG_TARGET, "{}", err);
+                        self.peer_ban_manager
+                            .ban_peer_if_required(node_id, &Some(reason.clone()))
+                            .await;
                     }
-                    continue;
+                    if let BlockSyncError::MaxLatencyExceeded { .. } = err {
+                        latency_counter += 1;
+                    } else {
+                        self.remove_sync_peer(node_id);
+                    }
+
+                    if let BlockSyncError::MaxLatencyExceeded { .. } = err {
+                        latency_counter += 1;
+                    }
                 },
-                Err(err @ BlockSyncError::ProtocolViolation(_)) => {
-                    warn!(target: LOG_TARGET, "Banning peer: {}", err);
-                    self.ban_peer(node_id, &err).await?;
-                    return Err(err);
-                },
-                Err(err) => return Err(err),
             }
         }
 
-        Err(BlockSyncError::NoSyncPeers)
+        if self.sync_peers.is_empty() {
+            Err(BlockSyncError::NoMoreSyncPeers("Block sync failed".to_string()))
+        } else if latency_counter >= self.sync_peers.len() {
+            Err(BlockSyncError::AllSyncPeersExceedLatency)
+        } else {
+            Err(BlockSyncError::SyncRoundFailed)
+        }
     }
 
     async fn connect_to_sync_peer(&self, peer: NodeId) -> Result<PeerConnection, BlockSyncError> {
@@ -250,19 +261,19 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
         let mut current_block = None;
         let mut last_sync_timer = Instant::now();
         let mut avg_latency = RollingAverageTime::new(20);
-        while let Some(block) = block_stream.next().await {
+        while let Some(block_result) = block_stream.next().await {
             let latency = last_sync_timer.elapsed();
             avg_latency.add_sample(latency);
-            let block = block?;
+            let block_body_response = block_result?;
 
             let header = self
                 .db
-                .fetch_chain_header_by_block_hash(block.hash.clone().try_into()?)
+                .fetch_chain_header_by_block_hash(block_body_response.hash.clone().try_into()?)
                 .await?
                 .ok_or_else(|| {
-                    BlockSyncError::ProtocolViolation(format!(
+                    BlockSyncError::UnknownHeaderHash(format!(
                         "Peer sent hash ({}) for block header we do not have",
-                        block.hash.to_hex()
+                        block_body_response.hash.to_hex()
                     ))
                 })?;
 
@@ -271,7 +282,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
             let timestamp = header.timestamp();
 
             if header.header().prev_hash != prev_hash {
-                return Err(BlockSyncError::PeerSentBlockThatDidNotFormAChain {
+                return Err(BlockSyncError::BlockWithoutParent {
                     expected: prev_hash.to_hex(),
                     got: header.header().prev_hash.to_hex(),
                 });
@@ -279,11 +290,11 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
 
             prev_hash = header_hash;
 
-            let body = block
+            let body = block_body_response
                 .body
                 .map(AggregateBody::try_from)
-                .ok_or_else(|| BlockSyncError::ProtocolViolation("Block body was empty".to_string()))?
-                .map_err(BlockSyncError::ProtocolViolation)?;
+                .ok_or_else(|| BlockSyncError::InvalidBlockBody("Peer sent empty block".to_string()))?
+                .map_err(BlockSyncError::InvalidBlockBody)?;
 
             debug!(
                 target: LOG_TARGET,
@@ -306,15 +317,13 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
                 let txn = db.db_read_access()?;
                 validator.validate_body(&*txn, &task_block)
             })
-            .await
-            .map_err(|err| ValidationError::CustomError(err.to_string()))?;
+            .await?;
 
             let block = match res {
                 Ok(block) => block,
-                Err(err @ ValidationError::BadBlockFound { .. }) |
-                Err(err @ ValidationError::FatalStorageError(_)) |
-                Err(err @ ValidationError::AsyncTaskFailed(_)) |
-                Err(err @ ValidationError::CustomError(_)) => return Err(err.into()),
+                Err(err @ ValidationError::BadBlockFound { .. }) | Err(err @ ValidationError::FatalStorageError(_)) => {
+                    return Err(err.into());
+                },
                 Err(err) => {
                     // Add to bad blocks
                     if let Err(err) = self
@@ -405,29 +414,10 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
         Ok(())
     }
 
-    async fn ban_peer<T: ToString>(&mut self, node_id: &NodeId, reason: T) -> Result<(), BlockSyncError> {
-        let reason = reason.to_string();
-        if self.config.forced_sync_peers.contains(node_id) {
-            debug!(
-                target: LOG_TARGET,
-                "Not banning peer that is allowlisted for sync. Ban reason = {}", reason
-            );
-            return Ok(());
-        }
+    // Sync peers are also removed from the list of sync peers if the ban duration is longer than the short ban period.
+    fn remove_sync_peer(&mut self, node_id: &NodeId) {
         if let Some(pos) = self.sync_peers.iter().position(|p| p.node_id() == node_id) {
             self.sync_peers.remove(pos);
-            if self.sync_peers.is_empty() {
-                return Err(BlockSyncError::NoSyncPeers);
-            }
         }
-        warn!(target: LOG_TARGET, "Banned sync peer because {}", reason);
-        if let Err(err) = self
-            .connectivity
-            .ban_peer_until(node_id.clone(), self.config.ban_period, reason)
-            .await
-        {
-            error!(target: LOG_TARGET, "Failed to ban peer: {}", err);
-        }
-        Ok(())
     }
 }

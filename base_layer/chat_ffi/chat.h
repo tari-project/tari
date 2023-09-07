@@ -14,15 +14,24 @@ struct ChatMessages;
 
 struct ClientFFI;
 
-struct ContactsLivenessData;
-
-struct Message;
-
 struct TariAddress;
 
-typedef void (*CallbackContactStatusChange)(struct ContactsLivenessData*);
+struct ChatFFIContactsLivenessData {
+  const char *address;
+  uint64_t last_seen;
+  uint8_t online_status;
+};
 
-typedef void (*CallbackMessageReceived)(struct Message*);
+typedef void (*CallbackContactStatusChange)(struct ChatFFIContactsLivenessData*);
+
+struct ChatFFIMessage {
+  const char *body;
+  const char *from_address;
+  uint64_t stored_at;
+  const char *message_id;
+};
+
+typedef void (*CallbackMessageReceived)(struct ChatFFIMessage*);
 
 #ifdef __cplusplus
 extern "C" {
@@ -44,7 +53,6 @@ extern "C" {
  * The ```destroy_client``` method must be called when finished with a ClientFFI to prevent a memory leak
  */
 struct ClientFFI *create_chat_client(struct ApplicationConfig *config,
-                                     const char *identity_file_path,
                                      int *error_out,
                                      CallbackContactStatusChange callback_contact_status_change,
                                      CallbackMessageReceived callback_message_received);
@@ -80,6 +88,7 @@ void destroy_client_ffi(struct ClientFFI *client);
 struct ApplicationConfig *create_chat_config(const char *network_str,
                                              const char *public_address,
                                              const char *datastore_path,
+                                             const char *identity_file_path,
                                              const char *log_path,
                                              int *error_out);
 
@@ -214,6 +223,34 @@ struct TariAddress *create_tari_address(const char *receiver_c_char, int *error_
  * None
  */
 void destroy_tari_address(struct TariAddress *address);
+
+/**
+ * Frees memory for a ChatFFIMessage
+ *
+ * ## Arguments
+ * `address` - The pointer of a ChatFFIMessage
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * None
+ */
+void destroy_chat_ffi_message(struct ChatFFIMessage *address);
+
+/**
+ * Frees memory for a ChatFFIContactsLivenessData
+ *
+ * ## Arguments
+ * `address` - The pointer of a ChatFFIContactsLivenessData
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * None
+ */
+void destroy_chat_ffi_liveness_data(struct ChatFFIContactsLivenessData *address);
 
 #ifdef __cplusplus
 } // extern "C"

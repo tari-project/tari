@@ -22,7 +22,7 @@
 
 #![recursion_limit = "1024"]
 
-use std::{convert::TryFrom, ffi::CStr, path::PathBuf, ptr, str::FromStr, sync::Arc};
+use std::{convert::TryFrom, ffi::CStr, path::PathBuf, ptr, str::FromStr};
 
 use callback_handler::CallbackContactStatusChange;
 use libc::{c_char, c_int};
@@ -38,15 +38,16 @@ use log4rs::{
     config::{Appender, Config, Logger, Root},
     encode::pattern::PatternEncoder,
 };
-use minotari_app_utilities::identity_management::load_from_json;
+use minotari_app_utilities::identity_management::setup_node_identity;
 use tari_chat_client::{
     config::{ApplicationConfig, ChatClientConfig},
+    networking::PeerFeatures,
     ChatClient,
     Client,
 };
 use tari_common::configuration::{MultiaddrList, Network};
 use tari_common_types::tari_address::TariAddress;
-use tari_comms::{multiaddr::Multiaddr, NodeIdentity};
+use tari_comms::multiaddr::Multiaddr;
 use tari_contacts::contacts_service::{
     handle::{DEFAULT_MESSAGE_LIMIT, DEFAULT_MESSAGE_PAGE},
     types::Message,
@@ -54,7 +55,7 @@ use tari_contacts::contacts_service::{
 use tokio::runtime::Runtime;
 
 use crate::{
-    callback_handler::{CallbackHandler, CallbackMessageReceived},
+    callback_handler::{CallbackHandler, CallbackMessageReceived, ChatFFIContactsLivenessData, ChatFFIMessage},
     error::{InterfaceError, LibChatError},
 };
 
@@ -92,7 +93,6 @@ pub struct ClientFFI {
 #[no_mangle]
 pub unsafe extern "C" fn create_chat_client(
     config: *mut ApplicationConfig,
-    identity_file_path: *const c_char,
     error_out: *mut c_int,
     callback_contact_status_change: CallbackContactStatusChange,
     callback_message_received: CallbackMessageReceived,
@@ -124,20 +124,15 @@ pub unsafe extern "C" fn create_chat_client(
         ptr::swap(error_out, &mut error as *mut c_int);
     };
 
-    let identity: Arc<NodeIdentity> = match CStr::from_ptr(identity_file_path).to_str() {
-        Ok(str) => {
-            let identity_path = PathBuf::from(str);
-
-            match load_from_json(identity_path) {
-                Ok(Some(identity)) => Arc::new(identity),
-                _ => {
-                    bad_identity("No identity loaded".to_string());
-                    return ptr::null_mut();
-                },
-            }
-        },
-        Err(e) => {
-            bad_identity(e.to_string());
+    let identity = match setup_node_identity(
+        (*config).chat_client.identity_file.clone(),
+        (*config).chat_client.p2p.public_addresses.clone().into_vec(),
+        true,
+        PeerFeatures::COMMUNICATION_NODE,
+    ) {
+        Ok(node_id) => node_id,
+        _ => {
+            bad_identity("No identity loaded".to_string());
             return ptr::null_mut();
         },
     };
@@ -199,11 +194,13 @@ pub unsafe extern "C" fn destroy_client_ffi(client: *mut ClientFFI) {
 ///
 /// # Safety
 /// The ```destroy_config``` method must be called when finished with a Config to prevent a memory leak
+#[allow(clippy::too_many_lines)]
 #[no_mangle]
 pub unsafe extern "C" fn create_chat_config(
     network_str: *const c_char,
     public_address: *const c_char,
     datastore_path: *const c_char,
+    identity_file_path: *const c_char,
     log_path: *const c_char,
     error_out: *mut c_int,
 ) -> *mut ApplicationConfig {
@@ -298,11 +295,25 @@ pub unsafe extern "C" fn create_chat_config(
     }
     let log_path = PathBuf::from(log_path_string);
 
+    let mut bad_identity = |e| {
+        error = LibChatError::from(InterfaceError::InvalidArgument(e)).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    };
+
+    let identity_path = match CStr::from_ptr(identity_file_path).to_str() {
+        Ok(str) => PathBuf::from(str),
+        Err(e) => {
+            bad_identity(e.to_string());
+            return ptr::null_mut();
+        },
+    };
+
     let mut chat_client_config = ChatClientConfig::default();
     chat_client_config.network = network;
     chat_client_config.p2p.transport.tcp.listener_address = address.clone();
     chat_client_config.p2p.public_addresses = MultiaddrList::from(vec![address]);
     chat_client_config.log_path = Some(log_path);
+    chat_client_config.identity_file = identity_path;
     chat_client_config.set_base_path(datastore_path);
 
     let config = ApplicationConfig {
@@ -687,6 +698,40 @@ pub unsafe extern "C" fn create_tari_address(
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn destroy_tari_address(address: *mut TariAddress) {
+    if !address.is_null() {
+        drop(Box::from_raw(address))
+    }
+}
+
+/// Frees memory for a ChatFFIMessage
+///
+/// ## Arguments
+/// `address` - The pointer of a ChatFFIMessage
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn destroy_chat_ffi_message(address: *mut ChatFFIMessage) {
+    if !address.is_null() {
+        drop(Box::from_raw(address))
+    }
+}
+
+/// Frees memory for a ChatFFIContactsLivenessData
+///
+/// ## Arguments
+/// `address` - The pointer of a ChatFFIContactsLivenessData
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn destroy_chat_ffi_liveness_data(address: *mut ChatFFIContactsLivenessData) {
     if !address.is_null() {
         drop(Box::from_raw(address))
     }

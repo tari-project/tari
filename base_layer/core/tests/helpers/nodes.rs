@@ -388,7 +388,7 @@ async fn setup_base_node_services(
     liveness_service_config: LivenessConfig,
     data_path: &str,
 ) -> NodeInterfaces {
-    let (publisher, subscription_factory) = pubsub_connector(100, 20);
+    let (publisher, subscription_factory) = pubsub_connector(100);
     let subscription_factory = Arc::new(subscription_factory);
     let (comms, dht, messaging_events, shutdown) =
         setup_comms_services(node_identity.clone(), peers, publisher, data_path).await;

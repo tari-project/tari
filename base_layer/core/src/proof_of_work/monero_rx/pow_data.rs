@@ -103,6 +103,21 @@ impl MoneroPowData {
                 v.len()
             )));
         }
+        let mut test_serialized_data = vec![];
+
+        // This is an inefficient test, so maybe it can be removed in future, but because we rely
+        // on third party parsing libraries, there could be a case where the data we deserialized
+        // can be generated from multiple input data. This way we test that there is only one of those
+        // inputs that is allowed. Remember that the data in powdata is used for the hash, so having
+        // multiple pow_data that generate the same randomx difficulty could be a problem.
+        BorshSerialize::serialize(&pow_data, &mut test_serialized_data)
+            .map_err(|e| MergeMineError::SerializeError(format!("{:?}", e)))?;
+        if test_serialized_data != tari_header.pow.pow_data {
+            return Err(MergeMineError::SerializedPowDataDoesNotMatch(
+                "Serialized pow data does not match original pow data".to_string(),
+            ));
+        }
+
         Ok(pow_data)
     }
 

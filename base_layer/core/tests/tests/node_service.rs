@@ -308,13 +308,13 @@ async fn propagate_and_forward_invalid_block_hash() {
     let msg_event = event_stream_next(&mut bob_message_events, Duration::from_secs(10))
         .await
         .unwrap();
-    unpack_enum!(MessagingEvent::MessageReceived(_a, _b) = &*msg_event);
+    unpack_enum!(MessagingEvent::MessageReceived(_a, _b) = &msg_event);
 
     // Bob asks Alice for missing transaction
     let msg_event = event_stream_next(&mut bob_message_events, Duration::from_secs(10))
         .await
         .unwrap();
-    unpack_enum!(MessagingEvent::MessageReceived(node_id, _a) = &*msg_event);
+    unpack_enum!(MessagingEvent::MessageReceived(node_id, _a) = &msg_event);
     assert_eq!(node_id, alice_node.node_identity.node_id());
 
     // Checking a negative: Bob should not have propagated this hash to Carol. If Bob does, this assertion will be

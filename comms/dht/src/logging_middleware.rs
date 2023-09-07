@@ -20,12 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    borrow::Cow,
-    fmt::{Debug, Display},
-    marker::PhantomData,
-    task::Poll,
-};
+use std::{borrow::Cow, fmt::Display, marker::PhantomData, task::Poll};
 
 use futures::task::Context;
 use log::*;
@@ -80,7 +75,7 @@ impl<'a, S> MessageLoggingService<'a, S> {
 impl<S, R> Service<R> for MessageLoggingService<'_, S>
 where
     S: Service<R>,
-    R: Display + Debug,
+    R: Display,
 {
     type Error = S::Error;
     type Future = S::Future;
@@ -91,7 +86,7 @@ where
     }
 
     fn call(&mut self, msg: R) -> Self::Future {
-        debug!(target: LOG_TARGET, "{}{:?}", self.prefix_msg, msg);
+        debug!(target: LOG_TARGET, "{}{:#}", self.prefix_msg, msg);
         self.inner.call(msg)
     }
 }

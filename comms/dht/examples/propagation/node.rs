@@ -28,7 +28,7 @@ use tari_comms::{
     peer_manager::PeerFeatures,
     pipeline,
     pipeline::SinkService,
-    protocol::{messaging::MessagingProtocolExtension, NodeNetworkInfo},
+    protocol::{messaging::MessagingProtocolExtension, NodeNetworkInfo, ProtocolId},
     tor,
     tor::TorIdentity,
     CommsBuilder,
@@ -45,6 +45,8 @@ use tokio::sync::{broadcast, mpsc};
 use tower::ServiceBuilder;
 
 use crate::parse_from_short_str;
+
+pub static MEMORYNET_MSG_PROTOCOL_ID: ProtocolId = ProtocolId::from_static(b"t/msg/1.0");
 
 pub const TOR_CONTROL_PORT_ADDR: &str = "/ip4/127.0.0.1/tcp/9051";
 
@@ -132,6 +134,7 @@ pub async fn create<P: AsRef<Path>>(
     let comms_node = comms_node
         .with_hidden_service_controller(hs_ctl)
         .add_protocol_extension(MessagingProtocolExtension::new(
+            MEMORYNET_MSG_PROTOCOL_ID.clone(),
             event_tx,
             pipeline::Builder::new()
                 .with_inbound_pipeline(

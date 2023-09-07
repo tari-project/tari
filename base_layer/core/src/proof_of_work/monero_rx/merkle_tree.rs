@@ -35,6 +35,8 @@ use monero::{
 
 use crate::proof_of_work::monero_rx::error::MergeMineError;
 
+const MAX_MERKLE_TREE_BYTES: usize = 4096;
+
 /// Returns the Keccak 256 hash of the byte input
 fn cn_fast_hash(data: &[u8]) -> Hash {
     Hash::new(data)
@@ -142,6 +144,12 @@ impl BorshDeserialize for MerkleProof {
     fn deserialize_reader<R>(reader: &mut R) -> Result<Self, io::Error>
     where R: io::Read {
         let len = reader.read_varint()?;
+        if len > MAX_MERKLE_TREE_BYTES {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Larger than max merkle tree bytes".to_string(),
+            ));
+        }
         let mut branch = Vec::with_capacity(len);
         for _ in 0..len {
             branch.push(
@@ -165,6 +173,9 @@ impl MerkleProof {
     }
 
     /// Calculates the merkle root hash from the provide Monero hash
+    /// The coinbase must be the first transaction in the block, so
+    /// that you can't have multiple coinbases in a block. That means the coinbase
+    /// is always the leftmost branch in the merkle tree
     pub fn calculate_root(&self, hash: &Hash) -> Hash {
         if self.branch.is_empty() {
             return *hash;
@@ -556,6 +567,15 @@ mod test {
             let buf = &mut buf.as_slice();
             assert_eq!(proof, MerkleProof::deserialize(buf).unwrap());
             assert_eq!(buf, &[1, 2, 3]);
+        }
+
+        #[tokio::test]
+        async fn test_borsh_de_serialization_too_large() {
+            // We dont care about the actual merkle tree here, just that its not too large on the varint size
+            // We lie about the size to try and get a mem panic, and say this merkle tree is u64::max large.
+            let buf = vec![255, 255, 255, 255, 255, 255, 255, 255, 255, 1, 49, 8, 2, 5, 6];
+            let buf = &mut buf.as_slice();
+            assert!(MerkleProof::deserialize(buf).is_err());
         }
     }
 }

@@ -29,9 +29,12 @@ use tari_comms::{
     protocol::rpc::{RpcError, RpcStatus, RpcStatusCode},
 };
 
-use crate::{chain_storage::ChainStorageError, validation::ValidationError};
+use crate::{chain_storage::ChainStorageError, common::BanReason, validation::ValidationError};
+
 #[derive(Debug, thiserror::Error)]
 pub enum BlockSyncError {
+    #[error("Async validation task failed: {0}")]
+    AsyncTaskFailed(#[from] tokio::task::JoinError),
     #[error("RPC error: {0}")]
     RpcError(#[from] RpcError),
     #[error("RPC request failed: {0}")]
@@ -39,17 +42,19 @@ pub enum BlockSyncError {
     #[error("Chain storage error: {0}")]
     ChainStorageError(#[from] ChainStorageError),
     #[error("Peer sent a block that did not form a chain. Expected hash = {expected}, got = {got}")]
-    PeerSentBlockThatDidNotFormAChain { expected: String, got: String },
+    BlockWithoutParent { expected: String, got: String },
     #[error("Connectivity Error: {0}")]
     ConnectivityError(#[from] ConnectivityError),
-    #[error("No sync peers available")]
-    NoSyncPeers,
+    #[error("No more sync peers available: {0}")]
+    NoMoreSyncPeers(String),
     #[error("Block validation failed: {0}")]
     ValidationError(#[from] ValidationError),
     #[error("Failed to construct valid chain block")]
     FailedToConstructChainBlock,
-    #[error("Peer violated the block sync protocol: {0}")]
-    ProtocolViolation(String),
+    #[error("Peer sent unknown hash")]
+    UnknownHeaderHash(String),
+    #[error("Peer sent block with invalid block body")]
+    InvalidBlockBody(String),
     #[error("Peer {peer} exceeded maximum permitted sync latency. latency: {latency:.2?}, max: {max_latency:.2?}")]
     MaxLatencyExceeded {
         peer: NodeId,
@@ -60,6 +65,8 @@ pub enum BlockSyncError {
     AllSyncPeersExceedLatency,
     #[error("FixedHash size error: {0}")]
     FixedHashSizeError(#[from] FixedHashSizeError),
+    #[error("This sync round failed")]
+    SyncRoundFailed,
 }
 
 impl BlockSyncError {
@@ -70,16 +77,53 @@ impl BlockSyncError {
                 "RpcTimeout"
             },
             BlockSyncError::RpcRequestError(_) => "RpcRequestError",
+            BlockSyncError::AsyncTaskFailed(_) => "AsyncTaskFailed",
             BlockSyncError::ChainStorageError(_) => "ChainStorageError",
-            BlockSyncError::PeerSentBlockThatDidNotFormAChain { .. } => "PeerSentBlockThatDidNotFormAChain",
+            BlockSyncError::BlockWithoutParent { .. } => "PeerSentBlockThatDidNotFormAChain",
             BlockSyncError::ConnectivityError(_) => "ConnectivityError",
-            BlockSyncError::NoSyncPeers => "NoSyncPeers",
+            BlockSyncError::NoMoreSyncPeers(_) => "NoMoreSyncPeers",
             BlockSyncError::ValidationError(_) => "ValidationError",
             BlockSyncError::FailedToConstructChainBlock => "FailedToConstructChainBlock",
-            BlockSyncError::ProtocolViolation(_) => "ProtocolViolation",
+            BlockSyncError::UnknownHeaderHash(_) => "UnknownHeaderHash",
+            BlockSyncError::InvalidBlockBody(_) => "InvalidBlockBody",
             BlockSyncError::MaxLatencyExceeded { .. } => "MaxLatencyExceeded",
             BlockSyncError::AllSyncPeersExceedLatency => "AllSyncPeersExceedLatency",
             BlockSyncError::FixedHashSizeError(_) => "FixedHashSizeError",
+            BlockSyncError::SyncRoundFailed => "SyncRoundFailed",
+        }
+    }
+}
+
+impl BlockSyncError {
+    pub fn get_ban_reason(&self, short_ban: Duration, long_ban: Duration) -> Option<BanReason> {
+        match self {
+            // no ban
+            BlockSyncError::AsyncTaskFailed(_) |
+            BlockSyncError::RpcError(_) |
+            BlockSyncError::RpcRequestError(_) |
+            BlockSyncError::ChainStorageError(_) |
+            BlockSyncError::ConnectivityError(_) |
+            BlockSyncError::NoMoreSyncPeers(_) |
+            BlockSyncError::AllSyncPeersExceedLatency |
+            BlockSyncError::FailedToConstructChainBlock |
+            BlockSyncError::SyncRoundFailed => None,
+
+            // short ban
+            err @ BlockSyncError::MaxLatencyExceeded { .. } => Some(BanReason {
+                reason: format!("{}", err),
+                ban_duration: short_ban,
+            }),
+
+            // long ban
+            err @ BlockSyncError::BlockWithoutParent { .. } |
+            err @ BlockSyncError::UnknownHeaderHash(_) |
+            err @ BlockSyncError::InvalidBlockBody(_) |
+            err @ BlockSyncError::FixedHashSizeError(_) => Some(BanReason {
+                reason: format!("{}", err),
+                ban_duration: long_ban,
+            }),
+
+            BlockSyncError::ValidationError(err) => ValidationError::get_ban_reason(err, Some(long_ban)),
         }
     }
 }

@@ -44,3 +44,19 @@ pub enum ProtocolError {
     #[error("Failed to send notification because notification sender disconnected")]
     NotificationSenderDisconnected,
 }
+
+impl ProtocolError {
+    pub fn is_ban_offence(&self) -> bool {
+        match self {
+            ProtocolError::IoError(_) |
+            ProtocolError::ProtocolNegotiationTerminatedByPeer |
+            ProtocolError::ProtocolOutboundNegotiationFailed { .. } |
+            ProtocolError::ProtocolNotRegistered |
+            ProtocolError::ProtocolInboundNegotiationFailed |
+            ProtocolError::ProtocolOptimisticNegotiationFailed |
+            ProtocolError::NotificationSenderDisconnected => false,
+
+            ProtocolError::ProtocolIdTooLong => true,
+        }
+    }
+}

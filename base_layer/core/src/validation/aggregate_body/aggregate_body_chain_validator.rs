@@ -114,11 +114,11 @@ fn validate_input_not_pruned<B: BlockchainBackend>(
         if input.is_compact() {
             let output_mined_info = db
                 .fetch_output(&input.output_hash())?
-                .ok_or(ValidationError::TransactionInputSpentOutputMissing)?;
+                .ok_or(ValidationError::UnknownInput)?;
 
             match output_mined_info.output {
                 PrunedOutput::Pruned { .. } => {
-                    return Err(ValidationError::TransactionInputSpendsPrunedOutput);
+                    return Err(ValidationError::ContainsSTxO);
                 },
                 PrunedOutput::NotPruned { output } => {
                     let rp_hash = match output.proof {

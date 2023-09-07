@@ -32,13 +32,17 @@ use std::{
     io,
     pin::Pin,
     task::{Context, Poll},
+    time::Duration,
 };
 
 use futures::ready;
 use log::*;
 use snow::{error::StateProblem, HandshakeState, TransportState};
 use tari_utilities::ByteArray;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf};
+use tokio::{
+    io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf},
+    time,
+};
 
 use crate::types::CommsPublicKey;
 
@@ -228,9 +232,12 @@ where
         let mut read_buf = ReadBuf::new(&mut buf[*offset..]);
         let prev_rem = read_buf.remaining();
         ready!(socket.as_mut().poll_read(context, &mut read_buf))?;
-        let n = prev_rem
-            .checked_sub(read_buf.remaining())
-            .expect("buffer underflow: prev_rem < read_buf.remaining()");
+        let n = prev_rem.checked_sub(read_buf.remaining()).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::Other,
+                "buffer underflow: prev_rem < read_buf.remaining()",
+            )
+        })?;
         trace!(
             target: LOG_TARGET,
             "poll_read_exact: read {}/{} bytes",
@@ -404,7 +411,9 @@ where TSocket: AsyncWrite + Unpin
                             &mut self.buffers.write_encrypted,
                         ) {
                             Ok(encrypted_len) => {
-                                let frame_len = encrypted_len.try_into().expect("offset should be able to fit in u16");
+                                let frame_len = encrypted_len.try_into().map_err(|_| {
+                                    io::Error::new(io::ErrorKind::Other, "offset should be able to fit in u16")
+                                })?;
                                 self.write_state = WriteState::WriteFrameLen {
                                     frame_len,
                                     buf: u16::to_be_bytes(frame_len),
@@ -510,12 +519,14 @@ where TSocket: AsyncWrite + Unpin
 
 pub struct Handshake<TSocket> {
     socket: NoiseSocket<TSocket>,
+    recv_timeout: Duration,
 }
 
 impl<TSocket> Handshake<TSocket> {
-    pub fn new(socket: TSocket, state: HandshakeState) -> Self {
+    pub fn new(socket: TSocket, state: HandshakeState, recv_timeout: Duration) -> Self {
         Self {
             socket: NoiseSocket::new(socket, state.into()),
+            recv_timeout,
         }
     }
 }
@@ -525,8 +536,8 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
 {
     /// Perform a Single Round-Trip noise IX handshake returning the underlying [NoiseSocket]
     /// (switched to transport mode) upon success.
-    pub async fn handshake_1rt(mut self) -> io::Result<NoiseSocket<TSocket>> {
-        match self.perform_handshake().await {
+    pub async fn perform_handshake(mut self) -> io::Result<NoiseSocket<TSocket>> {
+        match self.handshake_1_5rtt().await {
             Ok(_) => self.build(),
             Err(err) => {
                 warn!(
@@ -539,21 +550,29 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
         }
     }
 
-    pub async fn perform_handshake(&mut self) -> io::Result<()> {
+    /// Performs a 1.5 RTT handshake. For example, the noise XX handshake.
+    async fn handshake_1_5rtt(&mut self) -> io::Result<()> {
         if self.socket.state.is_initiator() {
-            // -> e, s
+            //   -> e
             self.send().await?;
             self.flush().await?;
 
-            // <- e, ee, se, s, es
+            // <- e, ee, s, es
             self.receive().await?;
+
+            //   -> s, se
+            self.send().await?;
+            self.flush().await?;
         } else {
-            // -> e, s
+            //   -> e
             self.receive().await?;
 
-            // <- e, ee, se, s, es
+            // <- e, ee, s, es
             self.send().await?;
             self.flush().await?;
+
+            //   -> s, se
+            self.receive().await?;
         }
 
         Ok(())
@@ -568,7 +587,9 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
     }
 
     async fn receive(&mut self) -> io::Result<usize> {
-        self.socket.read(&mut []).await
+        time::timeout(self.recv_timeout, self.socket.read(&mut []))
+            .await
+            .map_err(|_| io::Error::from(io::ErrorKind::TimedOut))?
     }
 
     fn build(self) -> io::Result<NoiseSocket<TSocket>> {
@@ -647,11 +668,11 @@ mod test {
     use snow::{params::NoiseParams, Builder, Error, Keypair};
 
     use super::*;
-    use crate::{memsocket::MemorySocket, noise::config::NOISE_IX_PARAMETER};
+    use crate::{memsocket::MemorySocket, noise::config::NOISE_PARAMETERS};
 
     async fn build_test_connection(
     ) -> Result<((Keypair, Handshake<MemorySocket>), (Keypair, Handshake<MemorySocket>)), Error> {
-        let parameters: NoiseParams = NOISE_IX_PARAMETER.parse().expect("Invalid protocol name");
+        let parameters: NoiseParams = NOISE_PARAMETERS.parse().expect("Invalid protocol name");
 
         let dialer_keypair = Builder::new(parameters.clone()).generate_keypair()?;
         let listener_keypair = Builder::new(parameters.clone()).generate_keypair()?;
@@ -670,8 +691,14 @@ mod test {
         );
 
         Ok((
-            (dialer_keypair, Handshake { socket: dialer }),
-            (listener_keypair, Handshake { socket: listener }),
+            (dialer_keypair, Handshake {
+                socket: dialer,
+                recv_timeout: Duration::from_secs(1),
+            }),
+            (listener_keypair, Handshake {
+                socket: listener,
+                recv_timeout: Duration::from_secs(1),
+            }),
         ))
     }
 
@@ -679,7 +706,7 @@ mod test {
         dialer: Handshake<MemorySocket>,
         listener: Handshake<MemorySocket>,
     ) -> io::Result<(NoiseSocket<MemorySocket>, NoiseSocket<MemorySocket>)> {
-        let (dialer_result, listener_result) = join(dialer.handshake_1rt(), listener.handshake_1rt()).await;
+        let (dialer_result, listener_result) = join(dialer.perform_handshake(), listener.perform_handshake()).await;
 
         Ok((dialer_result?, listener_result?))
     }

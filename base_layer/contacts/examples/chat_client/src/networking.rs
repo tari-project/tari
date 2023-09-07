@@ -38,16 +38,20 @@ use tari_p2p::{
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
 
-use crate::{config::ApplicationConfig, database::connect_to_db};
+use crate::{
+    config::ApplicationConfig,
+    database::{connect_to_db, create_chat_storage},
+};
 
 pub async fn start(
     node_identity: Arc<NodeIdentity>,
     config: ApplicationConfig,
     shutdown_signal: ShutdownSignal,
 ) -> anyhow::Result<(ContactsServiceHandle, CommsNode)> {
+    create_chat_storage(&config.chat_client.db_file);
     let backend = connect_to_db(config.chat_client.db_file)?;
 
-    let (publisher, subscription_factory) = pubsub_connector(100, 50);
+    let (publisher, subscription_factory) = pubsub_connector(100);
     let in_msg = Arc::new(subscription_factory);
 
     let fut = StackBuilder::new(shutdown_signal)

@@ -33,7 +33,7 @@ use crate::{
     message::OutboundMessage,
     multiplexing::Substream,
     peer_manager::NodeId,
-    protocol::messaging::protocol::MESSAGING_PROTOCOL,
+    protocol::ProtocolId,
     stream_id::StreamId,
 };
 
@@ -50,6 +50,7 @@ pub struct OutboundMessaging {
     messaging_events_tx: mpsc::Sender<MessagingEvent>,
     retry_queue_tx: mpsc::UnboundedSender<OutboundMessage>,
     peer_node_id: NodeId,
+    protocol_id: ProtocolId,
 }
 
 impl OutboundMessaging {
@@ -59,6 +60,7 @@ impl OutboundMessaging {
         messages_rx: mpsc::UnboundedReceiver<OutboundMessage>,
         retry_queue_tx: mpsc::UnboundedSender<OutboundMessage>,
         peer_node_id: NodeId,
+        protocol_id: ProtocolId,
     ) -> Self {
         Self {
             connectivity,
@@ -66,6 +68,7 @@ impl OutboundMessaging {
             messaging_events_tx,
             retry_queue_tx,
             peer_node_id,
+            protocol_id,
         }
     }
 
@@ -123,7 +126,7 @@ impl OutboundMessaging {
             }
 
             metrics::num_sessions().dec();
-            let _ = messaging_events_tx
+            let _ignore = messaging_events_tx
                 .send(MessagingEvent::OutboundProtocolExited(peer_node_id))
                 .await;
         }
@@ -223,7 +226,7 @@ impl OutboundMessaging {
         &mut self,
         conn: &mut PeerConnection,
     ) -> Result<NegotiatedSubstream<Substream>, MessagingProtocolError> {
-        match conn.open_substream(&MESSAGING_PROTOCOL).await {
+        match conn.open_substream(&self.protocol_id).await {
             Ok(substream) => Ok(substream),
             Err(err) => {
                 debug!(

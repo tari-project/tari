@@ -246,8 +246,10 @@ async fn banned() {
     let err = reply_rx.await.unwrap().unwrap_err();
     unpack_enum!(ConnectionManagerError::IdentityProtocolError(_err) = err);
 
-    unpack_enum!(ConnectionManagerEvent::PeerInboundConnectFailed(err) = event_rx.recv().await.unwrap());
-    unpack_enum!(ConnectionManagerError::PeerBanned = err);
+    unpack_enum!(
+        ConnectionManagerEvent::PeerInboundConnectFailed(ConnectionManagerError::PeerBanned) =
+            event_rx.recv().await.unwrap()
+    );
 
     shutdown.trigger();
 

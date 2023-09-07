@@ -11,9 +11,19 @@ use std::{
 use log::*;
 use randomx_rs::{RandomXCache, RandomXError, RandomXFlag, RandomXVM};
 
-use crate::proof_of_work::monero_rx::MergeMineError;
-
 const LOG_TARGET: &str = "c::pow::randomx_factory";
+
+#[derive(thiserror::Error, Debug)]
+pub enum RandomXVMFactoryError {
+    // The maximum number of VMs has been reached
+    // MaxVMsReached,
+    /// The RandomX VM failed to initialize
+    // VMInitializationFailed,
+    #[error(transparent)]
+    RandomXError(#[from] RandomXError),
+    #[error("Poisoned lock error")]
+    PoisonedLockError,
+}
 
 /// The RandomX virtual machine instance used for to verify mining.
 #[derive(Clone)]
@@ -21,11 +31,11 @@ pub struct RandomXVMInstance {
     // Note: If a cache and dataset (if assigned) allocated to the VM drops, the VM will crash.
     // The cache and dataset for the VM need to be stored together with it since they are not
     // mix and match.
-    instance: Arc<RandomXVM>,
+    instance: Arc<RwLock<RandomXVM>>,
 }
 
 impl RandomXVMInstance {
-    fn create(key: &[u8], flags: RandomXFlag) -> Result<Self, RandomXError> {
+    fn create(key: &[u8], flags: RandomXFlag) -> Result<Self, RandomXVMFactoryError> {
         let (flags, cache) = match RandomXCache::new(flags, key) {
             Ok(cache) => (flags, cache),
             Err(err) => {
@@ -52,12 +62,19 @@ impl RandomXVMInstance {
         // Note: RandomXFlag::FULL_MEM and RandomXFlag::LARGE_PAGES are incompatible with
         // light mode. These are not set by RandomX automatically even in fast mode.
 
-        Ok(Self { instance: Arc::new(vm) })
+        Ok(Self {
+            instance: Arc::new(RwLock::new(vm)),
+        })
     }
 
     /// Calculate the RandomX mining hash
-    pub fn calculate_hash(&self, input: &[u8]) -> Result<Vec<u8>, RandomXError> {
-        self.instance.calculate_hash(input)
+    pub fn calculate_hash(&self, input: &[u8]) -> Result<Vec<u8>, RandomXVMFactoryError> {
+        let lock = self
+            .instance
+            .write()
+            .map_err(|_| RandomXVMFactoryError::PoisonedLockError)?;
+
+        Ok(lock.calculate_hash(input)?)
     }
 }
 
@@ -89,25 +106,34 @@ impl RandomXFactory {
     }
 
     /// Create a new RandomX VM instance with the specified key
-    pub fn create(&self, key: &[u8]) -> Result<RandomXVMInstance, MergeMineError> {
+    pub fn create(&self, key: &[u8]) -> Result<RandomXVMInstance, RandomXVMFactoryError> {
         let res;
         {
-            let mut inner = self.inner.write().unwrap();
+            let mut inner = self
+                .inner
+                .write()
+                .map_err(|_| RandomXVMFactoryError::PoisonedLockError)?;
             res = inner.create(key)?;
         }
         Ok(res)
     }
 
     /// Get the number of VMs currently allocated
-    pub fn get_count(&self) -> usize {
-        let inner = self.inner.read().unwrap();
-        inner.get_count()
+    pub fn get_count(&self) -> Result<usize, RandomXVMFactoryError> {
+        let inner = self
+            .inner
+            .read()
+            .map_err(|_| RandomXVMFactoryError::PoisonedLockError)?;
+        Ok(inner.get_count())
     }
 
     /// Get the flags used to create the VMs
-    pub fn get_flags(&self) -> RandomXFlag {
-        let inner = self.inner.read().unwrap();
-        inner.get_flags()
+    pub fn get_flags(&self) -> Result<RandomXFlag, RandomXVMFactoryError> {
+        let inner = self
+            .inner
+            .read()
+            .map_err(|_| RandomXVMFactoryError::PoisonedLockError)?;
+        Ok(inner.get_flags())
     }
 }
 struct RandomXFactoryInner {
@@ -132,7 +158,7 @@ impl RandomXFactoryInner {
     }
 
     /// Create a new RandomXVMInstance
-    pub fn create(&mut self, key: &[u8]) -> Result<RandomXVMInstance, MergeMineError> {
+    pub fn create(&mut self, key: &[u8]) -> Result<RandomXVMInstance, RandomXVMFactoryError> {
         if let Some(entry) = self.vms.get_mut(key) {
             let vm = entry.1.clone();
             entry.0 = Instant::now();
@@ -198,5 +224,24 @@ mod test {
         let key = b"another-key";
         let vm = factory.create(&key[..]).unwrap();
         assert_ne!(vm.calculate_hash(&preimage[..]).unwrap(), hash1);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 100)]
+    async fn test_spawning_multiples() {
+        let factory = RandomXFactory::new(1);
+
+        let mut threads = vec![];
+        for _ in 0..100 {
+            let factory = factory.clone();
+            threads.push(tokio::spawn(async move {
+                let key = b"some-key";
+                let vm = factory.create(&key[..]).unwrap();
+                let preimage = b"hashme";
+                let _hash = vm.calculate_hash(&preimage[..]).unwrap();
+            }));
+        }
+        for t in threads {
+            t.await.unwrap();
+        }
     }
 }

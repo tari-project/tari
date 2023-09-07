@@ -62,7 +62,7 @@ where
     pub fn new(mmr_backend: B, deleted: Bitmap) -> Result<MutableMmr<D, B>, MerkleMountainRangeError> {
         let mmr = MerkleMountainRange::new(mmr_backend);
         Ok(MutableMmr {
-            size: u32::try_from(mmr.get_leaf_count()?).unwrap(),
+            size: u32::try_from(mmr.get_leaf_count()?).map_err(|_|MerkleMountainRangeError::InvalidMmrSize)?,
             mmr,
             deleted,
         })
@@ -70,9 +70,10 @@ where
 
     /// Clear the MutableMmr and assign the MMR state from the set of leaf_hashes and deleted nodes given in `state`.
     pub fn assign(&mut self, state: MutableMmrLeafNodes) -> Result<(), MerkleMountainRangeError> {
+
         self.mmr.assign(state.leaf_hashes)?;
         self.deleted = state.deleted;
-        self.size = u32::try_from(self.mmr.get_leaf_count()?).unwrap();
+        self.size = u32::try_from(self.mmr.get_leaf_count()?).map_err(|_|MerkleMountainRangeError::InvalidMmrSize)?;
         Ok(())
     }
 
@@ -82,8 +83,10 @@ where
     /// nodes in the MMR, while this function returns the number of leaf nodes minus the number of nodes marked for
     /// deletion.
     #[allow(clippy::len_without_is_empty)]
-    pub fn len(&self) -> u32 {
-        self.size - u32::try_from(self.deleted.cardinality()).unwrap()
+    pub fn len(&self) -> Result<u32,MerkleMountainRangeError> {
+        let deleted_size = u32::try_from(self.deleted.cardinality()).map_err(|_|MerkleMountainRangeError::InvalidMmrSize)?;
+        let result = self.size.checked_sub(deleted_size).ok_or(MerkleMountainRangeError::InvalidMmrSize)?;
+        Ok(result )
     }
 
     /// Returns true if the the MMR contains no nodes, OR all nodes have been marked for deletion
@@ -209,13 +212,16 @@ where
     fn get_sub_bitmap(&self, leaf_index: LeafIndex, count: usize) -> Result<Bitmap, MerkleMountainRangeError> {
         let mut deleted = self.deleted.clone();
         if leaf_index.0 > 0 {
-            deleted.remove_range_closed(0..u32::try_from(leaf_index.0 - 1).unwrap())
+            let remove_range = leaf_index.0.checked_sub(1).ok_or(MerkleMountainRangeError::InvalidMmrSize)?;
+            deleted.remove_range(0..u32::try_from(remove_range).map_err(|_|MerkleMountainRangeError::InvalidMmrSize)?)
         }
         let leaf_count = self.mmr.get_leaf_count()?;
         if leaf_count > 1 {
-            let last_index = leaf_index.0 + count - 1;
+            let last_index = leaf_index.0.checked_add(count).ok_or(MerkleMountainRangeError::InvalidMmrSize)?.checked_sub(1).ok_or(MerkleMountainRangeError::InvalidMmrSize)?;
+            //Overflow not possible here as leaf_count will always be greater than 0, min > 1-1=0
             if last_index < leaf_count - 1 {
-                deleted.remove_range_closed(u32::try_from(last_index + 1).unwrap()..u32::try_from(leaf_count).unwrap());
+                let remove_range = last_index.checked_add(1).ok_or(MerkleMountainRangeError::InvalidMmrSize)?;
+                deleted.remove_range(u32::try_from(remove_range).map_err(|_|MerkleMountainRangeError::InvalidMmrSize)?..u32::try_from(leaf_count).map_err(|_|MerkleMountainRangeError::InvalidMmrSize)?);
             }
         }
         Ok(deleted)
