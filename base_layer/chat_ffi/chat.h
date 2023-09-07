@@ -10,17 +10,26 @@
 
 struct ApplicationConfig;
 
-struct ChatFFIContactsLivenessData;
-
-struct ChatFFIMessage;
-
 struct ChatMessages;
 
 struct ClientFFI;
 
 struct TariAddress;
 
+struct ChatFFIContactsLivenessData {
+  const char *address;
+  uint64_t last_seen;
+  uint8_t online_status;
+};
+
 typedef void (*CallbackContactStatusChange)(struct ChatFFIContactsLivenessData*);
+
+struct ChatFFIMessage {
+  const char *body;
+  const char *from_address;
+  uint64_t stored_at;
+  const char *message_id;
+};
 
 typedef void (*CallbackMessageReceived)(struct ChatFFIMessage*);
 
@@ -214,6 +223,34 @@ struct TariAddress *create_tari_address(const char *receiver_c_char, int *error_
  * None
  */
 void destroy_tari_address(struct TariAddress *address);
+
+/**
+ * Frees memory for a ChatFFIMessage
+ *
+ * ## Arguments
+ * `address` - The pointer of a ChatFFIMessage
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * None
+ */
+void destroy_chat_ffi_message(struct ChatFFIMessage *address);
+
+/**
+ * Frees memory for a ChatFFIContactsLivenessData
+ *
+ * ## Arguments
+ * `address` - The pointer of a ChatFFIContactsLivenessData
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * None
+ */
+void destroy_chat_ffi_liveness_data(struct ChatFFIContactsLivenessData *address);
 
 #ifdef __cplusplus
 } // extern "C"

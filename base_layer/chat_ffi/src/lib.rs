@@ -55,7 +55,7 @@ use tari_contacts::contacts_service::{
 use tokio::runtime::Runtime;
 
 use crate::{
-    callback_handler::{CallbackHandler, CallbackMessageReceived},
+    callback_handler::{CallbackHandler, CallbackMessageReceived, ChatFFIContactsLivenessData, ChatFFIMessage},
     error::{InterfaceError, LibChatError},
 };
 
@@ -698,6 +698,40 @@ pub unsafe extern "C" fn create_tari_address(
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn destroy_tari_address(address: *mut TariAddress) {
+    if !address.is_null() {
+        drop(Box::from_raw(address))
+    }
+}
+
+/// Frees memory for a ChatFFIMessage
+///
+/// ## Arguments
+/// `address` - The pointer of a ChatFFIMessage
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn destroy_chat_ffi_message(address: *mut ChatFFIMessage) {
+    if !address.is_null() {
+        drop(Box::from_raw(address))
+    }
+}
+
+/// Frees memory for a ChatFFIContactsLivenessData
+///
+/// ## Arguments
+/// `address` - The pointer of a ChatFFIContactsLivenessData
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn destroy_chat_ffi_liveness_data(address: *mut ChatFFIContactsLivenessData) {
     if !address.is_null() {
         drop(Box::from_raw(address))
     }

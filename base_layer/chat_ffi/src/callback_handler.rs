@@ -35,6 +35,7 @@ const LOG_TARGET: &str = "chat_ffi::callback_handler";
 pub(crate) type CallbackContactStatusChange = unsafe extern "C" fn(*mut ChatFFIContactsLivenessData);
 pub(crate) type CallbackMessageReceived = unsafe extern "C" fn(*mut ChatFFIMessage);
 
+#[repr(C)]
 pub struct ChatFFIContactsLivenessData {
     pub address: *const c_char,
     pub last_seen: u64,
@@ -66,6 +67,7 @@ impl TryFrom<ContactsLivenessData> for ChatFFIContactsLivenessData {
     }
 }
 
+#[repr(C)]
 pub struct ChatFFIMessage {
     pub body: *const c_char,
     pub from_address: *const c_char,
