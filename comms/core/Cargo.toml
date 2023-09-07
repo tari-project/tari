@@ -6,7 +6,7 @@ repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version = "0.52.0-pre.0"
+version = "0.52.0-pre.1"
 edition = "2018"
 
 [dependencies]
@@ -18,7 +18,7 @@ tari_utilities = { version = "0.5" }
 
 anyhow = "1.0.53"
 async-trait = "0.1.36"
-bitflags = "1.0.4"
+bitflags = "1"
 blake2 = "0.10"
 bytes = { version = "1", features = ["serde"] }
 chrono = { version = "0.4.19", default-features = false, features = ["serde", "clock"] }
@@ -40,7 +40,7 @@ rand = "0.8"
 serde = "1.0.119"
 serde_derive = "1.0.119"
 sha3 = "0.10"
-snow = { version = "=0.9.1", features = ["default-resolver"] }
+snow = { version = "=0.9.3", features = ["default-resolver"] }
 thiserror = "1.0.26"
 tokio = { version = "1.23", features = ["rt-multi-thread", "time", "sync", "signal", "net", "macros", "io-util"] }
 tokio-stream = { version = "0.1.9", features = ["sync"] }

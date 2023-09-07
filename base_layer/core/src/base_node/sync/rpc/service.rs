@@ -166,11 +166,12 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         let (tx, rx) = mpsc::channel(BATCH_SIZE);
 
         let span = span!(Level::TRACE, "sync_rpc::block_sync::inner_worker");
+        let iter = NonOverlappingIntegerPairIter::new(start_height, end_height + 1, BATCH_SIZE)
+            .map_err(|e| RpcStatus::bad_request(&e))?;
         task::spawn(
             async move {
                 // Move token into this task
                 let peer_node_id = session_token;
-                let iter = NonOverlappingIntegerPairIter::new(start_height, end_height + 1, BATCH_SIZE);
                 for (start, end) in iter {
                     if tx.is_closed() {
                         break;
@@ -303,15 +304,16 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         let session_token = self.try_add_exclusive_session(peer_node_id.clone()).await?;
         let (tx, rx) = mpsc::channel(chunk_size);
         let span = span!(Level::TRACE, "sync_rpc::sync_headers::inner_worker");
+        let iter = NonOverlappingIntegerPairIter::new(
+            start_header.height + 1,
+            start_header.height.saturating_add(count).saturating_add(1),
+            chunk_size,
+        )
+        .map_err(|e| RpcStatus::bad_request(&e))?;
         task::spawn(
             async move {
                 // Move token into this task
                 let peer_node_id = session_token;
-                let iter = NonOverlappingIntegerPairIter::new(
-                    start_header.height + 1,
-                    start_header.height.saturating_add(count).saturating_add(1),
-                    chunk_size,
-                );
                 for (start, end) in iter {
                     if tx.is_closed() {
                         break;

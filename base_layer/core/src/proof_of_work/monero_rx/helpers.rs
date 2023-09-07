@@ -81,13 +81,15 @@ pub fn verify_header(header: &BlockHeader) -> Result<MoneroPowData, MergeMineErr
     // and that only 1 tari header is found
 
     let mut is_found = false;
+    let mut already_seen_mmfield = false;
     for item in extra_field.0 {
         if let SubField::MergeMining(Some(depth), merge_mining_hash) = item {
-            if is_found && &merge_mining_hash.as_bytes()[0..4] == b"TARI" {
+            if already_seen_mmfield {
                 return Err(MergeMineError::ValidationError(
-                    "More than one Tari header found in coinbase".to_string(),
+                    "More than one merge mining tag found in coinbase".to_string(),
                 ));
             }
+            already_seen_mmfield = true;
             if depth == VarInt(0) && merge_mining_hash.as_bytes() == expected_merge_mining_hash.as_slice() {
                 is_found = true;
             }
@@ -550,10 +552,9 @@ mod test {
         };
         let hash = block_header.merge_mining_hash();
         append_merge_mining_tag(&mut block, hash).unwrap();
-        #[allow(clippy::redundant_clone)]
         let mut block_header2 = block_header.clone();
         block_header2.version = 1;
-        let hash2 = block_header.merge_mining_hash();
+        let hash2 = block_header2.merge_mining_hash();
         append_merge_mining_tag(&mut block, hash2).unwrap();
         let count = 1 + (u16::try_from(block.tx_hashes.len()).unwrap());
         let mut hashes = Vec::with_capacity(count as usize);
@@ -582,7 +583,7 @@ mod test {
         block_header.pow = pow;
         let err = verify_header(&block_header).unwrap_err();
         unpack_enum!(MergeMineError::ValidationError(details) = err);
-        assert!(details.contains("More than one Tari header found in coinbase"));
+        assert!(details.contains("More than one merge mining tag found in coinbase"));
     }
 
     #[test]

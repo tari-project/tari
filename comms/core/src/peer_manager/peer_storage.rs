@@ -853,7 +853,7 @@ mod test {
         let mut not_active_peer = create_test_peer(PeerFeatures::COMMUNICATION_NODE, false);
         let address = not_active_peer.addresses.best().unwrap();
         let mut address = MultiaddrWithStats::new(address.address().clone(), PeerAddressSource::Config);
-        address.last_seen = Some(NaiveDateTime::from_timestamp_opt(a_week_ago, 0).unwrap());
+        address.mark_last_attempted(NaiveDateTime::from_timestamp_opt(a_week_ago, 0).unwrap());
         not_active_peer
             .addresses
             .merge(&MultiaddressesWithStats::from(vec![address]));

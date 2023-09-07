@@ -30,6 +30,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use futures::{future::BoxFuture, stream::FuturesUnordered};
 use log::*;
 use multiaddr::Multiaddr;
 use tokio::{
@@ -39,11 +40,7 @@ use tokio::{
 use tokio_stream::StreamExt;
 use tracing::{self, span, Instrument, Level};
 
-use super::{
-    direction::ConnectionDirection,
-    error::{ConnectionManagerError, PeerConnectionError},
-    manager::ConnectionManagerEvent,
-};
+use super::{direction::ConnectionDirection, error::PeerConnectionError, manager::ConnectionManagerEvent};
 #[cfg(feature = "rpc")]
 use crate::protocol::rpc::{
     pool::RpcClientPool,
@@ -58,26 +55,27 @@ use crate::{
     framing,
     framing::CanonicalFraming,
     multiplexing::{Control, IncomingSubstreams, Substream, Yamux},
-    peer_manager::{NodeId, PeerFeatures, PeerIdentityClaim},
+    peer_manager::{NodeId, PeerFeatures},
     protocol::{ProtocolId, ProtocolNegotiation},
     utils::atomic_ref_counter::AtomicRefCounter,
 };
 
 const LOG_TARGET: &str = "comms::connection_manager::peer_connection";
 
+const PROTOCOL_NEGOTIATION_TIMEOUT: Duration = Duration::from_secs(5);
+
 static ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
-pub fn try_create(
+pub fn create(
     connection: Yamux,
     peer_addr: Multiaddr,
     peer_node_id: NodeId,
     peer_features: PeerFeatures,
     direction: ConnectionDirection,
     event_notifier: mpsc::Sender<ConnectionManagerEvent>,
-    our_supported_protocols: Vec<ProtocolId>,
+    our_supported_protocols: Arc<Vec<ProtocolId>>,
     their_supported_protocols: Vec<ProtocolId>,
-    peer_identity_claim: PeerIdentityClaim,
-) -> Result<PeerConnection, ConnectionManagerError> {
+) -> PeerConnection {
     trace!(
         target: LOG_TARGET,
         "(Peer={}) Socket successfully upgraded to multiplexed socket",
@@ -95,7 +93,6 @@ pub fn try_create(
         peer_addr,
         direction,
         substream_counter,
-        peer_identity_claim,
     );
     let peer_actor = PeerConnectionActor::new(
         id,
@@ -109,7 +106,7 @@ pub fn try_create(
     );
     tokio::spawn(peer_actor.run());
 
-    Ok(peer_conn)
+    peer_conn
 }
 
 /// Request types for the PeerConnection actor.
@@ -139,7 +136,6 @@ pub struct PeerConnection {
     started_at: Instant,
     substream_counter: AtomicRefCounter,
     handle_counter: Arc<()>,
-    peer_identity_claim: Option<PeerIdentityClaim>,
 }
 
 impl PeerConnection {
@@ -151,7 +147,6 @@ impl PeerConnection {
         address: Multiaddr,
         direction: ConnectionDirection,
         substream_counter: AtomicRefCounter,
-        peer_identity_claim: PeerIdentityClaim,
     ) -> Self {
         Self {
             id,
@@ -163,31 +158,6 @@ impl PeerConnection {
             started_at: Instant::now(),
             substream_counter,
             handle_counter: Arc::new(()),
-            peer_identity_claim: Some(peer_identity_claim),
-        }
-    }
-
-    /// Should only be used in tests
-    pub(crate) fn unverified(
-        id: ConnectionId,
-        request_tx: mpsc::Sender<PeerConnectionRequest>,
-        peer_node_id: NodeId,
-        peer_features: PeerFeatures,
-        address: Multiaddr,
-        direction: ConnectionDirection,
-        substream_counter: AtomicRefCounter,
-    ) -> Self {
-        Self {
-            id,
-            request_tx,
-            peer_node_id,
-            peer_features,
-            address: Arc::new(address),
-            direction,
-            started_at: Instant::now(),
-            substream_counter,
-            handle_counter: Arc::new(()),
-            peer_identity_claim: None,
         }
     }
 
@@ -201,6 +171,14 @@ impl PeerConnection {
 
     pub fn direction(&self) -> ConnectionDirection {
         self.direction
+    }
+
+    pub fn known_address(&self) -> Option<&Multiaddr> {
+        if self.direction.is_outbound() {
+            Some(self.address())
+        } else {
+            None
+        }
     }
 
     pub fn address(&self) -> &Multiaddr {
@@ -231,10 +209,6 @@ impl PeerConnection {
 
     pub fn handle_count(&self) -> usize {
         Arc::strong_count(&self.handle_counter)
-    }
-
-    pub fn peer_identity_claim(&self) -> Option<&PeerIdentityClaim> {
-        self.peer_identity_claim.as_ref()
     }
 
     #[tracing::instrument(level = "trace", "peer_connection::open_substream", skip(self))]
@@ -358,7 +332,9 @@ struct PeerConnectionActor {
     incoming_substreams: IncomingSubstreams,
     control: Control,
     event_notifier: mpsc::Sender<ConnectionManagerEvent>,
-    our_supported_protocols: Vec<ProtocolId>,
+    our_supported_protocols: Arc<Vec<ProtocolId>>,
+    inbound_protocol_negotiations:
+        FuturesUnordered<BoxFuture<'static, Result<(ProtocolId, Substream), PeerConnectionError>>>,
     their_supported_protocols: Vec<ProtocolId>,
 }
 
@@ -370,7 +346,7 @@ impl PeerConnectionActor {
         connection: Yamux,
         request_rx: mpsc::Receiver<PeerConnectionRequest>,
         event_notifier: mpsc::Sender<ConnectionManagerEvent>,
-        our_supported_protocols: Vec<ProtocolId>,
+        our_supported_protocols: Arc<Vec<ProtocolId>>,
         their_supported_protocols: Vec<ProtocolId>,
     ) -> Self {
         Self {
@@ -382,6 +358,7 @@ impl PeerConnectionActor {
             request_rx,
             event_notifier,
             our_supported_protocols,
+            inbound_protocol_negotiations: FuturesUnordered::new(),
             their_supported_protocols,
         }
     }
@@ -401,22 +378,16 @@ impl PeerConnectionActor {
 
                 maybe_substream = self.incoming_substreams.next() => {
                     match maybe_substream {
-                        Some(substream) => {
-                            if let Err(err) = self.handle_incoming_substream(substream).await {
-                                error!(
-                                    target: LOG_TARGET,
-                                    "[{}] Incoming substream for peer '{}' failed to open because '{error}'",
-                                    self,
-                                    self.peer_node_id.short_str(),
-                                    error = err
-                                )
-                            }
-                        },
+                        Some(substream) => self.handle_incoming_substream(substream).await,
                         None => {
                             debug!(target: LOG_TARGET, "[{}] Peer '{}' closed the connection", self, self.peer_node_id.short_str());
                             break;
                         },
                     }
+                },
+
+                Some(result) = self.inbound_protocol_negotiations.next() => {
+                    self.handle_inbound_protocol_negotiation_result(result).await;
                 }
             }
         }
@@ -461,19 +432,59 @@ impl PeerConnectionActor {
     }
 
     #[tracing::instrument(level="trace", skip(self, stream),fields(comms.direction="inbound"))]
-    async fn handle_incoming_substream(&mut self, mut stream: Substream) -> Result<(), PeerConnectionError> {
-        let selected_protocol = ProtocolNegotiation::new(&mut stream)
-            .negotiate_protocol_inbound(&self.our_supported_protocols)
-            .await?;
+    async fn handle_incoming_substream(&mut self, mut stream: Substream) {
+        let our_supported_protocols = self.our_supported_protocols.clone();
+        self.inbound_protocol_negotiations.push(Box::pin(async move {
+            let mut protocol_negotiation = ProtocolNegotiation::new(&mut stream);
 
-        self.notify_event(ConnectionManagerEvent::NewInboundSubstream(
-            self.peer_node_id.clone(),
-            selected_protocol,
-            stream,
-        ))
-        .await;
+            let selected_protocol = time::timeout(
+                PROTOCOL_NEGOTIATION_TIMEOUT,
+                protocol_negotiation.negotiate_protocol_inbound(&our_supported_protocols),
+            )
+            .await
+            .map_err(|_| PeerConnectionError::ProtocolNegotiationTimeout)??;
+            Ok((selected_protocol, stream))
+        }));
+    }
 
-        Ok(())
+    async fn handle_inbound_protocol_negotiation_result(
+        &mut self,
+        result: Result<(ProtocolId, Substream), PeerConnectionError>,
+    ) {
+        match result {
+            Ok((selected_protocol, stream)) => {
+                self.notify_event(ConnectionManagerEvent::NewInboundSubstream(
+                    self.peer_node_id.clone(),
+                    selected_protocol,
+                    stream,
+                ))
+                .await;
+            },
+            Err(PeerConnectionError::ProtocolError(err)) if err.is_ban_offence() => {
+                error!(
+                    target: LOG_TARGET,
+                    "[{}] PEER VIOLATION: Incoming substream for peer '{}' failed to open because '{}'",
+                    self,
+                    self.peer_node_id.short_str(),
+                    err
+                );
+
+                self.notify_event(ConnectionManagerEvent::PeerViolation {
+                    peer_node_id: self.peer_node_id.clone(),
+                    details: err.to_string(),
+                })
+                .await;
+            },
+            Err(err) => {
+                error!(
+                    target: LOG_TARGET,
+                    "[{}] Incoming substream for peer '{}' failed to open because '{error}'",
+                    self,
+                    self.peer_node_id.short_str(),
+                    error = err
+                );
+            },
+        }
     }
 
     #[tracing::instrument(skip(self))]
@@ -481,7 +492,6 @@ impl PeerConnectionActor {
         &mut self,
         protocol: ProtocolId,
     ) -> Result<NegotiatedSubstream<Substream>, PeerConnectionError> {
-        const PROTOCOL_NEGOTIATION_TIMEOUT: Duration = Duration::from_secs(10);
         debug!(
             target: LOG_TARGET,
             "[{}] Negotiating protocol '{}' on new substream for peer '{}'",

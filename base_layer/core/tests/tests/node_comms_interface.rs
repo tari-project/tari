@@ -49,7 +49,7 @@ use tari_core::{
     validation::{mocks::MockValidator, transaction::TransactionChainLinkedValidator},
 };
 use tari_key_manager::key_manager_service::KeyManagerInterface;
-use tari_script::{inputs, script, TariScript};
+use tari_script::{inputs, script};
 use tari_service_framework::reply_channel;
 use tokio::sync::{broadcast, mpsc};
 
@@ -195,7 +195,7 @@ async fn inbound_fetch_utxos() {
         MicroMinotari(10_000),
         &key_manager,
         &Default::default(),
-        &TariScript::default(),
+        &script!(Nop),
         &Covenant::default(),
         MicroMinotari::zero(),
     )

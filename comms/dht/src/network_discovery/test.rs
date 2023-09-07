@@ -48,7 +48,7 @@ use crate::{
 
 mod state_machine {
     use super::*;
-    use crate::rpc::PeerInfo;
+    use crate::rpc::UnvalidatedPeerInfo;
 
     async fn setup(
         mut config: DhtConfig,
@@ -113,7 +113,7 @@ mod state_machine {
         };
         let peers = iter::repeat_with(|| make_node_identity().to_peer())
             .map(|p| GetPeersResponse {
-                peer: Some(PeerInfo::from(p).into()),
+                peer: Some(UnvalidatedPeerInfo::from_peer_limited_claims(p, 5, 5).into()),
             })
             .take(NUM_PEERS)
             .collect();
@@ -212,7 +212,10 @@ mod discovery_ready {
         }
         let state_event = ready.next_event().await;
         unpack_enum!(StateEvent::BeginDiscovery(params) = state_event);
-        assert!(params.num_peers_to_request.is_none());
+        assert_eq!(
+            params.num_peers_to_request,
+            NetworkDiscoveryConfig::default().max_peers_to_sync_per_round
+        );
     }
 
     #[tokio::test]

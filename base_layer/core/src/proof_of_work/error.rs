@@ -33,6 +33,8 @@ pub enum PowError {
     InvalidProofOfWork,
     #[error("Achieved difficulty is below the minimum")]
     AchievedDifficultyBelowMin,
+    #[error("Proof of work data must be empty for Sha3 blocks")]
+    Sha3HeaderNonEmptyPowBytes,
     #[error("Target difficulty {target} not achieved. Achieved difficulty: {achieved}")]
     AchievedDifficultyTooLow { target: Difficulty, achieved: Difficulty },
     #[error("Invalid target difficulty (expected: {expected}, got: {got})")]

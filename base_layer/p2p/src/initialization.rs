@@ -198,7 +198,9 @@ pub async fn initialize_local_test_comms<P: AsRef<Path>>(
         .build();
 
     let comms = comms
-        .add_protocol_extension(MessagingProtocolExtension::new(event_sender.clone(), pipeline))
+        .add_protocol_extension(
+            MessagingProtocolExtension::new(event_sender.clone(), pipeline).enable_message_received_event(),
+        )
         .spawn_with_transport(MemoryTransport)
         .await?;
 
@@ -371,10 +373,10 @@ async fn configure_comms_and_dht(
         .build();
 
     let (messaging_events_sender, _) = broadcast::channel(1);
-    comms = comms.add_protocol_extension(MessagingProtocolExtension::new(
-        messaging_events_sender,
-        messaging_pipeline,
-    ));
+    comms = comms.add_protocol_extension(
+        MessagingProtocolExtension::new(messaging_events_sender, messaging_pipeline)
+            .with_ban_duration(config.dht.ban_duration_short),
+    );
 
     Ok((comms, dht))
 }
@@ -555,11 +557,11 @@ impl ServiceInitializer for P2pInitializer {
             })
             .set_liveness_check(config.listener_liveness_check_interval);
 
-        if config.allow_test_addresses || config.dht.allow_test_addresses {
+        if config.allow_test_addresses || config.dht.peer_validator_config.allow_test_addresses {
             // The default is false, so ensure that both settings are true in this case
             config.allow_test_addresses = true;
-            config.dht.allow_test_addresses = true;
             builder = builder.allow_test_addresses();
+            config.dht.peer_validator_config = builder.peer_validator_config().clone();
         }
 
         let (comms, dht) = configure_comms_and_dht(builder, &config, connector).await?;

@@ -155,7 +155,7 @@ use tari_key_manager::{
     key_manager_service::{storage::sqlite_db::KeyManagerSqliteDatabase, KeyId, KeyManagerInterface},
 };
 use tari_p2p::{comms_connector::pubsub_connector, domain_message::DomainMessage, Network};
-use tari_script::{inputs, one_sided_payment_script, script, ExecutionStack, TariScript};
+use tari_script::{inputs, one_sided_payment_script, script, ExecutionStack};
 use tari_service_framework::{reply_channel, RegisterHandle, StackBuilder};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::{comms_and_services::get_next_memory_address, random};
@@ -190,7 +190,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
     WalletConnectivityHandle,
     TestKeyManager,
 ) {
-    let (publisher, subscription_factory) = pubsub_connector(100, 20);
+    let (publisher, subscription_factory) = pubsub_connector(100);
     let subscription_factory = Arc::new(subscription_factory);
     let (comms, dht) = setup_comms_services(
         node_identity.clone(),
@@ -285,11 +285,15 @@ pub struct TransactionServiceNoCommsInterface {
     output_manager_service_handle: OutputManagerHandle,
     key_manager_handle: TestKeyManager,
     outbound_service_mock_state: OutboundServiceMockState,
-    transaction_send_message_channel: Sender<DomainMessage<proto::TransactionSenderMessage>>,
-    transaction_ack_message_channel: Sender<DomainMessage<proto::RecipientSignedMessage>>,
-    transaction_finalize_message_channel: Sender<DomainMessage<proto::TransactionFinalizedMessage>>,
-    _base_node_response_message_channel: Sender<DomainMessage<base_node_proto::BaseNodeServiceResponse>>,
-    transaction_cancelled_message_channel: Sender<DomainMessage<proto::TransactionCancelledMessage>>,
+    transaction_send_message_channel:
+        Sender<DomainMessage<Result<proto::TransactionSenderMessage, prost::DecodeError>>>,
+    transaction_ack_message_channel: Sender<DomainMessage<Result<proto::RecipientSignedMessage, prost::DecodeError>>>,
+    transaction_finalize_message_channel:
+        Sender<DomainMessage<Result<proto::TransactionFinalizedMessage, prost::DecodeError>>>,
+    _base_node_response_message_channel:
+        Sender<DomainMessage<Result<base_node_proto::BaseNodeServiceResponse, prost::DecodeError>>>,
+    transaction_cancelled_message_channel:
+        Sender<DomainMessage<Result<proto::TransactionCancelledMessage, prost::DecodeError>>>,
     _shutdown: Shutdown,
     _mock_rpc_server: MockRpcServer<BaseNodeWalletRpcServer<BaseNodeWalletRpcMockService>>,
     base_node_identity: Arc<NodeIdentity>,
@@ -2490,7 +2494,7 @@ async fn test_transaction_cancellation() {
 
     let key_manager = create_test_core_key_manager_with_memory_db();
     let input = create_wallet_output_with_data(
-        TariScript::default(),
+        script!(Nop),
         OutputFeatures::default(),
         &TestParams::new(&key_manager).await,
         MicroMinotari::from(100_000),
@@ -2577,7 +2581,7 @@ async fn test_transaction_cancellation() {
 
     // Lets cancel the last one using a Comms stack message
     let input = create_wallet_output_with_data(
-        TariScript::default(),
+        script!(Nop),
         OutputFeatures::default(),
         &TestParams::new(&key_manager.clone()).await,
         MicroMinotari::from(100_000),
@@ -5156,7 +5160,7 @@ async fn test_transaction_timeout_cancellation() {
     // First we will check the Send Transction message
     let key_manager = create_test_core_key_manager_with_memory_db();
     let input = create_wallet_output_with_data(
-        TariScript::default(),
+        script!(Nop),
         OutputFeatures::default(),
         &TestParams::new(&key_manager).await,
         MicroMinotari::from(100_000),

@@ -48,7 +48,7 @@ jobs:
 
     steps:
       - name: checkout tari-launchpad
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: ${{ env.LAUNCHPAD_REPO }}
           ref: ${{ env.LAUNCHPAD_BRANCH }}
@@ -101,12 +101,12 @@ jobs:
 
     steps:
       - name: checkout tari
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           path: tari
 
       - name: checkout tari-launchpad
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: ${{ env.LAUNCHPAD_REPO }}
           ref: ${{ env.LAUNCHPAD_BRANCH }}
@@ -124,7 +124,7 @@ jobs:
         shell: bash
         run: |
           IMAGE_NAME=${{ matrix.builds.image_name }}
-          if [ -z "${{ inputs.version }}" ]; then
+          if [ -z "${{ inputs.version }}" ] ; then
             echo "Get tari version"
             TARI_SOURCE_ROOT="tari/"
             VAPP=$(awk -F ' = ' \
@@ -139,9 +139,14 @@ jobs:
           fi
           echo "Setting ${VERSION} as docker tag"
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
-          if [ ! -z "${{ inputs.tag_alias }}" ]; then
-            echo "Setup tag_alias"
-            echo "TAG_ALIAS=${{ secrets.DOCKER_PROVIDER }}/${{ secrets.DOCKER_REPO }}/${{ matrix.builds.image_name }}:${{ inputs.tag_alias }}" >> $GITHUB_ENV
+          if [ ! -z "${{ inputs.tag_alias }}" ] ; then
+            if [ -z "${{ env.TARI_NETWORK }}" ] ; then
+              echo "Setup tag_alias"
+              echo "TAG_ALIAS=${{ secrets.DOCKER_PROVIDER }}/${{ secrets.DOCKER_REPO }}/${{ matrix.builds.image_name }}:${{ inputs.tag_alias }}" >> $GITHUB_ENV
+            else
+              echo "Setup tag_alias with network"
+              echo "TAG_ALIAS=${{ secrets.DOCKER_PROVIDER }}/${{ secrets.DOCKER_REPO }}/${{ matrix.builds.image_name }}:${{ inputs.tag_alias }}-${{ env.TARI_NETWORK }}" >> $GITHUB_ENV
+            fi
           fi
           if [ "${IMAGE_NAME:0:9}" = "minotari_" ] ; then
             echo "Minotari builds"
@@ -152,7 +157,7 @@ jobs:
             echo "APP_EXEC=${{ matrix.builds.app_exec }}" >> $GITHUB_ENV
           else
             echo "3rd Party builds - ${IMAGE_NAME}"
-            if [ -f "./tari-launchpad/docker_rig/${IMAGE_NAME}.Dockerfile" ]; then
+            if [ -f "./tari-launchpad/docker_rig/${IMAGE_NAME}.Dockerfile" ] ; then
               echo "DOCKERFILE=${IMAGE_NAME}" >> $GITHUB_ENV
               SUBTAG=$(awk -v search="^ARG ${IMAGE_NAME^^}?_VERSION=" -F '=' '$0 ~ search \
                 { gsub(/["]/, "", $2); printf("%s",$2) }' \

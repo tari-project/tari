@@ -207,9 +207,7 @@ fn validate_kernel_sum(
         fees.to_hex()
     );
     if excess != &sum_io + &fees {
-        return Err(ValidationError::CustomError(
-            "Sum of inputs and outputs did not equal sum of kernels with fees".into(),
-        ));
+        return Err(ValidationError::InvalidAccountingBalance);
     }
 
     Ok(())
@@ -306,7 +304,7 @@ fn check_weight(
 ) -> Result<(), ValidationError> {
     let block_weight = body
         .calculate_weight(consensus_constants.transaction_weight_params())
-        .map_err(|e| ValidationError::CustomError(e.to_string()))?;
+        .map_err(|e| ValidationError::SerializationError(format!("Unable to calculate body weight: {}", e)))?;
     let max_weight = consensus_constants.max_block_transaction_weight();
     if block_weight <= max_weight {
         trace!(
@@ -427,7 +425,7 @@ mod test {
     use rand::seq::SliceRandom;
     use tari_common::configuration::Network;
     use tari_common_types::types::RANGE_PROOF_AGGREGATION_FACTOR;
-    use tari_script::TariScript;
+    use tari_script::script;
 
     use super::*;
     use crate::{
@@ -504,7 +502,7 @@ mod test {
             100.into(),
             &key_manager,
             &OutputFeatures::create_burn_output(),
-            &TariScript::default(),
+            &script!(Nop),
             &Covenant::default(),
             0.into(),
         )
@@ -513,7 +511,7 @@ mod test {
             101.into(),
             &key_manager,
             &OutputFeatures::create_burn_output(),
-            &TariScript::default(),
+            &script!(Nop),
             &Covenant::default(),
             0.into(),
         )
@@ -522,7 +520,7 @@ mod test {
             102.into(),
             &key_manager,
             &OutputFeatures::create_burn_output(),
-            &TariScript::default(),
+            &script!(Nop),
             &Covenant::default(),
             0.into(),
         )
@@ -567,7 +565,7 @@ mod test {
                     100.into(),
                     &key_manager,
                     &OutputFeatures::create_burn_output(),
-                    &TariScript::default(),
+                    &script!(Nop),
                     &Covenant::default(),
                     0.into(),
                 )

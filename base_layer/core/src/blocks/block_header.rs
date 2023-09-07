@@ -234,9 +234,10 @@ impl BlockHeader {
     }
 
     pub fn merge_mining_hash(&self) -> FixedHash {
-        let mut mining_hash = self.mining_hash();
-        mining_hash[0..4].copy_from_slice(b"TARI"); // Maybe put this in a `const`
-        mining_hash
+        // let mining_hash = self.mining_hash();
+        // At a later stage if we want to allow other coins to be merge mined, we can add a prefix
+        // mining_hash[0..4].copy_from_slice(b"TARI"); // Maybe put this in a `const`
+        self.mining_hash()
     }
 
     #[inline]

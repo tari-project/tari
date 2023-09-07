@@ -285,14 +285,19 @@ impl MempoolStorage {
         Ok(results.retrieved_transactions)
     }
 
-    pub fn retrieve_by_excess_sigs(&self, excess_sigs: &[PrivateKey]) -> (Vec<Arc<Transaction>>, Vec<PrivateKey>) {
-        let (found_txns, remaining) = self.unconfirmed_pool.retrieve_by_excess_sigs(excess_sigs);
-        let (found_published_transactions, remaining) = self.reorg_pool.retrieve_by_excess_sigs(&remaining);
+    pub fn retrieve_by_excess_sigs(
+        &self,
+        excess_sigs: &[PrivateKey],
+    ) -> Result<(Vec<Arc<Transaction>>, Vec<PrivateKey>), MempoolError> {
+        let (found_txns, remaining) = self.unconfirmed_pool.retrieve_by_excess_sigs(excess_sigs)?;
 
-        (
-            found_txns.into_iter().chain(found_published_transactions).collect(),
-            remaining,
-        )
+        match self.reorg_pool.retrieve_by_excess_sigs(&remaining) {
+            Ok((found_published_transactions, remaining)) => Ok((
+                found_txns.into_iter().chain(found_published_transactions).collect(),
+                remaining,
+            )),
+            Err(e) => Err(e),
+        }
     }
 
     /// Check if the specified excess signature is found in the Mempool.

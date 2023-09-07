@@ -55,6 +55,7 @@ macro_rules! script {
 }
 
 const MAX_MULTISIG_LIMIT: u8 = 32;
+const MAX_SCRIPT_BYTES: usize = 4096;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TariScript {
@@ -76,6 +77,12 @@ impl BorshDeserialize for TariScript {
     fn deserialize_reader<R>(reader: &mut R) -> Result<Self, io::Error>
     where R: io::Read {
         let len = reader.read_varint()?;
+        if len > MAX_SCRIPT_BYTES {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Larger than max script bytes".to_string(),
+            ));
+        }
         let mut data = Vec::with_capacity(len);
         for _ in 0..len {
             data.push(u8::deserialize_reader(reader)?);
@@ -89,6 +96,34 @@ impl BorshDeserialize for TariScript {
 impl TariScript {
     pub fn new(script: Vec<Opcode>) -> Self {
         TariScript { script }
+    }
+
+    /// This pattern matches two scripts ensure they have the same instructions in the opcodes, but not the same values
+    /// inside example:
+    /// Script A = {PushPubKey(AA)}, Script B = {PushPubKey(BB)} will pattern match, but doing Script A == Script B will
+    /// not match Script A = {PushPubKey(AA)}, Script B = {PushPubKey(AA)} will pattern match, doing Script A ==
+    /// Script B will also match Script A = {PushPubKey(AA)}, Script B = {PushHash(BB)} will not pattern match, and
+    /// doing Script A == Script B will not match
+    pub fn pattern_match(&self, script: &TariScript) -> bool {
+        for (i, opcode) in self.script.iter().enumerate() {
+            if let Some(code) = script.opcode(i) {
+                if std::mem::discriminant(opcode) != std::mem::discriminant(code) {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        }
+        // We need to ensure they are the same length
+        script.opcode(self.script.len()).is_none()
+    }
+
+    /// Retrieve the opcode at the index, returns None if the index does not exist
+    pub fn opcode(&self, i: usize) -> Option<&Opcode> {
+        if i >= self.script.len() {
+            return None;
+        }
+        Some(&self.script[i])
     }
 
     /// Executes the script using a default context. If successful, returns the final stack item.
@@ -625,10 +660,10 @@ impl Hex for TariScript {
     }
 }
 
-/// The default Tari script is to push a single zero onto the stack; which will execute successfully with zero inputs.
+/// The default Tari script is to push a sender pubkey onto the stack
 impl Default for TariScript {
     fn default() -> Self {
-        script!(PushZero)
+        script!(PushPubKey(Box::default()))
     }
 }
 
@@ -690,7 +725,6 @@ mod test {
         StackItem,
         StackItem::{Commitment, Hash, Number},
         TariScript,
-        DEFAULT_SCRIPT_HASH,
     };
 
     fn context_with_height(height: u64) -> ScriptContext {
@@ -698,12 +732,24 @@ mod test {
     }
 
     #[test]
-    fn default_script() {
-        let script = TariScript::default();
-        let inputs = ExecutionStack::default();
-        assert!(script.execute(&inputs).is_ok());
-        assert_eq!(&script.to_hex(), "7b");
-        assert_eq!(script.as_hash::<Blake2b<U32>>().unwrap(), DEFAULT_SCRIPT_HASH);
+    fn pattern_match() {
+        let script_a = script!(Or(1));
+        let script_b = script!(Or(1));
+        assert_eq!(script_a, script_b);
+        assert!(script_a.pattern_match(&script_b));
+
+        let script_b = script!(Or(2));
+        assert_ne!(script_a, script_b);
+        assert!(script_a.pattern_match(&script_b));
+
+        let script_b = script!(Or(2) Or(2));
+        assert_ne!(script_a, script_b);
+        assert!(!script_a.pattern_match(&script_b));
+
+        let script_a = script!(Or(2) Or(1));
+        let script_b = script!(Or(3) Or(5));
+        assert_ne!(script_a, script_b);
+        assert!(script_a.pattern_match(&script_b));
     }
 
     #[test]
@@ -1680,5 +1726,14 @@ mod test {
         let buf = &mut buf.as_slice();
         assert_eq!(script, TariScript::deserialize(buf).unwrap());
         assert_eq!(buf, &[1, 2, 3]);
+    }
+
+    #[test]
+    fn test_borsh_de_serialization_too_large() {
+        // We dont care about the actual script here, just that its not too large on the varint size
+        // We lie about the size to try and get a mem panic, and say this script is u64::max large.
+        let buf = vec![255, 255, 255, 255, 255, 255, 255, 255, 255, 1, 49, 8, 2, 5, 6];
+        let buf = &mut buf.as_slice();
+        assert!(TariScript::deserialize(buf).is_err());
     }
 }

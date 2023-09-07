@@ -2,6 +2,89 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.52.0-pre.1](https://github.com/brianp/tari/compare/v0.51.0-pre.4...v0.52.0-pre.1) (2023-09-04)
+
+
+### ⚠ BREAKING CHANGES
+
+* Merge mining hash has changed
+* remove timestamp from header in proto files (#5667)
+* **comms/dht:** limit number of peer claims and addresses for all sources (#5702)
+* **comms:** use noise XX handshake pattern for improved privacy (#5696)
+* update faucet for genesis block (#5633)
+* limit monero hashes and force coinbase to be tx 0 (#5602)
+* add validator mr to mining hash (#5615)
+
+### Features
+
+* add consistent ban reason for sync ([#5729](https://github.com/brianp/tari/issues/5729)) ([9564281](https://github.com/brianp/tari/commit/95642811b9df592eb9bddd9b71d10ee30987e59d))
+* add mempool min fee ([#5606](https://github.com/brianp/tari/issues/5606)) ([15c7e8f](https://github.com/brianp/tari/commit/15c7e8f9ca3d656850d6f0041d2f7fc07b4af80b))
+* ban peer unexpected response ([#5608](https://github.com/brianp/tari/issues/5608)) ([02494ae](https://github.com/brianp/tari/commit/02494aee0f97469b9deb9c339b4075b14b69ff6f))
+* change default script to PushPubKey ([#5653](https://github.com/brianp/tari/issues/5653)) ([f5b89ad](https://github.com/brianp/tari/commit/f5b89add6a04b935b9ae8dda0f694eb826ef6d9a))
+* chat ffi status callback ([#5583](https://github.com/brianp/tari/issues/5583)) ([f68b85f](https://github.com/brianp/tari/commit/f68b85f404e524d61d8b6153c13e8b2e6ab2a20b))
+* chat message fetching pagination ([#5594](https://github.com/brianp/tari/issues/5594)) ([2024357](https://github.com/brianp/tari/commit/202435742ed78b0eac80efcd19b357df96a6bbb9))
+* chat-ffi logging ([#5591](https://github.com/brianp/tari/issues/5591)) ([159959c](https://github.com/brianp/tari/commit/159959cc32c341e111a626729fb1bd9a2851e8a7))
+* cleanup errors ([#5655](https://github.com/brianp/tari/issues/5655)) ([c1737b9](https://github.com/brianp/tari/commit/c1737b9d872dbaf858dd46e6350c6febd7f43690))
+* fix formatting block ([#5630](https://github.com/brianp/tari/issues/5630)) ([49732f6](https://github.com/brianp/tari/commit/49732f65339f4c120afb49e9edb72eda8d17b737))
+* improve block sync error handling ([#5691](https://github.com/brianp/tari/issues/5691)) ([251f796](https://github.com/brianp/tari/commit/251f796dc023459338212a852d50059380399be2))
+* new message callback to chat-ffi ([#5592](https://github.com/brianp/tari/issues/5592)) ([bbd543e](https://github.com/brianp/tari/commit/bbd543ee35e4e5fc858d875cf30d6f24fa2e4d96))
+* peer sync limiter ([#5445](https://github.com/brianp/tari/issues/5445)) ([548643b](https://github.com/brianp/tari/commit/548643b723a548fea3e56f938a84db652d3ee630))
+* remove inherent iterator panic ([#5697](https://github.com/brianp/tari/issues/5697)) ([7f153e5](https://github.com/brianp/tari/commit/7f153e5dd613b3e38586b7f8f536035c6ac98dd8))
+* remove orphan validation and only validate on insertion ([#5601](https://github.com/brianp/tari/issues/5601)) ([41244a3](https://github.com/brianp/tari/commit/41244a3ea666f925648aa752c9ac476486702473))
+* remove unused wasm_key_manager ([#5622](https://github.com/brianp/tari/issues/5622)) ([508c971](https://github.com/brianp/tari/commit/508c97198617f116bb0ccd69c8e1eba1341b18ac))
+* update faucet for genesis block ([#5633](https://github.com/brianp/tari/issues/5633)) ([ffb987a](https://github.com/brianp/tari/commit/ffb987a757f2af721ca5772e28da31035fcf741f))
+* update genesis blocks ([#5698](https://github.com/brianp/tari/issues/5698)) ([b9145b3](https://github.com/brianp/tari/commit/b9145b3373319f0c2c25d0e5dd4d393115a4c0bd))
+
+
+### Bug Fixes
+
+* add validator mr to mining hash ([#5615](https://github.com/brianp/tari/issues/5615)) ([91db6fb](https://github.com/brianp/tari/commit/91db6fb3b9ee1998d186fba3bbb57c970d8e4c5c))
+* add-peer also dials the peer ([#5727](https://github.com/brianp/tari/issues/5727)) ([cc8573a](https://github.com/brianp/tari/commit/cc8573ae3ec69d748d3793f02136fd6772983850))
+* addition overflow when coinbase + fees is too high ([#5706](https://github.com/brianp/tari/issues/5706)) ([13993f1](https://github.com/brianp/tari/commit/13993f1763eee84f566d6aea83661eb868e47eff))
+* adds bans for horizon sync ([#5661](https://github.com/brianp/tari/issues/5661)) ([826473d](https://github.com/brianp/tari/commit/826473d2a96fc6c978e5ccdce38c052919514a37))
+* ban peers if they send a bad protobuf message ([#5693](https://github.com/brianp/tari/issues/5693)) ([58cbfe6](https://github.com/brianp/tari/commit/58cbfe677f7328d4c9f9c98b1ada1acb369a47ac))
+* better timeout for lagging ([#5705](https://github.com/brianp/tari/issues/5705)) ([5e8a3ec](https://github.com/brianp/tari/commit/5e8a3ecbc9a00cee823260d4a5e33b3e3a60bc9c))
+* check bytes remaining on monero blocks ([#5610](https://github.com/brianp/tari/issues/5610)) ([1087fa9](https://github.com/brianp/tari/commit/1087fa9d7846b1bd11431475cc8ca3fd9def8ec6))
+* **comms/dht:** limit number of peer claims and addresses for all sources ([#5702](https://github.com/brianp/tari/issues/5702)) ([88ed293](https://github.com/brianp/tari/commit/88ed2935f5094e669470f2c015d055f9c3286941))
+* **comms:** check multiple addresses for inbound liveness check ([#5611](https://github.com/brianp/tari/issues/5611)) ([3937ae4](https://github.com/brianp/tari/commit/3937ae422f57f936ad3d2ead8b92ce4fa5adf855))
+* **comms:** dont overwrite ban-reason in add_peer ([#5720](https://github.com/brianp/tari/issues/5720)) ([3b9890b](https://github.com/brianp/tari/commit/3b9890ba5857cc8767be77a024d01bf4826e3956))
+* **comms:** greatly reduce timeouts for first byte and noise handshake ([#5728](https://github.com/brianp/tari/issues/5728)) ([47a3196](https://github.com/brianp/tari/commit/47a319616dde78c243b4558a51a7d81efc8393e1))
+* **comms:** only permit a single inbound messaging substream per peer ([#5731](https://github.com/brianp/tari/issues/5731)) ([c91a35f](https://github.com/brianp/tari/commit/c91a35f82557afd39c9b83f643876630bb4275c5))
+* **comms:** timeout and ban for bad behaviour in protocol negotation ([#5679](https://github.com/brianp/tari/issues/5679)) ([d03d0b5](https://github.com/brianp/tari/commit/d03d0b5fc58d4e284b1f6ce4554830fdbbb78efe))
+* **comms:** use noise XX handshake pattern for improved privacy ([#5696](https://github.com/brianp/tari/issues/5696)) ([d0ea406](https://github.com/brianp/tari/commit/d0ea406e57b8bbb65196c2e880671da2e51f2b62))
+* **core:** always pass the correct timestamp window to header validatior ([#5624](https://github.com/brianp/tari/issues/5624)) ([29700c3](https://github.com/brianp/tari/commit/29700c3d9aa4698742c0c9cd5e313fd3d0727626))
+* **dht:** add SAF bans ([#5711](https://github.com/brianp/tari/issues/5711)) ([594e03e](https://github.com/brianp/tari/commit/594e03eada389c1a131d5877f42f8c43b85a9fbe))
+* **dht:** limit peer sync and ban on server-caused errors ([#5714](https://github.com/brianp/tari/issues/5714)) ([b3f2dca](https://github.com/brianp/tari/commit/b3f2dcae88740abd1bd4c64f64d89010a13a214b))
+* duplicate tari header in monero coinbase ([#5604](https://github.com/brianp/tari/issues/5604)) ([f466840](https://github.com/brianp/tari/commit/f466840a24cd678aac82ae4eaa2661dca2567675))
+* error out the stx protocol if the sender sends unsupported data ([#5572](https://github.com/brianp/tari/issues/5572)) ([8a085cd](https://github.com/brianp/tari/commit/8a085cded40b95fb5d3136743a97e50874ee2903))
+* handle out of sync errors when returning mempool transactions ([#5701](https://github.com/brianp/tari/issues/5701)) ([b0337cf](https://github.com/brianp/tari/commit/b0337cfaac92939db968231cc368b56836c2cf7e))
+* handle target difficulty conversion failure ([#5710](https://github.com/brianp/tari/issues/5710)) ([431c35a](https://github.com/brianp/tari/commit/431c35ac5006d5cd265484e98a224b7f7e75703f))
+* header sync ([#5647](https://github.com/brianp/tari/issues/5647)) ([4583eef](https://github.com/brianp/tari/commit/4583eef444f4f71d6d702a9997566dad42a9fce4))
+* horizon sync ([#5724](https://github.com/brianp/tari/issues/5724)) ([660a5c1](https://github.com/brianp/tari/commit/660a5c1119f76ce30386860b27ed21316d9ace55))
+* **horizon_sync:** check for leftover unpruned outputs ([#5704](https://github.com/brianp/tari/issues/5704)) ([dc5cfce](https://github.com/brianp/tari/commit/dc5cfced6b81b8c7c036db920f7cbbf36d601789))
+* **horizon_sync:** check max number of kernels/utxos from peer ([#5703](https://github.com/brianp/tari/issues/5703)) ([5e4f3c2](https://github.com/brianp/tari/commit/5e4f3c20f0de1d0d7c525cdcfbe86e56b9e909f3))
+* **horizon_sync:** try sync with next next peer if current one fails ([#5699](https://github.com/brianp/tari/issues/5699)) ([a58ec1f](https://github.com/brianp/tari/commit/a58ec1f40fbc57e147e6fb5c21c6b2b5151150df))
+* limit monero hashes and force coinbase to be tx 0 ([#5602](https://github.com/brianp/tari/issues/5602)) ([2af1198](https://github.com/brianp/tari/commit/2af119824e3b21294c4545b18b2fb6a86bb96ea4))
+* make sure all needed libs are required for chatffi ([#5659](https://github.com/brianp/tari/issues/5659)) ([241ca67](https://github.com/brianp/tari/commit/241ca673ee5b3503198f3e662383ad0f6387313c))
+* memory overflow panic ([#5658](https://github.com/brianp/tari/issues/5658)) ([304e40f](https://github.com/brianp/tari/commit/304e40fb44a3dd9765c10147e1ee85344769c55a))
+* miner delay attack ([#5582](https://github.com/brianp/tari/issues/5582)) ([bece2d0](https://github.com/brianp/tari/commit/bece2d0bf82c757808723dba6ec3456bb8e23b2e))
+* minor fixes for multiple address support ([#5617](https://github.com/brianp/tari/issues/5617)) ([efa36eb](https://github.com/brianp/tari/commit/efa36eb7dc92905cc085359c35255678136a15b1))
+* monero fork attack ([#5603](https://github.com/brianp/tari/issues/5603)) ([9c81b4d](https://github.com/brianp/tari/commit/9c81b4d875aa7794226a97a4a90c9c0b3d6d4585))
+* only allow a monero header if it serializes back to the same data ([#5716](https://github.com/brianp/tari/issues/5716)) ([e70c752](https://github.com/brianp/tari/commit/e70c752d6014f0dd9d1a7aeda9a39bbd6dabc21b))
+* peer connection to stale nodes ([#5579](https://github.com/brianp/tari/issues/5579)) ([eebda00](https://github.com/brianp/tari/commit/eebda00bd28aae70813c644ff2b63925cc934ced))
+* potential u64 overflow panic ([#5688](https://github.com/brianp/tari/issues/5688)) ([f261b79](https://github.com/brianp/tari/commit/f261b7900f879ad991de42073094f8cb4443b8d2))
+* prevent access violation when running multiple vms at the same time ([#5734](https://github.com/brianp/tari/issues/5734)) ([18aead2](https://github.com/brianp/tari/commit/18aead232c2da7f6ec4eda152f8ce53e2601a92d))
+* remove potential u64 overflow panic ([#5686](https://github.com/brianp/tari/issues/5686)) ([90a8a21](https://github.com/brianp/tari/commit/90a8a21765f2c1a6930775ed4cd95fe8766b02d8))
+* remove tari prefix and only allow one mergemining tag ([#5722](https://github.com/brianp/tari/issues/5722)) ([3a7c227](https://github.com/brianp/tari/commit/3a7c227002f8bfacde2ab8081c79bfac435484ce))
+* remove timestamp from header in proto files ([#5667](https://github.com/brianp/tari/issues/5667)) ([403b0c6](https://github.com/brianp/tari/commit/403b0c62af9ed2f2eefc48e0feb5025d8c853ecc))
+* save dial result on error ([#5717](https://github.com/brianp/tari/issues/5717)) ([c66af69](https://github.com/brianp/tari/commit/c66af69e5ccb31d2fcaf9a8fa29d2e0b5470eeba))
+* sorted edge case ([#5590](https://github.com/brianp/tari/issues/5590)) ([f7b2193](https://github.com/brianp/tari/commit/f7b21930c7841e7a8801f4c37d1ee0e8111162bb))
+* sparse Merkle tree key querying ([#5566](https://github.com/brianp/tari/issues/5566)) ([623839f](https://github.com/brianp/tari/commit/623839f58116c0828bc5406adbd1dd1b68e7bb3d))
+* syncing from prune node ([#5733](https://github.com/brianp/tari/issues/5733)) ([166f469](https://github.com/brianp/tari/commit/166f469cd1122676ec95b88163ee97058cc28fdf))
+* **sync:** remove mem::take in all syncs ([#5721](https://github.com/brianp/tari/issues/5721)) ([a48e430](https://github.com/brianp/tari/commit/a48e430b6b5bc21c5998009738be1436e479f7ec))
+* **sync:** unify ban logic in all sync processes ([#5713](https://github.com/brianp/tari/issues/5713)) ([4b2b28b](https://github.com/brianp/tari/commit/4b2b28bf2390c400d547cdaa801ff967eb92ac38))
+* update peers seed for esme ([#5573](https://github.com/brianp/tari/issues/5573)) ([0f6b750](https://github.com/brianp/tari/commit/0f6b7504bbfc902ffab89f1904dee237270c690b))
+
 ## [0.52.0-pre.0](https://github.com/tari-project/tari/compare/v0.51.0-pre.4...v0.52.0-pre.0) (2023-08-14)
 
 #### Breaking Changes

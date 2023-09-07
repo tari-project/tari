@@ -1,4 +1,4 @@
-// Copyright 2019, The Tari Project
+// Copyright 2023, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,19 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::TryFrom;
+mod error;
+pub use error::*;
 
-use prost_types::Timestamp;
-use tari_utilities::epoch_time::EpochTime;
+mod config;
+pub use config::*;
 
-/// Utility function that converts a `prost::Timestamp` to a `chrono::DateTime`
-/// Returns None if the timestamp is negative
-pub(super) fn timestamp_to_datetime(timestamp: Timestamp) -> Option<EpochTime> {
-    u64::try_from(timestamp.seconds).ok().map(Into::into)
-}
+mod helpers;
 
-/// Utility function that converts a `chrono::DateTime` to a `prost::Timestamp`
-pub(super) fn datetime_to_timestamp(datetime: EpochTime) -> Option<Timestamp> {
-    let seconds = i64::try_from(datetime.as_u64()).ok()?;
-    Some(Timestamp { seconds, nanos: 0 })
-}
+pub use helpers::*;

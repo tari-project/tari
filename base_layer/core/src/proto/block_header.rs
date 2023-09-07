@@ -23,13 +23,12 @@
 use std::convert::TryFrom;
 
 use tari_common_types::types::{FixedHash, PrivateKey};
-use tari_utilities::ByteArray;
+use tari_utilities::{epoch_time::EpochTime, ByteArray};
 
 use super::core as proto;
 use crate::{
     blocks::BlockHeader,
     proof_of_work::{PowAlgorithm, ProofOfWork},
-    proto::utils::{datetime_to_timestamp, timestamp_to_datetime},
 };
 
 //---------------------------------- BlockHeader --------------------------------------------//
@@ -42,11 +41,6 @@ impl TryFrom<proto::BlockHeader> for BlockHeader {
 
         let total_script_offset = PrivateKey::from_bytes(&header.total_script_offset).map_err(|err| err.to_string())?;
 
-        let timestamp = header
-            .timestamp
-            .and_then(timestamp_to_datetime)
-            .ok_or_else(|| "timestamp not provided or is negative".to_string())?;
-
         let pow = match header.pow {
             Some(p) => ProofOfWork::try_from(p)?,
             None => return Err("No proof of work provided".into()),
@@ -55,7 +49,7 @@ impl TryFrom<proto::BlockHeader> for BlockHeader {
             version: u16::try_from(header.version).map_err(|err| err.to_string())?,
             height: header.height,
             prev_hash: FixedHash::try_from(header.prev_hash).map_err(|err| err.to_string())?,
-            timestamp,
+            timestamp: EpochTime::from(header.timestamp),
             output_mr: FixedHash::try_from(header.output_mr).map_err(|err| err.to_string())?,
             output_mmr_size: header.output_mmr_size,
             kernel_mr: FixedHash::try_from(header.kernel_mr).map_err(|err| err.to_string())?,
@@ -72,12 +66,11 @@ impl TryFrom<proto::BlockHeader> for BlockHeader {
 
 impl From<BlockHeader> for proto::BlockHeader {
     fn from(header: BlockHeader) -> Self {
-        let timestamp = datetime_to_timestamp(header.timestamp).unwrap();
         Self {
             version: u32::try_from(header.version).unwrap(),
             height: header.height,
             prev_hash: header.prev_hash.to_vec(),
-            timestamp: Some(timestamp),
+            timestamp: header.timestamp.as_u64(),
             output_mr: header.output_mr.to_vec(),
             kernel_mr: header.kernel_mr.to_vec(),
             input_mr: header.input_mr.to_vec(),

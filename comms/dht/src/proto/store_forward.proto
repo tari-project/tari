@@ -15,6 +15,7 @@ package tari.dht.store_forward;
 message StoredMessagesRequest {
     google.protobuf.Timestamp since = 1;
     uint32 request_id = 2;
+    uint32 limit = 3;
 }
 
 // Storage for a single message envelope, including the date and time when the element was stored

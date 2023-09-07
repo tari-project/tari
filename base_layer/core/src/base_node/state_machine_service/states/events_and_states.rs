@@ -90,12 +90,25 @@ pub enum SyncStatus {
         network: ChainMetadata,
         sync_peers: Vec<SyncPeer>,
     },
+    // There is a stronger chain but we are less the `blocks_before_considered_lagging` blocks behind it.
+    BehindButNotYetLagging {
+        local: ChainMetadata,
+        network: ChainMetadata,
+        sync_peers: Vec<SyncPeer>,
+    },
     UpToDate,
+    SyncNotPossible {
+        peers: Vec<SyncPeer>,
+    },
 }
 
 impl SyncStatus {
     pub fn is_lagging(&self) -> bool {
-        !self.is_up_to_date()
+        matches!(self, SyncStatus::Lagging { .. })
+    }
+
+    pub fn is_sync_not_possible(&self) -> bool {
+        matches!(self, SyncStatus::SyncNotPossible { .. })
     }
 
     pub fn is_up_to_date(&self) -> bool {
@@ -117,6 +130,10 @@ impl Display for SyncStatus {
                 network.accumulated_difficulty(),
             ),
             UpToDate => f.write_str("UpToDate"),
+            SyncStatus::BehindButNotYetLagging { .. } => f.write_str("Behind but not yet lagging"),
+            SyncStatus::SyncNotPossible { .. } => {
+                f.write_str("Behind but we cannot sync as we have no viable peers to sync to")
+            },
         }
     }
 }

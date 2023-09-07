@@ -37,6 +37,7 @@ use crate::{
         shrink_hashmap::shrink_hashmap,
         unconfirmed_pool::UnconfirmedPoolError,
         FeePerGramStat,
+        MempoolError,
     },
     transactions::{tari_amount::MicroMinotari, transaction_components::Transaction, weight::TransactionWeight},
 };
@@ -401,7 +402,10 @@ impl UnconfirmedPool {
         }
     }
 
-    pub fn retrieve_by_excess_sigs(&self, excess_sigs: &[PrivateKey]) -> (Vec<Arc<Transaction>>, Vec<PrivateKey>) {
+    pub fn retrieve_by_excess_sigs(
+        &self,
+        excess_sigs: &[PrivateKey],
+    ) -> Result<(Vec<Arc<Transaction>>, Vec<PrivateKey>), MempoolError> {
         // Hashset used to prevent duplicates
         let mut found = HashSet::new();
         let mut remaining = Vec::new();
@@ -419,11 +423,11 @@ impl UnconfirmedPool {
                 self.tx_by_key
                     .get(&id)
                     .map(|tx| tx.transaction.clone())
-                    .expect("mempool indexes out of sync: transaction exists in txs_by_signature but not in tx_by_key")
+                    .ok_or(MempoolError::IndexOutOfSync)
             })
-            .collect();
+            .collect::<Result<Vec<_>, _>>()?;
 
-        (found, remaining)
+        Ok((found, remaining))
     }
 
     fn get_all_dependent_transactions(
@@ -798,7 +802,7 @@ impl UnconfirmedPool {
 #[cfg(test)]
 mod test {
     use tari_common::configuration::Network;
-    use tari_script::{inputs, script};
+    use tari_script::{ExecutionStack, TariScript};
 
     use super::*;
     use crate::{
@@ -924,8 +928,8 @@ mod test {
             .with_lock_height(0)
             .with_fee_per_gram(5.into())
             .with_change_data(
-                script!(Nop),
-                inputs!(change.script_key_pk),
+                TariScript::default(),
+                ExecutionStack::default(),
                 change.script_key_id.clone(),
                 change.spend_key_id.clone(),
                 Covenant::default(),

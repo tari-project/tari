@@ -19,12 +19,13 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::{future::Future, sync::Arc};
+use std::{future::Future, sync::Arc, time::Duration};
 
 use futures::{future, future::Either};
 use log::*;
 use randomx_rs::RandomXFlag;
 use serde::{Deserialize, Serialize};
+use tari_common::configuration::serializers;
 use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::{broadcast, watch};
@@ -55,6 +56,12 @@ pub struct BaseNodeStateMachineConfig {
     /// The amount of blocks this node can be behind a peer before considered to be lagging (to test the block
     /// propagation by delaying lagging)
     pub blocks_behind_before_considered_lagging: u64,
+    /// The amount of time this node can know about a stronger chain before considered to be lagging.
+    /// This is to give a node time to receive the block via propagation, which is usually less network
+    /// intensive. Be careful of setting this higher than the block time, which would potentially cause it
+    /// to always be behind the network
+    #[serde(with = "serializers::seconds")]
+    pub time_before_considered_lagging: Duration,
 }
 
 #[allow(clippy::derivable_impls)]
@@ -62,7 +69,8 @@ impl Default for BaseNodeStateMachineConfig {
     fn default() -> Self {
         Self {
             blockchain_sync_config: Default::default(),
-            blocks_behind_before_considered_lagging: 0,
+            blocks_behind_before_considered_lagging: 1,
+            time_before_considered_lagging: Duration::from_secs(10),
         }
     }
 }
@@ -194,8 +202,8 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         let status = StatusInfo {
             bootstrapped: self.is_bootstrapped(),
             state_info: self.info.clone(),
-            randomx_vm_cnt: self.randomx_factory.get_count(),
-            randomx_vm_flags: self.randomx_factory.get_flags(),
+            randomx_vm_cnt: self.randomx_factory.get_count().unwrap_or(0),
+            randomx_vm_flags: self.randomx_factory.get_flags().unwrap_or_default(),
         };
 
         if let Err(e) = self.status_event_sender.send(status) {
@@ -218,11 +226,11 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
     }
 
     pub fn get_randomx_vm_cnt(&self) -> usize {
-        self.randomx_factory.get_count()
+        self.randomx_factory.get_count().unwrap_or_default()
     }
 
     pub fn get_randomx_vm_flags(&self) -> RandomXFlag {
-        self.randomx_factory.get_flags()
+        self.randomx_factory.get_flags().unwrap_or_default()
     }
 
     /// Start the base node runtime.

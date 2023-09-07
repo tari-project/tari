@@ -41,11 +41,7 @@ mod transaction_kernel;
 mod transaction_output;
 mod unblinded_output;
 
-use std::convert::TryFrom;
-
-use chrono::Utc;
 use prost_types::Timestamp;
-use tari_utilities::epoch_time::EpochTime;
 
 pub use self::{
     aggregate_body::*,
@@ -68,31 +64,10 @@ pub use self::{
 };
 use crate::{tari_rpc as grpc, tari_rpc::BlockGroupRequest};
 
-/// Utility function that converts a `EpochTime` to a `prost::Timestamp`
-/// Returns None if the EpochTime is negative or larger than i64::MAX.
-pub(self) fn datetime_to_timestamp(datetime: EpochTime) -> Option<Timestamp> {
-    let seconds = i64::try_from(datetime.as_u64()).ok()?;
-    Some(Timestamp { seconds, nanos: 0 })
-}
-
 /// Utility function that converts a `chrono::NaiveDateTime` to a `prost::Timestamp`
 pub fn naive_datetime_to_timestamp(datetime: chrono::NaiveDateTime) -> Timestamp {
     Timestamp {
         seconds: datetime.timestamp(),
-        nanos: 0,
-    }
-}
-
-/// Converts a protobuf Timestamp to an EpochTime.
-/// Returns None if the timestamp is negative.
-pub(self) fn timestamp_to_datetime(timestamp: Timestamp) -> Option<EpochTime> {
-    u64::try_from(timestamp.seconds).ok().map(Into::into)
-}
-
-/// Current unix time as timestamp (seconds part only)
-pub fn timestamp() -> Timestamp {
-    Timestamp {
-        seconds: Utc::now().timestamp(),
         nanos: 0,
     }
 }

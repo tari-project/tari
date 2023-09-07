@@ -204,11 +204,12 @@ impl<
         TKeyManagerInterface,
     >
 where
-    TTxStream: Stream<Item = DomainMessage<proto::TransactionSenderMessage>>,
-    TTxReplyStream: Stream<Item = DomainMessage<proto::RecipientSignedMessage>>,
-    TTxFinalizedStream: Stream<Item = DomainMessage<proto::TransactionFinalizedMessage>>,
-    BNResponseStream: Stream<Item = DomainMessage<base_node_proto::BaseNodeServiceResponse>>,
-    TTxCancelledStream: Stream<Item = DomainMessage<proto::TransactionCancelledMessage>>,
+    TTxStream: Stream<Item = DomainMessage<Result<proto::TransactionSenderMessage, prost::DecodeError>>>,
+    TTxReplyStream: Stream<Item = DomainMessage<Result<proto::RecipientSignedMessage, prost::DecodeError>>>,
+    TTxFinalizedStream: Stream<Item = DomainMessage<Result<proto::TransactionFinalizedMessage, prost::DecodeError>>>,
+    BNResponseStream:
+        Stream<Item = DomainMessage<Result<base_node_proto::BaseNodeServiceResponse, prost::DecodeError>>>,
+    TTxCancelledStream: Stream<Item = DomainMessage<Result<proto::TransactionCancelledMessage, prost::DecodeError>>>,
     TBackend: TransactionBackend + 'static,
     TWalletBackend: WalletBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
@@ -1523,6 +1524,7 @@ where
             .cloned()
             .map(OutputFeatures::create_burn_confidential_output)
             .unwrap_or_else(OutputFeatures::create_burn_output);
+
         // Prepare sender part of the transaction
         let tx_meta = TransactionMetadata::new_with_features(0.into(), 0, KernelFeatures::create_burn());
         let mut stp = self
@@ -1536,7 +1538,7 @@ where
                 fee_per_gram,
                 tx_meta,
                 message.clone(),
-                TariScript::default(),
+                script!(Nop),
                 Covenant::default(),
                 MicroMinotari::zero(),
             )
@@ -1842,12 +1844,20 @@ where
     pub async fn accept_recipient_reply(
         &mut self,
         source_pubkey: CommsPublicKey,
-        recipient_reply: proto::RecipientSignedMessage,
+        recipient_reply: Result<proto::RecipientSignedMessage, prost::DecodeError>,
     ) -> Result<(), TransactionServiceError> {
         // Check if a wallet recovery is in progress, if it is we will ignore this request
         self.check_recovery_status()?;
 
+        if let Err(e) = recipient_reply {
+            // We should ban but there is no banning in the wallet...
+            return Err(TransactionServiceError::InvalidMessageError(format!(
+                "Could not decode RecipientSignedMessage: {:?}",
+                e
+            )));
+        }
         let recipient_reply: RecipientSignedMessage = recipient_reply
+            .unwrap()
             .try_into()
             .map_err(TransactionServiceError::InvalidMessageError)?;
 
@@ -2074,8 +2084,18 @@ where
     pub async fn handle_transaction_cancelled_message(
         &mut self,
         source_pubkey: CommsPublicKey,
-        transaction_cancelled: proto::TransactionCancelledMessage,
+        transaction_cancelled: Result<proto::TransactionCancelledMessage, prost::DecodeError>,
     ) -> Result<(), TransactionServiceError> {
+        let transaction_cancelled = match transaction_cancelled {
+            Ok(v) => v,
+            Err(e) => {
+                // Should ban....
+                return Err(TransactionServiceError::InvalidMessageError(format!(
+                    "Could not decode TransactionCancelledMessage: {:?}",
+                    e
+                )));
+            },
+        };
         let tx_id = transaction_cancelled.tx_id.into();
 
         // Check that an inbound transaction exists to be cancelled and that the Source Public key for that transaction
@@ -2168,14 +2188,21 @@ where
     pub fn accept_transaction(
         &mut self,
         source_pubkey: CommsPublicKey,
-        sender_message: proto::TransactionSenderMessage,
+        sender_message: Result<proto::TransactionSenderMessage, prost::DecodeError>,
         traced_message_tag: u64,
         join_handles: &mut FuturesUnordered<JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>>,
     ) -> Result<(), TransactionServiceError> {
         // Check if a wallet recovery is in progress, if it is we will ignore this request
         self.check_recovery_status()?;
 
+        if let Err(e) = sender_message {
+            return Err(TransactionServiceError::InvalidMessageError(format!(
+                "Could not decode TransactionSenderMessage: {:?}",
+                e
+            )));
+        }
         let sender_message: TransactionSenderMessage = sender_message
+            .unwrap()
             .try_into()
             .map_err(TransactionServiceError::InvalidMessageError)?;
 
@@ -2296,12 +2323,20 @@ where
     pub async fn accept_finalized_transaction(
         &mut self,
         source_pubkey: CommsPublicKey,
-        finalized_transaction: proto::TransactionFinalizedMessage,
+        finalized_transaction: Result<proto::TransactionFinalizedMessage, prost::DecodeError>,
         join_handles: &mut FuturesUnordered<JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>>,
     ) -> Result<(), TransactionServiceError> {
         // Check if a wallet recovery is in progress, if it is we will ignore this request
         self.check_recovery_status()?;
 
+        if let Err(e) = finalized_transaction {
+            // Should ban but there is no banning in the wallet...
+            return Err(TransactionServiceError::InvalidMessageError(format!(
+                "Could not decode TransactionFinalizedMessage: {:?}",
+                e
+            )));
+        }
+        let finalized_transaction = finalized_transaction.unwrap();
         let tx_id = finalized_transaction.tx_id.into();
         let transaction: Transaction = finalized_transaction
             .transaction
@@ -2733,8 +2768,16 @@ where
     /// Handle an incoming basenode response message
     pub async fn handle_base_node_response(
         &mut self,
-        response: base_node_proto::BaseNodeServiceResponse,
+        response: Result<base_node_proto::BaseNodeServiceResponse, prost::DecodeError>,
     ) -> Result<(), TransactionServiceError> {
+        if let Err(e) = response {
+            // Should we switch base nodes?
+            return Err(TransactionServiceError::InvalidMessageError(format!(
+                "Could not decode BaseNodeServiceResponse: {:?}",
+                e
+            )));
+        }
+        let response = response.unwrap();
         let sender = match self.base_node_response_senders.get_mut(&response.request_key.into()) {
             None => {
                 trace!(

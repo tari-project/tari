@@ -63,12 +63,12 @@ impl From<Peer> for grpc::Peer {
 impl From<MultiaddrWithStats> for grpc::Address {
     fn from(address_with_stats: MultiaddrWithStats) -> Self {
         let address = address_with_stats.address().to_vec();
-        let last_seen = match address_with_stats.last_seen {
+        let last_seen = match address_with_stats.last_seen() {
             Some(v) => v.to_string(),
             None => String::new(),
         };
-        let connection_attempts = address_with_stats.connection_attempts;
-        let avg_latency = address_with_stats.avg_latency.as_secs();
+        let connection_attempts = address_with_stats.connection_attempts();
+        let avg_latency = address_with_stats.avg_latency().as_secs();
         Self {
             address,
             last_seen,

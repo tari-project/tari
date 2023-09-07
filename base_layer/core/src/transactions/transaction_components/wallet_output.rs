@@ -251,8 +251,8 @@ impl WalletOutput {
         key_manager: &KM,
     ) -> Result<TransactionOutput, TransactionError> {
         if self.features.range_proof_type == RangeProofType::RevealedValue && self.minimum_value_promise != self.value {
-            return Err(TransactionError::InvalidRevealedValue(format!(
-                "Expected {}, received {}",
+            return Err(TransactionError::RangeProofError(format!(
+                "Invalid revealed value: Expected {}, received {}",
                 self.value, self.minimum_value_promise
             )));
         }
