@@ -249,10 +249,11 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
 
         // Fetch the local tip header at the beginning of the sync process
         let local_tip_header = self.db.fetch_last_chain_header().await?;
-        let local_total_accumulated_difficulty = local_tip_header.accumulated_data().total_accumulated_difficulty;
-        let header_tip_height = local_tip_header.height();
+        let local_blockchain_tip_header = self.db.fetch_chain_header(self.local_metadata.height_of_longest_chain()).await?;
+        let local_total_accumulated_difficulty = local_blockchain_tip_header.accumulated_data().total_accumulated_difficulty;
+        let header_tip_height = local_blockchain_tip_header.height();
         let sync_status = self
-            .determine_sync_status(sync_peer, local_tip_header, &mut client)
+            .determine_sync_status(sync_peer, local_tip_header, local_blockchain_tip_header, &mut client)
             .await?;
         match sync_status {
             SyncStatus::InSync | SyncStatus::WereAhead => {
@@ -396,6 +397,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         &mut self,
         sync_peer: &SyncPeer,
         local_tip_header: ChainHeader,
+        local_blockchain_tip_header: ChainHeader,
         client: &mut rpc::BaseNodeSyncRpcClient,
     ) -> Result<SyncStatus, BlockHeaderSyncError> {
         let (resp, block_hashes, steps_back) = self
@@ -473,7 +475,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         }
 
         let chain_split_info = ChainSplitInfo {
-            local_tip_header,
+            local_tip_header: local_blockchain_tip_header,
             remote_tip_height,
             reorg_steps_back: steps_back,
             chain_split_hash: *chain_split_hash,
