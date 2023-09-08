@@ -735,7 +735,7 @@ pub unsafe extern "C" fn destroy_tari_address(address: *mut TariAddress) {
 /// `*mut TransportConfig` - Returns a pointer to a tor TransportConfig, null on error.
 ///
 /// # Safety
-/// The ```destroy_tor_transport_config``` method must be called when finished with a TransportConfig to prevent a
+/// The ```destroy_chat_tor_transport_config``` method must be called when finished with a TransportConfig to prevent a
 /// memory leak
 #[no_mangle]
 pub unsafe extern "C" fn create_chat_tor_transport_config(
@@ -856,7 +856,7 @@ pub unsafe extern "C" fn create_chat_tor_transport_config(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn destroy_tor_transport_config(transport: *mut TransportConfig) {
+pub unsafe extern "C" fn destroy_chat_tor_transport_config(transport: *mut TransportConfig) {
     if !transport.is_null() {
         drop(Box::from_raw(transport))
     }
@@ -923,7 +923,7 @@ mod test {
             );
 
             assert_eq!(error, 0);
-            destroy_tor_transport_config(transport);
+            destroy_chat_tor_transport_config(transport);
         }
     }
 
@@ -965,7 +965,7 @@ mod test {
             assert_eq!(error, 0);
 
             destroy_chat_config(chat_config);
-            destroy_tor_transport_config(transport_config);
+            destroy_chat_tor_transport_config(transport_config);
         }
     }
 }
