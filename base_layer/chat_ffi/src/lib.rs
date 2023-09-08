@@ -183,7 +183,8 @@ pub unsafe extern "C" fn create_chat_client(
 #[no_mangle]
 pub unsafe extern "C" fn destroy_chat_client_ffi(client: *mut ChatClientFFI) {
     if !client.is_null() {
-        drop(Box::from_raw(client))
+        let mut c = Box::from_raw(client);
+        c.client.shutdown();
     }
 }
 

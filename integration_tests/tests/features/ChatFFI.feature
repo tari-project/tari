@@ -40,3 +40,8 @@ Feature: Chat FFI messaging
     When CHAT_A waits for contact CHAT_B to be online
     When I use CHAT_A to send a message 'Hey there' to CHAT_B
     Then CHAT_B will have 1 message with CHAT_A
+
+  Scenario: Chat shuts down without any errors
+    Given I have a seed node SEED_A
+    When I have a chat FFI client CHAT_A connected to seed node SEED_A
+    Then I can shutdown CHAT_A without a problem
