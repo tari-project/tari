@@ -421,8 +421,7 @@ where T: ContactsBackend + 'static
             },
         };
         if let Some(source_public_key) = msg.authenticated_origin {
-            let message =
-                Message::try_from(msg_inner).map_err(|ta| ContactsServiceError::MessageParsingError { source: ta })?;
+            let message = Message::try_from(msg_inner).map_err(ContactsServiceError::MessageParsingError)?;
 
             let our_message = Message {
                 address: TariAddress::from_public_key(&source_public_key, message.address.network()),

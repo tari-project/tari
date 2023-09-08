@@ -24,7 +24,7 @@ use tari_common_types::tari_address::TariAddress;
 use tari_utilities::ByteArray;
 use uuid::Uuid;
 
-use crate::contacts_service::types::Message;
+use crate::contacts_service::types::{message::MessageMetadata, Message};
 
 #[derive(Clone, Debug, Default)]
 pub struct MessageBuilder {
@@ -57,6 +57,18 @@ impl MessageBuilder {
         Self {
             inner: Message {
                 body,
+                ..self.inner.clone()
+            },
+        }
+    }
+
+    pub fn metadata(&self, new_metadata: MessageMetadata) -> Self {
+        let mut metadata = self.inner.metadata.clone();
+        metadata.push(new_metadata);
+
+        Self {
+            inner: Message {
+                metadata,
                 ..self.inner.clone()
             },
         }

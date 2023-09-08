@@ -176,7 +176,7 @@ where TContactServiceDbConnection: PooledDbConnection<Error = SqliteStorageError
             },
             WriteOperation::Insert(i) => {
                 if let DbValue::Message(m) = *i {
-                    MessagesSqlInsert::from(*m).commit(&mut conn)?;
+                    MessagesSqlInsert::try_from(*m)?.commit(&mut conn)?;
                 }
             },
         }
