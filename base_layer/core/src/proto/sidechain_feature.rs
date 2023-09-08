@@ -89,13 +89,20 @@ impl TryFrom<proto::types::ValidatorNodeRegistration> for ValidatorNodeRegistrat
     type Error = String;
 
     fn try_from(value: proto::types::ValidatorNodeRegistration) -> Result<Self, Self::Error> {
-        Ok(Self::new(ValidatorNodeSignature::new(
-            PublicKey::from_bytes(&value.public_key).map_err(|e| e.to_string())?,
-            value
-                .signature
-                .map(Signature::try_from)
-                .ok_or("signature not provided")??,
-        )))
+        let public_key = PublicKey::from_bytes(&value.public_key).map_err(|e| format!("public_key: {}", e))?;
+        let claim_public_key =
+            PublicKey::from_bytes(&value.claim_public_key).map_err(|e| format!("claim_public_key: {}", e))?;
+
+        Ok(Self::new(
+            ValidatorNodeSignature::new(
+                public_key,
+                value
+                    .signature
+                    .map(Signature::try_from)
+                    .ok_or("signature not provided")??,
+            ),
+            claim_public_key,
+        ))
     }
 }
 
@@ -104,6 +111,7 @@ impl From<ValidatorNodeRegistration> for proto::types::ValidatorNodeRegistration
         Self {
             public_key: value.public_key().to_vec(),
             signature: Some(value.signature().into()),
+            claim_public_key: value.claim_public_key().to_vec(),
         }
     }
 }
