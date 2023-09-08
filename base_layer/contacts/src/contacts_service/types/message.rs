@@ -41,9 +41,11 @@ pub struct Message {
 }
 
 #[repr(u8)]
-#[derive(FromPrimitive, Debug, Copy, Clone)]
+#[repr(u8)]
+#[derive(FromPrimitive, Debug, Copy, Clone, Default)]
 pub enum Direction {
     Inbound = 0,
+    #[default]
     Outbound = 1,
 }
 
@@ -54,12 +56,6 @@ impl Direction {
 
     pub fn from_byte(value: u8) -> Option<Self> {
         FromPrimitive::from_u8(value)
-    }
-}
-
-impl Default for Direction {
-    fn default() -> Self {
-        Self::Outbound
     }
 }
 
