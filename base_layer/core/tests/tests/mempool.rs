@@ -69,7 +69,7 @@ use tari_core::{
     },
 };
 use tari_key_manager::key_manager_service::KeyManagerInterface;
-use tari_p2p::{services::liveness::LivenessConfig, tari_message::TariMessageType};
+use tari_p2p::{services::liveness::LivenessConfig, tari_message::TariMessageType, P2pConfig};
 use tari_script::script;
 use tari_test_utils::async_assert_eventually;
 use tempfile::tempdir;
@@ -1721,6 +1721,7 @@ async fn block_event_and_reorg_event_handling() {
     let (mut alice, mut bob, consensus_manager) = create_network_with_2_base_nodes_with_config(
         MempoolServiceConfig::default(),
         LivenessConfig::default(),
+        P2pConfig::default(),
         consensus_manager,
         temp_dir.path().to_str().unwrap(),
     )

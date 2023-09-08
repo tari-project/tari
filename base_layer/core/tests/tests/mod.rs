@@ -25,6 +25,7 @@ use tari_core::{blocks::ChainBlock, chain_storage::BlockAddResult};
 mod async_db;
 mod base_node_rpc;
 mod block_validation;
+mod header_sync;
 mod mempool;
 mod node_comms_interface;
 mod node_service;

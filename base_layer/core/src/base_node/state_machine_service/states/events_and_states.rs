@@ -37,7 +37,7 @@ use crate::base_node::{
         Starting,
         Waiting,
     },
-    sync::{HorizonSyncInfo, SyncPeer},
+    sync::{AttemptSyncResult, HorizonSyncInfo, SyncPeer},
 };
 
 #[derive(Debug)]
@@ -57,8 +57,8 @@ pub enum BaseNodeState {
 #[derive(Debug, Clone, PartialEq)]
 pub enum StateEvent {
     Initialized,
-    HeadersSynchronized(SyncPeer),
-    HeaderSyncFailed,
+    HeadersSynchronized(SyncPeer, AttemptSyncResult),
+    HeaderSyncFailed(String),
     ProceedToHorizonSync(Vec<SyncPeer>),
     ProceedToBlockSync(Vec<SyncPeer>),
     HorizonStateSynchronized,
@@ -145,8 +145,8 @@ impl Display for StateEvent {
         match self {
             Initialized => write!(f, "Initialized"),
             BlocksSynchronized => write!(f, "Synchronised Blocks"),
-            HeadersSynchronized(peer) => write!(f, "Headers Synchronized from peer `{}`", peer),
-            HeaderSyncFailed => write!(f, "Header Synchronization Failed"),
+            HeadersSynchronized(peer, result) => write!(f, "Headers Synchronized from peer `{}` ({:?})", peer, result),
+            HeaderSyncFailed(err) => write!(f, "Header Synchronization Failed ({})", err),
             ProceedToHorizonSync(_) => write!(f, "Proceed to horizon sync"),
             ProceedToBlockSync(_) => write!(f, "Proceed to block sync"),
             HorizonStateSynchronized => write!(f, "Horizon State Synchronized"),
