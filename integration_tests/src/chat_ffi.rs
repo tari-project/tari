@@ -64,18 +64,22 @@ extern "C" {
         callback_contact_status_change: unsafe extern "C" fn(*mut c_void),
         callback_message_received: unsafe extern "C" fn(*mut c_void),
     ) -> *mut ClientFFI;
-    pub fn send_message(client: *mut ClientFFI, receiver: *mut c_void, message: *const c_char, out_error: *const c_int);
-    pub fn add_contact(client: *mut ClientFFI, address: *mut c_void, out_error: *const c_int);
+    pub fn send_chat_message(
+        client: *mut ClientFFI,
+        receiver: *mut c_void,
+        message: *const c_char,
+        out_error: *const c_int,
+    );
+    pub fn add_chat_contact(client: *mut ClientFFI, address: *mut c_void, out_error: *const c_int);
     pub fn check_online_status(client: *mut ClientFFI, address: *mut c_void, out_error: *const c_int) -> c_int;
-    pub fn get_messages(
+    pub fn get_chat_messages(
         client: *mut ClientFFI,
         sender: *mut c_void,
         limit: *mut c_void,
         page: *mut c_void,
         out_error: *const c_int,
     ) -> *mut c_void;
-    pub fn destroy_client_ffi(client: *mut ClientFFI);
-    pub fn create_identity_file(config: *mut c_void);
+    pub fn destroy_chat_client_ffi(client: *mut ClientFFI);
 }
 
 #[derive(Debug)]
@@ -96,7 +100,7 @@ impl ChatClient for ChatFFI {
         let address_ptr = Box::into_raw(Box::new(address.to_owned())) as *mut c_void;
 
         let out_error = Box::into_raw(Box::new(0));
-        unsafe { add_contact(client.0, address_ptr, out_error) }
+        unsafe { add_chat_contact(client.0, address_ptr, out_error) }
     }
 
     async fn check_online_status(&self, address: &TariAddress) -> ContactOnlineStatus {
@@ -121,7 +125,7 @@ impl ChatClient for ChatFFI {
         let out_error = Box::into_raw(Box::new(0));
 
         unsafe {
-            send_message(client.0, receiver_ptr, message_c_char, out_error);
+            send_chat_message(client.0, receiver_ptr, message_c_char, out_error);
         }
     }
 
@@ -135,7 +139,7 @@ impl ChatClient for ChatFFI {
             let out_error = Box::into_raw(Box::new(0));
             let limit = Box::into_raw(Box::new(limit)) as *mut c_void;
             let page = Box::into_raw(Box::new(page)) as *mut c_void;
-            let all_messages = get_messages(client.0, address_ptr, limit, page, out_error) as *mut Vec<Message>;
+            let all_messages = get_chat_messages(client.0, address_ptr, limit, page, out_error) as *mut Vec<Message>;
             messages = (*all_messages).clone();
         }
 
@@ -149,7 +153,7 @@ impl ChatClient for ChatFFI {
     fn shutdown(&mut self) {
         let client = self.ptr.lock().unwrap();
 
-        unsafe { destroy_client_ffi(client.0) }
+        unsafe { destroy_chat_client_ffi(client.0) }
     }
 }
 
