@@ -179,10 +179,10 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         node_id: &NodeId,
         max_latency: Duration,
     ) -> Result<SyncPeer, BlockHeaderSyncError> {
-        {
+
             let sync_peer = &self.sync_peers[peer_index];
             self.hooks.call_on_starting_hook(sync_peer);
-        }
+
         let mut conn = self.dial_sync_peer(node_id).await?;
         debug!(
             target: LOG_TARGET,
