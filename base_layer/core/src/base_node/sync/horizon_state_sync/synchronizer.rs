@@ -78,6 +78,8 @@ use crate::{
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::horizon_state_sync";
 
+const MAX_LATENCY_INCREASES: usize = 10;
+
 pub struct HorizonStateSynchronization<'a, B> {
     config: BlockchainSyncConfig,
     db: AsyncBlockchainDb<B>,
@@ -153,6 +155,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             }
         })?;
 
+        let mut latency_increases_counter = 0;
         loop {
             match self.sync(&header).await {
                 Ok(()) => return Ok(()),
@@ -172,6 +175,10 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                         return Err(err);
                     }
                     self.max_latency += self.config.max_latency_increase;
+                    latency_increases_counter += 1;
+                    if latency_increases_counter > MAX_LATENCY_INCREASES {
+                        return Err(err);
+                    }
                 },
                 Err(err) => return Err(err),
             }
