@@ -3049,7 +3049,9 @@ dependencies = [
  "tari_common_types",
  "tari_comms",
  "tari_contacts",
+ "tari_p2p",
  "tari_shutdown",
+ "tari_utilities",
  "thiserror",
  "tokio",
 ]

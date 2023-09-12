@@ -80,3 +80,9 @@ async fn message_reveived_callback(_world: &mut TariWorld, callback_count: usize
         callback_count, count
     );
 }
+
+#[then(expr = "I can shutdown {word} without a problem")]
+async fn can_shutdown(world: &mut TariWorld, name: String) {
+    let mut client = world.chat_clients.remove(&name).unwrap();
+    client.shutdown();
+}
