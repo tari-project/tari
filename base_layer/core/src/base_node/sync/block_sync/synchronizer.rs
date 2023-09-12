@@ -193,10 +193,6 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                     } else {
                         self.remove_sync_peer(node_id);
                     }
-
-                    if let BlockSyncError::MaxLatencyExceeded { .. } = err {
-                        latency_counter += 1;
-                    }
                 },
             }
         }
