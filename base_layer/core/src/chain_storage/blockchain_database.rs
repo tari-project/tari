@@ -892,113 +892,78 @@ where B: BlockchainBackend
             );
             return Err(ChainStorageError::AddBlockOperationLocked);
         }
-        {
-            let db = self.db_read_access()?;
-            if db.contains(&DbKey::BlockHash(block_hash))? {
-                return Ok(BlockAddResult::BlockExists);
-            }
-            if db.bad_block_exists(block_hash)? {
-                return Err(ChainStorageError::ValidationError {
-                    source: ValidationError::BadBlockFound {
-                        hash: block_hash.to_hex(),
-                    },
-                });
-            }
-        }
 
         let new_height = candidate_block.header.height;
-        let block_add_result = {
-            // This is important, we ask for a write lock to disable all read access to the db. The sync process sets
-            // the add_block disable flag,  but we can have a race condition between the two especially
-            // since the orphan validation can take some time during big blocks as it does Rangeproof and
-            // metadata signature validation. Because the sync process first acquires a read_lock then a
-            // write_lock, and the RWLock will be prioritised, the add_block write lock will be given out
-            // before the sync write_lock.
-            trace!(
-                target: LOG_TARGET,
-                "[add_block] waiting for write access to add block block #{} '{}'",
-                new_height,
-                block_hash.to_hex(),
-            );
+        // This is important, we ask for a write lock to disable all read access to the db. The sync process sets
+        // the add_block disable flag,  but we can have a race condition between the two especially
+        // since the orphan validation can take some time during big blocks as it does Rangeproof and
+        // metadata signature validation. Because the sync process first acquires a read_lock then a
+        // write_lock, and the RWLock will be prioritised, the add_block write lock will be given out
+        // before the sync write_lock.
+        trace!(
+            target: LOG_TARGET,
+            "[add_block] waiting for write access to add block block #{} '{}'",
+            new_height,
+            block_hash.to_hex(),
+        );
+        let before_lock = timer.elapsed();
+        let mut db = self.db_write_access()?;
+        let after_lock = timer.elapsed();
+        trace!(
+            target: LOG_TARGET,
+            "[add_block] acquired write access db lock for block #{} '{}' in {:.2?}",
+            new_height,
+            block_hash.to_hex(),
+            after_lock - before_lock,
+        );
 
-            let before_lock = timer.elapsed();
-            let mut db = self.db_write_access()?;
-            let after_lock = timer.elapsed();
+        if db.contains(&DbKey::BlockHash(block_hash))? {
+            return Ok(BlockAddResult::BlockExists);
+        }
+        if db.bad_block_exists(block_hash)? {
+            return Err(ChainStorageError::ValidationError {
+                source: ValidationError::BadBlockFound {
+                    hash: block_hash.to_hex(),
+                },
+            });
+        }
 
-            trace!(
-                target: LOG_TARGET,
-                "[add_block] acquired write access db lock for block #{} '{}' in {:.2?}",
-                new_height,
-                block_hash.to_hex(),
-                after_lock - before_lock,
-            );
-
-            // the only fast check we can perform that is slightly expensive to fake is a min difficulty check, this is
-            // done as soon as we receive the block before we do any processing on it. A proper proof of
-            // work is done as soon as we can link it to the main chain. Full block validation only happens
-            // when the proof of work is higher than the main chain and we want to add the block to the main
-            // chain.
-            let res = add_block(
-                &mut *db,
-                &self.config,
-                &self.consensus_manager,
-                &*self.validators.block,
-                &*self.validators.header,
-                self.consensus_manager.chain_strength_comparer(),
-                candidate_block,
-            )?;
-            debug!(
-                target: LOG_TARGET,
-                "[add_block] released write access db lock for block #{} in {:.2?}, `add_block` result: {}",
-                new_height, timer.elapsed() - after_lock, res
-            );
-            res
-        };
+        // the only fast check we can perform that is slightly expensive to fake is a min difficulty check, this is
+        // done as soon as we receive the block before we do any processing on it. A proper proof of
+        // work is done as soon as we can link it to the main chain. Full block validation only happens
+        // when the proof of work is higher than the main chain and we want to add the block to the main
+        // chain.
+        let block_add_result = add_block(
+            &mut *db,
+            &self.config,
+            &self.consensus_manager,
+            &*self.validators.block,
+            &*self.validators.header,
+            self.consensus_manager.chain_strength_comparer(),
+            candidate_block,
+        )?;
 
         // If blocks were added and the node is in pruned mode, perform pruning
         if block_add_result.was_chain_modified() {
-            let metadata = {
-                let db = self.db_read_access()?;
-                db.fetch_chain_metadata()?
-            };
             info!(
                 target: LOG_TARGET,
                 "Best chain is now at height: {}",
-                metadata.height_of_longest_chain()
+                db.fetch_chain_metadata()?.height_of_longest_chain()
             );
-
-            if metadata.is_pruned_node() {
-                let db_height = metadata.height_of_longest_chain();
-                let abs_pruning_horizon = db_height.saturating_sub(self.config.pruning_horizon);
-
-                debug!(
-                    target: LOG_TARGET,
-                    "Current pruned height is: {}, pruning horizon is: {}, while the pruning interval is: {}",
-                    metadata.pruned_height(),
-                    abs_pruning_horizon,
-                    self.config.pruning_interval,
-                );
-                if metadata.pruned_height() < abs_pruning_horizon.saturating_sub(self.config.pruning_interval) {
-                    let mut db = self.db_write_access()?;
-                    if metadata == db.fetch_chain_metadata()? {
-                        if let Err(e) = prune_to_height(&mut *db, abs_pruning_horizon) {
-                            warn!(target: LOG_TARGET, "Failed to prune database: {}", e);
-                        }
-                    } else {
-                        debug!(target: LOG_TARGET, "Database changed since we checked, not pruning this time round");
-                    }
-                }
-            }
+            // If blocks were added and the node is in pruned mode, perform pruning
+            prune_database_if_needed(&mut *db, self.config.pruning_horizon, self.config.pruning_interval)?;
         }
 
         // Clean up orphan pool
-        {
-            let mut db = self.db_write_access()?;
-            if let Err(e) = cleanup_orphans(&mut *db, self.config.orphan_storage_capacity) {
-                warn!(target: LOG_TARGET, "Failed to clean up orphans: {}", e);
-            }
+        if let Err(e) = cleanup_orphans(&mut *db, self.config.orphan_storage_capacity) {
+            warn!(target: LOG_TARGET, "Failed to clean up orphans: {}", e);
         }
 
+        debug!(
+            target: LOG_TARGET,
+            "[add_block] released write access db lock for block #{} in {:.2?}, `add_block` result: {}",
+            new_height, timer.elapsed() - after_lock, block_add_result
+        );
         Ok(block_add_result)
     }
 
@@ -2436,6 +2401,33 @@ fn cleanup_orphans<T: BlockchainBackend>(db: &mut T, orphan_storage_capacity: us
     let horizon_height = metadata.horizon_block(metadata.height_of_longest_chain());
 
     db.delete_oldest_orphans(horizon_height, orphan_storage_capacity)
+}
+
+fn prune_database_if_needed<T: BlockchainBackend>(
+    db: &mut T,
+    pruning_horizon: u64,
+    pruning_interval: u64,
+) -> Result<(), ChainStorageError> {
+    let metadata = db.fetch_chain_metadata()?;
+    if !metadata.is_pruned_node() {
+        return Ok(());
+    }
+
+    let db_height = metadata.height_of_longest_chain();
+    let abs_pruning_horizon = db_height.saturating_sub(pruning_horizon);
+
+    debug!(
+        target: LOG_TARGET,
+        "Current pruned height is: {}, pruning horizon is: {}, while the pruning interval is: {}",
+        metadata.pruned_height(),
+        abs_pruning_horizon,
+        pruning_interval,
+    );
+    if metadata.pruned_height() < abs_pruning_horizon.saturating_sub(pruning_interval) {
+        prune_to_height(db, abs_pruning_horizon)?;
+    }
+
+    Ok(())
 }
 
 fn prune_to_height<T: BlockchainBackend>(db: &mut T, target_horizon_height: u64) -> Result<(), ChainStorageError> {

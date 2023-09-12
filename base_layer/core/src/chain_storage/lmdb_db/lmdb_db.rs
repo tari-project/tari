@@ -1140,7 +1140,19 @@ impl LMDBDatabase {
                         },
                         "orphan_chain_tips_db",
                     )?;
+                } else {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Empty 'BlockHeaderAccumulatedData' for parent hash '{}'",
+                        parent_hash.to_hex()
+                    );
                 }
+            } else {
+                warn!(
+                    target: LOG_TARGET,
+                    "'orphans_db' and 'orphan_header_accumulated_data_db' out of sync, missing parent hash '{}' entry",
+                    parent_hash.to_hex()
+                );
             }
         }
 
