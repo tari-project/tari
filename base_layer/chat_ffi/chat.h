@@ -16,6 +16,8 @@ struct ChatClientFFI;
 
 struct ChatMessages;
 
+struct Message;
+
 struct TariAddress;
 
 struct TransportConfig;
@@ -116,8 +118,7 @@ void destroy_chat_config(struct ApplicationConfig *config);
  *
  * ## Arguments
  * `client` - The Client pointer
- * `receiver` - A string containing a tari address
- * `message` - The peer seeds config for the node
+ * `message` - Pointer to a Message struct
  * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
@@ -126,10 +127,48 @@ void destroy_chat_config(struct ApplicationConfig *config);
  * # Safety
  * The ```receiver``` should be destroyed after use
  */
-void send_chat_message(struct ChatClientFFI *client,
-                       struct TariAddress *receiver,
-                       const char *message_c_char,
-                       int *error_out);
+void send_chat_message(struct ChatClientFFI *client, struct Message *message, int *error_out);
+
+/**
+ * Creates a message and returns a ptr to it
+ *
+ * ## Arguments
+ * `receiver` - A string containing a tari address
+ * `message` - The peer seeds config for the node
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `*mut Message` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * The ```receiver``` should be destroyed after use
+ */
+struct Message *create_chat_message(struct TariAddress *receiver,
+                                    const char *message,
+                                    int *error_out);
+
+/**
+ * Creates message metadata
+ *
+ * ## Arguments
+ * `message` - A pointer to a message *IMPORTANT: This pointer will be consumed, and dropped during this function call.
+ * A new pointer for a new message will be returned*
+ * `metadata_type` - An int8 that maps to MessageMetadataType enum
+ *     '0' -> Reply
+ *     '1' -> TokenRequest
+ * `data` - contents for the metadata
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `*mut Message` - a new pointer to the extended message
+ *
+ * ## Safety
+ * `message` Argument is dropped during this function.
+ */
+struct Message *add_chat_message_metadata(struct Message *message,
+                                          int *metadata_type,
+                                          const char *data_char,
+                                          int *error_out);
 
 /**
  * Add a contact

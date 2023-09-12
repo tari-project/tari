@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_common_types::tari_address::TariAddress;
-use tari_utilities::ByteArray;
 use uuid::Uuid;
 
 use crate::contacts_service::types::{message::MessageMetadata, Message};
@@ -33,7 +32,7 @@ pub struct MessageBuilder {
 
 impl MessageBuilder {
     pub fn new() -> Self {
-        let message_id = Uuid::new_v4().into_bytes().to_vec();
+        let message_id = Uuid::new_v4().to_string().into_bytes();
 
         Self {
             inner: Message {
@@ -76,5 +75,13 @@ impl MessageBuilder {
 
     pub fn build(&self) -> Message {
         self.inner.clone()
+    }
+}
+
+impl From<Message> for MessageBuilder {
+    fn from(message: Message) -> Self {
+        Self {
+            inner: Message { ..message },
+        }
     }
 }

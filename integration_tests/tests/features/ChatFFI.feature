@@ -45,3 +45,13 @@ Feature: Chat FFI messaging
     Given I have a seed node SEED_A
     When I have a chat FFI client CHAT_A connected to seed node SEED_A
     Then I can shutdown CHAT_A without a problem
+
+  Scenario: Reply to message
+    Given I have a seed node SEED_A
+    When I have a chat FFI client CHAT_A connected to seed node SEED_A
+    When I have a chat FFI client CHAT_B connected to seed node SEED_A
+    When I use CHAT_A to send a message 'Hey there' to CHAT_B
+    When I use CHAT_B to send a reply saying 'oh hai' to CHAT_A's message 'Hey there'
+    Then CHAT_B will have 2 messages with CHAT_A
+    Then CHAT_A will have 2 messages with CHAT_B
+    Then CHAT_A will have a replied to message from CHAT_B with 'oh hai'

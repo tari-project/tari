@@ -5758,6 +5758,7 @@ dependencies = [
  "time",
  "tokio",
  "tonic 0.6.2",
+ "uuid",
 ]
 
 [[package]]

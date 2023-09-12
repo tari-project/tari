@@ -43,7 +43,7 @@ pub struct Message {
 }
 
 #[repr(u8)]
-#[derive(FromPrimitive, Debug, Copy, Clone, Default)]
+#[derive(FromPrimitive, Debug, Copy, Clone, Default, PartialEq)]
 pub enum Direction {
     Inbound = 0,
     #[default]
@@ -67,10 +67,11 @@ pub struct MessageMetadata {
 }
 
 #[repr(u8)]
-#[derive(FromPrimitive, Debug, Copy, Clone, Default, Deserialize, Serialize)]
+#[derive(FromPrimitive, Debug, Copy, Clone, Default, Deserialize, Serialize, PartialEq)]
 pub enum MessageMetadataType {
+    Reply = 0,
     #[default]
-    TokenRequest = 0,
+    TokenRequest = 1,
 }
 
 impl MessageMetadataType {

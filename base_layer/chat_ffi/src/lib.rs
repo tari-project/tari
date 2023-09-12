@@ -50,7 +50,7 @@ use tari_common_types::tari_address::TariAddress;
 use tari_comms::multiaddr::Multiaddr;
 use tari_contacts::contacts_service::{
     handle::{DEFAULT_MESSAGE_LIMIT, DEFAULT_MESSAGE_PAGE},
-    types::Message,
+    types::{Message, MessageBuilder, MessageMetadata, MessageMetadataType},
 };
 use tari_p2p::{SocksAuthentication, TorControlAuthentication, TorTransportConfig, TransportConfig, TransportType};
 use tari_utilities::hex;
@@ -485,8 +485,7 @@ unsafe fn init_logging(log_path: PathBuf, error_out: *mut c_int) {
 ///
 /// ## Arguments
 /// `client` - The Client pointer
-/// `receiver` - A string containing a tari address
-/// `message` - The peer seeds config for the node
+/// `message` - Pointer to a Message struct
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
@@ -495,12 +494,7 @@ unsafe fn init_logging(log_path: PathBuf, error_out: *mut c_int) {
 /// # Safety
 /// The ```receiver``` should be destroyed after use
 #[no_mangle]
-pub unsafe extern "C" fn send_chat_message(
-    client: *mut ChatClientFFI,
-    receiver: *mut TariAddress,
-    message_c_char: *const c_char,
-    error_out: *mut c_int,
-) {
+pub unsafe extern "C" fn send_chat_message(client: *mut ChatClientFFI, message: *mut Message, error_out: *mut c_int) {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -509,23 +503,138 @@ pub unsafe extern "C" fn send_chat_message(
         ptr::swap(error_out, &mut error as *mut c_int);
     }
 
+    if message.is_null() {
+        error = LibChatError::from(InterfaceError::NullError("message".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    }
+
+    (*client)
+        .runtime
+        .block_on((*client).client.send_message((*message).clone()));
+}
+
+/// Creates a message and returns a ptr to it
+///
+/// ## Arguments
+/// `receiver` - A string containing a tari address
+/// `message` - The peer seeds config for the node
+/// `error_out` - Pointer to an int which will be modified
+///
+/// ## Returns
+/// `*mut Message` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// The ```receiver``` should be destroyed after use
+#[no_mangle]
+pub unsafe extern "C" fn create_chat_message(
+    receiver: *mut TariAddress,
+    message: *const c_char,
+    error_out: *mut c_int,
+) -> *mut Message {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
     if receiver.is_null() {
         error = LibChatError::from(InterfaceError::NullError("receiver".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
     }
 
-    let message = match CStr::from_ptr(message_c_char).to_str() {
+    let message_str = match CStr::from_ptr(message).to_str() {
         Ok(str) => str.to_string(),
         Err(e) => {
             error = LibChatError::from(InterfaceError::InvalidArgument(e.to_string())).code;
             ptr::swap(error_out, &mut error as *mut c_int);
-            return;
+            return ptr::null_mut();
         },
     };
 
-    (*client)
-        .runtime
-        .block_on((*client).client.send_message((*receiver).clone(), message));
+    let message_out = MessageBuilder::new()
+        .address((*receiver).clone())
+        .message(message_str)
+        .build();
+
+    Box::into_raw(Box::new(message_out))
+}
+
+/// Creates message metadata
+///
+/// ## Arguments
+/// `message` - A pointer to a message *IMPORTANT: This pointer will be consumed, and dropped during this function call.
+/// A new pointer for a new message will be returned*
+/// `metadata_type` - An int8 that maps to MessageMetadataType enum
+///     '0' -> Reply
+///     '1' -> TokenRequest
+/// `data` - contents for the metadata
+/// `error_out` - Pointer to an int which will be modified
+///
+/// ## Returns
+/// `*mut Message` - a new pointer to the extended message
+///
+/// ## Safety
+/// `message` Argument is dropped during this function.
+#[no_mangle]
+pub unsafe extern "C" fn add_chat_message_metadata(
+    message: *mut Message,
+    metadata_type: *mut c_int,
+    data_char: *const c_char,
+    error_out: *mut c_int,
+) -> *mut Message {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    if message.is_null() {
+        error = LibChatError::from(InterfaceError::NullError("message".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+
+    if metadata_type.is_null() {
+        error = LibChatError::from(InterfaceError::NullError("metadata type".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+
+    let metadata_type = match u8::try_from(*metadata_type) {
+        Ok(n) => match MessageMetadataType::from_byte(n) {
+            Some(t) => t,
+            None => {
+                error = LibChatError::from(InterfaceError::InvalidArgument(
+                    "Couldn't convert byte to Metadata type".to_string(),
+                ))
+                .code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return ptr::null_mut();
+            },
+        },
+        Err(e) => {
+            error = LibChatError::from(InterfaceError::InvalidArgument(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    };
+
+    if data_char.is_null() {
+        error = LibChatError::from(InterfaceError::NullError("data".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+
+    let data = match CStr::from_ptr(data_char).to_str() {
+        Ok(str) => str.as_bytes().into(),
+        Err(e) => {
+            error = LibChatError::from(InterfaceError::InvalidArgument(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    };
+
+    let metadata = MessageMetadata { metadata_type, data };
+    let new_message = Box::into_raw(Box::new(
+        MessageBuilder::from((*message).clone()).metadata(metadata).build(),
+    ));
+    drop(Box::from_raw(message));
+
+    new_message
 }
 
 /// Add a contact
