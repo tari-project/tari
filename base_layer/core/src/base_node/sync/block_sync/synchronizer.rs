@@ -50,7 +50,7 @@ use crate::{
 
 const LOG_TARGET: &str = "c::bn::block_sync";
 
-const MAX_LATENCY_INCREASES: usize = 10;
+const MAX_LATENCY_INCREASES: usize = 5;
 
 pub struct BlockSynchronizer<'a, B> {
     config: BlockchainSyncConfig,

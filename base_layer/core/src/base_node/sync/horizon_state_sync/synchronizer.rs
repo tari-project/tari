@@ -78,7 +78,7 @@ use crate::{
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::horizon_state_sync";
 
-const MAX_LATENCY_INCREASES: usize = 10;
+const MAX_LATENCY_INCREASES: usize = 5;
 
 pub struct HorizonStateSynchronization<'a, B> {
     config: BlockchainSyncConfig,

@@ -55,7 +55,7 @@ const LOG_TARGET: &str = "c::bn::header_sync";
 
 const NUM_INITIAL_HEADERS_TO_REQUEST: usize = 1000;
 
-const MAX_LATENCY_INCREASES: usize = 10;
+const MAX_LATENCY_INCREASES: usize = 5;
 
 pub struct HeaderSynchronizer<'a, B> {
     config: BlockchainSyncConfig,
