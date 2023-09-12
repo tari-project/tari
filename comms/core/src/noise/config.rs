@@ -58,7 +58,7 @@ impl NoiseConfig {
         Self {
             node_identity,
             parameters,
-            recv_timeout: Duration::from_secs(1),
+            recv_timeout: Duration::from_secs(3),
         }
     }
 

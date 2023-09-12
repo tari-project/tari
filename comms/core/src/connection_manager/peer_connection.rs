@@ -62,7 +62,7 @@ use crate::{
 
 const LOG_TARGET: &str = "comms::connection_manager::peer_connection";
 
-const PROTOCOL_NEGOTIATION_TIMEOUT: Duration = Duration::from_secs(5);
+const PROTOCOL_NEGOTIATION_TIMEOUT: Duration = Duration::from_secs(10);
 
 static ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
