@@ -55,6 +55,8 @@ const LOG_TARGET: &str = "c::bn::header_sync";
 
 const NUM_INITIAL_HEADERS_TO_REQUEST: usize = 1000;
 
+const MAX_LATENCY_INCREASES: usize = 5;
+
 pub struct HeaderSynchronizer<'a, B> {
     config: BlockchainSyncConfig,
     db: AsyncBlockchainDb<B>,
@@ -113,6 +115,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             self.sync_peers.len()
         );
         let mut max_latency = self.config.initial_max_sync_latency;
+        let mut latency_increases_counter = 0;
         loop {
             match self.try_sync_from_all_peers(max_latency).await {
                 Ok(sync_peer) => break Ok(sync_peer),
@@ -122,6 +125,10 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                         return Err(err);
                     }
                     max_latency += self.config.max_latency_increase;
+                    latency_increases_counter += 1;
+                    if latency_increases_counter > MAX_LATENCY_INCREASES {
+                        return Err(err);
+                    }
                 },
                 Err(err) => break Err(err),
             }

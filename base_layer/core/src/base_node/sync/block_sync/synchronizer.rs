@@ -50,6 +50,8 @@ use crate::{
 
 const LOG_TARGET: &str = "c::bn::block_sync";
 
+const MAX_LATENCY_INCREASES: usize = 5;
+
 pub struct BlockSynchronizer<'a, B> {
     config: BlockchainSyncConfig,
     db: AsyncBlockchainDb<B>,
@@ -99,6 +101,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
     pub async fn synchronize(&mut self) -> Result<(), BlockSyncError> {
         let mut max_latency = self.config.initial_max_sync_latency;
         let mut sync_round = 0;
+        let mut latency_increases_counter = 0;
         loop {
             match self.attempt_block_sync(max_latency).await {
                 Ok(_) => return Ok(()),
@@ -111,6 +114,10 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                         max_latency,
                         self.sync_peers.len()
                     );
+                    latency_increases_counter += 1;
+                    if latency_increases_counter > MAX_LATENCY_INCREASES {
+                        return Err(err);
+                    }
                     // Prohibit using a few slow sync peers only, rather get new sync peers assigned
                     if self.sync_peers.len() < 2 {
                         return Err(err);
