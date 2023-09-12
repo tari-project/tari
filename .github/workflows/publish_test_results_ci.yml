@@ -48,7 +48,7 @@ jobs:
           files: "artifacts/**/*.xml"
 
       - name: Publish Test Report 2
-        uses: mikepenz/action-junit-report@v3
+        uses: mikepenz/action-junit-report@v4
         if: always()
         with:
           report_paths: "artifacts/**/*.xml"
