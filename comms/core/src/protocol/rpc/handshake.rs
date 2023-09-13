@@ -78,7 +78,6 @@ where T: AsyncRead + AsyncWrite + Unpin
     }
 
     /// Server-side handshake protocol
-    #[tracing::instrument(level="trace", name = "rpc::server::perform_server_handshake", skip(self), err, fields(comms.direction="inbound"))]
     pub async fn perform_server_handshake(&mut self) -> Result<u32, RpcHandshakeError> {
         match self.recv_next_frame().await {
             Ok(Some(Ok(msg))) => {
@@ -133,7 +132,6 @@ where T: AsyncRead + AsyncWrite + Unpin
     }
 
     /// Client-side handshake protocol
-    #[tracing::instrument(name = "rpc::client::perform_client_handshake", skip(self), err, fields(comms.direction="outbound"))]
     pub async fn perform_client_handshake(&mut self) -> Result<(), RpcHandshakeError> {
         let msg = proto::rpc::RpcSession {
             supported_versions: SUPPORTED_RPC_VERSIONS.to_vec(),
@@ -172,7 +170,6 @@ where T: AsyncRead + AsyncWrite + Unpin
         }
     }
 
-    #[tracing::instrument(name = "rpc::receive_handshake_reply", skip(self), err)]
     async fn recv_next_frame(&mut self) -> Result<Option<Result<BytesMut, io::Error>>, time::error::Elapsed> {
         match self.timeout {
             Some(timeout) => time::timeout(timeout, self.framed.next()).await,

@@ -252,7 +252,6 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + 'static
         Self { connection, sender }
     }
 
-    #[tracing::instrument(name = "yamux::incoming_worker::run", skip(self), fields(connection = %self.connection))]
     pub async fn run(mut self) {
         loop {
             tokio::select! {

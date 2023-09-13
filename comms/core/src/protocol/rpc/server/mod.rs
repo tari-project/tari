@@ -333,7 +333,6 @@ where
         }
     }
 
-    #[tracing::instrument(name = "rpc::server::new_client_connection", skip(self, notification), err)]
     async fn handle_protocol_notification(
         &mut self,
         notification: ProtocolNotification<Substream>,
@@ -393,7 +392,6 @@ where
         }
     }
 
-    #[tracing::instrument(name = "rpc::server::try_initiate_service", skip(self, framed), err)]
     async fn try_initiate_service(
         &mut self,
         protocol: ProtocolId,

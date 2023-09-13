@@ -270,7 +270,6 @@ impl MessagingProtocol {
         Ok(())
     }
 
-    // #[tracing::instrument(skip(self, out_msg), err)]
     fn send_message(&mut self, out_msg: OutboundMessage) -> Result<(), MessagingProtocolError> {
         trace!(target: LOG_TARGET, "Received request to send message ({})", out_msg);
         let peer_node_id = out_msg.peer_node_id.clone();
