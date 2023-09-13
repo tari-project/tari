@@ -55,7 +55,7 @@ use tokio::{
     time,
 };
 use tower::{Service, ServiceExt};
-use tracing::{event, span, Instrument, Level};
+use tracing::{span, Instrument, Level};
 
 use super::message::RpcMethod;
 use crate::{
@@ -478,6 +478,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         metrics::num_sessions(&self.node_id, &self.protocol_id).inc();
         loop {
             tokio::select! {
+                // Check the futures in the order they are listed
                 biased;
                 _ = &mut self.shutdown_signal => {
                     break;
@@ -603,7 +604,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         let request_id = self.next_request_id();
         let method = request.method.into();
         let req = proto::rpc::RpcRequest {
-            request_id: u32::try_from(request_id).unwrap(),
+            request_id: u32::from(request_id),
             method,
             deadline: self.config.deadline.map(|t| t.as_secs()).unwrap_or(0),
             flags: 0,
@@ -613,7 +614,6 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         trace!(target: LOG_TARGET, "Sending request: {}", req);
 
         if reply.is_closed() {
-            event!(Level::WARN, "Client request was cancelled before request was sent");
             warn!(
                 target: LOG_TARGET,
                 "Client request was cancelled before request was sent"
@@ -622,7 +622,6 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
 
         let (response_tx, response_rx) = mpsc::channel(5);
         if let Err(mut rx) = reply.send(response_rx) {
-            event!(Level::WARN, "Client request was cancelled after request was sent");
             warn!(
                 target: LOG_TARGET,
                 "Client request was cancelled after request was sent. This means that you are making an RPC request \
@@ -682,7 +681,6 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                     if let Some(t) = time_to_first_msg {
                         let _ = self.last_request_latency_tx.send(Some(partial_latency + t));
                     }
-                    event!(Level::TRACE, "Message received");
                     trace!(
                         target: LOG_TARGET,
                         "Received response ({} byte(s)) from request #{} (protocol = {}, method={})",
@@ -702,7 +700,6 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                         target: LOG_TARGET,
                         "Request {} (method={}) timed out", request_id, method,
                     );
-                    event!(Level::ERROR, "Response timed out");
                     metrics::client_timeouts(&self.node_id, &self.protocol_id).inc();
                     if response_tx.is_closed() {
                         self.premature_close(request_id, method).await?;
@@ -720,13 +717,6 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                     break;
                 },
                 Err(err) => {
-                    event!(
-                        Level::WARN,
-                        "Request {} (method={}) returned an error: {}",
-                        request_id,
-                        method,
-                        err
-                    );
                     return Err(err);
                 },
             };

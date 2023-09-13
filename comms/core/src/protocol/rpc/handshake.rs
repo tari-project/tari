@@ -29,7 +29,7 @@ use tokio::{
     io::{AsyncRead, AsyncWrite},
     time,
 };
-use tracing::{debug, error, event, span, warn, Instrument, Level};
+use tracing::{debug, error, span, warn, Instrument, Level};
 
 use crate::{framing::CanonicalFraming, message::MessageExt, proto, protocol::rpc::error::HandshakeRejectReason};
 
@@ -82,13 +82,11 @@ where T: AsyncRead + AsyncWrite + Unpin
     pub async fn perform_server_handshake(&mut self) -> Result<u32, RpcHandshakeError> {
         match self.recv_next_frame().await {
             Ok(Some(Ok(msg))) => {
-                event!(Level::DEBUG, "Handshake bytes received");
                 let msg = proto::rpc::RpcSession::decode(&mut msg.freeze())?;
                 let version = SUPPORTED_RPC_VERSIONS
                     .iter()
                     .find(|v| msg.supported_versions.contains(v));
                 if let Some(version) = version {
-                    event!(Level::DEBUG, version = version, "Server accepted version");
                     debug!(target: LOG_TARGET, "Server accepted version: {}", version);
                     let reply = proto::rpc::RpcSessionReply {
                         session_result: Some(proto::rpc::rpc_session_reply::SessionResult::AcceptedVersion(*version)),
@@ -109,15 +107,15 @@ where T: AsyncRead + AsyncWrite + Unpin
                 Err(RpcHandshakeError::ClientNoSupportedVersion)
             },
             Ok(Some(Err(err))) => {
-                event!(Level::ERROR, "Error: {}", err);
+                error!(target: LOG_TARGET, "Error during handshake: {}", err);
                 Err(err.into())
             },
             Ok(None) => {
-                event!(Level::ERROR, "Client closed request");
+                error!(target: LOG_TARGET, "Error during handshake, client closed connection");
                 Err(RpcHandshakeError::ClientClosed)
             },
-            Err(_elapsed) => {
-                event!(Level::ERROR, "Timed out");
+            Err(_) => {
+                error!(target: LOG_TARGET, "Error during handshake, timed out");
                 Err(RpcHandshakeError::TimedOut)
             },
         }
@@ -156,20 +154,19 @@ where T: AsyncRead + AsyncWrite + Unpin
             Ok(Some(Ok(msg))) => {
                 let msg = proto::rpc::RpcSessionReply::decode(&mut msg.freeze())?;
                 let version = msg.result()?;
-                event!(Level::INFO, "Server accepted version: {}", version);
                 debug!(target: LOG_TARGET, "Server accepted version {}", version);
                 Ok(())
             },
             Ok(Some(Err(err))) => {
-                event!(Level::ERROR, "Error: {}", err);
+                error!(target: LOG_TARGET, "Error during handshake: {}", err);
                 Err(err.into())
             },
             Ok(None) => {
-                event!(Level::ERROR, "Server closed request");
+                error!(target: LOG_TARGET, "Error during handshake, server closed connection");
                 Err(RpcHandshakeError::ServerClosedRequest)
             },
             Err(_) => {
-                event!(Level::ERROR, "Timed out");
+                error!(target: LOG_TARGET, "Error during handshake, timed out");
                 Err(RpcHandshakeError::TimedOut)
             },
         }

@@ -28,7 +28,7 @@ use tokio::{
     sync::mpsc,
 };
 use tokio_util::compat::{Compat, FuturesAsyncReadCompatExt, TokioAsyncReadCompatExt};
-use tracing::{self, debug, error, event, Level};
+use tracing::{self, debug, error};
 // Reexport
 pub use yamux::ConnectionError;
 use yamux::Mode;
@@ -264,7 +264,6 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + 'static
                 result = self.connection.next_stream() => {
                      match result {
                         Ok(Some(stream)) => {
-                            event!(Level::TRACE, "yamux::incoming_worker::new_stream {}", stream);
                             if self.sender.send(stream).await.is_err() {
                                 debug!(
                                     target: LOG_TARGET,
@@ -284,12 +283,6 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + 'static
                             break;
                         }
                         Err(err) => {
-                            event!(
-                                Level::ERROR,
-                                "{} Incoming peer substream task received an error because '{}'",
-                                self.connection,
-                                err
-                            );
                             error!(
                                 target: LOG_TARGET,
                                 "{} Incoming peer substream task received an error because '{}'",
