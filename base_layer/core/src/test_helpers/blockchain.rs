@@ -353,8 +353,8 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().fetch_orphan_chain_tip_by_hash(hash)
     }
 
-    fn fetch_all_orphan_chain_tips(&self) -> Result<Vec<ChainHeader>, ChainStorageError> {
-        self.db.as_ref().unwrap().fetch_all_orphan_chain_tips()
+    fn fetch_strongest_orphan_chain_tips(&self) -> Result<Vec<ChainHeader>, ChainStorageError> {
+        self.db.as_ref().unwrap().fetch_strongest_orphan_chain_tips()
     }
 
     fn fetch_orphan_children_of(&self, hash: HashOutput) -> Result<Vec<Block>, ChainStorageError> {

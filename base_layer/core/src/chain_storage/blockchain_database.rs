@@ -880,37 +880,43 @@ where B: BlockchainBackend
     ///
     /// If an error does occur while writing the new block parts, all changes are reverted before returning.
     pub fn add_block(&self, candidate_block: Arc<Block>) -> Result<BlockAddResult, ChainStorageError> {
+        let timer = Instant::now();
+
+        let block_hash = candidate_block.hash();
         if self.is_add_block_disabled() {
             warn!(
                 target: LOG_TARGET,
                 "add_block is disabled, node busy syncing. Ignoring candidate block #{} ({})",
                 candidate_block.header.height,
-                candidate_block.hash(),
+                block_hash,
             );
             return Err(ChainStorageError::AddBlockOperationLocked);
         }
 
         let new_height = candidate_block.header.height;
-        // This is important, we ask for a write lock to disable all read access to the db. The sync process sets the
-        // add_block disable flag,  but we can have a race condition between the two especially since the orphan
-        // validation can take some time during big blocks as it does Rangeproof and metadata signature validation.
-        // Because the sync process first acquires a read_lock then a write_lock, and the RWLock will be prioritised,
-        // the add_block write lock will be given out before the sync write_lock.
+        // This is important, we ask for a write lock to disable all read access to the db. The sync process sets
+        // the add_block disable flag,  but we can have a race condition between the two especially
+        // since the orphan validation can take some time during big blocks as it does Rangeproof and
+        // metadata signature validation. Because the sync process first acquires a read_lock then a
+        // write_lock, and the RWLock will be prioritised, the add_block write lock will be given out
+        // before the sync write_lock.
         trace!(
             target: LOG_TARGET,
-            "[add_block] waiting for write access to add block block #{}",
-            new_height
-        );
-        let timer = Instant::now();
-        let mut db = self.db_write_access()?;
-
-        trace!(
-            target: LOG_TARGET,
-            "[add_block] acquired write access db lock for block #{} in {:.2?}",
+            "[add_block] waiting for write access to add block block #{} '{}'",
             new_height,
-            timer.elapsed()
+            block_hash.to_hex(),
         );
-        let block_hash = candidate_block.hash();
+        let before_lock = timer.elapsed();
+        let mut db = self.db_write_access()?;
+        let after_lock = timer.elapsed();
+        trace!(
+            target: LOG_TARGET,
+            "[add_block] acquired write access db lock for block #{} '{}' in {:.2?}",
+            new_height,
+            block_hash.to_hex(),
+            after_lock - before_lock,
+        );
+
         if db.contains(&DbKey::BlockHash(block_hash))? {
             return Ok(BlockAddResult::BlockExists);
         }
@@ -921,10 +927,12 @@ where B: BlockchainBackend
                 },
             });
         }
-        // the only fast check we can perform that is slightly expensive to fake is a min difficulty check, this is done
-        // as soon as we receive the block before we do any processing on it. A proper proof of work is done as soon as
-        // we can link it to the main chain. Full block validation only happens when the proof of work is higher than
-        // the main chain and we want to add the block to the main chain.
+
+        // the only fast check we can perform that is slightly expensive to fake is a min difficulty check, this is
+        // done as soon as we receive the block before we do any processing on it. A proper proof of
+        // work is done as soon as we can link it to the main chain. Full block validation only happens
+        // when the proof of work is higher than the main chain and we want to add the block to the main
+        // chain.
         let block_add_result = add_block(
             &mut *db,
             &self.config,
@@ -935,6 +943,7 @@ where B: BlockchainBackend
             candidate_block,
         )?;
 
+        // If blocks were added and the node is in pruned mode, perform pruning
         if block_add_result.was_chain_modified() {
             info!(
                 target: LOG_TARGET,
@@ -945,19 +954,15 @@ where B: BlockchainBackend
             prune_database_if_needed(&mut *db, self.config.pruning_horizon, self.config.pruning_interval)?;
         }
 
+        // Clean up orphan pool
         if let Err(e) = cleanup_orphans(&mut *db, self.config.orphan_storage_capacity) {
             warn!(target: LOG_TARGET, "Failed to clean up orphans: {}", e);
         }
 
         debug!(
             target: LOG_TARGET,
-            "Candidate block `add_block` result: {}", block_add_result
-        );
-
-        trace!(
-            target: LOG_TARGET,
-            "[add_block] released write access db lock for block #{} ",
-            &new_height
+            "[add_block] released write access db lock for block #{} in {:.2?}, `add_block` result: {}",
+            new_height, timer.elapsed() - after_lock, block_add_result
         );
         Ok(block_add_result)
     }
@@ -1834,7 +1839,7 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
         if h == 0 {
             // insert the new orphan chain tip
             debug!(target: LOG_TARGET, "Inserting new orphan chain tip: {}", block_hash,);
-            txn.insert_orphan_chain_tip(block_hash);
+            txn.insert_orphan_chain_tip(block_hash, chain_header.accumulated_data().total_accumulated_difficulty);
         }
         // Update metadata
         debug!(
@@ -1891,8 +1896,21 @@ fn handle_possible_reorg<T: BlockchainBackend>(
     chain_strength_comparer: &dyn ChainStrengthComparer,
     candidate_block: Arc<Block>,
 ) -> Result<BlockAddResult, ChainStorageError> {
+    let timer = Instant::now();
+    let height = candidate_block.header.height;
+    let hash = candidate_block.header.hash();
     insert_orphan_and_find_new_tips(db, candidate_block, header_validator, consensus_manager)?;
-    swap_to_highest_pow_chain(db, config, block_validator, chain_strength_comparer)
+    let after_orphans = timer.elapsed();
+    let res = swap_to_highest_pow_chain(db, config, block_validator, chain_strength_comparer);
+    trace!(
+        target: LOG_TARGET,
+        "[handle_possible_reorg] block #{}, insert_orphans in {:.2?}, swap_to_highest in {:.2?} '{}'",
+        height,
+        after_orphans,
+        timer.elapsed() - after_orphans,
+        hash.to_hex(),
+    );
+    res
 }
 
 /// Reorganize the main chain with the provided fork chain, starting at the specified height.
@@ -1966,22 +1984,23 @@ fn swap_to_highest_pow_chain<T: BlockchainBackend>(
     // rewind to height will first delete the headers, then try delete from blocks, if we call this to the current
     // height it will only trim the extra headers with no blocks
     rewind_to_height(db, metadata.height_of_longest_chain())?;
-    let all_orphan_tips = db.fetch_all_orphan_chain_tips()?;
-    if all_orphan_tips.is_empty() {
+    let strongest_orphan_tips = db.fetch_strongest_orphan_chain_tips()?;
+    if strongest_orphan_tips.is_empty() {
         // we have no orphan chain tips, we have trimmed remaining headers, we are on the best tip we have, so lets
         // return ok
         return Ok(BlockAddResult::OrphanBlock);
     }
     // Check the accumulated difficulty of the best fork chain compared to the main chain.
-    let best_fork_header = find_strongest_orphan_tip(all_orphan_tips, chain_strength_comparer).ok_or_else(|| {
-        // This should never happen because a block is always added to the orphan pool before
-        // checking, but just in case
-        warn!(
-            target: LOG_TARGET,
-            "Unable to find strongest orphan tip`. This should never happen.",
-        );
-        ChainStorageError::InvalidOperation("No chain tips found in orphan pool".to_string())
-    })?;
+    let best_fork_header =
+        find_strongest_orphan_tip(strongest_orphan_tips, chain_strength_comparer).ok_or_else(|| {
+            // This should never happen because a block is always added to the orphan pool before
+            // checking, but just in case
+            warn!(
+                target: LOG_TARGET,
+                "Unable to find strongest orphan tip`. This should never happen.",
+            );
+            ChainStorageError::InvalidOperation("No chain tips found in orphan pool".to_string())
+        })?;
     let tip_header = db.fetch_tip_header()?;
     match chain_strength_comparer.compare(&best_fork_header, &tip_header) {
         Ordering::Greater => {
@@ -2110,7 +2129,8 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
             db.write(txn)?;
             info!(
                 target: LOG_TARGET,
-                "New orphan extends a chain in the current candidate tip set"
+                "New orphan ({}) extends a chain in the current candidate tip set",
+                hash
             );
             curr_parent
         },
@@ -2202,7 +2222,10 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
     debug!(target: LOG_TARGET, "Found {} new orphan tips", tips.len());
     let mut txn = DbTransaction::new();
     for new_tip in &tips {
-        txn.insert_orphan_chain_tip(*new_tip.hash());
+        txn.insert_orphan_chain_tip(
+            *new_tip.hash(),
+            chain_block.accumulated_data().total_accumulated_difficulty,
+        );
     }
 
     db.write(txn)?;
@@ -2709,14 +2732,106 @@ mod test {
             let fork_tip = access.fetch_orphan_chain_tip_by_hash(block.hash()).unwrap().unwrap();
             assert_eq!(fork_tip, block.to_chain_header());
             assert_eq!(fork_tip.accumulated_data().total_accumulated_difficulty, 3);
-            let all_tips = access.fetch_all_orphan_chain_tips().unwrap().len();
-            assert_eq!(all_tips, 1);
+            let strongest_tips = access.fetch_strongest_orphan_chain_tips().unwrap().len();
+            assert_eq!(strongest_tips, 1);
 
             // Insert again (block was received more than once), no new tips
             insert_orphan_and_find_new_tips(&mut *access, block.to_arc_block(), &validator, &db.consensus_manager)
                 .unwrap();
-            let all_tips = access.fetch_all_orphan_chain_tips().unwrap().len();
-            assert_eq!(all_tips, 1);
+            let strongest_tips = access.fetch_strongest_orphan_chain_tips().unwrap().len();
+            assert_eq!(strongest_tips, 1);
+        }
+
+        #[tokio::test]
+        async fn it_correctly_detects_strongest_orphan_tips() {
+            let db = create_new_blockchain();
+            let validator = MockValidator::new(true);
+            let (_, main_chain) = create_main_chain(&db, &[
+                ("A->GB", 1, 120),
+                ("B->A", 2, 120),
+                ("C->B", 1, 120),
+                ("D->C", 1, 120),
+                ("E->D", 1, 120),
+                ("F->E", 1, 120),
+                ("G->F", 1, 120),
+            ])
+            .await;
+
+            // Fork 1 (with 3 blocks)
+            let fork_root_1 = main_chain.get("A").unwrap().clone();
+            let (_, orphan_chain_1) = create_chained_blocks(
+                &[("B2->GB", 1, 120), ("C2->B2", 1, 120), ("D2->C2", 1, 120)],
+                fork_root_1,
+            )
+            .await;
+
+            // Fork 2 (with 1 block)
+            let fork_root_2 = main_chain.get("GB").unwrap().clone();
+            let (_, orphan_chain_2) = create_chained_blocks(&[("B3->GB", 1, 120)], fork_root_2).await;
+
+            // Fork 3 (with 1 block)
+            let fork_root_3 = main_chain.get("B").unwrap().clone();
+            let (_, orphan_chain_3) = create_chained_blocks(&[("B4->GB", 1, 120)], fork_root_3).await;
+
+            // Add blocks to db
+            let mut access = db.db_write_access().unwrap();
+
+            // Fork 1 (add 3 blocks)
+            let block = orphan_chain_1.get("B2").unwrap().clone();
+            insert_orphan_and_find_new_tips(&mut *access, block.to_arc_block(), &validator, &db.consensus_manager)
+                .unwrap();
+            let block = orphan_chain_1.get("C2").unwrap().clone();
+            insert_orphan_and_find_new_tips(&mut *access, block.to_arc_block(), &validator, &db.consensus_manager)
+                .unwrap();
+            let block = orphan_chain_1.get("D2").unwrap().clone();
+            insert_orphan_and_find_new_tips(&mut *access, block.to_arc_block(), &validator, &db.consensus_manager)
+                .unwrap();
+            let fork_tip_1 = access.fetch_orphan_chain_tip_by_hash(block.hash()).unwrap().unwrap();
+
+            assert_eq!(fork_tip_1, block.to_chain_header());
+            assert_eq!(fork_tip_1.accumulated_data().total_accumulated_difficulty, 5);
+
+            // Fork 2 (add 1 block)
+            let block = orphan_chain_2.get("B3").unwrap().clone();
+            insert_orphan_and_find_new_tips(&mut *access, block.to_arc_block(), &validator, &db.consensus_manager)
+                .unwrap();
+            let fork_tip_2 = access.fetch_orphan_chain_tip_by_hash(block.hash()).unwrap().unwrap();
+
+            assert_eq!(fork_tip_2, block.to_chain_header());
+            assert_eq!(fork_tip_2.accumulated_data().total_accumulated_difficulty, 2);
+
+            // Fork 3 (add 1 block)
+            let block = orphan_chain_3.get("B4").unwrap().clone();
+            insert_orphan_and_find_new_tips(&mut *access, block.to_arc_block(), &validator, &db.consensus_manager)
+                .unwrap();
+            let fork_tip_3 = access.fetch_orphan_chain_tip_by_hash(block.hash()).unwrap().unwrap();
+
+            assert_eq!(fork_tip_3, block.to_chain_header());
+            assert_eq!(fork_tip_3.accumulated_data().total_accumulated_difficulty, 5);
+
+            assert_ne!(fork_tip_1, fork_tip_2);
+            assert_ne!(fork_tip_1, fork_tip_3);
+
+            // Test get strongest chain tips
+            let strongest_tips = access.fetch_strongest_orphan_chain_tips().unwrap();
+            assert_eq!(strongest_tips.len(), 2);
+            let mut found_tip_1 = false;
+            let mut found_tip_3 = false;
+            for tip in &strongest_tips {
+                if tip == &fork_tip_1 {
+                    found_tip_1 = true;
+                }
+                if tip == &fork_tip_3 {
+                    found_tip_3 = true;
+                }
+            }
+            assert!(found_tip_1 && found_tip_3);
+
+            // Insert again (block was received more than once), no new tips
+            insert_orphan_and_find_new_tips(&mut *access, block.to_arc_block(), &validator, &db.consensus_manager)
+                .unwrap();
+            let strongest_tips = access.fetch_strongest_orphan_chain_tips().unwrap();
+            assert_eq!(strongest_tips.len(), 2);
         }
     }
 

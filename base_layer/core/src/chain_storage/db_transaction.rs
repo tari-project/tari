@@ -213,8 +213,9 @@ impl DbTransaction {
     }
 
     /// Add an orphan to the orphan tip set
-    pub fn insert_orphan_chain_tip(&mut self, hash: HashOutput) -> &mut Self {
-        self.operations.push(WriteOperation::InsertOrphanChainTip(hash));
+    pub fn insert_orphan_chain_tip(&mut self, hash: HashOutput, total_accumulated_difficulty: u128) -> &mut Self {
+        self.operations
+            .push(WriteOperation::InsertOrphanChainTip(hash, total_accumulated_difficulty));
         self
     }
 
@@ -323,7 +324,7 @@ pub enum WriteOperation {
     DeleteOrphan(HashOutput),
     DeleteBlock(HashOutput),
     DeleteOrphanChainTip(HashOutput),
-    InsertOrphanChainTip(HashOutput),
+    InsertOrphanChainTip(HashOutput, u128),
     InsertMoneroSeedHeight(Vec<u8>, u64),
     UpdateBlockAccumulatedData {
         header_hash: HashOutput,
@@ -406,7 +407,12 @@ impl fmt::Display for WriteOperation {
                 timestamp
             ),
             DeleteOrphanChainTip(hash) => write!(f, "DeleteOrphanChainTip({})", hash.to_hex()),
-            InsertOrphanChainTip(hash) => write!(f, "InsertOrphanChainTip({})", hash.to_hex()),
+            InsertOrphanChainTip(hash, total_accumulated_difficulty) => write!(
+                f,
+                "InsertOrphanChainTip({}, {})",
+                hash.to_hex(),
+                total_accumulated_difficulty
+            ),
             DeleteBlock(hash) => write!(f, "DeleteBlock({})", hash.to_hex()),
             InsertMoneroSeedHeight(data, height) => {
                 write!(f, "Insert Monero seed string {} for height: {}", data.to_hex(), height)
