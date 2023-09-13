@@ -575,66 +575,48 @@ pub unsafe extern "C" fn create_chat_message(
 #[no_mangle]
 pub unsafe extern "C" fn add_chat_message_metadata(
     message: *mut Message,
-    metadata_type: *mut c_int,
+    metadata_type: *const c_int,
     data_char: *const c_char,
     error_out: *mut c_int,
-) -> *mut Message {
+) {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
     if message.is_null() {
         error = LibChatError::from(InterfaceError::NullError("message".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
-        return ptr::null_mut();
+        return;
     }
 
-    if metadata_type.is_null() {
-        error = LibChatError::from(InterfaceError::NullError("metadata type".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return ptr::null_mut();
-    }
-
-    let metadata_type = match u8::try_from(*metadata_type) {
-        Ok(n) => match MessageMetadataType::from_byte(n) {
-            Some(t) => t,
-            None => {
-                error = LibChatError::from(InterfaceError::InvalidArgument(
-                    "Couldn't convert byte to Metadata type".to_string(),
-                ))
-                .code;
-                ptr::swap(error_out, &mut error as *mut c_int);
-                return ptr::null_mut();
-            },
-        },
-        Err(e) => {
-            error = LibChatError::from(InterfaceError::InvalidArgument(e.to_string())).code;
+    let metadata_type = match MessageMetadataType::from_byte(metadata_type as u8) {
+        Some(t) => t,
+        None => {
+            error = LibChatError::from(InterfaceError::InvalidArgument(
+                "Couldn't convert byte to Metadata type".to_string(),
+            ))
+            .code;
             ptr::swap(error_out, &mut error as *mut c_int);
-            return ptr::null_mut();
+            return;
         },
     };
 
     if data_char.is_null() {
         error = LibChatError::from(InterfaceError::NullError("data".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
-        return ptr::null_mut();
+        return;
     }
 
-    let data = match CStr::from_ptr(data_char).to_str() {
+    let data: Vec<u8> = match CStr::from_ptr(data_char).to_str() {
         Ok(str) => str.as_bytes().into(),
         Err(e) => {
             error = LibChatError::from(InterfaceError::InvalidArgument(e.to_string())).code;
             ptr::swap(error_out, &mut error as *mut c_int);
-            return ptr::null_mut();
+            return;
         },
     };
 
     let metadata = MessageMetadata { metadata_type, data };
-    let new_message = Box::into_raw(Box::new(
-        MessageBuilder::from((*message).clone()).metadata(metadata).build(),
-    ));
-    drop(Box::from_raw(message));
-
-    new_message
+    (*message).push(metadata);
 }
 
 /// Add a contact
@@ -1077,5 +1059,20 @@ mod test {
             destroy_chat_config(chat_config);
             destroy_chat_tor_transport_config(transport_config);
         }
+    }
+
+    #[test]
+    fn test_metadata_adding() {
+        let message_ptr = Box::into_raw(Box::default());
+
+        let data_c_str = CString::new("hello".to_string()).unwrap();
+        let data_char: *const c_char = CString::into_raw(data_c_str) as *const c_char;
+
+        let error_out = Box::into_raw(Box::new(0));
+
+        unsafe { add_chat_message_metadata(message_ptr, 1 as *const c_int, data_char, error_out) }
+
+        let message = unsafe { Box::from_raw(message_ptr) };
+        assert_eq!(message.metadata.len(), 1)
     }
 }

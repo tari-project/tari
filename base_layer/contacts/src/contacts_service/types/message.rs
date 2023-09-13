@@ -42,6 +42,12 @@ pub struct Message {
     pub message_id: Vec<u8>,
 }
 
+impl Message {
+    pub fn push(&mut self, metadata: MessageMetadata) {
+        self.metadata.push(metadata)
+    }
+}
+
 #[repr(u8)]
 #[derive(FromPrimitive, Debug, Copy, Clone, Default, PartialEq)]
 pub enum Direction {

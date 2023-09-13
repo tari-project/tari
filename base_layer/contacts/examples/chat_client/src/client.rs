@@ -175,13 +175,14 @@ impl ChatClient for Client {
         MessageBuilder::new().address(receiver.clone()).message(message).build()
     }
 
-    fn add_metadata(&self, message: Message, metadata_type: MessageMetadataType, data: String) -> Message {
+    fn add_metadata(&self, mut message: Message, metadata_type: MessageMetadataType, data: String) -> Message {
         let metadata = MessageMetadata {
             metadata_type,
             data: data.into_bytes(),
         };
 
-        MessageBuilder::from(message).metadata(metadata).build()
+        message.push(metadata);
+        message
     }
 }
 

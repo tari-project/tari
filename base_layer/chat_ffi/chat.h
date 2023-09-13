@@ -165,10 +165,10 @@ struct Message *create_chat_message(struct TariAddress *receiver,
  * ## Safety
  * `message` Argument is dropped during this function.
  */
-struct Message *add_chat_message_metadata(struct Message *message,
-                                          int *metadata_type,
-                                          const char *data_char,
-                                          int *error_out);
+void add_chat_message_metadata(struct Message *message,
+                               const int *metadata_type,
+                               const char *data_char,
+                               int *error_out);
 
 /**
  * Add a contact

@@ -100,6 +100,7 @@ async fn i_reply_to_message(
             .clone();
 
         let message = sender.create_message(&address, outbound_msg);
+
         let message = sender.add_metadata(
             message,
             MessageMetadataType::Reply,

@@ -156,33 +156,25 @@ impl ChatClient for ChatFFI {
 
         let error_out = Box::into_raw(Box::new(0));
 
-        let message;
-
         unsafe {
             let message_ptr = create_chat_message(address_ptr, message_c_char, error_out) as *mut Message;
-            message = (*message_ptr).clone();
+            *Box::from_raw(message_ptr)
         }
-
-        message
     }
 
     fn add_metadata(&self, message: Message, metadata_type: MessageMetadataType, data: String) -> Message {
         let message_ptr = Box::into_raw(Box::new(message)) as *mut c_void;
-        let message_type = Box::into_raw(Box::new(metadata_type.as_byte())) as *const c_int;
+        let message_type = metadata_type.as_byte() as *const c_int;
 
         let data_c_str = CString::new(data).unwrap();
         let data_c_char: *const c_char = CString::into_raw(data_c_str) as *const c_char;
 
         let error_out = Box::into_raw(Box::new(0));
 
-        let message;
         unsafe {
-            let message_ptr =
-                add_chat_message_metadata(message_ptr, message_type, data_c_char, error_out) as *mut Message;
-            message = (*message_ptr).clone();
+            add_chat_message_metadata(message_ptr, message_type, data_c_char, error_out);
+            *Box::from_raw(message_ptr as *mut Message)
         }
-
-        message
     }
 
     fn identity(&self) -> &NodeIdentity {
