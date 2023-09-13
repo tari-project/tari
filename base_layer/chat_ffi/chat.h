@@ -125,7 +125,7 @@ void destroy_chat_config(struct ApplicationConfig *config);
  * `()` - Does not return a value, equivalent to void in C
  *
  * # Safety
- * The ```receiver``` should be destroyed after use
+ * The ```message``` should be destroyed after use
  */
 void send_chat_message(struct ChatClientFFI *client, struct Message *message, int *error_out);
 
@@ -138,7 +138,7 @@ void send_chat_message(struct ChatClientFFI *client, struct Message *message, in
  * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
- * `*mut Message` - Does not return a value, equivalent to void in C
+ * `*mut Message` - A pointer to a message object
  *
  * # Safety
  * The ```receiver``` should be destroyed after use
@@ -148,26 +148,25 @@ struct Message *create_chat_message(struct TariAddress *receiver,
                                     int *error_out);
 
 /**
- * Creates message metadata
+ * Creates message metadata and appends it to a Message
  *
  * ## Arguments
- * `message` - A pointer to a message *IMPORTANT: This pointer will be consumed, and dropped during this function call.
- * A new pointer for a new message will be returned*
+ * `message` - A pointer to a message
  * `metadata_type` - An int8 that maps to MessageMetadataType enum
  *     '0' -> Reply
  *     '1' -> TokenRequest
- * `data` - contents for the metadata
+ * `data` - contents for the metadata in string format
  * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
- * `*mut Message` - a new pointer to the extended message
+ * `()` - Does not return a value, equivalent to void in C
  *
  * ## Safety
- * `message` Argument is dropped during this function.
+ * `message` should be destroyed eventually
  */
 void add_chat_message_metadata(struct Message *message,
                                const int *metadata_type,
-                               const char *data_char,
+                               const char *data,
                                int *error_out);
 
 /**
@@ -182,9 +181,9 @@ void add_chat_message_metadata(struct Message *message,
  * `()` - Does not return a value, equivalent to void in C
  *
  * # Safety
- * The ```address``` should be destroyed after use
+ * The ```receiver``` should be destroyed after use
  */
-void add_chat_contact(struct ChatClientFFI *client, struct TariAddress *receiver, int *error_out);
+void add_chat_contact(struct ChatClientFFI *client, struct TariAddress *address, int *error_out);
 
 /**
  * Check the online status of a contact

@@ -492,7 +492,7 @@ unsafe fn init_logging(log_path: PathBuf, error_out: *mut c_int) {
 /// `()` - Does not return a value, equivalent to void in C
 ///
 /// # Safety
-/// The ```receiver``` should be destroyed after use
+/// The ```message``` should be destroyed after use
 #[no_mangle]
 pub unsafe extern "C" fn send_chat_message(client: *mut ChatClientFFI, message: *mut Message, error_out: *mut c_int) {
     let mut error = 0;
@@ -521,7 +521,7 @@ pub unsafe extern "C" fn send_chat_message(client: *mut ChatClientFFI, message: 
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
-/// `*mut Message` - Does not return a value, equivalent to void in C
+/// `*mut Message` - A pointer to a message object
 ///
 /// # Safety
 /// The ```receiver``` should be destroyed after use
@@ -556,27 +556,26 @@ pub unsafe extern "C" fn create_chat_message(
     Box::into_raw(Box::new(message_out))
 }
 
-/// Creates message metadata
+/// Creates message metadata and appends it to a Message
 ///
 /// ## Arguments
-/// `message` - A pointer to a message *IMPORTANT: This pointer will be consumed, and dropped during this function call.
-/// A new pointer for a new message will be returned*
+/// `message` - A pointer to a message
 /// `metadata_type` - An int8 that maps to MessageMetadataType enum
 ///     '0' -> Reply
 ///     '1' -> TokenRequest
-/// `data` - contents for the metadata
+/// `data` - contents for the metadata in string format
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
-/// `*mut Message` - a new pointer to the extended message
+/// `()` - Does not return a value, equivalent to void in C
 ///
 /// ## Safety
-/// `message` Argument is dropped during this function.
+/// `message` should be destroyed eventually
 #[no_mangle]
 pub unsafe extern "C" fn add_chat_message_metadata(
     message: *mut Message,
     metadata_type: *const c_int,
-    data_char: *const c_char,
+    data: *const c_char,
     error_out: *mut c_int,
 ) {
     let mut error = 0;
@@ -600,13 +599,13 @@ pub unsafe extern "C" fn add_chat_message_metadata(
         },
     };
 
-    if data_char.is_null() {
+    if data.is_null() {
         error = LibChatError::from(InterfaceError::NullError("data".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
         return;
     }
 
-    let data: Vec<u8> = match CStr::from_ptr(data_char).to_str() {
+    let data: Vec<u8> = match CStr::from_ptr(data).to_str() {
         Ok(str) => str.as_bytes().into(),
         Err(e) => {
             error = LibChatError::from(InterfaceError::InvalidArgument(e.to_string())).code;
@@ -630,11 +629,11 @@ pub unsafe extern "C" fn add_chat_message_metadata(
 /// `()` - Does not return a value, equivalent to void in C
 ///
 /// # Safety
-/// The ```address``` should be destroyed after use
+/// The ```receiver``` should be destroyed after use
 #[no_mangle]
 pub unsafe extern "C" fn add_chat_contact(
     client: *mut ChatClientFFI,
-    receiver: *mut TariAddress,
+    address: *mut TariAddress,
     error_out: *mut c_int,
 ) {
     let mut error = 0;
@@ -645,12 +644,12 @@ pub unsafe extern "C" fn add_chat_contact(
         ptr::swap(error_out, &mut error as *mut c_int);
     }
 
-    if receiver.is_null() {
+    if address.is_null() {
         error = LibChatError::from(InterfaceError::NullError("receiver".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
     }
 
-    (*client).runtime.block_on((*client).client.add_contact(&(*receiver)));
+    (*client).runtime.block_on((*client).client.add_contact(&(*address)));
 }
 
 /// Check the online status of a contact

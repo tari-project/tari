@@ -32,6 +32,8 @@ pub struct MessageBuilder {
 
 impl MessageBuilder {
     pub fn new() -> Self {
+        // We're forcing it to a String before bytes so we can have the same representation used in
+        // all places. Otherwise the UUID byte format will differ if displayed somewhere.
         let message_id = Uuid::new_v4().to_string().into_bytes();
 
         Self {
