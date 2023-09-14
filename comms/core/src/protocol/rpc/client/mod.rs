@@ -962,7 +962,10 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
         let resp_id = u16::try_from(resp.request_id)
             .map_err(|_| RpcStatus::protocol_error(&format!("invalid request_id: must be less than {}", u16::MAX)))?;
 
-        let flags = RpcMessageFlags::from_bits_truncate(u8::try_from(resp.flags).unwrap());
+        let flags =
+            RpcMessageFlags::from_bits_truncate(u8::try_from(resp.flags).map_err(|_| {
+                RpcStatus::protocol_error(&format!("invalid message flag: must be less than {}", u8::MAX))
+            })?);
         if flags.contains(RpcMessageFlags::ACK) {
             return Err(RpcError::UnexpectedAckResponse);
         }
@@ -970,7 +973,9 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
         if resp_id != self.request_id {
             return Err(RpcError::ResponseIdDidNotMatchRequest {
                 expected: self.request_id,
-                actual: u16::try_from(resp.request_id).unwrap(),
+                actual: u16::try_from(resp.request_id).map_err(|_| {
+                    RpcStatus::protocol_error(&format!("invalid request_id: must be less than {}", u16::MAX))
+                })?,
             });
         }
 
