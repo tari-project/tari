@@ -30,7 +30,7 @@ use std::{
 /// Generates a random node identity JSON file. A node identity contains a node's public and secret keys, it's node
 /// id and an address used to establish peer connections. The files generated from this example are used to
 /// populate the peer manager in other examples.
-use clap::{App, Arg};
+use clap::{Arg, Command};
 use rand::{rngs::OsRng, Rng};
 use tari_comms::{
     multiaddr::Multiaddr,
@@ -45,8 +45,8 @@ fn random_address() -> Multiaddr {
     socketaddr_to_multiaddr(&socket_addr)
 }
 
-fn to_abs_path(path: &str) -> String {
-    let path = Path::new(path);
+fn to_abs_path(path: String) -> String {
+    let path = Path::new(&path);
     if path.is_absolute() {
         path.to_str().unwrap().to_string()
     } else {
@@ -57,16 +57,15 @@ fn to_abs_path(path: &str) -> String {
 }
 
 fn main() {
-    let matches = App::new("Peer file generator")
+    let matches = Command::new("Peer file generator")
         .version("1.0")
         .about("Generates peer json files")
         .arg(
-            Arg::with_name("output")
+            Arg::new("output")
                 .value_name("FILE")
                 .long("output")
                 .short('o')
                 .help("The relative path of the file to output")
-                .takes_value(true)
                 .required(true),
         )
         .get_matches();
@@ -74,6 +73,6 @@ fn main() {
     let address = random_address();
     let node_identity = NodeIdentity::random(&mut OsRng, address, PeerFeatures::COMMUNICATION_NODE);
     let json = node_identity.to_json().unwrap();
-    let out_path = to_abs_path(matches.value_of("output").unwrap());
+    let out_path = to_abs_path(matches.get_one::<String>("output").unwrap().clone());
     fs::write(out_path, json).unwrap();
 }

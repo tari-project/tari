@@ -56,7 +56,7 @@ mod memory_net;
 
 use std::{path::Path, time::Duration};
 
-use clap::{App, Arg};
+use clap::{Arg, Command};
 use tari_comms::peer_manager::PeerFeatures;
 use tokio::sync::mpsc;
 
@@ -76,21 +76,24 @@ use crate::{
 #[allow(clippy::too_many_lines)]
 async fn main() {
     env_logger::init();
-    let matches = App::new("MemoryNet")
+    let matches = Command::new("MemoryNet")
         .version("0.1.0")
         .arg(
-            Arg::with_name("output_dir")
+            Arg::new("output_dir")
                 .short('o')
                 .long("output")
-                .takes_value(true)
                 .value_name("PATH")
                 .help("Graph output directory"),
         )
         .get_matches();
 
-    let graph_output_dir = Path::new(matches.value_of("output_dir").unwrap_or(DEFAULT_GRAPH_OUTPUT_DIR))
-        .to_str()
-        .expect("Couldn't use provided output directory path");
+    let graph_output_dir = Path::new(
+        matches
+            .get_one::<&str>("output_dir")
+            .unwrap_or(&DEFAULT_GRAPH_OUTPUT_DIR),
+    )
+    .to_str()
+    .expect("Couldn't use provided output directory path");
 
     banner!(
         "Bringing up virtual network consisting of {} seed nodes, {} nodes and {} wallets",

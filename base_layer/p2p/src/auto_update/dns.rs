@@ -204,6 +204,7 @@ impl Display for UpdateSpec {
 
 #[cfg(test)]
 mod test {
+
     use trust_dns_client::{
         op::Query,
         proto::{
@@ -225,7 +226,7 @@ mod test {
                 contents.into_iter().map(ToString::to_string).collect(),
             ))));
 
-        mock::message(resp_query, vec![record], vec![], vec![]).into()
+        DnsResponse::new(mock::message(resp_query, vec![record], vec![], vec![]), vec![])
     }
 
     mod update_spec {

@@ -260,7 +260,7 @@ mod test {
                     contents.into_iter().map(ToString::to_string).collect(),
                 ))));
 
-            mock::message(resp_query, vec![record], vec![], vec![]).into()
+            DnsResponse::new(mock::message(resp_query, vec![record], vec![], vec![]), vec![])
         }
 
         #[tokio::test]
