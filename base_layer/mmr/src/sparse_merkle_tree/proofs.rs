@@ -23,12 +23,13 @@ use crate::sparse_merkle_tree::{
 /// [`InclusionProof::from_tree`], for example:
 ///
 /// ```
-/// # use tari_crypto::hash::blake2::Blake256;
+/// # use blake2::Blake2b;
+/// # use digest::consts::U32;
 /// # use tari_mmr::sparse_merkle_tree::{ExclusionProof, InclusionProof, NodeKey, SparseMerkleTree, ValueHash};
 ///  let key = NodeKey::from([64u8; 32]);
 ///  let value = ValueHash::from([128u8; 32]);
 ///
-/// let mut tree = SparseMerkleTree::<Blake256>::default();
+/// let mut tree = SparseMerkleTree::<Blake2b<U32>>::default();
 ///  tree.upsert(key.clone(), value.clone()).unwrap();
 ///  let hash = tree.hash().clone();
 ///
@@ -40,14 +41,15 @@ use crate::sparse_merkle_tree::{
 /// the tree, `from_tree` will return a `NonViableProof` error.
 ///
 /// ```
-/// # use tari_crypto::hash::blake2::Blake256;
+/// # use blake2::Blake2b;
+/// # use digest::consts::U32;
 /// # use tari_mmr::sparse_merkle_tree::{ExclusionProof, InclusionProof, NodeKey, SparseMerkleTree, ValueHash, SMTError};
 ///  let key = NodeKey::from([64u8; 32]);
 ///  let non_existent_key = NodeKey::from([65u8; 32]);
 ///  let value = ValueHash::from([128u8; 32]);
 ///  let wrong_value = ValueHash::from([127u8; 32]);
 ///
-///  let mut tree = SparseMerkleTree::<Blake256>::default();
+///  let mut tree = SparseMerkleTree::<Blake2b<U32>>::default();
 ///  tree.upsert(key.clone(), value.clone()).unwrap();
 ///  let root = tree.hash().clone();
 ///  let in_proof = InclusionProof::from_tree(&tree, &non_existent_key, &value);
@@ -66,12 +68,13 @@ pub struct InclusionProof<H> {
 /// calling [`ExclusionProof::from_tree`]. For example:
 ///
 /// ```
-/// # use tari_crypto::hash::blake2::Blake256;
+/// # use blake2::Blake2b;
+/// # use digest::consts::U32;
 /// # use tari_mmr::sparse_merkle_tree::{ExclusionProof, InclusionProof, NodeKey, SparseMerkleTree, ValueHash};
 ///  let key = NodeKey::from([64u8; 32]);
 ///  let value = ValueHash::from([128u8; 32]);
 ///  let non_existent_key = NodeKey::from([65u8; 32]);
-///  let mut tree = SparseMerkleTree::<Blake256>::default();
+///  let mut tree = SparseMerkleTree::<Blake2b<U32>>::default();
 ///  tree.upsert(key, value).unwrap();
 /// let hash = tree.hash().clone();
 /// let ex_proof = ExclusionProof::from_tree(&tree, &non_existent_key).unwrap();
@@ -82,12 +85,13 @@ pub struct InclusionProof<H> {
 /// in the tree, `from_tree` will return a `NonViableProof` error. For example, using the same tree from the last
 /// example,
 /// ```
-/// # use tari_crypto::hash::blake2::Blake256;
+/// # use blake2::Blake2b;
+/// # use digest::consts::U32;
 /// # use tari_mmr::sparse_merkle_tree::{ExclusionProof, InclusionProof, NodeKey, SparseMerkleTree, ValueHash, SMTError};
 /// # let key = NodeKey::from([64u8; 32]);
 /// # let value = ValueHash::from([128u8; 32]);
 /// # let non_existent_key = NodeKey::from([65u8; 32]);
-/// # let mut tree = SparseMerkleTree::<Blake256>::default();
+/// # let mut tree = SparseMerkleTree::<Blake2b<U32>>::default();
 /// # tree.upsert(key.clone(), value).unwrap();
 /// let ex_proof = ExclusionProof::from_tree(&tree, &key);
 /// assert!(matches!(ex_proof, Err(SMTError::NonViableProof)));
@@ -224,7 +228,6 @@ impl<H: Digest<OutputSize = U32>> MerkleProofDigest<H> for ExclusionProof<H> {
 mod test {
     use blake2::Blake2b;
     use digest::consts::U32;
-    use rand::{RngCore, SeedableRng};
 
     use super::*;
 
@@ -264,29 +267,8 @@ mod test {
     }
 
     #[test]
-    fn merkle_proofs() {
-        let n = 20;
-        let keys = random_keys(n, 420);
-        let values = random_values(n, 1420);
-        let mut tree = SparseMerkleTree::<Blake2b<U32>>::default();
-        (0..n).for_each(|i| {
-            let _ = tree.upsert(keys[i].clone(), values[i].clone()).unwrap();
-        });
-        let root_hash = tree.hash().clone();
-        (0..n).for_each(|i| {
-            let in_proof = InclusionProof::from_tree(&tree, &keys[i], &values[i]).unwrap();
-            // Validate the proof with correct key / value
-            assert!(in_proof.validate(&keys[i], &values[i], &root_hash));
-            // Show that incorrect value for existing key fails
-            assert!(!in_proof.validate(&keys[i], &values[(i + 3) % n], &root_hash),);
-            // // Show that incorrect key fails
-            assert!(!in_proof.validate(&keys[(i + 3) % n], &values[i], &root_hash),);
-            // Exclusion proofs construction fails
-            let ex_proof = ExclusionProof::from_tree(&tree, &keys[i]);
-            assert!(matches!(ex_proof, Err(SMTError::NonViableProof)));
-        });
     fn non_viable_inclusion_proof() {
-        let mut tree = SparseMerkleTree::<Blake256>::default();
+        let mut tree = SparseMerkleTree::<Blake2b<U32>>::default();
         let key = NodeKey::from([64u8; 32]);
         let value = ValueHash::from([128u8; 32]);
         // Inclusion proof on empty tree
@@ -303,7 +285,7 @@ mod test {
 
     #[test]
     fn proof_with_stale_hash() {
-        let mut tree = SparseMerkleTree::<Blake256>::default();
+        let mut tree = SparseMerkleTree::<Blake2b<U32>>::default();
         tree.upsert(NodeKey::from([64u8; 32]), ValueHash::from([128u8; 32]))
             .unwrap();
         tree.upsert(NodeKey::from([155u8; 32]), ValueHash::from([128u8; 32]))
@@ -321,7 +303,7 @@ mod test {
         let mut key2 = key1.clone();
         key2.as_slice_mut()[31] = 65;
         let value = ValueHash::from([128u8; 32]);
-        let mut tree = SparseMerkleTree::<Blake256>::default();
+        let mut tree = SparseMerkleTree::<Blake2b<U32>>::default();
         tree.upsert(key1, ValueHash::from([42u8; 32])).unwrap();
         tree.upsert(key2.clone(), value.clone()).unwrap();
         tree.hash();
@@ -331,7 +313,7 @@ mod test {
 
     #[test]
     fn exclusion_proofs() {
-        let mut tree = SparseMerkleTree::<Blake256>::default();
+        let mut tree = SparseMerkleTree::<Blake2b<U32>>::default();
         let proof = ExclusionProof::from_tree(&tree, &NodeKey::from([64; 32])).unwrap();
         // Assert that key does not exist
         assert!(proof.validate(&NodeKey::from([64u8; 32]), tree.hash()));

@@ -572,7 +572,7 @@ mod test {
     fn cannot_create_branch_with_empty_nodes() {
         let left = Node::Empty(EmptyNode {});
         let right = Node::Empty(EmptyNode {});
-        let branch = BranchNode::<Blake256>::new(0, random_key(), left, right);
+        let branch = BranchNode::<Blake2b<U32>>::new(0, random_key(), left, right);
         // Should not be allowed - since this can be represented as a leaf node
         assert!(matches!(branch, Err(SMTError::InvalidBranch(msg)) if msg == "Both left and right nodes are empty"));
     }
