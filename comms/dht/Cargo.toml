@@ -50,7 +50,7 @@ pin-project = "0.4"
 [dev-dependencies]
 tari_test_utils = {  path = "../../infrastructure/test_utils" }
 
-env_logger = "0.7.0"
+env_logger = "0.10.0"
 futures-test = { version = "0.3.5" }
 futures-util = "^0.3.1"
 lazy_static = "1.4.0"
@@ -58,7 +58,7 @@ lmdb-zero = "0.4.4"
 tempfile = "3.1.0"
 tokio-stream = { version = "0.1.9", features = ["sync"] }
 petgraph = "0.5.1"
-clap = "3.2"
+clap = "4.4.1"
 
 
 [build-dependencies]

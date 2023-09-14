@@ -4,16 +4,4 @@ ignore = [
     # TODO: Remove this line after borsh-rs has been upgraded to >=0.12.0
     # https://github.com/near/borsh-rs/pull/146
     "RUSTSEC-2023-0033",
-
-    # Repo flagged as unmaintained but our clap dependency uses it
-    # TODO: Remove this if clap is upgraded to >=3.0.0
-    "RUSTSEC-2021-0139",
-
-    # We are not using a special allocator and will not suffer this issue
-    "RUSTSEC-2021-0145",
-
-    # PGP should be upgraded to 0.10.1 which removes the "unmaintained" dependency but we can't do this as pgp and snow
-    # specify different version dependencies for curve25519-dalek that are currently unresolvable.
-    # TODO: Check and see if pgp and snow can be resolved and if so, upgrade them and remove this ignore
-    "RUSTSEC-2023-0028",
 ]

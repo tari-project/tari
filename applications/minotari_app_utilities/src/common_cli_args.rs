@@ -51,18 +51,14 @@ pub struct CommonCliArgs {
     pub network: Option<Network>,
 
     /// Overrides for properties in the config file, e.g. -p base_node.network=esmeralda
-    #[clap(short = 'p', parse(try_from_str = parse_key_val), multiple_occurrences(true))]
+    #[clap(short = 'p', value_parser = parse_key_val)]
     pub config_property_overrides: Vec<(String, String)>,
 }
 
 // Taken from clap examples
 /// Parse a single key-value pair
-fn parse_key_val<T, U>(s: &str) -> Result<(T, U), Box<dyn Error + Send + Sync + 'static>>
+fn parse_key_val(s: &str) -> Result<(String, String), Box<dyn Error + Send + Sync + 'static>>
 where
-    T: std::str::FromStr,
-    T::Err: Error + Send + Sync + 'static,
-    U: std::str::FromStr,
-    U::Err: Error + Send + Sync + 'static,
 {
     let mut parts = s.split('=').map(|s| s.trim());
     let k = parts.next().ok_or("invalid override: string empty`")?;

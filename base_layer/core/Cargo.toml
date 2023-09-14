@@ -84,7 +84,7 @@ curve25519-dalek = { package = "tari-curve25519-dalek", version = "4.0.3" }
 # SQLite required for the integration tests
 libsqlite3-sys = { version = "0.25.1", features = ["bundled"] }
 config = { version = "0.13.0" }
-env_logger = "0.7.0"
+env_logger = "0.10.0"
 tempfile = "3.1.0"
 
 [build-dependencies]
