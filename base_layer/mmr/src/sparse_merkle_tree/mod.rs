@@ -41,7 +41,7 @@
 //! r###"           │A│   │B│                  │D│   │C│          "###
 //! r###"           └─┘   └─┘                  └─┘   └─┘          "###
 //!
-//! The merkle root is calculated by hashing nodes in the familiar way.
+//! The Merkle& root is calculated by hashing nodes in the familiar way.
 //! ```rust
 //! use blake2::Blake2b;
 //! use digest::consts::U32;
@@ -84,5 +84,5 @@ mod tree;
 
 pub use error::SMTError;
 pub use node::{BranchNode, EmptyNode, LeafNode, Node, NodeHash, NodeKey, ValueHash, EMPTY_NODE_HASH};
-pub use proofs::MerkleProof;
+pub use proofs::{ExclusionProof, InclusionProof};
 pub use tree::{SparseMerkleTree, UpdateResult};
