@@ -3,7 +3,6 @@ apt-get -y install \
   libssl-dev \
   pkg-config \
   libsqlite3-dev \
-  clang-10 \
   git \
   cmake \
   dh-autoreconf \
