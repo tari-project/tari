@@ -25,12 +25,12 @@ use std::{env::current_dir, fs, path::Path};
 /// Generates a random node identity JSON file. A node identity contains a node's public and secret keys, it's node
 /// id and an address used to establish peer connections. The files generated from this example are used to
 /// populate the peer manager in other examples.
-use clap::{App, Arg};
+use clap::{Arg, Command};
 use tari_comms::{multiaddr::Multiaddr, tor};
 use tari_utilities::message_format::MessageFormat;
 
-fn to_abs_path(path: &str) -> String {
-    let path = Path::new(path);
+fn to_abs_path(path: String) -> String {
+    let path = Path::new(&path);
     if path.is_absolute() {
         path.to_str().unwrap().to_string()
     } else {
@@ -42,46 +42,43 @@ fn to_abs_path(path: &str) -> String {
 
 #[tokio::main]
 async fn main() {
-    let matches = App::new("Tor identity file generator")
+    let matches = Command::new("Tor identity file generator")
         .version("1.0")
         .about("Generates peer json files")
         .arg(
-            Arg::with_name("tor-control-addr")
+            Arg::new("tor-control-addr")
                 .value_name("TOR_CONTROL_ADDR")
                 .long("tor-control-addr")
                 .short('t')
                 .help("The address of the tor control server")
-                .takes_value(true)
                 .default_value("/ip4/127.0.0.1/tcp/9051"),
         )
         .arg(
-            Arg::with_name("onion-port")
+            Arg::new("onion-port")
                 .value_name("ONION_PORT")
                 .long("onion-port")
                 .short('p')
                 .help("The port to use for the onion address")
-                .takes_value(true)
                 .default_value("9999"),
         )
         .arg(
-            Arg::with_name("output")
+            Arg::new("output")
                 .value_name("FILE")
                 .long("output")
                 .short('o')
                 .help("The relative path of the file to output")
-                .takes_value(true)
                 .required(true),
         )
         .get_matches();
 
     let tor_control_addr = matches
-        .value_of("tor-control-addr")
+        .get_one::<String>("tor-control-addr")
         .unwrap()
         .parse::<Multiaddr>()
         .expect("Invalid tor-control-addr");
 
     let port = matches
-        .value_of("onion-port")
+        .get_one::<String>("onion-port")
         .unwrap()
         .parse::<u16>()
         .expect("Invalid port");
@@ -96,6 +93,6 @@ async fn main() {
         .unwrap();
 
     let json = hidden_service_ctl.tor_identity().to_json().unwrap();
-    let out_path = to_abs_path(matches.value_of("output").unwrap());
+    let out_path = to_abs_path(matches.get_one::<String>("output").unwrap().clone());
     fs::write(out_path, json).unwrap();
 }

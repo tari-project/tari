@@ -40,7 +40,7 @@ use super::command::Command;
 #[error("invalid format '{0}'")]
 pub struct FormatParseError(String);
 
-#[derive(Debug, Display, EnumString)]
+#[derive(Debug, Display, EnumString, Copy, Clone)]
 #[strum(serialize_all = "kebab-case")]
 pub enum Format {
     Json,
@@ -53,7 +53,7 @@ impl Default for Format {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FromHex<T>(pub T);
 
 impl<T: Hex> FromStr for FromHex<T> {

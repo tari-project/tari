@@ -68,7 +68,7 @@ where E: From<ProtoError> + Error + Clone + Send + Sync + Unpin + 'static
                     })
                 })
             })
-            .map(DnsResponse::from);
+            .map(|m| DnsResponse::new(m, vec![]));
 
         // let stream = stream::unfold(messages, |mut msgs| async move {
         //     let msg = msgs.pop()?;

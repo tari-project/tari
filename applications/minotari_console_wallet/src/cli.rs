@@ -63,13 +63,13 @@ pub struct Cli {
     #[clap(long, alias = "seed-words")]
     pub seed_words: Option<SeedWords>,
     /// Supply the optional file name to save the wallet seed words into
-    #[clap(long, aliases = &["seed_words_file_name", "seed-words-file"], parse(from_os_str))]
+    #[clap(long, aliases = &["seed_words_file_name", "seed-words-file"])]
     pub seed_words_file_name: Option<PathBuf>,
     /// Run in non-interactive mode, with no UI.
     #[clap(short, long, alias = "non-interactive")]
     pub non_interactive_mode: bool,
     /// Path to input file of commands
-    #[clap(short, long, aliases = &["input", "script"], parse(from_os_str))]
+    #[clap(short, long, aliases = &["input", "script"])]
     pub input_file: Option<PathBuf>,
     /// Single input command
     #[clap(long)]
@@ -163,11 +163,11 @@ pub struct MakeItRainArgs {
     pub start_amount: MicroMinotari,
     #[clap(short, long, alias = "tps", default_value_t = 25)]
     pub transactions_per_second: u32,
-    #[clap(short, long, parse(try_from_str = parse_duration), default_value="60")]
+    #[clap(short, long, value_parser= parse_duration, default_value = "60")]
     pub duration: Duration,
     #[clap(long, default_value_t=tari_amount::T)]
     pub increase_amount: MicroMinotari,
-    #[clap(long, parse(try_from_str=parse_start_time))]
+    #[clap(long)]
     pub start_time: Option<DateTime<Utc>>,
     #[clap(short, long)]
     pub one_sided: bool,
@@ -205,14 +205,6 @@ impl Display for MakeItRainTransactionType {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self)
     }
-}
-
-fn parse_start_time(arg: &str) -> Result<DateTime<Utc>, chrono::ParseError> {
-    let mut start_time = Utc::now();
-    if !arg.is_empty() && arg.to_uppercase() != "NOW" {
-        start_time = arg.parse()?;
-    }
-    Ok(start_time)
 }
 
 fn parse_duration(arg: &str) -> Result<std::time::Duration, std::num::ParseIntError> {
@@ -261,7 +253,7 @@ impl From<HexError> for CliParseError {
 
 #[derive(Debug, Args, Clone)]
 pub struct FinaliseShaAtomicSwapArgs {
-    #[clap(short, long, parse(try_from_str = parse_hex), required=true )]
+    #[clap(short, long, value_parser = parse_hex, required=true, action = clap::ArgAction::Append )]
     pub output_hash: Vec<Vec<u8>>,
     #[clap(short, long)]
     pub pre_image: UniPublicKey,
@@ -275,7 +267,7 @@ fn parse_hex(s: &str) -> Result<Vec<u8>, CliParseError> {
 
 #[derive(Debug, Args, Clone)]
 pub struct ClaimShaAtomicSwapRefundArgs {
-    #[clap(short, long, parse(try_from_str = parse_hex), required = true)]
+    #[clap(short, long, value_parser = parse_hex, required = true)]
     pub output_hash: Vec<Vec<u8>>,
     #[clap(short, long, default_value = "Claimed HTLC atomic swap refund")]
     pub message: String,

@@ -25,7 +25,7 @@ use std::{fmt, fmt::Display};
 use chrono::Local;
 use strum::{Display, EnumString};
 
-#[derive(Debug, Display, EnumString)]
+#[derive(Debug, Display, EnumString, Copy, Clone)]
 pub enum StatusLineOutput {
     #[strum(serialize = "log")]
     Log,
