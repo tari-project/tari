@@ -159,20 +159,20 @@ impl<'a> DoubleEndedIterator for PathIterator<'a> {
         if self.cursor_front >= self.cursor_back {
             return None;
         }
-        self.cursor_back -= 1;
+        self.cursor_back = self.cursor_back.checked_sub(1)?;
         let bit = get_bit(self.key.as_slice(), self.cursor_back);
         Some(bit_to_dir(bit))
     }
 
     fn nth_back(&mut self, n: usize) -> Option<Self::Item> {
-        self.cursor_back -= n;
+        self.cursor_back = self.cursor_back.checked_sub(n)?;
         self.next_back()
     }
 }
 
 impl<'a> ExactSizeIterator for PathIterator<'a> {
     fn len(&self) -> usize {
-        self.cursor_back - self.cursor_front
+        self.cursor_back.saturating_sub(self.cursor_front)
     }
 }
 
