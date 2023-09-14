@@ -114,62 +114,6 @@ struct ApplicationConfig *create_chat_config(const char *network_str,
 void destroy_chat_config(struct ApplicationConfig *config);
 
 /**
- * Sends a message over a client
- *
- * ## Arguments
- * `client` - The Client pointer
- * `message` - Pointer to a Message struct
- * `error_out` - Pointer to an int which will be modified
- *
- * ## Returns
- * `()` - Does not return a value, equivalent to void in C
- *
- * # Safety
- * The ```message``` should be destroyed after use
- */
-void send_chat_message(struct ChatClientFFI *client, struct Message *message, int *error_out);
-
-/**
- * Creates a message and returns a ptr to it
- *
- * ## Arguments
- * `receiver` - A string containing a tari address
- * `message` - The peer seeds config for the node
- * `error_out` - Pointer to an int which will be modified
- *
- * ## Returns
- * `*mut Message` - A pointer to a message object
- *
- * # Safety
- * The ```receiver``` should be destroyed after use
- */
-struct Message *create_chat_message(struct TariAddress *receiver,
-                                    const char *message,
-                                    int *error_out);
-
-/**
- * Creates message metadata and appends it to a Message
- *
- * ## Arguments
- * `message` - A pointer to a message
- * `metadata_type` - An int8 that maps to MessageMetadataType enum
- *     '0' -> Reply
- *     '1' -> TokenRequest
- * `data` - contents for the metadata in string format
- * `error_out` - Pointer to an int which will be modified
- *
- * ## Returns
- * `()` - Does not return a value, equivalent to void in C
- *
- * ## Safety
- * `message` should be destroyed eventually
- */
-void add_chat_message_metadata(struct Message *message,
-                               const int *metadata_type,
-                               const char *data,
-                               int *error_out);
-
-/**
  * Add a contact
  *
  * ## Arguments
@@ -202,6 +146,54 @@ void add_chat_contact(struct ChatClientFFI *client, struct TariAddress *address,
 int check_online_status(struct ChatClientFFI *client, struct TariAddress *receiver, int *error_out);
 
 /**
+ * Creates a message and returns a ptr to it
+ *
+ * ## Arguments
+ * `receiver` - A string containing a tari address
+ * `message` - The peer seeds config for the node
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `*mut Message` - A pointer to a message object
+ *
+ * # Safety
+ * The ```receiver``` should be destroyed after use
+ */
+struct Message *create_chat_message(struct TariAddress *receiver,
+                                    const char *message,
+                                    int *error_out);
+
+/**
+ * Frees memory for messages
+ *
+ * ## Arguments
+ * `messages_ptr` - The pointer of a Vec<Message>
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * None
+ */
+void destroy_chat_messages(struct ChatMessages *messages_ptr);
+
+/**
+ * Sends a message over a client
+ *
+ * ## Arguments
+ * `client` - The Client pointer
+ * `message` - Pointer to a Message struct
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * The ```message``` should be destroyed after use
+ */
+void send_chat_message(struct ChatClientFFI *client, struct Message *message, int *error_out);
+
+/**
  * Get a ptr to all messages from or to address
  *
  * ## Arguments
@@ -225,47 +217,26 @@ struct ChatMessages *get_chat_messages(struct ChatClientFFI *client,
                                        int *error_out);
 
 /**
- * Frees memory for messages
+ * Creates message metadata and appends it to a Message
  *
  * ## Arguments
- * `messages_ptr` - The pointer of a Vec<Message>
- *
- * ## Returns
- * `()` - Does not return a value, equivalent to void in C
- *
- * # Safety
- * None
- */
-void destroy_chat_messages(struct ChatMessages *messages_ptr);
-
-/**
- * Creates a TariAddress and returns a ptr
- *
- * ## Arguments
- * `receiver_c_char` - A string containing a tari address hex value
+ * `message` - A pointer to a message
+ * `metadata_type` - An int8 that maps to MessageMetadataType enum
+ *     '0' -> Reply
+ *     '1' -> TokenRequest
+ * `data` - contents for the metadata in string format
  * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
- * `*mut TariAddress` - A ptr to a TariAddress
- *
- * # Safety
- * The ```destroy_tari_address``` function should be called when finished with the TariAddress
- */
-struct TariAddress *create_tari_address(const char *receiver_c_char, int *error_out);
-
-/**
- * Frees memory for a TariAddress
- *
- * ## Arguments
- * `address` - The pointer of a TariAddress
- *
- * ## Returns
  * `()` - Does not return a value, equivalent to void in C
  *
- * # Safety
- * None
+ * ## Safety
+ * `message` should be destroyed eventually
  */
-void destroy_tari_address(struct TariAddress *address);
+void add_chat_message_metadata(struct Message *message,
+                               const int *metadata_type,
+                               const char *data,
+                               int *error_out);
 
 /**
  * Creates a tor transport config
@@ -310,10 +281,25 @@ struct TransportConfig *create_chat_tor_transport_config(const char *control_ser
 void destroy_chat_tor_transport_config(struct TransportConfig *transport);
 
 /**
- * Frees memory for a ChatFFIMessage
+ * Creates a TariAddress and returns a ptr
  *
  * ## Arguments
- * `transport` - The pointer to a ChatFFIMessage
+ * `receiver_c_char` - A string containing a tari address hex value
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `*mut TariAddress` - A ptr to a TariAddress
+ *
+ * # Safety
+ * The ```destroy_tari_address``` function should be called when finished with the TariAddress
+ */
+struct TariAddress *create_tari_address(const char *receiver_c_char, int *error_out);
+
+/**
+ * Frees memory for a TariAddress
+ *
+ * ## Arguments
+ * `address` - The pointer of a TariAddress
  *
  * ## Returns
  * `()` - Does not return a value, equivalent to void in C
@@ -321,7 +307,7 @@ void destroy_chat_tor_transport_config(struct TransportConfig *transport);
  * # Safety
  * None
  */
-void destroy_chat_ffi_message(struct ChatFFIMessage *address);
+void destroy_tari_address(struct TariAddress *address);
 
 /**
  * Frees memory for a ChatFFIContactsLivenessData
@@ -336,6 +322,20 @@ void destroy_chat_ffi_message(struct ChatFFIMessage *address);
  * None
  */
 void destroy_chat_ffi_liveness_data(struct ChatFFIContactsLivenessData *address);
+
+/**
+ * Frees memory for a ChatFFIMessage
+ *
+ * ## Arguments
+ * `transport` - The pointer to a ChatFFIMessage
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * None
+ */
+void destroy_chat_ffi_message(struct ChatFFIMessage *address);
 
 #ifdef __cplusplus
 } // extern "C"
