@@ -216,7 +216,9 @@ mod test {
         assert_eq!(iter.total_chunks, 1);
         let msgs = iter.collect::<Vec<_>>();
         assert_eq!(msgs.len(), 1);
-        assert!(!RpcMessageFlags::from_bits(u8::try_from(msgs[0].flags).unwrap()).is_more());
+        assert!(!RpcMessageFlags::from_bits(u8::try_from(msgs[0].flags).unwrap())
+            .unwrap()
+            .is_more());
     }
 
     #[test]
@@ -225,7 +227,9 @@ mod test {
         assert_eq!(iter.total_chunks, 1);
         let msgs = iter.collect::<Vec<_>>();
         assert_eq!(msgs.len(), 1);
-        assert!(!RpcMessageFlags::from_bits(u8::try_from(msgs[0].flags).unwrap()).is_more());
+        assert!(!RpcMessageFlags::from_bits(u8::try_from(msgs[0].flags).unwrap())
+            .unwrap()
+            .is_more());
     }
 
     #[test]
@@ -255,8 +259,14 @@ mod test {
         use std::convert::TryFrom;
         let iter = create(RPC_CHUNKING_THRESHOLD * 3);
         let msgs = iter.collect::<Vec<_>>();
-        assert!(RpcMessageFlags::from_bits(u8::try_from(msgs[0].flags).unwrap()).is_more());
-        assert!(RpcMessageFlags::from_bits(u8::try_from(msgs[1].flags).unwrap()).is_more());
-        assert!(!RpcMessageFlags::from_bits(u8::try_from(msgs[2].flags).unwrap()).is_more());
+        assert!(RpcMessageFlags::from_bits(u8::try_from(msgs[0].flags).unwrap())
+            .unwrap()
+            .is_more());
+        assert!(RpcMessageFlags::from_bits(u8::try_from(msgs[1].flags).unwrap())
+            .unwrap()
+            .is_more());
+        assert!(!RpcMessageFlags::from_bits(u8::try_from(msgs[2].flags).unwrap())
+            .unwrap()
+            .is_more());
     }
 }
