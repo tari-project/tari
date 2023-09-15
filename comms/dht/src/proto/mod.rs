@@ -85,7 +85,7 @@ impl fmt::Display for dht::JoinMessage {
             "JoinMessage(PK = {}, {} Addresses, Features = {:?})",
             self.public_key.to_hex(),
             self.addresses.len(),
-            PeerFeatures::from_bits_truncate(self.peer_features),
+            PeerFeatures::from_bits(self.peer_features),
         )
     }
 }

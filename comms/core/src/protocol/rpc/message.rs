@@ -232,8 +232,14 @@ impl proto::rpc::RpcRequest {
         Duration::from_secs(self.deadline)
     }
 
-    pub fn flags(&self) -> RpcMessageFlags {
-        RpcMessageFlags::from_bits_truncate(u8::try_from(self.flags).unwrap())
+    pub fn flags(&self) -> Result<RpcMessageFlags, String> {
+        RpcMessageFlags::from_bits(
+            u8::try_from(self.flags).map_err(|_| format!("invalid message flag: must be less than {}", u8::MAX))?,
+        )
+        .ok_or(format!(
+            "invalid message flag, does not match any flags ({})",
+            self.flags
+        ))
     }
 }
 
@@ -282,8 +288,14 @@ impl Default for RpcResponse {
 }
 
 impl proto::rpc::RpcResponse {
-    pub fn flags(&self) -> RpcMessageFlags {
-        RpcMessageFlags::from_bits_truncate(u8::try_from(self.flags).unwrap())
+    pub fn flags(&self) -> Result<RpcMessageFlags, String> {
+        RpcMessageFlags::from_bits(
+            u8::try_from(self.flags).map_err(|_| format!("invalid message flag: must be less than {}", u8::MAX))?,
+        )
+        .ok_or(format!(
+            "invalid message flag, does not match any flags ({})",
+            self.flags
+        ))
     }
 
     pub fn is_fin(&self) -> bool {

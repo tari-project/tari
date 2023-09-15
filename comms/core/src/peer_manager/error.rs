@@ -53,6 +53,8 @@ pub enum PeerManagerError {
     InvalidPeerFeatures { bits: u32 },
     #[error("Address {address} not found for peer {node_id}")]
     AddressNotFoundError { address: Multiaddr, node_id: NodeId },
+    #[error("Protocol error: {0}")]
+    ProtocolError(String),
 }
 
 impl PeerManagerError {
