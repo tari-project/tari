@@ -137,7 +137,7 @@ impl NodeId {
 impl ByteArray for NodeId {
     /// Try and convert the given byte array to a NodeId. Any failures (incorrect array length,
     /// implementation-specific checks, etc) return a [ByteArrayError](enum.ByteArrayError.html).
-    fn from_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError> {
+    fn from_canonical_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError> {
         bytes.try_into().map_err(|err| ByteArrayError::ConversionError {
             reason: format!("{:?}", err),
         })
@@ -152,7 +152,7 @@ impl ByteArray for NodeId {
 impl ByteArray for Box<NodeId> {
     /// Try and convert the given byte array to a NodeId. Any failures (incorrect array length,
     /// implementation-specific checks, etc) return a [ByteArrayError](enum.ByteArrayError.html).
-    fn from_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError> {
+    fn from_canonical_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError> {
         let node_id = NodeId::try_from(bytes).map_err(|err| ByteArrayError::ConversionError {
             reason: format!("{:?}", err),
         })?;

@@ -94,7 +94,7 @@ pub mod test {
     #[allow(clippy::cast_sign_loss)]
     pub fn get_header() -> (grpc_header, BlockHeader) {
         let mut header = BlockHeader::new(0);
-        header.timestamp = (DateTime::<Utc>::from_utc(
+        header.timestamp = (DateTime::<Utc>::from_naive_utc_and_offset(
             NaiveDate::from_ymd_opt(2000, 1, 1)
                 .unwrap()
                 .and_hms_opt(1, 1, 1)
@@ -140,7 +140,7 @@ pub mod test {
                 "with timestamp = {}",
                 timestamp
             );
-            timestamp = timestamp.increase(1);
+            timestamp = timestamp.checked_add(EpochTime::from(1)).unwrap();
             core_header.timestamp = timestamp;
             hasher.set_forward_timestamp(timestamp.as_u64());
         }

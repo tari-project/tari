@@ -13,7 +13,7 @@ tari_comms = { path = "../../comms/core" }
 tari_core = { path = "../../base_layer/core" }
 tari_crypto = { version = "0.18" }
 tari_script = { path = "../../infrastructure/tari_script" }
-tari_utilities = { version = "0.5" }
+tari_utilities = { version = "0.6" }
 
 argon2 = { version = "0.4.1", features = ["std", "password-hash"] }
 base64 = "0.13.0"

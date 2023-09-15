@@ -23,7 +23,7 @@
 use std::{convert::TryFrom, path::PathBuf};
 
 use blake2::Blake2b;
-use digest::consts::U32;
+use digest::consts::U64;
 use log::{error, warn};
 use minotari_wallet::{
     output_manager_service::UtxoSelectionCriteria,
@@ -33,7 +33,7 @@ use minotari_wallet::{
 use rand::{random, rngs::OsRng};
 use tari_common_types::{
     tari_address::TariAddress,
-    types::{FixedHash, PublicKey, Signature},
+    types::{PublicKey, Signature},
 };
 use tari_core::{
     consensus::{DomainSeparatedConsensusHasher, MaxSizeBytes, MaxSizeString},
@@ -421,7 +421,7 @@ pub async fn send_register_template_transaction_task(
     // signing and sending code template registration request
     // ----------------------------------------------------------------------------
 
-    let mut km = KeyManager::<RistrettoPublicKey, Blake2b<U32>>::new();
+    let mut km = KeyManager::<RistrettoPublicKey, Blake2b<U64>>::new();
 
     let author_private_key = match km.next_key() {
         Ok(secret_key) => secret_key.key,
@@ -434,16 +434,14 @@ pub async fn send_register_template_transaction_task(
 
     let author_public_key = PublicKey::from_secret_key(&author_private_key);
     let (secret_nonce, public_nonce) = PublicKey::random_keypair(&mut OsRng);
-    let challenge = FixedHash::from(
-        DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("template_registration")
-            .chain(&author_public_key)
-            .chain(&public_nonce)
-            .chain(&binary_sha)
-            .chain(&b"")
-            .finalize(),
-    );
+    let challenge = DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U64>>::new("template_registration")
+        .chain(&author_public_key)
+        .chain(&public_nonce)
+        .chain(&binary_sha)
+        .chain(&b"")
+        .finalize();
 
-    let author_signature = Signature::sign_raw(&author_private_key, secret_nonce, &*challenge)
+    let author_signature = Signature::sign_raw_uniform(&author_private_key, secret_nonce, &challenge)
         .expect("Sign cannot fail with 32-byte challenge and a RistrettoPublicKey");
 
     // ----------------------------------------------------------------------------

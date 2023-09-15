@@ -345,7 +345,7 @@ mod test {
             &m,
         );
         assert!(
-            prot.partial_signature.verify_challenge(&signing_pubkey, &e),
+            prot.partial_signature.verify_raw_uniform(&signing_pubkey, &e),
             "Partial signature is incorrect"
         );
     }

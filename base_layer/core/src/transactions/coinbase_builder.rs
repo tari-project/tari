@@ -309,8 +309,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
 #[cfg(test)]
 mod test {
     use tari_common::configuration::Network;
-    use tari_common_types::types::{Commitment, PrivateKey};
-    use tari_utilities::ByteArray;
+    use tari_common_types::types::Commitment;
 
     use crate::{
         consensus::{emission::Emission, ConsensusManager, ConsensusManagerBuilder},
@@ -605,7 +604,7 @@ mod test {
             &excess,
             &kernel_message,
         );
-        assert!(sig.verify(&excess, &PrivateKey::from_bytes(&sig_challenge).unwrap()));
+        assert!(sig.verify_raw_uniform(&excess, &sig_challenge));
 
         // we fix the signature and the excess with the now included offset.
         coinbase_kernel2.excess_sig = sig;

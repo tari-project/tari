@@ -37,9 +37,11 @@ impl TryFrom<proto::BlockHeader> for BlockHeader {
     type Error = String;
 
     fn try_from(header: proto::BlockHeader) -> Result<Self, Self::Error> {
-        let total_kernel_offset = PrivateKey::from_bytes(&header.total_kernel_offset).map_err(|err| err.to_string())?;
+        let total_kernel_offset =
+            PrivateKey::from_canonical_bytes(&header.total_kernel_offset).map_err(|err| err.to_string())?;
 
-        let total_script_offset = PrivateKey::from_bytes(&header.total_script_offset).map_err(|err| err.to_string())?;
+        let total_script_offset =
+            PrivateKey::from_canonical_bytes(&header.total_script_offset).map_err(|err| err.to_string())?;
 
         let pow = match header.pow {
             Some(p) => ProofOfWork::try_from(p)?,

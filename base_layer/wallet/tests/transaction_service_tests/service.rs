@@ -832,7 +832,7 @@ async fn single_transaction_burn_tari() {
         .chain(&burn_proof.commitment)
         .chain(&claim_public_key)
         .finalize();
-    let challenge = PrivateKey::from_bytes(&challenge_bytes).unwrap();
+    let challenge = PrivateKey::from_uniform_bytes(&challenge_bytes).unwrap();
     assert!(burn_proof.ownership_proof.unwrap().verify(
         &burn_proof.commitment,
         &challenge,

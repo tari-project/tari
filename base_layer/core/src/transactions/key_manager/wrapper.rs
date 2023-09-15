@@ -23,7 +23,7 @@
 use std::sync::Arc;
 
 use blake2::Blake2b;
-use digest::consts::U32;
+use digest::consts::U64;
 use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature};
 use tari_comms::types::CommsDHKE;
 use tari_crypto::{hashing::DomainSeparatedHash, ristretto::RistrettoComSig};
@@ -234,7 +234,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         &self,
         secret_key_id: &TariKeyId,
         public_key: &PublicKey,
-    ) -> Result<DomainSeparatedHash<Blake2b<U32>>, TransactionError> {
+    ) -> Result<DomainSeparatedHash<Blake2b<U64>>, TransactionError> {
         self.transaction_key_manager_inner
             .read()
             .await

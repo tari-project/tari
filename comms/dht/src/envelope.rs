@@ -47,7 +47,7 @@ pub(crate) fn datetime_to_epochtime(datetime: DateTime<Utc>) -> EpochTime {
 pub(crate) fn epochtime_to_datetime(datetime: EpochTime) -> DateTime<Utc> {
     let dt = NaiveDateTime::from_timestamp_opt(i64::try_from(datetime.as_u64()).unwrap_or(i64::MAX), 0)
         .unwrap_or(NaiveDateTime::MAX);
-    DateTime::from_utc(dt, Utc)
+    DateTime::from_naive_utc_and_offset(dt, Utc)
 }
 
 /// Message errors that should be verified by every node
@@ -207,7 +207,7 @@ impl TryFrom<DhtHeader> for DhtMessageHeader {
             None
         } else {
             Some(
-                CommsPublicKey::from_bytes(&header.ephemeral_public_key)
+                CommsPublicKey::from_canonical_bytes(&header.ephemeral_public_key)
                     .map_err(|_| DhtMessageError::InvalidEphemeralPublicKey)?,
             )
         };
@@ -354,7 +354,7 @@ impl TryFrom<Destination> for NodeDestination {
         match destination {
             Destination::Unknown(_) => Ok(NodeDestination::Unknown),
             Destination::PublicKey(pk) => {
-                CommsPublicKey::from_bytes(&pk).map(|pk| NodeDestination::PublicKey(Box::new(pk)))
+                CommsPublicKey::from_canonical_bytes(&pk).map(|pk| NodeDestination::PublicKey(Box::new(pk)))
             },
         }
     }

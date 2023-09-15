@@ -136,8 +136,8 @@ mod tests {
                 signature: IdentitySignature::new(
                     0,
                     Signature::new(
-                        RistrettoPublicKey::from_bytes(&[0u8; 32]).unwrap(),
-                        RistrettoSecretKey::from_bytes(&[0u8; 32]).unwrap(),
+                        RistrettoPublicKey::from_canonical_bytes(&[0u8; 32]).unwrap(),
+                        RistrettoSecretKey::from_canonical_bytes(&[0u8; 32]).unwrap(),
                     ),
                     Default::default(),
                 ),

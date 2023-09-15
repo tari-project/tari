@@ -45,3 +45,4 @@ overflow-checks = true
 
 [patch.crates-io]
 liblmdb-sys = { git = "https://github.com/tari-project/lmdb-rs", tag = "0.7.6-tari.1" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto", branch = "main" } # TODO: remove after new release version

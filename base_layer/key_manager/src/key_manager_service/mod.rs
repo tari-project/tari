@@ -31,10 +31,10 @@
 //     any unwanted changes)
 
 use blake2::Blake2b;
-use digest::consts::U32;
+use digest::consts::U64;
 
 /// Specify the Hash function used by the key manager
-pub type KeyDigest = Blake2b<U32>;
+pub type KeyDigest = Blake2b<U64>;
 
 mod error;
 pub use error::KeyManagerServiceError;

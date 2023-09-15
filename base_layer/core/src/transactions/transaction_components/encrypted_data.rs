@@ -135,7 +135,7 @@ impl EncryptedData {
         value_bytes.clone_from_slice(&bytes[0..SIZE_VALUE]);
         Ok((
             u64::from_le_bytes(value_bytes).into(),
-            PrivateKey::from_bytes(&bytes[SIZE_VALUE..])?,
+            PrivateKey::from_canonical_bytes(&bytes[SIZE_VALUE..])?,
         ))
     }
 

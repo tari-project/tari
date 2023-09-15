@@ -31,7 +31,9 @@ use std::{
     time::Instant,
 };
 
+use blake2::Blake2b;
 use croaring::Bitmap;
+use digest::consts::U32;
 use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
@@ -818,7 +820,9 @@ where B: BlockchainBackend
         // to increase the timestamp to be greater than the median timestamp otherwise the block wont be accepted by
         // nodes
         if median_timestamp > header.timestamp {
-            header.timestamp = median_timestamp.increase(1);
+            header.timestamp = median_timestamp
+                .checked_add(EpochTime::from(1))
+                .ok_or(ChainStorageError::UnexpectedResult("Timestamp overflowed".to_string()))?;
         }
         let mut block = Block { header, body };
         let roots = calculate_mmr_roots(&*db, self.rules(), &block)?;
@@ -1392,7 +1396,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
 
 pub fn calculate_validator_node_mr(validator_nodes: &[(PublicKey, [u8; 32])]) -> tari_mmr::Hash {
     fn hash_node((pk, s): &(PublicKey, [u8; 32])) -> Vec<u8> {
-        DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("validator_node")
+        DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("validator_node")
             .chain(pk)
             .chain(s)
             .finalize()
