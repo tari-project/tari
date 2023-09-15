@@ -50,7 +50,7 @@ use tari_common_types::tari_address::TariAddress;
 use tari_comms::multiaddr::Multiaddr;
 use tari_contacts::contacts_service::{
     handle::{DEFAULT_MESSAGE_LIMIT, DEFAULT_MESSAGE_PAGE},
-    types::Message,
+    types::{Message, MessageBuilder, MessageMetadata, MessageMetadataType},
 };
 use tari_p2p::{SocksAuthentication, TorControlAuthentication, TorTransportConfig, TransportConfig, TransportType};
 use tari_utilities::hex;
@@ -485,22 +485,16 @@ unsafe fn init_logging(log_path: PathBuf, error_out: *mut c_int) {
 ///
 /// ## Arguments
 /// `client` - The Client pointer
-/// `receiver` - A string containing a tari address
-/// `message` - The peer seeds config for the node
+/// `message` - Pointer to a Message struct
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
 ///
 /// # Safety
-/// The ```receiver``` should be destroyed after use
+/// The ```message``` should be destroyed after use
 #[no_mangle]
-pub unsafe extern "C" fn send_chat_message(
-    client: *mut ChatClientFFI,
-    receiver: *mut TariAddress,
-    message_c_char: *const c_char,
-    error_out: *mut c_int,
-) {
+pub unsafe extern "C" fn send_chat_message(client: *mut ChatClientFFI, message: *mut Message, error_out: *mut c_int) {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -509,13 +503,110 @@ pub unsafe extern "C" fn send_chat_message(
         ptr::swap(error_out, &mut error as *mut c_int);
     }
 
+    if message.is_null() {
+        error = LibChatError::from(InterfaceError::NullError("message".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    }
+
+    (*client)
+        .runtime
+        .block_on((*client).client.send_message((*message).clone()));
+}
+
+/// Creates a message and returns a ptr to it
+///
+/// ## Arguments
+/// `receiver` - A string containing a tari address
+/// `message` - The peer seeds config for the node
+/// `error_out` - Pointer to an int which will be modified
+///
+/// ## Returns
+/// `*mut Message` - A pointer to a message object
+///
+/// # Safety
+/// The ```receiver``` should be destroyed after use
+#[no_mangle]
+pub unsafe extern "C" fn create_chat_message(
+    receiver: *mut TariAddress,
+    message: *const c_char,
+    error_out: *mut c_int,
+) -> *mut Message {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
     if receiver.is_null() {
         error = LibChatError::from(InterfaceError::NullError("receiver".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
     }
 
-    let message = match CStr::from_ptr(message_c_char).to_str() {
+    let message_str = match CStr::from_ptr(message).to_str() {
         Ok(str) => str.to_string(),
+        Err(e) => {
+            error = LibChatError::from(InterfaceError::InvalidArgument(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    };
+
+    let message_out = MessageBuilder::new()
+        .address((*receiver).clone())
+        .message(message_str)
+        .build();
+
+    Box::into_raw(Box::new(message_out))
+}
+
+/// Creates message metadata and appends it to a Message
+///
+/// ## Arguments
+/// `message` - A pointer to a message
+/// `metadata_type` - An int8 that maps to MessageMetadataType enum
+///     '0' -> Reply
+///     '1' -> TokenRequest
+/// `data` - contents for the metadata in string format
+/// `error_out` - Pointer to an int which will be modified
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// ## Safety
+/// `message` should be destroyed eventually
+#[no_mangle]
+pub unsafe extern "C" fn add_chat_message_metadata(
+    message: *mut Message,
+    metadata_type: *const c_int,
+    data: *const c_char,
+    error_out: *mut c_int,
+) {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    if message.is_null() {
+        error = LibChatError::from(InterfaceError::NullError("message".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return;
+    }
+
+    let metadata_type = match MessageMetadataType::from_byte(metadata_type as u8) {
+        Some(t) => t,
+        None => {
+            error = LibChatError::from(InterfaceError::InvalidArgument(
+                "Couldn't convert byte to Metadata type".to_string(),
+            ))
+            .code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return;
+        },
+    };
+
+    if data.is_null() {
+        error = LibChatError::from(InterfaceError::NullError("data".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return;
+    }
+
+    let data: Vec<u8> = match CStr::from_ptr(data).to_str() {
+        Ok(str) => str.as_bytes().into(),
         Err(e) => {
             error = LibChatError::from(InterfaceError::InvalidArgument(e.to_string())).code;
             ptr::swap(error_out, &mut error as *mut c_int);
@@ -523,9 +614,8 @@ pub unsafe extern "C" fn send_chat_message(
         },
     };
 
-    (*client)
-        .runtime
-        .block_on((*client).client.send_message((*receiver).clone(), message));
+    let metadata = MessageMetadata { metadata_type, data };
+    (*message).push(metadata);
 }
 
 /// Add a contact
@@ -539,11 +629,11 @@ pub unsafe extern "C" fn send_chat_message(
 /// `()` - Does not return a value, equivalent to void in C
 ///
 /// # Safety
-/// The ```address``` should be destroyed after use
+/// The ```receiver``` should be destroyed after use
 #[no_mangle]
 pub unsafe extern "C" fn add_chat_contact(
     client: *mut ChatClientFFI,
-    receiver: *mut TariAddress,
+    address: *mut TariAddress,
     error_out: *mut c_int,
 ) {
     let mut error = 0;
@@ -554,12 +644,12 @@ pub unsafe extern "C" fn add_chat_contact(
         ptr::swap(error_out, &mut error as *mut c_int);
     }
 
-    if receiver.is_null() {
+    if address.is_null() {
         error = LibChatError::from(InterfaceError::NullError("receiver".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
     }
 
-    (*client).runtime.block_on((*client).client.add_contact(&(*receiver)));
+    (*client).runtime.block_on((*client).client.add_contact(&(*address)));
 }
 
 /// Check the online status of a contact
@@ -968,5 +1058,20 @@ mod test {
             destroy_chat_config(chat_config);
             destroy_chat_tor_transport_config(transport_config);
         }
+    }
+
+    #[test]
+    fn test_metadata_adding() {
+        let message_ptr = Box::into_raw(Box::default());
+
+        let data_c_str = CString::new("hello".to_string()).unwrap();
+        let data_char: *const c_char = CString::into_raw(data_c_str) as *const c_char;
+
+        let error_out = Box::into_raw(Box::new(0));
+
+        unsafe { add_chat_message_metadata(message_ptr, 1 as *const c_int, data_char, error_out) }
+
+        let message = unsafe { Box::from_raw(message_ptr) };
+        assert_eq!(message.metadata.len(), 1)
     }
 }

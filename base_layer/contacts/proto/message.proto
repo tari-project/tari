@@ -6,13 +6,23 @@ package tari.contacts.chat;
 
 message Message {
   bytes body = 1;
-  bytes address = 2;
-  DirectionEnum direction = 3;
-  uint64 stored_at = 4;
-  bytes message_id = 5;
+  repeated MessageMetadata metadata = 2;
+  bytes address = 3;
+  DirectionEnum direction = 4;
+  uint64 stored_at = 5;
+  bytes message_id = 6;
 }
 
 enum DirectionEnum {
   Inbound = 0;
   Outbound = 1;
+}
+
+message MessageMetadata {
+  MessageTypeEnum metadata_type = 1;
+  bytes data = 2;
+}
+
+enum MessageTypeEnum {
+  TokenRequest = 0;
 }

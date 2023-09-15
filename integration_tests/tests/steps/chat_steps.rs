@@ -28,6 +28,7 @@ use tari_common_types::tari_address::TariAddress;
 use tari_contacts::contacts_service::{
     handle::{DEFAULT_MESSAGE_LIMIT, DEFAULT_MESSAGE_PAGE},
     service::ContactOnlineStatus,
+    types::{Direction, Message, MessageMetadata, MessageMetadataType},
 };
 use tari_integration_tests::{chat_client::spawn_chat_client, TariWorld};
 
@@ -65,7 +66,52 @@ async fn send_message_to(world: &mut TariWorld, sender: String, message: String,
     let receiver = world.chat_clients.get(&receiver).unwrap();
     let address = TariAddress::from_public_key(receiver.identity().public_key(), Network::LocalNet);
 
-    sender.send_message(address, message).await;
+    let message = sender.create_message(&address, message);
+
+    sender.send_message(message).await;
+}
+
+#[when(regex = r"^I use (.+) to send a reply saying '(.+)' to (.*)'s message '(.*)'$")]
+async fn i_reply_to_message(
+    world: &mut TariWorld,
+    sender: String,
+    outbound_msg: String,
+    receiver: String,
+    inbound_msg: String,
+) {
+    let sender = world.chat_clients.get(&sender).unwrap();
+    let receiver = world.chat_clients.get(&receiver).unwrap();
+    let address = TariAddress::from_public_key(receiver.identity().public_key(), Network::LocalNet);
+
+    for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
+        let messages: Vec<Message> = (*sender)
+            .get_messages(&address, DEFAULT_MESSAGE_LIMIT, DEFAULT_MESSAGE_PAGE)
+            .await;
+
+        if messages.is_empty() {
+            tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
+            continue;
+        }
+
+        let inbound_chat_message = messages
+            .iter()
+            .find(|m| m.body == inbound_msg.clone().into_bytes())
+            .expect("no message with that content found")
+            .clone();
+
+        let message = sender.create_message(&address, outbound_msg);
+
+        let message = sender.add_metadata(
+            message,
+            MessageMetadataType::Reply,
+            String::from_utf8(inbound_chat_message.message_id).expect("bytes to uuid"),
+        );
+
+        sender.send_message(message).await;
+        return;
+    }
+
+    panic!("Never received incoming chat message",)
 }
 
 #[then(expr = "{word} will have {int} message(s) with {word}")]
@@ -127,4 +173,54 @@ async fn wait_for_contact_to_be_online(world: &mut TariWorld, client: String, co
         contact.identity().node_id(),
         last_status
     )
+}
+
+#[then(regex = r"^(.+) will have a replied to message from (.*) with '(.*)'$")]
+async fn have_replied_message(world: &mut TariWorld, receiver: String, sender: String, inbound_reply: String) {
+    let receiver = world.chat_clients.get(&receiver).unwrap();
+    let sender = world.chat_clients.get(&sender).unwrap();
+    let address = TariAddress::from_public_key(sender.identity().public_key(), Network::LocalNet);
+
+    for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
+        let messages: Vec<Message> = (*receiver)
+            .get_messages(&address, DEFAULT_MESSAGE_LIMIT, DEFAULT_MESSAGE_PAGE)
+            .await;
+
+        // 1 message out, 1 message back = 2
+        if messages.len() < 2 {
+            tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
+            continue;
+        }
+
+        let inbound_chat_message = messages
+            .iter()
+            .find(|m| m.body == inbound_reply.clone().into_bytes())
+            .expect("no message with that content found")
+            .clone();
+
+        let outbound_chat_message = messages
+            .iter()
+            .find(|m| m.direction == Direction::Outbound)
+            .expect("no message with that direction found")
+            .clone();
+
+        let metadata: &MessageMetadata = &inbound_chat_message.metadata[0];
+
+        // Metadata data is a reply type
+        assert_eq!(
+            metadata.metadata_type,
+            MessageMetadataType::Reply,
+            "Metadata type is wrong"
+        );
+
+        // Metadata data contains id to original message
+        assert_eq!(
+            metadata.data, outbound_chat_message.message_id,
+            "Message id does not match"
+        );
+
+        return;
+    }
+
+    panic!("Never received incoming chat message",)
 }

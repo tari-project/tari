@@ -41,7 +41,10 @@ use tari_comms::{
     peer_manager::{Peer, PeerFeatures},
     NodeIdentity,
 };
-use tari_contacts::contacts_service::{service::ContactOnlineStatus, types::Message};
+use tari_contacts::contacts_service::{
+    service::ContactOnlineStatus,
+    types::{Message, MessageMetadataType},
+};
 
 use crate::{chat_client::test_config, get_port};
 
@@ -60,24 +63,26 @@ extern "C" fn callback_message_received(_state: *mut c_void) {
 extern "C" {
     pub fn create_chat_client(
         config: *mut c_void,
-        out_error: *const c_int,
+        error_out: *const c_int,
         callback_contact_status_change: unsafe extern "C" fn(*mut c_void),
         callback_message_received: unsafe extern "C" fn(*mut c_void),
     ) -> *mut ClientFFI;
-    pub fn send_chat_message(
-        client: *mut ClientFFI,
-        receiver: *mut c_void,
-        message: *const c_char,
-        out_error: *const c_int,
-    );
-    pub fn add_chat_contact(client: *mut ClientFFI, address: *mut c_void, out_error: *const c_int);
-    pub fn check_online_status(client: *mut ClientFFI, address: *mut c_void, out_error: *const c_int) -> c_int;
+    pub fn create_chat_message(receiver: *mut c_void, message: *const c_char, error_out: *const c_int) -> *mut c_void;
+    pub fn send_chat_message(client: *mut ClientFFI, message: *mut c_void, error_out: *const c_int);
+    pub fn add_chat_message_metadata(
+        message: *mut c_void,
+        metadata_type: *const c_int,
+        data: *const c_char,
+        error_out: *const c_int,
+    ) -> *mut c_void;
+    pub fn add_chat_contact(client: *mut ClientFFI, address: *mut c_void, error_out: *const c_int);
+    pub fn check_online_status(client: *mut ClientFFI, address: *mut c_void, error_out: *const c_int) -> c_int;
     pub fn get_chat_messages(
         client: *mut ClientFFI,
         sender: *mut c_void,
         limit: *mut c_void,
         page: *mut c_void,
-        out_error: *const c_int,
+        error_out: *const c_int,
     ) -> *mut c_void;
     pub fn destroy_chat_client_ffi(client: *mut ClientFFI);
 }
@@ -99,8 +104,8 @@ impl ChatClient for ChatFFI {
 
         let address_ptr = Box::into_raw(Box::new(address.to_owned())) as *mut c_void;
 
-        let out_error = Box::into_raw(Box::new(0));
-        unsafe { add_chat_contact(client.0, address_ptr, out_error) }
+        let error_out = Box::into_raw(Box::new(0));
+        unsafe { add_chat_contact(client.0, address_ptr, error_out) }
     }
 
     async fn check_online_status(&self, address: &TariAddress) -> ContactOnlineStatus {
@@ -109,23 +114,20 @@ impl ChatClient for ChatFFI {
         let address_ptr = Box::into_raw(Box::new(address.clone())) as *mut c_void;
 
         let result;
-        let out_error = Box::into_raw(Box::new(0));
-        unsafe { result = check_online_status(client.0, address_ptr, out_error) }
+        let error_out = Box::into_raw(Box::new(0));
+        unsafe { result = check_online_status(client.0, address_ptr, error_out) }
 
         ContactOnlineStatus::from_byte(u8::try_from(result).unwrap()).expect("A valid u8 from FFI status")
     }
 
-    async fn send_message(&self, receiver: TariAddress, message: String) {
+    async fn send_message(&self, message: Message) {
         let client = self.ptr.lock().unwrap();
 
-        let message_c_str = CString::new(message).unwrap();
-        let message_c_char: *const c_char = CString::into_raw(message_c_str) as *const c_char;
-
-        let receiver_ptr = Box::into_raw(Box::new(receiver)) as *mut c_void;
-        let out_error = Box::into_raw(Box::new(0));
+        let error_out = Box::into_raw(Box::new(0));
+        let message_ptr = Box::into_raw(Box::new(message)) as *mut c_void;
 
         unsafe {
-            send_chat_message(client.0, receiver_ptr, message_c_char, out_error);
+            send_chat_message(client.0, message_ptr, error_out);
         }
     }
 
@@ -136,14 +138,43 @@ impl ChatClient for ChatFFI {
 
         let messages;
         unsafe {
-            let out_error = Box::into_raw(Box::new(0));
+            let error_out = Box::into_raw(Box::new(0));
             let limit = Box::into_raw(Box::new(limit)) as *mut c_void;
             let page = Box::into_raw(Box::new(page)) as *mut c_void;
-            let all_messages = get_chat_messages(client.0, address_ptr, limit, page, out_error) as *mut Vec<Message>;
+            let all_messages = get_chat_messages(client.0, address_ptr, limit, page, error_out) as *mut Vec<Message>;
             messages = (*all_messages).clone();
         }
 
         messages
+    }
+
+    fn create_message(&self, receiver: &TariAddress, message: String) -> Message {
+        let address_ptr = Box::into_raw(Box::new(receiver.to_owned())) as *mut c_void;
+
+        let message_c_str = CString::new(message).unwrap();
+        let message_c_char: *const c_char = CString::into_raw(message_c_str) as *const c_char;
+
+        let error_out = Box::into_raw(Box::new(0));
+
+        unsafe {
+            let message_ptr = create_chat_message(address_ptr, message_c_char, error_out) as *mut Message;
+            *Box::from_raw(message_ptr)
+        }
+    }
+
+    fn add_metadata(&self, message: Message, metadata_type: MessageMetadataType, data: String) -> Message {
+        let message_ptr = Box::into_raw(Box::new(message)) as *mut c_void;
+        let message_type = metadata_type.as_byte() as *const c_int;
+
+        let data_c_str = CString::new(data).unwrap();
+        let data_c_char: *const c_char = CString::into_raw(data_c_str) as *const c_char;
+
+        let error_out = Box::into_raw(Box::new(0));
+
+        unsafe {
+            add_chat_message_metadata(message_ptr, message_type, data_c_char, error_out);
+            *Box::from_raw(message_ptr as *mut Message)
+        }
     }
 
     fn identity(&self) -> &NodeIdentity {
@@ -189,14 +220,14 @@ pub async fn spawn_ffi_chat_client(name: &str, seed_peers: Vec<Peer>, base_dir: 
 
     let client_ptr;
 
-    let out_error = Box::into_raw(Box::new(0));
+    let error_out = Box::into_raw(Box::new(0));
 
     unsafe {
         *ChatCallback::instance().contact_status_change.lock().unwrap() = 0;
 
         client_ptr = create_chat_client(
             config_ptr,
-            out_error,
+            error_out,
             callback_contact_status_change,
             callback_message_received,
         );

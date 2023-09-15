@@ -24,7 +24,8 @@ use std::convert::TryFrom;
 
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
-use tari_common_types::tari_address::{TariAddress, TariAddressError};
+use serde::{Deserialize, Serialize};
+use tari_common_types::tari_address::TariAddress;
 use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_p2p::tari_message::TariMessageType;
 use tari_utilities::ByteArray;
@@ -34,16 +35,24 @@ use crate::contacts_service::proto;
 #[derive(Clone, Debug, Default)]
 pub struct Message {
     pub body: Vec<u8>,
+    pub metadata: Vec<MessageMetadata>,
     pub address: TariAddress,
     pub direction: Direction,
     pub stored_at: u64,
     pub message_id: Vec<u8>,
 }
 
+impl Message {
+    pub fn push(&mut self, metadata: MessageMetadata) {
+        self.metadata.push(metadata)
+    }
+}
+
 #[repr(u8)]
-#[derive(FromPrimitive, Debug, Copy, Clone)]
+#[derive(FromPrimitive, Debug, Copy, Clone, Default, PartialEq)]
 pub enum Direction {
     Inbound = 0,
+    #[default]
     Outbound = 1,
 }
 
@@ -57,19 +66,46 @@ impl Direction {
     }
 }
 
-impl Default for Direction {
-    fn default() -> Self {
-        Self::Outbound
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct MessageMetadata {
+    pub metadata_type: MessageMetadataType,
+    pub data: Vec<u8>,
+}
+
+#[repr(u8)]
+#[derive(FromPrimitive, Debug, Copy, Clone, Default, Deserialize, Serialize, PartialEq)]
+pub enum MessageMetadataType {
+    Reply = 0,
+    #[default]
+    TokenRequest = 1,
+}
+
+impl MessageMetadataType {
+    pub fn as_byte(self) -> u8 {
+        self as u8
+    }
+
+    pub fn from_byte(value: u8) -> Option<Self> {
+        FromPrimitive::from_u8(value)
     }
 }
 
 impl TryFrom<proto::Message> for Message {
-    type Error = TariAddressError;
+    type Error = String;
 
     fn try_from(message: proto::Message) -> Result<Self, Self::Error> {
+        let mut metadata = vec![];
+        for m in message.metadata {
+            match MessageMetadata::try_from(m) {
+                Ok(md) => metadata.push(md),
+                Err(e) => return Err(e),
+            }
+        }
+
         Ok(Self {
             body: message.body,
-            address: TariAddress::from_bytes(&message.address)?,
+            metadata,
+            address: TariAddress::from_bytes(&message.address).map_err(|e| e.to_string())?,
             // A Message from a proto::Message will always be an inbound message
             direction: Direction::Inbound,
             stored_at: message.stored_at,
@@ -82,6 +118,11 @@ impl From<Message> for proto::Message {
     fn from(message: Message) -> Self {
         Self {
             body: message.body,
+            metadata: message
+                .metadata
+                .iter()
+                .map(|m| proto::MessageMetadata::from(m.clone()))
+                .collect(),
             address: message.address.to_bytes().to_vec(),
             direction: i32::from(message.direction.as_byte()),
             stored_at: message.stored_at,
@@ -93,5 +134,31 @@ impl From<Message> for proto::Message {
 impl From<Message> for OutboundDomainMessage<proto::Message> {
     fn from(message: Message) -> Self {
         Self::new(&TariMessageType::Chat, message.into())
+    }
+}
+
+impl TryFrom<proto::MessageMetadata> for MessageMetadata {
+    type Error = String;
+
+    fn try_from(md: proto::MessageMetadata) -> Result<Self, Self::Error> {
+        if let Some(md_type) =
+            MessageMetadataType::from_byte(u8::try_from(md.metadata_type).map_err(|e| e.to_string())?)
+        {
+            Ok(Self {
+                data: md.data,
+                metadata_type: md_type,
+            })
+        } else {
+            Err("Not a valid metadata type".into())
+        }
+    }
+}
+
+impl From<MessageMetadata> for proto::MessageMetadata {
+    fn from(md: MessageMetadata) -> Self {
+        Self {
+            data: md.data,
+            metadata_type: i32::from(md.metadata_type.as_byte()),
+        }
     }
 }
