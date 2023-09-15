@@ -20,9 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, ffi::CString, ops::Deref};
+use std::{convert::TryFrom, ops::Deref};
 
-use libc::c_char;
 use log::{debug, error, info, trace};
 use tari_contacts::contacts_service::{
     handle::{ContactsLivenessData, ContactsLivenessEvent, ContactsServiceHandle},
@@ -30,78 +29,12 @@ use tari_contacts::contacts_service::{
 };
 use tari_shutdown::ShutdownSignal;
 
+use crate::types::{ChatFFIContactsLivenessData, ChatFFIMessage};
+
 const LOG_TARGET: &str = "chat_ffi::callback_handler";
 
 pub(crate) type CallbackContactStatusChange = unsafe extern "C" fn(*mut ChatFFIContactsLivenessData);
 pub(crate) type CallbackMessageReceived = unsafe extern "C" fn(*mut ChatFFIMessage);
-
-#[repr(C)]
-pub struct ChatFFIContactsLivenessData {
-    pub address: *const c_char,
-    pub last_seen: u64,
-    pub online_status: u8,
-}
-
-impl TryFrom<ContactsLivenessData> for ChatFFIContactsLivenessData {
-    type Error = String;
-
-    fn try_from(v: ContactsLivenessData) -> Result<Self, Self::Error> {
-        let address = match CString::new(v.address().to_bytes()) {
-            Ok(s) => s,
-            Err(e) => return Err(e.to_string()),
-        };
-
-        let last_seen = match v.last_ping_pong_received() {
-            Some(ts) => match u64::try_from(ts.timestamp_micros()) {
-                Ok(num) => num,
-                Err(e) => return Err(e.to_string()),
-            },
-            None => 0,
-        };
-
-        Ok(Self {
-            address: address.as_ptr(),
-            last_seen,
-            online_status: v.online_status().as_u8(),
-        })
-    }
-}
-
-#[repr(C)]
-pub struct ChatFFIMessage {
-    pub body: *const c_char,
-    pub from_address: *const c_char,
-    pub stored_at: u64,
-    pub message_id: *const c_char,
-}
-
-impl TryFrom<Message> for ChatFFIMessage {
-    type Error = String;
-
-    fn try_from(v: Message) -> Result<Self, Self::Error> {
-        let body = match CString::new(v.body) {
-            Ok(s) => s,
-            Err(e) => return Err(e.to_string()),
-        };
-
-        let address = match CString::new(v.address.to_bytes()) {
-            Ok(s) => s,
-            Err(e) => return Err(e.to_string()),
-        };
-
-        let id = match CString::new(v.message_id) {
-            Ok(s) => s,
-            Err(e) => return Err(e.to_string()),
-        };
-
-        Ok(Self {
-            body: body.as_ptr(),
-            from_address: address.as_ptr(),
-            stored_at: v.stored_at,
-            message_id: id.as_ptr(),
-        })
-    }
-}
 
 #[derive(Clone)]
 pub struct CallbackHandler {
