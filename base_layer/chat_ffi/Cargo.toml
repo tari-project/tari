@@ -11,7 +11,6 @@ minotari_app_utilities = { path = "../../applications/minotari_app_utilities" }
 tari_chat_client = { path = "../contacts/examples/chat_client" }
 tari_common = { path = "../../common" }
 tari_common_types = { path = "../common_types" }
-tari_comms = { path = "../../comms/core" }
 tari_contacts = { path = "../contacts" }
 tari_p2p = { path = "../p2p" }
 tari_shutdown = { path = "../../infrastructure/shutdown" }
