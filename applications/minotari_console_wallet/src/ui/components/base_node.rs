@@ -21,11 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use minotari_wallet::connectivity_service::{OnlineStatus, WalletConnectivityInterface};
-use tui::{
+use ratatui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
-    text::{Span, Spans},
+    text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
     Frame,
 };
@@ -46,7 +46,7 @@ impl<B: Backend> Component<B> for BaseNode {
     #[allow(clippy::too_many_lines)]
     fn draw(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
     where B: Backend {
-        let title = Spans::from(vec![Span::styled(
+        let title = Line::from(vec![Span::styled(
             " Base Node Status  -  ",
             Style::default().fg(Color::White),
         )]);
@@ -54,12 +54,12 @@ impl<B: Backend> Component<B> for BaseNode {
         let current_online_status = app_state.get_wallet_connectivity().get_connectivity_status();
         let mut base_node_id_color = Color::White;
         let chain_info = match current_online_status {
-            OnlineStatus::Connecting => Spans::from(vec![
+            OnlineStatus::Connecting => Line::from(vec![
                 Span::styled("Chain Tip:", Style::default().fg(Color::Magenta)),
                 Span::raw(" "),
                 Span::styled("Connecting...", Style::default().fg(Color::Reset)),
             ]),
-            OnlineStatus::Offline => Spans::from(vec![
+            OnlineStatus::Offline => Line::from(vec![
                 Span::styled("Chain Tip:", Style::default().fg(Color::Magenta)),
                 Span::raw(" "),
                 Span::styled("Offline", Style::default().fg(Color::Red)),
@@ -109,9 +109,9 @@ impl<B: Backend> Component<B> for BaseNode {
                         Span::styled(" ms", Style::default().fg(Color::DarkGray)),
                     ];
 
-                    Spans::from(tip_info)
+                    Line::from(tip_info)
                 } else {
-                    Spans::from(vec![
+                    Line::from(vec![
                         Span::styled("Chain Tip:", Style::default().fg(Color::Magenta)),
                         Span::raw(" "),
                         Span::styled("Waiting for data...", Style::default().fg(Color::DarkGray)),
@@ -120,7 +120,7 @@ impl<B: Backend> Component<B> for BaseNode {
             },
         };
 
-        let base_node_id = Spans::from(vec![
+        let base_node_id = Line::from(vec![
             Span::styled(" Connected Base Node ID: ", Style::default().fg(Color::Magenta)),
             Span::styled(
                 format!("{}", app_state.get_selected_base_node().node_id.clone()),

@@ -1,11 +1,11 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use tui::{
+use ratatui::{
     backend::Backend,
     layout::Rect,
     style::{Color, Style},
-    text::{Span, Spans},
+    text::{Line, Span},
     Frame,
 };
 
@@ -25,7 +25,7 @@ pub trait Component<B: Backend> {
     fn on_tick(&mut self, _app_state: &mut AppState) {}
 
     // Create custom title based on data in AppState.
-    fn format_title(&self, title: &str, _app_state: &AppState) -> Spans {
-        Spans::from(Span::styled(title.to_owned(), Style::default().fg(Color::White)))
+    fn format_title(&self, title: &str, _app_state: &AppState) -> Line {
+        Line::from(Span::styled(title.to_owned(), Style::default().fg(Color::White)))
     }
 }

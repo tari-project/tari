@@ -5,16 +5,16 @@ use std::fs;
 
 use log::*;
 use minotari_wallet::output_manager_service::UtxoSelectionCriteria;
-use tari_core::transactions::tari_amount::MicroMinotari;
-use tokio::{runtime::Handle, sync::watch};
-use tui::{
+use ratatui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    text::{Span, Spans},
+    text::{Line, Span},
     widgets::{Block, Borders, ListItem, Paragraph, Wrap},
     Frame,
 };
+use tari_core::transactions::tari_amount::MicroMinotari;
+use tokio::{runtime::Handle, sync::watch};
 use unicode_width::UnicodeWidthStr;
 
 use crate::ui::{
@@ -90,7 +90,7 @@ impl BurnTab {
             .split(area);
 
         let instructions = Paragraph::new(vec![
-            Spans::from(vec![
+            Line::from(vec![
                 Span::raw("Press "),
                 Span::styled("P", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(" to edit "),
@@ -111,7 +111,7 @@ impl BurnTab {
                 Span::styled("B", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(" to view burnt proofs."),
             ]),
-            Spans::from(vec![
+            Line::from(vec![
                 Span::raw("Press "),
                 Span::styled("S", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(" to send a burn transaction."),
@@ -121,7 +121,7 @@ impl BurnTab {
         .block(Block::default());
         f.render_widget(instructions, vert_chunks[0]);
 
-        let burnt_proof_filepath_input = Paragraph::new(self.burnt_proof_filepath_field.as_ref())
+        let burnt_proof_filepath_input = Paragraph::new(&*self.burnt_proof_filepath_field)
             .style(match self.burn_input_mode {
                 BurnInputMode::BurntProofPath => Style::default().fg(Color::Magenta),
                 _ => Style::default(),
@@ -133,7 +133,7 @@ impl BurnTab {
             );
         f.render_widget(burnt_proof_filepath_input, vert_chunks[1]);
 
-        let claim_public_key_input = Paragraph::new(self.claim_public_key_field.as_ref())
+        let claim_public_key_input = Paragraph::new(&*self.claim_public_key_field)
             .style(match self.burn_input_mode {
                 BurnInputMode::ClaimPublicKey => Style::default().fg(Color::Magenta),
                 _ => Style::default(),
@@ -154,7 +154,7 @@ impl BurnTab {
             .block(Block::default().borders(Borders::ALL).title("(A)mount:"));
         f.render_widget(amount_input, amount_fee_layout[0]);
 
-        let fee_input = Paragraph::new(self.fee_field.as_ref())
+        let fee_input = Paragraph::new(&*self.fee_field)
             .style(match self.burn_input_mode {
                 BurnInputMode::Fee => Style::default().fg(Color::Magenta),
                 _ => Style::default(),
@@ -162,7 +162,7 @@ impl BurnTab {
             .block(Block::default().borders(Borders::ALL).title("(F)ee-per-gram (uT):"));
         f.render_widget(fee_input, amount_fee_layout[1]);
 
-        let message_input = Paragraph::new(self.message_field.as_ref())
+        let message_input = Paragraph::new(&*self.message_field)
             .style(match self.burn_input_mode {
                 BurnInputMode::Message => Style::default().fg(Color::Magenta),
                 _ => Style::default(),
@@ -220,7 +220,7 @@ impl BurnTab {
             .margin(1)
             .split(area);
 
-        let instructions = Paragraph::new(Spans::from(vec![
+        let instructions = Paragraph::new(Line::from(vec![
             Span::raw(" Use "),
             Span::styled("Up↑/Down↓ Keys", Style::default().add_modifier(Modifier::BOLD)),
             Span::raw(" to choose a proof, "),

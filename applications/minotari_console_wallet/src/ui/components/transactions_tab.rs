@@ -6,16 +6,16 @@ use std::collections::HashMap;
 use chrono::{DateTime, Local};
 use log::*;
 use minotari_wallet::transaction_service::storage::models::TxCancellationReason;
-use tari_common_types::transaction::{TransactionDirection, TransactionStatus};
-use tokio::runtime::Handle;
-use tui::{
+use ratatui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    text::{Span, Spans},
+    text::{Line, Span},
     widgets::{Block, Borders, ListItem, Paragraph, Wrap},
     Frame,
 };
+use tari_common_types::transaction::{TransactionDirection, TransactionStatus};
+use tokio::runtime::Handle;
 
 use crate::ui::{
     components::{balance::Balance, styles, Component},
@@ -375,7 +375,7 @@ impl TransactionsTab {
                     Style::default().fg(Color::Gray),
                 )
             };
-            let fee = Spans::from(vec![
+            let fee = Line::from(vec![
                 Span::styled(format!("{}", tx.fee), Style::default().fg(Color::White)),
                 fee_details,
             ]);
@@ -506,7 +506,7 @@ impl<B: Backend> Component<B> for TransactionsTab {
         span_vec.push(Span::styled("(Esc)", Style::default().add_modifier(Modifier::BOLD)));
         span_vec.push(Span::raw(" exit list"));
 
-        let instructions = Paragraph::new(Spans::from(span_vec)).wrap(Wrap { trim: false });
+        let instructions = Paragraph::new(Line::from(span_vec)).wrap(Wrap { trim: false });
         f.render_widget(instructions, areas[1]);
 
         self.draw_transaction_lists(f, areas[2], app_state);

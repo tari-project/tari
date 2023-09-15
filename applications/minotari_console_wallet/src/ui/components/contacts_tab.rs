@@ -1,15 +1,15 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use tokio::runtime::Handle;
-use tui::{
+use ratatui::{
     backend::Backend,
     layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
-    text::{Span, Spans},
+    text::{Line, Span},
     widgets::{Block, Borders, Clear, ListItem, Paragraph, Wrap},
     Frame,
 };
+use tokio::runtime::Handle;
 use unicode_width::UnicodeWidthStr;
 
 use crate::{
@@ -58,7 +58,7 @@ impl ContactsTab {
             .margin(1)
             .split(area);
 
-        let instructions = Paragraph::new(Spans::from(vec![
+        let instructions = Paragraph::new(Line::from(vec![
             Span::raw("Use "),
             Span::styled("Up↑/Down↓ Keys", Style::default().add_modifier(Modifier::BOLD)),
             Span::raw(" to select a contact, "),
@@ -137,7 +137,7 @@ impl ContactsTab {
             .margin(1)
             .split(popup_area);
 
-        let instructions = Paragraph::new(Spans::from(vec![
+        let instructions = Paragraph::new(Line::from(vec![
             Span::raw("Press "),
             Span::styled("L", Style::default().add_modifier(Modifier::BOLD)),
             Span::raw(" to edit "),
@@ -153,7 +153,7 @@ impl ContactsTab {
         .block(Block::default());
         f.render_widget(instructions, vert_chunks[0]);
 
-        let alias_input = Paragraph::new(self.alias_field.as_ref())
+        let alias_input = Paragraph::new(&*self.alias_field)
             .style(match self.edit_contact_mode {
                 ContactInputMode::Alias => Style::default().fg(Color::Magenta),
                 _ => Style::default(),
@@ -161,7 +161,7 @@ impl ContactsTab {
             .block(Block::default().borders(Borders::ALL).title("A(l)ias:"));
         f.render_widget(alias_input, vert_chunks[1]);
 
-        let tari_address_input = Paragraph::new(self.address_field.as_ref())
+        let tari_address_input = Paragraph::new(&*self.address_field)
             .style(match self.edit_contact_mode {
                 ContactInputMode::PubkeyEmojiId => Style::default().fg(Color::Magenta),
                 _ => Style::default(),
