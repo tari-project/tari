@@ -44,7 +44,9 @@ impl TryInto<NodeCommsRequest> for ProtoNodeCommsRequest {
                 let excess_sigs = excess_sigs
                     .excess_sigs
                     .into_iter()
-                    .map(|bytes| PrivateKey::from_bytes(&bytes).map_err(|_| "Malformed excess sig".to_string()))
+                    .map(|bytes| {
+                        PrivateKey::from_canonical_bytes(&bytes).map_err(|_| "Malformed excess sig".to_string())
+                    })
                     .collect::<Result<_, _>>()?;
 
                 NodeCommsRequest::FetchMempoolTransactionsByExcessSigs { excess_sigs }

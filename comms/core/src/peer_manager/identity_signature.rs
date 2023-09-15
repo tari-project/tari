@@ -22,7 +22,9 @@
 
 use std::convert::{TryFrom, TryInto};
 
+use blake2::Blake2b;
 use chrono::{DateTime, NaiveDateTime, Utc};
+use digest::consts::U64;
 use prost::Message;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
@@ -35,7 +37,7 @@ use crate::{
     multiaddr::Multiaddr,
     peer_manager::{PeerFeatures, PeerManagerError},
     proto,
-    types::{CommsChallenge, CommsPublicKey, CommsSecretKey, Signature},
+    types::{CommsPublicKey, CommsSecretKey, Signature},
 };
 
 /// Signature that secures the peer identity
@@ -75,7 +77,7 @@ impl IdentitySignature {
             updated_at,
         )
         .finalize();
-        let signature = Signature::sign_raw(secret_key, secret_nonce, challenge.as_ref())
+        let signature = Signature::sign_raw_uniform(secret_key, secret_nonce, challenge.as_ref())
             .expect("unreachable panic: challenge hash digest is the correct length");
         Self {
             version: Self::LATEST_VERSION,
@@ -120,7 +122,7 @@ impl IdentitySignature {
             self.updated_at,
         )
         .finalize();
-        self.signature.verify_challenge(public_key, challenge.as_ref())
+        self.signature.verify_raw_uniform(public_key, challenge.as_ref())
     }
 
     fn construct_challenge<'a, I: IntoIterator<Item = &'a Multiaddr>>(
@@ -130,9 +132,9 @@ impl IdentitySignature {
         features: PeerFeatures,
         addresses: I,
         updated_at: DateTime<Utc>,
-    ) -> DomainSeparatedHasher<CommsChallenge, CommsCorePeerManagerDomain> {
+    ) -> DomainSeparatedHasher<Blake2b<U64>, CommsCorePeerManagerDomain> {
         // e = H(P||R||m)
-        let challenge = comms_core_peer_manager_domain::<CommsChallenge>(IDENTITY_SIGNATURE)
+        let challenge = comms_core_peer_manager_domain::<Blake2b<U64>>(IDENTITY_SIGNATURE)
             .chain(public_key.as_bytes())
             .chain(public_nonce.as_bytes())
             .chain(version.to_le_bytes())
@@ -160,13 +162,13 @@ impl TryFrom<proto::identity::IdentitySignature> for IdentitySignature {
 
     fn try_from(value: proto::identity::IdentitySignature) -> Result<Self, Self::Error> {
         let version = u8::try_from(value.version).map_err(|_| PeerManagerError::InvalidIdentitySignature)?;
-        let public_nonce =
-            CommsPublicKey::from_bytes(&value.public_nonce).map_err(|_| PeerManagerError::InvalidIdentitySignature)?;
-        let signature =
-            CommsSecretKey::from_bytes(&value.signature).map_err(|_| PeerManagerError::InvalidIdentitySignature)?;
+        let public_nonce = CommsPublicKey::from_canonical_bytes(&value.public_nonce)
+            .map_err(|_| PeerManagerError::InvalidIdentitySignature)?;
+        let signature = CommsSecretKey::from_canonical_bytes(&value.signature)
+            .map_err(|_| PeerManagerError::InvalidIdentitySignature)?;
         let updated_at =
             NaiveDateTime::from_timestamp_opt(value.updated_at, 0).ok_or(PeerManagerError::InvalidIdentitySignature)?;
-        let updated_at = DateTime::<Utc>::from_utc(updated_at, Utc);
+        let updated_at = DateTime::<Utc>::from_naive_utc_and_offset(updated_at, Utc);
 
         Ok(Self {
             version,

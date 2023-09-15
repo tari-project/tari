@@ -3081,7 +3081,8 @@ mod tests {
             let receiver_spending_key = stealth_address_script_spending_key(&c, &big_b);
 
             // computing a scanning key `Ks=cG+B` for comparison
-            let scanning_key = PublicKey::from_secret_key(&RistrettoSecretKey::from_bytes(c.as_ref()).unwrap()) + big_b;
+            let scanning_key =
+                PublicKey::from_secret_key(&RistrettoSecretKey::from_uniform_bytes(c.as_ref()).unwrap()) + big_b;
 
             assert_eq!(provided_spending_key.as_ref(), &sender_spending_key);
             assert_eq!(receiver_spending_key, sender_spending_key);

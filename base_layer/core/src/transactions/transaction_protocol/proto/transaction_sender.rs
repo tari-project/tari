@@ -91,17 +91,17 @@ impl TryFrom<proto::SingleRoundSenderData> for SingleRoundSenderData {
     type Error = String;
 
     fn try_from(data: proto::SingleRoundSenderData) -> Result<Self, Self::Error> {
-        let public_excess = PublicKey::from_bytes(&data.public_excess).map_err(|err| err.to_string())?;
-        let public_nonce = PublicKey::from_bytes(&data.public_nonce).map_err(|err| err.to_string())?;
+        let public_excess = PublicKey::from_canonical_bytes(&data.public_excess).map_err(|err| err.to_string())?;
+        let public_nonce = PublicKey::from_canonical_bytes(&data.public_nonce).map_err(|err| err.to_string())?;
         let sender_offset_public_key =
-            PublicKey::from_bytes(&data.sender_offset_public_key).map_err(|err| err.to_string())?;
+            PublicKey::from_canonical_bytes(&data.sender_offset_public_key).map_err(|err| err.to_string())?;
         let metadata = data
             .metadata
             .map(TryInto::try_into)
             .ok_or_else(|| "Transaction metadata not provided".to_string())??;
         let message = data.message;
         let ephemeral_public_nonce =
-            PublicKey::from_bytes(&data.ephemeral_public_nonce).map_err(|err| err.to_string())?;
+            PublicKey::from_canonical_bytes(&data.ephemeral_public_nonce).map_err(|err| err.to_string())?;
         let features = data
             .features
             .map(TryInto::try_into)

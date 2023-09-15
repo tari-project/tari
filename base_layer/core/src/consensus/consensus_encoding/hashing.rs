@@ -24,16 +24,24 @@ use std::{io, io::Write, marker::PhantomData};
 
 use blake2::Blake2b;
 use borsh::BorshSerialize;
-use digest::{consts::U32, Digest};
+use digest::{
+    consts::{U32, U64},
+    Digest,
+};
 use tari_crypto::{hash_domain, hashing::DomainSeparation};
 
 /// Domain separated consensus encoding hasher.
-pub struct DomainSeparatedConsensusHasher<M>(PhantomData<M>);
+pub struct DomainSeparatedConsensusHasher<M, D> {
+    _m: PhantomData<M>,
+    _d: PhantomData<D>,
+}
 
-impl<M: DomainSeparation> DomainSeparatedConsensusHasher<M> {
+impl<M: DomainSeparation, D: Digest> DomainSeparatedConsensusHasher<M, D>
+where D: Default
+{
     #[allow(clippy::new_ret_no_self)]
-    pub fn new(label: &'static str) -> ConsensusHasher<Blake2b<U32>> {
-        let mut digest = Blake2b::<U32>::default();
+    pub fn new(label: &'static str) -> ConsensusHasher<D> {
+        let mut digest = D::default();
         M::add_domain_separation_tag(&mut digest, label);
         ConsensusHasher::from_digest(digest)
     }
@@ -52,10 +60,24 @@ impl<D: Digest> ConsensusHasher<D> {
     }
 }
 
-impl<D> ConsensusHasher<D>
-where D: Digest<OutputSize = U32>
-{
+impl ConsensusHasher<Blake2b<U32>> {
     pub fn finalize(self) -> [u8; 32] {
+        self.writer.0.finalize().into()
+    }
+
+    pub fn update_consensus_encode<T: BorshSerialize>(&mut self, data: &T) {
+        BorshSerialize::serialize(data, &mut self.writer)
+            .expect("Incorrect implementation of BorshSerialize encountered. Implementations MUST be infallible.");
+    }
+
+    pub fn chain<T: BorshSerialize>(mut self, data: &T) -> Self {
+        self.update_consensus_encode(data);
+        self
+    }
+}
+
+impl ConsensusHasher<Blake2b<U64>> {
+    pub fn finalize(self) -> [u8; 64] {
         self.writer.0.finalize().into()
     }
 
@@ -79,7 +101,20 @@ impl Default for ConsensusHasher<Blake2b<U32>> {
             "com.tari.base_layer.core.consensus.consensus_encoding.hashing",
             0
         );
-        DomainSeparatedConsensusHasher::<DefaultConsensusHashDomain>::new("default")
+        DomainSeparatedConsensusHasher::<DefaultConsensusHashDomain, Blake2b<U32>>::new("default")
+    }
+}
+
+impl Default for ConsensusHasher<Blake2b<U64>> {
+    /// This `default` implementation is provided for convenience, but should not be used as the de-facto consensus
+    /// hasher, rather create a new unique hash domain.
+    fn default() -> Self {
+        hash_domain!(
+            DefaultConsensusHashDomain,
+            "com.tari.base_layer.core.consensus.consensus_encoding.hashing",
+            0
+        );
+        DomainSeparatedConsensusHasher::<DefaultConsensusHashDomain, Blake2b<U64>>::new("default")
     }
 }
 
@@ -116,7 +151,7 @@ mod tests {
         TestHashDomain::add_domain_separation_tag(&mut hasher, "foo");
 
         let expected_hash = hasher.chain_update(b"\xff\x00\x00\x00\x00\x00\x00\x00").finalize();
-        let hash = DomainSeparatedConsensusHasher::<TestHashDomain>::new("foo")
+        let hash = DomainSeparatedConsensusHasher::<TestHashDomain, Blake2b<U32>>::new("foo")
             .chain(&255u64)
             .finalize();
 
@@ -131,7 +166,7 @@ mod tests {
         TestHashDomain::add_domain_separation_tag(&mut hasher, "foo");
 
         let expected_hash = hasher.chain_update(b"\x01\x73").finalize();
-        let hash = DomainSeparatedConsensusHasher::<TestHashDomain>::new("foo")
+        let hash = DomainSeparatedConsensusHasher::<TestHashDomain, Blake2b<U32>>::new("foo")
             .chain(&test_subject)
             .finalize();
 
@@ -139,13 +174,13 @@ mod tests {
     }
 
     #[test]
-    fn default_consensus_hash_is_not_blake256_default_hash() {
-        let blake256_hasher = Blake2b::<U32>::default();
-        let blake256_hash = blake256_hasher.chain_update(b"").finalize();
+    fn default_consensus_hash_is_not_blake_default_hash() {
+        let blake_hasher = Blake2b::<U32>::default();
+        let blake_hash = blake_hasher.chain_update(b"").finalize();
 
-        let default_consensus_hasher = ConsensusHasher::default();
+        let default_consensus_hasher = ConsensusHasher::<Blake2b<U32>>::default();
         let default_consensus_hash = default_consensus_hasher.chain(b"").finalize();
 
-        assert_ne!(blake256_hash.as_slice(), default_consensus_hash.as_slice());
+        assert_ne!(blake_hash.as_slice(), default_consensus_hash.as_slice());
     }
 }

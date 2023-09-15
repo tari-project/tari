@@ -118,9 +118,9 @@ pub fn get_stagenet_genesis_block() -> ChainBlock {
         // Hardcode the Merkle roots once they've been computed above
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
-            FixedHash::from_hex("9d09a1400740160c28b5ce4ef81c35e40b55cbd966e0eee4373f18bfc2d53823").unwrap();
+            FixedHash::from_hex("b3569982f737771e11008c97050640d12a94ce42231ac69fb955dbf66c9d19b8").unwrap();
         block.header.output_mr =
-            FixedHash::from_hex("557b1d314988e5d32b29472179e6f857c067eb13d9e9099862d5aab67444df08").unwrap();
+            FixedHash::from_hex("fe43a6c02853ecec784afab21014f1e237c62557dab9d1af8fb41e3e6c92a7f2").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
     }
@@ -139,7 +139,7 @@ pub fn get_stagenet_genesis_block() -> ChainBlock {
 
 fn get_stagenet_genesis_block_raw() -> Block {
     // Set genesis timestamp
-    let genesis_timestamp = DateTime::parse_from_rfc2822("11 Aug 2023 15:10:00 +0200").expect("parse may not fail");
+    let genesis_timestamp = DateTime::parse_from_rfc2822("29 Sep 2023 08:00:00 +0200").expect("parse may not fail");
     let not_before_proof = b"i am the stagenet genesis block, watch out, here i come \
         \
         The New York Times , 2000/01/01 \
@@ -171,9 +171,9 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
         // Hardcode the Merkle roots once they've been computed above
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
-            FixedHash::from_hex("9d09a1400740160c28b5ce4ef81c35e40b55cbd966e0eee4373f18bfc2d53823").unwrap();
+            FixedHash::from_hex("b3569982f737771e11008c97050640d12a94ce42231ac69fb955dbf66c9d19b8").unwrap();
         block.header.output_mr =
-            FixedHash::from_hex("557b1d314988e5d32b29472179e6f857c067eb13d9e9099862d5aab67444df08").unwrap();
+            FixedHash::from_hex("fe43a6c02853ecec784afab21014f1e237c62557dab9d1af8fb41e3e6c92a7f2").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
     }
@@ -192,7 +192,7 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
 
 fn get_nextnet_genesis_block_raw() -> Block {
     // Set genesis timestamp
-    let genesis_timestamp = DateTime::parse_from_rfc2822("11 Aug 2023 15:20:00 +0200").expect("parse may not fail");
+    let genesis_timestamp = DateTime::parse_from_rfc2822("29 Sep 2023 08:10:00 +0200").expect("parse may not fail");
     // Let us add a "not before" proof to the genesis block
     let not_before_proof = b"nextnet has a blast, its prowess echoed in every gust \
         \
@@ -229,9 +229,9 @@ pub fn get_igor_genesis_block() -> ChainBlock {
 
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
-            FixedHash::from_hex("c71386fe8d30e1dbc5e9729ba6375630b78ae0fc8d1c26d6c4e02d250426d9a5").unwrap();
+            FixedHash::from_hex("5057ce1672184c5875bc707119a506fdb44bbc7b8eb33420aee642e1064ace3a").unwrap();
         block.header.output_mr =
-            FixedHash::from_hex("2e828a1aaa2263cec1c25be053a63b021fddee3a32bdc28035134331d9c194de").unwrap();
+            FixedHash::from_hex("f226ae88fbffcdf94633a2f405c27295afffb577c437de0bc6ca838e7fad5aae").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
     }
@@ -250,7 +250,7 @@ pub fn get_igor_genesis_block() -> ChainBlock {
 
 fn get_igor_genesis_block_raw() -> Block {
     // Set genesis timestamp
-    let genesis_timestamp = DateTime::parse_from_rfc2822("31 Aug 2023 08:00:00 +0200").expect("parse may not fail");
+    let genesis_timestamp = DateTime::parse_from_rfc2822("29 Sep 2023 08:20:00 +0200").expect("parse may not fail");
     // Let us add a "not before" proof to the genesis block
     let not_before_proof = b"but igor is the best, it is whispered in the wind \
         \
@@ -283,9 +283,9 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
 
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
-            FixedHash::from_hex("9d09a1400740160c28b5ce4ef81c35e40b55cbd966e0eee4373f18bfc2d53823").unwrap();
+            FixedHash::from_hex("b3569982f737771e11008c97050640d12a94ce42231ac69fb955dbf66c9d19b8").unwrap();
         block.header.output_mr =
-            FixedHash::from_hex("557b1d314988e5d32b29472179e6f857c067eb13d9e9099862d5aab67444df08").unwrap();
+            FixedHash::from_hex("fe43a6c02853ecec784afab21014f1e237c62557dab9d1af8fb41e3e6c92a7f2").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
     }
@@ -304,7 +304,7 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
 
 fn get_esmeralda_genesis_block_raw() -> Block {
     // Set genesis timestamp
-    let genesis_timestamp = DateTime::parse_from_rfc2822("31 Aug 2023 08:01:00 +0200").expect("parse may not fail");
+    let genesis_timestamp = DateTime::parse_from_rfc2822("29 Sep 2023 08:30:00 +0200").expect("parse may not fail");
     // Let us add a "not before" proof to the genesis block
     let not_before_proof =
         b"as I sip my drink, thoughts of esmeralda consume my mind, like a refreshing nourishing draught \
@@ -410,7 +410,7 @@ mod test {
         // Note: Generate new data for `pub fn get_igor_genesis_block()` and `fn get_igor_genesis_block_raw()`
         // if consensus values change, e.g. new faucet or other
         let block = get_igor_genesis_block();
-        check_block(Network::Igor, &block, 5526, 1);
+        check_block(Network::Igor, &block, 1200, 1);
     }
 
     fn check_block(network: Network, block: &ChainBlock, expected_outputs: usize, expected_kernels: usize) {

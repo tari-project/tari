@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::convert::TryFrom;
+
 use log::*;
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex};
 use tari_script::TariScript;
@@ -68,7 +70,15 @@ pub fn calc_median_timestamp(timestamps: &[EpochTime]) -> Result<EpochTime, Vali
             timestamps[mid_index - 1],
             timestamps[mid_index],
         );
-        (timestamps[mid_index - 1] + timestamps[mid_index]) / 2
+        // To compute this mean, we use `u128` to avoid overflow with the internal `u64` typing
+        // Note that the final cast back to `u64` will never truncate since each summand is bounded by `u64`
+        // To make the linter happy, we use `u64::MAX` in the impossible case that the cast fails
+        EpochTime::from(
+            u64::try_from(
+                (u128::from(timestamps[mid_index - 1].as_u64()) + u128::from(timestamps[mid_index].as_u64())) / 2,
+            )
+            .unwrap_or(u64::MAX),
+        )
     } else {
         timestamps[mid_index]
     };

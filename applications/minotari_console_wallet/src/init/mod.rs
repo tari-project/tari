@@ -503,7 +503,7 @@ async fn detect_local_base_node(network: Network) -> Option<SeedPeer> {
     };
     let resp = node_conn.identify(Empty {}).await.ok()?;
     let identity = resp.get_ref();
-    let public_key = CommsPublicKey::from_bytes(&identity.public_key).ok()?;
+    let public_key = CommsPublicKey::from_canonical_bytes(&identity.public_key).ok()?;
     let addresses = identity
         .public_addresses
         .iter()

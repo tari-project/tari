@@ -101,7 +101,7 @@ impl Dh for CommsDiffieHellman {
 
     fn set(&mut self, privkey: &[u8]) {
         // `set` is used in the Builder, so this will panic if given an invalid secret key.
-        self.secret_key = CommsSecretKey::from_bytes(privkey).expect("invalid secret key");
+        self.secret_key = CommsSecretKey::from_canonical_bytes(privkey).expect("invalid secret key");
         self.public_key = CommsPublicKey::from_secret_key(&self.secret_key);
     }
 
@@ -121,7 +121,7 @@ impl Dh for CommsDiffieHellman {
     }
 
     fn dh(&self, public_key: &[u8], out: &mut [u8]) -> Result<(), snow::Error> {
-        let pk = CommsPublicKey::from_bytes(&public_key[..self.pub_len()]).map_err(|_| snow::Error::Dh)?;
+        let pk = CommsPublicKey::from_canonical_bytes(&public_key[..self.pub_len()]).map_err(|_| snow::Error::Dh)?;
         let shared = CommsDHKE::new(&self.secret_key, &pk);
         let hash = noise_kdf(&shared);
         copy_slice!(hash.reveal(), out);
@@ -146,9 +146,9 @@ mod test {
     fn generate() {
         let keypair = build_keypair();
 
-        let sk = CommsSecretKey::from_bytes(&keypair.private).unwrap();
+        let sk = CommsSecretKey::from_canonical_bytes(&keypair.private).unwrap();
         let expected_pk = CommsPublicKey::from_secret_key(&sk);
-        let pk = CommsPublicKey::from_bytes(&keypair.public).unwrap();
+        let pk = CommsPublicKey::from_canonical_bytes(&keypair.public).unwrap();
         assert_eq!(pk, expected_pk);
     }
 

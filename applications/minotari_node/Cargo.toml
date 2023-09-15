@@ -15,13 +15,13 @@ tari_comms = { path = "../../comms/core", features = ["rpc"] }
 tari_common_types = { path = "../../base_layer/common_types" }
 tari_comms_dht = { path = "../../comms/dht" }
 tari_core = { path = "../../base_layer/core", default-features = false, features = ["transactions"] }
-tari_crypto = { version = "0.18" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto", branch = "main" }
 tari_libtor = { path = "../../infrastructure/libtor", optional = true }
 tari_p2p = { path = "../../base_layer/p2p", features = ["auto-update"] }
 tari_storage = {path="../../infrastructure/storage"}
 tari_service_framework = { path = "../../base_layer/service_framework" }
 tari_shutdown = { path = "../../infrastructure/shutdown" }
-tari_utilities = { version = "0.5" }
+tari_utilities = { version = "0.6" }
 
 anyhow = "1.0.53"
 async-trait = "0.1.52"

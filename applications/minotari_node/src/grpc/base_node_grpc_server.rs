@@ -1145,7 +1145,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let outputs = request
             .commitments
             .into_iter()
-            .map(|s| Commitment::from_bytes(&s))
+            .map(|s| Commitment::from_canonical_bytes(&s))
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| {
                 obscure_error_if_true(
@@ -1712,7 +1712,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let request = request.into_inner();
         let report_error_flag = self.report_error_flag();
         let mut handler = self.node_service.clone();
-        let public_key = PublicKey::from_bytes(&request.public_key)
+        let public_key = PublicKey::from_canonical_bytes(&request.public_key)
             .map_err(|e| obscure_error_if_true(report_error_flag, Status::invalid_argument(e.to_string())))?;
 
         let shard_key = handler.get_shard_key(request.height, public_key).await.map_err(|e| {
