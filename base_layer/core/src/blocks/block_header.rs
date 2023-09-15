@@ -43,8 +43,10 @@ use std::{
     fmt::{Display, Error, Formatter},
 };
 
+use blake2::Blake2b;
 use borsh::{BorshDeserialize, BorshSerialize};
 use chrono::{DateTime, NaiveDateTime, Utc};
+use digest::consts::U32;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{BlockHash, FixedHash, PrivateKey};
 use tari_utilities::{epoch_time::EpochTime, hex::Hex};
@@ -139,7 +141,7 @@ impl BlockHeader {
     }
 
     pub fn hash(&self) -> FixedHash {
-        DomainSeparatedConsensusHasher::<BlocksHashDomain>::new("block_header")
+        DomainSeparatedConsensusHasher::<BlocksHashDomain, Blake2b<U32>>::new("block_header")
             .chain(&self.mining_hash())
             .chain(&self.pow)
             .chain(&self.nonce)
@@ -216,7 +218,7 @@ impl BlockHeader {
     /// Provides a mining hash of the header, used for the mining.
     /// This differs from the normal hash by not hashing the nonce and kernel pow.
     pub fn mining_hash(&self) -> FixedHash {
-        DomainSeparatedConsensusHasher::<BlocksHashDomain>::new("block_header")
+        DomainSeparatedConsensusHasher::<BlocksHashDomain, Blake2b<U32>>::new("block_header")
             .chain(&self.version)
             .chain(&self.height)
             .chain(&self.prev_hash)
@@ -248,7 +250,7 @@ impl BlockHeader {
     pub fn to_chrono_datetime(&self) -> DateTime<Utc> {
         let dt = NaiveDateTime::from_timestamp_opt(i64::try_from(self.timestamp.as_u64()).unwrap_or(i64::MAX), 0)
             .unwrap_or(NaiveDateTime::MAX);
-        DateTime::from_utc(dt, Utc)
+        DateTime::from_naive_utc_and_offset(dt, Utc)
     }
 
     #[inline]

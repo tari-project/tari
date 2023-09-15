@@ -30,7 +30,10 @@ use tari_comms::{
     types::{CommsDHKE, CommsPublicKey, CommsSecretKey},
     BufMut,
 };
-use tari_crypto::tari_utilities::{epoch_time::EpochTime, ByteArray};
+use tari_crypto::{
+    keys::SecretKey,
+    tari_utilities::{epoch_time::EpochTime, ByteArray},
+};
 use tari_utilities::{hidden_type, safe_array::SafeArray, ByteArrayError, Hidden};
 use zeroize::Zeroize;
 
@@ -46,9 +49,9 @@ use crate::{
 // `ChaCha20` key used to encrypt messages
 hidden_type!(CommsMessageKey, SafeArray<u8, { size_of::<chacha20::Key>() }>);
 
-// Mask used (as a secret key) for sender key offset; we fix it to 32 bytes for compatibility
-// This isn't fully generic, but will work for 32-byte hashers and byte-to-scalar functionality
-hidden_type!(CommsKeyMask, SafeArray<u8, 32>);
+// Mask used (as a secret key) for sender key offset; we fix it to 64 bytes for wide reduction
+// Note that this is not fully generic!
+hidden_type!(CommsKeyMask, SafeArray<u8, 64>);
 
 const MESSAGE_BASE_LENGTH: usize = 6000;
 
@@ -141,8 +144,7 @@ pub fn generate_key_mask(data: &CommsDHKE) -> Result<CommsSecretKey, ByteArrayEr
         GenericArray::from_mut_slice(comms_key_mask.reveal_mut()),
     );
 
-    // This is infallible since we require 32 bytes of hash output
-    CommsSecretKey::from_bytes(comms_key_mask.reveal())
+    CommsSecretKey::from_uniform_bytes(comms_key_mask.reveal())
 }
 
 /// Decrypt a message using the `ChaCha20Poly1305` authenticated stream cipher

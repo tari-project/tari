@@ -160,7 +160,7 @@ impl<TSocket> NoiseSocket<TSocket> {
     /// Get the remote static key as a CommsPublicKey
     pub fn get_remote_public_key(&self) -> Option<CommsPublicKey> {
         self.get_remote_static()
-            .and_then(|s| CommsPublicKey::from_bytes(s).ok())
+            .and_then(|s| CommsPublicKey::from_canonical_bytes(s).ok())
     }
 }
 

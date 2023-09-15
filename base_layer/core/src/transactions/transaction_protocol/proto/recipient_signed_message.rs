@@ -37,8 +37,8 @@ impl TryFrom<proto::RecipientSignedMessage> for RecipientSignedMessage {
             .map(TryInto::try_into)
             .ok_or_else(|| "Transaction output not provided".to_string())??;
 
-        let public_spend_key =
-            PublicKey::from_bytes(&message.public_spend_key).map_err(|err| format!("public_spend_key: {}", err))?;
+        let public_spend_key = PublicKey::from_canonical_bytes(&message.public_spend_key)
+            .map_err(|err| format!("public_spend_key: {}", err))?;
 
         let partial_signature = message
             .partial_signature
@@ -49,7 +49,7 @@ impl TryFrom<proto::RecipientSignedMessage> for RecipientSignedMessage {
             .map(TryInto::try_into)
             .ok_or_else(|| "Transaction metadata not provided".to_string())??;
 
-        let offset = PrivateKey::from_bytes(&message.offset).map_err(|err| format!("offset: {}", err))?;
+        let offset = PrivateKey::from_canonical_bytes(&message.offset).map_err(|err| format!("offset: {}", err))?;
 
         Ok(Self {
             tx_id: message.tx_id.into(),

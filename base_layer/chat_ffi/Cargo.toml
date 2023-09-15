@@ -14,7 +14,7 @@ tari_common_types = { path = "../common_types" }
 tari_contacts = { path = "../contacts" }
 tari_p2p = { path = "../p2p" }
 tari_shutdown = { path = "../../infrastructure/shutdown" }
-tari_utilities = { version = "0.5" }
+tari_utilities = { version = "0.6" }
 
 libc = "0.2.65"
 libsqlite3-sys = { version = "0.25.1", features = ["bundled"], optional = true }
@@ -32,7 +32,7 @@ crate-type = ["staticlib","cdylib"]
 [dev-dependencies]
 chrono = { version = "0.4.19", default-features = false }
 rand = "0.8"
-tari_crypto = "0.18.0"
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto", branch = "main" }
 
 [build-dependencies]
 cbindgen = "0.24.3"

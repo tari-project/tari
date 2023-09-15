@@ -28,7 +28,9 @@ use std::{
     fmt::{Display, Formatter},
 };
 
+use blake2::Blake2b;
 use borsh::{BorshDeserialize, BorshSerialize};
+use digest::consts::{U32, U64};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{
@@ -45,6 +47,7 @@ use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     errors::RangeProofError,
     extended_range_proof::{ExtendedRangeProofService, Statement},
+    keys::SecretKey,
     ristretto::bulletproofs_plus::RistrettoAggregatedPublicStatement,
     tari_utilities::{hex::Hex, ByteArray},
 };
@@ -276,7 +279,7 @@ impl TransactionOutput {
             },
         };
         // Now we can perform the balance proof
-        let e = PrivateKey::from_bytes(&e_bytes).unwrap();
+        let e = PrivateKey::from_uniform_bytes(&e_bytes).unwrap();
         let value_as_private_key = PrivateKey::from(self.minimum_value_promise.as_u64());
         let commit_nonce_a = PrivateKey::default(); // This is the deterministic nonce `r_a` of zero
         if self.metadata_signature.u_a().to_hex() == (commit_nonce_a + e * value_as_private_key).to_hex() {
@@ -291,7 +294,7 @@ impl TransactionOutput {
         }
     }
 
-    fn verify_metadata_signature_internal(&self) -> Result<[u8; 32], TransactionError> {
+    fn verify_metadata_signature_internal(&self) -> Result<[u8; 64], TransactionError> {
         let challenge = TransactionOutput::build_metadata_signature_challenge(
             &self.version,
             &self.script,
@@ -379,7 +382,7 @@ impl TransactionOutput {
         covenant: &Covenant,
         encrypted_data: &EncryptedData,
         minimum_value_promise: MicroMinotari,
-    ) -> [u8; 32] {
+    ) -> [u8; 64] {
         // We build the message separately to help with hardware wallet support. This reduces the amount of data that
         // needs to be transferred in order to sign the signature.
         let message = TransactionOutput::metadata_signature_message_from_parts(
@@ -407,8 +410,8 @@ impl TransactionOutput {
         ephemeral_pubkey: &PublicKey,
         commitment: &Commitment,
         message: &[u8; 32],
-    ) -> [u8; 32] {
-        let common = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("metadata_signature")
+    ) -> [u8; 64] {
+        let common = DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U64>>::new("metadata_signature")
             .chain(ephemeral_pubkey)
             .chain(ephemeral_commitment)
             .chain(sender_offset_public_key)
@@ -442,7 +445,7 @@ impl TransactionOutput {
         encrypted_data: &EncryptedData,
         minimum_value_promise: &MicroMinotari,
     ) -> [u8; 32] {
-        let common = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("metadata_message")
+        let common = DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("metadata_message")
             .chain(version)
             .chain(script)
             .chain(features)

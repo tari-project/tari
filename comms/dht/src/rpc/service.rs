@@ -127,7 +127,7 @@ impl DhtRpcService for DhtRpcServiceImpl {
         let node_id = if message.closer_to.is_empty() {
             request.context().peer_node_id().clone()
         } else {
-            NodeId::from_bytes(&message.closer_to)
+            NodeId::from_canonical_bytes(&message.closer_to)
                 .map_err(|_| RpcStatus::bad_request("`closer_to` did not contain a valid NodeId"))?
         };
 
@@ -141,7 +141,7 @@ impl DhtRpcService for DhtRpcServiceImpl {
         let mut excluded = message
             .excluded
             .iter()
-            .filter_map(|node_id| NodeId::from_bytes(node_id).ok())
+            .filter_map(|node_id| NodeId::from_canonical_bytes(node_id).ok())
             .collect::<Vec<_>>();
 
         if excluded.len() != message.excluded.len() {
