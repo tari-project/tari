@@ -22,7 +22,6 @@ use crate::sparse_merkle_tree::{
 pub enum UpdateResult {
     Updated(ValueHash),
     Inserted,
-    AlreadyExistingKey,
 }
 
 #[derive(Debug, PartialEq)]
@@ -257,7 +256,7 @@ impl<H: Digest<OutputSize = U32>> SparseMerkleTree<H> {
     /// This will only add new node when it does not exist
     pub fn insert(&mut self, key: NodeKey, value: ValueHash) -> Result<UpdateResult, SMTError> {
         if self.get(&key)?.is_some() {
-            return Ok(UpdateResult::AlreadyExistingKey);
+            return Err(SMTError::KeyExists);
         }
         // So we no know it does not exist, so lets add it.
         self.upsert(key, value)
@@ -429,6 +428,7 @@ mod test {
     use crate::sparse_merkle_tree::{
         tree::{DeleteResult, SparseMerkleTree},
         NodeKey,
+        SMTError,
         UpdateResult,
         ValueHash,
         EMPTY_NODE_HASH,
@@ -886,8 +886,8 @@ mod test {
         assert!(!tree.contains(&short_key(0)));
         assert!(tree.contains(&short_key(1)));
         assert_eq!(
-            tree.insert(short_key(1), ValueHash::from([2u8; 32])).unwrap(),
-            UpdateResult::AlreadyExistingKey
+            tree.insert(short_key(1), ValueHash::from([2u8; 32])).unwrap_err(),
+            SMTError::KeyExists
         );
         assert_eq!(tree.get(&short_key(1)).unwrap().unwrap(), &ValueHash::from([1u8; 32]));
 
@@ -908,13 +908,13 @@ mod test {
         assert!(tree.contains(&short_key(0)));
         assert!(tree.contains(&short_key(1)));
         assert_eq!(
-            tree.insert(short_key(0), ValueHash::from([1u8; 32])).unwrap(),
-            UpdateResult::AlreadyExistingKey
+            tree.insert(short_key(0), ValueHash::from([1u8; 32])).unwrap_err(),
+            SMTError::KeyExists
         );
         assert_eq!(tree.get(&short_key(0)).unwrap().unwrap(), &ValueHash::from([0u8; 32]));
         assert_eq!(
-            tree.insert(short_key(1), ValueHash::from([2u8; 32])).unwrap(),
-            UpdateResult::AlreadyExistingKey
+            tree.insert(short_key(1), ValueHash::from([2u8; 32])).unwrap_err(),
+            SMTError::KeyExists
         );
         assert_eq!(tree.get(&short_key(1)).unwrap().unwrap(), &ValueHash::from([1u8; 32]));
     }
