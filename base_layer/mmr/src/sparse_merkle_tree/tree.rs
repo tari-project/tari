@@ -886,9 +886,10 @@ mod test {
         assert!(!tree.contains(&short_key(0)));
         assert!(tree.contains(&short_key(1)));
         assert_eq!(
-            tree.insert(short_key(1), ValueHash::from([1u8; 32])).unwrap(),
+            tree.insert(short_key(1), ValueHash::from([2u8; 32])).unwrap(),
             UpdateResult::AlreadyExistingKey
         );
+        assert_eq!(tree.get(&short_key(1)).unwrap().unwrap(), &ValueHash::from([1u8; 32]));
 
         // Delete the key, which the tree must not contain
         tree.delete(&short_key(1)).unwrap();
@@ -907,12 +908,14 @@ mod test {
         assert!(tree.contains(&short_key(0)));
         assert!(tree.contains(&short_key(1)));
         assert_eq!(
-            tree.insert(short_key(0), ValueHash::from([0u8; 32])).unwrap(),
+            tree.insert(short_key(0), ValueHash::from([1u8; 32])).unwrap(),
             UpdateResult::AlreadyExistingKey
         );
+        assert_eq!(tree.get(&short_key(0)).unwrap().unwrap(), &ValueHash::from([0u8; 32]));
         assert_eq!(
-            tree.insert(short_key(1), ValueHash::from([1u8; 32])).unwrap(),
+            tree.insert(short_key(1), ValueHash::from([2u8; 32])).unwrap(),
             UpdateResult::AlreadyExistingKey
         );
+        assert_eq!(tree.get(&short_key(1)).unwrap().unwrap(), &ValueHash::from([1u8; 32]));
     }
 }
