@@ -39,7 +39,10 @@ use crate::{
         StatsResponse,
         TxStorageResponse,
     },
-    transactions::{transaction_components::Transaction, weight::TransactionWeight},
+    transactions::{
+        transaction_components::{Transaction, TransactionError},
+        weight::TransactionWeight,
+    },
     validation::{TransactionValidator, ValidationError},
 };
 
@@ -69,7 +72,7 @@ impl MempoolStorage {
     }
 
     /// Insert an unconfirmed transaction into the Mempool.
-    pub fn insert(&mut self, tx: Arc<Transaction>) -> std::io::Result<TxStorageResponse> {
+    pub fn insert(&mut self, tx: Arc<Transaction>) -> Result<TxStorageResponse, TransactionError> {
         let tx_id = tx
             .body
             .kernels()
@@ -77,12 +80,19 @@ impl MempoolStorage {
             .map(|k| k.excess_sig.get_signature().to_hex())
             .unwrap_or_else(|| "None?!".into());
         let timer = Instant::now();
+        debug!(target: LOG_TARGET, "Inserting tx into mempool: {}", tx_id);
+        let tx_fee = match tx.body.get_total_fee() {
+            Ok(fee) => fee,
+            Err(e) => {
+                warn!(target: LOG_TARGET, "Invalid transaction: {}", e);
+                return Ok(TxStorageResponse::NotStoredConsensus);
+            },
+        };
         // This check is almost free, so lets check this before we do any expensive validation.
-        if tx.body.get_total_fee().as_u64() < self.unconfirmed_pool.config.min_fee {
+        if tx_fee.as_u64() < self.unconfirmed_pool.config.min_fee {
             debug!(target: LOG_TARGET, "Tx: ({}) fee too low, rejecting",tx_id);
             return Ok(TxStorageResponse::NotStoredFeeTooLow);
         }
-        debug!(target: LOG_TARGET, "Inserting tx into mempool: {}", tx_id);
         match self.validator.validate(&tx) {
             Ok(()) => {
                 debug!(
@@ -147,7 +157,7 @@ impl MempoolStorage {
     }
 
     // Insert a set of new transactions into the UTxPool.
-    fn insert_txs(&mut self, txs: Vec<Arc<Transaction>>) -> std::io::Result<()> {
+    fn insert_txs(&mut self, txs: Vec<Arc<Transaction>>) -> Result<(), TransactionError> {
         for tx in txs {
             self.insert(tx)?;
         }
@@ -341,7 +351,7 @@ impl MempoolStorage {
     }
 
     /// Gathers and returns the stats of the Mempool.
-    pub fn stats(&self) -> std::io::Result<StatsResponse> {
+    pub fn stats(&self) -> Result<StatsResponse, TransactionError> {
         let weighting = self.get_transaction_weighting();
         Ok(StatsResponse {
             unconfirmed_txs: self.unconfirmed_pool.len() as u64,

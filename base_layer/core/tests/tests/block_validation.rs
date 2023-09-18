@@ -414,7 +414,7 @@ async fn test_orphan_validator() {
 
     // let break coinbase lock height
     let (coinbase_utxo, coinbase_kernel, _) = create_coinbase(
-        rules.get_block_reward_at(1) + tx01.body.get_total_fee() + tx02.body.get_total_fee(),
+        rules.get_block_reward_at(1) + tx01.body.get_total_fee().unwrap() + tx02.body.get_total_fee().unwrap(),
         1,
         None,
         &key_manager,
@@ -988,7 +988,7 @@ async fn test_block_sync_body_validator() {
 
     // let break coinbase lock height
     let (coinbase_utxo, coinbase_kernel, _) = create_coinbase(
-        rules.get_block_reward_at(1) + tx01.body.get_total_fee() + tx02.body.get_total_fee(),
+        rules.get_block_reward_at(1) + tx01.body.get_total_fee().unwrap() + tx02.body.get_total_fee().unwrap(),
         1 + rules.consensus_constants(1).coinbase_min_maturity(),
         None,
         &key_manager,

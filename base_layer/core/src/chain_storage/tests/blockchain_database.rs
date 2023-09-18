@@ -423,7 +423,7 @@ mod prepare_new_block {
     fn it_errors_for_genesis_block() {
         let db = setup();
         let genesis = db.fetch_block(0, true).unwrap();
-        let template = NewBlockTemplate::from_block(genesis.block().clone(), Difficulty::min(), 5000 * T);
+        let template = NewBlockTemplate::from_block(genesis.block().clone(), Difficulty::min(), 5000 * T).unwrap();
         let err = db.prepare_new_block(template).unwrap_err();
         assert!(matches!(err, ChainStorageError::InvalidArguments { .. }));
     }
@@ -433,7 +433,8 @@ mod prepare_new_block {
         let db = setup();
         let genesis = db.fetch_block(0, true).unwrap();
         let next_block = BlockHeader::from_previous(genesis.header());
-        let mut template = NewBlockTemplate::from_block(next_block.into_builder().build(), Difficulty::min(), 5000 * T);
+        let mut template =
+            NewBlockTemplate::from_block(next_block.into_builder().build(), Difficulty::min(), 5000 * T).unwrap();
         // This would cause a panic if the sanity checks were not there
         template.header.height = 100;
         let err = db.prepare_new_block(template.clone()).unwrap_err();
@@ -448,7 +449,8 @@ mod prepare_new_block {
         let db = setup();
         let genesis = db.fetch_block(0, true).unwrap();
         let next_block = BlockHeader::from_previous(genesis.header());
-        let template = NewBlockTemplate::from_block(next_block.into_builder().build(), Difficulty::min(), 5000 * T);
+        let template =
+            NewBlockTemplate::from_block(next_block.into_builder().build(), Difficulty::min(), 5000 * T).unwrap();
         let block = db.prepare_new_block(template).unwrap();
         assert_eq!(block.header.height, 1);
     }

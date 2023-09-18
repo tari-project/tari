@@ -219,12 +219,14 @@ impl AggregateBody {
         Ok(())
     }
 
-    pub fn get_total_fee(&self) -> MicroMinotari {
+    pub fn get_total_fee(&self) -> Result<MicroMinotari, TransactionError> {
         let mut fee = MicroMinotari::from(0);
         for kernel in &self.kernels {
-            fee += kernel.fee;
+            fee = fee.checked_add(kernel.fee).ok_or(TransactionError::InvalidKernel(
+                "Aggregated body has greater fee than u64::MAX".to_string(),
+            ))?;
         }
-        fee
+        Ok(fee)
     }
 
     /// Run through the outputs of the block and check that
@@ -329,8 +331,10 @@ impl AggregateBody {
     }
 
     /// Returns the weight in grams of a body
-    pub fn calculate_weight(&self, transaction_weight: &TransactionWeight) -> std::io::Result<u64> {
-        transaction_weight.calculate_body(self)
+    pub fn calculate_weight(&self, transaction_weight: &TransactionWeight) -> Result<u64, TransactionError> {
+        transaction_weight
+            .calculate_body(self)
+            .map_err(|e| TransactionError::SerializationError(e.to_string()))
     }
 
     pub fn sum_features_and_scripts_size(&self) -> std::io::Result<usize> {

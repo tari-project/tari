@@ -69,10 +69,14 @@ impl CommandContext {
                     continue;
                 }
             } else {
+                let fee = match tx.body.get_total_fee() {
+                    Ok(fee) => format!("{}", fee),
+                    Err(e) => e.to_string(),
+                };
                 println!(
                     "    {} Fee: {}, Outputs: {}, Kernels: {}, Inputs: {}, features_and_scripts: {} bytes",
                     tx_sig,
-                    tx.body.get_total_fee(),
+                    fee,
                     tx.body.outputs().len(),
                     tx.body.kernels().len(),
                     tx.body.inputs().len(),

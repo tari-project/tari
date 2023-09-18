@@ -781,7 +781,7 @@ impl TransactionServiceHandle {
         amount: MicroMinotari,
         message: String,
     ) -> Result<(), TransactionServiceError> {
-        let fee = tx.body.get_total_fee();
+        let fee = tx.body.get_total_fee()?;
         match self
             .handle
             .call(TransactionServiceRequest::SubmitTransactionToSelf(

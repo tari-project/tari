@@ -64,6 +64,10 @@ impl BaseNodeServiceError {
                     reason: format!("Invalid block header: {}", e),
                     ban_duration: Duration::from_secs(60),
                 }),
+                CommsInterfaceError::TransactionError(e) => Some(BanReason {
+                    reason: format!("Invalid transaction: {}", e),
+                    ban_duration: Duration::from_secs(60),
+                }),
                 CommsInterfaceError::InvalidRequest { request, details } => Some(BanReason {
                     reason: format!("Invalid request: {} ({})", request, details),
                     ban_duration: Duration::from_secs(60),

@@ -300,7 +300,7 @@ where B: BlockchainBackend + 'static
                     self.get_target_difficulty_for_next_block(request.algo, constants, prev_hash)
                         .await?,
                     self.consensus_manager.get_block_reward_at(height),
-                );
+                )?;
 
                 debug!(target: LOG_TARGET, "New template block: {}", block_template);
                 debug!(

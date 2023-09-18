@@ -39,7 +39,11 @@ use crate::{
         FeePerGramStat,
         MempoolError,
     },
-    transactions::{tari_amount::MicroMinotari, transaction_components::Transaction, weight::TransactionWeight},
+    transactions::{
+        tari_amount::MicroMinotari,
+        transaction_components::{Transaction, TransactionError},
+        weight::TransactionWeight,
+    },
 };
 
 pub const LOG_TARGET: &str = "c::mp::unconfirmed_pool::unconfirmed_pool_storage";
@@ -117,7 +121,7 @@ impl UnconfirmedPool {
         tx: Arc<Transaction>,
         dependent_outputs: Option<Vec<HashOutput>>,
         transaction_weighting: &TransactionWeight,
-    ) -> std::io::Result<()> {
+    ) -> Result<(), TransactionError> {
         if tx
             .body
             .kernels()
@@ -165,7 +169,7 @@ impl UnconfirmedPool {
         &mut self,
         txs: I,
         transaction_weighting: &TransactionWeight,
-    ) -> std::io::Result<()> {
+    ) -> Result<(), TransactionError> {
         for tx in txs {
             self.insert(tx, None, transaction_weighting)?;
         }
@@ -227,7 +231,7 @@ impl UnconfirmedPool {
                 &mut depended_on,
                 &mut recompute,
                 prioritized_transaction.fee_per_byte,
-            );
+            )?;
             if curr_skip_count >= self.config.weight_tx_skip_count {
                 break;
             }
@@ -286,7 +290,7 @@ impl UnconfirmedPool {
                 &mut depended_on,
                 &mut recompute,
                 0,
-            );
+            )?;
         }
         if !transactions_to_remove_and_recheck.is_empty() {
             // we need to remove all transactions that need to be rechecked.
@@ -321,7 +325,7 @@ impl UnconfirmedPool {
         depended_on: &mut HashMap<TransactionKey, Vec<&'a TransactionKey>>,
         recompute: &mut HashSet<&'a TransactionKey>,
         fee_per_byte_threshold: u64,
-    ) {
+    ) -> Result<(), TransactionError> {
         while match potentional_to_add.peek() {
             Some((fee_per_byte, _)) => *fee_per_byte >= fee_per_byte_threshold,
             None => false,
@@ -355,7 +359,7 @@ impl UnconfirmedPool {
                             complete_transaction_branch,
                             depended_on,
                             recompute,
-                        );
+                        )?;
                     }
                     selected_txs.extend(candidate_transactions_to_select);
                 }
@@ -369,15 +373,16 @@ impl UnconfirmedPool {
             complete_transaction_branch.remove(&tx_key);
             depended_on.remove(&tx_key);
         }
+        Ok(())
     }
 
-    pub fn remove_transaction_from_the_dependants<'a>(
+    fn remove_transaction_from_the_dependants<'a>(
         &self,
         tx_key: TransactionKey,
         complete_transaction_branch: &mut CompleteTransactionBranch,
         depended_on: &mut HashMap<TransactionKey, Vec<&'a TransactionKey>>,
         recompute: &mut HashSet<&'a TransactionKey>,
-    ) {
+    ) -> Result<(), TransactionError> {
         if let Some(txs) = depended_on.remove(&tx_key) {
             let prioritized_transaction = self
                 .tx_by_key
@@ -393,13 +398,14 @@ impl UnconfirmedPool {
                 {
                     update_candidate_transactions_to_select.remove(&tx_key);
                     *update_total_transaction_weight -= prioritized_transaction.weight;
-                    *update_total_transaction_fees -= prioritized_transaction.transaction.body.get_total_fee().0;
+                    *update_total_transaction_fees -= prioritized_transaction.transaction.body.get_total_fee()?.0;
                     // We mark it as recompute, we don't have to update the Heap, because it will never be
                     // better as it was (see the note at the top of the function).
                     recompute.insert(tx);
                 }
             }
         }
+        Ok(())
     }
 
     pub fn retrieve_by_excess_sigs(
@@ -474,7 +480,7 @@ impl UnconfirmedPool {
             .insert(transaction.key, transaction.transaction.clone())
             .is_none()
         {
-            *total_fees += transaction.transaction.body.get_total_fee().0;
+            *total_fees += transaction.transaction.body.get_total_fee()?.0;
             *total_weight += transaction.weight;
         }
 
@@ -695,7 +701,7 @@ impl UnconfirmedPool {
     }
 
     /// Returns the total weight of all transactions stored in the pool.
-    pub fn calculate_weight(&self, transaction_weight: &TransactionWeight) -> std::io::Result<u64> {
+    pub fn calculate_weight(&self, transaction_weight: &TransactionWeight) -> Result<u64, TransactionError> {
         let weights = self
             .tx_by_key
             .values()
@@ -732,7 +738,7 @@ impl UnconfirmedPool {
                     break;
                 }
 
-                let total_tx_fee = tx.transaction.body.get_total_fee();
+                let total_tx_fee = tx.transaction.body.get_total_fee()?;
                 offset += 1;
                 let fee_per_gram = total_tx_fee / weight;
                 min_fee_per_gram = min_fee_per_gram.min(fee_per_gram);
