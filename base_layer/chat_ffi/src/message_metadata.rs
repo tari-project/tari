@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{ffi::CStr, ptr};
+use std::{convert::TryFrom, ffi::CStr, ptr};
 
 use libc::{c_char, c_int};
 use tari_contacts::contacts_service::types::{Message, MessageMetadata, MessageMetadataType};
@@ -58,7 +58,16 @@ pub unsafe extern "C" fn add_chat_message_metadata(
         return;
     }
 
-    let metadata_type = match MessageMetadataType::from_byte(metadata_type as u8) {
+    let metadata_byte = match u8::try_from(metadata_type) {
+        Ok(byte) => byte,
+        Err(e) => {
+            error = LibChatError::from(InterfaceError::InvalidArgument(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return;
+        },
+    };
+
+    let metadata_type = match MessageMetadataType::from_byte(metadata_byte) {
         Some(t) => t,
         None => {
             error = LibChatError::from(InterfaceError::InvalidArgument(
