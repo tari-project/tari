@@ -234,7 +234,7 @@ struct ChatMessages *get_chat_messages(struct ChatClientFFI *client,
  * `message` should be destroyed eventually
  */
 void add_chat_message_metadata(struct Message *message,
-                               const int *metadata_type,
+                               int metadata_type,
                                const char *data,
                                int *error_out);
 

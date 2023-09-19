@@ -45,7 +45,7 @@ use crate::error::{InterfaceError, LibChatError};
 #[no_mangle]
 pub unsafe extern "C" fn add_chat_message_metadata(
     message: *mut Message,
-    metadata_type: *const c_int,
+    metadata_type: c_int,
     data: *const c_char,
     error_out: *mut c_int,
 ) {
@@ -106,7 +106,7 @@ mod test {
 
         let error_out = Box::into_raw(Box::new(0));
 
-        unsafe { add_chat_message_metadata(message_ptr, 1 as *const c_int, data_char, error_out) }
+        unsafe { add_chat_message_metadata(message_ptr, 0 as c_int, data_char, error_out) }
 
         let message = unsafe { Box::from_raw(message_ptr) };
         assert_eq!(message.metadata.len(), 1)
