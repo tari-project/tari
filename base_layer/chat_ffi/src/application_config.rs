@@ -28,7 +28,7 @@ use tari_chat_client::{
     networking::Multiaddr,
 };
 use tari_common::configuration::{MultiaddrList, Network};
-use tari_p2p::TransportConfig;
+use tari_p2p::{PeerSeedsConfig, TransportConfig};
 
 use crate::error::{InterfaceError, LibChatError};
 
@@ -175,6 +175,10 @@ pub unsafe extern "C" fn create_chat_config(
 
     let config = ApplicationConfig {
         chat_client: chat_client_config,
+        peer_seeds: PeerSeedsConfig {
+            dns_seeds_use_dnssec: true,
+            ..PeerSeedsConfig::default()
+        },
         ..ApplicationConfig::default()
     };
 
