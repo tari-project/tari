@@ -71,7 +71,7 @@ extern "C" {
     pub fn send_chat_message(client: *mut ClientFFI, message: *mut c_void, error_out: *const c_int);
     pub fn add_chat_message_metadata(
         message: *mut c_void,
-        metadata_type: *const c_int,
+        metadata_type: c_int,
         data: *const c_char,
         error_out: *const c_int,
     ) -> *mut c_void;
@@ -164,7 +164,7 @@ impl ChatClient for ChatFFI {
 
     fn add_metadata(&self, message: Message, metadata_type: MessageMetadataType, data: String) -> Message {
         let message_ptr = Box::into_raw(Box::new(message)) as *mut c_void;
-        let message_type = metadata_type.as_byte() as *const c_int;
+        let message_type = i32::from(metadata_type.as_byte());
 
         let data_c_str = CString::new(data).unwrap();
         let data_c_char: *const c_char = CString::into_raw(data_c_str) as *const c_char;
