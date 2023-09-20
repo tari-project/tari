@@ -93,6 +93,8 @@ pub struct ChatClientConfig {
     pub metadata_auto_ping_interval: Duration,
     /// The location of the log path
     pub log_path: Option<PathBuf>,
+    /// The log verbosity
+    pub log_verbosity: Option<u8>,
 }
 
 impl Default for ChatClientConfig {
@@ -120,6 +122,7 @@ impl Default for ChatClientConfig {
             force_sync_peers: StringList::default(),
             metadata_auto_ping_interval: Duration::from_secs(30),
             log_path: None,
+            log_verbosity: Some(2), // Warn
         }
     }
 }
@@ -160,6 +163,7 @@ impl ChatClientConfig {
     pub fn default_local_test() -> Self {
         Self {
             network: Network::LocalNet,
+            log_verbosity: Some(5), // Trace
             p2p: P2pConfig {
                 datastore_path: PathBuf::from("peer_db/chat_client"),
                 user_agent: format!("tari/chat_client/{}", consts::APP_VERSION_NUMBER),
