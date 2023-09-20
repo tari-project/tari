@@ -441,32 +441,39 @@ impl<B: Backend> Component<B> for SendTab {
 
         let rx_option = self.send_result_watch.take();
         if let Some(rx) = rx_option {
-            trace!(target: LOG_TARGET, "{:?}", (*rx.borrow()).clone());
-            let status = match (*rx.borrow()).clone() {
-                UiTransactionSendStatus::Initiated => "Initiated",
-                UiTransactionSendStatus::DiscoveryInProgress => "Discovery In Progress",
-                UiTransactionSendStatus::Error(e) => {
-                    self.error_message = Some(format!("Error sending transaction: {}, Press Enter to continue.", e));
-                    return;
-                },
-                UiTransactionSendStatus::SentDirect | UiTransactionSendStatus::SentViaSaf => {
-                    self.success_message =
-                        Some("Transaction successfully sent!\nPlease press Enter to continue".to_string());
-                    return;
-                },
-                UiTransactionSendStatus::Queued => {
-                    self.offline_message = Some(
-                        "This wallet appears to be offline; transaction queued for further retry sending.\n Please \
-                         press Enter to continue"
-                            .to_string(),
-                    );
-                    return;
-                },
-                UiTransactionSendStatus::TransactionComplete => {
-                    self.success_message =
-                        Some("Transaction completed successfully!\nPlease press Enter to continue".to_string());
-                    return;
-                },
+            {
+                // Ensure the watch borrow is dropped immediately after use
+                trace!(target: LOG_TARGET, "{:?}", (*rx.borrow()).clone());
+            }
+            let status = {
+                // Ensure the watch borrow is dropped immediately after use
+                match (*rx.borrow()).clone() {
+                    UiTransactionSendStatus::Initiated => "Initiated",
+                    UiTransactionSendStatus::DiscoveryInProgress => "Discovery In Progress",
+                    UiTransactionSendStatus::Error(e) => {
+                        self.error_message =
+                            Some(format!("Error sending transaction: {}, Press Enter to continue.", e));
+                        return;
+                    },
+                    UiTransactionSendStatus::SentDirect | UiTransactionSendStatus::SentViaSaf => {
+                        self.success_message =
+                            Some("Transaction successfully sent!\nPlease press Enter to continue".to_string());
+                        return;
+                    },
+                    UiTransactionSendStatus::Queued => {
+                        self.offline_message = Some(
+                            "This wallet appears to be offline; transaction queued for further retry sending.\n \
+                             Please press Enter to continue"
+                                .to_string(),
+                        );
+                        return;
+                    },
+                    UiTransactionSendStatus::TransactionComplete => {
+                        self.success_message =
+                            Some("Transaction completed successfully!\nPlease press Enter to continue".to_string());
+                        return;
+                    },
+                }
             };
             draw_dialog(
                 f,

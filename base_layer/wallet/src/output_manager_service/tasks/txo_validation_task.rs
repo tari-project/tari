@@ -91,12 +91,16 @@ where
             .ok_or(OutputManagerError::Shutdown)
             .for_protocol(self.operation_id)?;
 
-        let base_node_peer = self
-            .base_node_watch
-            .borrow()
-            .as_ref()
-            .map(|p| p.node_id.clone())
-            .ok_or_else(|| OutputManagerProtocolError::new(self.operation_id, OutputManagerError::BaseNodeChanged))?;
+        let base_node_peer = {
+            // Ensure the watch borrow is dropped immediately after use
+            self.base_node_watch
+                .borrow()
+                .as_ref()
+                .map(|p| p.node_id.clone())
+                .ok_or_else(|| {
+                    OutputManagerProtocolError::new(self.operation_id, OutputManagerError::BaseNodeChanged)
+                })?
+        };
         debug!(
             target: LOG_TARGET,
             "Starting TXO validation protocol with peer {} (Id: {})", base_node_peer, self.operation_id,

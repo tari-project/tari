@@ -107,7 +107,10 @@ impl SoftwareUpdaterService {
         };
 
         loop {
-            let last_version = new_update_notification.borrow().clone();
+            let last_version = {
+                // Ensure the watch borrow is dropped immediately after use
+                new_update_notification.borrow().clone()
+            };
 
             let maybe_update = tokio::select! {
                 Some(reply) = request_rx.recv() => {

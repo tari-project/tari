@@ -187,19 +187,6 @@ impl WalletEventMonitor {
                     trace!(target: LOG_TARGET, "Wallet Event Monitor received wallet connectivity status changed");
                     self.trigger_peer_state_refresh().await;
                 },
-                // Ok(_) = software_update_notif.changed() => {
-                    //     trace!(target: LOG_TARGET, "Wallet Event Monitor received wallet auto update status changed");
-                    //     let update = software_update_notif.borrow().as_ref().cloned();
-                    //     if let Some(update) = update {
-                    //         self.add_notification(format!(
-                    //             "Version {} of the {} is available: {} (sha: {})",
-                    //             update.version(),
-                    //             update.app(),
-                    //             update.download_url(),
-                    //             update.to_hash_hex()
-                    //         )).await;
-                    //     }
-                    // },
                     result = connectivity_events.recv() => {
                         match result {
                             Ok(msg) => {
@@ -221,7 +208,10 @@ impl WalletEventMonitor {
                     }
                 },
                 _ = base_node_changed.changed() => {
-                    let peer = base_node_changed.borrow().as_ref().cloned();
+                    let peer = {
+                        // Ensure the watch borrow is dropped immediately after use
+                        base_node_changed.borrow().as_ref().cloned()
+                    };
                     if let Some(peer) = peer {
                         self.trigger_base_node_peer_refresh(peer).await;
                         self.trigger_balance_refresh();

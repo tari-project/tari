@@ -92,8 +92,11 @@ impl WalletConnectivityInterface for WalletConnectivityMock {
 
     async fn obtain_base_node_wallet_rpc_client(&mut self) -> Option<RpcClientLease<BaseNodeWalletRpcClient>> {
         let mut receiver = self.base_node_wallet_rpc_client.get_receiver();
-        if let Some(client) = receiver.borrow().as_ref() {
-            return Some(client.clone());
+        {
+            // Ensure the watch borrow is dropped immediately after use
+            if let Some(client) = receiver.borrow().as_ref() {
+                return Some(client.clone());
+            }
         }
 
         receiver.changed().await.unwrap();
@@ -103,8 +106,11 @@ impl WalletConnectivityInterface for WalletConnectivityMock {
 
     async fn obtain_base_node_sync_rpc_client(&mut self) -> Option<RpcClientLease<BaseNodeSyncRpcClient>> {
         let mut receiver = self.base_node_sync_rpc_client.get_receiver();
-        if let Some(client) = receiver.borrow().as_ref() {
-            return Some(client.clone());
+        {
+            // Ensure the watch borrow is dropped immediately after use
+            if let Some(client) = receiver.borrow().as_ref() {
+                return Some(client.clone());
+            }
         }
 
         receiver.changed().await.unwrap();

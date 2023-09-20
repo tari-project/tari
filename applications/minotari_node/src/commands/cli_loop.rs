@@ -145,6 +145,7 @@ impl CliLoop {
                             }
                         }
                         Ok(_) = software_update_notif.changed() => {
+                            // Ensure the watch borrow is dropped immediately after use
                             if let Some(ref update) = *software_update_notif.borrow() {
                                 println!(
                                     "Version {} of the {} is available: {} (sha: {})",

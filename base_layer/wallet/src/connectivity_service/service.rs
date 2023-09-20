@@ -98,7 +98,11 @@ impl WalletConnectivityService {
                 biased;
 
                 Ok(_) = self.base_node_watch.changed() => {
-                    if self.base_node_watch.borrow().is_some() {
+                    let base_node_watch_is_some = {
+                        // Ensure the watch borrow is dropped immediately after use
+                        self.base_node_watch.borrow().is_some()
+                    };
+                    if base_node_watch_is_some {
                         // This will block the rest until the connection is established. This is what we want.
                         self.setup_base_node_connection().await;
                     }

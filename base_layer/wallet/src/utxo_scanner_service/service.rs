@@ -162,9 +162,12 @@ where
                     }
                     _ = self.resources.current_base_node_watcher.changed() => {
                         debug!(target: LOG_TARGET, "Base node change detected.");
-                        let peer =  self.resources.current_base_node_watcher.borrow().as_ref().cloned();
-                        if let Some(peer) = peer {
-                            self.peer_seeds = vec![peer.public_key];
+                        {
+                            // Ensure the watch borrow is dropped immediately after use
+                            let peer =  self.resources.current_base_node_watcher.borrow().as_ref().cloned();
+                            if let Some(peer) = peer {
+                                self.peer_seeds = vec![peer.public_key];
+                            }
                         }
                         local_shutdown.trigger();
                     },

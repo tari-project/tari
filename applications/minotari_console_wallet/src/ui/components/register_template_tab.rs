@@ -638,29 +638,36 @@ impl<B: Backend> Component<B> for RegisterTemplateTab {
 
         let rx_option = self.result_watch.take();
         if let Some(rx) = rx_option {
-            trace!(target: LOG_TARGET, "{:?}", (*rx.borrow()).clone());
-            let status = match (*rx.borrow()).clone() {
-                UiTransactionSendStatus::Initiated => "Initiated",
-                UiTransactionSendStatus::Error(e) => {
-                    self.error_message = Some(format!("Error sending transaction: {}, Press Enter to continue.", e));
-                    return;
-                },
-                UiTransactionSendStatus::TransactionComplete => {
-                    self.fee_per_gram = app_state.get_default_fee_per_gram().as_u64().to_string();
-                    self.template_name = "".to_string();
-                    self.template_type = "".to_string();
-                    self.binary_url = "".to_string();
-                    self.binary_checksum = "".to_string();
-                    self.repository_url = "".to_string();
-                    self.repository_commit_hash = "".to_string();
-                    self.success_message =
-                        Some("Transaction completed successfully!\nPlease press Enter to continue".to_string());
-                    return;
-                },
-                status => {
-                    warn!("unhandled transaction status {:?}", status);
-                    return;
-                },
+            {
+                // Ensure the watch borrow is dropped immediately after use
+                trace!(target: LOG_TARGET, "{:?}", (*rx.borrow()).clone());
+            }
+            let status = {
+                // Ensure the watch borrow is dropped immediately after use
+                match (*rx.borrow()).clone() {
+                    UiTransactionSendStatus::Initiated => "Initiated",
+                    UiTransactionSendStatus::Error(e) => {
+                        self.error_message =
+                            Some(format!("Error sending transaction: {}, Press Enter to continue.", e));
+                        return;
+                    },
+                    UiTransactionSendStatus::TransactionComplete => {
+                        self.fee_per_gram = app_state.get_default_fee_per_gram().as_u64().to_string();
+                        self.template_name = "".to_string();
+                        self.template_type = "".to_string();
+                        self.binary_url = "".to_string();
+                        self.binary_checksum = "".to_string();
+                        self.repository_url = "".to_string();
+                        self.repository_commit_hash = "".to_string();
+                        self.success_message =
+                            Some("Transaction completed successfully!\nPlease press Enter to continue".to_string());
+                        return;
+                    },
+                    status => {
+                        warn!("unhandled transaction status {:?}", status);
+                        return;
+                    },
+                }
             };
             draw_dialog(
                 f,

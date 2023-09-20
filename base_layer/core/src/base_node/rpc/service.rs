@@ -104,9 +104,12 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
 
         // Determine if we are synced
         let status_watch = state_machine.get_status_info_watch();
-        let is_synced = match (status_watch.borrow()).state_info {
-            StateInfo::Listening(li) => li.is_synced(),
-            _ => false,
+        let is_synced = {
+            // Ensure the watch borrow is dropped immediately after use
+            match (status_watch.borrow()).state_info {
+                StateInfo::Listening(li) => li.is_synced(),
+                _ => false,
+            }
         };
         match db
             .fetch_kernel_by_excess_sig(signature.clone())
@@ -186,9 +189,12 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
 
         // Determine if we are synced
         let status_watch = state_machine.get_status_info_watch();
-        let is_synced = match (status_watch.borrow()).state_info {
-            StateInfo::Listening(li) => li.is_synced(),
-            _ => false,
+        let is_synced = {
+            // Ensure the watch borrow is dropped immediately after use
+            match (status_watch.borrow()).state_info {
+                StateInfo::Listening(li) => li.is_synced(),
+                _ => false,
+            }
         };
 
         let response = match mempool
@@ -267,9 +273,12 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
 
         // Determine if we are synced
         let status_watch = state_machine.get_status_info_watch();
-        let is_synced = match status_watch.borrow().state_info {
-            StateInfo::Listening(li) => li.is_synced(),
-            _ => false,
+        let is_synced = {
+            // Ensure the watch borrow is dropped immediately after use
+            match status_watch.borrow().state_info {
+                StateInfo::Listening(li) => li.is_synced(),
+                _ => false,
+            }
         };
 
         let message = request.into_message();
@@ -288,9 +297,12 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
 
         // Determine if we are synced
         let status_watch = state_machine.get_status_info_watch();
-        let is_synced = match (status_watch.borrow()).state_info {
-            StateInfo::Listening(li) => li.is_synced(),
-            _ => false,
+        let is_synced = {
+            // Ensure the watch borrow is dropped immediately after use
+            match (status_watch.borrow()).state_info {
+                StateInfo::Listening(li) => li.is_synced(),
+                _ => false,
+            }
         };
 
         let message = request.into_message();
@@ -333,9 +345,12 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         let state_machine = self.state_machine();
         // Determine if we are synced
         let status_watch = state_machine.get_status_info_watch();
-        let is_synced = match (status_watch.borrow()).state_info {
-            StateInfo::Listening(li) => li.is_synced(),
-            _ => false,
+        let is_synced = {
+            // Ensure the watch borrow is dropped immediately after use
+            match (status_watch.borrow()).state_info {
+                StateInfo::Listening(li) => li.is_synced(),
+                _ => false,
+            }
         };
 
         let db = self.db();
@@ -530,9 +545,12 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
     async fn get_tip_info(&self, _request: Request<()>) -> Result<Response<TipInfoResponse>, RpcStatus> {
         let state_machine = self.state_machine();
         let status_watch = state_machine.get_status_info_watch();
-        let is_synced = match status_watch.borrow().state_info {
-            StateInfo::Listening(li) => li.is_synced(),
-            _ => false,
+        let is_synced = {
+            // Ensure the watch borrow is dropped immediately after use
+            match status_watch.borrow().state_info {
+                StateInfo::Listening(li) => li.is_synced(),
+                _ => false,
+            }
         };
 
         let metadata = self

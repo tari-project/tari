@@ -156,7 +156,10 @@ where
                         }
                         // Wait out the remainder of the delay before proceeding with next loop
                         drop(client);
-                        let delay = *timeout_update_receiver.borrow();
+                        let delay = {
+                            // Ensure the watch borrow is dropped immediately after use
+                            *timeout_update_receiver.borrow()
+                        };
                         sleep(delay).await;
                         break;
                     },
