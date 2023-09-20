@@ -347,10 +347,7 @@ where TBackend: TransactionBackend + 'static
                 }
 
                 Ok(_) = self.connectivity_status_watch.changed() => {
-                    let status  = {
-                        // Ensure the watch borrow is dropped immediately after use
-                        *self.connectivity_status_watch.borrow()
-                    };
+                    let status  = *self.connectivity_status_watch.borrow();
                     trace!(target: LOG_TARGET, "Connectivity status change detected: {:?}", status);
                     self.connectivity_status_changed(status);
                 },

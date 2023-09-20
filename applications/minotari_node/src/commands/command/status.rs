@@ -61,10 +61,7 @@ impl CommandContext {
         let mut status_line = StatusLine::new();
         status_line.add_field("", format!("v{}", consts::APP_VERSION_NUMBER));
         status_line.add_field("", self.config.network());
-        {
-            // Ensure the watch borrow is dropped immediately after use
-            status_line.add_field("State", self.state_machine_info.borrow().state_info.short_desc());
-        }
+        status_line.add_field("State", self.state_machine_info.borrow().state_info.short_desc());
 
         let metadata = self.node_service.get_metadata().await?;
         let height = metadata.height_of_longest_chain();

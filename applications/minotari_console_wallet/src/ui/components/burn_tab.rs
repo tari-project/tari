@@ -497,29 +497,22 @@ impl<B: Backend> Component<B> for BurnTab {
 
         let rx_option = self.burn_result_watch.take();
         if let Some(rx) = rx_option {
-            {
-                // Ensure the watch borrow is dropped immediately after use
-                trace!(target: LOG_TARGET, "{:?}", (*rx.borrow()).clone());
-            }
-            let status = {
-                // Ensure the watch borrow is dropped immediately after use
-                match (*rx.borrow()).clone() {
-                    UiTransactionBurnStatus::Initiated => "Initiated",
-                    UiTransactionBurnStatus::Error(e) => {
-                        self.error_message =
-                            Some(format!("Error sending transaction: {}, Press Enter to continue.", e));
-                        return;
-                    },
-                    UiTransactionBurnStatus::TransactionComplete((
-                        _proof_id,
-                        _reciprocal_claim_public_key,
-                        _serialized_proof,
-                    )) => {
-                        self.success_message =
-                            Some("Transaction completed successfully!\nPlease press Enter to continue".to_string());
-                        return;
-                    },
-                }
+            trace!(target: LOG_TARGET, "{:?}", *rx.borrow());
+            let status = match (*rx.borrow()).clone() {
+                UiTransactionBurnStatus::Initiated => "Initiated",
+                UiTransactionBurnStatus::Error(e) => {
+                    self.error_message = Some(format!("Error sending transaction: {}, Press Enter to continue.", e));
+                    return;
+                },
+                UiTransactionBurnStatus::TransactionComplete((
+                    _proof_id,
+                    _reciprocal_claim_public_key,
+                    _serialized_proof,
+                )) => {
+                    self.success_message =
+                        Some("Transaction completed successfully!\nPlease press Enter to continue".to_string());
+                    return;
+                },
             };
             draw_dialog(
                 f,

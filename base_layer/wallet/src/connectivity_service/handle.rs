@@ -60,12 +60,9 @@ impl WalletConnectivityHandle {
 #[async_trait::async_trait]
 impl WalletConnectivityInterface for WalletConnectivityHandle {
     fn set_base_node(&mut self, base_node_peer: Peer) {
-        {
-            // Ensure the watch borrow is dropped immediately after use
-            if let Some(peer) = self.base_node_watch.borrow().as_ref() {
-                if peer.public_key == base_node_peer.public_key {
-                    return;
-                }
+        if let Some(peer) = self.base_node_watch.borrow().as_ref() {
+            if peer.public_key == base_node_peer.public_key {
+                return;
             }
         }
         self.base_node_watch.send(Some(base_node_peer));

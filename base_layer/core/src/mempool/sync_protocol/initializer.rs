@@ -88,17 +88,14 @@ impl ServiceInitializer for MempoolSyncInitializer {
             let mut status_watch = state_machine.get_status_info_watch();
             let is_synced = {
                 // Ensure the watch borrow is dropped immediately after use
+                // otherwise it will live until the end of the 'if'
                 status_watch.borrow().state_info.is_synced()
             };
             if !is_synced {
                 debug!(target: LOG_TARGET, "Waiting for node to do initial sync...");
                 while status_watch.changed().await.is_ok() {
                     log_mdc::extend(mdc.clone());
-                    let is_synced_await = {
-                        // Ensure the watch borrow is dropped immediately after use
-                        status_watch.borrow().state_info.is_synced()
-                    };
-                    if is_synced_await {
+                    if status_watch.borrow().state_info.is_synced() {
                         debug!(
                             target: LOG_TARGET,
                             "Initial sync is done. Starting mempool sync protocol"

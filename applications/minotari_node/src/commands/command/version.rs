@@ -44,11 +44,7 @@ impl CommandContext {
         println!("Version: {}", consts::APP_VERSION);
         println!("Author: {}", consts::APP_AUTHOR);
 
-        let update_notifier = {
-            // Ensure the watch borrow is dropped immediately after use
-            self.software_updater.update_notifier().borrow()
-        };
-        if let Some(ref update) = *update_notifier {
+        if let Some(ref update) = *self.software_updater.update_notifier().borrow() {
             println!(
                 "Version {} of the {} is available: {} (sha: {})",
                 update.version(),

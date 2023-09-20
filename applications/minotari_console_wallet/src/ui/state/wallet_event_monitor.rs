@@ -208,10 +208,7 @@ impl WalletEventMonitor {
                     }
                 },
                 _ = base_node_changed.changed() => {
-                    let peer = {
-                        // Ensure the watch borrow is dropped immediately after use
-                        base_node_changed.borrow().as_ref().cloned()
-                    };
+                    let peer = base_node_changed.borrow().as_ref().cloned();
                     if let Some(peer) = peer {
                         self.trigger_base_node_peer_refresh(peer).await;
                         self.trigger_balance_refresh();
