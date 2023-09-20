@@ -33,4 +33,6 @@ pub enum SMTError {
         "Cannot construct a proof. Either the key exists for an exclusion proof, or it does not for an inclusion proof"
     )]
     NonViableProof,
+    #[error("A duplicate key was found when trying to inserting")]
+    KeyExists,
 }
