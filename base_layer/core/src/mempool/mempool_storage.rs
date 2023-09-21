@@ -32,7 +32,7 @@ use crate::{
     mempool::{
         error::MempoolError,
         reorg_pool::ReorgPool,
-        unconfirmed_pool::UnconfirmedPool,
+        unconfirmed_pool::{UnconfirmedPool, UnconfirmedPoolError},
         FeePerGramStat,
         MempoolConfig,
         StateResponse,
@@ -72,7 +72,7 @@ impl MempoolStorage {
     }
 
     /// Insert an unconfirmed transaction into the Mempool.
-    pub fn insert(&mut self, tx: Arc<Transaction>) -> Result<TxStorageResponse, TransactionError> {
+    pub fn insert(&mut self, tx: Arc<Transaction>) -> Result<TxStorageResponse, UnconfirmedPoolError> {
         let tx_id = tx
             .body
             .kernels()
@@ -157,7 +157,7 @@ impl MempoolStorage {
     }
 
     // Insert a set of new transactions into the UTxPool.
-    fn insert_txs(&mut self, txs: Vec<Arc<Transaction>>) -> Result<(), TransactionError> {
+    fn insert_txs(&mut self, txs: Vec<Arc<Transaction>>) -> Result<(), UnconfirmedPoolError> {
         for tx in txs {
             self.insert(tx)?;
         }
@@ -177,7 +177,7 @@ impl MempoolStorage {
         // Move published txs to ReOrgPool and discard double spends
         let removed_transactions = self
             .unconfirmed_pool
-            .remove_published_and_discard_deprecated_transactions(published_block);
+            .remove_published_and_discard_deprecated_transactions(published_block)?;
         debug!(
             target: LOG_TARGET,
             "{} transactions removed from unconfirmed pool in {:.2?}, moving them to reorg pool for block #{} ({}) {}",
@@ -220,7 +220,7 @@ impl MempoolStorage {
         );
         let txs = self
             .unconfirmed_pool
-            .remove_published_and_discard_deprecated_transactions(failed_block);
+            .remove_published_and_discard_deprecated_transactions(failed_block)?;
 
         // Reinsert them to validate if they are still valid
         self.insert_txs(txs)
