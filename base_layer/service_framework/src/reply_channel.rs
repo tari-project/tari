@@ -137,10 +137,7 @@ pub struct RequestContext<TReq, TResp> {
 impl<TReq, TResp> RequestContext<TReq, TResp> {
     /// Create a new RequestContect
     pub fn new(request: TReq, reply_tx: oneshot::Sender<TResp>) -> Self {
-        Self {
-            request,
-            reply_tx,
-        }
+        Self { request, reply_tx }
     }
 
     /// Return a reference to the request object. None is returned after take_request has
@@ -152,10 +149,7 @@ impl<TReq, TResp> RequestContext<TReq, TResp> {
     /// Consume this object and return it's parts. Namely, the request object and
     /// the reply oneshot channel.
     pub fn split(self) -> (TReq, oneshot::Sender<TResp>) {
-        (
-            self.request,
-            self.reply_tx,
-        )
+        (self.request, self.reply_tx)
     }
 
     /// Sends a reply to the caller
