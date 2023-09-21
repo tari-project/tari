@@ -97,6 +97,7 @@ struct ApplicationConfig *create_chat_config(const char *network_str,
                                              const char *identity_file_path,
                                              struct TransportConfig *tor_transport_config,
                                              const char *log_path,
+                                             int log_verbosity,
                                              int *error_out);
 
 /**

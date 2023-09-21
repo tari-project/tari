@@ -52,12 +52,22 @@ const LOG_TARGET: &str = "chat_ffi::logging";
 /// # Safety
 /// None
 #[allow(clippy::too_many_lines)]
-pub unsafe fn init_logging(log_path: PathBuf, error_out: *mut c_int) {
+pub unsafe fn init_logging(log_path: PathBuf, verbosity: Option<u8>, error_out: *mut c_int) {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
     let num_rolling_log_files = 2;
     let size_per_log_file_bytes: u64 = 10 * 1024 * 1024;
+
+    let log_level = match verbosity {
+        Some(0) => LevelFilter::Off,
+        Some(1) => LevelFilter::Error,
+        Some(2) => LevelFilter::Warn,
+        Some(3) => LevelFilter::Info,
+        Some(4) => LevelFilter::Debug,
+        Some(5) | Some(11) => LevelFilter::Trace, // Cranked up to 11
+        _ => LevelFilter::Warn,
+    };
 
     let path = log_path.to_str().expect("Convert path to string");
     let encoder = PatternEncoder::new("{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}");
@@ -95,69 +105,69 @@ pub unsafe fn init_logging(log_path: PathBuf, error_out: *mut c_int) {
             Logger::builder()
                 .appender("logfile")
                 .additive(false)
-                .build("comms", LevelFilter::Warn),
+                .build("comms", log_level),
         )
         .logger(
             Logger::builder()
                 .appender("logfile")
                 .additive(false)
-                .build("comms::noise", LevelFilter::Warn),
+                .build("comms::noise", log_level),
         )
         .logger(
             Logger::builder()
                 .appender("logfile")
                 .additive(false)
-                .build("tokio_util", LevelFilter::Warn),
+                .build("tokio_util", log_level),
         )
         .logger(
             Logger::builder()
                 .appender("logfile")
                 .additive(false)
-                .build("tracing", LevelFilter::Warn),
+                .build("tracing", log_level),
         )
         .logger(
             Logger::builder()
                 .appender("logfile")
                 .additive(false)
-                .build("chat_ffi::callback_handler", LevelFilter::Warn),
+                .build("chat_ffi::callback_handler", log_level),
         )
         .logger(
             Logger::builder()
                 .appender("logfile")
                 .additive(false)
-                .build("chat_ffi", LevelFilter::Warn),
+                .build("chat_ffi", log_level),
         )
         .logger(
             Logger::builder()
                 .appender("logfile")
                 .additive(false)
-                .build("contacts", LevelFilter::Warn),
+                .build("contacts", log_level),
         )
         .logger(
             Logger::builder()
                 .appender("logfile")
                 .additive(false)
-                .build("p2p", LevelFilter::Warn),
+                .build("p2p", log_level),
         )
         .logger(
             Logger::builder()
                 .appender("logfile")
                 .additive(false)
-                .build("yamux", LevelFilter::Warn),
+                .build("yamux", log_level),
         )
         .logger(
             Logger::builder()
                 .appender("logfile")
                 .additive(false)
-                .build("dht", LevelFilter::Warn),
+                .build("dht", log_level),
         )
         .logger(
             Logger::builder()
                 .appender("logfile")
                 .additive(false)
-                .build("mio", LevelFilter::Warn),
+                .build("mio", log_level),
         )
-        .build(Root::builder().appender("logfile").build(LevelFilter::Warn))
+        .build(Root::builder().appender("logfile").build(log_level))
         .expect("Should be able to create a Config");
 
     match log4rs::init_config(lconfig) {

@@ -90,7 +90,7 @@ pub unsafe extern "C" fn create_chat_client(
     }
 
     if let Some(log_path) = (*config).clone().chat_client.log_path {
-        init_logging(log_path, error_out);
+        init_logging(log_path, (*config).clone().chat_client.log_verbosity, error_out);
 
         if error > 0 {
             return ptr::null_mut();
