@@ -335,7 +335,7 @@ mod test {
         // feature?)
         assert!(proof.validate(&NodeKey::from([67u8; 32]), tree.hash()));
         // Use an exclusion proof to try and give an invalid validation for a key that does exist
-        assert_eq!(proof.validate(&NodeKey::from([64u8; 32]), tree.hash()), false);
+        assert!(!proof.validate(&NodeKey::from([64u8; 32]), tree.hash()));
 
         // A tree with branches
         tree.upsert(NodeKey::from([96u8; 32]), ValueHash::from([1u8; 32]))
@@ -352,11 +352,11 @@ mod test {
         // Does not validate against invalid root hash
         assert!(!proof.validate(&NodeKey::from([99u8; 32]), &NodeHash::default()));
         // Not all non-existent keys will validate. (bug or feature?)
-        assert_eq!(proof.validate(&NodeKey::from([65; 32]), tree.hash()), false);
+        assert!(!proof.validate(&NodeKey::from([65; 32]), tree.hash()));
         // But any keys with prefix 011 (that is not 96) will validate
         assert!(proof.validate(&NodeKey::from([0b0110_0011; 32]), tree.hash()));
         assert!(proof.validate(&NodeKey::from([0b0111_0001; 32]), tree.hash()));
         // The key 96 does exist..
-        assert_eq!(proof.validate(&NodeKey::from([0b0110_0000; 32]), tree.hash()), false);
+        assert!(!proof.validate(&NodeKey::from([0b0110_0000; 32]), tree.hash()));
     }
 }
