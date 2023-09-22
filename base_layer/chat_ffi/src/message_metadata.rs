@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{ffi::CStr, ptr};
+use std::{convert::TryFrom, ffi::CStr, ptr};
 
 use libc::{c_char, c_int};
 use tari_contacts::contacts_service::types::{Message, MessageMetadata, MessageMetadataType};
@@ -45,7 +45,7 @@ use crate::error::{InterfaceError, LibChatError};
 #[no_mangle]
 pub unsafe extern "C" fn add_chat_message_metadata(
     message: *mut Message,
-    metadata_type: *const c_int,
+    metadata_type: c_int,
     data: *const c_char,
     error_out: *mut c_int,
 ) {
@@ -58,7 +58,16 @@ pub unsafe extern "C" fn add_chat_message_metadata(
         return;
     }
 
-    let metadata_type = match MessageMetadataType::from_byte(metadata_type as u8) {
+    let metadata_byte = match u8::try_from(metadata_type) {
+        Ok(byte) => byte,
+        Err(e) => {
+            error = LibChatError::from(InterfaceError::InvalidArgument(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return;
+        },
+    };
+
+    let metadata_type = match MessageMetadataType::from_byte(metadata_byte) {
         Some(t) => t,
         None => {
             error = LibChatError::from(InterfaceError::InvalidArgument(
@@ -106,7 +115,7 @@ mod test {
 
         let error_out = Box::into_raw(Box::new(0));
 
-        unsafe { add_chat_message_metadata(message_ptr, 1 as *const c_int, data_char, error_out) }
+        unsafe { add_chat_message_metadata(message_ptr, 0 as c_int, data_char, error_out) }
 
         let message = unsafe { Box::from_raw(message_ptr) };
         assert_eq!(message.metadata.len(), 1)

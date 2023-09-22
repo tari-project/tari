@@ -97,6 +97,7 @@ struct ApplicationConfig *create_chat_config(const char *network_str,
                                              const char *identity_file_path,
                                              struct TransportConfig *tor_transport_config,
                                              const char *log_path,
+                                             int log_verbosity,
                                              int *error_out);
 
 /**
@@ -234,7 +235,7 @@ struct ChatMessages *get_chat_messages(struct ChatClientFFI *client,
  * `message` should be destroyed eventually
  */
 void add_chat_message_metadata(struct Message *message,
-                               const int *metadata_type,
+                               int metadata_type,
                                const char *data,
                                int *error_out);
 

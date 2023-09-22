@@ -20,15 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{ffi::CStr, path::PathBuf, ptr, str::FromStr};
+use std::{convert::TryFrom, ffi::CStr, path::PathBuf, ptr, str::FromStr};
 
 use libc::{c_char, c_int};
 use tari_chat_client::{
     config::{ApplicationConfig, ChatClientConfig},
     networking::Multiaddr,
 };
-use tari_common::configuration::{MultiaddrList, Network};
-use tari_p2p::TransportConfig;
+use tari_common::configuration::{MultiaddrList, Network, StringList};
+use tari_p2p::{PeerSeedsConfig, TransportConfig, DEFAULT_DNS_NAME_SERVER};
 
 use crate::error::{InterfaceError, LibChatError};
 
@@ -53,6 +53,7 @@ pub unsafe extern "C" fn create_chat_config(
     identity_file_path: *const c_char,
     tor_transport_config: *mut TransportConfig,
     log_path: *const c_char,
+    log_verbosity: c_int,
     error_out: *mut c_int,
 ) -> *mut ApplicationConfig {
     let mut error = 0;
@@ -152,6 +153,8 @@ pub unsafe extern "C" fn create_chat_config(
     }
     let log_path = PathBuf::from(log_path_string);
 
+    let log_verbosity = u8::try_from(log_verbosity).unwrap_or(2); // 2 == WARN
+
     let mut bad_identity = |e| {
         error = LibChatError::from(InterfaceError::InvalidArgument(e)).code;
         ptr::swap(error_out, &mut error as *mut c_int);
@@ -170,11 +173,18 @@ pub unsafe extern "C" fn create_chat_config(
     chat_client_config.p2p.transport = (*tor_transport_config).clone();
     chat_client_config.p2p.public_addresses = MultiaddrList::from(vec![address]);
     chat_client_config.log_path = Some(log_path);
+    chat_client_config.log_verbosity = Some(log_verbosity);
     chat_client_config.identity_file = identity_path;
     chat_client_config.set_base_path(datastore_path);
 
     let config = ApplicationConfig {
         chat_client: chat_client_config,
+        peer_seeds: PeerSeedsConfig {
+            dns_seeds_use_dnssec: false,
+            dns_seeds_name_server: DEFAULT_DNS_NAME_SERVER.parse().unwrap(),
+            dns_seeds: StringList::from(vec![format!("seeds.{}.tari.com", network.as_key_str())]),
+            ..PeerSeedsConfig::default()
+        },
         ..ApplicationConfig::default()
     };
 
@@ -242,6 +252,7 @@ mod test {
                 identity_path.as_ptr(),
                 transport_config,
                 log_path.as_ptr(),
+                5,
                 error_ptr,
             );
 
