@@ -350,16 +350,6 @@ impl ConsensusConstants {
         self.vn_registration_lock_height
     }
 
-    /// Returns the current epoch from the given height
-    pub fn block_height_to_epoch(&self, height: u64) -> VnEpoch {
-        VnEpoch(height / self.vn_epoch_length)
-    }
-
-    /// Returns the block height of the start of the given epoch
-    pub fn epoch_to_block_height(&self, epoch: VnEpoch) -> u64 {
-        epoch.as_u64() * self.vn_epoch_length
-    }
-
     pub fn epoch_length(&self) -> u64 {
         self.vn_epoch_length
     }
@@ -875,6 +865,16 @@ impl ConsensusConstantsBuilder {
 
     pub fn with_blockchain_version(mut self, version: u16) -> Self {
         self.consensus.blockchain_version = version;
+        self
+    }
+
+    pub fn with_effective_height(mut self, height: u64) -> Self {
+        self.consensus.effective_from_height = height;
+        self
+    }
+
+    pub fn with_vn_epoch_length(mut self, length: u64) -> Self {
+        self.consensus.vn_epoch_length = length;
         self
     }
 

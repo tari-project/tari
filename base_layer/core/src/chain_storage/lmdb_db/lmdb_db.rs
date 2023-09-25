@@ -1375,16 +1375,13 @@ impl LMDBDatabase {
     ) -> Result<(), ChainStorageError> {
         let store = self.validator_node_store(txn);
         let constants = self.get_consensus_constants(header.height);
-        let current_epoch = constants.block_height_to_epoch(header.height);
+        let current_epoch = self.block_height_to_epoch(header.height);
+        // TODO: What if the validity period has changed?
+        let start_height =
+            self.epoch_to_block_height(current_epoch.saturating_sub(constants.validator_node_validity_period_epochs()));
+        let end_height = self.epoch_to_block_height(current_epoch);
 
-        let prev_shard_key = store.get_shard_key(
-            current_epoch
-                .as_u64()
-                .saturating_sub(constants.validator_node_validity_period_epochs().as_u64()) *
-                constants.epoch_length(),
-            current_epoch.as_u64() * constants.epoch_length(),
-            vn_reg.public_key(),
-        )?;
+        let prev_shard_key = store.get_shard_key(start_height, end_height, vn_reg.public_key())?;
         let shard_key = vn_reg.derive_shard_key(
             prev_shard_key,
             current_epoch,
@@ -1392,7 +1389,7 @@ impl LMDBDatabase {
             &header.prev_hash,
         );
 
-        let next_epoch = constants.block_height_to_epoch(header.height) + VnEpoch(1);
+        let next_epoch = current_epoch + VnEpoch(1);
         let validator_node = ValidatorNodeEntry {
             shard_key,
             start_epoch: next_epoch,
@@ -1735,6 +1732,14 @@ impl LMDBDatabase {
 
     fn get_consensus_constants(&self, height: u64) -> &ConsensusConstants {
         self.consensus_manager.consensus_constants(height)
+    }
+
+    fn block_height_to_epoch(&self, height: u64) -> VnEpoch {
+        self.consensus_manager.block_height_to_epoch(height)
+    }
+
+    fn epoch_to_block_height(&self, epoch: VnEpoch) -> u64 {
+        self.consensus_manager.epoch_to_block_height(epoch)
     }
 }
 
@@ -2501,7 +2506,7 @@ impl BlockchainBackend for LMDBDatabase {
         let constants = self.consensus_manager.consensus_constants(height);
 
         // Get the current epoch for the height
-        let end_epoch = constants.block_height_to_epoch(height);
+        let end_epoch = self.consensus_manager.block_height_to_epoch(height);
         // Subtract the registration validaty period to get the start epoch
         let start_epoch = end_epoch.saturating_sub(constants.validator_node_validity_period_epochs());
         // Convert these back to height as validators regs are indexed by height
@@ -2530,7 +2535,7 @@ impl BlockchainBackend for LMDBDatabase {
         let constants = self.get_consensus_constants(height);
 
         // Get the epoch height boundaries for our query
-        let current_epoch = constants.block_height_to_epoch(height);
+        let current_epoch = self.consensus_manager.block_height_to_epoch(height);
         let start_epoch = current_epoch.saturating_sub(constants.validator_node_validity_period_epochs());
         let start_height = start_epoch.as_u64() * constants.epoch_length();
         let end_height = current_epoch.as_u64() * constants.epoch_length();
