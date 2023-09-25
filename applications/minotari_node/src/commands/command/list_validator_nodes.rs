@@ -62,16 +62,13 @@ impl CommandContext {
     /// Function to process the list-connections command
     pub async fn list_validator_nodes(&mut self, args: Args) -> Result<(), Error> {
         let metadata = self.blockchain_db.get_chain_metadata().await?;
-        let constants = self
-            .consensus_rules
-            .consensus_constants(metadata.height_of_longest_chain());
         let height = args
             .epoch
-            .map(|epoch| constants.epoch_to_block_height(epoch))
+            .map(|epoch| self.consensus_rules.epoch_to_block_height(epoch))
             .unwrap_or_else(|| metadata.height_of_longest_chain());
-        let current_epoch = constants.block_height_to_epoch(height);
+        let current_epoch = self.consensus_rules.block_height_to_epoch(height);
         let next_epoch = VnEpoch(current_epoch.as_u64() + 1);
-        let next_epoch_height = constants.epoch_to_block_height(next_epoch);
+        let next_epoch_height = self.consensus_rules.epoch_to_block_height(next_epoch);
         let vns = self.blockchain_db.fetch_active_validator_nodes(height).await?;
         let next_vns = self
             .blockchain_db
