@@ -1376,7 +1376,7 @@ impl LMDBDatabase {
         let store = self.validator_node_store(txn);
         let constants = self.get_consensus_constants(header.height);
         let current_epoch = self.block_height_to_epoch(header.height);
-        // TODO: What if the validity period has changed?
+        // TODO: What if the validity period has changed?[https://github.com/tari-project/tari/issues/5798]
         let start_height =
             self.epoch_to_block_height(current_epoch.saturating_sub(constants.validator_node_validity_period_epochs()));
         let end_height = self.epoch_to_block_height(current_epoch);

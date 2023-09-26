@@ -111,7 +111,7 @@ impl ConsensusManager {
         constants
     }
 
-    /// Returns the current epoch from the given height
+    /// Returns the current epoch number as calculated from the given height
     pub fn block_height_to_epoch(&self, height: u64) -> VnEpoch {
         let mut epoch = 0;
         let mut leftover_height = 0;
@@ -133,7 +133,7 @@ impl ConsensusManager {
         VnEpoch(epoch)
     }
 
-    /// Returns the block height of the start of the given epoch
+    /// Returns the block height of the start of the given epoch number
     pub fn epoch_to_block_height(&self, epoch: VnEpoch) -> u64 {
         let mut cur_epoch = 0;
         let mut leftover_height = 0;
