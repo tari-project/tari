@@ -110,6 +110,7 @@ pub unsafe extern "C" fn add_chat_message_metadata(
     (*message).push(metadata);
 }
 
+#[allow(dead_code)] // Not dead code? False positive
 pub unsafe extern "C" fn read_chat_metadata_at_position(
     message: *mut ChatFFIMessage,
     position: c_uint,
