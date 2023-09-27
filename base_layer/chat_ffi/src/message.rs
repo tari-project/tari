@@ -176,3 +176,20 @@ pub unsafe extern "C" fn get_chat_messages(
 
     Box::into_raw(Box::new(ChatMessages(messages)))
 }
+
+/// Frees memory for messages
+///
+/// ## Arguments
+/// `ptr` - The pointer of a Message
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn destroy_chat_messages(ptr: *mut ChatMessages) {
+    if !ptr.is_null() {
+        drop(Box::from_raw(ptr))
+    }
+}

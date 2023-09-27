@@ -24,4 +24,12 @@ pub use chat_ffi_contacts_liveness_data::{destroy_chat_ffi_liveness_data, ChatFF
 mod chat_ffi_message;
 pub use chat_ffi_message::{destroy_chat_ffi_message, ChatFFIMessage};
 mod wrappers;
-pub use wrappers::{ChatByteVector, ChatMessages};
+pub use wrappers::{ChatByteVector, ChatMessageMetadataVector, ChatMessages};
+
+mod byte_vector;
+pub use byte_vector::{
+    chat_byte_vector_create,
+    chat_byte_vector_destroy,
+    chat_byte_vector_get_at,
+    chat_byte_vector_get_length,
+};

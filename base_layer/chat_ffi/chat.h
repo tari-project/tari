@@ -14,6 +14,8 @@ struct ChatByteVector;
 
 struct ChatClientFFI;
 
+struct ChatMessageMetadataVector;
+
 struct ChatMessages;
 
 struct Message;
@@ -35,6 +37,8 @@ struct ChatFFIMessage {
   const char *from_address;
   uint64_t stored_at;
   const char *message_id;
+  struct ChatMessageMetadataVector metadata;
+  int metadata_len;
 };
 
 typedef void (*CallbackMessageReceived)(struct ChatFFIMessage*);
@@ -254,7 +258,7 @@ void destroy_chat_messages(struct ChatMessages *ptr);
  */
 void add_chat_message_metadata(struct Message *message,
                                int metadata_type,
-                               const char *data,
+                               struct ChatByteVector *data,
                                int *error_out);
 
 /**
@@ -355,6 +359,79 @@ void destroy_chat_ffi_liveness_data(struct ChatFFIContactsLivenessData *address)
  * None
  */
 void destroy_chat_ffi_message(struct ChatFFIMessage *address);
+
+/**
+ * Creates a ChatByteVector
+ *
+ * ## Arguments
+ * `byte_array` - The pointer to the byte array
+ * `element_count` - The number of elements in byte_array
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `*mut ChatByteVector` - Pointer to the created ChatByteVector. Note that it will be ptr::null_mut()
+ * if the byte_array pointer was null or if the elements in the byte_vector don't match
+ * element_count when it is created
+ *
+ * # Safety
+ * The ```byte_vector_destroy``` function must be called when finished with a ChatByteVector to prevent a memory leak
+ */
+struct ChatByteVector *chat_byte_vector_create(const unsigned char *byte_array,
+                                               unsigned int element_count,
+                                               int *error_out);
+
+/**
+ * Frees memory for a ChatByteVector
+ *
+ * ## Arguments
+ * `bytes` - The pointer to a ChatByteVector
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * None
+ */
+void chat_byte_vector_destroy(struct ChatByteVector *bytes);
+
+/**
+ * Gets a c_uchar at position in a ChatByteVector
+ *
+ * ## Arguments
+ * `ptr` - The pointer to a ChatByteVector
+ * `position` - The integer position
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `c_uchar` - Returns a character. Note that the character will be a null terminator (0) if ptr
+ * is null or if the position is invalid
+ *
+ * # Safety
+ * None
+ */
+unsigned char chat_byte_vector_get_at(struct ChatByteVector *ptr,
+                                      unsigned int position,
+                                      int *error_out);
+
+/**
+ * Gets the number of elements in a ChatByteVector
+ *
+ * ## Arguments
+ * `ptr` - The pointer to a ChatByteVector
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `c_uint` - Returns the integer number of elements in the ChatByteVector. Note that it will be zero
+ * if ptr is null
+ *
+ * # Safety
+ * None
+ */
+unsigned int chat_byte_vector_get_length(const struct ChatByteVector *vec,
+                                         int *error_out);
 
 #ifdef __cplusplus
 } // extern "C"
