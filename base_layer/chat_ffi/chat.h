@@ -217,8 +217,8 @@ void send_chat_message(struct ChatClientFFI *client, struct Message *message, in
  */
 struct ChatMessages *get_chat_messages(struct ChatClientFFI *client,
                                        struct TariAddress *address,
-                                       int *limit,
-                                       int *page,
+                                       int limit,
+                                       int page,
                                        int *error_out);
 
 /**

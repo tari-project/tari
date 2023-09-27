@@ -147,8 +147,8 @@ pub unsafe extern "C" fn send_chat_message(client: *mut ChatClientFFI, message: 
 pub unsafe extern "C" fn get_chat_messages(
     client: *mut ChatClientFFI,
     address: *mut TariAddress,
-    limit: *mut c_int,
-    page: *mut c_int,
+    limit: c_int,
+    page: c_int,
     error_out: *mut c_int,
 ) -> *mut ChatMessages {
     let mut error = 0;
@@ -164,8 +164,8 @@ pub unsafe extern "C" fn get_chat_messages(
         ptr::swap(error_out, &mut error as *mut c_int);
     }
 
-    let mlimit = u64::try_from(*limit).unwrap_or(DEFAULT_MESSAGE_LIMIT);
-    let mpage = u64::try_from(*page).unwrap_or(DEFAULT_MESSAGE_PAGE);
+    let mlimit = u64::try_from(limit).unwrap_or(DEFAULT_MESSAGE_LIMIT);
+    let mpage = u64::try_from(page).unwrap_or(DEFAULT_MESSAGE_PAGE);
 
     let mut messages = Vec::new();
 
