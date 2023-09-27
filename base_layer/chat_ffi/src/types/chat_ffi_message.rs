@@ -63,9 +63,14 @@ impl TryFrom<Message> for ChatFFIMessage {
         for md in v.metadata.clone() {
             chat_message_metadata_bytes.push(ChatFFIMessageMetadata {
                 data: ChatByteVector(md.data.clone().into_iter().map(|f| f as c_uchar).collect()),
-                metadata_type: md.metadata_type.as_byte() as c_int,
+                metadata_type: i32::from(md.metadata_type.as_byte()) as c_int,
             });
         }
+
+        let metadata_length = match i32::try_from(v.metadata.len()) {
+            Ok(len) => len,
+            Err(e) => return Err(e.to_string()),
+        };
 
         Ok(Self {
             body: body.as_ptr(),
@@ -73,7 +78,7 @@ impl TryFrom<Message> for ChatFFIMessage {
             stored_at: v.stored_at,
             message_id: id.as_ptr(),
             metadata: ChatMessageMetadataVector(chat_message_metadata_bytes),
-            metadata_len: v.metadata.len() as c_int,
+            metadata_len: metadata_length,
         })
     }
 }

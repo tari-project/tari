@@ -144,8 +144,8 @@ impl ChatClient for ChatFFI {
         let messages;
         unsafe {
             let error_out = Box::into_raw(Box::new(0));
-            let limit = limit as c_int;
-            let page = page as c_int;
+            let limit = i32::try_from(limit).expect("Truncation occurred") as c_int;
+            let page = i32::try_from(page).expect("Truncation occurred") as c_int;
             let all_messages = get_chat_messages(client.0, address_ptr, limit, page, error_out) as *mut Vec<Message>;
             messages = (*all_messages).clone();
         }
@@ -174,12 +174,13 @@ impl ChatClient for ChatFFI {
         let error_out = Box::into_raw(Box::new(0));
 
         let bytes = data.into_bytes();
-        let byte_data = unsafe { chat_byte_vector_create(bytes.as_ptr(), bytes.len() as c_uint, error_out) };
+        let len = i32::try_from(bytes.len()).expect("Truncation occurred") as c_uint;
+        let byte_data = unsafe { chat_byte_vector_create(bytes.as_ptr(), len, error_out) };
 
         unsafe {
             add_chat_message_metadata(
                 message_ptr,
-                message_type as c_int,
+                i32::from(message_type),
                 byte_data as *const c_char,
                 error_out,
             );

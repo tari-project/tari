@@ -157,7 +157,8 @@ mod test {
 
         let data = "hello".to_string();
         let data_bytes = data.as_bytes();
-        let data = unsafe { chat_byte_vector_create(data_bytes.as_ptr(), data_bytes.len() as c_uint, error_out) };
+        let len = u32::try_from(data.len()).expect("Can't cast from usize");
+        let data = unsafe { chat_byte_vector_create(data_bytes.as_ptr(), len as c_uint, error_out) };
 
         unsafe { add_chat_message_metadata(message_ptr, 0 as c_int, data, error_out) }
 
@@ -180,7 +181,8 @@ mod test {
         unsafe {
             let data = "hello".to_string();
             let data_bytes = data.as_bytes();
-            let data = chat_byte_vector_create(data_bytes.as_ptr(), data_bytes.len() as c_uint, error_out);
+            let len = u32::try_from(data.len()).expect("Can't cast from usize");
+            let data = chat_byte_vector_create(data_bytes.as_ptr(), len as c_uint, error_out);
 
             add_chat_message_metadata(message_ptr, 0 as c_int, data, error_out);
 
