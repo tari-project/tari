@@ -139,7 +139,11 @@ void add_chat_contact(struct ChatClientFFI *client, struct TariAddress *address,
  * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
- * `()` - Does not return a value, equivalent to void in C
+ * `status` - Returns an int representing of the online status
+ *            Online = 1,
+ *            Offline = 2,
+ *            NeverSeen = 3,
+ *            Banned = 4,
  *
  * # Safety
  * The ```address``` should be destroyed after use
@@ -165,10 +169,10 @@ struct Message *create_chat_message(struct TariAddress *receiver,
                                     int *error_out);
 
 /**
- * Frees memory for messages
+ * Frees memory for message
  *
  * ## Arguments
- * `messages_ptr` - The pointer of a Vec<Message>
+ * `messages_ptr` - The pointer of a Message
  *
  * ## Returns
  * `()` - Does not return a value, equivalent to void in C
@@ -176,7 +180,7 @@ struct Message *create_chat_message(struct TariAddress *receiver,
  * # Safety
  * None
  */
-void destroy_chat_messages(struct ChatMessages *messages_ptr);
+void destroy_chat_message(struct Message *messages_ptr);
 
 /**
  * Sends a message over a client
@@ -216,6 +220,20 @@ struct ChatMessages *get_chat_messages(struct ChatClientFFI *client,
                                        int *limit,
                                        int *page,
                                        int *error_out);
+
+/**
+ * Frees memory for messages
+ *
+ * ## Arguments
+ * `ptr` - The pointer of a Message
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * None
+ */
+void destroy_chat_messages(struct ChatMessages *ptr);
 
 /**
  * Creates message metadata and appends it to a Message

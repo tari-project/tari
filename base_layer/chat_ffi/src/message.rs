@@ -79,10 +79,10 @@ pub unsafe extern "C" fn create_chat_message(
     Box::into_raw(Box::new(message_out))
 }
 
-/// Frees memory for messages
+/// Frees memory for message
 ///
 /// ## Arguments
-/// `messages_ptr` - The pointer of a Vec<Message>
+/// `messages_ptr` - The pointer of a Message
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -90,7 +90,7 @@ pub unsafe extern "C" fn create_chat_message(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn destroy_chat_messages(messages_ptr: *mut ChatMessages) {
+pub unsafe extern "C" fn destroy_chat_message(messages_ptr: *mut Message) {
     if !messages_ptr.is_null() {
         drop(Box::from_raw(messages_ptr))
     }
