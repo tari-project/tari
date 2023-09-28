@@ -79,11 +79,14 @@ peer_seeds = [
     # dddd69c587a10c41ef2bf51397
     "126c7ee64f71aca36398b977dd31fbbe9f9dad615df96473fb655bef5709c540::/ip6/fd56:2026:93c0:0:9e:96fb:e119:d8ec/tcp/18189",
 
-    
-    # Local DAN Seeds, Stringhandler
-    # da100065d065f839dab6b6fb4f
-    "f24a6ed54362cee25c8e08e92bcd33e4d8ab2b733862948f863c982040d0d447::/onion3/s7sto2fd6cqf3wak2ec23gygb3d77p2ro7pcl2vesk6notgedjhy4nyd:18141",
-    # da4000fb6a031eced4ce65fe31
-    "9c127e9451d6721bfbe2b75434fcc19f6c7ab23523d4dacf7f5f5d601d2c8840::/onion3/kfh6trtkccp6mdbob42sb3sd464lzorn2ufys4zglnqhoxzsa4souaqd:18141"
+
+    # DAN Seeds
+    # 0000008179d983764e8d756db8
+    "eac3859b93b0f842788366a0116dfadd218f4e03ea9ca42ca00f2c29ec527061::/onion3/k6ha3hrxiaqy7sqew33sbixzrh3dk3q347gruzr75eho235rc6vupsyd:18141",
+    # 9999994fccde6871217c934383
+    "b64303c6e2ce38e901db98a698b9d28892b814117d743d5a9567c647ffab6531::/onion3/ffoujezopsventjijh2fqvcb6mf3wlpvdawi7ut3oroyze5ns2alrmad:18141",
+    # Stringhandler's node:
+    # aaaaaa1d18d0e26e184336371e
+    "30f70a860a1a8852d9fd3697516dbb1dacc62356c15495d73827fd2e6b69057f::/onion3/4dmisrtut6yk4re4aaompkywptnostwebavx7slnb6hgjibm457qbkyd:18141"
 ]
 
