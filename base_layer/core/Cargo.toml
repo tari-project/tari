@@ -23,7 +23,7 @@ tari_common_types = {  path = "../../base_layer/common_types" }
 tari_comms = {  path = "../../comms/core" }
 tari_comms_dht = {  path = "../../comms/dht" }
 tari_comms_rpc_macros = {  path = "../../comms/rpc_macros" }
-tari_crypto = { version = "0.18", features = ["borsh"] }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto", branch = "main", features = ["borsh"] }
 tari_metrics = { path = "../../infrastructure/metrics" }
 tari_mmr = {  path = "../../base_layer/mmr", optional = true, features = ["native_bitmap"] }
 tari_p2p = {  path = "../../base_layer/p2p" }
