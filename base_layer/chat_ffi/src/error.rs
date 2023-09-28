@@ -32,6 +32,10 @@ pub enum InterfaceError {
     TokioError(String),
     #[error("Something about the argument is invalid: `{0}`")]
     InvalidArgument(String),
+    #[error("An error has occurred when checking the length of the allocated object")]
+    AllocationError,
+    #[error("An error because the supplied position was out of range")]
+    PositionInvalidError,
 }
 
 /// This struct is meant to hold an error for use by FFI client applications. The error has an integer code and string
@@ -52,6 +56,14 @@ impl From<InterfaceError> for LibChatError {
             },
             InterfaceError::TokioError(_) => Self {
                 code: 4,
+                message: format!("{:?}", v),
+            },
+            InterfaceError::AllocationError => Self {
+                code: 5,
+                message: format!("{:?}", v),
+            },
+            InterfaceError::PositionInvalidError => Self {
+                code: 6,
                 message: format!("{:?}", v),
             },
             InterfaceError::InvalidArgument(_) => Self {

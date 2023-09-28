@@ -22,8 +22,13 @@
 
 use std::{convert::TryFrom, ffi::CString};
 
-use libc::c_char;
+use libc::{c_char, c_int, c_uchar};
 use tari_contacts::contacts_service::types::Message;
+
+use crate::{
+    message_metadata::ChatFFIMessageMetadata,
+    types::{ChatByteVector, ChatMessageMetadataVector},
+};
 
 #[repr(C)]
 pub struct ChatFFIMessage {
@@ -31,6 +36,8 @@ pub struct ChatFFIMessage {
     pub from_address: *const c_char,
     pub stored_at: u64,
     pub message_id: *const c_char,
+    pub metadata: ChatMessageMetadataVector,
+    pub metadata_len: c_int,
 }
 
 impl TryFrom<Message> for ChatFFIMessage {
@@ -42,7 +49,7 @@ impl TryFrom<Message> for ChatFFIMessage {
             Err(e) => return Err(e.to_string()),
         };
 
-        let address = match CString::new(v.address.to_bytes()) {
+        let address = match CString::new(v.address.to_hex()) {
             Ok(s) => s,
             Err(e) => return Err(e.to_string()),
         };
@@ -52,11 +59,26 @@ impl TryFrom<Message> for ChatFFIMessage {
             Err(e) => return Err(e.to_string()),
         };
 
+        let mut chat_message_metadata_bytes = vec![];
+        for md in v.metadata.clone() {
+            chat_message_metadata_bytes.push(ChatFFIMessageMetadata {
+                data: ChatByteVector(md.data.clone().into_iter().map(|f| f as c_uchar).collect()),
+                metadata_type: i32::from(md.metadata_type.as_byte()) as c_int,
+            });
+        }
+
+        let metadata_length = match i32::try_from(v.metadata.len()) {
+            Ok(len) => len,
+            Err(e) => return Err(e.to_string()),
+        };
+
         Ok(Self {
             body: body.as_ptr(),
             from_address: address.as_ptr(),
             stored_at: v.stored_at,
             message_id: id.as_ptr(),
+            metadata: ChatMessageMetadataVector(chat_message_metadata_bytes),
+            metadata_len: metadata_length,
         })
     }
 }
