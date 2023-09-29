@@ -106,18 +106,18 @@ handled gracefully and may succeed in future when a receiver is added.
 Watch out for functional rust code and ensure that they will not overflow. These functional code brackets don't always allow for error handling. See the following code snippet as an example:
 ```rust
 fn sum_kernels(body: &AggregateBody, offset_with_fee: PedersenCommitment) -> KernelSum {
-   // Sum all kernel excesses and fees
-   body.kernels().iter().fold(
-   KernelSum {
-      fees: MicroMinotari(0),
-      sum: offset_with_fee,
-   },
-   |acc, val| KernelSum {
-      fees: acc.fees + val.fee,
-      sum: &acc.sum + &val.excess,
-   },)
+    // Sum all kernel excesses and fees
+    body.kernels().iter().fold(
+        KernelSum {
+            fees: MicroMinotari(0),
+            sum: offset_with_fee,
+        },
+        |acc, val| KernelSum {
+            fees: acc.fees + val.fee,
+            sum: &acc.sum + &val.excess,
+        },
+    )
 }
-```
 Here is a good example of nice semantic rust code, but the code has the potential to panic and overflow when counting up the fees from the kernels. Semantic RUST is the preferred way of writing code for Tari, it should not come at the determent of safe code. 
 
 #### Behind-the-scenes panics
