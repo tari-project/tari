@@ -195,7 +195,7 @@ fn validate_kernel_sum(
     factory: &CommitmentFactory,
 ) -> Result<(), ValidationError> {
     trace!(target: LOG_TARGET, "Checking kernel total");
-    let KernelSum { sum: excess, fees } = sum_kernels(body, offset_and_reward);
+    let KernelSum { sum: excess, fees } = sum_kernels(body, offset_and_reward)?;
     let sum_io = sum_commitments(body)?;
     trace!(target: LOG_TARGET, "Total outputs - inputs:{}", sum_io.to_hex());
     let fees = factory.commit_value(&PrivateKey::default(), fees.into());
@@ -213,18 +213,20 @@ fn validate_kernel_sum(
     Ok(())
 }
 /// Calculate the sum of the kernels, taking into account the provided offset, and their constituent fees
-fn sum_kernels(body: &AggregateBody, offset_with_fee: PedersenCommitment) -> KernelSum {
+fn sum_kernels(body: &AggregateBody, offset_with_fee: PedersenCommitment) -> Result<KernelSum, ValidationError> {
     // Sum all kernel excesses and fees
-    body.kernels().iter().fold(
-        KernelSum {
-            fees: MicroMinotari(0),
-            sum: offset_with_fee,
-        },
-        |acc, val| KernelSum {
-            fees: acc.fees + val.fee,
-            sum: &acc.sum + &val.excess,
-        },
-    )
+    let mut kernel_sum = KernelSum {
+        fees: MicroMinotari(0),
+        sum: offset_with_fee,
+    };
+    for kernel in body.kernels() {
+        kernel_sum.fees = kernel_sum
+            .fees
+            .checked_add(kernel.fee)
+            .ok_or(ValidationError::InvalidAccountingBalance)?;
+        kernel_sum.sum = &kernel_sum.sum + &kernel.excess;
+    }
+    Ok(kernel_sum)
 }
 
 /// Calculate the sum of the outputs - inputs
