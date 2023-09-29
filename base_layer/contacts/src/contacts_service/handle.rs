@@ -137,6 +137,7 @@ pub enum ContactsServiceRequest {
     GetContactOnlineStatus(Contact),
     SendMessage(TariAddress, Message),
     GetMessages(TariAddress, i64, i64),
+    SendDeliveryConfirmation(TariAddress, Vec<u8>),
 }
 
 #[derive(Debug)]

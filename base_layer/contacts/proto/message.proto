@@ -10,7 +10,9 @@ message Message {
   bytes address = 3;
   DirectionEnum direction = 4;
   uint64 stored_at = 5;
-  bytes message_id = 6;
+  uint64 delivery_confirmation_at = 6;
+  uint64 read_confirmation_at = 7;
+  bytes message_id = 8;
 }
 
 enum DirectionEnum {
@@ -25,4 +27,17 @@ message MessageMetadata {
 
 enum MessageTypeEnum {
   TokenRequest = 0;
+}
+
+message Confirmation {
+  bytes message_id = 1;
+  uint64 timestamp = 2;
+}
+
+message MessageDispatch {
+    oneof contents {
+      Message message = 1;
+      Confirmation delivery_confirmation = 2;
+      Confirmation read_confirmation = 3;
+    }
 }
