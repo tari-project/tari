@@ -39,6 +39,8 @@ pub struct Message {
     pub address: TariAddress,
     pub direction: Direction,
     pub stored_at: u64,
+    pub delivery_confirmation_at: u64,
+    pub read_confirmation_at: u64,
     pub message_id: Vec<u8>,
 }
 
@@ -109,6 +111,8 @@ impl TryFrom<proto::Message> for Message {
             // A Message from a proto::Message will always be an inbound message
             direction: Direction::Inbound,
             stored_at: message.stored_at,
+            delivery_confirmation_at: message.delivery_confirmation_at,
+            read_confirmation_at: message.read_confirmation_at,
             message_id: message.message_id,
         })
     }
@@ -126,6 +130,8 @@ impl From<Message> for proto::Message {
             address: message.address.to_bytes().to_vec(),
             direction: i32::from(message.direction.as_byte()),
             stored_at: message.stored_at,
+            delivery_confirmation_at: message.delivery_confirmation_at,
+            read_confirmation_at: message.read_confirmation_at,
             message_id: message.message_id,
         }
     }

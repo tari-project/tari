@@ -45,6 +45,8 @@ pub struct MessagesSqlInsert {
     pub body: Vec<u8>,
     pub metadata: Vec<u8>,
     pub stored_at: NaiveDateTime,
+    pub delivery_confirmation_at: NaiveDateTime,
+    pub read_confirmation_at: NaiveDateTime,
     pub direction: i32,
 }
 
@@ -57,6 +59,8 @@ pub struct MessagesSql {
     pub body: Vec<u8>,
     pub metadata: Vec<u8>,
     pub stored_at: NaiveDateTime,
+    pub delivery_confirmation_at: NaiveDateTime,
+    pub read_confirmation_at: NaiveDateTime,
     pub direction: i32,
 }
 
@@ -106,6 +110,8 @@ impl TryFrom<MessagesSql> for Message {
             )
             .unwrap_or_else(|| panic!("Direction from byte {}", o.direction)),
             stored_at: o.stored_at.timestamp() as u64,
+            delivery_confirmation_at: o.stored_at.timestamp() as u64,
+            read_confirmation_at: o.stored_at.timestamp() as u64,
             body: o.body,
             metadata,
             message_id: o.message_id,
@@ -127,6 +133,8 @@ impl TryFrom<Message> for MessagesSqlInsert {
             body: o.body,
             metadata: metadata.into_bytes().to_vec(),
             stored_at: NaiveDateTime::from_timestamp_opt(o.stored_at as i64, 0).unwrap(),
+            delivery_confirmation_at: NaiveDateTime::from_timestamp_opt(o.delivery_confirmation_at as i64, 0).unwrap(),
+            read_confirmation_at: NaiveDateTime::from_timestamp_opt(o.read_confirmation_at as i64, 0).unwrap(),
             direction: i32::from(o.direction.as_byte()),
         })
     }
