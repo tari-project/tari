@@ -144,7 +144,7 @@ struct RandomXFactoryInner {
 
 impl RandomXFactoryInner {
     /// Create a new RandomXFactoryInner
-    pub fn new(max_vms: usize) -> Self {
+    pub(crate) fn new(max_vms: usize) -> Self {
         let flags = RandomXFlag::get_recommended_flags();
         debug!(
             target: LOG_TARGET,
@@ -158,7 +158,7 @@ impl RandomXFactoryInner {
     }
 
     /// Create a new RandomXVMInstance
-    pub fn create(&mut self, key: &[u8]) -> Result<RandomXVMInstance, RandomXVMFactoryError> {
+    pub(crate) fn create(&mut self, key: &[u8]) -> Result<RandomXVMInstance, RandomXVMFactoryError> {
         if let Some(entry) = self.vms.get_mut(key) {
             let vm = entry.1.clone();
             entry.0 = Instant::now();
@@ -187,12 +187,12 @@ impl RandomXFactoryInner {
     }
 
     /// Get the number of VMs currently allocated
-    pub fn get_count(&self) -> usize {
+    pub(crate) fn get_count(&self) -> usize {
         self.vms.len()
     }
 
     /// Get the flags used to create the VMs
-    pub fn get_flags(&self) -> RandomXFlag {
+    pub(crate) fn get_flags(&self) -> RandomXFlag {
         self.flags
     }
 }

@@ -32,7 +32,7 @@ use async_trait::async_trait;
 
 type ClientFFI = c_void;
 
-use libc::{c_char, c_int};
+use libc::{c_char, c_int, c_uchar, c_uint};
 use minotari_app_utilities::identity_management::setup_node_identity;
 use tari_chat_client::{database, ChatClient};
 use tari_common_types::tari_address::TariAddress;
@@ -80,11 +80,16 @@ extern "C" {
     pub fn get_chat_messages(
         client: *mut ClientFFI,
         sender: *mut c_void,
-        limit: *mut c_void,
-        page: *mut c_void,
+        limit: c_int,
+        page: c_int,
         error_out: *const c_int,
     ) -> *mut c_void;
     pub fn destroy_chat_client_ffi(client: *mut ClientFFI);
+    pub fn chat_byte_vector_create(
+        byte_array: *const c_uchar,
+        element_count: c_uint,
+        error_our: *const c_int,
+    ) -> *mut c_void;
 }
 
 #[derive(Debug)]
@@ -139,8 +144,8 @@ impl ChatClient for ChatFFI {
         let messages;
         unsafe {
             let error_out = Box::into_raw(Box::new(0));
-            let limit = Box::into_raw(Box::new(limit)) as *mut c_void;
-            let page = Box::into_raw(Box::new(page)) as *mut c_void;
+            let limit = i32::try_from(limit).expect("Truncation occurred") as c_int;
+            let page = i32::try_from(page).expect("Truncation occurred") as c_int;
             let all_messages = get_chat_messages(client.0, address_ptr, limit, page, error_out) as *mut Vec<Message>;
             messages = (*all_messages).clone();
         }
@@ -164,15 +169,21 @@ impl ChatClient for ChatFFI {
 
     fn add_metadata(&self, message: Message, metadata_type: MessageMetadataType, data: String) -> Message {
         let message_ptr = Box::into_raw(Box::new(message)) as *mut c_void;
-        let message_type = i32::from(metadata_type.as_byte());
-
-        let data_c_str = CString::new(data).unwrap();
-        let data_c_char: *const c_char = CString::into_raw(data_c_str) as *const c_char;
+        let message_type = metadata_type.as_byte();
 
         let error_out = Box::into_raw(Box::new(0));
 
+        let bytes = data.into_bytes();
+        let len = i32::try_from(bytes.len()).expect("Truncation occurred") as c_uint;
+        let byte_data = unsafe { chat_byte_vector_create(bytes.as_ptr(), len, error_out) };
+
         unsafe {
-            add_chat_message_metadata(message_ptr, message_type, data_c_char, error_out);
+            add_chat_message_metadata(
+                message_ptr,
+                i32::from(message_type),
+                byte_data as *const c_char,
+                error_out,
+            );
             *Box::from_raw(message_ptr as *mut Message)
         }
     }
