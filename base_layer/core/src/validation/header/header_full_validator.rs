@@ -20,17 +20,24 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::cmp;
+use std::{cmp, io::Chain};
 
 use log::warn;
 use tari_common_types::types::FixedHash;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex};
 
 use crate::{
-    blocks::{BlockHeader, BlockHeaderValidationError},
+    blocks::{BlockHeader, BlockHeaderValidationError, ChainHeader},
     chain_storage::BlockchainBackend,
     consensus::{ConsensusConstants, ConsensusManager},
-    proof_of_work::{monero_rx::MoneroPowData, AchievedTargetDifficulty, Difficulty, PowAlgorithm, PowError},
+    proof_of_work::{
+        difficulty::CheckedAdd,
+        monero_rx::MoneroPowData,
+        AchievedTargetDifficulty,
+        Difficulty,
+        PowAlgorithm,
+        PowError,
+    },
     validation::{
         helpers::{check_header_timestamp_greater_than_median, check_target_difficulty},
         DifficultyCalculator,
@@ -61,20 +68,20 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for HeaderFullValidator
         &self,
         db: &B,
         header: &BlockHeader,
-        prev_header: &BlockHeader,
+        prev_header: &ChainHeader,
         prev_timestamps: &[EpochTime],
         target_difficulty: Option<Difficulty>,
-    ) -> Result<AchievedTargetDifficulty, ValidationError> {
+    ) -> Result<(AchievedTargetDifficulty, u128), ValidationError> {
         let constants = self.rules.consensus_constants(header.height);
 
         check_not_bad_block(db, header.hash())?;
         check_blockchain_version(constants, header.version)?;
-        check_height(header, prev_header)?;
+        check_height(header, prev_header.header())?;
 
         sanity_check_timestamp_count(header, prev_timestamps, constants)?;
         check_header_timestamp_greater_than_median(header, prev_timestamps)?;
 
-        check_prev_hash(header, prev_header)?;
+        check_prev_hash(header, prev_header.header())?;
         check_timestamp_ftl(header, &self.rules)?;
         check_pow_data(header, &self.rules, db)?;
 
@@ -84,8 +91,26 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for HeaderFullValidator
             self.difficulty_calculator
                 .check_achieved_and_target_difficulty(db, header)?
         };
+        let accumulated_difficulty = match achieved_target.pow_algo() {
+            PowAlgorithm::RandomX => {
+                achieved_target
+                    .achieved()
+                    .checked_add(prev_header.accumulated_data().accumulated_randomx_difficulty)
+                    .ok_or_else(|| ValidationError::DifficultyOverflow)?
+                    .as_u64() as u128 *
+                    prev_header.accumulated_data().accumulated_sha3x_difficulty.as_u64() as u128
+            },
+            PowAlgorithm::Sha3x => {
+                achieved_target
+                    .achieved()
+                    .checked_add(prev_header.accumulated_data().accumulated_sha3x_difficulty)
+                    .ok_or_else(|| ValidationError::DifficultyOverflow)?
+                    .as_u64() as u128 *
+                    prev_header.accumulated_data().accumulated_randomx_difficulty.as_u64() as u128
+            },
+        };
 
-        Ok(achieved_target)
+        Ok((achieved_target, accumulated_difficulty))
     }
 }
 

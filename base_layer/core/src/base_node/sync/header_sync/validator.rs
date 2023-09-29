@@ -51,7 +51,7 @@ struct State {
     timestamps: RollingVec<EpochTime>,
     target_difficulties: TargetDifficulties,
     previous_accum: BlockHeaderAccumulatedData,
-    previous_header: BlockHeader,
+    previous_header: ChainHeader,
     valid_headers: Vec<ChainHeader>,
 }
 
@@ -71,7 +71,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
     pub async fn initialize_state(&mut self, start_hash: &HashOutput) -> Result<(), BlockHeaderSyncError> {
         let start_header = self
             .db
-            .fetch_header_by_block_hash(*start_hash)
+            .fetch_chain_header_by_block_hash(*start_hash)
             .await?
             .ok_or_else(|| BlockHeaderSyncError::StartHashNotFound(start_hash.to_hex()))?;
         let timestamps = self.db.fetch_block_timestamps(*start_hash).await?;
@@ -93,7 +93,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
             target_difficulties.get(PowAlgorithm::RandomX).len(),
         );
         self.state = Some(State {
-            current_height: start_header.height,
+            current_height: start_header.height(),
             timestamps,
             target_difficulties,
             previous_accum,
@@ -128,7 +128,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
                 Some(target_difficulty),
             )
         };
-        let achieved_target = match result {
+        let (achieved_target, _total_difficulty) = match result {
             Ok(achieved_target) => achieved_target,
             // future timelimit validation can succeed at a later time. As the block is not yet valid, we discard it
             // for now and ban the peer, but wont blacklist the block.
@@ -155,7 +155,6 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
         // Mutable borrow done later in the function to allow multiple immutable borrows before this line. This has
         // nothing to do with locking or concurrency.
         let state = self.state_mut();
-        state.previous_header = header.clone();
 
         // Ensure that timestamps are inserted in sorted order
         let maybe_index = state.timestamps.iter().position(|ts| *ts >= header.timestamp());
@@ -181,7 +180,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
         let total_accumulated_difficulty = accumulated_data.total_accumulated_difficulty;
         // NOTE: accumulated_data constructed from header so they are guaranteed to correspond
         let chain_header = ChainHeader::try_construct(header, accumulated_data).unwrap();
-
+        state.previous_header = chain_header.clone();
         state.previous_accum = chain_header.accumulated_data().clone();
         state.valid_headers.push(chain_header);
 

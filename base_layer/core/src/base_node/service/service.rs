@@ -334,6 +334,8 @@ where B: BlockchainBackend + 'static
             return;
         }
         let inbound_nch = self.inbound_nch.clone();
+        let mut connectivity_requester = self.connectivity.clone();
+        let source_peer = new_block.source_peer.clone();
         task::spawn(async move {
             let result = handle_incoming_block(inbound_nch, new_block).await;
 
@@ -344,7 +346,19 @@ where B: BlockchainBackend + 'static
                 ))) => {
                     // Special case, dont log this again as an error
                 },
-                Err(e) => error!(target: LOG_TARGET, "Failed to handle incoming block message: {}", e),
+                Err(e) => {
+                    if let Some(ban_reason) = e.get_ban_reason() {
+                        let _drop = connectivity_requester
+                            .ban_peer_until(
+                                source_peer.node_id,
+                                ban_reason.ban_duration(),
+                                ban_reason.reason().to_string(),
+                            )
+                            .await
+                            .map_err(|e| error!(target: LOG_TARGET, "Failed to ban peer: {:?}", e));
+                    }
+                    error!(target: LOG_TARGET, "Failed to handle incoming block message: {}", e)
+                },
             }
         });
     }
