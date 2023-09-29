@@ -163,8 +163,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         );
         let mut handler = self.node_service.clone();
         let (start_height, end_height) = get_heights(&request, handler.clone()).await?;
-        // Overflow safety: checked in get_heights
-        let num_requested = end_height - start_height;
+        let num_requested = end_height
+            .checked_sub(start_height)
+            .ok_or(Status::invalid_argument("Start height is more than end height"))?;
         if num_requested > GET_DIFFICULTY_MAX_HEIGHTS {
             return Err(Status::invalid_argument(format!(
                 "Number of headers requested exceeds maximum. Expected less than {} but got {}",
@@ -181,8 +182,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let mut randomx_hash_rate_moving_average =
             HashRateMovingAverage::new(PowAlgorithm::RandomX, self.consensus_rules.clone());
 
-        let page_iter = NonOverlappingIntegerPairIter::new(start_height, end_height + 1, GET_DIFFICULTY_PAGE_SIZE)
-            .map_err(Status::invalid_argument)?;
+        let page_iter =
+            NonOverlappingIntegerPairIter::new(start_height, end_height.saturating_add(1), GET_DIFFICULTY_PAGE_SIZE)
+                .map_err(Status::invalid_argument)?;
         task::spawn(async move {
             for (start, end) in page_iter {
                 // headers are returned by height
@@ -223,7 +225,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
                     let sha3x_estimated_hash_rate = sha3x_hash_rate_moving_average.average();
                     let randomx_estimated_hash_rate = randomx_hash_rate_moving_average.average();
-                    let estimated_hash_rate = sha3x_estimated_hash_rate + randomx_estimated_hash_rate;
+                    let estimated_hash_rate = sha3x_estimated_hash_rate.saturating_add(randomx_estimated_hash_rate);
 
                     let difficulty = tari_rpc::NetworkDifficultyResponse {
                         difficulty: current_difficulty.as_u64(),
@@ -374,9 +376,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             }
         };
         let consensus_rules = self.consensus_rules.clone();
-        let page_iter =
-            NonOverlappingIntegerPairIter::new(*header_range.start(), *header_range.end() + 1, LIST_HEADERS_PAGE_SIZE)
-                .map_err(Status::invalid_argument)?;
+        let page_iter = NonOverlappingIntegerPairIter::new(
+            *header_range.start(),
+            header_range.end().saturating_add(1),
+            LIST_HEADERS_PAGE_SIZE,
+        )
+        .map_err(Status::invalid_argument)?;
         task::spawn(async move {
             debug!(
                 target: LOG_TARGET,
@@ -875,7 +880,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let mut handler = self.node_service.clone();
         let (mut tx, rx) = mpsc::channel(GET_BLOCKS_PAGE_SIZE);
-        let page_iter = NonOverlappingIntegerPairIter::new(start, end + 1, GET_BLOCKS_PAGE_SIZE)
+        let page_iter = NonOverlappingIntegerPairIter::new(start, end.saturating_add(1), GET_BLOCKS_PAGE_SIZE)
             .map_err(Status::invalid_argument)?;
         task::spawn(async move {
             for (start, end) in page_iter {
@@ -1679,7 +1684,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     },
                 };
 
-                let next_header = match node_service.get_header(height + 1).await {
+                let next_header = match node_service.get_header(height.saturating_add(1)).await {
                     Ok(h) => h,
                     Err(e) => {
                         let _ignore = tx.send(Err(obscure_error_if_true(
