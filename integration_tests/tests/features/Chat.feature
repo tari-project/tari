@@ -48,3 +48,10 @@ Feature: Chat messaging
     Then CHAT_A will have 2 messages with CHAT_B
     Then CHAT_A will have 1 messages with CHAT_C
 
+  Scenario: A message receives a delivery receipt
+    Given I have a seed node SEED_A
+    When I have a chat client CHAT_A connected to seed node SEED_A
+    When I have a chat client CHAT_B connected to seed node SEED_A
+    When I use CHAT_A to send a message 'Hey there' to CHAT_B
+    When CHAT_B will have 1 message with CHAT_A
+    Then CHAT_A and CHAT_B will have a message 'Hey there' with matching delivery timestamps

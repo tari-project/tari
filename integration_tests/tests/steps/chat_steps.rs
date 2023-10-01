@@ -114,6 +114,7 @@ async fn i_reply_to_message(
     panic!("Never received incoming chat message",)
 }
 
+#[when(expr = "{word} will have {int} message(s) with {word}")]
 #[then(expr = "{word} will have {int} message(s) with {word}")]
 async fn receive_n_messages(world: &mut TariWorld, receiver: String, message_count: u64, sender: String) {
     let receiver = world.chat_clients.get(&receiver).unwrap();
@@ -217,6 +218,55 @@ async fn have_replied_message(world: &mut TariWorld, receiver: String, sender: S
         assert_eq!(
             metadata.data, outbound_chat_message.message_id,
             "Message id does not match"
+        );
+
+        return;
+    }
+
+    panic!("Never received incoming chat message",)
+}
+
+#[then(regex = r"^(.+) and (.+) will have a message '(.+)' with matching delivery timestamps")]
+async fn matching_delivery_timestamps(world: &mut TariWorld, sender: String, receiver: String, msg: String) {
+    let client_1 = world.chat_clients.get(&receiver).unwrap();
+    let client_2 = world.chat_clients.get(&sender).unwrap();
+    let client_1_address = TariAddress::from_public_key(client_1.identity().public_key(), Network::LocalNet);
+    let client_2_address = TariAddress::from_public_key(client_2.identity().public_key(), Network::LocalNet);
+
+    for _a in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
+        let client_1_messages: Vec<Message> = (*client_1)
+            .get_messages(&client_2_address, DEFAULT_MESSAGE_LIMIT, DEFAULT_MESSAGE_PAGE)
+            .await;
+
+        if client_1_messages.is_empty() {
+            tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
+            continue;
+        }
+
+        let client_1_message = client_1_messages
+            .iter()
+            .find(|m| m.body == msg.clone().into_bytes())
+            .expect("no message with that content found")
+            .clone();
+
+        let client_2_messages: Vec<Message> = (*client_2)
+            .get_messages(&client_1_address, DEFAULT_MESSAGE_LIMIT, DEFAULT_MESSAGE_PAGE)
+            .await;
+
+        if client_2_messages.is_empty() {
+            tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
+            continue;
+        }
+
+        let client_2_message = client_2_messages
+            .iter()
+            .find(|m| m.body == msg.clone().into_bytes())
+            .expect("no message with that content found")
+            .clone();
+
+        assert_eq!(
+            client_1_message.delivery_confirmation_at,
+            client_2_message.delivery_confirmation_at
         );
 
         return;

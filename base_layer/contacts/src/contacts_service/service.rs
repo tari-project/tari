@@ -56,7 +56,7 @@ use crate::contacts_service::{
     handle::{ContactsLivenessData, ContactsLivenessEvent, ContactsServiceRequest, ContactsServiceResponse},
     proto,
     storage::database::{ContactsBackend, ContactsDatabase},
-    types::{Contact, Message, MessageDispatch},
+    types::{Confirmation, Contact, Message, MessageDispatch},
 };
 
 const LOG_TARGET: &str = "contacts::contacts_service";
@@ -403,8 +403,9 @@ where T: ContactsBackend + 'static
 
             match dispatch {
                 MessageDispatch::Message(m) => self.handle_chat_message(m, source_public_key).await,
-                MessageDispatch::DeliveryConfirmation(_) => Ok(()),
-                MessageDispatch::ReadConfirmation(_) => Ok(()),
+                MessageDispatch::DeliveryConfirmation(_) | MessageDispatch::ReadConfirmation(_) => {
+                    self.handle_confirmation(dispatch.clone()).await
+                },
             }
         } else {
             Err(ContactsServiceError::MessageSourceDoesNotMatchOrigin)
@@ -532,12 +533,6 @@ where T: ContactsBackend + 'static
         }
     }
 
-    async fn create_and_send_delivery_confirmation_for_msg(&mut self, message: &Message) {
-        // let address = &message.address;
-
-        // let outbound_comms = self.dht.outbound_requester();
-    }
-
     async fn handle_chat_message(
         &mut self,
         message: Message,
@@ -553,14 +548,44 @@ where T: ContactsBackend + 'static
         match self.db.save_message(our_message.clone()) {
             Ok(..) => {
                 let _msg = self.message_publisher.send(Arc::new(our_message.clone()));
-                // Send a delivery notification
 
-                self.create_and_send_delivery_confirmation_for_msg(&our_message).await;
+                // Send a delivery notification
+                self.create_and_send_delivery_confirmation_for_msg(&our_message).await?;
 
                 Ok(())
             },
             Err(e) => Err(e.into()),
         }
+    }
+
+    async fn create_and_send_delivery_confirmation_for_msg(
+        &mut self,
+        message: &Message,
+    ) -> Result<(), ContactsServiceError> {
+        let address = &message.address;
+        let confirmation = MessageDispatch::DeliveryConfirmation(Confirmation {
+            message_id: message.message_id.clone(),
+            timestamp: message.delivery_confirmation_at,
+        });
+        let msg = OutboundDomainMessage::from(confirmation);
+
+        self.deliver_message(address.clone(), msg).await
+    }
+
+    async fn handle_confirmation(&mut self, dispatch: MessageDispatch) -> Result<(), ContactsServiceError> {
+        let (message_id, delivery, read) = match dispatch {
+            MessageDispatch::DeliveryConfirmation(c) => (c.message_id, Some(c.timestamp), None),
+            MessageDispatch::ReadConfirmation(c) => (c.message_id, None, Some(c.timestamp)),
+            _ => {
+                return Err(ContactsServiceError::MessageParsingError(
+                    "Incorrect confirmation type".to_string(),
+                ))
+            },
+        };
+
+        self.db.confirm_message(message_id, delivery, read)?;
+
+        Ok(())
     }
 
     async fn deliver_message(

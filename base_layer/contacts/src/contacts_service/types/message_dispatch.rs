@@ -30,6 +30,7 @@ use crate::contacts_service::{
     types::{Confirmation, Message},
 };
 
+#[derive(Clone)]
 pub enum MessageDispatch {
     Message(Message),
     DeliveryConfirmation(Confirmation),

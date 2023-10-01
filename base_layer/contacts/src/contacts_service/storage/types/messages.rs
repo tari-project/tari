@@ -25,6 +25,7 @@ use std::convert::TryFrom;
 use chrono::NaiveDateTime;
 use diesel::{prelude::*, SqliteConnection};
 use serde_json;
+use tari_common_sqlite::util::diesel_ext::ExpectedRowsExtension;
 use tari_common_types::tari_address::TariAddress;
 
 use crate::{
@@ -63,6 +64,13 @@ pub struct MessagesSql {
     pub read_confirmation_at: NaiveDateTime,
     pub direction: i32,
 }
+#[derive(Clone, Debug, AsChangeset, PartialEq, Eq)]
+#[diesel(table_name = messages)]
+#[diesel(primary_key(message_id))]
+pub struct MessageUpdate {
+    pub delivery_confirmation_at: Option<NaiveDateTime>,
+    pub read_confirmation_at: Option<NaiveDateTime>,
+}
 
 impl MessagesSqlInsert {
     /// Write this struct to the database
@@ -88,6 +96,30 @@ impl MessagesSql {
             .offset(limit * page)
             .limit(limit)
             .load::<MessagesSql>(conn)?)
+    }
+
+    /// Find a particular message by its message_id
+    pub fn find_by_message_id(
+        message_id: &[u8],
+        conn: &mut SqliteConnection,
+    ) -> Result<MessagesSql, ContactsServiceStorageError> {
+        Ok(messages::table
+            .filter(messages::message_id.eq(message_id))
+            .first::<MessagesSql>(conn)?)
+    }
+
+    /// Find a particular Message by message_id, and update it if it exists, returning the affected record
+    pub fn find_by_message_id_and_update(
+        conn: &mut SqliteConnection,
+        message_id: &[u8],
+        updated_message: MessageUpdate,
+    ) -> Result<MessagesSql, ContactsServiceStorageError> {
+        // Note: `get_result` not implemented for SQLite
+        diesel::update(messages::table.filter(messages::message_id.eq(message_id)))
+            .set(updated_message)
+            .execute(conn)
+            .num_rows_affected_or_not_found(1)?;
+        MessagesSql::find_by_message_id(message_id, conn)
     }
 }
 
