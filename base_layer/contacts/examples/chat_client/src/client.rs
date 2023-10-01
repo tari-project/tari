@@ -49,6 +49,7 @@ pub trait ChatClient {
     fn create_message(&self, receiver: &TariAddress, message: String) -> Message;
     async fn get_messages(&self, sender: &TariAddress, limit: u64, page: u64) -> Vec<Message>;
     async fn send_message(&self, message: Message);
+    async fn send_read_receipt(&self, address: &TariAddress, message_id: Vec<u8>);
     fn identity(&self) -> &NodeIdentity;
     fn shutdown(&mut self);
 }
@@ -169,6 +170,15 @@ impl ChatClient for Client {
         }
 
         messages
+    }
+
+    async fn send_read_receipt(&self, address: &TariAddress, message_id: Vec<u8>) {
+        if let Some(mut contacts_service) = self.contacts.clone() {
+            contacts_service
+                .send_read_confirmation(address.clone(), message_id)
+                .await
+                .expect("Read receipt not sent");
+        }
     }
 
     fn create_message(&self, receiver: &TariAddress, message: String) -> Message {

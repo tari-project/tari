@@ -307,8 +307,14 @@ where T: ContactsBackend + 'static
 
                 Ok(ContactsServiceResponse::MessageSent)
             },
-            ContactsServiceRequest::SendDeliveryConfirmation(address, message_id) => {
-                Ok(ContactsServiceResponse::MessageSent)
+            ContactsServiceRequest::SendReadConfirmation(address, confirmation) => {
+                let msg = OutboundDomainMessage::from(MessageDispatch::DeliveryConfirmation(confirmation.clone()));
+                self.deliver_message(address, msg).await?;
+
+                self.db
+                    .confirm_message(confirmation.message_id.clone(), None, Some(confirmation.timestamp))?;
+
+                Ok(ContactsServiceResponse::ReadConfirmationSent)
             },
         }
     }

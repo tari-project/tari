@@ -30,13 +30,14 @@ use chrono::{DateTime, Local, NaiveDateTime};
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::peer_manager::NodeId;
 use tari_service_framework::reply_channel::SenderService;
+use tari_utilities::epoch_time::EpochTime;
 use tokio::sync::broadcast;
 use tower::Service;
 
 use crate::contacts_service::{
     error::ContactsServiceError,
     service::{ContactMessageType, ContactOnlineStatus},
-    types::{Contact, Message},
+    types::{Confirmation, Contact, Message},
 };
 
 pub static DEFAULT_MESSAGE_LIMIT: u64 = 35;
@@ -137,7 +138,7 @@ pub enum ContactsServiceRequest {
     GetContactOnlineStatus(Contact),
     SendMessage(TariAddress, Message),
     GetMessages(TariAddress, i64, i64),
-    SendDeliveryConfirmation(TariAddress, Vec<u8>),
+    SendReadConfirmation(TariAddress, Confirmation),
 }
 
 #[derive(Debug)]
@@ -149,6 +150,7 @@ pub enum ContactsServiceResponse {
     OnlineStatus(ContactOnlineStatus),
     Messages(Vec<Message>),
     MessageSent,
+    ReadConfirmationSent,
 }
 
 #[derive(Clone)]
@@ -280,6 +282,27 @@ impl ContactsServiceHandle {
             .await??
         {
             ContactsServiceResponse::MessageSent => Ok(()),
+            _ => Err(ContactsServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn send_read_confirmation(
+        &mut self,
+        address: TariAddress,
+        message_id: Vec<u8>,
+    ) -> Result<(), ContactsServiceError> {
+        match self
+            .request_response_service
+            .call(ContactsServiceRequest::SendReadConfirmation(
+                address.clone(),
+                Confirmation {
+                    message_id,
+                    timestamp: EpochTime::now().as_u64(),
+                },
+            ))
+            .await??
+        {
+            ContactsServiceResponse::ReadConfirmationSent => Ok(()),
             _ => Err(ContactsServiceError::UnexpectedApiResponse),
         }
     }

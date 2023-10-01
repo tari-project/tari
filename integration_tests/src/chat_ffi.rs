@@ -188,6 +188,10 @@ impl ChatClient for ChatFFI {
         }
     }
 
+    async fn send_read_receipt(&self, _address: &TariAddress, _message_id: Vec<u8>) {
+        todo!();
+    }
+
     fn identity(&self) -> &NodeIdentity {
         &self.identity
     }
