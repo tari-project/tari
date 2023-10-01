@@ -36,7 +36,7 @@ pub struct ChatFFIMessage {
     pub from_address: *const c_char,
     pub stored_at: u64,
     pub message_id: *const c_char,
-    pub metadata: ChatMessageMetadataVector,
+    pub metadata: *mut ChatMessageMetadataVector,
     pub metadata_len: c_int,
 }
 
@@ -61,8 +61,11 @@ impl TryFrom<Message> for ChatFFIMessage {
 
         let mut chat_message_metadata_bytes = vec![];
         for md in v.metadata.clone() {
+            let data_ptr = Box::into_raw(Box::new(ChatByteVector(
+                md.data.clone().into_iter().map(|f| f as c_uchar).collect(),
+            )));
             chat_message_metadata_bytes.push(ChatFFIMessageMetadata {
-                data: ChatByteVector(md.data.clone().into_iter().map(|f| f as c_uchar).collect()),
+                data: data_ptr,
                 metadata_type: i32::from(md.metadata_type.as_byte()) as c_int,
             });
         }
@@ -72,12 +75,14 @@ impl TryFrom<Message> for ChatFFIMessage {
             Err(e) => return Err(e.to_string()),
         };
 
+        let msg_md = Box::into_raw(Box::new(ChatMessageMetadataVector(chat_message_metadata_bytes)));
+
         Ok(Self {
             body: body.as_ptr(),
             from_address: address.as_ptr(),
             stored_at: v.stored_at,
             message_id: id.as_ptr(),
-            metadata: ChatMessageMetadataVector(chat_message_metadata_bytes),
+            metadata: msg_md,
             metadata_len: metadata_length,
         })
     }
@@ -86,7 +91,7 @@ impl TryFrom<Message> for ChatFFIMessage {
 /// Frees memory for a ChatFFIMessage
 ///
 /// ## Arguments
-/// `transport` - The pointer to a ChatFFIMessage
+/// `address` - The pointer to a ChatFFIMessage
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -95,6 +100,23 @@ impl TryFrom<Message> for ChatFFIMessage {
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn destroy_chat_ffi_message(address: *mut ChatFFIMessage) {
+    if !address.is_null() {
+        drop(Box::from_raw(address))
+    }
+}
+
+/// Frees memory for a ChatMessageMetadataVector
+///
+/// ## Arguments
+/// `address` - The pointer to a ChatMessageMetadataVector
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn destroy_chat_message_metadata_vector(address: *mut ChatMessageMetadataVector) {
     if !address.is_null() {
         drop(Box::from_raw(address))
     }

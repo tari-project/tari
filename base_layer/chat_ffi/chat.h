@@ -39,7 +39,7 @@ struct ChatFFIMessage {
   const char *from_address;
   uint64_t stored_at;
   const char *message_id;
-  struct ChatMessageMetadataVector metadata;
+  struct ChatMessageMetadataVector *metadata;
   int metadata_len;
 };
 
@@ -48,6 +48,11 @@ typedef void (*CallbackMessageReceived)(struct ChatFFIMessage*);
 typedef void (*CallbackDeliveryConfirmationReceived)(struct Confirmation*);
 
 typedef void (*CallbackReadConfirmationReceived)(struct Confirmation*);
+
+struct ChatFFIMessageMetadata {
+  struct ChatByteVector *data;
+  int metadata_type;
+};
 
 #ifdef __cplusplus
 extern "C" {
@@ -316,6 +321,61 @@ void add_chat_message_metadata(struct Message *message,
                                int *error_out);
 
 /**
+ * Reads the message metadata of a message and returns a ptr to the metadata at the given position
+ *
+ * ## Arguments
+ * `message` - A pointer to a message
+ * `position` - The index of the array of metadata
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * ## Safety
+ * `message` should be destroyed eventually
+ * the returned `ChatFFIMessageMetadata` should be destroyed eventually
+ */
+struct ChatFFIMessageMetadata *read_chat_metadata_at_position(struct ChatFFIMessage *message,
+                                                              unsigned int position,
+                                                              int *error_out);
+
+/**
+ * Returns the enum int representation of a metadata type
+ *
+ * ## Arguments
+ * `msg_metadata` - A pointer to a message metadat
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `metadata_type` - An int8 that maps to MessageMetadataType enum
+ *     '0' -> Reply
+ *     '1' -> TokenRequest
+ *
+ * ## Safety
+ * `msg_metadata` should be destroyed eventually
+ */
+int read_chat_metadata_type(struct ChatFFIMessageMetadata *msg_metadata, int *error_out);
+
+/**
+ * Returns a ptr to a ByteVector
+ *
+ * ## Arguments
+ * `msg_metadata` - A pointer to a message metadata
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `*mut ` - An int8 that maps to MessageMetadataType enum
+ *     '0' -> Reply
+ *     '1' -> TokenRequest
+ *
+ * ## Safety
+ * `msg_metadata` should be destroyed eventually
+ * the returned `ChatByteVector` should be destroyed eventually
+ */
+struct ChatByteVector *read_chat_metadata_data(struct ChatFFIMessageMetadata *msg_metadata,
+                                               int *error_out);
+
+/**
  * Sends a read confirmation for a given message
  *
  * ## Arguments
@@ -423,7 +483,7 @@ void destroy_chat_ffi_liveness_data(struct ChatFFIContactsLivenessData *address)
  * Frees memory for a ChatFFIMessage
  *
  * ## Arguments
- * `transport` - The pointer to a ChatFFIMessage
+ * `address` - The pointer to a ChatFFIMessage
  *
  * ## Returns
  * `()` - Does not return a value, equivalent to void in C
@@ -432,6 +492,20 @@ void destroy_chat_ffi_liveness_data(struct ChatFFIContactsLivenessData *address)
  * None
  */
 void destroy_chat_ffi_message(struct ChatFFIMessage *address);
+
+/**
+ * Frees memory for a ChatMessageMetadataVector
+ *
+ * ## Arguments
+ * `address` - The pointer to a ChatMessageMetadataVector
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * None
+ */
+void destroy_chat_message_metadata_vector(struct ChatMessageMetadataVector *address);
 
 /**
  * Creates a ChatByteVector
