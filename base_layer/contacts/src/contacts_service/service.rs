@@ -299,36 +299,8 @@ where T: ContactsBackend + 'static
                 Ok(result.map(ContactsServiceResponse::Messages)?)
             },
             ContactsServiceRequest::SendMessage(address, mut message) => {
-                let contact = match self.db.get_contact(address.clone()) {
-                    Ok(contact) => contact,
-                    Err(_) => Contact::from(&address),
-                };
-
                 let ob_message = OutboundDomainMessage::from(MessageDispatch::Message(message.clone()));
-                let encryption = OutboundEncryption::EncryptFor(Box::new(address.public_key().clone()));
-
-                match self.get_online_status(&contact).await {
-                    Ok(ContactOnlineStatus::Online) => {
-                        info!(target: LOG_TARGET, "Chat message being sent directed");
-                        let mut comms_outbound = self.dht.outbound_requester();
-
-                        comms_outbound
-                            .send_direct_encrypted(
-                                address.public_key().clone(),
-                                ob_message,
-                                encryption,
-                                "contact service messaging".to_string(),
-                            )
-                            .await?;
-                    },
-                    Err(e) => return Err(e),
-                    _ => {
-                        let mut comms_outbound = self.dht.outbound_requester();
-                        comms_outbound
-                            .closest_broadcast(address.public_key().clone(), encryption, vec![], ob_message)
-                            .await?;
-                    },
-                }
+                self.deliver_message(address, ob_message).await?;
 
                 message.stored_at = Utc::now().naive_utc().timestamp() as u64;
                 self.db.save_message(message)?;
@@ -589,5 +561,42 @@ where T: ContactsBackend + 'static
             },
             Err(e) => Err(e.into()),
         }
+    }
+
+    async fn deliver_message(
+        &mut self,
+        address: TariAddress,
+        message: OutboundDomainMessage<proto::MessageDispatch>,
+    ) -> Result<(), ContactsServiceError> {
+        let contact = match self.db.get_contact(address.clone()) {
+            Ok(contact) => contact,
+            Err(_) => Contact::from(&address),
+        };
+        let encryption = OutboundEncryption::EncryptFor(Box::new(address.public_key().clone()));
+
+        match self.get_online_status(&contact).await {
+            Ok(ContactOnlineStatus::Online) => {
+                info!(target: LOG_TARGET, "Chat message being sent directed");
+                let mut comms_outbound = self.dht.outbound_requester();
+
+                comms_outbound
+                    .send_direct_encrypted(
+                        address.public_key().clone(),
+                        message,
+                        encryption,
+                        "contact service messaging".to_string(),
+                    )
+                    .await?;
+            },
+            Err(e) => return Err(e),
+            _ => {
+                let mut comms_outbound = self.dht.outbound_requester();
+                comms_outbound
+                    .closest_broadcast(address.public_key().clone(), encryption, vec![], message)
+                    .await?;
+            },
+        };
+
+        Ok(())
     }
 }
