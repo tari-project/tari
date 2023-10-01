@@ -541,7 +541,7 @@ where T: ContactsBackend + 'static
         let our_message = Message {
             address: TariAddress::from_public_key(&source_public_key, message.address.network()),
             stored_at: EpochTime::now().as_u64(),
-            delivery_confirmation_at: EpochTime::now().as_u64(),
+            delivery_confirmation_at: Some(EpochTime::now().as_u64()),
             ..message
         };
 
@@ -565,7 +565,11 @@ where T: ContactsBackend + 'static
         let address = &message.address;
         let confirmation = MessageDispatch::DeliveryConfirmation(Confirmation {
             message_id: message.message_id.clone(),
-            timestamp: message.delivery_confirmation_at,
+            timestamp: message
+                .delivery_confirmation_at
+                .ok_or(ContactsServiceError::MessageParsingError(
+                    "delivery_confirmation_at is malformed".to_string(),
+                ))?,
         });
         let msg = OutboundDomainMessage::from(confirmation);
 

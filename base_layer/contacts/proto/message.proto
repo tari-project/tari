@@ -10,8 +10,8 @@ message Message {
   bytes address = 3;
   DirectionEnum direction = 4;
   uint64 stored_at = 5;
-  uint64 delivery_confirmation_at = 6;
-  uint64 read_confirmation_at = 7;
+  optional uint64 delivery_confirmation_at = 6;
+  optional uint64 read_confirmation_at = 7;
   bytes message_id = 8;
 }
 

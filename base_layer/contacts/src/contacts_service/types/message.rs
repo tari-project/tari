@@ -39,8 +39,8 @@ pub struct Message {
     pub address: TariAddress,
     pub direction: Direction,
     pub stored_at: u64,
-    pub delivery_confirmation_at: u64,
-    pub read_confirmation_at: u64,
+    pub delivery_confirmation_at: Option<u64>,
+    pub read_confirmation_at: Option<u64>,
     pub message_id: Vec<u8>,
 }
 
