@@ -55,3 +55,20 @@ Feature: Chat FFI messaging
     Then CHAT_B will have 2 messages with CHAT_A
     Then CHAT_A will have 2 messages with CHAT_B
     Then CHAT_A will have a replied to message from CHAT_B with 'oh hai'
+
+  Scenario: A message receives a delivery receipt via FFI
+    Given I have a seed node SEED_A
+    When I have a chat FFI client CHAT_A connected to seed node SEED_A
+    When I have a chat FFI client CHAT_B connected to seed node SEED_A
+    When I use CHAT_A to send a message 'Hey there' to CHAT_B
+    When CHAT_B will have 1 message with CHAT_A
+    Then CHAT_A and CHAT_B will have a message 'Hey there' with matching delivery timestamps
+
+  Scenario: A message receives a read receipt via FFI
+    Given I have a seed node SEED_A
+    When I have a chat FFI client CHAT_A connected to seed node SEED_A
+    When I have a chat FFI client CHAT_B connected to seed node SEED_A
+    When I use CHAT_A to send a message 'Hey there' to CHAT_B
+    When CHAT_B will have 1 message with CHAT_A
+    When CHAT_B sends a read receipt to CHAT_A for message 'Hey there'
+    Then CHAT_A and CHAT_B will have a message 'Hey there' with matching read timestamps

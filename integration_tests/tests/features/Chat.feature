@@ -55,3 +55,12 @@ Feature: Chat messaging
     When I use CHAT_A to send a message 'Hey there' to CHAT_B
     When CHAT_B will have 1 message with CHAT_A
     Then CHAT_A and CHAT_B will have a message 'Hey there' with matching delivery timestamps
+
+  Scenario: A message receives a read receipt
+    Given I have a seed node SEED_A
+    When I have a chat client CHAT_A connected to seed node SEED_A
+    When I have a chat client CHAT_B connected to seed node SEED_A
+    When I use CHAT_A to send a message 'Hey there' to CHAT_B
+    When CHAT_B will have 1 message with CHAT_A
+    When CHAT_B sends a read receipt to CHAT_A for message 'Hey there'
+    Then CHAT_A and CHAT_B will have a message 'Hey there' with matching read timestamps

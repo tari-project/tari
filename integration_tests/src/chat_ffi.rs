@@ -90,6 +90,7 @@ extern "C" {
         element_count: c_uint,
         error_our: *const c_int,
     ) -> *mut c_void;
+    pub fn send_read_confirmation_for_message(client: *mut ClientFFI, message: *mut c_void, error_out: *const c_int);
 }
 
 #[derive(Debug)]
@@ -188,8 +189,14 @@ impl ChatClient for ChatFFI {
         }
     }
 
-    async fn send_read_receipt(&self, _address: &TariAddress, _message_id: Vec<u8>) {
-        todo!();
+    async fn send_read_receipt(&self, message: Message) {
+        let client = self.ptr.lock().unwrap();
+        let message_ptr = Box::into_raw(Box::new(message)) as *mut c_void;
+        let error_out = Box::into_raw(Box::new(0));
+
+        unsafe {
+            send_read_confirmation_for_message(client.0, message_ptr, error_out);
+        }
     }
 
     fn identity(&self) -> &NodeIdentity {
