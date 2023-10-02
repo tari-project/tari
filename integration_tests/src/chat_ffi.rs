@@ -58,6 +58,16 @@ extern "C" fn callback_message_received(_state: *mut c_void) {
     *callback.message_received.lock().unwrap() += 1;
 }
 
+extern "C" fn callback_delivery_confirmation_received(_state: *mut c_void) {
+    let callback = ChatCallback::instance();
+    *callback.delivery_confirmation_received.lock().unwrap() += 1;
+}
+
+extern "C" fn callback_read_confirmation_received(_state: *mut c_void) {
+    let callback = ChatCallback::instance();
+    *callback.read_confirmation_received.lock().unwrap() += 1;
+}
+
 #[cfg_attr(windows, link(name = "minotari_chat_ffi.dll"))]
 #[cfg_attr(not(windows), link(name = "minotari_chat_ffi"))]
 extern "C" {
@@ -66,6 +76,8 @@ extern "C" {
         error_out: *const c_int,
         callback_contact_status_change: unsafe extern "C" fn(*mut c_void),
         callback_message_received: unsafe extern "C" fn(*mut c_void),
+        callback_delivery_confirmation_received: unsafe extern "C" fn(*mut c_void),
+        callback_read_confirmation_received: unsafe extern "C" fn(*mut c_void),
     ) -> *mut ClientFFI;
     pub fn create_chat_message(receiver: *mut c_void, message: *const c_char, error_out: *const c_int) -> *mut c_void;
     pub fn send_chat_message(client: *mut ClientFFI, message: *mut c_void, error_out: *const c_int);
@@ -252,6 +264,8 @@ pub async fn spawn_ffi_chat_client(name: &str, seed_peers: Vec<Peer>, base_dir: 
             error_out,
             callback_contact_status_change,
             callback_message_received,
+            callback_delivery_confirmation_received,
+            callback_read_confirmation_received,
         );
     }
 
@@ -268,6 +282,8 @@ static START: Once = Once::new();
 pub struct ChatCallback {
     pub contact_status_change: Mutex<u64>,
     pub message_received: Mutex<u64>,
+    pub delivery_confirmation_received: Mutex<u64>,
+    pub read_confirmation_received: Mutex<u64>,
 }
 
 impl ChatCallback {

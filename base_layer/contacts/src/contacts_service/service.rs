@@ -588,7 +588,7 @@ where T: ContactsBackend + 'static
     }
 
     async fn handle_confirmation(&mut self, dispatch: MessageDispatch) -> Result<(), ContactsServiceError> {
-        let (message_id, delivery, read) = match dispatch {
+        let (message_id, delivery, read) = match dispatch.clone() {
             MessageDispatch::DeliveryConfirmation(c) => (c.message_id, Some(c.timestamp), None),
             MessageDispatch::ReadConfirmation(c) => (c.message_id, None, Some(c.timestamp)),
             _ => {
@@ -600,6 +600,7 @@ where T: ContactsBackend + 'static
 
         trace!(target: LOG_TARGET, "Handling confirmation with details: message_id: {:?}, delivery: {:?}, read: {:?}", message_id, delivery, read);
         self.db.confirm_message(message_id, delivery, read)?;
+        let _msg = self.message_publisher.send(Arc::new(dispatch));
 
         Ok(())
     }
