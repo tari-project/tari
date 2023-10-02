@@ -75,11 +75,17 @@ fn get_random_x_difficulty(input: &[u8], vm: &RandomXVMInstance) -> Result<(Diff
 pub fn verify_header(header: &BlockHeader) -> Result<MoneroPowData, MergeMineError> {
     let monero_data = MoneroPowData::from_header(header)?;
     let expected_merge_mining_hash = header.merge_mining_hash();
-    let extra_field = ExtraField::try_parse(&monero_data.coinbase_tx.prefix.extra)
-        .map_err(|_| MergeMineError::DeserializeError("Invalid extra field".to_string()))?;
+
+    // Parsing an extra field from bytes will always return a valid extra field, even if it does not represent the
+    // original extra field. As per Monero consensus rules, an error here will not represent a failure to deserialize a
+    // block, so no need to error here.
+    let extra_field = match ExtraField::try_parse(&monero_data.coinbase_tx.prefix.extra) {
+        Ok(val) => val,
+        Err(val) => val,
+    };
+
     // Check that the Tari MM hash is found in the monero coinbase transaction
     // and that only 1 tari header is found
-
     let mut is_found = false;
     let mut already_seen_mmfield = false;
     for item in extra_field.0 {
@@ -111,8 +117,13 @@ pub fn verify_header(header: &BlockHeader) -> Result<MoneroPowData, MergeMineErr
 
 /// Extracts the Monero block hash from the coinbase transaction's extra field
 pub fn extract_tari_hash(monero: &monero::Block) -> Result<Option<monero::Hash>, MergeMineError> {
-    let extra_field = ExtraField::try_parse(&monero.miner_tx.prefix.extra)
-        .map_err(|_| MergeMineError::DeserializeError("Invalid extra field".to_string()))?;
+    // Parsing an extra field from bytes will always return a valid extra field, even if it does not represent the
+    // original extra field. As per Monero consensus rules, an error here will not represent a failure to deserialize a
+    // block, so no need to error here.
+    let extra_field = match ExtraField::try_parse(&monero.miner_tx.prefix.extra) {
+        Ok(val) => val,
+        Err(val) => val,
+    };
     for item in &extra_field.0 {
         if let SubField::MergeMining(_depth, merge_mining_hash) = item {
             return Ok(Some(*merge_mining_hash));
@@ -183,11 +194,32 @@ pub fn append_merge_mining_tag<T: AsRef<[u8]>>(block: &mut monero::Block, hash: 
             hash.as_ref().len()
         )));
     }
+    // Parsing an extra field from bytes will always return a valid extra field, even if it does not represent the
+    // original extra field. As per Monero consensus rules, an error here will not represent a failure to deserialize a
+    // block, so no need to error here.
+    let mut extra_field = match ExtraField::try_parse(&block.miner_tx.prefix.extra) {
+        Ok(val) => val,
+        Err(val) => val,
+    };
+
+    // Adding more than one merge mining tag is not allowed
+    for item in &extra_field.0 {
+        if let SubField::MergeMining(Some(_), _) = item {
+            return Err(MergeMineError::ValidationError(
+                "More than one merge mining tag in coinbase not allowed".to_string(),
+            ));
+        }
+    }
+
+    // If `SubField::Padding(n)` with `n < 255` is the last sub field in the extra field, then appending a new field
+    // will always fail deserialization (`ExtraField::try_parse`) - the new field cannot be parsed in that sequence.
+    // To circumvent this, we create a new extra field by appending the original extra field to the merge mining field
+    // instead.
     let hash = monero::Hash::from_slice(hash.as_ref());
-    let mm_tag = SubField::MergeMining(Some(VarInt(0)), hash);
-    let mut extra_field = ExtraField::try_parse(&block.miner_tx.prefix.extra)
-        .map_err(|_| MergeMineError::DeserializeError("Invalid extra field".to_string()))?;
-    extra_field.0.push(mm_tag);
+    let mut fields = vec![SubField::MergeMining(Some(VarInt(0)), hash)];
+    fields.append(&mut extra_field.0);
+    extra_field.0 = fields;
+
     block.miner_tx.prefix.extra = extra_field.into();
     Ok(())
 }
@@ -556,7 +588,21 @@ mod test {
         let mut block_header2 = block_header.clone();
         block_header2.version = 1;
         let hash2 = block_header2.merge_mining_hash();
-        append_merge_mining_tag(&mut block, hash2).unwrap();
+
+        // Try via the API
+        assert!(append_merge_mining_tag(&mut block, hash2).is_err());
+
+        // Now bypass the API
+        let mut extra_field = match ExtraField::try_parse(&block.miner_tx.prefix.extra) {
+            Ok(val) => val,
+            Err(val) => val,
+        };
+        let hash = monero::Hash::from_slice(hash.as_ref());
+        let mut fields = vec![SubField::MergeMining(Some(VarInt(0)), hash)];
+        fields.append(&mut extra_field.0);
+        extra_field.0 = fields;
+        block.miner_tx.prefix.extra = extra_field.into();
+
         let count = 1 + (u16::try_from(block.tx_hashes.len()).unwrap());
         let mut hashes = Vec::with_capacity(count as usize);
         hashes.push(block.miner_tx.hash());
