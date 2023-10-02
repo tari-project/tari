@@ -50,7 +50,6 @@ mod error;
 mod logging;
 mod message;
 mod message_metadata;
-mod read_receipt;
 mod tansport_config;
 mod tari_address;
 mod types;

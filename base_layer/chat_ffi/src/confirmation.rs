@@ -23,24 +23,63 @@
 use std::{convert::TryFrom, ptr};
 
 use libc::{c_int, c_uint};
-use tari_contacts::contacts_service::types::Confirmation;
+use tari_chat_client::ChatClient;
+use tari_contacts::contacts_service::types::{Confirmation, Message};
 
 use crate::{
     error::{InterfaceError, LibChatError},
     types::{chat_byte_vector_create, ChatByteVector},
+    ChatClientFFI,
 };
+
+/// Send a read confirmation for a given message
+///
+/// ## Arguments
+/// `client` - The chat client
+/// `message` - The message that was read
+/// `error_out` - Pointer to an int which will be modified
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// The ```ChatClientFFI``` When done with the client it should be destroyed
+/// The ```Message``` When done with the Message it should be destroyed
+#[no_mangle]
+pub unsafe extern "C" fn send_read_confirmation_for_message(
+    client: *mut ChatClientFFI,
+    message: *mut Message,
+    error_out: *mut c_int,
+) {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    if client.is_null() {
+        error = LibChatError::from(InterfaceError::NullError("client".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    }
+
+    if message.is_null() {
+        error = LibChatError::from(InterfaceError::NullError("message".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    }
+
+    (*client)
+        .runtime
+        .block_on((*client).client.send_read_receipt((*message).clone()));
+}
 
 /// Get a pointer to a ChatByteVector representation of a message id
 ///
 /// ## Arguments
-/// `confirmation` - A pointer to the Confirmation
+/// `confirmation` - A pointer to the Confirmation you'd like to read from
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
 /// `*mut ChatByteVector` - A ptr to a ChatByteVector
 ///
 /// # Safety
-/// The ```confirmation``` When done with the confirmation it should be destroyed
+/// The ```confirmation``` When done with the Confirmation it should be destroyed
 /// The ```ChatByteVector``` When done with the returned ChatByteVector it should be destroyed
 #[no_mangle]
 pub unsafe extern "C" fn read_confirmation_message_id(
@@ -61,17 +100,17 @@ pub unsafe extern "C" fn read_confirmation_message_id(
     chat_byte_vector_create(data_bytes.as_ptr(), len as c_uint, error_out)
 }
 
-/// Get a c_uint timestamp for the confirmation
+/// Get a c_uint timestamp for the Confirmation
 ///
 /// ## Arguments
 /// `confirmation` - A pointer to the Confirmation
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
-/// `c_uint` - A uint representation of time. May return 0 if casting fails
+/// `c_uint` - A uint representation of time since epoch. May return 0 if casting fails
 ///
 /// # Safety
-/// None
+/// The ```confirmation``` When done with the Confirmation it should be destroyed
 #[no_mangle]
 pub unsafe extern "C" fn read_confirmation_timestamp(confirmation: *mut Confirmation, error_out: *mut c_int) -> c_uint {
     let mut error = 0;

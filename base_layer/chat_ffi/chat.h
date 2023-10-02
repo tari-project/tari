@@ -132,6 +132,25 @@ struct ApplicationConfig *create_chat_config(const char *network_str,
 void destroy_chat_config(struct ApplicationConfig *config);
 
 /**
+ * Send a read confirmation for a given message
+ *
+ * ## Arguments
+ * `client` - The chat client
+ * `message` - The message that was read
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * The ```ChatClientFFI``` When done with the client it should be destroyed
+ * The ```Message``` When done with the Message it should be destroyed
+ */
+void send_read_confirmation_for_message(struct ChatClientFFI *client,
+                                        struct Message *message,
+                                        int *error_out);
+
+/**
  * Get a pointer to a ChatByteVector representation of a message id
  *
  * ## Arguments
@@ -374,25 +393,6 @@ int read_chat_metadata_type(struct ChatFFIMessageMetadata *msg_metadata, int *er
  */
 struct ChatByteVector *read_chat_metadata_data(struct ChatFFIMessageMetadata *msg_metadata,
                                                int *error_out);
-
-/**
- * Sends a read confirmation for a given message
- *
- * ## Arguments
- * `client` - The chat client
- * `message` - The message that was read
- * `error_out` - Pointer to an int which will be modified
- *
- * ## Returns
- * `*mut TariAddress` - A ptr to a TariAddress
- *
- * # Safety
- * The ```ChatClientFFI``` When done with the client it should be destroyed
- * The ```Message``` When done with the Message it should be destroyed
- */
-void send_read_confirmation_for_message(struct ChatClientFFI *client,
-                                        struct Message *message,
-                                        int *error_out);
 
 /**
  * Creates a tor transport config
