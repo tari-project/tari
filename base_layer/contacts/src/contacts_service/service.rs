@@ -133,7 +133,7 @@ where T: ContactsBackend + 'static
     dht: Dht,
     subscription_factory: Arc<SubscriptionFactory>,
     event_publisher: broadcast::Sender<Arc<ContactsLivenessEvent>>,
-    message_publisher: broadcast::Sender<Arc<Message>>,
+    message_publisher: broadcast::Sender<Arc<MessageDispatch>>,
     number_of_rounds_no_pings: u16,
     contacts_auto_ping_interval: Duration,
     contacts_online_ping_window: usize,
@@ -154,7 +154,7 @@ where T: ContactsBackend + 'static
         dht: Dht,
         subscription_factory: Arc<SubscriptionFactory>,
         event_publisher: broadcast::Sender<Arc<ContactsLivenessEvent>>,
-        message_publisher: broadcast::Sender<Arc<Message>>,
+        message_publisher: broadcast::Sender<Arc<MessageDispatch>>,
         contacts_auto_ping_interval: Duration,
         contacts_online_ping_window: usize,
     ) -> Self {
@@ -300,15 +300,17 @@ where T: ContactsBackend + 'static
             },
             ContactsServiceRequest::SendMessage(address, mut message) => {
                 let ob_message = OutboundDomainMessage::from(MessageDispatch::Message(message.clone()));
-                self.deliver_message(address, ob_message).await?;
 
                 message.stored_at = Utc::now().naive_utc().timestamp() as u64;
                 self.db.save_message(message)?;
+                self.deliver_message(address, ob_message).await?;
 
                 Ok(ContactsServiceResponse::MessageSent)
             },
             ContactsServiceRequest::SendReadConfirmation(address, confirmation) => {
-                let msg = OutboundDomainMessage::from(MessageDispatch::DeliveryConfirmation(confirmation.clone()));
+                let msg = OutboundDomainMessage::from(MessageDispatch::ReadConfirmation(confirmation.clone()));
+                trace!(target: LOG_TARGET, "Sending read confirmation with details: message_id: {:?}, timestamp: {:?}", confirmation.message_id, confirmation.timestamp);
+
                 self.deliver_message(address, msg).await?;
 
                 self.db
@@ -547,13 +549,14 @@ where T: ContactsBackend + 'static
         let our_message = Message {
             address: TariAddress::from_public_key(&source_public_key, message.address.network()),
             stored_at: EpochTime::now().as_u64(),
-            delivery_confirmation_at: Some(EpochTime::now().as_u64()),
             ..message
         };
 
         match self.db.save_message(our_message.clone()) {
             Ok(..) => {
-                let _msg = self.message_publisher.send(Arc::new(our_message.clone()));
+                let _msg = self
+                    .message_publisher
+                    .send(Arc::new(MessageDispatch::Message(our_message.clone())));
 
                 // Send a delivery notification
                 self.create_and_send_delivery_confirmation_for_msg(&our_message).await?;
@@ -569,17 +572,19 @@ where T: ContactsBackend + 'static
         message: &Message,
     ) -> Result<(), ContactsServiceError> {
         let address = &message.address;
+        let delivery_time = EpochTime::now().as_u64();
         let confirmation = MessageDispatch::DeliveryConfirmation(Confirmation {
             message_id: message.message_id.clone(),
-            timestamp: message
-                .delivery_confirmation_at
-                .ok_or(ContactsServiceError::MessageParsingError(
-                    "delivery_confirmation_at is malformed".to_string(),
-                ))?,
+            timestamp: delivery_time,
         });
         let msg = OutboundDomainMessage::from(confirmation);
 
-        self.deliver_message(address.clone(), msg).await
+        self.deliver_message(address.clone(), msg).await?;
+
+        self.db
+            .confirm_message(message.message_id.clone(), Some(delivery_time), None)?;
+
+        Ok(())
     }
 
     async fn handle_confirmation(&mut self, dispatch: MessageDispatch) -> Result<(), ContactsServiceError> {
@@ -593,6 +598,7 @@ where T: ContactsBackend + 'static
             },
         };
 
+        trace!(target: LOG_TARGET, "Handling confirmation with details: message_id: {:?}, delivery: {:?}, read: {:?}", message_id, delivery, read);
         self.db.confirm_message(message_id, delivery, read)?;
 
         Ok(())

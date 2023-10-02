@@ -18,6 +18,8 @@ struct ChatMessageMetadataVector;
 
 struct ChatMessages;
 
+struct Confirmation;
+
 struct Message;
 
 struct TariAddress;
@@ -43,6 +45,10 @@ struct ChatFFIMessage {
 
 typedef void (*CallbackMessageReceived)(struct ChatFFIMessage*);
 
+typedef void (*CallbackDeliveryConfirmationReceived)(struct Confirmation*);
+
+typedef void (*CallbackReadConfirmationReceived)(struct Confirmation*);
+
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
@@ -65,7 +71,9 @@ extern "C" {
 struct ChatClientFFI *create_chat_client(struct ApplicationConfig *config,
                                          int *error_out,
                                          CallbackContactStatusChange callback_contact_status_change,
-                                         CallbackMessageReceived callback_message_received);
+                                         CallbackMessageReceived callback_message_received,
+                                         CallbackDeliveryConfirmationReceived callback_delivery_confirmation_received,
+                                         CallbackReadConfirmationReceived callback_read_confirmation_received);
 
 /**
  * Frees memory for a ChatClientFFI
@@ -117,6 +125,52 @@ struct ApplicationConfig *create_chat_config(const char *network_str,
  * None
  */
 void destroy_chat_config(struct ApplicationConfig *config);
+
+/**
+ * Get a pointer to a ChatByteVector representation of a message id
+ *
+ * ## Arguments
+ * `confirmation` - A pointer to the Confirmation
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `*mut ChatByteVector` - A ptr to a ChatByteVector
+ *
+ * # Safety
+ * The ```confirmation``` When done with the confirmation it should be destroyed
+ * The ```ChatByteVector``` When done with the returned ChatByteVector it should be destroyed
+ */
+struct ChatByteVector *read_confirmation_message_id(struct Confirmation *confirmation,
+                                                    int *error_out);
+
+/**
+ * Get a c_uint timestamp for the confirmation
+ *
+ * ## Arguments
+ * `confirmation` - A pointer to the Confirmation
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `c_uint` - A uint representation of time. May return 0 if casting fails
+ *
+ * # Safety
+ * None
+ */
+unsigned int read_confirmation_timestamp(struct Confirmation *confirmation, int *error_out);
+
+/**
+ * Frees memory for a Confirmation
+ *
+ * ## Arguments
+ * `address` - The pointer of a Confirmation
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * None
+ */
+void destroy_confirmation(struct Confirmation *address);
 
 /**
  * Add a contact

@@ -37,7 +37,7 @@ use tower::Service;
 use crate::contacts_service::{
     error::ContactsServiceError,
     service::{ContactMessageType, ContactOnlineStatus},
-    types::{Confirmation, Contact, Message},
+    types::{Confirmation, Contact, Message, MessageDispatch},
 };
 
 pub static DEFAULT_MESSAGE_LIMIT: u64 = 35;
@@ -158,7 +158,7 @@ pub struct ContactsServiceHandle {
     request_response_service:
         SenderService<ContactsServiceRequest, Result<ContactsServiceResponse, ContactsServiceError>>,
     liveness_events: broadcast::Sender<Arc<ContactsLivenessEvent>>,
-    message_events: broadcast::Sender<Arc<Message>>,
+    message_events: broadcast::Sender<Arc<MessageDispatch>>,
 }
 
 impl ContactsServiceHandle {
@@ -168,7 +168,7 @@ impl ContactsServiceHandle {
             Result<ContactsServiceResponse, ContactsServiceError>,
         >,
         liveness_events: broadcast::Sender<Arc<ContactsLivenessEvent>>,
-        message_events: broadcast::Sender<Arc<Message>>,
+        message_events: broadcast::Sender<Arc<MessageDispatch>>,
     ) -> Self {
         Self {
             request_response_service,
@@ -225,7 +225,7 @@ impl ContactsServiceHandle {
         self.liveness_events.subscribe()
     }
 
-    pub fn get_messages_event_stream(&self) -> broadcast::Receiver<Arc<Message>> {
+    pub fn get_messages_event_stream(&self) -> broadcast::Receiver<Arc<MessageDispatch>> {
         self.message_events.subscribe()
     }
 

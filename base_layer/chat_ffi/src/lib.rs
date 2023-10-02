@@ -32,13 +32,19 @@ use tari_chat_client::{config::ApplicationConfig, networking::PeerFeatures, Chat
 use tokio::runtime::Runtime;
 
 use crate::{
-    callback_handler::{CallbackHandler, CallbackMessageReceived},
+    callback_handler::{
+        CallbackDeliveryConfirmationReceived,
+        CallbackHandler,
+        CallbackMessageReceived,
+        CallbackReadConfirmationReceived,
+    },
     error::{InterfaceError, LibChatError},
     logging::init_logging,
 };
 
 mod application_config;
 mod callback_handler;
+mod confirmation;
 mod contacts;
 mod error;
 mod logging;
@@ -80,6 +86,8 @@ pub unsafe extern "C" fn create_chat_client(
     error_out: *mut c_int,
     callback_contact_status_change: CallbackContactStatusChange,
     callback_message_received: CallbackMessageReceived,
+    callback_delivery_confirmation_received: CallbackDeliveryConfirmationReceived,
+    callback_read_confirmation_received: CallbackReadConfirmationReceived,
 ) -> *mut ChatClientFFI {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
@@ -138,6 +146,8 @@ pub unsafe extern "C" fn create_chat_client(
         client.shutdown.to_signal(),
         callback_contact_status_change,
         callback_message_received,
+        callback_delivery_confirmation_received,
+        callback_read_confirmation_received,
     );
 
     runtime.spawn(async move {
