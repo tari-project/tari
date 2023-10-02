@@ -110,10 +110,8 @@ impl TryFrom<proto::Message> for Message {
             address: TariAddress::from_bytes(&message.address).map_err(|e| e.to_string())?,
             // A Message from a proto::Message will always be an inbound message
             direction: Direction::Inbound,
-            stored_at: message.stored_at,
-            delivery_confirmation_at: message.delivery_confirmation_at,
-            read_confirmation_at: message.read_confirmation_at,
             message_id: message.message_id,
+            ..Message::default()
         })
     }
 }
@@ -129,9 +127,6 @@ impl From<Message> for proto::Message {
                 .collect(),
             address: message.address.to_bytes().to_vec(),
             direction: i32::from(message.direction.as_byte()),
-            stored_at: message.stored_at,
-            delivery_confirmation_at: message.delivery_confirmation_at,
-            read_confirmation_at: message.read_confirmation_at,
             message_id: message.message_id,
         }
     }
