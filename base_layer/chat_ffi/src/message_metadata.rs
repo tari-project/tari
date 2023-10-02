@@ -147,7 +147,7 @@ pub unsafe extern "C" fn read_chat_metadata_at_position(
         return ptr::null_mut();
     }
 
-    let md_vec = &(*(*message).metadata);
+    let md_vec = &(*(message).metadata);
 
     let md = Box::new(md_vec.0[len as usize].clone());
 
@@ -272,9 +272,6 @@ mod test {
 
             let metadata_type = read_chat_metadata_type(metadata_ptr, error_out);
             let metadata_byte_vector = read_chat_metadata_data(metadata_ptr, error_out);
-            let t = &(*metadata_byte_vector);
-
-            let new_len = chat_byte_vector_get_length(metadata_byte_vector, error_out);
 
             let mut metadata_data = vec![];
 
