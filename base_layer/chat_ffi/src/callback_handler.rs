@@ -29,12 +29,12 @@ use tari_contacts::contacts_service::{
 };
 use tari_shutdown::ShutdownSignal;
 
-use crate::types::{ChatFFIContactsLivenessData, ChatFFIMessage};
+use crate::types::ChatFFIContactsLivenessData;
 
 const LOG_TARGET: &str = "chat_ffi::callback_handler";
 
 pub(crate) type CallbackContactStatusChange = unsafe extern "C" fn(*mut ChatFFIContactsLivenessData);
-pub(crate) type CallbackMessageReceived = unsafe extern "C" fn(*mut ChatFFIMessage);
+pub(crate) type CallbackMessageReceived = unsafe extern "C" fn(*mut Message);
 pub(crate) type CallbackDeliveryConfirmationReceived = unsafe extern "C" fn(*mut Confirmation);
 pub(crate) type CallbackReadConfirmationReceived = unsafe extern "C" fn(*mut Confirmation);
 
@@ -144,11 +144,8 @@ impl CallbackHandler {
             message.address,
         );
 
-        match ChatFFIMessage::try_from(message) {
-            Ok(message) => unsafe {
-                (self.callback_message_received)(Box::into_raw(Box::new(message)));
-            },
-            Err(e) => error!(target: LOG_TARGET, "Error processing message received callback: {}", e),
+        unsafe {
+            (self.callback_message_received)(Box::into_raw(Box::new(message)));
         }
     }
 

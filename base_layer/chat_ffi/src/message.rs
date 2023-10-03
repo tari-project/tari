@@ -48,6 +48,7 @@ use crate::{
 ///
 /// # Safety
 /// The ```receiver``` should be destroyed after use
+/// The ```Message``` received should be destroyed after use
 #[no_mangle]
 pub unsafe extern "C" fn create_chat_message(
     receiver: *mut TariAddress,

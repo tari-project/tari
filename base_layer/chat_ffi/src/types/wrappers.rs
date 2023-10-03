@@ -23,11 +23,9 @@
 use libc::c_uchar;
 use tari_contacts::contacts_service::types::Message;
 
-use crate::message_metadata::ChatFFIMessageMetadata;
-
 #[derive(Debug, PartialEq, Clone)]
 pub struct ChatByteVector(pub Vec<c_uchar>); // declared like this so that it can be exposed to external header
 
-pub struct ChatMessageMetadataVector(pub Vec<ChatFFIMessageMetadata>);
+// pub struct ChatMessageMetadataVector(pub Vec<ChatFFIMessageMetadata>);
 #[derive(Clone)]
 pub struct ChatMessages(pub Vec<Message>);

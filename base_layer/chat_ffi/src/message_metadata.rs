@@ -24,18 +24,12 @@ use std::{convert::TryFrom, ptr};
 
 use libc::{c_int, c_uint};
 use tari_contacts::contacts_service::types::{Message, MessageMetadata, MessageMetadataType};
+use tari_utilities::ByteArray;
 
 use crate::{
     error::{InterfaceError, LibChatError},
-    types::{chat_byte_vector_get_at, chat_byte_vector_get_length, ChatByteVector, ChatFFIMessage},
+    types::{chat_byte_vector_create, chat_byte_vector_get_at, chat_byte_vector_get_length, ChatByteVector},
 };
-
-#[derive(Debug, PartialEq, Clone)]
-#[repr(C)]
-pub struct ChatFFIMessageMetadata {
-    pub data: *mut ChatByteVector,
-    pub metadata_type: c_int,
-}
 
 /// Creates message metadata and appends it to a Message
 ///
@@ -113,7 +107,7 @@ pub unsafe extern "C" fn add_chat_message_metadata(
 /// Reads the message metadata of a message and returns a ptr to the metadata at the given position
 ///
 /// ## Arguments
-/// `message` - A pointer to a message
+/// `message` - A pointer to a Message
 /// `position` - The index of the array of metadata
 /// `error_out` - Pointer to an int which will be modified
 ///
@@ -122,13 +116,13 @@ pub unsafe extern "C" fn add_chat_message_metadata(
 ///
 /// ## Safety
 /// `message` should be destroyed eventually
-/// the returned `ChatFFIMessageMetadata` should be destroyed eventually
+/// the returned `MessageMetadata` should be destroyed eventually
 #[no_mangle]
 pub unsafe extern "C" fn read_chat_metadata_at_position(
-    message: *mut ChatFFIMessage,
+    message: *mut Message,
     position: c_uint,
     error_out: *mut c_int,
-) -> *mut ChatFFIMessageMetadata {
+) -> *mut MessageMetadata {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -140,38 +134,60 @@ pub unsafe extern "C" fn read_chat_metadata_at_position(
 
     let message = &(*message);
 
-    let len = message.metadata_len - 1;
-    if len < 0 || position > len as c_uint {
+    let len = message.metadata.len() - 1;
+    if position as usize > len {
         error = LibChatError::from(InterfaceError::PositionInvalidError).code;
         ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
 
-    let md_vec = &(*(message).metadata);
+    let message_metadata_vec = &(*(message).metadata);
+    let message_metadata = Box::new(message_metadata_vec[position as usize].clone());
 
-    let md = Box::new(md_vec.0[len as usize].clone());
+    Box::into_raw(message_metadata)
+}
 
-    Box::into_raw(md)
+/// Returns the length of the Metadata Vector a chat Message contains
+///
+/// ## Arguments
+/// `message` - A pointer to a Message
+/// `error_out` - Pointer to an int which will be modified
+///
+/// ## Returns
+/// `c_int` - The length of the metadata vector for a Message. May return -1 if something goes wrong
+///
+/// ## Safety
+/// `message` should be destroyed eventually
+#[no_mangle]
+pub unsafe extern "C" fn chat_message_metadata_len(message: *mut Message, error_out: *mut c_int) -> c_int {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    if message.is_null() {
+        error = LibChatError::from(InterfaceError::NullError("message".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return -1;
+    }
+
+    let message = &(*message);
+    c_int::try_from(message.metadata.len()).unwrap_or(-1)
 }
 
 /// Returns the enum int representation of a metadata type
 ///
 /// ## Arguments
-/// `msg_metadata` - A pointer to a message metadat
+/// `msg_metadata` - A pointer to a message metadata
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
-/// `metadata_type` - An int8 that maps to MessageMetadataType enum
+/// `metadata_type` - An int8 that maps to MessageMetadataType enum. May return -1 if something goes wrong
 ///     '0' -> Reply
 ///     '1' -> TokenRequest
 ///
 /// ## Safety
 /// `msg_metadata` should be destroyed eventually
 #[no_mangle]
-pub unsafe extern "C" fn read_chat_metadata_type(
-    msg_metadata: *mut ChatFFIMessageMetadata,
-    error_out: *mut c_int,
-) -> c_int {
+pub unsafe extern "C" fn read_chat_metadata_type(msg_metadata: *mut MessageMetadata, error_out: *mut c_int) -> c_int {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -182,7 +198,7 @@ pub unsafe extern "C" fn read_chat_metadata_type(
     }
 
     let md = &(*msg_metadata);
-    md.metadata_type
+    c_int::from(md.metadata_type.as_byte())
 }
 
 /// Returns a ptr to a ByteVector
@@ -192,16 +208,14 @@ pub unsafe extern "C" fn read_chat_metadata_type(
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
-/// `*mut ` - An int8 that maps to MessageMetadataType enum
-///     '0' -> Reply
-///     '1' -> TokenRequest
+/// `*mut ChatByteVector` - A ptr to a ChatByteVector
 ///
 /// ## Safety
 /// `msg_metadata` should be destroyed eventually
 /// the returned `ChatByteVector` should be destroyed eventually
 #[no_mangle]
 pub unsafe extern "C" fn read_chat_metadata_data(
-    msg_metadata: *mut ChatFFIMessageMetadata,
+    msg_metadata: *mut MessageMetadata,
     error_out: *mut c_int,
 ) -> *mut ChatByteVector {
     let mut error = 0;
@@ -213,7 +227,18 @@ pub unsafe extern "C" fn read_chat_metadata_data(
         return ptr::null_mut();
     }
 
-    (*msg_metadata).data
+    let data = (*msg_metadata).data.clone();
+    let data_bytes = data.as_bytes();
+    let len = match c_uint::try_from(data_bytes.len()) {
+        Ok(num) => num,
+        Err(_e) => {
+            error = LibChatError::from(InterfaceError::PositionInvalidError).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    };
+
+    chat_byte_vector_create(data_bytes.as_ptr(), len, error_out)
 }
 
 #[cfg(test)]
@@ -225,7 +250,7 @@ mod test {
     use tari_contacts::contacts_service::types::MessageBuilder;
 
     use super::*;
-    use crate::types::{chat_byte_vector_create, ChatFFIMessage};
+    use crate::types::chat_byte_vector_create;
 
     #[test]
     fn test_metadata_adding() {
@@ -256,7 +281,7 @@ mod test {
         let error_out = Box::into_raw(Box::new(0));
 
         unsafe {
-            let data = "hello".to_string();
+            let data = "metadata".to_string();
             let data_bytes = data.as_bytes();
             let len = u32::try_from(data.len()).expect("Can't cast from usize");
             let data = chat_byte_vector_create(data_bytes.as_ptr(), len as c_uint, error_out);
@@ -264,11 +289,7 @@ mod test {
 
             add_chat_message_metadata(message_ptr, md_type, data, error_out);
 
-            let chat_ffi_msg =
-                ChatFFIMessage::try_from((*message_ptr).clone()).expect("A ChatFFI Message from a Message");
-            let chat_ffi_msg_ptr = Box::into_raw(Box::new(chat_ffi_msg));
-
-            let metadata_ptr = read_chat_metadata_at_position(chat_ffi_msg_ptr, 0, error_out);
+            let metadata_ptr = read_chat_metadata_at_position(message_ptr, 0, error_out);
 
             let metadata_type = read_chat_metadata_type(metadata_ptr, error_out);
             let metadata_byte_vector = read_chat_metadata_data(metadata_ptr, error_out);

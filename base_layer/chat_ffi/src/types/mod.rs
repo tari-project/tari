@@ -21,10 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 mod chat_ffi_contacts_liveness_data;
 pub use chat_ffi_contacts_liveness_data::{destroy_chat_ffi_liveness_data, ChatFFIContactsLivenessData};
-mod chat_ffi_message;
-pub use chat_ffi_message::{destroy_chat_ffi_message, ChatFFIMessage};
 mod wrappers;
-pub use wrappers::{ChatByteVector, ChatMessageMetadataVector, ChatMessages};
+pub use wrappers::{ChatByteVector, ChatMessages};
 
 mod byte_vector;
 pub use byte_vector::{
