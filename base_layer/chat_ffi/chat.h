@@ -12,7 +12,7 @@ struct ApplicationConfig;
 
 struct ChatByteVector;
 
-struct ChatClientFFI;
+struct ChatClient;
 
 struct Confirmation;
 
@@ -45,28 +45,35 @@ extern "C" {
  *
  * ## Arguments
  * `config` - The ApplicationConfig pointer
- * `identity_file_path` - The path to the node identity file
  * `error_out` - Pointer to an int which will be modified
+ * `callback_contact_status_change` - A callback function pointer. this is called whenever a
+ * contacts liveness event comes in.
+ * `callback_message_received` - A callback function pointer. This is called whenever a chat
+ * message is received.
+ * `callback_delivery_confirmation_received` - A callback function pointer. This is called when the
+ * client receives a confirmation of message delivery.
+ * `callback_read_confirmation_received` - A callback function pointer. This is called when the
+ * client receives a confirmation of message read.
  *
  * ## Returns
  * `*mut ChatClient` - Returns a pointer to a ChatClient, note that it returns ptr::null_mut()
  * if any error was encountered or if the runtime could not be created.
  *
  * # Safety
- * The ```destroy_client``` method must be called when finished with a ClientFFI to prevent a memory leak
+ * The ```destroy_chat_client``` method must be called when finished with a ClientFFI to prevent a memory leak
  */
-struct ChatClientFFI *create_chat_client(struct ApplicationConfig *config,
-                                         int *error_out,
-                                         CallbackContactStatusChange callback_contact_status_change,
-                                         CallbackMessageReceived callback_message_received,
-                                         CallbackDeliveryConfirmationReceived callback_delivery_confirmation_received,
-                                         CallbackReadConfirmationReceived callback_read_confirmation_received);
+struct ChatClient *create_chat_client(struct ApplicationConfig *config,
+                                      int *error_out,
+                                      CallbackContactStatusChange callback_contact_status_change,
+                                      CallbackMessageReceived callback_message_received,
+                                      CallbackDeliveryConfirmationReceived callback_delivery_confirmation_received,
+                                      CallbackReadConfirmationReceived callback_read_confirmation_received);
 
 /**
- * Frees memory for a ChatClientFFI
+ * Frees memory for a ChatClient
  *
  * ## Arguments
- * `client` - The pointer of a ChatClientFFI
+ * `ptr` - The pointer of a ChatClient
  *
  * ## Returns
  * `()` - Does not return a value, equivalent to void in C
@@ -74,14 +81,25 @@ struct ChatClientFFI *create_chat_client(struct ApplicationConfig *config,
  * # Safety
  * None
  */
-void destroy_chat_client_ffi(struct ChatClientFFI *client);
+void destroy_chat_client(struct ChatClient *ptr);
 
 /**
- * Creates a Chat Client config
+ * Creates a ChatClient config
  *
  * ## Arguments
  * `network` - The network to run on
  * `public_address` - The nodes public address
+ * `datastore_path` - The directory for config and db files
+ * `identity_file_path` - The location of the identity file
+ * `tor_transport_config` - A pointer to the TransportConfig
+ * `log_path` - directory for storing log files
+ * `log_verbosity` - how verbose should logging be as a c_int 0-5, or 11
+ *        0 => Off
+ *        1 => Error
+ *        2 => Warn
+ *        3 => Info
+ *        4 => Debug
+ *        5 | 11 => Trace // Cranked up to 11
  * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
@@ -103,7 +121,7 @@ struct ApplicationConfig *create_chat_config(const char *network_str,
  * Frees memory for an ApplicationConfig
  *
  * ## Arguments
- * `config` - The pointer of an ApplicationConfig
+ * `ptr` - The pointer of an ApplicationConfig
  *
  * ## Returns
  * `()` - Does not return a value, equivalent to void in C
@@ -111,7 +129,7 @@ struct ApplicationConfig *create_chat_config(const char *network_str,
  * # Safety
  * None
  */
-void destroy_chat_config(struct ApplicationConfig *config);
+void destroy_chat_config(struct ApplicationConfig *ptr);
 
 /**
  * Creates a ChatByteVector
@@ -190,23 +208,23 @@ unsigned int chat_byte_vector_get_length(const struct ChatByteVector *vec,
  * Send a read confirmation for a given message
  *
  * ## Arguments
- * `client` - The chat client
- * `message` - The message that was read
+ * `client` - Pointer to the ChatClient
+ * `message` - Pointer to the Message that was read
  * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
  * `()` - Does not return a value, equivalent to void in C
  *
  * # Safety
- * The ```ChatClientFFI``` When done with the client it should be destroyed
- * The ```Message``` When done with the Message it should be destroyed
+ * The `client` When done with the ChatClient it should be destroyed
+ * The `message` When done with the Message it should be destroyed
  */
-void send_read_confirmation_for_message(struct ChatClientFFI *client,
+void send_read_confirmation_for_message(struct ChatClient *client,
                                         struct Message *message,
                                         int *error_out);
 
 /**
- * Get a pointer to a ChatByteVector representation of a message id
+ * Get a pointer to a ChatByteVector representation of the message id associated to the confirmation
  *
  * ## Arguments
  * `confirmation` - A pointer to the Confirmation you'd like to read from
@@ -216,32 +234,32 @@ void send_read_confirmation_for_message(struct ChatClientFFI *client,
  * `*mut ChatByteVector` - A ptr to a ChatByteVector
  *
  * # Safety
- * The ```confirmation``` When done with the Confirmation it should be destroyed
- * The ```ChatByteVector``` When done with the returned ChatByteVector it should be destroyed
+ * `confirmation` should be destroyed when finished
+ * ```ChatByteVector``` When done with the returned ChatByteVector it should be destroyed
  */
 struct ChatByteVector *read_confirmation_message_id(struct Confirmation *confirmation,
                                                     int *error_out);
 
 /**
- * Get a c_uint timestamp for the Confirmation
+ * Get a c_longlong timestamp for the Confirmation
  *
  * ## Arguments
  * `confirmation` - A pointer to the Confirmation
  * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
- * `c_uint` - A uint representation of time since epoch. May return 0 if casting fails
+ * `c_longlong` - A uint representation of time since epoch. May return -1 on error
  *
  * # Safety
  * The ```confirmation``` When done with the Confirmation it should be destroyed
  */
-unsigned int read_confirmation_timestamp(struct Confirmation *confirmation, int *error_out);
+long long read_confirmation_timestamp(struct Confirmation *confirmation, int *error_out);
 
 /**
  * Frees memory for a Confirmation
  *
  * ## Arguments
- * `address` - The pointer of a Confirmation
+ * `ptr` - The pointer of a Confirmation
  *
  * ## Returns
  * `()` - Does not return a value, equivalent to void in C
@@ -249,13 +267,13 @@ unsigned int read_confirmation_timestamp(struct Confirmation *confirmation, int 
  * # Safety
  * None
  */
-void destroy_confirmation(struct Confirmation *address);
+void destroy_confirmation(struct Confirmation *ptr);
 
 /**
  * Add a contact
  *
  * ## Arguments
- * `client` - The Client pointer
+ * `client` - The ChatClient pointer
  * `address` - A TariAddress ptr
  * `error_out` - Pointer to an int which will be modified
  *
@@ -265,13 +283,13 @@ void destroy_confirmation(struct Confirmation *address);
  * # Safety
  * The ```receiver``` should be destroyed after use
  */
-void add_chat_contact(struct ChatClientFFI *client, struct TariAddress *address, int *error_out);
+void add_chat_contact(struct ChatClient *client, struct TariAddress *address, int *error_out);
 
 /**
  * Check the online status of a contact
  *
  * ## Arguments
- * `client` - The Client pointer
+ * `client` - The ChatClient pointer
  * `address` - A TariAddress ptr
  * `error_out` - Pointer to an int which will be modified
  *
@@ -285,7 +303,7 @@ void add_chat_contact(struct ChatClientFFI *client, struct TariAddress *address,
  * # Safety
  * The ```address``` should be destroyed after use
  */
-int check_online_status(struct ChatClientFFI *client, struct TariAddress *receiver, int *error_out);
+int check_online_status(struct ChatClient *client, struct TariAddress *receiver, int *error_out);
 
 /**
  * Returns a pointer to a TariAddress
@@ -356,11 +374,11 @@ long long read_liveness_data_last_seen(struct ContactsLivenessData *liveness,
 void destroy_contacts_liveness_data(struct ContactsLivenessData *ptr);
 
 /**
- * Creates a message and returns a ptr to it
+ * Creates a message and returns a pointer to it
  *
  * ## Arguments
- * `receiver` - A string containing a tari address
- * `message` - The peer seeds config for the node
+ * `receiver` - A pointer to a TariAddress
+ * `message` - A string to send as a text message
  * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
@@ -378,7 +396,7 @@ struct Message *create_chat_message(struct TariAddress *receiver,
  * Frees memory for Message
  *
  * ## Arguments
- * `messages_ptr` - The pointer of a Message
+ * `ptr` - The pointer of a Message
  *
  * ## Returns
  * `()` - Does not return a value, equivalent to void in C
@@ -392,7 +410,7 @@ void destroy_chat_message(struct Message *ptr);
  * Sends a message over a client
  *
  * ## Arguments
- * `client` - The Client pointer
+ * `client` - The ChatClient pointer
  * `message` - Pointer to a Message struct
  * `error_out` - Pointer to an int which will be modified
  *
@@ -402,7 +420,7 @@ void destroy_chat_message(struct Message *ptr);
  * # Safety
  * The ```message``` should be destroyed after use
  */
-void send_chat_message(struct ChatClientFFI *client, struct Message *message, int *error_out);
+void send_chat_message(struct ChatClient *client, struct Message *message, int *error_out);
 
 /**
  * Reads the message metadata of a message and returns a ptr to the metadata at the given position
@@ -431,18 +449,19 @@ struct MessageMetadata *chat_metadata_get_at(struct Message *message,
  * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
- * `c_int` - The length of the metadata vector for a Message. May return -1 if something goes wrong
+ * `c_longlong` - The length of the metadata vector for a Message. May return -1 if something goes wrong
  *
  * ## Safety
  * `message` should be destroyed eventually
  */
-int chat_message_metadata_len(struct Message *message, int *error_out);
+long long chat_message_metadata_len(struct Message *message,
+                                    int *error_out);
 
 /**
  * Returns a pointer to a ChatByteVector representing the data of the Message
  *
  * ## Arguments
- * `message` - A pointer to a message metadata
+ * `message` - A pointer to a Message
  * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
@@ -458,7 +477,7 @@ struct ChatByteVector *read_chat_message_body(struct Message *message, int *erro
  * Returns a pointer to a TariAddress
  *
  * ## Arguments
- * `message` - A pointer to a message metadata
+ * `message` - A pointer to a Message
  * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
@@ -474,11 +493,11 @@ struct TariAddress *read_chat_message_address(struct Message *message, int *erro
  * Returns a c_char representation of the Direction enum
  *
  * ## Arguments
- * `message` - A pointer to a message metadata
+ * `message` - A pointer to a Message
  * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
- * `c_char` - A c_uint rep of the direction enum. May return -1 if anything goes wrong
+ * `c_char` - A c_char rep of the direction enum. May return -1 if anything goes wrong
  *     0 => Inbound
  *     1 => Outbound
  *
@@ -491,7 +510,7 @@ char read_chat_message_direction(struct Message *message, int *error_out);
  * Returns a c_ulonglong representation of the stored at timestamp as seconds since epoch
  *
  * ## Arguments
- * `message` - A pointer to a message metadata
+ * `message` - A pointer to a Message
  * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
@@ -506,7 +525,7 @@ unsigned long long read_chat_message_stored_at(struct Message *message, int *err
  * Returns a c_ulonglong representation of the delivery confirmation timestamp as seconds since epoch
  *
  * ## Arguments
- * `message` - A pointer to a message metadata
+ * `message` - A pointer to a Message
  * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
@@ -523,7 +542,7 @@ unsigned long long read_chat_message_delivery_confirmation_at(struct Message *me
  * Returns a c_ulonglong representation of the read confirmation timestamp as seconds since epoch
  *
  * ## Arguments
- * `message` - A pointer to a message metadata
+ * `message` - A pointer to a Message
  * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
@@ -539,7 +558,7 @@ unsigned long long read_chat_message_read_confirmation_at(struct Message *messag
  * Returns a pointer to a ChatByteVector representation of the message_id
  *
  * ## Arguments
- * `message` - A pointer to a message metadata
+ * `message` - A pointer to a Message
  * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
@@ -556,10 +575,10 @@ struct ChatByteVector *read_chat_message_id(struct Message *message, int *error_
  *
  * ## Arguments
  * `message` - A pointer to a message
- * `metadata_type` - An int8 that maps to MessageMetadataType enum
+ * `metadata_type` - An c_uchar that maps to MessageMetadataType enum
  *     '0' -> Reply
  *     '1' -> TokenRequest
- * `data` - contents for the metadata in string format
+ * `data` - A pointer to a byte vector containing bytes for the data field
  * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
@@ -569,33 +588,32 @@ struct ChatByteVector *read_chat_message_id(struct Message *message, int *error_
  * `message` should be destroyed eventually
  */
 void add_chat_message_metadata(struct Message *message,
-                               int metadata_type,
+                               unsigned char metadata_type,
                                struct ChatByteVector *data,
                                int *error_out);
 
 /**
- * Returns the enum int representation of a metadata type
+ * Returns the c_char representation of a metadata type enum
  *
  * ## Arguments
- * `msg_metadata` - A pointer to a message metadata
+ * `msg_metadata` - A pointer to a MessageMetadata
  * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
- * `metadata_type` - An int8 that maps to MessageMetadataType enum. May return -1 if something goes wrong
+ * `c_char` - An int8 that maps to MessageMetadataType enum. May return -1 if something goes wrong
  *     '0' -> Reply
  *     '1' -> TokenRequest
  *
  * ## Safety
  * `msg_metadata` should be destroyed eventually
  */
-int read_chat_metadata_type(struct MessageMetadata *msg_metadata,
-                            int *error_out);
+char read_chat_metadata_type(struct MessageMetadata *msg_metadata, int *error_out);
 
 /**
  * Returns a ptr to a ByteVector
  *
  * ## Arguments
- * `msg_metadata` - A pointer to a message metadata
+ * `msg_metadata` - A pointer to a MessageMetadata
  * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
@@ -626,21 +644,21 @@ void destroy_chat_message_metadata(struct MessageMetadata *ptr);
  * Get a ptr to all messages from or to an address
  *
  * ## Arguments
- * `client` - The Client pointer
- * `address` - A TariAddress ptr
+ * `client` - The ChatClient pointer
+ * `address` - A TariAddress pointer
  * `limit` - The amount of messages you want to fetch. Default to 35, max 2500
  * `page` - The page of results you'd like returned. Default to 0, maximum of u64 max
  * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
- * `*mut ptr MessageVector` - A pointer to a Vector of Messages
+ * `*mut MessageVector` - A pointer to a Vector of Messages
  *
  * # Safety
  * The returned pointer to ```MessageVector``` should be destroyed after use
  * ```client``` should be destroyed after use
  * ```address``` should be destroyed after use
  */
-struct MessageVector *get_chat_messages(struct ChatClientFFI *client,
+struct MessageVector *get_chat_messages(struct ChatClient *client,
                                         struct TariAddress *address,
                                         int limit,
                                         int page,
@@ -657,7 +675,7 @@ struct MessageVector *get_chat_messages(struct ChatClientFFI *client,
  * `c_int` - The length of the metadata vector for a Message. May return -1 if something goes wrong
  *
  * ## Safety
- * `message` should be destroyed eventually
+ * `messages` should be destroyed eventually
  */
 int message_vector_len(struct MessageVector *messages, int *error_out);
 
@@ -726,7 +744,7 @@ struct TransportConfig *create_chat_tor_transport_config(const char *control_ser
  * Frees memory for a TransportConfig
  *
  * ## Arguments
- * `transport` - The pointer to a TransportConfig
+ * `ptr` - The pointer to a TransportConfig
  *
  * ## Returns
  * `()` - Does not return a value, equivalent to void in C
@@ -734,7 +752,7 @@ struct TransportConfig *create_chat_tor_transport_config(const char *control_ser
  * # Safety
  * None
  */
-void destroy_chat_tor_transport_config(struct TransportConfig *transport);
+void destroy_chat_tor_transport_config(struct TransportConfig *ptr);
 
 /**
  * Creates a TariAddress and returns a ptr
