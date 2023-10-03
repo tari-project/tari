@@ -72,15 +72,22 @@ pub struct ChatClientFFI {
 ///
 /// ## Arguments
 /// `config` - The ApplicationConfig pointer
-/// `identity_file_path` - The path to the node identity file
 /// `error_out` - Pointer to an int which will be modified
+/// `callback_contact_status_change` - A callback function pointer. this is called whenever a
+/// contacts liveness event comes in.
+/// `callback_message_received` - A callback function pointer. This is called whenever a chat
+/// message is received.
+/// `callback_delivery_confirmation_received` - A callback function pointer. This is called when the
+/// client receives a confirmation of message delivery.
+/// `callback_read_confirmation_received` - A callback function pointer. This is called when the
+/// client receives a confirmation of message read.
 ///
 /// ## Returns
 /// `*mut ChatClient` - Returns a pointer to a ChatClient, note that it returns ptr::null_mut()
 /// if any error was encountered or if the runtime could not be created.
 ///
 /// # Safety
-/// The ```destroy_client``` method must be called when finished with a ClientFFI to prevent a memory leak
+/// The ```destroy_chat_client``` method must be called when finished with a ClientFFI to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn create_chat_client(
     config: *mut ApplicationConfig,

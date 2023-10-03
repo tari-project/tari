@@ -160,7 +160,7 @@ pub unsafe extern "C" fn create_chat_tor_transport_config(
 /// Frees memory for a TransportConfig
 ///
 /// ## Arguments
-/// `transport` - The pointer to a TransportConfig
+/// `ptr` - The pointer to a TransportConfig
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -168,9 +168,9 @@ pub unsafe extern "C" fn create_chat_tor_transport_config(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn destroy_chat_tor_transport_config(transport: *mut TransportConfig) {
-    if !transport.is_null() {
-        drop(Box::from_raw(transport))
+pub unsafe extern "C" fn destroy_chat_tor_transport_config(ptr: *mut TransportConfig) {
+    if !ptr.is_null() {
+        drop(Box::from_raw(ptr))
     }
 }
 

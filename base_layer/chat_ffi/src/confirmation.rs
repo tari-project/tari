@@ -35,16 +35,16 @@ use crate::{
 /// Send a read confirmation for a given message
 ///
 /// ## Arguments
-/// `client` - The chat client
-/// `message` - The message that was read
+/// `client` - Pointer to the ChatClient
+/// `message` - Pointer to the Message that was read
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
 ///
 /// # Safety
-/// The ```ChatClientFFI``` When done with the client it should be destroyed
-/// The ```Message``` When done with the Message it should be destroyed
+/// The `client` When done with the ChatClient it should be destroyed
+/// The `message` When done with the Message it should be destroyed
 #[no_mangle]
 pub unsafe extern "C" fn send_read_confirmation_for_message(
     client: *mut ChatClientFFI,
@@ -69,7 +69,7 @@ pub unsafe extern "C" fn send_read_confirmation_for_message(
         .block_on((*client).client.send_read_receipt((*message).clone()));
 }
 
-/// Get a pointer to a ChatByteVector representation of a message id
+/// Get a pointer to a ChatByteVector representation of the message id associated to the confirmation
 ///
 /// ## Arguments
 /// `confirmation` - A pointer to the Confirmation you'd like to read from
@@ -79,8 +79,8 @@ pub unsafe extern "C" fn send_read_confirmation_for_message(
 /// `*mut ChatByteVector` - A ptr to a ChatByteVector
 ///
 /// # Safety
-/// The ```confirmation``` When done with the Confirmation it should be destroyed
-/// The ```ChatByteVector``` When done with the returned ChatByteVector it should be destroyed
+/// `confirmation` should be destroyed when finished
+/// ```ChatByteVector``` When done with the returned ChatByteVector it should be destroyed
 #[no_mangle]
 pub unsafe extern "C" fn read_confirmation_message_id(
     confirmation: *mut Confirmation,
@@ -128,7 +128,7 @@ pub unsafe extern "C" fn read_confirmation_timestamp(confirmation: *mut Confirma
 /// Frees memory for a Confirmation
 ///
 /// ## Arguments
-/// `address` - The pointer of a Confirmation
+/// `ptr` - The pointer of a Confirmation
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -136,9 +136,9 @@ pub unsafe extern "C" fn read_confirmation_timestamp(confirmation: *mut Confirma
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn destroy_confirmation(address: *mut Confirmation) {
-    if !address.is_null() {
-        drop(Box::from_raw(address))
+pub unsafe extern "C" fn destroy_confirmation(ptr: *mut Confirmation) {
+    if !ptr.is_null() {
+        drop(Box::from_raw(ptr))
     }
 }
 

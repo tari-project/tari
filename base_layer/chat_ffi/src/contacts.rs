@@ -34,7 +34,7 @@ use crate::{
 /// Add a contact
 ///
 /// ## Arguments
-/// `client` - The Client pointer
+/// `client` - The ChatClient pointer
 /// `address` - A TariAddress ptr
 /// `error_out` - Pointer to an int which will be modified
 ///
@@ -68,7 +68,7 @@ pub unsafe extern "C" fn add_chat_contact(
 /// Check the online status of a contact
 ///
 /// ## Arguments
-/// `client` - The Client pointer
+/// `client` - The ChatClient pointer
 /// `address` - A TariAddress ptr
 /// `error_out` - Pointer to an int which will be modified
 ///

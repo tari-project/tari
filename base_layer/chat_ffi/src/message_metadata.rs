@@ -35,10 +35,10 @@ use crate::{
 ///
 /// ## Arguments
 /// `message` - A pointer to a message
-/// `metadata_type` - An int8 that maps to MessageMetadataType enum
+/// `metadata_type` - An c_uchar that maps to MessageMetadataType enum
 ///     '0' -> Reply
 ///     '1' -> TokenRequest
-/// `data` - contents for the metadata in string format
+/// `data` - A pointer to a byte vector containing bytes for the data field
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
@@ -104,14 +104,14 @@ pub unsafe extern "C" fn add_chat_message_metadata(
     (*message).push(metadata);
 }
 
-/// Returns the enum int representation of a metadata type
+/// Returns the c_char representation of a metadata type enum
 ///
 /// ## Arguments
-/// `msg_metadata` - A pointer to a message metadata
+/// `msg_metadata` - A pointer to a MessageMetadata
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
-/// `metadata_type` - An int8 that maps to MessageMetadataType enum. May return -1 if something goes wrong
+/// `c_char` - An int8 that maps to MessageMetadataType enum. May return -1 if something goes wrong
 ///     '0' -> Reply
 ///     '1' -> TokenRequest
 ///
@@ -135,7 +135,7 @@ pub unsafe extern "C" fn read_chat_metadata_type(msg_metadata: *mut MessageMetad
 /// Returns a ptr to a ByteVector
 ///
 /// ## Arguments
-/// `msg_metadata` - A pointer to a message metadata
+/// `msg_metadata` - A pointer to a MessageMetadata
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns

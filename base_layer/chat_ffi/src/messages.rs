@@ -41,14 +41,14 @@ pub struct MessageVector(pub Vec<Message>);
 /// Get a ptr to all messages from or to an address
 ///
 /// ## Arguments
-/// `client` - The Client pointer
-/// `address` - A TariAddress ptr
+/// `client` - The ChatClient pointer
+/// `address` - A TariAddress pointer
 /// `limit` - The amount of messages you want to fetch. Default to 35, max 2500
 /// `page` - The page of results you'd like returned. Default to 0, maximum of u64 max
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
-/// `*mut ptr MessageVector` - A pointer to a Vector of Messages
+/// `*mut MessageVector` - A pointer to a Vector of Messages
 ///
 /// # Safety
 /// The returned pointer to ```MessageVector``` should be destroyed after use
@@ -95,7 +95,7 @@ pub unsafe extern "C" fn get_chat_messages(
 /// `c_int` - The length of the metadata vector for a Message. May return -1 if something goes wrong
 ///
 /// ## Safety
-/// `message` should be destroyed eventually
+/// `messages` should be destroyed eventually
 #[no_mangle]
 pub unsafe extern "C" fn message_vector_len(messages: *mut MessageVector, error_out: *mut c_int) -> c_int {
     let mut error = 0;

@@ -34,11 +34,11 @@ use crate::{
     ChatClientFFI,
 };
 
-/// Creates a message and returns a ptr to it
+/// Creates a message and returns a pointer to it
 ///
 /// ## Arguments
-/// `receiver` - A string containing a tari address
-/// `message` - The peer seeds config for the node
+/// `receiver` - A pointer to a TariAddress
+/// `message` - A string to send as a text message
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
@@ -81,7 +81,7 @@ pub unsafe extern "C" fn create_chat_message(
 /// Frees memory for Message
 ///
 /// ## Arguments
-/// `messages_ptr` - The pointer of a Message
+/// `ptr` - The pointer of a Message
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -98,7 +98,7 @@ pub unsafe extern "C" fn destroy_chat_message(ptr: *mut Message) {
 /// Sends a message over a client
 ///
 /// ## Arguments
-/// `client` - The Client pointer
+/// `client` - The ChatClient pointer
 /// `message` - Pointer to a Message struct
 /// `error_out` - Pointer to an int which will be modified
 ///
@@ -193,13 +193,13 @@ pub unsafe extern "C" fn chat_message_metadata_len(message: *mut Message, error_
     }
 
     let message = &(*message);
-    c_int::try_from(message.metadata.len()).unwrap_or(-1)
+    message.metadata.len() as c_longlong
 }
 
 /// Returns a pointer to a ChatByteVector representing the data of the Message
 ///
 /// ## Arguments
-/// `message` - A pointer to a message metadata
+/// `message` - A pointer to a Message
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
@@ -236,7 +236,7 @@ pub unsafe extern "C" fn read_chat_message_body(message: *mut Message, error_out
 /// Returns a pointer to a TariAddress
 ///
 /// ## Arguments
-/// `message` - A pointer to a message metadata
+/// `message` - A pointer to a Message
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
@@ -290,7 +290,7 @@ pub unsafe extern "C" fn read_chat_message_direction(message: *mut Message, erro
 /// Returns a c_ulonglong representation of the stored at timestamp as seconds since epoch
 ///
 /// ## Arguments
-/// `message` - A pointer to a message metadata
+/// `message` - A pointer to a Message
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
@@ -315,7 +315,7 @@ pub unsafe extern "C" fn read_chat_message_stored_at(message: *mut Message, erro
 /// Returns a c_ulonglong representation of the delivery confirmation timestamp as seconds since epoch
 ///
 /// ## Arguments
-/// `message` - A pointer to a message metadata
+/// `message` - A pointer to a Message
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
@@ -344,7 +344,7 @@ pub unsafe extern "C" fn read_chat_message_delivery_confirmation_at(
 /// Returns a c_ulonglong representation of the read confirmation timestamp as seconds since epoch
 ///
 /// ## Arguments
-/// `message` - A pointer to a message metadata
+/// `message` - A pointer to a Message
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
@@ -373,7 +373,7 @@ pub unsafe extern "C" fn read_chat_message_read_confirmation_at(
 /// Returns a pointer to a ChatByteVector representation of the message_id
 ///
 /// ## Arguments
-/// `message` - A pointer to a message metadata
+/// `message` - A pointer to a Message
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
