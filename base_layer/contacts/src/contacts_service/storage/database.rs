@@ -198,12 +198,27 @@ where T: ContactsBackend + 'static
         delivery_confirmation: Option<u64>,
         read_confirmation: Option<u64>,
     ) -> Result<(), ContactsServiceStorageError> {
+        let mut delivery = None;
+        if let Some(timestamp) = delivery_confirmation {
+            let secs = i64::try_from(timestamp).map_err(|_e| ContactsServiceStorageError::ConversionError)?;
+            delivery = Some(
+                NaiveDateTime::from_timestamp_opt(secs, 0)
+                    .ok_or_else(|| ContactsServiceStorageError::ConversionError)?,
+            )
+        };
+
+        let mut read = None;
+        if let Some(timestamp) = read_confirmation {
+            let secs = i64::try_from(timestamp).map_err(|_e| ContactsServiceStorageError::ConversionError)?;
+            read = Some(
+                NaiveDateTime::from_timestamp_opt(secs, 0)
+                    .ok_or_else(|| ContactsServiceStorageError::ConversionError)?,
+            )
+        };
+
         self.db
             .write(WriteOperation::Upsert(Box::new(DbKeyValuePair::MessageConfirmations(
-                message_id,
-                delivery_confirmation
-                    .map(|d| NaiveDateTime::from_timestamp_opt(i64::try_from(d).unwrap_or(0), 0).unwrap()),
-                read_confirmation.map(|d| NaiveDateTime::from_timestamp_opt(i64::try_from(d).unwrap_or(0), 0).unwrap()),
+                message_id, delivery, read,
             ))))?;
 
         Ok(())
