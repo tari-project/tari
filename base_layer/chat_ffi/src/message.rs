@@ -23,7 +23,7 @@
 use std::{convert::TryFrom, ffi::CStr, ptr};
 
 use libc::{c_char, c_int, c_uint, c_ulonglong};
-use tari_chat_client::ChatClient;
+use tari_chat_client::ChatClient as ChatClientTrait;
 use tari_common_types::tari_address::TariAddress;
 use tari_contacts::contacts_service::types::{Message, MessageBuilder, MessageMetadata};
 use tari_utilities::ByteArray;
@@ -31,7 +31,7 @@ use tari_utilities::ByteArray;
 use crate::{
     byte_vector::{chat_byte_vector_create, ChatByteVector},
     error::{InterfaceError, LibChatError},
-    ChatClientFFI,
+    ChatClient,
 };
 
 /// Creates a message and returns a pointer to it
@@ -108,7 +108,7 @@ pub unsafe extern "C" fn destroy_chat_message(ptr: *mut Message) {
 /// # Safety
 /// The ```message``` should be destroyed after use
 #[no_mangle]
-pub unsafe extern "C" fn send_chat_message(client: *mut ChatClientFFI, message: *mut Message, error_out: *mut c_int) {
+pub unsafe extern "C" fn send_chat_message(client: *mut ChatClient, message: *mut Message, error_out: *mut c_int) {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 

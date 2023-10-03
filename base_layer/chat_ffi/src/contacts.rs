@@ -23,12 +23,12 @@
 use std::ptr;
 
 use libc::c_int;
-use tari_chat_client::ChatClient;
+use tari_chat_client::ChatClient as ChatClientTrait;
 use tari_common_types::tari_address::TariAddress;
 
 use crate::{
     error::{InterfaceError, LibChatError},
-    ChatClientFFI,
+    ChatClient,
 };
 
 /// Add a contact
@@ -44,11 +44,7 @@ use crate::{
 /// # Safety
 /// The ```receiver``` should be destroyed after use
 #[no_mangle]
-pub unsafe extern "C" fn add_chat_contact(
-    client: *mut ChatClientFFI,
-    address: *mut TariAddress,
-    error_out: *mut c_int,
-) {
+pub unsafe extern "C" fn add_chat_contact(client: *mut ChatClient, address: *mut TariAddress, error_out: *mut c_int) {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -83,7 +79,7 @@ pub unsafe extern "C" fn add_chat_contact(
 /// The ```address``` should be destroyed after use
 #[no_mangle]
 pub unsafe extern "C" fn check_online_status(
-    client: *mut ChatClientFFI,
+    client: *mut ChatClient,
     receiver: *mut TariAddress,
     error_out: *mut c_int,
 ) -> c_int {

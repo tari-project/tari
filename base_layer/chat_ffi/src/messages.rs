@@ -23,7 +23,7 @@
 use std::{convert::TryFrom, ptr};
 
 use libc::{c_int, c_uint};
-use tari_chat_client::ChatClient;
+use tari_chat_client::ChatClient as ChatClientTrait;
 use tari_common_types::tari_address::TariAddress;
 use tari_contacts::contacts_service::{
     handle::{DEFAULT_MESSAGE_LIMIT, DEFAULT_MESSAGE_PAGE},
@@ -32,7 +32,7 @@ use tari_contacts::contacts_service::{
 
 use crate::{
     error::{InterfaceError, LibChatError},
-    ChatClientFFI,
+    ChatClient,
 };
 
 #[derive(Clone)]
@@ -56,7 +56,7 @@ pub struct MessageVector(pub Vec<Message>);
 /// ```address``` should be destroyed after use
 #[no_mangle]
 pub unsafe extern "C" fn get_chat_messages(
-    client: *mut ChatClientFFI,
+    client: *mut ChatClient,
     address: *mut TariAddress,
     limit: c_int,
     page: c_int,

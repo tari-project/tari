@@ -23,13 +23,13 @@
 use std::{convert::TryFrom, ptr};
 
 use libc::{c_int, c_uint};
-use tari_chat_client::ChatClient;
+use tari_chat_client::ChatClient as ChatClientTrait;
 use tari_contacts::contacts_service::types::{Confirmation, Message};
 
 use crate::{
     byte_vector::{chat_byte_vector_create, ChatByteVector},
     error::{InterfaceError, LibChatError},
-    ChatClientFFI,
+    ChatClient,
 };
 
 /// Send a read confirmation for a given message
@@ -47,7 +47,7 @@ use crate::{
 /// The `message` When done with the Message it should be destroyed
 #[no_mangle]
 pub unsafe extern "C" fn send_read_confirmation_for_message(
-    client: *mut ChatClientFFI,
+    client: *mut ChatClient,
     message: *mut Message,
     error_out: *mut c_int,
 ) {
