@@ -22,7 +22,7 @@
 
 use std::{convert::TryFrom, ffi::CStr, ptr};
 
-use libc::{c_char, c_int, c_uint, c_ulonglong};
+use libc::{c_char, c_int, c_longlong, c_uint, c_ulonglong};
 use tari_chat_client::ChatClient as ChatClientTrait;
 use tari_common_types::tari_address::TariAddress;
 use tari_contacts::contacts_service::types::{Message, MessageBuilder, MessageMetadata};
@@ -177,12 +177,12 @@ pub unsafe extern "C" fn chat_metadata_get_at(
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
-/// `c_int` - The length of the metadata vector for a Message. May return -1 if something goes wrong
+/// `c_longlong` - The length of the metadata vector for a Message. May return -1 if something goes wrong
 ///
 /// ## Safety
 /// `message` should be destroyed eventually
 #[no_mangle]
-pub unsafe extern "C" fn chat_message_metadata_len(message: *mut Message, error_out: *mut c_int) -> c_int {
+pub unsafe extern "C" fn chat_message_metadata_len(message: *mut Message, error_out: *mut c_int) -> c_longlong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -263,11 +263,11 @@ pub unsafe extern "C" fn read_chat_message_address(message: *mut Message, error_
 /// Returns a c_char representation of the Direction enum
 ///
 /// ## Arguments
-/// `message` - A pointer to a message metadata
+/// `message` - A pointer to a Message
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
-/// `c_char` - A c_uint rep of the direction enum. May return -1 if anything goes wrong
+/// `c_char` - A c_char rep of the direction enum. May return -1 if anything goes wrong
 ///     0 => Inbound
 ///     1 => Outbound
 ///

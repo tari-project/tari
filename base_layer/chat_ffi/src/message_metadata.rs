@@ -22,7 +22,7 @@
 
 use std::{convert::TryFrom, ptr};
 
-use libc::{c_int, c_uint};
+use libc::{c_char, c_int, c_uchar, c_uint};
 use tari_contacts::contacts_service::types::{Message, MessageMetadata, MessageMetadataType};
 use tari_utilities::ByteArray;
 
@@ -49,7 +49,7 @@ use crate::{
 #[no_mangle]
 pub unsafe extern "C" fn add_chat_message_metadata(
     message: *mut Message,
-    metadata_type: c_int,
+    metadata_type: c_uchar,
     data: *mut ChatByteVector,
     error_out: *mut c_int,
 ) {
@@ -62,16 +62,7 @@ pub unsafe extern "C" fn add_chat_message_metadata(
         return;
     }
 
-    let metadata_byte = match u8::try_from(metadata_type) {
-        Ok(byte) => byte,
-        Err(e) => {
-            error = LibChatError::from(InterfaceError::InvalidArgument(e.to_string())).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-            return;
-        },
-    };
-
-    let metadata_type = match MessageMetadataType::from_byte(metadata_byte) {
+    let metadata_type = match MessageMetadataType::from_byte(metadata_type) {
         Some(t) => t,
         None => {
             error = LibChatError::from(InterfaceError::InvalidArgument(
@@ -118,7 +109,7 @@ pub unsafe extern "C" fn add_chat_message_metadata(
 /// ## Safety
 /// `msg_metadata` should be destroyed eventually
 #[no_mangle]
-pub unsafe extern "C" fn read_chat_metadata_type(msg_metadata: *mut MessageMetadata, error_out: *mut c_int) -> c_int {
+pub unsafe extern "C" fn read_chat_metadata_type(msg_metadata: *mut MessageMetadata, error_out: *mut c_int) -> c_char {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -129,7 +120,7 @@ pub unsafe extern "C" fn read_chat_metadata_type(msg_metadata: *mut MessageMetad
     }
 
     let md = &(*msg_metadata);
-    c_int::from(md.metadata_type.as_byte())
+    c_char::try_from(md.metadata_type.as_byte()).unwrap_or(-1)
 }
 
 /// Returns a ptr to a ByteVector
@@ -193,7 +184,7 @@ pub unsafe extern "C" fn destroy_chat_message_metadata(ptr: *mut MessageMetadata
 mod test {
     use std::convert::TryFrom;
 
-    use libc::{c_int, c_uint};
+    use libc::c_uint;
     use tari_common_types::tari_address::TariAddress;
     use tari_contacts::contacts_service::types::MessageBuilder;
 
@@ -213,7 +204,7 @@ mod test {
         let len = u32::try_from(data.len()).expect("Can't cast from usize");
         let data = unsafe { chat_byte_vector_create(data_bytes.as_ptr(), len as c_uint, error_out) };
 
-        unsafe { add_chat_message_metadata(message_ptr, 0 as c_int, data, error_out) }
+        unsafe { add_chat_message_metadata(message_ptr, 0, data, error_out) }
 
         let message = unsafe { Box::from_raw(message_ptr) };
         assert_eq!(message.metadata.len(), 1);
@@ -241,7 +232,7 @@ mod test {
             let data_bytes = data.as_bytes();
             let len = u32::try_from(data.len()).expect("Can't cast from usize");
             let data = chat_byte_vector_create(data_bytes.as_ptr(), len as c_uint, error_out);
-            let md_type = 0 as c_int;
+            let md_type = 0;
 
             add_chat_message_metadata(message_ptr, md_type, data, error_out);
 
@@ -256,7 +247,7 @@ mod test {
                 metadata_data.push(chat_byte_vector_get_at(metadata_byte_vector, i, error_out));
             }
 
-            assert_eq!(metadata_type, md_type);
+            assert_eq!(metadata_type as u8, md_type);
             assert_eq!(metadata_data, data_bytes);
 
             destroy_chat_message_metadata(metadata_ptr);

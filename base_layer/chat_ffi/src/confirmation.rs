@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, ptr};
+use std::{convert::TryFrom, os::raw::c_longlong, ptr};
 
 use libc::{c_int, c_uint};
 use tari_chat_client::ChatClient as ChatClientTrait;
@@ -100,29 +100,32 @@ pub unsafe extern "C" fn read_confirmation_message_id(
     chat_byte_vector_create(data_bytes.as_ptr(), len as c_uint, error_out)
 }
 
-/// Get a c_uint timestamp for the Confirmation
+/// Get a c_longlong timestamp for the Confirmation
 ///
 /// ## Arguments
 /// `confirmation` - A pointer to the Confirmation
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
-/// `c_uint` - A uint representation of time since epoch. May return 0 if casting fails
+/// `c_longlong` - A uint representation of time since epoch. May return -1 on error
 ///
 /// # Safety
 /// The ```confirmation``` When done with the Confirmation it should be destroyed
 #[no_mangle]
-pub unsafe extern "C" fn read_confirmation_timestamp(confirmation: *mut Confirmation, error_out: *mut c_int) -> c_uint {
+pub unsafe extern "C" fn read_confirmation_timestamp(
+    confirmation: *mut Confirmation,
+    error_out: *mut c_int,
+) -> c_longlong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
     if confirmation.is_null() {
         error = LibChatError::from(InterfaceError::NullError("client".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
+        return -1;
     }
 
-    let c = &(*confirmation);
-    c_uint::try_from(c.timestamp).unwrap_or(0)
+    (*confirmation).timestamp as c_longlong
 }
 
 /// Frees memory for a Confirmation
@@ -178,7 +181,7 @@ mod test {
 
         unsafe {
             let read_timestamp = read_confirmation_timestamp(confirmation_ptr, error_out);
-            assert_eq!(timestamp, u64::from(read_timestamp))
+            assert_eq!(timestamp, read_timestamp as u64)
         }
 
         unsafe { destroy_confirmation(confirmation_ptr) }
