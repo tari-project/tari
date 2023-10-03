@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    convert::TryFrom,
     fmt::{Display, Error, Formatter},
     sync::Arc,
 };
@@ -50,6 +51,7 @@ pub enum DbKey {
     Contact(TariAddress),
     ContactId(NodeId),
     Contacts,
+    Message(Vec<u8>),
     Messages(TariAddress, i64, i64),
 }
 
@@ -64,6 +66,7 @@ pub enum DbValue {
 #[allow(clippy::large_enum_variant)]
 pub enum DbKeyValuePair {
     Contact(TariAddress, Contact),
+    MessageConfirmations(Vec<u8>, Option<NaiveDateTime>, Option<NaiveDateTime>),
     LastSeen(NodeId, NaiveDateTime, Option<i32>),
 }
 
@@ -188,6 +191,38 @@ where T: ContactsBackend + 'static
 
         Ok(())
     }
+
+    pub fn confirm_message(
+        &self,
+        message_id: Vec<u8>,
+        delivery_confirmation: Option<u64>,
+        read_confirmation: Option<u64>,
+    ) -> Result<(), ContactsServiceStorageError> {
+        let mut delivery = None;
+        if let Some(timestamp) = delivery_confirmation {
+            let secs = i64::try_from(timestamp).map_err(|_e| ContactsServiceStorageError::ConversionError)?;
+            delivery = Some(
+                NaiveDateTime::from_timestamp_opt(secs, 0)
+                    .ok_or_else(|| ContactsServiceStorageError::ConversionError)?,
+            )
+        };
+
+        let mut read = None;
+        if let Some(timestamp) = read_confirmation {
+            let secs = i64::try_from(timestamp).map_err(|_e| ContactsServiceStorageError::ConversionError)?;
+            read = Some(
+                NaiveDateTime::from_timestamp_opt(secs, 0)
+                    .ok_or_else(|| ContactsServiceStorageError::ConversionError)?,
+            )
+        };
+
+        self.db
+            .write(WriteOperation::Upsert(Box::new(DbKeyValuePair::MessageConfirmations(
+                message_id, delivery, read,
+            ))))?;
+
+        Ok(())
+    }
 }
 
 fn unexpected_result<T>(req: DbKey, res: DbValue) -> Result<T, ContactsServiceStorageError> {
@@ -203,6 +238,7 @@ impl Display for DbKey {
             DbKey::ContactId(id) => f.write_str(&format!("Contact: {:?}", id)),
             DbKey::Contacts => f.write_str("Contacts"),
             DbKey::Messages(c, _l, _p) => f.write_str(&format!("Messages for id: {:?}", c)),
+            DbKey::Message(m) => f.write_str(&format!("Message for id: {:?}", m)),
         }
     }
 }
