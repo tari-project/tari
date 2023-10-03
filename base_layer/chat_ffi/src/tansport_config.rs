@@ -27,8 +27,8 @@ use tari_p2p::{SocksAuthentication, TorControlAuthentication, TorTransportConfig
 use tari_utilities::hex;
 
 use crate::{
+    byte_vector::ChatByteVector,
     error::{InterfaceError, LibChatError},
-    types::ChatByteVector,
 };
 
 /// Creates a tor transport config

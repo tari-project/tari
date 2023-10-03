@@ -27,8 +27,8 @@ use tari_chat_client::ChatClient;
 use tari_contacts::contacts_service::types::{Confirmation, Message};
 
 use crate::{
+    byte_vector::{chat_byte_vector_create, ChatByteVector},
     error::{InterfaceError, LibChatError},
-    types::{chat_byte_vector_create, ChatByteVector},
     ChatClientFFI,
 };
 
@@ -148,8 +148,8 @@ mod test {
     use tari_utilities::epoch_time::EpochTime;
 
     use crate::{
+        byte_vector::{chat_byte_vector_get_at, chat_byte_vector_get_length},
         confirmation::{destroy_confirmation, read_confirmation_message_id, read_confirmation_timestamp},
-        types::{chat_byte_vector_get_at, chat_byte_vector_get_length},
     };
 
     #[test]

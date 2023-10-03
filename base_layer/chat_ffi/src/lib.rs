@@ -43,6 +43,7 @@ use crate::{
 };
 
 mod application_config;
+mod byte_vector;
 mod callback_handler;
 mod confirmation;
 mod contacts;
@@ -50,6 +51,7 @@ mod error;
 mod logging;
 mod message;
 mod message_metadata;
+mod messages;
 mod tansport_config;
 mod tari_address;
 mod types;

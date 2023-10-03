@@ -27,8 +27,8 @@ use tari_contacts::contacts_service::types::{Message, MessageMetadata, MessageMe
 use tari_utilities::ByteArray;
 
 use crate::{
+    byte_vector::{chat_byte_vector_create, chat_byte_vector_get_at, chat_byte_vector_get_length, ChatByteVector},
     error::{InterfaceError, LibChatError},
-    types::{chat_byte_vector_create, chat_byte_vector_get_at, chat_byte_vector_get_length, ChatByteVector},
 };
 
 /// Creates message metadata and appends it to a Message
@@ -104,75 +104,6 @@ pub unsafe extern "C" fn add_chat_message_metadata(
     (*message).push(metadata);
 }
 
-/// Reads the message metadata of a message and returns a ptr to the metadata at the given position
-///
-/// ## Arguments
-/// `message` - A pointer to a Message
-/// `position` - The index of the array of metadata
-/// `error_out` - Pointer to an int which will be modified
-///
-/// ## Returns
-/// `()` - Does not return a value, equivalent to void in C
-///
-/// ## Safety
-/// `message` should be destroyed eventually
-/// the returned `MessageMetadata` should be destroyed eventually
-#[no_mangle]
-pub unsafe extern "C" fn read_chat_metadata_at_position(
-    message: *mut Message,
-    position: c_uint,
-    error_out: *mut c_int,
-) -> *mut MessageMetadata {
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-
-    if message.is_null() {
-        error = LibChatError::from(InterfaceError::NullError("message".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return ptr::null_mut();
-    }
-
-    let message = &(*message);
-
-    let len = message.metadata.len() - 1;
-    if position as usize > len {
-        error = LibChatError::from(InterfaceError::PositionInvalidError).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return ptr::null_mut();
-    }
-
-    let message_metadata_vec = &(*(message).metadata);
-    let message_metadata = Box::new(message_metadata_vec[position as usize].clone());
-
-    Box::into_raw(message_metadata)
-}
-
-/// Returns the length of the Metadata Vector a chat Message contains
-///
-/// ## Arguments
-/// `message` - A pointer to a Message
-/// `error_out` - Pointer to an int which will be modified
-///
-/// ## Returns
-/// `c_int` - The length of the metadata vector for a Message. May return -1 if something goes wrong
-///
-/// ## Safety
-/// `message` should be destroyed eventually
-#[no_mangle]
-pub unsafe extern "C" fn chat_message_metadata_len(message: *mut Message, error_out: *mut c_int) -> c_int {
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-
-    if message.is_null() {
-        error = LibChatError::from(InterfaceError::NullError("message".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return -1;
-    }
-
-    let message = &(*message);
-    c_int::try_from(message.metadata.len()).unwrap_or(-1)
-}
-
 /// Returns the enum int representation of a metadata type
 ///
 /// ## Arguments
@@ -241,6 +172,23 @@ pub unsafe extern "C" fn read_chat_metadata_data(
     chat_byte_vector_create(data_bytes.as_ptr(), len, error_out)
 }
 
+/// Frees memory for MessageMetadata
+///
+/// ## Arguments
+/// `ptr` - The pointer of a MessageMetadata
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn destroy_chat_message_metadata(ptr: *mut MessageMetadata) {
+    if !ptr.is_null() {
+        drop(Box::from_raw(ptr))
+    }
+}
+
 #[cfg(test)]
 mod test {
     use std::convert::TryFrom;
@@ -250,7 +198,10 @@ mod test {
     use tari_contacts::contacts_service::types::MessageBuilder;
 
     use super::*;
-    use crate::types::chat_byte_vector_create;
+    use crate::{
+        byte_vector::{chat_byte_vector_create, chat_byte_vector_destroy},
+        message::{chat_metadata_get_at, destroy_chat_message},
+    };
 
     #[test]
     fn test_metadata_adding() {
@@ -267,6 +218,11 @@ mod test {
         let message = unsafe { Box::from_raw(message_ptr) };
         assert_eq!(message.metadata.len(), 1);
         assert_eq!(message.metadata[0].data, data_bytes);
+
+        unsafe {
+            chat_byte_vector_destroy(data);
+            drop(Box::from_raw(error_out));
+        }
     }
 
     #[test]
@@ -289,7 +245,7 @@ mod test {
 
             add_chat_message_metadata(message_ptr, md_type, data, error_out);
 
-            let metadata_ptr = read_chat_metadata_at_position(message_ptr, 0, error_out);
+            let metadata_ptr = chat_metadata_get_at(message_ptr, 0, error_out);
 
             let metadata_type = read_chat_metadata_type(metadata_ptr, error_out);
             let metadata_byte_vector = read_chat_metadata_data(metadata_ptr, error_out);
@@ -302,6 +258,11 @@ mod test {
 
             assert_eq!(metadata_type, md_type);
             assert_eq!(metadata_data, data_bytes);
+
+            destroy_chat_message_metadata(metadata_ptr);
+            destroy_chat_message(message_ptr);
+            chat_byte_vector_destroy(metadata_byte_vector);
+            drop(Box::from_raw(error_out));
         }
     }
 }

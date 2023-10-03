@@ -14,13 +14,13 @@ struct ChatByteVector;
 
 struct ChatClientFFI;
 
-struct ChatMessages;
-
 struct Confirmation;
 
 struct Message;
 
 struct MessageMetadata;
+
+struct MessageVector;
 
 struct TariAddress;
 
@@ -116,6 +116,79 @@ struct ApplicationConfig *create_chat_config(const char *network_str,
  * None
  */
 void destroy_chat_config(struct ApplicationConfig *config);
+
+/**
+ * Creates a ChatByteVector
+ *
+ * ## Arguments
+ * `byte_array` - The pointer to the byte array
+ * `element_count` - The number of elements in byte_array
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `*mut ChatByteVector` - Pointer to the created ChatByteVector. Note that it will be ptr::null_mut()
+ * if the byte_array pointer was null or if the elements in the byte_vector don't match
+ * element_count when it is created
+ *
+ * # Safety
+ * The ```byte_vector_destroy``` function must be called when finished with a ChatByteVector to prevent a memory leak
+ */
+struct ChatByteVector *chat_byte_vector_create(const unsigned char *byte_array,
+                                               unsigned int element_count,
+                                               int *error_out);
+
+/**
+ * Frees memory for a ChatByteVector
+ *
+ * ## Arguments
+ * `bytes` - The pointer to a ChatByteVector
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * None
+ */
+void chat_byte_vector_destroy(struct ChatByteVector *bytes);
+
+/**
+ * Gets a c_uchar at position in a ChatByteVector
+ *
+ * ## Arguments
+ * `ptr` - The pointer to a ChatByteVector
+ * `position` - The integer position
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `c_uchar` - Returns a character. Note that the character will be a null terminator (0) if ptr
+ * is null or if the position is invalid
+ *
+ * # Safety
+ * None
+ */
+unsigned char chat_byte_vector_get_at(struct ChatByteVector *ptr,
+                                      unsigned int position,
+                                      int *error_out);
+
+/**
+ * Gets the number of elements in a ChatByteVector
+ *
+ * ## Arguments
+ * `ptr` - The pointer to a ChatByteVector
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `c_uint` - Returns the integer number of elements in the ChatByteVector. Note that it will be zero
+ * if ptr is null
+ *
+ * # Safety
+ * None
+ */
+unsigned int chat_byte_vector_get_length(const struct ChatByteVector *vec,
+                                         int *error_out);
 
 /**
  * Send a read confirmation for a given message
@@ -238,7 +311,7 @@ struct Message *create_chat_message(struct TariAddress *receiver,
                                     int *error_out);
 
 /**
- * Frees memory for message
+ * Frees memory for Message
  *
  * ## Arguments
  * `messages_ptr` - The pointer of a Message
@@ -249,7 +322,7 @@ struct Message *create_chat_message(struct TariAddress *receiver,
  * # Safety
  * None
  */
-void destroy_chat_message(struct Message *messages_ptr);
+void destroy_chat_message(struct Message *ptr);
 
 /**
  * Sends a message over a client
@@ -268,41 +341,151 @@ void destroy_chat_message(struct Message *messages_ptr);
 void send_chat_message(struct ChatClientFFI *client, struct Message *message, int *error_out);
 
 /**
- * Get a ptr to all messages from or to address
+ * Reads the message metadata of a message and returns a ptr to the metadata at the given position
  *
  * ## Arguments
- * `client` - The Client pointer
- * `address` - A TariAddress ptr
- * `limit` - The amount of messages you want to fetch. Default to 35, max 2500
- * `page` - The page of results you'd like returned. Default to 0, maximum of u64 max
+ * `message` - A pointer to a Message
+ * `position` - The index of the array of metadata
  * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
- * `()` - Does not return a value, equivalent to void in C
+ * `*mut MessageMetadata` - A pointer to to MessageMetadata
  *
- * # Safety
- * The ```address``` should be destroyed after use
- * The returned pointer to ```*mut ChatMessages``` should be destroyed after use
+ * ## Safety
+ * `message` should be destroyed eventually
+ * the returned `MessageMetadata` should be destroyed eventually
  */
-struct ChatMessages *get_chat_messages(struct ChatClientFFI *client,
-                                       struct TariAddress *address,
-                                       int limit,
-                                       int page,
-                                       int *error_out);
+struct MessageMetadata *chat_metadata_get_at(struct Message *message,
+                                             unsigned int position,
+                                             int *error_out);
 
 /**
- * Frees memory for messages
+ * Returns the length of the Metadata Vector a chat Message contains
  *
  * ## Arguments
- * `ptr` - The pointer of a Message
+ * `message` - A pointer to a Message
+ * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
- * `()` - Does not return a value, equivalent to void in C
+ * `c_int` - The length of the metadata vector for a Message. May return -1 if something goes wrong
  *
- * # Safety
- * None
+ * ## Safety
+ * `message` should be destroyed eventually
  */
-void destroy_chat_messages(struct ChatMessages *ptr);
+int chat_message_metadata_len(struct Message *message, int *error_out);
+
+/**
+ * Returns a pointer to a ChatByteVector representing the data of the Message
+ *
+ * ## Arguments
+ * `message` - A pointer to a message metadata
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `*mut ChatByteVector` - A ptr to a ChatByteVector
+ *
+ * ## Safety
+ * `message` should be destroyed eventually
+ * the returned `ChatByteVector` should be destroyed eventually
+ */
+struct ChatByteVector *read_chat_message_body(struct Message *message, int *error_out);
+
+/**
+ * Returns a pointer to a TariAddress
+ *
+ * ## Arguments
+ * `message` - A pointer to a message metadata
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `*mut TariAddress` - A ptr to a TariAddress
+ *
+ * ## Safety
+ * `message` should be destroyed eventually
+ * the returned `TariAddress` should be destroyed eventually
+ */
+struct TariAddress *read_chat_message_address(struct Message *message, int *error_out);
+
+/**
+ * Returns a c_char representation of the Direction enum
+ *
+ * ## Arguments
+ * `message` - A pointer to a message metadata
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `c_char` - A c_uint rep of the direction enum. May return -1 if anything goes wrong
+ *     0 => Inbound
+ *     1 => Outbound
+ *
+ * ## Safety
+ * `message` should be destroyed eventually
+ */
+char read_chat_message_direction(struct Message *message, int *error_out);
+
+/**
+ * Returns a c_ulonglong representation of the stored at timestamp as seconds since epoch
+ *
+ * ## Arguments
+ * `message` - A pointer to a message metadata
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `c_ulonglong` - The stored_at timestamp, seconds since epoch. Returns 0 if message is null.
+ *
+ * ## Safety
+ * `message` should be destroyed eventually
+ */
+unsigned long long read_chat_message_stored_at(struct Message *message, int *error_out);
+
+/**
+ * Returns a c_ulonglong representation of the delivery confirmation timestamp as seconds since epoch
+ *
+ * ## Arguments
+ * `message` - A pointer to a message metadata
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `c_ulonglong` - The delivery_confirmation_at timestamp, seconds since epoch. Returns 0 if message
+ * is null or if no confirmation is stored.
+ *
+ * ## Safety
+ * `message` should be destroyed eventually
+ */
+unsigned long long read_chat_message_delivery_confirmation_at(struct Message *message,
+                                                              int *error_out);
+
+/**
+ * Returns a c_ulonglong representation of the read confirmation timestamp as seconds since epoch
+ *
+ * ## Arguments
+ * `message` - A pointer to a message metadata
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `c_ulonglong` - The read_confirmation_at timestamp, seconds since epoch. Returns 0 if message is
+ * null or if no confirmation is stored.
+ *
+ * ## Safety
+ * `message` should be destroyed eventually
+ */
+unsigned long long read_chat_message_read_confirmation_at(struct Message *message, int *error_out);
+
+/**
+ * Returns a pointer to a ChatByteVector representation of the message_id
+ *
+ * ## Arguments
+ * `message` - A pointer to a message metadata
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `*mut ChatByteVector` - A ChatByteVector for the message id
+ *
+ * ## Safety
+ * `message` should be destroyed eventually
+ * The returned ```ChatByteVector``` should be destroyed eventually
+ */
+struct ChatByteVector *read_chat_message_id(struct Message *message, int *error_out);
 
 /**
  * Creates message metadata and appends it to a Message
@@ -325,40 +508,6 @@ void add_chat_message_metadata(struct Message *message,
                                int metadata_type,
                                struct ChatByteVector *data,
                                int *error_out);
-
-/**
- * Reads the message metadata of a message and returns a ptr to the metadata at the given position
- *
- * ## Arguments
- * `message` - A pointer to a Message
- * `position` - The index of the array of metadata
- * `error_out` - Pointer to an int which will be modified
- *
- * ## Returns
- * `()` - Does not return a value, equivalent to void in C
- *
- * ## Safety
- * `message` should be destroyed eventually
- * the returned `MessageMetadata` should be destroyed eventually
- */
-struct MessageMetadata *read_chat_metadata_at_position(struct Message *message,
-                                                       unsigned int position,
-                                                       int *error_out);
-
-/**
- * Returns the length of the Metadata Vector a chat Message contains
- *
- * ## Arguments
- * `message` - A pointer to a Message
- * `error_out` - Pointer to an int which will be modified
- *
- * ## Returns
- * `c_int` - The length of the metadata vector for a Message. May return -1 if something goes wrong
- *
- * ## Safety
- * `message` should be destroyed eventually
- */
-int chat_message_metadata_len(struct Message *message, int *error_out);
 
 /**
  * Returns the enum int representation of a metadata type
@@ -394,6 +543,92 @@ int read_chat_metadata_type(struct MessageMetadata *msg_metadata,
  */
 struct ChatByteVector *read_chat_metadata_data(struct MessageMetadata *msg_metadata,
                                                int *error_out);
+
+/**
+ * Frees memory for MessageMetadata
+ *
+ * ## Arguments
+ * `ptr` - The pointer of a MessageMetadata
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * None
+ */
+void destroy_chat_message_metadata(struct MessageMetadata *ptr);
+
+/**
+ * Get a ptr to all messages from or to an address
+ *
+ * ## Arguments
+ * `client` - The Client pointer
+ * `address` - A TariAddress ptr
+ * `limit` - The amount of messages you want to fetch. Default to 35, max 2500
+ * `page` - The page of results you'd like returned. Default to 0, maximum of u64 max
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `*mut ptr MessageVector` - A pointer to a Vector of Messages
+ *
+ * # Safety
+ * The returned pointer to ```MessageVector``` should be destroyed after use
+ * ```client``` should be destroyed after use
+ * ```address``` should be destroyed after use
+ */
+struct MessageVector *get_chat_messages(struct ChatClientFFI *client,
+                                        struct TariAddress *address,
+                                        int limit,
+                                        int page,
+                                        int *error_out);
+
+/**
+ * Returns the length of the MessageVector
+ *
+ * ## Arguments
+ * `messages` - A pointer to a MessageVector
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `c_int` - The length of the metadata vector for a Message. May return -1 if something goes wrong
+ *
+ * ## Safety
+ * `message` should be destroyed eventually
+ */
+int message_vector_len(struct MessageVector *messages, int *error_out);
+
+/**
+ * Reads the MessageVector and returns a Message at a given position
+ *
+ * ## Arguments
+ * `messages` - A pointer to a MessageVector
+ * `position` - The index of the vector for a Message
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `*mut ptr Message` - A pointer to a Message
+ *
+ * ## Safety
+ * `messages` should be destroyed eventually
+ * the returned `Message` should be destroyed eventually
+ */
+struct Message *message_vector_get_at(struct MessageVector *messages,
+                                      unsigned int position,
+                                      int *error_out);
+
+/**
+ * Frees memory for MessagesVector
+ *
+ * ## Arguments
+ * `ptr` - The pointer of a MessagesVector
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * None
+ */
+void destroy_message_vector(struct MessageVector *ptr);
 
 /**
  * Creates a tor transport config
@@ -479,79 +714,6 @@ void destroy_tari_address(struct TariAddress *address);
  * None
  */
 void destroy_chat_ffi_liveness_data(struct ChatFFIContactsLivenessData *address);
-
-/**
- * Creates a ChatByteVector
- *
- * ## Arguments
- * `byte_array` - The pointer to the byte array
- * `element_count` - The number of elements in byte_array
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
- *
- * ## Returns
- * `*mut ChatByteVector` - Pointer to the created ChatByteVector. Note that it will be ptr::null_mut()
- * if the byte_array pointer was null or if the elements in the byte_vector don't match
- * element_count when it is created
- *
- * # Safety
- * The ```byte_vector_destroy``` function must be called when finished with a ChatByteVector to prevent a memory leak
- */
-struct ChatByteVector *chat_byte_vector_create(const unsigned char *byte_array,
-                                               unsigned int element_count,
-                                               int *error_out);
-
-/**
- * Frees memory for a ChatByteVector
- *
- * ## Arguments
- * `bytes` - The pointer to a ChatByteVector
- *
- * ## Returns
- * `()` - Does not return a value, equivalent to void in C
- *
- * # Safety
- * None
- */
-void chat_byte_vector_destroy(struct ChatByteVector *bytes);
-
-/**
- * Gets a c_uchar at position in a ChatByteVector
- *
- * ## Arguments
- * `ptr` - The pointer to a ChatByteVector
- * `position` - The integer position
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
- *
- * ## Returns
- * `c_uchar` - Returns a character. Note that the character will be a null terminator (0) if ptr
- * is null or if the position is invalid
- *
- * # Safety
- * None
- */
-unsigned char chat_byte_vector_get_at(struct ChatByteVector *ptr,
-                                      unsigned int position,
-                                      int *error_out);
-
-/**
- * Gets the number of elements in a ChatByteVector
- *
- * ## Arguments
- * `ptr` - The pointer to a ChatByteVector
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter.
- *
- * ## Returns
- * `c_uint` - Returns the integer number of elements in the ChatByteVector. Note that it will be zero
- * if ptr is null
- *
- * # Safety
- * None
- */
-unsigned int chat_byte_vector_get_length(const struct ChatByteVector *vec,
-                                         int *error_out);
 
 #ifdef __cplusplus
 } // extern "C"

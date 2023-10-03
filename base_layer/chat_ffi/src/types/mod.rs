@@ -21,13 +21,3 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 mod chat_ffi_contacts_liveness_data;
 pub use chat_ffi_contacts_liveness_data::{destroy_chat_ffi_liveness_data, ChatFFIContactsLivenessData};
-mod wrappers;
-pub use wrappers::{ChatByteVector, ChatMessages};
-
-mod byte_vector;
-pub use byte_vector::{
-    chat_byte_vector_create,
-    chat_byte_vector_destroy,
-    chat_byte_vector_get_at,
-    chat_byte_vector_get_length,
-};

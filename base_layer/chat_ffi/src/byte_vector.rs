@@ -24,10 +24,10 @@ use std::{ptr, slice};
 
 use libc::{c_int, c_uchar, c_uint};
 
-use crate::{
-    error::{InterfaceError, LibChatError},
-    types::ChatByteVector,
-};
+use crate::error::{InterfaceError, LibChatError};
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct ChatByteVector(pub Vec<c_uchar>); // declared like this so that it can be exposed to external header
 
 /// Creates a ChatByteVector
 ///
