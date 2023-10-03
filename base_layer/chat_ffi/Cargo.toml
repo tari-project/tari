@@ -29,6 +29,9 @@ openssl = { version = "0.10.55", features = ["vendored"] }
 [lib]
 crate-type = ["staticlib","cdylib"]
 
+[dev-dependencies]
+chrono = { version = "0.4.19", default-features = false }
+
 [build-dependencies]
 cbindgen = "0.24.3"
 tari_common = { path = "../../common", features = ["build", "static-application-info"] }

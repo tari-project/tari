@@ -16,6 +16,8 @@ struct ChatClientFFI;
 
 struct Confirmation;
 
+struct ContactsLivenessData;
+
 struct Message;
 
 struct MessageMetadata;
@@ -26,13 +28,7 @@ struct TariAddress;
 
 struct TransportConfig;
 
-struct ChatFFIContactsLivenessData {
-  const char *address;
-  uint64_t last_seen;
-  uint8_t online_status;
-};
-
-typedef void (*CallbackContactStatusChange)(struct ChatFFIContactsLivenessData*);
+typedef void (*CallbackContactStatusChange)(struct ContactsLivenessData*);
 
 typedef void (*CallbackMessageReceived)(struct Message*);
 
@@ -290,6 +286,74 @@ void add_chat_contact(struct ChatClientFFI *client, struct TariAddress *address,
  * The ```address``` should be destroyed after use
  */
 int check_online_status(struct ChatClientFFI *client, struct TariAddress *receiver, int *error_out);
+
+/**
+ * Returns a pointer to a TariAddress
+ *
+ * ## Arguments
+ * `liveness` - A pointer to a ContactsLivenessData struct
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `*mut TariAddress` - A ptr to a TariAddress
+ *
+ * ## Safety
+ * `liveness` should be destroyed eventually
+ * the returned `TariAddress` should be destroyed eventually
+ */
+struct TariAddress *read_liveness_data_address(struct ContactsLivenessData *liveness,
+                                               int *error_out);
+
+/**
+ * Returns an c_uchar representation of a contacts online status
+ *
+ * ## Arguments
+ * `liveness` - A pointer to a ContactsLivenessData struct
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `c_uchar` - A c_uchar rep of an enum for a contacts online status. May return 0 if an error occurs
+ *     Online => 1
+ *     Offline => 2
+ *     NeverSeen => 3
+ *     Banned => 4
+ *
+ * ## Safety
+ * `liveness` should be destroyed eventually
+ */
+unsigned char read_liveness_data_online_status(struct ContactsLivenessData *liveness,
+                                               int *error_out);
+
+/**
+ * Returns an c_longlong representation of a timestamp when the contact was last seen
+ *
+ * ## Arguments
+ * `liveness` - A pointer to a ContactsLivenessData struct
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `c_longlong` - A c_longlong rep of an enum for a contacts online status. May return -1 if an error
+ * occurs, or 0 if the contact has never been seen
+ *
+ * ## Safety
+ * `liveness` should be destroyed eventually
+ */
+long long read_liveness_data_last_seen(struct ContactsLivenessData *liveness,
+                                       int *error_out);
+
+/**
+ * Frees memory for a ContactsLivenessData
+ *
+ * ## Arguments
+ * `ptr` - The pointer of a ContactsLivenessData
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * None
+ */
+void destroy_contacts_liveness_data(struct ContactsLivenessData *ptr);
 
 /**
  * Creates a message and returns a ptr to it
@@ -700,20 +764,6 @@ struct TariAddress *create_tari_address(const char *receiver_c_char, int *error_
  * None
  */
 void destroy_tari_address(struct TariAddress *address);
-
-/**
- * Frees memory for a ChatFFIContactsLivenessData
- *
- * ## Arguments
- * `address` - The pointer of a ChatFFIContactsLivenessData
- *
- * ## Returns
- * `()` - Does not return a value, equivalent to void in C
- *
- * # Safety
- * None
- */
-void destroy_chat_ffi_liveness_data(struct ChatFFIContactsLivenessData *address);
 
 #ifdef __cplusplus
 } // extern "C"

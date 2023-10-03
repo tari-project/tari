@@ -515,7 +515,7 @@ mod test {
         unsafe {
             let timestamp = EpochTime::now().as_u64();
             let message = Message {
-                stored_at: timestamp.clone(),
+                stored_at: timestamp,
                 delivery_confirmation_at: None,
                 read_confirmation_at: None,
                 ..Message::default()
@@ -538,9 +538,9 @@ mod test {
         unsafe {
             let timestamp = EpochTime::now().as_u64();
             let message = Message {
-                stored_at: timestamp.clone(),
-                delivery_confirmation_at: Some(timestamp.clone()),
-                read_confirmation_at: Some(timestamp.clone()),
+                stored_at: timestamp,
+                delivery_confirmation_at: Some(timestamp),
+                read_confirmation_at: Some(timestamp),
                 ..Message::default()
             };
 
