@@ -260,21 +260,21 @@ pub unsafe extern "C" fn read_chat_message_address(message: *mut Message, error_
     Box::into_raw(Box::new(address))
 }
 
-/// Returns a c_char representation of the Direction enum
+/// Returns a c_int representation of the Direction enum
 ///
 /// ## Arguments
 /// `message` - A pointer to a Message
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
-/// `c_char` - A c_char rep of the direction enum. May return -1 if anything goes wrong
+/// `c_int` - A c_int rep of the direction enum. May return -1 if anything goes wrong
 ///     0 => Inbound
 ///     1 => Outbound
 ///
 /// ## Safety
 /// `message` should be destroyed eventually
 #[no_mangle]
-pub unsafe extern "C" fn read_chat_message_direction(message: *mut Message, error_out: *mut c_int) -> c_char {
+pub unsafe extern "C" fn read_chat_message_direction(message: *mut Message, error_out: *mut c_int) -> c_int {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -284,7 +284,7 @@ pub unsafe extern "C" fn read_chat_message_direction(message: *mut Message, erro
         return -1;
     }
 
-    c_char::try_from((*message).direction.as_byte()).unwrap_or(-1)
+    c_int::try_from((*message).direction.as_byte()).unwrap_or(-1)
 }
 
 /// Returns a c_ulonglong representation of the stored at timestamp as seconds since epoch

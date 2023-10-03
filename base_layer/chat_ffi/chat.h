@@ -490,21 +490,21 @@ struct ChatByteVector *read_chat_message_body(struct Message *message, int *erro
 struct TariAddress *read_chat_message_address(struct Message *message, int *error_out);
 
 /**
- * Returns a c_char representation of the Direction enum
+ * Returns a c_int representation of the Direction enum
  *
  * ## Arguments
  * `message` - A pointer to a Message
  * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
- * `c_char` - A c_char rep of the direction enum. May return -1 if anything goes wrong
+ * `c_int` - A c_int rep of the direction enum. May return -1 if anything goes wrong
  *     0 => Inbound
  *     1 => Outbound
  *
  * ## Safety
  * `message` should be destroyed eventually
  */
-char read_chat_message_direction(struct Message *message, int *error_out);
+int read_chat_message_direction(struct Message *message, int *error_out);
 
 /**
  * Returns a c_ulonglong representation of the stored at timestamp as seconds since epoch
@@ -593,21 +593,21 @@ void add_chat_message_metadata(struct Message *message,
                                int *error_out);
 
 /**
- * Returns the c_char representation of a metadata type enum
+ * Returns the c_int representation of a metadata type enum
  *
  * ## Arguments
  * `msg_metadata` - A pointer to a MessageMetadata
  * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
- * `c_char` - An int8 that maps to MessageMetadataType enum. May return -1 if something goes wrong
+ * `c_int` - An int8 that maps to MessageMetadataType enum. May return -1 if something goes wrong
  *     '0' -> Reply
  *     '1' -> TokenRequest
  *
  * ## Safety
  * `msg_metadata` should be destroyed eventually
  */
-char read_chat_metadata_type(struct MessageMetadata *msg_metadata, int *error_out);
+int read_chat_metadata_type(struct MessageMetadata *msg_metadata, int *error_out);
 
 /**
  * Returns a ptr to a ByteVector

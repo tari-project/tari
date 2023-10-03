@@ -22,7 +22,7 @@
 
 use std::{convert::TryFrom, ptr};
 
-use libc::{c_char, c_int, c_uchar, c_uint};
+use libc::{c_int, c_uchar, c_uint};
 use tari_contacts::contacts_service::types::{Message, MessageMetadata, MessageMetadataType};
 use tari_utilities::ByteArray;
 
@@ -95,21 +95,21 @@ pub unsafe extern "C" fn add_chat_message_metadata(
     (*message).push(metadata);
 }
 
-/// Returns the c_char representation of a metadata type enum
+/// Returns the c_int representation of a metadata type enum
 ///
 /// ## Arguments
 /// `msg_metadata` - A pointer to a MessageMetadata
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
-/// `c_char` - An int8 that maps to MessageMetadataType enum. May return -1 if something goes wrong
+/// `c_int` - An int8 that maps to MessageMetadataType enum. May return -1 if something goes wrong
 ///     '0' -> Reply
 ///     '1' -> TokenRequest
 ///
 /// ## Safety
 /// `msg_metadata` should be destroyed eventually
 #[no_mangle]
-pub unsafe extern "C" fn read_chat_metadata_type(msg_metadata: *mut MessageMetadata, error_out: *mut c_int) -> c_char {
+pub unsafe extern "C" fn read_chat_metadata_type(msg_metadata: *mut MessageMetadata, error_out: *mut c_int) -> c_int {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -120,7 +120,7 @@ pub unsafe extern "C" fn read_chat_metadata_type(msg_metadata: *mut MessageMetad
     }
 
     let md = &(*msg_metadata);
-    c_char::try_from(md.metadata_type.as_byte()).unwrap_or(-1)
+    c_int::try_from(md.metadata_type.as_byte()).unwrap_or(-1)
 }
 
 /// Returns a ptr to a ByteVector
@@ -247,7 +247,7 @@ mod test {
                 metadata_data.push(chat_byte_vector_get_at(metadata_byte_vector, i, error_out));
             }
 
-            assert_eq!(metadata_type as u8, md_type);
+            assert_eq!(metadata_type, i32::from(md_type));
             assert_eq!(metadata_data, data_bytes);
 
             destroy_chat_message_metadata(metadata_ptr);
