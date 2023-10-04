@@ -20,7 +20,8 @@ tari_storage = {  path = "../../infrastructure/storage" }
 tari_common_sqlite = { path = "../../common_sqlite" }
 
 anyhow = "1.0.53"
-bitflags = "1"
+bitflags = { version = "2.4.0", features = ["serde"] }
+bitflags-serde-legacy = "0.1.1"
 chacha20 = "0.7.1"
 chacha20poly1305 = "0.10.1"
 chrono = { version = "0.4.19", default-features = false }

@@ -18,7 +18,8 @@ tari_utilities = { version = "0.5" }
 
 anyhow = "1.0.53"
 async-trait = "0.1.36"
-bitflags = "1"
+bitflags = { version = "2.4.0", features = ["serde"] }
+bitflags-serde-legacy = "0.1.1"
 blake2 = "0.10"
 bytes = { version = "1", features = ["serde"] }
 chrono = { version = "0.4.19", default-features = false, features = ["serde", "clock"] }
