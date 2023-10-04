@@ -220,10 +220,8 @@ impl Listening {
                         return StateEvent::FallenBehind(sync_mode);
                     }
 
-                    // if the mode is SyncNotPossible, we know of peers that have a higher pow than us, but we cannot
-                    // sync from them due to their pruning mode settings as they cannot supply us with the required full
-                    // blocks we require, so we should not enter sync and await better peers who can provide us this
-                    if !self.is_synced && !sync_mode.is_sync_not_possible() {
+
+                    if !self.is_synced  && sync_mode.is_up_to_date() {
                         self.is_synced = true;
                         shared.set_state_info(StateInfo::Listening(ListeningInfo::new(true)));
                         debug!(target: LOG_TARGET, "Initial sync achieved");
