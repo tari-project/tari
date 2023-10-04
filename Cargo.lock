@@ -446,16 +446,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bitflags-serde-legacy"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b64e60c28b6d25ad92e8b367801ff9aa12b41d05fc8798055d296bace4a60cc"
-dependencies = [
- "bitflags 2.4.0",
- "serde",
-]
-
-[[package]]
 name = "bitstring"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5522,7 +5512,6 @@ dependencies = [
  "anyhow",
  "async-trait",
  "bitflags 2.4.0",
- "bitflags-serde-legacy",
  "blake2",
  "bytes 1.4.0",
  "chrono",
@@ -5572,7 +5561,6 @@ version = "0.52.0-pre.1"
 dependencies = [
  "anyhow",
  "bitflags 2.4.0",
- "bitflags-serde-legacy",
  "chacha20 0.7.3",
  "chacha20poly1305 0.10.1",
  "chrono",
@@ -5666,7 +5654,6 @@ dependencies = [
  "async-trait",
  "bincode",
  "bitflags 2.4.0",
- "bitflags-serde-legacy",
  "blake2",
  "borsh",
  "bytes 0.5.6",

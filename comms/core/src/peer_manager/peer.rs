@@ -49,22 +49,10 @@ use crate::{
 
 bitflags! {
     /// Miscellaneous Peer flags
-    #[derive(Default, Eq, PartialEq, Debug, Clone, Copy)]
+    #[derive(Default, Deserialize, Serialize, Eq, PartialEq, Debug, Clone, Copy)]
     pub struct PeerFlags: u8 {
         const NONE = 0x00;
         const SEED = 0x01;
-    }
-}
-
-impl serde::Serialize for PeerFlags {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        bitflags_serde_legacy::serialize(self, "Flags", serializer)
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for PeerFlags {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        bitflags_serde_legacy::deserialize("Flags", deserializer)
     }
 }
 

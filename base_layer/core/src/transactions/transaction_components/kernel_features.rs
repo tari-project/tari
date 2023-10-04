@@ -21,9 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use borsh::{BorshDeserialize, BorshSerialize};
+use serde::{Deserialize, Serialize};
 
 /// Options for a kernel's structure or use.
-#[derive(BorshSerialize, BorshDeserialize, Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, BorshSerialize, BorshDeserialize, Clone, Copy, Debug, Eq, PartialEq)]
 pub struct KernelFeatures(u8);
 
 bitflags! {
@@ -32,18 +33,6 @@ bitflags! {
         const COINBASE_KERNEL = 1u8;
         /// Burned output transaction
         const BURN_KERNEL = 2u8;
-    }
-}
-
-impl serde::Serialize for KernelFeatures {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        bitflags_serde_legacy::serialize(self, "Flags", serializer)
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for KernelFeatures {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        bitflags_serde_legacy::deserialize("Flags", deserializer)
     }
 }
 
