@@ -220,8 +220,7 @@ impl Listening {
                         return StateEvent::FallenBehind(sync_mode);
                     }
 
-
-                    if !self.is_synced  && sync_mode.is_up_to_date() {
+                    if !self.is_synced && sync_mode.is_up_to_date() {
                         self.is_synced = true;
                         shared.set_state_info(StateInfo::Listening(ListeningInfo::new(true)));
                         debug!(target: LOG_TARGET, "Initial sync achieved");
