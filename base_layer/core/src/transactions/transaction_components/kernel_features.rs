@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 
 bitflags! {
     /// Options for a kernel's structure or use.
-    #[derive(Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
+    #[derive(Deserialize, Serialize, BorshSerialize, BorshDeserialize, Clone, Copy, Debug, Eq, PartialEq)]
     pub struct KernelFeatures: u8 {
         /// Coinbase transaction
         const COINBASE_KERNEL = 1u8;

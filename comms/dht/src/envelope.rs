@@ -100,7 +100,7 @@ impl fmt::Display for DhtMessageType {
 bitflags! {
     /// Used to indicate characteristics of the incoming or outgoing message, such
     /// as whether the message is encrypted.
-    #[derive(Deserialize, Serialize, Default)]
+    #[derive(Deserialize, Serialize, Default, Copy, Clone, Debug, Eq, PartialEq)]
     pub struct DhtMessageFlags: u32 {
         const NONE = 0x00;
         /// Set if the message is encrypted

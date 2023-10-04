@@ -23,11 +23,10 @@
 use std::fmt;
 
 use bitflags::bitflags;
-use serde::{Deserialize, Serialize};
 
 bitflags! {
     /// Peer feature flags. These advertised the capabilities of peer nodes.
-    #[derive(Serialize, Deserialize)]
+    #[derive(Serialize, Deserialize, Clone, Copy, Debug, Eq, PartialEq)]
     pub struct PeerFeatures: u32 {
         /// No capabilities
         const NONE = 0b0000_0000;

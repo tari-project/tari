@@ -196,6 +196,7 @@ impl Into<u32> for RpcMethod {
 }
 
 bitflags! {
+    #[derive(Debug, Clone, Copy)]
     pub struct RpcMessageFlags: u8 {
         /// Message stream has completed
         const FIN = 0x01;
