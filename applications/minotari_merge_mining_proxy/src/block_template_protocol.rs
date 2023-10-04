@@ -233,9 +233,9 @@ impl BlockTemplateProtocol<'_> {
         debug!(target: LOG_TARGET, "Deserializing Blocktemplate Blob into Monero Block",);
         let mut monero_block = monero_rx::deserialize_monero_block_from_hex(&monero_mining_data.blocktemplate_blob)?;
 
-        debug!(target: LOG_TARGET, "Appending Merged Mining Tag",);
+        debug!(target: LOG_TARGET, "Insert Merged Mining Tag",);
         // Add the Tari merge mining tag to the retrieved block template
-        monero_rx::append_merge_mining_tag(&mut monero_block, &tari_block.merge_mining_hash)?;
+        monero_rx::proxy_insert_merge_mining_tag_into_block(&mut monero_block, &tari_block.merge_mining_hash)?;
 
         debug!(target: LOG_TARGET, "Creating blockhashing blob from blocktemplate blob",);
         // Must be done after the tag is inserted since it will affect the hash of the miner tx
