@@ -121,6 +121,7 @@ pub unsafe extern "C" fn chat_byte_vector_get_at(
         ptr::swap(error_out, &mut error as *mut c_int);
         return 0u8;
     }
+
     (*ptr).0[position as usize]
 }
 
