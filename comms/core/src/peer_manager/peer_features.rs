@@ -36,9 +36,9 @@ bitflags! {
         const DHT_STORE_FORWARD = 0b0000_0010;
 
         /// Node is a communication node (typically a base layer node)
-        const COMMUNICATION_NODE = Self::MESSAGE_PROPAGATION.bits | Self::DHT_STORE_FORWARD.bits;
+        const COMMUNICATION_NODE = Self::MESSAGE_PROPAGATION.bits() | Self::DHT_STORE_FORWARD.bits();
         /// Node is a network client
-        const COMMUNICATION_CLIENT = Self::NONE.bits;
+        const COMMUNICATION_CLIENT = Self::NONE.bits();
     }
 }
 
