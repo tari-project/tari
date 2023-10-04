@@ -30,7 +30,6 @@ use std::{
 use bitflags::bitflags;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use prost_types::Timestamp;
-use serde::{Deserialize, Serialize};
 use tari_comms::{message::MessageTag, peer_manager::NodeId, types::CommsPublicKey, NodeIdentity};
 use tari_utilities::{epoch_time::EpochTime, ByteArray, ByteArrayError};
 use thiserror::Error;
@@ -100,11 +99,23 @@ impl fmt::Display for DhtMessageType {
 bitflags! {
     /// Used to indicate characteristics of the incoming or outgoing message, such
     /// as whether the message is encrypted.
-    #[derive(Deserialize, Serialize, Default, Copy, Clone, Debug, Eq, PartialEq)]
+    #[derive(Default, Copy, Clone, Debug, Eq, PartialEq)]
     pub struct DhtMessageFlags: u32 {
         const NONE = 0x00;
         /// Set if the message is encrypted
         const ENCRYPTED = 0x01;
+    }
+}
+
+impl serde::Serialize for DhtMessageFlags {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        bitflags_serde_legacy::serialize(self, "Flags", serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for DhtMessageFlags {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        bitflags_serde_legacy::deserialize("Flags", deserializer)
     }
 }
 

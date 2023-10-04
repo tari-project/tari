@@ -26,7 +26,7 @@ use bitflags::bitflags;
 
 bitflags! {
     /// Peer feature flags. These advertised the capabilities of peer nodes.
-    #[derive(Serialize, Deserialize, Clone, Copy, Debug, Eq, PartialEq)]
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     pub struct PeerFeatures: u32 {
         /// No capabilities
         const NONE = 0b0000_0000;
@@ -39,6 +39,18 @@ bitflags! {
         const COMMUNICATION_NODE = Self::MESSAGE_PROPAGATION.bits() | Self::DHT_STORE_FORWARD.bits();
         /// Node is a network client
         const COMMUNICATION_CLIENT = Self::NONE.bits();
+    }
+}
+
+impl serde::Serialize for PeerFeatures {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        bitflags_serde_legacy::serialize(self, "Flags", serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for PeerFeatures {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        bitflags_serde_legacy::deserialize("Flags", deserializer)
     }
 }
 
