@@ -28,7 +28,7 @@ use tari_chat_client::{
     networking::Multiaddr,
 };
 use tari_common::configuration::{MultiaddrList, Network, StringList};
-use tari_p2p::{PeerSeedsConfig, TransportConfig, DEFAULT_DNS_NAME_SERVER};
+use tari_p2p::{PeerSeedsConfig, TransportConfig, TransportType, DEFAULT_DNS_NAME_SERVER};
 
 use crate::error::{InterfaceError, LibChatError};
 
@@ -179,10 +179,16 @@ pub unsafe extern "C" fn create_chat_config(
         },
     };
 
+    let addresses = if (*tor_transport_config).transport_type == TransportType::Tor {
+        MultiaddrList::default()
+    } else {
+        MultiaddrList::from(vec![address])
+    };
+
     let mut chat_client_config = ChatClientConfig::default();
     chat_client_config.network = network;
     chat_client_config.p2p.transport = (*tor_transport_config).clone();
-    chat_client_config.p2p.public_addresses = MultiaddrList::from(vec![address]);
+    chat_client_config.p2p.public_addresses = addresses;
     chat_client_config.log_path = Some(log_path);
     chat_client_config.log_verbosity = Some(log_verbosity);
     chat_client_config.identity_file = identity_path;
