@@ -151,7 +151,7 @@ where
                 unmined.len(),
                 self.operation_id
             );
-            for (output, mined_height, mined_in_block, mmr_position, mined_timestamp) in &mined {
+            for (output, mined_height, mined_in_block, mined_timestamp) in &mined {
                 info!(
                     target: LOG_TARGET,
                     "Updating output comm:{}: hash {} as mined at height {} with current tip at {} (Operation ID:
@@ -162,15 +162,8 @@ where
                     tip_height,
                     self.operation_id
                 );
-                self.update_output_as_mined(
-                    output,
-                    mined_in_block,
-                    *mined_height,
-                    *mmr_position,
-                    tip_height,
-                    *mined_timestamp,
-                )
-                .await?;
+                self.update_output_as_mined(output, mined_in_block, *mined_height, tip_height, *mined_timestamp)
+                    .await?;
             }
             for output in unmined {
                 self.db
@@ -336,7 +329,7 @@ where
                 unmined.len(),
                 self.operation_id
             );
-            for (output, mined_height, mined_in_block, mmr_position, mined_timestamp) in &mined {
+            for (output, mined_height, mined_in_block, mined_timestamp) in &mined {
                 info!(
                     target: LOG_TARGET,
                     "Updating output comm:{}: hash {} as mined at height {} with current tip at {} (Operation ID: {})",
@@ -346,15 +339,8 @@ where
                     tip_height,
                     self.operation_id
                 );
-                self.update_output_as_mined(
-                    output,
-                    mined_in_block,
-                    *mined_height,
-                    *mmr_position,
-                    tip_height,
-                    *mined_timestamp,
-                )
-                .await?;
+                self.update_output_as_mined(output, mined_in_block, *mined_height, tip_height, *mined_timestamp)
+                    .await?;
             }
         }
 
@@ -513,14 +499,7 @@ where
         &self,
         batch: &[DbWalletOutput],
         base_node_client: &mut BaseNodeWalletRpcClient,
-    ) -> Result<
-        (
-            Vec<(DbWalletOutput, u64, BlockHash, u64, u64)>,
-            Vec<DbWalletOutput>,
-            u64,
-        ),
-        OutputManagerError,
-    > {
+    ) -> Result<(Vec<(DbWalletOutput, u64, BlockHash, u64)>, Vec<DbWalletOutput>, u64), OutputManagerError> {
         let batch_hashes = batch.iter().map(|o| o.hash.to_vec()).collect();
         trace!(
             target: LOG_TARGET,
@@ -559,7 +538,6 @@ where
                         output.clone(),
                         returned_output.mined_height,
                         block_hash,
-                        returned_output.mmr_position,
                         returned_output.mined_timestamp,
                     )),
                     Err(_) => {
@@ -583,7 +561,6 @@ where
         tx: &DbWalletOutput,
         mined_in_block: &BlockHash,
         mined_height: u64,
-        mmr_position: u64,
         tip_height: u64,
         mined_timestamp: u64,
     ) -> Result<(), OutputManagerProtocolError> {
@@ -594,7 +571,6 @@ where
                 tx.hash,
                 mined_height,
                 *mined_in_block,
-                mmr_position,
                 confirmed,
                 mined_timestamp,
             )

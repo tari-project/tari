@@ -466,6 +466,9 @@ impl LMDBDatabase {
                 ClearAllReorgs => {
                     lmdb_clear(&write_txn, &self.reorgs)?;
                 },
+                InsertTipSmt { smt } => {
+                    self.insert_tip_smt(&write_txn, smt)?;
+                },
             }
         }
         write_txn.commit()?;
@@ -511,7 +514,7 @@ impl LMDBDatabase {
         ]
     }
 
-    fn prune_output(&self, txn: &WriteTransaction<'_>, key: &OutputKey) -> Result<(), ChainStorageError> {
+    fn prune_output(&self, txn: &WriteTransaction<'_>, key: OutputKey) -> Result<(), ChainStorageError> {
         lmdb_delete(txn, &self.utxos_db, &key.to_comp_key(), "utxos_db")?;
         Ok(())
     }
@@ -542,7 +545,7 @@ impl LMDBDatabase {
             txn,
             &self.txos_hash_to_index_db,
             output_hash.as_slice(),
-            &(output_key.to_comp_key().to_vec()),
+            &(output_key.clone().to_comp_key().to_vec()),
             "txos_hash_to_index_db",
         )?;
         lmdb_insert(
@@ -1350,7 +1353,7 @@ impl LMDBDatabase {
             )?;
             let key = OutputKey::new(&block_hash, &input.hash)?;
             debug!(target: LOG_TARGET, "Pruning output: {:?}", key);
-            self.prune_output(write_txn, &key)?;
+            self.prune_output(write_txn, key)?;
         }
 
         Ok(())
@@ -1832,7 +1835,7 @@ impl BlockchainBackend for LMDBDatabase {
                         field: "hash",
                         value: header.to_hex(),
                     })?;
-            for utxo in utxos {
+            for mut utxo in &mut utxos {
                 let hash = utxo.0.hash();
                 match lmdb_get::<_, (u64, Vec<u8>)>(&txn, &self.deleted_txo_hash_to_header_index, hash.as_slice())? {
                     Some((height, _)) => {
@@ -2424,6 +2427,7 @@ impl fmt::Display for MetadataKey {
             MetadataKey::HorizonData => write!(f, "Database info"),
             MetadataKey::BestBlockTimestamp => write!(f, "Chain tip block timestamp"),
             MetadataKey::MigrationVersion => write!(f, "Migration version"),
+            MetadataKey::TipSmt => write!(f, "Chain tip Sparse Merkle Tree version"),
         }
     }
 }

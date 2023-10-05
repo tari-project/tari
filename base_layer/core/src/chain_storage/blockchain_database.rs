@@ -86,7 +86,7 @@ use crate::{
     },
     proof_of_work::{monero_rx::MoneroPowData, PowAlgorithm, TargetDifficultyWindow},
     transactions::{
-        transaction_components::{TransactionKernel, TransactionOutput},
+        transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
         TransactionHashDomain,
     },
     validation::{
@@ -1283,7 +1283,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
         // If the output hash is not found, check the current output_mmr. This allows zero-conf transactions
         let smt_key = NodeKey::try_from(input.commitment()?.as_bytes())?;
         match output_smt.delete(&smt_key)? {
-            DeleteResult::Deleted(ValueHash) => {},
+            DeleteResult::Deleted(_ValueHash) => {},
             DeleteResult::KeyNotFound => return Err(ChainStorageError::UnspendableInput),
         };
     }
@@ -1496,13 +1496,50 @@ pub fn fetch_target_difficulty_for_next_block<T: BlockchainBackend>(
 
 fn fetch_block<T: BlockchainBackend>(db: &T, height: u64, compact: bool) -> Result<HistoricalBlock, ChainStorageError> {
     let mark = Instant::now();
-    let (tip_height, is_pruned) = check_for_valid_height(db, height)?;
+    let (tip_height, _is_pruned) = check_for_valid_height(db, height)?;
     let chain_header = db.fetch_chain_header_by_height(height)?;
     let (header, accumulated_data) = chain_header.into_parts();
     let kernels = db.fetch_kernels_in_block(&accumulated_data.hash)?;
     let outputs = db.fetch_outputs_in_block(&accumulated_data.hash)?;
     // Fetch inputs from the backend and populate their spent_output data if available
-    let inputs = db.fetch_inputs_in_block(&accumulated_data.hash)?;
+    let inputs = db
+        .fetch_inputs_in_block(&accumulated_data.hash)?
+        .into_iter()
+        .map(|mut compact_input| {
+            if compact {
+                return Ok(compact_input);
+            }
+            let utxo_mined_info = match db.fetch_output(&compact_input.output_hash()) {
+                Ok(Some(o)) => o,
+                Ok(None) => {
+                    return Err(ChainStorageError::InvalidBlock(
+                        "An Input in a block doesn't contain a matching spending output".to_string(),
+                    ))
+                },
+                Err(e) => return Err(e),
+            };
+
+            let rp_hash = match utxo_mined_info.output.proof {
+                Some(proof) => proof.hash(),
+                None => FixedHash::zero(),
+            };
+            compact_input.add_output_data(
+                utxo_mined_info.output.version,
+                utxo_mined_info.output.features,
+                utxo_mined_info.output.commitment,
+                utxo_mined_info.output.script,
+                utxo_mined_info.output.sender_offset_public_key,
+                utxo_mined_info.output.covenant,
+                utxo_mined_info.output.encrypted_data,
+                utxo_mined_info.output.metadata_signature,
+                rp_hash,
+                utxo_mined_info.output.minimum_value_promise,
+            );
+            Ok(compact_input)
+        })
+        .collect::<Result<Vec<TransactionInput>, _>>()?;
+
+    // let inputs = db.fetch_inputs_in_block(&accumulated_data.hash)?;
 
     let block = header
         .into_builder()
@@ -2312,22 +2349,12 @@ fn prune_to_height<T: BlockchainBackend>(db: &mut T, target_horizon_height: u64)
         target: LOG_TARGET,
         "Pruning blockchain database at height {} (was={})", target_horizon_height, last_pruned,
     );
-    let mut last_block = db.fetch_block_accumulated_data_by_height(last_pruned).or_not_found(
-        "BlockAccumulatedData",
-        "height",
-        last_pruned.to_string(),
-    )?;
+
     let mut txn = DbTransaction::new();
     for block_to_prune in (last_pruned + 1)..=target_horizon_height {
         let header = db.fetch_chain_header_by_height(block_to_prune)?;
-        let curr_block = db.fetch_block_accumulated_data_by_height(block_to_prune).or_not_found(
-            "BlockAccumulatedData",
-            "height",
-            block_to_prune.to_string(),
-        )?;
         // Note, this could actually be done in one step instead of each block, since deleted is
         // accumulated
-        last_block = curr_block;
 
         txn.prune_outputs_spent_at_hash(*header.hash());
         txn.delete_all_inputs_in_block(*header.hash());

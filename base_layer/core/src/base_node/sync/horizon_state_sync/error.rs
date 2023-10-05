@@ -137,6 +137,7 @@ impl HorizonSyncError {
             err @ HorizonSyncError::FinalStateValidationFailed(_) |
             err @ HorizonSyncError::RangeProofError(_) |
             err @ HorizonSyncError::InvalidMrRoot { .. } |
+            err @ HorizonSyncError::SMTError(_) |
             err @ HorizonSyncError::InvalidMmrPosition { .. } |
             err @ HorizonSyncError::ConversionError(_) |
             err @ HorizonSyncError::MerkleMountainRangeError(_) |

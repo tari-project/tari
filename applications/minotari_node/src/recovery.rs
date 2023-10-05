@@ -163,7 +163,7 @@ async fn do_recovery<D: BlockchainBackend + 'static>(
         let block = source_database
             .fetch_block(counter, true)
             .map_err(|e| anyhow!("Could not get block from recovery db: {}", e))?
-            .try_into_block()?;
+            .into_block();
         trace!(target: LOG_TARGET, "Adding block: {}", block);
         db.add_block(Arc::new(block))
             .await

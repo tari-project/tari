@@ -112,8 +112,8 @@ impl<const L: usize> AsLmdbBytes for CompositeKey<L> {
     }
 }
 
-#[derive(Debug)]
-pub struct OutputKey(CompositeKey<68>);
+#[derive(Debug, Clone)]
+pub(super) struct OutputKey(pub(super) CompositeKey<68>);
 
 impl OutputKey {
     pub fn new(header_hash: &FixedHash, utxo_hash: &FixedHash) -> Result<Self, ChainStorageError> {
@@ -121,13 +121,13 @@ impl OutputKey {
         Ok(Self(com_key))
     }
 
-    pub fn to_comp_key(self) -> CompositeKey<68> {
+    pub(super) fn to_comp_key(self) -> CompositeKey<68> {
         self.0
     }
 }
 
-#[derive(Debug)]
-pub struct InputKey(CompositeKey<68>);
+#[derive(Debug, Clone)]
+pub(super) struct InputKey(pub(super) CompositeKey<68>);
 
 impl InputKey {
     pub fn new(header_hash: &FixedHash, txo_hash: &FixedHash) -> Result<Self, ChainStorageError> {
@@ -135,7 +135,7 @@ impl InputKey {
         Ok(Self(com_key))
     }
 
-    pub fn to_comp_key(self) -> CompositeKey<68> {
+    pub(super) fn to_comp_key(self) -> CompositeKey<68> {
         self.0
     }
 }

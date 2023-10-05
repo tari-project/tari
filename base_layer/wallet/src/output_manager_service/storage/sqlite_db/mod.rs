@@ -425,7 +425,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         hash: FixedHash,
         mined_height: u64,
         mined_in_block: FixedHash,
-        mmr_position: u64,
         confirmed: bool,
         mined_timestamp: u64,
     ) -> Result<(), OutputManagerStorageError> {
@@ -452,7 +451,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             .set((
                 outputs::mined_height.eq(mined_height as i64),
                 outputs::mined_in_block.eq(mined_in_block),
-                outputs::mined_mmr_position.eq(mmr_position as i64),
                 outputs::status.eq(status),
                 outputs::mined_timestamp.eq(timestamp),
                 outputs::marked_deleted_at_height.eq::<Option<i64>>(None),

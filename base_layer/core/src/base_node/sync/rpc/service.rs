@@ -224,15 +224,13 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                             break;
                         },
                         Ok(blocks) => {
-                            let blocks = blocks
-                                .into_iter()
-                                .map(|hb| {
-                                    let block = hb.into_block();
-                                    proto::base_node::BlockBodyResponse::try_from(block).map_err(|e| {
-                                        log::error!(target: LOG_TARGET, "Internal error: {}", e);
-                                        RpcStatus::general_default()
-                                    })
-                                });
+                            let blocks = blocks.into_iter().map(|hb| {
+                                let block = hb.into_block();
+                                proto::base_node::BlockBodyResponse::try_from(block).map_err(|e| {
+                                    log::error!(target: LOG_TARGET, "Internal error: {}", e);
+                                    RpcStatus::general_default()
+                                })
+                            });
 
                             // Ensure task stops if the peer prematurely stops their RPC session
                             if utils::mpsc::send_all(&tx, blocks).await.is_err() {

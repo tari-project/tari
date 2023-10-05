@@ -22,7 +22,7 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use tari_common_types::types::{PrivateKey};
+use tari_common_types::types::PrivateKey;
 use tari_utilities::ByteArray;
 
 use super::core as proto;
@@ -77,7 +77,6 @@ impl TryFrom<proto::HistoricalBlock> for HistoricalBlock {
             .accumulated_data
             .map(TryInto::try_into)
             .ok_or_else(|| "accumulated_data in historical block not provided".to_string())??;
-
 
         Ok(HistoricalBlock::new(
             block,

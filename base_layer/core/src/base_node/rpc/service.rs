@@ -469,41 +469,11 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             }
         }
 
-        let deleted_bitmap = self
-            .db
-            .fetch_deleted_bitmap_at_tip()
-            .await
-            .rpc_status_internal_error(LOG_TARGET)?;
-
-        let mut deleted_positions = vec![];
-        let mut not_deleted_positions = vec![];
-
-        for position in message.mmr_positions {
-            let position =
-                u32::try_from(position).map_err(|_| RpcStatus::bad_request("All MMR positions must fit into a u32"))?;
-            if deleted_bitmap.bitmap().contains(position) {
-                deleted_positions.push(position);
-            } else {
-                not_deleted_positions.push(position);
-            }
-        }
+        let mut deleted_positions: Vec<u64> = vec![];
+        let mut not_deleted_positions: Vec<u64> = vec![];
 
         let mut blocks_deleted_in = Vec::new();
         let mut heights_deleted_at = Vec::new();
-        if message.include_deleted_block_data {
-            let headers = self
-                .db
-                .fetch_header_hash_by_deleted_mmr_positions(deleted_positions.clone())
-                .await
-                .rpc_status_internal_error(LOG_TARGET)?;
-
-            heights_deleted_at.reserve(headers.len());
-            blocks_deleted_in.reserve(headers.len());
-            for (height, hash) in headers.into_iter().flatten() {
-                heights_deleted_at.push(height);
-                blocks_deleted_in.push(hash.to_vec());
-            }
-        }
 
         let metadata = self
             .db
