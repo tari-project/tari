@@ -114,9 +114,6 @@ pub trait BlockchainBackend: Send + Sync {
     /// Fetches the total merkle mountain range node count upto the specified height.
     fn fetch_mmr_size(&self, tree: MmrTree) -> Result<u64, ChainStorageError>;
 
-    /// Fetches the leaf index of the provided leaf node hash in the given MMR tree.
-    #[allow(clippy::ptr_arg)]
-    fn fetch_mmr_leaf_index(&self, tree: MmrTree, hash: &HashOutput) -> Result<Option<u32>, ChainStorageError>;
     /// Returns the number of blocks in the block orphan pool.
     fn orphan_count(&self) -> Result<usize, ChainStorageError>;
     /// Returns the stored header with the highest corresponding height.

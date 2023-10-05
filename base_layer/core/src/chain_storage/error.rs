@@ -22,11 +22,10 @@
 
 use lmdb_zero::error;
 use tari_common_types::types::FixedHashSizeError;
-use tari_mmr::{error::MerkleMountainRangeError, MerkleProofError};
+use tari_mmr::{error::MerkleMountainRangeError, sparse_merkle_tree::SMTError, MerkleProofError};
 use tari_storage::lmdb_store::LMDBError;
 use thiserror::Error;
 use tokio::task;
-use tari_mmr::sparse_merkle_tree::SMTError;
 
 use crate::{
     blocks::BlockError,

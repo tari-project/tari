@@ -3,8 +3,8 @@
 
 use std::{fmt::Debug, mem};
 
-use serde::{Deserialize, Serialize};
 use digest::{consts::U32, Digest};
+use serde::{Deserialize, Serialize};
 
 use crate::sparse_merkle_tree::{
     bit_utils::{traverse_direction, TraverseDirection},
@@ -32,6 +32,9 @@ pub enum DeleteResult {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+// #[serde(bound(deserialize = "Node<H> : Deserialize<'de>"))]
+#[serde(bound(deserialize = "H:"))]
+#[serde(bound(serialize = "H:"))]
 pub struct SparseMerkleTree<H> {
     size: u64,
     root: Node<H>,

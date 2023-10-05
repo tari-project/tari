@@ -30,7 +30,6 @@ use std::{
     sync::{atomic, atomic::AtomicBool, Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
     time::Instant,
 };
-use tari_mmr::sparse_merkle_tree::DeleteResult;
 
 use log::*;
 use serde::{Deserialize, Serialize};
@@ -40,7 +39,7 @@ use tari_common_types::{
 };
 use tari_mmr::{
     pruned_hashset::PrunedHashSet,
-    sparse_merkle_tree::{NodeKey, ValueHash},
+    sparse_merkle_tree::{DeleteResult, NodeKey, ValueHash},
 };
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
 
@@ -1342,7 +1341,7 @@ pub fn fetch_headers<T: BlockchainBackend>(
 
     // Allow the headers to be returned in reverse order
     #[allow(clippy::cast_possible_truncation)]
-    let mut headers = Vec::with_capacity((end_inclusive - start) as usize);
+    let mut headers = Vec::with_capacity(end_inclusive.saturating_sub(start) as usize);
     for h in start..=end_inclusive {
         match db.fetch(&DbKey::BlockHeader(h))? {
             Some(DbValue::BlockHeader(header)) => {

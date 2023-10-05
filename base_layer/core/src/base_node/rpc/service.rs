@@ -426,12 +426,11 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                 .flatten()
                 .map(|utxo| {
                     Ok(UtxoQueryResponse {
-                        mmr_position: utxo.mmr_position.into(),
                         mined_height: utxo.mined_height,
                         mined_in_block: utxo.header_hash.to_vec(),
                         output_hash: utxo.output.hash().to_vec(),
-                        output: match utxo.utput.try_into() {
-                            Ok(output) => output,
+                        output: match utxo.output.try_into() {
+                            Ok(output) => Some(output),
                             Err(err) => {
                                 return Err(err);
                             },

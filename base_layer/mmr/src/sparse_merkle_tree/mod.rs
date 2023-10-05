@@ -85,4 +85,4 @@ mod tree;
 pub use error::SMTError;
 pub use node::{BranchNode, EmptyNode, LeafNode, Node, NodeHash, NodeKey, ValueHash, EMPTY_NODE_HASH};
 pub use proofs::{ExclusionProof, InclusionProof};
-pub use tree::{SparseMerkleTree, UpdateResult, DeleteResult};
+pub use tree::{DeleteResult, SparseMerkleTree, UpdateResult};

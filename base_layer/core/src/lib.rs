@@ -80,7 +80,6 @@ mod domain_hashing {
         BalancedBinaryMerkleTree,
         Hash,
         MerkleMountainRange,
-        MutableMmr,
     };
 
     hash_domain!(KernelMmrHashDomain, "com.tari.base_layer.core.kernel_mmr", 1);
@@ -90,15 +89,13 @@ mod domain_hashing {
     pub type PrunedKernelMmr = MerkleMountainRange<KernelMmrHasherBlake256, PrunedHashSet>;
 
     hash_domain!(OutputSmtHashDomain, "com.tari.base_layer.core.output_smt", 1);
-    pub type OutputMmrHasherBlake256 = DomainSeparatedHasher<Blake2b<U32>, OutputSmtHashDomain>;
-    pub type MutableOutputMmr = MutableMmr<OutputMmrHasherBlake256, Vec<Hash>>;
-    pub type MutablePrunedOutputMmr = MutableMmr<OutputMmrHasherBlake256, PrunedHashSet>;
+    pub type OutputSmtHasherBlake256 = DomainSeparatedHasher<Blake2b<U32>, OutputSmtHashDomain>;
 
     hash_domain!(InputMmrHashDomain, "com.tari.base_layer.core.input_mmr", 1);
     pub type InputMmrHasherBlake256 = DomainSeparatedHasher<Blake2b<U32>, InputMmrHashDomain>;
     pub type PrunedInputMmr = MerkleMountainRange<InputMmrHasherBlake256, PrunedHashSet>;
 
-        pub type OutputSmt = SparseMerkleTree<OutputMmrHasherBlake256>;
+    pub type OutputSmt = SparseMerkleTree<OutputSmtHasherBlake256>;
 
     hash_domain!(
         ValidatorNodeBmtHashDomain,

@@ -307,10 +307,6 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().fetch_mmr_size(tree)
     }
 
-    fn fetch_mmr_leaf_index(&self, tree: MmrTree, hash: &HashOutput) -> Result<Option<u32>, ChainStorageError> {
-        self.db.as_ref().unwrap().fetch_mmr_leaf_index(tree, hash)
-    }
-
     fn orphan_count(&self) -> Result<usize, ChainStorageError> {
         self.db.as_ref().unwrap().orphan_count()
     }

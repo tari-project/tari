@@ -125,11 +125,9 @@ impl DbTransaction {
         self
     }
 
-
     pub fn prune_outputs_spent_at_hash(&mut self, block_hash: BlockHash) -> &mut Self {
-        self.operations.push(WriteOperation::PruneOutputsSpentAtHash {
-            block_hash,
-        });
+        self.operations
+            .push(WriteOperation::PruneOutputsSpentAtHash { block_hash });
         self
     }
 
@@ -366,7 +364,8 @@ impl fmt::Display for WriteOperation {
             } => write!(
                 f,
                 "Insert output {} in block({}):{},",
-                output.hash().to_hex(),header_height,
+                output.hash().to_hex(),
+                header_height,
                 header_hash.to_hex(),
             ),
             DeleteOrphanChainTip(hash) => write!(f, "DeleteOrphanChainTip({})", hash.to_hex()),
@@ -412,7 +411,11 @@ impl fmt::Display for WriteOperation {
             InsertReorg { .. } => write!(f, "Insert reorg"),
             ClearAllReorgs => write!(f, "Clear all reorgs"),
             InsertTipSmt { smt: output_smt } => {
-                write!(f, "Inserting sparse merkle tree with root: {}", output_smt.unsafe_hash())
+                write!(
+                    f,
+                    "Inserting sparse merkle tree with root: {}",
+                    output_smt.unsafe_hash()
+                )
             },
         }
     }

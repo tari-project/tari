@@ -563,7 +563,12 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             let smt_key = NodeKey::try_from(output.commitment.as_bytes())?;
             let smt_node = ValueHash::try_from(output.smt_hash(current_header.height).as_slice())?;
             output_smt.insert(smt_key, smt_node)?;
-            txn.insert_output_via_horizon_sync(output, current_header.hash(), current_header.height, current_header.timestamp.as_u64());
+            txn.insert_output_via_horizon_sync(
+                output,
+                current_header.hash(),
+                current_header.height,
+                current_header.timestamp.as_u64(),
+            );
 
             // we have checked the range proof, and we have checked that the linked to header exists.
             txn.commit().await?;
