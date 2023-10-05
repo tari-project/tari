@@ -26,6 +26,7 @@ use std::{
 };
 
 use lmdb_zero::traits::AsLmdbBytes;
+use tari_common_types::types::FixedHash;
 use tari_utilities::hex::to_hex;
 
 use crate::chain_storage::ChainStorageError;
@@ -108,5 +109,33 @@ impl<const L: usize> AsRef<[u8]> for CompositeKey<L> {
 impl<const L: usize> AsLmdbBytes for CompositeKey<L> {
     fn as_lmdb_bytes(&self) -> &[u8] {
         self.as_bytes()
+    }
+}
+
+#[derive(Debug)]
+pub struct OutputKey(CompositeKey<68>);
+
+impl OutputKey {
+    pub fn new(header_hash: &FixedHash, utxo_hash: &FixedHash) -> Result<Self, ChainStorageError> {
+        let com_key = CompositeKey::try_from_parts(&[header_hash.as_slice(), utxo_hash.as_slice()])?;
+        Ok(Self(com_key))
+    }
+
+    pub fn to_comp_key(self) -> CompositeKey<68> {
+        self.0
+    }
+}
+
+#[derive(Debug)]
+pub struct InputKey(CompositeKey<68>);
+
+impl InputKey {
+    pub fn new(header_hash: &FixedHash, txo_hash: &FixedHash) -> Result<Self, ChainStorageError> {
+        let com_key = CompositeKey::try_from_parts(&[header_hash.as_slice(), txo_hash.as_slice()])?;
+        Ok(Self(com_key))
+    }
+
+    pub fn to_comp_key(self) -> CompositeKey<68> {
+        self.0
     }
 }

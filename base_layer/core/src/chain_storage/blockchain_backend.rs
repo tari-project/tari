@@ -1,25 +1,15 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use croaring::Bitmap;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{Commitment, HashOutput, PublicKey, Signature},
+    types::{Commitment, FixedHash, HashOutput, PublicKey, Signature},
 };
 
 use super::TemplateRegistrationEntry;
 use crate::{
-    blocks::{
-        Block,
-        BlockAccumulatedData,
-        BlockHeader,
-        BlockHeaderAccumulatedData,
-        ChainBlock,
-        ChainHeader,
-        DeletedBitmap,
-    },
+    blocks::{Block, BlockAccumulatedData, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader},
     chain_storage::{
-        pruned_output::PrunedOutput,
         ChainStorageError,
         DbBasicStats,
         DbKey,
@@ -31,7 +21,8 @@ use crate::{
         Reorg,
         UtxoMinedInfo,
     },
-    transactions::transaction_components::{TransactionInput, TransactionKernel},
+    transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
+    OutputSmt,
 };
 
 /// Identify behaviour for Blockchain database backends. Implementations must support `Send` and `Sync` so that
@@ -101,8 +92,8 @@ pub trait BlockchainBackend: Send + Sync {
     fn fetch_utxos_in_block(
         &self,
         header_hash: &HashOutput,
-        deleted: Option<&Bitmap>,
-    ) -> Result<(Vec<PrunedOutput>, Bitmap), ChainStorageError>;
+        spend_header: Option<FixedHash>,
+    ) -> Result<Vec<(TransactionOutput, bool)>, ChainStorageError>;
 
     /// Fetch a specific output. Returns the output and the leaf index in the output MMR
     fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<UtxoMinedInfo>, ChainStorageError>;
@@ -115,7 +106,7 @@ pub trait BlockchainBackend: Send + Sync {
     ) -> Result<Option<HashOutput>, ChainStorageError>;
 
     /// Fetch all outputs in a block
-    fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<PrunedOutput>, ChainStorageError>;
+    fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionOutput>, ChainStorageError>;
 
     /// Fetch all inputs in a block
     fn fetch_inputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionInput>, ChainStorageError>;
@@ -155,9 +146,6 @@ pub trait BlockchainBackend: Send + Sync {
 
     fn fetch_orphan_chain_block(&self, hash: HashOutput) -> Result<Option<ChainBlock>, ChainStorageError>;
 
-    /// Returns the full deleted bitmap at the current blockchain tip
-    fn fetch_deleted_bitmap(&self) -> Result<DeletedBitmap, ChainStorageError>;
-
     /// Delete orphans according to age. Used to keep the orphan pool at a certain capacity
     fn delete_oldest_orphans(
         &mut self,
@@ -177,12 +165,6 @@ pub trait BlockchainBackend: Send + Sync {
     /// lock for the duration.
     fn fetch_total_size_stats(&self) -> Result<DbTotalSizeStats, ChainStorageError>;
 
-    /// Returns a (block height/hash) tuple for each mmr position of the height it was spent, or None if it is not spent
-    fn fetch_header_hash_by_deleted_mmr_positions(
-        &self,
-        mmr_positions: Vec<u32>,
-    ) -> Result<Vec<Option<(u64, HashOutput)>>, ChainStorageError>;
-
     /// Check if a block hash is in the bad block list
     fn bad_block_exists(&self, block_hash: HashOutput) -> Result<bool, ChainStorageError>;
 
@@ -200,4 +182,5 @@ pub trait BlockchainBackend: Send + Sync {
         start_height: u64,
         end_height: u64,
     ) -> Result<Vec<TemplateRegistrationEntry>, ChainStorageError>;
+    fn fetch_tip_smt(&self) -> Result<OutputSmt, ChainStorageError>;
 }

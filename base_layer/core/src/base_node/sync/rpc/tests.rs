@@ -157,7 +157,7 @@ mod sync_utxos {
         let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"], ["B->A"])).await;
 
         let block = chain.get("B").unwrap();
-        let total_outputs = block.block().header.output_mmr_size;
+        let total_outputs = block.block().header.output_smt_size;
         let start = total_outputs - 2;
         let msg = SyncUtxosRequest {
             start,

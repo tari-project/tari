@@ -23,12 +23,11 @@
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::BlockHash;
 
-use crate::chain_storage::PrunedOutput;
+use crate::transactions::transaction_components::TransactionOutput;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UtxoMinedInfo {
-    pub output: PrunedOutput,
-    pub mmr_position: u32,
+    pub output: TransactionOutput,
     pub mined_height: u64,
     pub header_hash: BlockHash,
     pub mined_timestamp: u64,

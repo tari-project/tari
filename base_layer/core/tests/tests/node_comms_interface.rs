@@ -307,7 +307,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         utxo.clone(),
         *block0.hash(),
         0,
-        u32::try_from(block0.header().output_mmr_size).unwrap(),
+        u32::try_from(block0.header().output_smt_size).unwrap(),
         0,
     );
     if let Err(e) = store.commit(txn) {

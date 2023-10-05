@@ -89,7 +89,7 @@ mod header_validators {
             header.prev_hash = *prev.hash();
             // These have to be unique
             header.kernel_mmr_size = 2 + i;
-            header.output_mmr_size = 4001 + i;
+            header.output_smt_size = 4001 + i;
 
             let chain_header = create_chain_header(header, prev.accumulated_data());
             acc.push(chain_header);
@@ -265,7 +265,7 @@ async fn chain_balance_validation() {
 
     let mut header1 = BlockHeader::from_previous(genesis.header());
     header1.kernel_mmr_size += 1;
-    header1.output_mmr_size += 1;
+    header1.output_smt_size += 1;
     let achieved_difficulty = AchievedTargetDifficulty::try_construct(
         genesis.header().pow_algo(),
         genesis.accumulated_data().target_difficulty,
@@ -326,7 +326,7 @@ async fn chain_balance_validation() {
 
     let mut header2 = BlockHeader::from_previous(header1.header());
     header2.kernel_mmr_size += 1;
-    header2.output_mmr_size += 1;
+    header2.output_smt_size += 1;
     let achieved_difficulty = AchievedTargetDifficulty::try_construct(
         genesis.header().pow_algo(),
         genesis.accumulated_data().target_difficulty,
@@ -477,7 +477,7 @@ async fn chain_balance_validation_burned() {
     burned_sum = &burned_sum + kernel2.get_burn_commitment().unwrap();
     let mut header1 = BlockHeader::from_previous(genesis.header());
     header1.kernel_mmr_size += 2;
-    header1.output_mmr_size += 2;
+    header1.output_smt_size += 2;
     let achieved_difficulty = AchievedTargetDifficulty::try_construct(
         genesis.header().pow_algo(),
         genesis.accumulated_data().target_difficulty,

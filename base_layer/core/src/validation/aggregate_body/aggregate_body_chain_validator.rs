@@ -27,7 +27,7 @@ use tari_common_types::types::FixedHash;
 use tari_utilities::hex::Hex;
 
 use crate::{
-    chain_storage::{BlockchainBackend, PrunedOutput},
+    chain_storage::BlockchainBackend,
     consensus::{ConsensusConstants, ConsensusManager},
     transactions::{
         aggregated_body::AggregateBody,
@@ -116,29 +116,22 @@ fn validate_input_not_pruned<B: BlockchainBackend>(
                 .fetch_output(&input.output_hash())?
                 .ok_or(ValidationError::UnknownInput)?;
 
-            match output_mined_info.output {
-                PrunedOutput::Pruned { .. } => {
-                    return Err(ValidationError::ContainsSTxO);
-                },
-                PrunedOutput::NotPruned { output } => {
-                    let rp_hash = match output.proof {
-                        Some(proof) => proof.hash(),
-                        None => FixedHash::zero(),
-                    };
-                    input.add_output_data(
-                        output.version,
-                        output.features,
-                        output.commitment,
-                        output.script,
-                        output.sender_offset_public_key,
-                        output.covenant,
-                        output.encrypted_data,
-                        output.metadata_signature,
-                        rp_hash,
-                        output.minimum_value_promise,
-                    );
-                },
-            }
+            let rp_hash = match output_mined_info.output.proof {
+                Some(proof) => proof.hash(),
+                None => FixedHash::zero(),
+            };
+            input.add_output_data(
+                output_mined_info.output.version,
+                output_mined_info.output.features,
+                output_mined_info.output.commitment,
+                output_mined_info.output.script,
+                output_mined_info.output.sender_offset_public_key,
+                output_mined_info.output.covenant,
+                output_mined_info.output.encrypted_data,
+                output_mined_info.output.metadata_signature,
+                rp_hash,
+                output_mined_info.output.minimum_value_promise,
+            );
         }
     }
 

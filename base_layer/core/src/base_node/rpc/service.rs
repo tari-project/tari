@@ -35,7 +35,7 @@ use crate::{
         state_machine_service::states::StateInfo,
         StateMachineHandle,
     },
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, PrunedOutput},
+    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     mempool::{service::MempoolHandle, TxStorageResponse},
     proto,
     proto::{
@@ -352,11 +352,9 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             .rpc_status_internal_error(LOG_TARGET)?
             .into_iter()
             .flatten();
-        for (pruned_output, spent) in utxos {
-            if let PrunedOutput::NotPruned { output } = pruned_output {
-                if !spent {
-                    res.push(output);
-                }
+        for (output, spent) in utxos {
+            if !spent {
+                res.push(output);
             }
         }
 
@@ -432,14 +430,11 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                         mined_height: utxo.mined_height,
                         mined_in_block: utxo.header_hash.to_vec(),
                         output_hash: utxo.output.hash().to_vec(),
-                        output: match utxo.output {
-                            PrunedOutput::Pruned { .. } => None,
-                            PrunedOutput::NotPruned { output } => Some(match output.try_into() {
-                                Ok(output) => output,
-                                Err(err) => {
-                                    return Err(err);
-                                },
-                            }),
+                        output: match utxo.utput.try_into() {
+                            Ok(output) => output,
+                            Err(err) => {
+                                return Err(err);
+                            },
                         },
                         mined_timestamp: utxo.mined_timestamp,
                     })

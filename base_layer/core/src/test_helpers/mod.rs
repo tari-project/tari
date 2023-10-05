@@ -117,7 +117,7 @@ pub async fn create_block(
 
     // Keep times constant in case we need a particular target difficulty
     block.header.timestamp = prev_block.header.timestamp.increase(spec.block_time);
-    block.header.output_mmr_size = prev_block.header.output_mmr_size + block.body.outputs().len() as u64;
+    block.header.output_smt_size = prev_block.header.output_smt_size + block.body.outputs().len() as u64;
     block.header.kernel_mmr_size = prev_block.header.kernel_mmr_size + block.body.kernels().len() as u64;
 
     (block, coinbase_output)

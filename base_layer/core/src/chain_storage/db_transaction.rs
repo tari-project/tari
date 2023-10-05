@@ -26,7 +26,6 @@ use std::{
     sync::Arc,
 };
 
-use croaring::Bitmap;
 use tari_common_types::types::{BlockHash, Commitment, HashOutput};
 use tari_utilities::hex::Hex;
 
@@ -34,6 +33,7 @@ use crate::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, UpdateBlockAccumulatedData},
     chain_storage::{error::ChainStorageError, HorizonData, Reorg},
     transactions::transaction_components::{TransactionKernel, TransactionOutput},
+    OutputSmt,
 };
 
 #[derive(Debug)]
@@ -114,40 +114,21 @@ impl DbTransaction {
         utxo: TransactionOutput,
         header_hash: HashOutput,
         header_height: u64,
-        mmr_leaf_index: u32,
         timestamp: u64,
     ) -> &mut Self {
         self.operations.push(WriteOperation::InsertOutput {
             header_hash,
             header_height,
+            timestamp,
             output: Box::new(utxo),
-            mmr_position: mmr_leaf_index,
-            timestamp,
         });
         self
     }
 
-    pub fn insert_pruned_utxo(
-        &mut self,
-        output_hash: HashOutput,
-        header_hash: HashOutput,
-        header_height: u64,
-        mmr_leaf_index: u32,
-        timestamp: u64,
-    ) -> &mut Self {
-        self.operations.push(WriteOperation::InsertPrunedOutput {
-            header_hash,
-            header_height,
-            output_hash,
-            mmr_position: mmr_leaf_index,
-            timestamp,
-        });
-        self
-    }
 
-    pub fn prune_outputs_at_positions(&mut self, output_mmr_positions: Vec<u32>) -> &mut Self {
-        self.operations.push(WriteOperation::PruneOutputsAtMmrPositions {
-            output_positions: output_mmr_positions,
+    pub fn prune_outputs_spent_at_hash(&mut self, block_hash: BlockHash) -> &mut Self {
+        self.operations.push(WriteOperation::PruneOutputsSpentAtHash {
+            block_hash,
         });
         self
     }
@@ -168,17 +149,11 @@ impl DbTransaction {
         self
     }
 
-    /// Updates the deleted tip bitmap with the indexes of the given bitmap.
-    pub fn update_deleted_bitmap(&mut self, deleted: Bitmap) -> &mut Self {
-        self.operations.push(WriteOperation::UpdateDeletedBitmap { deleted });
-        self
-    }
-
     /// Add the BlockHeader and contents of a `Block` (i.e. inputs, outputs and kernels) to the database.
     /// If the `BlockHeader` already exists, then just the contents are updated along with the relevant accumulated
     /// data.
-    pub fn insert_block_body(&mut self, block: Arc<ChainBlock>) -> &mut Self {
-        self.operations.push(WriteOperation::InsertBlockBody { block });
+    pub fn insert_tip_block_body(&mut self, block: Arc<ChainBlock>) -> &mut Self {
+        self.operations.push(WriteOperation::InsertTipBlockBody { block });
         self
     }
 
@@ -294,7 +269,7 @@ pub enum WriteOperation {
     InsertChainHeader {
         header: Box<ChainHeader>,
     },
-    InsertBlockBody {
+    InsertTipBlockBody {
         block: Arc<ChainBlock>,
     },
     InsertKernel {
@@ -305,16 +280,8 @@ pub enum WriteOperation {
     InsertOutput {
         header_hash: HashOutput,
         header_height: u64,
+        timestamp: u64,
         output: Box<TransactionOutput>,
-        mmr_position: u32,
-        timestamp: u64,
-    },
-    InsertPrunedOutput {
-        header_hash: HashOutput,
-        header_height: u64,
-        output_hash: HashOutput,
-        mmr_position: u32,
-        timestamp: u64,
     },
     InsertBadBlock {
         hash: HashOutput,
@@ -330,11 +297,8 @@ pub enum WriteOperation {
         header_hash: HashOutput,
         values: UpdateBlockAccumulatedData,
     },
-    UpdateDeletedBitmap {
-        deleted: Bitmap,
-    },
-    PruneOutputsAtMmrPositions {
-        output_positions: Vec<u32>,
+    PruneOutputsSpentAtHash {
+        block_hash: BlockHash,
     },
     DeleteAllInputsInBlock {
         block_hash: BlockHash,
@@ -358,6 +322,9 @@ pub enum WriteOperation {
         reorg: Reorg,
     },
     ClearAllReorgs,
+    InsertTipSmt {
+        smt: OutputSmt,
+    },
 }
 
 impl fmt::Display for WriteOperation {
@@ -374,9 +341,9 @@ impl fmt::Display for WriteOperation {
             InsertChainHeader { header } => {
                 write!(f, "InsertChainHeader(#{} {})", header.height(), header.hash().to_hex())
             },
-            InsertBlockBody { block } => write!(
+            InsertTipBlockBody { block } => write!(
                 f,
-                "InsertBlockBody({}, {})",
+                "InsertTipBlockBody({}, {})",
                 block.accumulated_data().hash.to_hex(),
                 block.block().body.to_counts_string(),
             ),
@@ -394,17 +361,13 @@ impl fmt::Display for WriteOperation {
             InsertOutput {
                 header_hash,
                 header_height,
-                output,
-                mmr_position,
                 timestamp,
+                output,
             } => write!(
                 f,
-                "Insert output {} in block:{},#{} position: {}, timestamp: {}",
-                output.hash().to_hex(),
+                "Insert output {} in block({}):{},",
+                output.hash().to_hex(),header_height,
                 header_hash.to_hex(),
-                header_height,
-                mmr_position,
-                timestamp
             ),
             DeleteOrphanChainTip(hash) => write!(f, "DeleteOrphanChainTip({})", hash.to_hex()),
             InsertOrphanChainTip(hash, total_accumulated_difficulty) => write!(
@@ -418,20 +381,10 @@ impl fmt::Display for WriteOperation {
                 write!(f, "Insert Monero seed string {} for height: {}", data.to_hex(), height)
             },
             InsertChainOrphanBlock(block) => write!(f, "InsertChainOrphanBlock({})", block.hash().to_hex()),
-            InsertPrunedOutput {
-                header_hash: _,
-                header_height: _,
-                output_hash: _,
-                mmr_position: _,
-                timestamp: _,
-            } => write!(f, "Insert pruned output"),
             UpdateBlockAccumulatedData { header_hash, .. } => {
                 write!(f, "Update Block data for block {}", header_hash.to_hex())
             },
-            UpdateDeletedBitmap { deleted } => {
-                write!(f, "Merge deleted bitmap at tip ({} new indexes)", deleted.cardinality())
-            },
-            PruneOutputsAtMmrPositions { output_positions } => write!(f, "Prune {} output(s)", output_positions.len()),
+            PruneOutputsSpentAtHash { block_hash } => write!(f, "Prune output(s) at hash: {}", block_hash.to_hex()),
             DeleteAllInputsInBlock { block_hash } => write!(f, "Delete outputs in block {}", block_hash.to_hex()),
             SetAccumulatedDataForOrphan(accumulated_data) => {
                 write!(f, "Set accumulated data for orphan {}", accumulated_data)
@@ -458,6 +411,9 @@ impl fmt::Display for WriteOperation {
             SetHorizonData { .. } => write!(f, "Set horizon data"),
             InsertReorg { .. } => write!(f, "Insert reorg"),
             ClearAllReorgs => write!(f, "Clear all reorgs"),
+            InsertTipSmt { smt: output_smt } => {
+                write!(f, "Inserting sparse merkle tree with root: {}", output_smt.unsafe_hash())
+            },
         }
     }
 }

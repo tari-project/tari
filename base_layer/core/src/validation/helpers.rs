@@ -278,7 +278,7 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
             kind: "Utxo",
         }));
     };
-    if header.output_mmr_size != mmr_roots.output_mmr_size {
+    if header.output_smt_size != mmr_roots.output_smt_size {
         warn!(
             target: LOG_TARGET,
             "Block header output MMR size in {} does not match. Expected: {}, Actual: {}",
@@ -288,8 +288,8 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
         );
         return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrSize {
             mmr_tree: MmrTree::Utxo.to_string(),
-            expected: mmr_roots.output_mmr_size,
-            actual: header.output_mmr_size,
+            expected: mmr_roots.output_smt_size,
+            actual: header.output_smt_size,
         }));
     }
     if header.input_mr != mmr_roots.input_mr {

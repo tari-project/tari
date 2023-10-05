@@ -718,7 +718,7 @@ async fn local_submit_block() {
         .prepare_new_block(chain_block(&block0, vec![], &consensus_manager, &key_manager).await)
         .unwrap();
     block1.header.kernel_mmr_size += 1;
-    block1.header.output_mmr_size += 1;
+    block1.header.output_smt_size += 1;
     node.local_nci.submit_block(block1.clone()).await.unwrap();
 
     let event = event_stream_next(&mut event_stream, Duration::from_millis(20000)).await;

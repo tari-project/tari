@@ -584,13 +584,10 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         let peer_node_id = request.context().peer_node_id();
         debug!(
             target: LOG_TARGET,
-            "Received sync_utxos request from header {} to {} (start = {}, include_pruned_utxos = {}, \
-             include_deleted_bitmaps = {})",
+            "Received sync_utxos request from header {} to {} (start = {})",
             peer_node_id,
             req.start,
             req.end_header_hash.to_hex(),
-            req.include_pruned_utxos,
-            req.include_deleted_bitmaps
         );
 
         let session_token = self.try_add_exclusive_session(peer_node_id.clone()).await?;

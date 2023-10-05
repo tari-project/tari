@@ -3,6 +3,7 @@
 
 use std::{fmt::Debug, mem};
 
+use serde::{Deserialize, Serialize};
 use digest::{consts::U32, Digest};
 
 use crate::sparse_merkle_tree::{
@@ -30,6 +31,7 @@ pub enum DeleteResult {
     KeyNotFound,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SparseMerkleTree<H> {
     size: u64,
     root: Node<H>,

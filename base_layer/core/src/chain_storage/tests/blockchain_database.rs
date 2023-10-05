@@ -67,7 +67,7 @@ fn apply_mmr_to_block(db: &BlockchainDatabase<TempDatabase>, block: Block) -> Bl
     let (mut block, mmr_roots) = db.calculate_mmr_roots(block).unwrap();
     block.header.input_mr = mmr_roots.input_mr;
     block.header.output_mr = mmr_roots.output_mr;
-    block.header.output_mmr_size = mmr_roots.output_mmr_size;
+    block.header.output_smt_size = mmr_roots.output_smt_size;
     block.header.kernel_mr = mmr_roots.kernel_mr;
     block.header.kernel_mmr_size = mmr_roots.kernel_mmr_size;
     block.header.validator_node_mr = mmr_roots.validator_node_mr;
@@ -405,7 +405,7 @@ mod fetch_total_size_stats {
     #[tokio::test]
     async fn it_measures_the_number_of_entries() {
         let db = setup();
-        let genesis_output_count = db.fetch_header(0).unwrap().unwrap().output_mmr_size;
+        let genesis_output_count = db.fetch_header(0).unwrap().unwrap().output_smt_size;
         let key_manager = create_test_core_key_manager_with_memory_db();
         let _block_and_outputs = add_many_chained_blocks(2, &db, &key_manager).await;
         let stats = db.fetch_total_size_stats().unwrap();
@@ -578,7 +578,7 @@ mod clear_all_pending_headers {
             .map(|_| {
                 let mut header = BlockHeader::from_previous(prev_header.header());
                 header.kernel_mmr_size += 1;
-                header.output_mmr_size += 1;
+                header.output_smt_size += 1;
                 let accum = BlockHeaderAccumulatedData::builder(&prev_accum)
                     .with_hash(header.hash())
                     .with_achieved_target_difficulty(
