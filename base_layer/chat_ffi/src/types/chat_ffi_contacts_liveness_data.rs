@@ -1,4 +1,4 @@
-// Copyright 2023. The Tari Project
+// Copyright 2023, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,17 +20,56 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod contact;
-pub use contact::Contact;
+use std::{convert::TryFrom, ffi::CString};
 
-mod message;
-pub use message::{Direction, Message, MessageMetadata, MessageMetadataType};
+use libc::c_char;
+use tari_contacts::contacts_service::handle::ContactsLivenessData;
 
-mod message_builder;
-pub use message_builder::MessageBuilder;
+#[repr(C)]
+pub struct ChatFFIContactsLivenessData {
+    pub address: *const c_char,
+    pub last_seen: u64,
+    pub online_status: u8,
+}
 
-mod message_dispatch;
-pub use message_dispatch::MessageDispatch;
+impl TryFrom<ContactsLivenessData> for ChatFFIContactsLivenessData {
+    type Error = String;
 
-mod confirmation;
-pub use confirmation::Confirmation;
+    fn try_from(v: ContactsLivenessData) -> Result<Self, Self::Error> {
+        let address = match CString::new(v.address().to_bytes()) {
+            Ok(s) => s,
+            Err(e) => return Err(e.to_string()),
+        };
+
+        let last_seen = match v.last_ping_pong_received() {
+            Some(ts) => match u64::try_from(ts.timestamp_micros()) {
+                Ok(num) => num,
+                Err(e) => return Err(e.to_string()),
+            },
+            None => 0,
+        };
+
+        Ok(Self {
+            address: address.as_ptr(),
+            last_seen,
+            online_status: v.online_status().as_u8(),
+        })
+    }
+}
+
+/// Frees memory for a ChatFFIContactsLivenessData
+///
+/// ## Arguments
+/// `address` - The pointer of a ChatFFIContactsLivenessData
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn destroy_chat_ffi_liveness_data(address: *mut ChatFFIContactsLivenessData) {
+    if !address.is_null() {
+        drop(Box::from_raw(address))
+    }
+}

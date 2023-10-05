@@ -34,7 +34,7 @@ use crate::contacts_service::{
         database::{ContactsBackend, DbKey, DbKeyValuePair, DbValue, WriteOperation},
         types::{
             contacts::{ContactSql, UpdateContact},
-            messages::{MessagesSql, MessagesSqlInsert},
+            messages::{MessageUpdate, MessagesSql, MessagesSqlInsert},
         },
     },
     types::{Contact, Message},
@@ -116,6 +116,11 @@ where TContactServiceDbConnection: PooledDbConnection<Error = SqliteStorageError
                     Err(e) => return Err(e),
                 }
             },
+            DbKey::Message(id) => match MessagesSql::find_by_message_id(&id.to_vec(), &mut conn) {
+                Ok(c) => Some(DbValue::Message(Box::new(Message::try_from(c)?))),
+                Err(ContactsServiceStorageError::DieselError(DieselError::NotFound)) => None,
+                Err(e) => return Err(e),
+            },
         };
 
         Ok(result)
@@ -126,6 +131,16 @@ where TContactServiceDbConnection: PooledDbConnection<Error = SqliteStorageError
 
         match op {
             WriteOperation::Upsert(kvp) => match *kvp {
+                DbKeyValuePair::MessageConfirmations(k, d, r) => {
+                    if MessagesSql::find_by_message_id_and_update(&mut conn, &k, MessageUpdate {
+                        delivery_confirmation_at: d,
+                        read_confirmation_at: r,
+                    })
+                    .is_err()
+                    {
+                        MessagesSql::find_by_message_id(&k, &mut conn)?;
+                    }
+                },
                 DbKeyValuePair::Contact(k, c) => {
                     if ContactSql::find_by_address_and_update(&mut conn, &k.to_bytes(), UpdateContact {
                         alias: Some(c.clone().alias),
@@ -155,6 +170,9 @@ where TContactServiceDbConnection: PooledDbConnection<Error = SqliteStorageError
                     ))));
                 },
                 DbKeyValuePair::Contact(..) => return Err(ContactsServiceStorageError::OperationNotSupported),
+                DbKeyValuePair::MessageConfirmations(..) => {
+                    return Err(ContactsServiceStorageError::OperationNotSupported)
+                },
             },
             WriteOperation::Remove(k) => match k {
                 DbKey::Contact(k) => match ContactSql::find_by_address_and_delete(&mut conn, &k.to_bytes()) {
@@ -173,6 +191,7 @@ where TContactServiceDbConnection: PooledDbConnection<Error = SqliteStorageError
                 },
                 DbKey::Contacts => return Err(ContactsServiceStorageError::OperationNotSupported),
                 DbKey::Messages(_pk, _l, _p) => return Err(ContactsServiceStorageError::OperationNotSupported),
+                DbKey::Message(_id) => return Err(ContactsServiceStorageError::OperationNotSupported),
             },
             WriteOperation::Insert(i) => {
                 if let DbValue::Message(m) = *i {

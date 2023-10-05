@@ -253,6 +253,15 @@ impl<H: Digest<OutputSize = U32>> SparseMerkleTree<H> {
         Ok(result)
     }
 
+    /// This will only add new node when it does not exist
+    pub fn insert(&mut self, key: NodeKey, value: ValueHash) -> Result<UpdateResult, SMTError> {
+        if self.get(&key)?.is_some() {
+            return Err(SMTError::KeyExists);
+        }
+        // So we no know it does not exist, so lets add it.
+        self.upsert(key, value)
+    }
+
     /// Returns true if the tree contains the key `key`.
     pub fn contains(&self, key: &NodeKey) -> bool {
         match self.search_node(key) {
@@ -419,6 +428,7 @@ mod test {
     use crate::sparse_merkle_tree::{
         tree::{DeleteResult, SparseMerkleTree},
         NodeKey,
+        SMTError,
         UpdateResult,
         ValueHash,
         EMPTY_NODE_HASH,
@@ -858,5 +868,54 @@ mod test {
 
         // Sanity check that the tree is now empty
         assert!(tree.is_empty());
+    }
+
+    #[test]
+    fn insert_only_if_exist() {
+        let mut tree = SparseMerkleTree::<Blake2b<U32>>::default();
+
+        // An empty tree contains no keys
+        assert!(!tree.contains(&short_key(0)));
+        assert!(!tree.contains(&short_key(1)));
+
+        // Add a key, which the tree must then contain
+        assert_eq!(
+            tree.insert(short_key(1), ValueHash::from([1u8; 32])).unwrap(),
+            UpdateResult::Inserted
+        );
+        assert!(!tree.contains(&short_key(0)));
+        assert!(tree.contains(&short_key(1)));
+        assert_eq!(
+            tree.insert(short_key(1), ValueHash::from([2u8; 32])).unwrap_err(),
+            SMTError::KeyExists
+        );
+        assert_eq!(tree.get(&short_key(1)).unwrap().unwrap(), &ValueHash::from([1u8; 32]));
+
+        // Delete the key, which the tree must not contain
+        tree.delete(&short_key(1)).unwrap();
+        assert!(!tree.contains(&short_key(0)));
+        assert!(!tree.contains(&short_key(1)));
+
+        // Build a more complex tree with two keys, which the tree must then contain
+        assert_eq!(
+            tree.insert(short_key(0), ValueHash::from([0u8; 32])).unwrap(),
+            UpdateResult::Inserted
+        );
+        assert_eq!(
+            tree.insert(short_key(1), ValueHash::from([1u8; 32])).unwrap(),
+            UpdateResult::Inserted
+        );
+        assert!(tree.contains(&short_key(0)));
+        assert!(tree.contains(&short_key(1)));
+        assert_eq!(
+            tree.insert(short_key(0), ValueHash::from([1u8; 32])).unwrap_err(),
+            SMTError::KeyExists
+        );
+        assert_eq!(tree.get(&short_key(0)).unwrap().unwrap(), &ValueHash::from([0u8; 32]));
+        assert_eq!(
+            tree.insert(short_key(1), ValueHash::from([2u8; 32])).unwrap_err(),
+            SMTError::KeyExists
+        );
+        assert_eq!(tree.get(&short_key(1)).unwrap().unwrap(), &ValueHash::from([1u8; 32]));
     }
 }

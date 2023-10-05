@@ -1,4 +1,4 @@
-// Copyright 2023. The Tari Project
+// Copyright 2023, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,17 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod contact;
-pub use contact::Contact;
+use libc::c_uchar;
+use tari_contacts::contacts_service::types::Message;
 
-mod message;
-pub use message::{Direction, Message, MessageMetadata, MessageMetadataType};
+use crate::message_metadata::ChatFFIMessageMetadata;
 
-mod message_builder;
-pub use message_builder::MessageBuilder;
+#[derive(Debug, PartialEq, Clone)]
+pub struct ChatByteVector(pub Vec<c_uchar>); // declared like this so that it can be exposed to external header
 
-mod message_dispatch;
-pub use message_dispatch::MessageDispatch;
-
-mod confirmation;
-pub use confirmation::Confirmation;
+pub struct ChatMessageMetadataVector(pub Vec<ChatFFIMessageMetadata>);
+#[derive(Clone)]
+pub struct ChatMessages(pub Vec<Message>);

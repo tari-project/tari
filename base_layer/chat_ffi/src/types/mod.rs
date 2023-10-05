@@ -1,4 +1,4 @@
-// Copyright 2023. The Tari Project
+// Copyright 2023, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -19,18 +19,17 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+mod chat_ffi_contacts_liveness_data;
+pub use chat_ffi_contacts_liveness_data::{destroy_chat_ffi_liveness_data, ChatFFIContactsLivenessData};
+mod chat_ffi_message;
+pub use chat_ffi_message::{destroy_chat_ffi_message, ChatFFIMessage};
+mod wrappers;
+pub use wrappers::{ChatByteVector, ChatMessageMetadataVector, ChatMessages};
 
-mod contact;
-pub use contact::Contact;
-
-mod message;
-pub use message::{Direction, Message, MessageMetadata, MessageMetadataType};
-
-mod message_builder;
-pub use message_builder::MessageBuilder;
-
-mod message_dispatch;
-pub use message_dispatch::MessageDispatch;
-
-mod confirmation;
-pub use confirmation::Confirmation;
+mod byte_vector;
+pub use byte_vector::{
+    chat_byte_vector_create,
+    chat_byte_vector_destroy,
+    chat_byte_vector_get_at,
+    chat_byte_vector_get_length,
+};
