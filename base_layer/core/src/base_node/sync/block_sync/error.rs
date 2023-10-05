@@ -67,6 +67,8 @@ pub enum BlockSyncError {
     FixedHashSizeError(#[from] FixedHashSizeError),
     #[error("This sync round failed")]
     SyncRoundFailed,
+    #[error("Could not find peer info")]
+    PeerNotFound,
 }
 
 impl BlockSyncError {
@@ -90,6 +92,7 @@ impl BlockSyncError {
             BlockSyncError::AllSyncPeersExceedLatency => "AllSyncPeersExceedLatency",
             BlockSyncError::FixedHashSizeError(_) => "FixedHashSizeError",
             BlockSyncError::SyncRoundFailed => "SyncRoundFailed",
+            BlockSyncError::PeerNotFound => "PeerNotFound",
         }
     }
 }
@@ -106,6 +109,7 @@ impl BlockSyncError {
             BlockSyncError::NoMoreSyncPeers(_) |
             BlockSyncError::AllSyncPeersExceedLatency |
             BlockSyncError::FailedToConstructChainBlock |
+            BlockSyncError::PeerNotFound |
             BlockSyncError::SyncRoundFailed => None,
 
             // short ban

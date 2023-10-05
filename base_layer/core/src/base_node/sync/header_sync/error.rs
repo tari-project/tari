@@ -34,6 +34,8 @@ use crate::{blocks::BlockError, chain_storage::ChainStorageError, common::BanRea
 pub enum BlockHeaderSyncError {
     #[error("No more sync peers available: {0}")]
     NoMoreSyncPeers(String),
+    #[error("Could not find peer info")]
+    PeerNotFound,
     #[error("RPC error: {0}")]
     RpcError(#[from] RpcError),
     #[error("RPC request failed: {0}")]
@@ -103,6 +105,7 @@ impl BlockHeaderSyncError {
             BlockHeaderSyncError::AllSyncPeersExceedLatency |
             BlockHeaderSyncError::ConnectivityError(_) |
             BlockHeaderSyncError::NotInSync |
+            BlockHeaderSyncError::PeerNotFound |
             BlockHeaderSyncError::ChainStorageError(_) => None,
 
             // short ban
