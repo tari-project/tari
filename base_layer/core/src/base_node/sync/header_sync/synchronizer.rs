@@ -254,18 +254,19 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             .fetch_chain_header(self.local_metadata.height_of_longest_chain())
             .await?;
         let local_total_accumulated_difficulty = local_blockchain_tip.accumulated_data().total_accumulated_difficulty;
-        let blockchain_tip_height = local_blockchain_tip.height();
+        let header_tip_height = local_tip_header.height();
+        let local_blockchain_tip_height = local_blockchain_tip.height();
         let sync_status = self
             .determine_sync_status(sync_peer, local_tip_header, local_blockchain_tip, &mut client)
             .await?;
         match sync_status {
             HeaderSyncStatus::InSync | HeaderSyncStatus::WereAhead => {
                 let metadata = self.db.get_chain_metadata().await?;
-                if metadata.height_of_longest_chain() < blockchain_tip_height {
+                if metadata.height_of_longest_chain() < header_tip_height {
                     debug!(
                         target: LOG_TARGET,
                         "Headers are in sync at height {} but tip is {}. Proceeding to archival/pruned block sync",
-                        blockchain_tip_height,
+                        header_tip_height,
                         metadata.height_of_longest_chain()
                     );
                     Ok(())
@@ -289,7 +290,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                         target: LOG_TARGET,
                         "Headers and block state are already in-sync (Header Tip: {}, Block tip: {}, Peer's height: \
                          {})",
-                        blockchain_tip_height,
+                        local_blockchain_tip_height,
                         metadata.height_of_longest_chain(),
                         sync_peer.claimed_chain_metadata().height_of_longest_chain(),
                     );
@@ -394,8 +395,8 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
     /// Attempt to determine the point at which the remote and local chain diverge, returning the relevant information
     /// of the chain split (see [HeaderSyncStatus]).
     ///
-    /// If the local node is behind the remote chain (i.e. `HeaderSyncStatus::Lagging`), the appropriate `ChainSplitInfo` is
-    /// returned, the header validator is initialized and the preliminary headers are validated.
+    /// If the local node is behind the remote chain (i.e. `HeaderSyncStatus::Lagging`), the appropriate
+    /// `ChainSplitInfo` is returned, the header validator is initialized and the preliminary headers are validated.
     async fn determine_sync_status(
         &mut self,
         sync_peer: &SyncPeer,
