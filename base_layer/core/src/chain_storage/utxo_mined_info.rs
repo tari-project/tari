@@ -23,7 +23,7 @@
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::BlockHash;
 
-use crate::transactions::transaction_components::TransactionOutput;
+use crate::transactions::transaction_components::{TransactionInput, TransactionOutput};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UtxoMinedInfo {
@@ -33,28 +33,10 @@ pub struct UtxoMinedInfo {
     pub mined_timestamp: u64,
 }
 
-#[cfg(test)]
-mod test {
-    use tari_common_types::types::FixedHash;
-
-    use super::*;
-
-    impl UtxoMinedInfo {
-        pub fn sample() -> Self {
-            Self {
-                output: PrunedOutput::sample(),
-                mmr_position: 0,
-                mined_height: 0,
-                header_hash: FixedHash::zero(),
-                mined_timestamp: 0,
-            }
-        }
-    }
-
-    #[test]
-    fn coverage_utxo_mined_info() {
-        let obj = UtxoMinedInfo::sample();
-        drop(obj.clone());
-        format!("{:?}", obj);
-    }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TxoMinedInfo {
+    pub input: TransactionInput,
+    pub spent_height: u64,
+    pub header_hash: BlockHash,
+    pub spent_timestamp: u64,
 }

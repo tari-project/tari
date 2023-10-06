@@ -76,6 +76,7 @@ use crate::{
         OrNotFound,
         Reorg,
         TargetDifficulties,
+        TxoMinedInfo,
     },
     common::rolling_vec::RollingVec,
     consensus::{
@@ -424,6 +425,20 @@ where B: BlockchainBackend
         Ok(result)
     }
 
+    pub fn fetch_txos_and_mined_info(
+        &self,
+        hashes: Vec<HashOutput>,
+    ) -> Result<Vec<Option<TxoMinedInfo>>, ChainStorageError> {
+        let db = self.db_read_access()?;
+
+        let mut result = Vec::with_capacity(hashes.len());
+        for hash in hashes {
+            let input = db.fetch_input(&hash)?;
+            result.push(input);
+        }
+        Ok(result)
+    }
+
     pub fn fetch_kernel_by_excess_sig(
         &self,
         excess_sig: Signature,
@@ -477,11 +492,6 @@ where B: BlockchainBackend
     pub fn fetch_header_containing_kernel_mmr(&self, mmr_position: u64) -> Result<ChainHeader, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_header_containing_kernel_mmr(mmr_position)
-    }
-
-    pub fn fetch_header_containing_utxo_mmr(&self, mmr_position: u64) -> Result<ChainHeader, ChainStorageError> {
-        let db = self.db_read_access()?;
-        db.fetch_header_containing_utxo_mmr(mmr_position)
     }
 
     /// Find the first matching header in a list of block hashes, returning the index of the match and the BlockHeader.
@@ -1283,7 +1293,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
         // If the output hash is not found, check the current output_mmr. This allows zero-conf transactions
         let smt_key = NodeKey::try_from(input.commitment()?.as_bytes())?;
         match output_smt.delete(&smt_key)? {
-            DeleteResult::Deleted(_ValueHash) => {},
+            DeleteResult::Deleted(_value_hash) => {},
             DeleteResult::KeyNotFound => return Err(ChainStorageError::UnspendableInput),
         };
     }

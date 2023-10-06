@@ -56,6 +56,7 @@ use crate::{
         MmrTree,
         Reorg,
         TemplateRegistrationEntry,
+        TxoMinedInfo,
         UtxoMinedInfo,
         Validators,
     },
@@ -237,10 +238,6 @@ impl BlockchainBackend for TempDatabase {
             .fetch_header_containing_kernel_mmr(mmr_position)
     }
 
-    fn fetch_header_containing_utxo_mmr(&self, mmr_position: u64) -> Result<ChainHeader, ChainStorageError> {
-        self.db.as_ref().unwrap().fetch_header_containing_utxo_mmr(mmr_position)
-    }
-
     fn is_empty(&self) -> Result<bool, ChainStorageError> {
         self.db.as_ref().unwrap().is_empty()
     }
@@ -283,6 +280,10 @@ impl BlockchainBackend for TempDatabase {
 
     fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<UtxoMinedInfo>, ChainStorageError> {
         self.db.as_ref().unwrap().fetch_output(output_hash)
+    }
+
+    fn fetch_input(&self, input_hash: &HashOutput) -> Result<Option<TxoMinedInfo>, ChainStorageError> {
+        self.db.as_ref().unwrap().fetch_input(input_hash)
     }
 
     fn fetch_unspent_output_hash_by_commitment(

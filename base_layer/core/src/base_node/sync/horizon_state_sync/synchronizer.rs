@@ -27,7 +27,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use futures::{stream::FuturesUnordered, StreamExt};
+use futures::StreamExt;
 use log::*;
 use tari_common_types::types::{Commitment, FixedHash, RangeProofService};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId, protocol::rpc::RpcClient, PeerConnection};
@@ -608,38 +608,6 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
         self.check_latency(sync_peer.node_id(), &avg_latency)?;
 
-        Ok(())
-    }
-
-    async fn validate_rangeproofs(&self, mut unpruned_outputs: Vec<TransactionOutput>) -> Result<(), HorizonSyncError> {
-        let concurrency = self.config.validation_concurrency;
-        let mut chunk_size = unpruned_outputs.len() / concurrency;
-        if unpruned_outputs.len() % concurrency > 0 {
-            chunk_size += 1;
-        }
-        // Validate rangeproofs in parallel
-        let mut tasks = (0..concurrency)
-            .filter_map(|_| {
-                if unpruned_outputs.is_empty() {
-                    None
-                } else {
-                    let end = cmp::min(unpruned_outputs.len(), chunk_size);
-                    Some(unpruned_outputs.drain(..end).collect::<Vec<_>>())
-                }
-            })
-            .map(|chunk| {
-                let prover = self.prover.clone();
-                task::spawn_blocking(move || -> Result<(), HorizonSyncError> {
-                    let outputs = chunk.iter().collect::<Vec<_>>();
-                    batch_verify_range_proofs(&prover, &outputs)?;
-                    Ok(())
-                })
-            })
-            .collect::<FuturesUnordered<_>>();
-
-        while let Some(result) = tasks.next().await {
-            result??;
-        }
         Ok(())
     }
 

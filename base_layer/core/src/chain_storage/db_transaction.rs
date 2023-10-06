@@ -359,8 +359,8 @@ impl fmt::Display for WriteOperation {
             InsertOutput {
                 header_hash,
                 header_height,
-                timestamp,
                 output,
+                ..
             } => write!(
                 f,
                 "Insert output {} in block({}):{},",

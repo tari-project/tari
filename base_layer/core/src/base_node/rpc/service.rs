@@ -44,6 +44,7 @@ use crate::{
             FetchUtxosResponse,
             GetMempoolFeePerGramStatsRequest,
             GetMempoolFeePerGramStatsResponse,
+            QueryDeletedData,
             QueryDeletedRequest,
             QueryDeletedResponse,
             Signatures as SignaturesProto,
@@ -66,6 +67,7 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "c::base_node::rpc";
+const MAX_QUERY_DELETED_HASHES: usize = 1000;
 
 pub struct BaseNodeWalletRpcService<B> {
     db: AsyncBlockchainDb<B>,
@@ -451,6 +453,11 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         request: Request<QueryDeletedRequest>,
     ) -> Result<Response<QueryDeletedResponse>, RpcStatus> {
         let message = request.into_message();
+        if message.hashes.len() > MAX_QUERY_DELETED_HASHES {
+            return Err(RpcStatus::bad_request(
+                &"Received more hashes than we allow".to_string(),
+            ));
+        }
 
         if let Some(chain_must_include_header) = message.chain_must_include_header {
             let hash = chain_must_include_header
@@ -468,13 +475,47 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                 ));
             }
         }
-
-        let mut deleted_positions: Vec<u64> = vec![];
-        let mut not_deleted_positions: Vec<u64> = vec![];
-
-        let mut blocks_deleted_in = Vec::new();
-        let mut heights_deleted_at = Vec::new();
-
+        let hashes: Vec<FixedHash> = message
+            .hashes
+            .into_iter()
+            .map(|hash| hash.try_into().map_err(|_| "Malformed pruned hash".to_string()))
+            .collect::<Result<_, _>>()
+            .map_err(|_| RpcStatus::bad_request(&"Malformed block hash received".to_string()))?;
+        let mut return_data = Vec::with_capacity(hashes.len());
+        let utxos = self
+            .db
+            .fetch_utxos_and_mined_info(hashes.clone())
+            .await
+            .rpc_status_internal_error(LOG_TARGET)?;
+        let txos = self
+            .db
+            .fetch_txos_and_mined_info(hashes)
+            .await
+            .rpc_status_internal_error(LOG_TARGET)?;
+        if utxos.len() != txos.len() {
+            return Err(RpcStatus::general("database returned different inputs vs outputs"));
+        }
+        for (utxo, txo) in utxos.iter().zip(txos.iter()) {
+            let mut data = match utxo {
+                None => QueryDeletedData {
+                    mined_height: 0,
+                    block_mined_in: Vec::new(),
+                    height_deleted_at: 0,
+                    block_deleted_in: Vec::new(),
+                },
+                Some(u) => QueryDeletedData {
+                    mined_height: u.mined_height,
+                    block_mined_in: u.header_hash.to_vec(),
+                    height_deleted_at: 0,
+                    block_deleted_in: Vec::new(),
+                },
+            };
+            if let Some(input) = txo {
+                data.height_deleted_at = input.spent_height;
+                data.block_deleted_in = input.header_hash.to_vec();
+            };
+            return_data.push(data);
+        }
         let metadata = self
             .db
             .get_chain_metadata()
@@ -484,10 +525,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         Ok(Response::new(QueryDeletedResponse {
             height_of_longest_chain: metadata.height_of_longest_chain(),
             best_block: metadata.best_block().to_vec(),
-            deleted_positions: deleted_positions.into_iter().map(u64::from).collect(),
-            not_deleted_positions: not_deleted_positions.into_iter().map(u64::from).collect(),
-            blocks_deleted_in,
-            heights_deleted_at,
+            data: return_data,
         }))
     }
 

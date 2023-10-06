@@ -89,6 +89,7 @@ use crate::{
         MmrTree,
         Reorg,
         TemplateRegistrationEntry,
+        TxoMinedInfo,
         ValidatorNodeEntry,
     },
     consensus::{ConsensusConstants, ConsensusManager},
@@ -116,7 +117,6 @@ const LMDB_DB_KERNELS: &str = "kernels";
 const LMDB_DB_KERNEL_EXCESS_INDEX: &str = "kernel_excess_index";
 const LMDB_DB_KERNEL_EXCESS_SIG_INDEX: &str = "kernel_excess_sig_index";
 const LMDB_DB_KERNEL_MMR_SIZE_INDEX: &str = "kernel_mmr_size_index";
-const LMDB_DB_UTXO_MMR_SIZE_INDEX: &str = "utxo_mmr_size_index";
 const LMDB_DB_DELETED_TXO_HASH_TO_HEADER_INDEX: &str = "deleted_txo_hash_to_header_index";
 const LMDB_DB_UTXO_COMMITMENT_INDEX: &str = "utxo_commitment_index";
 const LMDB_DB_UNIQUE_ID_INDEX: &str = "unique_id_index";
@@ -167,7 +167,6 @@ pub fn create_lmdb_database<P: AsRef<Path>>(
         .add_database(LMDB_DB_KERNEL_EXCESS_INDEX, flags)
         .add_database(LMDB_DB_KERNEL_EXCESS_SIG_INDEX, flags)
         .add_database(LMDB_DB_KERNEL_MMR_SIZE_INDEX, flags)
-        .add_database(LMDB_DB_UTXO_MMR_SIZE_INDEX, flags)
         .add_database(LMDB_DB_UTXO_COMMITMENT_INDEX, flags)
         .add_database(LMDB_DB_UNIQUE_ID_INDEX, flags)
         .add_database(LMDB_DB_CONTRACT_ID_INDEX, flags)
@@ -216,8 +215,6 @@ pub struct LMDBDatabase {
     kernel_excess_sig_index: DatabaseRef,
     /// Maps kernel_mmr_size -> height
     kernel_mmr_size_index: DatabaseRef,
-    /// Maps output_mmr_size -> height
-    output_mmr_size_index: DatabaseRef,
     /// Maps commitment -> output_hash
     utxo_commitment_index: DatabaseRef,
     /// Maps unique_id -> output_hash
@@ -274,7 +271,6 @@ impl LMDBDatabase {
             kernel_excess_index: get_database(store, LMDB_DB_KERNEL_EXCESS_INDEX)?,
             kernel_excess_sig_index: get_database(store, LMDB_DB_KERNEL_EXCESS_SIG_INDEX)?,
             kernel_mmr_size_index: get_database(store, LMDB_DB_KERNEL_MMR_SIZE_INDEX)?,
-            output_mmr_size_index: get_database(store, LMDB_DB_UTXO_MMR_SIZE_INDEX)?,
             utxo_commitment_index: get_database(store, LMDB_DB_UTXO_COMMITMENT_INDEX)?,
             unique_id_index: get_database(store, LMDB_DB_UNIQUE_ID_INDEX)?,
             contract_index: get_database(store, LMDB_DB_CONTRACT_ID_INDEX)?,
@@ -476,7 +472,7 @@ impl LMDBDatabase {
         Ok(())
     }
 
-    fn all_dbs(&self) -> [(&'static str, &DatabaseRef); 27] {
+    fn all_dbs(&self) -> [(&'static str, &DatabaseRef); 26] {
         [
             ("metadata_db", &self.metadata_db),
             ("headers_db", &self.headers_db),
@@ -490,7 +486,6 @@ impl LMDBDatabase {
             ("kernel_excess_index", &self.kernel_excess_index),
             ("kernel_excess_sig_index", &self.kernel_excess_sig_index),
             ("kernel_mmr_size_index", &self.kernel_mmr_size_index),
-            ("output_mmr_size_index", &self.output_mmr_size_index),
             ("utxo_commitment_index", &self.utxo_commitment_index),
             ("contract_index", &self.contract_index),
             ("unique_id_index", &self.unique_id_index),
@@ -616,6 +611,7 @@ impl LMDBDatabase {
         &self,
         txn: &WriteTransaction<'_>,
         height: u64,
+        header_timestamp: u64,
         header_hash: &HashOutput,
         input: &TransactionInput,
     ) -> Result<(), ChainStorageError> {
@@ -650,6 +646,8 @@ impl LMDBDatabase {
             &TransactionInputRowDataRef {
                 input: &input.to_compact(),
                 header_hash,
+                mined_timestamp: header_timestamp,
+                height,
                 hash: &hash,
             },
             "inputs_db",
@@ -773,13 +771,6 @@ impl LMDBDatabase {
             &header.height,
             "kernel_mmr_size_index",
         )?;
-        lmdb_insert(
-            txn,
-            &self.output_mmr_size_index,
-            &header.output_smt_size.to_be_bytes(),
-            &(header.height, header.hash().as_slice()),
-            "output_mmr_size_index",
-        )?;
         Ok(())
     }
 
@@ -834,12 +825,6 @@ impl LMDBDatabase {
             &header.kernel_mmr_size.to_be_bytes(),
             "kernel_mmr_size_index",
         )?;
-        lmdb_delete(
-            txn,
-            &self.output_mmr_size_index,
-            &header.output_smt_size.to_be_bytes(),
-            "output_mmr_size_index",
-        )?;
 
         Ok(())
     }
@@ -855,13 +840,6 @@ impl LMDBDatabase {
         let height = self
             .fetch_height_from_hash(write_txn, block_hash)
             .or_not_found("Block", "hash", hash_hex)?;
-        let block_accum_data =
-            self.fetch_block_accumulated_data(write_txn, height)?
-                .ok_or_else(|| ChainStorageError::ValueNotFound {
-                    entity: "BlockAccumulatedData",
-                    field: "height",
-                    value: height.to_string(),
-                })?;
 
         lmdb_delete(
             write_txn,
@@ -921,7 +899,7 @@ impl LMDBDatabase {
             lmdb_delete(
                 txn,
                 &self.deleted_txo_hash_to_header_index,
-                &row.mmr_position,
+                &row.hash.to_vec(),
                 "deleted_txo_hash_to_header_index",
             )?;
             if output_rows.iter().any(|r| r.hash == output_hash) {
@@ -1186,10 +1164,9 @@ impl LMDBDatabase {
         for input in &inputs {
             let smt_key = NodeKey::try_from(input.commitment()?.as_bytes())?;
             match output_smt.delete(&smt_key)? {
-                DeleteResult::Deleted(ValueHash) => {},
+                DeleteResult::Deleted(_value_hash) => {},
                 DeleteResult::KeyNotFound => return Err(ChainStorageError::UnspendableInput),
             };
-            let output_hash = input.output_hash();
 
             let features = input.features()?;
             if let Some(vn_reg) = features
@@ -1206,7 +1183,13 @@ impl LMDBDatabase {
                 input.commitment()?.to_hex(),
                 input.output_hash().to_hex()
             );
-            self.insert_input(txn, current_header_at_height.height, &block_hash, input)?;
+            self.insert_input(
+                txn,
+                current_header_at_height.height,
+                current_header_at_height.timestamp.as_u64(),
+                &block_hash,
+                input,
+            )?;
         }
 
         self.insert_block_accumulated_data(
@@ -1479,6 +1462,44 @@ impl LMDBDatabase {
         }
     }
 
+    fn fetch_input_in_txn(
+        &self,
+        txn: &ConstTransaction<'_>,
+        input_hash: &[u8],
+    ) -> Result<Option<TxoMinedInfo>, ChainStorageError> {
+        if let Some(key) = lmdb_get::<_, Vec<u8>>(txn, &self.deleted_txo_hash_to_header_index, input_hash)? {
+            debug!(
+                target: LOG_TARGET,
+                "Fetch input: {} Found ({})",
+                to_hex(input_hash),
+                key.to_hex()
+            );
+            match lmdb_get::<_, TransactionInputRowData>(txn, &self.utxos_db, &key)? {
+                Some(TransactionInputRowData {
+                    input: i,
+                    height,
+                    header_hash,
+                    mined_timestamp,
+                    ..
+                }) => Ok(Some(TxoMinedInfo {
+                    input: i,
+                    spent_height: height,
+                    header_hash,
+                    spent_timestamp: mined_timestamp,
+                })),
+
+                _ => Ok(None),
+            }
+        } else {
+            debug!(
+                target: LOG_TARGET,
+                "Fetch input: {} NOT found in index",
+                to_hex(input_hash)
+            );
+            Ok(None)
+        }
+    }
+
     fn get_consensus_constants(&self, height: u64) -> &ConsensusConstants {
         self.consensus_manager.consensus_constants(height)
     }
@@ -1722,43 +1743,6 @@ impl BlockchainBackend for LMDBDatabase {
         Ok(chain_header)
     }
 
-    fn fetch_header_containing_utxo_mmr(&self, mmr_position: u64) -> Result<ChainHeader, ChainStorageError> {
-        let txn = self.read_transaction()?;
-        // LMDB returns the height at the position, so we have to offset the position by 1 so that the mmr_position arg
-        // is an index starting from 0
-        let mmr_position = mmr_position + 1;
-
-        let (height, _hash) =
-            lmdb_first_after::<_, (u64, Vec<u8>)>(&txn, &self.output_mmr_size_index, &mmr_position.to_be_bytes())?
-                .ok_or_else(|| ChainStorageError::ValueNotFound {
-                    entity: "output_mmr_size_index",
-                    field: "mmr_position",
-                    value: mmr_position.to_string(),
-                })?;
-
-        let header: BlockHeader =
-            lmdb_get(&txn, &self.headers_db, &height)?.ok_or_else(|| ChainStorageError::ValueNotFound {
-                entity: "BlockHeader",
-                field: "height",
-                value: height.to_string(),
-            })?;
-        let accum_data = self
-            .fetch_header_accumulated_data_by_height(&txn, height)?
-            .ok_or_else(|| ChainStorageError::ValueNotFound {
-                entity: "BlockHeaderAccumulatedData",
-                field: "height",
-                value: height.to_string(),
-            })?;
-
-        let chain_header = ChainHeader::try_construct(header, accum_data).ok_or_else(|| {
-            ChainStorageError::DataInconsistencyDetected {
-                function: "fetch_header_containing_utxo_mmr",
-                details: format!("Accumulated data mismatch at height #{}", height),
-            }
-        })?;
-        Ok(chain_header)
-    }
-
     fn is_empty(&self) -> Result<bool, ChainStorageError> {
         let txn = self.read_transaction()?;
         Ok(lmdb_len(&txn, &self.headers_db)? == 0)
@@ -1835,7 +1819,7 @@ impl BlockchainBackend for LMDBDatabase {
                         field: "hash",
                         value: header.to_hex(),
                     })?;
-            for mut utxo in &mut utxos {
+            for utxo in &mut utxos {
                 let hash = utxo.0.hash();
                 match lmdb_get::<_, (u64, Vec<u8>)>(&txn, &self.deleted_txo_hash_to_header_index, hash.as_slice())? {
                     Some((height, _)) => {
@@ -1856,6 +1840,12 @@ impl BlockchainBackend for LMDBDatabase {
         debug!(target: LOG_TARGET, "Fetch output: {}", output_hash.to_hex());
         let txn = self.read_transaction()?;
         self.fetch_output_in_txn(&txn, output_hash.as_slice())
+    }
+
+    fn fetch_input(&self, input_hash: &HashOutput) -> Result<Option<TxoMinedInfo>, ChainStorageError> {
+        debug!(target: LOG_TARGET, "Fetch input: {}", input_hash.to_hex());
+        let txn = self.read_transaction()?;
+        self.fetch_input_in_txn(&txn, input_hash.as_slice())
     }
 
     fn fetch_unspent_output_hash_by_commitment(

@@ -162,8 +162,8 @@ where B: BlockchainBackend + 'static
                     // We only send unspent utxos
                     if !spent {
                         match utxo.try_into() {
-                            Ok(txOuput) => Some(Ok(SyncUtxosResponse {
-                                output: Some(txOuput),
+                            Ok(tx_ouput) => Some(Ok(SyncUtxosResponse {
+                                output: Some(tx_ouput),
                                 mined_header: current_header.hash().to_vec(),
                             })),
                             Err(err) => Some(Err(err)),

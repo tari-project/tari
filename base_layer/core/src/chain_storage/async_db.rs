@@ -44,7 +44,7 @@ use crate::{
     },
     chain_storage::{
         blockchain_database::MmrRoots,
-        utxo_mined_info::UtxoMinedInfo,
+        utxo_mined_info::{TxoMinedInfo, UtxoMinedInfo},
         BlockAddResult,
         BlockchainBackend,
         BlockchainDatabase,
@@ -157,6 +157,8 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_utxos_and_mined_info(hashes: Vec<HashOutput>) -> Vec<Option<UtxoMinedInfo>>, "fetch_utxos_and_mined_info");
 
+    make_async_fn!(fetch_txos_and_mined_info(hashes: Vec<HashOutput>) -> Vec<Option<TxoMinedInfo>>, "fetch_txos_and_mined_info");
+
     make_async_fn!(fetch_utxos_in_block(hash: HashOutput, spend_header: Option<FixedHash>) -> Vec<(TransactionOutput, bool)>, "fetch_utxos_in_block");
 
     make_async_fn!(fetch_outputs_in_block(hash: HashOutput) -> Vec<TransactionOutput>, "fetch_outputs_in_block");
@@ -189,8 +191,6 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     make_async_fn!(fetch_header_by_block_hash(hash: HashOutput) -> Option<BlockHeader>, "fetch_header_by_block_hash");
 
     make_async_fn!(fetch_header_containing_kernel_mmr(mmr_position: u64) -> ChainHeader, "fetch_header_containing_kernel_mmr");
-
-    make_async_fn!(fetch_header_containing_utxo_mmr(mmr_position: u64) -> ChainHeader, "fetch_header_containing_utxo_mmr");
 
     make_async_fn!(fetch_chain_header_by_block_hash(hash: HashOutput) -> Option<ChainHeader>, "fetch_chain_header_by_block_hash");
 

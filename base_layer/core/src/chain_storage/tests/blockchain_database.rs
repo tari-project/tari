@@ -454,47 +454,6 @@ mod prepare_new_block {
     }
 }
 
-mod fetch_header_containing_utxo_mmr {
-    use super::*;
-
-    #[test]
-    fn it_returns_genesis() {
-        let db = setup();
-        let genesis = db.fetch_block(0, true).unwrap();
-        assert!(!genesis.block().body.outputs().is_empty());
-        let mut mmr_position = 0;
-        genesis.block().body.outputs().iter().for_each(|_| {
-            let header = db.fetch_header_containing_utxo_mmr(mmr_position).unwrap();
-            assert_eq!(header.height(), 0);
-            mmr_position += 1;
-        });
-        let err = db.fetch_header_containing_utxo_mmr(mmr_position).unwrap_err();
-        matches!(err, ChainStorageError::ValueNotFound { .. });
-    }
-
-    #[tokio::test]
-    async fn it_returns_corresponding_header() {
-        let db = setup();
-        let genesis = db.fetch_block(0, true).unwrap();
-        let key_manager = create_test_core_key_manager_with_memory_db();
-        let _block_and_outputs = add_many_chained_blocks(5, &db, &key_manager).await;
-        let num_genesis_outputs = genesis.block().body.outputs().len() as u64;
-
-        let header = db.fetch_header_containing_utxo_mmr(num_genesis_outputs - 1).unwrap();
-        assert_eq!(header.height(), 0);
-
-        for i in 1..=5 {
-            let index = num_genesis_outputs + i - 1;
-            let header = db.fetch_header_containing_utxo_mmr(index).unwrap();
-            assert_eq!(header.height(), i, "Incorrect header for MMR index = {}", index);
-        }
-        let err = db
-            .fetch_header_containing_utxo_mmr(num_genesis_outputs + 5)
-            .unwrap_err();
-        matches!(err, ChainStorageError::ValueNotFound { .. });
-    }
-}
-
 mod fetch_header_containing_kernel_mmr {
     use super::*;
 

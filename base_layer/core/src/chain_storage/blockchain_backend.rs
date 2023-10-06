@@ -19,6 +19,7 @@ use crate::{
         HorizonData,
         MmrTree,
         Reorg,
+        TxoMinedInfo,
         UtxoMinedInfo,
     },
     transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
@@ -61,8 +62,6 @@ pub trait BlockchainBackend: Send + Sync {
 
     fn fetch_header_containing_kernel_mmr(&self, mmr_position: u64) -> Result<ChainHeader, ChainStorageError>;
 
-    fn fetch_header_containing_utxo_mmr(&self, mmr_position: u64) -> Result<ChainHeader, ChainStorageError>;
-
     /// Used to determine if the database is empty, i.e. a brand new database.
     /// This is called to decide if the genesis block should be created.
     fn is_empty(&self) -> Result<bool, ChainStorageError>;
@@ -97,6 +96,9 @@ pub trait BlockchainBackend: Send + Sync {
 
     /// Fetch a specific output. Returns the output and the leaf index in the output MMR
     fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<UtxoMinedInfo>, ChainStorageError>;
+
+    /// Fetch a specific input. Returns the output and the leaf index in the output MMR
+    fn fetch_input(&self, input_hash: &HashOutput) -> Result<Option<TxoMinedInfo>, ChainStorageError>;
 
     /// Returns the unspent TransactionOutput output that matches the given commitment if it exists in the current UTXO
     /// set, otherwise None is returned.
