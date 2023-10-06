@@ -21,12 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    convert::{TryFrom, TryInto},
+    convert::TryFrom,
     fmt::{Display, Error, Formatter},
 };
 
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{BlockHash, Signature};
+use tari_utilities::ByteArray;
 
 use crate::proto::{base_node as proto, types};
 
@@ -191,12 +192,15 @@ impl TryFrom<proto::TxQueryResponse> for TxQueryResponse {
     type Error = String;
 
     fn try_from(proto_response: proto::TxQueryResponse) -> Result<Self, Self::Error> {
-        let hash = match proto_response.block_hash {
-            Some(v) => match v.try_into() {
-                Ok(v) => Some(v),
-                Err(e) => return Err(format!("Malformed block hash: {}", e)),
-            },
-            None => None,
+        let hash = if proto_response.block_hash.is_empty() {
+            None
+        } else {
+            Some(match BlockHash::try_from(proto_response.block_hash.clone()) {
+                Ok(h) => h,
+                Err(e) => {
+                    return Err(format!("Malformed block hash: {}", e));
+                },
+            })
         };
         Ok(Self {
             location: TxLocation::try_from(
@@ -216,7 +220,7 @@ impl From<TxQueryResponse> for proto::TxQueryResponse {
     fn from(response: TxQueryResponse) -> Self {
         Self {
             location: proto::TxLocation::from(response.location) as i32,
-            block_hash: response.block_hash.map(|v| v.to_vec()),
+            block_hash: response.block_hash.map(|v| v.to_vec()).unwrap_or(vec![]),
             confirmations: response.confirmations,
             is_synced: response.is_synced,
             height_of_longest_chain: response.height_of_longest_chain,
@@ -229,12 +233,15 @@ impl TryFrom<proto::TxQueryBatchResponse> for TxQueryBatchResponse {
     type Error = String;
 
     fn try_from(proto_response: proto::TxQueryBatchResponse) -> Result<Self, Self::Error> {
-        let hash = match proto_response.block_hash {
-            Some(v) => match v.try_into() {
-                Ok(v) => Some(v),
-                Err(e) => return Err(format!("Malformed block hash: {}", e)),
-            },
-            None => None,
+        let hash = if proto_response.block_hash.is_empty() {
+            None
+        } else {
+            Some(match BlockHash::try_from(proto_response.block_hash.clone()) {
+                Ok(h) => h,
+                Err(e) => {
+                    return Err(format!("Malformed block hash: {}", e));
+                },
+            })
         };
         Ok(Self {
             signature: Signature::try_from(

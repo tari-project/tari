@@ -206,7 +206,7 @@ where
             // This assumes that the base node has not reorged since the last time we asked.
             let deleted_bitmap_response = wallet_client
                 .query_deleted(QueryDeletedRequest {
-                    chain_must_include_header: last_mined_header_hash.map(|v| v.to_vec()),
+                    chain_must_include_header: last_mined_header_hash.map(|v| v.to_vec()).unwrap_or_default(),
                     mmr_positions: batch.iter().filter_map(|ub| ub.mined_mmr_position).collect(),
                     include_deleted_block_data: true,
                 })
