@@ -45,9 +45,11 @@ impl TryFrom<proto::ChainMetadata> for ChainMetadata {
         let mut acc_diff = [0; ACC_DIFFICULTY_ARRAY_LEN];
         acc_diff.copy_from_slice(&metadata.accumulated_difficulty[0..ACC_DIFFICULTY_ARRAY_LEN]);
         let accumulated_difficulty = u128::from_be_bytes(acc_diff);
-        let height_of_longest_chain = metadata
-            .height_of_longest_chain
-            .ok_or_else(|| "Height of longest chain is missing".to_string())?;
+        let height_of_longest_chain = metadata.height_of_longest_chain;
+        if height_of_longest_chain == 0 {
+            return Err("Height of longest chain is missing".to_string());
+        }
+
         let pruning_horizon = if metadata.pruned_height == 0 {
             metadata.pruned_height
         } else {
@@ -67,7 +69,7 @@ impl TryFrom<proto::ChainMetadata> for ChainMetadata {
             pruning_horizon,
             metadata.pruned_height,
             accumulated_difficulty,
-            metadata.timestamp.unwrap_or_default(),
+            metadata.timestamp,
         ))
     }
 }
@@ -76,17 +78,17 @@ impl From<ChainMetadata> for proto::ChainMetadata {
     fn from(metadata: ChainMetadata) -> Self {
         let accumulated_difficulty = metadata.accumulated_difficulty().to_be_bytes().to_vec();
         Self {
-            height_of_longest_chain: Some(metadata.height_of_longest_chain()),
+            height_of_longest_chain: metadata.height_of_longest_chain(),
             best_block: metadata.best_block().to_vec(),
             pruned_height: metadata.pruned_height(),
             accumulated_difficulty,
-            timestamp: Some(metadata.timestamp()),
+            timestamp: metadata.timestamp(),
         }
     }
 }
 
 impl proto::ChainMetadata {
     pub fn height_of_longest_chain(&self) -> u64 {
-        self.height_of_longest_chain.unwrap_or(0)
+        self.height_of_longest_chain
     }
 }

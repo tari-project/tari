@@ -144,15 +144,15 @@ impl BaseNodeWalletRpcMockState {
                 tip_hash: FixedHash::zero().to_vec(),
                 is_synced: true,
                 height_of_longest_chain: 0,
-                tip_mined_timestamp: Some(0),
+                tip_mined_timestamp: 0,
             })),
             tip_info_response: Arc::new(Mutex::new(TipInfoResponse {
                 metadata: Some(ChainMetadataProto {
-                    height_of_longest_chain: Some(std::i64::MAX as u64),
+                    height_of_longest_chain: std::i64::MAX as u64,
                     best_block: FixedHash::zero().to_vec(),
                     accumulated_difficulty: Vec::new(),
                     pruned_height: 0,
-                    timestamp: Some(0),
+                    timestamp: 0,
                 }),
                 is_synced: true,
             })),
@@ -931,11 +931,11 @@ mod test {
         assert_eq!(calls.len(), 1);
 
         let chain_metadata = ChainMetadata {
-            height_of_longest_chain: Some(444),
+            height_of_longest_chain: 444,
             best_block: vec![],
             accumulated_difficulty: vec![],
             pruned_height: 0,
-            timestamp: Some(0),
+            timestamp: 0,
         };
         service_state.set_tip_info_response(TipInfoResponse {
             metadata: Some(chain_metadata),
