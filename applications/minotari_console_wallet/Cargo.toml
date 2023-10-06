@@ -28,7 +28,7 @@ console-subscriber = "0.1.8"
 # Uncomment for normal use (non tokio-console tracing)
 tokio = { version = "1.23", features = ["signal"] }
 
-bitflags = { version = "2.4.0", features = ["serde"] }
+bitflags = { version = "2.4", features = ["serde"] }
 chrono = { version = "0.4.19", default-features = false }
 clap = { version = "3.2", features = ["derive", "env"] }
 config = "0.13.0"
