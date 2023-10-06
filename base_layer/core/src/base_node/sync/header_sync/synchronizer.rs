@@ -259,7 +259,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             .determine_sync_status(sync_peer, local_tip_header, local_blockchain_tip, &mut client)
             .await?;
         match sync_status {
-            SyncStatus::InSync | SyncStatus::WereAhead => {
+            HeaderSyncStatus::InSync | HeaderSyncStatus::WereAhead => {
                 let metadata = self.db.get_chain_metadata().await?;
                 if metadata.height_of_longest_chain() < blockchain_tip_height {
                     debug!(
@@ -300,7 +300,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     })
                 }
             },
-            SyncStatus::Lagging(split_info) => {
+            HeaderSyncStatus::Lagging(split_info) => {
                 self.hooks.call_on_progress_header_hooks(
                     split_info
                         .local_tip_header
@@ -392,9 +392,9 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
     }
 
     /// Attempt to determine the point at which the remote and local chain diverge, returning the relevant information
-    /// of the chain split (see [SyncStatus]).
+    /// of the chain split (see [HeaderSyncStatus]).
     ///
-    /// If the local node is behind the remote chain (i.e. `SyncStatus::Lagging`), the appropriate `ChainSplitInfo` is
+    /// If the local node is behind the remote chain (i.e. `HeaderSyncStatus::Lagging`), the appropriate `ChainSplitInfo` is
     /// returned, the header validator is initialized and the preliminary headers are validated.
     async fn determine_sync_status(
         &mut self,
@@ -402,7 +402,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         local_tip_header: ChainHeader,
         local_blockchain_tip_header: ChainHeader,
         client: &mut rpc::BaseNodeSyncRpcClient,
-    ) -> Result<SyncStatus, BlockHeaderSyncError> {
+    ) -> Result<HeaderSyncStatus, BlockHeaderSyncError> {
         let (resp, block_hashes, steps_back) = self
             .find_chain_split(sync_peer.node_id(), client, NUM_INITIAL_HEADERS_TO_REQUEST as u64)
             .await?;
@@ -432,11 +432,11 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     fork_hash_index
                 );
 
-                return Ok(SyncStatus::WereAhead);
+                return Ok(HeaderSyncStatus::WereAhead);
             }
 
             debug!(target: LOG_TARGET, "Already in sync with peer `{}`.", sync_peer);
-            return Ok(SyncStatus::InSync);
+            return Ok(HeaderSyncStatus::InSync);
         }
 
         let headers = headers
@@ -483,7 +483,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             reorg_steps_back: steps_back,
             chain_split_hash: *chain_split_hash,
         };
-        Ok(SyncStatus::Lagging(Box::new(chain_split_info)))
+        Ok(HeaderSyncStatus::Lagging(Box::new(chain_split_info)))
     }
 
     async fn rewind_blockchain(&self, split_hash: HashOutput) -> Result<Vec<Arc<ChainBlock>>, BlockHeaderSyncError> {
@@ -795,7 +795,7 @@ struct ChainSplitInfo {
     chain_split_hash: HashOutput,
 }
 
-enum SyncStatus {
+enum HeaderSyncStatus {
     /// Local and remote node are in sync
     InSync,
     /// Local node is ahead of the remote node
