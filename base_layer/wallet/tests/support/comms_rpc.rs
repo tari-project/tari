@@ -70,6 +70,7 @@ use tari_core::{
     },
     transactions::transaction_components::{Transaction, TransactionOutput},
 };
+use tari_utilities::epoch_time::EpochTime;
 use tokio::{sync::mpsc, time::sleep};
 
 pub async fn connect_rpc_client<T>(connection: &mut PeerConnection) -> T
@@ -144,7 +145,7 @@ impl BaseNodeWalletRpcMockState {
                 tip_hash: FixedHash::zero().to_vec(),
                 is_synced: true,
                 height_of_longest_chain: 0,
-                tip_mined_timestamp: 0,
+                tip_mined_timestamp: EpochTime::now().as_u64(),
             })),
             tip_info_response: Arc::new(Mutex::new(TipInfoResponse {
                 metadata: Some(ChainMetadataProto {
@@ -152,7 +153,7 @@ impl BaseNodeWalletRpcMockState {
                     best_block: FixedHash::zero().to_vec(),
                     accumulated_difficulty: Vec::new(),
                     pruned_height: 0,
-                    timestamp: 0,
+                    timestamp: EpochTime::now().as_u64(),
                 }),
                 is_synced: true,
             })),
@@ -879,6 +880,7 @@ mod test {
         proto::base_node::{ChainMetadata, TipInfoResponse},
         transactions::transaction_components::Transaction,
     };
+    use tari_utilities::epoch_time::EpochTime;
     use tokio::time::Duration;
 
     use crate::support::comms_rpc::BaseNodeWalletRpcMockService;
@@ -935,7 +937,7 @@ mod test {
             best_block: vec![],
             accumulated_difficulty: vec![],
             pruned_height: 0,
-            timestamp: 0,
+            timestamp: EpochTime::now().as_u64(),
         };
         service_state.set_tip_info_response(TipInfoResponse {
             metadata: Some(chain_metadata),

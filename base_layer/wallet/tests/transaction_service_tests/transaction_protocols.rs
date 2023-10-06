@@ -1262,7 +1262,7 @@ async fn tx_validation_protocol_reorg() {
             block_hash: vec![],
             confirmations: 0,
             block_height: 0,
-            mined_timestamp: timestamp,
+            mined_timestamp: 0,
         },
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(
@@ -1282,7 +1282,7 @@ async fn tx_validation_protocol_reorg() {
             block_hash: vec![],
             confirmations: 0,
             block_height: 0,
-            mined_timestamp: timestamp,
+            mined_timestamp: 0,
         },
     ];
 

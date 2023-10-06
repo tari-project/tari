@@ -234,6 +234,7 @@ mod test {
     };
     use tari_service_framework::reply_channel;
     use tari_test_utils::unpack_enum;
+    use tari_utilities::epoch_time::EpochTime;
     use tokio::{sync::broadcast, task};
 
     use super::*;
@@ -261,7 +262,7 @@ mod test {
             ],
             pruned_height: 0,
             accumulated_difficulty: diff.to_be_bytes().to_vec(),
-            timestamp: 0,
+            timestamp: EpochTime::now().as_u64(),
         }
     }
 

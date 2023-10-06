@@ -5580,7 +5580,6 @@ dependencies = [
  "petgraph 0.5.1",
  "pin-project 0.4.30",
  "prost 0.9.0",
- "prost-types 0.9.0",
  "rand",
  "serde",
  "tari_common",

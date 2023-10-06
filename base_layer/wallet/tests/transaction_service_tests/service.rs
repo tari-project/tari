@@ -3781,7 +3781,7 @@ async fn test_coinbase_generation_and_monitoring() {
             block_hash: vec![],
             confirmations: 0,
             block_height: 0,
-            mined_timestamp: timestamp,
+            mined_timestamp: 0,
         },
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(
@@ -3927,7 +3927,7 @@ async fn test_coinbase_abandoned() {
         block_hash: vec![],
         confirmations: 0,
         block_height: 0,
-        mined_timestamp: timestamp,
+        mined_timestamp: 0,
     }];
 
     let batch_query_response = TxQueryBatchResponsesProto {
@@ -4052,7 +4052,7 @@ async fn test_coinbase_abandoned() {
             block_hash: vec![],
             confirmations: 0,
             block_height: 0,
-            mined_timestamp: timestamp,
+            mined_timestamp: 0,
         },
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(tx2.first_kernel_excess_sig().unwrap().clone())),
@@ -4138,7 +4138,7 @@ async fn test_coinbase_abandoned() {
             block_hash: vec![],
             confirmations: 0,
             block_height: 0,
-            mined_timestamp: timestamp,
+            mined_timestamp: 0,
         },
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(tx2.first_kernel_excess_sig().unwrap().clone())),
@@ -4146,7 +4146,7 @@ async fn test_coinbase_abandoned() {
             block_hash: vec![],
             confirmations: 0,
             block_height: 0,
-            mined_timestamp: timestamp,
+            mined_timestamp: 0,
         },
     ];
 
@@ -4255,7 +4255,7 @@ async fn test_coinbase_abandoned() {
             block_hash: vec![],
             confirmations: 0,
             block_height: 0,
-            mined_timestamp: timestamp,
+            mined_timestamp: 0,
         },
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(tx2.first_kernel_excess_sig().unwrap().clone())),

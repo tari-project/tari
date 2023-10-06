@@ -13,14 +13,14 @@ package tari.dht.store_forward;
 // start_time is provided then only messages after the specified time will be sent, otherwise all applicable messages
 // will be sent.
 message StoredMessagesRequest {
-    google.protobuf.Timestamp since = 1;
+    uint64 since = 1;
     uint32 request_id = 2;
     uint32 limit = 3;
 }
 
 // Storage for a single message envelope, including the date and time when the element was stored
 message StoredMessage {
-    google.protobuf.Timestamp stored_at = 1;
+    uint64 stored_at = 1;
     uint32 version = 2;
     tari.dht.envelope.DhtHeader dht_header = 3;
     bytes body = 4;
