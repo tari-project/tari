@@ -1,4 +1,4 @@
-// Copyright 2023. The Tari Project
+// Copyright 2023, The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,17 +20,50 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod contact;
-pub use contact::Contact;
+use std::ptr;
 
-mod message;
-pub use message::{Direction, Message, MessageMetadata, MessageMetadataType};
+use libc::c_int;
+use tari_chat_client::ChatClient;
+use tari_contacts::contacts_service::types::Message;
 
-mod message_builder;
-pub use message_builder::MessageBuilder;
+use crate::{
+    error::{InterfaceError, LibChatError},
+    ChatClientFFI,
+};
 
-mod message_dispatch;
-pub use message_dispatch::MessageDispatch;
+/// Sends a read confirmation for a given message
+///
+/// ## Arguments
+/// `client` - The chat client
+/// `message` - The message that was read
+/// `error_out` - Pointer to an int which will be modified
+///
+/// ## Returns
+/// `*mut TariAddress` - A ptr to a TariAddress
+///
+/// # Safety
+/// The ```ChatClientFFI``` When done with the client it should be destroyed
+/// The ```Message``` When done with the Message it should be destroyed
+#[no_mangle]
+pub unsafe extern "C" fn send_read_confirmation_for_message(
+    client: *mut ChatClientFFI,
+    message: *mut Message,
+    error_out: *mut c_int,
+) {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
 
-mod confirmation;
-pub use confirmation::Confirmation;
+    if client.is_null() {
+        error = LibChatError::from(InterfaceError::NullError("client".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    }
+
+    if message.is_null() {
+        error = LibChatError::from(InterfaceError::NullError("message".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    }
+
+    (*client)
+        .runtime
+        .block_on((*client).client.send_read_receipt((*message).clone()));
+}

@@ -1,1 +1,1 @@
-ALTER TABLE contacts drop metadata;
+ALTER TABLE messages drop metadata;

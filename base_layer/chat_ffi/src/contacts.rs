@@ -73,7 +73,11 @@ pub unsafe extern "C" fn add_chat_contact(
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
-/// `()` - Does not return a value, equivalent to void in C
+/// `status` - Returns an int representing of the online status
+///            Online = 1,
+///            Offline = 2,
+///            NeverSeen = 3,
+///            Banned = 4,
 ///
 /// # Safety
 /// The ```address``` should be destroyed after use
