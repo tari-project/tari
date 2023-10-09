@@ -58,7 +58,7 @@ use tari_core::{
     blocks::BlockHeader,
     borsh::SerializedSize,
     covenants::Covenant,
-    proto::base_node::{QueryDeletedResponse, UtxoQueryResponse, UtxoQueryResponses},
+    proto::base_node::{QueryDeletedData, QueryDeletedResponse, UtxoQueryResponse, UtxoQueryResponses},
     transactions::{
         fee::Fee,
         key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface},
@@ -1381,7 +1381,6 @@ async fn test_txo_validation() {
     let responses = vec![
         UtxoQueryResponse {
             output: Some(output1_tx_output.clone().try_into().unwrap()),
-            mmr_position: 1,
             mined_height: 1,
             mined_in_block: block1_header.hash().to_vec(),
             output_hash: output1_tx_output.hash().to_vec(),
@@ -1389,7 +1388,6 @@ async fn test_txo_validation() {
         },
         UtxoQueryResponse {
             output: Some(output2_tx_output.clone().try_into().unwrap()),
-            mmr_position: 2,
             mined_height: 1,
             mined_in_block: block1_header.hash().to_vec(),
             output_hash: output2_tx_output.hash().to_vec(),
@@ -1410,10 +1408,20 @@ async fn test_txo_validation() {
     let query_deleted_response = QueryDeletedResponse {
         best_block: block4_header.hash().to_vec(),
         height_of_longest_chain: 4,
-        deleted_positions: vec![],
-        not_deleted_positions: vec![1, 2],
-        heights_deleted_at: vec![],
-        blocks_deleted_in: vec![],
+        data: vec![
+            QueryDeletedData {
+                mined_height: 1,
+                block_mined_in: block1_header.hash().to_vec(),
+                height_deleted_at: 0,
+                block_deleted_in: Vec::new(),
+            },
+            QueryDeletedData {
+                mined_height: 1,
+                block_mined_in: block1_header.hash().to_vec(),
+                height_deleted_at: 0,
+                block_deleted_in: Vec::new(),
+            },
+        ],
     };
 
     oms.base_node_wallet_rpc_mock_state
@@ -1528,7 +1536,6 @@ async fn test_txo_validation() {
     let responses = vec![
         UtxoQueryResponse {
             output: Some(output1_tx_output.clone().try_into().unwrap()),
-            mmr_position: 1,
             mined_height: 1,
             mined_in_block: block1_header.hash().to_vec(),
             output_hash: output1_tx_output.hash().to_vec(),
@@ -1536,7 +1543,6 @@ async fn test_txo_validation() {
         },
         UtxoQueryResponse {
             output: Some(output2_tx_output.clone().try_into().unwrap()),
-            mmr_position: 2,
             mined_height: 1,
             mined_in_block: block1_header.hash().to_vec(),
             output_hash: output2_tx_output.hash().to_vec(),
@@ -1544,7 +1550,6 @@ async fn test_txo_validation() {
         },
         UtxoQueryResponse {
             output: Some(output4_tx_output.clone().try_into().unwrap()),
-            mmr_position: 4,
             mined_height: 5,
             mined_in_block: block5_header.hash().to_vec(),
             output_hash: output4_tx_output.hash().to_vec(),
@@ -1552,7 +1557,6 @@ async fn test_txo_validation() {
         },
         UtxoQueryResponse {
             output: Some(output5_tx_output.clone().try_into().unwrap()),
-            mmr_position: 5,
             mined_height: 5,
             mined_in_block: block5_header.hash().to_vec(),
             output_hash: output5_tx_output.hash().to_vec(),
@@ -1560,7 +1564,6 @@ async fn test_txo_validation() {
         },
         UtxoQueryResponse {
             output: Some(output6_tx_output.clone().try_into().unwrap()),
-            mmr_position: 6,
             mined_height: 5,
             mined_in_block: block5_header.hash().to_vec(),
             output_hash: output6_tx_output.hash().to_vec(),

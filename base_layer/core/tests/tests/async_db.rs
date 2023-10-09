@@ -25,7 +25,7 @@ use std::ops::Deref;
 use tari_common::configuration::Network;
 use tari_core::{
     blocks::Block,
-    chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, PrunedOutput},
+    chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult},
     transactions::{
         key_manager::TransactionKeyManagerInterface,
         tari_amount::T,
@@ -108,9 +108,9 @@ fn fetch_async_utxo() {
             let db2 = AsyncBlockchainDb::new(adb);
 
             let utxo_check = db.fetch_utxo(utxo.hash()).await.unwrap().unwrap();
-            assert_eq!(utxo_check, PrunedOutput::NotPruned { output: utxo });
+            assert_eq!(utxo_check, utxo);
             let stxo_check = db2.fetch_utxo(stxo.hash()).await.unwrap().unwrap();
-            assert_eq!(stxo_check, PrunedOutput::NotPruned { output: stxo });
+            assert_eq!(stxo_check, stxo);
         });
     });
 }

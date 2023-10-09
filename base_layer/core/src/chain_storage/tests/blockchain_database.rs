@@ -80,12 +80,7 @@ async fn add_many_chained_blocks(
     key_manager: &TestKeyManager,
 ) -> (Vec<Arc<Block>>, Vec<WalletOutput>) {
     let last_header = db.fetch_last_header().unwrap();
-    let mut prev_block = db
-        .fetch_block(last_header.height, true)
-        .unwrap()
-        .try_into_block()
-        .map(Arc::new)
-        .unwrap();
+    let mut prev_block = Arc::new(db.fetch_block(last_header.height, true).unwrap().into_block());
     let mut blocks = Vec::with_capacity(size);
     let mut outputs = Vec::with_capacity(size);
     for _ in 1..=size {

@@ -257,6 +257,11 @@ impl DbTransaction {
         self.operations.push(WriteOperation::ClearAllReorgs);
         self
     }
+
+    pub fn insert_tip_smt(&mut self, smt: OutputSmt) -> &mut Self {
+        self.operations.push(WriteOperation::InsertTipSmt { smt });
+        self
+    }
 }
 
 #[derive(Debug)]

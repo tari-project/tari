@@ -98,6 +98,7 @@ use crate::{
         InternalConsistencyValidator,
         ValidationError,
     },
+    OutputSmt,
     PrunedInputMmr,
     PrunedKernelMmr,
     ValidatorNodeBMT,
@@ -237,8 +238,12 @@ where B: BlockchainBackend
                 "Blockchain db is empty. Adding genesis block {}.",
                 genesis_block.block().body.to_counts_string()
             );
-            blockchain_db.insert_block(genesis_block.clone())?;
             let mut txn = DbTransaction::new();
+            let smt = OutputSmt::new();
+            txn.insert_tip_smt(smt);
+            blockchain_db.write(txn)?;
+            txn = DbTransaction::new();
+            blockchain_db.insert_block(genesis_block.clone())?;
             let body = &genesis_block.block().body;
             let utxo_sum = body.outputs().iter().map(|k| &k.commitment).sum::<Commitment>();
             let kernel_sum = body.kernels().iter().map(|k| &k.excess).sum::<Commitment>();

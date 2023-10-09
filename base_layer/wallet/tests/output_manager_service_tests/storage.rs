@@ -180,11 +180,9 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     });
 
     // Set first pending tx to mined but unconfirmed
-    let mut mmr_pos = 0;
     for o in &pending_txs[0].outputs_to_be_received {
-        db.set_received_output_mined_height_and_status(o.hash, 2, FixedHash::zero(), mmr_pos, false, 0)
+        db.set_received_output_mined_height_and_status(o.hash, 2, FixedHash::zero(), false, 0)
             .unwrap();
-        mmr_pos += 1;
     }
     for o in &pending_txs[0].outputs_to_be_spent {
         db.mark_output_as_spent(o.hash, 3, FixedHash::zero(), false).unwrap();
@@ -202,9 +200,8 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
 
     // Set second pending tx to mined and confirmed
     for o in &pending_txs[1].outputs_to_be_received {
-        db.set_received_output_mined_height_and_status(o.hash, 4, FixedHash::zero(), mmr_pos, true, 0)
+        db.set_received_output_mined_height_and_status(o.hash, 4, FixedHash::zero(), true, 0)
             .unwrap();
-        mmr_pos += 1;
     }
     for o in &pending_txs[1].outputs_to_be_spent {
         db.mark_output_as_spent(o.hash, 5, FixedHash::zero(), true).unwrap();

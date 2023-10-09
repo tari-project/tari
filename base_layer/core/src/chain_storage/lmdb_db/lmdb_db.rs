@@ -1266,7 +1266,8 @@ impl LMDBDatabase {
 
     fn insert_tip_smt(&self, txn: &WriteTransaction<'_>, smt: &OutputSmt) -> Result<(), ChainStorageError> {
         let k = MetadataKey::TipSmt;
-        lmdb_insert(txn, &self.block_accumulated_data_db, &k.as_u32(), smt, "TipSmt")
+
+        lmdb_insert(txn, &self.tip_utxo_smt, &k.as_u32(), smt, "TipSmt")
     }
 
     fn update_block_accumulated_data(

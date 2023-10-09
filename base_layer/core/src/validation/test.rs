@@ -282,10 +282,9 @@ async fn chain_balance_validation() {
     txn.insert_chain_header(header1.clone());
 
     let mut mmr_position = 4;
-    let mut mmr_leaf_index = 4;
 
     txn.insert_kernel(kernel.clone(), *header1.hash(), mmr_position);
-    txn.insert_utxo(coinbase.clone(), *header1.hash(), 1, mmr_leaf_index, 0);
+    txn.insert_utxo(coinbase.clone(), *header1.hash(), 1, 0);
 
     db.commit(txn).unwrap();
     utxo_sum = &coinbase.commitment + &utxo_sum;
@@ -343,8 +342,7 @@ async fn chain_balance_validation() {
     txn.insert_chain_header(header2.clone());
     utxo_sum = &coinbase.commitment + &utxo_sum;
     kernel_sum = &kernel.excess + &kernel_sum;
-    mmr_leaf_index += 1;
-    txn.insert_utxo(coinbase, *header2.hash(), 2, mmr_leaf_index, 0);
+    txn.insert_utxo(coinbase, *header2.hash(), 2, 0);
     mmr_position += 1;
     txn.insert_kernel(kernel, *header2.hash(), mmr_position);
 
@@ -494,16 +492,14 @@ async fn chain_balance_validation_burned() {
     txn.insert_chain_header(header1.clone());
 
     let mut mmr_position = 4;
-    let mut mmr_leaf_index = 4;
 
     txn.insert_kernel(kernel.clone(), *header1.hash(), mmr_position);
-    txn.insert_utxo(coinbase.clone(), *header1.hash(), 1, mmr_leaf_index, 0);
+    txn.insert_utxo(coinbase.clone(), *header1.hash(), 1, 0);
 
     mmr_position = 5;
-    mmr_leaf_index = 5;
 
     txn.insert_kernel(kernel2.clone(), *header1.hash(), mmr_position);
-    txn.insert_pruned_utxo(burned.hash(), *header1.hash(), header1.height(), mmr_leaf_index, 0);
+    // txn.insert_pruned_utxo(burned.hash(), *header1.hash(), header1.height(),  0);
 
     db.commit(txn).unwrap();
     utxo_sum = &coinbase.commitment + &utxo_sum;

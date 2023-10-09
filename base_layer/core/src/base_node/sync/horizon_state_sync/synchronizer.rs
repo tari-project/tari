@@ -596,13 +596,13 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             end,
             timer.elapsed()
         );
-        let root = output_smt.hash().as_slice();
-        if root != to_header.output_mr.as_slice() {
+        let root = FixedHash::try_from(output_smt.hash().as_slice())?;
+        if root != to_header.output_mr {
             return Err(HorizonSyncError::InvalidMrRoot {
                 mr_tree: "UTXO SMT".to_string(),
                 at_height: to_header.height,
                 expected_hex: to_header.output_mr.to_hex(),
-                actual_hex: output_smt.hash().to_string(),
+                actual_hex: root.to_hex(),
             });
         }
 

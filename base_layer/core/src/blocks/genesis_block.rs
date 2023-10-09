@@ -365,7 +365,8 @@ fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &[
 
 #[cfg(test)]
 mod test {
-    use croaring::Bitmap;
+    use std::convert::TryFrom;
+
     use tari_common_types::{epoch::VnEpoch, types::Commitment};
     use tari_utilities::ByteArray;
 
@@ -380,7 +381,6 @@ mod test {
         },
         validation::{ChainBalanceValidator, FinalHorizonStateValidation},
         KernelMmr,
-        MutableOutputMmr,
     };
 
     #[test]
@@ -451,12 +451,14 @@ mod test {
         for k in block.block().body.kernels() {
             kernel_mmr.push(k.hash().to_vec()).unwrap();
         }
+        let mut output_smt = OutputSmt::new();
 
-        let mut output_mmr = MutableOutputMmr::new(Vec::new(), Bitmap::create()).unwrap();
         let mut vn_nodes = Vec::new();
         for o in block.block().body.outputs() {
+            let smt_key = NodeKey::try_from(o.commitment.as_bytes()).unwrap();
+            let smt_node = ValueHash::try_from(o.smt_hash(block.header().height).as_slice()).unwrap();
+            output_smt.insert(smt_key, smt_node).unwrap();
             o.verify_metadata_signature().unwrap();
-            output_mmr.push(o.hash().to_vec()).unwrap();
             if matches!(o.features.output_type, OutputType::ValidatorNodeRegistration) {
                 let reg = o
                     .features
@@ -472,7 +474,10 @@ mod test {
         }
 
         assert_eq!(kernel_mmr.get_merkle_root().unwrap(), block.header().kernel_mr,);
-        assert_eq!(output_mmr.get_merkle_root().unwrap(), block.header().output_mr,);
+        assert_eq!(
+            FixedHash::try_from(output_smt.hash().as_slice()).unwrap(),
+            block.header().output_mr,
+        );
         assert_eq!(calculate_validator_node_mr(&vn_nodes), block.header().validator_node_mr,);
 
         // Check that the faucet UTXOs balance (the faucet_value consensus constant is set correctly and faucet kernel
