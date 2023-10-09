@@ -394,7 +394,14 @@ pub unsafe extern "C" fn read_chat_message_id(message: *mut Message, error_out: 
     }
 
     let data_bytes = (*message).message_id.clone();
-    let len = u32::try_from(data_bytes.len()).expect("Can't cast from usize");
+    let len = match c_uint::try_from(data_bytes.len()) {
+        Ok(num) => num,
+        Err(_e) => {
+            error = LibChatError::from(InterfaceError::PositionInvalidError).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    };
     chat_byte_vector_create(data_bytes.as_ptr(), len as c_uint, error_out)
 }
 
