@@ -181,7 +181,7 @@ pub fn create_lmdb_database<P: AsRef<Path>>(
         .add_database(LMDB_DB_VALIDATOR_NODES, flags)
         .add_database(LMDB_DB_VALIDATOR_NODES_MAPPING, flags)
         .add_database(LMDB_DB_TEMPLATE_REGISTRATIONS, flags | db::DUPSORT)
-        .add_database(LMDB_DB_TIP_UTXO_SMT, flags | db::DUPSORT)
+        .add_database(LMDB_DB_TIP_UTXO_SMT, flags)
         .build()
         .map_err(|err| ChainStorageError::CriticalError(format!("Could not create LMDB store:{}", err)))?;
     debug!(target: LOG_TARGET, "LMDB database creation successful");
@@ -1266,8 +1266,7 @@ impl LMDBDatabase {
 
     fn insert_tip_smt(&self, txn: &WriteTransaction<'_>, smt: &OutputSmt) -> Result<(), ChainStorageError> {
         let k = MetadataKey::TipSmt;
-
-        lmdb_insert(txn, &self.tip_utxo_smt, &k.as_u32(), smt, "TipSmt")
+        lmdb_replace(txn, &self.tip_utxo_smt, &k.as_u32(), smt)
     }
 
     fn update_block_accumulated_data(

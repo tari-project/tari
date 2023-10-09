@@ -32,7 +32,6 @@ pub enum DeleteResult {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-// #[serde(bound(deserialize = "Node<H> : Deserialize<'de>"))]
 #[serde(bound(deserialize = "H:"))]
 #[serde(bound(serialize = "H:"))]
 pub struct SparseMerkleTree<H> {

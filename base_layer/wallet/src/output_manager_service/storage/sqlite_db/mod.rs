@@ -481,7 +481,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             .set((
                 outputs::mined_height.eq::<Option<i64>>(None),
                 outputs::mined_in_block.eq::<Option<Vec<u8>>>(None),
-                outputs::mined_mmr_position.eq::<Option<i64>>(None),
                 outputs::status.eq(OutputStatus::Invalid as i32),
                 outputs::mined_timestamp.eq::<Option<NaiveDateTime>>(None),
                 outputs::marked_deleted_at_height.eq::<Option<i64>>(None),
@@ -510,7 +509,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             .set((
                 outputs::mined_height.eq::<Option<i64>>(None),
                 outputs::mined_in_block.eq::<Option<Vec<u8>>>(None),
-                outputs::mined_mmr_position.eq::<Option<i64>>(None),
                 outputs::status.eq(OutputStatus::Invalid as i32),
                 outputs::mined_timestamp.eq::<Option<NaiveDateTime>>(None),
                 outputs::marked_deleted_at_height.eq::<Option<i64>>(None),
@@ -835,9 +833,8 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 if output.received_in_tx_id == Some(tx_id.as_i64_wrapped()) {
                     info!(
                         target: LOG_TARGET,
-                        "Cancelling pending inbound output with Commitment: {} - MMR Position: {:?} from TxId: {}",
+                        "Cancelling pending inbound output with Commitment: {} - from TxId: {}",
                         output.commitment.to_hex(),
-                        output.mined_mmr_position,
                         tx_id
                     );
                     output.update(
@@ -853,9 +850,8 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 } else if output.spent_in_tx_id == Some(tx_id.as_i64_wrapped()) {
                     info!(
                         target: LOG_TARGET,
-                        "Cancelling pending outbound output with Commitment: {} - MMR Position: {:?} from TxId: {}",
+                        "Cancelling pending outbound output with Commitment: {} - from TxId: {}",
                         output.commitment.to_hex(),
-                        output.mined_mmr_position,
                         tx_id
                     );
                     output.update(
