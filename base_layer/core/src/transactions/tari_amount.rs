@@ -113,30 +113,40 @@ impl MicroMinotari {
         Self(0)
     }
 
-    pub fn checked_add(self, v: MicroMinotari) -> Option<MicroMinotari> {
-        self.as_u64().checked_add(v.as_u64()).map(Into::into)
+    pub fn checked_add<T>(&self, v: T) -> Option<MicroMinotari>
+    where T: AsRef<MicroMinotari> {
+        self.as_u64().checked_add(v.as_ref().as_u64()).map(Into::into)
     }
 
-    pub fn checked_sub(self, v: MicroMinotari) -> Option<MicroMinotari> {
-        if self >= v {
-            return Some(self - v);
+    pub fn checked_sub<T>(&self, v: T) -> Option<MicroMinotari>
+    where T: AsRef<MicroMinotari> {
+        if self >= v.as_ref() {
+            return Some(self - v.as_ref());
         }
         None
     }
 
-    pub fn checked_mul(self, v: MicroMinotari) -> Option<MicroMinotari> {
-        self.as_u64().checked_mul(v.as_u64()).map(Into::into)
+    pub fn checked_mul<T>(&self, v: T) -> Option<MicroMinotari>
+    where T: AsRef<MicroMinotari> {
+        self.as_u64().checked_mul(v.as_ref().as_u64()).map(Into::into)
     }
 
-    pub fn checked_div(self, v: MicroMinotari) -> Option<MicroMinotari> {
-        self.as_u64().checked_div(v.as_u64()).map(Into::into)
+    pub fn checked_div<T>(&self, v: T) -> Option<MicroMinotari>
+    where T: AsRef<MicroMinotari> {
+        self.as_u64().checked_div(v.as_ref().as_u64()).map(Into::into)
     }
 
-    pub fn saturating_sub(self, v: MicroMinotari) -> MicroMinotari {
-        if self >= v {
-            return self - v;
+    pub fn saturating_sub<T>(&self, v: T) -> MicroMinotari
+    where T: AsRef<MicroMinotari> {
+        if self >= v.as_ref() {
+            return self - v.as_ref();
         }
         Self(0)
+    }
+
+    pub fn saturating_add<T>(&self, v: T) -> MicroMinotari
+    where T: AsRef<MicroMinotari> {
+        self.0.saturating_add(v.as_ref().0).into()
     }
 
     #[inline]
@@ -146,6 +156,12 @@ impl MicroMinotari {
 
     pub fn to_currency_string(&self, sep: char) -> String {
         format!("{} µT", format_currency(&self.as_u64().to_string(), sep))
+    }
+}
+
+impl AsRef<MicroMinotari> for MicroMinotari {
+    fn as_ref(&self) -> &MicroMinotari {
+        self
     }
 }
 

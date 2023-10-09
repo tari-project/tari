@@ -197,7 +197,8 @@ impl BlockBuilder {
     /// This function adds the provided transaction kernels to the block WITHOUT updating kernel_mmr_size in the header
     pub fn add_kernels(mut self, mut kernels: Vec<TransactionKernel>) -> Self {
         for kernel in &kernels {
-            self.total_fee += kernel.fee;
+            // Saturating add is used here to prevent overflow; invalid fees will be caught by block validation
+            self.total_fee = self.total_fee.saturating_add(kernel.fee);
         }
         self.kernels.append(&mut kernels);
         self

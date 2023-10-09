@@ -65,7 +65,7 @@ use crate::{
             WalletOutput,
             WalletOutputBuilder,
         },
-        transaction_protocol::TransactionMetadata,
+        transaction_protocol::{transaction_initializer::SenderTransactionInitializer, TransactionMetadata},
         weight::TransactionWeight,
         SenderTransactionProtocol,
     },
@@ -651,6 +651,22 @@ pub async fn create_stx_protocol(
     schema: TransactionSchema,
     key_manager: &TestKeyManager,
 ) -> (SenderTransactionProtocol, Vec<WalletOutput>) {
+    let mut outputs = Vec::with_capacity(schema.to.len());
+    let stx_builder = create_stx_protocol_internal(schema, key_manager, &mut outputs).await;
+
+    let stx_protocol = stx_builder.build().await.unwrap();
+    let change_output = stx_protocol.get_change_output().unwrap().unwrap();
+
+    outputs.push(change_output);
+    (stx_protocol, outputs)
+}
+
+#[allow(clippy::too_many_lines)]
+pub async fn create_stx_protocol_internal(
+    schema: TransactionSchema,
+    key_manager: &TestKeyManager,
+    outputs: &mut Vec<WalletOutput>,
+) -> SenderTransactionInitializer<TestKeyManager> {
     let constants = ConsensusManager::builder(Network::LocalNet)
         .build()
         .unwrap()
@@ -676,7 +692,6 @@ pub async fn create_stx_protocol(
     for tx_input in &schema.from {
         stx_builder.with_input(tx_input.clone()).await.unwrap();
     }
-    let mut outputs = Vec::with_capacity(schema.to.len());
     for val in schema.to {
         let (spending_key, _) = key_manager
             .get_next_key(TransactionKeyManagerBranch::CommitmentMask.get_branch_key())
@@ -741,11 +756,7 @@ pub async fn create_stx_protocol(
         stx_builder.with_output(utxo, sender_offset_key_id).await.unwrap();
     }
 
-    let stx_protocol = stx_builder.build().await.unwrap();
-    let change_output = stx_protocol.get_change_output().unwrap().unwrap();
-
-    outputs.push(change_output);
-    (stx_protocol, outputs)
+    stx_builder
 }
 
 pub async fn create_coinbase_kernel(spending_key_id: &TariKeyId, key_manager: &TestKeyManager) -> TransactionKernel {
