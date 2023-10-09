@@ -64,7 +64,7 @@ pub struct HeaderSynchronizer<'a, B> {
     connectivity: ConnectivityRequester,
     sync_peers: &'a mut Vec<SyncPeer>,
     hooks: Hooks,
-    local_metadata: &'a ChainMetadata,
+    local_cached_metadata: &'a ChainMetadata,
     peer_ban_manager: PeerBanManager,
 }
 
@@ -86,7 +86,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             connectivity,
             sync_peers,
             hooks: Default::default(),
-            local_metadata,
+            local_cached_metadata: local_metadata,
             peer_ban_manager,
         }
     }
@@ -248,41 +248,41 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         );
 
         // Fetch the local tip header at the beginning of the sync process
-        let local_tip_header = self.db.fetch_last_chain_header().await?;
-        let local_blockchain_tip = self
+        let best_block_metadata = self.db.get_chain_metadata().await?;
+        let best_header = self.db.fetch_last_chain_header().await?;
+        let best_block = self
             .db
-            .fetch_chain_header(self.local_metadata.height_of_longest_chain())
+            .fetch_chain_header(best_block_metadata.height_of_longest_chain())
             .await?;
-        let local_total_accumulated_difficulty = local_blockchain_tip.accumulated_data().total_accumulated_difficulty;
-        let header_tip_height = local_tip_header.height();
-        let local_blockchain_tip_height = local_blockchain_tip.height();
-        let sync_status = self
-            .determine_sync_status(sync_peer, local_tip_header, local_blockchain_tip, &mut client)
+        let best_header_height = best_header.height();
+        let best_block_height = best_block.height();
+        let header_sync_status = self
+            .determine_sync_status(sync_peer, best_header, best_block, &mut client)
             .await?;
-        match sync_status {
-            HeaderSyncStatus::InSync | HeaderSyncStatus::WereAhead => {
-                let metadata = self.db.get_chain_metadata().await?;
-                if metadata.height_of_longest_chain() < header_tip_height {
+        match header_sync_status {
+            HeaderSyncStatus::SameHeight | HeaderSyncStatus::WereAhead => {
+                // This test looks at an edge case where ????
+                if best_block_height < best_header_height {
                     debug!(
                         target: LOG_TARGET,
                         "Headers are in sync at height {} but tip is {}. Proceeding to archival/pruned block sync",
-                        header_tip_height,
-                        metadata.height_of_longest_chain()
+                        best_header_height,
+                        best_block_height
                     );
                     Ok(())
                 } else {
                     // Check if the metadata that we had when we decided to enter header sync is behind the peer's
                     // claimed one. If so, our chain has updated in the meantime and the sync peer
                     // is behaving.
-                    if self.local_metadata.accumulated_difficulty() <=
+                    if self.local_cached_metadata.accumulated_difficulty() <=
                         sync_peer.claimed_chain_metadata().accumulated_difficulty()
                     {
                         debug!(
                             target: LOG_TARGET,
                             "Local blockchain received a better block through propagation at height {} (was: {}). \
                              Proceeding to archival/pruned block sync",
-                            metadata.height_of_longest_chain(),
-                            self.local_metadata.height_of_longest_chain()
+                            best_block_height,
+                            self.local_cached_metadata.height_of_longest_chain()
                         );
                         return Ok(());
                     }
@@ -290,21 +290,21 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                         target: LOG_TARGET,
                         "Headers and block state are already in-sync (Header Tip: {}, Block tip: {}, Peer's height: \
                          {})",
-                        local_blockchain_tip_height,
-                        metadata.height_of_longest_chain(),
+                        best_header_height,
+                        best_block_height,
                         sync_peer.claimed_chain_metadata().height_of_longest_chain(),
                     );
                     Err(BlockHeaderSyncError::PeerSentInaccurateChainMetadata {
                         claimed: sync_peer.claimed_chain_metadata().accumulated_difficulty(),
                         actual: None,
-                        local: local_total_accumulated_difficulty,
+                        local: self.local_cached_metadata.accumulated_difficulty(),
                     })
                 }
             },
             HeaderSyncStatus::Lagging(split_info) => {
                 self.hooks.call_on_progress_header_hooks(
                     split_info
-                        .local_tip_header
+                        .best_block
                         .height()
                         .checked_sub(split_info.reorg_steps_back)
                         .unwrap_or_default(),
@@ -400,8 +400,8 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
     async fn determine_sync_status(
         &mut self,
         sync_peer: &SyncPeer,
-        local_tip_header: ChainHeader,
-        local_blockchain_tip_header: ChainHeader,
+        best_header: ChainHeader,
+        best_block: ChainHeader,
         client: &mut rpc::BaseNodeSyncRpcClient,
     ) -> Result<HeaderSyncStatus, BlockHeaderSyncError> {
         let (resp, block_hashes, steps_back) = self
@@ -437,7 +437,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             }
 
             debug!(target: LOG_TARGET, "Already in sync with peer `{}`.", sync_peer);
-            return Ok(HeaderSyncStatus::InSync);
+            return Ok(HeaderSyncStatus::SameHeight);
         }
 
         let headers = headers
@@ -470,7 +470,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         );
 
         // Basic sanity check that the peer sent tip height greater than the split.
-        let split_height = local_tip_header.height().saturating_sub(steps_back);
+        let split_height = best_header.height().saturating_sub(steps_back);
         if remote_tip_height < split_height {
             return Err(BlockHeaderSyncError::InvalidProtocolResponse(format!(
                 "Peer {} sent invalid remote tip height",
@@ -479,7 +479,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         }
 
         let chain_split_info = ChainSplitInfo {
-            local_tip_header: local_blockchain_tip_header,
+            best_block,
             remote_tip_height,
             reorg_steps_back: steps_back,
             chain_split_hash: *chain_split_hash,
@@ -528,7 +528,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
 
         // If we already have a stronger chain at this point, switch over to it.
         // just in case we happen to be exactly NUM_INITIAL_HEADERS_TO_REQUEST headers behind.
-        let has_better_pow = self.pending_chain_has_higher_pow(&split_info.local_tip_header);
+        let has_better_pow = self.pending_chain_has_higher_pow(&split_info.best_block);
 
         if has_better_pow {
             debug!(
@@ -549,10 +549,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 return Err(BlockHeaderSyncError::PeerSentInaccurateChainMetadata {
                     claimed: sync_peer.claimed_chain_metadata().accumulated_difficulty(),
                     actual: Some(total_accumulated_difficulty),
-                    local: split_info
-                        .local_tip_header
-                        .accumulated_data()
-                        .total_accumulated_difficulty,
+                    local: split_info.best_block.accumulated_data().total_accumulated_difficulty,
                 });
             }
             // The pow is higher, we swapped to the higher chain, we have all the better chain headers, we can move on
@@ -633,7 +630,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 // The remote chain has not (yet) been accepted.
                 // We check the tip difficulties, switching over to the new chain if a higher accumulated difficulty is
                 // achieved.
-                if self.pending_chain_has_higher_pow(&split_info.local_tip_header) {
+                if self.pending_chain_has_higher_pow(&split_info.best_block) {
                     self.switch_to_pending_chain(&split_info).await?;
                     has_switched_to_new_chain = true;
                 }
@@ -673,10 +670,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                         .header_validator
                         .current_valid_chain_tip_header()
                         .map(|h| h.accumulated_data().total_accumulated_difficulty),
-                    local: split_info
-                        .local_tip_header
-                        .accumulated_data()
-                        .total_accumulated_difficulty,
+                    local: split_info.best_block.accumulated_data().total_accumulated_difficulty,
                 });
             } else {
                 warn!(
@@ -685,7 +679,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                      swapped. Ignoring",
                     sync_peer.claimed_chain_metadata().accumulated_difficulty(),
                     split_info
-                        .local_tip_header
+                        .best_block
                         .accumulated_data()
                         .total_accumulated_difficulty
                 );
@@ -705,10 +699,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             return Err(BlockHeaderSyncError::PeerSentInaccurateChainMetadata {
                 claimed: claimed_total_accumulated_diff,
                 actual: Some(last_total_accumulated_difficulty),
-                local: split_info
-                    .local_tip_header
-                    .accumulated_data()
-                    .total_accumulated_difficulty,
+                local: split_info.best_block.accumulated_data().total_accumulated_difficulty,
             });
         }
 
@@ -790,7 +781,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
 }
 
 struct ChainSplitInfo {
-    local_tip_header: ChainHeader,
+    best_block: ChainHeader,
     remote_tip_height: u64,
     reorg_steps_back: u64,
     chain_split_hash: HashOutput,
@@ -798,7 +789,7 @@ struct ChainSplitInfo {
 
 enum HeaderSyncStatus {
     /// Local and remote node are in sync
-    InSync,
+    SameHeight,
     /// Local node is ahead of the remote node
     WereAhead,
     /// Local node is lagging behind remote node
