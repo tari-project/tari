@@ -1584,10 +1584,48 @@ async fn test_txo_validation() {
     let mut query_deleted_response = QueryDeletedResponse {
         best_block: block5_header.hash().to_vec(),
         height_of_longest_chain: 5,
-        deleted_positions: vec![1],
-        not_deleted_positions: vec![2, 4, 5, 6],
-        heights_deleted_at: vec![5],
-        blocks_deleted_in: vec![block5_header.hash().to_vec()],
+        data: vec![
+            QueryDeletedData {
+                mined_height: 1,
+                block_mined_in: block1_header.hash().to_vec(),
+                height_deleted_at: 5,
+                block_deleted_in: block5_header.hash().to_vec(),
+            },
+            QueryDeletedData {
+                mined_height: 1,
+                block_mined_in: block1_header.hash().to_vec(),
+                height_deleted_at: 0,
+                block_deleted_in: Vec::new(),
+            },
+            QueryDeletedData {
+                mined_height: 0,
+                block_mined_in: Vec::new(),
+                height_deleted_at: 0,
+                block_deleted_in: Vec::new(),
+            },
+            QueryDeletedData {
+                mined_height: 5,
+                block_mined_in: block5_header.hash().to_vec(),
+                height_deleted_at: 0,
+                block_deleted_in: Vec::new(),
+            },
+            QueryDeletedData {
+                mined_height: 5,
+                block_mined_in: block5_header.hash().to_vec(),
+                height_deleted_at: 0,
+                block_deleted_in: Vec::new(),
+            },
+            QueryDeletedData {
+                mined_height: 5,
+                block_mined_in: block5_header.hash().to_vec(),
+                height_deleted_at: 0,
+                block_deleted_in: Vec::new(),
+            },
+        ],
+        // deleted_positions: vec![1],
+        // not_deleted_positions: vec![2, 4, 5, 6],
+        // heights_deleted_at: vec![5],
+        // blocks_deleted_in: vec![block5_header.hash().to_vec()],
     };
 
     oms.base_node_wallet_rpc_mock_state
@@ -1707,7 +1745,6 @@ async fn test_txo_validation() {
     let responses = vec![
         UtxoQueryResponse {
             output: Some(output1_tx_output.clone().try_into().unwrap()),
-            mmr_position: 1,
             mined_height: 1,
             mined_in_block: block1_header.hash().to_vec(),
             output_hash: output1_tx_output.hash().to_vec(),
@@ -1715,7 +1752,6 @@ async fn test_txo_validation() {
         },
         UtxoQueryResponse {
             output: Some(output2_tx_output.clone().try_into().unwrap()),
-            mmr_position: 2,
             mined_height: 1,
             mined_in_block: block1_header.hash().to_vec(),
             output_hash: output2_tx_output.hash().to_vec(),
@@ -1723,7 +1759,6 @@ async fn test_txo_validation() {
         },
         UtxoQueryResponse {
             output: Some(output4_tx_output.clone().try_into().unwrap()),
-            mmr_position: 4,
             mined_height: 5,
             mined_in_block: block5_header_reorg.hash().to_vec(),
             output_hash: output4_tx_output.hash().to_vec(),
@@ -1744,10 +1779,42 @@ async fn test_txo_validation() {
     let mut query_deleted_response = QueryDeletedResponse {
         best_block: block5_header_reorg.hash().to_vec(),
         height_of_longest_chain: 5,
-        deleted_positions: vec![1],
-        not_deleted_positions: vec![2, 4, 5, 6],
-        heights_deleted_at: vec![5],
-        blocks_deleted_in: vec![block5_header_reorg.hash().to_vec()],
+        data: vec![
+            QueryDeletedData {
+                mined_height: 1,
+                block_mined_in: block1_header.hash().to_vec(),
+                height_deleted_at: 5,
+                block_deleted_in: block5_header.hash().to_vec(),
+            },
+            QueryDeletedData {
+                mined_height: 1,
+                block_mined_in: block1_header.hash().to_vec(),
+                height_deleted_at: 0,
+                block_deleted_in: Vec::new(),
+            },
+            QueryDeletedData {
+                mined_height: 5,
+                block_mined_in: block5_header.hash().to_vec(),
+                height_deleted_at: 0,
+                block_deleted_in: Vec::new(),
+            },
+            QueryDeletedData {
+                mined_height: 5,
+                block_mined_in: block5_header.hash().to_vec(),
+                height_deleted_at: 0,
+                block_deleted_in: Vec::new(),
+            },
+            QueryDeletedData {
+                mined_height: 5,
+                block_mined_in: block5_header.hash().to_vec(),
+                height_deleted_at: 0,
+                block_deleted_in: Vec::new(),
+            },
+        ],
+        // deleted_positions: vec![1],
+        // not_deleted_positions: vec![2, 4, 5, 6],
+        // heights_deleted_at: vec![5],
+        // blocks_deleted_in: vec![block5_header_reorg.hash().to_vec()],
     };
 
     oms.base_node_wallet_rpc_mock_state
@@ -1938,7 +2005,6 @@ async fn test_txo_revalidation() {
     let responses = vec![
         UtxoQueryResponse {
             output: Some(output1_tx_output.clone().try_into().unwrap()),
-            mmr_position: 1,
             mined_height: 1,
             mined_in_block: block1_header.hash().to_vec(),
             output_hash: output1_tx_output.hash().to_vec(),
@@ -1946,7 +2012,6 @@ async fn test_txo_revalidation() {
         },
         UtxoQueryResponse {
             output: Some(output2_tx_output.clone().try_into().unwrap()),
-            mmr_position: 2,
             mined_height: 1,
             mined_in_block: block1_header.hash().to_vec(),
             output_hash: output2_tx_output.hash().to_vec(),
@@ -1967,10 +2032,24 @@ async fn test_txo_revalidation() {
     let query_deleted_response = QueryDeletedResponse {
         best_block: block4_header.hash().to_vec(),
         height_of_longest_chain: 4,
-        deleted_positions: vec![],
-        not_deleted_positions: vec![1, 2],
-        heights_deleted_at: vec![],
-        blocks_deleted_in: vec![],
+        data: vec![
+            QueryDeletedData {
+                mined_height: 1,
+                block_mined_in: block1_header.hash().to_vec(),
+                height_deleted_at: 0,
+                block_deleted_in: Vec::new(),
+            },
+            QueryDeletedData {
+                mined_height: 1,
+                block_mined_in: block1_header.hash().to_vec(),
+                height_deleted_at: 0,
+                block_deleted_in: Vec::new(),
+            },
+        ],
+        // deleted_positions: vec![],
+        // not_deleted_positions: vec![1, 2],
+        // heights_deleted_at: vec![],
+        // blocks_deleted_in: vec![],
     };
 
     oms.base_node_wallet_rpc_mock_state
@@ -1994,10 +2073,24 @@ async fn test_txo_revalidation() {
     let query_deleted_response = QueryDeletedResponse {
         best_block: block4_header.hash().to_vec(),
         height_of_longest_chain: 4,
-        deleted_positions: vec![1],
-        not_deleted_positions: vec![2],
-        heights_deleted_at: vec![4],
-        blocks_deleted_in: vec![block4_header.hash().to_vec()],
+        data: vec![
+            QueryDeletedData {
+                mined_height: 1,
+                block_mined_in: block1_header.hash().to_vec(),
+                height_deleted_at: 4,
+                block_deleted_in: block4_header.hash().to_vec(),
+            },
+            QueryDeletedData {
+                mined_height: 1,
+                block_mined_in: block1_header.hash().to_vec(),
+                height_deleted_at: 0,
+                block_deleted_in: Vec::new(),
+            },
+        ],
+        // deleted_positions: vec![1],
+        // not_deleted_positions: vec![2],
+        // heights_deleted_at: vec![4],
+        // blocks_deleted_in: vec![block4_header.hash().to_vec()],
     };
 
     oms.base_node_wallet_rpc_mock_state
@@ -2021,10 +2114,25 @@ async fn test_txo_revalidation() {
     let query_deleted_response = QueryDeletedResponse {
         best_block: block4_header.hash().to_vec(),
         height_of_longest_chain: 4,
-        deleted_positions: vec![1, 2],
-        not_deleted_positions: vec![],
-        heights_deleted_at: vec![4, 4],
-        blocks_deleted_in: vec![block4_header.hash().to_vec(), block4_header.hash().to_vec()],
+        data: vec![
+            QueryDeletedData {
+                mined_height: 1,
+                block_mined_in: block1_header.hash().to_vec(),
+                height_deleted_at: 4,
+                block_deleted_in: block4_header.hash().to_vec(),
+            },
+            QueryDeletedData {
+                mined_height: 1,
+                block_mined_in: block1_header.hash().to_vec(),
+                height_deleted_at: 4,
+                block_deleted_in: block4_header.hash().to_vec(),
+            },
+
+        ],
+        // deleted_positions: vec![1, 2],
+        // not_deleted_positions: vec![],
+        // heights_deleted_at: vec![4, 4],
+        // blocks_deleted_in: vec![block4_header.hash().to_vec(), block4_header.hash().to_vec()],
     };
 
     oms.base_node_wallet_rpc_mock_state

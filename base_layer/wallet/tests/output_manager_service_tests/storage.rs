@@ -421,7 +421,7 @@ pub async fn test_no_duplicate_outputs() {
     // add it to the database
     let result = db.add_unspent_output(kmo.clone());
     assert!(result.is_ok());
-    let result = db.set_received_output_mined_height_and_status(kmo.hash, 1, FixedHash::zero(), 1, true, 0);
+    let result = db.set_received_output_mined_height_and_status(kmo.hash, 1, FixedHash::zero(), true, 0);
     assert!(result.is_ok());
     let outputs = db.fetch_mined_unspent_outputs().unwrap();
     assert_eq!(outputs.len(), 1);
@@ -462,7 +462,7 @@ pub async fn test_mark_as_unmined() {
 
     // add it to the database
     db.add_unspent_output(kmo.clone()).unwrap();
-    db.set_received_output_mined_height_and_status(kmo.hash, 1, FixedHash::zero(), 1, true, 0)
+    db.set_received_output_mined_height_and_status(kmo.hash, 1, FixedHash::zero(), true, 0)
         .unwrap();
     let o = db.get_last_mined_output().unwrap().unwrap();
     assert_eq!(o.hash, kmo.hash);
