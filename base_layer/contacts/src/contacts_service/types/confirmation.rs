@@ -20,17 +20,28 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod contact;
-pub use contact::Contact;
+use crate::contacts_service::proto;
 
-mod message;
-pub use message::{Direction, Message, MessageMetadata, MessageMetadataType};
+#[derive(Clone, Debug, Default)]
+pub struct Confirmation {
+    pub message_id: Vec<u8>,
+    pub timestamp: u64,
+}
 
-mod message_builder;
-pub use message_builder::MessageBuilder;
+impl From<proto::Confirmation> for Confirmation {
+    fn from(confirmation: proto::Confirmation) -> Self {
+        Self {
+            message_id: confirmation.message_id,
+            timestamp: confirmation.timestamp,
+        }
+    }
+}
 
-mod message_dispatch;
-pub use message_dispatch::MessageDispatch;
-
-mod confirmation;
-pub use confirmation::Confirmation;
+impl From<Confirmation> for proto::Confirmation {
+    fn from(confirmation: Confirmation) -> Self {
+        Self {
+            message_id: confirmation.message_id,
+            timestamp: confirmation.timestamp,
+        }
+    }
+}

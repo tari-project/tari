@@ -91,6 +91,8 @@ pub enum HorizonSyncError {
     FixedHashSizeError(#[from] FixedHashSizeError),
     #[error("No more sync peers available: {0}")]
     NoMoreSyncPeers(String),
+    #[error("Could not find peer info")]
+    PeerNotFound,
 }
 
 impl From<TryFromIntError> for HorizonSyncError {
@@ -117,6 +119,7 @@ impl HorizonSyncError {
             HorizonSyncError::RpcError(_) |
             HorizonSyncError::RpcStatus(_) |
             HorizonSyncError::NoMoreSyncPeers(_) |
+            HorizonSyncError::PeerNotFound |
             HorizonSyncError::JoinError(_) => None,
 
             // short ban

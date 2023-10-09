@@ -131,37 +131,25 @@ impl<T> Future for TransportResponseFuture<T> {
 /// request.
 pub struct RequestContext<TReq, TResp> {
     reply_tx: oneshot::Sender<TResp>,
-    request: Option<TReq>,
+    request: TReq,
 }
 
 impl<TReq, TResp> RequestContext<TReq, TResp> {
     /// Create a new RequestContect
     pub fn new(request: TReq, reply_tx: oneshot::Sender<TResp>) -> Self {
-        Self {
-            request: Some(request),
-            reply_tx,
-        }
+        Self { request, reply_tx }
     }
 
     /// Return a reference to the request object. None is returned after take_request has
     /// been called.
-    pub fn request(&self) -> Option<&TReq> {
-        self.request.as_ref()
-    }
-
-    /// Take ownership of the request object, if ownership has not already been taken,
-    /// otherwise None is returned.
-    pub fn take_request(&mut self) -> Option<TReq> {
-        self.request.take()
+    pub fn request(&self) -> &TReq {
+        &self.request
     }
 
     /// Consume this object and return it's parts. Namely, the request object and
     /// the reply oneshot channel.
     pub fn split(self) -> (TReq, oneshot::Sender<TResp>) {
-        (
-            self.request.expect("RequestContext must be initialized with a request"),
-            self.reply_tx,
-        )
+        (self.request, self.reply_tx)
     }
 
     /// Sends a reply to the caller

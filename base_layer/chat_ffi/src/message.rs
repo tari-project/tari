@@ -79,10 +79,10 @@ pub unsafe extern "C" fn create_chat_message(
     Box::into_raw(Box::new(message_out))
 }
 
-/// Frees memory for messages
+/// Frees memory for message
 ///
 /// ## Arguments
-/// `messages_ptr` - The pointer of a Vec<Message>
+/// `messages_ptr` - The pointer of a Message
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -90,7 +90,7 @@ pub unsafe extern "C" fn create_chat_message(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn destroy_chat_messages(messages_ptr: *mut ChatMessages) {
+pub unsafe extern "C" fn destroy_chat_message(messages_ptr: *mut Message) {
     if !messages_ptr.is_null() {
         drop(Box::from_raw(messages_ptr))
     }
@@ -147,8 +147,8 @@ pub unsafe extern "C" fn send_chat_message(client: *mut ChatClientFFI, message: 
 pub unsafe extern "C" fn get_chat_messages(
     client: *mut ChatClientFFI,
     address: *mut TariAddress,
-    limit: *mut c_int,
-    page: *mut c_int,
+    limit: c_int,
+    page: c_int,
     error_out: *mut c_int,
 ) -> *mut ChatMessages {
     let mut error = 0;
@@ -164,8 +164,8 @@ pub unsafe extern "C" fn get_chat_messages(
         ptr::swap(error_out, &mut error as *mut c_int);
     }
 
-    let mlimit = u64::try_from(*limit).unwrap_or(DEFAULT_MESSAGE_LIMIT);
-    let mpage = u64::try_from(*page).unwrap_or(DEFAULT_MESSAGE_PAGE);
+    let mlimit = u64::try_from(limit).unwrap_or(DEFAULT_MESSAGE_LIMIT);
+    let mpage = u64::try_from(page).unwrap_or(DEFAULT_MESSAGE_PAGE);
 
     let mut messages = Vec::new();
 
@@ -175,4 +175,21 @@ pub unsafe extern "C" fn get_chat_messages(
     messages.append(&mut retrieved_messages);
 
     Box::into_raw(Box::new(ChatMessages(messages)))
+}
+
+/// Frees memory for messages
+///
+/// ## Arguments
+/// `ptr` - The pointer of a Message
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn destroy_chat_messages(ptr: *mut ChatMessages) {
+    if !ptr.is_null() {
+        drop(Box::from_raw(ptr))
+    }
 }

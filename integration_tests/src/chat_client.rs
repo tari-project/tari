@@ -73,6 +73,7 @@ pub fn test_config(address: Multiaddr) -> ApplicationConfig {
     chat_client_config.p2p.transport.tcp.listener_address = address.clone();
     chat_client_config.p2p.public_addresses = MultiaddrList::from(vec![address]);
     chat_client_config.log_path = Some(PathBuf::from("log/chat_client/chat_client.log"));
+    chat_client_config.log_verbosity = Some(11);
 
     ApplicationConfig {
         chat_client: chat_client_config,
