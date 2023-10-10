@@ -699,6 +699,16 @@ where
             return Err(OutputManagerError::InvalidOutputFeatures);
         }
 
+        // Confirm lock height is 0
+        if single_round_sender_data.metadata.lock_height != 0 {
+            return Err(OutputManagerError::InvalidLockHeight);
+        }
+
+        // Confirm kernel features
+        if single_round_sender_data.metadata.kernel_features != KernelFeatures::default() {
+            return Err(OutputManagerError::InvalidKernelFeatures);
+        }
+
         let (spending_key_id, _, script_key_id, script_public_key) =
             self.resources.key_manager.get_next_spend_and_script_key_ids().await?;
 

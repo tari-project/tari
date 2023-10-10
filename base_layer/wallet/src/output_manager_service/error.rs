@@ -120,6 +120,10 @@ pub enum OutputManagerError {
     InvalidCovenant,
     #[error("Unsupported Output Features")]
     InvalidOutputFeatures,
+    #[error("Unsupported Kernel Features")]
+    InvalidKernelFeatures,
+    #[error("Unsupported Lock Height")]
+    InvalidLockHeight,
     #[error("Tari script error: {0}")]
     ScriptError(#[from] ScriptError),
     #[error("Master secret key does not match persisted key manager state")]
