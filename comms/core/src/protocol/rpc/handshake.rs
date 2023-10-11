@@ -29,7 +29,7 @@ use tokio::{
     io::{AsyncRead, AsyncWrite},
     time,
 };
-use tracing::{debug, error, event, span, warn, Instrument, Level};
+use tracing::{debug, error, span, warn, Instrument, Level};
 
 use crate::{framing::CanonicalFraming, message::MessageExt, proto, protocol::rpc::error::HandshakeRejectReason};
 
@@ -78,17 +78,14 @@ where T: AsyncRead + AsyncWrite + Unpin
     }
 
     /// Server-side handshake protocol
-    #[tracing::instrument(level="trace", name = "rpc::server::perform_server_handshake", skip(self), err, fields(comms.direction="inbound"))]
     pub async fn perform_server_handshake(&mut self) -> Result<u32, RpcHandshakeError> {
         match self.recv_next_frame().await {
             Ok(Some(Ok(msg))) => {
-                event!(Level::DEBUG, "Handshake bytes received");
                 let msg = proto::rpc::RpcSession::decode(&mut msg.freeze())?;
                 let version = SUPPORTED_RPC_VERSIONS
                     .iter()
                     .find(|v| msg.supported_versions.contains(v));
                 if let Some(version) = version {
-                    event!(Level::DEBUG, version = version, "Server accepted version");
                     debug!(target: LOG_TARGET, "Server accepted version: {}", version);
                     let reply = proto::rpc::RpcSessionReply {
                         session_result: Some(proto::rpc::rpc_session_reply::SessionResult::AcceptedVersion(*version)),
@@ -109,15 +106,15 @@ where T: AsyncRead + AsyncWrite + Unpin
                 Err(RpcHandshakeError::ClientNoSupportedVersion)
             },
             Ok(Some(Err(err))) => {
-                event!(Level::ERROR, "Error: {}", err);
+                error!(target: LOG_TARGET, "Error during handshake: {}", err);
                 Err(err.into())
             },
             Ok(None) => {
-                event!(Level::ERROR, "Client closed request");
+                error!(target: LOG_TARGET, "Error during handshake, client closed connection");
                 Err(RpcHandshakeError::ClientClosed)
             },
-            Err(_elapsed) => {
-                event!(Level::ERROR, "Timed out");
+            Err(_) => {
+                error!(target: LOG_TARGET, "Error during handshake, timed out");
                 Err(RpcHandshakeError::TimedOut)
             },
         }
@@ -135,7 +132,6 @@ where T: AsyncRead + AsyncWrite + Unpin
     }
 
     /// Client-side handshake protocol
-    #[tracing::instrument(name = "rpc::client::perform_client_handshake", skip(self), err, fields(comms.direction="outbound"))]
     pub async fn perform_client_handshake(&mut self) -> Result<(), RpcHandshakeError> {
         let msg = proto::rpc::RpcSession {
             supported_versions: SUPPORTED_RPC_VERSIONS.to_vec(),
@@ -156,26 +152,24 @@ where T: AsyncRead + AsyncWrite + Unpin
             Ok(Some(Ok(msg))) => {
                 let msg = proto::rpc::RpcSessionReply::decode(&mut msg.freeze())?;
                 let version = msg.result()?;
-                event!(Level::INFO, "Server accepted version: {}", version);
                 debug!(target: LOG_TARGET, "Server accepted version {}", version);
                 Ok(())
             },
             Ok(Some(Err(err))) => {
-                event!(Level::ERROR, "Error: {}", err);
+                error!(target: LOG_TARGET, "Error during handshake: {}", err);
                 Err(err.into())
             },
             Ok(None) => {
-                event!(Level::ERROR, "Server closed request");
+                error!(target: LOG_TARGET, "Error during handshake, server closed connection");
                 Err(RpcHandshakeError::ServerClosedRequest)
             },
             Err(_) => {
-                event!(Level::ERROR, "Timed out");
+                error!(target: LOG_TARGET, "Error during handshake, timed out");
                 Err(RpcHandshakeError::TimedOut)
             },
         }
     }
 
-    #[tracing::instrument(name = "rpc::receive_handshake_reply", skip(self), err)]
     async fn recv_next_frame(&mut self) -> Result<Option<Result<BytesMut, io::Error>>, time::error::Elapsed> {
         match self.timeout {
             Some(timeout) => time::timeout(timeout, self.framed.next()).await,

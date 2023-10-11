@@ -35,7 +35,6 @@ use tari_comms::{
     PeerConnection,
 };
 use tari_utilities::hex::Hex;
-use tracing;
 
 use super::{validator::BlockHeaderSyncValidator, BlockHeaderSyncError};
 use crate::{
@@ -232,7 +231,6 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         Ok(conn)
     }
 
-    #[tracing::instrument(skip(self, client), err)]
     async fn attempt_sync(
         &mut self,
         sync_peer: &SyncPeer,

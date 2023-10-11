@@ -70,7 +70,6 @@ impl NoiseConfig {
 
     /// Upgrades the given socket to using the noise protocol. The upgraded socket and the peer's static key
     /// is returned.
-    #[tracing::instrument(name = "noise::upgrade_socket", skip(self, socket))]
     pub async fn upgrade_socket<TSocket>(
         &self,
         socket: TSocket,
