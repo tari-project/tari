@@ -32,7 +32,6 @@ use num_format::{Locale, ToFormattedString};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId, protocol::rpc::RpcClient, PeerConnection};
 use tari_utilities::hex::Hex;
 use tokio::task;
-use tracing;
 
 use super::error::BlockSyncError;
 use crate::{
@@ -97,7 +96,6 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
         self.hooks.add_on_complete_hook(hook);
     }
 
-    #[tracing::instrument(skip(self), err)]
     pub async fn synchronize(&mut self) -> Result<(), BlockSyncError> {
         let mut max_latency = self.config.initial_max_sync_latency;
         let mut sync_round = 0;
