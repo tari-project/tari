@@ -49,7 +49,7 @@ use crate::{
 
 bitflags! {
     /// Miscellaneous Peer flags
-    #[derive(Default, Deserialize, Serialize)]
+    #[derive(Default, Deserialize, Serialize, Eq, PartialEq, Debug, Clone, Copy)]
     pub struct PeerFlags: u8 {
         const NONE = 0x00;
         const SEED = 0x01;

@@ -23,10 +23,12 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 
+/// Options for a kernel's structure or use.
+#[derive(Serialize, Deserialize, BorshSerialize, BorshDeserialize, Clone, Copy, Debug, Eq, PartialEq)]
+pub struct KernelFeatures(u8);
+
 bitflags! {
-    /// Options for a kernel's structure or use.
-    #[derive(Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
-    pub struct KernelFeatures: u8 {
+    impl KernelFeatures: u8 {
         /// Coinbase transaction
         const COINBASE_KERNEL = 1u8;
         /// Burned output transaction

@@ -1345,6 +1345,7 @@ pub enum UiTransactionBurnStatus {
 }
 
 bitflags! {
+    #[derive(Clone)]
     pub struct TransactionFilter: u8 {
         const NONE = 0b0000_0000;
         const ABANDONED_COINBASES = 0b0000_0001;

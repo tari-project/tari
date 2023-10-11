@@ -479,7 +479,7 @@ mod test {
         let utxo_sum = block.block().body.outputs().iter().map(|o| &o.commitment).sum();
         let kernel_sum = block.block().body.kernels().iter().map(|k| &k.excess).sum();
 
-        let db = create_new_blockchain_with_network(Network::Igor);
+        let db = create_new_blockchain_with_network(network);
 
         let lock = db.db_read_access().unwrap();
         ChainBalanceValidator::new(ConsensusManager::builder(network).build().unwrap(), Default::default())

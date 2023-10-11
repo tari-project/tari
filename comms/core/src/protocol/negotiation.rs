@@ -63,6 +63,7 @@ pub struct ProtocolNegotiation<'a, TSocket> {
 }
 
 bitflags! {
+    #[derive(Debug)]
     struct Flags: u8 {
         const NONE = 0x00;
         const OPTIMISTIC = 0x01;
