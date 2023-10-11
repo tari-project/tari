@@ -32,7 +32,10 @@ use chrono::{NaiveDateTime, Utc};
 use futures::{pin_mut, StreamExt};
 use log::*;
 use tari_common_types::tari_address::TariAddress;
-use tari_comms::connectivity::{ConnectivityEvent, ConnectivityRequester};
+use tari_comms::{
+    connectivity::{ConnectivityEvent, ConnectivityRequester},
+    types::CommsPublicKey,
+};
 use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::OutboundEncryption, Dht};
 use tari_p2p::{
     comms_connector::SubscriptionFactory,
@@ -53,7 +56,7 @@ use crate::contacts_service::{
     handle::{ContactsLivenessData, ContactsLivenessEvent, ContactsServiceRequest, ContactsServiceResponse},
     proto,
     storage::database::{ContactsBackend, ContactsDatabase},
-    types::{Contact, Message},
+    types::{Confirmation, Contact, Message, MessageDispatch},
 };
 
 const LOG_TARGET: &str = "contacts::contacts_service";
@@ -130,7 +133,7 @@ where T: ContactsBackend + 'static
     dht: Dht,
     subscription_factory: Arc<SubscriptionFactory>,
     event_publisher: broadcast::Sender<Arc<ContactsLivenessEvent>>,
-    message_publisher: broadcast::Sender<Arc<Message>>,
+    message_publisher: broadcast::Sender<Arc<MessageDispatch>>,
     number_of_rounds_no_pings: u16,
     contacts_auto_ping_interval: Duration,
     contacts_online_ping_window: usize,
@@ -151,7 +154,7 @@ where T: ContactsBackend + 'static
         dht: Dht,
         subscription_factory: Arc<SubscriptionFactory>,
         event_publisher: broadcast::Sender<Arc<ContactsLivenessEvent>>,
-        message_publisher: broadcast::Sender<Arc<Message>>,
+        message_publisher: broadcast::Sender<Arc<MessageDispatch>>,
         contacts_auto_ping_interval: Duration,
         contacts_online_ping_window: usize,
     ) -> Self {
@@ -189,7 +192,7 @@ where T: ContactsBackend + 'static
         let chat_messages = self
             .subscription_factory
             .get_subscription(TariMessageType::Chat, SUBSCRIPTION_LABEL)
-            .map(map_decode::<proto::Message>);
+            .map(map_decode::<proto::MessageDispatch>);
 
         pin_mut!(chat_messages);
 
@@ -296,41 +299,24 @@ where T: ContactsBackend + 'static
                 Ok(result.map(ContactsServiceResponse::Messages)?)
             },
             ContactsServiceRequest::SendMessage(address, mut message) => {
-                let contact = match self.db.get_contact(address.clone()) {
-                    Ok(contact) => contact,
-                    Err(_) => Contact::from(&address),
-                };
-
-                let ob_message = OutboundDomainMessage::from(message.clone());
-                let encryption = OutboundEncryption::EncryptFor(Box::new(address.public_key().clone()));
-
-                match self.get_online_status(&contact).await {
-                    Ok(ContactOnlineStatus::Online) => {
-                        info!(target: LOG_TARGET, "Chat message being sent directed");
-                        let mut comms_outbound = self.dht.outbound_requester();
-
-                        comms_outbound
-                            .send_direct_encrypted(
-                                address.public_key().clone(),
-                                ob_message,
-                                encryption,
-                                "contact service messaging".to_string(),
-                            )
-                            .await?;
-                    },
-                    Err(e) => return Err(e),
-                    _ => {
-                        let mut comms_outbound = self.dht.outbound_requester();
-                        comms_outbound
-                            .closest_broadcast(address.public_key().clone(), encryption, vec![], ob_message)
-                            .await?;
-                    },
-                }
+                let ob_message = OutboundDomainMessage::from(MessageDispatch::Message(message.clone()));
 
                 message.stored_at = Utc::now().naive_utc().timestamp() as u64;
                 self.db.save_message(message)?;
+                self.deliver_message(address, ob_message).await?;
 
                 Ok(ContactsServiceResponse::MessageSent)
+            },
+            ContactsServiceRequest::SendReadConfirmation(address, confirmation) => {
+                let msg = OutboundDomainMessage::from(MessageDispatch::ReadConfirmation(confirmation.clone()));
+                trace!(target: LOG_TARGET, "Sending read confirmation with details: message_id: {:?}, timestamp: {:?}", confirmation.message_id, confirmation.timestamp);
+
+                self.deliver_message(address, msg).await?;
+
+                self.db
+                    .confirm_message(confirmation.message_id.clone(), None, Some(confirmation.timestamp))?;
+
+                Ok(ContactsServiceResponse::ReadConfirmationSent)
             },
         }
     }
@@ -406,7 +392,7 @@ where T: ContactsBackend + 'static
 
     async fn handle_incoming_message(
         &mut self,
-        msg: DomainMessage<Result<crate::contacts_service::proto::Message, prost::DecodeError>>,
+        msg: DomainMessage<Result<proto::MessageDispatch, prost::DecodeError>>,
     ) -> Result<(), ContactsServiceError> {
         let msg_inner = match &msg.inner {
             Ok(msg) => msg.clone(),
@@ -421,23 +407,17 @@ where T: ContactsBackend + 'static
             },
         };
         if let Some(source_public_key) = msg.authenticated_origin {
-            let message =
-                Message::try_from(msg_inner).map_err(|ta| ContactsServiceError::MessageParsingError { source: ta })?;
+            let dispatch = MessageDispatch::try_from(msg_inner).map_err(ContactsServiceError::MessageParsingError)?;
 
-            let our_message = Message {
-                address: TariAddress::from_public_key(&source_public_key, message.address.network()),
-                stored_at: EpochTime::now().as_u64(),
-                ..message
-            };
-
-            self.db.save_message(our_message.clone())?;
-
-            let _msg = self.message_publisher.send(Arc::new(our_message));
+            match dispatch {
+                MessageDispatch::Message(m) => self.handle_chat_message(m, source_public_key).await,
+                MessageDispatch::DeliveryConfirmation(_) | MessageDispatch::ReadConfirmation(_) => {
+                    self.handle_confirmation(dispatch.clone()).await
+                },
+            }
         } else {
-            return Err(ContactsServiceError::MessageSourceDoesNotMatchOrigin);
+            Err(ContactsServiceError::MessageSourceDoesNotMatchOrigin)
         }
-
-        Ok(())
     }
 
     async fn get_online_status(&self, contact: &Contact) -> Result<ContactOnlineStatus, ContactsServiceError> {
@@ -559,5 +539,106 @@ where T: ContactsBackend + 'static
             },
             _ => {},
         }
+    }
+
+    async fn handle_chat_message(
+        &mut self,
+        message: Message,
+        source_public_key: CommsPublicKey,
+    ) -> Result<(), ContactsServiceError> {
+        let our_message = Message {
+            address: TariAddress::from_public_key(&source_public_key, message.address.network()),
+            stored_at: EpochTime::now().as_u64(),
+            ..message
+        };
+
+        match self.db.save_message(our_message.clone()) {
+            Ok(..) => {
+                let _msg = self
+                    .message_publisher
+                    .send(Arc::new(MessageDispatch::Message(our_message.clone())));
+
+                // Send a delivery notification
+                self.create_and_send_delivery_confirmation_for_msg(&our_message).await?;
+
+                Ok(())
+            },
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    async fn create_and_send_delivery_confirmation_for_msg(
+        &mut self,
+        message: &Message,
+    ) -> Result<(), ContactsServiceError> {
+        let address = &message.address;
+        let delivery_time = EpochTime::now().as_u64();
+        let confirmation = MessageDispatch::DeliveryConfirmation(Confirmation {
+            message_id: message.message_id.clone(),
+            timestamp: delivery_time,
+        });
+        let msg = OutboundDomainMessage::from(confirmation);
+
+        self.deliver_message(address.clone(), msg).await?;
+
+        self.db
+            .confirm_message(message.message_id.clone(), Some(delivery_time), None)?;
+
+        Ok(())
+    }
+
+    async fn handle_confirmation(&mut self, dispatch: MessageDispatch) -> Result<(), ContactsServiceError> {
+        let (message_id, delivery, read) = match dispatch.clone() {
+            MessageDispatch::DeliveryConfirmation(c) => (c.message_id, Some(c.timestamp), None),
+            MessageDispatch::ReadConfirmation(c) => (c.message_id, None, Some(c.timestamp)),
+            _ => {
+                return Err(ContactsServiceError::MessageParsingError(
+                    "Incorrect confirmation type".to_string(),
+                ))
+            },
+        };
+
+        trace!(target: LOG_TARGET, "Handling confirmation with details: message_id: {:?}, delivery: {:?}, read: {:?}", message_id, delivery, read);
+        self.db.confirm_message(message_id, delivery, read)?;
+        let _msg = self.message_publisher.send(Arc::new(dispatch));
+
+        Ok(())
+    }
+
+    async fn deliver_message(
+        &mut self,
+        address: TariAddress,
+        message: OutboundDomainMessage<proto::MessageDispatch>,
+    ) -> Result<(), ContactsServiceError> {
+        let contact = match self.db.get_contact(address.clone()) {
+            Ok(contact) => contact,
+            Err(_) => Contact::from(&address),
+        };
+        let encryption = OutboundEncryption::EncryptFor(Box::new(address.public_key().clone()));
+
+        match self.get_online_status(&contact).await {
+            Ok(ContactOnlineStatus::Online) => {
+                info!(target: LOG_TARGET, "Chat message being sent directed");
+                let mut comms_outbound = self.dht.outbound_requester();
+
+                comms_outbound
+                    .send_direct_encrypted(
+                        address.public_key().clone(),
+                        message,
+                        encryption,
+                        "contact service messaging".to_string(),
+                    )
+                    .await?;
+            },
+            Err(e) => return Err(e),
+            _ => {
+                let mut comms_outbound = self.dht.outbound_requester();
+                comms_outbound
+                    .closest_broadcast(address.public_key().clone(), encryption, vec![], message)
+                    .await?;
+            },
+        };
+
+        Ok(())
     }
 }

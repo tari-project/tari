@@ -20,94 +20,31 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, ffi::CString, ops::Deref};
+use std::{convert::TryFrom, ops::Deref};
 
-use libc::c_char;
 use log::{debug, error, info, trace};
 use tari_contacts::contacts_service::{
     handle::{ContactsLivenessData, ContactsLivenessEvent, ContactsServiceHandle},
-    types::Message,
+    types::{Confirmation, Message, MessageDispatch},
 };
 use tari_shutdown::ShutdownSignal;
+
+use crate::types::{ChatFFIContactsLivenessData, ChatFFIMessage};
 
 const LOG_TARGET: &str = "chat_ffi::callback_handler";
 
 pub(crate) type CallbackContactStatusChange = unsafe extern "C" fn(*mut ChatFFIContactsLivenessData);
 pub(crate) type CallbackMessageReceived = unsafe extern "C" fn(*mut ChatFFIMessage);
-
-#[repr(C)]
-pub struct ChatFFIContactsLivenessData {
-    pub address: *const c_char,
-    pub last_seen: u64,
-    pub online_status: u8,
-}
-
-impl TryFrom<ContactsLivenessData> for ChatFFIContactsLivenessData {
-    type Error = String;
-
-    fn try_from(v: ContactsLivenessData) -> Result<Self, Self::Error> {
-        let address = match CString::new(v.address().to_bytes()) {
-            Ok(s) => s,
-            Err(e) => return Err(e.to_string()),
-        };
-
-        let last_seen = match v.last_ping_pong_received() {
-            Some(ts) => match u64::try_from(ts.timestamp_micros()) {
-                Ok(num) => num,
-                Err(e) => return Err(e.to_string()),
-            },
-            None => 0,
-        };
-
-        Ok(Self {
-            address: address.as_ptr(),
-            last_seen,
-            online_status: v.online_status().as_u8(),
-        })
-    }
-}
-
-#[repr(C)]
-pub struct ChatFFIMessage {
-    pub body: *const c_char,
-    pub from_address: *const c_char,
-    pub stored_at: u64,
-    pub message_id: *const c_char,
-}
-
-impl TryFrom<Message> for ChatFFIMessage {
-    type Error = String;
-
-    fn try_from(v: Message) -> Result<Self, Self::Error> {
-        let body = match CString::new(v.body) {
-            Ok(s) => s,
-            Err(e) => return Err(e.to_string()),
-        };
-
-        let address = match CString::new(v.address.to_bytes()) {
-            Ok(s) => s,
-            Err(e) => return Err(e.to_string()),
-        };
-
-        let id = match CString::new(v.message_id) {
-            Ok(s) => s,
-            Err(e) => return Err(e.to_string()),
-        };
-
-        Ok(Self {
-            body: body.as_ptr(),
-            from_address: address.as_ptr(),
-            stored_at: v.stored_at,
-            message_id: id.as_ptr(),
-        })
-    }
-}
+pub(crate) type CallbackDeliveryConfirmationReceived = unsafe extern "C" fn(*mut Confirmation);
+pub(crate) type CallbackReadConfirmationReceived = unsafe extern "C" fn(*mut Confirmation);
 
 #[derive(Clone)]
 pub struct CallbackHandler {
     contacts_service_handle: ContactsServiceHandle,
     callback_contact_status_change: CallbackContactStatusChange,
     callback_message_received: CallbackMessageReceived,
+    callback_delivery_confirmation_received: CallbackDeliveryConfirmationReceived,
+    callback_read_confirmation_received: CallbackReadConfirmationReceived,
     shutdown: ShutdownSignal,
 }
 
@@ -117,12 +54,16 @@ impl CallbackHandler {
         shutdown: ShutdownSignal,
         callback_contact_status_change: CallbackContactStatusChange,
         callback_message_received: CallbackMessageReceived,
+        callback_delivery_confirmation_received: CallbackDeliveryConfirmationReceived,
+        callback_read_confirmation_received: CallbackReadConfirmationReceived,
     ) -> Self {
         Self {
             contacts_service_handle,
             shutdown,
             callback_contact_status_change,
             callback_message_received,
+            callback_delivery_confirmation_received,
+            callback_read_confirmation_received,
         }
     }
 
@@ -134,9 +75,22 @@ impl CallbackHandler {
             tokio::select! {
                 rec_message = chat_messages.recv() => {
                     match rec_message {
-                        Ok(message) => {
-                            trace!(target: LOG_TARGET, "FFI Callback monitor received a new Message");
-                            self.trigger_message_received(message.deref().clone());
+                        Ok(message_dispatch) => {
+                            trace!(target: LOG_TARGET, "FFI Callback monitor received a new MessageDispatch");
+                            match message_dispatch.deref() {
+                                MessageDispatch::Message(m) => {
+                                    trace!(target: LOG_TARGET, "FFI Callback monitor received a new Message");
+                                    self.trigger_message_received(m.clone());
+                                }
+                                MessageDispatch::DeliveryConfirmation(c) => {
+                                    trace!(target: LOG_TARGET, "FFI Callback monitor received a new Delivery Confirmation");
+                                    self.trigger_delivery_confirmation_received(c.clone());
+                                },
+                                MessageDispatch::ReadConfirmation(c) => {
+                                    trace!(target: LOG_TARGET, "FFI Callback monitor received a new Read Confirmation");
+                                    self.trigger_read_confirmation_received(c.clone());
+                                }
+                            };
                         },
                         Err(_) => { debug!(target: LOG_TARGET, "FFI Callback monitor had an error receiving new messages")}
                     }
@@ -195,6 +149,30 @@ impl CallbackHandler {
                 (self.callback_message_received)(Box::into_raw(Box::new(message)));
             },
             Err(e) => error!(target: LOG_TARGET, "Error processing message received callback: {}", e),
+        }
+    }
+
+    fn trigger_delivery_confirmation_received(&mut self, confirmation: Confirmation) {
+        debug!(
+            target: LOG_TARGET,
+            "Calling DeliveryConfirmationReceived callback function for message {:?}",
+            confirmation.message_id,
+        );
+
+        unsafe {
+            (self.callback_delivery_confirmation_received)(Box::into_raw(Box::new(confirmation)));
+        }
+    }
+
+    fn trigger_read_confirmation_received(&mut self, confirmation: Confirmation) {
+        debug!(
+            target: LOG_TARGET,
+            "Calling ReadConfirmationReceived callback function for message {:?}",
+            confirmation.message_id,
+        );
+
+        unsafe {
+            (self.callback_read_confirmation_received)(Box::into_raw(Box::new(confirmation)));
         }
     }
 }

@@ -33,7 +33,7 @@ use tari_comms::{CommsNode, NodeIdentity};
 use tari_contacts::contacts_service::{
     handle::ContactsServiceHandle,
     service::ContactOnlineStatus,
-    types::{Message, MessageBuilder},
+    types::{Message, MessageBuilder, MessageMetadata, MessageMetadataType},
 };
 use tari_shutdown::Shutdown;
 
@@ -44,9 +44,12 @@ const LOG_TARGET: &str = "contacts::chat_client";
 #[async_trait]
 pub trait ChatClient {
     async fn add_contact(&self, address: &TariAddress);
+    fn add_metadata(&self, message: Message, metadata_type: MessageMetadataType, data: String) -> Message;
     async fn check_online_status(&self, address: &TariAddress) -> ContactOnlineStatus;
-    async fn send_message(&self, receiver: TariAddress, message: String);
+    fn create_message(&self, receiver: &TariAddress, message: String) -> Message;
     async fn get_messages(&self, sender: &TariAddress, limit: u64, page: u64) -> Vec<Message>;
+    async fn send_message(&self, message: Message);
+    async fn send_read_receipt(&self, message: Message);
     fn identity(&self) -> &NodeIdentity;
     fn shutdown(&mut self);
 }
@@ -148,10 +151,10 @@ impl ChatClient for Client {
         ContactOnlineStatus::Offline
     }
 
-    async fn send_message(&self, receiver: TariAddress, message: String) {
+    async fn send_message(&self, message: Message) {
         if let Some(mut contacts_service) = self.contacts.clone() {
             contacts_service
-                .send_message(MessageBuilder::new().message(message).address(receiver).build())
+                .send_message(message)
                 .await
                 .expect("Message wasn't sent");
         }
@@ -167,6 +170,29 @@ impl ChatClient for Client {
         }
 
         messages
+    }
+
+    async fn send_read_receipt(&self, message: Message) {
+        if let Some(mut contacts_service) = self.contacts.clone() {
+            contacts_service
+                .send_read_confirmation(message.address.clone(), message.message_id)
+                .await
+                .expect("Read receipt not sent");
+        }
+    }
+
+    fn create_message(&self, receiver: &TariAddress, message: String) -> Message {
+        MessageBuilder::new().address(receiver.clone()).message(message).build()
+    }
+
+    fn add_metadata(&self, mut message: Message, metadata_type: MessageMetadataType, data: String) -> Message {
+        let metadata = MessageMetadata {
+            metadata_type,
+            data: data.into_bytes(),
+        };
+
+        message.push(metadata);
+        message
     }
 }
 

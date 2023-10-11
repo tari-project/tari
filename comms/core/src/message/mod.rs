@@ -47,12 +47,7 @@ pub trait MessageExt: prost::Message {
     /// Encodes a message, allocating the buffer on the heap as necessary
     fn to_encoded_bytes(&self) -> Vec<u8>
     where Self: Sized {
-        let mut buf = Vec::with_capacity(self.encoded_len());
-        self.encode(&mut buf).expect(
-            "prost::Message::encode documentation says it is infallible unless the buffer has insufficient capacity. \
-             This buffer's capacity was set with encoded_len",
-        );
-        buf
+        self.encode_to_vec()
     }
 
     /// Encodes a message into a BytesMut, allocating the buffer on the heap as necessary.

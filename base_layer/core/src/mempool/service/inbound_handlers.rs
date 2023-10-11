@@ -68,10 +68,15 @@ impl MempoolInboundHandlers {
                 self.mempool.has_tx_with_excess_sig(excess_sig).await?,
             )),
             SubmitTransaction(tx) => {
+                let first_tx_kernel_excess_sig = tx
+                    .first_kernel_excess_sig()
+                    .ok_or(MempoolServiceError::TransactionNoKernels)?
+                    .get_signature()
+                    .to_hex();
                 debug!(
                     target: LOG_TARGET,
                     "Transaction ({}) submitted using request.",
-                    tx.body.kernels()[0].excess_sig.get_signature().to_hex(),
+                    first_tx_kernel_excess_sig,
                 );
                 Ok(MempoolResponse::TxStorage(self.submit_transaction(tx, None).await?))
             },

@@ -60,4 +60,6 @@ pub enum DifficultyError {
     InvalidDifficulty,
     #[error("Maximum block time overflowed u64")]
     MaxBlockTimeOverflow,
+    #[error("Divide by zero")]
+    DivideByZero,
 }
