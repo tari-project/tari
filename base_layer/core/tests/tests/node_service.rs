@@ -600,7 +600,7 @@ async fn local_get_new_block_with_zero_conf() {
         .unwrap();
     assert_eq!(block_template.header.height, 1);
     assert_eq!(block_template.body.kernels().len(), 4);
-    let coinbase_value = rules.get_block_reward_at(1) + block_template.body.get_total_fee();
+    let coinbase_value = rules.get_block_reward_at(1) + block_template.body.get_total_fee().unwrap();
     let (output, kernel, _) = create_coinbase(
         coinbase_value,
         rules.consensus_constants(1).coinbase_min_maturity() + 1,
@@ -681,7 +681,7 @@ async fn local_get_new_block_with_combined_transaction() {
         .unwrap();
     assert_eq!(block_template.header.height, 1);
     assert_eq!(block_template.body.kernels().len(), 4);
-    let coinbase_value = rules.get_block_reward_at(1) + block_template.body.get_total_fee();
+    let coinbase_value = rules.get_block_reward_at(1) + block_template.body.get_total_fee().unwrap();
     let (output, kernel, _) = create_coinbase(
         coinbase_value,
         rules.consensus_constants(1).coinbase_min_maturity() + 1,

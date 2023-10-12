@@ -424,7 +424,10 @@ where
                 self.source_address.clone(),
                 self.resources.wallet_identity.address.clone(),
                 inbound_tx.amount,
-                finalized_transaction.body.get_total_fee(),
+                finalized_transaction
+                    .body
+                    .get_total_fee()
+                    .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?,
                 finalized_transaction.clone(),
                 TransactionStatus::Completed,
                 inbound_tx.message.clone(),
