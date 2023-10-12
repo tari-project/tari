@@ -80,8 +80,8 @@ impl DbTransaction {
     }
 
     /// Delete a block
-    pub fn delete_block(&mut self, block_hash: HashOutput) -> &mut Self {
-        self.operations.push(WriteOperation::DeleteBlock(block_hash));
+    pub fn delete_tip_block(&mut self, block_hash: HashOutput) -> &mut Self {
+        self.operations.push(WriteOperation::DeleteTipBlock(block_hash));
         self
     }
 
@@ -292,7 +292,7 @@ pub enum WriteOperation {
     },
     DeleteHeader(u64),
     DeleteOrphan(HashOutput),
-    DeleteBlock(HashOutput),
+    DeleteTipBlock(HashOutput),
     DeleteOrphanChainTip(HashOutput),
     InsertOrphanChainTip(HashOutput, u128),
     InsertMoneroSeedHeight(Vec<u8>, u64),
@@ -380,7 +380,7 @@ impl fmt::Display for WriteOperation {
                 hash.to_hex(),
                 total_accumulated_difficulty
             ),
-            DeleteBlock(hash) => write!(f, "DeleteBlock({})", hash.to_hex()),
+            DeleteTipBlock(hash) => write!(f, "DeleteTipBlock({})", hash.to_hex()),
             InsertMoneroSeedHeight(data, height) => {
                 write!(f, "Insert Monero seed string {} for height: {}", data.to_hex(), height)
             },
