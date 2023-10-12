@@ -69,18 +69,21 @@ message FetchUtxosResponse {
 }
 
 message QueryDeletedRequest {
-  repeated uint64 mmr_positions = 1;
-  bytes chain_must_include_header = 2;
-  bool include_deleted_block_data = 3;
+  repeated bytes hashes = 1;
+  google.protobuf.BytesValue chain_must_include_header = 2;
 }
 
 message QueryDeletedResponse {
-  repeated uint64 deleted_positions = 1;
-  repeated uint64 not_deleted_positions = 2;
-  bytes best_block = 3;
-  uint64 height_of_longest_chain = 4;
-  repeated bytes blocks_deleted_in = 5;
-  repeated uint64 heights_deleted_at = 6;
+  repeated QueryDeletedData data = 1;
+  bytes best_block = 2;
+  uint64 height_of_longest_chain = 3;
+}
+
+message QueryDeletedData{
+  uint64 mined_height = 1;
+  bytes block_mined_in = 2;
+  uint64 height_deleted_at = 3;
+  bytes block_deleted_in = 4;
 }
 
 message UtxoQueryRequest {
@@ -95,11 +98,10 @@ message UtxoQueryResponses {
 
 message UtxoQueryResponse {
   tari.types.TransactionOutput output = 1;
-  uint64 mmr_position = 2;
-  uint64 mined_height = 3;
-  bytes mined_in_block = 4;
-  bytes output_hash = 5;
-  uint64 mined_timestamp = 6;
+  uint64 mined_height = 2;
+  bytes mined_in_block = 3;
+  bytes output_hash = 4;
+  uint64 mined_timestamp = 5;
 }
 
 message TipInfoResponse {

@@ -51,7 +51,7 @@ impl TryFrom<proto::BlockHeader> for BlockHeader {
             prev_hash: FixedHash::try_from(header.prev_hash).map_err(|err| err.to_string())?,
             timestamp: EpochTime::from(header.timestamp),
             output_mr: FixedHash::try_from(header.output_mr).map_err(|err| err.to_string())?,
-            output_mmr_size: header.output_mmr_size,
+            output_smt_size: header.output_mmr_size,
             kernel_mr: FixedHash::try_from(header.kernel_mr).map_err(|err| err.to_string())?,
             kernel_mmr_size: header.kernel_mmr_size,
             input_mr: FixedHash::try_from(header.input_mr).map_err(|err| err.to_string())?,
@@ -79,7 +79,7 @@ impl From<BlockHeader> for proto::BlockHeader {
             nonce: header.nonce,
             pow: Some(proto::ProofOfWork::from(header.pow)),
             kernel_mmr_size: header.kernel_mmr_size,
-            output_mmr_size: header.output_mmr_size,
+            output_mmr_size: header.output_smt_size,
             validator_node_merkle_root: header.validator_node_mr.to_vec(),
         }
     }

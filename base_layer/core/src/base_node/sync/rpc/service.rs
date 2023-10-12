@@ -224,16 +224,13 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                             break;
                         },
                         Ok(blocks) => {
-                            let blocks = blocks
-                                .into_iter()
-                                .map(|hb| hb.try_into_block().map_err(RpcStatus::log_internal_error(LOG_TARGET)))
-                                .map(|block| match block {
-                                    Ok(b) => proto::base_node::BlockBodyResponse::try_from(b).map_err(|e| {
-                                        log::error!(target: LOG_TARGET, "Internal error: {}", e);
-                                        RpcStatus::general_default()
-                                    }),
-                                    Err(err) => Err(err),
-                                });
+                            let blocks = blocks.into_iter().map(|hb| {
+                                let block = hb.into_block();
+                                proto::base_node::BlockBodyResponse::try_from(block).map_err(|e| {
+                                    log::error!(target: LOG_TARGET, "Internal error: {}", e);
+                                    RpcStatus::general_default()
+                                })
+                            });
 
                             // Ensure task stops if the peer prematurely stops their RPC session
                             if utils::mpsc::send_all(&tx, blocks).await.is_err() {
@@ -582,13 +579,10 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         let peer_node_id = request.context().peer_node_id();
         debug!(
             target: LOG_TARGET,
-            "Received sync_utxos request from header {} to {} (start = {}, include_pruned_utxos = {}, \
-             include_deleted_bitmaps = {})",
+            "Received sync_utxos-{} request from header {} to {}",
             peer_node_id,
-            req.start,
+            req.start_header_hash.to_hex(),
             req.end_header_hash.to_hex(),
-            req.include_pruned_utxos,
-            req.include_deleted_bitmaps
         );
 
         let session_token = self.try_add_exclusive_session(peer_node_id.clone()).await?;

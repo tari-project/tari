@@ -658,7 +658,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             if let Some(h) = existing_header {
                 warn!(
                     target: LOG_TARGET,
-                    "Received header #{} `{}` that we already have. Ignoring",
+                    "Received header #{} `{}` that we already have.",
                     h.height,
                     h.hash().to_hex()
                 );

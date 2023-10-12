@@ -425,7 +425,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         hash: FixedHash,
         mined_height: u64,
         mined_in_block: FixedHash,
-        mmr_position: u64,
         confirmed: bool,
         mined_timestamp: u64,
     ) -> Result<(), OutputManagerStorageError> {
@@ -452,7 +451,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             .set((
                 outputs::mined_height.eq(mined_height as i64),
                 outputs::mined_in_block.eq(mined_in_block),
-                outputs::mined_mmr_position.eq(mmr_position as i64),
                 outputs::status.eq(status),
                 outputs::mined_timestamp.eq(timestamp),
                 outputs::marked_deleted_at_height.eq::<Option<i64>>(None),
@@ -483,7 +481,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             .set((
                 outputs::mined_height.eq::<Option<i64>>(None),
                 outputs::mined_in_block.eq::<Option<Vec<u8>>>(None),
-                outputs::mined_mmr_position.eq::<Option<i64>>(None),
                 outputs::status.eq(OutputStatus::Invalid as i32),
                 outputs::mined_timestamp.eq::<Option<NaiveDateTime>>(None),
                 outputs::marked_deleted_at_height.eq::<Option<i64>>(None),
@@ -512,7 +509,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             .set((
                 outputs::mined_height.eq::<Option<i64>>(None),
                 outputs::mined_in_block.eq::<Option<Vec<u8>>>(None),
-                outputs::mined_mmr_position.eq::<Option<i64>>(None),
                 outputs::status.eq(OutputStatus::Invalid as i32),
                 outputs::mined_timestamp.eq::<Option<NaiveDateTime>>(None),
                 outputs::marked_deleted_at_height.eq::<Option<i64>>(None),
@@ -837,9 +833,8 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 if output.received_in_tx_id == Some(tx_id.as_i64_wrapped()) {
                     info!(
                         target: LOG_TARGET,
-                        "Cancelling pending inbound output with Commitment: {} - MMR Position: {:?} from TxId: {}",
+                        "Cancelling pending inbound output with Commitment: {} - from TxId: {}",
                         output.commitment.to_hex(),
-                        output.mined_mmr_position,
                         tx_id
                     );
                     output.update(
@@ -855,9 +850,8 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 } else if output.spent_in_tx_id == Some(tx_id.as_i64_wrapped()) {
                     info!(
                         target: LOG_TARGET,
-                        "Cancelling pending outbound output with Commitment: {} - MMR Position: {:?} from TxId: {}",
+                        "Cancelling pending outbound output with Commitment: {} - from TxId: {}",
                         output.commitment.to_hex(),
-                        output.mined_mmr_position,
                         tx_id
                     );
                     output.update(

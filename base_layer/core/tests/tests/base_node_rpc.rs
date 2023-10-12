@@ -230,7 +230,7 @@ async fn test_base_node_wallet_rpc() {
         .prepare_new_block(chain_block(&block1, vec![], &consensus_manager, &key_manager).await)
         .unwrap();
 
-    block2.header.output_mmr_size += 1;
+    block2.header.output_smt_size += 1;
     block2.header.kernel_mmr_size += 1;
 
     base_node.local_nci.submit_block(block2).await.unwrap();

@@ -88,8 +88,6 @@ message HistoricalBlock {
     Block block = 3;
     // Accumulated and other pertinent data in the block header acting as a "condensed blockchain snapshot" for the block
     BlockHeaderAccumulatedData accumulated_data = 4;
-    repeated bytes pruned_output_hashes = 5;
-    uint64 pruned_input_count = 7;
 }
 
 // Accumulated and other pertinent data in the block header acting as a "condensed blockchain snapshot" for the block
