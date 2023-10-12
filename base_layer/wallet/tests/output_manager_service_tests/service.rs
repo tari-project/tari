@@ -2127,7 +2127,6 @@ async fn test_txo_revalidation() {
                 height_deleted_at: 4,
                 block_deleted_in: block4_header.hash().to_vec(),
             },
-
         ],
         // deleted_positions: vec![1, 2],
         // not_deleted_positions: vec![],
