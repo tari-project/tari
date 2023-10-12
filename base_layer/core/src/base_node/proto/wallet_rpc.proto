@@ -35,7 +35,7 @@ enum TxLocation {
 
 message TxQueryResponse {
   TxLocation location = 1;
-  google.protobuf.BytesValue block_hash = 2;
+  bytes block_hash = 2;
   uint64 confirmations = 3;
   bool is_synced = 4;
   uint64 height_of_longest_chain = 5;
@@ -45,7 +45,7 @@ message TxQueryResponse {
 message TxQueryBatchResponse {
   tari.types.Signature signature = 1;
   TxLocation location = 2;
-  google.protobuf.BytesValue block_hash = 3;
+  bytes block_hash = 3;
   uint64 confirmations = 4;
   uint64 block_height = 5;
   google.protobuf.UInt64Value mined_timestamp = 6;
@@ -54,7 +54,7 @@ message TxQueryBatchResponse {
 message TxQueryBatchResponses {
   repeated TxQueryBatchResponse responses = 1;
   bool is_synced = 2;
-  google.protobuf.BytesValue tip_hash = 3;
+  bytes tip_hash = 3;
   uint64 height_of_longest_chain = 4;
   google.protobuf.UInt64Value tip_mined_timestamp = 5;
 }
@@ -70,7 +70,7 @@ message FetchUtxosResponse {
 
 message QueryDeletedRequest {
   repeated uint64 mmr_positions = 1;
-  google.protobuf.BytesValue chain_must_include_header = 2;
+  bytes chain_must_include_header = 2;
   bool include_deleted_block_data = 3;
 }
 

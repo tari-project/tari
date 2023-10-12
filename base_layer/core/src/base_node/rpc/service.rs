@@ -125,7 +125,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
                         let confirmations = chain_metadata.height_of_longest_chain().saturating_sub(header.height);
                         let response = TxQueryResponse {
                             location: TxLocation::Mined as i32,
-                            block_hash: Some(block_hash.to_vec()),
+                            block_hash: block_hash.to_vec(),
                             confirmations,
                             is_synced,
                             height_of_longest_chain: chain_metadata.height_of_longest_chain(),
@@ -146,7 +146,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
         {
             TxStorageResponse::UnconfirmedPool => TxQueryResponse {
                 location: TxLocation::InMempool as i32,
-                block_hash: None,
+                block_hash: vec![],
                 confirmations: 0,
                 is_synced,
                 height_of_longest_chain: chain_metadata.height_of_longest_chain(),
@@ -161,7 +161,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
             TxStorageResponse::NotStoredFeeTooLow |
             TxStorageResponse::NotStoredAlreadyMined => TxQueryResponse {
                 location: TxLocation::NotStored as i32,
-                block_hash: None,
+                block_hash: vec![],
                 confirmations: 0,
                 is_synced,
                 height_of_longest_chain: chain_metadata.height_of_longest_chain(),
@@ -318,7 +318,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         Ok(Response::new(TxQueryBatchResponses {
             responses,
             is_synced,
-            tip_hash: Some(metadata.best_block().to_vec()),
+            tip_hash: metadata.best_block().to_vec(),
             height_of_longest_chain: metadata.height_of_longest_chain(),
             tip_mined_timestamp: Some(metadata.timestamp()),
         }))
@@ -458,8 +458,9 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
     ) -> Result<Response<QueryDeletedResponse>, RpcStatus> {
         let message = request.into_message();
 
-        if let Some(chain_must_include_header) = message.chain_must_include_header {
-            let hash = chain_must_include_header
+        if !message.chain_must_include_header.is_empty() {
+            let hash = message
+                .chain_must_include_header
                 .try_into()
                 .map_err(|_| RpcStatus::bad_request(&"Malformed block hash received".to_string()))?;
             if self

@@ -314,7 +314,7 @@ async fn test_utxo_scanner_recovery() {
 
     let chain_metadata = ChainMetadata {
         height_of_longest_chain: Some(NUM_BLOCKS - 1),
-        best_block: Some(block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec()),
+        best_block: block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec(),
         accumulated_difficulty: Vec::new(),
         pruned_height: 0,
         timestamp: Some(0),
@@ -413,7 +413,7 @@ async fn test_utxo_scanner_recovery_with_restart() {
 
     let chain_metadata = ChainMetadata {
         height_of_longest_chain: Some(NUM_BLOCKS - 1),
-        best_block: Some(block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec()),
+        best_block: block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec(),
         accumulated_difficulty: Vec::new(),
         pruned_height: 0,
         timestamp: Some(0),
@@ -579,7 +579,7 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
 
     let chain_metadata = ChainMetadata {
         height_of_longest_chain: Some(NUM_BLOCKS - 1),
-        best_block: Some(block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec()),
+        best_block: block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec(),
         accumulated_difficulty: Vec::new(),
         pruned_height: 0,
         timestamp: Some(0),
@@ -652,7 +652,7 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
     test_interface2.rpc_service_state.set_blocks(block_headers.clone());
     let chain_metadata = ChainMetadata {
         height_of_longest_chain: Some(9),
-        best_block: Some(block_headers.get(&9).unwrap().clone().hash().to_vec()),
+        best_block: block_headers.get(&9).unwrap().clone().hash().to_vec(),
         accumulated_difficulty: Vec::new(),
         pruned_height: 0,
         timestamp: Some(0),
@@ -777,14 +777,12 @@ async fn test_utxo_scanner_scanned_block_cache_clearing() {
 
     let chain_metadata = ChainMetadata {
         height_of_longest_chain: Some(800 + NUM_BLOCKS - 1),
-        best_block: Some(
-            block_headers
-                .get(&(800 + NUM_BLOCKS - 1))
-                .unwrap()
-                .clone()
-                .hash()
-                .to_vec(),
-        ),
+        best_block: block_headers
+            .get(&(800 + NUM_BLOCKS - 1))
+            .unwrap()
+            .clone()
+            .hash()
+            .to_vec(),
         accumulated_difficulty: Vec::new(),
         pruned_height: 0,
         timestamp: Some(0),
@@ -881,7 +879,7 @@ async fn test_utxo_scanner_one_sided_payments() {
 
     let chain_metadata = ChainMetadata {
         height_of_longest_chain: Some(NUM_BLOCKS - 1),
-        best_block: Some(block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec()),
+        best_block: block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec(),
         accumulated_difficulty: Vec::new(),
         pruned_height: 0,
         timestamp: Some(0),
@@ -1001,7 +999,7 @@ async fn test_utxo_scanner_one_sided_payments() {
 
     let chain_metadata = ChainMetadata {
         height_of_longest_chain: Some(NUM_BLOCKS),
-        best_block: Some(block_headers.get(&(NUM_BLOCKS)).unwrap().clone().hash().to_vec()),
+        best_block: block_headers.get(&(NUM_BLOCKS)).unwrap().clone().hash().to_vec(),
         accumulated_difficulty: Vec::new(),
         pruned_height: 0,
         timestamp: Some(0),
@@ -1016,7 +1014,7 @@ async fn test_utxo_scanner_one_sided_payments() {
     test_interface
         .base_node_service_event_publisher
         .send(Arc::new(BaseNodeEvent::NewBlockDetected(
-            chain_metadata.best_block.as_ref().cloned().unwrap().try_into().unwrap(),
+            chain_metadata.best_block.try_into().unwrap(),
             11,
         )))
         .unwrap();
@@ -1088,7 +1086,7 @@ async fn test_birthday_timestamp_over_chain() {
 
     let chain_metadata = ChainMetadata {
         height_of_longest_chain: Some(NUM_BLOCKS - 1),
-        best_block: Some(block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec()),
+        best_block: block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec(),
         accumulated_difficulty: Vec::new(),
         pruned_height: 0,
         timestamp: Some(0),

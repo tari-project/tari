@@ -53,9 +53,12 @@ impl TryFrom<proto::ChainMetadata> for ChainMetadata {
         } else {
             height_of_longest_chain.saturating_sub(metadata.pruned_height)
         };
+
+        if metadata.best_block.is_empty() {
+            return Err("Best block is missing".to_string());
+        }
         let hash: FixedHash = metadata
             .best_block
-            .ok_or_else(|| "Best block is missing".to_string())?
             .try_into()
             .map_err(|e| format!("Malformed best block: {}", e))?;
         Ok(ChainMetadata::new(
@@ -74,7 +77,7 @@ impl From<ChainMetadata> for proto::ChainMetadata {
         let accumulated_difficulty = metadata.accumulated_difficulty().to_be_bytes().to_vec();
         Self {
             height_of_longest_chain: Some(metadata.height_of_longest_chain()),
-            best_block: Some(metadata.best_block().to_vec()),
+            best_block: metadata.best_block().to_vec(),
             pruned_height: metadata.pruned_height(),
             accumulated_difficulty,
             timestamp: Some(metadata.timestamp()),

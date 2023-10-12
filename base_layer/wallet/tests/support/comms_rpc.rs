@@ -31,7 +31,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use tari_common_types::types::{HashOutput, Signature};
+use tari_common_types::types::{FixedHash, HashOutput, Signature};
 use tari_comms::{
     protocol::rpc::{NamedProtocolService, Request, Response, RpcClient, RpcStatus, Streaming},
     PeerConnection,
@@ -141,7 +141,7 @@ impl BaseNodeWalletRpcMockState {
             })),
             transaction_query_batch_response: Arc::new(Mutex::new(TxQueryBatchResponsesProto {
                 responses: vec![],
-                tip_hash: Some(vec![]),
+                tip_hash: FixedHash::zero().to_vec(),
                 is_synced: true,
                 height_of_longest_chain: 0,
                 tip_mined_timestamp: Some(0),
@@ -149,7 +149,7 @@ impl BaseNodeWalletRpcMockState {
             tip_info_response: Arc::new(Mutex::new(TipInfoResponse {
                 metadata: Some(ChainMetadataProto {
                     height_of_longest_chain: Some(std::i64::MAX as u64),
-                    best_block: Some(Vec::new()),
+                    best_block: FixedHash::zero().to_vec(),
                     accumulated_difficulty: Vec::new(),
                     pruned_height: 0,
                     timestamp: Some(0),
@@ -932,8 +932,8 @@ mod test {
 
         let chain_metadata = ChainMetadata {
             height_of_longest_chain: Some(444),
-            best_block: Some(Vec::new()),
-            accumulated_difficulty: Vec::new(),
+            best_block: vec![],
+            accumulated_difficulty: vec![],
             pruned_height: 0,
             timestamp: Some(0),
         };
