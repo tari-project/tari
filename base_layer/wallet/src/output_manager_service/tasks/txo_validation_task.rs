@@ -214,7 +214,12 @@ where
                 ));
             }
 
+            dbg!(batch.len());
             for (output, data) in batch.iter().zip(response.data.iter()) {
+                dbg!(&data.mined_height);
+                dbg!(&data.height_deleted_at);
+                dbg!(&output.wallet_output.value);
+                dbg!(&output.status);
                 if data.mined_height == 0 {
                     // base node thinks this is unmined or does not know of it.
                     self.db
@@ -237,21 +242,19 @@ where
                     );
                     continue;
                 };
+
+
                 if data.height_deleted_at > 0 {
                     let confirmed = (response.height_of_longest_chain.saturating_sub(data.height_deleted_at)) >=
                         self.config.num_confirmations_required;
-                    self.db
-                        .mark_output_as_spent(
-                            output.hash,
-                            data.mined_height,
-                            data.block_deleted_in.clone().try_into().map_err(|_| {
-                                OutputManagerProtocolError::new(
-                                    self.operation_id,
-                                    OutputManagerError::InconsistentBaseNodeDataError("Base node sent malformed hash"),
-                                )
-                            })?,
-                            confirmed,
+                    let block_hash = data.block_deleted_in.clone().try_into().map_err(|_| {
+                        OutputManagerProtocolError::new(
+                            self.operation_id,
+                            OutputManagerError::InconsistentBaseNodeDataError("Base node sent malformed hash"),
                         )
+                    })?;
+                    self.db
+                        .mark_output_as_spent(output.hash, data.height_deleted_at, block_hash, confirmed)
                         .for_protocol(self.operation_id)?;
                     info!(
                         target: LOG_TARGET,

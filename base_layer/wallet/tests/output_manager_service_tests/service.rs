@@ -80,6 +80,7 @@ use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tari_script::{inputs, script, TariScript};
 use tari_service_framework::reply_channel;
 use tari_shutdown::Shutdown;
+use tari_utilities::hex::Hex;
 use tokio::{
     sync::{broadcast, broadcast::channel},
     task,
@@ -1331,6 +1332,7 @@ async fn test_txo_validation() {
         &oms.key_manager_handle,
     )
     .await;
+    dbg!(output1.hash(&oms.key_manager_handle).await.unwrap().to_hex());
     let output1_tx_output = output1.to_transaction_output(&oms.key_manager_handle).await.unwrap();
 
     oms.output_manager_handle
@@ -1404,7 +1406,7 @@ async fn test_txo_validation() {
     oms.base_node_wallet_rpc_mock_state
         .set_utxo_query_response(utxo_query_responses.clone());
 
-    // This response sets output1 as spent in the transaction that produced output4
+    // This response sets output1 and output2 as mined, not spent
     let query_deleted_response = QueryDeletedResponse {
         best_block: block4_header.hash().to_vec(),
         height_of_longest_chain: 4,
@@ -1598,12 +1600,6 @@ async fn test_txo_validation() {
                 block_deleted_in: Vec::new(),
             },
             QueryDeletedData {
-                mined_height: 0,
-                block_mined_in: Vec::new(),
-                height_deleted_at: 0,
-                block_deleted_in: Vec::new(),
-            },
-            QueryDeletedData {
                 mined_height: 5,
                 block_mined_in: block5_header.hash().to_vec(),
                 height_deleted_at: 0,
@@ -1784,7 +1780,7 @@ async fn test_txo_validation() {
                 mined_height: 1,
                 block_mined_in: block1_header.hash().to_vec(),
                 height_deleted_at: 5,
-                block_deleted_in: block5_header.hash().to_vec(),
+                block_deleted_in: block5_header_reorg.hash().to_vec(),
             },
             QueryDeletedData {
                 mined_height: 1,
@@ -1794,19 +1790,19 @@ async fn test_txo_validation() {
             },
             QueryDeletedData {
                 mined_height: 5,
-                block_mined_in: block5_header.hash().to_vec(),
+                block_mined_in: block5_header_reorg.hash().to_vec(),
                 height_deleted_at: 0,
                 block_deleted_in: Vec::new(),
             },
             QueryDeletedData {
                 mined_height: 5,
-                block_mined_in: block5_header.hash().to_vec(),
+                block_mined_in: block5_header_reorg.hash().to_vec(),
                 height_deleted_at: 0,
                 block_deleted_in: Vec::new(),
             },
             QueryDeletedData {
                 mined_height: 5,
-                block_mined_in: block5_header.hash().to_vec(),
+                block_mined_in: block5_header_reorg.hash().to_vec(),
                 height_deleted_at: 0,
                 block_deleted_in: Vec::new(),
             },
@@ -1865,6 +1861,7 @@ async fn test_txo_validation() {
     }
 
     let balance = oms.output_manager_handle.get_balance().await.unwrap();
+    dbg!(&balance);
     assert_eq!(
         balance.available_balance,
         MicroMinotari::from(output2_value) + MicroMinotari::from(output3_value)
