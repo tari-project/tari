@@ -134,13 +134,12 @@ mod sync_utxos {
     }
 
     #[tokio::test]
-    async fn it_returns_not_found_if_index_too_large() {
+    async fn it_returns_not_found_if_start_not_found() {
         let (service, db, rpc_request_mock, _tmp) = setup();
-        let gen_block_hash = db.fetch_header(0).unwrap().unwrap().hash();
         let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"])).await;
         let gb = chain.get("GB").unwrap();
         let msg = SyncUtxosRequest {
-            start_header_hash: gen_block_hash.to_vec(),
+            start_header_hash: vec![0; 32],
             end_header_hash: gb.hash().to_vec(),
         };
         let req = rpc_request_mock.request_with_context(Default::default(), msg);

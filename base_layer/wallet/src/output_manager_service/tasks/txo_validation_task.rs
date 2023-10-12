@@ -181,7 +181,6 @@ where
         last_mined_header_hash: Option<BlockHash>,
     ) -> Result<(), OutputManagerProtocolError> {
         let mined_outputs = self.db.fetch_mined_unspent_outputs().for_protocol(self.operation_id)?;
-
         if mined_outputs.is_empty() {
             return Ok(());
         }
@@ -214,12 +213,7 @@ where
                 ));
             }
 
-            dbg!(batch.len());
             for (output, data) in batch.iter().zip(response.data.iter()) {
-                dbg!(&data.mined_height);
-                dbg!(&data.height_deleted_at);
-                dbg!(&output.wallet_output.value);
-                dbg!(&output.status);
                 if data.mined_height == 0 {
                     // base node thinks this is unmined or does not know of it.
                     self.db
@@ -242,7 +236,6 @@ where
                     );
                     continue;
                 };
-
 
                 if data.height_deleted_at > 0 {
                     let confirmed = (response.height_of_longest_chain.saturating_sub(data.height_deleted_at)) >=

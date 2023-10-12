@@ -80,7 +80,6 @@ use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tari_script::{inputs, script, TariScript};
 use tari_service_framework::reply_channel;
 use tari_shutdown::Shutdown;
-use tari_utilities::hex::Hex;
 use tokio::{
     sync::{broadcast, broadcast::channel},
     task,
@@ -138,9 +137,6 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
     task::spawn(mock_base_node_service.run());
 
     let mut wallet_connectivity_mock = create_wallet_connectivity_mock();
-    // let (connectivity, connectivity_mock) = create_connectivity_mock();
-    // let connectivity_mock_state = connectivity_mock.get_shared_state();
-    // task::spawn(connectivity_mock.run());
     let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
 
     wallet_connectivity_mock.notify_base_node_set(server_node_identity.to_peer());
@@ -1332,7 +1328,6 @@ async fn test_txo_validation() {
         &oms.key_manager_handle,
     )
     .await;
-    dbg!(output1.hash(&oms.key_manager_handle).await.unwrap().to_hex());
     let output1_tx_output = output1.to_transaction_output(&oms.key_manager_handle).await.unwrap();
 
     oms.output_manager_handle
@@ -1618,10 +1613,6 @@ async fn test_txo_validation() {
                 block_deleted_in: Vec::new(),
             },
         ],
-        // deleted_positions: vec![1],
-        // not_deleted_positions: vec![2, 4, 5, 6],
-        // heights_deleted_at: vec![5],
-        // blocks_deleted_in: vec![block5_header.hash().to_vec()],
     };
 
     oms.base_node_wallet_rpc_mock_state
@@ -1642,6 +1633,7 @@ async fn test_txo_validation() {
         .wait_pop_query_deleted(1, Duration::from_secs(60))
         .await
         .unwrap();
+    assert_eq!(query_deleted_calls[0].hashes.len(), 5);
 
     let balance = oms.output_manager_handle.get_balance().await.unwrap();
     assert_eq!(
@@ -1688,6 +1680,8 @@ async fn test_txo_validation() {
         .wait_pop_query_deleted(1, Duration::from_secs(60))
         .await
         .unwrap();
+
+    assert_eq!(query_deleted_calls[0].hashes.len(), 5);
 
     let balance = oms.output_manager_handle.get_balance().await.unwrap();
     assert_eq!(
@@ -1794,23 +1788,7 @@ async fn test_txo_validation() {
                 height_deleted_at: 0,
                 block_deleted_in: Vec::new(),
             },
-            QueryDeletedData {
-                mined_height: 5,
-                block_mined_in: block5_header_reorg.hash().to_vec(),
-                height_deleted_at: 0,
-                block_deleted_in: Vec::new(),
-            },
-            QueryDeletedData {
-                mined_height: 5,
-                block_mined_in: block5_header_reorg.hash().to_vec(),
-                height_deleted_at: 0,
-                block_deleted_in: Vec::new(),
-            },
         ],
-        // deleted_positions: vec![1],
-        // not_deleted_positions: vec![2, 4, 5, 6],
-        // heights_deleted_at: vec![5],
-        // blocks_deleted_in: vec![block5_header_reorg.hash().to_vec()],
     };
 
     oms.base_node_wallet_rpc_mock_state
@@ -1861,7 +1839,6 @@ async fn test_txo_validation() {
     }
 
     let balance = oms.output_manager_handle.get_balance().await.unwrap();
-    dbg!(&balance);
     assert_eq!(
         balance.available_balance,
         MicroMinotari::from(output2_value) + MicroMinotari::from(output3_value)
