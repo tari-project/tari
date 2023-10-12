@@ -105,7 +105,6 @@ diesel::table! {
         metadata_signature_u_y -> Binary,
         mined_height -> Nullable<BigInt>,
         mined_in_block -> Nullable<Binary>,
-        mined_mmr_position -> Nullable<BigInt>,
         marked_deleted_at_height -> Nullable<BigInt>,
         marked_deleted_in_block -> Nullable<Binary>,
         received_in_tx_id -> Nullable<BigInt>,

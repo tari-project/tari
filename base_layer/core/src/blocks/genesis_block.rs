@@ -26,12 +26,14 @@ use chrono::{DateTime, FixedOffset};
 use tari_common::configuration::Network;
 use tari_common_types::types::{FixedHash, PrivateKey};
 use tari_crypto::tari_utilities::hex::*;
+use tari_mmr::sparse_merkle_tree::{NodeKey, ValueHash};
 use tari_utilities::ByteArray;
 
 use crate::{
     blocks::{block::Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock},
     proof_of_work::{Difficulty, PowAlgorithm, ProofOfWork},
     transactions::{aggregated_body::AggregateBody, transaction_components::TransactionOutput},
+    OutputSmt,
 };
 
 // This can be adjusted as required, but must be limited
@@ -64,7 +66,7 @@ fn add_faucet_utxos_to_genesis_block(file: &str, block: &mut Block) {
         }
         counter += 1;
     }
-    block.header.output_mmr_size += utxos.len() as u64;
+    block.header.output_smt_size += utxos.len() as u64;
     block.body.add_outputs(utxos);
     block.body.sort();
 }
@@ -75,9 +77,7 @@ fn print_mr_values(block: &mut Block, print: bool) {
     }
     use std::convert::TryFrom;
 
-    use croaring::Bitmap;
-
-    use crate::{chain_storage::calculate_validator_node_mr, KernelMmr, MutableOutputMmr};
+    use crate::{chain_storage::calculate_validator_node_mr, KernelMmr};
 
     let mut kernel_mmr = KernelMmr::new(Vec::new());
     for k in block.body.kernels() {
@@ -85,15 +85,17 @@ fn print_mr_values(block: &mut Block, print: bool) {
         kernel_mmr.push(k.hash().to_vec()).unwrap();
     }
 
-    let mut output_mmr = MutableOutputMmr::new(Vec::new(), Bitmap::create()).unwrap();
+    let mut output_smt = OutputSmt::new();
 
     for o in block.body.outputs() {
-        output_mmr.push(o.hash().to_vec()).unwrap();
+        let smt_key = NodeKey::try_from(o.commitment.as_bytes()).unwrap();
+        let smt_node = ValueHash::try_from(o.smt_hash(block.header.height).as_slice()).unwrap();
+        output_smt.insert(smt_key, smt_node).unwrap();
     }
     let vn_mmr = calculate_validator_node_mr(&[]);
 
     block.header.kernel_mr = FixedHash::try_from(kernel_mmr.get_merkle_root().unwrap()).unwrap();
-    block.header.output_mr = FixedHash::try_from(output_mmr.get_merkle_root().unwrap()).unwrap();
+    block.header.output_mr = FixedHash::try_from(output_smt.hash().as_slice()).unwrap();
     block.header.validator_node_mr = FixedHash::try_from(vn_mmr).unwrap();
     println!();
     println!("kernel mr: {}", block.header.kernel_mr.to_hex());
@@ -304,7 +306,7 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
 
 fn get_esmeralda_genesis_block_raw() -> Block {
     // Set genesis timestamp
-    let genesis_timestamp = DateTime::parse_from_rfc2822("29 Sep 2023 08:30:00 +0200").expect("parse may not fail");
+    let genesis_timestamp = DateTime::parse_from_rfc2822("09 Oct 2023 08:01:00 +0200").expect("parse may not fail");
     // Let us add a "not before" proof to the genesis block
     let not_before_proof =
         b"as I sip my drink, thoughts of esmeralda consume my mind, like a refreshing nourishing draught \
@@ -337,7 +339,7 @@ fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &[
             prev_hash: FixedHash::zero(),
             timestamp: timestamp.into(),
             output_mr: FixedHash::from_hex("daab077d6dadb830bf506cc55c82abc6c3563bec6ff1d5699806f8b13059b4c3").unwrap(),
-            output_mmr_size: 0,
+            output_smt_size: 0,
             kernel_mr: FixedHash::from_hex("c14803066909d6d22abf0d2d2782e8936afc3f713f2af3a4ef5c42e8400c1303").unwrap(),
             kernel_mmr_size: 0,
             validator_node_mr: FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc")
@@ -363,7 +365,8 @@ fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &[
 
 #[cfg(test)]
 mod test {
-    use croaring::Bitmap;
+    use std::convert::TryFrom;
+
     use tari_common_types::{epoch::VnEpoch, types::Commitment};
     use tari_utilities::ByteArray;
 
@@ -378,7 +381,6 @@ mod test {
         },
         validation::{ChainBalanceValidator, FinalHorizonStateValidation},
         KernelMmr,
-        MutableOutputMmr,
     };
 
     #[test]
@@ -430,7 +432,7 @@ mod test {
         );
         assert_eq!(
             block.block().body.outputs().len() as u64,
-            block.header().output_mmr_size
+            block.header().output_smt_size
         );
 
         for kernel in block.block().body.kernels() {
@@ -449,12 +451,14 @@ mod test {
         for k in block.block().body.kernels() {
             kernel_mmr.push(k.hash().to_vec()).unwrap();
         }
+        let mut output_smt = OutputSmt::new();
 
-        let mut output_mmr = MutableOutputMmr::new(Vec::new(), Bitmap::create()).unwrap();
         let mut vn_nodes = Vec::new();
         for o in block.block().body.outputs() {
+            let smt_key = NodeKey::try_from(o.commitment.as_bytes()).unwrap();
+            let smt_node = ValueHash::try_from(o.smt_hash(block.header().height).as_slice()).unwrap();
+            output_smt.insert(smt_key, smt_node).unwrap();
             o.verify_metadata_signature().unwrap();
-            output_mmr.push(o.hash().to_vec()).unwrap();
             if matches!(o.features.output_type, OutputType::ValidatorNodeRegistration) {
                 let reg = o
                     .features
@@ -470,7 +474,10 @@ mod test {
         }
 
         assert_eq!(kernel_mmr.get_merkle_root().unwrap(), block.header().kernel_mr,);
-        assert_eq!(output_mmr.get_merkle_root().unwrap(), block.header().output_mr,);
+        assert_eq!(
+            FixedHash::try_from(output_smt.hash().as_slice()).unwrap(),
+            block.header().output_mr,
+        );
         assert_eq!(calculate_validator_node_mr(&vn_nodes), block.header().validator_node_mr,);
 
         // Check that the faucet UTXOs balance (the faucet_value consensus constant is set correctly and faucet kernel

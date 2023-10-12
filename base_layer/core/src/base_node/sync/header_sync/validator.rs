@@ -269,7 +269,7 @@ mod test {
             let mut header = BlockHeader::from_previous(tip.header());
             // Needed to have unique keys for the blockchain db mmr count indexes (MDB_KEY_EXIST error)
             header.kernel_mmr_size += 1;
-            header.output_mmr_size += 1;
+            header.output_smt_size += 1;
             let acc_data = BlockHeaderAccumulatedData {
                 hash: header.hash(),
                 ..Default::default()

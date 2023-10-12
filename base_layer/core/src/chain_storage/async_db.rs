@@ -21,12 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use std::{mem, ops::RangeBounds, sync::Arc, time::Instant};
 
-use croaring::Bitmap;
 use log::*;
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, HashOutput, PublicKey, Signature},
+    types::{BlockHash, Commitment, FixedHash, HashOutput, PublicKey, Signature},
 };
 use tari_utilities::epoch_time::EpochTime;
 
@@ -39,15 +38,13 @@ use crate::{
         BlockHeaderAccumulatedData,
         ChainBlock,
         ChainHeader,
-        CompleteDeletedBitmap,
-        DeletedBitmap,
         HistoricalBlock,
         NewBlockTemplate,
         UpdateBlockAccumulatedData,
     },
     chain_storage::{
         blockchain_database::MmrRoots,
-        utxo_mined_info::UtxoMinedInfo,
+        utxo_mined_info::{TxoMinedInfo, UtxoMinedInfo},
         BlockAddResult,
         BlockchainBackend,
         BlockchainDatabase,
@@ -57,7 +54,6 @@ use crate::{
         DbTransaction,
         HorizonData,
         MmrTree,
-        PrunedOutput,
         TargetDifficulties,
     },
     common::rolling_vec::RollingVec,
@@ -155,15 +151,17 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     make_async_fn!(fetch_horizon_data() -> HorizonData, "fetch_horizon_data");
 
     //---------------------------------- TXO --------------------------------------------//
-    make_async_fn!(fetch_utxo(hash: HashOutput) -> Option<PrunedOutput>, "fetch_utxo");
+    make_async_fn!(fetch_utxo(hash: HashOutput) -> Option<TransactionOutput>, "fetch_utxo");
 
-    make_async_fn!(fetch_utxos(hashes: Vec<HashOutput>) -> Vec<Option<(PrunedOutput, bool)>>, "fetch_utxos");
+    make_async_fn!(fetch_utxos(hashes: Vec<HashOutput>) -> Vec<Option<(TransactionOutput, bool)>>, "fetch_utxos");
 
     make_async_fn!(fetch_utxos_and_mined_info(hashes: Vec<HashOutput>) -> Vec<Option<UtxoMinedInfo>>, "fetch_utxos_and_mined_info");
 
-    make_async_fn!(fetch_utxos_in_block(hash: HashOutput, deleted: Option<Arc<Bitmap>>) -> (Vec<PrunedOutput>, Bitmap), "fetch_utxos_in_block");
+    make_async_fn!(fetch_txos_and_mined_info(hashes: Vec<HashOutput>) -> Vec<Option<TxoMinedInfo>>, "fetch_txos_and_mined_info");
 
-    make_async_fn!(fetch_outputs_in_block(hash: HashOutput) -> Vec<PrunedOutput>, "fetch_outputs_in_block");
+    make_async_fn!(fetch_utxos_in_block(hash: HashOutput, spend_header: Option<FixedHash>) -> Vec<(TransactionOutput, bool)>, "fetch_utxos_in_block");
+
+    make_async_fn!(fetch_outputs_in_block(hash: HashOutput) -> Vec<TransactionOutput>, "fetch_outputs_in_block");
 
     make_async_fn!(utxo_count() -> usize, "utxo_count");
 
@@ -193,8 +191,6 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     make_async_fn!(fetch_header_by_block_hash(hash: HashOutput) -> Option<BlockHeader>, "fetch_header_by_block_hash");
 
     make_async_fn!(fetch_header_containing_kernel_mmr(mmr_position: u64) -> ChainHeader, "fetch_header_containing_kernel_mmr");
-
-    make_async_fn!(fetch_header_containing_utxo_mmr(mmr_position: u64) -> ChainHeader, "fetch_header_containing_utxo_mmr");
 
     make_async_fn!(fetch_chain_header_by_block_hash(hash: HashOutput) -> Option<ChainHeader>, "fetch_chain_header_by_block_hash");
 
@@ -258,12 +254,6 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     make_async_fn!(fetch_target_difficulties_for_next_block(current_block_hash: HashOutput) -> TargetDifficulties, "fetch_target_difficulties_for_next_block");
 
     make_async_fn!(fetch_block_hashes_from_header_tip(n: usize, offset: usize) -> Vec<HashOutput>, "fetch_block_hashes_from_header_tip");
-
-    make_async_fn!(fetch_complete_deleted_bitmap_at(hash: HashOutput) -> CompleteDeletedBitmap, "fetch_deleted_bitmap");
-
-    make_async_fn!(fetch_deleted_bitmap_at_tip() -> DeletedBitmap, "fetch_deleted_bitmap_at_tip");
-
-    make_async_fn!(fetch_header_hash_by_deleted_mmr_positions(mmr_positions: Vec<u32>) -> Vec<Option<(u64, HashOutput)>>, "fetch_headers_of_deleted_positions");
 
     make_async_fn!(get_stats() -> DbBasicStats, "get_stats");
 
@@ -346,24 +336,10 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         output: TransactionOutput,
         header_hash: HashOutput,
         header_height: u64,
-        mmr_position: u32,
         timestamp: u64,
     ) -> &mut Self {
         self.transaction
-            .insert_utxo(output, header_hash, header_height, mmr_position, timestamp);
-        self
-    }
-
-    pub fn insert_pruned_output_via_horizon_sync(
-        &mut self,
-        output_hash: HashOutput,
-        header_hash: HashOutput,
-        header_height: u64,
-        mmr_position: u32,
-        timestamp: u64,
-    ) -> &mut Self {
-        self.transaction
-            .insert_pruned_utxo(output_hash, header_hash, header_height, mmr_position, timestamp);
+            .insert_utxo(output, header_hash, header_height, timestamp);
         self
     }
 
@@ -376,19 +352,13 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         self
     }
 
-    /// Updates the deleted tip bitmap with the indexes of the given bitmap.
-    pub fn update_deleted_bitmap(&mut self, deleted: Bitmap) -> &mut Self {
-        self.transaction.update_deleted_bitmap(deleted);
-        self
-    }
-
     pub fn insert_chain_header(&mut self, chain_header: ChainHeader) -> &mut Self {
         self.transaction.insert_chain_header(chain_header);
         self
     }
 
-    pub fn insert_block_body(&mut self, block: Arc<ChainBlock>) -> &mut Self {
-        self.transaction.insert_block_body(block);
+    pub fn insert_tip_block_body(&mut self, block: Arc<ChainBlock>) -> &mut Self {
+        self.transaction.insert_tip_block_body(block);
         self
     }
 
@@ -402,8 +372,8 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         self
     }
 
-    pub fn prune_outputs_at_positions(&mut self, positions: Vec<u32>) -> &mut Self {
-        self.transaction.prune_outputs_at_positions(positions);
+    pub fn prune_outputs_at_positions(&mut self, block_hash: BlockHash) -> &mut Self {
+        self.transaction.prune_outputs_spent_at_hash(block_hash);
         self
     }
 

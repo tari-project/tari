@@ -32,7 +32,6 @@ use std::{
 };
 
 use blake2::Blake2b;
-use croaring::Bitmap;
 use digest::consts::U32;
 use log::*;
 use serde::{Deserialize, Serialize};
@@ -40,7 +39,10 @@ use tari_common_types::{
     chain_metadata::ChainMetadata,
     types::{BlockHash, Commitment, FixedHash, HashOutput, PublicKey, Signature},
 };
-use tari_mmr::pruned_hashset::PrunedHashSet;
+use tari_mmr::{
+    pruned_hashset::PrunedHashSet,
+    sparse_merkle_tree::{DeleteResult, NodeKey, ValueHash},
+};
 use tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray};
 
 use super::TemplateRegistrationEntry;
@@ -53,8 +55,6 @@ use crate::{
         BlockHeaderValidationError,
         ChainBlock,
         ChainHeader,
-        CompleteDeletedBitmap,
-        DeletedBitmap,
         HistoricalBlock,
         NewBlockTemplate,
         UpdateBlockAccumulatedData,
@@ -67,7 +67,6 @@ use crate::{
         },
         db_transaction::{DbKey, DbTransaction, DbValue},
         error::ChainStorageError,
-        pruned_output::PrunedOutput,
         utxo_mined_info::UtxoMinedInfo,
         BlockAddResult,
         BlockchainBackend,
@@ -79,6 +78,7 @@ use crate::{
         OrNotFound,
         Reorg,
         TargetDifficulties,
+        TxoMinedInfo,
     },
     common::rolling_vec::RollingVec,
     consensus::{
@@ -89,7 +89,7 @@ use crate::{
     },
     proof_of_work::{monero_rx::MoneroPowData, PowAlgorithm, TargetDifficultyWindow},
     transactions::{
-        transaction_components::{TransactionInput, TransactionKernel},
+        transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
         TransactionHashDomain,
     },
     validation::{
@@ -100,7 +100,7 @@ use crate::{
         InternalConsistencyValidator,
         ValidationError,
     },
-    MutablePrunedOutputMmr,
+    OutputSmt,
     PrunedInputMmr,
     PrunedKernelMmr,
     ValidatorNodeBMT,
@@ -240,8 +240,12 @@ where B: BlockchainBackend
                 "Blockchain db is empty. Adding genesis block {}.",
                 genesis_block.block().body.to_counts_string()
             );
-            blockchain_db.insert_block(genesis_block.clone())?;
             let mut txn = DbTransaction::new();
+            let smt = OutputSmt::new();
+            txn.insert_tip_smt(smt);
+            blockchain_db.write(txn)?;
+            txn = DbTransaction::new();
+            blockchain_db.insert_block(genesis_block.clone())?;
             let body = &genesis_block.block().body;
             let utxo_sum = body.outputs().iter().map(|k| &k.commitment).sum::<Commitment>();
             let kernel_sum = body.kernels().iter().map(|k| &k.excess).sum::<Commitment>();
@@ -379,7 +383,7 @@ where B: BlockchainBackend
     }
 
     // Fetch the utxo
-    pub fn fetch_utxo(&self, hash: HashOutput) -> Result<Option<PrunedOutput>, ChainStorageError> {
+    pub fn fetch_utxo(&self, hash: HashOutput) -> Result<Option<TransactionOutput>, ChainStorageError> {
         let db = self.db_read_access()?;
         Ok(db.fetch_output(&hash)?.map(|mined_info| mined_info.output))
     }
@@ -394,15 +398,22 @@ where B: BlockchainBackend
 
     /// Return a list of matching utxos, with each being `None` if not found. If found, the transaction
     /// output, and a boolean indicating if the UTXO was spent as of the current tip.
-    pub fn fetch_utxos(&self, hashes: Vec<HashOutput>) -> Result<Vec<Option<(PrunedOutput, bool)>>, ChainStorageError> {
+    pub fn fetch_utxos(
+        &self,
+        hashes: Vec<HashOutput>,
+    ) -> Result<Vec<Option<(TransactionOutput, bool)>>, ChainStorageError> {
         let db = self.db_read_access()?;
-        let deleted = db.fetch_deleted_bitmap()?;
+        let smt = db.fetch_tip_smt()?;
 
         let mut result = Vec::with_capacity(hashes.len());
         for hash in hashes {
             let output = db.fetch_output(&hash)?;
-            result
-                .push(output.map(|mined_info| (mined_info.output, deleted.bitmap().contains(mined_info.mmr_position))));
+
+            result.push(output.map(|mined_info| {
+                let smt_key = NodeKey::try_from(mined_info.output.commitment.as_bytes()).unwrap();
+                let spent = !smt.contains(&smt_key);
+                (mined_info.output, spent)
+            }));
         }
         Ok(result)
     }
@@ -417,6 +428,20 @@ where B: BlockchainBackend
         for hash in hashes {
             let output = db.fetch_output(&hash)?;
             result.push(output);
+        }
+        Ok(result)
+    }
+
+    pub fn fetch_txos_and_mined_info(
+        &self,
+        hashes: Vec<HashOutput>,
+    ) -> Result<Vec<Option<TxoMinedInfo>>, ChainStorageError> {
+        let db = self.db_read_access()?;
+
+        let mut result = Vec::with_capacity(hashes.len());
+        for hash in hashes {
+            let input = db.fetch_input(&hash)?;
+            result.push(input);
         }
         Ok(result)
     }
@@ -437,13 +462,13 @@ where B: BlockchainBackend
     pub fn fetch_utxos_in_block(
         &self,
         hash: HashOutput,
-        deleted: Option<Arc<Bitmap>>,
-    ) -> Result<(Vec<PrunedOutput>, Bitmap), ChainStorageError> {
+        spend_header: Option<FixedHash>,
+    ) -> Result<Vec<(TransactionOutput, bool)>, ChainStorageError> {
         let db = self.db_read_access()?;
-        db.fetch_utxos_in_block(&hash, deleted.as_deref())
+        db.fetch_utxos_in_block(&hash, spend_header)
     }
 
-    pub fn fetch_outputs_in_block(&self, hash: HashOutput) -> Result<Vec<PrunedOutput>, ChainStorageError> {
+    pub fn fetch_outputs_in_block(&self, hash: HashOutput) -> Result<Vec<TransactionOutput>, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_outputs_in_block(&hash)
     }
@@ -474,11 +499,6 @@ where B: BlockchainBackend
     pub fn fetch_header_containing_kernel_mmr(&self, mmr_position: u64) -> Result<ChainHeader, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_header_containing_kernel_mmr(mmr_position)
-    }
-
-    pub fn fetch_header_containing_utxo_mmr(&self, mmr_position: u64) -> Result<ChainHeader, ChainStorageError> {
-        let db = self.db_read_access()?;
-        db.fetch_header_containing_utxo_mmr(mmr_position)
     }
 
     /// Find the first matching header in a list of block hashes, returning the index of the match and the BlockHeader.
@@ -830,7 +850,7 @@ where B: BlockchainBackend
         block.header.kernel_mmr_size = roots.kernel_mmr_size;
         block.header.input_mr = roots.input_mr;
         block.header.output_mr = roots.output_mr;
-        block.header.output_mmr_size = roots.output_mmr_size;
+        block.header.output_smt_size = roots.output_smt_size;
         block.header.validator_node_mr = roots.validator_node_mr;
         Ok(block)
     }
@@ -1154,49 +1174,6 @@ where B: BlockchainBackend
         Ok(db.fetch_horizon_data()?.unwrap_or_default())
     }
 
-    pub fn fetch_complete_deleted_bitmap_at(
-        &self,
-        hash: HashOutput,
-    ) -> Result<CompleteDeletedBitmap, ChainStorageError> {
-        let db = self.db_read_access()?;
-        let mut deleted = db.fetch_deleted_bitmap()?.into_bitmap();
-
-        let end_header =
-            fetch_header_by_block_hash(&*db, hash).or_not_found("BlockHeader", "start_hash", hash.to_hex())?;
-        let chain_metadata = db.fetch_chain_metadata()?;
-        let height = chain_metadata.height_of_longest_chain();
-        for i in end_header.height..height {
-            // order here does not matter, we dont have to go in reverse
-            deleted.xor_inplace(
-                db.fetch_block_accumulated_data_by_height(i + 1)
-                    .or_not_found("BlockAccumulatedData", "height", height.to_string())?
-                    .deleted(),
-            );
-        }
-        Ok(CompleteDeletedBitmap::new(
-            deleted,
-            height,
-            *chain_metadata.best_block(),
-        ))
-    }
-
-    pub fn fetch_deleted_bitmap_at_tip(&self) -> Result<DeletedBitmap, ChainStorageError> {
-        let db = self.db_read_access()?;
-        db.fetch_deleted_bitmap()
-    }
-
-    pub fn fetch_header_hash_by_deleted_mmr_positions(
-        &self,
-        mmr_positions: Vec<u32>,
-    ) -> Result<Vec<Option<(u64, HashOutput)>>, ChainStorageError> {
-        if mmr_positions.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let db = self.db_read_access()?;
-        db.fetch_header_hash_by_deleted_mmr_positions(mmr_positions)
-    }
-
     pub fn get_stats(&self) -> Result<DbBasicStats, ChainStorageError> {
         let lock = self.db_read_access()?;
         lock.get_stats()
@@ -1257,7 +1234,7 @@ pub struct MmrRoots {
     pub kernel_mmr_size: u64,
     pub input_mr: FixedHash,
     pub output_mr: FixedHash,
-    pub output_mmr_size: u64,
+    pub output_smt_size: u64,
     pub validator_node_mr: FixedHash,
 }
 
@@ -1268,7 +1245,7 @@ impl std::fmt::Display for MmrRoots {
         writeln!(f, "Kernel MR       : {}", self.kernel_mr)?;
         writeln!(f, "Kernel MMR Size : {}", self.kernel_mmr_size)?;
         writeln!(f, "Output MR       : {}", self.output_mr)?;
-        writeln!(f, "Output MMR Size : {}", self.output_mmr_size)?;
+        writeln!(f, "Output SMT Size : {}", self.output_smt_size)?;
         writeln!(f, "Validator MR    : {}", self.validator_node_mr)?;
         Ok(())
     }
@@ -1294,39 +1271,28 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
             metadata.best_block(),
         )));
     }
-    let deleted = db.fetch_deleted_bitmap()?.into_bitmap();
 
-    let BlockAccumulatedData { kernels, outputs, .. } = db
-        .fetch_block_accumulated_data(&header.prev_hash)?
-        .ok_or_else(|| ChainStorageError::ValueNotFound {
-            entity: "BlockAccumulatedData",
-            field: "header_hash",
-            value: header.prev_hash.to_hex(),
-        })?;
+    let BlockAccumulatedData { kernels, .. } =
+        db.fetch_block_accumulated_data(&header.prev_hash)?
+            .ok_or_else(|| ChainStorageError::ValueNotFound {
+                entity: "BlockAccumulatedData",
+                field: "header_hash",
+                value: header.prev_hash.to_hex(),
+            })?;
 
     let mut kernel_mmr = PrunedKernelMmr::new(kernels);
-    let mut output_mmr = MutablePrunedOutputMmr::new(outputs, deleted)?;
+    let mut output_smt = db.fetch_tip_smt()?;
     let mut input_mmr = PrunedInputMmr::new(PrunedHashSet::default());
-    let mut deleted_outputs = Vec::new();
 
     for kernel in body.kernels().iter() {
         kernel_mmr.push(kernel.hash().to_vec())?;
     }
 
     for output in body.outputs().iter() {
-        let output_hash = output.hash();
-        let output_mmr_hash = output_hash.to_vec();
-        output_mmr.push(output_mmr_hash.clone())?;
-        if output.is_burned() {
-            let index =
-                output_mmr
-                    .find_leaf_index(&output_mmr_hash)?
-                    .ok_or_else(|| ChainStorageError::ValueNotFound {
-                        entity: "UTXO",
-                        field: "hash",
-                        value: output_hash.to_hex(),
-                    })?;
-            deleted_outputs.push((index, output_hash));
+        if !output.is_burned() {
+            let smt_key = NodeKey::try_from(output.commitment.as_bytes())?;
+            let smt_node = ValueHash::try_from(output.smt_hash(header.height).as_slice())?;
+            output_smt.insert(smt_key, smt_node)?;
         }
     }
 
@@ -1335,41 +1301,11 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
 
         // Search the DB for the output leaf index so that it can be marked as spent/deleted.
         // If the output hash is not found, check the current output_mmr. This allows zero-conf transactions
-        let output_hash = input.output_hash();
-        let index = match db.fetch_mmr_leaf_index(MmrTree::Utxo, &output_hash)? {
-            Some(index) => index,
-            None => {
-                let index = output_mmr.find_leaf_index(&output_hash.to_vec())?.ok_or_else(|| {
-                    ChainStorageError::ValueNotFound {
-                        entity: "UTXO",
-                        field: "hash",
-                        value: output_hash.to_hex(),
-                    }
-                })?;
-                debug!(
-                    target: LOG_TARGET,
-                    "0-conf spend detected when calculating MMR roots for UTXO index {} ({})", index, output_hash,
-                );
-                index
-            },
+        let smt_key = NodeKey::try_from(input.commitment()?.as_bytes())?;
+        match output_smt.delete(&smt_key)? {
+            DeleteResult::Deleted(_value_hash) => {},
+            DeleteResult::KeyNotFound => return Err(ChainStorageError::UnspendableInput),
         };
-        deleted_outputs.push((index, output_hash));
-    }
-    for (index, output_hash) in deleted_outputs {
-        if !output_mmr.delete(index) {
-            let num_leaves = u32::try_from(output_mmr.get_leaf_count())
-                .map_err(|_| ChainStorageError::CriticalError("UTXO MMR leaf count overflows u32".to_string()))?;
-            if index < num_leaves && output_mmr.deleted().contains(index) {
-                return Err(ChainStorageError::InvalidOperation(format!(
-                    "UTXO {} was already marked as deleted.",
-                    output_hash,
-                )));
-            }
-            return Err(ChainStorageError::InvalidOperation(format!(
-                "Could not delete index {} from the output MMR ({} leaves)",
-                index, num_leaves
-            )));
-        }
     }
 
     let block_height = block.header.height;
@@ -1388,8 +1324,8 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
         kernel_mr: FixedHash::try_from(kernel_mmr.get_merkle_root()?)?,
         kernel_mmr_size: kernel_mmr.get_leaf_count()? as u64,
         input_mr: FixedHash::try_from(input_mmr.get_merkle_root()?)?,
-        output_mr: FixedHash::try_from(output_mmr.get_merkle_root()?)?,
-        output_mmr_size: output_mmr.get_leaf_count() as u64,
+        output_mr: FixedHash::try_from(output_smt.hash().as_slice())?,
+        output_smt_size: output_smt.size(),
         validator_node_mr,
     };
     Ok(mmr_roots)
@@ -1425,7 +1361,7 @@ pub fn fetch_headers<T: BlockchainBackend>(
 
     // Allow the headers to be returned in reverse order
     #[allow(clippy::cast_possible_truncation)]
-    let mut headers = Vec::with_capacity((end_inclusive - start) as usize);
+    let mut headers = Vec::with_capacity(end_inclusive.saturating_sub(start) as usize);
     for h in start..=end_inclusive {
         match db.fetch(&DbKey::HeaderHeight(h))? {
             Some(DbValue::HeaderHeight(header)) => {
@@ -1532,7 +1468,7 @@ fn insert_best_block(txn: &mut DbTransaction, block: Arc<ChainBlock>) -> Result<
     let accumulated_difficulty = block.accumulated_data().total_accumulated_difficulty;
     let expected_prev_best_block = block.block().header.prev_hash;
     txn.insert_chain_header(block.to_chain_header())
-        .insert_block_body(block)
+        .insert_tip_block_body(block)
         .set_best_block(
             height,
             block_hash,
@@ -1580,7 +1516,7 @@ pub fn fetch_target_difficulty_for_next_block<T: BlockchainBackend>(
 
 fn fetch_block<T: BlockchainBackend>(db: &T, height: u64, compact: bool) -> Result<HistoricalBlock, ChainStorageError> {
     let mark = Instant::now();
-    let (tip_height, is_pruned) = check_for_valid_height(db, height)?;
+    let (tip_height, _is_pruned) = check_for_valid_height(db, height)?;
     let chain_header = db.fetch_chain_header_by_height(height)?;
     let (header, accumulated_data) = chain_header.into_parts();
     let kernels = db.fetch_kernels_in_block(&accumulated_data.hash)?;
@@ -1603,66 +1539,32 @@ fn fetch_block<T: BlockchainBackend>(db: &T, height: u64, compact: bool) -> Resu
                 Err(e) => return Err(e),
             };
 
-            match utxo_mined_info.output {
-                PrunedOutput::Pruned { .. } => Ok(compact_input),
-                PrunedOutput::NotPruned { output } => {
-                    let rp_hash = match output.proof {
-                        Some(proof) => proof.hash(),
-                        None => FixedHash::zero(),
-                    };
-                    compact_input.add_output_data(
-                        output.version,
-                        output.features,
-                        output.commitment,
-                        output.script,
-                        output.sender_offset_public_key,
-                        output.covenant,
-                        output.encrypted_data,
-                        output.metadata_signature,
-                        rp_hash,
-                        output.minimum_value_promise,
-                    );
-                    Ok(compact_input)
-                },
-            }
+            let rp_hash = match utxo_mined_info.output.proof {
+                Some(proof) => proof.hash(),
+                None => FixedHash::zero(),
+            };
+            compact_input.add_output_data(
+                utxo_mined_info.output.version,
+                utxo_mined_info.output.features,
+                utxo_mined_info.output.commitment,
+                utxo_mined_info.output.script,
+                utxo_mined_info.output.sender_offset_public_key,
+                utxo_mined_info.output.covenant,
+                utxo_mined_info.output.encrypted_data,
+                utxo_mined_info.output.metadata_signature,
+                rp_hash,
+                utxo_mined_info.output.minimum_value_promise,
+            );
+            Ok(compact_input)
         })
         .collect::<Result<Vec<TransactionInput>, _>>()?;
 
-    let mut unpruned = vec![];
-    let mut pruned = vec![];
-    for output in outputs {
-        match output {
-            PrunedOutput::Pruned { output_hash } => {
-                pruned.push(output_hash);
-            },
-            PrunedOutput::NotPruned { output } => unpruned.push(output),
-        }
-    }
-
-    let mut pruned_input_count = 0;
-
-    if is_pruned {
-        let mut deleted = db
-            .fetch_block_accumulated_data_by_height(height)
-            .or_not_found("BlockAccumulatedData", "height", height.to_string())?
-            .deleted()
-            .clone();
-        if height > 0 {
-            let prev = db
-                .fetch_block_accumulated_data_by_height(height - 1)
-                .or_not_found("BlockAccumulatedData", "height", (height - 1).to_string())?
-                .deleted()
-                .clone();
-            deleted -= prev;
-        }
-
-        pruned_input_count = deleted.cardinality();
-    }
+    // let inputs = db.fetch_inputs_in_block(&accumulated_data.hash)?;
 
     let block = header
         .into_builder()
         .add_inputs(inputs)
-        .add_outputs(unpruned)
+        .add_outputs(outputs)
         .add_kernels(kernels)
         .build();
     trace!(
@@ -1671,13 +1573,7 @@ fn fetch_block<T: BlockchainBackend>(db: &T, height: u64, compact: bool) -> Resu
         height,
         mark.elapsed()
     );
-    Ok(HistoricalBlock::new(
-        block,
-        tip_height - height + 1,
-        accumulated_data,
-        pruned,
-        pruned_input_count,
-    ))
+    Ok(HistoricalBlock::new(block, tip_height - height + 1, accumulated_data))
 }
 
 fn fetch_blocks<T: BlockchainBackend>(
@@ -2473,25 +2369,14 @@ fn prune_to_height<T: BlockchainBackend>(db: &mut T, target_horizon_height: u64)
         target: LOG_TARGET,
         "Pruning blockchain database at height {} (was={})", target_horizon_height, last_pruned,
     );
-    let mut last_block = db.fetch_block_accumulated_data_by_height(last_pruned).or_not_found(
-        "BlockAccumulatedData",
-        "height",
-        last_pruned.to_string(),
-    )?;
+
     let mut txn = DbTransaction::new();
     for block_to_prune in (last_pruned + 1)..=target_horizon_height {
         let header = db.fetch_chain_header_by_height(block_to_prune)?;
-        let curr_block = db.fetch_block_accumulated_data_by_height(block_to_prune).or_not_found(
-            "BlockAccumulatedData",
-            "height",
-            block_to_prune.to_string(),
-        )?;
         // Note, this could actually be done in one step instead of each block, since deleted is
         // accumulated
-        let output_mmr_positions = curr_block.deleted() - last_block.deleted();
-        last_block = curr_block;
 
-        txn.prune_outputs_at_positions(output_mmr_positions.to_vec());
+        txn.prune_outputs_spent_at_hash(*header.hash());
         txn.delete_all_inputs_in_block(*header.hash());
         if txn.operations().len() >= 100 {
             txn.set_pruned_height(block_to_prune);

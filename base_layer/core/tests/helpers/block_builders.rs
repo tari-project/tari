@@ -19,10 +19,8 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use std::{convert::TryFrom, sync::Arc};
 
-use croaring::Bitmap;
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::types::{Commitment, FixedHash};
 use tari_core::{
@@ -52,13 +50,12 @@ use tari_core::{
         },
     },
     KernelMmr,
-    KernelMmrHasherBlake256,
-    MutableOutputMmr,
+    OutputSmt,
 };
-use tari_crypto::tari_utilities::hex::Hex;
 use tari_key_manager::key_manager_service::KeyManagerInterface;
-use tari_mmr::{Hash, MutableMmr};
+use tari_mmr::sparse_merkle_tree::{NodeKey, ValueHash};
 use tari_script::script;
+use tari_utilities::{hex::Hex, ByteArray};
 
 pub async fn create_coinbase(
     value: MicroMinotari,
@@ -146,10 +143,7 @@ fn print_new_genesis_block_values() {
 
     // Note: An em empty MMR will have a root of `MerkleMountainRange::<D, B>::null_hash()`
     let kernel_mr = KernelMmr::new(Vec::new()).get_merkle_root().unwrap();
-    let output_mr = MutableOutputMmr::new(Vec::new(), Bitmap::create())
-        .unwrap()
-        .get_merkle_root()
-        .unwrap();
+    let output_mr = FixedHash::try_from(OutputSmt::new().hash().as_slice()).unwrap();
 
     // Note: This is printed in the same order as needed for 'fn get_xxxx_genesis_block_raw()'
     println!();
@@ -182,27 +176,22 @@ pub async fn create_genesis_block(
 
 // Calculate the MMR Merkle roots for the genesis block template and update the header.
 fn update_genesis_block_mmr_roots(template: NewBlockTemplate) -> Result<Block, ChainStorageError> {
-    type BaseLayerKernelMutableMmr = MutableMmr<KernelMmrHasherBlake256, Vec<Hash>>;
-
     let NewBlockTemplate { header, mut body, .. } = template;
     // Make sure the body components are sorted. If they already are, this is a very cheap call.
     body.sort();
     let kernel_hashes: Vec<Vec<u8>> = body.kernels().iter().map(|k| k.hash().to_vec()).collect();
-    let out_hashes: Vec<Vec<u8>> = body.outputs().iter().map(|out| out.hash().to_vec()).collect();
 
     let mut header = BlockHeader::from(header);
-    header.kernel_mr = FixedHash::try_from(
-        BaseLayerKernelMutableMmr::new(kernel_hashes, Bitmap::create())
-            .unwrap()
-            .get_merkle_root()?,
-    )
-    .unwrap();
-    let mut mmr = MutableOutputMmr::new(Vec::<Vec<u8>>::new(), Bitmap::create()).unwrap();
-    for output in out_hashes {
-        let _ = mmr.push(output).unwrap();
+    let kernel_mmr = KernelMmr::new(kernel_hashes);
+    header.kernel_mr = FixedHash::try_from(kernel_mmr.get_merkle_root()?).unwrap();
+    let mut mmr = OutputSmt::new();
+    for output in body.outputs() {
+        let smt_key = NodeKey::try_from(output.commitment.as_bytes())?;
+        let smt_node = ValueHash::try_from(output.smt_hash(header.height).as_slice())?;
+        mmr.insert(smt_key, smt_node).unwrap();
     }
 
-    header.output_mr = FixedHash::try_from(mmr.get_merkle_root()?).unwrap();
+    header.output_mr = FixedHash::try_from(mmr.hash().as_slice()).unwrap();
     Ok(Block { header, body })
 }
 
