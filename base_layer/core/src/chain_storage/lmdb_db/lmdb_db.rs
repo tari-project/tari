@@ -365,8 +365,8 @@ impl LMDBDatabase {
                         "orphan_chain_tips_db",
                     )?;
                 },
-                DeleteBlock(hash) => {
-                    self.delete_block_body(&write_txn, hash)?;
+                DeleteTipBlock(hash) => {
+                    self.delete_tip_block_body(&write_txn, hash)?;
                 },
                 InsertMoneroSeedHeight(data, height) => {
                     self.insert_monero_seed_height(&write_txn, data, *height)?;
@@ -829,7 +829,7 @@ impl LMDBDatabase {
         Ok(())
     }
 
-    fn delete_block_body(
+    fn delete_tip_block_body(
         &self,
         write_txn: &WriteTransaction<'_>,
         block_hash: &HashOutput,
@@ -840,6 +840,13 @@ impl LMDBDatabase {
         let height = self
             .fetch_height_from_hash(write_txn, block_hash)
             .or_not_found("Block", "hash", hash_hex)?;
+        let next_height = height.saturating_add(1);
+        if self.fetch_block_accumulated_data(&write_txn, next_height)?.is_some() {
+            return Err(ChainStorageError::InvalidOperation(format!(
+                "Attempted to delete block at height {} while next block still exists",
+                height
+            )));
+        }
 
         lmdb_delete(
             write_txn,
@@ -847,8 +854,10 @@ impl LMDBDatabase {
             &height,
             "block_accumulated_data_db",
         )?;
+        let mut smt = self.fetch_tip_smt()?;
 
-        self.delete_block_inputs_outputs(write_txn, block_hash.as_slice())?;
+        self.delete_block_inputs_outputs(write_txn, block_hash.as_slice(), &mut smt)?;
+        self.insert_tip_smt(&write_txn, &smt)?;
         self.delete_block_kernels(write_txn, block_hash.as_slice())?;
 
         Ok(())
@@ -858,6 +867,7 @@ impl LMDBDatabase {
         &self,
         txn: &WriteTransaction<'_>,
         block_hash: &[u8],
+        output_smt: &mut OutputSmt,
     ) -> Result<(), ChainStorageError> {
         let output_rows = lmdb_delete_keys_starting_with::<TransactionOutputRowData>(txn, &self.utxos_db, block_hash)?;
         debug!(target: LOG_TARGET, "Deleted {} outputs...", output_rows.len());
@@ -883,6 +893,8 @@ impl LMDBDatabase {
             if utxo.output.is_burned() {
                 continue;
             }
+            let smt_key = NodeKey::try_from(utxo.output.commitment.as_bytes())?;
+            output_smt.delete(&smt_key)?;
             lmdb_delete(
                 txn,
                 &self.utxo_commitment_index,
@@ -932,6 +944,9 @@ impl LMDBDatabase {
                 rp_hash,
                 utxo_mined_info.output.minimum_value_promise,
             );
+            let smt_key = NodeKey::try_from(input.commitment()?.as_bytes())?;
+            let smt_node = ValueHash::try_from(input.smt_hash(row.height).as_slice())?;
+            output_smt.insert(smt_key, smt_node)?;
 
             trace!(target: LOG_TARGET, "Input moved to UTXO set: {}", input);
             lmdb_insert(
