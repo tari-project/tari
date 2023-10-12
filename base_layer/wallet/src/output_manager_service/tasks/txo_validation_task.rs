@@ -222,7 +222,10 @@ where
                         .for_protocol(self.operation_id)?;
                     continue;
                 };
-                if data.height_deleted_at == 0 {
+                if data.height_deleted_at == 0
+                    &&
+                    output.marked_deleted_at_height.is_some()
+                {
                     // this is mined but not yet spent
                     self.db
                         .mark_output_as_unspent(output.hash)
@@ -237,9 +240,10 @@ where
                     );
                     continue;
                 };
-                let confirmed = (response.height_of_longest_chain.saturating_sub(data.height_deleted_at)) >=
-                    self.config.num_confirmations_required;
-                self.db
+                if data.height_deleted_at > 0 {
+                    let confirmed = (response.height_of_longest_chain.saturating_sub(data.height_deleted_at)) >=
+                        self.config.num_confirmations_required;
+                    self.db
                     .mark_output_as_spent(
                         output.hash,
                         data.mined_height,
@@ -260,6 +264,7 @@ where
                     response.height_of_longest_chain,
                     self.operation_id
                 );
+                }
             }
         }
         Ok(())
