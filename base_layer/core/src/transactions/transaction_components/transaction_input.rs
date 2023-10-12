@@ -449,6 +449,17 @@ impl TransactionInput {
         }
     }
 
+    pub fn smt_hash(&self, mined_height: u64) -> FixedHash {
+        let utxo_hash = self.output_hash();
+        let smt_hash = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("smt_hash")
+            .chain(&utxo_hash)
+            .chain(&mined_height);
+
+        match self.version {
+            TransactionInputVersion::V0 | TransactionInputVersion::V1 => smt_hash.finalize().into(),
+        }
+    }
+
     /// Returns true if this is a compact input, otherwise false.
     pub fn is_compact(&self) -> bool {
         matches!(self.spent_output, SpentOutput::OutputHash(_))

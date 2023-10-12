@@ -1707,7 +1707,7 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
         let block = fetch_block(db, last_block_height - h, false)?;
         let block = Arc::new(block.try_into_chain_block()?);
         let block_hash = *block.hash();
-        txn.delete_block(block_hash);
+        txn.delete_tip_block(block_hash);
         txn.delete_header(last_block_height - h);
         if !prune_past_horizon && !db.contains(&DbKey::OrphanBlock(*block.hash()))? {
             // Because we know we will remove blocks we can't recover, this will be a destructive rewind, so we
@@ -1760,7 +1760,7 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
                 last_block_height - h - steps_back,
             );
             let header = fetch_header(db, last_block_height - h - steps_back)?;
-            txn.delete_block(header.hash());
+            txn.delete_tip_block(header.hash());
             db.write(txn)?;
         }
     }

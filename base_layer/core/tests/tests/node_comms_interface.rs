@@ -29,7 +29,7 @@ use tari_core::{
         NodeCommsResponse,
         OutboundNodeCommsInterface,
     },
-    chain_storage::{BlockchainDatabaseConfig, DbTransaction, Validators},
+    chain_storage::{BlockchainDatabaseConfig, Validators},
     consensus::ConsensusManager,
     covenants::Covenant,
     mempool::{Mempool, MempoolConfig},
@@ -40,14 +40,11 @@ use tari_core::{
     },
     transactions::{
         tari_amount::MicroMinotari,
-        test_helpers::{create_test_core_key_manager_with_memory_db, create_utxo, spend_utxos},
-        transaction_components::{OutputFeatures, TransactionOutputVersion, WalletOutput},
+        test_helpers::{create_test_core_key_manager_with_memory_db, create_utxo},
     },
-    txn_schema,
     validation::{mocks::MockValidator, transaction::TransactionChainLinkedValidator},
 };
-use tari_key_manager::key_manager_service::KeyManagerInterface;
-use tari_script::{inputs, script};
+use tari_script::script;
 use tari_service_framework::reply_channel;
 use tokio::sync::{broadcast, mpsc};
 
@@ -287,51 +284,11 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         connectivity,
         randomx_factory,
     );
-    let script = script!(Nop);
-    let amount = MicroMinotari(10_000);
-    let output_features = OutputFeatures::default();
-    let covenant = Covenant::default();
-    let (utxo, spending_key_id, sender_offset_key_id) = create_utxo(
-        amount,
-        &key_manager,
-        &output_features,
-        &script,
-        &covenant,
-        MicroMinotari::zero(),
-    )
-    .await;
-    let mut txn = DbTransaction::new();
-    txn.insert_utxo(utxo.clone(), *block0.hash(), 0, 0);
-    if let Err(e) = store.commit(txn) {
-        panic!("{}", e);
-    }
 
-    let wallet_output = WalletOutput::new_with_rangeproof(
-        TransactionOutputVersion::get_current_version(),
-        amount,
-        spending_key_id.clone(),
-        output_features,
-        script,
-        inputs!(key_manager.get_public_key_at_key_id(&spending_key_id).await.unwrap()),
-        spending_key_id,
-        key_manager
-            .get_public_key_at_key_id(&sender_offset_key_id)
-            .await
-            .unwrap(),
-        utxo.metadata_signature,
-        0,
-        covenant,
-        utxo.encrypted_data,
-        utxo.minimum_value_promise,
-        utxo.proof,
-    );
-
-    let txn = txn_schema!(from: vec![wallet_output], to: vec![MicroMinotari(5_000), MicroMinotari(4_000)]);
-    let (txn, _) = spend_utxos(txn, &key_manager).await;
     let block1 = append_block(
         &store,
         &block0,
-        vec![txn],
+        vec![],
         &consensus_manager,
         Difficulty::min(),
         &key_manager,

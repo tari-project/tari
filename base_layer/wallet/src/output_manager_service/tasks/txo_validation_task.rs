@@ -181,7 +181,6 @@ where
         last_mined_header_hash: Option<BlockHash>,
     ) -> Result<(), OutputManagerProtocolError> {
         let mined_outputs = self.db.fetch_mined_unspent_outputs().for_protocol(self.operation_id)?;
-
         if mined_outputs.is_empty() {
             return Ok(());
         }
@@ -237,21 +236,18 @@ where
                     );
                     continue;
                 };
+
                 if data.height_deleted_at > 0 {
                     let confirmed = (response.height_of_longest_chain.saturating_sub(data.height_deleted_at)) >=
                         self.config.num_confirmations_required;
-                    self.db
-                        .mark_output_as_spent(
-                            output.hash,
-                            data.mined_height,
-                            data.block_deleted_in.clone().try_into().map_err(|_| {
-                                OutputManagerProtocolError::new(
-                                    self.operation_id,
-                                    OutputManagerError::InconsistentBaseNodeDataError("Base node sent malformed hash"),
-                                )
-                            })?,
-                            confirmed,
+                    let block_hash = data.block_deleted_in.clone().try_into().map_err(|_| {
+                        OutputManagerProtocolError::new(
+                            self.operation_id,
+                            OutputManagerError::InconsistentBaseNodeDataError("Base node sent malformed hash"),
                         )
+                    })?;
+                    self.db
+                        .mark_output_as_spent(output.hash, data.height_deleted_at, block_hash, confirmed)
                         .for_protocol(self.operation_id)?;
                     info!(
                         target: LOG_TARGET,

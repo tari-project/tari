@@ -137,9 +137,6 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
     task::spawn(mock_base_node_service.run());
 
     let mut wallet_connectivity_mock = create_wallet_connectivity_mock();
-    // let (connectivity, connectivity_mock) = create_connectivity_mock();
-    // let connectivity_mock_state = connectivity_mock.get_shared_state();
-    // task::spawn(connectivity_mock.run());
     let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
 
     wallet_connectivity_mock.notify_base_node_set(server_node_identity.to_peer());
@@ -1404,7 +1401,7 @@ async fn test_txo_validation() {
     oms.base_node_wallet_rpc_mock_state
         .set_utxo_query_response(utxo_query_responses.clone());
 
-    // This response sets output1 as spent in the transaction that produced output4
+    // This response sets output1 and output2 as mined, not spent
     let query_deleted_response = QueryDeletedResponse {
         best_block: block4_header.hash().to_vec(),
         height_of_longest_chain: 4,
@@ -1598,12 +1595,6 @@ async fn test_txo_validation() {
                 block_deleted_in: Vec::new(),
             },
             QueryDeletedData {
-                mined_height: 0,
-                block_mined_in: Vec::new(),
-                height_deleted_at: 0,
-                block_deleted_in: Vec::new(),
-            },
-            QueryDeletedData {
                 mined_height: 5,
                 block_mined_in: block5_header.hash().to_vec(),
                 height_deleted_at: 0,
@@ -1622,10 +1613,6 @@ async fn test_txo_validation() {
                 block_deleted_in: Vec::new(),
             },
         ],
-        // deleted_positions: vec![1],
-        // not_deleted_positions: vec![2, 4, 5, 6],
-        // heights_deleted_at: vec![5],
-        // blocks_deleted_in: vec![block5_header.hash().to_vec()],
     };
 
     oms.base_node_wallet_rpc_mock_state
@@ -1646,6 +1633,7 @@ async fn test_txo_validation() {
         .wait_pop_query_deleted(1, Duration::from_secs(60))
         .await
         .unwrap();
+    assert_eq!(query_deleted_calls[0].hashes.len(), 5);
 
     let balance = oms.output_manager_handle.get_balance().await.unwrap();
     assert_eq!(
@@ -1692,6 +1680,8 @@ async fn test_txo_validation() {
         .wait_pop_query_deleted(1, Duration::from_secs(60))
         .await
         .unwrap();
+
+    assert_eq!(query_deleted_calls[0].hashes.len(), 5);
 
     let balance = oms.output_manager_handle.get_balance().await.unwrap();
     assert_eq!(
@@ -1784,7 +1774,7 @@ async fn test_txo_validation() {
                 mined_height: 1,
                 block_mined_in: block1_header.hash().to_vec(),
                 height_deleted_at: 5,
-                block_deleted_in: block5_header.hash().to_vec(),
+                block_deleted_in: block5_header_reorg.hash().to_vec(),
             },
             QueryDeletedData {
                 mined_height: 1,
@@ -1794,27 +1784,11 @@ async fn test_txo_validation() {
             },
             QueryDeletedData {
                 mined_height: 5,
-                block_mined_in: block5_header.hash().to_vec(),
-                height_deleted_at: 0,
-                block_deleted_in: Vec::new(),
-            },
-            QueryDeletedData {
-                mined_height: 5,
-                block_mined_in: block5_header.hash().to_vec(),
-                height_deleted_at: 0,
-                block_deleted_in: Vec::new(),
-            },
-            QueryDeletedData {
-                mined_height: 5,
-                block_mined_in: block5_header.hash().to_vec(),
+                block_mined_in: block5_header_reorg.hash().to_vec(),
                 height_deleted_at: 0,
                 block_deleted_in: Vec::new(),
             },
         ],
-        // deleted_positions: vec![1],
-        // not_deleted_positions: vec![2, 4, 5, 6],
-        // heights_deleted_at: vec![5],
-        // blocks_deleted_in: vec![block5_header_reorg.hash().to_vec()],
     };
 
     oms.base_node_wallet_rpc_mock_state
