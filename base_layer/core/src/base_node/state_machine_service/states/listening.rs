@@ -46,6 +46,7 @@ use crate::{
                 StateEvent::FatalError,
                 StateInfo,
                 SyncStatus,
+                SyncStatus::{Lagging, SyncNotPossible, UpToDate},
                 Waiting,
             },
             BaseNodeStateMachine,
@@ -132,6 +133,8 @@ impl Listening {
                     }
                 },
                 Ok(ChainMetadataEvent::PeerChainMetadataReceived(peer_metadata)) => {
+                    // We already ban the peer based on some previous logic, but this message was already in the
+                    // pipeline before the ban went into effect.
                     match shared.peer_manager.is_peer_banned(peer_metadata.node_id()).await {
                         Ok(true) => {
                             warn!(
@@ -202,6 +205,7 @@ impl Listening {
                         if time_since_better_block
                             .map(|t| t.elapsed() > shared.config.time_before_considered_lagging)
                             .unwrap()
+                        // unwrap is safe because time_since_better_block is set right above
                         {
                             return StateEvent::FallenBehind(SyncStatus::Lagging {
                                 local: local.clone(),
@@ -278,7 +282,6 @@ fn determine_sync_mode(
     local: &ChainMetadata,
     network: &PeerChainMetadata,
 ) -> SyncStatus {
-    use SyncStatus::{Lagging, SyncNotPossible, UpToDate};
     let network_tip_accum_difficulty = network.claimed_chain_metadata().accumulated_difficulty();
     let local_tip_accum_difficulty = local.accumulated_difficulty();
     if local_tip_accum_difficulty < network_tip_accum_difficulty {

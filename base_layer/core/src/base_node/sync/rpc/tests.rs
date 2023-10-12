@@ -122,12 +122,11 @@ mod sync_utxos {
 
     #[tokio::test]
     async fn it_returns_not_found_if_unknown_hash() {
-        let (service, _, rpc_request_mock, _tmp) = setup();
+        let (service, db, rpc_request_mock, _tmp) = setup();
+        let gen_block_hash = db.fetch_header(0).unwrap().unwrap().hash();
         let msg = SyncUtxosRequest {
-            start: 0,
+            start_header_hash: gen_block_hash.to_vec(),
             end_header_hash: vec![0; 32],
-            include_pruned_utxos: true,
-            include_deleted_bitmaps: false,
         };
         let req = rpc_request_mock.request_with_context(Default::default(), msg);
         let err = service.sync_utxos(req).await.unwrap_err();
@@ -137,41 +136,15 @@ mod sync_utxos {
     #[tokio::test]
     async fn it_returns_not_found_if_index_too_large() {
         let (service, db, rpc_request_mock, _tmp) = setup();
+        let gen_block_hash = db.fetch_header(0).unwrap().unwrap().hash();
         let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"])).await;
         let gb = chain.get("GB").unwrap();
         let msg = SyncUtxosRequest {
-            start: 100000000,
+            start_header_hash: gen_block_hash.to_vec(),
             end_header_hash: gb.hash().to_vec(),
-            include_pruned_utxos: true,
-            include_deleted_bitmaps: false,
         };
         let req = rpc_request_mock.request_with_context(Default::default(), msg);
         let err = service.sync_utxos(req).await.unwrap_err();
         unpack_enum!(RpcStatusCode::NotFound = err.as_status_code());
-    }
-
-    #[tokio::test]
-    async fn it_sends_an_offset_response() {
-        let (service, db, rpc_request_mock, _tmp) = setup();
-
-        let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"], ["B->A"])).await;
-
-        let block = chain.get("B").unwrap();
-        let total_outputs = block.block().header.output_mmr_size;
-        let start = total_outputs - 2;
-        let msg = SyncUtxosRequest {
-            start,
-            end_header_hash: block.hash().to_vec(),
-            include_pruned_utxos: true,
-            include_deleted_bitmaps: false,
-        };
-        let req = rpc_request_mock.request_with_context(Default::default(), msg);
-        let mut streaming = service.sync_utxos(req).await.unwrap().into_inner();
-        let utxo_indexes = convert_mpsc_to_stream(&mut streaming)
-            .map(|utxo| utxo.unwrap().mmr_index)
-            .collect::<Vec<_>>()
-            .await;
-
-        assert!(utxo_indexes.iter().all(|index| (start..=start + 2).contains(index)));
     }
 }

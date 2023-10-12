@@ -28,7 +28,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{BlockHash, Signature};
 
-use crate::proto::{base_node as proto, types};
+use crate::proto::base_node as proto;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TxSubmissionResponse {
@@ -251,33 +251,5 @@ impl TryFrom<proto::TxQueryBatchResponse> for TxQueryBatchResponse {
             confirmations: proto_response.confirmations,
             mined_timestamp: proto_response.mined_timestamp,
         })
-    }
-}
-
-impl proto::SyncUtxosResponse {
-    pub fn into_utxo(self) -> Option<proto::SyncUtxo> {
-        use proto::sync_utxos_response::UtxoOrDeleted::{DeletedDiff, Utxo};
-        match self.utxo_or_deleted? {
-            Utxo(utxo) => Some(utxo),
-            DeletedDiff(_) => None,
-        }
-    }
-
-    pub fn into_bitmap(self) -> Option<Vec<u8>> {
-        use proto::sync_utxos_response::UtxoOrDeleted::{DeletedDiff, Utxo};
-        match self.utxo_or_deleted? {
-            Utxo(_) => None,
-            DeletedDiff(bitmap) => Some(bitmap),
-        }
-    }
-}
-
-impl proto::sync_utxo::Utxo {
-    pub fn into_transaction_output(self) -> Option<types::TransactionOutput> {
-        use proto::sync_utxo::Utxo::{Output, PrunedOutput};
-        match self {
-            Output(output) => Some(output),
-            PrunedOutput(_) => None,
-        }
     }
 }

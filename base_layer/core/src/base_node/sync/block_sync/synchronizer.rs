@@ -359,7 +359,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             self.db
                 .write_transaction()
                 .delete_orphan(header_hash)
-                .insert_block_body(block.clone())
+                .insert_tip_block_body(block.clone())
                 .set_best_block(
                     block.height(),
                     header_hash,

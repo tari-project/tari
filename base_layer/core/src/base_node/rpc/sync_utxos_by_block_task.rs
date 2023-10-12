@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryInto, sync::Arc, time::Instant};
+use std::{convert::TryInto, time::Instant};
 
 use log::*;
 use tari_comms::protocol::rpc::{RpcStatus, RpcStatusResultExt};
@@ -29,7 +29,7 @@ use tokio::{sync::mpsc, task};
 
 use crate::{
     blocks::BlockHeader,
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, PrunedOutput},
+    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     proto,
     proto::base_node::{SyncUtxosByBlockRequest, SyncUtxosByBlockResponse},
 };
@@ -98,20 +98,6 @@ where B: BlockchainBackend + 'static
         start_header: BlockHeader,
         end_header: BlockHeader,
     ) -> Result<(), RpcStatus> {
-        let bitmap = self
-            .db
-            .fetch_complete_deleted_bitmap_at(end_header.hash())
-            .await
-            .map_err(|err| {
-                error!(target: LOG_TARGET, "Failed to get deleted bitmap: {}", err);
-                RpcStatus::general(&format!(
-                    "Could not get deleted bitmap at hash {}",
-                    end_header.hash().to_hex()
-                ))
-            })?
-            .into_bitmap();
-        let bitmap = Arc::new(bitmap);
-
         debug!(
             target: LOG_TARGET,
             "Starting stream task with start_header: {} and end_header: {}",
@@ -120,7 +106,6 @@ where B: BlockchainBackend + 'static
         );
 
         let mut current_header = start_header;
-
         loop {
             let timer = Instant::now();
             let current_header_hash = current_header.hash();
@@ -137,19 +122,15 @@ where B: BlockchainBackend + 'static
                 break;
             }
 
-            let (utxos, _deleted_diff) = self
+            let utxos = self
                 .db
-                .fetch_utxos_in_block(current_header.hash(), Some(bitmap.clone()))
+                .fetch_utxos_in_block(current_header.hash(), None)
                 .await
                 .rpc_status_internal_error(LOG_TARGET)?;
             let utxos = utxos
                     .into_iter()
-                    .enumerate()
                     // Don't include pruned UTXOs
-                    .filter_map(|(_, utxo)| match utxo {
-                        PrunedOutput::Pruned{output_hash: _} => None,
-                        PrunedOutput::NotPruned{output} => Some(output.try_into()),
-                    }).collect::<Result<Vec<proto::types::TransactionOutput>, String>>().map_err(|err| RpcStatus::general(&err))?;
+                    .filter_map(|(utxo, _spent)| Some(utxo.try_into())).collect::<Result<Vec<proto::types::TransactionOutput>, String>>().map_err(|err| RpcStatus::general(&err))?;
 
             debug!(
                 target: LOG_TARGET,
@@ -211,7 +192,7 @@ where B: BlockchainBackend + 'static
         debug!(
             target: LOG_TARGET,
             "UTXO sync by block completed to UTXO {} (Header hash = {})",
-            current_header.output_mmr_size,
+            current_header.output_smt_size,
             current_header.hash().to_hex()
         );
 

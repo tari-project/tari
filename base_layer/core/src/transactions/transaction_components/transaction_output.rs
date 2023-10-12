@@ -221,6 +221,17 @@ impl TransactionOutput {
         )
     }
 
+    pub fn smt_hash(&self, mined_height: u64) -> FixedHash {
+        let utxo_hash = self.hash();
+        let smt_hash = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("smt_hash")
+            .chain(&utxo_hash)
+            .chain(&mined_height);
+
+        match self.version {
+            TransactionOutputVersion::V0 | TransactionOutputVersion::V1 => smt_hash.finalize().into(),
+        }
+    }
+
     /// Verify that range proof is valid
     pub fn verify_range_proof(&self, prover: &RangeProofService) -> Result<(), TransactionError> {
         match self.features.range_proof_type {

@@ -151,7 +151,7 @@ where
                 unmined.len(),
                 self.operation_id
             );
-            for (output, mined_height, mined_in_block, mmr_position, mined_timestamp) in &mined {
+            for (output, mined_height, mined_in_block, mined_timestamp) in &mined {
                 info!(
                     target: LOG_TARGET,
                     "Updating output comm:{}: hash {} as mined at height {} with current tip at {} (Operation ID:
@@ -162,15 +162,8 @@ where
                     tip_height,
                     self.operation_id
                 );
-                self.update_output_as_mined(
-                    output,
-                    mined_in_block,
-                    *mined_height,
-                    *mmr_position,
-                    tip_height,
-                    *mined_timestamp,
-                )
-                .await?;
+                self.update_output_as_mined(output, mined_in_block, *mined_height, tip_height, *mined_timestamp)
+                    .await?;
             }
             for output in unmined {
                 self.db
@@ -196,7 +189,7 @@ where
         for batch in mined_outputs.chunks(self.config.tx_validator_batch_size) {
             debug!(
                 target: LOG_TARGET,
-                "Asking base node for status of {} mmr_positions (Operation ID: {})",
+                "Asking base node for status of {} commitments (Operation ID: {})",
                 batch.len(),
                 self.operation_id
             );
@@ -204,96 +197,33 @@ where
             // We have to send positions to the base node because if the base node cannot find the hash of the output
             // we can't tell if the output ever existed, as opposed to existing and was spent.
             // This assumes that the base node has not reorged since the last time we asked.
-            let deleted_bitmap_response = wallet_client
+            let response = wallet_client
                 .query_deleted(QueryDeletedRequest {
                     chain_must_include_header: last_mined_header_hash.map(|v| v.to_vec()),
-                    mmr_positions: batch.iter().filter_map(|ub| ub.mined_mmr_position).collect(),
-                    include_deleted_block_data: true,
+                    hashes: batch.iter().map(|o| o.hash.to_vec()).collect(),
                 })
                 .await
                 .for_protocol(self.operation_id)?;
 
-            for output in batch {
-                let mined_mmr_position = if let Some(pos) = output.mined_mmr_position {
-                    pos
-                } else {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Mined Unspent output {} should have `mined_mmr_position`, setting as unmined to revalidate \
-                         (Operation ID: {})",
-                        output.commitment.to_hex(),
-                        self.operation_id
-                    );
+            if response.data.len() != batch.len() {
+                return Err(OutputManagerProtocolError::new(
+                    self.operation_id,
+                    OutputManagerError::InconsistentBaseNodeDataError(
+                        "Base node did not send back information for all utxos",
+                    ),
+                ));
+            }
+
+            for (output, data) in batch.iter().zip(response.data.iter()) {
+                if data.mined_height == 0 {
+                    // base node thinks this is unmined or does not know of it.
                     self.db
                         .set_output_to_unmined_and_invalid(output.hash)
                         .for_protocol(self.operation_id)?;
                     continue;
                 };
-
-                if deleted_bitmap_response.deleted_positions.len() != deleted_bitmap_response.blocks_deleted_in.len() ||
-                    deleted_bitmap_response.deleted_positions.len() !=
-                        deleted_bitmap_response.heights_deleted_at.len()
-                {
-                    return Err(OutputManagerProtocolError::new(
-                        self.operation_id,
-                        OutputManagerError::InconsistentBaseNodeDataError(
-                            "`deleted_positions`, `blocks_deleted_in` and `heights_deleted_at` should be the same \
-                             length",
-                        ),
-                    ));
-                }
-
-                if deleted_bitmap_response.deleted_positions.contains(&mined_mmr_position) {
-                    let position = if let Some(pos) = deleted_bitmap_response
-                        .deleted_positions
-                        .iter()
-                        .position(|dp| dp == &mined_mmr_position)
-                    {
-                        pos
-                    } else {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Deleted positions for Mined Unspent output {} should include the `mined_mmr_position`. \
-                             setting as unmined to revalidate (Operation ID: {})",
-                            output.commitment.to_hex(),
-                            self.operation_id
-                        );
-                        self.db
-                            .set_output_to_unmined_and_invalid(output.hash)
-                            .for_protocol(self.operation_id)?;
-                        continue;
-                    };
-
-                    let deleted_height = deleted_bitmap_response.heights_deleted_at[position];
-                    let deleted_block = match deleted_bitmap_response.blocks_deleted_in[position].clone().try_into() {
-                        Ok(v) => v,
-                        Err(_) => {
-                            debug!(target: LOG_TARGET, "Received malformed deleted_block");
-                            continue;
-                        },
-                    };
-
-                    let confirmed = (deleted_bitmap_response.height_of_longest_chain - deleted_height) >=
-                        self.config.num_confirmations_required;
-
-                    self.db
-                        .mark_output_as_spent(output.hash, deleted_height, deleted_block, confirmed)
-                        .for_protocol(self.operation_id)?;
-                    info!(
-                        target: LOG_TARGET,
-                        "Updating output comm:{}: hash {} as spent at tip height {} (Operation ID: {})",
-                        output.commitment.to_hex(),
-                        output.hash.to_hex(),
-                        deleted_bitmap_response.height_of_longest_chain,
-                        self.operation_id
-                    );
-                }
-
-                if deleted_bitmap_response
-                    .not_deleted_positions
-                    .contains(&mined_mmr_position) &&
-                    output.marked_deleted_at_height.is_some()
-                {
+                if data.height_deleted_at == 0 && output.marked_deleted_at_height.is_some() {
+                    // this is mined but not yet spent
                     self.db
                         .mark_output_as_unspent(output.hash)
                         .for_protocol(self.operation_id)?;
@@ -302,7 +232,33 @@ where
                         "Updating output comm:{}: hash {} as unspent at tip height {} (Operation ID: {})",
                         output.commitment.to_hex(),
                         output.hash.to_hex(),
-                        deleted_bitmap_response.height_of_longest_chain,
+                        response.height_of_longest_chain,
+                        self.operation_id
+                    );
+                    continue;
+                };
+                if data.height_deleted_at > 0 {
+                    let confirmed = (response.height_of_longest_chain.saturating_sub(data.height_deleted_at)) >=
+                        self.config.num_confirmations_required;
+                    self.db
+                        .mark_output_as_spent(
+                            output.hash,
+                            data.mined_height,
+                            data.block_deleted_in.clone().try_into().map_err(|_| {
+                                OutputManagerProtocolError::new(
+                                    self.operation_id,
+                                    OutputManagerError::InconsistentBaseNodeDataError("Base node sent malformed hash"),
+                                )
+                            })?,
+                            confirmed,
+                        )
+                        .for_protocol(self.operation_id)?;
+                    info!(
+                        target: LOG_TARGET,
+                        "Updating output comm:{}: hash {} as spent at tip height {} (Operation ID: {})",
+                        output.commitment.to_hex(),
+                        output.hash.to_hex(),
+                        response.height_of_longest_chain,
                         self.operation_id
                     );
                 }
@@ -336,7 +292,7 @@ where
                 unmined.len(),
                 self.operation_id
             );
-            for (output, mined_height, mined_in_block, mmr_position, mined_timestamp) in &mined {
+            for (output, mined_height, mined_in_block, mined_timestamp) in &mined {
                 info!(
                     target: LOG_TARGET,
                     "Updating output comm:{}: hash {} as mined at height {} with current tip at {} (Operation ID: {})",
@@ -346,15 +302,8 @@ where
                     tip_height,
                     self.operation_id
                 );
-                self.update_output_as_mined(
-                    output,
-                    mined_in_block,
-                    *mined_height,
-                    *mmr_position,
-                    tip_height,
-                    *mined_timestamp,
-                )
-                .await?;
+                self.update_output_as_mined(output, mined_in_block, *mined_height, tip_height, *mined_timestamp)
+                    .await?;
             }
         }
 
@@ -513,14 +462,7 @@ where
         &self,
         batch: &[DbWalletOutput],
         base_node_client: &mut BaseNodeWalletRpcClient,
-    ) -> Result<
-        (
-            Vec<(DbWalletOutput, u64, BlockHash, u64, u64)>,
-            Vec<DbWalletOutput>,
-            u64,
-        ),
-        OutputManagerError,
-    > {
+    ) -> Result<(Vec<(DbWalletOutput, u64, BlockHash, u64)>, Vec<DbWalletOutput>, u64), OutputManagerError> {
         let batch_hashes = batch.iter().map(|o| o.hash.to_vec()).collect();
         trace!(
             target: LOG_TARGET,
@@ -559,7 +501,6 @@ where
                         output.clone(),
                         returned_output.mined_height,
                         block_hash,
-                        returned_output.mmr_position,
                         returned_output.mined_timestamp,
                     )),
                     Err(_) => {
@@ -583,7 +524,6 @@ where
         tx: &DbWalletOutput,
         mined_in_block: &BlockHash,
         mined_height: u64,
-        mmr_position: u64,
         tip_height: u64,
         mined_timestamp: u64,
     ) -> Result<(), OutputManagerProtocolError> {
@@ -594,7 +534,6 @@ where
                 tx.hash,
                 mined_height,
                 *mined_in_block,
-                mmr_position,
                 confirmed,
                 mined_timestamp,
             )

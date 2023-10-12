@@ -74,7 +74,13 @@ mod domain_hashing {
     use blake2::Blake2b;
     use digest::consts::U32;
     use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
-    use tari_mmr::{pruned_hashset::PrunedHashSet, BalancedBinaryMerkleTree, Hash, MerkleMountainRange, MutableMmr};
+    use tari_mmr::{
+        pruned_hashset::PrunedHashSet,
+        sparse_merkle_tree::SparseMerkleTree,
+        BalancedBinaryMerkleTree,
+        Hash,
+        MerkleMountainRange,
+    };
 
     hash_domain!(KernelMmrHashDomain, "com.tari.base_layer.core.kernel_mmr", 1);
 
@@ -82,15 +88,14 @@ mod domain_hashing {
     pub type KernelMmr = MerkleMountainRange<KernelMmrHasherBlake256, Vec<Hash>>;
     pub type PrunedKernelMmr = MerkleMountainRange<KernelMmrHasherBlake256, PrunedHashSet>;
 
-    hash_domain!(OutputMmrHashDomain, "com.tari.base_layer.core.output_mmr", 1);
-    pub type OutputMmrHasherBlake256 = DomainSeparatedHasher<Blake2b<U32>, OutputMmrHashDomain>;
-    pub type MutableOutputMmr = MutableMmr<OutputMmrHasherBlake256, Vec<Hash>>;
-    pub type PrunedOutputMmr = MerkleMountainRange<OutputMmrHasherBlake256, PrunedHashSet>;
-    pub type MutablePrunedOutputMmr = MutableMmr<OutputMmrHasherBlake256, PrunedHashSet>;
+    hash_domain!(OutputSmtHashDomain, "com.tari.base_layer.core.output_smt", 1);
+    pub type OutputSmtHasherBlake256 = DomainSeparatedHasher<Blake2b<U32>, OutputSmtHashDomain>;
 
     hash_domain!(InputMmrHashDomain, "com.tari.base_layer.core.input_mmr", 1);
     pub type InputMmrHasherBlake256 = DomainSeparatedHasher<Blake2b<U32>, InputMmrHashDomain>;
     pub type PrunedInputMmr = MerkleMountainRange<InputMmrHasherBlake256, PrunedHashSet>;
+
+    pub type OutputSmt = SparseMerkleTree<OutputSmtHasherBlake256>;
 
     hash_domain!(
         ValidatorNodeBmtHashDomain,
