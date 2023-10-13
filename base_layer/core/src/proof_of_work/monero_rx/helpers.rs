@@ -127,15 +127,33 @@ pub fn verify_header(header: &BlockHeader) -> Result<MoneroPowData, MergeMineErr
 }
 
 /// Extracts the Monero block hash from the coinbase transaction's extra field
-pub fn proxy_extract_tari_hash_from_block(monero: &monero::Block) -> Result<Option<monero::Hash>, MergeMineError> {
+pub fn extract_tari_hash_from_block(monero: &monero::Block) -> Result<Option<monero::Hash>, MergeMineError> {
     // When we extract the merge mining hash, we do not care if the extra field can be parsed without error.
     let extra_field = parse_extra_field_truncate_on_error(&monero.miner_tx.prefix.extra);
-    for item in &extra_field.0 {
-        if let SubField::MergeMining(_depth, merge_mining_hash) = item {
-            return Ok(Some(*merge_mining_hash));
-        }
+
+    // Only one merge mining tag is allowed
+    let merge_mining_hashes: Vec<monero::Hash> = extra_field
+        .0
+        .iter()
+        .filter_map(|item| {
+            if let SubField::MergeMining(_depth, merge_mining_hash) = item {
+                Some(*merge_mining_hash)
+            } else {
+                None
+            }
+        })
+        .collect();
+    if merge_mining_hashes.len() > 1 {
+        return Err(MergeMineError::ValidationError(
+            "More than one merge mining tag found in coinbase".to_string(),
+        ));
     }
-    Ok(None)
+
+    if let Some(merge_mining_hash) = merge_mining_hashes.into_iter().next() {
+        Ok(Some(merge_mining_hash))
+    } else {
+        Ok(None)
+    }
 }
 
 /// Deserializes the given hex-encoded string into a Monero block
@@ -192,7 +210,7 @@ pub fn create_ordered_transaction_hashes_from_block(block: &monero::Block) -> Ve
 }
 
 /// Inserts merge mining hash into a Monero block
-pub fn proxy_insert_merge_mining_tag_into_block<T: AsRef<[u8]>>(
+pub fn insert_merge_mining_tag_into_block<T: AsRef<[u8]>>(
     block: &mut monero::Block,
     hash: T,
 ) -> Result<(), MergeMineError> {
@@ -371,7 +389,7 @@ mod test {
             validator_node_mr: FixedHash::zero(),
         };
         let hash = block_header.merge_mining_hash();
-        proxy_insert_merge_mining_tag_into_block(&mut block, hash).unwrap();
+        insert_merge_mining_tag_into_block(&mut block, hash).unwrap();
         let hashes = create_ordered_transaction_hashes_from_block(&block);
         assert_eq!(hashes.len(), block.tx_hashes.len() + 1);
         let root = tree_hash(&hashes).unwrap();
@@ -427,7 +445,7 @@ mod test {
             validator_node_mr: FixedHash::zero(),
         };
         let hash = block_header.merge_mining_hash();
-        proxy_insert_merge_mining_tag_into_block(&mut block, hash).unwrap();
+        insert_merge_mining_tag_into_block(&mut block, hash).unwrap();
         let count = 1 + (u16::try_from(block.tx_hashes.len()).unwrap());
         let mut hashes = Vec::with_capacity(count as usize);
         hashes.push(block.miner_tx.hash());
@@ -530,7 +548,7 @@ mod test {
             validator_node_mr: FixedHash::zero(),
         };
         let hash = Hash::null();
-        proxy_insert_merge_mining_tag_into_block(&mut block, hash).unwrap();
+        insert_merge_mining_tag_into_block(&mut block, hash).unwrap();
         let count = 1 + (u16::try_from(block.tx_hashes.len()).unwrap());
         let mut hashes = Vec::with_capacity(count as usize);
         let mut proof = Vec::with_capacity(count as usize);
@@ -585,14 +603,15 @@ mod test {
             validator_node_mr: FixedHash::zero(),
         };
         let hash = block_header.merge_mining_hash();
-        proxy_insert_merge_mining_tag_into_block(&mut block, hash).unwrap();
+        insert_merge_mining_tag_into_block(&mut block, hash).unwrap();
         #[allow(clippy::redundant_clone)]
         let mut block_header2 = block_header.clone();
         block_header2.version = 1;
         let hash2 = block_header2.merge_mining_hash();
+        assert!(extract_tari_hash_from_block(&block).is_ok());
 
         // Try via the API - this will fail because more than one merge mining tag is not allowed
-        assert!(proxy_insert_merge_mining_tag_into_block(&mut block, hash2).is_err());
+        assert!(insert_merge_mining_tag_into_block(&mut block, hash2).is_err());
 
         // Now bypass the API - this will effectively allow us to insert more than one merge mining tag,
         // like trying to sneek it in. Later on, when we call `verify_header(&block_header)`, it should fail.
@@ -600,6 +619,11 @@ mod test {
         let hash = monero::Hash::from_slice(hash.as_ref());
         extra_field.0.insert(0, SubField::MergeMining(Some(VarInt(0)), hash));
         block.miner_tx.prefix.extra = extra_field.into();
+
+        // Trying to extract the Tari hash will fail because there are more than one merge mining tag
+        let err = extract_tari_hash_from_block(&block).unwrap_err();
+        unpack_enum!(MergeMineError::ValidationError(details) = err);
+        assert!(details.contains("More than one merge mining tag found in coinbase"));
 
         let count = 1 + (u16::try_from(block.tx_hashes.len()).unwrap());
         let mut hashes = Vec::with_capacity(count as usize);
@@ -626,6 +650,8 @@ mod test {
             pow_data: serialized,
         };
         block_header.pow = pow;
+
+        // Header verification will fail because there are more than one merge mining tag
         let err = verify_header(&block_header).unwrap_err();
         unpack_enum!(MergeMineError::ValidationError(details) = err);
         assert!(details.contains("More than one merge mining tag found in coinbase"));
@@ -672,7 +698,7 @@ mod test {
 
         // Now insert the merge mining tag - this would also clean up the extra field and remove the invalid sub-fields
         let hash = block_header.merge_mining_hash();
-        proxy_insert_merge_mining_tag_into_block(&mut block, hash).unwrap();
+        insert_merge_mining_tag_into_block(&mut block, hash).unwrap();
         assert!(ExtraField::try_parse(&block.miner_tx.prefix.extra.clone()).is_ok());
 
         // Verify that the merge mining tag is there
@@ -711,7 +737,7 @@ mod test {
             validator_node_mr: FixedHash::zero(),
         };
         let hash = block_header.merge_mining_hash();
-        proxy_insert_merge_mining_tag_into_block(&mut block, hash).unwrap();
+        insert_merge_mining_tag_into_block(&mut block, hash).unwrap();
         let count = 1 + (u16::try_from(block.tx_hashes.len()).unwrap());
         let mut hashes = Vec::with_capacity(count as usize);
         let mut proof = Vec::with_capacity(count as usize);
@@ -804,7 +830,7 @@ mod test {
             validator_node_mr: FixedHash::zero(),
         };
         let hash = block_header.merge_mining_hash();
-        proxy_insert_merge_mining_tag_into_block(&mut block, hash).unwrap();
+        insert_merge_mining_tag_into_block(&mut block, hash).unwrap();
         let count = 1 + (u16::try_from(block.tx_hashes.len()).unwrap());
         let mut hashes = Vec::with_capacity(count as usize);
         let mut proof = Vec::with_capacity(count as usize);
