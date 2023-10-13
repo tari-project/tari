@@ -120,10 +120,7 @@ impl MicroMinotari {
 
     pub fn checked_sub<T>(&self, v: T) -> Option<MicroMinotari>
     where T: AsRef<MicroMinotari> {
-        if self >= v.as_ref() {
-            return Some(self - v.as_ref());
-        }
-        None
+        self.as_u64().checked_sub(v.as_ref().as_u64()).map(Into::into)
     }
 
     pub fn checked_mul<T>(&self, v: T) -> Option<MicroMinotari>
@@ -138,15 +135,12 @@ impl MicroMinotari {
 
     pub fn saturating_sub<T>(&self, v: T) -> MicroMinotari
     where T: AsRef<MicroMinotari> {
-        if self >= v.as_ref() {
-            return self - v.as_ref();
-        }
-        Self(0)
+        self.as_u64().saturating_sub(v.as_ref().as_u64()).into()
     }
 
     pub fn saturating_add<T>(&self, v: T) -> MicroMinotari
     where T: AsRef<MicroMinotari> {
-        self.0.saturating_add(v.as_ref().0).into()
+        self.as_u64().saturating_add(v.as_ref().as_u64()).into()
     }
 
     #[inline]
@@ -182,7 +176,7 @@ impl From<MicroMinotari> for u64 {
     }
 }
 
-impl std::str::FromStr for MicroMinotari {
+impl FromStr for MicroMinotari {
     type Err = MicroMinotariError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -190,8 +184,10 @@ impl std::str::FromStr for MicroMinotari {
         // Is this Tari or MicroMinotari
         let is_micro_tari = if processed.ends_with("ut") || processed.ends_with("µt") {
             true
+        } else if processed.ends_with('t') {
+            false
         } else {
-            !processed.ends_with('t')
+            !processed.contains('.')
         };
 
         let processed = processed.replace("ut", "").replace("µt", "").replace('t', "");
@@ -345,16 +341,22 @@ impl FromStr for Minotari {
     type Err = MicroMinotariError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let d = Decimal::from_str(s).map_err(|e| MicroMinotariError::ParseError(e.to_string()))?;
-        Self::try_from(d)
+        if s.to_ascii_lowercase().contains('t') {
+            let val = MicroMinotari::from_str(s)?;
+            Ok(Minotari::from(val))
+        } else {
+            let d = Decimal::from_str(s).map_err(|e| MicroMinotariError::ParseError(e.to_string()))?;
+            Self::try_from(d)
+        }
     }
 }
 
 impl Display for Minotari {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        // User can choose decimal precision, but default is 6
+        let d1 = Decimal::try_from(self.0.as_u64()).expect("will succeed");
+        let d2 = Decimal::try_from(1_000_000f64).expect("will succeed");
         let precision = f.precision().unwrap_or(6);
-        write!(f, "{1:.*} T", precision, self.0.as_u64() as f64 / 1_000_000f64)
+        write!(f, "{1:.*} T", precision, d1 / d2)
     }
 }
 
@@ -520,5 +522,44 @@ mod test {
             Minotari::try_from(Decimal::try_from(99.100).unwrap().round(3)).unwrap()
         );
         assert_eq!(s, "99.100000 T");
+    }
+
+    #[test]
+    fn to_string_from_string_max_conversion() {
+        let max_value = MicroMinotari(u64::MAX);
+
+        assert_eq!(max_value.as_u64().to_string(), "18446744073709551615");
+        let max_str_with_currency = format!("{}", max_value);
+        assert_eq!(&max_str_with_currency, "18446744073709.551615 T");
+        let max_str_no_currency = max_str_with_currency[0..max_str_with_currency.len() - 2].to_string();
+        assert_eq!(&max_str_no_currency, "18446744073709.551615");
+
+        assert_eq!(max_value, MicroMinotari::from_str(&max_str_with_currency).unwrap());
+        assert_eq!(max_value, MicroMinotari::from_str(&max_str_no_currency).unwrap());
+        assert_eq!(
+            Minotari::from(max_value),
+            Minotari::from_str(&max_str_with_currency).unwrap()
+        );
+        assert_eq!(
+            Minotari::from(max_value),
+            Minotari::from_str(&max_str_no_currency).unwrap()
+        );
+
+        assert!(MicroMinotari::from_str("18446744073709.551615 T").is_ok());
+        assert!(MicroMinotari::from_str("18446744073709.551615 uT").is_err());
+        assert!(MicroMinotari::from_str("18446744073709.551615T").is_ok());
+        assert!(MicroMinotari::from_str("18446744073709.551615uT").is_err());
+        assert!(MicroMinotari::from_str("18446744073709.551615").is_ok());
+        assert!(MicroMinotari::from_str("18446744073709551615").is_ok());
+
+        assert!(Minotari::from_str("18446744073709.551615 T").is_ok());
+        assert!(Minotari::from_str("18446744073709.551615 uT").is_err());
+        assert!(Minotari::from_str("18446744073709.551615T").is_ok());
+        assert!(Minotari::from_str("18446744073709.551615uT").is_err());
+        assert!(Minotari::from_str("18446744073709.551615").is_ok());
+        assert_eq!(
+            &Minotari::from_str("18446744073709551615").unwrap_err().to_string(),
+            "Failed to convert value: numeric overflow"
+        );
     }
 }

@@ -1303,8 +1303,8 @@ async fn test_fee_overflow() {
     // This will call `Fee::calculate(...)`, which will overflow if regressed
     let build_result = stx_builder.build().await;
     assert!(build_result.is_err());
-    assert!(format!("{:?}", build_result.unwrap_err())
-        // Using less decimal points in the comparison to make provision for the rounding error - the actual value
-        // should be `18446744073691.551615 T`, but the formatting results in `18446744073709.550781 T`
-        .contains("You are spending more than you're providing: provided 10.000000 T, required 18446744073709.55"));
+    assert_eq!(
+        &format!("{:?}", build_result.unwrap_err()),
+        "You are spending more than you're providing: provided 10.000000 T, required 18446744073709.551615 T."
+    );
 }
