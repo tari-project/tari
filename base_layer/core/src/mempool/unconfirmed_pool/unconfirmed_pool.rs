@@ -864,7 +864,7 @@ impl UnconfirmedPool {
                 "Shrunk reorg mempool memory usage ({}/{}) ~{}%",
                 new,
                 old,
-                (old - new).saturating_mul(100) / old  as usize
+                (old - new).saturating_mul(100) / old
             );
         }
     }
