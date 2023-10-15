@@ -6,7 +6,7 @@ where the node is actively requesting blocks from other nodes.
 
 ## Prerequisites
 
-See [Common message pipeline](common_message_pipeline.md) for details about how the messages are received and passed to this process.
+See [Common message pipeline](comms/inbound_messaging.md) for details about how the messages are received and passed to this process.
 
 
 ## Incoming block preprocessing
