@@ -86,38 +86,32 @@ impl ChainMetadataService {
 
         loop {
             tokio::select! {
-                           Ok(block_event) = block_event_stream.recv() => {
+                Ok(block_event) = block_event_stream.recv() => {
+                    log_if_error!(
+                        level: warn,
+                        target: LOG_TARGET,
+                        "Failed to handle block event because '{}'",
+                        self.handle_block_event(&block_event).await
+                    );
+                },
+
+                Ok(event) = liveness_event_stream.recv() => {
+                    match
+                        self.handle_liveness_event(&event).await {
+                        Ok(_) => {}
+                        Err(e) => {
+                           error!( target: LOG_TARGET, "Failed to handle liveness event because '{}'", e);
+                           if let ChainMetadataSyncError::ReceivedInvalidChainMetadata(node_id,reason) = e {
                                log_if_error!(
-                                   level: warn,
-                                   target: LOG_TARGET,
-                                   "Failed to handle block event because '{}'",
-                                   self.handle_block_event(&block_event).await
-                               );
-                           },
+                                 level: warn,
+                                 target: LOG_TARGET, "Failed to ban node '{}'",
+                                 self.connectivity.ban_peer_until(node_id, Duration::from_secs(60), reason).await);                                           }
+                        }
+                    }
 
-                           Ok(event) = liveness_event_stream.recv() => {
-                               match
-                                   self.handle_liveness_event(&event).await {
-                                   Ok(_) => {}
-                                   Err(e) => {
-                                           error!( target: LOG_TARGET,
-                                   "Failed to handle liveness event because '{}'", e);
-                                       match e {
-            ChainMetadataSyncError::ReceivedInvalidChainMetadata(node_id,reason)  => {
-                                               log_if_error!(
-                                        level: warn,
-                                        target: LOG_TARGET, "Failed to ban node '{}'",
-                                        self.connectivity.ban_peer_until(node_id, Duration::from_secs(60), reason).await);                                           },
-                                           _ => { // No action yet
-                                               }
-                                       }
+                },
 
-                                   }
-                               }
-
-                           },
-
-                       }
+            }
         }
     }
 
@@ -232,7 +226,7 @@ mod test {
     use std::convert::TryInto;
 
     use futures::StreamExt;
-    use tari_comms::peer_manager::NodeId;
+    use tari_comms::{peer_manager::NodeId, test_utils::mocks::create_connectivity_mock};
     use tari_p2p::services::liveness::{
         mock::{create_p2p_liveness_mock, LivenessMockState},
         LivenessRequest,
@@ -285,7 +279,9 @@ mod test {
         let (base_node, base_node_receiver) = create_base_node_nci();
         let (publisher, event_rx) = broadcast::channel(10);
 
-        let service = ChainMetadataService::new(liveness_handle, base_node, publisher);
+        let connectivity = create_connectivity_mock();
+
+        let service = ChainMetadataService::new(liveness_handle, base_node, connectivity.0, publisher);
 
         (service, liveness_mock_state, base_node_receiver, event_rx)
     }
