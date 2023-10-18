@@ -79,6 +79,8 @@ peer_seeds = [
     # dddd69c587a10c41ef2bf51397
     "126c7ee64f71aca36398b977dd31fbbe9f9dad615df96473fb655bef5709c540::/ip6/fd56:2026:93c0:0:9e:96fb:e119:d8ec/tcp/18189",
 
+    # stringhandler's seed - b864effe95a2bade7ac7d8279d
+    "c6222cb64297275572c04017e3f60457d4bb8249722bcfa6f236296cb561986f::/onion3/6zjczklptyqfcvbb37wy3724cxm42fjtdyepx2alhdh5m7cmztltguqd:18141",
 
     # DAN Seeds
     # 0000008179d983764e8d756db8
