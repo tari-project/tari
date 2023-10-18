@@ -52,6 +52,7 @@ pub mod utils;
 pub mod peer_validator;
 
 mod bans;
+pub use bans::{BAN_DURATION_LONG, BAN_DURATION_SHORT};
 pub mod test_utils;
 pub mod traits;
 
