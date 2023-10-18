@@ -10,11 +10,21 @@
 
 struct ApplicationConfig;
 
+struct ChatByteVector;
+
+struct ChatClientFFI;
+
+struct ChatMessageMetadataVector;
+
 struct ChatMessages;
 
-struct ClientFFI;
+struct Confirmation;
+
+struct Message;
 
 struct TariAddress;
+
+struct TransportConfig;
 
 struct ChatFFIContactsLivenessData {
   const char *address;
@@ -29,9 +39,20 @@ struct ChatFFIMessage {
   const char *from_address;
   uint64_t stored_at;
   const char *message_id;
+  struct ChatMessageMetadataVector *metadata;
+  int metadata_len;
 };
 
 typedef void (*CallbackMessageReceived)(struct ChatFFIMessage*);
+
+typedef void (*CallbackDeliveryConfirmationReceived)(struct Confirmation*);
+
+typedef void (*CallbackReadConfirmationReceived)(struct Confirmation*);
+
+struct ChatFFIMessageMetadata {
+  struct ChatByteVector *data;
+  int metadata_type;
+};
 
 #ifdef __cplusplus
 extern "C" {
@@ -52,16 +73,18 @@ extern "C" {
  * # Safety
  * The ```destroy_client``` method must be called when finished with a ClientFFI to prevent a memory leak
  */
-struct ClientFFI *create_chat_client(struct ApplicationConfig *config,
-                                     int *error_out,
-                                     CallbackContactStatusChange callback_contact_status_change,
-                                     CallbackMessageReceived callback_message_received);
+struct ChatClientFFI *create_chat_client(struct ApplicationConfig *config,
+                                         int *error_out,
+                                         CallbackContactStatusChange callback_contact_status_change,
+                                         CallbackMessageReceived callback_message_received,
+                                         CallbackDeliveryConfirmationReceived callback_delivery_confirmation_received,
+                                         CallbackReadConfirmationReceived callback_read_confirmation_received);
 
 /**
- * Frees memory for a ClientFFI
+ * Frees memory for a ChatClientFFI
  *
  * ## Arguments
- * `client` - The pointer of a ClientFFI
+ * `client` - The pointer of a ChatClientFFI
  *
  * ## Returns
  * `()` - Does not return a value, equivalent to void in C
@@ -69,7 +92,7 @@ struct ClientFFI *create_chat_client(struct ApplicationConfig *config,
  * # Safety
  * None
  */
-void destroy_client_ffi(struct ClientFFI *client);
+void destroy_chat_client_ffi(struct ChatClientFFI *client);
 
 /**
  * Creates a Chat Client config
@@ -89,7 +112,9 @@ struct ApplicationConfig *create_chat_config(const char *network_str,
                                              const char *public_address,
                                              const char *datastore_path,
                                              const char *identity_file_path,
+                                             struct TransportConfig *tor_transport_config,
                                              const char *log_path,
+                                             int log_verbosity,
                                              int *error_out);
 
 /**
@@ -104,27 +129,53 @@ struct ApplicationConfig *create_chat_config(const char *network_str,
  * # Safety
  * None
  */
-void destroy_config(struct ApplicationConfig *config);
+void destroy_chat_config(struct ApplicationConfig *config);
 
 /**
- * Sends a message over a client
+ * Get a pointer to a ChatByteVector representation of a message id
  *
  * ## Arguments
- * `client` - The Client pointer
- * `receiver` - A string containing a tari address
- * `message` - The peer seeds config for the node
+ * `confirmation` - A pointer to the Confirmation
  * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `*mut ChatByteVector` - A ptr to a ChatByteVector
+ *
+ * # Safety
+ * The ```confirmation``` When done with the confirmation it should be destroyed
+ * The ```ChatByteVector``` When done with the returned ChatByteVector it should be destroyed
+ */
+struct ChatByteVector *read_confirmation_message_id(struct Confirmation *confirmation,
+                                                    int *error_out);
+
+/**
+ * Get a c_uint timestamp for the confirmation
+ *
+ * ## Arguments
+ * `confirmation` - A pointer to the Confirmation
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `c_uint` - A uint representation of time. May return 0 if casting fails
+ *
+ * # Safety
+ * None
+ */
+unsigned int read_confirmation_timestamp(struct Confirmation *confirmation, int *error_out);
+
+/**
+ * Frees memory for a Confirmation
+ *
+ * ## Arguments
+ * `address` - The pointer of a Confirmation
  *
  * ## Returns
  * `()` - Does not return a value, equivalent to void in C
  *
  * # Safety
- * The ```receiver``` should be destroyed after use
+ * None
  */
-void send_message(struct ClientFFI *client,
-                  struct TariAddress *receiver,
-                  const char *message_c_char,
-                  int *error_out);
+void destroy_confirmation(struct Confirmation *address);
 
 /**
  * Add a contact
@@ -138,9 +189,9 @@ void send_message(struct ClientFFI *client,
  * `()` - Does not return a value, equivalent to void in C
  *
  * # Safety
- * The ```address``` should be destroyed after use
+ * The ```receiver``` should be destroyed after use
  */
-void add_contact(struct ClientFFI *client, struct TariAddress *receiver, int *error_out);
+void add_chat_contact(struct ChatClientFFI *client, struct TariAddress *address, int *error_out);
 
 /**
  * Check the online status of a contact
@@ -151,12 +202,64 @@ void add_contact(struct ClientFFI *client, struct TariAddress *receiver, int *er
  * `error_out` - Pointer to an int which will be modified
  *
  * ## Returns
- * `()` - Does not return a value, equivalent to void in C
+ * `status` - Returns an int representing of the online status
+ *            Online = 1,
+ *            Offline = 2,
+ *            NeverSeen = 3,
+ *            Banned = 4,
  *
  * # Safety
  * The ```address``` should be destroyed after use
  */
-int check_online_status(struct ClientFFI *client, struct TariAddress *receiver, int *error_out);
+int check_online_status(struct ChatClientFFI *client, struct TariAddress *receiver, int *error_out);
+
+/**
+ * Creates a message and returns a ptr to it
+ *
+ * ## Arguments
+ * `receiver` - A string containing a tari address
+ * `message` - The peer seeds config for the node
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `*mut Message` - A pointer to a message object
+ *
+ * # Safety
+ * The ```receiver``` should be destroyed after use
+ */
+struct Message *create_chat_message(struct TariAddress *receiver,
+                                    const char *message,
+                                    int *error_out);
+
+/**
+ * Frees memory for message
+ *
+ * ## Arguments
+ * `messages_ptr` - The pointer of a Message
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * None
+ */
+void destroy_chat_message(struct Message *messages_ptr);
+
+/**
+ * Sends a message over a client
+ *
+ * ## Arguments
+ * `client` - The Client pointer
+ * `message` - Pointer to a Message struct
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * The ```message``` should be destroyed after use
+ */
+void send_chat_message(struct ChatClientFFI *client, struct Message *message, int *error_out);
 
 /**
  * Get a ptr to all messages from or to address
@@ -175,17 +278,17 @@ int check_online_status(struct ClientFFI *client, struct TariAddress *receiver, 
  * The ```address``` should be destroyed after use
  * The returned pointer to ```*mut ChatMessages``` should be destroyed after use
  */
-struct ChatMessages *get_messages(struct ClientFFI *client,
-                                  struct TariAddress *address,
-                                  int *limit,
-                                  int *page,
-                                  int *error_out);
+struct ChatMessages *get_chat_messages(struct ChatClientFFI *client,
+                                       struct TariAddress *address,
+                                       int limit,
+                                       int page,
+                                       int *error_out);
 
 /**
  * Frees memory for messages
  *
  * ## Arguments
- * `messages_ptr` - The pointer of a Vec<Message>
+ * `ptr` - The pointer of a Message
  *
  * ## Returns
  * `()` - Does not return a value, equivalent to void in C
@@ -193,7 +296,145 @@ struct ChatMessages *get_messages(struct ClientFFI *client,
  * # Safety
  * None
  */
-void destroy_messages(struct ChatMessages *messages_ptr);
+void destroy_chat_messages(struct ChatMessages *ptr);
+
+/**
+ * Creates message metadata and appends it to a Message
+ *
+ * ## Arguments
+ * `message` - A pointer to a message
+ * `metadata_type` - An int8 that maps to MessageMetadataType enum
+ *     '0' -> Reply
+ *     '1' -> TokenRequest
+ * `data` - contents for the metadata in string format
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * ## Safety
+ * `message` should be destroyed eventually
+ */
+void add_chat_message_metadata(struct Message *message,
+                               int metadata_type,
+                               struct ChatByteVector *data,
+                               int *error_out);
+
+/**
+ * Reads the message metadata of a message and returns a ptr to the metadata at the given position
+ *
+ * ## Arguments
+ * `message` - A pointer to a message
+ * `position` - The index of the array of metadata
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * ## Safety
+ * `message` should be destroyed eventually
+ * the returned `ChatFFIMessageMetadata` should be destroyed eventually
+ */
+struct ChatFFIMessageMetadata *read_chat_metadata_at_position(struct ChatFFIMessage *message,
+                                                              unsigned int position,
+                                                              int *error_out);
+
+/**
+ * Returns the enum int representation of a metadata type
+ *
+ * ## Arguments
+ * `msg_metadata` - A pointer to a message metadat
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `metadata_type` - An int8 that maps to MessageMetadataType enum
+ *     '0' -> Reply
+ *     '1' -> TokenRequest
+ *
+ * ## Safety
+ * `msg_metadata` should be destroyed eventually
+ */
+int read_chat_metadata_type(struct ChatFFIMessageMetadata *msg_metadata, int *error_out);
+
+/**
+ * Returns a ptr to a ByteVector
+ *
+ * ## Arguments
+ * `msg_metadata` - A pointer to a message metadata
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `*mut ` - An int8 that maps to MessageMetadataType enum
+ *     '0' -> Reply
+ *     '1' -> TokenRequest
+ *
+ * ## Safety
+ * `msg_metadata` should be destroyed eventually
+ * the returned `ChatByteVector` should be destroyed eventually
+ */
+struct ChatByteVector *read_chat_metadata_data(struct ChatFFIMessageMetadata *msg_metadata,
+                                               int *error_out);
+
+/**
+ * Sends a read confirmation for a given message
+ *
+ * ## Arguments
+ * `client` - The chat client
+ * `message` - The message that was read
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `*mut TariAddress` - A ptr to a TariAddress
+ *
+ * # Safety
+ * The ```ChatClientFFI``` When done with the client it should be destroyed
+ * The ```Message``` When done with the Message it should be destroyed
+ */
+void send_read_confirmation_for_message(struct ChatClientFFI *client,
+                                        struct Message *message,
+                                        int *error_out);
+
+/**
+ * Creates a tor transport config
+ *
+ * ## Arguments
+ * `control_server_address` - The pointer to a char array
+ * `tor_cookie` - The pointer to a ChatByteVector containing the contents of the tor cookie file, can be null
+ * `tor_port` - The tor port
+ * `tor_proxy_bypass_for_outbound` - Whether tor will use a direct tcp connection for a given bypass address instead of
+ * the tor proxy if tcp is available, if not it has no effect
+ * `socks_password` - The pointer to a char array containing the socks password, can be null
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `*mut TransportConfig` - Returns a pointer to a tor TransportConfig, null on error.
+ *
+ * # Safety
+ * The ```destroy_chat_tor_transport_config``` method must be called when finished with a TransportConfig to prevent a
+ * memory leak
+ */
+struct TransportConfig *create_chat_tor_transport_config(const char *control_server_address,
+                                                         const struct ChatByteVector *tor_cookie,
+                                                         unsigned short tor_port,
+                                                         bool tor_proxy_bypass_for_outbound,
+                                                         const char *socks_username,
+                                                         const char *socks_password,
+                                                         int *error_out);
+
+/**
+ * Frees memory for a TransportConfig
+ *
+ * ## Arguments
+ * `transport` - The pointer to a TransportConfig
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * None
+ */
+void destroy_chat_tor_transport_config(struct TransportConfig *transport);
 
 /**
  * Creates a TariAddress and returns a ptr
@@ -225,20 +466,6 @@ struct TariAddress *create_tari_address(const char *receiver_c_char, int *error_
 void destroy_tari_address(struct TariAddress *address);
 
 /**
- * Frees memory for a ChatFFIMessage
- *
- * ## Arguments
- * `address` - The pointer of a ChatFFIMessage
- *
- * ## Returns
- * `()` - Does not return a value, equivalent to void in C
- *
- * # Safety
- * None
- */
-void destroy_chat_ffi_message(struct ChatFFIMessage *address);
-
-/**
  * Frees memory for a ChatFFIContactsLivenessData
  *
  * ## Arguments
@@ -251,6 +478,107 @@ void destroy_chat_ffi_message(struct ChatFFIMessage *address);
  * None
  */
 void destroy_chat_ffi_liveness_data(struct ChatFFIContactsLivenessData *address);
+
+/**
+ * Frees memory for a ChatFFIMessage
+ *
+ * ## Arguments
+ * `address` - The pointer to a ChatFFIMessage
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * None
+ */
+void destroy_chat_ffi_message(struct ChatFFIMessage *address);
+
+/**
+ * Frees memory for a ChatMessageMetadataVector
+ *
+ * ## Arguments
+ * `address` - The pointer to a ChatMessageMetadataVector
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * None
+ */
+void destroy_chat_message_metadata_vector(struct ChatMessageMetadataVector *address);
+
+/**
+ * Creates a ChatByteVector
+ *
+ * ## Arguments
+ * `byte_array` - The pointer to the byte array
+ * `element_count` - The number of elements in byte_array
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `*mut ChatByteVector` - Pointer to the created ChatByteVector. Note that it will be ptr::null_mut()
+ * if the byte_array pointer was null or if the elements in the byte_vector don't match
+ * element_count when it is created
+ *
+ * # Safety
+ * The ```byte_vector_destroy``` function must be called when finished with a ChatByteVector to prevent a memory leak
+ */
+struct ChatByteVector *chat_byte_vector_create(const unsigned char *byte_array,
+                                               unsigned int element_count,
+                                               int *error_out);
+
+/**
+ * Frees memory for a ChatByteVector
+ *
+ * ## Arguments
+ * `bytes` - The pointer to a ChatByteVector
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * None
+ */
+void chat_byte_vector_destroy(struct ChatByteVector *bytes);
+
+/**
+ * Gets a c_uchar at position in a ChatByteVector
+ *
+ * ## Arguments
+ * `ptr` - The pointer to a ChatByteVector
+ * `position` - The integer position
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `c_uchar` - Returns a character. Note that the character will be a null terminator (0) if ptr
+ * is null or if the position is invalid
+ *
+ * # Safety
+ * None
+ */
+unsigned char chat_byte_vector_get_at(struct ChatByteVector *ptr,
+                                      unsigned int position,
+                                      int *error_out);
+
+/**
+ * Gets the number of elements in a ChatByteVector
+ *
+ * ## Arguments
+ * `ptr` - The pointer to a ChatByteVector
+ * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+ * as an out parameter.
+ *
+ * ## Returns
+ * `c_uint` - Returns the integer number of elements in the ChatByteVector. Note that it will be zero
+ * if ptr is null
+ *
+ * # Safety
+ * None
+ */
+unsigned int chat_byte_vector_get_length(const struct ChatByteVector *vec,
+                                         int *error_out);
 
 #ifdef __cplusplus
 } // extern "C"

@@ -52,7 +52,7 @@
 //!         // At the same time receive the request and reply
 //!         async move {
 //!             let req_context = receiver.next().await.unwrap();
-//!             let msg = req_context.request().unwrap().clone();
+//!             let msg = req_context.request().clone();
 //!             req_context.reply(msg.to_uppercase());
 //!         }
 //!     );

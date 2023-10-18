@@ -58,7 +58,7 @@ impl NoiseConfig {
         Self {
             node_identity,
             parameters,
-            recv_timeout: Duration::from_secs(1),
+            recv_timeout: Duration::from_secs(3),
         }
     }
 
@@ -70,7 +70,6 @@ impl NoiseConfig {
 
     /// Upgrades the given socket to using the noise protocol. The upgraded socket and the peer's static key
     /// is returned.
-    #[tracing::instrument(name = "noise::upgrade_socket", skip(self, socket))]
     pub async fn upgrade_socket<TSocket>(
         &self,
         socket: TSocket,

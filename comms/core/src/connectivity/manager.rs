@@ -164,7 +164,6 @@ impl ConnectivityManagerActor {
         })
     }
 
-    #[tracing::instrument(level = "trace", name = "connectivity_manager_actor::run", skip(self))]
     pub async fn run(mut self) {
         debug!(target: LOG_TARGET, "ConnectivityManager started");
 

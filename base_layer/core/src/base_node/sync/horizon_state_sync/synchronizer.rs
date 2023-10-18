@@ -78,6 +78,8 @@ use crate::{
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::horizon_state_sync";
 
+const MAX_LATENCY_INCREASES: usize = 5;
+
 pub struct HorizonStateSynchronization<'a, B> {
     config: BlockchainSyncConfig,
     db: AsyncBlockchainDb<B>,
@@ -153,6 +155,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             }
         })?;
 
+        let mut latency_increases_counter = 0;
         loop {
             match self.sync(&header).await {
                 Ok(()) => return Ok(()),
@@ -172,6 +175,10 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                         return Err(err);
                     }
                     self.max_latency += self.config.max_latency_increase;
+                    latency_increases_counter += 1;
+                    if latency_increases_counter > MAX_LATENCY_INCREASES {
+                        return Err(err);
+                    }
                 },
                 Err(err) => return Err(err),
             }
@@ -186,8 +193,8 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             sync_peer_node_ids.len()
         );
         let mut latency_counter = 0usize;
-        for (i, node_id) in sync_peer_node_ids.iter().enumerate() {
-            match self.connect_and_attempt_sync(i, node_id, header).await {
+        for node_id in sync_peer_node_ids {
+            match self.connect_and_attempt_sync(&node_id, header).await {
                 Ok(_) => return Ok(()),
                 // Try another peer
                 Err(err) => {
@@ -197,13 +204,13 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     if let Some(reason) = ban_reason {
                         warn!(target: LOG_TARGET, "{}", err);
                         self.peer_ban_manager
-                            .ban_peer_if_required(node_id, &Some(reason.clone()))
+                            .ban_peer_if_required(&node_id, &Some(reason.clone()))
                             .await;
                     }
                     if let HorizonSyncError::MaxLatencyExceeded { .. } = err {
                         latency_counter += 1;
                     } else {
-                        self.remove_sync_peer(node_id);
+                        self.remove_sync_peer(&node_id);
                     }
                 },
             }
@@ -220,14 +227,14 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
     async fn connect_and_attempt_sync(
         &mut self,
-        peer_index: usize,
         node_id: &NodeId,
         header: &BlockHeader,
     ) -> Result<(), HorizonSyncError> {
-        {
-            let sync_peer = &self.sync_peers[peer_index];
-            self.hooks.call_on_starting_hook(sync_peer);
-        }
+        let peer_index = self
+            .get_sync_peer_index(node_id)
+            .ok_or(HorizonSyncError::PeerNotFound)?;
+        let sync_peer = &self.sync_peers[peer_index];
+        self.hooks.call_on_starting_hook(sync_peer);
 
         let mut conn = self.dial_sync_peer(node_id).await?;
         debug!(
@@ -976,6 +983,11 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         if let Some(pos) = self.sync_peers.iter().position(|p| p.node_id() == node_id) {
             self.sync_peers.remove(pos);
         }
+    }
+
+    // Helper function to get the index to the node_id inside of the vec of peers
+    fn get_sync_peer_index(&mut self, node_id: &NodeId) -> Option<usize> {
+        self.sync_peers.iter().position(|p| p.node_id() == node_id)
     }
 
     #[inline]

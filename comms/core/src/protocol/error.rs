@@ -29,6 +29,8 @@ use thiserror::Error;
 pub enum ProtocolError {
     #[error("IO error: {0}")]
     IoError(#[from] io::Error),
+    #[error("Invalid flag: {0}")]
+    InvalidFlag(String),
     #[error("The ProtocolId was longer than {}", u8::max_value())]
     ProtocolIdTooLong,
     #[error("Protocol negotiation failed because the peer did not accept any of the given protocols: {protocols}")]
@@ -56,7 +58,7 @@ impl ProtocolError {
             ProtocolError::ProtocolOptimisticNegotiationFailed |
             ProtocolError::NotificationSenderDisconnected => false,
 
-            ProtocolError::ProtocolIdTooLong => true,
+            ProtocolError::ProtocolIdTooLong | ProtocolError::InvalidFlag(_) => true,
         }
     }
 }

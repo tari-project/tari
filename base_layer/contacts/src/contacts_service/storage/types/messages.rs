@@ -24,12 +24,14 @@ use std::convert::TryFrom;
 
 use chrono::NaiveDateTime;
 use diesel::{prelude::*, SqliteConnection};
+use serde_json;
+use tari_common_sqlite::util::diesel_ext::ExpectedRowsExtension;
 use tari_common_types::tari_address::TariAddress;
 
 use crate::{
     contacts_service::{
         error::ContactsServiceStorageError,
-        types::{Direction, Message},
+        types::{Direction, Message, MessageMetadata},
     },
     schema::messages,
 };
@@ -40,10 +42,11 @@ use crate::{
 #[diesel(primary_key(message_id))]
 pub struct MessagesSqlInsert {
     pub address: Vec<u8>,
-    pub body: Vec<u8>,
-    pub direction: i32,
-    pub stored_at: NaiveDateTime,
     pub message_id: Vec<u8>,
+    pub body: Vec<u8>,
+    pub metadata: Vec<u8>,
+    pub stored_at: NaiveDateTime,
+    pub direction: i32,
 }
 
 #[derive(Clone, Debug, Queryable, PartialEq, Eq, QueryableByName)]
@@ -53,8 +56,18 @@ pub struct MessagesSql {
     pub address: Vec<u8>,
     pub message_id: Vec<u8>,
     pub body: Vec<u8>,
+    pub metadata: Vec<u8>,
     pub stored_at: NaiveDateTime,
+    pub delivery_confirmation_at: Option<NaiveDateTime>,
+    pub read_confirmation_at: Option<NaiveDateTime>,
     pub direction: i32,
+}
+#[derive(Clone, Debug, AsChangeset, PartialEq, Eq)]
+#[diesel(table_name = messages)]
+#[diesel(primary_key(message_id))]
+pub struct MessageUpdate {
+    pub delivery_confirmation_at: Option<NaiveDateTime>,
+    pub read_confirmation_at: Option<NaiveDateTime>,
 }
 
 impl MessagesSqlInsert {
@@ -82,6 +95,30 @@ impl MessagesSql {
             .limit(limit)
             .load::<MessagesSql>(conn)?)
     }
+
+    /// Find a particular message by its message_id
+    pub fn find_by_message_id(
+        message_id: &[u8],
+        conn: &mut SqliteConnection,
+    ) -> Result<MessagesSql, ContactsServiceStorageError> {
+        Ok(messages::table
+            .filter(messages::message_id.eq(message_id))
+            .first::<MessagesSql>(conn)?)
+    }
+
+    /// Find a particular Message by message_id, and update it if it exists, returning the affected record
+    pub fn find_by_message_id_and_update(
+        conn: &mut SqliteConnection,
+        message_id: &[u8],
+        updated_message: MessageUpdate,
+    ) -> Result<MessagesSql, ContactsServiceStorageError> {
+        // Note: `get_result` not implemented for SQLite
+        diesel::update(messages::table.filter(messages::message_id.eq(message_id)))
+            .set(updated_message)
+            .execute(conn)
+            .num_rows_affected_or_not_found(1)?;
+        MessagesSql::find_by_message_id(message_id, conn)
+    }
 }
 
 /// Conversion from an Message to the Sql datatype form
@@ -91,6 +128,11 @@ impl TryFrom<MessagesSql> for Message {
     #[allow(clippy::cast_sign_loss)]
     fn try_from(o: MessagesSql) -> Result<Self, Self::Error> {
         let address = TariAddress::from_bytes(&o.address).map_err(|_| ContactsServiceStorageError::ConversionError)?;
+        let metadata: Vec<MessageMetadata> = serde_json::from_str(
+            &String::from_utf8(o.metadata.clone()).map_err(|_| ContactsServiceStorageError::ConversionError)?,
+        )
+        .map_err(|_| ContactsServiceStorageError::ConversionError)?;
+
         Ok(Self {
             address,
             direction: Direction::from_byte(
@@ -98,7 +140,10 @@ impl TryFrom<MessagesSql> for Message {
             )
             .unwrap_or_else(|| panic!("Direction from byte {}", o.direction)),
             stored_at: o.stored_at.timestamp() as u64,
+            delivery_confirmation_at: Some(o.stored_at.timestamp() as u64),
+            read_confirmation_at: Some(o.stored_at.timestamp() as u64),
             body: o.body,
+            metadata,
             message_id: o.message_id,
         })
     }
@@ -106,14 +151,19 @@ impl TryFrom<MessagesSql> for Message {
 
 /// Conversion from a Contact to the Sql datatype form
 #[allow(clippy::cast_possible_wrap)]
-impl From<Message> for MessagesSqlInsert {
-    fn from(o: Message) -> Self {
-        Self {
+impl TryFrom<Message> for MessagesSqlInsert {
+    type Error = ContactsServiceStorageError;
+
+    fn try_from(o: Message) -> Result<Self, Self::Error> {
+        let metadata = serde_json::to_string(&o.metadata).map_err(|_| ContactsServiceStorageError::ConversionError)?;
+
+        Ok(Self {
             address: o.address.to_bytes().to_vec(),
-            direction: i32::from(o.direction.as_byte()),
-            stored_at: NaiveDateTime::from_timestamp_opt(o.stored_at as i64, 0).unwrap(),
-            body: o.body,
             message_id: o.message_id,
-        }
+            body: o.body,
+            metadata: metadata.into_bytes().to_vec(),
+            stored_at: NaiveDateTime::from_timestamp_opt(o.stored_at as i64, 0).unwrap(),
+            direction: i32::from(o.direction.as_byte()),
+        })
     }
 }

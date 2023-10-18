@@ -62,7 +62,7 @@ use crate::{
 
 const LOG_TARGET: &str = "comms::connection_manager::peer_connection";
 
-const PROTOCOL_NEGOTIATION_TIMEOUT: Duration = Duration::from_secs(5);
+const PROTOCOL_NEGOTIATION_TIMEOUT: Duration = Duration::from_secs(10);
 
 static ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -211,7 +211,6 @@ impl PeerConnection {
         Arc::strong_count(&self.handle_counter)
     }
 
-    #[tracing::instrument(level = "trace", "peer_connection::open_substream", skip(self))]
     pub async fn open_substream(
         &mut self,
         protocol_id: &ProtocolId,
@@ -228,7 +227,6 @@ impl PeerConnection {
             .map_err(|_| PeerConnectionError::InternalReplyCancelled)?
     }
 
-    #[tracing::instrument(level = "trace", "peer_connection::open_framed_substream", skip(self))]
     pub async fn open_framed_substream(
         &mut self,
         protocol_id: &ProtocolId,
@@ -239,14 +237,12 @@ impl PeerConnection {
     }
 
     #[cfg(feature = "rpc")]
-    #[tracing::instrument("peer_connection::connect_rpc", level="trace", skip(self), fields(peer_node_id = self.peer_node_id.to_string().as_str()))]
     pub async fn connect_rpc<T>(&mut self) -> Result<T, RpcError>
     where T: From<RpcClient> + NamedProtocolService {
         self.connect_rpc_using_builder(Default::default()).await
     }
 
     #[cfg(feature = "rpc")]
-    #[tracing::instrument("peer_connection::connect_rpc_with_builder", level = "trace", skip(self, builder))]
     pub async fn connect_rpc_using_builder<T>(&mut self, builder: RpcClientBuilder<T>) -> Result<T, RpcError>
     where T: From<RpcClient> + NamedProtocolService {
         let protocol = ProtocolId::from_static(T::PROTOCOL_NAME);
@@ -431,7 +427,6 @@ impl PeerConnectionActor {
         }
     }
 
-    #[tracing::instrument(level="trace", skip(self, stream),fields(comms.direction="inbound"))]
     async fn handle_incoming_substream(&mut self, mut stream: Substream) {
         let our_supported_protocols = self.our_supported_protocols.clone();
         self.inbound_protocol_negotiations.push(Box::pin(async move {
@@ -487,7 +482,6 @@ impl PeerConnectionActor {
         }
     }
 
-    #[tracing::instrument(skip(self))]
     async fn open_negotiated_protocol_stream(
         &mut self,
         protocol: ProtocolId,

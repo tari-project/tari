@@ -8,8 +8,8 @@ use digest::{consts::U32, Digest};
 use crate::sparse_merkle_tree::{
     bit_utils::{traverse_direction, TraverseDirection},
     EmptyNode,
+    ExclusionProof,
     LeafNode,
-    MerkleProof,
     Node,
     Node::{Branch, Empty, Leaf},
     NodeHash,
@@ -172,14 +172,14 @@ impl<'a, H: Digest<OutputSize = U32>> TerminalBranch<'a, H> {
 
 impl<H: Digest<OutputSize = U32>> SparseMerkleTree<H> {
     /// Lazily returns the hash of the Sparse Merkle tree. This function requires a mutable reference to `self` in
-    /// case the root node needs to be updated. If you are absolutely sure that the merkle root is correct and want a
+    /// case the root node needs to be updated. If you are absolutely sure that the Merkle& root is correct and want a
     /// non-mutable reference, use [`SparseMerkleTree::unsafe_hash()`] instead.
     pub fn hash(&mut self) -> &NodeHash {
         self.root.hash()
     }
 
     /// Returns the hash of the Sparse Merkle tree. This function does not require a mutable reference to `self` but
-    /// should only be used if you are absolutely sure that the merkle root is correct. Otherwise, use
+    /// should only be used if you are absolutely sure that the Merkle& root is correct. Otherwise, use
     /// [`SparseMerkleTree::hash()`] instead.
     pub fn unsafe_hash(&self) -> &NodeHash {
         self.root.unsafe_hash()
@@ -253,6 +253,15 @@ impl<H: Digest<OutputSize = U32>> SparseMerkleTree<H> {
         Ok(result)
     }
 
+    /// This will only add new node when it does not exist
+    pub fn insert(&mut self, key: NodeKey, value: ValueHash) -> Result<UpdateResult, SMTError> {
+        if self.get(&key)?.is_some() {
+            return Err(SMTError::KeyExists);
+        }
+        // So we no know it does not exist, so lets add it.
+        self.upsert(key, value)
+    }
+
     /// Returns true if the tree contains the key `key`.
     pub fn contains(&self, key: &NodeKey) -> bool {
         match self.search_node(key) {
@@ -271,9 +280,10 @@ impl<H: Digest<OutputSize = U32>> SparseMerkleTree<H> {
         Ok(node.map(|n| n.as_leaf().unwrap().value()))
     }
 
-    /// Constructs a Merkle proof for the value at location `key`.
-    pub fn build_proof(&self, key: &NodeKey) -> Result<MerkleProof<H>, SMTError> {
-        let mut path = Vec::new();
+    /// Construct the data structures needed to generate the Merkle& proofs. Although this function returns a struct
+    /// of type `ExclusionProof` it is not really a valid (exclusion) proof. The constructors do additional
+    /// validation before passing the structure on. For this reason, this method is `private` outside of the module.
+    pub(crate) fn build_proof_candidate(&self, key: &NodeKey) -> Result<ExclusionProof<H>, SMTError> {
         let mut siblings = Vec::new();
         let mut current_node = &self.root;
         while current_node.is_branch() {
@@ -282,7 +292,6 @@ impl<H: Digest<OutputSize = U32>> SparseMerkleTree<H> {
                 return Err(SMTError::StaleHash);
             }
             let dir = traverse_direction(branch.height(), branch.key(), key)?;
-            path.push(dir);
             current_node = match dir {
                 TraverseDirection::Left => {
                     siblings.push(branch.right().unsafe_hash().clone());
@@ -294,13 +303,8 @@ impl<H: Digest<OutputSize = U32>> SparseMerkleTree<H> {
                 },
             };
         }
-        let (key, value) = match current_node {
-            Branch(_) => return Err(SMTError::UnexpectedNodeType),
-            Leaf(leaf) => (leaf.key().clone(), Some(leaf.value().clone())),
-            Empty(_) => (key.clone(), None),
-        };
-        siblings.iter().for_each(|s| println!("Sibling: {s:x}"));
-        let proof = MerkleProof::new(path, siblings, key, value);
+        let leaf = current_node.as_leaf().cloned();
+        let proof = ExclusionProof::new(siblings, leaf);
         Ok(proof)
     }
 
@@ -424,6 +428,7 @@ mod test {
     use crate::sparse_merkle_tree::{
         tree::{DeleteResult, SparseMerkleTree},
         NodeKey,
+        SMTError,
         UpdateResult,
         ValueHash,
         EMPTY_NODE_HASH,
@@ -544,6 +549,13 @@ mod test {
         assert_eq!(right.key(), &key2);
         // Hash is e3f62f1bfccca2e03e3238cf22748d6a39a7e5eee1dd4b78e2fdd04b5c47d303
         assert_eq!(right.hash().to_string(), format!("{right_hash:x}"));
+
+        // Update a key-value
+        let old_hash = tree.unsafe_hash().to_string();
+        let res = tree.upsert(key1, value2).unwrap();
+        assert_eq!(tree.size(), 2);
+        assert!(matches!(res, UpdateResult::Updated(v) if v == value1));
+        assert_ne!(tree.hash().to_string(), old_hash);
     }
 
     #[test]
@@ -766,6 +778,12 @@ mod test {
         //  │A│   │B│
         //  └─┘   └─┘
         // Root hash is e693520b5ba4ff8b1e37ae4feabcb54701f32efd6bc4b78db356fa9baa64ca99
+
+        // Deleting a key that does not exist is ok.
+        let res = tree.delete(&short_key(5));
+        assert!(matches!(res, Ok(DeleteResult::KeyNotFound)));
+
+        // Delete an existing key
         let res = tree.delete(&short_key(224)).unwrap();
         assert_eq!(res, DeleteResult::Deleted(ValueHash::from([4u8; 32])));
         assert_eq!(
@@ -850,5 +868,54 @@ mod test {
 
         // Sanity check that the tree is now empty
         assert!(tree.is_empty());
+    }
+
+    #[test]
+    fn insert_only_if_exist() {
+        let mut tree = SparseMerkleTree::<Blake2b<U32>>::default();
+
+        // An empty tree contains no keys
+        assert!(!tree.contains(&short_key(0)));
+        assert!(!tree.contains(&short_key(1)));
+
+        // Add a key, which the tree must then contain
+        assert_eq!(
+            tree.insert(short_key(1), ValueHash::from([1u8; 32])).unwrap(),
+            UpdateResult::Inserted
+        );
+        assert!(!tree.contains(&short_key(0)));
+        assert!(tree.contains(&short_key(1)));
+        assert_eq!(
+            tree.insert(short_key(1), ValueHash::from([2u8; 32])).unwrap_err(),
+            SMTError::KeyExists
+        );
+        assert_eq!(tree.get(&short_key(1)).unwrap().unwrap(), &ValueHash::from([1u8; 32]));
+
+        // Delete the key, which the tree must not contain
+        tree.delete(&short_key(1)).unwrap();
+        assert!(!tree.contains(&short_key(0)));
+        assert!(!tree.contains(&short_key(1)));
+
+        // Build a more complex tree with two keys, which the tree must then contain
+        assert_eq!(
+            tree.insert(short_key(0), ValueHash::from([0u8; 32])).unwrap(),
+            UpdateResult::Inserted
+        );
+        assert_eq!(
+            tree.insert(short_key(1), ValueHash::from([1u8; 32])).unwrap(),
+            UpdateResult::Inserted
+        );
+        assert!(tree.contains(&short_key(0)));
+        assert!(tree.contains(&short_key(1)));
+        assert_eq!(
+            tree.insert(short_key(0), ValueHash::from([1u8; 32])).unwrap_err(),
+            SMTError::KeyExists
+        );
+        assert_eq!(tree.get(&short_key(0)).unwrap().unwrap(), &ValueHash::from([0u8; 32]));
+        assert_eq!(
+            tree.insert(short_key(1), ValueHash::from([2u8; 32])).unwrap_err(),
+            SMTError::KeyExists
+        );
+        assert_eq!(tree.get(&short_key(1)).unwrap().unwrap(), &ValueHash::from([1u8; 32]));
     }
 }

@@ -497,7 +497,7 @@ async fn test_utxo_selection_no_chain_metadata() {
             .expect("Failed to get default features and scripts size byte size") *
             6,
     );
-    assert_eq!(tx.body.get_total_fee(), expected_fee);
+    assert_eq!(tx.body.get_total_fee().unwrap(), expected_fee);
     assert_eq!(utxos_total_value, MicroMinotari::from(5_000));
 
     // test that largest utxo was encumbered
@@ -599,7 +599,7 @@ async fn test_utxo_selection_with_chain_metadata() {
             .expect("Failed to get default features and scripts size byte size") *
             6,
     );
-    assert_eq!(tx.body.get_total_fee(), expected_fee);
+    assert_eq!(tx.body.get_total_fee().unwrap(), expected_fee);
 
     // test that largest spendable utxo was encumbered
     let utxos = oms.get_unspent_outputs().await.unwrap();
@@ -1192,7 +1192,7 @@ async fn coin_split_with_change() {
             default_features_and_scripts_size_byte_size()
                 .expect("Failed to get default features and scripts size byte size"),
     );
-    assert_eq!(coin_split_tx.body.get_total_fee(), expected_fee);
+    assert_eq!(coin_split_tx.body.get_total_fee().unwrap(), expected_fee);
     // NOTE: assuming the LargestFirst strategy is used
     assert_eq!(amount, val3);
 }
@@ -1234,7 +1234,7 @@ async fn coin_split_no_change() {
         .unwrap();
     assert_eq!(coin_split_tx.body.inputs().len(), 3);
     assert_eq!(coin_split_tx.body.outputs().len(), split_count);
-    assert_eq!(coin_split_tx.body.get_total_fee(), expected_fee);
+    assert_eq!(coin_split_tx.body.get_total_fee().unwrap(), expected_fee);
     assert_eq!(amount, val1 + val2 + val3);
 }
 

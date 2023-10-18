@@ -134,7 +134,8 @@ async fn genesis_template(
         header.into_builder().with_coinbase_utxo(utxo, kernel).build(),
         Difficulty::min(),
         coinbase_value,
-    );
+    )
+    .unwrap();
     (block, output)
 }
 
@@ -300,6 +301,7 @@ pub async fn chain_block(
         Difficulty::min(),
         reward,
     )
+    .unwrap()
 }
 
 /// Create a new block using the provided coinbase and transactions that adds to the blockchain given in `prev_block`.
@@ -322,6 +324,7 @@ pub fn chain_block_with_coinbase(
         Difficulty::min(),
         consensus.get_block_reward_at(height),
     )
+    .unwrap()
 }
 
 /// Create a new block using the provided coinbase and transactions that adds to the blockchain given in `prev_block`.
@@ -336,7 +339,7 @@ pub async fn chain_block_with_new_coinbase(
     let mut coinbase_value = consensus_manager.emission_schedule().block_reward(height);
     coinbase_value += transactions
         .iter()
-        .fold(MicroMinotari(0), |acc, x| acc + x.body.get_total_fee());
+        .fold(MicroMinotari(0), |acc, x| acc + x.body.get_total_fee().unwrap());
     let (coinbase_utxo, coinbase_kernel, coinbase_output) = create_coinbase(
         coinbase_value,
         height + consensus_manager.consensus_constants(height).coinbase_min_maturity(),
@@ -358,7 +361,8 @@ pub async fn chain_block_with_new_coinbase(
             .build(),
         Difficulty::min(),
         reward,
-    );
+    )
+    .unwrap();
     (template, coinbase_output)
 }
 
@@ -389,9 +393,9 @@ pub async fn append_block_with_coinbase<B: BlockchainBackend>(
 ) -> Result<(ChainBlock, WalletOutput), ChainStorageError> {
     let height = prev_block.height() + 1;
     let mut coinbase_value = consensus_manager.emission_schedule().block_reward(height);
-    coinbase_value += txns
-        .iter()
-        .fold(MicroMinotari(0), |acc, x| acc + x.body.get_total_fee());
+    for tx in &txns {
+        coinbase_value += tx.body.get_total_fee()?;
+    }
     let (coinbase_utxo, coinbase_kernel, coinbase_output) = create_coinbase(
         coinbase_value,
         height + consensus_manager.consensus_constants(0).coinbase_min_maturity(),
@@ -465,7 +469,7 @@ pub async fn generate_new_block_with_coinbase<B: BlockchainBackend>(
     let mut fees = MicroMinotari(0);
     for schema in schemas {
         let (tx, mut utxos) = spend_utxos(schema, key_manager).await;
-        fees += tx.body.get_total_fee();
+        fees += tx.body.get_total_fee()?;
         txns.push(tx);
         block_utxos.append(&mut utxos);
     }

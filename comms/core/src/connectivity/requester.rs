@@ -31,7 +31,6 @@ use tokio::{
     sync::{broadcast, broadcast::error::RecvError, mpsc, oneshot},
     time,
 };
-use tracing;
 
 use super::{
     connection_pool::PeerConnectionState,
@@ -128,7 +127,6 @@ impl ConnectivityRequester {
     }
 
     /// Dial a single peer
-    #[tracing::instrument(level = "trace", skip(self))]
     pub async fn dial_peer(&self, peer: NodeId) -> Result<PeerConnection, ConnectivityError> {
         let mut num_cancels = 0;
         loop {
@@ -159,7 +157,6 @@ impl ConnectivityRequester {
 
     /// Dial many peers, returning a Stream that emits the dial Result as each dial completes.
     #[allow(clippy::let_with_type_underscore)]
-    #[tracing::instrument(level = "trace", skip(self, peers))]
     pub fn dial_many_peers<I: IntoIterator<Item = NodeId>>(
         &self,
         peers: I,
@@ -171,7 +168,6 @@ impl ConnectivityRequester {
     }
 
     /// Send a request to dial many peers without waiting for the response.
-    #[tracing::instrument(level = "trace", skip(self, peers))]
     pub async fn request_many_dials<I: IntoIterator<Item = NodeId>>(&self, peers: I) -> Result<(), ConnectivityError> {
         future::join_all(peers.into_iter().map(|peer| {
             self.sender.send(ConnectivityRequest::DialPeer {

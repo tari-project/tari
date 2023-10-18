@@ -300,7 +300,7 @@ where B: BlockchainBackend + 'static
                     self.get_target_difficulty_for_next_block(request.algo, constants, prev_hash)
                         .await?,
                     self.consensus_manager.get_block_reward_at(height),
-                );
+                )?;
 
                 debug!(target: LOG_TARGET, "New template block: {}", block_template);
                 debug!(
@@ -514,12 +514,6 @@ where B: BlockchainBackend + 'static
             PowAlgorithm::Sha3x => sha3x_difficulty(&new_block.header)?,
         };
         if achieved < min_difficulty {
-            self.blockchain_db
-                .add_bad_block(
-                    new_block.header.hash(),
-                    self.blockchain_db.get_chain_metadata().await?.height_of_longest_chain(),
-                )
-                .await?;
             return Err(CommsInterfaceError::InvalidBlockHeader(
                 BlockHeaderValidationError::ProofOfWorkError(PowError::AchievedDifficultyBelowMin),
             ));

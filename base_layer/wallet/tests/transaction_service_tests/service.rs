@@ -3777,7 +3777,7 @@ async fn test_coinbase_generation_and_monitoring() {
                 tx1.transaction.first_kernel_excess_sig().unwrap().clone(),
             )),
             location: TxLocationProto::from(TxLocation::NotStored) as i32,
-            block_hash: None,
+            block_hash: vec![],
             confirmations: 0,
             block_height: 0,
             mined_timestamp: None,
@@ -3787,7 +3787,7 @@ async fn test_coinbase_generation_and_monitoring() {
                 tx2b.transaction.first_kernel_excess_sig().unwrap().clone(),
             )),
             location: TxLocationProto::from(TxLocation::Mined) as i32,
-            block_hash: Some(block_headers.get(&1).unwrap().hash().to_vec()),
+            block_hash: block_headers.get(&1).unwrap().hash().to_vec(),
             confirmations: 0,
             block_height: 1,
             mined_timestamp: Some(0),
@@ -3796,7 +3796,7 @@ async fn test_coinbase_generation_and_monitoring() {
     let batch_query_response = TxQueryBatchResponsesProto {
         responses: transaction_query_batch_responses.clone(),
         is_synced: true,
-        tip_hash: Some(block_headers.get(&1).unwrap().hash().to_vec()),
+        tip_hash: block_headers.get(&1).unwrap().hash().to_vec(),
         height_of_longest_chain: 1,
         tip_mined_timestamp: Some(0),
     };
@@ -3838,7 +3838,7 @@ async fn test_coinbase_generation_and_monitoring() {
             tx2b.transaction.first_kernel_excess_sig().unwrap().clone(),
         )),
         location: TxLocationProto::from(TxLocation::Mined) as i32,
-        block_hash: Some(block_headers.get(&4).unwrap().hash().to_vec()),
+        block_hash: block_headers.get(&4).unwrap().hash().to_vec(),
         confirmations: 3,
         block_height: 4,
         mined_timestamp: Some(0),
@@ -3847,7 +3847,7 @@ async fn test_coinbase_generation_and_monitoring() {
     let batch_query_response = TxQueryBatchResponsesProto {
         responses: transaction_query_batch_responses,
         is_synced: true,
-        tip_hash: Some(block_headers.get(&4).unwrap().hash().to_vec()),
+        tip_hash: block_headers.get(&4).unwrap().hash().to_vec(),
         height_of_longest_chain: 4,
         tip_mined_timestamp: Some(0),
     };
@@ -3921,7 +3921,7 @@ async fn test_coinbase_abandoned() {
     let transaction_query_batch_responses = vec![TxQueryBatchResponseProto {
         signature: Some(SignatureProto::from(tx1.first_kernel_excess_sig().unwrap().clone())),
         location: TxLocationProto::from(TxLocation::InMempool) as i32,
-        block_hash: None,
+        block_hash: vec![],
         confirmations: 0,
         block_height: 0,
         mined_timestamp: None,
@@ -3930,7 +3930,7 @@ async fn test_coinbase_abandoned() {
     let batch_query_response = TxQueryBatchResponsesProto {
         responses: transaction_query_batch_responses,
         is_synced: true,
-        tip_hash: Some([5u8; 32].to_vec()),
+        tip_hash: [5u8; 32].to_vec(),
         height_of_longest_chain: block_height_a + TransactionServiceConfig::default().num_confirmations_required + 1,
         tip_mined_timestamp: Some(0),
     };
@@ -4046,7 +4046,7 @@ async fn test_coinbase_abandoned() {
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(tx1.first_kernel_excess_sig().unwrap().clone())),
             location: TxLocationProto::from(TxLocation::NotStored) as i32,
-            block_hash: None,
+            block_hash: vec![],
             confirmations: 0,
             block_height: 0,
             mined_timestamp: None,
@@ -4054,7 +4054,7 @@ async fn test_coinbase_abandoned() {
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(tx2.first_kernel_excess_sig().unwrap().clone())),
             location: TxLocationProto::from(TxLocation::Mined) as i32,
-            block_hash: Some([11u8; 32].to_vec()),
+            block_hash: [11u8; 32].to_vec(),
             confirmations: 2,
             block_height: block_height_b,
             mined_timestamp: Some(0),
@@ -4064,7 +4064,7 @@ async fn test_coinbase_abandoned() {
     let batch_query_response = TxQueryBatchResponsesProto {
         responses: transaction_query_batch_responses,
         is_synced: true,
-        tip_hash: Some([13u8; 32].to_vec()),
+        tip_hash: [13u8; 32].to_vec(),
         height_of_longest_chain: block_height_b + 2,
         tip_mined_timestamp: Some(0),
     };
@@ -4132,7 +4132,7 @@ async fn test_coinbase_abandoned() {
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(tx1.first_kernel_excess_sig().unwrap().clone())),
             location: TxLocationProto::from(TxLocation::NotStored) as i32,
-            block_hash: None,
+            block_hash: vec![],
             confirmations: 0,
             block_height: 0,
             mined_timestamp: None,
@@ -4140,7 +4140,7 @@ async fn test_coinbase_abandoned() {
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(tx2.first_kernel_excess_sig().unwrap().clone())),
             location: TxLocationProto::from(TxLocation::NotStored) as i32,
-            block_hash: None,
+            block_hash: vec![],
             confirmations: 0,
             block_height: 0,
             mined_timestamp: None,
@@ -4150,7 +4150,7 @@ async fn test_coinbase_abandoned() {
     let batch_query_response = TxQueryBatchResponsesProto {
         responses: transaction_query_batch_responses,
         is_synced: true,
-        tip_hash: Some([12u8; 32].to_vec()),
+        tip_hash: [12u8; 32].to_vec(),
         height_of_longest_chain: block_height_b + TransactionServiceConfig::default().num_confirmations_required + 1,
         tip_mined_timestamp: Some(0),
     };
@@ -4249,7 +4249,7 @@ async fn test_coinbase_abandoned() {
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(tx1.first_kernel_excess_sig().unwrap().clone())),
             location: TxLocationProto::from(TxLocation::NotStored) as i32,
-            block_hash: None,
+            block_hash: vec![],
             confirmations: 0,
             block_height: 0,
             mined_timestamp: None,
@@ -4257,7 +4257,7 @@ async fn test_coinbase_abandoned() {
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(tx2.first_kernel_excess_sig().unwrap().clone())),
             location: TxLocationProto::from(TxLocation::Mined) as i32,
-            block_hash: Some(block_headers.get(&10).unwrap().hash().to_vec()),
+            block_hash: block_headers.get(&10).unwrap().hash().to_vec(),
             confirmations: 5,
             block_height: 10,
             mined_timestamp: Some(0),
@@ -4267,7 +4267,7 @@ async fn test_coinbase_abandoned() {
     let batch_query_response = TxQueryBatchResponsesProto {
         responses: transaction_query_batch_responses,
         is_synced: true,
-        tip_hash: Some([20u8; 32].to_vec()),
+        tip_hash: [20u8; 32].to_vec(),
         height_of_longest_chain: 20,
         tip_mined_timestamp: Some(0),
     };

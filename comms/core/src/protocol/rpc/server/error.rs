@@ -62,6 +62,8 @@ pub enum RpcServerError {
     ReadStreamExceededDeadline,
     #[error("Early close: {0}")]
     EarlyClose(#[from] EarlyCloseError<BytesMut>),
+    #[error("Protocol error: {0}")]
+    ProtocolError(String),
 }
 
 impl RpcServerError {

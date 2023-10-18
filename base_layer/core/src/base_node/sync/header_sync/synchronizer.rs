@@ -35,7 +35,6 @@ use tari_comms::{
     PeerConnection,
 };
 use tari_utilities::hex::Hex;
-use tracing;
 
 use super::{validator::BlockHeaderSyncValidator, BlockHeaderSyncError};
 use crate::{
@@ -54,6 +53,8 @@ use crate::{
 const LOG_TARGET: &str = "c::bn::header_sync";
 
 const NUM_INITIAL_HEADERS_TO_REQUEST: usize = 1000;
+
+const MAX_LATENCY_INCREASES: usize = 5;
 
 pub struct HeaderSynchronizer<'a, B> {
     config: BlockchainSyncConfig,
@@ -113,6 +114,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             self.sync_peers.len()
         );
         let mut max_latency = self.config.initial_max_sync_latency;
+        let mut latency_increases_counter = 0;
         loop {
             match self.try_sync_from_all_peers(max_latency).await {
                 Ok(sync_peer) => break Ok(sync_peer),
@@ -122,6 +124,10 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                         return Err(err);
                     }
                     max_latency += self.config.max_latency_increase;
+                    latency_increases_counter += 1;
+                    if latency_increases_counter > MAX_LATENCY_INCREASES {
+                        return Err(err);
+                    }
                 },
                 Err(err) => break Err(err),
             }
@@ -137,8 +143,8 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             sync_peer_node_ids.len()
         );
         let mut latency_counter = 0usize;
-        for (i, node_id) in sync_peer_node_ids.iter().enumerate() {
-            match self.connect_and_attempt_sync(i, node_id, max_latency).await {
+        for node_id in sync_peer_node_ids {
+            match self.connect_and_attempt_sync(&node_id, max_latency).await {
                 Ok(peer) => return Ok(peer),
                 Err(err) => {
                     let ban_reason = BlockHeaderSyncError::get_ban_reason(
@@ -149,16 +155,13 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     if let Some(reason) = ban_reason {
                         warn!(target: LOG_TARGET, "{}", err);
                         self.peer_ban_manager
-                            .ban_peer_if_required(node_id, &Some(reason.clone()))
+                            .ban_peer_if_required(&node_id, &Some(reason.clone()))
                             .await;
-
-                        if reason.ban_duration > self.config.short_ban_period {
-                            self.remove_sync_peer(node_id);
-                        }
                     }
-
                     if let BlockHeaderSyncError::MaxLatencyExceeded { .. } = err {
                         latency_counter += 1;
+                    } else {
+                        self.remove_sync_peer(&node_id);
                     }
                 },
             }
@@ -175,14 +178,15 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
 
     async fn connect_and_attempt_sync(
         &mut self,
-        peer_index: usize,
         node_id: &NodeId,
         max_latency: Duration,
     ) -> Result<SyncPeer, BlockHeaderSyncError> {
-        {
-            let sync_peer = &self.sync_peers[peer_index];
-            self.hooks.call_on_starting_hook(sync_peer);
-        }
+        let peer_index = self
+            .get_sync_peer_index(node_id)
+            .ok_or(BlockHeaderSyncError::PeerNotFound)?;
+        let sync_peer = &self.sync_peers[peer_index];
+        self.hooks.call_on_starting_hook(sync_peer);
+
         let mut conn = self.dial_sync_peer(node_id).await?;
         debug!(
             target: LOG_TARGET,
@@ -227,7 +231,6 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         Ok(conn)
     }
 
-    #[tracing::instrument(skip(self, client), err)]
     async fn attempt_sync(
         &mut self,
         sync_peer: &SyncPeer,
@@ -770,6 +773,11 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         if let Some(pos) = self.sync_peers.iter().position(|p| p.node_id() == node_id) {
             self.sync_peers.remove(pos);
         }
+    }
+
+    // Helper function to get the index to the node_id inside of the vec of peers
+    fn get_sync_peer_index(&mut self, node_id: &NodeId) -> Option<usize> {
+        self.sync_peers.iter().position(|p| p.node_id() == node_id)
     }
 }
 

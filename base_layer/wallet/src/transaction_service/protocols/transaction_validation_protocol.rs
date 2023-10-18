@@ -341,10 +341,9 @@ where
                 }
             }
         }
-        let tip = batch_response
-            .tip_hash
-            .ok_or_else(|| TransactionServiceError::ProtobufConversionError("Missing `tip_hash` field".to_string()))?
-            .try_into()?;
+
+        let tip = batch_response.tip_hash.try_into()?;
+
         Ok((
             mined,
             unmined,

@@ -39,6 +39,8 @@ use crate::transactions::transaction_components::EncryptedDataError;
 pub enum TransactionError {
     #[error("Error building the transaction: {0}")]
     BuilderError(String),
+    #[error("Error serializing transaction: {0}")]
+    SerializationError(String),
     #[error("Signature is invalid: {0}")]
     InvalidSignatureError(String),
     #[error("A range proof construction or verification has produced an error: {0}")]

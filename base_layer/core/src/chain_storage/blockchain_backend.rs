@@ -148,8 +148,8 @@ pub trait BlockchainBackend: Send + Sync {
     /// Fetches an current tip orphan by hash or returns None if the orphan is not found or is not a tip of any
     /// alternate chain
     fn fetch_orphan_chain_tip_by_hash(&self, hash: &HashOutput) -> Result<Option<ChainHeader>, ChainStorageError>;
-    /// Fetches all currently stored orphan tips, if none are stored, returns an empty vec.
-    fn fetch_all_orphan_chain_tips(&self) -> Result<Vec<ChainHeader>, ChainStorageError>;
+    /// Fetches strongest currently stored orphan tips, if none are stored, returns an empty vec.
+    fn fetch_strongest_orphan_chain_tips(&self) -> Result<Vec<ChainHeader>, ChainStorageError>;
     /// Fetch all orphans that have `hash` as a previous hash
     fn fetch_orphan_children_of(&self, hash: HashOutput) -> Result<Vec<Block>, ChainStorageError>;
 

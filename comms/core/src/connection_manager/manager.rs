@@ -141,12 +141,12 @@ impl Default for ConnectionManagerConfig {
             max_simultaneous_inbound_connects: 100,
             network_info: Default::default(),
             liveness_max_sessions: 1,
-            time_to_first_byte: Duration::from_secs(3),
+            time_to_first_byte: Duration::from_secs(6),
             liveness_cidr_allowlist: vec![cidr::AnyIpCidr::V4("127.0.0.1/32".parse().unwrap())],
             liveness_self_check_interval: None,
             auxiliary_tcp_listener_address: None,
             peer_validation_config: PeerValidatorConfig::default(),
-            noise_handshake_recv_timeout: Duration::from_secs(3),
+            noise_handshake_recv_timeout: Duration::from_secs(6),
         }
     }
 }
@@ -481,7 +481,6 @@ where
         let _result = self.connection_manager_events_tx.send(Arc::new(event));
     }
 
-    #[tracing::instrument(level = "trace", skip(self, reply))]
     async fn dial_peer(
         &mut self,
         node_id: NodeId,

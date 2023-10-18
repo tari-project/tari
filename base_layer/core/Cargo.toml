@@ -38,7 +38,7 @@ tari_common_sqlite = { path = "../../common_sqlite" }
 
 async-trait = {version = "0.1.50"}
 bincode = "1.1.4"
-bitflags = "1"
+bitflags = { version = "2.4", features = ["serde"] }
 blake2 = "0.10"
 borsh = { version = "0.10", features = ["const-generics"] }
 bytes = "0.5"
