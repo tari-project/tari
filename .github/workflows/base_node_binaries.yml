@@ -142,7 +142,8 @@ jobs:
           # psutils is out of date
           # choco upgrade psutils -y
           choco upgrade openssl -y
-          choco upgrade strawberryperl -y
+          # Should already be installed
+          # choco upgrade strawberryperl -y
 
       - name: Debugging - Upload logs if dependences failures
         if: failure()
