@@ -282,12 +282,6 @@ impl DhtDiscoveryService {
     ) -> Result<T, DhtPeerValidatorError> {
         match result {
             Ok(peer) => Ok(peer),
-            // Banned is an interesting case - if the peer is banned and we reban them, it will modify the original
-            // ban either longer or shorter. It is possible for a banned peer to send a secret message to us
-            // through another peer.
-            // TODO: perhaps connectivity manager should only make longer bans when this is called, or do nothing if
-            // shorter.
-            Err(err @ DhtPeerValidatorError::Banned { .. }) => Err(err),
             Err(err @ DhtPeerValidatorError::IdentityTooManyClaims { .. }) |
             Err(err @ DhtPeerValidatorError::ValidatorError(_)) => {
                 self.dht.ban_peer(public_key.clone(), OffenceSeverity::High, &err).await;

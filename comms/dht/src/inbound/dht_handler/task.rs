@@ -464,7 +464,6 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             Err(err) => {
                 match &err {
                     DhtInboundError::PeerValidatorError(err) => match err {
-                        DhtPeerValidatorError::Banned { .. } => {},
                         err @ DhtPeerValidatorError::ValidatorError(_) |
                         err @ DhtPeerValidatorError::IdentityTooManyClaims { .. } => {
                             self.dht

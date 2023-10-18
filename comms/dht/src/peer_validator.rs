@@ -35,8 +35,6 @@ const _LOG_TARGET: &str = "dht::network_discovery::peer_validator";
 /// Validation errors for peers shared on the network
 #[derive(Debug, thiserror::Error)]
 pub enum DhtPeerValidatorError {
-    #[error("Peer '{peer}' is banned: {reason}")]
-    Banned { peer: NodeId, reason: String },
     #[error(transparent)]
     ValidatorError(#[from] PeerValidatorError),
     #[error("Peer provided too many claims: expected max {max} but got {length}")]
