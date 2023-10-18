@@ -388,7 +388,6 @@ impl TransactionsTab {
             let status = Span::styled(status_msg, Style::default().fg(Color::White));
             let message = Span::styled(tx.message.as_str(), Style::default().fg(Color::White));
 
-            // let mined_time = DateTime::<Local>::from_utc(tx.mined_timestamp, Local::now().offset().to_owned());
             let mined_timestamp = Span::styled(
                 match tx.mined_timestamp {
                     None => String::new(),
@@ -398,7 +397,6 @@ impl TransactionsTab {
                             .format("%Y-%m-%d %H:%M:%S")
                     ),
                 },
-                // format!("{}", mined_time.format("%Y-%m-%d %H:%M:%S")),
                 Style::default().fg(Color::White),
             );
 

@@ -177,7 +177,6 @@ impl HeaderSyncState {
                 StateEvent::HeadersSynchronized(sync_peer, sync_result)
             },
             Err(err) => {
-                println!("HeaderSyncState::next_event - {}", err);
                 let _ignore = shared.status_event_sender.send(StatusInfo {
                     bootstrapped,
                     state_info: StateInfo::SyncFailed("HeaderSyncFailed".to_string()),
