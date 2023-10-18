@@ -35,8 +35,6 @@ const _LOG_TARGET: &str = "dht::network_discovery::peer_validator";
 /// Validation errors for peers shared on the network
 #[derive(Debug, thiserror::Error)]
 pub enum DhtPeerValidatorError {
-    #[error("Peer '{peer}' is banned: {reason}")]
-    Banned { peer: NodeId, reason: String },
     #[error(transparent)]
     ValidatorError(#[from] PeerValidatorError),
     #[error("Peer provided too many claims: expected max {max} but got {length}")]
@@ -73,15 +71,6 @@ impl<'a> PeerValidator<'a> {
                 length: new_peer.claims.len(),
                 max: self.config.max_permitted_peer_claims,
             });
-        }
-
-        if let Some(ref peer) = existing_peer {
-            if peer.is_banned() {
-                return Err(DhtPeerValidatorError::Banned {
-                    peer: peer.node_id.clone(),
-                    reason: peer.banned_reason.clone(),
-                });
-            }
         }
 
         let most_recent_claim = find_most_recent_claim(&new_peer.claims).expect("new_peer.claims is not empty");
