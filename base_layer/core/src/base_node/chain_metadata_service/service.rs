@@ -20,14 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, sync::Arc, time::Duration};
+use std::{convert::TryFrom, sync::Arc};
 
 use log::*;
 use num_format::{Locale, ToFormattedString};
 use prost::Message;
 use tari_common::log_if_error;
 use tari_common_types::chain_metadata::ChainMetadata;
-use tari_comms::{connectivity::ConnectivityRequester, message::MessageExt};
+use tari_comms::{connectivity::ConnectivityRequester, message::MessageExt, BAN_DURATION_LONG};
 use tari_p2p::services::liveness::{LivenessEvent, LivenessHandle, MetadataKey, PingPongEvent};
 use tokio::sync::broadcast;
 
@@ -88,7 +88,7 @@ impl ChainMetadataService {
             tokio::select! {
                 Ok(block_event) = block_event_stream.recv() => {
                     log_if_error!(
-                        level: warn,
+                        level: info,
                         target: LOG_TARGET,
                         "Failed to handle block event because '{}'",
                         self.handle_block_event(&block_event).await
@@ -100,17 +100,16 @@ impl ChainMetadataService {
                         self.handle_liveness_event(&event).await {
                         Ok(_) => {}
                         Err(e) => {
-                           error!( target: LOG_TARGET, "Failed to handle liveness event because '{}'", e);
+                           info!( target: LOG_TARGET, "Failed to handle liveness event because '{}'", e);
                            if let ChainMetadataSyncError::ReceivedInvalidChainMetadata(node_id,reason) = e {
                                log_if_error!(
-                                 level: warn,
+                                 level: info,
                                  target: LOG_TARGET, "Failed to ban node '{}'",
-                                 self.connectivity.ban_peer_until(node_id, Duration::from_secs(60), reason).await);                                           }
+                                 self.connectivity.ban_peer_until(node_id, BAN_DURATION_LONG, reason).await);                                           }
                         }
                     }
 
                 },
-
             }
         }
     }
