@@ -75,15 +75,6 @@ impl<'a> PeerValidator<'a> {
             });
         }
 
-        if let Some(ref peer) = existing_peer {
-            if peer.is_banned() {
-                return Err(DhtPeerValidatorError::Banned {
-                    peer: peer.node_id.clone(),
-                    reason: peer.banned_reason.clone(),
-                });
-            }
-        }
-
         let most_recent_claim = find_most_recent_claim(&new_peer.claims).expect("new_peer.claims is not empty");
 
         let node_id = NodeId::from_public_key(&new_peer.public_key);
