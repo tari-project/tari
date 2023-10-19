@@ -13,7 +13,7 @@ A number of applications have been developed by the Tari community to implement 
 Only the first four applications will be discussed in this README (see [wallet-android](https://github.com/tari-project/wallet-android) and [wallet-ios](https://github.com/tari-project/wallet-ios) for mobile wallets' repos).
 
 ## Developers
-Want to contribute? Start by reading the [Contributing Guide](contributing.md) and the [Reviewing Guide](docs/src/reviewing_guide.md).
+Want to contribute? Start by reading the [Contributing Guide](Contributing.md) and the [Reviewing Guide](docs/src/reviewing_guide.md).
 
 ## Installing using binaries
 
