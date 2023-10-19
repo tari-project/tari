@@ -103,6 +103,7 @@ extern "C" {
         error_our: *const c_int,
     ) -> *mut c_void;
     pub fn send_read_confirmation_for_message(client: *mut ClientFFI, message: *mut c_void, error_out: *const c_int);
+    pub fn get_conversationalists(client: *mut ClientFFI, error_out: *const c_int) -> *mut c_void;
 }
 
 #[derive(Debug)]

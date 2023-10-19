@@ -121,6 +121,12 @@ where TContactServiceDbConnection: PooledDbConnection<Error = SqliteStorageError
                 Err(ContactsServiceStorageError::DieselError(DieselError::NotFound)) => None,
                 Err(e) => return Err(e),
             },
+            DbKey::Conversationalists => Some(DbValue::Conversationalists(
+                MessagesSql::find_all_conversationlists(&mut conn)?
+                    .iter()
+                    .map(|c| TariAddress::from_bytes(c).map_err(|_e| ContactsServiceStorageError::UnknownError))
+                    .collect::<Result<Vec<_>, _>>()?,
+            )),
         };
 
         Ok(result)
@@ -192,6 +198,7 @@ where TContactServiceDbConnection: PooledDbConnection<Error = SqliteStorageError
                 DbKey::Contacts => return Err(ContactsServiceStorageError::OperationNotSupported),
                 DbKey::Messages(_pk, _l, _p) => return Err(ContactsServiceStorageError::OperationNotSupported),
                 DbKey::Message(_id) => return Err(ContactsServiceStorageError::OperationNotSupported),
+                DbKey::Conversationalists => return Err(ContactsServiceStorageError::OperationNotSupported),
             },
             WriteOperation::Insert(i) => {
                 if let DbValue::Message(m) = *i {
