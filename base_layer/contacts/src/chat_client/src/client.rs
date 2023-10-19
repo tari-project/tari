@@ -50,6 +50,7 @@ pub trait ChatClient {
     async fn get_messages(&self, sender: &TariAddress, limit: u64, page: u64) -> Vec<Message>;
     async fn send_message(&self, message: Message);
     async fn send_read_receipt(&self, message: Message);
+    async fn get_conversationalists(&self) -> Vec<TariAddress>;
     fn identity(&self) -> &NodeIdentity;
     fn shutdown(&mut self);
 }
@@ -193,6 +194,18 @@ impl ChatClient for Client {
 
         message.push(metadata);
         message
+    }
+
+    async fn get_conversationalists(&self) -> Vec<TariAddress> {
+        let mut addresses = vec![];
+        if let Some(mut contacts_service) = self.contacts.clone() {
+            addresses = contacts_service
+                .get_conversationalists()
+                .await
+                .expect("Addresses from conversations not fetched");
+        }
+
+        addresses
     }
 }
 
