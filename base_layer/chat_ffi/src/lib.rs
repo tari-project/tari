@@ -48,6 +48,7 @@ mod callback_handler;
 mod confirmation;
 mod contacts;
 mod contacts_liveness_data;
+mod conversationalists;
 mod error;
 mod logging;
 mod message;
