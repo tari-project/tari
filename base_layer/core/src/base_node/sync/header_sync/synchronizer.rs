@@ -285,7 +285,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                         target: LOG_TARGET,
                         "Peer `{}` did not provide any headers although they have a better chain and more headers: their \
                         difficulty: {}, our difficulty: {}. Peer will be banned.",
-                        sync_peer,
+                        sync_peer.node_id(),
                         peer_response.peer_accumulated_difficulty,
                         best_block.accumulated_data().total_accumulated_difficulty,
                     );
@@ -453,7 +453,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 target: LOG_TARGET,
                 "Peer `{}` lied about their chain metadata: previously claimed difficulty: {}, newly provided \
                 difficulty: {}. Peer will be banned.",
-                sync_peer,
+                sync_peer.node_id(),
                 sync_peer.claimed_chain_metadata().accumulated_difficulty(),
                 chain_split_result.peer_accumulated_difficulty,
             );
@@ -467,7 +467,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         // If the peer returned no new headers, they may still have more blocks than we have, thus have a higher
         // accumulated difficulty.
         if chain_split_result.peer_headers.is_empty() {
-            debug!(target: LOG_TARGET, "Peer `{}` sent no headers; headers already in sync with peer.", sync_peer);
+            debug!(target: LOG_TARGET, "Peer `{}` sent no headers; headers already in sync with peer.", sync_peer.node_id());
             return Ok((HeaderSyncStatus::InSyncOrAhead, chain_split_result));
         }
 
@@ -492,7 +492,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 warn!(
                     target: LOG_TARGET,
                     "Peer `{}` lied about the start hash index ({}).  Peer will be banned.",
-                    sync_peer,
+                    sync_peer.node_id(),
                     chain_split_result.peer_fork_hash_index,
                 );
                 return Err(BlockHeaderSyncError::StartHashNotFound(format!(
@@ -516,7 +516,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
 
         debug!(
             target: LOG_TARGET,
-            "Peer {} has submitted {} valid header(s)", sync_peer, num_new_headers
+            "Peer `{}` has submitted {} valid header(s)", sync_peer.node_id(), num_new_headers
         );
 
         // Basic sanity check that the peer sent tip height greater than the split.
@@ -525,12 +525,12 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             warn!(
                 target: LOG_TARGET,
                 "Peer `{}` sent invalid remote tip height ({}).  Peer will be banned.",
-                sync_peer,
+                sync_peer.node_id(),
                 chain_split_result.peer_best_block_height,
             );
             return Err(BlockHeaderSyncError::InvalidProtocolResponse(format!(
-                "Peer {} sent invalid remote tip height",
-                sync_peer
+                "Peer `{}` sent invalid remote tip height",
+                sync_peer.node_id()
             )));
         }
 
