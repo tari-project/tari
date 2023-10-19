@@ -1121,38 +1121,52 @@ impl LMDBDatabase {
 
         // Orphan is a tip hash
         if lmdb_exists(txn, &self.orphan_chain_tips_db, hash.as_slice())? {
+            // We get rid of the orphan tip
             lmdb_delete(txn, &self.orphan_chain_tips_db, hash.as_slice(), "orphan_chain_tips_db")?;
-
-            // Parent becomes a tip hash
-            if lmdb_exists(txn, &self.orphans_db, parent_hash.as_slice())? &&
-                lmdb_exists(txn, &self.orphan_header_accumulated_data_db, parent_hash.as_slice())?
-            {
-                let orphan_parent_accum: Option<BlockHeaderAccumulatedData> =
-                    lmdb_get(txn, &self.orphan_header_accumulated_data_db, parent_hash.as_slice())?;
-                if let Some(val) = orphan_parent_accum {
-                    lmdb_insert(
-                        txn,
-                        &self.orphan_chain_tips_db,
-                        parent_hash.as_slice(),
-                        &ChainTipData {
-                            hash: parent_hash,
-                            total_accumulated_difficulty: val.total_accumulated_difficulty,
+            // If an orphan parent exists, it must be promoted
+            match (
+                lmdb_exists(txn, &self.orphans_db, parent_hash.as_slice())?,
+                lmdb_exists(txn, &self.orphan_header_accumulated_data_db, parent_hash.as_slice())?,
+            ) {
+                (true, true) => {
+                    // Parent becomes a tip hash
+                    let orphan_parent_accum: Option<BlockHeaderAccumulatedData> =
+                        lmdb_get(txn, &self.orphan_header_accumulated_data_db, parent_hash.as_slice())?;
+                    match orphan_parent_accum {
+                        Some(val) => {
+                            lmdb_insert(
+                                txn,
+                                &self.orphan_chain_tips_db,
+                                parent_hash.as_slice(),
+                                &ChainTipData {
+                                    hash: parent_hash,
+                                    total_accumulated_difficulty: val.total_accumulated_difficulty,
+                                },
+                                "orphan_chain_tips_db",
+                            )?;
                         },
-                        "orphan_chain_tips_db",
-                    )?;
-                } else {
+                        None => {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Empty 'BlockHeaderAccumulatedData' for parent hash '{}'",
+                                parent_hash.to_hex()
+                            );
+                        },
+                    }
+                },
+                (false, false) => {
+                    // No entries, nothing here
+                },
+                _ => {
+                    // Some previous database operations were not atomic
                     warn!(
                         target: LOG_TARGET,
-                        "Empty 'BlockHeaderAccumulatedData' for parent hash '{}'",
+                        "'orphans_db' ({}) and 'orphan_header_accumulated_data_db' ({}) out of sync, missing parent hash '{}' entry",
+                        lmdb_exists(txn, &self.orphans_db, parent_hash.as_slice())?,
+                        lmdb_exists(txn, &self.orphan_header_accumulated_data_db, parent_hash.as_slice())?,
                         parent_hash.to_hex()
                     );
-                }
-            } else {
-                warn!(
-                    target: LOG_TARGET,
-                    "'orphans_db' and 'orphan_header_accumulated_data_db' out of sync, missing parent hash '{}' entry",
-                    parent_hash.to_hex()
-                );
+                },
             }
         }
 
