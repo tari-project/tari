@@ -1147,12 +1147,18 @@ impl LMDBDatabase {
                         parent_hash.to_hex()
                     );
                 }
-            } else {
+            } else if lmdb_exists(txn, &self.orphans_db, parent_hash.as_slice())? !=
+                lmdb_exists(txn, &self.orphan_header_accumulated_data_db, parent_hash.as_slice())?
+            {
                 warn!(
                     target: LOG_TARGET,
-                    "'orphans_db' and 'orphan_header_accumulated_data_db' out of sync, missing parent hash '{}' entry",
+                    "'orphans_db' ({}) and 'orphan_header_accumulated_data_db' ({}) out of sync, missing parent hash '{}' entry",
+                    lmdb_exists(txn, &self.orphans_db, parent_hash.as_slice())?,
+                    lmdb_exists(txn, &self.orphan_header_accumulated_data_db, parent_hash.as_slice())?,
                     parent_hash.to_hex()
                 );
+            } else {
+                // Nothing here
             }
         }
 
