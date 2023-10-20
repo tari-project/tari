@@ -92,7 +92,7 @@ pub unsafe extern "C" fn conversationalists_vector_len(
     c_int::try_from(conversationalists.0.len()).unwrap_or(-1)
 }
 
-/// Reads the ConversationalistsVector and returns a Message at a given position
+/// Reads the ConversationalistsVector and returns a pointer to a TariAddress at a given position
 ///
 /// ## Arguments
 /// `conversationalists` - A pointer to a ConversationalistsVector

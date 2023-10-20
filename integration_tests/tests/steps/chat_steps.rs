@@ -20,7 +20,7 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{cmp::Ordering, time::Duration};
+use std::{cmp::Ordering, convert::TryFrom, time::Duration};
 
 use cucumber::{then, when};
 use tari_common::configuration::Network;
@@ -364,7 +364,10 @@ async fn count_conversationalists(world: &mut TariWorld, user: String, num: u64)
     for _a in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
         let conversationalists = (*client).get_conversationalists().await;
 
-        match conversationalists.len().cmp(&(num as usize)) {
+        match conversationalists
+            .len()
+            .cmp(&(usize::try_from(num).expect("u64 to cast to usize")))
+        {
             Ordering::Less => {
                 tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
                 addresses = conversationalists.len();

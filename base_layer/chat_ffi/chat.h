@@ -386,7 +386,7 @@ void destroy_contacts_liveness_data(struct ContactsLivenessData *ptr);
  * `*mut ptr ConversationalistsVector` - a pointer to a ConversationalistsVector
  *
  * ## Safety
- * The `ConversationalistsVactor` should be destroyed after use
+ * The `ConversationalistsVector` should be destroyed after use
  */
 struct ConversationalistsVector *get_conversationalists(struct ChatClient *client, int *error_out);
 
@@ -407,7 +407,7 @@ int conversationalists_vector_len(struct ConversationalistsVector *conversationa
                                   int *error_out);
 
 /**
- * Reads the ConversationalistsVector and returns a Message at a given position
+ * Reads the ConversationalistsVector and returns a pointer to a TariAddress at a given position
  *
  * ## Arguments
  * `conversationalists` - A pointer to a ConversationalistsVector
