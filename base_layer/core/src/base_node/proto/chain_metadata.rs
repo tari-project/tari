@@ -46,9 +46,6 @@ impl TryFrom<proto::ChainMetadata> for ChainMetadata {
         acc_diff.copy_from_slice(&metadata.accumulated_difficulty[0..ACC_DIFFICULTY_ARRAY_LEN]);
         let accumulated_difficulty = u128::from_be_bytes(acc_diff);
         let height_of_longest_chain = metadata.height_of_longest_chain;
-        if height_of_longest_chain == 0 {
-            return Err("Height of longest chain is missing".to_string());
-        }
 
         let pruning_horizon = if metadata.pruned_height == 0 {
             metadata.pruned_height
