@@ -96,7 +96,7 @@ extern "C" {
         page: c_int,
         error_out: *const c_int,
     ) -> *mut c_void;
-    pub fn destroy_chat_client_ffi(client: *mut ClientFFI);
+    pub fn destroy_chat_client(client: *mut ClientFFI);
     pub fn chat_byte_vector_create(
         byte_array: *const c_uchar,
         element_count: c_uint,
@@ -218,7 +218,7 @@ impl ChatClient for ChatFFI {
     fn shutdown(&mut self) {
         let client = self.ptr.lock().unwrap();
 
-        unsafe { destroy_chat_client_ffi(client.0) }
+        unsafe { destroy_chat_client(client.0) }
     }
 }
 

@@ -28,7 +28,7 @@ use callback_handler::CallbackContactStatusChange;
 use libc::c_int;
 use log::info;
 use minotari_app_utilities::identity_management::setup_node_identity;
-use tari_chat_client::{config::ApplicationConfig, networking::PeerFeatures, ChatClient, Client};
+use tari_chat_client::{config::ApplicationConfig, networking::PeerFeatures, ChatClient as ChatClientTrait, Client};
 use tokio::runtime::Runtime;
 
 use crate::{
@@ -43,17 +43,18 @@ use crate::{
 };
 
 mod application_config;
+mod byte_vector;
 mod callback_handler;
 mod confirmation;
 mod contacts;
+mod contacts_liveness_data;
 mod error;
 mod logging;
 mod message;
 mod message_metadata;
-mod read_receipt;
+mod messages;
 mod tansport_config;
 mod tari_address;
-mod types;
 
 const LOG_TARGET: &str = "chat_ffi";
 
@@ -62,7 +63,7 @@ mod consts {
     include!(concat!(env!("OUT_DIR"), "/consts.rs"));
 }
 
-pub struct ChatClientFFI {
+pub struct ChatClient {
     client: Client,
     runtime: Runtime,
 }
@@ -71,15 +72,22 @@ pub struct ChatClientFFI {
 ///
 /// ## Arguments
 /// `config` - The ApplicationConfig pointer
-/// `identity_file_path` - The path to the node identity file
 /// `error_out` - Pointer to an int which will be modified
+/// `callback_contact_status_change` - A callback function pointer. this is called whenever a
+/// contacts liveness event comes in.
+/// `callback_message_received` - A callback function pointer. This is called whenever a chat
+/// message is received.
+/// `callback_delivery_confirmation_received` - A callback function pointer. This is called when the
+/// client receives a confirmation of message delivery.
+/// `callback_read_confirmation_received` - A callback function pointer. This is called when the
+/// client receives a confirmation of message read.
 ///
 /// ## Returns
 /// `*mut ChatClient` - Returns a pointer to a ChatClient, note that it returns ptr::null_mut()
 /// if any error was encountered or if the runtime could not be created.
 ///
 /// # Safety
-/// The ```destroy_client``` method must be called when finished with a ClientFFI to prevent a memory leak
+/// The ```destroy_chat_client``` method must be called when finished with a ClientFFI to prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn create_chat_client(
     config: *mut ApplicationConfig,
@@ -88,7 +96,7 @@ pub unsafe extern "C" fn create_chat_client(
     callback_message_received: CallbackMessageReceived,
     callback_delivery_confirmation_received: CallbackDeliveryConfirmationReceived,
     callback_read_confirmation_received: CallbackReadConfirmationReceived,
-) -> *mut ChatClientFFI {
+) -> *mut ChatClient {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -154,15 +162,15 @@ pub unsafe extern "C" fn create_chat_client(
         callback_handler.start().await;
     });
 
-    let client_ffi = ChatClientFFI { client, runtime };
+    let client = ChatClient { client, runtime };
 
-    Box::into_raw(Box::new(client_ffi))
+    Box::into_raw(Box::new(client))
 }
 
-/// Frees memory for a ChatClientFFI
+/// Frees memory for a ChatClient
 ///
 /// ## Arguments
-/// `client` - The pointer of a ChatClientFFI
+/// `ptr` - The pointer of a ChatClient
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -170,9 +178,9 @@ pub unsafe extern "C" fn create_chat_client(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn destroy_chat_client_ffi(client: *mut ChatClientFFI) {
-    if !client.is_null() {
-        let mut c = Box::from_raw(client);
+pub unsafe extern "C" fn destroy_chat_client(ptr: *mut ChatClient) {
+    if !ptr.is_null() {
+        let mut c = Box::from_raw(ptr);
         c.client.shutdown();
     }
 }

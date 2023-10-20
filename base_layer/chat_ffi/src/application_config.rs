@@ -28,15 +28,26 @@ use tari_chat_client::{
     networking::Multiaddr,
 };
 use tari_common::configuration::{MultiaddrList, Network, StringList};
-use tari_p2p::{PeerSeedsConfig, TransportConfig, DEFAULT_DNS_NAME_SERVER};
+use tari_p2p::{PeerSeedsConfig, TransportConfig, TransportType, DEFAULT_DNS_NAME_SERVER};
 
 use crate::error::{InterfaceError, LibChatError};
 
-/// Creates a Chat Client config
+/// Creates a ChatClient config
 ///
 /// ## Arguments
 /// `network` - The network to run on
 /// `public_address` - The nodes public address
+/// `datastore_path` - The directory for config and db files
+/// `identity_file_path` - The location of the identity file
+/// `tor_transport_config` - A pointer to the TransportConfig
+/// `log_path` - directory for storing log files
+/// `log_verbosity` - how verbose should logging be as a c_int 0-5, or 11
+///        0 => Off
+///        1 => Error
+///        2 => Warn
+///        3 => Info
+///        4 => Debug
+///        5 | 11 => Trace // Cranked up to 11
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
@@ -168,10 +179,16 @@ pub unsafe extern "C" fn create_chat_config(
         },
     };
 
+    let addresses = if (*tor_transport_config).transport_type == TransportType::Tor {
+        MultiaddrList::default()
+    } else {
+        MultiaddrList::from(vec![address])
+    };
+
     let mut chat_client_config = ChatClientConfig::default();
     chat_client_config.network = network;
     chat_client_config.p2p.transport = (*tor_transport_config).clone();
-    chat_client_config.p2p.public_addresses = MultiaddrList::from(vec![address]);
+    chat_client_config.p2p.public_addresses = addresses;
     chat_client_config.log_path = Some(log_path);
     chat_client_config.log_verbosity = Some(log_verbosity);
     chat_client_config.identity_file = identity_path;
@@ -194,7 +211,7 @@ pub unsafe extern "C" fn create_chat_config(
 /// Frees memory for an ApplicationConfig
 ///
 /// ## Arguments
-/// `config` - The pointer of an ApplicationConfig
+/// `ptr` - The pointer of an ApplicationConfig
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -202,9 +219,9 @@ pub unsafe extern "C" fn create_chat_config(
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn destroy_chat_config(config: *mut ApplicationConfig) {
-    if !config.is_null() {
-        drop(Box::from_raw(config))
+pub unsafe extern "C" fn destroy_chat_config(ptr: *mut ApplicationConfig) {
+    if !ptr.is_null() {
+        drop(Box::from_raw(ptr))
     }
 }
 

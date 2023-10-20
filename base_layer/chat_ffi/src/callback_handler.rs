@@ -20,21 +20,19 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, ops::Deref};
+use std::ops::Deref;
 
-use log::{debug, error, info, trace};
+use log::{debug, info, trace};
 use tari_contacts::contacts_service::{
     handle::{ContactsLivenessData, ContactsLivenessEvent, ContactsServiceHandle},
     types::{Confirmation, Message, MessageDispatch},
 };
 use tari_shutdown::ShutdownSignal;
 
-use crate::types::{ChatFFIContactsLivenessData, ChatFFIMessage};
-
 const LOG_TARGET: &str = "chat_ffi::callback_handler";
 
-pub(crate) type CallbackContactStatusChange = unsafe extern "C" fn(*mut ChatFFIContactsLivenessData);
-pub(crate) type CallbackMessageReceived = unsafe extern "C" fn(*mut ChatFFIMessage);
+pub(crate) type CallbackContactStatusChange = unsafe extern "C" fn(*mut ContactsLivenessData);
+pub(crate) type CallbackMessageReceived = unsafe extern "C" fn(*mut Message);
 pub(crate) type CallbackDeliveryConfirmationReceived = unsafe extern "C" fn(*mut Confirmation);
 pub(crate) type CallbackReadConfirmationReceived = unsafe extern "C" fn(*mut Confirmation);
 
@@ -127,13 +125,8 @@ impl CallbackHandler {
             data.address(),
         );
 
-        match ChatFFIContactsLivenessData::try_from(data) {
-            Ok(data) => unsafe {
-                (self.callback_contact_status_change)(Box::into_raw(Box::new(data)));
-            },
-            Err(e) => {
-                error!(target: LOG_TARGET, "Error processing contacts liveness data received callback: {}", e)
-            },
+        unsafe {
+            (self.callback_contact_status_change)(Box::into_raw(Box::new(data)));
         }
     }
 
@@ -144,11 +137,8 @@ impl CallbackHandler {
             message.address,
         );
 
-        match ChatFFIMessage::try_from(message) {
-            Ok(message) => unsafe {
-                (self.callback_message_received)(Box::into_raw(Box::new(message)));
-            },
-            Err(e) => error!(target: LOG_TARGET, "Error processing message received callback: {}", e),
+        unsafe {
+            (self.callback_message_received)(Box::into_raw(Box::new(message)));
         }
     }
 
