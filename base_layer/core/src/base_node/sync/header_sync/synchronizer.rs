@@ -278,8 +278,9 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
 
         match header_sync_status.clone() {
             HeaderSyncStatus::InSyncOrAhead => {
-                // Our POW is less than the peer's POW, as verified before attempted header sync, therefor, if the peer
-                // did not supply any headers and we know we are behind, then we can ban the peer.
+                // Our POW is less than the peer's POW, as verified before the attempted header sync, therefore, if the
+                // peer did not supply any headers and we know we are behind based on the peer's claimed metadata, then
+                // we can ban the peer.
                 if best_header.height() == best_block.height() {
                     warn!(
                         target: LOG_TARGET,
@@ -291,7 +292,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     );
                     return Err(BlockHeaderSyncError::PeerSentInaccurateChainMetadata {
                         claimed: sync_peer.claimed_chain_metadata().accumulated_difficulty(),
-                        actual: Some(peer_response.peer_accumulated_difficulty),
+                        actual: None,
                         local: best_block.accumulated_data().total_accumulated_difficulty,
                     });
                 }
