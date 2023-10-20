@@ -960,7 +960,7 @@ impl LMDBDatabase {
             "block_accumulated_data_db",
         )?;
 
-        self.delete_block_inputs_outputs(write_txn, block_hash.as_slice())?;
+        self.delete_block_inputs_outputs(write_txn, block_hash.as_slice(), height)?;
         self.delete_block_kernels(write_txn, block_hash.as_slice())?;
 
         Ok(())
@@ -970,6 +970,7 @@ impl LMDBDatabase {
         &self,
         txn: &WriteTransaction<'_>,
         block_hash: &[u8],
+        height: u64,
     ) -> Result<(), ChainStorageError> {
         let output_rows = lmdb_delete_keys_starting_with::<TransactionOutputRowData>(txn, &self.utxos_db, block_hash)?;
         debug!(target: LOG_TARGET, "Deleted {} outputs...", output_rows.len());
@@ -991,6 +992,17 @@ impl LMDBDatabase {
                 if inputs.iter().any(|r| r.input.output_hash() == output_hash) {
                     continue;
                 }
+
+                if let Some(vn_reg) = output
+                    .features
+                    .sidechain_feature
+                    .as_ref()
+                    .and_then(|f| f.validator_node_registration())
+                {
+                    self.validator_node_store(txn)
+                        .delete(height, vn_reg.public_key(), &output.commitment)?;
+                }
+
                 // if an output was burned, it was never created as an unspent utxo
                 if output.is_burned() {
                     continue;
@@ -1293,15 +1305,16 @@ impl LMDBDatabase {
                 },
             };
 
-            let features = input.features()?;
-            if let Some(vn_reg) = features
-                .sidechain_feature
-                .as_ref()
-                .and_then(|f| f.validator_node_registration())
-            {
-                self.validator_node_store(txn)
-                    .delete(header.height, vn_reg.public_key(), input.commitment()?)?;
-            }
+            // let features = input.features()?;
+            // TODO: This is not correct. We should not remove the registration
+            // if let Some(vn_reg) = features
+            //     .sidechain_feature
+            //     .as_ref()
+            //     .and_then(|f| f.validator_node_registration())
+            // {
+            //     self.validator_node_store(txn)
+            //         .delete(header.height, vn_reg.public_key(), input.commitment()?)?;
+            // }
 
             if !output_mmr.delete(index) {
                 return Err(ChainStorageError::InvalidOperation(format!(
