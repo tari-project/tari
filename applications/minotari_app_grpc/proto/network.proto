@@ -39,12 +39,12 @@ message Peer {
     /// Peer's addresses
     repeated Address addresses = 3;
     /// Last connection attempt to peer
-    google.protobuf.Timestamp last_connection = 4;
+    uint64 last_connection = 4;
     /// Flags for the peer.
     uint32 flags = 5;
-    google.protobuf.Timestamp banned_until= 6;
+    uint64 banned_until= 6;
     string banned_reason= 7;
-    google.protobuf.Timestamp offline_at = 8;
+    uint64 offline_at = 8;
     /// Features supported by the peer
     uint32 features = 9;
     /// used as information for more efficient protocol negotiation.

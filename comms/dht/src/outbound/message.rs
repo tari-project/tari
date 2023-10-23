@@ -174,7 +174,7 @@ pub struct DhtOutboundMessage {
     pub reply: MessagingReplyTx,
     pub dht_flags: DhtMessageFlags,
     pub is_broadcast: bool,
-    pub expires: Option<prost_types::Timestamp>,
+    pub expires: Option<u64>,
 }
 
 impl fmt::Display for DhtOutboundMessage {

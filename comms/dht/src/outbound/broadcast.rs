@@ -51,7 +51,7 @@ use crate::{
     crypt,
     dedup,
     discovery::DhtDiscoveryRequester,
-    envelope::{datetime_to_epochtime, datetime_to_timestamp, DhtMessageFlags, DhtMessageHeader, NodeDestination},
+    envelope::{datetime_to_epochtime, DhtMessageFlags, DhtMessageHeader, NodeDestination},
     message_signature::MessageSignature,
     outbound::{
         message::{DhtOutboundMessage, OutboundEncryption, SendFailure},
@@ -447,7 +447,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                     ephemeral_public_key: ephemeral_public_key.clone(),
                     message_signature: message_signature.clone(),
                     is_broadcast,
-                    expires: expires.map(datetime_to_timestamp),
+                    expires: expires_epochtime.map(EpochTime::as_u64),
                 },
                 send_state,
             )

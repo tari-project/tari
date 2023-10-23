@@ -350,9 +350,7 @@ where
             Some((
                 batch_response.height_of_longest_chain,
                 tip,
-                batch_response.tip_mined_timestamp.ok_or_else(|| {
-                    TransactionServiceError::ProtobufConversionError("Missing `tip_hash` field".to_string())
-                })?,
+                batch_response.tip_mined_timestamp,
             )),
         ))
     }
