@@ -43,12 +43,9 @@ async fn test_header_sync_happy_path() {
     // "Lagging"
     match event.clone() {
         StateEvent::HeadersSynchronized(_val, sync_result) => {
-            assert_eq!(sync_result.peer_best_block_height, 1);
-            assert_eq!(sync_result.peer_accumulated_difficulty, 4);
             assert_eq!(sync_result.headers_returned, 1);
             assert_eq!(sync_result.peer_fork_hash_index, 0);
             if let HeaderSyncStatus::Lagging(val) = sync_result.header_sync_status {
-                assert_eq!(val.remote_tip_height, 1);
                 assert_eq!(val.best_block_header.height(), 0);
                 assert_eq!(val.reorg_steps_back, 0);
             } else {
@@ -63,8 +60,6 @@ async fn test_header_sync_happy_path() {
     // "InSyncOrAhead"
     match event.clone() {
         StateEvent::HeadersSynchronized(_val, sync_result) => {
-            assert_eq!(sync_result.peer_best_block_height, 1);
-            assert_eq!(sync_result.peer_accumulated_difficulty, 4);
             assert_eq!(sync_result.headers_returned, 0);
             assert_eq!(sync_result.peer_fork_hash_index, 0);
             if let HeaderSyncStatus::InSyncOrAhead = sync_result.header_sync_status {
@@ -86,12 +81,9 @@ async fn test_header_sync_happy_path() {
     // "Lagging"
     match event.clone() {
         StateEvent::HeadersSynchronized(_val, sync_result) => {
-            assert_eq!(sync_result.peer_best_block_height, 2);
-            assert_eq!(sync_result.peer_accumulated_difficulty, 7);
             assert_eq!(sync_result.headers_returned, 1);
             assert_eq!(sync_result.peer_fork_hash_index, 0);
             if let HeaderSyncStatus::Lagging(val) = sync_result.header_sync_status {
-                assert_eq!(val.remote_tip_height, 2);
                 assert_eq!(val.best_block_header.height(), 0);
                 assert_eq!(val.reorg_steps_back, 0);
             } else {
@@ -142,12 +134,9 @@ async fn test_header_sync_happy_path() {
     // "Lagging"
     match event {
         StateEvent::HeadersSynchronized(_val, sync_result) => {
-            assert_eq!(sync_result.peer_best_block_height, 4);
-            assert_eq!(sync_result.peer_accumulated_difficulty, 13);
             assert_eq!(sync_result.headers_returned, 4);
             assert_eq!(sync_result.peer_fork_hash_index, 3);
             if let HeaderSyncStatus::Lagging(val) = sync_result.header_sync_status {
-                assert_eq!(val.remote_tip_height, 4);
                 assert_eq!(val.best_block_header.height(), 3);
                 assert_eq!(val.reorg_steps_back, 3);
             } else {
@@ -191,8 +180,6 @@ async fn test_header_sync_uneven_headers_and_blocks() {
     let event = sync::sync_headers(&mut alice_state_machine, &alice_node, &bob_node).await;
     match event {
         StateEvent::HeadersSynchronized(_val, sync_result) => {
-            assert_eq!(sync_result.peer_best_block_height, 5);
-            assert_eq!(sync_result.peer_accumulated_difficulty, 16);
             assert_eq!(sync_result.headers_returned, 0);
             assert_eq!(sync_result.peer_fork_hash_index, 3);
             if let HeaderSyncStatus::InSyncOrAhead = sync_result.header_sync_status {
@@ -207,6 +194,7 @@ async fn test_header_sync_uneven_headers_and_blocks() {
     assert!(!sync::wait_for_is_peer_banned(&alice_node, bob_node.node_identity.node_id(), 1).await);
 
     // Alice attempts header sync, her headers are ahead, but Bob will lie about his POW
+    // Note: This behaviour is undetected!
     let mut header_sync = sync::sync_headers_initialize(&alice_node, &bob_node);
     sync::delete_some_blocks_and_headers(&blocks[4..=5], WhatToDelete::Blocks, &bob_node, Some(true));
     assert!(
@@ -221,13 +209,19 @@ async fn test_header_sync_uneven_headers_and_blocks() {
     );
     let event = sync::sync_headers_execute(&mut alice_state_machine, &mut header_sync).await;
     match event {
-        StateEvent::HeaderSyncFailed(err) => {
-            assert_eq!(&err, "No more sync peers available: Header sync failed");
+        StateEvent::HeadersSynchronized(_val, sync_result) => {
+            assert_eq!(sync_result.headers_returned, 0);
+            assert_eq!(sync_result.peer_fork_hash_index, 3);
+            if let HeaderSyncStatus::InSyncOrAhead = sync_result.header_sync_status {
+                // Note: This behaviour is undetected! Bob cannot be banned.
+            } else {
+                panic!("Should be 'InSyncOrAhead'");
+            }
         },
-        _ => panic!("Expected HeaderSyncFailed event"),
+        _ => panic!("Expected HeadersSynchronized event"),
     }
-    // Bob will be banned
-    assert!(sync::wait_for_is_peer_banned(&alice_node, bob_node.node_identity.node_id(), 1).await);
+    // Bob will not be banned
+    assert!(!sync::wait_for_is_peer_banned(&alice_node, bob_node.node_identity.node_id(), 1).await);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -238,13 +232,13 @@ async fn test_header_sync_even_headers_and_blocks() {
     let (mut alice_state_machine, alice_node, bob_node, initial_block, consensus_manager, key_manager) =
         sync::create_network_with_alice_and_bob_nodes().await;
 
-    // Add blocks and headers to Bob's chain, with more headers than blocks
+    // Add blocks and headers to Bob's chain
     let blocks =
         sync::create_and_add_some_blocks(&bob_node, &initial_block, 6, &consensus_manager, &key_manager, &[3; 6]).await;
     assert_eq!(bob_node.blockchain_db.get_height().unwrap(), 6);
     assert_eq!(bob_node.blockchain_db.fetch_last_header().unwrap().height, 6);
 
-    // Add blocks and headers to Alice's chain, with more headers than blocks
+    // Add blocks and headers to Alice's chain (less than Bob's)
     sync::add_some_existing_blocks(&blocks[1..=5], &alice_node);
     assert_eq!(alice_node.blockchain_db.get_height().unwrap(), 5);
     assert_eq!(alice_node.blockchain_db.fetch_last_header().unwrap().height, 5);

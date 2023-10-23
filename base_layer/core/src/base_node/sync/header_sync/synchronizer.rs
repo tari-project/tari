@@ -273,7 +273,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         // - If the peer lied about the start hash index or sent an invalid remote tip height, this method will return a
         //   ban-able error.
         let (header_sync_status, peer_response) = self
-            .determine_sync_status(sync_peer, best_header.clone(), best_block.clone(), &mut client)
+            .determine_sync_status(sync_peer, best_block.clone(), &mut client)
             .await?;
 
         match header_sync_status.clone() {
@@ -287,7 +287,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                         "Peer `{}` did not provide any headers although they have a better chain and more headers: their \
                         difficulty: {}, our difficulty: {}. Peer will be banned.",
                         sync_peer.node_id(),
-                        peer_response.peer_accumulated_difficulty,
+                        sync_peer.claimed_chain_metadata().accumulated_difficulty(),
                         best_block.accumulated_data().total_accumulated_difficulty,
                     );
                     return Err(BlockHeaderSyncError::PeerSentInaccurateChainMetadata {
@@ -306,8 +306,6 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 Ok(AttemptSyncResult {
                     headers_returned: peer_response.peer_headers.len() as u64,
                     peer_fork_hash_index: peer_response.peer_fork_hash_index,
-                    peer_best_block_height: peer_response.peer_best_block_height,
-                    peer_accumulated_difficulty: peer_response.peer_accumulated_difficulty,
                     header_sync_status,
                 })
             },
@@ -318,7 +316,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                         .height()
                         .checked_sub(split_info.reorg_steps_back)
                         .unwrap_or_default(),
-                    split_info.remote_tip_height,
+                    sync_peer.claimed_chain_metadata().height_of_longest_chain(),
                     sync_peer,
                 );
                 self.synchronize_headers(sync_peer.clone(), &mut client, *split_info, max_latency)
@@ -326,8 +324,6 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 Ok(AttemptSyncResult {
                     headers_returned: peer_response.peer_headers.len() as u64,
                     peer_fork_hash_index: peer_response.peer_fork_hash_index,
-                    peer_best_block_height: peer_response.peer_best_block_height,
-                    peer_accumulated_difficulty: peer_response.peer_accumulated_difficulty,
                     header_sync_status,
                 })
             },
@@ -402,23 +398,18 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     resp.fork_hash_index,
                 ));
             }
-
-            let accumulated_difficulty = if resp.accumulated_difficulty.len() == 16 {
-                let mut buf = [0u8; 16];
-                buf.copy_from_slice(&resp.accumulated_difficulty);
-                u128::from_le_bytes(buf)
-            } else {
+            #[allow(clippy::cast_possible_truncation)]
+            if !resp.headers.is_empty() && resp.headers[0].prev_hash != block_hashes[resp.fork_hash_index as usize] {
                 return Err(BlockHeaderSyncError::InvalidProtocolResponse(
-                    "Peer sent incorrect bytes for accumulated difficulty".into(),
+                    "Peer sent incorrect fork hash index".into(),
                 ));
-            };
+            }
+
             return Ok(FindChainSplitResult {
                 block_hashes,
                 reorg_steps_back: resp.fork_hash_index.saturating_add(offset as u64),
                 peer_headers: resp.headers,
                 peer_fork_hash_index: resp.fork_hash_index,
-                peer_best_block_height: resp.tip_height,
-                peer_accumulated_difficulty: accumulated_difficulty,
             });
         }
     }
@@ -431,7 +422,6 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
     async fn determine_sync_status(
         &mut self,
         sync_peer: &SyncPeer,
-        best_header: ChainHeader,
         best_block_header: ChainHeader,
         client: &mut rpc::BaseNodeSyncRpcClient,
     ) -> Result<(HeaderSyncStatus, FindChainSplitResult), BlockHeaderSyncError> {
@@ -446,23 +436,6 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 chain_split_result.peer_headers.len(),
                 sync_peer
             );
-        }
-        // Basic sanity check about the peer's claimed chain metadata
-        if chain_split_result.peer_accumulated_difficulty < sync_peer.claimed_chain_metadata().accumulated_difficulty()
-        {
-            warn!(
-                target: LOG_TARGET,
-                "Peer `{}` lied about their chain metadata: previously claimed difficulty: {}, newly provided \
-                difficulty: {}. Peer will be banned.",
-                sync_peer.node_id(),
-                sync_peer.claimed_chain_metadata().accumulated_difficulty(),
-                chain_split_result.peer_accumulated_difficulty,
-            );
-            return Err(BlockHeaderSyncError::PeerSentInaccurateChainMetadata {
-                claimed: sync_peer.claimed_chain_metadata().accumulated_difficulty(),
-                actual: Some(chain_split_result.peer_accumulated_difficulty),
-                local: best_block_header.accumulated_data().total_accumulated_difficulty,
-            });
         }
 
         // If the peer returned no new headers, they may still have more blocks than we have, thus have a higher
@@ -490,14 +463,13 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         {
             Some(val) => val,
             None => {
-                warn!(
+                error!(
                     target: LOG_TARGET,
-                    "Peer `{}` lied about the start hash index ({}).  Peer will be banned.",
-                    sync_peer.node_id(),
-                    chain_split_result.peer_fork_hash_index,
+                    "Internal database inconsistency found - hash index `{}` does not exist",
+                    chain_split_result.peer_fork_hash_index
                 );
-                return Err(BlockHeaderSyncError::StartHashNotFound(format!(
-                    "At index {}",
+                return Err(BlockHeaderSyncError::InternalError(format!(
+                    "Has index {} does not exist",
                     chain_split_result.peer_fork_hash_index
                 )));
             },
@@ -520,24 +492,8 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             "Peer `{}` has submitted {} valid header(s)", sync_peer.node_id(), num_new_headers
         );
 
-        // Basic sanity check that the peer sent tip height greater than the split.
-        let split_height = best_header.height().saturating_sub(chain_split_result.reorg_steps_back);
-        if chain_split_result.peer_best_block_height < split_height {
-            warn!(
-                target: LOG_TARGET,
-                "Peer `{}` sent invalid remote tip height ({}).  Peer will be banned.",
-                sync_peer.node_id(),
-                chain_split_result.peer_best_block_height,
-            );
-            return Err(BlockHeaderSyncError::InvalidProtocolResponse(format!(
-                "Peer `{}` sent invalid remote tip height",
-                sync_peer.node_id()
-            )));
-        }
-
         let chain_split_info = ChainSplitInfo {
             best_block_header,
-            remote_tip_height: chain_split_result.peer_best_block_height,
             reorg_steps_back: chain_split_result.reorg_steps_back,
             chain_split_hash: *chain_split_hash,
         };
@@ -701,8 +657,11 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
 
             sync_peer.set_latency(latency);
             sync_peer.add_sample(last_sync_timer.elapsed());
-            self.hooks
-                .call_on_progress_header_hooks(current_height, split_info.remote_tip_height, &sync_peer);
+            self.hooks.call_on_progress_header_hooks(
+                current_height,
+                sync_peer.claimed_chain_metadata().height_of_longest_chain(),
+                &sync_peer,
+            );
 
             let last_avg_latency = avg_latency.calculate_average_with_min_samples(5);
             if let Some(avg_latency) = last_avg_latency {
@@ -855,8 +814,6 @@ struct FindChainSplitResult {
     reorg_steps_back: u64,
     peer_headers: Vec<ProtoBlockHeader>,
     peer_fork_hash_index: u64,
-    peer_best_block_height: u64,
-    peer_accumulated_difficulty: u128,
 }
 
 /// Information about the chain split from the remote node.
@@ -864,8 +821,6 @@ struct FindChainSplitResult {
 pub struct ChainSplitInfo {
     /// The best block's header on the local chain.
     pub best_block_header: ChainHeader,
-    /// The height of the remote node's tip.
-    pub remote_tip_height: u64,
     /// The number of blocks to reorg back to the fork.
     pub reorg_steps_back: u64,
     /// The hash of the block at the fork.
@@ -879,10 +834,6 @@ pub struct AttemptSyncResult {
     pub headers_returned: u64,
     /// The fork hash index of the remote peer.
     pub peer_fork_hash_index: u64,
-    /// The height of the remote peer's best block.
-    pub peer_best_block_height: u64,
-    /// The accumulated difficulty of the remote peer's best block.
-    pub peer_accumulated_difficulty: u128,
     /// The header sync status.
     pub header_sync_status: HeaderSyncStatus,
 }

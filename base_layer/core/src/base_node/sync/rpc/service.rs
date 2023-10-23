@@ -425,13 +425,10 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                     headers.len(),
                     peer
                 );
-                let metadata = db.get_chain_metadata().await.rpc_status_internal_error(LOG_TARGET)?;
 
                 Ok(Response::new(FindChainSplitResponse {
                     fork_hash_index: idx as u64,
                     headers: headers.into_iter().map(Into::into).collect(),
-                    tip_height: metadata.height_of_longest_chain(),
-                    accumulated_difficulty: metadata.accumulated_difficulty().to_le_bytes().to_vec(),
                 }))
             },
             None => {

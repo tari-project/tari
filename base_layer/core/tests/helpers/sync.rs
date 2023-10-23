@@ -164,7 +164,7 @@ pub fn delete_some_blocks_and_headers(
         node.blockchain_db.write(txn).unwrap();
         // Note: Something is funny here... the block is deleted but the block exists in the db
         // match instruction {
-        //     WhatToDelete::Blocks | WhatToDelete::BlocksAndHeaders => {
+        //     WhatToDelete::Blocks => {
         //         assert!(!node.blockchain_db.block_exists(*blocks[i].hash()).unwrap());
         //     }
         //     WhatToDelete::Headers => {}

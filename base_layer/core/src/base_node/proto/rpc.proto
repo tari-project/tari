@@ -49,10 +49,6 @@ message FindChainSplitResponse {
   // `FindChainSplitRequest::block_hashes`. This value could also be used to
   // know how far back a split occurs.
   uint64 fork_hash_index = 2;
-  // The current header height of this node
-  uint64 tip_height = 3;
-  // The current geometric mean of the pow of the chain tip, or `None` if there is no chain
-  bytes accumulated_difficulty = 4;
 }
 
 message SyncKernelsRequest {

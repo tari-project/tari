@@ -56,6 +56,8 @@ pub enum BlockHeaderSyncError {
     ConnectivityError(#[from] ConnectivityError),
     #[error("Node is still not in sync. Sync will be retried with another peer if possible.")]
     NotInSync,
+    #[error("Internal data inconsistency found `{0}")]
+    InternalError(String),
     #[error("Unable to locate start hash `{0}`")]
     StartHashNotFound(String),
     #[error("Expected header height {expected} got {actual}")]
@@ -106,7 +108,8 @@ impl BlockHeaderSyncError {
             BlockHeaderSyncError::ConnectivityError(_) |
             BlockHeaderSyncError::NotInSync |
             BlockHeaderSyncError::PeerNotFound |
-            BlockHeaderSyncError::ChainStorageError(_) => None,
+            BlockHeaderSyncError::ChainStorageError(_) |
+            BlockHeaderSyncError::InternalError(_) => None,
 
             // short ban
             err @ BlockHeaderSyncError::MaxLatencyExceeded { .. } => Some(BanReason {
