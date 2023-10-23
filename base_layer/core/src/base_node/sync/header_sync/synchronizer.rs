@@ -493,6 +493,14 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             .collect::<Result<Vec<_>, _>>()
             .map_err(BlockHeaderSyncError::ReceivedInvalidHeader)?;
         let num_new_headers = headers.len();
+        // Do a cheap check to verify that we do not have these series of headers in the db already - if the 1st one is
+        // not there most probably the rest are not either - the peer could still have returned old headers later on in
+        // the list
+        if self.db.fetch_header_by_block_hash(headers[0].hash()).await?.is_some() {
+            return Err(BlockHeaderSyncError::ReceivedInvalidHeader(
+                "Header already in database".to_string(),
+            ));
+        };
 
         self.header_validator
             .initialize_state(&chain_split_result.chain_split_hash)
