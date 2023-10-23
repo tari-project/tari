@@ -211,6 +211,8 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_tip_smt() -> OutputSmt, "fetch_tip_smt");
 
+    make_async_fn!(set_tip_smt(smt: OutputSmt) -> (), "set_tip_smt");
+
     make_async_fn!(insert_valid_headers(headers: Vec<ChainHeader>) -> (), "insert_valid_headers");
 
     //---------------------------------- Block --------------------------------------------//

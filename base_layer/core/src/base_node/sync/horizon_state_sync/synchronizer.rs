@@ -606,6 +606,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             });
         }
 
+        db.set_tip_smt(output_smt).await?;
         self.check_latency(sync_peer.node_id(), &avg_latency)?;
 
         Ok(())
