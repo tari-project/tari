@@ -33,16 +33,10 @@ use crate::helpers::{
 
 static EMISSION: [u64; 2] = [10, 10];
 
-pub async fn sync_headers(
-    alice_state_machine: &mut BaseNodeStateMachine<TempDatabase>,
+pub fn sync_headers_initialize_with_ping_pong_data(
     alice_node: &NodeInterfaces,
     bob_node: &NodeInterfaces,
-) -> StateEvent {
-    let mut header_sync = sync_headers_initialize(alice_node, bob_node);
-    sync_headers_execute(alice_state_machine, &mut header_sync).await
-}
-
-pub fn sync_headers_initialize(alice_node: &NodeInterfaces, bob_node: &NodeInterfaces) -> HeaderSyncState {
+) -> HeaderSyncState {
     HeaderSyncState::new(
         vec![SyncPeer::from(PeerChainMetadata::new(
             bob_node.node_identity.node_id().clone(),
