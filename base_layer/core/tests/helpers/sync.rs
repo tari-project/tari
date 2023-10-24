@@ -178,7 +178,9 @@ pub fn delete_some_blocks_and_headers(
             },
         }
         node.blockchain_db.write(txn).unwrap();
-        // Note: Something is funny here... the block is deleted but the block exists in the db
+        // Note: Something is funny here... the block is deleted but the block exists in the db. This should be
+        //       investigated and fixed as it will enhance the tests. If we uncomment the following assertion, the
+        //       tests depending on this function will fail.
         // match instruction {
         //     WhatToDelete::Blocks => {
         //         assert!(!node.blockchain_db.block_exists(*blocks[i].hash()).unwrap());
