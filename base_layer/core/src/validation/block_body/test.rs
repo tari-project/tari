@@ -269,8 +269,11 @@ async fn it_checks_double_spends() {
     let (mut blockchain, validator) = setup(true);
 
     let (_, coinbase_a) = blockchain.add_next_tip(block_spec!("A")).await.unwrap();
-    let (txs, _) =
-        schema_to_transaction(&[txn_schema!(from: vec![coinbase_a.clone()], to: vec![50 * T])], &blockchain.km).await;
+    let (txs, _) = schema_to_transaction(
+        &[txn_schema!(from: vec![coinbase_a.clone()], to: vec![50 * T])],
+        &blockchain.km,
+    )
+    .await;
 
     blockchain
         .add_next_tip(block_spec!("1", transactions: txs.iter().map(|t| (**t).clone()).collect()))
