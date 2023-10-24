@@ -116,7 +116,7 @@ struct P2pConfig;
  * use tari_utilities::{hex::Hex, ByteArray};
  *
  * let mut rng = rand::thread_rng();
- * let _p1 = RistrettoPublicKey::from_canonical_bytes(&[
+ * let _p1 = RistrettoPublicKey::from_bytes(&[
  *     224, 196, 24, 247, 200, 217, 196, 205, 215, 57, 91, 147, 234, 18, 79, 58, 217, 144, 33,
  *     187, 104, 29, 252, 51, 2, 169, 217, 154, 46, 83, 230, 78,
  * ]);
@@ -144,7 +144,7 @@ struct RistrettoPublicKey;
  * use tari_utilities::{hex::Hex, ByteArray};
  *
  * let mut rng = rand::thread_rng();
- * let _k1 = RistrettoSecretKey::from_canonical_bytes(&[
+ * let _k1 = RistrettoSecretKey::from_bytes(&[
  *     1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
  *     0, 0,
  * ]);
@@ -252,18 +252,9 @@ typedef struct TariAddress TariWalletAddress;
  *     "8063d85e151abee630e643e2b3dc47bfaeb8aa859c9d10d60847985f286aad19",
  * )
  * .unwrap();
- * let u_a = RistrettoSecretKey::from_hex(
- *     "a8fb609c5ab7cc07548b076b6c25cc3237c4526fb7a6dcb83b26f457b172c20a",
- * )
- * .unwrap();
- * let u_x = RistrettoSecretKey::from_hex(
- *     "0e689df8ad4ad9d2fd5aaf8cb0a66d85cb0d4b7a380405514d453625813b0b0f",
- * )
- * .unwrap();
- * let u_y = RistrettoSecretKey::from_hex(
- *     "f494050bd0d4ed0ec514cdce9430d0564df6b35d2a12b7daa0e99c7d94a06509",
- * )
- * .unwrap();
+ * let u_a = RistrettoSecretKey::from_bytes(b"10000000000000000000000010000000").unwrap();
+ * let u_x = RistrettoSecretKey::from_bytes(b"a00000000000000000000000a0000000").unwrap();
+ * let u_y = RistrettoSecretKey::from_bytes(b"a00000000000000000000000a0000000").unwrap();
  * let sig = RistrettoComAndPubSig::new(ephemeral_commitment, ephemeral_pubkey, u_a, u_x, u_y);
  * ```
  *
@@ -279,7 +270,7 @@ typedef struct TariAddress TariWalletAddress;
  * # use tari_crypto::ristretto::pedersen::*;
  * use tari_crypto::ristretto::pedersen::commitment_factory::PedersenCommitmentFactory;
  * use tari_utilities::hex::Hex;
- * use digest::consts::U64;
+ * use digest::consts::U32;
  *
  * let mut rng = rand::thread_rng();
  * let a_val = RistrettoSecretKey::random(&mut rng);
@@ -288,7 +279,7 @@ typedef struct TariAddress TariWalletAddress;
  * let a_nonce = RistrettoSecretKey::random(&mut rng);
  * let x_nonce = RistrettoSecretKey::random(&mut rng);
  * let y_nonce = RistrettoSecretKey::random(&mut rng);
- * let e = Blake2b::<U64>::digest(b"Maskerade"); // In real life, this should be strong Fiat-Shamir!
+ * let e = Blake2b::<U32>::digest(b"Maskerade"); // In real life, this should be strong Fiat-Shamir!
  * let factory = PedersenCommitmentFactory::default();
  * let commitment = factory.commit(&x_val, &a_val);
  * let pubkey = RistrettoPublicKey::from_secret_key(&y_val);
