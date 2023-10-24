@@ -94,8 +94,8 @@ pub fn verify_header(header: &BlockHeader) -> Result<MoneroPowData, MergeMineErr
     let expected_merge_mining_hash = header.merge_mining_hash();
     let extra_field = ExtraField::try_parse(&monero_data.coinbase_tx.prefix.extra)
         .map_err(|_| MergeMineError::DeserializeError("Invalid extra field".to_string()))?;
-    // Check that the Tari MM hash is found in the monero coinbase transaction
-    // and that only 1 tari header is found
+    // Check that the Tari MM hash is found in the Monero coinbase transaction
+    // and that only 1 Tari header is found
 
     let mut is_found = false;
     let mut already_seen_mmfield = false;
@@ -222,7 +222,8 @@ pub fn insert_merge_mining_tag_into_block<T: AsRef<[u8]>>(
         )));
     }
     // When we insert the merge mining tag, we need to make sure that the extra field is valid.
-    let mut extra_field = parse_extra_field_truncate_on_error(&block.miner_tx.prefix.extra);
+    let mut extra_field = ExtraField::try_parse(&block.miner_tx.prefix.extra)
+        .map_err(|_| MergeMineError::DeserializeError("Invalid extra field".to_string()))?;
 
     // Adding more than one merge mining tag is not allowed
     for item in &extra_field.0 {
