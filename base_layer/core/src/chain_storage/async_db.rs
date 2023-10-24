@@ -59,6 +59,7 @@ use crate::{
     common::rolling_vec::RollingVec,
     proof_of_work::{PowAlgorithm, TargetDifficultyWindow},
     transactions::transaction_components::{TransactionKernel, TransactionOutput},
+    OutputSmt,
 };
 const LOG_TARGET: &str = "c::bn::async_db";
 
@@ -207,6 +208,10 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     make_async_fn!(fetch_last_chain_header() -> ChainHeader, "fetch_last_chain_header");
 
     make_async_fn!(fetch_tip_header() -> ChainHeader, "fetch_tip_header");
+
+    make_async_fn!(fetch_tip_smt() -> OutputSmt, "fetch_tip_smt");
+
+    make_async_fn!(set_tip_smt(smt: OutputSmt) -> (), "set_tip_smt");
 
     make_async_fn!(insert_valid_headers(headers: Vec<ChainHeader>) -> (), "insert_valid_headers");
 

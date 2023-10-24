@@ -57,7 +57,6 @@ use crate::{
         TransactionOutput,
     },
     validation::{helpers, FinalHorizonStateValidation},
-    OutputSmt,
     PrunedKernelMmr,
 };
 
@@ -502,7 +501,8 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
         let end = remote_num_outputs;
         let end_hash = to_header.hash();
-        let start_hash = db.fetch_chain_header(0).await?;
+        let start_hash = db.fetch_chain_header(1).await?;
+        let gen_block = db.fetch_chain_header(0).await?;
 
         let latency = client.get_last_request_latency();
         debug!(
@@ -520,9 +520,9 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         let mut output_stream = client.sync_utxos(req).await?;
 
         let mut txn = db.write_transaction();
-        let mut utxo_counter = 0u64;
+        let mut utxo_counter = gen_block.header().output_smt_size;
         let timer = Instant::now();
-        let mut output_smt = OutputSmt::new();
+        let mut output_smt = db.fetch_tip_smt().await?;
         let mut last_sync_timer = Instant::now();
         let mut avg_latency = RollingAverageTime::new(20);
 
@@ -606,6 +606,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             });
         }
 
+        db.set_tip_smt(output_smt).await?;
         self.check_latency(sync_peer.node_id(), &avg_latency)?;
 
         Ok(())
