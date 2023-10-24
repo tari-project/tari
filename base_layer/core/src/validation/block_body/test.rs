@@ -291,7 +291,6 @@ async fn it_checks_double_spends() {
         .await;
     let txn = blockchain.db().db_read_access().unwrap();
     let err = validator.validate_body(&*txn, block.block()).unwrap_err();
-    dbg!(&err);
     assert!(matches!(err, ValidationError::ContainsSTxO));
 }
 
