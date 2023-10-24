@@ -413,6 +413,7 @@ async fn test_orphan_validator() {
         coinbase_utxo,
         coinbase_kernel,
         &rules,
+        None,
     );
     let new_block = db.prepare_new_block(template).unwrap();
     assert!(orphan_validator.validate_internal_consistency(&new_block).is_err());
@@ -431,6 +432,7 @@ async fn test_orphan_validator() {
         coinbase_utxo,
         coinbase_kernel,
         &rules,
+        None,
     );
     let new_block = db.prepare_new_block(template).unwrap();
     assert!(orphan_validator.validate_internal_consistency(&new_block).is_err());
@@ -983,6 +985,7 @@ async fn test_block_sync_body_validator() {
         coinbase_utxo,
         coinbase_kernel,
         &rules,
+        None,
     );
     let new_block = db.prepare_new_block(template).unwrap();
     {
@@ -1005,6 +1008,7 @@ async fn test_block_sync_body_validator() {
         coinbase_utxo,
         coinbase_kernel,
         &rules,
+        None,
     );
     let new_block = db.prepare_new_block(template).unwrap();
     {

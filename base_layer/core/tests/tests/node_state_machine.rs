@@ -43,7 +43,7 @@ use tari_core::{
     transactions::test_helpers::create_test_core_key_manager_with_memory_db,
     validation::mocks::MockValidator,
 };
-use tari_p2p::services::liveness::config::LivenessConfig;
+use tari_p2p::{services::liveness::config::LivenessConfig, P2pConfig};
 use tari_shutdown::Shutdown;
 use tari_test_utils::unpack_enum;
 use tari_utilities::ByteArray;
@@ -81,6 +81,7 @@ async fn test_listening_lagging() {
             auto_ping_interval: Some(Duration::from_millis(100)),
             ..Default::default()
         },
+        P2pConfig::default(),
         consensus_manager,
         temp_dir.path().to_str().unwrap(),
     )

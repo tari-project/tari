@@ -26,12 +26,14 @@ use rand::rngs::OsRng;
 use tari_common::configuration::Network;
 use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
-    protocol::messaging::MessagingEventSender,
+    protocol::{messaging::MessagingEventSender, rpc::RpcServer},
     transports::MemoryTransport,
     CommsNode,
+    UnspawnedCommsNode,
 };
 use tari_comms_dht::{outbound::OutboundMessageRequester, Dht};
 use tari_core::{
+    base_node,
     base_node::{
         chain_metadata_service::{ChainMetadataHandle, ChainMetadataServiceInitializer},
         comms_interface::OutboundNodeCommsInterface,
@@ -63,6 +65,7 @@ use tari_p2p::{
     comms_connector::{pubsub_connector, InboundDomainConnector},
     initialization::initialize_local_test_comms,
     services::liveness::{config::LivenessConfig, LivenessHandle, LivenessInitializer},
+    P2pConfig,
 };
 use tari_service_framework::{RegisterHandle, StackBuilder};
 use tari_shutdown::Shutdown;
@@ -105,6 +108,7 @@ pub struct BaseNodeBuilder {
     mempool_config: Option<MempoolConfig>,
     mempool_service_config: Option<MempoolServiceConfig>,
     liveness_service_config: Option<LivenessConfig>,
+    p2p_config: Option<P2pConfig>,
     validators: Option<Validators<TempDatabase>>,
     consensus_manager: Option<ConsensusManager>,
     network: NetworkConsensus,
@@ -120,6 +124,7 @@ impl BaseNodeBuilder {
             mempool_config: None,
             mempool_service_config: None,
             liveness_service_config: None,
+            p2p_config: None,
             validators: None,
             consensus_manager: None,
             network,
@@ -153,6 +158,12 @@ impl BaseNodeBuilder {
     /// Set the configuration of the Liveness Service
     pub fn with_liveness_service_config(mut self, config: LivenessConfig) -> Self {
         self.liveness_service_config = Some(config);
+        self
+    }
+
+    /// Set the p2p configuration
+    pub fn with_p2p_config(mut self, config: P2pConfig) -> Self {
+        self.p2p_config = Some(config);
         self
     }
 
@@ -203,6 +214,7 @@ impl BaseNodeBuilder {
             mempool,
             consensus_manager.clone(),
             self.liveness_service_config.unwrap_or_default(),
+            self.p2p_config.unwrap_or_default(),
             data_path,
         )
         .await;
@@ -251,6 +263,7 @@ pub async fn create_network_with_2_base_nodes(data_path: &str) -> (NodeInterface
 pub async fn create_network_with_2_base_nodes_with_config<P: AsRef<Path>>(
     mempool_service_config: MempoolServiceConfig,
     liveness_service_config: LivenessConfig,
+    p2p_config: P2pConfig,
     consensus_manager: ConsensusManager,
     data_path: P,
 ) -> (NodeInterfaces, NodeInterfaces, ConsensusManager) {
@@ -261,6 +274,7 @@ pub async fn create_network_with_2_base_nodes_with_config<P: AsRef<Path>>(
         .with_node_identity(alice_node_identity.clone())
         .with_mempool_service_config(mempool_service_config.clone())
         .with_liveness_service_config(liveness_service_config.clone())
+        .with_p2p_config(p2p_config.clone())
         .with_consensus_manager(consensus_manager)
         .start(data_path.as_ref().join("alice").as_os_str().to_str().unwrap())
         .await;
@@ -269,6 +283,7 @@ pub async fn create_network_with_2_base_nodes_with_config<P: AsRef<Path>>(
         .with_peers(vec![alice_node_identity])
         .with_mempool_service_config(mempool_service_config)
         .with_liveness_service_config(liveness_service_config)
+        .with_p2p_config(p2p_config.clone())
         .with_consensus_manager(consensus_manager)
         .start(data_path.as_ref().join("bob").as_os_str().to_str().unwrap())
         .await;
@@ -360,9 +375,9 @@ async fn setup_comms_services(
     peers: Vec<Arc<NodeIdentity>>,
     publisher: InboundDomainConnector,
     data_path: &str,
-) -> (CommsNode, Dht, MessagingEventSender, Shutdown) {
+    shutdown: &Shutdown,
+) -> (UnspawnedCommsNode, Dht, MessagingEventSender) {
     let peers = peers.into_iter().map(|p| p.to_peer()).collect();
-    let shutdown = Shutdown::new();
 
     let (comms, dht, messaging_events) = initialize_local_test_comms(
         node_identity,
@@ -375,7 +390,7 @@ async fn setup_comms_services(
     .await
     .unwrap();
 
-    (comms, dht, messaging_events, shutdown)
+    (comms, dht, messaging_events)
 }
 
 // Helper function for starting the services of the Base node.
@@ -386,12 +401,15 @@ async fn setup_base_node_services(
     mempool: Mempool,
     consensus_manager: ConsensusManager,
     liveness_service_config: LivenessConfig,
+    p2p_config: P2pConfig,
     data_path: &str,
 ) -> NodeInterfaces {
     let (publisher, subscription_factory) = pubsub_connector(100);
     let subscription_factory = Arc::new(subscription_factory);
-    let (comms, dht, messaging_events, shutdown) =
-        setup_comms_services(node_identity.clone(), peers, publisher, data_path).await;
+    let shutdown = Shutdown::new();
+
+    let (comms, dht, messaging_events) =
+        setup_comms_services(node_identity.clone(), peers, publisher.clone(), data_path, &shutdown).await;
 
     let mock_state_machine = MockBaseNodeStateMachine::new();
     let randomx_factory = RandomXFactory::new(2);
@@ -416,6 +434,25 @@ async fn setup_base_node_services(
         .build()
         .await
         .unwrap();
+
+    let base_node_service = handles.expect_handle::<LocalNodeCommsInterface>();
+    let rpc_server = RpcServer::builder()
+        .with_maximum_simultaneous_sessions(p2p_config.rpc_max_simultaneous_sessions)
+        .with_maximum_sessions_per_client(p2p_config.rpc_max_sessions_per_peer)
+        .finish();
+    let rpc_server = rpc_server.add_service(base_node::create_base_node_sync_rpc_service(
+        blockchain_db.clone().into(),
+        base_node_service,
+    ));
+    let comms = comms
+        .add_protocol_extension(rpc_server)
+        .spawn_with_transport(MemoryTransport)
+        .await
+        .unwrap();
+    // Set the public address for tests
+    comms
+        .node_identity()
+        .add_public_address(comms.listening_address().clone());
 
     let outbound_nci = handles.expect_handle::<OutboundNodeCommsInterface>();
     let local_nci = handles.expect_handle::<LocalNodeCommsInterface>();
