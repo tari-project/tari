@@ -120,6 +120,9 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
             .start_hash
             .try_into()
             .map_err(|_| RpcStatus::bad_request(&"Malformed starting hash received".to_string()))?;
+        if db.fetch_block_by_hash(hash, true).await.is_err() {
+            return Err(RpcStatus::not_found("Requested start block sync hash was not found"));
+        }
         let start_header = db
             .fetch_header_by_block_hash(hash)
             .await
@@ -137,13 +140,13 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
             )));
         }
 
-        if start_height > metadata.height_of_longest_chain() {
-            return Ok(Streaming::empty());
-        }
         let hash = message
             .end_hash
             .try_into()
             .map_err(|_| RpcStatus::bad_request(&"Malformed end hash received".to_string()))?;
+        if db.fetch_block_by_hash(hash, true).await.is_err() {
+            return Err(RpcStatus::not_found("Requested end block sync hash was not found"));
+        }
         let end_header = db
             .fetch_header_by_block_hash(hash)
             .await

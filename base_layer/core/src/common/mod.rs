@@ -42,7 +42,7 @@ pub type ConfidentialOutputHasher = DomainSeparatedConsensusHasher<ConfidentialO
 
 /// The reason for a peer being banned
 #[cfg(feature = "base_node")]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct BanReason {
     /// The reason for the ban
     pub reason: String,

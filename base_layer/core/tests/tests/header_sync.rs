@@ -189,14 +189,14 @@ async fn test_header_sync_uneven_headers_and_blocks_happy_path() {
         &[3; 10],
     )
     .await;
-    sync::delete_some_blocks_and_headers(&blocks[5..=10], WhatToDelete::Blocks, &bob_node, Some(true));
-    sync::delete_some_blocks_and_headers(&blocks[7..=10], WhatToDelete::Headers, &bob_node, None);
+    sync::delete_some_blocks_and_headers(&blocks[5..=10], WhatToDelete::Blocks, &bob_node);
+    sync::delete_some_blocks_and_headers(&blocks[7..=10], WhatToDelete::Headers, &bob_node);
     assert_eq!(bob_node.blockchain_db.get_height().unwrap(), 5);
     assert_eq!(bob_node.blockchain_db.fetch_last_header().unwrap().height, 7);
 
     // Add blocks and headers to Alice's chain, with more headers than blocks
     sync::add_some_existing_blocks(&blocks[1..=10], &alice_node);
-    sync::delete_some_blocks_and_headers(&blocks[2..=10], WhatToDelete::Blocks, &alice_node, Some(true));
+    sync::delete_some_blocks_and_headers(&blocks[2..=10], WhatToDelete::Blocks, &alice_node);
     assert_eq!(alice_node.blockchain_db.get_height().unwrap(), 2);
     assert_eq!(alice_node.blockchain_db.fetch_last_header().unwrap().height, 10);
 
@@ -237,14 +237,14 @@ async fn test_header_sync_uneven_headers_and_blocks_peer_lies_about_pow_no_ban()
         &[3; 10],
     )
     .await;
-    sync::delete_some_blocks_and_headers(&blocks[5..=10], WhatToDelete::Blocks, &bob_node, Some(true));
-    sync::delete_some_blocks_and_headers(&blocks[7..=10], WhatToDelete::Headers, &bob_node, None);
+    sync::delete_some_blocks_and_headers(&blocks[5..=10], WhatToDelete::Blocks, &bob_node);
+    sync::delete_some_blocks_and_headers(&blocks[7..=10], WhatToDelete::Headers, &bob_node);
     assert_eq!(bob_node.blockchain_db.get_height().unwrap(), 5);
     assert_eq!(bob_node.blockchain_db.fetch_last_header().unwrap().height, 7);
 
     // Add blocks and headers to Alice's chain, with more headers than blocks
     sync::add_some_existing_blocks(&blocks[1..=10], &alice_node);
-    sync::delete_some_blocks_and_headers(&blocks[2..=10], WhatToDelete::Blocks, &alice_node, Some(true));
+    sync::delete_some_blocks_and_headers(&blocks[2..=10], WhatToDelete::Blocks, &alice_node);
     assert_eq!(alice_node.blockchain_db.get_height().unwrap(), 2);
     assert_eq!(alice_node.blockchain_db.fetch_last_header().unwrap().height, 10);
 
@@ -252,7 +252,7 @@ async fn test_header_sync_uneven_headers_and_blocks_peer_lies_about_pow_no_ban()
     // Note: This behaviour is undetected!
     let mut header_sync = sync::initialize_sync_headers_with_ping_pong_data(&alice_node, &bob_node);
     // Remove blocks from Bpb's chain so his claimed metadata is better than what it actually is
-    sync::delete_some_blocks_and_headers(&blocks[4..=5], WhatToDelete::Blocks, &bob_node, Some(true));
+    sync::delete_some_blocks_and_headers(&blocks[4..=5], WhatToDelete::Blocks, &bob_node);
     assert!(
         header_sync.clone().into_sync_peers()[0]
             .claimed_chain_metadata()
@@ -267,7 +267,7 @@ async fn test_header_sync_uneven_headers_and_blocks_peer_lies_about_pow_no_ban()
     match event {
         StateEvent::HeadersSynchronized(_val, sync_result) => {
             assert_eq!(sync_result.headers_returned, 0);
-            assert_eq!(sync_result.peer_fork_hash_index, 3);
+            assert_eq!(sync_result.peer_fork_hash_index, 5);
             if let HeaderSyncStatus::InSyncOrAhead = sync_result.header_sync_status {
                 // Note: This behaviour is undetected! Bob cannot be banned here, and should be banned by block sync.
             } else {
@@ -302,8 +302,7 @@ async fn test_header_sync_even_headers_and_blocks_peer_lies_about_pow_with_ban()
     // Alice attempts header sync, but Bob will not supply any blocks
     let mut header_sync = sync::initialize_sync_headers_with_ping_pong_data(&alice_node, &bob_node);
     // Remove blocks and headers from Bpb's chain so his claimed metadata is better than what it actually is
-    sync::delete_some_blocks_and_headers(&blocks[3..=6], WhatToDelete::Blocks, &bob_node, Some(true));
-    sync::delete_some_blocks_and_headers(&blocks[3..=6], WhatToDelete::Headers, &bob_node, None);
+    sync::delete_some_blocks_and_headers(&blocks[3..=6], WhatToDelete::BlocksAndHeaders, &bob_node);
     assert_eq!(bob_node.blockchain_db.get_height().unwrap(), 3);
     assert_eq!(bob_node.blockchain_db.fetch_last_header().unwrap().height, 3);
     assert!(
@@ -349,7 +348,7 @@ async fn test_header_sync_even_headers_and_blocks_peer_metadata_improve_with_reo
     // Alice attempts header sync, but Bob's ping-pong data will be outdated when header sync is executed
     let mut header_sync = sync::initialize_sync_headers_with_ping_pong_data(&alice_node, &bob_node);
     // Bob's chain will reorg with improved metadata
-    sync::delete_some_blocks_and_headers(&blocks[4..=6], WhatToDelete::Blocks, &bob_node, Some(true));
+    sync::delete_some_blocks_and_headers(&blocks[4..=6], WhatToDelete::Blocks, &bob_node);
     let _blocks =
         sync::create_and_add_some_blocks(&bob_node, &blocks[4], 3, &consensus_manager, &key_manager, &[3; 3]).await;
     assert_eq!(bob_node.blockchain_db.get_height().unwrap(), 7);
