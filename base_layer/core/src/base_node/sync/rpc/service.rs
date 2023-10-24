@@ -44,7 +44,10 @@ use crate::{
     base_node::{
         comms_interface::BlockEvent,
         metrics,
-        sync::rpc::{sync_utxos_task::SyncUtxosTask, BaseNodeSyncService},
+        sync::{
+            header_sync::HEADER_SYNC_INITIAL_MAX_HEADERS,
+            rpc::{sync_utxos_task::SyncUtxosTask, BaseNodeSyncService},
+        },
         LocalNodeCommsInterface,
     },
     chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend},
@@ -383,7 +386,6 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         request: Request<FindChainSplitRequest>,
     ) -> Result<Response<FindChainSplitResponse>, RpcStatus> {
         const MAX_ALLOWED_BLOCK_HASHES: usize = 1000;
-        const MAX_ALLOWED_HEADER_COUNT: u64 = 1000;
 
         let peer = request.context().peer_node_id().clone();
         let message = request.into_message();
@@ -398,10 +400,10 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                 MAX_ALLOWED_BLOCK_HASHES,
             )));
         }
-        if message.header_count > MAX_ALLOWED_HEADER_COUNT {
+        if message.header_count > (HEADER_SYNC_INITIAL_MAX_HEADERS as u64) {
             return Err(RpcStatus::bad_request(&format!(
                 "Cannot ask for more than {} headers",
-                MAX_ALLOWED_HEADER_COUNT,
+                HEADER_SYNC_INITIAL_MAX_HEADERS,
             )));
         }
 
