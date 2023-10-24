@@ -13,7 +13,7 @@ native_bitmap = ["croaring"]
 
 [dependencies]
 tari_utilities = { version = "0.6" }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto", branch = "main" }
+tari_crypto = { git = "https://github.com/AaronFeickert/tari-crypto", branch = "curve-library-update" }
 tari_common = { path = "../../common" }
 thiserror = "1.0"
 borsh = "0.10"

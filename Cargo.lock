@@ -85,18 +85,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ahash"
-version = "0.8.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd7d5a2cecb58716e47d67d5703a249964b14c7be1ec3cad3affc295b2d1c35d"
-dependencies = [
- "cfg-if",
- "once_cell",
- "version_check",
- "zerocopy",
-]
-
-[[package]]
 name = "aho-corasick"
 version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -511,7 +499,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4114279215a005bc675e386011e594e1d9b800918cea18fcadadcce864a2046b"
 dependencies = [
  "borsh-derive",
- "hashbrown 0.13.2",
+ "hashbrown 0.12.3",
 ]
 
 [[package]]
@@ -1436,11 +1424,28 @@ checksum = "e89b8c6a2e4b1f45971ad09761aafb85514a84744b67a95e32c3cc1352d1f65c"
 dependencies = [
  "cfg-if",
  "cpufeatures",
- "curve25519-dalek-derive",
+ "curve25519-dalek-derive 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "digest 0.10.7",
- "fiat-crypto 0.2.1",
+ "fiat-crypto",
  "platforms",
  "rustc_version",
+ "subtle",
+ "zeroize",
+]
+
+[[package]]
+name = "curve25519-dalek"
+version = "4.1.1"
+source = "git+https://github.com/AaronFeickert/curve25519-dalek?branch=TEST-rebase#e540021d100b028b715a3fef7277a7aa387fa836"
+dependencies = [
+ "cfg-if",
+ "cpufeatures",
+ "curve25519-dalek-derive 0.1.0 (git+https://github.com/AaronFeickert/curve25519-dalek?branch=TEST-rebase)",
+ "fiat-crypto",
+ "platforms",
+ "rand_core 0.6.4",
+ "rustc_version",
+ "serde",
  "subtle",
  "zeroize",
 ]
@@ -1450,6 +1455,16 @@ name = "curve25519-dalek-derive"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "83fdaf97f4804dcebfa5862639bc9ce4121e82140bec2a987ac5140294865b5b"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.38",
+]
+
+[[package]]
+name = "curve25519-dalek-derive"
+version = "0.1.0"
+source = "git+https://github.com/AaronFeickert/curve25519-dalek?branch=TEST-rebase#e540021d100b028b715a3fef7277a7aa387fa836"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1764,7 +1779,7 @@ version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7277392b266383ef8396db7fdeb1e77b6c52fed775f5df15bb24f35b72156980"
 dependencies = [
- "curve25519-dalek 4.1.1",
+ "curve25519-dalek 4.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "ed25519",
  "serde",
  "sha2 0.10.8",
@@ -1906,12 +1921,6 @@ dependencies = [
  "rand_core 0.6.4",
  "subtle",
 ]
-
-[[package]]
-name = "fiat-crypto"
-version = "0.1.20"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e825f6987101665dea6ec934c09ec6d721de7bc1bf92248e1d5810c8cd636b77"
 
 [[package]]
 name = "fiat-crypto"
@@ -2257,16 +2266,7 @@ version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888"
 dependencies = [
- "ahash 0.7.7",
-]
-
-[[package]]
-name = "hashbrown"
-version = "0.13.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43a3c133739dddd0d2990f9a4bdf8eb4b21ef50e4851ca85ab661199821d510e"
-dependencies = [
- "ahash 0.8.5",
+ "ahash",
 ]
 
 [[package]]
@@ -4013,7 +4013,7 @@ dependencies = [
  "chrono",
  "cipher 0.4.4",
  "crc24",
- "curve25519-dalek 4.1.1",
+ "curve25519-dalek 4.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "derive_builder",
  "des",
  "digest 0.10.7",
@@ -5206,7 +5206,7 @@ dependencies = [
  "aes-gcm",
  "blake2",
  "chacha20poly1305 0.9.1",
- "curve25519-dalek 4.1.1",
+ "curve25519-dalek 4.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "rand_core 0.6.4",
  "rustc_version",
  "sha2 0.10.8",
@@ -5440,42 +5440,23 @@ dependencies = [
 ]
 
 [[package]]
-name = "tari-curve25519-dalek"
-version = "4.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d9b8e2644aae57a832e475ebc31199ab1114ebd7fe4d2621e67e89bdd9c8ac38"
-dependencies = [
- "cfg-if",
- "cpufeatures",
- "curve25519-dalek-derive",
- "fiat-crypto 0.1.20",
- "platforms",
- "rand_core 0.6.4",
- "rustc_version",
- "serde",
- "subtle",
- "zeroize",
-]
-
-[[package]]
 name = "tari_bulletproofs_plus"
 version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9abc9cbebffb1149112a80d6955498ed891f9b786e89c50e07de4b4f16290fd8"
+source = "git+https://github.com/AaronFeickert/bulletproofs-plus?branch=curve-library-update#fadf5d6dc8b047993b2ceecd3f45968ffc4177a5"
 dependencies = [
  "blake2",
  "byteorder",
+ "curve25519-dalek 4.1.1 (git+https://github.com/AaronFeickert/curve25519-dalek?branch=TEST-rebase)",
  "derivative",
  "derive_more",
  "digest 0.10.7",
  "itertools 0.6.5",
- "lazy_static",
  "merlin",
+ "once_cell",
  "rand",
  "rand_core 0.6.4",
  "serde",
  "sha3",
- "tari-curve25519-dalek",
  "thiserror",
  "zeroize",
 ]
@@ -5722,6 +5703,7 @@ dependencies = [
  "config",
  "criterion 0.4.0",
  "croaring",
+ "curve25519-dalek 4.1.1 (git+https://github.com/AaronFeickert/curve25519-dalek?branch=TEST-rebase)",
  "decimal-rs",
  "derivative",
  "digest 0.10.7",
@@ -5749,7 +5731,6 @@ dependencies = [
  "sha3",
  "strum",
  "strum_macros",
- "tari-curve25519-dalek",
  "tari_common",
  "tari_common_sqlite",
  "tari_common_types",
@@ -5778,10 +5759,11 @@ dependencies = [
 [[package]]
 name = "tari_crypto"
 version = "0.18.0"
-source = "git+https://github.com/tari-project/tari-crypto?branch=main#f9b6cb8f7a7c6a41373b935ac8293331422f2266"
+source = "git+https://github.com/AaronFeickert/tari-crypto?branch=curve-library-update#a8883e1013ea99d351a6002d2eb8b2fa4fdb9272"
 dependencies = [
  "blake2",
  "borsh",
+ "curve25519-dalek 4.1.1 (git+https://github.com/AaronFeickert/curve25519-dalek?branch=TEST-rebase)",
  "digest 0.10.7",
  "log",
  "once_cell",
@@ -5790,7 +5772,6 @@ dependencies = [
  "serde",
  "sha3",
  "snafu",
- "tari-curve25519-dalek",
  "tari_bulletproofs_plus",
  "tari_utilities",
  "zeroize",
@@ -7193,7 +7174,7 @@ version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fb66477291e7e8d2b0ff1bcb900bf29489a9692816d79874bea351e7a8b6de96"
 dependencies = [
- "curve25519-dalek 4.1.1",
+ "curve25519-dalek 4.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "rand_core 0.6.4",
  "serde",
  "zeroize",
@@ -7220,26 +7201,6 @@ dependencies = [
  "parking_lot 0.12.1",
  "rand",
  "static_assertions",
-]
-
-[[package]]
-name = "zerocopy"
-version = "0.7.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9ffc046c9f849405a42c87e82e2f2f861d1f0a06b855910c76c2bd1e87be900c"
-dependencies = [
- "zerocopy-derive",
-]
-
-[[package]]
-name = "zerocopy-derive"
-version = "0.7.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "246c000cfc5f942bac7ff99fde24a9ebb589d92e024bc758c6c733c15a02a73e"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.38",
 ]
 
 [[package]]

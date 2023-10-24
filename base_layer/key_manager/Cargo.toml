@@ -11,7 +11,7 @@ edition = "2021"
 crate-type = ["lib", "cdylib"]
 
 [dependencies]
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto", branch = "main" }
+tari_crypto = { git = "https://github.com/AaronFeickert/tari-crypto", branch = "curve-library-update" }
 tari_utilities = { version = "0.6" }
 tari_common_sqlite = { path = "../../common_sqlite" }
 tari_common_types = {  path = "../../base_layer/common_types"}

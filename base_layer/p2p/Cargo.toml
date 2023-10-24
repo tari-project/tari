@@ -13,7 +13,7 @@ edition = "2018"
 tari_comms = {  path = "../../comms/core" }
 tari_comms_dht = {  path = "../../comms/dht" }
 tari_common = {  path = "../../common" }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto", branch = "main" }
+tari_crypto = { git = "https://github.com/AaronFeickert/tari-crypto", branch = "curve-library-update" }
 tari_service_framework = {  path = "../service_framework" }
 tari_shutdown = {  path = "../../infrastructure/shutdown" }
 tari_storage = {  path = "../../infrastructure/storage" }

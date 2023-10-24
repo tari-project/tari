@@ -14,7 +14,7 @@ build = ["toml", "prost-build"]
 static-application-info = ["git2"]
 
 [dependencies]
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto", branch = "main" }
+tari_crypto = { git = "https://github.com/AaronFeickert/tari-crypto", branch = "curve-library-update" }
 
 anyhow = "1.0.53"
 blake2 = "0.10"

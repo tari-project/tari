@@ -23,7 +23,7 @@ tari_common_types = {  path = "../../base_layer/common_types" }
 tari_comms = {  path = "../../comms/core" }
 tari_comms_dht = {  path = "../../comms/dht" }
 tari_comms_rpc_macros = {  path = "../../comms/rpc_macros" }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto", branch = "main", features = ["borsh"] }
+tari_crypto = { git = "https://github.com/AaronFeickert/tari-crypto", branch = "curve-library-update", features = ["borsh"] }
 tari_metrics = { path = "../../infrastructure/metrics" }
 tari_mmr = {  path = "../../base_layer/mmr", optional = true, features = ["native_bitmap"] }
 tari_p2p = {  path = "../../base_layer/p2p" }
@@ -80,7 +80,7 @@ zeroize = "1"
 [dev-dependencies]
 tari_p2p = {  path = "../../base_layer/p2p", features = ["test-mocks"] }
 tari_test_utils = {  path = "../../infrastructure/test_utils" }
-curve25519-dalek = { package = "tari-curve25519-dalek", version = "4.0.3" }
+curve25519-dalek = { git = "https://github.com/AaronFeickert/curve25519-dalek", branch = "TEST-rebase" }
 # SQLite required for the integration tests
 libsqlite3-sys = { version = "0.25.1", features = ["bundled"] }
 config = { version = "0.13.0" }
