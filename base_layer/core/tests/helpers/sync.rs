@@ -55,28 +55,28 @@ use crate::helpers::{
 
 static EMISSION: [u64; 2] = [10, 10];
 
-pub fn sync_headers_initialize_with_ping_pong_data(
-    alice_node: &NodeInterfaces,
-    bob_node: &NodeInterfaces,
+pub fn initialize_sync_headers_with_ping_pong_data(
+    local_node_interfaces: &NodeInterfaces,
+    peer_node_interfaces: &NodeInterfaces,
 ) -> HeaderSyncState {
     HeaderSyncState::new(
         vec![SyncPeer::from(PeerChainMetadata::new(
-            bob_node.node_identity.node_id().clone(),
-            bob_node.blockchain_db.get_chain_metadata().unwrap(),
+            peer_node_interfaces.node_identity.node_id().clone(),
+            peer_node_interfaces.blockchain_db.get_chain_metadata().unwrap(),
             None,
         ))],
-        alice_node.blockchain_db.get_chain_metadata().unwrap(),
+        local_node_interfaces.blockchain_db.get_chain_metadata().unwrap(),
     )
 }
 
 pub async fn sync_headers_execute(
-    alice_state_machine: &mut BaseNodeStateMachine<TempDatabase>,
+    state_machine: &mut BaseNodeStateMachine<TempDatabase>,
     header_sync: &mut HeaderSyncState,
 ) -> StateEvent {
-    header_sync.next_event(alice_state_machine).await
+    header_sync.next_event(state_machine).await
 }
 
-pub async fn create_network_with_alice_and_bob_nodes() -> (
+pub async fn create_network_with_local_and_peer_nodes() -> (
     BaseNodeStateMachine<TempDatabase>,
     NodeInterfaces,
     NodeInterfaces,
@@ -96,7 +96,7 @@ pub async fn create_network_with_alice_and_bob_nodes() -> (
         .with_block(initial_block.clone())
         .build()
         .unwrap();
-    let (alice_node, bob_node, consensus_manager) = create_network_with_2_base_nodes_with_config(
+    let (local_node, peer_node, consensus_manager) = create_network_with_2_base_nodes_with_config(
         MempoolServiceConfig::default(),
         LivenessConfig {
             auto_ping_interval: Some(Duration::from_millis(100)),
@@ -112,12 +112,12 @@ pub async fn create_network_with_alice_and_bob_nodes() -> (
     let (status_event_sender, _status_event_receiver) = watch::channel(StatusInfo::new());
 
     // Alice needs a state machine for header sync
-    let alice_state_machine = BaseNodeStateMachine::new(
-        alice_node.blockchain_db.clone().into(),
-        alice_node.local_nci.clone(),
-        alice_node.comms.connectivity(),
-        alice_node.comms.peer_manager(),
-        alice_node.chain_metadata_handle.get_event_stream(),
+    let local_state_machine = BaseNodeStateMachine::new(
+        local_node.blockchain_db.clone().into(),
+        local_node.local_nci.clone(),
+        local_node.comms.connectivity(),
+        local_node.comms.peer_manager(),
+        local_node.chain_metadata_handle.get_event_stream(),
         BaseNodeStateMachineConfig::default(),
         SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
         status_event_sender,
@@ -128,9 +128,9 @@ pub async fn create_network_with_alice_and_bob_nodes() -> (
     );
 
     (
-        alice_state_machine,
-        alice_node,
-        bob_node,
+        local_state_machine,
+        local_node,
+        peer_node,
         initial_block,
         consensus_manager,
         key_manager,
