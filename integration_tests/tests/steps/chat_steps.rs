@@ -20,7 +20,7 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Duration;
+use std::{cmp::Ordering, convert::TryFrom, time::Duration};
 
 use cucumber::{then, when};
 use tari_common::configuration::Network;
@@ -44,6 +44,8 @@ async fn chat_client_connected_to_base_node(world: &mut TariWorld, name: String,
         world.current_base_dir.clone().expect("Expect a base dir on world"),
     )
     .await;
+
+    tokio::time::sleep(Duration::from_millis(5000)).await;
 
     world.chat_clients.insert(name, Box::new(client));
 }
@@ -352,4 +354,28 @@ async fn send_read_receipt(world: &mut TariWorld, sender: String, receiver: Stri
 
         client_1.send_read_receipt(message).await;
     }
+}
+
+#[then(expr = "{word} will have {int} conversationalists")]
+async fn count_conversationalists(world: &mut TariWorld, user: String, num: u64) {
+    let client = world.chat_clients.get(&user).unwrap();
+    let mut addresses = 0;
+
+    for _a in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
+        let conversationalists = (*client).get_conversationalists().await;
+
+        match conversationalists
+            .len()
+            .cmp(&(usize::try_from(num).expect("u64 to cast to usize")))
+        {
+            Ordering::Less => {
+                tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
+                addresses = conversationalists.len();
+                continue;
+            },
+            Ordering::Equal => return,
+            _ => addresses = conversationalists.len(),
+        }
+    }
+    panic!("Only found conversations with {}/{} addresses", addresses, num)
 }

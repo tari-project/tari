@@ -318,6 +318,10 @@ where T: ContactsBackend + 'static
 
                 Ok(ContactsServiceResponse::ReadConfirmationSent)
             },
+            ContactsServiceRequest::GetConversationalists => {
+                let result = self.db.get_conversationlists();
+                Ok(result.map(ContactsServiceResponse::Conversationalists)?)
+            },
         }
     }
 

@@ -18,6 +18,8 @@ struct Confirmation;
 
 struct ContactsLivenessData;
 
+struct ConversationalistsVector;
+
 struct Message;
 
 struct MessageMetadata;
@@ -372,6 +374,70 @@ long long read_liveness_data_last_seen(struct ContactsLivenessData *liveness,
  * None
  */
 void destroy_contacts_liveness_data(struct ContactsLivenessData *ptr);
+
+/**
+ * Return a ptr to a ConversationalistsVector
+ *
+ * ## Arguments
+ * `client` - The ChatClient
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `*mut ptr ConversationalistsVector` - a pointer to a ConversationalistsVector
+ *
+ * ## Safety
+ * The `ConversationalistsVector` should be destroyed after use
+ */
+struct ConversationalistsVector *get_conversationalists(struct ChatClient *client, int *error_out);
+
+/**
+ * Returns the length of the ConversationalistsVector
+ *
+ * ## Arguments
+ * `conversationalists` - A pointer to a ConversationalistsVector
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `c_int` - The length of the vector. May return -1 if something goes wrong
+ *
+ * ## Safety
+ * `conversationalists` should be destroyed eventually
+ */
+int conversationalists_vector_len(struct ConversationalistsVector *conversationalists,
+                                  int *error_out);
+
+/**
+ * Reads the ConversationalistsVector and returns a pointer to a TariAddress at a given position
+ *
+ * ## Arguments
+ * `conversationalists` - A pointer to a ConversationalistsVector
+ * `position` - The index of the vector for a TariAddress
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `*mut ptr TariAddress` - A pointer to a TariAddress
+ *
+ * ## Safety
+ * `conversationalists` should be destroyed eventually
+ * the returned `TariAddress` should be destroyed eventually
+ */
+struct TariAddress *conversationalists_vector_get_at(struct ConversationalistsVector *conversationalists,
+                                                     unsigned int position,
+                                                     int *error_out);
+
+/**
+ * Frees memory for ConversationalistsVector
+ *
+ * ## Arguments
+ * `ptr` - The pointer of a ConversationalistsVector
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * None
+ */
+void destroy_conversationalists_vector(struct ConversationalistsVector *ptr);
 
 /**
  * Creates a message and returns a pointer to it

@@ -103,6 +103,7 @@ extern "C" {
         error_our: *const c_int,
     ) -> *mut c_void;
     pub fn send_read_confirmation_for_message(client: *mut ClientFFI, message: *mut c_void, error_out: *const c_int);
+    pub fn get_conversationalists(client: *mut ClientFFI, error_out: *const c_int) -> *mut c_void;
 }
 
 #[derive(Debug)]
@@ -114,6 +115,9 @@ pub struct ChatFFI {
     ptr: Arc<Mutex<PtrWrapper>>,
     pub identity: Arc<NodeIdentity>,
 }
+
+struct Conversationalists(Vec<TariAddress>);
+struct MessagesVector(Vec<Message>);
 
 #[async_trait]
 impl ChatClient for ChatFFI {
@@ -159,8 +163,8 @@ impl ChatClient for ChatFFI {
             let error_out = Box::into_raw(Box::new(0));
             let limit = i32::try_from(limit).expect("Truncation occurred") as c_int;
             let page = i32::try_from(page).expect("Truncation occurred") as c_int;
-            let all_messages = get_chat_messages(client.0, address_ptr, limit, page, error_out) as *mut Vec<Message>;
-            messages = (*all_messages).clone();
+            let all_messages = get_chat_messages(client.0, address_ptr, limit, page, error_out) as *mut MessagesVector;
+            messages = (*all_messages).0.clone();
         }
 
         messages
@@ -209,6 +213,19 @@ impl ChatClient for ChatFFI {
         unsafe {
             send_read_confirmation_for_message(client.0, message_ptr, error_out);
         }
+    }
+
+    async fn get_conversationalists(&self) -> Vec<TariAddress> {
+        let client = self.ptr.lock().unwrap();
+
+        let addresses;
+        unsafe {
+            let error_out = Box::into_raw(Box::new(0));
+            let vector = get_conversationalists(client.0, error_out) as *mut Conversationalists;
+            addresses = (*vector).0.clone();
+        }
+
+        addresses
     }
 
     fn identity(&self) -> &NodeIdentity {

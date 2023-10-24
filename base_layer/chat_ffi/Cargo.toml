@@ -31,6 +31,8 @@ crate-type = ["staticlib","cdylib"]
 
 [dev-dependencies]
 chrono = { version = "0.4.19", default-features = false }
+rand = "0.8"
+tari_crypto = "0.18.0"
 
 [build-dependencies]
 cbindgen = "0.24.3"
