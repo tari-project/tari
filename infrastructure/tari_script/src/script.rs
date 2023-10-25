@@ -921,7 +921,7 @@ mod test {
             let ctx = context_with_height(u64::try_from(block_height).unwrap());
             assert_eq!(
                 script.execute_with_context(&inputs, &ctx).unwrap(),
-                Number(block_height - 5)
+                Number(5 - block_height)
             );
         }
 
