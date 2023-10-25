@@ -1,6 +1,6 @@
 [package]
 name = "minotari_app_utilities"
-version = "0.52.0-dan.4"
+version = "0.52.0-dan.5"
 authors = ["The Tari Development Community"]
 edition = "2018"
 license = "BSD-3-Clause"
