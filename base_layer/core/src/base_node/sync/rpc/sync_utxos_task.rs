@@ -160,7 +160,9 @@ where B: BlockchainBackend + 'static
                 .into_iter()
                 .filter_map(|(utxo, spent)| {
                     // We only send unspent utxos
-                    if !spent {
+                    if spent {
+                        None
+                    } else {
                         match utxo.try_into() {
                             Ok(tx_ouput) => Some(Ok(SyncUtxosResponse {
                                 output: Some(tx_ouput),
@@ -168,8 +170,6 @@ where B: BlockchainBackend + 'static
                             })),
                             Err(err) => Some(Err(err)),
                         }
-                    } else {
-                        None
                     }
                 })
                 .collect::<Result<Vec<SyncUtxosResponse>, String>>()

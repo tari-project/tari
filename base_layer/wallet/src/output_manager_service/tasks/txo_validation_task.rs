@@ -198,7 +198,7 @@ where
             // This assumes that the base node has not reorged since the last time we asked.
             let response = wallet_client
                 .query_deleted(QueryDeletedRequest {
-                    chain_must_include_header: last_mined_header_hash.map(|v| v.to_vec()).unwrap_or_default(),
+                    chain_must_include_header: last_mined_header_hash.map(|v| v.to_vec()),
                     hashes: batch.iter().map(|o| o.hash.to_vec()).collect(),
                 })
                 .await

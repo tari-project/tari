@@ -161,7 +161,7 @@ pub fn delete_some_blocks_and_headers(
         let mut txn = DbTransaction::new();
         match instruction {
             WhatToDelete::Blocks => {
-                txn.delete_block(*blocks[i].hash());
+                txn.delete_tip_block(*blocks[i].hash());
                 txn.delete_orphan(*blocks[i].hash());
                 if set_best_block {
                     txn.set_best_block(

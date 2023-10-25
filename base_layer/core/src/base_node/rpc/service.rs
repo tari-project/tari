@@ -458,10 +458,9 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                 &"Received more hashes than we allow".to_string(),
             ));
         }
-
-        if !message.chain_must_include_header.is_empty() {
-            let hash = message
-                .chain_must_include_header
+        let chain_include_header = message.chain_must_include_header.unwrap_or_default();
+        if !chain_include_header.is_empty() {
+            let hash = chain_include_header
                 .try_into()
                 .map_err(|_| RpcStatus::bad_request(&"Malformed block hash received".to_string()))?;
             if self

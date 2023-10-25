@@ -41,11 +41,28 @@ use tari_core::{
     transactions::{
         key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface},
         tari_amount::MicroMinotari,
-        test_helpers::{create_test_core_key_manager_with_memory_db, create_utxo},
+        test_helpers::{
+            create_test_core_key_manager_with_memory_db,
+            create_utxo,
+            TestKeyManager,
+            TestParams,
+            TransactionSchema,
+        },
+        transaction_components::{
+            OutputFeatures,
+            TransactionOutput,
+            TransactionOutputVersion,
+            WalletOutput,
+            WalletOutputBuilder,
+        },
+        transaction_protocol::transaction_initializer::SenderTransactionInitializer,
+        SenderTransactionProtocol,
     },
+    txn_schema,
     validation::{mocks::MockValidator, transaction::TransactionChainLinkedValidator},
 };
-use tari_script::script;
+use tari_key_manager::key_manager_service::KeyManagerInterface;
+use tari_script::{inputs, script, ExecutionStack};
 use tari_service_framework::reply_channel;
 use tokio::sync::{broadcast, mpsc};
 
