@@ -147,6 +147,11 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         if db.fetch_block_by_hash(hash, true).await.is_err() {
             return Err(RpcStatus::not_found("Requested end block sync hash was not found"));
         }
+
+        if start_height > metadata.height_of_longest_chain() {
+            return Ok(Streaming::empty());
+        }
+
         let end_header = db
             .fetch_header_by_block_hash(hash)
             .await
