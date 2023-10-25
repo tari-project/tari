@@ -73,7 +73,8 @@ impl TargetDifficultyWindow {
 
     /// Calculates the target difficulty for the current set of target difficulties.
     pub fn calculate(&self, min: Difficulty, max: Difficulty) -> Difficulty {
-        cmp::max(min, cmp::min(max, self.lwma.get_difficulty().unwrap_or(min)))
+        let difficulty = self.lwma.get_difficulty().unwrap_or(min);
+        cmp::max(min, cmp::min(max, difficulty))
     }
 }
 

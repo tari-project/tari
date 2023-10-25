@@ -38,7 +38,14 @@ use tari_utilities::hex::Hex;
 
 use super::{validator::BlockHeaderSyncValidator, BlockHeaderSyncError};
 use crate::{
-    base_node::sync::{ban::PeerBanManager, hooks::Hooks, rpc, BlockchainSyncConfig, SyncPeer},
+    base_node::sync::{
+        ban::PeerBanManager,
+        header_sync::HEADER_SYNC_INITIAL_MAX_HEADERS,
+        hooks::Hooks,
+        rpc,
+        BlockchainSyncConfig,
+        SyncPeer,
+    },
     blocks::{BlockHeader, ChainBlock, ChainHeader},
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError},
     common::rolling_avg::RollingAverageTime,
@@ -51,8 +58,6 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "c::bn::header_sync";
-
-const NUM_INITIAL_HEADERS_TO_REQUEST: usize = 1000;
 
 const MAX_LATENCY_INCREASES: usize = 5;
 
@@ -387,13 +392,13 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     return Err(err.into());
                 },
             };
-            if resp.headers.len() > NUM_INITIAL_HEADERS_TO_REQUEST {
+            if resp.headers.len() > HEADER_SYNC_INITIAL_MAX_HEADERS {
                 warn!(
                     target: LOG_TARGET,
                     "Peer `{}` sent too many headers {}, only requested {}. Peer will be banned.",
                     peer_node_id,
                     resp.headers.len(),
-                    NUM_INITIAL_HEADERS_TO_REQUEST,
+                    HEADER_SYNC_INITIAL_MAX_HEADERS,
                 );
                 return Err(BlockHeaderSyncError::PeerSentTooManyHeaders(resp.headers.len()));
             }
@@ -448,7 +453,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
     ) -> Result<(HeaderSyncStatus, FindChainSplitResult), BlockHeaderSyncError> {
         // This method will return ban-able errors for certain offenses.
         let chain_split_result = self
-            .find_chain_split(sync_peer.node_id(), client, NUM_INITIAL_HEADERS_TO_REQUEST as u64)
+            .find_chain_split(sync_peer.node_id(), client, HEADER_SYNC_INITIAL_MAX_HEADERS as u64)
             .await?;
         if chain_split_result.reorg_steps_back > 0 {
             debug!(
@@ -572,7 +577,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             .expect("synchronize_headers: expected there to be a valid tip header but it was None");
 
         // If we already have a stronger chain at this point, switch over to it.
-        // just in case we happen to be exactly NUM_INITIAL_HEADERS_TO_REQUEST headers behind.
+        // just in case we happen to be exactly HEADER_SYNC_INITIAL_MAX_HEADERS headers behind.
         let has_better_pow = self.pending_chain_has_higher_pow(&split_info.best_block_header);
 
         if has_better_pow {
@@ -585,7 +590,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             has_switched_to_new_chain = true;
         }
 
-        if pending_len < NUM_INITIAL_HEADERS_TO_REQUEST {
+        if pending_len < HEADER_SYNC_INITIAL_MAX_HEADERS {
             // Peer returned less than the max number of requested headers. This indicates that we have all the
             // available headers from the peer.
             if !has_better_pow {

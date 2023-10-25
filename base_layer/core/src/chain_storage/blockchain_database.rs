@@ -728,7 +728,7 @@ where B: BlockchainBackend
     ) -> Result<TargetDifficulties, ChainStorageError> {
         let db = self.db_read_access()?;
         let mut current_header = db.fetch_chain_header_in_all_chains(&current_block_hash)?;
-        let mut targets = TargetDifficulties::new(&self.consensus_manager, current_header.height() + 1)
+        let mut targets = TargetDifficulties::new(&self.consensus_manager, current_header.height().saturating_add(1))
             .map_err(ChainStorageError::UnexpectedResult)?;
         // Add start header since we have it on hand
         targets.add_front(
