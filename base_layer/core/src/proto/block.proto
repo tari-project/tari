@@ -53,6 +53,8 @@ message BlockHeader {
     bytes total_script_offset = 15;
     // Merkle root of validator nodes
     bytes validator_node_merkle_root = 16;
+    // Validator size
+    uint64 validator_node_size = 17;
 }
 
 // A Tari block. Blocks are linked together into a blockchain.
