@@ -598,6 +598,12 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         );
         let root = FixedHash::try_from(output_smt.hash().as_slice())?;
         if root != to_header.output_mr {
+            warn!(
+                target: LOG_TARGET,
+                "Final target root(#{}) did not match expected (#{})",
+                    to_header.output_mr.to_hex(),
+                    root.to_hex(),
+            );
             return Err(HorizonSyncError::InvalidMrRoot {
                 mr_tree: "UTXO SMT".to_string(),
                 at_height: to_header.height,
@@ -605,10 +611,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 actual_hex: root.to_hex(),
             });
         }
-
         db.set_tip_smt(output_smt).await?;
-        self.check_latency(sync_peer.node_id(), &avg_latency)?;
-
         Ok(())
     }
 

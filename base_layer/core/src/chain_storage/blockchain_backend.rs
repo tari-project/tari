@@ -183,6 +183,4 @@ pub trait BlockchainBackend: Send + Sync {
     ) -> Result<Vec<TemplateRegistrationEntry>, ChainStorageError>;
     /// Returns the tip utxo smt
     fn fetch_tip_smt(&self) -> Result<OutputSmt, ChainStorageError>;
-    /// Sets the tip utxo smt
-    fn set_tip_smt(&self, smt: OutputSmt) -> Result<(), ChainStorageError>;
 }

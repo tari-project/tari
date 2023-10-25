@@ -2300,11 +2300,6 @@ impl BlockchainBackend for LMDBDatabase {
             }),
         }
     }
-
-    fn set_tip_smt(&self, smt: OutputSmt) -> Result<(), ChainStorageError> {
-        let txn = self.write_transaction()?;
-        self.insert_tip_smt(&txn, &smt)
-    }
 }
 
 // Fetch the chain metadata

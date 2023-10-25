@@ -413,10 +413,6 @@ impl BlockchainBackend for TempDatabase {
     fn fetch_tip_smt(&self) -> Result<OutputSmt, ChainStorageError> {
         self.db.as_ref().unwrap().fetch_tip_smt()
     }
-
-    fn set_tip_smt(&self, smt: OutputSmt) -> Result<(), ChainStorageError> {
-        self.db.as_ref().unwrap().set_tip_smt(smt)
-    }
 }
 
 pub async fn create_chained_blocks<T: Into<BlockSpecs>>(
