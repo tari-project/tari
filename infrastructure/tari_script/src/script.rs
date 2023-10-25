@@ -340,7 +340,14 @@ impl TariScript {
     fn handle_check_height(stack: &mut ExecutionStack, height: u64, block_height: u64) -> Result<(), ScriptError> {
         let height = i64::try_from(height)?;
         let block_height = i64::try_from(block_height)?;
-        let item = StackItem::Number(block_height - height);
+
+        // Due to the conversion of u64 into i64 which would fail above if they overflowed, these
+        // numbers should never enter a state where a `sub` could fail. As they'd both be within range and 0 or above.
+        // This differs from compare_height due to a stack number being used, which can be lower than 0
+        let item = match block_height.checked_sub(height) {
+            Some(num) => StackItem::Number(num),
+            None => return Err(ScriptError::CompareFailed),
+        };
 
         stack.push(item)
     }
@@ -359,6 +366,8 @@ impl TariScript {
         let target_height = stack.pop_into_number::<i64>()?;
         let block_height = i64::try_from(block_height)?;
 
+        // Here it is possible to underflow because the stack can take lower numbers where check
+        // height does not use a stack number and it's minimum can't be lower than 0.
         let item = match target_height.checked_sub(block_height) {
             Some(num) => StackItem::Number(num),
             None => return Err(ScriptError::CompareFailed),
@@ -1781,5 +1790,62 @@ mod test {
         let stack_item = script.execute_with_context(&inputs, &ctx);
         assert!(stack_item.is_ok());
         assert_eq!(stack_item.unwrap(), Number(-10))
+    }
+
+    #[test]
+    fn test_check_height_block_height_exceeds_bounds() {
+        let script = script!(CheckHeight(0));
+
+        let inputs = ExecutionStack::new(vec![]);
+        let ctx = context_with_height(u64::MAX);
+        let stack_item = script.execute_with_context(&inputs, &ctx);
+        assert!(matches!(stack_item, Err(ScriptError::ValueExceedsBounds)));
+    }
+
+    #[test]
+    fn test_check_height_exceeds_bounds() {
+        let script = script!(CheckHeight(u64::MAX));
+
+        let inputs = ExecutionStack::new(vec![]);
+        let ctx = context_with_height(10_u64);
+        let stack_item = script.execute_with_context(&inputs, &ctx);
+        assert!(matches!(stack_item, Err(ScriptError::ValueExceedsBounds)));
+    }
+
+    #[test]
+    fn test_check_height_overflows_on_max_stack() {
+        let script = script!(CheckHeight(0));
+
+        let mut inputs = ExecutionStack::new(vec![]);
+
+        for i in 0..255 {
+            inputs.push(Number(i)).unwrap();
+        }
+
+        let ctx = context_with_height(i64::MAX as u64);
+        let stack_item = script.execute_with_context(&inputs, &ctx);
+        assert!(matches!(stack_item, Err(ScriptError::StackOverflow)));
+    }
+
+    #[test]
+    fn test_check_height_valid_with_uint_result() {
+        let script = script!(CheckHeight(24));
+
+        let inputs = ExecutionStack::new(vec![]);
+        let ctx = context_with_height(100_u64);
+        let stack_item = script.execute_with_context(&inputs, &ctx);
+        assert!(stack_item.is_ok());
+        assert_eq!(stack_item.unwrap(), Number(76))
+    }
+
+    #[test]
+    fn test_check_height_valid_with_int_result() {
+        let script = script!(CheckHeight(100));
+
+        let inputs = ExecutionStack::new(vec![]);
+        let ctx = context_with_height(24_u64);
+        let stack_item = script.execute_with_context(&inputs, &ctx);
+        assert!(stack_item.is_ok());
+        assert_eq!(stack_item.unwrap(), Number(-76))
     }
 }
