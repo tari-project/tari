@@ -1001,7 +1001,7 @@ pub async fn command_runner(
                     args.validator_node_public_key.into(),
                     Signature::new(
                         args.validator_node_public_nonce.into(),
-                        RistrettoSecretKey::from_vec(&args.validator_node_signature)?,
+                        RistrettoSecretKey::from_vec(&args.validator_node_signature[0])?,
                     ),
                     args.validator_node_claim_public_key.into(),
                     UtxoSelectionCriteria::default(),

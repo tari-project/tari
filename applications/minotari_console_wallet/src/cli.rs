@@ -292,7 +292,8 @@ pub struct RegisterValidatorNodeArgs {
     pub amount: MicroMinotari,
     pub validator_node_public_key: UniPublicKey,
     pub validator_node_public_nonce: UniPublicKey,
-    pub validator_node_signature: Vec<u8>,
+    #[clap(long, parse(try_from_str = parse_hex), required = true)]
+    pub validator_node_signature: Vec<Vec<u8>>,
     pub validator_node_claim_public_key: UniPublicKey,
     #[clap(short, long, default_value = "Registering VN")]
     pub message: String,
