@@ -5916,7 +5916,6 @@ dependencies = [
  "log",
  "rand",
  "serde",
- "serde_derive",
  "serde_json",
  "tari_common",
  "tari_crypto",

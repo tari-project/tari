@@ -663,8 +663,10 @@ where B: BlockchainBackend
     }
 
     pub fn set_tip_smt(&self, smt: OutputSmt) -> Result<(), ChainStorageError> {
-        let db = self.db_write_access()?;
-        db.set_tip_smt(smt)
+        let mut db = self.db_write_access()?;
+        let mut txn = DbTransaction::new();
+        txn.insert_tip_smt(smt);
+        db.write(txn)
     }
 
     /// Fetches the last  header that was added, might be past the tip, as the block body between this last  header and
