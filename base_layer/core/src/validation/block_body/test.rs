@@ -241,7 +241,7 @@ async fn it_checks_exactly_one_coinbase() {
 }
 
 #[tokio::test]
-async fn it_checks_double_spends() {
+async fn it_checks_duplicate_kernel() {
     let (mut blockchain, validator) = setup(true);
 
     let (_, coinbase_a) = blockchain.add_next_tip(block_spec!("A")).await.unwrap();
@@ -262,6 +262,36 @@ async fn it_checks_double_spends() {
     let txn = blockchain.db().db_read_access().unwrap();
     let err = validator.validate_body(&*txn, block.block()).unwrap_err();
     assert!(matches!(err, ValidationError::DuplicateKernelError(_)));
+}
+
+#[tokio::test]
+async fn it_checks_double_spends() {
+    let (mut blockchain, validator) = setup(true);
+
+    let (_, coinbase_a) = blockchain.add_next_tip(block_spec!("A")).await.unwrap();
+    let (txs, _) = schema_to_transaction(
+        &[txn_schema!(from: vec![coinbase_a.clone()], to: vec![50 * T])],
+        &blockchain.km,
+    )
+    .await;
+
+    blockchain
+        .add_next_tip(block_spec!("1", transactions: txs.iter().map(|t| (**t).clone()).collect()))
+        .await
+        .unwrap();
+    // lets create a new transction from the same input
+    let (txs2, _) =
+        schema_to_transaction(&[txn_schema!(from: vec![coinbase_a], to: vec![50 * T])], &blockchain.km).await;
+    let (block, _) = blockchain
+        .create_next_tip(
+            BlockSpec::new()
+                .with_transactions(txs2.iter().map(|t| (**t).clone()).collect())
+                .finish(),
+        )
+        .await;
+    let txn = blockchain.db().db_read_access().unwrap();
+    let err = validator.validate_body(&*txn, block.block()).unwrap_err();
+    assert!(matches!(err, ValidationError::ContainsSTxO));
 }
 
 #[tokio::test]
