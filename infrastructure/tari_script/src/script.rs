@@ -1730,4 +1730,56 @@ mod test {
         let buf = &mut buf.as_slice();
         assert!(TariScript::deserialize(buf).is_err());
     }
+
+    #[test]
+    fn test_compare_height_block_height_exceeds_bounds() {
+        let script = script!(CompareHeight);
+
+        let inputs = inputs!(0);
+        let ctx = context_with_height(u64::MAX);
+        let stack_item = script.execute_with_context(&inputs, &ctx);
+        assert!(matches!(stack_item, Err(ScriptError::ValueExceedsBounds)));
+    }
+
+    #[test]
+    fn test_compare_height_underflows() {
+        let script = script!(CompareHeight);
+
+        let inputs = ExecutionStack::new(vec![Number(i64::MIN)]);
+        let ctx = context_with_height(i64::MAX as u64);
+        let stack_item = script.execute_with_context(&inputs, &ctx);
+        assert!(matches!(stack_item, Err(ScriptError::CompareFailed)));
+    }
+
+    #[test]
+    fn test_compare_height_underflows_on_empty_stack() {
+        let script = script!(CompareHeight);
+
+        let inputs = ExecutionStack::new(vec![]);
+        let ctx = context_with_height(i64::MAX as u64);
+        let stack_item = script.execute_with_context(&inputs, &ctx);
+        assert!(matches!(stack_item, Err(ScriptError::StackUnderflow)));
+    }
+
+    #[test]
+    fn test_compare_height_valid_with_uint_result() {
+        let script = script!(CompareHeight);
+
+        let inputs = inputs!(100);
+        let ctx = context_with_height(24_u64);
+        let stack_item = script.execute_with_context(&inputs, &ctx);
+        assert!(stack_item.is_ok());
+        assert_eq!(stack_item.unwrap(), Number(76))
+    }
+
+    #[test]
+    fn test_compare_height_valid_with_int_result() {
+        let script = script!(CompareHeight);
+
+        let inputs = inputs!(100);
+        let ctx = context_with_height(110_u64);
+        let stack_item = script.execute_with_context(&inputs, &ctx);
+        assert!(stack_item.is_ok());
+        assert_eq!(stack_item.unwrap(), Number(-10))
+    }
 }
