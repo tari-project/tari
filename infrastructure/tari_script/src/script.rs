@@ -359,7 +359,10 @@ impl TariScript {
         let target_height = stack.pop_into_number::<i64>()?;
         let block_height = i64::try_from(block_height)?;
 
-        let item = StackItem::Number(block_height - target_height);
+        let item = match target_height.checked_sub(block_height) {
+            Some(num) => StackItem::Number(num),
+            None => return Err(ScriptError::CompareFailed),
+        };
 
         stack.push(item)
     }
