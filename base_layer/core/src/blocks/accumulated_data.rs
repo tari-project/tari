@@ -40,7 +40,7 @@ use crate::{
 
 const LOG_TARGET: &str = "c::bn::acc_data";
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Default, Debug, Serialize, Deserialize)]
 pub struct BlockAccumulatedData {
     pub(crate) kernels: PrunedHashSet,
     pub(crate) kernel_sum: Commitment,
@@ -60,15 +60,6 @@ impl BlockAccumulatedData {
 
     pub fn kernel_sum(&self) -> &Commitment {
         &self.kernel_sum
-    }
-}
-
-impl Default for BlockAccumulatedData {
-    fn default() -> Self {
-        Self {
-            kernels: Default::default(),
-            kernel_sum: Default::default(),
-        }
     }
 }
 

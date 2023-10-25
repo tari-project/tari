@@ -510,7 +510,7 @@ impl LMDBDatabase {
     }
 
     fn prune_output(&self, txn: &WriteTransaction<'_>, key: OutputKey) -> Result<(), ChainStorageError> {
-        lmdb_delete(txn, &self.utxos_db, &key.to_comp_key(), "utxos_db")?;
+        lmdb_delete(txn, &self.utxos_db, &key.convert_to_comp_key(), "utxos_db")?;
         Ok(())
     }
 
@@ -540,13 +540,13 @@ impl LMDBDatabase {
             txn,
             &self.txos_hash_to_index_db,
             output_hash.as_slice(),
-            &(output_key.clone().to_comp_key().to_vec()),
+            &(output_key.clone().convert_to_comp_key().to_vec()),
             "txos_hash_to_index_db",
         )?;
         lmdb_insert(
             txn,
             &self.utxos_db,
-            &output_key.to_comp_key(),
+            &output_key.convert_to_comp_key(),
             &TransactionOutputRowData {
                 output: output.clone(),
                 header_hash: *header_hash,
@@ -642,7 +642,7 @@ impl LMDBDatabase {
         lmdb_insert(
             txn,
             &self.inputs_db,
-            &key.to_comp_key(),
+            &key.convert_to_comp_key(),
             &TransactionInputRowDataRef {
                 input: &input.to_compact(),
                 header_hash,
@@ -841,7 +841,7 @@ impl LMDBDatabase {
             .fetch_height_from_hash(write_txn, block_hash)
             .or_not_found("Block", "hash", hash_hex)?;
         let next_height = height.saturating_add(1);
-        if self.fetch_block_accumulated_data(&write_txn, next_height)?.is_some() {
+        if self.fetch_block_accumulated_data(write_txn, next_height)?.is_some() {
             return Err(ChainStorageError::InvalidOperation(format!(
                 "Attempted to delete block at height {} while next block still exists",
                 height
@@ -857,7 +857,7 @@ impl LMDBDatabase {
         let mut smt = self.fetch_tip_smt()?;
 
         self.delete_block_inputs_outputs(write_txn, block_hash.as_slice(), &mut smt)?;
-        self.insert_tip_smt(&write_txn, &smt)?;
+        self.insert_tip_smt(write_txn, &smt)?;
         self.delete_block_kernels(write_txn, block_hash.as_slice())?;
 
         Ok(())
@@ -1143,7 +1143,7 @@ impl LMDBDatabase {
         }
         let k = MetadataKey::TipSmt;
         let mut output_smt: OutputSmt =
-            lmdb_get(&txn, &self.tip_utxo_smt, &k.as_u32())?.ok_or_else(|| ChainStorageError::ValueNotFound {
+            lmdb_get(txn, &self.tip_utxo_smt, &k.as_u32())?.ok_or_else(|| ChainStorageError::ValueNotFound {
                 entity: "Output_smt",
                 field: "tip",
                 value: "".to_string(),
@@ -1354,7 +1354,7 @@ impl LMDBDatabase {
         block_hash: &HashOutput,
     ) -> Result<(), ChainStorageError> {
         let inputs =
-            lmdb_fetch_matching_after::<TransactionInputRowData>(&write_txn, &self.inputs_db, block_hash.as_slice())?;
+            lmdb_fetch_matching_after::<TransactionInputRowData>(write_txn, &self.inputs_db, block_hash.as_slice())?;
 
         for input in inputs {
             lmdb_delete(
@@ -1363,7 +1363,7 @@ impl LMDBDatabase {
                 input.hash.as_slice(),
                 "utxos_db",
             )?;
-            let key = OutputKey::new(&block_hash, &input.hash)?;
+            let key = OutputKey::new(block_hash, &input.hash)?;
             debug!(target: LOG_TARGET, "Pruning output: {:?}", key);
             self.prune_output(write_txn, key)?;
         }
@@ -1850,14 +1850,13 @@ impl BlockchainBackend for LMDBDatabase {
                     })?;
             for utxo in &mut utxos {
                 let hash = utxo.0.hash();
-                match lmdb_get::<_, (u64, Vec<u8>)>(&txn, &self.deleted_txo_hash_to_header_index, hash.as_slice())? {
-                    Some((height, _)) => {
-                        if height <= header_height {
-                            // we know its spend at the header height specified as optional in the fn
-                            utxo.1 = true;
-                        }
-                    },
-                    _ => {},
+                if let Some((height, _)) =
+                    lmdb_get::<_, (u64, Vec<u8>)>(&txn, &self.deleted_txo_hash_to_header_index, hash.as_slice())?
+                {
+                    if height <= header_height {
+                        // we know its spend at the header height specified as optional in the fn
+                        utxo.1 = true;
+                    }
                 }
             }
         }
@@ -1887,7 +1886,7 @@ impl BlockchainBackend for LMDBDatabase {
 
     fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionOutput>, ChainStorageError> {
         let txn = self.read_transaction()?;
-        Ok(lmdb_fetch_matching_after(&txn, &self.utxos_db, header_hash.as_slice())?)
+        lmdb_fetch_matching_after(&txn, &self.utxos_db, header_hash.as_slice())
     }
 
     fn fetch_inputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionInput>, ChainStorageError> {

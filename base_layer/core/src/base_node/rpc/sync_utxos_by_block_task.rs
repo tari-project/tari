@@ -130,7 +130,7 @@ where B: BlockchainBackend + 'static
             let utxos = utxos
                     .into_iter()
                     // Don't include pruned UTXOs
-                    .filter_map(|(utxo, _spent)| Some(utxo.try_into())).collect::<Result<Vec<proto::types::TransactionOutput>, String>>().map_err(|err| RpcStatus::general(&err))?;
+                    .map(|(utxo, _spent)| utxo.try_into()).collect::<Result<Vec<proto::types::TransactionOutput>, String>>().map_err(|err| RpcStatus::general(&err))?;
 
             debug!(
                 target: LOG_TARGET,

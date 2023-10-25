@@ -559,7 +559,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             );
             helpers::check_tari_script_byte_size(&output.script, constants.max_script_byte_size())?;
 
-            batch_verify_range_proofs(&self.prover, &vec![&output])?;
+            batch_verify_range_proofs(&self.prover, &[&output])?;
             let smt_key = NodeKey::try_from(output.commitment.as_bytes())?;
             let smt_node = ValueHash::try_from(output.smt_hash(current_header.height).as_slice())?;
             output_smt.insert(smt_key, smt_node)?;
@@ -671,7 +671,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
         let height = header.height();
         let db = self.db().inner().clone();
-        let header_hash = header.hash().clone();
+        let header_hash = *header.hash();
         task::spawn_blocking(move || {
             for h in 0..=height {
                 let curr_header = db.fetch_chain_header(h)?;

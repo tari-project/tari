@@ -121,7 +121,7 @@ impl OutputKey {
         Ok(Self(com_key))
     }
 
-    pub(super) fn to_comp_key(self) -> CompositeKey<68> {
+    pub(super) fn convert_to_comp_key(self) -> CompositeKey<68> {
         self.0
     }
 }
@@ -135,7 +135,7 @@ impl InputKey {
         Ok(Self(com_key))
     }
 
-    pub(super) fn to_comp_key(self) -> CompositeKey<68> {
+    pub(super) fn convert_to_comp_key(self) -> CompositeKey<68> {
         self.0
     }
 }
