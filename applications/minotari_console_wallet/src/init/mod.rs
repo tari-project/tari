@@ -757,13 +757,19 @@ pub(crate) fn boot_with_password(
     }
 
     let password = match boot_mode {
+        // A new wallet requires entering and confirming a passphrase
         WalletBoot::New => {
-            // Get a new passphrase
-            debug!(target: LOG_TARGET, "Prompting for passphrase.");
+            debug!(target: LOG_TARGET, "Prompting for passphrase for new wallet.");
             get_new_passphrase("Create wallet passphrase: ", "Confirm wallet passphrase: ")?
         },
-        WalletBoot::Existing | WalletBoot::Recovery => {
-            debug!(target: LOG_TARGET, "Prompting for passphrase.");
+        // Recovery from a seed requires entering and confirming a passphrase
+        WalletBoot::Recovery => {
+            debug!(target: LOG_TARGET, "Prompting for passphrase for wallet recovery.");
+            get_new_passphrase("Create wallet passphrase: ", "Confirm wallet passphrase: ")?
+        },
+        // Opening an existing wallet only requires entering a passphrase
+        WalletBoot::Existing => {
+            debug!(target: LOG_TARGET, "Prompting for passphrase for existing wallet.");
             prompt_password("Enter wallet passphrase: ")?
         },
     };
