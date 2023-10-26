@@ -71,12 +71,12 @@ use crate::{
         DbBasicStats,
         DbTotalSizeStats,
         HorizonData,
+        InputMinedInfo,
         MmrTree,
         Optional,
         OrNotFound,
         Reorg,
         TargetDifficulties,
-        InputMinedInfo,
     },
     common::rolling_vec::RollingVec,
     consensus::{
