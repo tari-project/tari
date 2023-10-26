@@ -379,6 +379,7 @@ where B: BlockchainBackend
         let db = self.db_read_access()?;
         db.fetch_chain_metadata()
     }
+
     pub fn fetch_unspent_output_by_commitment(
         &self,
         commitment: &Commitment,

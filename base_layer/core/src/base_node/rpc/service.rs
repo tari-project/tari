@@ -421,14 +421,14 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             .rpc_status_internal_error(LOG_TARGET)?;
 
         Ok(Response::new(UtxoQueryResponses {
-            height_of_longest_chain: metadata.height_of_longest_chain(),
-            best_block: metadata.best_block().to_vec(),
+            best_block_height: metadata.height_of_longest_chain(),
+            best_block_hash: metadata.best_block().to_vec(),
             responses: mined_info_resp
                 .into_iter()
                 .flatten()
                 .map(|utxo| {
                     Ok(UtxoQueryResponse {
-                        mined_height: utxo.mined_height,
+                        mined_at_height: utxo.mined_height,
                         mined_in_block: utxo.header_hash.to_vec(),
                         output_hash: utxo.output.hash().to_vec(),
                         output: match utxo.output.try_into() {

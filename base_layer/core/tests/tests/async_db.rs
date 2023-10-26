@@ -26,10 +26,7 @@ use tari_common::configuration::Network;
 use tari_core::{
     blocks::Block,
     chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult},
-    transactions::{
-        tari_amount::T,
-        test_helpers::{schema_to_transaction},
-    },
+    transactions::{tari_amount::T, test_helpers::schema_to_transaction},
     txn_schema,
 };
 use tari_test_utils::runtime::test_async;

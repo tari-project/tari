@@ -496,7 +496,7 @@ where
                 match returned_output.mined_in_block.clone().try_into() {
                     Ok(block_hash) => mined.push((
                         output.clone(),
-                        returned_output.mined_height,
+                        returned_output.mined_at_height,
                         block_hash,
                         returned_output.mined_timestamp,
                     )),
@@ -512,7 +512,7 @@ where
             }
         }
 
-        Ok((mined, unmined, batch_response.height_of_longest_chain))
+        Ok((mined, unmined, batch_response.best_block_height))
     }
 
     #[allow(clippy::ptr_arg)]

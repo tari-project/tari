@@ -92,13 +92,13 @@ message UtxoQueryRequest {
 
 message UtxoQueryResponses {
   repeated UtxoQueryResponse responses = 1;
-  bytes best_block = 3;
-  uint64 height_of_longest_chain = 4;
+  bytes best_block_hash = 3;
+  uint64 best_block_height = 4;
 }
 
 message UtxoQueryResponse {
   tari.types.TransactionOutput output = 1;
-  uint64 mined_height = 2;
+  uint64 mined_at_height = 2;
   bytes mined_in_block = 3;
   bytes output_hash = 4;
   uint64 mined_timestamp = 5;
