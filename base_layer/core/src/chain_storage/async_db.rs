@@ -221,7 +221,7 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(cleanup_all_orphans() -> (), "cleanup_all_orphans");
 
-    make_async_fn!(block_exists(block_hash: BlockHash) -> bool, "block_exists");
+    make_async_fn!(chain_block_or_orphan_block_exists(block_hash: BlockHash) -> bool, "block_exists");
 
     make_async_fn!(bad_block_exists(block_hash: BlockHash) -> bool, "bad_block_exists");
 

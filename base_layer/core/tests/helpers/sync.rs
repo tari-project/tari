@@ -160,6 +160,20 @@ pub enum WhatToDelete {
     Headers,
 }
 
+// Private helper function to setup a delete a block transaction.
+// Note: This private function will panic if the index is out of bounds - caller function's responsibility.
+fn delete_block(txn: &mut DbTransaction, node: &NodeInterfaces, blocks: &[ChainBlock], index: usize) {
+    txn.delete_block(*blocks[index].hash());
+    txn.delete_orphan(*blocks[index].hash());
+    txn.set_best_block(
+        blocks[index + 1].height(),
+        blocks[index + 1].accumulated_data().hash,
+        blocks[index + 1].accumulated_data().total_accumulated_difficulty,
+        *node.blockchain_db.get_chain_metadata().unwrap().best_block(),
+        blocks[index + 1].to_chain_header().timestamp(),
+    );
+}
+
 // Delete blocks and headers in reverse order; the first block in the slice wil not be deleted
 pub fn delete_some_blocks_and_headers(
     blocks_with_anchor: &[ChainBlock],
@@ -170,43 +184,48 @@ pub fn delete_some_blocks_and_headers(
         panic!("blocks must have at least 2 elements");
     }
     let mut blocks: Vec<_> = blocks_with_anchor.to_vec();
-    match instruction {
-        WhatToDelete::BlocksAndHeaders => {
-            node.blockchain_db.rewind_to_height(blocks[0].height()).unwrap();
-            for block in &blocks[1..] {
-                if node.blockchain_db.block_exists(*block.hash()).unwrap() {
-                    let mut txn = DbTransaction::new();
-                    txn.delete_orphan(*block.hash());
-                    node.blockchain_db.write(txn).unwrap();
-                }
-                assert!(!node.blockchain_db.block_exists(*block.hash()).unwrap());
-            }
-        },
-        WhatToDelete::Blocks => {
-            let headers = blocks.iter().map(|b| b.to_chain_header()).collect::<Vec<_>>();
-            node.blockchain_db.rewind_to_height(blocks[0].height()).unwrap();
-            for block in &blocks[1..] {
-                if node.blockchain_db.block_exists(*block.hash()).unwrap() {
-                    let mut txn = DbTransaction::new();
-                    txn.delete_orphan(*block.hash());
-                    node.blockchain_db.write(txn).unwrap();
-                }
-                assert!(!node.blockchain_db.block_exists(*block.hash()).unwrap());
-            }
-            node.blockchain_db.insert_valid_headers(headers[1..].to_vec()).unwrap();
-            // Note: This seems funny, as inserting the headers back into the db will cause this test to fail
-            // for block in &blocks[1..] {
-            //     assert!(!node.blockchain_db.block_exists(*block.hash()).unwrap());
-            // }
-        },
-        WhatToDelete::Headers => {
-            blocks.reverse();
-            for block in blocks.iter().take(blocks.len() - 1) {
-                let mut txn = DbTransaction::new();
-                txn.delete_header(block.height());
-                node.blockchain_db.write(txn).unwrap();
-            }
-        },
+    blocks.reverse();
+    for i in 0..blocks.len() - 1 {
+        let mut txn = DbTransaction::new();
+        match instruction {
+            WhatToDelete::BlocksAndHeaders => {
+                delete_block(&mut txn, node, &blocks, i);
+                txn.delete_header(blocks[i].height());
+            },
+            WhatToDelete::Blocks => {
+                delete_block(&mut txn, node, &blocks, i);
+            },
+            WhatToDelete::Headers => {
+                txn.delete_header(blocks[i].height());
+            },
+        }
+        node.blockchain_db.write(txn).unwrap();
+        match instruction {
+            WhatToDelete::BlocksAndHeaders => {
+                assert!(!node
+                    .blockchain_db
+                    .chain_block_or_orphan_block_exists(*blocks[i].hash())
+                    .unwrap());
+                assert!(node
+                    .blockchain_db
+                    .fetch_header_by_block_hash(*blocks[i].hash())
+                    .unwrap()
+                    .is_none());
+            },
+            WhatToDelete::Blocks => {
+                assert!(!node
+                    .blockchain_db
+                    .chain_block_or_orphan_block_exists(*blocks[i].hash())
+                    .unwrap());
+            },
+            WhatToDelete::Headers => {
+                assert!(node
+                    .blockchain_db
+                    .fetch_header_by_block_hash(*blocks[i].hash())
+                    .unwrap()
+                    .is_none());
+            },
+        }
     }
 }
 
