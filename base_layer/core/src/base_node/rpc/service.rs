@@ -349,7 +349,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             .collect::<Result<_, _>>()
             .map_err(|_| RpcStatus::bad_request(&"Malformed block hash received".to_string()))?;
         let utxos = db
-            .fetch_utxos(hashes)
+            .fetch_outputs_with_spend_status_at_tip(hashes)
             .await
             .rpc_status_internal_error(LOG_TARGET)?
             .into_iter()
@@ -403,7 +403,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         );
 
         let mined_info_resp = db
-            .fetch_utxos_and_mined_info(hashes)
+            .fetch_outputs_mined_info(hashes)
             .await
             .rpc_status_internal_error(LOG_TARGET)?;
 
@@ -481,12 +481,12 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         let mut return_data = Vec::with_capacity(hashes.len());
         let utxos = self
             .db
-            .fetch_utxos_and_mined_info(hashes.clone())
+            .fetch_outputs_mined_info(hashes.clone())
             .await
             .rpc_status_internal_error(LOG_TARGET)?;
         let txos = self
             .db
-            .fetch_txos_and_mined_info(hashes)
+            .fetch_inputs_mined_info(hashes)
             .await
             .rpc_status_internal_error(LOG_TARGET)?;
         if utxos.len() != txos.len() {

@@ -124,7 +124,7 @@ where B: BlockchainBackend + 'static
 
             let outputs_with_statuses = self
                 .db
-                .fetch_utxos_in_block(current_header.hash(), None)
+                .fetch_outputs_in_block_with_spend_state(current_header.hash(), None)
                 .await
                 .rpc_status_internal_error(LOG_TARGET)?;
             let outputs = outputs_with_statuses

@@ -65,7 +65,7 @@ use crate::{
         },
         db_transaction::{DbKey, DbTransaction, DbValue},
         error::ChainStorageError,
-        utxo_mined_info::UtxoMinedInfo,
+        utxo_mined_info::OutputMinedInfo,
         BlockAddResult,
         BlockchainBackend,
         DbBasicStats,
@@ -76,7 +76,7 @@ use crate::{
         OrNotFound,
         Reorg,
         TargetDifficulties,
-        TxoMinedInfo,
+        InputMinedInfo,
     },
     common::rolling_vec::RollingVec,
     consensus::{
@@ -390,7 +390,7 @@ where B: BlockchainBackend
 
     /// Return a list of matching utxos, with each being `None` if not found. If found, the transaction
     /// output, and a boolean indicating if the UTXO was spent as of the current tip.
-    pub fn fetch_utxos(
+    pub fn fetch_outputs_with_spend_status_at_tip(
         &self,
         hashes: Vec<HashOutput>,
     ) -> Result<Vec<Option<(TransactionOutput, bool)>>, ChainStorageError> {
@@ -410,10 +410,10 @@ where B: BlockchainBackend
         Ok(result)
     }
 
-    pub fn fetch_utxos_and_mined_info(
+    pub fn fetch_outputs_mined_info(
         &self,
         hashes: Vec<HashOutput>,
-    ) -> Result<Vec<Option<UtxoMinedInfo>>, ChainStorageError> {
+    ) -> Result<Vec<Option<OutputMinedInfo>>, ChainStorageError> {
         let db = self.db_read_access()?;
 
         let mut result = Vec::with_capacity(hashes.len());
@@ -424,10 +424,10 @@ where B: BlockchainBackend
         Ok(result)
     }
 
-    pub fn fetch_txos_and_mined_info(
+    pub fn fetch_inputs_mined_info(
         &self,
         hashes: Vec<HashOutput>,
-    ) -> Result<Vec<Option<TxoMinedInfo>>, ChainStorageError> {
+    ) -> Result<Vec<Option<InputMinedInfo>>, ChainStorageError> {
         let db = self.db_read_access()?;
 
         let mut result = Vec::with_capacity(hashes.len());
@@ -451,13 +451,13 @@ where B: BlockchainBackend
         db.fetch_kernels_in_block(&hash)
     }
 
-    pub fn fetch_utxos_in_block(
+    pub fn fetch_outputs_in_block_with_spend_state(
         &self,
         hash: HashOutput,
-        spend_header: Option<FixedHash>,
+        spend_status_at_header: Option<FixedHash>,
     ) -> Result<Vec<(TransactionOutput, bool)>, ChainStorageError> {
         let db = self.db_read_access()?;
-        db.fetch_utxos_in_block(&hash, spend_header)
+        db.fetch_outputs_in_block_with_spend_state(&hash, spend_status_at_header)
     }
 
     pub fn fetch_outputs_in_block(&self, hash: HashOutput) -> Result<Vec<TransactionOutput>, ChainStorageError> {

@@ -681,7 +681,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     "Fetching utxos from db: height:{}",
                     curr_header.height(),
                 );
-                let utxos = db.fetch_utxos_in_block(*curr_header.hash(), Some(header_hash))?;
+                let utxos = db.fetch_outputs_in_block_with_spend_state(*curr_header.hash(), Some(header_hash))?;
                 debug!(
                     target: LOG_TARGET,
                     "{} output(s) loaded for height {}",

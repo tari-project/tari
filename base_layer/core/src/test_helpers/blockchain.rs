@@ -56,8 +56,8 @@ use crate::{
         MmrTree,
         Reorg,
         TemplateRegistrationEntry,
-        TxoMinedInfo,
-        UtxoMinedInfo,
+        InputMinedInfo,
+        OutputMinedInfo,
         Validators,
     },
     consensus::{chain_strength_comparer::ChainStrengthComparerBuilder, ConsensusConstantsBuilder, ConsensusManager},
@@ -267,22 +267,22 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().fetch_kernel_by_excess_sig(excess_sig)
     }
 
-    fn fetch_utxos_in_block(
+    fn fetch_outputs_in_block_with_spend_state(
         &self,
         header_hash: &HashOutput,
-        spend_header: Option<FixedHash>,
+        spend_status_at_header: Option<FixedHash>,
     ) -> Result<Vec<(TransactionOutput, bool)>, ChainStorageError> {
         self.db
             .as_ref()
             .unwrap()
-            .fetch_utxos_in_block(header_hash, spend_header)
+            .fetch_outputs_in_block_with_spend_state(header_hash, spend_status_at_header)
     }
 
-    fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<UtxoMinedInfo>, ChainStorageError> {
+    fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<OutputMinedInfo>, ChainStorageError> {
         self.db.as_ref().unwrap().fetch_output(output_hash)
     }
 
-    fn fetch_input(&self, input_hash: &HashOutput) -> Result<Option<TxoMinedInfo>, ChainStorageError> {
+    fn fetch_input(&self, input_hash: &HashOutput) -> Result<Option<InputMinedInfo>, ChainStorageError> {
         self.db.as_ref().unwrap().fetch_input(input_hash)
     }
 

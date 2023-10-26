@@ -44,7 +44,7 @@ use crate::{
     },
     chain_storage::{
         blockchain_database::MmrRoots,
-        utxo_mined_info::{TxoMinedInfo, UtxoMinedInfo},
+        utxo_mined_info::{InputMinedInfo, OutputMinedInfo},
         BlockAddResult,
         BlockchainBackend,
         BlockchainDatabase,
@@ -153,13 +153,13 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     //---------------------------------- TXO --------------------------------------------//
 
-    make_async_fn!(fetch_utxos(hashes: Vec<HashOutput>) -> Vec<Option<(TransactionOutput, bool)>>, "fetch_utxos");
+    make_async_fn!(fetch_outputs_with_spend_status_at_tip(hashes: Vec<HashOutput>) -> Vec<Option<(TransactionOutput, bool)>>, "fetch_outputs_with_spend_status_at_tip");
 
-    make_async_fn!(fetch_utxos_and_mined_info(hashes: Vec<HashOutput>) -> Vec<Option<UtxoMinedInfo>>, "fetch_utxos_and_mined_info");
+    make_async_fn!(fetch_outputs_mined_info(hashes: Vec<HashOutput>) -> Vec<Option<OutputMinedInfo>>, "fetch_outputs_mined_info");
 
-    make_async_fn!(fetch_txos_and_mined_info(hashes: Vec<HashOutput>) -> Vec<Option<TxoMinedInfo>>, "fetch_txos_and_mined_info");
+    make_async_fn!(fetch_inputs_mined_info(hashes: Vec<HashOutput>) -> Vec<Option<InputMinedInfo>>, "fetch_inputs_mined_info");
 
-    make_async_fn!(fetch_utxos_in_block(hash: HashOutput, spend_header: Option<FixedHash>) -> Vec<(TransactionOutput, bool)>, "fetch_utxos_in_block");
+    make_async_fn!(fetch_outputs_in_block_with_spend_state(hash: HashOutput, spend_header: Option<FixedHash>) -> Vec<(TransactionOutput, bool)>, "fetch_outputs_in_block_with_spend_state");
 
     make_async_fn!(fetch_outputs_in_block(hash: HashOutput) -> Vec<TransactionOutput>, "fetch_outputs_in_block");
 
@@ -375,12 +375,6 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         self.transaction.insert_bad_block(hash, height);
         self
     }
-
-    pub fn prune_outputs_at_positions(&mut self, block_hash: BlockHash) -> &mut Self {
-        self.transaction.prune_outputs_spent_at_hash(block_hash);
-        self
-    }
-
     pub async fn commit(&mut self) -> Result<(), ChainStorageError> {
         let transaction = mem::take(&mut self.transaction);
         self.db.write(transaction).await

@@ -163,7 +163,7 @@ where B: BlockchainBackend + 'static
             },
             NodeCommsRequest::FetchMatchingUtxos(utxo_hashes) => {
                 let mut res = Vec::with_capacity(utxo_hashes.len());
-                for (output, spent) in (self.blockchain_db.fetch_utxos(utxo_hashes).await?)
+                for (output, spent) in (self.blockchain_db.fetch_outputs_with_spend_status_at_tip(utxo_hashes).await?)
                     .into_iter()
                     .flatten()
                 {
