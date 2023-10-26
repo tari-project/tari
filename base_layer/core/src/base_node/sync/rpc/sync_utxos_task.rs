@@ -85,7 +85,7 @@ where B: BlockchainBackend + 'static
             .ok_or_else(|| RpcStatus::not_found("End header hash is was not found"))?;
         if start_header.height > end_header.height {
             return Err(RpcStatus::bad_request(&format!(
-                "Start header height({}) cannot be greater tha the end header height({})",
+                "Start header height({}) cannot be greater than the end header height({})",
                 start_header.height, end_header.height
             )));
         }
