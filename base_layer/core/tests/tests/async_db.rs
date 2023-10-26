@@ -27,10 +27,8 @@ use tari_core::{
     blocks::Block,
     chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult},
     transactions::{
-        key_manager::TransactionKeyManagerInterface,
         tari_amount::T,
-        test_helpers::{schema_to_transaction, TestKeyManager},
-        transaction_components::{TransactionOutput, WalletOutput},
+        test_helpers::{schema_to_transaction},
     },
     txn_schema,
 };
@@ -41,21 +39,6 @@ use crate::helpers::{
     database::create_orphan_block,
     sample_blockchains::{create_blockchain_db_no_cut_through, create_new_blockchain},
 };
-
-/// Finds the UTXO in a block corresponding to the wallet output. We have to search for outputs because UTXOs get
-/// sorted in blocks, and so the order they were inserted in can change.
-async fn find_utxo(output: &WalletOutput, block: &Block, key_manager: &TestKeyManager) -> Option<TransactionOutput> {
-    let commitment = key_manager
-        .get_commitment(&output.spending_key_id, &output.value.into())
-        .await
-        .unwrap();
-    for utxo in block.body.outputs().iter() {
-        if commitment == utxo.commitment {
-            return Some(utxo.clone());
-        }
-    }
-    None
-}
 
 #[test]
 fn fetch_async_headers() {
@@ -88,29 +71,6 @@ fn async_rewind_to_height() {
             let block = db.fetch_block(2, true).await.unwrap();
             assert_eq!(block.confirmations(), 1);
             assert_eq!(blocks[2].block(), block.block());
-        });
-    });
-}
-
-#[test]
-fn fetch_async_utxo() {
-    test_async(move |rt| {
-        rt.spawn(async move {
-            let (adb, blocks, outputs, _, key_manager) = create_blockchain_db_no_cut_through().await;
-            // Retrieve a UTXO and an STXO
-            let utxo = find_utxo(&outputs[4][0], blocks[4].block(), &key_manager)
-                .await
-                .unwrap();
-            let stxo = find_utxo(&outputs[1][0], blocks[1].block(), &key_manager)
-                .await
-                .unwrap();
-            let db = AsyncBlockchainDb::new(adb.clone());
-            let db2 = AsyncBlockchainDb::new(adb);
-
-            let utxo_check = db.fetch_utxo(utxo.hash()).await.unwrap().unwrap();
-            assert_eq!(utxo_check, utxo);
-            let stxo_check = db2.fetch_utxo(stxo.hash()).await.unwrap().unwrap();
-            assert_eq!(stxo_check, stxo);
         });
     });
 }

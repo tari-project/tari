@@ -379,13 +379,6 @@ where B: BlockchainBackend
         let db = self.db_read_access()?;
         db.fetch_chain_metadata()
     }
-
-    // Fetch the utxo
-    pub fn fetch_utxo(&self, hash: HashOutput) -> Result<Option<TransactionOutput>, ChainStorageError> {
-        let db = self.db_read_access()?;
-        Ok(db.fetch_output(&hash)?.map(|mined_info| mined_info.output))
-    }
-
     pub fn fetch_unspent_output_by_commitment(
         &self,
         commitment: &Commitment,

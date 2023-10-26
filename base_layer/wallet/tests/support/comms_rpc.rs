@@ -163,8 +163,8 @@ impl BaseNodeWalletRpcMockState {
                 height_of_longest_chain: 1,
             })),
             query_deleted_response: Arc::new(Mutex::new(QueryDeletedResponse {
-                best_block: vec![],
-                height_of_longest_chain: 1,
+                best_block_hash: vec![],
+                best_block_height: 1,
                 data: Vec::new(),
             })),
             fetch_utxos_calls: Arc::new(Mutex::new(Vec::new())),

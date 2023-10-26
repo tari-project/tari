@@ -70,17 +70,17 @@ message FetchUtxosResponse {
 
 message QueryDeletedRequest {
   repeated bytes hashes = 1;
-  google.protobuf.BytesValue chain_must_include_header = 2;
+  bytes chain_must_include_header = 2;
 }
 
 message QueryDeletedResponse {
   repeated QueryDeletedData data = 1;
-  bytes best_block = 2;
-  uint64 height_of_longest_chain = 3;
+  bytes best_block_hash = 2;
+  uint64 best_block_height = 3;
 }
 
 message QueryDeletedData{
-  uint64 mined_height = 1;
+  uint64 mined_at_height = 1;
   bytes block_mined_in = 2;
   uint64 height_deleted_at = 3;
   bytes block_deleted_in = 4;

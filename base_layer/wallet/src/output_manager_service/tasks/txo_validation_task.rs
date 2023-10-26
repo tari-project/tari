@@ -198,7 +198,7 @@ where
             // This assumes that the base node has not reorged since the last time we asked.
             let response = wallet_client
                 .query_deleted(QueryDeletedRequest {
-                    chain_must_include_header: last_mined_header_hash.map(|v| v.to_vec()),
+                    chain_must_include_header: last_mined_header_hash.map(|v| v.to_vec()).unwrap_or_default(),
                     hashes: batch.iter().map(|o| o.hash.to_vec()).collect(),
                 })
                 .await
@@ -214,7 +214,8 @@ where
             }
 
             for (output, data) in batch.iter().zip(response.data.iter()) {
-                if data.mined_height == 0 {
+                // when checking mined height, 0 can be valid so we need to check the hash
+                if data.block_mined_in.is_empty() {
                     // base node thinks this is unmined or does not know of it.
                     self.db
                         .set_output_to_unmined_and_invalid(output.hash)
@@ -231,14 +232,14 @@ where
                         "Updating output comm:{}: hash {} as unspent at tip height {} (Operation ID: {})",
                         output.commitment.to_hex(),
                         output.hash.to_hex(),
-                        response.height_of_longest_chain,
+                        response.best_block_height,
                         self.operation_id
                     );
                     continue;
                 };
 
                 if data.height_deleted_at > 0 {
-                    let confirmed = (response.height_of_longest_chain.saturating_sub(data.height_deleted_at)) >=
+                    let confirmed = (response.best_block_height.saturating_sub(data.height_deleted_at)) >=
                         self.config.num_confirmations_required;
                     let block_hash = data.block_deleted_in.clone().try_into().map_err(|_| {
                         OutputManagerProtocolError::new(
@@ -254,7 +255,7 @@ where
                         "Updating output comm:{}: hash {} as spent at tip height {} (Operation ID: {})",
                         output.commitment.to_hex(),
                         output.hash.to_hex(),
-                        response.height_of_longest_chain,
+                        response.best_block_height,
                         self.operation_id
                     );
                 }
