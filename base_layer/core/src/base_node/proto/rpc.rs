@@ -37,23 +37,6 @@ impl TryFrom<Block> for proto::BlockBodyResponse {
     }
 }
 
-// impl TryFrom<PrunedOutput> for proto::SyncUtxo {
-//     type Error = String;
-//
-//     fn try_from(output: PrunedOutput) -> Result<Self, Self::Error> {
-//         Ok(match output {
-//             PrunedOutput::Pruned { output_hash } => proto::SyncUtxo {
-//                 utxo: Some(proto::sync_utxo::Utxo::PrunedOutput(proto::PrunedOutput {
-//                     hash: output_hash.to_vec(),
-//                 })),
-//             },
-//             PrunedOutput::NotPruned { output } => proto::SyncUtxo {
-//                 utxo: Some(proto::sync_utxo::Utxo::Output(output.try_into()?)),
-//             },
-//         })
-//     }
-// }
-
 impl From<Vec<FeePerGramStat>> for proto::GetMempoolFeePerGramStatsResponse {
     fn from(stats: Vec<FeePerGramStat>) -> Self {
         Self {

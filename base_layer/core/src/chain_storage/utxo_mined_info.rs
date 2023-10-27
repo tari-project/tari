@@ -26,7 +26,7 @@ use tari_common_types::types::BlockHash;
 use crate::transactions::transaction_components::{TransactionInput, TransactionOutput};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UtxoMinedInfo {
+pub struct OutputMinedInfo {
     pub output: TransactionOutput,
     pub mined_height: u64,
     pub header_hash: BlockHash,
@@ -34,7 +34,7 @@ pub struct UtxoMinedInfo {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TxoMinedInfo {
+pub struct InputMinedInfo {
     pub input: TransactionInput,
     pub spent_height: u64,
     pub header_hash: BlockHash,

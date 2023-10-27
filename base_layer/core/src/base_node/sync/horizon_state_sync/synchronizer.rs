@@ -484,7 +484,6 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         let remote_num_outputs = to_header.output_smt_size;
         self.num_outputs = remote_num_outputs;
 
-        // todo we need to be able to pause and resume this
         let info = HorizonSyncInfo::new(vec![sync_peer.node_id().clone()], HorizonSyncStatus::Outputs {
             current: 0,
             total: self.num_outputs,
@@ -669,7 +668,6 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         let mut kernel_sum = HomomorphicCommitment::default();
         let mut burned_sum = HomomorphicCommitment::default();
 
-        let mut prev_mmr = 0;
         let mut prev_kernel_mmr = 0;
 
         let height = header.height();
@@ -680,13 +678,10 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 let curr_header = db.fetch_chain_header(h)?;
                 trace!(
                     target: LOG_TARGET,
-                    "Fetching utxos from db: height:{}, header.output_mmr:{}, prev_mmr:{}, end:{}",
+                    "Fetching utxos from db: height:{}",
                     curr_header.height(),
-                    curr_header.header().output_smt_size,
-                    prev_mmr,
-                    curr_header.header().output_smt_size - 1
                 );
-                let utxos = db.fetch_utxos_in_block(*curr_header.hash(), Some(header_hash))?;
+                let utxos = db.fetch_outputs_in_block_with_spend_state(*curr_header.hash(), Some(header_hash))?;
                 debug!(
                     target: LOG_TARGET,
                     "{} output(s) loaded for height {}",
@@ -708,7 +703,6 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                         utxo_sum = &u.commitment + &utxo_sum;
                     }
                 }
-                prev_mmr = curr_header.header().output_smt_size;
 
                 let kernels = db.fetch_kernels_in_block(*curr_header.hash())?;
                 trace!(target: LOG_TARGET, "Number of kernels returned: {}", kernels.len());
@@ -720,7 +714,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 }
                 prev_kernel_mmr = curr_header.header().kernel_mmr_size;
 
-                if h % 1000 == 0 {
+                if h % 1000 == 0 && height != 0 {
                     debug!(
                         target: LOG_TARGET,
                         "Final Validation: {:.2}% complete. Height: {} sync",
