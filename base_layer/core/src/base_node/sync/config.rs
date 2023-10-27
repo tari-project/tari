@@ -56,13 +56,13 @@ pub struct BlockchainSyncConfig {
 impl Default for BlockchainSyncConfig {
     fn default() -> Self {
         Self {
-            initial_max_sync_latency: Duration::from_secs(30),
+            initial_max_sync_latency: Duration::from_secs(15),
             max_latency_increase: Duration::from_secs(2),
-            ban_period: Duration::from_secs(30 * 60),
-            short_ban_period: Duration::from_secs(60),
+            ban_period: Duration::from_secs(60 * 60 * 2), // 2 hours
+            short_ban_period: Duration::from_secs(240),   // 4 mins
             forced_sync_peers: Default::default(),
             validation_concurrency: 6,
-            rpc_deadline: Duration::from_secs(30),
+            rpc_deadline: Duration::from_secs(15),
         }
     }
 }

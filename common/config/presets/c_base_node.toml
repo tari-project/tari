@@ -120,13 +120,13 @@ track_reorgs = true
 [base_node.state_machine]
 # The initial max sync latency. If a peer fails to stream a header/block within this deadline another sync peer will be
 # selected. If there are no further peers the sync will be restarted with an increased by `max_latency_increase`.
-#blockchain_sync_config.initial_max_sync_latency = 30
+#blockchain_sync_config.initial_max_sync_latency = 15
 # If all sync peers exceed latency increase allowed latency by this value
 #blockchain_sync_config.max_latency_increase =2
 # Longer ban period for potentially malicious infractions (protocol violations etc.)
-#blockchain_sync_config.ban_period = 1_800 # 30 * 60
+#blockchain_sync_config.ban_period = 7_200 # 2 * 60 * 60
 # Short ban period for infractions that are likely not malicious (slow to respond spotty connections etc)
-#blockchain_sync_config.short_ban_period = 60
+#blockchain_sync_config.short_ban_period = 240
 # An allowlist of sync peers from which to sync. No other peers will be selected for sync. If empty sync peers
 # are chosen based on their advertised chain metadata.
 #blockchain_sync_config.forced_sync_peers = []
