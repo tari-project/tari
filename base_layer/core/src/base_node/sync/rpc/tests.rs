@@ -75,7 +75,7 @@ mod sync_blocks {
     }
 
     #[tokio::test]
-    async fn it_does_not_send_empty_responses_with_bad_requests() {
+    async fn is_sends_bad_request+on_bad_response() {
         let (service, db, rpc_request_mock, _tmp) = setup();
 
         let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"])).await;

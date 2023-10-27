@@ -1085,6 +1085,7 @@ where B: BlockchainBackend
     /// Returns true if this block exists in the chain, or is orphaned.
     pub fn chain_block_or_orphan_block_exists(&self, hash: BlockHash) -> Result<bool, ChainStorageError> {
         let db = self.db_read_access()?;
+// we need to check if the block accumulated data exists, and the header might exist without a body
         Ok(db.fetch_block_accumulated_data(&hash)?.is_some() || db.contains(&DbKey::OrphanBlock(hash))?)
     }
 
