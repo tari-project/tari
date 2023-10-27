@@ -27,9 +27,8 @@ use std::{
 use borsh::{BorshDeserialize, BorshSerialize};
 use log::*;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::PrivateKey;
+use tari_common_types::types::{Commitment, PrivateKey};
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
-use tari_common_types::types::Commitment;
 
 use crate::transactions::{
     crypto_factories::CryptoFactories,
@@ -255,16 +254,14 @@ impl AggregateBody {
             }
         }
 
-        if  coinbase_counter == 0 {
+        if coinbase_counter == 0 {
             return Err(TransactionError::NoCoinbase);
         }
 
         debug!(
-                target: LOG_TARGET,
-                "{} coinbases found in body.", coinbase_counter,
-            );
-
-
+            target: LOG_TARGET,
+            "{} coinbases found in body.", coinbase_counter,
+        );
 
         let mut coinbase_counter = 0; // there should be exactly 1 coinbase kernel as well
         for kernel in self.kernels() {
