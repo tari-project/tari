@@ -656,6 +656,35 @@ pub(crate) fn confirm_seed_words(wallet: &mut WalletSqlite) -> Result<(), ExitEr
     }
 }
 
+pub(crate) fn confirm_direct_only_send(wallet: &mut WalletSqlite) -> Result<(), ExitError> {
+    let seed_words = wallet.get_seed_words(&MnemonicLanguage::English)?;
+
+    println!();
+    println!("=========================");
+    println!("       IMPORTANT!        ");
+    println!("=========================");
+    println!("This wallet is set to use DirectOnly.");
+    println!("This is primarily used for testing and can result in not all messages being sent.");
+    println!();
+    println!("\x07"); // beep!
+
+    let mut rl = Editor::<()>::new();
+    loop {
+        println!("I confirm this warning.");
+        println!(r#"Type the word "confirm" , "yes" or "y" to continue."#);
+        let readline = rl.readline(">> ");
+        match readline {
+            Ok(line) => match line.to_lowercase().as_ref() {
+                "confirm" | "yes" | "y" => return Ok(()),
+                _ => continue,
+            },
+            Err(e) => {
+                return Err(ExitError::new(ExitCode::IOError, e));
+            },
+        }
+    }
+}
+
 /// Clear the terminal and print the Tari splash
 pub fn tari_splash_screen(heading: &str) {
     // clear the terminal

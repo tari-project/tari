@@ -49,6 +49,7 @@ pub use cli::{
 use init::{change_password, get_base_node_peer_config, init_wallet, start_wallet, tari_splash_screen, WalletBoot};
 use log::*;
 use minotari_app_utilities::{common_cli_args::CommonCliArgs, consts, network_check::is_network_choice_valid};
+use minotari_wallet::transaction_service::config::TransactionRoutingMechanism;
 use recovery::{get_seed_from_seed_words, prompt_private_key_from_seed_words};
 use tari_common::{
     configuration::bootstrap::ApplicationType,
@@ -63,7 +64,7 @@ use tokio::runtime::Runtime;
 use wallet_modes::{command_mode, grpc_mode, recovery_mode, script_mode, tui_mode, WalletMode};
 
 pub use crate::config::ApplicationConfig;
-use crate::init::{boot_with_password, confirm_seed_words, wallet_mode};
+use crate::init::{boot_with_password, confirm_direct_only_send, confirm_seed_words, wallet_mode};
 
 pub const LOG_TARGET: &str = "wallet::console_wallet::main";
 
@@ -168,6 +169,20 @@ pub fn run_wallet_with_cli(
         shutdown_signal,
         cli.non_interactive_mode,
     ))?;
+
+    if !cli.non_interactive_mode &&
+        config.wallet.transaction_service_config.transaction_routing_mechanism ==
+            TransactionRoutingMechanism::DirectOnly
+    {
+        match confirm_direct_only_send(&mut wallet) {
+            Ok(()) => {
+                print!("\x1Bc"); // Clear the screen
+            },
+            Err(error) => {
+                return Err(error);
+            },
+        };
+    }
 
     // if wallet is being set for the first time, wallet seed words are prompted on the screen
     if !cli.non_interactive_mode && not_recovery && on_init {
