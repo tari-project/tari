@@ -616,7 +616,7 @@ mod test {
         tx.offset = tx.offset + offset;
         tx.body.sort();
 
-        // lets add duplciate coinbase kernel
+        // lets add duplicate coinbase kernel
         let mut coinbase2 = tx2.body.outputs()[0].clone();
         coinbase2.features = OutputFeatures::default();
         let coinbase_kernel2 = tx2.body.kernels()[0].clone();
