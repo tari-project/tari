@@ -646,8 +646,8 @@ impl LMDBDatabase {
             &TransactionInputRowDataRef {
                 input: &input.to_compact(),
                 header_hash,
-                mined_timestamp: header_timestamp,
-                height,
+                spent_timestamp: header_timestamp,
+                spent_height: height,
                 hash: &hash,
             },
             "inputs_db",
@@ -945,7 +945,7 @@ impl LMDBDatabase {
                 utxo_mined_info.output.minimum_value_promise,
             );
             let smt_key = NodeKey::try_from(input.commitment()?.as_bytes())?;
-            let smt_node = ValueHash::try_from(input.smt_hash(row.height).as_slice())?;
+            let smt_node = ValueHash::try_from(input.smt_hash(row.spent_height).as_slice())?;
             output_smt.insert(smt_key, smt_node)?;
 
             trace!(target: LOG_TARGET, "Input moved to UTXO set: {}", input);
@@ -1081,6 +1081,12 @@ impl LMDBDatabase {
         header: &BlockHeader,
         body: AggregateBody,
     ) -> Result<(), ChainStorageError> {
+        if self.fetch_block_accumulated_data(txn, header.height + 1)?.is_some() {
+            return Err(ChainStorageError::InvalidOperation(format!(
+                "Attempted to insert block at height {} while next block already exists",
+                header.height
+            )));
+        }
         let block_hash = header.hash();
         debug!(
             target: LOG_TARGET,
@@ -1506,15 +1512,15 @@ impl LMDBDatabase {
             match lmdb_get::<_, TransactionInputRowData>(txn, &self.utxos_db, &key)? {
                 Some(TransactionInputRowData {
                     input: i,
-                    height,
+                    spent_height: height,
                     header_hash,
-                    mined_timestamp,
+                    spent_timestamp,
                     ..
                 }) => Ok(Some(InputMinedInfo {
                     input: i,
                     spent_height: height,
                     header_hash,
-                    spent_timestamp: mined_timestamp,
+                    spent_timestamp,
                 })),
 
                 _ => Ok(None),
@@ -1835,7 +1841,7 @@ impl BlockchainBackend for LMDBDatabase {
     ) -> Result<Vec<(TransactionOutput, bool)>, ChainStorageError> {
         let txn = self.read_transaction()?;
 
-        let mut utxos: Vec<(TransactionOutput, bool)> =
+        let mut outputs: Vec<(TransactionOutput, bool)> =
             lmdb_fetch_matching_after::<TransactionOutputRowData>(&txn, &self.utxos_db, header_hash.deref())?
                 .into_iter()
                 .map(|row| (row.output, false))
@@ -1848,20 +1854,20 @@ impl BlockchainBackend for LMDBDatabase {
                         field: "hash",
                         value: header.to_hex(),
                     })?;
-            for utxo in &mut utxos {
-                let hash = utxo.0.hash();
+            for output in &mut outputs {
+                let hash = output.0.hash();
                 if let Some((height, _)) =
                     lmdb_get::<_, (u64, Vec<u8>)>(&txn, &self.deleted_txo_hash_to_header_index, hash.as_slice())?
                 {
                     if height <= header_height {
                         // we know its spend at the header height specified as optional in the fn
-                        utxo.1 = true;
+                        output.1 = true;
                     }
                 }
             }
         }
 
-        Ok(utxos)
+        Ok(outputs)
     }
 
     fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<OutputMinedInfo>, ChainStorageError> {
