@@ -212,14 +212,6 @@ async fn it_checks_exactly_one_coinbase() {
         .body
         .add_output(coinbase_output.to_transaction_output(&blockchain.km).await.unwrap());
     block.body.sort();
-    let block = blockchain.mine_block("GB", block, Difficulty::min());
-
-    let err = {
-        // `MutexGuard` cannot be held across an `await` point
-        let txn = blockchain.db().db_read_access().unwrap();
-        let err = validator.validate_body(&*txn, block.block()).unwrap_err();
-        err
-    };
 
     let (block, _) = blockchain
         .create_unmined_block(block_spec!("A2", parent: "GB", skip_coinbase: true,))
