@@ -220,12 +220,6 @@ async fn it_checks_exactly_one_coinbase() {
         let err = validator.validate_body(&*txn, block.block()).unwrap_err();
         err
     };
-    assert!(matches!(
-        err,
-        ValidationError::BlockError(BlockValidationError::TransactionError(
-            TransactionError::MoreThanOneCoinbase
-        ))
-    ));
 
     let (block, _) = blockchain
         .create_unmined_block(block_spec!("A2", parent: "GB", skip_coinbase: true,))

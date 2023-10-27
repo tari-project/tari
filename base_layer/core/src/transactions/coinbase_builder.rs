@@ -625,16 +625,6 @@ mod test {
 
         tx_kernel_test.body.sort();
 
-        // test catches that coinbase count on the utxo is wrong
-        assert!(matches!(
-            tx.body.check_coinbase_output(
-                block_reward,
-                rules.consensus_constants(0).coinbase_min_maturity(),
-                &factories,
-                42
-            ),
-            Err(TransactionError::MoreThanOneCoinbase)
-        ));
         // test catches that coinbase count on the kernel is wrong
         assert!(matches!(
             tx_kernel_test.body.check_coinbase_output(

@@ -29,6 +29,7 @@ use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::PrivateKey;
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
+use tari_common_types::types::Commitment;
 
 use crate::transactions::{
     crypto_factories::CryptoFactories,
@@ -240,7 +241,7 @@ impl AggregateBody {
         factories: &CryptoFactories,
         height: u64,
     ) -> Result<(), TransactionError> {
-        let mut coinbase_utxo = None;
+        let mut coinbase_utxo_sum = Commitment::default();
         let mut coinbase_kernel = None;
         let mut coinbase_counter = 0; // there should be exactly 1 coinbase
         for utxo in self.outputs() {
@@ -250,22 +251,20 @@ impl AggregateBody {
                     warn!(target: LOG_TARGET, "Coinbase {} found with maturity set too low", utxo);
                     return Err(TransactionError::InvalidCoinbaseMaturity);
                 }
-                coinbase_utxo = Some(utxo);
+                coinbase_utxo_sum = &coinbase_utxo_sum + &utxo.commitment;
             }
         }
-        if coinbase_counter > 1 {
-            warn!(
-                target: LOG_TARGET,
-                "{} coinbases found in body. Only a single coinbase is permitted.", coinbase_counter,
-            );
-            return Err(TransactionError::MoreThanOneCoinbase);
-        }
 
-        if coinbase_utxo.is_none() || coinbase_counter == 0 {
+        if  coinbase_counter == 0 {
             return Err(TransactionError::NoCoinbase);
         }
 
-        let coinbase_utxo = coinbase_utxo.expect("coinbase_utxo: none checked");
+        debug!(
+                target: LOG_TARGET,
+                "{} coinbases found in body.", coinbase_counter,
+            );
+
+
 
         let mut coinbase_counter = 0; // there should be exactly 1 coinbase kernel as well
         for kernel in self.kernels() {
@@ -285,10 +284,10 @@ impl AggregateBody {
         let coinbase_kernel = coinbase_kernel.expect("coinbase_kernel: none checked");
 
         let rhs = &coinbase_kernel.excess + &factories.commitment.commit_value(&PrivateKey::default(), reward.0);
-        if rhs != coinbase_utxo.commitment {
+        if rhs != coinbase_utxo_sum {
             warn!(
                 target: LOG_TARGET,
-                "Coinbase {} amount validation failed", coinbase_utxo
+                "Coinbase amount validation failed"
             );
             return Err(TransactionError::InvalidCoinbase);
         }
