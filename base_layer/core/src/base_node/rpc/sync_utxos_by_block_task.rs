@@ -122,40 +122,41 @@ where B: BlockchainBackend + 'static
                 break;
             }
 
-            let utxos = self
+            let outputs_with_statuses = self
                 .db
-                .fetch_utxos_in_block(current_header.hash(), None)
+                .fetch_outputs_in_block_with_spend_state(current_header.hash(), None)
                 .await
                 .rpc_status_internal_error(LOG_TARGET)?;
-            let utxos = utxos
-                    .into_iter()
-                    // Don't include pruned UTXOs
-                    .map(|(utxo, _spent)| utxo.try_into()).collect::<Result<Vec<proto::types::TransactionOutput>, String>>().map_err(|err| RpcStatus::general(&err))?;
+            let outputs = outputs_with_statuses
+                .into_iter()
+                .map(|(output, _spent)| output.try_into())
+                .collect::<Result<Vec<proto::types::TransactionOutput>, String>>()
+                .map_err(|err| RpcStatus::general(&err))?;
 
             debug!(
                 target: LOG_TARGET,
                 "Streaming {} UTXO(s) for block #{} (Hash: {})",
-                utxos.len(),
+                outputs.len(),
                 current_header.height,
                 current_header_hash.to_hex(),
             );
 
-            for utxo_chunk in utxos.chunks(2000) {
-                let utxo_block_response = SyncUtxosByBlockResponse {
-                    outputs: utxo_chunk.to_vec(),
+            for output_chunk in outputs.chunks(2000) {
+                let output_block_response = SyncUtxosByBlockResponse {
+                    outputs: output_chunk.to_vec(),
                     height: current_header.height,
                     header_hash: current_header_hash.to_vec(),
                     mined_timestamp: current_header.timestamp.as_u64(),
                 };
                 // Ensure task stops if the peer prematurely stops their RPC session
-                if tx.send(Ok(utxo_block_response)).await.is_err() {
+                if tx.send(Ok(output_block_response)).await.is_err() {
                     break;
                 }
             }
-            if utxos.is_empty() {
+            if outputs.is_empty() {
                 // if its empty, we need to send an empty vec of outputs.
                 let utxo_block_response = SyncUtxosByBlockResponse {
-                    outputs: utxos,
+                    outputs: Vec::new(),
                     height: current_header.height,
                     header_hash: current_header_hash.to_vec(),
                     mined_timestamp: current_header.timestamp.as_u64(),

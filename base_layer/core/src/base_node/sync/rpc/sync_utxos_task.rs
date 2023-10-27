@@ -83,6 +83,12 @@ where B: BlockchainBackend + 'static
             .await
             .rpc_status_internal_error(LOG_TARGET)?
             .ok_or_else(|| RpcStatus::not_found("End header hash is was not found"))?;
+        if start_header.height > end_header.height {
+            return Err(RpcStatus::bad_request(&format!(
+                "Start header height({}) cannot be greater than the end header height({})",
+                start_header.height, end_header.height
+            )));
+        }
 
         task::spawn(async move {
             debug!(
@@ -138,9 +144,9 @@ where B: BlockchainBackend + 'static
                 break;
             }
 
-            let utxos = self
+            let outputs_with_statuses = self
                 .db
-                .fetch_utxos_in_block(current_header.hash(), Some(end_header.hash()))
+                .fetch_outputs_in_block_with_spend_state(current_header.hash(), Some(end_header.hash()))
                 .await
                 .rpc_status_internal_error(LOG_TARGET)?;
             debug!(
@@ -156,14 +162,14 @@ where B: BlockchainBackend + 'static
                 break;
             }
 
-            let utxos = utxos
+            let utxos = outputs_with_statuses
                 .into_iter()
-                .filter_map(|(utxo, spent)| {
+                .filter_map(|(output, spent)| {
                     // We only send unspent utxos
                     if spent {
                         None
                     } else {
-                        match utxo.try_into() {
+                        match output.try_into() {
                             Ok(tx_ouput) => Some(Ok(SyncUtxosResponse {
                                 output: Some(tx_ouput),
                                 mined_header: current_header.hash().to_vec(),
@@ -178,13 +184,15 @@ where B: BlockchainBackend + 'static
                 .map(Ok);
 
             // Ensure task stops if the peer prematurely stops their RPC session
+            let utxos_len = utxos.len();
             if utils::mpsc::send_all(tx, utxos).await.is_err() {
                 break;
             }
 
             debug!(
                 target: LOG_TARGET,
-                "Streamed utxos in {:.2?} (including stream backpressure)",
+                "Streamed {} utxos in {:.2?} (including stream backpressure)",
+                utxos_len,
                 timer.elapsed()
             );
 

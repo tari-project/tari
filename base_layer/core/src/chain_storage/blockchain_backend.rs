@@ -17,10 +17,10 @@ use crate::{
         DbTransaction,
         DbValue,
         HorizonData,
+        InputMinedInfo,
         MmrTree,
+        OutputMinedInfo,
         Reorg,
-        TxoMinedInfo,
-        UtxoMinedInfo,
     },
     transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
     OutputSmt,
@@ -88,17 +88,17 @@ pub trait BlockchainBackend: Send + Sync {
     ) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError>;
 
     /// Fetch all UTXOs and spends in the block
-    fn fetch_utxos_in_block(
+    fn fetch_outputs_in_block_with_spend_state(
         &self,
         header_hash: &HashOutput,
-        spend_header: Option<FixedHash>,
+        spend_status_at_header: Option<FixedHash>,
     ) -> Result<Vec<(TransactionOutput, bool)>, ChainStorageError>;
 
     /// Fetch a specific output. Returns the output and the leaf index in the output MMR
-    fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<UtxoMinedInfo>, ChainStorageError>;
+    fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<OutputMinedInfo>, ChainStorageError>;
 
     /// Fetch a specific input. Returns the output and the leaf index in the output MMR
-    fn fetch_input(&self, input_hash: &HashOutput) -> Result<Option<TxoMinedInfo>, ChainStorageError>;
+    fn fetch_input(&self, input_hash: &HashOutput) -> Result<Option<InputMinedInfo>, ChainStorageError>;
 
     /// Returns the unspent TransactionOutput output that matches the given commitment if it exists in the current UTXO
     /// set, otherwise None is returned.

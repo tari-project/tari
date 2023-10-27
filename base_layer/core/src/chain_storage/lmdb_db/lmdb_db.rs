@@ -80,16 +80,16 @@ use crate::{
             TransactionOutputRowData,
         },
         stats::DbTotalSizeStats,
-        utxo_mined_info::UtxoMinedInfo,
+        utxo_mined_info::OutputMinedInfo,
         BlockchainBackend,
         ChainTipData,
         DbBasicStats,
         DbSize,
         HorizonData,
+        InputMinedInfo,
         MmrTree,
         Reorg,
         TemplateRegistrationEntry,
-        TxoMinedInfo,
         ValidatorNodeEntry,
     },
     consensus::{ConsensusConstants, ConsensusManager},
@@ -1457,7 +1457,7 @@ impl LMDBDatabase {
         &self,
         txn: &ConstTransaction<'_>,
         output_hash: &[u8],
-    ) -> Result<Option<UtxoMinedInfo>, ChainStorageError> {
+    ) -> Result<Option<OutputMinedInfo>, ChainStorageError> {
         if let Some(key) = lmdb_get::<_, Vec<u8>>(txn, &self.txos_hash_to_index_db, output_hash)? {
             debug!(
                 target: LOG_TARGET,
@@ -1472,7 +1472,7 @@ impl LMDBDatabase {
                     header_hash,
                     mined_timestamp,
                     ..
-                }) => Ok(Some(UtxoMinedInfo {
+                }) => Ok(Some(OutputMinedInfo {
                     output: o,
                     mined_height,
                     header_hash,
@@ -1495,7 +1495,7 @@ impl LMDBDatabase {
         &self,
         txn: &ConstTransaction<'_>,
         input_hash: &[u8],
-    ) -> Result<Option<TxoMinedInfo>, ChainStorageError> {
+    ) -> Result<Option<InputMinedInfo>, ChainStorageError> {
         if let Some(key) = lmdb_get::<_, Vec<u8>>(txn, &self.deleted_txo_hash_to_header_index, input_hash)? {
             debug!(
                 target: LOG_TARGET,
@@ -1510,7 +1510,7 @@ impl LMDBDatabase {
                     header_hash,
                     mined_timestamp,
                     ..
-                }) => Ok(Some(TxoMinedInfo {
+                }) => Ok(Some(InputMinedInfo {
                     input: i,
                     spent_height: height,
                     header_hash,
@@ -1828,10 +1828,10 @@ impl BlockchainBackend for LMDBDatabase {
         }
     }
 
-    fn fetch_utxos_in_block(
+    fn fetch_outputs_in_block_with_spend_state(
         &self,
         header_hash: &HashOutput,
-        spend_header: Option<FixedHash>,
+        spend_status_at_header: Option<FixedHash>,
     ) -> Result<Vec<(TransactionOutput, bool)>, ChainStorageError> {
         let txn = self.read_transaction()?;
 
@@ -1840,7 +1840,7 @@ impl BlockchainBackend for LMDBDatabase {
                 .into_iter()
                 .map(|row| (row.output, false))
                 .collect();
-        if let Some(header) = spend_header {
+        if let Some(header) = spend_status_at_header {
             let header_height =
                 self.fetch_height_from_hash(&txn, header_hash)?
                     .ok_or(ChainStorageError::ValueNotFound {
@@ -1864,13 +1864,13 @@ impl BlockchainBackend for LMDBDatabase {
         Ok(utxos)
     }
 
-    fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<UtxoMinedInfo>, ChainStorageError> {
+    fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<OutputMinedInfo>, ChainStorageError> {
         debug!(target: LOG_TARGET, "Fetch output: {}", output_hash.to_hex());
         let txn = self.read_transaction()?;
         self.fetch_output_in_txn(&txn, output_hash.as_slice())
     }
 
-    fn fetch_input(&self, input_hash: &HashOutput) -> Result<Option<TxoMinedInfo>, ChainStorageError> {
+    fn fetch_input(&self, input_hash: &HashOutput) -> Result<Option<InputMinedInfo>, ChainStorageError> {
         debug!(target: LOG_TARGET, "Fetch input: {}", input_hash.to_hex());
         let txn = self.read_transaction()?;
         self.fetch_input_in_txn(&txn, input_hash.as_slice())
