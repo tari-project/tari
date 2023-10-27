@@ -1806,11 +1806,11 @@ impl BlockchainBackend for LMDBDatabase {
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, ChainStorageError> {
         let txn = self.read_transaction()?;
         let res = match key {
-            DbKey::BlockHeader(k) => {
+            DbKey::HeaderHeight(k) => {
                 let val: Option<BlockHeader> = lmdb_get(&txn, &self.headers_db, k)?;
-                val.map(|val| DbValue::BlockHeader(Box::new(val)))
+                val.map(|val| DbValue::HeaderHeight(Box::new(val)))
             },
-            DbKey::BlockHash(hash) => {
+            DbKey::HeaderHash(hash) => {
                 let k: Option<u64> = self.fetch_height_from_hash(&txn, hash)?;
                 match k {
                     Some(k) => {
@@ -1821,7 +1821,7 @@ impl BlockchainBackend for LMDBDatabase {
                             k
                         );
                         let val: Option<BlockHeader> = lmdb_get(&txn, &self.headers_db, &k)?;
-                        val.map(|val| DbValue::BlockHash(Box::new(val)))
+                        val.map(|val| DbValue::HeaderHash(Box::new(val)))
                     },
                     None => {
                         trace!(
@@ -1843,8 +1843,8 @@ impl BlockchainBackend for LMDBDatabase {
     fn contains(&self, key: &DbKey) -> Result<bool, ChainStorageError> {
         let txn = self.read_transaction()?;
         Ok(match key {
-            DbKey::BlockHeader(k) => lmdb_exists(&txn, &self.headers_db, k)?,
-            DbKey::BlockHash(h) => lmdb_exists(&txn, &self.block_hashes_db, h.deref())?,
+            DbKey::HeaderHeight(k) => lmdb_exists(&txn, &self.headers_db, k)?,
+            DbKey::HeaderHash(h) => lmdb_exists(&txn, &self.block_hashes_db, h.deref())?,
             DbKey::OrphanBlock(k) => lmdb_exists(&txn, &self.orphans_db, k.deref())?,
         })
     }

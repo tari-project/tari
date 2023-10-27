@@ -251,7 +251,7 @@ where B: BlockchainBackend
             txn.set_horizon_data(kernel_sum, utxo_sum);
             blockchain_db.write(txn)?;
             blockchain_db.store_pruning_horizon(config.pruning_horizon)?;
-        } else if !blockchain_db.block_exists(genesis_block.accumulated_data().hash)? {
+        } else if !blockchain_db.chain_block_or_orphan_block_exists(genesis_block.accumulated_data().hash)? {
             // Check the genesis block in the DB.
             error!(
                 target: LOG_TARGET,
@@ -917,7 +917,7 @@ where B: BlockchainBackend
             after_lock - before_lock,
         );
 
-        if db.contains(&DbKey::BlockHash(block_hash))? {
+        if db.contains(&DbKey::HeaderHash(block_hash))? {
             return Ok(BlockAddResult::BlockExists);
         }
         if db.bad_block_exists(block_hash)? {
@@ -1083,9 +1083,10 @@ where B: BlockchainBackend
     }
 
     /// Returns true if this block exists in the chain, or is orphaned.
-    pub fn block_exists(&self, hash: BlockHash) -> Result<bool, ChainStorageError> {
+    pub fn chain_block_or_orphan_block_exists(&self, hash: BlockHash) -> Result<bool, ChainStorageError> {
         let db = self.db_read_access()?;
-        Ok(db.contains(&DbKey::BlockHash(hash))? || db.contains(&DbKey::OrphanBlock(hash))?)
+        // we need to check if the block accumulated data exists, and the header might exist without a body
+        Ok(db.fetch_block_accumulated_data(&hash)?.is_some() || db.contains(&DbKey::OrphanBlock(hash))?)
     }
 
     /// Returns true if this block exists in the chain, or is orphaned.
@@ -1404,7 +1405,7 @@ pub fn calculate_validator_node_mr(validator_nodes: &[(PublicKey, [u8; 32])]) ->
 }
 
 pub fn fetch_header<T: BlockchainBackend>(db: &T, block_num: u64) -> Result<BlockHeader, ChainStorageError> {
-    fetch!(db, block_num, BlockHeader)
+    fetch!(db, block_num, HeaderHeight)
 }
 
 pub fn fetch_headers<T: BlockchainBackend>(
@@ -1422,8 +1423,8 @@ pub fn fetch_headers<T: BlockchainBackend>(
     #[allow(clippy::cast_possible_truncation)]
     let mut headers = Vec::with_capacity((end_inclusive - start) as usize);
     for h in start..=end_inclusive {
-        match db.fetch(&DbKey::BlockHeader(h))? {
-            Some(DbValue::BlockHeader(header)) => {
+        match db.fetch(&DbKey::HeaderHeight(h))? {
+            Some(DbValue::HeaderHeight(header)) => {
                 headers.push(*header);
             },
             Some(_) => unreachable!(),
@@ -1476,7 +1477,7 @@ fn fetch_header_by_block_hash<T: BlockchainBackend>(
     db: &T,
     hash: BlockHash,
 ) -> Result<Option<BlockHeader>, ChainStorageError> {
-    try_fetch!(db, hash, BlockHash)
+    try_fetch!(db, hash, HeaderHash)
 }
 
 fn fetch_orphan<T: BlockchainBackend>(db: &T, hash: BlockHash) -> Result<Block, ChainStorageError> {
@@ -2367,7 +2368,7 @@ fn get_orphan_link_main_chain<T: BlockchainBackend>(
 
         // If this hash is part of the main chain, we're done - since curr_hash has already been set to the previous
         // hash, the chain Vec does not include the fork block in common with both chains
-        if db.contains(&DbKey::BlockHash(curr_hash))? {
+        if db.contains(&DbKey::HeaderHash(curr_hash))? {
             break;
         }
     }
@@ -2893,7 +2894,7 @@ mod test {
                 // Check 2b was added
                 let access = test.db_write_access();
                 let block = orphan_chain_b.get("2b").unwrap().clone();
-                assert!(access.contains(&DbKey::BlockHash(*block.hash())).unwrap());
+                assert!(access.contains(&DbKey::HeaderHash(*block.hash())).unwrap());
 
                 // Check 7d is the tip
                 let block = orphan_chain_d.get("7d").unwrap().clone();
@@ -2902,7 +2903,7 @@ mod test {
                 let metadata = access.fetch_chain_metadata().unwrap();
                 assert_eq!(metadata.best_block(), block.hash());
                 assert_eq!(metadata.height_of_longest_chain(), block.height());
-                assert!(access.contains(&DbKey::BlockHash(*block.hash())).unwrap());
+                assert!(access.contains(&DbKey::HeaderHash(*block.hash())).unwrap());
 
                 let mut all_blocks = main_chain
                     .into_iter()
@@ -2916,8 +2917,8 @@ mod test {
                 for (height, name) in expected_chain.iter().enumerate() {
                     let expected_block = all_blocks.get(*name).unwrap();
                     unpack_enum!(
-                        DbValue::BlockHeader(found_block) =
-                            access.fetch(&DbKey::BlockHeader(height as u64)).unwrap().unwrap()
+                        DbValue::HeaderHeight(found_block) =
+                            access.fetch(&DbKey::HeaderHeight(height as u64)).unwrap().unwrap()
                     );
                     assert_eq!(*found_block, *expected_block.header());
                 }
@@ -2988,7 +2989,7 @@ mod test {
                 // Check 2b was added
                 let access = test.db_write_access();
                 let block = orphan_chain_b.get("2b").unwrap().clone();
-                assert!(access.contains(&DbKey::BlockHash(*block.hash())).unwrap());
+                assert!(access.contains(&DbKey::HeaderHash(*block.hash())).unwrap());
 
                 // Check 12b is the tip
                 let block = orphan_chain_b.get("12b").unwrap().clone();
@@ -2997,7 +2998,7 @@ mod test {
                 let metadata = access.fetch_chain_metadata().unwrap();
                 assert_eq!(metadata.best_block(), block.hash());
                 assert_eq!(metadata.height_of_longest_chain(), block.height());
-                assert!(access.contains(&DbKey::BlockHash(*block.hash())).unwrap());
+                assert!(access.contains(&DbKey::HeaderHash(*block.hash())).unwrap());
 
                 let mut all_blocks = main_chain.into_iter().chain(orphan_chain_b).collect::<HashMap<_, _>>();
                 all_blocks.insert("GB".to_string(), genesis);
@@ -3008,8 +3009,8 @@ mod test {
                 for (height, name) in expected_chain.iter().enumerate() {
                     let expected_block = all_blocks.get(*name).unwrap();
                     unpack_enum!(
-                        DbValue::BlockHeader(found_block) =
-                            access.fetch(&DbKey::BlockHeader(height as u64)).unwrap().unwrap()
+                        DbValue::HeaderHeight(found_block) =
+                            access.fetch(&DbKey::HeaderHeight(height as u64)).unwrap().unwrap()
                     );
                     assert_eq!(*found_block, *expected_block.header());
                 }

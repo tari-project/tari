@@ -464,16 +464,16 @@ impl fmt::Display for WriteOperation {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DbKey {
-    BlockHeader(u64),
-    BlockHash(BlockHash),
+    HeaderHeight(u64),
+    HeaderHash(BlockHash),
     OrphanBlock(HashOutput),
 }
 
 impl DbKey {
     pub fn to_value_not_found_error(&self) -> ChainStorageError {
         let (entity, field, value) = match self {
-            DbKey::BlockHeader(v) => ("BlockHeader", "Height", v.to_string()),
-            DbKey::BlockHash(v) => ("Block", "Hash", v.to_hex()),
+            DbKey::HeaderHeight(v) => ("BlockHeader", "Height", v.to_string()),
+            DbKey::HeaderHash(v) => ("Header", "Hash", v.to_hex()),
             DbKey::OrphanBlock(v) => ("Orphan", "Hash", v.to_hex()),
         };
         ChainStorageError::ValueNotFound { entity, field, value }
@@ -482,16 +482,16 @@ impl DbKey {
 
 #[derive(Debug)]
 pub enum DbValue {
-    BlockHeader(Box<BlockHeader>),
-    BlockHash(Box<BlockHeader>),
+    HeaderHeight(Box<BlockHeader>),
+    HeaderHash(Box<BlockHeader>),
     OrphanBlock(Box<Block>),
 }
 
 impl Display for DbValue {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
-            DbValue::BlockHeader(_) => f.write_str("Block header"),
-            DbValue::BlockHash(_) => f.write_str("Block hash"),
+            DbValue::HeaderHeight(_) => f.write_str("Header by height"),
+            DbValue::HeaderHash(_) => f.write_str("Header by hash"),
             DbValue::OrphanBlock(_) => f.write_str("Orphan block"),
         }
     }
@@ -500,8 +500,8 @@ impl Display for DbValue {
 impl Display for DbKey {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
-            DbKey::BlockHeader(v) => f.write_str(&format!("Block header (#{})", v)),
-            DbKey::BlockHash(v) => f.write_str(&format!("Block hash (#{})", v.to_hex())),
+            DbKey::HeaderHeight(v) => f.write_str(&format!("Header height (#{})", v)),
+            DbKey::HeaderHash(v) => f.write_str(&format!("Header hash (#{})", v.to_hex())),
             DbKey::OrphanBlock(v) => f.write_str(&format!("Orphan block hash ({})", v.to_hex())),
         }
     }

@@ -75,7 +75,7 @@ mod sync_blocks {
     }
 
     #[tokio::test]
-    async fn it_sends_an_empty_response() {
+    async fn it_sends_bad_request_on_bad_response() {
         let (service, db, rpc_request_mock, _tmp) = setup();
 
         let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"])).await;
@@ -86,8 +86,7 @@ mod sync_blocks {
             end_hash: block.hash().to_vec(),
         };
         let req = rpc_request_mock.request_with_context(Default::default(), msg);
-        let mut streaming = service.sync_blocks(req).await.unwrap();
-        assert!(streaming.next().await.is_none());
+        assert!(service.sync_blocks(req).await.is_err());
     }
 
     #[tokio::test]

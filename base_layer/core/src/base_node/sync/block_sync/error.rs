@@ -69,6 +69,8 @@ pub enum BlockSyncError {
     SyncRoundFailed,
     #[error("Could not find peer info")]
     PeerNotFound,
+    #[error("Peer did not supply all the blocks they claimed they had: {0}")]
+    PeerDidNotSupplyAllClaimedBlocks(String),
 }
 
 impl BlockSyncError {
@@ -93,6 +95,7 @@ impl BlockSyncError {
             BlockSyncError::FixedHashSizeError(_) => "FixedHashSizeError",
             BlockSyncError::SyncRoundFailed => "SyncRoundFailed",
             BlockSyncError::PeerNotFound => "PeerNotFound",
+            BlockSyncError::PeerDidNotSupplyAllClaimedBlocks(_) => "PeerDidNotSupplyAllClaimedBlocks",
         }
     }
 }
@@ -102,8 +105,6 @@ impl BlockSyncError {
         match self {
             // no ban
             BlockSyncError::AsyncTaskFailed(_) |
-            BlockSyncError::RpcError(_) |
-            BlockSyncError::RpcRequestError(_) |
             BlockSyncError::ChainStorageError(_) |
             BlockSyncError::ConnectivityError(_) |
             BlockSyncError::NoMoreSyncPeers(_) |
@@ -113,7 +114,10 @@ impl BlockSyncError {
             BlockSyncError::SyncRoundFailed => None,
 
             // short ban
-            err @ BlockSyncError::MaxLatencyExceeded { .. } => Some(BanReason {
+            err @ BlockSyncError::MaxLatencyExceeded { .. } |
+            err @ BlockSyncError::PeerDidNotSupplyAllClaimedBlocks(_) |
+            err @ BlockSyncError::RpcError(_) |
+            err @ BlockSyncError::RpcRequestError(_) => Some(BanReason {
                 reason: format!("{}", err),
                 ban_duration: short_ban,
             }),

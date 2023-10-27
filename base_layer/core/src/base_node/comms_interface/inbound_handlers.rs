@@ -522,7 +522,7 @@ where B: BlockchainBackend + 'static
     }
 
     async fn check_exists_and_not_bad_block(&self, block: FixedHash) -> Result<bool, CommsInterfaceError> {
-        if self.blockchain_db.block_exists(block).await? {
+        if self.blockchain_db.chain_block_or_orphan_block_exists(block).await? {
             debug!(
                 target: LOG_TARGET,
                 "Block with hash `{}` already stored",

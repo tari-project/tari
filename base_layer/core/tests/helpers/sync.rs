@@ -28,7 +28,7 @@ use tari_comms::peer_manager::NodeId;
 use tari_core::{
     base_node::{
         chain_metadata_service::PeerChainMetadata,
-        state_machine_service::states::{HeaderSyncState, StateEvent, StatusInfo},
+        state_machine_service::states::{BlockSync, HeaderSyncState, StateEvent, StatusInfo},
         sync::SyncPeer,
         BaseNodeStateMachine,
         BaseNodeStateMachineConfig,
@@ -74,6 +74,21 @@ pub async fn sync_headers_execute(
     header_sync: &mut HeaderSyncState,
 ) -> StateEvent {
     header_sync.next_event(state_machine).await
+}
+
+pub fn initialize_sync_blocks(peer_node_interfaces: &NodeInterfaces) -> BlockSync {
+    BlockSync::from(vec![SyncPeer::from(PeerChainMetadata::new(
+        peer_node_interfaces.node_identity.node_id().clone(),
+        peer_node_interfaces.blockchain_db.get_chain_metadata().unwrap(),
+        None,
+    ))])
+}
+
+pub async fn sync_blocks_execute(
+    state_machine: &mut BaseNodeStateMachine<TempDatabase>,
+    block_sync: &mut BlockSync,
+) -> StateEvent {
+    block_sync.next_event(state_machine).await
 }
 
 pub async fn create_network_with_local_and_peer_nodes() -> (
@@ -140,8 +155,23 @@ pub async fn create_network_with_local_and_peer_nodes() -> (
 #[allow(dead_code)]
 #[derive(Debug)]
 pub enum WhatToDelete {
+    BlocksAndHeaders,
     Blocks,
     Headers,
+}
+
+// Private helper function to setup a delete a block transaction.
+// Note: This private function will panic if the index is out of bounds - caller function's responsibility.
+fn delete_block(txn: &mut DbTransaction, node: &NodeInterfaces, blocks: &[ChainBlock], index: usize) {
+    txn.delete_block(*blocks[index].hash());
+    txn.delete_orphan(*blocks[index].hash());
+    txn.set_best_block(
+        blocks[index + 1].height(),
+        blocks[index + 1].accumulated_data().hash,
+        blocks[index + 1].accumulated_data().total_accumulated_difficulty,
+        *node.blockchain_db.get_chain_metadata().unwrap().best_block(),
+        blocks[index + 1].to_chain_header().timestamp(),
+    );
 }
 
 // Delete blocks and headers in reverse order; the first block in the slice wil not be deleted
@@ -149,44 +179,53 @@ pub fn delete_some_blocks_and_headers(
     blocks_with_anchor: &[ChainBlock],
     instruction: WhatToDelete,
     node: &NodeInterfaces,
-    set_best_block: Option<bool>,
 ) {
     if blocks_with_anchor.is_empty() || blocks_with_anchor.len() < 2 {
         panic!("blocks must have at least 2 elements");
     }
-    let set_best_block = set_best_block.unwrap_or(false);
     let mut blocks: Vec<_> = blocks_with_anchor.to_vec();
     blocks.reverse();
     for i in 0..blocks.len() - 1 {
         let mut txn = DbTransaction::new();
         match instruction {
+            WhatToDelete::BlocksAndHeaders => {
+                delete_block(&mut txn, node, &blocks, i);
+                txn.delete_header(blocks[i].height());
+            },
             WhatToDelete::Blocks => {
-                txn.delete_block(*blocks[i].hash());
-                txn.delete_orphan(*blocks[i].hash());
-                if set_best_block {
-                    txn.set_best_block(
-                        blocks[i + 1].height(),
-                        blocks[i + 1].accumulated_data().hash,
-                        blocks[i + 1].accumulated_data().total_accumulated_difficulty,
-                        *node.blockchain_db.get_chain_metadata().unwrap().best_block(),
-                        blocks[i + 1].to_chain_header().timestamp(),
-                    );
-                }
+                delete_block(&mut txn, node, &blocks, i);
             },
             WhatToDelete::Headers => {
                 txn.delete_header(blocks[i].height());
             },
         }
         node.blockchain_db.write(txn).unwrap();
-        // Note: Something is funny here... the block is deleted but the block exists in the db. This should be
-        //       investigated and fixed as it will enhance the tests. If we uncomment the following assertion, the
-        //       tests depending on this function will fail.
-        // match instruction {
-        //     WhatToDelete::Blocks => {
-        //         assert!(!node.blockchain_db.block_exists(*blocks[i].hash()).unwrap());
-        //     }
-        //     WhatToDelete::Headers => {}
-        // }
+        match instruction {
+            WhatToDelete::BlocksAndHeaders => {
+                assert!(!node
+                    .blockchain_db
+                    .chain_block_or_orphan_block_exists(*blocks[i].hash())
+                    .unwrap());
+                assert!(node
+                    .blockchain_db
+                    .fetch_header_by_block_hash(*blocks[i].hash())
+                    .unwrap()
+                    .is_none());
+            },
+            WhatToDelete::Blocks => {
+                assert!(!node
+                    .blockchain_db
+                    .chain_block_or_orphan_block_exists(*blocks[i].hash())
+                    .unwrap());
+            },
+            WhatToDelete::Headers => {
+                assert!(node
+                    .blockchain_db
+                    .fetch_header_by_block_hash(*blocks[i].hash())
+                    .unwrap()
+                    .is_none());
+            },
+        }
     }
 }
 
