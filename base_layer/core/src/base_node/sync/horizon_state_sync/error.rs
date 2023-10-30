@@ -116,14 +116,14 @@ impl HorizonSyncError {
             HorizonSyncError::FailedSyncAllPeers |
             HorizonSyncError::AllSyncPeersExceedLatency |
             HorizonSyncError::ConnectivityError(_) |
-            HorizonSyncError::RpcError(_) |
-            HorizonSyncError::RpcStatus(_) |
             HorizonSyncError::NoMoreSyncPeers(_) |
             HorizonSyncError::PeerNotFound |
             HorizonSyncError::JoinError(_) => None,
 
             // short ban
-            err @ HorizonSyncError::MaxLatencyExceeded { .. } => Some(BanReason {
+            err @ HorizonSyncError::MaxLatencyExceeded { .. } |
+            err @ HorizonSyncError::RpcError { .. } |
+            err @ HorizonSyncError::RpcStatus { .. } => Some(BanReason {
                 reason: format!("{}", err),
                 ban_duration: short_ban,
             }),
