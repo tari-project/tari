@@ -80,6 +80,48 @@ identity_file = "config/base_node_id_nextnet.json"
 # Obscure GRPC error responses (default = false)
 #report_grpc_error = false
 
+[base_node.grpc_server_config]
+#
+# These gRPC server methods will not share sensitive information, thus enabled by default
+#
+#enable_list_headers = true
+#enable_get_header_by_hash = true
+#enable_get_blocks = true
+#enable_get_block_timing = true
+#enable_get_constants = true
+#enable_get_block_size = true
+#enable_get_block_fees = true
+#enable_get_tokens_in_circulation = true
+#enable_get_network_difficulty = true
+#enable_get_new_block_template = true
+#enable_get_new_block = true
+#enable_get_new_block_blob = true
+#enable_submit_block = true
+#enable_submit_block_blob = true
+#enable_submit_transaction = true
+#enable_search_kernels = true
+#enable_search_utxos = true
+#enable_fetch_matching_utxos = true
+#enable_get_peers = true
+#enable_get_mempool_transactions = true
+#enable_transaction_state = true
+#enable_list_connected_peers = true
+#enable_get_mempool_stats = true
+#enable_get_active_validator_nodes = true
+#enable_get_shard_key = true
+#enable_get_template_registrations = true
+#enable_get_side_chain_utxos = true
+#
+# These gRPC server methods share sensitive information, thus disabled by default
+#
+#enable_get_version = false
+#enable_check_for_updates = false
+#enable_get_sync_info = false
+#enable_get_sync_progress = false
+#enable_get_tip_info = false
+#enable_identify = false
+#enable_get_network_status = false
+
 [base_node.lmdb]
 #init_size_bytes = 16_777_216 # 16 *1024 * 1024
 #grow_size_bytes = 16_777_216 # 16 *1024 * 1024

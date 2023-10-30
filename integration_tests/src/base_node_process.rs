@@ -184,6 +184,14 @@ pub async fn spawn_base_node_with_config(
             base_node_config.base_node.storage.pruning_interval = 1;
         };
 
+        base_node_config.base_node.grpc_server_config.enable_get_version = true;
+        base_node_config.base_node.grpc_server_config.enable_check_for_updates = true;
+        base_node_config.base_node.grpc_server_config.enable_get_sync_info = true;
+        base_node_config.base_node.grpc_server_config.enable_get_sync_progress = true;
+        base_node_config.base_node.grpc_server_config.enable_get_tip_info = true;
+        base_node_config.base_node.grpc_server_config.enable_identify = true;
+        base_node_config.base_node.grpc_server_config.enable_get_network_status = true;
+
         // Heirachically set the base path for all configs
         base_node_config.base_node.set_base_path(temp_dir_path.clone());
 

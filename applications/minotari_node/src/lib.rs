@@ -133,7 +133,10 @@ pub async fn run_base_node_with_cli(
             format!("/ip4/127.0.0.1/tcp/{}", port).parse().unwrap()
         });
         // Go, GRPC, go go
-        let grpc = grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx);
+        let grpc = grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(
+            &ctx,
+            config.base_node.grpc_server_config.clone(),
+        );
         task::spawn(run_grpc(grpc, grpc_address, shutdown.to_signal()));
     }
 
