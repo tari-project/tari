@@ -191,7 +191,7 @@ async fn it_checks_the_coinbase_reward() {
 }
 
 #[tokio::test]
-async fn it_checks_exactly_one_coinbase() {
+async fn it_allows_multiple_coinbases() {
     let (blockchain, validator) = setup(true);
 
     let (mut block, coinbase) = blockchain.create_unmined_block(block_spec!("A1", parent: "GB")).await;
@@ -212,20 +212,6 @@ async fn it_checks_exactly_one_coinbase() {
         .body
         .add_output(coinbase_output.to_transaction_output(&blockchain.km).await.unwrap());
     block.body.sort();
-    let block = blockchain.mine_block("GB", block, Difficulty::min());
-
-    let err = {
-        // `MutexGuard` cannot be held across an `await` point
-        let txn = blockchain.db().db_read_access().unwrap();
-        let err = validator.validate_body(&*txn, block.block()).unwrap_err();
-        err
-    };
-    assert!(matches!(
-        err,
-        ValidationError::BlockError(BlockValidationError::TransactionError(
-            TransactionError::MoreThanOneCoinbase
-        ))
-    ));
 
     let (block, _) = blockchain
         .create_unmined_block(block_spec!("A2", parent: "GB", skip_coinbase: true,))
