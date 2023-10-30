@@ -266,7 +266,7 @@ impl AggregateBody {
         let mut coinbase_kernel_counter = 0; // there should be exactly 1 coinbase kernel as well
         for kernel in self.kernels() {
             if kernel.features.contains(KernelFeatures::COINBASE_KERNEL) {
-                coinbase_counter += 1;
+                coinbase_kernel_counter += 1;
                 coinbase_kernel = Some(kernel);
             }
         }
