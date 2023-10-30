@@ -191,7 +191,7 @@ async fn it_checks_the_coinbase_reward() {
 }
 
 #[tokio::test]
-async fn it_checks_exactly_one_coinbase() {
+async fn it_allows_multiple_coinbases() {
     let (blockchain, validator) = setup(true);
 
     let (mut block, coinbase) = blockchain.create_unmined_block(block_spec!("A1", parent: "GB")).await;

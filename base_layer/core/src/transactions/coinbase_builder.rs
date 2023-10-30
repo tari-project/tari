@@ -633,7 +633,7 @@ mod test {
                 &factories,
                 42
             ),
-            Err(TransactionError::MoreThanOneCoinbase)
+            Err(TransactionError::MoreThanOneCoinbaseKernel)
         ));
         // testing that "block" is still valid
         let body_validator = AggregateBodyInternalConsistencyValidator::new(false, rules, factories);

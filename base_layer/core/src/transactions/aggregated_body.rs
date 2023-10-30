@@ -263,19 +263,19 @@ impl AggregateBody {
             "{} coinbases found in body.", coinbase_counter,
         );
 
-        let mut coinbase_counter = 0; // there should be exactly 1 coinbase kernel as well
+        let mut coinbase_kernel_counter = 0; // there should be exactly 1 coinbase kernel as well
         for kernel in self.kernels() {
             if kernel.features.contains(KernelFeatures::COINBASE_KERNEL) {
                 coinbase_counter += 1;
                 coinbase_kernel = Some(kernel);
             }
         }
-        if coinbase_kernel.is_none() || coinbase_counter != 1 {
+        if coinbase_kernel.is_none() || coinbase_kernel_counter != 1 {
             warn!(
                 target: LOG_TARGET,
                 "{} coinbase kernels found in body. Only a single coinbase kernel is permitted.", coinbase_counter,
             );
-            return Err(TransactionError::MoreThanOneCoinbase);
+            return Err(TransactionError::MoreThanOneCoinbaseKernel);
         }
 
         let coinbase_kernel = coinbase_kernel.expect("coinbase_kernel: none checked");
