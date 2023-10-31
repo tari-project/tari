@@ -70,11 +70,11 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for HeaderFullValidator
         check_not_bad_block(db, header.hash())?;
         check_blockchain_version(constants, header.version)?;
         check_height(header, prev_header)?;
+        check_prev_hash(header, prev_header)?;
 
         sanity_check_timestamp_count(header, prev_timestamps, constants)?;
         check_header_timestamp_greater_than_median(header, prev_timestamps)?;
 
-        check_prev_hash(header, prev_header)?;
         check_timestamp_ftl(header, &self.rules)?;
         check_pow_data(header, &self.rules, db)?;
 

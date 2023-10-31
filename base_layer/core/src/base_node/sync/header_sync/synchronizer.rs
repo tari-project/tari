@@ -633,7 +633,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
 
         let mut last_total_accumulated_difficulty = 0;
         let mut avg_latency = RollingAverageTime::new(20);
-        let mut prev_height = None;
+        let mut prev_height: Option<u64> = None;
         while let Some(header) = header_stream.next().await {
             let latency = last_sync_timer.elapsed();
             avg_latency.add_sample(latency);
@@ -647,7 +647,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 latency
             );
             if let Some(prev_header_height) = prev_height {
-                if header.height != prev_header_height + 1 {
+                if header.height != prev_header_height.saturating_add(1) {
                     warn!(
                         target: LOG_TARGET,
                         "Received header #{} `{}` does not follow previous header",

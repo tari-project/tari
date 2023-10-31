@@ -293,6 +293,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
             let tip_header = db.fetch_tip_header().await.rpc_status_internal_error(LOG_TARGET)?;
             count = tip_header.height().saturating_sub(start_header.height);
         }
+        // if its the start(tip_header == tip), return empty
         if count == 0 {
             return Ok(Streaming::empty());
         }
@@ -312,7 +313,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         let (tx, rx) = mpsc::channel(chunk_size);
         let span = span!(Level::TRACE, "sync_rpc::sync_headers::inner_worker");
         let iter = NonOverlappingIntegerPairIter::new(
-            start_header.height + 1,
+            start_header.height.saturating_add(1),
             start_header.height.saturating_add(count).saturating_add(1),
             chunk_size,
         )
