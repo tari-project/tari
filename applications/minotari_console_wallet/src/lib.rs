@@ -103,6 +103,7 @@ pub fn run_wallet(shutdown: &mut Shutdown, runtime: Runtime, config: &mut Applic
     run_wallet_with_cli(shutdown, runtime, config, cli)
 }
 
+#[allow(clippy::too_many_lines)]
 pub fn run_wallet_with_cli(
     shutdown: &mut Shutdown,
     runtime: Runtime,
