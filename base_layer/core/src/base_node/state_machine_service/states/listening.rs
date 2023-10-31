@@ -55,6 +55,7 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::listening";
+const INITIAL_SYNC_PEER_COUNT: usize = 5;
 
 /// This struct contains the info of the peer, and is used to serialised and deserialised.
 #[derive(Serialize, Deserialize)]
@@ -117,6 +118,8 @@ impl Listening {
         info!(target: LOG_TARGET, "Listening for chain metadata updates");
         shared.set_state_info(StateInfo::Listening(ListeningInfo::new(self.is_synced)));
         let mut time_since_better_block = None;
+        let mut initial_sync_counter = 0;
+        let mut initial_sync_peer_list = Vec::new();
         let mut mdc = vec![];
         log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
         loop {
@@ -177,7 +180,7 @@ impl Listening {
                     };
                     log_mdc::extend(mdc.clone());
 
-                    let sync_mode = determine_sync_mode(
+                    let mut sync_mode = determine_sync_mode(
                         shared.config.blocks_behind_before_considered_lagging,
                         &local_metadata,
                         peer_metadata,
@@ -203,11 +206,11 @@ impl Listening {
                             .map(|t| t.elapsed() > shared.config.time_before_considered_lagging)
                             .unwrap()
                         {
-                            return StateEvent::FallenBehind(SyncStatus::Lagging {
+                            sync_mode = SyncStatus::Lagging {
                                 local: local.clone(),
                                 network: network.clone(),
                                 sync_peers: sync_peers.clone(),
-                            });
+                            };
                         }
                     } else {
                         // We might have gotten up to date via propagation outside of this state, so reset the timer
@@ -216,14 +219,43 @@ impl Listening {
                         }
                     }
 
-                    if sync_mode.is_lagging() {
-                        return StateEvent::FallenBehind(sync_mode);
-                    }
-
                     if !self.is_synced && sync_mode.is_up_to_date() {
                         self.is_synced = true;
                         shared.set_state_info(StateInfo::Listening(ListeningInfo::new(true)));
                         debug!(target: LOG_TARGET, "Initial sync achieved");
+                    }
+
+                    if sync_mode.is_lagging() && self.is_synced {
+                        return StateEvent::FallenBehind(sync_mode);
+                    }
+                    if let SyncStatus::Lagging {
+                        local,
+                        network,
+                        sync_peers,
+                    } = sync_mode
+                    {
+                        initial_sync_counter += 1;
+                        for peer in sync_peers {
+                            let mut found = false;
+                            for i in 0..initial_sync_peer_list.len() {
+                                if initial_sync_peer_list[i] == peer {
+                                    found = true;
+                                    initial_sync_peer_list[i] = peer.clone();
+                                }
+                            }
+                            if !found {
+                                initial_sync_peer_list.push(peer.clone());
+                            }
+                        }
+                        // We use a list here to ensure that we dont wait for even for INITIAL_SYNC_PEER_COUNT different
+                        // peers
+                        if initial_sync_counter == INITIAL_SYNC_PEER_COUNT {
+                            return StateEvent::FallenBehind(SyncStatus::Lagging {
+                                local,
+                                network,
+                                sync_peers: initial_sync_peer_list,
+                            });
+                        }
                     }
                 },
                 Err(broadcast::error::RecvError::Lagged(n)) => {
@@ -267,8 +299,10 @@ impl From<BlockSync> for Listening {
 }
 
 impl From<DecideNextSync> for Listening {
-    fn from(_: DecideNextSync) -> Self {
-        Self { is_synced: false }
+    fn from(sync: DecideNextSync) -> Self {
+        Self {
+            is_synced: sync.is_synced(),
+        }
     }
 }
 

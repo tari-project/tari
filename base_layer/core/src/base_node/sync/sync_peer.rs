@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    cmp::Ordering,
     fmt::{Display, Formatter},
     time::Duration,
 };
@@ -97,3 +98,67 @@ impl PartialEq for SyncPeer {
     }
 }
 impl Eq for SyncPeer {}
+
+impl Ord for SyncPeer {
+    fn cmp(&self, other: &Self) -> Ordering {
+        let mut result = self
+            .peer_metadata
+            .claimed_chain_metadata()
+            .accumulated_difficulty()
+            .cmp(&other.peer_metadata.claimed_chain_metadata().accumulated_difficulty());
+        if result == Ordering::Equal {
+            match (self.latency(), other.latency()) {
+                (None, None) => result = Ordering::Equal,
+                // No latency goes to the end
+                (Some(_), None) => result = Ordering::Less,
+                (None, Some(_)) => result = Ordering::Greater,
+                (Some(la), Some(lb)) => result = la.cmp(&lb),
+            }
+        }
+        result
+    }
+}
+
+impl PartialOrd for SyncPeer {
+    fn partial_cmp(&self, other: &SyncPeer) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::time::Duration;
+
+    use rand::{rngs::OsRng, seq::SliceRandom};
+    use tari_common_types::chain_metadata::ChainMetadata;
+
+    use super::*;
+
+    mod sort_by_latency {
+        use tari_comms::types::{CommsPublicKey, CommsSecretKey};
+        use tari_crypto::keys::{PublicKey, SecretKey};
+
+        use super::*;
+        use crate::base_node::chain_metadata_service::PeerChainMetadata;
+
+        #[test]
+        fn it_sorts_by_latency() {
+            let peers = (0..10)
+                .map(|i| {
+                    let sk = CommsSecretKey::random(&mut OsRng);
+                    let pk = CommsPublicKey::from_secret_key(&sk);
+                    let node_id = NodeId::from_key(&pk);
+                    PeerChainMetadata::new(node_id, ChainMetadata::empty(), Some(Duration::from_millis(i))).into()
+                })
+                .chain(Some(
+                    PeerChainMetadata::new(Default::default(), ChainMetadata::empty(), None).into(),
+                ))
+                .collect::<Vec<SyncPeer>>();
+            let mut shuffled = peers.clone();
+            shuffled.shuffle(&mut OsRng);
+            assert_ne!(shuffled, peers);
+            shuffled.sort();
+            assert_eq!(shuffled, peers);
+        }
+    }
+}
