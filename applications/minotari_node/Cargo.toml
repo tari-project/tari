@@ -65,3 +65,6 @@ ignored = [
     # We need to specify extra features for log4rs even though it is not used directly in this crate
     "log4rs"
 ]
+
+[dev-dependencies]
+toml = { version = "0.5" }

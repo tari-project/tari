@@ -3270,6 +3270,7 @@ dependencies = [
  "tari_utilities",
  "thiserror",
  "tokio",
+ "toml 0.5.11",
  "tonic 0.6.2",
 ]
 

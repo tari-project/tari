@@ -88,7 +88,7 @@ pub struct BaseNodeConfig {
     /// GRPC address of base node
     pub grpc_address: Option<Multiaddr>,
     /// GRPC server config - which methods are active and which not
-    pub grpc_server_config: BaseNodeGrpcServerConfig,
+    pub grpc_server_deny_methods: Vec<GrpcMethod>,
     /// A path to the file that stores the base node identity and secret key
     pub identity_file: PathBuf,
     /// Spin up and use a built-in Tor instance. This only works on macos/linux - requires that the wallet was built
@@ -145,44 +145,16 @@ impl Default for BaseNodeConfig {
             network: Network::default(),
             grpc_enabled: true,
             grpc_address: None,
-            grpc_server_config: BaseNodeGrpcServerConfig {
-                // These gRPC server methods will not share sensitive information, thus enabled by default
-                enable_list_headers: true,
-                enable_get_header_by_hash: true,
-                enable_get_blocks: true,
-                enable_get_block_timing: true,
-                enable_get_constants: true,
-                enable_get_block_size: true,
-                enable_get_block_fees: true,
-                enable_get_tokens_in_circulation: true,
-                enable_get_network_difficulty: true,
-                enable_get_new_block_template: true,
-                enable_get_new_block: true,
-                enable_get_new_block_blob: true,
-                enable_submit_block: true,
-                enable_submit_block_blob: true,
-                enable_submit_transaction: true,
-                enable_search_kernels: true,
-                enable_search_utxos: true,
-                enable_fetch_matching_utxos: true,
-                enable_get_peers: true,
-                enable_get_mempool_transactions: true,
-                enable_transaction_state: true,
-                enable_list_connected_peers: true,
-                enable_get_mempool_stats: true,
-                enable_get_active_validator_nodes: true,
-                enable_get_shard_key: true,
-                enable_get_template_registrations: true,
-                enable_get_side_chain_utxos: true,
+            grpc_server_deny_methods: vec![
                 // These gRPC server methods share sensitive information, thus disabled by default
-                enable_get_version: false,
-                enable_check_for_updates: false,
-                enable_get_sync_info: false,
-                enable_get_sync_progress: false,
-                enable_get_tip_info: false,
-                enable_identify: false,
-                enable_get_network_status: false,
-            },
+                GrpcMethod::GetVersion,
+                GrpcMethod::CheckForUpdates,
+                GrpcMethod::GetSyncInfo,
+                GrpcMethod::GetSyncProgress,
+                GrpcMethod::GetTipInfo,
+                GrpcMethod::Identify,
+                GrpcMethod::GetNetworkStatus,
+            ],
             identity_file: PathBuf::from("config/base_node_id.json"),
             use_libtor: false,
             tor_identity_file: PathBuf::from("config/base_node_tor_id.json"),
@@ -236,76 +208,82 @@ pub enum DatabaseType {
     Lmdb,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
-#[serde(deny_unknown_fields)]
-#[allow(clippy::struct_excessive_bools)]
-pub struct BaseNodeGrpcServerConfig {
-    /// Enable the ListHeaders gRPC server method
-    pub enable_list_headers: bool,
-    /// Enable the GetHeaderByHash gRPC server method
-    pub enable_get_header_by_hash: bool,
-    /// Enable the GetBlocks gRPC server method
-    pub enable_get_blocks: bool,
-    /// Enable the GetBlockTiming gRPC server method
-    pub enable_get_block_timing: bool,
-    /// Enable the GetConstants gRPC server method
-    pub enable_get_constants: bool,
-    /// Enable the GetBlockSize gRPC server method
-    pub enable_get_block_size: bool,
-    /// Enable the GetBlockFees gRPC server method
-    pub enable_get_block_fees: bool,
-    /// Enable the GetVersion gRPC server method
-    pub enable_get_version: bool,
-    /// Enable the CheckForUpdates gRPC server method
-    pub enable_check_for_updates: bool,
-    /// Enable the GetTokensInCirculation gRPC server method
-    pub enable_get_tokens_in_circulation: bool,
-    /// Enable the GetNetworkDifficulty gRPC server method
-    pub enable_get_network_difficulty: bool,
-    /// Enable the GetNewBlockTemplate gRPC server method
-    pub enable_get_new_block_template: bool,
-    /// Enable the GetNewBlock gRPC server method
-    pub enable_get_new_block: bool,
-    /// Enable the GetNewBlockBlob gRPC server method
-    pub enable_get_new_block_blob: bool,
-    /// Enable the SubmitBlock gRPC server method
-    pub enable_submit_block: bool,
-    /// Enable the SubmitBlockBlob gRPC server method
-    pub enable_submit_block_blob: bool,
-    /// Enable the SubmitTransaction gRPC server method
-    pub enable_submit_transaction: bool,
-    /// Enable the GetSyncInfo gRPC server method
-    pub enable_get_sync_info: bool,
-    /// Enable the GetSyncProgress gRPC server method
-    pub enable_get_sync_progress: bool,
-    /// Enable the GetTipInfo gRPC server method
-    pub enable_get_tip_info: bool,
-    /// Enable the SearchKernels gRPC server method
-    pub enable_search_kernels: bool,
-    /// Enable the SearchUtxos gRPC server method
-    pub enable_search_utxos: bool,
-    /// Enable the FetchMatchingUtxos gRPC server method
-    pub enable_fetch_matching_utxos: bool,
-    /// Enable the GetPeers gRPC server method
-    pub enable_get_peers: bool,
-    /// Enable the GetMempoolTransactions gRPC server method
-    pub enable_get_mempool_transactions: bool,
-    /// Enable the TransactionState gRPC server method
-    pub enable_transaction_state: bool,
-    /// Enable the Identify gRPC server method
-    pub enable_identify: bool,
-    /// Enable the GetNetworkStatus gRPC server method
-    pub enable_get_network_status: bool,
-    /// Enable the ListConnectedPeers gRPC server method
-    pub enable_list_connected_peers: bool,
-    /// Enable the GetMempoolState gRPC server method
-    pub enable_get_mempool_stats: bool,
-    /// Enable the GetActiveValidatorNodes gRPC server method
-    pub enable_get_active_validator_nodes: bool,
-    /// Enable the GetShardKey gRPC server method
-    pub enable_get_shard_key: bool,
-    /// Enable the GetTemplateRegistrations gRPC server method
-    pub enable_get_template_registrations: bool,
-    /// Enable the GetSideChainUtxos gRPC server method
-    pub enable_get_side_chain_utxos: bool,
+/// A list of all the GRPC methods that can be enabled/disabled
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum GrpcMethod {
+    ListHeaders,
+    GetHeaderByHash,
+    GetBlocks,
+    GetBlockTiming,
+    GetConstants,
+    GetBlockSize,
+    GetBlockFees,
+    GetVersion,
+    CheckForUpdates,
+    GetTokensInCirculation,
+    GetNetworkDifficulty,
+    GetNewBlockTemplate,
+    GetNewBlock,
+    GetNewBlockBlob,
+    SubmitBlock,
+    SubmitBlockBlob,
+    SubmitTransaction,
+    GetSyncInfo,
+    GetSyncProgress,
+    GetTipInfo,
+    SearchKernels,
+    SearchUtxos,
+    FetchMatchingUtxos,
+    GetPeers,
+    GetMempoolTransactions,
+    TransactionState,
+    Identify,
+    GetNetworkStatus,
+    ListConnectedPeers,
+    GetMempoolStats,
+    GetActiveValidatorNodes,
+    GetShardKey,
+    GetTemplateRegistrations,
+    GetSideChainUtxos,
+}
+
+#[cfg(test)]
+mod tests {
+    use serde::{Deserialize, Serialize};
+
+    use crate::config::GrpcMethod;
+
+    #[derive(Clone, Serialize, Deserialize, Debug)]
+    #[allow(clippy::struct_excessive_bools)]
+    struct TestConfig {
+        name: String,
+        inner_config: TestInnerConfig,
+    }
+
+    #[derive(Clone, Serialize, Deserialize, Debug)]
+    #[allow(clippy::struct_excessive_bools)]
+    struct TestInnerConfig {
+        deny_methods: Vec<GrpcMethod>,
+    }
+
+    #[test]
+    fn it_deserializes_enums() {
+        let config_str = r#"name = "blockchain champion"
+                inner_config.deny_methods = [
+                    "list_headers",
+                    "get_constants",
+            #        "get_blocks"
+                    "identify",
+            #        "get_shard_key"
+                ]"#;
+        let config = toml::from_str::<TestConfig>(config_str).unwrap();
+
+        // Enums in the config
+        assert!(config.inner_config.deny_methods.contains(&GrpcMethod::ListHeaders));
+        assert!(config.inner_config.deny_methods.contains(&GrpcMethod::GetConstants));
+        assert!(!config.inner_config.deny_methods.contains(&GrpcMethod::GetBlocks)); // commented out in the config
+        assert!(config.inner_config.deny_methods.contains(&GrpcMethod::Identify));
+        assert!(!config.inner_config.deny_methods.contains(&GrpcMethod::GetShardKey)); // commented out in the config
+    }
 }

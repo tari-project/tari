@@ -135,7 +135,7 @@ pub async fn run_base_node_with_cli(
         // Go, GRPC, go go
         let grpc = grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(
             &ctx,
-            config.base_node.grpc_server_config.clone(),
+            config.base_node.grpc_server_deny_methods.clone(),
         );
         task::spawn(run_grpc(grpc, grpc_address, shutdown.to_signal()));
     }

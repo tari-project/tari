@@ -58,7 +58,7 @@ use tonic::{Request, Response, Status};
 
 use crate::{
     builder::BaseNodeContext,
-    config::BaseNodeGrpcServerConfig,
+    config::GrpcMethod,
     grpc::{
         blocks::{block_fees, block_heights, block_size, GET_BLOCKS_MAX_HEIGHTS, GET_BLOCKS_PAGE_SIZE},
         hash_rate::HashRateMovingAverage,
@@ -85,44 +85,6 @@ const LIST_HEADERS_DEFAULT_NUM_HEADERS: u64 = 10;
 
 const BLOCK_TIMING_MAX_BLOCKS: u64 = 10_000;
 
-#[derive(Debug, Clone)]
-enum GrpcMethod {
-    ListHeaders,
-    GetHeaderByHash,
-    GetBlocks,
-    GetBlockTiming,
-    GetConstants,
-    GetBlockSize,
-    GetBlockFees,
-    GetVersion,
-    CheckForUpdates,
-    GetTokensInCirculation,
-    GetNetworkDifficulty,
-    GetNewBlockTemplate,
-    GetNewBlock,
-    GetNewBlockBlob,
-    SubmitBlock,
-    SubmitBlockBlob,
-    SubmitTransaction,
-    GetSyncInfo,
-    GetSyncProgress,
-    GetTipInfo,
-    SearchKernels,
-    SearchUtxos,
-    FetchMatchingUtxos,
-    GetPeers,
-    GetMempoolTransactions,
-    TransactionState,
-    Identify,
-    GetNetworkStatus,
-    ListConnectedPeers,
-    GetMempoolStats,
-    GetActiveValidatorNodes,
-    GetShardKey,
-    GetTemplateRegistrations,
-    GetSideChainUtxos,
-}
-
 pub struct BaseNodeGrpcServer {
     node_service: LocalNodeCommsInterface,
     mempool_service: LocalMempoolService,
@@ -133,11 +95,11 @@ pub struct BaseNodeGrpcServer {
     comms: CommsNode,
     liveness: LivenessHandle,
     report_grpc_error: bool,
-    config: BaseNodeGrpcServerConfig,
+    deny_methods: Vec<GrpcMethod>,
 }
 
 impl BaseNodeGrpcServer {
-    pub fn from_base_node_context(ctx: &BaseNodeContext, config: BaseNodeGrpcServerConfig) -> Self {
+    pub fn from_base_node_context(ctx: &BaseNodeContext, deny_methods: Vec<GrpcMethod>) -> Self {
         Self {
             node_service: ctx.local_node(),
             mempool_service: ctx.local_mempool(),
@@ -148,7 +110,7 @@ impl BaseNodeGrpcServer {
             comms: ctx.base_node_comms().clone(),
             liveness: ctx.liveness(),
             report_grpc_error: ctx.get_report_grpc_error(),
-            config,
+            deny_methods,
         }
     }
 
@@ -157,42 +119,7 @@ impl BaseNodeGrpcServer {
     }
 
     fn is_method_enabled(&self, grpc_method: GrpcMethod) -> bool {
-        match grpc_method {
-            GrpcMethod::ListHeaders => self.config.enable_list_headers,
-            GrpcMethod::GetHeaderByHash => self.config.enable_get_header_by_hash,
-            GrpcMethod::GetBlocks => self.config.enable_get_blocks,
-            GrpcMethod::GetBlockTiming => self.config.enable_get_block_timing,
-            GrpcMethod::GetConstants => self.config.enable_get_constants,
-            GrpcMethod::GetBlockSize => self.config.enable_get_block_size,
-            GrpcMethod::GetBlockFees => self.config.enable_get_block_fees,
-            GrpcMethod::GetVersion => self.config.enable_get_version,
-            GrpcMethod::CheckForUpdates => self.config.enable_check_for_updates,
-            GrpcMethod::GetTokensInCirculation => self.config.enable_get_tokens_in_circulation,
-            GrpcMethod::GetNetworkDifficulty => self.config.enable_get_network_difficulty,
-            GrpcMethod::GetNewBlockTemplate => self.config.enable_get_new_block_template,
-            GrpcMethod::GetNewBlock => self.config.enable_get_new_block,
-            GrpcMethod::GetNewBlockBlob => self.config.enable_get_new_block_blob,
-            GrpcMethod::SubmitBlock => self.config.enable_submit_block,
-            GrpcMethod::SubmitBlockBlob => self.config.enable_submit_block_blob,
-            GrpcMethod::SubmitTransaction => self.config.enable_submit_transaction,
-            GrpcMethod::GetSyncInfo => self.config.enable_get_sync_info,
-            GrpcMethod::GetSyncProgress => self.config.enable_get_sync_progress,
-            GrpcMethod::GetTipInfo => self.config.enable_get_tip_info,
-            GrpcMethod::SearchKernels => self.config.enable_search_kernels,
-            GrpcMethod::SearchUtxos => self.config.enable_search_utxos,
-            GrpcMethod::FetchMatchingUtxos => self.config.enable_fetch_matching_utxos,
-            GrpcMethod::GetPeers => self.config.enable_get_peers,
-            GrpcMethod::GetMempoolTransactions => self.config.enable_get_mempool_transactions,
-            GrpcMethod::TransactionState => self.config.enable_transaction_state,
-            GrpcMethod::Identify => self.config.enable_identify,
-            GrpcMethod::GetNetworkStatus => self.config.enable_get_network_status,
-            GrpcMethod::ListConnectedPeers => self.config.enable_list_connected_peers,
-            GrpcMethod::GetMempoolStats => self.config.enable_get_mempool_stats,
-            GrpcMethod::GetActiveValidatorNodes => self.config.enable_get_active_validator_nodes,
-            GrpcMethod::GetShardKey => self.config.enable_get_shard_key,
-            GrpcMethod::GetTemplateRegistrations => self.config.enable_get_template_registrations,
-            GrpcMethod::GetSideChainUtxos => self.config.enable_get_side_chain_utxos,
-        }
+        !self.deny_methods.contains(&grpc_method)
     }
 }
 
