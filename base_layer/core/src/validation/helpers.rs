@@ -50,16 +50,15 @@ pub const LOG_TARGET: &str = "c::val::helpers";
 /// ## Panics
 /// When an empty slice is given as this is undefined for median average.
 /// https://math.stackexchange.com/a/3451015
-pub fn calc_median_timestamp(timestamps: &[EpochTime]) -> EpochTime {
-    assert!(
-        !timestamps.is_empty(),
-        "calc_median_timestamp: timestamps cannot be empty"
-    );
+pub fn calc_median_timestamp(timestamps: &[EpochTime]) -> Result<EpochTime, ValidationError> {
     trace!(
         target: LOG_TARGET,
         "Calculate the median timestamp from {} timestamps",
         timestamps.len()
     );
+    if timestamps.is_empty() {
+        return Err(ValidationError::IncorrectNumberOfTimestampsProvided { expected: 1, actual: 0 });
+    }
 
     let mid_index = timestamps.len() / 2;
     let median_timestamp = if timestamps.len() % 2 == 0 {
@@ -74,7 +73,7 @@ pub fn calc_median_timestamp(timestamps: &[EpochTime]) -> EpochTime {
         timestamps[mid_index]
     };
     trace!(target: LOG_TARGET, "Median timestamp:{}", median_timestamp);
-    median_timestamp
+    Ok(median_timestamp)
 }
 pub fn check_header_timestamp_greater_than_median(
     block_header: &BlockHeader,
@@ -87,7 +86,7 @@ pub fn check_header_timestamp_greater_than_median(
         ));
     }
 
-    let median_timestamp = calc_median_timestamp(timestamps);
+    let median_timestamp = calc_median_timestamp(timestamps)?;
     if block_header.timestamp < median_timestamp {
         warn!(
             target: LOG_TARGET,
@@ -484,29 +483,28 @@ mod test {
         use super::*;
 
         #[test]
-        #[should_panic]
-        fn it_panics_if_empty() {
-            calc_median_timestamp(&[]);
+        fn it_errors_on_empty() {
+            assert!(calc_median_timestamp(&[]).is_err());
         }
 
         #[test]
         fn it_calculates_the_correct_median_timestamp() {
-            let median_timestamp = calc_median_timestamp(&[0.into()]);
+            let median_timestamp = calc_median_timestamp(&[0.into()]).unwrap();
             assert_eq!(median_timestamp, 0.into());
 
-            let median_timestamp = calc_median_timestamp(&[123.into()]);
+            let median_timestamp = calc_median_timestamp(&[123.into()]).unwrap();
             assert_eq!(median_timestamp, 123.into());
 
-            let median_timestamp = calc_median_timestamp(&[2.into(), 4.into()]);
+            let median_timestamp = calc_median_timestamp(&[2.into(), 4.into()]).unwrap();
             assert_eq!(median_timestamp, 3.into());
 
-            let median_timestamp = calc_median_timestamp(&[0.into(), 100.into(), 0.into()]);
+            let median_timestamp = calc_median_timestamp(&[0.into(), 100.into(), 0.into()]).unwrap();
             assert_eq!(median_timestamp, 100.into());
 
-            let median_timestamp = calc_median_timestamp(&[1.into(), 2.into(), 3.into(), 4.into()]);
+            let median_timestamp = calc_median_timestamp(&[1.into(), 2.into(), 3.into(), 4.into()]).unwrap();
             assert_eq!(median_timestamp, 2.into());
 
-            let median_timestamp = calc_median_timestamp(&[1.into(), 2.into(), 3.into(), 4.into(), 5.into()]);
+            let median_timestamp = calc_median_timestamp(&[1.into(), 2.into(), 3.into(), 4.into(), 5.into()]).unwrap();
             assert_eq!(median_timestamp, 3.into());
         }
     }
