@@ -289,7 +289,7 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
             mmr_roots.output_smt_size
         );
         return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrSize {
-            mmr_tree: "Utxo".to_string(),
+            mmr_tree: "UTXO".to_string(),
             expected: mmr_roots.output_smt_size,
             actual: header.output_smt_size,
         }));

@@ -69,6 +69,15 @@ async fn input_and_output_and_wallet_output_hash_match() {
     assert_eq!(output.hash(), i.hash(&key_manager).await.unwrap());
 }
 
+#[test]
+fn test_smt_hashes() {
+    let input = TransactionInput::default();
+    let output = TransactionOutput::default();
+    let input_hash = input.smt_hash(10);
+    let output_hash = output.smt_hash(10);
+    assert_eq!(input_hash, output_hash);
+}
+
 #[tokio::test]
 async fn key_manager_input() {
     let key_manager = create_test_core_key_manager_with_memory_db();

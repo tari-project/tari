@@ -61,6 +61,13 @@ pub struct TxoValidationTask<TBackend, TWalletConnectivity> {
     config: OutputManagerServiceConfig,
 }
 
+struct MinedOutputInfo {
+    output: DbWalletOutput,
+    mined_at_height: u64,
+    mined_block_hash: FixedHash,
+    mined_timestamp: u64,
+}
+
 impl<TBackend, TWalletConnectivity> TxoValidationTask<TBackend, TWalletConnectivity>
 where
     TBackend: OutputManagerBackend + 'static,
@@ -151,19 +158,25 @@ where
                 unmined.len(),
                 self.operation_id
             );
-            for (output, mined_height, mined_in_block, mined_timestamp) in &mined {
+            for mined_info in &mined {
                 info!(
                     target: LOG_TARGET,
                     "Updating output comm:{}: hash {} as mined at height {} with current tip at {} (Operation ID:
                 {})",
-                    output.commitment.to_hex(),
-                    output.hash.to_hex(),
-                    mined_height,
+                    mined_info.output.commitment.to_hex(),
+                    mined_info.output.hash.to_hex(),
+                    mined_info.mined_at_height,
                     tip_height,
                     self.operation_id
                 );
-                self.update_output_as_mined(output, mined_in_block, *mined_height, tip_height, *mined_timestamp)
-                    .await?;
+                self.update_output_as_mined(
+                    &mined_info.output,
+                    &mined_info.mined_block_hash,
+                    mined_info.mined_at_height,
+                    tip_height,
+                    mined_info.mined_timestamp,
+                )
+                .await?;
             }
             for output in unmined {
                 self.db
@@ -289,18 +302,24 @@ where
                 unmined.len(),
                 self.operation_id
             );
-            for (output, mined_height, mined_in_block, mined_timestamp) in &mined {
+            for mined_info in &mined {
                 info!(
                     target: LOG_TARGET,
                     "Updating output comm:{}: hash {} as mined at height {} with current tip at {} (Operation ID: {})",
-                    output.commitment.to_hex(),
-                    output.hash.to_hex(),
-                    mined_height,
+                    mined_info.output.commitment.to_hex(),
+                    mined_info.output.hash.to_hex(),
+                    mined_info.mined_at_height,
                     tip_height,
                     self.operation_id
                 );
-                self.update_output_as_mined(output, mined_in_block, *mined_height, tip_height, *mined_timestamp)
-                    .await?;
+                self.update_output_as_mined(
+                    &mined_info.output,
+                    &mined_info.mined_block_hash,
+                    mined_info.mined_at_height,
+                    tip_height,
+                    mined_info.mined_timestamp,
+                )
+                .await?;
             }
         }
 
@@ -459,7 +478,7 @@ where
         &self,
         batch: &[DbWalletOutput],
         base_node_client: &mut BaseNodeWalletRpcClient,
-    ) -> Result<(Vec<(DbWalletOutput, u64, BlockHash, u64)>, Vec<DbWalletOutput>, u64), OutputManagerError> {
+    ) -> Result<(Vec<MinedOutputInfo>, Vec<DbWalletOutput>, u64), OutputManagerError> {
         let batch_hashes = batch.iter().map(|o| o.hash.to_vec()).collect();
         trace!(
             target: LOG_TARGET,
@@ -494,12 +513,12 @@ where
         for output in batch {
             if let Some(returned_output) = returned_outputs.get(&output.hash) {
                 match returned_output.mined_in_block.clone().try_into() {
-                    Ok(block_hash) => mined.push((
-                        output.clone(),
-                        returned_output.mined_at_height,
-                        block_hash,
-                        returned_output.mined_timestamp,
-                    )),
+                    Ok(block_hash) => mined.push(MinedOutputInfo {
+                        output: output.clone(),
+                        mined_at_height: returned_output.mined_at_height,
+                        mined_block_hash: block_hash,
+                        mined_timestamp: returned_output.mined_timestamp,
+                    }),
                     Err(_) => {
                         warn!(
                             target: LOG_TARGET,

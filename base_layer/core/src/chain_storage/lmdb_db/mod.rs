@@ -51,8 +51,8 @@ pub(crate) struct TransactionInputRowDataRef<'a> {
     pub input: &'a TransactionInput,
     #[allow(clippy::ptr_arg)]
     pub header_hash: &'a HashOutput,
-    pub mined_timestamp: u64,
-    pub height: u64,
+    pub spent_timestamp: u64,
+    pub spent_height: u64,
     #[allow(clippy::ptr_arg)]
     pub hash: &'a HashOutput,
 }
@@ -61,8 +61,8 @@ pub(crate) struct TransactionInputRowDataRef<'a> {
 pub(crate) struct TransactionInputRowData {
     pub input: TransactionInput,
     pub header_hash: HashOutput,
-    pub mined_timestamp: u64,
-    pub height: u64,
+    pub spent_timestamp: u64,
+    pub spent_height: u64,
     pub hash: HashOutput,
 }
 
