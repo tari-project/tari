@@ -64,7 +64,7 @@ impl DecideNextSync {
                 Err(err) => return err.into(),
             };
 
-            let horizon_sync_height = local_metadata.horizon_block(last_header.height);
+            let horizon_sync_height = local_metadata.horizon_block_height(last_header.height);
             // Filter sync peers that claim to be able to provide blocks up until our pruned height
             let sync_peers = self
                 .sync_peers
