@@ -129,7 +129,7 @@ impl PartialOrd for SyncPeer {
 mod test {
     use std::time::Duration;
 
-    use rand::{rngs::OsRng, seq::SliceRandom};
+    use rand::rngs::OsRng;
     use tari_common_types::chain_metadata::ChainMetadata;
 
     use super::*;
@@ -141,24 +141,39 @@ mod test {
         use super::*;
         use crate::base_node::chain_metadata_service::PeerChainMetadata;
 
+        // Helper function to generate a peer with a given latency
+        fn generate_peer(latency: Option<usize>) -> SyncPeer {
+            let sk = CommsSecretKey::random(&mut OsRng);
+            let pk = CommsPublicKey::from_secret_key(&sk);
+            let node_id = NodeId::from_key(&pk);
+            let latency_option = latency.map(|latency| Duration::from_millis(latency as u64));
+            PeerChainMetadata::new(node_id, ChainMetadata::empty(), latency_option).into()
+        }
+
         #[test]
         fn it_sorts_by_latency() {
-            let peers = (0..10)
-                .map(|i| {
-                    let sk = CommsSecretKey::random(&mut OsRng);
-                    let pk = CommsPublicKey::from_secret_key(&sk);
-                    let node_id = NodeId::from_key(&pk);
-                    PeerChainMetadata::new(node_id, ChainMetadata::empty(), Some(Duration::from_millis(i))).into()
-                })
-                .chain(Some(
-                    PeerChainMetadata::new(Default::default(), ChainMetadata::empty(), None).into(),
-                ))
+            const DISTINCT_LATENCY: usize = 5;
+
+            // Generate a list of peers with latency, adding duplicates
+            let mut peers = (0..2 * DISTINCT_LATENCY)
+                .map(|latency| generate_peer(Some(latency % DISTINCT_LATENCY)))
                 .collect::<Vec<SyncPeer>>();
-            let mut shuffled = peers.clone();
-            shuffled.shuffle(&mut OsRng);
-            assert_ne!(shuffled, peers);
-            shuffled.sort();
-            assert_eq!(shuffled, peers);
+
+            // Add peers with no latency in a few places
+            peers.insert(0, generate_peer(None));
+            peers.insert(DISTINCT_LATENCY, generate_peer(None));
+            peers.push(generate_peer(None));
+
+            // Sort the list; because difficulty is identical, it should sort by latency
+            peers.sort();
+
+            // Confirm that the sorted latency is correct: numerical ordering, then `None`
+            for (i, peer) in peers[..2 * DISTINCT_LATENCY].iter().enumerate() {
+                assert_eq!(peer.latency(), Some(Duration::from_millis((i as u64) / 2)));
+            }
+            for _ in 0..3 {
+                assert_eq!(peers.pop().unwrap().latency(), None);
+            }
         }
     }
 }
