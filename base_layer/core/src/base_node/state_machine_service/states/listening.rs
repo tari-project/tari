@@ -244,13 +244,13 @@ impl Listening {
                             let mut found = false;
                             // lets search the list list to ensure we only have unique peers in the list with the latest
                             // up-to-date information
-                            for i in 0..initial_sync_peer_list.len() {
+                            for initial_peer in &mut initial_sync_peer_list {
                                 // we compare the two peers via the comparison operator on syncpeer
-                                if initial_sync_peer_list[i] == peer {
+                                if *initial_peer == peer {
                                     found = true;
                                     // if the peer is already in the list, we replace all the information about the peer
                                     // with the newest up-to-date information
-                                    initial_sync_peer_list[i] = peer.clone();
+                                    *initial_peer = peer.clone();
                                     break;
                                 }
                             }
