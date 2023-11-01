@@ -250,7 +250,7 @@ impl Listening {
                         }
                         // We use a list here to ensure that we dont wait for even for INITIAL_SYNC_PEER_COUNT different
                         // peers
-                        if initial_sync_counter == INITIAL_SYNC_PEER_COUNT {
+                        if initial_sync_counter >= INITIAL_SYNC_PEER_COUNT {
                             return StateEvent::FallenBehind(SyncStatus::Lagging {
                                 local,
                                 network,
