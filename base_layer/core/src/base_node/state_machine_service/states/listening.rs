@@ -225,9 +225,14 @@ impl Listening {
                         debug!(target: LOG_TARGET, "Initial sync achieved");
                     }
 
+                    // If we have already reached initial sync before, as indicated by the `is_synced` flagged we can
+                    // immediately return fallen behind with the peer that has a higher pow than us
                     if sync_mode.is_lagging() && self.is_synced {
                         return StateEvent::FallenBehind(sync_mode);
                     }
+                    // if we are lagging and not yet reached initial sync, we delay a bit till we get
+                    // INITIAL_SYNC_PEER_COUNT metadata updates from peers to ensure we make a better choice of which
+                    // peer to sync from in the next stages
                     if let SyncStatus::Lagging {
                         local,
                         network,
@@ -237,9 +242,14 @@ impl Listening {
                         initial_sync_counter += 1;
                         for peer in sync_peers {
                             let mut found = false;
+                            // lets search the list list to ensure we only have unique peers in the list with the latest
+                            // up-to-date information
                             for i in 0..initial_sync_peer_list.len() {
+                                // we compare the two peers via the comparison operator on syncpeer
                                 if initial_sync_peer_list[i] == peer {
                                     found = true;
+                                    // if the peer is already in the list, we replace all the information about the peer
+                                    // with the newest up-to-date information
                                     initial_sync_peer_list[i] = peer.clone();
                                     break;
                                 }
@@ -251,6 +261,7 @@ impl Listening {
                         // We use a list here to ensure that we dont wait for even for INITIAL_SYNC_PEER_COUNT different
                         // peers
                         if initial_sync_counter >= INITIAL_SYNC_PEER_COUNT {
+                            // lets return now that we have enough peers to chose from
                             return StateEvent::FallenBehind(SyncStatus::Lagging {
                                 local,
                                 network,
