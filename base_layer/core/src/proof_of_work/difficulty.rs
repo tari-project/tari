@@ -83,6 +83,18 @@ impl Difficulty {
         let result = result.min(u64::MAX.into());
         Difficulty::from_u64(result.low_u64())
     }
+
+    pub fn checked_div_u64(&self, other: u64) -> Option<Difficulty> {
+        if other == 0 {
+            return None;
+        }
+        let result = Difficulty(self.0 / other);
+        if result.0 < MIN_DIFFICULTY {
+            None
+        } else {
+            Some(result)
+        }
+    }
 }
 
 /// These traits should not be implemented for `Difficulty`:
