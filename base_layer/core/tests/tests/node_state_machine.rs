@@ -30,7 +30,7 @@ use tari_core::{
     base_node::{
         chain_metadata_service::PeerChainMetadata,
         state_machine_service::{
-            states::{Listening, StateEvent, StatusInfo},
+            states::{Listening, StateEvent, StatusInfo, SyncStatus::Lagging},
             BaseNodeStateMachine,
             BaseNodeStateMachineConfig,
         },
@@ -57,7 +57,13 @@ use tokio::{
 use crate::helpers::{
     block_builders::{append_block, chain_block, create_genesis_block},
     chain_metadata::MockChainMetadata,
-    nodes::{create_network_with_2_base_nodes_with_config, random_node_identity, wait_until_online, BaseNodeBuilder},
+    nodes::{
+        create_network_with_2_base_nodes_with_config,
+        create_network_with_3_base_nodes_with_config,
+        random_node_identity,
+        wait_until_online,
+        BaseNodeBuilder,
+    },
 };
 
 static EMISSION: [u64; 2] = [10, 10];
@@ -129,6 +135,104 @@ async fn test_listening_lagging() {
     prev_block.header.kernel_mmr_size += 1;
     bob_local_nci.submit_block(prev_block).await.unwrap();
     assert_eq!(bob_db.get_height().unwrap(), 2);
+    let next_event = time::timeout(Duration::from_secs(10), await_event_task)
+        .await
+        .expect("Alice did not emit `StateEvent::FallenBehind` within 10 seconds")
+        .unwrap();
+
+    assert!(matches!(next_event, StateEvent::FallenBehind(_)));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_listening_initial_fallen_behind() {
+    let network = Network::LocalNet;
+    let temp_dir = tempdir().unwrap();
+    let key_manager = create_test_core_key_manager_with_memory_db();
+    let consensus_constants = ConsensusConstantsBuilder::new(network)
+        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
+        .build();
+    let (gen_block, _) = create_genesis_block(&consensus_constants, &key_manager).await;
+    let consensus_manager = ConsensusManagerBuilder::new(network)
+        .add_consensus_constants(consensus_constants)
+        .with_block(gen_block.clone())
+        .build()
+        .unwrap();
+    let (alice_node, bob_node, charlie_node, consensus_manager) = create_network_with_3_base_nodes_with_config(
+        MempoolServiceConfig::default(),
+        LivenessConfig {
+            auto_ping_interval: Some(Duration::from_millis(100)),
+            ..Default::default()
+        },
+        consensus_manager,
+        temp_dir.path().to_str().unwrap(),
+    )
+    .await;
+    let shutdown = Shutdown::new();
+
+    let bob_db = bob_node.blockchain_db;
+    let mut bob_local_nci = bob_node.local_nci;
+
+    // Bob Block 1 - no block event
+    let prev_block = append_block(
+        &bob_db,
+        &gen_block,
+        vec![],
+        &consensus_manager,
+        Difficulty::from_u64(3).unwrap(),
+        &key_manager,
+    )
+    .await
+    .unwrap();
+    // Bob Block 2 - with block event and liveness service metadata update
+    let mut prev_block = bob_db
+        .prepare_new_block(chain_block(prev_block.block(), vec![], &consensus_manager, &key_manager).await)
+        .unwrap();
+    prev_block.header.output_mmr_size += 1;
+    prev_block.header.kernel_mmr_size += 1;
+    bob_local_nci.submit_block(prev_block).await.unwrap();
+    assert_eq!(bob_db.get_height().unwrap(), 2);
+
+    let charlie_db = charlie_node.blockchain_db;
+    let mut charlie_local_nci = charlie_node.local_nci;
+
+    // charlie Block 1 - no block event
+    let prev_block = append_block(
+        &charlie_db,
+        &gen_block,
+        vec![],
+        &consensus_manager,
+        Difficulty::from_u64(3).unwrap(),
+        &key_manager,
+    )
+    .await
+    .unwrap();
+    // charlie Block 2 - with block event and liveness service metadata update
+    let mut prev_block = charlie_db
+        .prepare_new_block(chain_block(prev_block.block(), vec![], &consensus_manager, &key_manager).await)
+        .unwrap();
+    prev_block.header.output_mmr_size += 1;
+    prev_block.header.kernel_mmr_size += 1;
+    charlie_local_nci.submit_block(prev_block).await.unwrap();
+    assert_eq!(charlie_db.get_height().unwrap(), 2);
+
+    let (state_change_event_publisher, _) = broadcast::channel(10);
+    let (status_event_sender, _status_event_receiver) = watch::channel(StatusInfo::new());
+    let mut alice_state_machine = BaseNodeStateMachine::new(
+        alice_node.blockchain_db.clone().into(),
+        alice_node.local_nci.clone(),
+        alice_node.comms.connectivity(),
+        alice_node.comms.peer_manager(),
+        alice_node.chain_metadata_handle.get_event_stream(),
+        BaseNodeStateMachineConfig::default(),
+        SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
+        status_event_sender,
+        state_change_event_publisher,
+        RandomXFactory::default(),
+        consensus_manager.clone(),
+        shutdown.to_signal(),
+    );
+
+    let await_event_task = task::spawn(async move { Listening::new().next_event(&mut alice_state_machine).await });
 
     let next_event = time::timeout(Duration::from_secs(10), await_event_task)
         .await
@@ -136,6 +240,16 @@ async fn test_listening_lagging() {
         .unwrap();
 
     assert!(matches!(next_event, StateEvent::FallenBehind(_)));
+    if let StateEvent::FallenBehind(Lagging {
+        local: _,
+        network: _,
+        sync_peers,
+    }) = next_event
+    {
+        assert_eq!(sync_peers.len(), 2);
+    } else {
+        panic!("should have gotten a StateEvent::FallenBehind with 2 peers")
+    }
 }
 
 #[tokio::test]
@@ -178,12 +292,14 @@ async fn test_event_channel() {
         .unwrap();
 
     let peer_chain_metadata = PeerChainMetadata::new(node_identity.node_id().clone(), metadata, None);
-    mock.publish_chain_metadata(
-        peer_chain_metadata.node_id(),
-        peer_chain_metadata.claimed_chain_metadata(),
-    )
-    .await
-    .expect("Could not publish metadata");
+    for _ in 0..5 {
+        mock.publish_chain_metadata(
+            peer_chain_metadata.node_id(),
+            peer_chain_metadata.claimed_chain_metadata(),
+        )
+        .await
+        .expect("Could not publish metadata");
+    }
     let event = state_change_event_subscriber.recv().await;
     assert_eq!(*event.unwrap(), StateEvent::Initialized);
     let event = state_change_event_subscriber.recv().await;
