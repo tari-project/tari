@@ -155,6 +155,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     type SearchKernelsStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
     type SearchUtxosStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
 
+    #[allow(clippy::too_many_lines)]
     async fn get_network_difficulty(
         &self,
         request: Request<tari_rpc::HeightRequest>,
