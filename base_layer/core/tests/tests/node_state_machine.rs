@@ -292,12 +292,14 @@ async fn test_event_channel() {
         .unwrap();
 
     let peer_chain_metadata = PeerChainMetadata::new(node_identity.node_id().clone(), metadata, None);
-    mock.publish_chain_metadata(
-        peer_chain_metadata.node_id(),
-        peer_chain_metadata.claimed_chain_metadata(),
-    )
-    .await
-    .expect("Could not publish metadata");
+    for _ in 0..5 {
+        mock.publish_chain_metadata(
+            peer_chain_metadata.node_id(),
+            peer_chain_metadata.claimed_chain_metadata(),
+        )
+        .await
+        .expect("Could not publish metadata");
+    }
     let event = state_change_event_subscriber.recv().await;
     assert_eq!(*event.unwrap(), StateEvent::Initialized);
     let event = state_change_event_subscriber.recv().await;
