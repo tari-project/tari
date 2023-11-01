@@ -241,6 +241,7 @@ impl Listening {
                                 if initial_sync_peer_list[i] == peer {
                                     found = true;
                                     initial_sync_peer_list[i] = peer.clone();
+                                    break;
                                 }
                             }
                             if !found {
