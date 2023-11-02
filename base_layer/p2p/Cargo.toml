@@ -36,7 +36,7 @@ tokio = { version = "1.23", features = ["macros"] }
 tokio-stream = { version = "0.1.9", default-features = false, features = ["time"] }
 tower = "0.4.11"
 trust-dns-client = { version = "=0.21.0-alpha.5", features = ["dns-over-rustls"] }
-webpki = "0.21"
+webpki = "0.22"
 
 [dev-dependencies]
 tari_test_utils = {  path = "../../infrastructure/test_utils" }
