@@ -453,7 +453,7 @@ impl TransactionInput {
 
     pub fn smt_hash(&self, mined_height: u64) -> FixedHash {
         let utxo_hash = self.output_hash();
-        let smt_hash = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("smt_hash")
+        let smt_hash = DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("smt_hash")
             .chain(&utxo_hash)
             .chain(&mined_height);
 
