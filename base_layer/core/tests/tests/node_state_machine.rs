@@ -187,7 +187,7 @@ async fn test_listening_initial_fallen_behind() {
     let mut prev_block = bob_db
         .prepare_new_block(chain_block(prev_block.block(), vec![], &consensus_manager, &key_manager).await)
         .unwrap();
-    prev_block.header.output_mmr_size += 1;
+    prev_block.header.output_smt_size += 1;
     prev_block.header.kernel_mmr_size += 1;
     bob_local_nci.submit_block(prev_block).await.unwrap();
     assert_eq!(bob_db.get_height().unwrap(), 2);
@@ -210,7 +210,7 @@ async fn test_listening_initial_fallen_behind() {
     let mut prev_block = charlie_db
         .prepare_new_block(chain_block(prev_block.block(), vec![], &consensus_manager, &key_manager).await)
         .unwrap();
-    prev_block.header.output_mmr_size += 1;
+    prev_block.header.output_smt_size += 1;
     prev_block.header.kernel_mmr_size += 1;
     charlie_local_nci.submit_block(prev_block).await.unwrap();
     assert_eq!(charlie_db.get_height().unwrap(), 2);
