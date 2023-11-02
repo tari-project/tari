@@ -2,6 +2,85 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.52.0-pre.2](https://github.com/tari-project/tari/compare/v0.52.0-pre.1...v0.52.0-pre.2) (2023-11-02)
+
+
+### ⚠ BREAKING CHANGES
+
+* replace utxo MMR with SMT (#5854)
+* update key parsing (#5900)
+* **proto:** remove proto timestamp wrapper types (#5833)
+* **proto:** remove proto bytes for std bytes (#5835)
+* upgrade bitflags crate (#5831)
+* improve block add where many orphan chain tips existed (#5763)
+
+### Features
+
+* add (de)serialize to BalancedBinaryMerkleTree ([#5744](https://github.com/tari-project/tari/issues/5744)) ([c53ec06](https://github.com/tari-project/tari/commit/c53ec065b6f7893fe1a5d3a3ccde826fa09e438f))
+* add config for grpc server methods ([#5886](https://github.com/tari-project/tari/issues/5886)) ([a3d7cf7](https://github.com/tari-project/tari/commit/a3d7cf771663d2b3c3585796ef502ab00f569ba0))
+* add insert function to SMT ([#5776](https://github.com/tari-project/tari/issues/5776)) ([5901b4a](https://github.com/tari-project/tari/commit/5901b4af9fe307cdc379979155961d34dcf8c098))
+* add overflow checks to change and fee calculations ([#5834](https://github.com/tari-project/tari/issues/5834)) ([9725fbd](https://github.com/tari-project/tari/commit/9725fbddf1ee7047d2e7698f4ee1975ce22aa605))
+* allow multiple initial sync peers ([#5890](https://github.com/tari-project/tari/issues/5890)) ([e1c504a](https://github.com/tari-project/tari/commit/e1c504a3d9b9affafb3221e46831d818cbdcc45a))
+* apply obscure_error_if_true consistenlty ([#5892](https://github.com/tari-project/tari/issues/5892)) ([1864203](https://github.com/tari-project/tari/commit/1864203c224611cdcac71adbae83e37161ce0a5c))
+* ban bad block-sync peers ([#5871](https://github.com/tari-project/tari/issues/5871)) ([5c2781e](https://github.com/tari-project/tari/commit/5c2781e86be8efacab52c93a0bc2ee662ca56ec8))
+* chat ffi verbose logging options ([#5789](https://github.com/tari-project/tari/issues/5789)) ([24b4324](https://github.com/tari-project/tari/commit/24b4324f3d5b4386a3df68952fb834d58fa5217d))
+* chatffi simpler callbacks and managed identity and db ([#5681](https://github.com/tari-project/tari/issues/5681)) ([79ab584](https://github.com/tari-project/tari/commit/79ab584100bc6899445fc3789d6e3312a06d21e8))
+* **chatffi:** better message metadata parsing ([#5820](https://github.com/tari-project/tari/issues/5820)) ([9a43eab](https://github.com/tari-project/tari/commit/9a43eab2e81aaaa0a5ad53b3dc5d9388b9d43452))
+* **chatffi:** get conversationalists ([#5849](https://github.com/tari-project/tari/issues/5849)) ([d9e8e22](https://github.com/tari-project/tari/commit/d9e8e22846cc0974abcfe19ab32b41299c0a500a))
+* **chatffi:** message metadata ([#5766](https://github.com/tari-project/tari/issues/5766)) ([a9b730a](https://github.com/tari-project/tari/commit/a9b730aaa2e44dbba7c546b0d78ad0fef4884d29))
+* **chatffi:** tor configuration ([#5752](https://github.com/tari-project/tari/issues/5752)) ([1eeb4a9](https://github.com/tari-project/tari/commit/1eeb4a9abbc29ec16593b1c6bec675b928e7b177))
+* **chat:** read receipt feature ([#5824](https://github.com/tari-project/tari/issues/5824)) ([d81fe7d](https://github.com/tari-project/tari/commit/d81fe7d39fdc120665b90e18163151bdb938beee))
+* cli add list of vns for next epoch ([#5743](https://github.com/tari-project/tari/issues/5743)) ([d2a0c8c](https://github.com/tari-project/tari/commit/d2a0c8cc935bb648460f8095c5f2f7125e642169))
+* **comms:** allow multiple messaging protocol instances ([#5748](https://github.com/tari-project/tari/issues/5748)) ([3fba04e](https://github.com/tari-project/tari/commit/3fba04ec862bf405e96e09b5cc38a5d572b77244))
+* consistent handling of edge cases for header sync ([#5837](https://github.com/tari-project/tari/issues/5837)) ([3e1ec1f](https://github.com/tari-project/tari/commit/3e1ec1f1fe70b82ed0f7517d91eb9f3f352cbe97))
+* enable multiple coinbase utxos ([#5879](https://github.com/tari-project/tari/issues/5879)) ([49e5c9c](https://github.com/tari-project/tari/commit/49e5c9c2fec823f0958a28e5c110cc3f34ba48d6))
+* failure of min difficulty should not add block to list of bad blocks ([#5805](https://github.com/tari-project/tari/issues/5805)) ([38dc014](https://github.com/tari-project/tari/commit/38dc014405eb6887210861bd533f2b1dd17f48c2))
+* improve block add where many orphan chain tips existed ([#5763](https://github.com/tari-project/tari/issues/5763)) ([19b3f21](https://github.com/tari-project/tari/commit/19b3f217aee6818678ed45082d910f1a2335a9ec))
+* make prc errors ban-able for sync ([#5884](https://github.com/tari-project/tari/issues/5884)) ([4ca664e](https://github.com/tari-project/tari/commit/4ca664e5933f2266f594ecccf545d0eec3b18b40))
+* prevent possible division by zero in difficulty calculation ([#5828](https://github.com/tari-project/tari/issues/5828)) ([f85a878](https://github.com/tari-project/tari/commit/f85a8785de49dda05b3dc54dfda4f5081424e06f))
+* print warning for wallets in direct send only ([#5883](https://github.com/tari-project/tari/issues/5883)) ([6d8686d](https://github.com/tari-project/tari/commit/6d8686dc40ef701fe980698c30347da5b690de07))
+* reduce timeouts and increase bans ([#5882](https://github.com/tari-project/tari/issues/5882)) ([df9bc9a](https://github.com/tari-project/tari/commit/df9bc9a912fe6e7c750e34a3dd7bd6796c6d758f))
+* replace utxo MMR with SMT ([#5854](https://github.com/tari-project/tari/issues/5854)) ([ca74c29](https://github.com/tari-project/tari/commit/ca74c29db7264413dc3e6542b599db9760993170))
+* up the timeout for comms ([#5758](https://github.com/tari-project/tari/issues/5758)) ([1054868](https://github.com/tari-project/tari/commit/1054868248342d0a07077d441151dc48adbfddf3))
+* update key parsing ([#5900](https://github.com/tari-project/tari/issues/5900)) ([59d7ceb](https://github.com/tari-project/tari/commit/59d7cebd22cc86ab5d3691aa5dc3d73b37032442))
+* update randomx ([#5894](https://github.com/tari-project/tari/issues/5894)) ([e445244](https://github.com/tari-project/tari/commit/e4452440bd9269402f1a5352e9c93cbfa6c72425))
+
+
+### Bug Fixes
+
+* add lock height and kernel features checks on default transactions ([#5836](https://github.com/tari-project/tari/issues/5836)) ([1f87226](https://github.com/tari-project/tari/commit/1f87226722b12750424ab2f4861fe0475a67dfd6))
+* ban peer if it sends bad liveness data ([#5844](https://github.com/tari-project/tari/issues/5844)) ([eb40fc4](https://github.com/tari-project/tari/commit/eb40fc44cfc0605545ba9e831c8d27209a4db51f))
+* change truncate_from_bits to from_bits ([#5773](https://github.com/tari-project/tari/issues/5773)) ([fb18078](https://github.com/tari-project/tari/commit/fb18078d888b7c65601e8261d66fca366ffff28b))
+* chat ffi seed peers ([#5786](https://github.com/tari-project/tari/issues/5786)) ([c04996f](https://github.com/tari-project/tari/commit/c04996f01f3e5627acc376a27e7abcb61d7dda5c))
+* **chatffi:** return and read from ptrs ([#5827](https://github.com/tari-project/tari/issues/5827)) ([dd2eddb](https://github.com/tari-project/tari/commit/dd2eddbe9280870485974edd611e224ae585b76a))
+* **comms+dht:** mark peers as online inbound connection,join ([#5741](https://github.com/tari-project/tari/issues/5741)) ([e8413ea](https://github.com/tari-project/tari/commit/e8413ea364c0a17785b475ac57d74244b62a7375))
+* **diagrams:** missing quotes for messaging diagram ([#5750](https://github.com/tari-project/tari/issues/5750)) ([a8f6eb5](https://github.com/tari-project/tari/commit/a8f6eb5e48e6e823b96919bec87843300311caae))
+* **diagrams:** missing quotes for protocol negotiation diagram ([#5751](https://github.com/tari-project/tari/issues/5751)) ([45c20a3](https://github.com/tari-project/tari/commit/45c20a30b849b92e1f6fe402d7e7e657ccf9f663))
+* don't ban a peer for sending a banned peer ([#5843](https://github.com/tari-project/tari/issues/5843)) ([12f8a75](https://github.com/tari-project/tari/commit/12f8a75060e1d15fbeac589c568f7ee9e04eb900))
+* fix erroneous warning message ([#5846](https://github.com/tari-project/tari/issues/5846)) ([8afcd8b](https://github.com/tari-project/tari/commit/8afcd8b5545a433c92d3a47b4f85b4e89a5408b8))
+* get rid of possible 'expect' ([#5794](https://github.com/tari-project/tari/issues/5794)) ([467a8d4](https://github.com/tari-project/tari/commit/467a8d4f4493814f1102d6863fc844896e94a8ec))
+* grpc request overflows ([#5812](https://github.com/tari-project/tari/issues/5812)) ([36d72e8](https://github.com/tari-project/tari/commit/36d72e8b2239870550060fc9e0c183131ee3c2fa))
+* handle possible underflow in smt ([#5769](https://github.com/tari-project/tari/issues/5769)) ([558e6f2](https://github.com/tari-project/tari/commit/558e6f2bf7d00fb2c7c506b7000237aba928238c))
+* listing mode is synced ([#5830](https://github.com/tari-project/tari/issues/5830)) ([ff5a5d8](https://github.com/tari-project/tari/commit/ff5a5d82e3ddbe191bda8b8132590c2afb3282f2))
+* mempool panic ([#5814](https://github.com/tari-project/tari/issues/5814)) ([754fb16](https://github.com/tari-project/tari/commit/754fb16e4ae79bb8d712419f0f6bf59efbaf0ce1))
+* **p2p:** enable auto join when online ([#5738](https://github.com/tari-project/tari/issues/5738)) ([eb74bbb](https://github.com/tari-project/tari/commit/eb74bbba3746b78c3fd8e0ee5066f1d4d987af3e))
+* panic overflow ([#5819](https://github.com/tari-project/tari/issues/5819)) ([af31ba1](https://github.com/tari-project/tari/commit/af31ba1e6deb64a68ec74eac090fdcfc9e8a52ca))
+* possible exception in request_context ([#5784](https://github.com/tari-project/tari/issues/5784)) ([6c8e2d3](https://github.com/tari-project/tari/commit/6c8e2d395799757e5a946fe01226f739d0706741))
+* potential index out of bounds ([#5775](https://github.com/tari-project/tari/issues/5775)) ([f17ac6b](https://github.com/tari-project/tari/commit/f17ac6b61edfe47dacf091969382c6b17e7bf214))
+* potential overflow ([#5759](https://github.com/tari-project/tari/issues/5759)) ([5c93e35](https://github.com/tari-project/tari/commit/5c93e35c785a7a19f8e6c762e3f1df8f8207877e))
+* potential overflow ([#5778](https://github.com/tari-project/tari/issues/5778)) ([1d1332d](https://github.com/tari-project/tari/commit/1d1332d21ba0db18e9f3a3c253963fc1735b8193))
+* potential sync stuck ([#5760](https://github.com/tari-project/tari/issues/5760)) ([c5ed816](https://github.com/tari-project/tari/commit/c5ed816c80eae43348593e636e4b56da98d8af6b))
+* recovery passphrase flow ([#5877](https://github.com/tari-project/tari/issues/5877)) ([4159b76](https://github.com/tari-project/tari/commit/4159b766669e682bb9593c4e7cd3ddb298a56e0b))
+* remove peer ([#5757](https://github.com/tari-project/tari/issues/5757)) ([4c48a26](https://github.com/tari-project/tari/commit/4c48a26f20d800b2098c18b723dfb83cb878f0ad))
+* remove statement from sparse Merkle tree proofs ([#5768](https://github.com/tari-project/tari/issues/5768)) ([d630d11](https://github.com/tari-project/tari/commit/d630d114f1866f24e729cda0f8cf19f298e7bd50))
+* stuck on sync ([#5739](https://github.com/tari-project/tari/issues/5739)) ([33b37a8](https://github.com/tari-project/tari/commit/33b37a8c37f3e1883ef3ebf27a8e18d4dd63fc92))
+* unwraps in rpc client ([#5770](https://github.com/tari-project/tari/issues/5770)) ([6f0d20a](https://github.com/tari-project/tari/commit/6f0d20aa30d3dcc23630d3a9650802f8c1ce3a61))
+
+
+* **proto:** remove proto bytes for std bytes ([#5835](https://github.com/tari-project/tari/issues/5835)) ([491ed83](https://github.com/tari-project/tari/commit/491ed83aaea166a6e60d40e76b8574625b56cf98))
+* **proto:** remove proto timestamp wrapper types ([#5833](https://github.com/tari-project/tari/issues/5833)) ([43b994e](https://github.com/tari-project/tari/commit/43b994e62378a9ed241842fc18f01d69231f089f))
+* upgrade bitflags crate ([#5831](https://github.com/tari-project/tari/issues/5831)) ([dae7dd9](https://github.com/tari-project/tari/commit/dae7dd9d1f2277b6192dc0ed7bea26b7d2d946ac))
+
 ## [0.52.0-pre.1](https://github.com/brianp/tari/compare/v0.51.0-pre.4...v0.52.0-pre.1) (2023-09-04)
 
 
