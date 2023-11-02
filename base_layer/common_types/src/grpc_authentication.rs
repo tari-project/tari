@@ -33,6 +33,7 @@ pub enum GrpcAuthentication {
         #[serde(deserialize_with = "deserialize_safe_password")]
         password: SafePassword,
     },
+    Tls {},
 }
 
 impl GrpcAuthentication {

@@ -68,3 +68,6 @@ pie/
 integration_tests/cucumber-output-junit.xml
 
 integration_tests/log/
+
+# Ignore the generated keys for grpc
+applications/minotari_app_grpc/keys/

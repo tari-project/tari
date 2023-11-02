@@ -43,6 +43,9 @@ impl ClientAuthenticationInterceptor {
             GrpcAuthentication::Basic { username, password } => {
                 Some(BasicAuthCredentials::generate_header(username, password.reveal())?)
             },
+            GrpcAuthentication::Tls {} => {
+                todo!()
+            },
         };
         Ok(Self { authorization_header })
     }

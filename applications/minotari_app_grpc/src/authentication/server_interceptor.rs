@@ -66,6 +66,9 @@ impl Interceptor for ServerAuthenticationInterceptor {
                 username,
                 password: hashed_password,
             } => self.handle_basic_auth(request, username, hashed_password.reveal()),
+            GrpcAuthentication::Tls {} => {
+                todo!()
+            },
         }
     }
 }
