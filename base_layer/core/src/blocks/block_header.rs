@@ -102,7 +102,7 @@ pub struct BlockHeader {
     /// This is calculated as Hash (txo MMR root  || roaring bitmap hash of UTXO indices)
     pub output_mr: FixedHash,
     /// The size (number  of leaves) of the output and range proof MMRs at the time of this header
-    pub output_mmr_size: u64,
+    pub output_smt_size: u64,
     /// This is the MMR root of the kernels
     pub kernel_mr: FixedHash,
     /// The number of MMR leaves in the kernel MMR
@@ -128,7 +128,7 @@ impl BlockHeader {
             prev_hash: FixedHash::zero(),
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
-            output_mmr_size: 0,
+            output_smt_size: 0,
             kernel_mr: FixedHash::zero(),
             kernel_mmr_size: 0,
             input_mr: FixedHash::zero(),
@@ -160,7 +160,7 @@ impl BlockHeader {
             prev_hash,
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
-            output_mmr_size: prev.output_mmr_size,
+            output_smt_size: prev.output_smt_size,
             kernel_mr: FixedHash::zero(),
             kernel_mmr_size: prev.kernel_mmr_size,
             input_mr: FixedHash::zero(),
@@ -225,7 +225,7 @@ impl BlockHeader {
             .chain(&self.timestamp)
             .chain(&self.input_mr)
             .chain(&self.output_mr)
-            .chain(&self.output_mmr_size)
+            .chain(&self.output_smt_size)
             .chain(&self.kernel_mr)
             .chain(&self.kernel_mmr_size)
             .chain(&self.total_kernel_offset)
@@ -268,7 +268,7 @@ impl From<NewBlockHeaderTemplate> for BlockHeader {
             prev_hash: header_template.prev_hash,
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
-            output_mmr_size: 0,
+            output_smt_size: 0,
             kernel_mr: FixedHash::zero(),
             kernel_mmr_size: 0,
             input_mr: FixedHash::zero(),
@@ -304,7 +304,7 @@ impl Display for BlockHeader {
             "Merkle roots:\nInputs: {},\nOutputs: {} ({})\n\nKernels: {} ({})",
             self.input_mr.to_hex(),
             self.output_mr.to_hex(),
-            self.output_mmr_size,
+            self.output_smt_size,
             self.kernel_mr.to_hex(),
             self.kernel_mmr_size
         )?;

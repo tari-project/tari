@@ -451,6 +451,17 @@ impl TransactionInput {
         }
     }
 
+    pub fn smt_hash(&self, mined_height: u64) -> FixedHash {
+        let utxo_hash = self.output_hash();
+        let smt_hash = DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("smt_hash")
+            .chain(&utxo_hash)
+            .chain(&mined_height);
+
+        match self.version {
+            TransactionInputVersion::V0 | TransactionInputVersion::V1 => smt_hash.finalize().into(),
+        }
+    }
+
     /// Returns true if this is a compact input, otherwise false.
     pub fn is_compact(&self) -> bool {
         matches!(self.spent_output, SpentOutput::OutputHash(_))
@@ -552,6 +563,14 @@ impl Ord for TransactionInput {
     }
 }
 
+impl Default for TransactionInput {
+    fn default() -> Self {
+        let output = SpentOutput::create_from_output(TransactionOutput::default());
+
+        TransactionInput::new_current_version(output, ExecutionStack::default(), Default::default())
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[allow(clippy::large_enum_variant)]
 pub enum SpentOutput {
@@ -576,6 +595,25 @@ impl SpentOutput {
         match self {
             SpentOutput::OutputHash(_) => 0,
             SpentOutput::OutputData { .. } => 1,
+        }
+    }
+
+    pub fn create_from_output(output: TransactionOutput) -> SpentOutput {
+        let rp_hash = match output.proof {
+            Some(proof) => proof.hash(),
+            None => FixedHash::zero(),
+        };
+        SpentOutput::OutputData {
+            version: output.version,
+            features: output.features,
+            commitment: output.commitment,
+            script: output.script,
+            sender_offset_public_key: output.sender_offset_public_key,
+            covenant: output.covenant,
+            encrypted_data: output.encrypted_data,
+            metadata_signature: output.metadata_signature,
+            rangeproof_hash: rp_hash,
+            minimum_value_promise: output.minimum_value_promise,
         }
     }
 }

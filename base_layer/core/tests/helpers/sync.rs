@@ -163,7 +163,7 @@ pub enum WhatToDelete {
 // Private helper function to setup a delete a block transaction.
 // Note: This private function will panic if the index is out of bounds - caller function's responsibility.
 fn delete_block(txn: &mut DbTransaction, node: &NodeInterfaces, blocks: &[ChainBlock], index: usize) {
-    txn.delete_block(*blocks[index].hash());
+    txn.delete_tip_block(*blocks[index].hash());
     txn.delete_orphan(*blocks[index].hash());
     txn.set_best_block(
         blocks[index + 1].height(),

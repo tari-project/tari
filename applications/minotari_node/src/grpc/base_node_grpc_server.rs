@@ -437,7 +437,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         if is_reversed {
                             data.into_iter()
                                 .map(|chain_block| {
-                                    let (block, acc_data, confirmations, _) = chain_block.dissolve();
+                                    let (block, acc_data, confirmations) = chain_block.dissolve();
                                     match consensus_rules
                                         .calculate_coinbase_and_fees(block.header.height, block.body.kernels())
                                     {
@@ -459,7 +459,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         } else {
                             data.into_iter()
                                 .map(|chain_block| {
-                                    let (block, acc_data, confirmations, _) = chain_block.dissolve();
+                                    let (block, acc_data, confirmations) = chain_block.dissolve();
                                     match consensus_rules
                                         .calculate_coinbase_and_fees(block.header.height, block.body.kernels())
                                     {
@@ -1569,7 +1569,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 )
             })?;
 
-        let (block, acc_data, confirmations, _) = block.dissolve();
+        let (block, acc_data, confirmations) = block.dissolve();
         let total_block_reward = self
             .consensus_rules
             .calculate_coinbase_and_fees(block.header.height, block.body.kernels())

@@ -47,7 +47,7 @@ use crate::{
         metrics,
     },
     blocks::{Block, BlockBuilder, BlockHeader, BlockHeaderValidationError, ChainBlock, NewBlock, NewBlockTemplate},
-    chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend, ChainStorageError, PrunedOutput},
+    chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend, ChainStorageError},
     consensus::{ConsensusConstants, ConsensusManager},
     mempool::Mempool,
     proof_of_work::{
@@ -163,14 +163,15 @@ where B: BlockchainBackend + 'static
             },
             NodeCommsRequest::FetchMatchingUtxos(utxo_hashes) => {
                 let mut res = Vec::with_capacity(utxo_hashes.len());
-                for (pruned_output, spent) in (self.blockchain_db.fetch_utxos(utxo_hashes).await?)
+                for (output, spent) in (self
+                    .blockchain_db
+                    .fetch_outputs_with_spend_status_at_tip(utxo_hashes)
+                    .await?)
                     .into_iter()
                     .flatten()
                 {
-                    if let PrunedOutput::NotPruned { output } = pruned_output {
-                        if !spent {
-                            res.push(output);
-                        }
+                    if !spent {
+                        res.push(output);
                     }
                 }
                 Ok(NodeCommsResponse::TransactionOutputs(res))
@@ -367,7 +368,7 @@ where B: BlockchainBackend + 'static
                         },
                         Some,
                     ),
-                    Some(block) => Some(block.try_into_block()?),
+                    Some(block) => Some(block.into_block()),
                 };
 
                 Ok(NodeCommsResponse::Block(Box::new(maybe_block)))
@@ -417,12 +418,7 @@ where B: BlockchainBackend + 'static
             },
             NodeCommsRequest::FetchUnspentUtxosInBlock { block_hash } => {
                 let utxos = self.blockchain_db.fetch_outputs_in_block(block_hash).await?;
-                Ok(NodeCommsResponse::TransactionOutputs(
-                    utxos
-                        .into_iter()
-                        .filter_map(|utxo| utxo.into_unpruned_output())
-                        .collect(),
-                ))
+                Ok(NodeCommsResponse::TransactionOutputs(utxos))
             },
         }
     }
@@ -879,32 +875,22 @@ where B: BlockchainBackend + 'static
                         details: format!("Output {} to be spent does not exist in db", input.output_hash()),
                     })?;
 
-            match output_mined_info.output {
-                PrunedOutput::Pruned { .. } => {
-                    return Err(CommsInterfaceError::InvalidFullBlock {
-                        hash: block_hash,
-                        details: format!("Output {} to be spent is pruned", input.output_hash()),
-                    });
-                },
-                PrunedOutput::NotPruned { output } => {
-                    let rp_hash = match output.proof {
-                        Some(proof) => proof.hash(),
-                        None => FixedHash::zero(),
-                    };
-                    input.add_output_data(
-                        output.version,
-                        output.features,
-                        output.commitment,
-                        output.script,
-                        output.sender_offset_public_key,
-                        output.covenant,
-                        output.encrypted_data,
-                        output.metadata_signature,
-                        rp_hash,
-                        output.minimum_value_promise,
-                    );
-                },
-            }
+            let rp_hash = match output_mined_info.output.proof {
+                Some(proof) => proof.hash(),
+                None => FixedHash::zero(),
+            };
+            input.add_output_data(
+                output_mined_info.output.version,
+                output_mined_info.output.features,
+                output_mined_info.output.commitment,
+                output_mined_info.output.script,
+                output_mined_info.output.sender_offset_public_key,
+                output_mined_info.output.covenant,
+                output_mined_info.output.encrypted_data,
+                output_mined_info.output.metadata_signature,
+                rp_hash,
+                output_mined_info.output.minimum_value_promise,
+            );
         }
         debug!(
             target: LOG_TARGET,

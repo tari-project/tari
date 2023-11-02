@@ -90,7 +90,7 @@ async fn it_passes_if_large_output_block_is_valid() {
         .unwrap();
     block.header.input_mr = mmr_roots.input_mr;
     block.header.output_mr = mmr_roots.output_mr;
-    block.header.output_mmr_size = mmr_roots.output_mmr_size;
+    block.header.output_smt_size = mmr_roots.output_smt_size;
     block.header.kernel_mr = mmr_roots.kernel_mr;
     block.header.kernel_mmr_size = mmr_roots.kernel_mmr_size;
     block.header.validator_node_mr = mmr_roots.validator_node_mr;
@@ -136,7 +136,7 @@ async fn it_passes_if_large_block_is_valid() {
         .unwrap();
     block.header.input_mr = mmr_roots.input_mr;
     block.header.output_mr = mmr_roots.output_mr;
-    block.header.output_mmr_size = mmr_roots.output_mmr_size;
+    block.header.output_smt_size = mmr_roots.output_smt_size;
     block.header.kernel_mr = mmr_roots.kernel_mr;
     block.header.kernel_mmr_size = mmr_roots.kernel_mmr_size;
     block.header.validator_node_mr = mmr_roots.validator_node_mr;
@@ -163,7 +163,7 @@ async fn it_passes_if_block_is_valid() {
         .unwrap();
     block.header.input_mr = mmr_roots.input_mr;
     block.header.output_mr = mmr_roots.output_mr;
-    block.header.output_mmr_size = mmr_roots.output_mmr_size;
+    block.header.output_smt_size = mmr_roots.output_smt_size;
     block.header.kernel_mr = mmr_roots.kernel_mr;
     block.header.kernel_mmr_size = mmr_roots.kernel_mmr_size;
     block.header.validator_node_mr = mmr_roots.validator_node_mr;

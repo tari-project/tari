@@ -32,11 +32,7 @@ impl TryFrom<HistoricalBlock> for grpc::HistoricalBlock {
     fn try_from(hb: HistoricalBlock) -> Result<Self, Self::Error> {
         Ok(Self {
             confirmations: hb.confirmations(),
-            block: Some(
-                hb.try_into_block()?
-                    .try_into()
-                    .map_err(ChainStorageError::ConversionError)?,
-            ),
+            block: Some(hb.into_block().try_into().map_err(ChainStorageError::ConversionError)?),
         })
     }
 }

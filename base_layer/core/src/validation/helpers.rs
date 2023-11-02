@@ -224,13 +224,6 @@ pub fn check_not_duplicate_txo<B: BlockchainBackend>(
     db: &B,
     output: &TransactionOutput,
 ) -> Result<(), ValidationError> {
-    if let Some(index) = db.fetch_mmr_leaf_index(MmrTree::Utxo, &output.hash())? {
-        warn!(
-            target: LOG_TARGET,
-            "Validation failed due to previously spent output: {} (MMR index = {})", output, index
-        );
-        return Err(ValidationError::ContainsTxO);
-    }
     if db
         .fetch_unspent_output_hash_by_commitment(&output.commitment)?
         .is_some()
@@ -287,18 +280,18 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
             kind: "Utxo",
         }));
     };
-    if header.output_mmr_size != mmr_roots.output_mmr_size {
+    if header.output_smt_size != mmr_roots.output_smt_size {
         warn!(
             target: LOG_TARGET,
             "Block header output MMR size in {} does not match. Expected: {}, Actual: {}",
             header.hash().to_hex(),
-            header.output_mmr_size,
-            mmr_roots.output_mmr_size
+            header.output_smt_size,
+            mmr_roots.output_smt_size
         );
         return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrSize {
-            mmr_tree: MmrTree::Utxo.to_string(),
-            expected: mmr_roots.output_mmr_size,
-            actual: header.output_mmr_size,
+            mmr_tree: "UTXO".to_string(),
+            expected: mmr_roots.output_smt_size,
+            actual: header.output_smt_size,
         }));
     }
     if header.input_mr != mmr_roots.input_mr {

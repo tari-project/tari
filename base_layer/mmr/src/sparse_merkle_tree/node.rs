@@ -1,13 +1,14 @@
 // Copyright 2023. The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
+use core::marker::PhantomData;
 use std::{
     convert::TryFrom,
     fmt::{Debug, Formatter},
-    marker::PhantomData,
 };
 
 use digest::{consts::U32, Digest};
+use serde::{Deserialize, Serialize};
 
 use crate::sparse_merkle_tree::{
     bit_utils::{bit_to_dir, count_common_prefix, get_bit, height_key, TraverseDirection},
@@ -20,7 +21,7 @@ pub const KEY_LENGTH: usize = 32;
 macro_rules! hash_type {
     ($name: ident) => {
         /// A wrapper around a 32-byte hash value. Provides convenience functions to display as hex or binary
-        #[derive(Clone, Debug, PartialEq, Eq, PartialOrd)]
+        #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Deserialize, Serialize)]
         pub struct $name([u8; KEY_LENGTH]);
 
         #[allow(clippy::len_without_is_empty)]
@@ -176,7 +177,9 @@ impl<'a> ExactSizeIterator for PathIterator<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(bound(deserialize = "H:"))]
+#[serde(bound(serialize = "H:"))]
 pub enum Node<H> {
     Empty(EmptyNode),
     Leaf(LeafNode<H>),
@@ -270,7 +273,7 @@ impl<H: Digest<OutputSize = U32>> Node<H> {
 //-------------------------------------       Empty Node     -----------------------------------------------------------
 
 /// An empty node. All empty nodes have the same hash, which acts as a marker value for truncated portions of the tree.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EmptyNode {}
 
 impl EmptyNode {
@@ -279,6 +282,7 @@ impl EmptyNode {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 //-------------------------------------       Leaf Node     -----------------------------------------------------------
 pub struct LeafNode<H> {
     key: NodeKey,
@@ -382,6 +386,9 @@ impl<H: Digest<OutputSize = U32>> LeafNode<H> {
 }
 
 //-------------------------------------       Branch Node     ----------------------------------------------------------
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(bound(deserialize = "H:"))]
+#[serde(bound(serialize = "H:"))]
 pub struct BranchNode<H> {
     // The height of the branch. It is also the number of bits that all keys below this branch share.
     height: usize,

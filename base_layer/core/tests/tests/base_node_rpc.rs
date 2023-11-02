@@ -230,7 +230,7 @@ async fn test_base_node_wallet_rpc() {
         .prepare_new_block(chain_block(&block1, vec![], &consensus_manager, &key_manager).await)
         .unwrap();
 
-    block2.header.output_mmr_size += 1;
+    block2.header.output_smt_size += 1;
     block2.header.kernel_mmr_size += 1;
 
     base_node.local_nci.submit_block(block2).await.unwrap();
@@ -417,9 +417,9 @@ async fn test_sync_utxos_by_block() {
     let responses = convert_mpsc_to_stream(&mut streaming).collect::<Vec<_>>().await;
     assert_eq!(
         vec![
-            (0, block0.header().hash().to_vec(), 0),
-            (1, block1.header.hash().to_vec(), 10),
-            (2, block2.header.hash().to_vec(), 4),
+            (0, block0.header().hash().to_vec(), 1),
+            (1, block1.header.hash().to_vec(), 11),
+            (2, block2.header.hash().to_vec(), 6),
             (3, block3.header.hash().to_vec(), 7)
         ],
         responses
@@ -444,7 +444,7 @@ async fn test_sync_utxos_by_block() {
 
     assert_eq!(
         vec![
-            (1, block1.header.hash().to_vec(), 10),
+            (1, block1.header.hash().to_vec(), 11),
             (2, block2.header.hash().to_vec(), 6),
         ],
         responses
