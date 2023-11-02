@@ -13,7 +13,7 @@ tari_common_types = { path = "../../base_layer/common_types" }
 tari_comms = { path = "../../comms/core" }
 tari_comms_dht = { path = "../../comms/dht" }
 tari_contacts = { path = "../../base_layer/contacts" }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto", branch = "main" }
+tari_crypto = { version = "0.19" }
 tari_key_manager = { path = "../../base_layer/key_manager" }
 tari_libtor = { path = "../../infrastructure/libtor", optional = true }
 tari_p2p = { path = "../../base_layer/p2p", features = ["auto-update"] }

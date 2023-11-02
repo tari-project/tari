@@ -32,7 +32,7 @@ crate-type = ["staticlib","cdylib"]
 [dev-dependencies]
 chrono = { version = "0.4.19", default-features = false }
 rand = "0.8"
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto", branch = "main" }
+tari_crypto = { version = "0.19" }
 
 [build-dependencies]
 cbindgen = "0.24.3"
