@@ -13,7 +13,7 @@
     unused_qualifications
 )]
 
-pub static TLS_SERVER_ROOTS: webpki::TLSServerTrustAnchors = webpki::TLSServerTrustAnchors(&[
+pub static TLS_SERVER_ROOTS: webpki::TlsServerTrustAnchors = webpki::TlsServerTrustAnchors(&[
     /*
      * Issuer: CN=Entrust Root Certification Authority - EC1 O=Entrust, Inc. OU=See www.entrust.net/legal-terms/(c) 2012 Entrust, Inc. - for authorized use only
      * Subject: CN=Entrust Root Certification Authority - EC1 O=Entrust, Inc. OU=See www.entrust.net/legal-terms/(c) 2012 Entrust, Inc. - for authorized use only
