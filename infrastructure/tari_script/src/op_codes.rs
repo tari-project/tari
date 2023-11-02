@@ -72,7 +72,7 @@ pub fn slice_to_vec_pubkeys(slice: &[u8], num: usize) -> Result<Vec<RistrettoPub
     let public_keys = slice
         .chunks_exact(PUBLIC_KEY_LENGTH)
         .take(num)
-        .map(RistrettoPublicKey::from_bytes)
+        .map(RistrettoPublicKey::from_canonical_bytes)
         .collect::<Result<Vec<RistrettoPublicKey>, ByteArrayError>>()?;
 
     Ok(public_keys)
@@ -373,7 +373,7 @@ impl Opcode {
                 if bytes.len() < 33 {
                     return Err(ScriptError::InvalidData);
                 }
-                let p = RistrettoPublicKey::from_bytes(&bytes[1..33])?;
+                let p = RistrettoPublicKey::from_canonical_bytes(&bytes[1..33])?;
                 Ok((PushPubKey(Box::new(p)), &bytes[33..]))
             },
             OP_DROP => Ok((Drop, &bytes[1..])),

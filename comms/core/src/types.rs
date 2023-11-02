@@ -22,8 +22,6 @@
 
 //! Common Tari comms types
 
-use blake2::Blake2b;
-use digest::consts::U32;
 use tari_crypto::{
     dhke::DiffieHellmanSharedSecret,
     hash_domain,
@@ -46,8 +44,6 @@ pub type CommsSecretKey = <CommsPublicKey as PublicKey>::K;
 // Diffie-Hellman key exchange type
 pub type CommsDHKE = DiffieHellmanSharedSecret<CommsPublicKey>;
 
-/// Specify the digest type for the signature challenges
-pub type CommsChallenge = Blake2b<U32>;
 /// Comms signature type
 pub type Signature = SchnorrSignature<CommsPublicKey, CommsSecretKey>;
 

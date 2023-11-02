@@ -20,7 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use blake2::Blake2b;
 use borsh::{BorshDeserialize, BorshSerialize};
+use digest::consts::U32;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     epoch::VnEpoch,
@@ -84,7 +86,7 @@ fn does_require_new_shard_key(public_key: &PublicKey, epoch: VnEpoch, interval: 
 }
 
 fn generate_shard_key(public_key: &PublicKey, entropy: &[u8; 32]) -> [u8; 32] {
-    DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("validator_node_shard_key")
+    DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("validator_node_shard_key")
         .chain(public_key)
         .chain(entropy)
         .finalize()

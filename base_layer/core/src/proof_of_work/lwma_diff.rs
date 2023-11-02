@@ -102,9 +102,18 @@ impl LinearWeightedMovingAverage {
             if *timestamp > previous_timestamp {
                 this_timestamp = *timestamp;
             } else {
-                this_timestamp = previous_timestamp.increase(1);
+                this_timestamp = match previous_timestamp.checked_add(EpochTime::from(1)) {
+                    Some(t) => t,
+                    None => return None,
+                };
             }
-            let solve_time = min((this_timestamp - previous_timestamp).as_u64(), self.max_block_time);
+            let solve_time = min(
+                this_timestamp
+                    .checked_sub(previous_timestamp)
+                    .unwrap_or(EpochTime::from(1)) // this should never occur
+                    .as_u64(),
+                self.max_block_time,
+            );
             previous_timestamp = this_timestamp;
 
             // Give linearly higher weight to more recent solve times.
@@ -185,6 +194,8 @@ impl DifficultyAdjustment for LinearWeightedMovingAverage {
 
 #[cfg(test)]
 mod test {
+    use tari_utilities::epoch_time::EpochTime;
+
     use crate::proof_of_work::{lwma_diff::LinearWeightedMovingAverage, Difficulty, DifficultyAdjustment};
 
     #[test]
@@ -219,11 +230,11 @@ mod test {
         let mut timestamp = 60.into();
         let cum_diff = Difficulty::from_u64(100).unwrap();
         let _ = dif.add(timestamp, cum_diff);
-        timestamp = timestamp.increase(60);
+        timestamp = timestamp.checked_add(EpochTime::from(60)).unwrap();
         let _ = dif.add(timestamp, cum_diff);
         // Lets create a history and populate the vecs
         for _i in 0..150 {
-            timestamp = timestamp.increase(60);
+            timestamp = timestamp.checked_add(EpochTime::from(60)).unwrap();
             let _ = dif.add(timestamp, cum_diff);
         }
         // lets create chaos by having 60 blocks as negative solve times. This should never be allowed in practice by

@@ -140,7 +140,7 @@ impl CommandContext {
                 solve_time,
                 normalized_solve_time,
                 pow_algo,
-                chrono::DateTime::<Utc>::from_utc(
+                chrono::DateTime::<Utc>::from_naive_utc_and_offset(
                     NaiveDateTime::from_timestamp_opt(header.header().timestamp.as_u64() as i64, 0).unwrap_or_default(),
                     Utc
                 ),

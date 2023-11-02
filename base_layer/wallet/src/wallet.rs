@@ -505,7 +505,7 @@ where
         secret: &PrivateKey,
         message: &str,
     ) -> Result<SignatureWithDomain<WalletMessageSigningDomain>, SchnorrSignatureError> {
-        SignatureWithDomain::<WalletMessageSigningDomain>::sign_message(secret, message.as_bytes(), &mut OsRng)
+        SignatureWithDomain::<WalletMessageSigningDomain>::sign(secret, message.as_bytes(), &mut OsRng)
     }
 
     pub fn verify_message_signature(
@@ -514,7 +514,7 @@ where
         signature: &SignatureWithDomain<WalletMessageSigningDomain>,
         message: &str,
     ) -> bool {
-        signature.verify_message(public_key, message)
+        signature.verify(public_key, message)
     }
 
     /// Appraise the expected outputs and a fee

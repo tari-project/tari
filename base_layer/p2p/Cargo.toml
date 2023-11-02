@@ -13,11 +13,11 @@ edition = "2018"
 tari_comms = {  path = "../../comms/core" }
 tari_comms_dht = {  path = "../../comms/dht" }
 tari_common = {  path = "../../common" }
-tari_crypto = { version = "0.18" }
+tari_crypto = { version = "0.19" }
 tari_service_framework = {  path = "../service_framework" }
 tari_shutdown = {  path = "../../infrastructure/shutdown" }
 tari_storage = {  path = "../../infrastructure/storage" }
-tari_utilities = { version = "0.5" }
+tari_utilities = { version = "0.6" }
 
 anyhow = "1.0.53"
 fs2 = "0.4.0"

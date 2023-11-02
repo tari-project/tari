@@ -56,7 +56,9 @@ impl TryInto<NodeCommsResponse> for ProtoNodeCommsResponse {
                 let not_found = response
                     .not_found
                     .into_iter()
-                    .map(|bytes| PrivateKey::from_bytes(&bytes).map_err(|_| "Malformed excess signature".to_string()))
+                    .map(|bytes| {
+                        PrivateKey::from_canonical_bytes(&bytes).map_err(|_| "Malformed excess signature".to_string())
+                    })
                     .collect::<Result<_, _>>()?;
                 NodeCommsResponse::FetchMempoolTransactionsByExcessSigsResponse(
                     self::FetchMempoolTransactionsResponse {

@@ -75,7 +75,7 @@ use tari_core::{
 use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tari_script::{inputs, script};
 use tari_test_utils::unpack_enum;
-use tari_utilities::hex::Hex;
+use tari_utilities::{epoch_time::EpochTime, hex::Hex};
 use tokio::time::Instant;
 
 use crate::{
@@ -734,7 +734,11 @@ OutputFeatures::default()),
     let mut new_block = db.prepare_new_block(template.clone()).unwrap();
     new_block.header.nonce = OsRng.next_u64();
     // we take the max ftl time and give 10 seconds for mining then check it, it should still be more than the ftl
-    new_block.header.timestamp = rules.consensus_constants(0).ftl().increase(10);
+    new_block.header.timestamp = rules
+        .consensus_constants(0)
+        .ftl()
+        .checked_add(EpochTime::from(10))
+        .unwrap();
     find_header_with_achieved_difficulty(&mut new_block.header, Difficulty::from_u64(20).unwrap());
     assert!(header_validator
         .validate(

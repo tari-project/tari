@@ -25,7 +25,7 @@ mod fixed_hash;
 
 use blake2::Blake2b;
 pub use bullet_rangeproofs::BulletRangeProof;
-use digest::consts::U32;
+use digest::consts::{U32, U64};
 use tari_crypto::{
     hasher,
     ristretto::{
@@ -62,10 +62,10 @@ pub type PublicKey = RistrettoPublicKey;
 pub type PrivateKey = RistrettoSecretKey;
 
 /// Define the hash function that will be used to produce a signature challenge
-pub type SignatureHasher = Blake2b<U32>;
+pub type SignatureHasher = Blake2b<U64>;
 
 /// Specify the digest type for signature challenges
-pub type Challenge = Blake2b<U32>;
+pub type Challenge = Blake2b<U64>;
 
 /// Define the data type that is used to store results of a hash output
 pub type HashOutput = FixedHash;
@@ -82,7 +82,7 @@ pub type RangeProof = BulletRangeProof;
 use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
 
 hasher!(
-    Blake2b<U32>,
+    Blake2b<U64>,
     WalletHasher,
     "com.tari.base_layer.wallet",
     1,

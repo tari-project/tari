@@ -363,7 +363,7 @@ mod tests {
 
             assert_eq!(
                 original_node_id,
-                NodeId::from_bytes((*wrapped_node_id).0.as_bytes()).unwrap()
+                NodeId::from_canonical_bytes((*wrapped_node_id).0.as_bytes()).unwrap()
             );
             assert_eq!(error_code, 0);
 

@@ -82,7 +82,7 @@ pub mod test {
         let mut header = BlockHeader::new(2);
 
         #[allow(clippy::cast_sign_loss)]
-        let epoch_secs = DateTime::<Utc>::from_utc(
+        let epoch_secs = DateTime::<Utc>::from_naive_utc_and_offset(
             NaiveDate::from_ymd_opt(2000, 1, 1)
                 .unwrap()
                 .and_hms_opt(1, 1, 1)

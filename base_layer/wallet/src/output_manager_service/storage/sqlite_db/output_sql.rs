@@ -740,7 +740,7 @@ impl OutputSql {
             encrypted_data,
             MicroMinotari::from(self.minimum_value_promise as u64),
             match self.rangeproof {
-                Some(bytes) => Some(RangeProof::from_bytes(&bytes)?),
+                Some(bytes) => Some(RangeProof::from_canonical_bytes(&bytes)?),
                 None => None,
             },
         );

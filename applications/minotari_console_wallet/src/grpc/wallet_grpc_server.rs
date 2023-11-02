@@ -601,7 +601,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     None
                 } else {
                     Some(
-                        PublicKey::from_bytes(&message.claim_public_key)
+                        PublicKey::from_canonical_bytes(&message.claim_public_key)
                             .map_err(|e| Status::invalid_argument(e.to_string()))?,
                     )
                 },
@@ -1002,7 +1002,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
     ) -> Result<Response<RegisterValidatorNodeResponse>, Status> {
         let request = request.into_inner();
         let mut transaction_service = self.get_transaction_service();
-        let validator_node_public_key = CommsPublicKey::from_bytes(&request.validator_node_public_key)
+        let validator_node_public_key = CommsPublicKey::from_canonical_bytes(&request.validator_node_public_key)
             .map_err(|_| Status::internal("Destination address is malformed".to_string()))?;
         let validator_node_signature = request
             .validator_node_signature
