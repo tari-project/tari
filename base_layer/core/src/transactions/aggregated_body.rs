@@ -242,7 +242,7 @@ impl AggregateBody {
     ) -> Result<(), TransactionError> {
         let mut coinbase_utxo_sum = Commitment::default();
         let mut coinbase_kernel = None;
-        let mut coinbase_counter = 0; // there should be exactly 1 coinbase
+        let mut coinbase_counter = 0;
         for utxo in self.outputs() {
             if utxo.features.output_type == OutputType::Coinbase {
                 coinbase_counter += 1;

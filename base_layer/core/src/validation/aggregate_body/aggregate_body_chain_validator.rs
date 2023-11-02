@@ -300,7 +300,7 @@ fn check_total_burned(body: &AggregateBody) -> Result<(), ValidationError> {
 // This function checks that all the timelocks in the provided transaction pass. It checks kernel lock heights and
 // input maturities
 fn verify_timelocks(body: &AggregateBody, current_height: u64) -> Result<(), ValidationError> {
-    if body.min_spendable_height()? > current_height + 1 {
+    if body.min_spendable_height()? > current_height.saturating_add(1) {
         warn!(
             target: LOG_TARGET,
             "AggregateBody has a min spend height higher than the current tip"
