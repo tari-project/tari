@@ -93,10 +93,15 @@ impl MempoolInboundHandlers {
         tx: Transaction,
         source_peer: Option<NodeId>,
     ) -> Result<(), MempoolServiceError> {
+        let first_tx_kernel_excess_sig = tx
+            .first_kernel_excess_sig()
+            .ok_or(MempoolServiceError::TransactionNoKernels)?
+            .get_signature()
+            .to_hex();
         debug!(
             target: LOG_TARGET,
             "Transaction ({}) received from {}.",
-            tx.body.kernels()[0].excess_sig.get_signature().to_hex(),
+            first_tx_kernel_excess_sig,
             source_peer
                 .as_ref()
                 .map(|p| format!("remote peer: {}", p))
