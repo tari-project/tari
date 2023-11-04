@@ -62,7 +62,7 @@ use tari_core::{
     transactions::{
         fee::Fee,
         key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface},
-        tari_amount::{uT, MicroMinotari},
+        tari_amount::{uT, MicroMinotari, T},
         test_helpers::{
             create_test_core_key_manager_with_memory_db,
             create_wallet_output_with_data,
@@ -1233,6 +1233,28 @@ async fn coin_split_no_change() {
     assert_eq!(coin_split_tx.body.outputs().len(), split_count);
     assert_eq!(coin_split_tx.body.get_total_fee().unwrap(), expected_fee);
     assert_eq!(amount, val1 + val2 + val3);
+}
+
+#[tokio::test]
+async fn it_handles_large_coin_splits() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection.clone());
+    let mut oms = setup_output_manager_service(backend, true).await;
+
+    let val = 20 * T;
+    let uo = make_input(&mut OsRng, val, &OutputFeatures::default(), &oms.key_manager_handle).await;
+    assert!(oms.output_manager_handle.add_output(uo, None).await.is_ok());
+
+    let fee_per_gram = MicroMinotari::from(1);
+    let split_count = 499;
+
+    let (_tx_id, coin_split_tx, _amount) = oms
+        .output_manager_handle
+        .create_coin_split(vec![], 10000.into(), split_count, fee_per_gram)
+        .await
+        .unwrap();
+    assert_eq!(coin_split_tx.body.inputs().len(), 1);
+    assert_eq!(coin_split_tx.body.outputs().len(), split_count + 1);
 }
 
 #[tokio::test]
