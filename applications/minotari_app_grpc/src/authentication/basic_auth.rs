@@ -78,16 +78,31 @@ impl BasicAuthCredentials {
     }
 
     pub fn validate(&self, username: &str, password: &[u8]) -> Result<(), BasicAuthError> {
+        // We should always validate both username and passphrase to avoid leaking where a failure occurs
+        let mut validated = true;
+
+        // First check the username
         if self.user_name.as_bytes() != username.as_bytes() {
-            return Err(BasicAuthError::InvalidUsername);
+            validated = false;
         }
-        // These bytes can leak if the password is not utf-8, but since argon encoding is utf-8 the given
-        // password must be incorrect if conversion to utf-8 fails.
+
+        // Now validate the passphrase
+        // Note that it's safe to fail early on corrupt data
         let bytes = self.password.reveal().to_vec();
-        let str_password = Zeroizing::new(String::from_utf8(bytes)?);
-        let header_password = PasswordHash::parse(&str_password, Encoding::B64)?;
-        Argon2::default().verify_password(password, &header_password)?;
-        Ok(())
+        let str_password =
+            Zeroizing::new(String::from_utf8(bytes).map_err(|_| BasicAuthError::InvalidAuthorizationHeader)?);
+        let header_password = PasswordHash::parse(&str_password, Encoding::B64)
+            .map_err(|_| BasicAuthError::InvalidAuthorizationHeader)?;
+        if Argon2::default().verify_password(password, &header_password).is_err() {
+            validated = false;
+        }
+
+        // Now return whether the entire username/passphrase validation succeeded or failed
+        if validated {
+            Ok(())
+        } else {
+            Err(BasicAuthError::InvalidUsernameOrPassphrase)
+        }
     }
 
     pub fn generate_header(username: &str, password: &[u8]) -> Result<MetadataValue<Ascii>, BasicAuthError> {
@@ -108,8 +123,8 @@ impl BasicAuthCredentials {
 /// Authorization Header Error
 #[derive(Debug, thiserror::Error)]
 pub enum BasicAuthError {
-    #[error("Invalid username")]
-    InvalidUsername,
+    #[error("Invalid username or passphrase")]
+    InvalidUsernameOrPassphrase,
     #[error("The HTTP Authorization header value is invalid")]
     InvalidAuthorizationHeader,
     #[error("The HTTP Authorization header contains an invalid scheme {0} but only `Basic` is supported")]
@@ -118,8 +133,6 @@ pub enum BasicAuthError {
     InvalidBase64Value(#[from] base64::DecodeError),
     #[error("The provided binary is not a valid UTF-8 character: {0}")]
     InvalidUtf8Value(#[from] FromUtf8Error),
-    #[error("Invalid password: {0}")]
-    InvalidPassword(#[from] argon2::password_hash::Error),
     #[error("Invalid header value: {0}")]
     InvalidMetadataValue(#[from] InvalidMetadataValue),
 }
@@ -168,13 +181,23 @@ mod tests {
 
         #[test]
         fn it_rejects_for_mismatching_credentials() {
-            let credentials = BasicAuthCredentials::new("admin".to_string(), "bruteforce".to_string().into());
-            let err = credentials.validate("admin", b"secret").unwrap_err();
-            assert!(matches!(err, BasicAuthError::InvalidPassword(_)));
+            // Incorrect username, matching passphrase
+            let hashed = create_salted_hashed_password(b"password").unwrap();
+            let credentials = BasicAuthCredentials::new("good".to_string(), hashed.to_string().into());
+            let err = credentials.validate("evil", b"password").unwrap_err();
+            assert!(matches!(err, BasicAuthError::InvalidUsernameOrPassphrase));
 
-            let credentials = BasicAuthCredentials::new("bruteforce".to_string(), "secret".to_string().into());
-            let err = credentials.validate("admin", b"secret").unwrap_err();
-            assert!(matches!(err, BasicAuthError::InvalidUsername));
+            // Matching username, incorrect passphrase
+            let hashed = create_salted_hashed_password(b"good").unwrap();
+            let credentials = BasicAuthCredentials::new("user".to_string(), hashed.to_string().into());
+            let err = credentials.validate("user", b"evil").unwrap_err();
+            assert!(matches!(err, BasicAuthError::InvalidUsernameOrPassphrase));
+
+            // Incorrect username, incorrect passphrase
+            let hashed = create_salted_hashed_password(b"good").unwrap();
+            let credentials = BasicAuthCredentials::new("good".to_string(), hashed.to_string().into());
+            let err = credentials.validate("evil", b"evil").unwrap_err();
+            assert!(matches!(err, BasicAuthError::InvalidUsernameOrPassphrase));
         }
     }
 
