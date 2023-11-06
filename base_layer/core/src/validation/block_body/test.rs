@@ -94,6 +94,7 @@ async fn it_passes_if_large_output_block_is_valid() {
     block.header.kernel_mr = mmr_roots.kernel_mr;
     block.header.kernel_mmr_size = mmr_roots.kernel_mmr_size;
     block.header.validator_node_mr = mmr_roots.validator_node_mr;
+    block.header.validator_node_size = mmr_roots.validator_node_size;
 
     let txn = blockchain.db().db_read_access().unwrap();
     let start = Instant::now();
@@ -140,6 +141,7 @@ async fn it_passes_if_large_block_is_valid() {
     block.header.kernel_mr = mmr_roots.kernel_mr;
     block.header.kernel_mmr_size = mmr_roots.kernel_mmr_size;
     block.header.validator_node_mr = mmr_roots.validator_node_mr;
+    block.header.validator_node_size = mmr_roots.validator_node_size;
 
     let txn = blockchain.db().db_read_access().unwrap();
     let start = Instant::now();
@@ -167,6 +169,7 @@ async fn it_passes_if_block_is_valid() {
     block.header.kernel_mr = mmr_roots.kernel_mr;
     block.header.kernel_mmr_size = mmr_roots.kernel_mmr_size;
     block.header.validator_node_mr = mmr_roots.validator_node_mr;
+    block.header.validator_node_size = mmr_roots.validator_node_size;
 
     let txn = blockchain.db().db_read_access().unwrap();
     assert!(validator.validate_body(&*txn, &block).is_ok());

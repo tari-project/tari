@@ -50,6 +50,7 @@ impl From<BlockHeader> for grpc::BlockHeader {
                 pow_data: h.pow.pow_data,
             }),
             validator_node_mr: h.validator_node_mr.to_vec(),
+            validator_node_size: h.validator_node_size,
         }
     }
 }
@@ -83,6 +84,7 @@ impl TryFrom<grpc::BlockHeader> for BlockHeader {
             nonce: header.nonce,
             pow,
             validator_node_mr: FixedHash::try_from(header.validator_node_mr).map_err(|err| err.to_string())?,
+            validator_node_size: header.validator_node_size,
         })
     }
 }

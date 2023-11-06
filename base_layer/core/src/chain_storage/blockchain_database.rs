@@ -858,6 +858,7 @@ where B: BlockchainBackend
         block.header.output_mr = roots.output_mr;
         block.header.output_smt_size = roots.output_smt_size;
         block.header.validator_node_mr = roots.validator_node_mr;
+        block.header.validator_node_size = roots.validator_node_size;
         Ok(block)
     }
 
@@ -1242,6 +1243,7 @@ pub struct MmrRoots {
     pub output_mr: FixedHash,
     pub output_smt_size: u64,
     pub validator_node_mr: FixedHash,
+    pub validator_node_size: u64,
 }
 
 impl std::fmt::Display for MmrRoots {
@@ -1316,14 +1318,17 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
 
     let block_height = block.header.height;
     let epoch_len = rules.consensus_constants(block_height).epoch_length();
-    let validator_node_mr = if block_height % epoch_len == 0 {
+    let (validator_node_mr, validator_node_size) = if block_height % epoch_len == 0 {
         // At epoch boundary, the MR is rebuilt from the current validator set
         let validator_nodes = db.fetch_active_validator_nodes(block_height)?;
-        FixedHash::try_from(calculate_validator_node_mr(&validator_nodes))?
+        (
+            FixedHash::try_from(calculate_validator_node_mr(&validator_nodes))?,
+            validator_nodes.len(),
+        )
     } else {
         // MR is unchanged except for epoch boundary
         let tip_header = fetch_header(db, block_height - 1)?;
-        tip_header.validator_node_mr
+        (tip_header.validator_node_mr, 0)
     };
 
     let mmr_roots = MmrRoots {
@@ -1333,6 +1338,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
         output_mr: FixedHash::try_from(output_smt.hash().as_slice())?,
         output_smt_size: output_smt.size(),
         validator_node_mr,
+        validator_node_size: validator_node_size as u64,
     };
     Ok(mmr_roots)
 }

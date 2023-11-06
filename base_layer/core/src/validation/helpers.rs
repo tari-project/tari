@@ -319,6 +319,22 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
             kind: "Validator Node",
         }));
     }
+
+    if header.validator_node_size != mmr_roots.validator_node_size {
+        warn!(
+            target: LOG_TARGET,
+            "Block header validator size in #{} {} does not match. Expected: {}, Actual:{}",
+            header.height,
+            header.hash().to_hex(),
+            header.validator_node_size,
+            mmr_roots.validator_node_size
+        );
+        return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrSize {
+            mmr_tree: "Validator_node".to_string(),
+            expected: mmr_roots.validator_node_size,
+            actual: header.validator_node_size,
+        }));
+    }
     Ok(())
 }
 
