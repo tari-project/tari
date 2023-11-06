@@ -42,7 +42,7 @@ use tracing::{instrument, span, Instrument, Level};
 
 use crate::{
     base_node::{
-        comms_interface::BlockEvent,
+        comms_interface::{BlockEvent, BlockEvent::BlockSyncRewind},
         metrics,
         sync::{
             header_sync::HEADER_SYNC_INITIAL_MAX_HEADERS,
@@ -186,9 +186,10 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
 
                     // Check for reorgs during sync
                     while let Ok(block_event) = block_event_stream.try_recv() {
-                        if let BlockEvent::ValidBlockAdded(_, BlockAddResult::ChainReorg { removed, .. }) =
+                        if let BlockEvent::ValidBlockAdded(_, BlockAddResult::ChainReorg { removed, .. }) |  BlockSyncRewind(removed)  =
                             &*block_event
                         {
+                            //add BlockSyncRewind(Vec<Arc<ChainBlock>>),
                             if let Some(reorg_block) = removed
                                 .iter()
                                 // If the reorg happens before the end height of sync we let the peer know that the chain they are syncing with has changed
@@ -196,7 +197,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                             {
                                 warn!(
                                     target: LOG_TARGET,
-                                    "Block reorg detected at height {} during sync, letting the sync peer {} know.",
+                                    "Block reorg/rewind detected at height {} during sync, letting the sync peer {} know.",
                                     reorg_block.height(),
                                     peer_node_id
                                 );
