@@ -26,7 +26,7 @@ use std::{
     sync::Arc,
 };
 
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use futures::{future, stream, StreamExt};
 use log::*;
 use prost::Message;
@@ -37,7 +37,7 @@ use tari_comms::{
     types::{CommsDHKE, CommsPublicKey},
     BytesMut,
 };
-use tari_utilities::ByteArray;
+use tari_utilities::{epoch_time::EpochTime, ByteArray};
 use tokio::sync::mpsc;
 use tower::{Service, ServiceExt};
 
@@ -45,7 +45,7 @@ use crate::{
     actor::{DhtRequester, OffenceSeverity},
     crypt,
     dedup,
-    envelope::{timestamp_to_datetime, DhtMessageError, DhtMessageHeader, NodeDestination},
+    envelope::{epochtime_to_datetime, DhtMessageError, DhtMessageHeader, NodeDestination},
     inbound::{DecryptedDhtMessage, DhtInboundMessage},
     message_signature::{MessageSignature, MessageSignatureError, ProtoMessageSignature},
     outbound::{OutboundMessageRequester, SendMessageParams},
@@ -207,8 +207,10 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             query.with_limit(cmp::min(retrieve_msgs.limit, max));
         }
 
-        let since = match retrieve_msgs.since.and_then(timestamp_to_datetime) {
-            Some(since) => {
+        let since = match retrieve_msgs.since {
+            0 => None,
+            since => {
+                let since = epochtime_to_datetime(EpochTime::from_secs_since_epoch(since));
                 debug!(
                     target: LOG_TARGET,
                     "Peer '{}' requested all messages since '{}'",
@@ -218,7 +220,6 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 query.with_messages_since(since);
                 Some(since)
             },
-            None => None,
         };
 
         let response_types = vec![SafResponseType::ForMe];
@@ -421,23 +422,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             return Err(StoreAndForwardError::DhtMessageError(DhtMessageError::BodyEmpty));
         }
 
-        let stored_at = message
-            .stored_at
-            .map(|t| {
-                Result::<_, StoreAndForwardError>::Ok(DateTime::from_utc(
-                    NaiveDateTime::from_timestamp_opt(t.seconds, 0).ok_or_else(|| {
-                        StoreAndForwardError::InvalidSafResponseMessage {
-                            field: "stored_at",
-                            details: "number of seconds provided represents more days than can fit in a NaiveDateTime"
-                                .to_string(),
-                        }
-                    })?,
-                    Utc,
-                ))
-            })
-            .transpose()?
-            .unwrap_or(DateTime::<Utc>::MIN_UTC);
-
+        let stored_at = epochtime_to_datetime(EpochTime::from_secs_since_epoch(message.stored_at));
         if stored_at > Utc::now() {
             return Err(StoreAndForwardError::StoredAtWasInFuture);
         }
@@ -795,7 +780,7 @@ mod test {
         message: String,
         node_identity: &NodeIdentity,
         dht_header: DhtMessageHeader,
-        stored_at: NaiveDateTime,
+        stored_at: chrono::NaiveDateTime,
     ) -> StoredMessage {
         let msg_hash = hex::to_hex(&dedup::create_message_hash(
             &dht_header.message_signature,
@@ -845,7 +830,10 @@ mod test {
         )
         .unwrap();
 
-        let since = Utc::now().checked_sub_signed(chrono::Duration::seconds(60)).unwrap();
+        let since = Utc::now()
+            .checked_sub_signed(chrono::Duration::seconds(60))
+            .map(|d| d.with_nanosecond(0).unwrap())
+            .unwrap();
         let mut message = DecryptedDhtMessage::succeeded(
             wrap_in_envelope_body!(StoredMessagesRequest::since(since)),
             None,

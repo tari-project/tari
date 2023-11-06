@@ -35,6 +35,7 @@ use tari_comms::PeerManager;
 use tari_crypto::keys::PublicKey as PublicKeyT;
 use tari_key_manager::key_manager_service::KeyId;
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
+use tari_utilities::epoch_time::EpochTime;
 
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainHeader},
@@ -116,8 +117,12 @@ pub async fn create_block(
         .build();
 
     // Keep times constant in case we need a particular target difficulty
-    block.header.timestamp = prev_block.header.timestamp.increase(spec.block_time);
-    block.header.output_mmr_size = prev_block.header.output_mmr_size + block.body.outputs().len() as u64;
+    block.header.timestamp = prev_block
+        .header
+        .timestamp
+        .checked_add(EpochTime::from(spec.block_time))
+        .unwrap();
+    block.header.output_smt_size = prev_block.header.output_smt_size + block.body.outputs().len() as u64;
     block.header.kernel_mmr_size = prev_block.header.kernel_mmr_size + block.body.kernels().len() as u64;
 
     (block, coinbase_output)

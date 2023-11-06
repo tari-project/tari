@@ -115,8 +115,8 @@ impl TryFrom<rpc::PeerInfo> for UnvalidatedPeerInfo {
     type Error = anyhow::Error;
 
     fn try_from(value: rpc::PeerInfo) -> Result<UnvalidatedPeerInfo, Self::Error> {
-        let public_key =
-            CommsPublicKey::from_bytes(&value.public_key).map_err(|e| anyhow!("PeerInfo invalid public key: {}", e))?;
+        let public_key = CommsPublicKey::from_canonical_bytes(&value.public_key)
+            .map_err(|e| anyhow!("PeerInfo invalid public key: {}", e))?;
         let claims = value
             .claims
             .into_iter()
@@ -156,13 +156,13 @@ impl TryFrom<common::IdentitySignature> for IdentitySignature {
     fn try_from(value: common::IdentitySignature) -> Result<Self, Self::Error> {
         let version = u8::try_from(value.version)
             .map_err(|_| anyhow::anyhow!("Invalid peer identity signature version {}", value.version))?;
-        let public_nonce =
-            CommsPublicKey::from_bytes(&value.public_nonce).map_err(|e| anyhow!("Invalid public nonce: {}", e))?;
+        let public_nonce = CommsPublicKey::from_canonical_bytes(&value.public_nonce)
+            .map_err(|e| anyhow!("Invalid public nonce: {}", e))?;
         let signature =
-            CommsSecretKey::from_bytes(&value.signature).map_err(|e| anyhow!("Invalid signature: {}", e))?;
+            CommsSecretKey::from_canonical_bytes(&value.signature).map_err(|e| anyhow!("Invalid signature: {}", e))?;
         let updated_at = NaiveDateTime::from_timestamp_opt(value.updated_at, 0)
             .ok_or_else(|| anyhow::anyhow!("updated_at overflowed"))?;
-        let updated_at = DateTime::<Utc>::from_utc(updated_at, Utc);
+        let updated_at = DateTime::<Utc>::from_naive_utc_and_offset(updated_at, Utc);
 
         Ok(Self::new(version, Signature::new(public_nonce, signature), updated_at))
     }

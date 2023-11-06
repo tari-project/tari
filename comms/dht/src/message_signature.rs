@@ -39,7 +39,7 @@ fn construct_message_signature_hash(
     signer_public_key: &CommsPublicKey,
     public_nonce: &CommsPublicKey,
     message: &[u8],
-) -> [u8; 32] {
+) -> [u8; 64] {
     // produce domain separated hash of input data, in such a way that e = H_mac(P||R||m)
     let domain_separated_hash = comms_dht_hash_domain_message_signature()
         .chain(signer_public_key.as_bytes())
@@ -47,7 +47,7 @@ fn construct_message_signature_hash(
         .chain(message)
         .finalize();
 
-    let mut output = [0u8; 32];
+    let mut output = [0u8; 64];
     output.copy_from_slice(domain_separated_hash.as_ref());
 
     output
@@ -59,7 +59,7 @@ impl MessageSignature {
         let (nonce_s, nonce_pk) = CommsPublicKey::random_keypair(&mut OsRng);
         let signer_public_key = CommsPublicKey::from_secret_key(&signer_secret_key);
         let challenge = construct_message_signature_hash(&signer_public_key, &nonce_pk, message);
-        let signature = Signature::sign_raw(&signer_secret_key, nonce_s, &challenge)
+        let signature = Signature::sign_raw_uniform(&signer_secret_key, nonce_s, &challenge)
             .expect("challenge is [u8;32] but SchnorrSignature::sign failed");
 
         Self {
@@ -72,7 +72,7 @@ impl MessageSignature {
     pub fn verify(&self, message: &[u8]) -> bool {
         let challenge =
             construct_message_signature_hash(&self.signer_public_key, self.signature.get_public_nonce(), message);
-        self.signature.verify_challenge(&self.signer_public_key, &challenge)
+        self.signature.verify_raw_uniform(&self.signer_public_key, &challenge)
     }
 
     /// Consume this instance, returning the public key of the signer.
@@ -94,13 +94,13 @@ impl TryFrom<ProtoMessageSignature> for MessageSignature {
     type Error = MessageSignatureError;
 
     fn try_from(message_signature: ProtoMessageSignature) -> Result<Self, Self::Error> {
-        let signer_public_key = CommsPublicKey::from_bytes(&message_signature.signer_public_key)
+        let signer_public_key = CommsPublicKey::from_canonical_bytes(&message_signature.signer_public_key)
             .map_err(|_| MessageSignatureError::InvalidSignerPublicKeyBytes)?;
 
-        let public_nonce = CommsPublicKey::from_bytes(&message_signature.public_nonce)
+        let public_nonce = CommsPublicKey::from_canonical_bytes(&message_signature.public_nonce)
             .map_err(|_| MessageSignatureError::InvalidPublicNonceBytes)?;
 
-        let signature = CommsSecretKey::from_bytes(&message_signature.signature)
+        let signature = CommsSecretKey::from_canonical_bytes(&message_signature.signature)
             .map_err(|_| MessageSignatureError::InvalidSignatureBytes)?;
 
         Ok(Self {
@@ -157,7 +157,7 @@ mod test {
         let (mut mac, signer_k) = setup();
         let signer_pk = CommsPublicKey::from_secret_key(&signer_k);
         let msg = construct_message_signature_hash(&signer_pk, mac.signature.get_public_nonce(), MSG);
-        let msg_scalar = CommsSecretKey::from_bytes(&msg).unwrap();
+        let msg_scalar = CommsSecretKey::from_uniform_bytes(&msg).unwrap();
 
         // Some `a` key
         let (bad_signer_k, bad_signer_pk) = CommsPublicKey::random_keypair(&mut OsRng);
@@ -181,7 +181,7 @@ mod test {
 
         // Change <R, s> to <R', s>. Note: We need signer_k because the Signature interface does not provide a way to
         // change just the public nonce, an attacker does not need the secret key.
-        mac.signature = Signature::sign_raw(&signer_k, nonce_k, &msg).unwrap();
+        mac.signature = Signature::sign_raw_uniform(&signer_k, nonce_k, &msg).unwrap();
         assert!(!mac.verify(MSG));
     }
 }

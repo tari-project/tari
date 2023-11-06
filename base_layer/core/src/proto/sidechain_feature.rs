@@ -89,9 +89,10 @@ impl TryFrom<proto::types::ValidatorNodeRegistration> for ValidatorNodeRegistrat
     type Error = String;
 
     fn try_from(value: proto::types::ValidatorNodeRegistration) -> Result<Self, Self::Error> {
-        let public_key = PublicKey::from_bytes(&value.public_key).map_err(|e| format!("public_key: {}", e))?;
+        let public_key =
+            PublicKey::from_canonical_bytes(&value.public_key).map_err(|e| format!("public_key: {}", e))?;
         let claim_public_key =
-            PublicKey::from_bytes(&value.claim_public_key).map_err(|e| format!("claim_public_key: {}", e))?;
+            PublicKey::from_canonical_bytes(&value.claim_public_key).map_err(|e| format!("claim_public_key: {}", e))?;
 
         Ok(Self::new(
             ValidatorNodeSignature::new(
@@ -122,7 +123,7 @@ impl TryFrom<proto::types::TemplateRegistration> for CodeTemplateRegistration {
 
     fn try_from(value: proto::types::TemplateRegistration) -> Result<Self, Self::Error> {
         Ok(Self {
-            author_public_key: PublicKey::from_bytes(&value.author_public_key).map_err(|e| e.to_string())?,
+            author_public_key: PublicKey::from_canonical_bytes(&value.author_public_key).map_err(|e| e.to_string())?,
             author_signature: value
                 .author_signature
                 .map(Signature::try_from)
@@ -167,7 +168,7 @@ impl TryFrom<proto::types::ConfidentialOutputData> for ConfidentialOutputData {
 
     fn try_from(value: proto::types::ConfidentialOutputData) -> Result<Self, Self::Error> {
         Ok(ConfidentialOutputData {
-            claim_public_key: PublicKey::from_bytes(&value.claim_public_key).map_err(|e| e.to_string())?,
+            claim_public_key: PublicKey::from_canonical_bytes(&value.claim_public_key).map_err(|e| e.to_string())?,
         })
     }
 }

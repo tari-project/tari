@@ -102,7 +102,7 @@ message HistoricalBlock {
     // confirmation.
     uint64 confirmations = 1;
     // The underlying block
-    Block block = 3;
+    Block block = 2;
 }
 
 

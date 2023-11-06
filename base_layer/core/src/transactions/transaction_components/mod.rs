@@ -23,7 +23,9 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
+use blake2::Blake2b;
 use chacha20poly1305::Key;
+use digest::consts::U32;
 pub use encrypted_data::{EncryptedData, EncryptedDataError};
 pub use error::TransactionError;
 pub use kernel_builder::KernelBuilder;
@@ -109,7 +111,7 @@ pub(super) fn hash_output(
     encrypted_data: &EncryptedData,
     minimum_value_promise: MicroMinotari,
 ) -> FixedHash {
-    let common_hash = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("transaction_output")
+    let common_hash = DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("transaction_output")
         .chain(&version)
         .chain(features)
         .chain(commitment)

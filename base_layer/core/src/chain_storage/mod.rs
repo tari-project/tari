@@ -66,9 +66,6 @@ pub use error::{ChainStorageError, Optional, OrNotFound};
 mod horizon_data;
 pub use horizon_data::HorizonData;
 
-mod pruned_output;
-pub use pruned_output::PrunedOutput;
-
 mod reorg;
 pub use reorg::Reorg;
 

@@ -88,6 +88,7 @@ use tari_core::{
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::Shutdown;
 use tari_test_utils::random;
+use tari_utilities::epoch_time::EpochTime;
 use tempfile::{tempdir, TempDir};
 use tokio::{sync::broadcast, task, time::sleep};
 
@@ -780,6 +781,7 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
 
     let tx2 = resources.db.get_completed_transaction(2u64.into()).unwrap();
 
+    let timestamp = EpochTime::now().as_u64();
     let transaction_query_batch_responses = vec![TxQueryBatchResponseProto {
         signature: Some(SignatureProto::from(
             tx2.transaction.first_kernel_excess_sig().unwrap().clone(),
@@ -788,7 +790,7 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
         block_hash: [1u8; 32].to_vec(),
         confirmations: 0,
         block_height: 1,
-        mined_timestamp: Some(0),
+        mined_timestamp: timestamp,
     }];
 
     let mut batch_query_response = TxQueryBatchResponsesProto {
@@ -796,7 +798,7 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
         is_synced: true,
         tip_hash: [1u8; 32].to_vec(),
         height_of_longest_chain: 1,
-        tip_mined_timestamp: Some(0),
+        tip_mined_timestamp: timestamp,
     };
 
     rpc_service_state.set_transaction_query_batch_responses(batch_query_response.clone());
@@ -862,7 +864,7 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
         block_hash: [5u8; 32].to_vec(),
         confirmations: 4,
         block_height: 5,
-        mined_timestamp: Some(0),
+        mined_timestamp: timestamp,
     }];
 
     let batch_query_response = TxQueryBatchResponsesProto {
@@ -870,7 +872,7 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
         is_synced: true,
         tip_hash: [5u8; 32].to_vec(),
         height_of_longest_chain: 5,
-        tip_mined_timestamp: Some(0),
+        tip_mined_timestamp: timestamp,
     };
 
     rpc_service_state.set_transaction_query_batch_responses(batch_query_response.clone());
@@ -936,6 +938,7 @@ async fn tx_revalidation() {
 
     let tx2 = resources.db.get_completed_transaction(2u64.into()).unwrap();
 
+    let timestamp = EpochTime::now().as_u64();
     // set tx2 as fully mined
     let transaction_query_batch_responses = vec![TxQueryBatchResponseProto {
         signature: Some(SignatureProto::from(
@@ -945,7 +948,7 @@ async fn tx_revalidation() {
         block_hash: [5u8; 32].to_vec(),
         confirmations: 4,
         block_height: 5,
-        mined_timestamp: Some(0),
+        mined_timestamp: timestamp,
     }];
 
     let batch_query_response = TxQueryBatchResponsesProto {
@@ -953,7 +956,7 @@ async fn tx_revalidation() {
         is_synced: true,
         tip_hash: [5u8; 32].to_vec(),
         height_of_longest_chain: 5,
-        tip_mined_timestamp: Some(0),
+        tip_mined_timestamp: timestamp,
     };
 
     rpc_service_state.set_transaction_query_batch_responses(batch_query_response.clone());
@@ -987,7 +990,7 @@ async fn tx_revalidation() {
         block_hash: [5u8; 32].to_vec(),
         confirmations: 8,
         block_height: 10,
-        mined_timestamp: Some(0),
+        mined_timestamp: timestamp,
     }];
 
     let batch_query_response = TxQueryBatchResponsesProto {
@@ -995,7 +998,7 @@ async fn tx_revalidation() {
         is_synced: true,
         tip_hash: [5u8; 32].to_vec(),
         height_of_longest_chain: 10,
-        tip_mined_timestamp: Some(0),
+        tip_mined_timestamp: timestamp,
     };
 
     rpc_service_state.set_transaction_query_batch_responses(batch_query_response.clone());
@@ -1098,6 +1101,7 @@ async fn tx_validation_protocol_reorg() {
     let coinbase_tx1 = resources.db.get_completed_transaction(6u64.into()).unwrap();
     let coinbase_tx2 = resources.db.get_completed_transaction(7u64.into()).unwrap();
 
+    let timestamp = EpochTime::now().as_u64();
     let transaction_query_batch_responses = vec![
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(
@@ -1107,7 +1111,7 @@ async fn tx_validation_protocol_reorg() {
             block_hash: block_headers.get(&5).unwrap().hash().to_vec(),
             confirmations: 5,
             block_height: 5,
-            mined_timestamp: Some(0),
+            mined_timestamp: timestamp,
         },
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(
@@ -1117,7 +1121,7 @@ async fn tx_validation_protocol_reorg() {
             block_hash: block_headers.get(&6).unwrap().hash().to_vec(),
             confirmations: 4,
             block_height: 6,
-            mined_timestamp: Some(0),
+            mined_timestamp: timestamp,
         },
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(
@@ -1127,7 +1131,7 @@ async fn tx_validation_protocol_reorg() {
             block_hash: block_headers.get(&7).unwrap().hash().to_vec(),
             confirmations: 3,
             block_height: 7,
-            mined_timestamp: Some(0),
+            mined_timestamp: timestamp,
         },
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(
@@ -1137,7 +1141,7 @@ async fn tx_validation_protocol_reorg() {
             block_hash: block_headers.get(&8).unwrap().hash().to_vec(),
             confirmations: 2,
             block_height: 8,
-            mined_timestamp: Some(0),
+            mined_timestamp: timestamp,
         },
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(
@@ -1147,7 +1151,7 @@ async fn tx_validation_protocol_reorg() {
             block_hash: block_headers.get(&8).unwrap().hash().to_vec(),
             confirmations: 2,
             block_height: 8,
-            mined_timestamp: Some(0),
+            mined_timestamp: timestamp,
         },
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(
@@ -1157,7 +1161,7 @@ async fn tx_validation_protocol_reorg() {
             block_hash: block_headers.get(&9).unwrap().hash().to_vec(),
             confirmations: 1,
             block_height: 9,
-            mined_timestamp: Some(0),
+            mined_timestamp: timestamp,
         },
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(
@@ -1167,7 +1171,7 @@ async fn tx_validation_protocol_reorg() {
             block_hash: block_headers.get(&9).unwrap().hash().to_vec(),
             confirmations: 1,
             block_height: 9,
-            mined_timestamp: Some(0),
+            mined_timestamp: timestamp,
         },
     ];
 
@@ -1176,7 +1180,7 @@ async fn tx_validation_protocol_reorg() {
         is_synced: true,
         tip_hash: block_headers.get(&10).unwrap().hash().to_vec(),
         height_of_longest_chain: 10,
-        tip_mined_timestamp: Some(0),
+        tip_mined_timestamp: timestamp,
     };
 
     rpc_service_state.set_transaction_query_batch_responses(batch_query_response.clone());
@@ -1228,7 +1232,7 @@ async fn tx_validation_protocol_reorg() {
             block_hash: block_headers.get(&5).unwrap().hash().to_vec(),
             confirmations: 4,
             block_height: 5,
-            mined_timestamp: Some(0),
+            mined_timestamp: timestamp,
         },
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(
@@ -1238,7 +1242,7 @@ async fn tx_validation_protocol_reorg() {
             block_hash: block_headers.get(&6).unwrap().hash().to_vec(),
             confirmations: 3,
             block_height: 6,
-            mined_timestamp: Some(0),
+            mined_timestamp: timestamp,
         },
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(
@@ -1248,7 +1252,7 @@ async fn tx_validation_protocol_reorg() {
             block_hash: block_headers.get(&7).unwrap().hash().to_vec(),
             confirmations: 2,
             block_height: 7,
-            mined_timestamp: Some(0),
+            mined_timestamp: timestamp,
         },
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(
@@ -1258,7 +1262,7 @@ async fn tx_validation_protocol_reorg() {
             block_hash: vec![],
             confirmations: 0,
             block_height: 0,
-            mined_timestamp: None,
+            mined_timestamp: 0,
         },
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(
@@ -1268,7 +1272,7 @@ async fn tx_validation_protocol_reorg() {
             block_hash: block_headers.get(&8).unwrap().hash().to_vec(),
             confirmations: 1,
             block_height: 8,
-            mined_timestamp: Some(0),
+            mined_timestamp: timestamp,
         },
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(
@@ -1278,7 +1282,7 @@ async fn tx_validation_protocol_reorg() {
             block_hash: vec![],
             confirmations: 0,
             block_height: 0,
-            mined_timestamp: None,
+            mined_timestamp: 0,
         },
     ];
 
@@ -1287,7 +1291,7 @@ async fn tx_validation_protocol_reorg() {
         is_synced: true,
         tip_hash: block_headers.get(&8).unwrap().hash().to_vec(),
         height_of_longest_chain: 8,
-        tip_mined_timestamp: Some(0),
+        tip_mined_timestamp: timestamp,
     };
 
     rpc_service_state.set_transaction_query_batch_responses(batch_query_response.clone());

@@ -23,6 +23,8 @@
 #[cfg(feature = "base_node")]
 use std::time::Duration;
 
+use blake2::Blake2b;
+use digest::consts::U64;
 use tari_crypto::hash_domain;
 
 use crate::consensus::DomainSeparatedConsensusHasher;
@@ -38,11 +40,11 @@ pub mod rolling_vec;
 
 hash_domain!(ConfidentialOutputHashDomain, "com.tari.dan.confidential_output", 1);
 /// Hasher used in the DAN to derive masks and encrypted value keys
-pub type ConfidentialOutputHasher = DomainSeparatedConsensusHasher<ConfidentialOutputHashDomain>;
+pub type ConfidentialOutputHasher = DomainSeparatedConsensusHasher<ConfidentialOutputHashDomain, Blake2b<U64>>;
 
 /// The reason for a peer being banned
 #[cfg(feature = "base_node")]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct BanReason {
     /// The reason for the ban
     pub reason: String,

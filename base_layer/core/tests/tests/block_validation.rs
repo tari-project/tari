@@ -75,7 +75,7 @@ use tari_core::{
 use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tari_script::{inputs, script};
 use tari_test_utils::unpack_enum;
-use tari_utilities::hex::Hex;
+use tari_utilities::{epoch_time::EpochTime, hex::Hex};
 use tokio::time::Instant;
 
 use crate::{
@@ -200,7 +200,7 @@ fn add_monero_data(tblock: &mut Block, seed_key: &str) {
     let bytes = hex::decode(blocktemplate_blob).unwrap();
     let mut mblock = monero_rx::deserialize::<MoneroBlock>(&bytes[..]).unwrap();
     let hash = tblock.header.merge_mining_hash();
-    monero_rx::append_merge_mining_tag(&mut mblock, hash).unwrap();
+    monero_rx::insert_merge_mining_tag_into_block(&mut mblock, hash).unwrap();
     let hashes = monero_rx::create_ordered_transaction_hashes_from_block(&mblock);
     let merkle_root = monero_rx::tree_hash(&hashes).unwrap();
     let coinbase_merkle_proof = monero_rx::create_merkle_proof(&hashes).unwrap();
@@ -413,6 +413,7 @@ async fn test_orphan_validator() {
         coinbase_utxo,
         coinbase_kernel,
         &rules,
+        None,
     );
     let new_block = db.prepare_new_block(template).unwrap();
     assert!(orphan_validator.validate_internal_consistency(&new_block).is_err());
@@ -431,6 +432,7 @@ async fn test_orphan_validator() {
         coinbase_utxo,
         coinbase_kernel,
         &rules,
+        None,
     );
     let new_block = db.prepare_new_block(template).unwrap();
     assert!(orphan_validator.validate_internal_consistency(&new_block).is_err());
@@ -732,7 +734,11 @@ OutputFeatures::default()),
     let mut new_block = db.prepare_new_block(template.clone()).unwrap();
     new_block.header.nonce = OsRng.next_u64();
     // we take the max ftl time and give 10 seconds for mining then check it, it should still be more than the ftl
-    new_block.header.timestamp = rules.consensus_constants(0).ftl().increase(10);
+    new_block.header.timestamp = rules
+        .consensus_constants(0)
+        .ftl()
+        .checked_add(EpochTime::from(10))
+        .unwrap();
     find_header_with_achieved_difficulty(&mut new_block.header, Difficulty::from_u64(20).unwrap());
     assert!(header_validator
         .validate(
@@ -983,6 +989,7 @@ async fn test_block_sync_body_validator() {
         coinbase_utxo,
         coinbase_kernel,
         &rules,
+        None,
     );
     let new_block = db.prepare_new_block(template).unwrap();
     {
@@ -1005,6 +1012,7 @@ async fn test_block_sync_body_validator() {
         coinbase_utxo,
         coinbase_kernel,
         &rules,
+        None,
     );
     let new_block = db.prepare_new_block(template).unwrap();
     {

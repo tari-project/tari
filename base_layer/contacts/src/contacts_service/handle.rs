@@ -111,7 +111,7 @@ impl Display for ContactsLivenessData {
             self.address,
             self.node_id,
             if let Some(time) = self.last_seen {
-                let local_time = DateTime::<Local>::from_utc(time, Local::now().offset().to_owned())
+                let local_time = DateTime::<Local>::from_naive_utc_and_offset(time, Local::now().offset().to_owned())
                     .format("%FT%T")
                     .to_string();
                 format!("last seen {} is '{}'", local_time, self.online_status)
@@ -139,6 +139,7 @@ pub enum ContactsServiceRequest {
     SendMessage(TariAddress, Message),
     GetMessages(TariAddress, i64, i64),
     SendReadConfirmation(TariAddress, Confirmation),
+    GetConversationalists,
 }
 
 #[derive(Debug)]
@@ -151,6 +152,7 @@ pub enum ContactsServiceResponse {
     Messages(Vec<Message>),
     MessageSent,
     ReadConfirmationSent,
+    Conversationalists(Vec<TariAddress>),
 }
 
 #[derive(Clone)]
@@ -303,6 +305,17 @@ impl ContactsServiceHandle {
             .await??
         {
             ContactsServiceResponse::ReadConfirmationSent => Ok(()),
+            _ => Err(ContactsServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_conversationalists(&mut self) -> Result<Vec<TariAddress>, ContactsServiceError> {
+        match self
+            .request_response_service
+            .call(ContactsServiceRequest::GetConversationalists)
+            .await??
+        {
+            ContactsServiceResponse::Conversationalists(addresses) => Ok(addresses),
             _ => Err(ContactsServiceError::UnexpectedApiResponse),
         }
     }

@@ -236,15 +236,6 @@ impl TariScript {
         self.script.iter().map(|op| op.to_string()).collect()
     }
 
-    /// Calculate the message hash that CHECKSIG uses to verify signatures
-    pub fn script_message(&self, pub_key: &RistrettoPublicKey) -> Result<RistrettoSecretKey, ScriptError> {
-        let b = Blake2b::<U32>::default()
-            .chain_update(pub_key.as_bytes())
-            .chain_update(self.to_bytes())
-            .finalize();
-        RistrettoSecretKey::from_bytes(b.as_slice()).map_err(|_| ScriptError::InvalidSignature)
-    }
-
     // pending updates to Dalek/Digest
     fn execute_opcode(
         &self,
@@ -562,7 +553,7 @@ impl TariScript {
         let pk = stack.pop().ok_or(ScriptError::StackUnderflow)?;
         let sig = stack.pop().ok_or(ScriptError::StackUnderflow)?;
         match (pk, sig) {
-            (PublicKey(p), Signature(s)) => Ok(s.verify_challenge(&p, &message)),
+            (PublicKey(p), Signature(s)) => Ok(s.verify_raw_canonical(&p, &message)),
             (..) => Err(ScriptError::IncompatibleTypes),
         }
     }
@@ -614,7 +605,7 @@ impl TariScript {
         // Check every signature against each public key looking for a valid signature
         for s in &signatures {
             for (i, pk) in public_keys.iter().enumerate() {
-                if !sig_set.contains(s) && !key_signed[i] && s.verify_challenge(pk, &message) {
+                if !sig_set.contains(s) && !key_signed[i] && s.verify_raw_canonical(pk, &message) {
                     // This prevents Alice creating 2 different sigs against her public key
                     key_signed[i] = true;
                     sig_set.insert(s);
@@ -641,7 +632,7 @@ impl TariScript {
             StackItem::Scalar(scalar) => scalar.as_slice(),
             _ => return Err(ScriptError::IncompatibleTypes),
         };
-        let ristretto_sk = RistrettoSecretKey::from_bytes(scalar).map_err(|_| ScriptError::InvalidData)?;
+        let ristretto_sk = RistrettoSecretKey::from_canonical_bytes(scalar).map_err(|_| ScriptError::InvalidData)?;
         let ristretto_pk = RistrettoPublicKey::from_secret_key(&ristretto_sk);
         stack.push(StackItem::PublicKey(ristretto_pk))?;
         Ok(())
@@ -1068,7 +1059,7 @@ mod test {
         let (pvt_key, pub_key) = RistrettoPublicKey::random_keypair(&mut rng);
         let nonce = RistrettoSecretKey::random(&mut rng);
         let m_key = RistrettoSecretKey::random(&mut rng);
-        let sig = RistrettoSchnorr::sign_raw(&pvt_key, nonce, m_key.as_bytes()).unwrap();
+        let sig = RistrettoSchnorr::sign_raw_canonical(&pvt_key, nonce, m_key.as_bytes()).unwrap();
         let msg = slice_to_boxed_message(m_key.as_bytes());
         let script = script!(CheckSig(msg));
         let inputs = inputs!(sig.clone(), pub_key.clone());
@@ -1090,7 +1081,7 @@ mod test {
         let (pvt_key, pub_key) = RistrettoPublicKey::random_keypair(&mut rng);
         let nonce = RistrettoSecretKey::random(&mut rng);
         let m_key = RistrettoSecretKey::random(&mut rng);
-        let sig = RistrettoSchnorr::sign_raw(&pvt_key, nonce, m_key.as_bytes()).unwrap();
+        let sig = RistrettoSchnorr::sign_raw_canonical(&pvt_key, nonce, m_key.as_bytes()).unwrap();
         let msg = slice_to_boxed_message(m_key.as_bytes());
         let script = script!(CheckSigVerify(msg) PushOne);
         let inputs = inputs!(sig.clone(), pub_key.clone());
@@ -1119,7 +1110,7 @@ mod test {
         for _ in 0..n {
             let (k, p) = RistrettoPublicKey::random_keypair(&mut rng);
             let r = RistrettoSecretKey::random(&mut rng);
-            let s = RistrettoSchnorr::sign_raw(&k, r, m.as_bytes()).unwrap();
+            let s = RistrettoSchnorr::sign_raw_canonical(&k, r, m.as_bytes()).unwrap();
             data.push((k, p, s));
         }
 
@@ -1141,11 +1132,11 @@ mod test {
         let r4 = RistrettoSecretKey::random(&mut rng);
         let r5 = RistrettoSecretKey::random(&mut rng);
         let m = RistrettoSecretKey::random(&mut rng);
-        let s_alice = RistrettoSchnorr::sign_raw(&k_alice, r1, m.as_bytes()).unwrap();
-        let s_bob = RistrettoSchnorr::sign_raw(&k_bob, r2, m.as_bytes()).unwrap();
-        let s_eve = RistrettoSchnorr::sign_raw(&k_eve, r3, m.as_bytes()).unwrap();
-        let s_carol = RistrettoSchnorr::sign_raw(&k_carol, r4, m.as_bytes()).unwrap();
-        let s_alice2 = RistrettoSchnorr::sign_raw(&k_alice, r5, m.as_bytes()).unwrap();
+        let s_alice = RistrettoSchnorr::sign_raw_canonical(&k_alice, r1, m.as_bytes()).unwrap();
+        let s_bob = RistrettoSchnorr::sign_raw_canonical(&k_bob, r2, m.as_bytes()).unwrap();
+        let s_eve = RistrettoSchnorr::sign_raw_canonical(&k_eve, r3, m.as_bytes()).unwrap();
+        let s_carol = RistrettoSchnorr::sign_raw_canonical(&k_carol, r4, m.as_bytes()).unwrap();
+        let s_alice2 = RistrettoSchnorr::sign_raw_canonical(&k_alice, r5, m.as_bytes()).unwrap();
         let msg = slice_to_boxed_message(m.as_bytes());
 
         // 1 of 2
@@ -1330,10 +1321,10 @@ mod test {
         let r3 = RistrettoSecretKey::random(&mut rng);
         let r4 = RistrettoSecretKey::random(&mut rng);
         let m = RistrettoSecretKey::random(&mut rng);
-        let s_alice = RistrettoSchnorr::sign_raw(&k_alice, r1, m.as_bytes()).unwrap();
-        let s_bob = RistrettoSchnorr::sign_raw(&k_bob, r2, m.as_bytes()).unwrap();
-        let s_eve = RistrettoSchnorr::sign_raw(&k_eve, r3, m.as_bytes()).unwrap();
-        let s_carol = RistrettoSchnorr::sign_raw(&k_carol, r4, m.as_bytes()).unwrap();
+        let s_alice = RistrettoSchnorr::sign_raw_canonical(&k_alice, r1, m.as_bytes()).unwrap();
+        let s_bob = RistrettoSchnorr::sign_raw_canonical(&k_bob, r2, m.as_bytes()).unwrap();
+        let s_eve = RistrettoSchnorr::sign_raw_canonical(&k_eve, r3, m.as_bytes()).unwrap();
+        let s_carol = RistrettoSchnorr::sign_raw_canonical(&k_carol, r4, m.as_bytes()).unwrap();
         let msg = slice_to_boxed_message(m.as_bytes());
 
         // 1 of 2
@@ -1512,8 +1503,8 @@ mod test {
         let msg = slice_to_boxed_message(m.as_bytes());
         let script = script!(Add RevRot Add CheckSigVerify(msg) PushOne);
 
-        let s1 = RistrettoSchnorr::sign_raw(&k1, r1, m.as_bytes()).unwrap();
-        let s2 = RistrettoSchnorr::sign_raw(&k2, r2, m.as_bytes()).unwrap();
+        let s1 = RistrettoSchnorr::sign_raw_canonical(&k1, r1, m.as_bytes()).unwrap();
+        let s2 = RistrettoSchnorr::sign_raw_canonical(&k2, r2, m.as_bytes()).unwrap();
         let inputs = inputs!(p1, p2, s1, s2);
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(1));
@@ -1647,9 +1638,9 @@ mod test {
         let m = RistrettoSecretKey::random(&mut rng);
         let msg = slice_to_boxed_message(m.as_bytes());
 
-        let s_alice = RistrettoSchnorr::sign_raw(&k_alice, r1, m.as_bytes()).unwrap();
-        let s_bob = RistrettoSchnorr::sign_raw(&k_bob, r2, m.as_bytes()).unwrap();
-        let s_eve = RistrettoSchnorr::sign_raw(&k_eve, r3, m.as_bytes()).unwrap();
+        let s_alice = RistrettoSchnorr::sign_raw_canonical(&k_alice, r1, m.as_bytes()).unwrap();
+        let s_bob = RistrettoSchnorr::sign_raw_canonical(&k_bob, r2, m.as_bytes()).unwrap();
+        let s_eve = RistrettoSchnorr::sign_raw_canonical(&k_eve, r3, m.as_bytes()).unwrap();
 
         // 1 of 2
         use crate::Opcode::{CheckSig, Drop, Dup, Else, EndIf, IfThen, PushPubKey, Return};

@@ -28,7 +28,9 @@ use std::{
     fmt::{Display, Formatter},
 };
 
+use blake2::Blake2b;
 use borsh::{BorshDeserialize, BorshSerialize};
+use digest::consts::{U32, U64};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{ComAndPubSignature, Commitment, CommitmentFactory, FixedHash, HashOutput, PublicKey};
@@ -175,7 +177,7 @@ impl TransactionInput {
         input_data: &ExecutionStack,
         script_public_key: &PublicKey,
         commitment: &Commitment,
-    ) -> [u8; 32] {
+    ) -> [u8; 64] {
         // We build the message separately to help with hardware wallet support. This reduces the amount of data that
         // needs to be transferred in order to sign the signature.
         let message = TransactionInput::build_script_signature_message(version, script, input_data);
@@ -197,10 +199,10 @@ impl TransactionInput {
         script_public_key: &PublicKey,
         commitment: &Commitment,
         message: &[u8; 32],
-    ) -> [u8; 32] {
+    ) -> [u8; 64] {
         match version {
             TransactionInputVersion::V0 | TransactionInputVersion::V1 => {
-                DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("script_challenge")
+                DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U64>>::new("script_challenge")
                     .chain(ephemeral_commitment)
                     .chain(ephemeral_pubkey)
                     .chain(script_public_key)
@@ -220,7 +222,7 @@ impl TransactionInput {
     ) -> [u8; 32] {
         match version {
             TransactionInputVersion::V0 | TransactionInputVersion::V1 => {
-                DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("script_message")
+                DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("script_message")
                     .chain(version)
                     .chain(script)
                     .chain(input_data)
@@ -449,6 +451,17 @@ impl TransactionInput {
         }
     }
 
+    pub fn smt_hash(&self, mined_height: u64) -> FixedHash {
+        let utxo_hash = self.output_hash();
+        let smt_hash = DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("smt_hash")
+            .chain(&utxo_hash)
+            .chain(&mined_height);
+
+        match self.version {
+            TransactionInputVersion::V0 | TransactionInputVersion::V1 => smt_hash.finalize().into(),
+        }
+    }
+
     /// Returns true if this is a compact input, otherwise false.
     pub fn is_compact(&self) -> bool {
         matches!(self.spent_output, SpentOutput::OutputHash(_))
@@ -456,7 +469,7 @@ impl TransactionInput {
 
     /// Implement the canonical hashing function for TransactionInput for use in ordering
     pub fn canonical_hash(&self) -> FixedHash {
-        let writer = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("transaction_input")
+        let writer = DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("transaction_input")
             .chain(&self.version)
             .chain(&self.script_signature)
             .chain(&self.input_data)
@@ -550,6 +563,14 @@ impl Ord for TransactionInput {
     }
 }
 
+impl Default for TransactionInput {
+    fn default() -> Self {
+        let output = SpentOutput::create_from_output(TransactionOutput::default());
+
+        TransactionInput::new_current_version(output, ExecutionStack::default(), Default::default())
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[allow(clippy::large_enum_variant)]
 pub enum SpentOutput {
@@ -574,6 +595,25 @@ impl SpentOutput {
         match self {
             SpentOutput::OutputHash(_) => 0,
             SpentOutput::OutputData { .. } => 1,
+        }
+    }
+
+    pub fn create_from_output(output: TransactionOutput) -> SpentOutput {
+        let rp_hash = match output.proof {
+            Some(proof) => proof.hash(),
+            None => FixedHash::zero(),
+        };
+        SpentOutput::OutputData {
+            version: output.version,
+            features: output.features,
+            commitment: output.commitment,
+            script: output.script,
+            sender_offset_public_key: output.sender_offset_public_key,
+            covenant: output.covenant,
+            encrypted_data: output.encrypted_data,
+            metadata_signature: output.metadata_signature,
+            rangeproof_hash: rp_hash,
+            minimum_value_promise: output.minimum_value_promise,
         }
     }
 }

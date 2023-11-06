@@ -1,6 +1,4 @@
-// @generated automatically by Diesel CLI.
-
-diesel::table! {
+table! {
     burnt_proofs (id) {
         id -> Integer,
         reciprocal_claim_public_key -> Text,
@@ -9,21 +7,21 @@ diesel::table! {
     }
 }
 
-diesel::table! {
+table! {
     client_key_values (key) {
         key -> Text,
         value -> Text,
     }
 }
 
-diesel::table! {
+table! {
     completed_transactions (tx_id) {
         tx_id -> BigInt,
         source_address -> Binary,
         destination_address -> Binary,
         amount -> BigInt,
         fee -> BigInt,
-        transaction_protocol -> Text,
+        transaction_protocol -> Binary,
         status -> Integer,
         message -> Text,
         timestamp -> Timestamp,
@@ -41,7 +39,7 @@ diesel::table! {
     }
 }
 
-diesel::table! {
+table! {
     inbound_transactions (tx_id) {
         tx_id -> BigInt,
         source_address -> Binary,
@@ -56,7 +54,7 @@ diesel::table! {
     }
 }
 
-diesel::table! {
+table! {
     known_one_sided_payment_scripts (script_hash) {
         script_hash -> Binary,
         private_key -> Text,
@@ -66,7 +64,7 @@ diesel::table! {
     }
 }
 
-diesel::table! {
+table! {
     outbound_transactions (tx_id) {
         tx_id -> BigInt,
         destination_address -> Binary,
@@ -82,7 +80,7 @@ diesel::table! {
     }
 }
 
-diesel::table! {
+table! {
     outputs (id) {
         id -> Integer,
         commitment -> Binary,
@@ -105,7 +103,6 @@ diesel::table! {
         metadata_signature_u_y -> Binary,
         mined_height -> Nullable<BigInt>,
         mined_in_block -> Nullable<Binary>,
-        mined_mmr_position -> Nullable<BigInt>,
         marked_deleted_at_height -> Nullable<BigInt>,
         marked_deleted_in_block -> Nullable<Binary>,
         received_in_tx_id -> Nullable<BigInt>,
@@ -123,7 +120,7 @@ diesel::table! {
     }
 }
 
-diesel::table! {
+table! {
     scanned_blocks (header_hash) {
         header_hash -> Binary,
         height -> BigInt,
@@ -133,14 +130,14 @@ diesel::table! {
     }
 }
 
-diesel::table! {
+table! {
     wallet_settings (key) {
         key -> Text,
         value -> Text,
     }
 }
 
-diesel::allow_tables_to_appear_in_same_query!(
+allow_tables_to_appear_in_same_query!(
     burnt_proofs,
     client_key_values,
     completed_transactions,

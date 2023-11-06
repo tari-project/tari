@@ -39,7 +39,7 @@ impl From<BlockHeader> for grpc::BlockHeader {
             timestamp: h.timestamp.as_u64(),
             input_mr: h.input_mr.to_vec(),
             output_mr: h.output_mr.to_vec(),
-            output_mmr_size: h.output_mmr_size,
+            output_mmr_size: h.output_smt_size,
             kernel_mr: h.kernel_mr.to_vec(),
             kernel_mmr_size: h.kernel_mmr_size,
             total_kernel_offset: h.total_kernel_offset.to_vec(),
@@ -58,9 +58,11 @@ impl TryFrom<grpc::BlockHeader> for BlockHeader {
     type Error = String;
 
     fn try_from(header: grpc::BlockHeader) -> Result<Self, Self::Error> {
-        let total_kernel_offset = PrivateKey::from_bytes(&header.total_kernel_offset).map_err(|err| err.to_string())?;
+        let total_kernel_offset =
+            PrivateKey::from_canonical_bytes(&header.total_kernel_offset).map_err(|err| err.to_string())?;
 
-        let total_script_offset = PrivateKey::from_bytes(&header.total_script_offset).map_err(|err| err.to_string())?;
+        let total_script_offset =
+            PrivateKey::from_canonical_bytes(&header.total_script_offset).map_err(|err| err.to_string())?;
 
         let pow = match header.pow {
             Some(p) => ProofOfWork::try_from(p)?,
@@ -73,7 +75,7 @@ impl TryFrom<grpc::BlockHeader> for BlockHeader {
             timestamp: EpochTime::from(header.timestamp),
             input_mr: FixedHash::try_from(header.input_mr).map_err(|err| err.to_string())?,
             output_mr: FixedHash::try_from(header.output_mr).map_err(|err| err.to_string())?,
-            output_mmr_size: header.output_mmr_size,
+            output_smt_size: header.output_mmr_size,
             kernel_mr: FixedHash::try_from(header.kernel_mr).map_err(|err| err.to_string())?,
             kernel_mmr_size: header.kernel_mmr_size,
             total_kernel_offset,

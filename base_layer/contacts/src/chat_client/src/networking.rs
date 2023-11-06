@@ -22,6 +22,8 @@
 
 use std::{str::FromStr, sync::Arc, time::Duration};
 
+use minotari_app_utilities::{identity_management, identity_management::load_from_json};
+use tari_common::exit_codes::{ExitCode, ExitError};
 // Re-exports
 pub use tari_comms::{
     multiaddr::Multiaddr,
@@ -34,6 +36,7 @@ use tari_p2p::{
     initialization::{spawn_comms_using_transport, P2pInitializer},
     peer_seeds::SeedPeer,
     services::liveness::{LivenessConfig, LivenessInitializer},
+    TransportType,
 };
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
@@ -54,9 +57,15 @@ pub async fn start(
     let (publisher, subscription_factory) = pubsub_connector(100);
     let in_msg = Arc::new(subscription_factory);
 
+    let mut p2p_config = config.chat_client.p2p.clone();
+
+    let tor_identity =
+        load_from_json(&config.chat_client.tor_identity_file).map_err(|e| ExitError::new(ExitCode::ConfigError, e))?;
+    p2p_config.transport.tor.identity = tor_identity;
+
     let fut = StackBuilder::new(shutdown_signal)
         .add_initializer(P2pInitializer::new(
-            config.chat_client.p2p.clone(),
+            p2p_config.clone(),
             config.peer_seeds.clone(),
             config.chat_client.network,
             node_identity,
@@ -97,9 +106,23 @@ pub async fn start(
         peer_manager.add_peer(peer).await?;
     }
 
-    let comms = spawn_comms_using_transport(comms, config.chat_client.p2p.transport.clone())
+    let comms = spawn_comms_using_transport(comms, p2p_config.transport.clone())
         .await
         .unwrap();
+
+    // Save final node identity after comms has initialized. This is required because the public_address can be
+    // changed by comms during initialization when using tor.
+    match p2p_config.transport.transport_type {
+        TransportType::Tcp => {}, // Do not overwrite TCP public_address in the base_node_id!
+        _ => {
+            identity_management::save_as_json(&config.chat_client.identity_file, &*comms.node_identity())
+                .map_err(|e| ExitError::new(ExitCode::IdentityError, e))?;
+        },
+    };
+    if let Some(hs) = comms.hidden_service() {
+        identity_management::save_as_json(&config.chat_client.tor_identity_file, hs.tor_identity())
+            .map_err(|e| ExitError::new(ExitCode::IdentityError, e))?;
+    }
     handles.register(comms);
 
     let comms = handles.expect_handle::<CommsNode>();

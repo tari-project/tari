@@ -12,11 +12,11 @@ tari_common_sqlite = { path = "../../common_sqlite" }
 tari_common_types = {  path = "../../base_layer/common_types" }
 tari_comms = {  path = "../../comms/core" }
 tari_comms_dht = { path = "../../comms/dht" }
-tari_crypto = { version = "0.18" }
+tari_crypto = { version = "0.19" }
 tari_p2p = {  path = "../p2p", features = ["auto-update"] }
 tari_service_framework = {  path = "../service_framework" }
 tari_shutdown = {  path = "../../infrastructure/shutdown" }
-tari_utilities = { version = "0.5" }
+tari_utilities = { version = "0.6" }
 
 chrono = { version = "0.4.19", default-features = false, features = ["serde"] }
 diesel = { version = "2.0.3", features = ["sqlite", "serde_json", "chrono", "64-column-tables"] }

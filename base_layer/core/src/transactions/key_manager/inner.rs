@@ -22,7 +22,7 @@
 use std::{collections::HashMap, ops::Shl};
 
 use blake2::Blake2b;
-use digest::consts::U32;
+use digest::consts::U64;
 use log::*;
 use rand::rngs::OsRng;
 use strum::IntoEnumIterator;
@@ -379,7 +379,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         &self,
         secret_key_id: &TariKeyId,
         public_key: &PublicKey,
-    ) -> Result<DomainSeparatedHash<Blake2b<U32>>, TransactionError> {
+    ) -> Result<DomainSeparatedHash<Blake2b<U64>>, TransactionError> {
         let secret_key = self.get_private_key(secret_key_id).await?;
         Ok(diffie_hellman_stealth_domain_hasher(&secret_key, public_key))
     }
@@ -522,7 +522,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         let proof_bytes = proof_bytes_result
             .map_err(|err| TransactionError::RangeProofError(format!("Failed to construct range proof: {}", err)))?;
 
-        RangeProof::from_bytes(&proof_bytes).map_err(|_| {
+        RangeProof::from_canonical_bytes(&proof_bytes).map_err(|_| {
             TransactionError::RangeProofError("Rangeproof factory returned invalid range proof bytes".to_string())
         })
     }
@@ -555,22 +555,22 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         // With RevealedValue type range proofs, the nonce is always 0 and the minimum value promise equal to the value
         let nonce_a = match range_proof_type {
             RangeProofType::BulletProofPlus => {
-                let hasher_a = DomainSeparatedHasher::<Blake2b<U32>, KeyManagerHashingDomain>::new_with_label(
+                let hasher_a = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerHashingDomain>::new_with_label(
                     "metadata_signature_ephemeral_nonce_a",
                 );
                 let a_hash = hasher_a.chain(nonce_private_key.as_bytes()).finalize();
-                PrivateKey::from_bytes(a_hash.as_ref()).map_err(|_| {
+                PrivateKey::from_uniform_bytes(a_hash.as_ref()).map_err(|_| {
                     TransactionError::KeyManagerError("Invalid private key for sender offset private key".to_string())
                 })
             },
             RangeProofType::RevealedValue => Ok(PrivateKey::default()),
         }?;
 
-        let hasher_b = DomainSeparatedHasher::<Blake2b<U32>, KeyManagerHashingDomain>::new_with_label(
+        let hasher_b = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerHashingDomain>::new_with_label(
             "metadata_signature_ephemeral_nonce_b",
         );
         let b_hash = hasher_b.chain(nonce_private_key.as_bytes()).finalize();
-        let nonce_b = PrivateKey::from_bytes(b_hash.as_ref()).map_err(|_| {
+        let nonce_b = PrivateKey::from_uniform_bytes(b_hash.as_ref()).map_err(|_| {
             TransactionError::KeyManagerError("Invalid private key for sender offset private key".to_string())
         })?;
         Ok((nonce_a, nonce_b))
@@ -753,14 +753,14 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         nonce_id: &TariKeyId,
     ) -> Result<PrivateKey, TransactionError> {
         let hasher =
-            DomainSeparatedHasher::<Blake2b<U32>, KeyManagerHashingDomain>::new_with_label("kernel_excess_offset");
+            DomainSeparatedHasher::<Blake2b<U64>, KeyManagerHashingDomain>::new_with_label("kernel_excess_offset");
         let spending_private_key = self.get_private_key(spend_key_id).await?;
         let nonce_private_key = self.get_private_key(nonce_id).await?;
         let key_hash = hasher
             .chain(spending_private_key.as_bytes())
             .chain(nonce_private_key.as_bytes())
             .finalize();
-        PrivateKey::from_bytes(key_hash.as_ref()).map_err(|_| {
+        PrivateKey::from_uniform_bytes(key_hash.as_ref()).map_err(|_| {
             TransactionError::KeyManagerError("Invalid private key for kernel signature nonce".to_string())
         })
     }
@@ -802,7 +802,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             kernel_message,
         );
 
-        let signature = Signature::sign_raw(&final_signing_key, private_nonce, &challenge)?;
+        let signature = Signature::sign_raw_uniform(&final_signing_key, private_nonce, &challenge)?;
         Ok(signature)
     }
 

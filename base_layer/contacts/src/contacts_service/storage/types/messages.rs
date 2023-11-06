@@ -119,6 +119,12 @@ impl MessagesSql {
             .num_rows_affected_or_not_found(1)?;
         MessagesSql::find_by_message_id(message_id, conn)
     }
+
+    pub fn find_all_conversationlists(
+        conn: &mut SqliteConnection,
+    ) -> Result<Vec<Vec<u8>>, ContactsServiceStorageError> {
+        Ok(messages::table.select(messages::address).distinct().load(conn)?)
+    }
 }
 
 /// Conversion from an Message to the Sql datatype form

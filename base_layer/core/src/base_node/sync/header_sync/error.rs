@@ -98,8 +98,6 @@ impl BlockHeaderSyncError {
         match self {
             // no ban
             BlockHeaderSyncError::NoMoreSyncPeers(_) |
-            BlockHeaderSyncError::RpcError(_) |
-            BlockHeaderSyncError::RpcRequestError(_) |
             BlockHeaderSyncError::SyncFailedAllPeers |
             BlockHeaderSyncError::FailedToBan(_) |
             BlockHeaderSyncError::AllSyncPeersExceedLatency |
@@ -109,7 +107,9 @@ impl BlockHeaderSyncError {
             BlockHeaderSyncError::ChainStorageError(_) => None,
 
             // short ban
-            err @ BlockHeaderSyncError::MaxLatencyExceeded { .. } => Some(BanReason {
+            err @ BlockHeaderSyncError::MaxLatencyExceeded { .. } |
+            err @ BlockHeaderSyncError::RpcError { .. } |
+            err @ BlockHeaderSyncError::RpcRequestError { .. } => Some(BanReason {
                 reason: format!("{}", err),
                 ban_duration: short_ban,
             }),

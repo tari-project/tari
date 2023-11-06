@@ -20,28 +20,67 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, ptr};
+use std::{convert::TryFrom, os::raw::c_longlong, ptr};
 
 use libc::{c_int, c_uint};
-use tari_contacts::contacts_service::types::Confirmation;
+use tari_chat_client::ChatClient as ChatClientTrait;
+use tari_contacts::contacts_service::types::{Confirmation, Message};
 
 use crate::{
+    byte_vector::{chat_byte_vector_create, ChatByteVector},
     error::{InterfaceError, LibChatError},
-    types::{chat_byte_vector_create, ChatByteVector},
+    ChatClient,
 };
 
-/// Get a pointer to a ChatByteVector representation of a message id
+/// Send a read confirmation for a given message
 ///
 /// ## Arguments
-/// `confirmation` - A pointer to the Confirmation
+/// `client` - Pointer to the ChatClient
+/// `message` - Pointer to the Message that was read
+/// `error_out` - Pointer to an int which will be modified
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// The `client` When done with the ChatClient it should be destroyed
+/// The `message` When done with the Message it should be destroyed
+#[no_mangle]
+pub unsafe extern "C" fn send_read_confirmation_for_message(
+    client: *mut ChatClient,
+    message: *mut Message,
+    error_out: *mut c_int,
+) {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    if client.is_null() {
+        error = LibChatError::from(InterfaceError::NullError("client".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    }
+
+    if message.is_null() {
+        error = LibChatError::from(InterfaceError::NullError("message".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    }
+
+    (*client)
+        .runtime
+        .block_on((*client).client.send_read_receipt((*message).clone()));
+}
+
+/// Get a pointer to a ChatByteVector representation of the message id associated to the confirmation
+///
+/// ## Arguments
+/// `confirmation` - A pointer to the Confirmation you'd like to read from
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
 /// `*mut ChatByteVector` - A ptr to a ChatByteVector
 ///
 /// # Safety
-/// The ```confirmation``` When done with the confirmation it should be destroyed
-/// The ```ChatByteVector``` When done with the returned ChatByteVector it should be destroyed
+/// `confirmation` should be destroyed when finished
+/// ```ChatByteVector``` When done with the returned ChatByteVector it should be destroyed
 #[no_mangle]
 pub unsafe extern "C" fn read_confirmation_message_id(
     confirmation: *mut Confirmation,
@@ -61,35 +100,38 @@ pub unsafe extern "C" fn read_confirmation_message_id(
     chat_byte_vector_create(data_bytes.as_ptr(), len as c_uint, error_out)
 }
 
-/// Get a c_uint timestamp for the confirmation
+/// Get a c_longlong timestamp for the Confirmation
 ///
 /// ## Arguments
 /// `confirmation` - A pointer to the Confirmation
 /// `error_out` - Pointer to an int which will be modified
 ///
 /// ## Returns
-/// `c_uint` - A uint representation of time. May return 0 if casting fails
+/// `c_longlong` - A uint representation of time since epoch. May return -1 on error
 ///
 /// # Safety
-/// None
+/// The ```confirmation``` When done with the Confirmation it should be destroyed
 #[no_mangle]
-pub unsafe extern "C" fn read_confirmation_timestamp(confirmation: *mut Confirmation, error_out: *mut c_int) -> c_uint {
+pub unsafe extern "C" fn read_confirmation_timestamp(
+    confirmation: *mut Confirmation,
+    error_out: *mut c_int,
+) -> c_longlong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
     if confirmation.is_null() {
         error = LibChatError::from(InterfaceError::NullError("client".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
+        return -1;
     }
 
-    let c = &(*confirmation);
-    c_uint::try_from(c.timestamp).unwrap_or(0)
+    (*confirmation).timestamp as c_longlong
 }
 
 /// Frees memory for a Confirmation
 ///
 /// ## Arguments
-/// `address` - The pointer of a Confirmation
+/// `ptr` - The pointer of a Confirmation
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
@@ -97,9 +139,9 @@ pub unsafe extern "C" fn read_confirmation_timestamp(confirmation: *mut Confirma
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn destroy_confirmation(address: *mut Confirmation) {
-    if !address.is_null() {
-        drop(Box::from_raw(address))
+pub unsafe extern "C" fn destroy_confirmation(ptr: *mut Confirmation) {
+    if !ptr.is_null() {
+        drop(Box::from_raw(ptr))
     }
 }
 
@@ -109,8 +151,8 @@ mod test {
     use tari_utilities::epoch_time::EpochTime;
 
     use crate::{
+        byte_vector::{chat_byte_vector_get_at, chat_byte_vector_get_length},
         confirmation::{destroy_confirmation, read_confirmation_message_id, read_confirmation_timestamp},
-        types::{chat_byte_vector_get_at, chat_byte_vector_get_length},
     };
 
     #[test]
@@ -139,7 +181,7 @@ mod test {
 
         unsafe {
             let read_timestamp = read_confirmation_timestamp(confirmation_ptr, error_out);
-            assert_eq!(timestamp, u64::from(read_timestamp))
+            assert_eq!(timestamp, read_timestamp as u64)
         }
 
         unsafe { destroy_confirmation(confirmation_ptr) }

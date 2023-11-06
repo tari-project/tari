@@ -59,6 +59,7 @@ use tari_core::{
         SenderTransactionProtocol,
     },
 };
+use tari_crypto::keys::SecretKey;
 use tari_script::{inputs, script, ExecutionStack, Opcode, TariScript};
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
@@ -2404,8 +2405,8 @@ where
                     }
 
                     // Compute the stealth address offset
-                    let stealth_address_offset = PrivateKey::from_bytes(stealth_address_hasher.as_ref())
-                        .expect("'DomainSeparatedHash<Blake2b<U32>>' has correct size");
+                    let stealth_address_offset = PrivateKey::from_uniform_bytes(stealth_address_hasher.as_ref())
+                        .expect("'DomainSeparatedHash<Blake2b<U64>>' has correct size");
                     let stealth_key = self
                         .resources
                         .key_manager

@@ -168,7 +168,7 @@ mod test {
                 prev_id: Hash::new([4; 32]),
                 nonce: 5,
             },
-            randomx_key: FixedByteArray::from_bytes(&[6, 7, 8]).unwrap(),
+            randomx_key: FixedByteArray::from_canonical_bytes(&[6, 7, 8]).unwrap(),
             transaction_count: 9,
             merkle_root: Hash::new([10; 32]),
             coinbase_merkle_proof: MerkleProof::default(),

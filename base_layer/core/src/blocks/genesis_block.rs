@@ -26,12 +26,14 @@ use chrono::{DateTime, FixedOffset};
 use tari_common::configuration::Network;
 use tari_common_types::types::{FixedHash, PrivateKey};
 use tari_crypto::tari_utilities::hex::*;
+use tari_mmr::sparse_merkle_tree::{NodeKey, ValueHash};
 use tari_utilities::ByteArray;
 
 use crate::{
     blocks::{block::Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock},
     proof_of_work::{Difficulty, PowAlgorithm, ProofOfWork},
     transactions::{aggregated_body::AggregateBody, transaction_components::TransactionOutput},
+    OutputSmt,
 };
 
 // This can be adjusted as required, but must be limited
@@ -64,7 +66,7 @@ fn add_faucet_utxos_to_genesis_block(file: &str, block: &mut Block) {
         }
         counter += 1;
     }
-    block.header.output_mmr_size += utxos.len() as u64;
+    block.header.output_smt_size += utxos.len() as u64;
     block.body.add_outputs(utxos);
     block.body.sort();
 }
@@ -75,9 +77,7 @@ fn print_mr_values(block: &mut Block, print: bool) {
     }
     use std::convert::TryFrom;
 
-    use croaring::Bitmap;
-
-    use crate::{chain_storage::calculate_validator_node_mr, KernelMmr, MutableOutputMmr};
+    use crate::{chain_storage::calculate_validator_node_mr, KernelMmr};
 
     let mut kernel_mmr = KernelMmr::new(Vec::new());
     for k in block.body.kernels() {
@@ -85,15 +85,17 @@ fn print_mr_values(block: &mut Block, print: bool) {
         kernel_mmr.push(k.hash().to_vec()).unwrap();
     }
 
-    let mut output_mmr = MutableOutputMmr::new(Vec::new(), Bitmap::create()).unwrap();
+    let mut output_smt = OutputSmt::new();
 
     for o in block.body.outputs() {
-        output_mmr.push(o.hash().to_vec()).unwrap();
+        let smt_key = NodeKey::try_from(o.commitment.as_bytes()).unwrap();
+        let smt_node = ValueHash::try_from(o.smt_hash(block.header.height).as_slice()).unwrap();
+        output_smt.insert(smt_key, smt_node).unwrap();
     }
     let vn_mmr = calculate_validator_node_mr(&[]);
 
     block.header.kernel_mr = FixedHash::try_from(kernel_mmr.get_merkle_root().unwrap()).unwrap();
-    block.header.output_mr = FixedHash::try_from(output_mmr.get_merkle_root().unwrap()).unwrap();
+    block.header.output_mr = FixedHash::try_from(output_smt.hash().as_slice()).unwrap();
     block.header.validator_node_mr = FixedHash::try_from(vn_mmr).unwrap();
     println!();
     println!("kernel mr: {}", block.header.kernel_mr.to_hex());
@@ -118,9 +120,9 @@ pub fn get_stagenet_genesis_block() -> ChainBlock {
         // Hardcode the Merkle roots once they've been computed above
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
-            FixedHash::from_hex("9d09a1400740160c28b5ce4ef81c35e40b55cbd966e0eee4373f18bfc2d53823").unwrap();
+            FixedHash::from_hex("b3569982f737771e11008c97050640d12a94ce42231ac69fb955dbf66c9d19b8").unwrap();
         block.header.output_mr =
-            FixedHash::from_hex("557b1d314988e5d32b29472179e6f857c067eb13d9e9099862d5aab67444df08").unwrap();
+            FixedHash::from_hex("95f849715638f24c62f6673693efad50523da0841fb77b6b6e068b95c85fe890").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
     }
@@ -139,7 +141,7 @@ pub fn get_stagenet_genesis_block() -> ChainBlock {
 
 fn get_stagenet_genesis_block_raw() -> Block {
     // Set genesis timestamp
-    let genesis_timestamp = DateTime::parse_from_rfc2822("11 Aug 2023 15:10:00 +0200").expect("parse may not fail");
+    let genesis_timestamp = DateTime::parse_from_rfc2822("29 Sep 2023 08:00:00 +0200").expect("parse may not fail");
     let not_before_proof = b"i am the stagenet genesis block, watch out, here i come \
         \
         The New York Times , 2000/01/01 \
@@ -171,9 +173,9 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
         // Hardcode the Merkle roots once they've been computed above
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
-            FixedHash::from_hex("9d09a1400740160c28b5ce4ef81c35e40b55cbd966e0eee4373f18bfc2d53823").unwrap();
+            FixedHash::from_hex("b3569982f737771e11008c97050640d12a94ce42231ac69fb955dbf66c9d19b8").unwrap();
         block.header.output_mr =
-            FixedHash::from_hex("557b1d314988e5d32b29472179e6f857c067eb13d9e9099862d5aab67444df08").unwrap();
+            FixedHash::from_hex("95f849715638f24c62f6673693efad50523da0841fb77b6b6e068b95c85fe890").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
     }
@@ -192,7 +194,7 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
 
 fn get_nextnet_genesis_block_raw() -> Block {
     // Set genesis timestamp
-    let genesis_timestamp = DateTime::parse_from_rfc2822("11 Aug 2023 15:20:00 +0200").expect("parse may not fail");
+    let genesis_timestamp = DateTime::parse_from_rfc2822("29 Sep 2023 08:10:00 +0200").expect("parse may not fail");
     // Let us add a "not before" proof to the genesis block
     let not_before_proof = b"nextnet has a blast, its prowess echoed in every gust \
         \
@@ -229,9 +231,9 @@ pub fn get_igor_genesis_block() -> ChainBlock {
 
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
-            FixedHash::from_hex("c71386fe8d30e1dbc5e9729ba6375630b78ae0fc8d1c26d6c4e02d250426d9a5").unwrap();
+            FixedHash::from_hex("5057ce1672184c5875bc707119a506fdb44bbc7b8eb33420aee642e1064ace3a").unwrap();
         block.header.output_mr =
-            FixedHash::from_hex("2e828a1aaa2263cec1c25be053a63b021fddee3a32bdc28035134331d9c194de").unwrap();
+            FixedHash::from_hex("162adb813d717bd7eea0b3ba447af30c00f5e4b7959e69658fc4f356fa7bbf9f").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
     }
@@ -283,9 +285,9 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
 
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
-            FixedHash::from_hex("9d09a1400740160c28b5ce4ef81c35e40b55cbd966e0eee4373f18bfc2d53823").unwrap();
+            FixedHash::from_hex("b3569982f737771e11008c97050640d12a94ce42231ac69fb955dbf66c9d19b8").unwrap();
         block.header.output_mr =
-            FixedHash::from_hex("557b1d314988e5d32b29472179e6f857c067eb13d9e9099862d5aab67444df08").unwrap();
+            FixedHash::from_hex("95f849715638f24c62f6673693efad50523da0841fb77b6b6e068b95c85fe890").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
     }
@@ -304,7 +306,7 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
 
 fn get_esmeralda_genesis_block_raw() -> Block {
     // Set genesis timestamp
-    let genesis_timestamp = DateTime::parse_from_rfc2822("31 Aug 2023 08:01:00 +0200").expect("parse may not fail");
+    let genesis_timestamp = DateTime::parse_from_rfc2822("09 Oct 2023 08:01:00 +0200").expect("parse may not fail");
     // Let us add a "not before" proof to the genesis block
     let not_before_proof =
         b"as I sip my drink, thoughts of esmeralda consume my mind, like a refreshing nourishing draught \
@@ -337,7 +339,7 @@ fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &[
             prev_hash: FixedHash::zero(),
             timestamp: timestamp.into(),
             output_mr: FixedHash::from_hex("daab077d6dadb830bf506cc55c82abc6c3563bec6ff1d5699806f8b13059b4c3").unwrap(),
-            output_mmr_size: 0,
+            output_smt_size: 0,
             kernel_mr: FixedHash::from_hex("c14803066909d6d22abf0d2d2782e8936afc3f713f2af3a4ef5c42e8400c1303").unwrap(),
             kernel_mmr_size: 0,
             validator_node_mr: FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc")
@@ -363,7 +365,8 @@ fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &[
 
 #[cfg(test)]
 mod test {
-    use croaring::Bitmap;
+    use std::convert::TryFrom;
+
     use tari_common_types::{epoch::VnEpoch, types::Commitment};
     use tari_utilities::ByteArray;
 
@@ -378,7 +381,6 @@ mod test {
         },
         validation::{ChainBalanceValidator, FinalHorizonStateValidation},
         KernelMmr,
-        MutableOutputMmr,
     };
 
     #[test]
@@ -410,7 +412,7 @@ mod test {
         // Note: Generate new data for `pub fn get_igor_genesis_block()` and `fn get_igor_genesis_block_raw()`
         // if consensus values change, e.g. new faucet or other
         let block = get_igor_genesis_block();
-        check_block(Network::Igor, &block, 5526, 1);
+        check_block(Network::Igor, &block, 1200, 1);
     }
 
     fn check_block(network: Network, block: &ChainBlock, expected_outputs: usize, expected_kernels: usize) {
@@ -430,7 +432,7 @@ mod test {
         );
         assert_eq!(
             block.block().body.outputs().len() as u64,
-            block.header().output_mmr_size
+            block.header().output_smt_size
         );
 
         for kernel in block.block().body.kernels() {
@@ -449,12 +451,14 @@ mod test {
         for k in block.block().body.kernels() {
             kernel_mmr.push(k.hash().to_vec()).unwrap();
         }
+        let mut output_smt = OutputSmt::new();
 
-        let mut output_mmr = MutableOutputMmr::new(Vec::new(), Bitmap::create()).unwrap();
         let mut vn_nodes = Vec::new();
         for o in block.block().body.outputs() {
+            let smt_key = NodeKey::try_from(o.commitment.as_bytes()).unwrap();
+            let smt_node = ValueHash::try_from(o.smt_hash(block.header().height).as_slice()).unwrap();
+            output_smt.insert(smt_key, smt_node).unwrap();
             o.verify_metadata_signature().unwrap();
-            output_mmr.push(o.hash().to_vec()).unwrap();
             if matches!(o.features.output_type, OutputType::ValidatorNodeRegistration) {
                 let reg = o
                     .features
@@ -470,7 +474,10 @@ mod test {
         }
 
         assert_eq!(kernel_mmr.get_merkle_root().unwrap(), block.header().kernel_mr,);
-        assert_eq!(output_mmr.get_merkle_root().unwrap(), block.header().output_mr,);
+        assert_eq!(
+            FixedHash::try_from(output_smt.hash().as_slice()).unwrap(),
+            block.header().output_mr,
+        );
         assert_eq!(calculate_validator_node_mr(&vn_nodes), block.header().validator_node_mr,);
 
         // Check that the faucet UTXOs balance (the faucet_value consensus constant is set correctly and faucet kernel

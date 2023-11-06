@@ -43,8 +43,10 @@ use std::{
     fmt::{Display, Error, Formatter},
 };
 
+use blake2::Blake2b;
 use borsh::{BorshDeserialize, BorshSerialize};
 use chrono::{DateTime, NaiveDateTime, Utc};
+use digest::consts::U32;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{BlockHash, FixedHash, PrivateKey};
 use tari_utilities::{epoch_time::EpochTime, hex::Hex};
@@ -100,7 +102,7 @@ pub struct BlockHeader {
     /// This is calculated as Hash (txo MMR root  || roaring bitmap hash of UTXO indices)
     pub output_mr: FixedHash,
     /// The size (number  of leaves) of the output and range proof MMRs at the time of this header
-    pub output_mmr_size: u64,
+    pub output_smt_size: u64,
     /// This is the MMR root of the kernels
     pub kernel_mr: FixedHash,
     /// The number of MMR leaves in the kernel MMR
@@ -126,7 +128,7 @@ impl BlockHeader {
             prev_hash: FixedHash::zero(),
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
-            output_mmr_size: 0,
+            output_smt_size: 0,
             kernel_mr: FixedHash::zero(),
             kernel_mmr_size: 0,
             input_mr: FixedHash::zero(),
@@ -139,7 +141,7 @@ impl BlockHeader {
     }
 
     pub fn hash(&self) -> FixedHash {
-        DomainSeparatedConsensusHasher::<BlocksHashDomain>::new("block_header")
+        DomainSeparatedConsensusHasher::<BlocksHashDomain, Blake2b<U32>>::new("block_header")
             .chain(&self.mining_hash())
             .chain(&self.pow)
             .chain(&self.nonce)
@@ -158,7 +160,7 @@ impl BlockHeader {
             prev_hash,
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
-            output_mmr_size: prev.output_mmr_size,
+            output_smt_size: prev.output_smt_size,
             kernel_mr: FixedHash::zero(),
             kernel_mmr_size: prev.kernel_mmr_size,
             input_mr: FixedHash::zero(),
@@ -216,14 +218,14 @@ impl BlockHeader {
     /// Provides a mining hash of the header, used for the mining.
     /// This differs from the normal hash by not hashing the nonce and kernel pow.
     pub fn mining_hash(&self) -> FixedHash {
-        DomainSeparatedConsensusHasher::<BlocksHashDomain>::new("block_header")
+        DomainSeparatedConsensusHasher::<BlocksHashDomain, Blake2b<U32>>::new("block_header")
             .chain(&self.version)
             .chain(&self.height)
             .chain(&self.prev_hash)
             .chain(&self.timestamp)
             .chain(&self.input_mr)
             .chain(&self.output_mr)
-            .chain(&self.output_mmr_size)
+            .chain(&self.output_smt_size)
             .chain(&self.kernel_mr)
             .chain(&self.kernel_mmr_size)
             .chain(&self.total_kernel_offset)
@@ -248,7 +250,7 @@ impl BlockHeader {
     pub fn to_chrono_datetime(&self) -> DateTime<Utc> {
         let dt = NaiveDateTime::from_timestamp_opt(i64::try_from(self.timestamp.as_u64()).unwrap_or(i64::MAX), 0)
             .unwrap_or(NaiveDateTime::MAX);
-        DateTime::from_utc(dt, Utc)
+        DateTime::from_naive_utc_and_offset(dt, Utc)
     }
 
     #[inline]
@@ -266,7 +268,7 @@ impl From<NewBlockHeaderTemplate> for BlockHeader {
             prev_hash: header_template.prev_hash,
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
-            output_mmr_size: 0,
+            output_smt_size: 0,
             kernel_mr: FixedHash::zero(),
             kernel_mmr_size: 0,
             input_mr: FixedHash::zero(),
@@ -302,7 +304,7 @@ impl Display for BlockHeader {
             "Merkle roots:\nInputs: {},\nOutputs: {} ({})\n\nKernels: {} ({})",
             self.input_mr.to_hex(),
             self.output_mr.to_hex(),
-            self.output_mmr_size,
+            self.output_smt_size,
             self.kernel_mr.to_hex(),
             self.kernel_mmr_size
         )?;

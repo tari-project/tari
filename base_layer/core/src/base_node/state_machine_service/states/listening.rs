@@ -46,6 +46,7 @@ use crate::{
                 StateEvent::FatalError,
                 StateInfo,
                 SyncStatus,
+                SyncStatus::{Lagging, SyncNotPossible, UpToDate},
                 Waiting,
             },
             BaseNodeStateMachine,
@@ -55,6 +56,7 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::listening";
+const INITIAL_SYNC_PEER_COUNT: usize = 5;
 
 /// This struct contains the info of the peer, and is used to serialised and deserialised.
 #[derive(Serialize, Deserialize)]
@@ -117,6 +119,8 @@ impl Listening {
         info!(target: LOG_TARGET, "Listening for chain metadata updates");
         shared.set_state_info(StateInfo::Listening(ListeningInfo::new(self.is_synced)));
         let mut time_since_better_block = None;
+        let mut initial_sync_counter = 0;
+        let mut initial_sync_peer_list = Vec::new();
         let mut mdc = vec![];
         log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
         loop {
@@ -132,6 +136,8 @@ impl Listening {
                     }
                 },
                 Ok(ChainMetadataEvent::PeerChainMetadataReceived(peer_metadata)) => {
+                    // We already ban the peer based on some previous logic, but this message was already in the
+                    // pipeline before the ban went into effect.
                     match shared.peer_manager.is_peer_banned(peer_metadata.node_id()).await {
                         Ok(true) => {
                             warn!(
@@ -177,7 +183,7 @@ impl Listening {
                     };
                     log_mdc::extend(mdc.clone());
 
-                    let sync_mode = determine_sync_mode(
+                    let mut sync_mode = determine_sync_mode(
                         shared.config.blocks_behind_before_considered_lagging,
                         &local_metadata,
                         peer_metadata,
@@ -202,12 +208,13 @@ impl Listening {
                         if time_since_better_block
                             .map(|t| t.elapsed() > shared.config.time_before_considered_lagging)
                             .unwrap()
+                        // unwrap is safe because time_since_better_block is set right above
                         {
-                            return StateEvent::FallenBehind(SyncStatus::Lagging {
+                            sync_mode = SyncStatus::Lagging {
                                 local: local.clone(),
                                 network: network.clone(),
                                 sync_peers: sync_peers.clone(),
-                            });
+                            };
                         }
                     } else {
                         // We might have gotten up to date via propagation outside of this state, so reset the timer
@@ -216,14 +223,55 @@ impl Listening {
                         }
                     }
 
-                    if sync_mode.is_lagging() {
-                        return StateEvent::FallenBehind(sync_mode);
-                    }
-
                     if !self.is_synced && sync_mode.is_up_to_date() {
                         self.is_synced = true;
                         shared.set_state_info(StateInfo::Listening(ListeningInfo::new(true)));
                         debug!(target: LOG_TARGET, "Initial sync achieved");
+                    }
+
+                    // If we have already reached initial sync before, as indicated by the `is_synced` flagged we can
+                    // immediately return fallen behind with the peer that has a higher pow than us
+                    if sync_mode.is_lagging() && self.is_synced {
+                        return StateEvent::FallenBehind(sync_mode);
+                    }
+                    // if we are lagging and not yet reached initial sync, we delay a bit till we get
+                    // INITIAL_SYNC_PEER_COUNT metadata updates from peers to ensure we make a better choice of which
+                    // peer to sync from in the next stages
+                    if let SyncStatus::Lagging {
+                        local,
+                        network,
+                        sync_peers,
+                    } = sync_mode
+                    {
+                        initial_sync_counter += 1;
+                        for peer in sync_peers {
+                            let mut found = false;
+                            // lets search the list list to ensure we only have unique peers in the list with the latest
+                            // up-to-date information
+                            for initial_peer in &mut initial_sync_peer_list {
+                                // we compare the two peers via the comparison operator on syncpeer
+                                if *initial_peer == peer {
+                                    found = true;
+                                    // if the peer is already in the list, we replace all the information about the peer
+                                    // with the newest up-to-date information
+                                    *initial_peer = peer.clone();
+                                    break;
+                                }
+                            }
+                            if !found {
+                                initial_sync_peer_list.push(peer.clone());
+                            }
+                        }
+                        // We use a list here to ensure that we dont wait for even for INITIAL_SYNC_PEER_COUNT different
+                        // peers
+                        if initial_sync_counter >= INITIAL_SYNC_PEER_COUNT {
+                            // lets return now that we have enough peers to chose from
+                            return StateEvent::FallenBehind(SyncStatus::Lagging {
+                                local,
+                                network,
+                                sync_peers: initial_sync_peer_list,
+                            });
+                        }
                     }
                 },
                 Err(broadcast::error::RecvError::Lagged(n)) => {
@@ -267,8 +315,10 @@ impl From<BlockSync> for Listening {
 }
 
 impl From<DecideNextSync> for Listening {
-    fn from(_: DecideNextSync) -> Self {
-        Self { is_synced: false }
+    fn from(sync: DecideNextSync) -> Self {
+        Self {
+            is_synced: sync.is_synced(),
+        }
     }
 }
 
@@ -278,7 +328,6 @@ fn determine_sync_mode(
     local: &ChainMetadata,
     network: &PeerChainMetadata,
 ) -> SyncStatus {
-    use SyncStatus::{Lagging, SyncNotPossible, UpToDate};
     let network_tip_accum_difficulty = network.claimed_chain_metadata().accumulated_difficulty();
     let local_tip_accum_difficulty = local.accumulated_difficulty();
     if local_tip_accum_difficulty < network_tip_accum_difficulty {

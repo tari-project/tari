@@ -29,12 +29,12 @@ use tari_comms::{
     protocol::rpc::{RpcError, RpcStatus},
 };
 use tari_crypto::errors::RangeProofError;
-use tari_mmr::error::MerkleMountainRangeError;
+use tari_mmr::{error::MerkleMountainRangeError, sparse_merkle_tree::SMTError};
 use thiserror::Error;
 use tokio::task;
 
 use crate::{
-    chain_storage::{ChainStorageError, MmrTree},
+    chain_storage::ChainStorageError,
     common::BanReason,
     transactions::transaction_components::TransactionError,
     validation::ValidationError,
@@ -54,9 +54,11 @@ pub enum HorizonSyncError {
     RangeProofError(String),
     #[error("An invalid transaction has been encountered: {0}")]
     TransactionError(#[from] TransactionError),
-    #[error("MMR did not match for {mmr_tree} at height {at_height}. Expected {actual_hex} to equal {expected_hex}")]
-    InvalidMmrRoot {
-        mmr_tree: MmrTree,
+    #[error(
+        "Merkle root did not match for {mr_tree} at height {at_height}. Expected {actual_hex} to equal {expected_hex}"
+    )]
+    InvalidMrRoot {
+        mr_tree: String,
         at_height: u64,
         expected_hex: String,
         actual_hex: String,
@@ -93,6 +95,8 @@ pub enum HorizonSyncError {
     NoMoreSyncPeers(String),
     #[error("Could not find peer info")]
     PeerNotFound,
+    #[error("Sparse Merkle Tree error: {0}")]
+    SMTError(#[from] SMTError),
 }
 
 impl From<TryFromIntError> for HorizonSyncError {
@@ -116,14 +120,14 @@ impl HorizonSyncError {
             HorizonSyncError::FailedSyncAllPeers |
             HorizonSyncError::AllSyncPeersExceedLatency |
             HorizonSyncError::ConnectivityError(_) |
-            HorizonSyncError::RpcError(_) |
-            HorizonSyncError::RpcStatus(_) |
             HorizonSyncError::NoMoreSyncPeers(_) |
             HorizonSyncError::PeerNotFound |
             HorizonSyncError::JoinError(_) => None,
 
             // short ban
-            err @ HorizonSyncError::MaxLatencyExceeded { .. } => Some(BanReason {
+            err @ HorizonSyncError::MaxLatencyExceeded { .. } |
+            err @ HorizonSyncError::RpcError { .. } |
+            err @ HorizonSyncError::RpcStatus { .. } => Some(BanReason {
                 reason: format!("{}", err),
                 ban_duration: short_ban,
             }),
@@ -132,7 +136,8 @@ impl HorizonSyncError {
             err @ HorizonSyncError::IncorrectResponse(_) |
             err @ HorizonSyncError::FinalStateValidationFailed(_) |
             err @ HorizonSyncError::RangeProofError(_) |
-            err @ HorizonSyncError::InvalidMmrRoot { .. } |
+            err @ HorizonSyncError::InvalidMrRoot { .. } |
+            err @ HorizonSyncError::SMTError(_) |
             err @ HorizonSyncError::InvalidMmrPosition { .. } |
             err @ HorizonSyncError::ConversionError(_) |
             err @ HorizonSyncError::MerkleMountainRangeError(_) |

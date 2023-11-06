@@ -234,6 +234,7 @@ mod test {
     };
     use tari_service_framework::reply_channel;
     use tari_test_utils::unpack_enum;
+    use tari_utilities::epoch_time::EpochTime;
     use tokio::{sync::broadcast, task};
 
     use super::*;
@@ -254,14 +255,14 @@ mod test {
     fn create_sample_proto_chain_metadata() -> proto::ChainMetadata {
         let diff: u128 = 1;
         proto::ChainMetadata {
-            height_of_longest_chain: Some(1),
+            height_of_longest_chain: 1,
             best_block: vec![
                 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
                 28, 29, 30, 31,
             ],
             pruned_height: 0,
             accumulated_difficulty: diff.to_be_bytes().to_vec(),
-            timestamp: Some(0),
+            timestamp: EpochTime::now().as_u64(),
         }
     }
 
@@ -290,7 +291,7 @@ mod test {
         let (mut service, liveness_mock_state, mut base_node_receiver, _) = setup();
 
         let mut proto_chain_metadata = create_sample_proto_chain_metadata();
-        proto_chain_metadata.height_of_longest_chain = Some(123);
+        proto_chain_metadata.height_of_longest_chain = 123;
         let chain_metadata = proto_chain_metadata.clone().try_into().unwrap();
 
         task::spawn(async move {
@@ -309,7 +310,7 @@ mod test {
         unpack_enum!(LivenessRequest::SetMetadataEntry(metadata_key, data) = last_call);
         assert_eq!(metadata_key, MetadataKey::ChainMetadata);
         let chain_metadata = proto::ChainMetadata::decode(data.as_slice()).unwrap();
-        assert_eq!(chain_metadata.height_of_longest_chain, Some(123));
+        assert_eq!(chain_metadata.height_of_longest_chain, 123);
     }
     #[tokio::test]
     async fn handle_liveness_event_ok() {
@@ -332,7 +333,7 @@ mod test {
         assert_eq!(*metadata.node_id(), node_id);
         assert_eq!(
             metadata.claimed_chain_metadata().height_of_longest_chain(),
-            proto_chain_metadata.height_of_longest_chain.unwrap()
+            proto_chain_metadata.height_of_longest_chain
         );
     }
 

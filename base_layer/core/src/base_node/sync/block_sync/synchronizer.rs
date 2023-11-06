@@ -128,7 +128,9 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                     warn!(target: LOG_TARGET, "{} ({})", err, sync_round);
                     continue;
                 },
-                Err(err) => return Err(err),
+                Err(err) => {
+                    return Err(err);
+                },
             }
         }
     }
@@ -359,7 +361,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             self.db
                 .write_transaction()
                 .delete_orphan(header_hash)
-                .insert_block_body(block.clone())
+                .insert_tip_block_body(block.clone())
                 .set_best_block(
                     block.height(),
                     header_hash,
@@ -405,6 +407,15 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
 
             current_block = Some(block);
             last_sync_timer = Instant::now();
+        }
+
+        let accumulated_difficulty = self.db.get_chain_metadata().await?.accumulated_difficulty();
+        if accumulated_difficulty < sync_peer.claimed_chain_metadata().accumulated_difficulty() {
+            return Err(BlockSyncError::PeerDidNotSupplyAllClaimedBlocks(format!(
+                "Their claimed difficulty: {}, our local difficulty after block sync: {}",
+                sync_peer.claimed_chain_metadata().accumulated_difficulty(),
+                accumulated_difficulty
+            )));
         }
 
         if let Some(block) = current_block {

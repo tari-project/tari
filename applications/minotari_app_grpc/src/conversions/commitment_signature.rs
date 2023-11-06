@@ -32,10 +32,10 @@ impl TryFrom<grpc::CommitmentSignature> for CommitmentSignature<PublicKey, Priva
     type Error = String;
 
     fn try_from(sig: grpc::CommitmentSignature) -> Result<Self, Self::Error> {
-        let public_nonce = HomomorphicCommitment::<PublicKey>::from_bytes(&sig.public_nonce)
+        let public_nonce = HomomorphicCommitment::<PublicKey>::from_canonical_bytes(&sig.public_nonce)
             .map_err(|_| "Could not get public nonce".to_string())?;
-        let u = PrivateKey::from_bytes(&sig.u).map_err(|_| "Could not get u_x".to_string())?;
-        let v = PrivateKey::from_bytes(&sig.v).map_err(|_| "Could not get v_x".to_string())?;
+        let u = PrivateKey::from_canonical_bytes(&sig.u).map_err(|_| "Could not get u_x".to_string())?;
+        let v = PrivateKey::from_canonical_bytes(&sig.v).map_err(|_| "Could not get v_x".to_string())?;
 
         Ok(Self::new(public_nonce, u, v))
     }

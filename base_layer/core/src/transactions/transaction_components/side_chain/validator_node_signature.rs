@@ -22,10 +22,10 @@
 
 use blake2::Blake2b;
 use borsh::{BorshDeserialize, BorshSerialize};
-use digest::consts::U32;
+use digest::consts::U64;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{FixedHash, PrivateKey, PublicKey, Signature};
+use tari_common_types::types::{PrivateKey, PublicKey, Signature};
 use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher, keys::PublicKey as PublicKeyT};
 use tari_utilities::ByteArray;
 
@@ -50,8 +50,8 @@ impl ValidatorNodeSignature {
         let (secret_nonce, public_nonce) = PublicKey::random_keypair(&mut OsRng);
         let public_key = PublicKey::from_secret_key(private_key);
         let challenge = Self::construct_challenge(&public_key, &public_nonce, claim_public_key, msg);
-        let signature = Signature::sign_raw(private_key, secret_nonce, &*challenge)
-            .expect("Sign cannot fail with 32-byte challenge and a RistrettoPublicKey");
+        let signature = Signature::sign_raw_uniform(private_key, secret_nonce, &challenge)
+            .expect("Sign cannot fail with 64-byte challenge and a RistrettoPublicKey");
         Self { public_key, signature }
     }
 
@@ -60,8 +60,8 @@ impl ValidatorNodeSignature {
         public_nonce: &PublicKey,
         claim_public_key: &PublicKey,
         msg: &[u8],
-    ) -> FixedHash {
-        let hasher = DomainSeparatedHasher::<Blake2b<U32>, ValidatorNodeHashDomain>::new_with_label("registration")
+    ) -> [u8; 64] {
+        let hasher = DomainSeparatedHasher::<Blake2b<U64>, ValidatorNodeHashDomain>::new_with_label("registration")
             .chain(public_key.as_bytes())
             .chain(public_nonce.as_bytes())
             .chain(claim_public_key.as_bytes())
@@ -76,7 +76,7 @@ impl ValidatorNodeSignature {
             claim_public_key,
             msg,
         );
-        self.signature.verify_challenge(&self.public_key, &*challenge)
+        self.signature.verify_raw_uniform(&self.public_key, &challenge)
     }
 
     pub fn public_key(&self) -> &PublicKey {

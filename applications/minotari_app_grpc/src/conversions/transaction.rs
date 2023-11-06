@@ -64,12 +64,13 @@ impl TryFrom<grpc::Transaction> for Transaction {
 
     fn try_from(source: grpc::Transaction) -> Result<Self, Self::Error> {
         Ok(Self {
-            offset: RistrettoSecretKey::from_bytes(&source.offset).map_err(|e| format!("Offset is not valid:{}", e))?,
+            offset: RistrettoSecretKey::from_canonical_bytes(&source.offset)
+                .map_err(|e| format!("Offset is not valid:{}", e))?,
             body: source
                 .body
                 .ok_or_else(|| "Transaction body not provided".to_string())?
                 .try_into()?,
-            script_offset: RistrettoSecretKey::from_bytes(&source.script_offset)
+            script_offset: RistrettoSecretKey::from_canonical_bytes(&source.script_offset)
                 .map_err(|e| format!("Script offset is not valid:{}", e))?,
         })
     }

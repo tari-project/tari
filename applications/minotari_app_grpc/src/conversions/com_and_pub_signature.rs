@@ -31,13 +31,16 @@ impl TryFrom<grpc::ComAndPubSignature> for ComAndPubSignature {
     type Error = String;
 
     fn try_from(sig: grpc::ComAndPubSignature) -> Result<Self, Self::Error> {
-        let ephemeral_commitment = Commitment::from_bytes(&sig.ephemeral_commitment)
+        let ephemeral_commitment = Commitment::from_canonical_bytes(&sig.ephemeral_commitment)
             .map_err(|_| "Could not get ephemeral commitment".to_string())?;
-        let ephemeral_pubkey = PublicKey::from_bytes(&sig.ephemeral_pubkey)
+        let ephemeral_pubkey = PublicKey::from_canonical_bytes(&sig.ephemeral_pubkey)
             .map_err(|_| "Could not get ephemeral public key".to_string())?;
-        let u_a = PrivateKey::from_bytes(&sig.u_a).map_err(|_| "Could not get partial signature u_a".to_string())?;
-        let u_x = PrivateKey::from_bytes(&sig.u_x).map_err(|_| "Could not get partial signature u_x".to_string())?;
-        let u_y = PrivateKey::from_bytes(&sig.u_y).map_err(|_| "Could not get partial signature u_y".to_string())?;
+        let u_a = PrivateKey::from_canonical_bytes(&sig.u_a)
+            .map_err(|_| "Could not get partial signature u_a".to_string())?;
+        let u_x = PrivateKey::from_canonical_bytes(&sig.u_x)
+            .map_err(|_| "Could not get partial signature u_x".to_string())?;
+        let u_y = PrivateKey::from_canonical_bytes(&sig.u_y)
+            .map_err(|_| "Could not get partial signature u_y".to_string())?;
 
         Ok(Self::new(ephemeral_commitment, ephemeral_pubkey, u_a, u_x, u_y))
     }

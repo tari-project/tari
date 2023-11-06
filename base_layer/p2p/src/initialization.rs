@@ -135,7 +135,7 @@ pub async fn initialize_local_test_comms<P: AsRef<Path>>(
     discovery_request_timeout: Duration,
     seed_peers: Vec<Peer>,
     shutdown_signal: ShutdownSignal,
-) -> Result<(CommsNode, Dht, MessagingEventSender), CommsInitializationError> {
+) -> Result<(UnspawnedCommsNode, Dht, MessagingEventSender), CommsInitializationError> {
     let peer_database_name = {
         let mut rng = thread_rng();
         iter::repeat(())
@@ -201,17 +201,10 @@ pub async fn initialize_local_test_comms<P: AsRef<Path>>(
         )
         .build();
 
-    let comms = comms
-        .add_protocol_extension(
-            MessagingProtocolExtension::new(MESSAGING_PROTOCOL_ID.clone(), event_sender.clone(), pipeline)
-                .enable_message_received_event(),
-        )
-        .spawn_with_transport(MemoryTransport)
-        .await?;
-
-    comms
-        .node_identity()
-        .add_public_address(comms.listening_address().clone());
+    let comms = comms.add_protocol_extension(
+        MessagingProtocolExtension::new(MESSAGING_PROTOCOL_ID.clone(), event_sender.clone(), pipeline)
+            .enable_message_received_event(),
+    );
 
     Ok((comms, dht, event_sender))
 }
@@ -424,7 +417,7 @@ fn acquire_exclusive_file_lock(db_path: &Path) -> Result<File, CommsInitializati
 ///
 /// ## Returns
 /// A Result to determine if the call was successful or not, string will indicate the reason on error
-async fn add_seed_peers(
+pub async fn add_seed_peers(
     peer_manager: &PeerManager,
     node_identity: &NodeIdentity,
     peers: Vec<Peer>,

@@ -53,6 +53,7 @@ pub enum DbKey {
     Contacts,
     Message(Vec<u8>),
     Messages(TariAddress, i64, i64),
+    Conversationalists,
 }
 
 pub enum DbValue {
@@ -61,6 +62,7 @@ pub enum DbValue {
     TariAddress(Box<TariAddress>),
     Message(Box<Message>),
     Messages(Vec<Message>),
+    Conversationalists(Vec<TariAddress>),
 }
 
 #[allow(clippy::large_enum_variant)]
@@ -223,6 +225,21 @@ where T: ContactsBackend + 'static
 
         Ok(())
     }
+
+    pub fn get_conversationlists(&mut self) -> Result<Vec<TariAddress>, ContactsServiceStorageError> {
+        let db_clone = self.db.clone();
+        match db_clone.fetch(&DbKey::Conversationalists) {
+            Ok(None) => log_error(
+                DbKey::Conversationalists,
+                ContactsServiceStorageError::UnexpectedResult(
+                    "Could not retrieve conversation partner addresses".to_string(),
+                ),
+            ),
+            Ok(Some(DbValue::Conversationalists(c))) => Ok(c),
+            Ok(Some(other)) => unexpected_result(DbKey::Conversationalists, other),
+            Err(e) => log_error(DbKey::Conversationalists, e),
+        }
+    }
 }
 
 fn unexpected_result<T>(req: DbKey, res: DbValue) -> Result<T, ContactsServiceStorageError> {
@@ -239,6 +256,7 @@ impl Display for DbKey {
             DbKey::Contacts => f.write_str("Contacts"),
             DbKey::Messages(c, _l, _p) => f.write_str(&format!("Messages for id: {:?}", c)),
             DbKey::Message(m) => f.write_str(&format!("Message for id: {:?}", m)),
+            DbKey::Conversationalists => f.write_str("Conversationalists"),
         }
     }
 }
@@ -251,6 +269,7 @@ impl Display for DbValue {
             DbValue::TariAddress(_) => f.write_str("Address"),
             DbValue::Messages(_) => f.write_str("Messages"),
             DbValue::Message(_) => f.write_str("Message"),
+            DbValue::Conversationalists(_) => f.write_str("Conversationalists"),
         }
     }
 }

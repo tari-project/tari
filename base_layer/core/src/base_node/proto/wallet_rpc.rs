@@ -29,7 +29,7 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::types::{BlockHash, Signature};
 use tari_utilities::ByteArray;
 
-use crate::proto::{base_node as proto, types};
+use crate::proto::base_node as proto;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TxSubmissionResponse {
@@ -202,6 +202,12 @@ impl TryFrom<proto::TxQueryResponse> for TxQueryResponse {
                 },
             })
         };
+
+        let mined_timestamp = match proto_response.mined_timestamp {
+            0 => None,
+            t => Some(t),
+        };
+
         Ok(Self {
             location: TxLocation::try_from(
                 proto::TxLocation::from_i32(proto_response.location)
@@ -211,7 +217,7 @@ impl TryFrom<proto::TxQueryResponse> for TxQueryResponse {
             confirmations: proto_response.confirmations,
             is_synced: proto_response.is_synced,
             height_of_longest_chain: proto_response.height_of_longest_chain,
-            mined_timestamp: proto_response.mined_timestamp,
+            mined_timestamp,
         })
     }
 }
@@ -224,7 +230,7 @@ impl From<TxQueryResponse> for proto::TxQueryResponse {
             confirmations: response.confirmations,
             is_synced: response.is_synced,
             height_of_longest_chain: response.height_of_longest_chain,
-            mined_timestamp: response.mined_timestamp,
+            mined_timestamp: response.mined_timestamp.unwrap_or_default(),
         }
     }
 }
@@ -243,6 +249,10 @@ impl TryFrom<proto::TxQueryBatchResponse> for TxQueryBatchResponse {
                 },
             })
         };
+        let mined_timestamp = match proto_response.mined_timestamp {
+            0 => None,
+            t => Some(t),
+        };
         Ok(Self {
             signature: Signature::try_from(
                 proto_response
@@ -256,35 +266,7 @@ impl TryFrom<proto::TxQueryBatchResponse> for TxQueryBatchResponse {
             block_hash: hash,
             block_height: proto_response.block_height,
             confirmations: proto_response.confirmations,
-            mined_timestamp: proto_response.mined_timestamp,
+            mined_timestamp,
         })
-    }
-}
-
-impl proto::SyncUtxosResponse {
-    pub fn into_utxo(self) -> Option<proto::SyncUtxo> {
-        use proto::sync_utxos_response::UtxoOrDeleted::{DeletedDiff, Utxo};
-        match self.utxo_or_deleted? {
-            Utxo(utxo) => Some(utxo),
-            DeletedDiff(_) => None,
-        }
-    }
-
-    pub fn into_bitmap(self) -> Option<Vec<u8>> {
-        use proto::sync_utxos_response::UtxoOrDeleted::{DeletedDiff, Utxo};
-        match self.utxo_or_deleted? {
-            Utxo(_) => None,
-            DeletedDiff(bitmap) => Some(bitmap),
-        }
-    }
-}
-
-impl proto::sync_utxo::Utxo {
-    pub fn into_transaction_output(self) -> Option<types::TransactionOutput> {
-        use proto::sync_utxo::Utxo::{Output, PrunedOutput};
-        match self {
-            Output(output) => Some(output),
-            PrunedOutput(_) => None,
-        }
     }
 }

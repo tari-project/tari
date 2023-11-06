@@ -180,11 +180,9 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     });
 
     // Set first pending tx to mined but unconfirmed
-    let mut mmr_pos = 0;
     for o in &pending_txs[0].outputs_to_be_received {
-        db.set_received_output_mined_height_and_status(o.hash, 2, FixedHash::zero(), mmr_pos, false, 0)
+        db.set_received_output_mined_height_and_status(o.hash, 2, FixedHash::zero(), false, 0)
             .unwrap();
-        mmr_pos += 1;
     }
     for o in &pending_txs[0].outputs_to_be_spent {
         db.mark_output_as_spent(o.hash, 3, FixedHash::zero(), false).unwrap();
@@ -202,9 +200,8 @@ pub async fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
 
     // Set second pending tx to mined and confirmed
     for o in &pending_txs[1].outputs_to_be_received {
-        db.set_received_output_mined_height_and_status(o.hash, 4, FixedHash::zero(), mmr_pos, true, 0)
+        db.set_received_output_mined_height_and_status(o.hash, 4, FixedHash::zero(), true, 0)
             .unwrap();
-        mmr_pos += 1;
     }
     for o in &pending_txs[1].outputs_to_be_spent {
         db.mark_output_as_spent(o.hash, 5, FixedHash::zero(), true).unwrap();
@@ -424,7 +421,7 @@ pub async fn test_no_duplicate_outputs() {
     // add it to the database
     let result = db.add_unspent_output(kmo.clone());
     assert!(result.is_ok());
-    let result = db.set_received_output_mined_height_and_status(kmo.hash, 1, FixedHash::zero(), 1, true, 0);
+    let result = db.set_received_output_mined_height_and_status(kmo.hash, 1, FixedHash::zero(), true, 0);
     assert!(result.is_ok());
     let outputs = db.fetch_mined_unspent_outputs().unwrap();
     assert_eq!(outputs.len(), 1);
@@ -465,7 +462,7 @@ pub async fn test_mark_as_unmined() {
 
     // add it to the database
     db.add_unspent_output(kmo.clone()).unwrap();
-    db.set_received_output_mined_height_and_status(kmo.hash, 1, FixedHash::zero(), 1, true, 0)
+    db.set_received_output_mined_height_and_status(kmo.hash, 1, FixedHash::zero(), true, 0)
         .unwrap();
     let o = db.get_last_mined_output().unwrap().unwrap();
     assert_eq!(o.hash, kmo.hash);

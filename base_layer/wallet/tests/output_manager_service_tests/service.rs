@@ -58,11 +58,11 @@ use tari_core::{
     blocks::BlockHeader,
     borsh::SerializedSize,
     covenants::Covenant,
-    proto::base_node::{QueryDeletedResponse, UtxoQueryResponse, UtxoQueryResponses},
+    proto::base_node::{QueryDeletedData, QueryDeletedResponse, UtxoQueryResponse, UtxoQueryResponses},
     transactions::{
         fee::Fee,
         key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface},
-        tari_amount::{uT, MicroMinotari},
+        tari_amount::{uT, MicroMinotari, T},
         test_helpers::{
             create_test_core_key_manager_with_memory_db,
             create_wallet_output_with_data,
@@ -137,9 +137,6 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
     task::spawn(mock_base_node_service.run());
 
     let mut wallet_connectivity_mock = create_wallet_connectivity_mock();
-    // let (connectivity, connectivity_mock) = create_connectivity_mock();
-    // let connectivity_mock_state = connectivity_mock.get_shared_state();
-    // task::spawn(connectivity_mock.run());
     let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
 
     wallet_connectivity_mock.notify_base_node_set(server_node_identity.to_peer());
@@ -1239,6 +1236,28 @@ async fn coin_split_no_change() {
 }
 
 #[tokio::test]
+async fn it_handles_large_coin_splits() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection.clone());
+    let mut oms = setup_output_manager_service(backend, true).await;
+
+    let val = 20 * T;
+    let uo = make_input(&mut OsRng, val, &OutputFeatures::default(), &oms.key_manager_handle).await;
+    assert!(oms.output_manager_handle.add_output(uo, None).await.is_ok());
+
+    let fee_per_gram = MicroMinotari::from(1);
+    let split_count = 499;
+
+    let (_tx_id, coin_split_tx, _amount) = oms
+        .output_manager_handle
+        .create_coin_split(vec![], 10000.into(), split_count, fee_per_gram)
+        .await
+        .unwrap();
+    assert_eq!(coin_split_tx.body.inputs().len(), 1);
+    assert_eq!(coin_split_tx.body.outputs().len(), split_count + 1);
+}
+
+#[tokio::test]
 async fn handle_coinbase_with_bulletproofs_rewinding() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection.clone());
@@ -1381,16 +1400,14 @@ async fn test_txo_validation() {
     let responses = vec![
         UtxoQueryResponse {
             output: Some(output1_tx_output.clone().try_into().unwrap()),
-            mmr_position: 1,
-            mined_height: 1,
+            mined_at_height: 1,
             mined_in_block: block1_header.hash().to_vec(),
             output_hash: output1_tx_output.hash().to_vec(),
             mined_timestamp: 0,
         },
         UtxoQueryResponse {
             output: Some(output2_tx_output.clone().try_into().unwrap()),
-            mmr_position: 2,
-            mined_height: 1,
+            mined_at_height: 1,
             mined_in_block: block1_header.hash().to_vec(),
             output_hash: output2_tx_output.hash().to_vec(),
             mined_timestamp: 0,
@@ -1398,22 +1415,32 @@ async fn test_txo_validation() {
     ];
 
     let utxo_query_responses = UtxoQueryResponses {
-        best_block: block4_header.hash().to_vec(),
-        height_of_longest_chain: 4,
+        best_block_hash: block4_header.hash().to_vec(),
+        best_block_height: 4,
         responses,
     };
 
     oms.base_node_wallet_rpc_mock_state
         .set_utxo_query_response(utxo_query_responses.clone());
 
-    // This response sets output1 as spent in the transaction that produced output4
+    // This response sets output1 and output2 as mined, not spent
     let query_deleted_response = QueryDeletedResponse {
-        best_block: block4_header.hash().to_vec(),
-        height_of_longest_chain: 4,
-        deleted_positions: vec![],
-        not_deleted_positions: vec![1, 2],
-        heights_deleted_at: vec![],
-        blocks_deleted_in: vec![],
+        best_block_hash: block4_header.hash().to_vec(),
+        best_block_height: 4,
+        data: vec![
+            QueryDeletedData {
+                mined_at_height: 1,
+                block_mined_in: block1_header.hash().to_vec(),
+                height_deleted_at: 0,
+                block_deleted_in: Vec::new(),
+            },
+            QueryDeletedData {
+                mined_at_height: 1,
+                block_mined_in: block1_header.hash().to_vec(),
+                height_deleted_at: 0,
+                block_deleted_in: Vec::new(),
+            },
+        ],
     };
 
     oms.base_node_wallet_rpc_mock_state
@@ -1528,40 +1555,35 @@ async fn test_txo_validation() {
     let responses = vec![
         UtxoQueryResponse {
             output: Some(output1_tx_output.clone().try_into().unwrap()),
-            mmr_position: 1,
-            mined_height: 1,
+            mined_at_height: 1,
             mined_in_block: block1_header.hash().to_vec(),
             output_hash: output1_tx_output.hash().to_vec(),
             mined_timestamp: 0,
         },
         UtxoQueryResponse {
             output: Some(output2_tx_output.clone().try_into().unwrap()),
-            mmr_position: 2,
-            mined_height: 1,
+            mined_at_height: 1,
             mined_in_block: block1_header.hash().to_vec(),
             output_hash: output2_tx_output.hash().to_vec(),
             mined_timestamp: 0,
         },
         UtxoQueryResponse {
             output: Some(output4_tx_output.clone().try_into().unwrap()),
-            mmr_position: 4,
-            mined_height: 5,
+            mined_at_height: 5,
             mined_in_block: block5_header.hash().to_vec(),
             output_hash: output4_tx_output.hash().to_vec(),
             mined_timestamp: 0,
         },
         UtxoQueryResponse {
             output: Some(output5_tx_output.clone().try_into().unwrap()),
-            mmr_position: 5,
-            mined_height: 5,
+            mined_at_height: 5,
             mined_in_block: block5_header.hash().to_vec(),
             output_hash: output5_tx_output.hash().to_vec(),
             mined_timestamp: 0,
         },
         UtxoQueryResponse {
             output: Some(output6_tx_output.clone().try_into().unwrap()),
-            mmr_position: 6,
-            mined_height: 5,
+            mined_at_height: 5,
             mined_in_block: block5_header.hash().to_vec(),
             output_hash: output6_tx_output.hash().to_vec(),
             mined_timestamp: 0,
@@ -1569,8 +1591,8 @@ async fn test_txo_validation() {
     ];
 
     let mut utxo_query_responses = UtxoQueryResponses {
-        best_block: block5_header.hash().to_vec(),
-        height_of_longest_chain: 5,
+        best_block_hash: block5_header.hash().to_vec(),
+        best_block_height: 5,
         responses,
     };
 
@@ -1579,12 +1601,40 @@ async fn test_txo_validation() {
 
     // This response sets output1 as spent in the transaction that produced output4
     let mut query_deleted_response = QueryDeletedResponse {
-        best_block: block5_header.hash().to_vec(),
-        height_of_longest_chain: 5,
-        deleted_positions: vec![1],
-        not_deleted_positions: vec![2, 4, 5, 6],
-        heights_deleted_at: vec![5],
-        blocks_deleted_in: vec![block5_header.hash().to_vec()],
+        best_block_hash: block5_header.hash().to_vec(),
+        best_block_height: 5,
+        data: vec![
+            QueryDeletedData {
+                mined_at_height: 1,
+                block_mined_in: block1_header.hash().to_vec(),
+                height_deleted_at: 5,
+                block_deleted_in: block5_header.hash().to_vec(),
+            },
+            QueryDeletedData {
+                mined_at_height: 1,
+                block_mined_in: block1_header.hash().to_vec(),
+                height_deleted_at: 0,
+                block_deleted_in: Vec::new(),
+            },
+            QueryDeletedData {
+                mined_at_height: 5,
+                block_mined_in: block5_header.hash().to_vec(),
+                height_deleted_at: 0,
+                block_deleted_in: Vec::new(),
+            },
+            QueryDeletedData {
+                mined_at_height: 5,
+                block_mined_in: block5_header.hash().to_vec(),
+                height_deleted_at: 0,
+                block_deleted_in: Vec::new(),
+            },
+            QueryDeletedData {
+                mined_at_height: 5,
+                block_mined_in: block5_header.hash().to_vec(),
+                height_deleted_at: 0,
+                block_deleted_in: Vec::new(),
+            },
+        ],
     };
 
     oms.base_node_wallet_rpc_mock_state
@@ -1605,7 +1655,7 @@ async fn test_txo_validation() {
         .wait_pop_query_deleted(1, Duration::from_secs(60))
         .await
         .unwrap();
-    assert_eq!(query_deleted_calls[0].mmr_positions.len(), 5);
+    assert_eq!(query_deleted_calls[0].hashes.len(), 5);
 
     let balance = oms.output_manager_handle.get_balance().await.unwrap();
     assert_eq!(
@@ -1626,13 +1676,13 @@ async fn test_txo_validation() {
     // Output 5:    Received in Block 5 - Confirmed
     // Output 6:    Coinbase from Block 5 - Confirmed
 
-    utxo_query_responses.height_of_longest_chain = 8;
-    utxo_query_responses.best_block = [8u8; 16].to_vec();
+    utxo_query_responses.best_block_height = 8;
+    utxo_query_responses.best_block_hash = [8u8; 16].to_vec();
     oms.base_node_wallet_rpc_mock_state
         .set_utxo_query_response(utxo_query_responses);
 
-    query_deleted_response.height_of_longest_chain = 8;
-    query_deleted_response.best_block = [8u8; 16].to_vec();
+    query_deleted_response.best_block_height = 8;
+    query_deleted_response.best_block_hash = [8u8; 16].to_vec();
     oms.base_node_wallet_rpc_mock_state
         .set_query_deleted_response(query_deleted_response);
 
@@ -1652,7 +1702,8 @@ async fn test_txo_validation() {
         .wait_pop_query_deleted(1, Duration::from_secs(60))
         .await
         .unwrap();
-    assert_eq!(query_deleted_calls[0].mmr_positions.len(), 5);
+
+    assert_eq!(query_deleted_calls[0].hashes.len(), 5);
 
     let balance = oms.output_manager_handle.get_balance().await.unwrap();
     assert_eq!(
@@ -1706,24 +1757,21 @@ async fn test_txo_validation() {
     let responses = vec![
         UtxoQueryResponse {
             output: Some(output1_tx_output.clone().try_into().unwrap()),
-            mmr_position: 1,
-            mined_height: 1,
+            mined_at_height: 1,
             mined_in_block: block1_header.hash().to_vec(),
             output_hash: output1_tx_output.hash().to_vec(),
             mined_timestamp: 0,
         },
         UtxoQueryResponse {
             output: Some(output2_tx_output.clone().try_into().unwrap()),
-            mmr_position: 2,
-            mined_height: 1,
+            mined_at_height: 1,
             mined_in_block: block1_header.hash().to_vec(),
             output_hash: output2_tx_output.hash().to_vec(),
             mined_timestamp: 0,
         },
         UtxoQueryResponse {
             output: Some(output4_tx_output.clone().try_into().unwrap()),
-            mmr_position: 4,
-            mined_height: 5,
+            mined_at_height: 5,
             mined_in_block: block5_header_reorg.hash().to_vec(),
             output_hash: output4_tx_output.hash().to_vec(),
             mined_timestamp: 0,
@@ -1731,8 +1779,8 @@ async fn test_txo_validation() {
     ];
 
     let mut utxo_query_responses = UtxoQueryResponses {
-        best_block: block5_header_reorg.hash().to_vec(),
-        height_of_longest_chain: 5,
+        best_block_hash: block5_header_reorg.hash().to_vec(),
+        best_block_height: 5,
         responses,
     };
 
@@ -1741,12 +1789,28 @@ async fn test_txo_validation() {
 
     // This response sets output1 as spent in the transaction that produced output4
     let mut query_deleted_response = QueryDeletedResponse {
-        best_block: block5_header_reorg.hash().to_vec(),
-        height_of_longest_chain: 5,
-        deleted_positions: vec![1],
-        not_deleted_positions: vec![2, 4, 5, 6],
-        heights_deleted_at: vec![5],
-        blocks_deleted_in: vec![block5_header_reorg.hash().to_vec()],
+        best_block_hash: block5_header_reorg.hash().to_vec(),
+        best_block_height: 5,
+        data: vec![
+            QueryDeletedData {
+                mined_at_height: 1,
+                block_mined_in: block1_header.hash().to_vec(),
+                height_deleted_at: 5,
+                block_deleted_in: block5_header_reorg.hash().to_vec(),
+            },
+            QueryDeletedData {
+                mined_at_height: 1,
+                block_mined_in: block1_header.hash().to_vec(),
+                height_deleted_at: 0,
+                block_deleted_in: Vec::new(),
+            },
+            QueryDeletedData {
+                mined_at_height: 5,
+                block_mined_in: block5_header_reorg.hash().to_vec(),
+                height_deleted_at: 0,
+                block_deleted_in: Vec::new(),
+            },
+        ],
     };
 
     oms.base_node_wallet_rpc_mock_state
@@ -1816,13 +1880,13 @@ async fn test_txo_validation() {
     // Output 5:    Reorged out
     // Output 6:    Reorged out
 
-    utxo_query_responses.height_of_longest_chain = 8;
-    utxo_query_responses.best_block = [8u8; 16].to_vec();
+    utxo_query_responses.best_block_height = 8;
+    utxo_query_responses.best_block_hash = [8u8; 16].to_vec();
     oms.base_node_wallet_rpc_mock_state
         .set_utxo_query_response(utxo_query_responses);
 
-    query_deleted_response.height_of_longest_chain = 8;
-    query_deleted_response.best_block = [8u8; 16].to_vec();
+    query_deleted_response.best_block_height = 8;
+    query_deleted_response.best_block_hash = [8u8; 16].to_vec();
     oms.base_node_wallet_rpc_mock_state
         .set_query_deleted_response(query_deleted_response);
 
@@ -1937,16 +2001,14 @@ async fn test_txo_revalidation() {
     let responses = vec![
         UtxoQueryResponse {
             output: Some(output1_tx_output.clone().try_into().unwrap()),
-            mmr_position: 1,
-            mined_height: 1,
+            mined_at_height: 1,
             mined_in_block: block1_header.hash().to_vec(),
             output_hash: output1_tx_output.hash().to_vec(),
             mined_timestamp: 0,
         },
         UtxoQueryResponse {
             output: Some(output2_tx_output.clone().try_into().unwrap()),
-            mmr_position: 2,
-            mined_height: 1,
+            mined_at_height: 1,
             mined_in_block: block1_header.hash().to_vec(),
             output_hash: output2_tx_output.hash().to_vec(),
             mined_timestamp: 0,
@@ -1954,8 +2016,8 @@ async fn test_txo_revalidation() {
     ];
 
     let utxo_query_responses = UtxoQueryResponses {
-        best_block: block4_header.hash().to_vec(),
-        height_of_longest_chain: 4,
+        best_block_hash: block4_header.hash().to_vec(),
+        best_block_height: 4,
         responses,
     };
 
@@ -1964,12 +2026,22 @@ async fn test_txo_revalidation() {
 
     // This response sets output1 as spent
     let query_deleted_response = QueryDeletedResponse {
-        best_block: block4_header.hash().to_vec(),
-        height_of_longest_chain: 4,
-        deleted_positions: vec![],
-        not_deleted_positions: vec![1, 2],
-        heights_deleted_at: vec![],
-        blocks_deleted_in: vec![],
+        best_block_hash: block4_header.hash().to_vec(),
+        best_block_height: 4,
+        data: vec![
+            QueryDeletedData {
+                mined_at_height: 1,
+                block_mined_in: block1_header.hash().to_vec(),
+                height_deleted_at: 0,
+                block_deleted_in: Vec::new(),
+            },
+            QueryDeletedData {
+                mined_at_height: 1,
+                block_mined_in: block1_header.hash().to_vec(),
+                height_deleted_at: 0,
+                block_deleted_in: Vec::new(),
+            },
+        ],
     };
 
     oms.base_node_wallet_rpc_mock_state
@@ -1991,12 +2063,22 @@ async fn test_txo_revalidation() {
 
     // This response sets output1 as spent
     let query_deleted_response = QueryDeletedResponse {
-        best_block: block4_header.hash().to_vec(),
-        height_of_longest_chain: 4,
-        deleted_positions: vec![1],
-        not_deleted_positions: vec![2],
-        heights_deleted_at: vec![4],
-        blocks_deleted_in: vec![block4_header.hash().to_vec()],
+        best_block_hash: block4_header.hash().to_vec(),
+        best_block_height: 4,
+        data: vec![
+            QueryDeletedData {
+                mined_at_height: 1,
+                block_mined_in: block1_header.hash().to_vec(),
+                height_deleted_at: 4,
+                block_deleted_in: block4_header.hash().to_vec(),
+            },
+            QueryDeletedData {
+                mined_at_height: 1,
+                block_mined_in: block1_header.hash().to_vec(),
+                height_deleted_at: 0,
+                block_deleted_in: Vec::new(),
+            },
+        ],
     };
 
     oms.base_node_wallet_rpc_mock_state
@@ -2018,12 +2100,22 @@ async fn test_txo_revalidation() {
 
     // This response sets output1 and 2 as spent
     let query_deleted_response = QueryDeletedResponse {
-        best_block: block4_header.hash().to_vec(),
-        height_of_longest_chain: 4,
-        deleted_positions: vec![1, 2],
-        not_deleted_positions: vec![],
-        heights_deleted_at: vec![4, 4],
-        blocks_deleted_in: vec![block4_header.hash().to_vec(), block4_header.hash().to_vec()],
+        best_block_hash: block4_header.hash().to_vec(),
+        best_block_height: 4,
+        data: vec![
+            QueryDeletedData {
+                mined_at_height: 1,
+                block_mined_in: block1_header.hash().to_vec(),
+                height_deleted_at: 4,
+                block_deleted_in: block4_header.hash().to_vec(),
+            },
+            QueryDeletedData {
+                mined_at_height: 1,
+                block_mined_in: block1_header.hash().to_vec(),
+                height_deleted_at: 4,
+                block_deleted_in: block4_header.hash().to_vec(),
+            },
+        ],
     };
 
     oms.base_node_wallet_rpc_mock_state

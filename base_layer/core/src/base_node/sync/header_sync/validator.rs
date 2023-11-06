@@ -26,7 +26,7 @@ use tari_common_types::types::HashOutput;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex};
 
 use crate::{
-    base_node::sync::BlockHeaderSyncError,
+    base_node::sync::{header_sync::HEADER_SYNC_INITIAL_MAX_HEADERS, BlockHeaderSyncError},
     blocks::{BlockHeader, BlockHeaderAccumulatedData, BlockHeaderValidationError, ChainHeader},
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError, TargetDifficulties},
     common::rolling_vec::RollingVec,
@@ -99,7 +99,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
             previous_accum,
             previous_header: start_header,
             // One large allocation is usually better even if it is not always used.
-            valid_headers: Vec::with_capacity(1000),
+            valid_headers: Vec::with_capacity(HEADER_SYNC_INITIAL_MAX_HEADERS),
         });
 
         Ok(())
@@ -269,7 +269,7 @@ mod test {
             let mut header = BlockHeader::from_previous(tip.header());
             // Needed to have unique keys for the blockchain db mmr count indexes (MDB_KEY_EXIST error)
             header.kernel_mmr_size += 1;
-            header.output_mmr_size += 1;
+            header.output_smt_size += 1;
             let acc_data = BlockHeaderAccumulatedData {
                 hash: header.hash(),
                 ..Default::default()

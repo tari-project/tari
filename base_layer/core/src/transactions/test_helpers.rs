@@ -266,7 +266,7 @@ pub fn create_signature(k: PrivateKey, fee: MicroMinotari, lock_height: u64, fea
         &PublicKey::from_secret_key(&k),
         &tx_meta,
     );
-    Signature::sign_raw(&k, r, &e).unwrap()
+    Signature::sign_raw_uniform(&k, r, &e).unwrap()
 }
 
 /// Generate a random transaction signature given a key, returning the public key (excess) and the signature.

@@ -44,7 +44,10 @@ use crate::{
     base_node::{
         comms_interface::BlockEvent,
         metrics,
-        sync::rpc::{sync_utxos_task::SyncUtxosTask, BaseNodeSyncService},
+        sync::{
+            header_sync::HEADER_SYNC_INITIAL_MAX_HEADERS,
+            rpc::{sync_utxos_task::SyncUtxosTask, BaseNodeSyncService},
+        },
         LocalNodeCommsInterface,
     },
     chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend},
@@ -117,6 +120,9 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
             .start_hash
             .try_into()
             .map_err(|_| RpcStatus::bad_request(&"Malformed starting hash received".to_string()))?;
+        if db.fetch_block_by_hash(hash, true).await.is_err() {
+            return Err(RpcStatus::not_found("Requested start block sync hash was not found"));
+        }
         let start_header = db
             .fetch_header_by_block_hash(hash)
             .await
@@ -134,13 +140,14 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
             )));
         }
 
-        if start_height > metadata.height_of_longest_chain() {
-            return Ok(Streaming::empty());
-        }
         let hash = message
             .end_hash
             .try_into()
             .map_err(|_| RpcStatus::bad_request(&"Malformed end hash received".to_string()))?;
+        if db.fetch_block_by_hash(hash, true).await.is_err() {
+            return Err(RpcStatus::not_found("Requested end block sync hash was not found"));
+        }
+
         let end_header = db
             .fetch_header_by_block_hash(hash)
             .await
@@ -224,16 +231,13 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                             break;
                         },
                         Ok(blocks) => {
-                            let blocks = blocks
-                                .into_iter()
-                                .map(|hb| hb.try_into_block().map_err(RpcStatus::log_internal_error(LOG_TARGET)))
-                                .map(|block| match block {
-                                    Ok(b) => proto::base_node::BlockBodyResponse::try_from(b).map_err(|e| {
-                                        log::error!(target: LOG_TARGET, "Internal error: {}", e);
-                                        RpcStatus::general_default()
-                                    }),
-                                    Err(err) => Err(err),
-                                });
+                            let blocks = blocks.into_iter().map(|hb| {
+                                let block = hb.into_block();
+                                proto::base_node::BlockBodyResponse::try_from(block).map_err(|e| {
+                                    log::error!(target: LOG_TARGET, "Internal error: {}", e);
+                                    RpcStatus::general_default()
+                                })
+                            });
 
                             // Ensure task stops if the peer prematurely stops their RPC session
                             if utils::mpsc::send_all(&tx, blocks).await.is_err() {
@@ -286,6 +290,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
             let tip_header = db.fetch_tip_header().await.rpc_status_internal_error(LOG_TARGET)?;
             count = tip_header.height().saturating_sub(start_header.height);
         }
+        // if its the start(tip_header == tip), return empty
         if count == 0 {
             return Ok(Streaming::empty());
         }
@@ -305,7 +310,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         let (tx, rx) = mpsc::channel(chunk_size);
         let span = span!(Level::TRACE, "sync_rpc::sync_headers::inner_worker");
         let iter = NonOverlappingIntegerPairIter::new(
-            start_header.height + 1,
+            start_header.height.saturating_add(1),
             start_header.height.saturating_add(count).saturating_add(1),
             chunk_size,
         )
@@ -383,7 +388,6 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         request: Request<FindChainSplitRequest>,
     ) -> Result<Response<FindChainSplitResponse>, RpcStatus> {
         const MAX_ALLOWED_BLOCK_HASHES: usize = 1000;
-        const MAX_ALLOWED_HEADER_COUNT: u64 = 1000;
 
         let peer = request.context().peer_node_id().clone();
         let message = request.into_message();
@@ -398,10 +402,10 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                 MAX_ALLOWED_BLOCK_HASHES,
             )));
         }
-        if message.header_count > MAX_ALLOWED_HEADER_COUNT {
+        if message.header_count > (HEADER_SYNC_INITIAL_MAX_HEADERS as u64) {
             return Err(RpcStatus::bad_request(&format!(
                 "Cannot ask for more than {} headers",
-                MAX_ALLOWED_HEADER_COUNT,
+                HEADER_SYNC_INITIAL_MAX_HEADERS,
             )));
         }
 
@@ -425,12 +429,10 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                     headers.len(),
                     peer
                 );
-                let metadata = db.get_chain_metadata().await.rpc_status_internal_error(LOG_TARGET)?;
 
                 Ok(Response::new(FindChainSplitResponse {
                     fork_hash_index: idx as u64,
                     headers: headers.into_iter().map(Into::into).collect(),
-                    tip_height: metadata.height_of_longest_chain(),
                 }))
             },
             None => {
@@ -584,13 +586,10 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         let peer_node_id = request.context().peer_node_id();
         debug!(
             target: LOG_TARGET,
-            "Received sync_utxos request from header {} to {} (start = {}, include_pruned_utxos = {}, \
-             include_deleted_bitmaps = {})",
+            "Received sync_utxos-{} request from header {} to {}",
             peer_node_id,
-            req.start,
+            req.start_header_hash.to_hex(),
             req.end_header_hash.to_hex(),
-            req.include_pruned_utxos,
-            req.include_deleted_bitmaps
         );
 
         let session_token = self.try_add_exclusive_session(peer_node_id.clone()).await?;

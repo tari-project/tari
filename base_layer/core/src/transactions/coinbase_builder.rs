@@ -309,8 +309,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
 #[cfg(test)]
 mod test {
     use tari_common::configuration::Network;
-    use tari_common_types::types::{Commitment, PrivateKey};
-    use tari_utilities::ByteArray;
+    use tari_common_types::types::Commitment;
 
     use crate::{
         consensus::{emission::Emission, ConsensusManager, ConsensusManagerBuilder},
@@ -605,7 +604,7 @@ mod test {
             &excess,
             &kernel_message,
         );
-        assert!(sig.verify(&excess, &PrivateKey::from_bytes(&sig_challenge).unwrap()));
+        assert!(sig.verify_raw_uniform(&excess, &sig_challenge));
 
         // we fix the signature and the excess with the now included offset.
         coinbase_kernel2.excess_sig = sig;
@@ -616,7 +615,7 @@ mod test {
         tx.offset = tx.offset + offset;
         tx.body.sort();
 
-        // lets add duplciate coinbase kernel
+        // lets add duplicate coinbase kernel
         let mut coinbase2 = tx2.body.outputs()[0].clone();
         coinbase2.features = OutputFeatures::default();
         let coinbase_kernel2 = tx2.body.kernels()[0].clone();
@@ -625,16 +624,6 @@ mod test {
 
         tx_kernel_test.body.sort();
 
-        // test catches that coinbase count on the utxo is wrong
-        assert!(matches!(
-            tx.body.check_coinbase_output(
-                block_reward,
-                rules.consensus_constants(0).coinbase_min_maturity(),
-                &factories,
-                42
-            ),
-            Err(TransactionError::MoreThanOneCoinbase)
-        ));
         // test catches that coinbase count on the kernel is wrong
         assert!(matches!(
             tx_kernel_test.body.check_coinbase_output(
@@ -643,7 +632,7 @@ mod test {
                 &factories,
                 42
             ),
-            Err(TransactionError::MoreThanOneCoinbase)
+            Err(TransactionError::MoreThanOneCoinbaseKernel)
         ));
         // testing that "block" is still valid
         let body_validator = AggregateBodyInternalConsistencyValidator::new(false, rules, factories);

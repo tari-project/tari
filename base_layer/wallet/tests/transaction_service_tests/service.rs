@@ -159,7 +159,7 @@ use tari_script::{inputs, one_sided_payment_script, script, ExecutionStack};
 use tari_service_framework::{reply_channel, RegisterHandle, StackBuilder};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::{comms_and_services::get_next_memory_address, random};
-use tari_utilities::{ByteArray, SafePassword};
+use tari_utilities::{epoch_time::EpochTime, ByteArray, SafePassword};
 use tempfile::tempdir;
 use tokio::{
     sync::{broadcast, broadcast::channel},
@@ -742,6 +742,87 @@ async fn single_transaction_to_self() {
 }
 
 #[tokio::test]
+async fn large_coin_split_transaction() {
+    let network = Network::LocalNet;
+    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
+    let factories = CryptoFactories::default();
+    // Alice's parameters
+    let alice_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
+
+    let base_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
+
+    log::info!(
+        "large_coin_split_transaction: Alice: '{}', Base: '{}'",
+        alice_node_identity.node_id().short_str(),
+        base_node_identity.node_id().short_str()
+    );
+
+    let temp_dir = tempdir().unwrap();
+    let database_path = temp_dir.path().to_str().unwrap().to_string();
+
+    let (db_connection, _tempdir) = make_wallet_database_connection(Some(database_path.clone()));
+
+    let shutdown = Shutdown::new();
+    let (mut alice_ts, mut alice_oms, _alice_comms, _alice_connectivity, key_manager_handle) =
+        setup_transaction_service(
+            alice_node_identity.clone(),
+            vec![],
+            consensus_manager,
+            factories.clone(),
+            db_connection,
+            database_path,
+            Duration::from_secs(0),
+            shutdown.to_signal(),
+        )
+        .await;
+
+    let initial_wallet_value = 20 * T;
+    let uo1 = make_input(
+        &mut OsRng,
+        initial_wallet_value,
+        &OutputFeatures::default(),
+        &key_manager_handle,
+    )
+    .await;
+
+    alice_oms.add_output(uo1, None).await.unwrap();
+
+    let fee_per_gram = MicroMinotari::from(1);
+    let split_count = 499;
+    let (tx_id, coin_split_tx, amount) = alice_oms
+        .create_coin_split(vec![], 10000.into(), split_count, fee_per_gram)
+        .await
+        .unwrap();
+    assert_eq!(coin_split_tx.body.inputs().len(), 1);
+    assert_eq!(coin_split_tx.body.outputs().len(), split_count + 1);
+
+    alice_ts
+        .submit_transaction(tx_id, coin_split_tx, amount, "large coin-split".to_string())
+        .await
+        .expect("Alice sending coin-split tx");
+
+    let completed_tx = alice_ts
+        .get_completed_transaction(tx_id)
+        .await
+        .expect("Could not find tx");
+
+    let fees = completed_tx.fee;
+
+    assert_eq!(
+        alice_oms.get_balance().await.unwrap().pending_incoming_balance,
+        initial_wallet_value - fees
+    );
+}
+
+#[tokio::test]
 async fn single_transaction_burn_tari() {
     // let _ = env_logger::builder().is_test(true).try_init(); // Need `$env:RUST_LOG = "trace"` for this to work
     let network = Network::LocalNet;
@@ -832,7 +913,7 @@ async fn single_transaction_burn_tari() {
         .chain(&burn_proof.commitment)
         .chain(&claim_public_key)
         .finalize();
-    let challenge = PrivateKey::from_bytes(&challenge_bytes).unwrap();
+    let challenge = PrivateKey::from_uniform_bytes(&challenge_bytes).unwrap();
     assert!(burn_proof.ownership_proof.unwrap().verify(
         &burn_proof.commitment,
         &challenge,
@@ -3762,6 +3843,7 @@ async fn test_coinbase_generation_and_monitoring() {
     let tx1 = db.get_completed_transaction(tx_id1).unwrap();
     let tx2b = db.get_completed_transaction(tx_id2b).unwrap();
 
+    let timestamp = EpochTime::now().as_u64();
     let mut block_headers = HashMap::new();
     for i in 0..=4 {
         let mut block_header = BlockHeader::new(1);
@@ -3780,7 +3862,7 @@ async fn test_coinbase_generation_and_monitoring() {
             block_hash: vec![],
             confirmations: 0,
             block_height: 0,
-            mined_timestamp: None,
+            mined_timestamp: 0,
         },
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(
@@ -3790,7 +3872,7 @@ async fn test_coinbase_generation_and_monitoring() {
             block_hash: block_headers.get(&1).unwrap().hash().to_vec(),
             confirmations: 0,
             block_height: 1,
-            mined_timestamp: Some(0),
+            mined_timestamp: timestamp,
         },
     ];
     let batch_query_response = TxQueryBatchResponsesProto {
@@ -3798,7 +3880,7 @@ async fn test_coinbase_generation_and_monitoring() {
         is_synced: true,
         tip_hash: block_headers.get(&1).unwrap().hash().to_vec(),
         height_of_longest_chain: 1,
-        tip_mined_timestamp: Some(0),
+        tip_mined_timestamp: timestamp,
     };
 
     alice_ts_interface
@@ -3841,7 +3923,7 @@ async fn test_coinbase_generation_and_monitoring() {
         block_hash: block_headers.get(&4).unwrap().hash().to_vec(),
         confirmations: 3,
         block_height: 4,
-        mined_timestamp: Some(0),
+        mined_timestamp: timestamp,
     });
 
     let batch_query_response = TxQueryBatchResponsesProto {
@@ -3849,7 +3931,7 @@ async fn test_coinbase_generation_and_monitoring() {
         is_synced: true,
         tip_hash: block_headers.get(&4).unwrap().hash().to_vec(),
         height_of_longest_chain: 4,
-        tip_mined_timestamp: Some(0),
+        tip_mined_timestamp: timestamp,
     };
     alice_ts_interface
         .base_node_rpc_mock_state
@@ -3918,13 +4000,15 @@ async fn test_coinbase_abandoned() {
         MicroMinotari::from(0)
     );
 
+    let timestamp = EpochTime::now().as_u64();
+
     let transaction_query_batch_responses = vec![TxQueryBatchResponseProto {
         signature: Some(SignatureProto::from(tx1.first_kernel_excess_sig().unwrap().clone())),
         location: TxLocationProto::from(TxLocation::InMempool) as i32,
         block_hash: vec![],
         confirmations: 0,
         block_height: 0,
-        mined_timestamp: None,
+        mined_timestamp: 0,
     }];
 
     let batch_query_response = TxQueryBatchResponsesProto {
@@ -3932,7 +4016,7 @@ async fn test_coinbase_abandoned() {
         is_synced: true,
         tip_hash: [5u8; 32].to_vec(),
         height_of_longest_chain: block_height_a + TransactionServiceConfig::default().num_confirmations_required + 1,
-        tip_mined_timestamp: Some(0),
+        tip_mined_timestamp: timestamp,
     };
 
     alice_ts_interface
@@ -4049,7 +4133,7 @@ async fn test_coinbase_abandoned() {
             block_hash: vec![],
             confirmations: 0,
             block_height: 0,
-            mined_timestamp: None,
+            mined_timestamp: 0,
         },
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(tx2.first_kernel_excess_sig().unwrap().clone())),
@@ -4057,7 +4141,7 @@ async fn test_coinbase_abandoned() {
             block_hash: [11u8; 32].to_vec(),
             confirmations: 2,
             block_height: block_height_b,
-            mined_timestamp: Some(0),
+            mined_timestamp: timestamp,
         },
     ];
 
@@ -4066,7 +4150,7 @@ async fn test_coinbase_abandoned() {
         is_synced: true,
         tip_hash: [13u8; 32].to_vec(),
         height_of_longest_chain: block_height_b + 2,
-        tip_mined_timestamp: Some(0),
+        tip_mined_timestamp: timestamp,
     };
 
     alice_ts_interface
@@ -4135,7 +4219,7 @@ async fn test_coinbase_abandoned() {
             block_hash: vec![],
             confirmations: 0,
             block_height: 0,
-            mined_timestamp: None,
+            mined_timestamp: 0,
         },
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(tx2.first_kernel_excess_sig().unwrap().clone())),
@@ -4143,7 +4227,7 @@ async fn test_coinbase_abandoned() {
             block_hash: vec![],
             confirmations: 0,
             block_height: 0,
-            mined_timestamp: None,
+            mined_timestamp: 0,
         },
     ];
 
@@ -4152,7 +4236,7 @@ async fn test_coinbase_abandoned() {
         is_synced: true,
         tip_hash: [12u8; 32].to_vec(),
         height_of_longest_chain: block_height_b + TransactionServiceConfig::default().num_confirmations_required + 1,
-        tip_mined_timestamp: Some(0),
+        tip_mined_timestamp: timestamp,
     };
 
     alice_ts_interface
@@ -4252,7 +4336,7 @@ async fn test_coinbase_abandoned() {
             block_hash: vec![],
             confirmations: 0,
             block_height: 0,
-            mined_timestamp: None,
+            mined_timestamp: 0,
         },
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(tx2.first_kernel_excess_sig().unwrap().clone())),
@@ -4260,7 +4344,7 @@ async fn test_coinbase_abandoned() {
             block_hash: block_headers.get(&10).unwrap().hash().to_vec(),
             confirmations: 5,
             block_height: 10,
-            mined_timestamp: Some(0),
+            mined_timestamp: timestamp,
         },
     ];
 
@@ -4269,7 +4353,7 @@ async fn test_coinbase_abandoned() {
         is_synced: true,
         tip_hash: [20u8; 32].to_vec(),
         height_of_longest_chain: 20,
-        tip_mined_timestamp: Some(0),
+        tip_mined_timestamp: timestamp,
     };
 
     alice_ts_interface

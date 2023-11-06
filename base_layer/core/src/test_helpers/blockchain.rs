@@ -28,26 +28,17 @@ use std::{
     sync::Arc,
 };
 
-use croaring::Bitmap;
 use tari_common::configuration::Network;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{Commitment, HashOutput, PublicKey, Signature},
+    types::{Commitment, FixedHash, HashOutput, PublicKey, Signature},
 };
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::paths::create_temporary_data_path;
 
 use super::{create_block, mine_to_difficulty};
 use crate::{
-    blocks::{
-        Block,
-        BlockAccumulatedData,
-        BlockHeader,
-        BlockHeaderAccumulatedData,
-        ChainBlock,
-        ChainHeader,
-        DeletedBitmap,
-    },
+    blocks::{Block, BlockAccumulatedData, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader},
     chain_storage::{
         create_lmdb_database,
         BlockAddResult,
@@ -61,12 +52,12 @@ use crate::{
         DbTransaction,
         DbValue,
         HorizonData,
+        InputMinedInfo,
         LMDBDatabase,
         MmrTree,
-        PrunedOutput,
+        OutputMinedInfo,
         Reorg,
         TemplateRegistrationEntry,
-        UtxoMinedInfo,
         Validators,
     },
     consensus::{chain_strength_comparer::ChainStrengthComparerBuilder, ConsensusConstantsBuilder, ConsensusManager},
@@ -74,7 +65,7 @@ use crate::{
     test_helpers::{block_spec::BlockSpecs, create_consensus_rules, BlockSpec},
     transactions::{
         test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager},
-        transaction_components::{TransactionInput, TransactionKernel, WalletOutput},
+        transaction_components::{TransactionInput, TransactionKernel, TransactionOutput, WalletOutput},
         CryptoFactories,
     },
     validation::{
@@ -82,6 +73,7 @@ use crate::{
         mocks::MockValidator,
         DifficultyCalculator,
     },
+    OutputSmt,
 };
 
 /// Create a new blockchain database containing the genesis block
@@ -246,10 +238,6 @@ impl BlockchainBackend for TempDatabase {
             .fetch_header_containing_kernel_mmr(mmr_position)
     }
 
-    fn fetch_header_containing_utxo_mmr(&self, mmr_position: u64) -> Result<ChainHeader, ChainStorageError> {
-        self.db.as_ref().unwrap().fetch_header_containing_utxo_mmr(mmr_position)
-    }
-
     fn is_empty(&self) -> Result<bool, ChainStorageError> {
         self.db.as_ref().unwrap().is_empty()
     }
@@ -279,16 +267,23 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().fetch_kernel_by_excess_sig(excess_sig)
     }
 
-    fn fetch_utxos_in_block(
+    fn fetch_outputs_in_block_with_spend_state(
         &self,
         header_hash: &HashOutput,
-        deleted: Option<&Bitmap>,
-    ) -> Result<(Vec<PrunedOutput>, Bitmap), ChainStorageError> {
-        self.db.as_ref().unwrap().fetch_utxos_in_block(header_hash, deleted)
+        spend_status_at_header: Option<FixedHash>,
+    ) -> Result<Vec<(TransactionOutput, bool)>, ChainStorageError> {
+        self.db
+            .as_ref()
+            .unwrap()
+            .fetch_outputs_in_block_with_spend_state(header_hash, spend_status_at_header)
     }
 
-    fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<UtxoMinedInfo>, ChainStorageError> {
+    fn fetch_output(&self, output_hash: &HashOutput) -> Result<Option<OutputMinedInfo>, ChainStorageError> {
         self.db.as_ref().unwrap().fetch_output(output_hash)
+    }
+
+    fn fetch_input(&self, input_hash: &HashOutput) -> Result<Option<InputMinedInfo>, ChainStorageError> {
+        self.db.as_ref().unwrap().fetch_input(input_hash)
     }
 
     fn fetch_unspent_output_hash_by_commitment(
@@ -301,7 +296,7 @@ impl BlockchainBackend for TempDatabase {
             .fetch_unspent_output_hash_by_commitment(commitment)
     }
 
-    fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<PrunedOutput>, ChainStorageError> {
+    fn fetch_outputs_in_block(&self, header_hash: &HashOutput) -> Result<Vec<TransactionOutput>, ChainStorageError> {
         self.db.as_ref().unwrap().fetch_outputs_in_block(header_hash)
     }
 
@@ -311,10 +306,6 @@ impl BlockchainBackend for TempDatabase {
 
     fn fetch_mmr_size(&self, tree: MmrTree) -> Result<u64, ChainStorageError> {
         self.db.as_ref().unwrap().fetch_mmr_size(tree)
-    }
-
-    fn fetch_mmr_leaf_index(&self, tree: MmrTree, hash: &HashOutput) -> Result<Option<u32>, ChainStorageError> {
-        self.db.as_ref().unwrap().fetch_mmr_leaf_index(tree, hash)
     }
 
     fn orphan_count(&self) -> Result<usize, ChainStorageError> {
@@ -365,10 +356,6 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().fetch_orphan_chain_block(hash)
     }
 
-    fn fetch_deleted_bitmap(&self) -> Result<DeletedBitmap, ChainStorageError> {
-        self.db.as_ref().unwrap().fetch_deleted_bitmap()
-    }
-
     fn delete_oldest_orphans(
         &mut self,
         horizon_height: u64,
@@ -396,16 +383,6 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().fetch_total_size_stats()
     }
 
-    fn fetch_header_hash_by_deleted_mmr_positions(
-        &self,
-        mmr_positions: Vec<u32>,
-    ) -> Result<Vec<Option<(u64, HashOutput)>>, ChainStorageError> {
-        self.db
-            .as_ref()
-            .unwrap()
-            .fetch_header_hash_by_deleted_mmr_positions(mmr_positions)
-    }
-
     fn bad_block_exists(&self, block_hash: HashOutput) -> Result<bool, ChainStorageError> {
         self.db.as_ref().unwrap().bad_block_exists(block_hash)
     }
@@ -431,6 +408,10 @@ impl BlockchainBackend for TempDatabase {
             .as_ref()
             .unwrap()
             .fetch_template_registrations(start_height, end_height)
+    }
+
+    fn fetch_tip_smt(&self) -> Result<OutputSmt, ChainStorageError> {
+        self.db.as_ref().unwrap().fetch_tip_smt()
     }
 }
 

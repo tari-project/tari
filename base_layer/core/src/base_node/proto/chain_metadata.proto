@@ -9,7 +9,7 @@ package tari.base_node;
 
 message ChainMetadata {
     // The current chain height, or the block number of the longest valid chain, or `None` if there is no chain
-    google.protobuf.UInt64Value height_of_longest_chain = 1;
+    uint64 height_of_longest_chain = 1;
     // The block hash of the current tip of the longest valid chain, or `None` for an empty chain
     bytes best_block = 2;
     // The current geometric mean of the pow of the chain tip, or `None` if there is no chain
@@ -20,5 +20,5 @@ message ChainMetadata {
     // Archival nodes wil always have an `pruned_height` of zero.
     uint64 pruned_height = 6;
     // Timestamp of the last block in the chain, or `None` if there is no chain
-    google.protobuf.UInt64Value timestamp = 7;
+    uint64 timestamp = 7;
 }

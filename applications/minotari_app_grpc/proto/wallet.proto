@@ -188,7 +188,7 @@ message TransactionInfo {
     uint64 fee = 7;
     bool is_cancelled = 8;
     bytes excess_sig = 9;
-    google.protobuf.Timestamp timestamp = 10;
+    uint64 timestamp = 10;
     string message = 11;
 }
 

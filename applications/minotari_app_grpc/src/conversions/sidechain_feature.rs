@@ -87,9 +87,10 @@ impl TryFrom<grpc::ValidatorNodeRegistration> for ValidatorNodeRegistration {
     type Error = String;
 
     fn try_from(value: grpc::ValidatorNodeRegistration) -> Result<Self, Self::Error> {
-        let public_key = PublicKey::from_bytes(&value.public_key).map_err(|e| format!("Invalid public key: {}", e))?;
-        let claim_public_key =
-            PublicKey::from_bytes(&value.claim_public_key).map_err(|e| format!("Invalid claim public key: {}", e))?;
+        let public_key =
+            PublicKey::from_canonical_bytes(&value.public_key).map_err(|e| format!("Invalid public key: {}", e))?;
+        let claim_public_key = PublicKey::from_canonical_bytes(&value.claim_public_key)
+            .map_err(|e| format!("Invalid claim public key: {}", e))?;
 
         Ok(ValidatorNodeRegistration::new(
             ValidatorNodeSignature::new(
@@ -120,7 +121,7 @@ impl TryFrom<grpc::TemplateRegistration> for CodeTemplateRegistration {
 
     fn try_from(value: grpc::TemplateRegistration) -> Result<Self, Self::Error> {
         Ok(Self {
-            author_public_key: PublicKey::from_bytes(&value.author_public_key).map_err(|e| e.to_string())?,
+            author_public_key: PublicKey::from_canonical_bytes(&value.author_public_key).map_err(|e| e.to_string())?,
             author_signature: value
                 .author_signature
                 .map(Signature::try_from)
@@ -165,7 +166,7 @@ impl TryFrom<grpc::ConfidentialOutputData> for ConfidentialOutputData {
 
     fn try_from(value: grpc::ConfidentialOutputData) -> Result<Self, Self::Error> {
         Ok(ConfidentialOutputData {
-            claim_public_key: PublicKey::from_bytes(&value.claim_public_key).map_err(|e| e.to_string())?,
+            claim_public_key: PublicKey::from_canonical_bytes(&value.claim_public_key).map_err(|e| e.to_string())?,
         })
     }
 }

@@ -168,14 +168,6 @@ jobs:
           echo "PLATFORM_SPECIFIC_DIR=osx" >> $GITHUB_ENV
           echo "LIB_EXT=.dylib" >> $GITHUB_ENV
 
-      # Hardcoded sdk for MacOSX 11 on ARM64
-      - name: Set environment variables - macOS - ARM64 (pin/sdk)
-        if: ${{ startsWith(runner.os,'macOS') && matrix.builds.name == 'macos-arm64' }}
-        run: |
-          xcrun --show-sdk-path
-          ls -la "/Library/Developer/CommandLineTools/SDKs/"
-          echo "RANDOMX_RS_CMAKE_OSX_SYSROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX12.1.sdk" >> $GITHUB_ENV
-          rustup target add ${{ matrix.builds.target }}
 
       - name: Set environment variables - Ubuntu
         if: startsWith(runner.os,'Linux')

@@ -25,18 +25,9 @@ use std::{
     sync::Arc,
 };
 
-use croaring::Bitmap;
 use log::*;
 use num_format::{Locale, ToFormattedString};
-use serde::{
-    de,
-    de::{MapAccess, SeqAccess, Visitor},
-    ser::SerializeStruct,
-    Deserialize,
-    Deserializer,
-    Serialize,
-    Serializer,
-};
+use serde::{Deserialize, Serialize};
 use tari_common_types::types::{Commitment, HashOutput, PrivateKey};
 use tari_mmr::{pruned_hashset::PrunedHashSet, ArrayLike};
 use tari_utilities::hex::Hex;
@@ -49,35 +40,22 @@ use crate::{
 
 const LOG_TARGET: &str = "c::bn::acc_data";
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Default, Debug, Serialize, Deserialize)]
 pub struct BlockAccumulatedData {
     pub(crate) kernels: PrunedHashSet,
-    pub(crate) outputs: PrunedHashSet,
-    pub(crate) deleted: DeletedBitmap,
     pub(crate) kernel_sum: Commitment,
 }
 
 impl BlockAccumulatedData {
-    pub fn new(kernels: PrunedHashSet, outputs: PrunedHashSet, deleted: Bitmap, total_kernel_sum: Commitment) -> Self {
+    pub fn new(kernels: PrunedHashSet, total_kernel_sum: Commitment) -> Self {
         Self {
             kernels,
-            outputs,
-            deleted: DeletedBitmap { deleted },
             kernel_sum: total_kernel_sum,
         }
     }
 
-    pub fn deleted(&self) -> &Bitmap {
-        &self.deleted.deleted
-    }
-
-    pub fn set_deleted(&mut self, deleted: DeletedBitmap) -> &mut Self {
-        self.deleted = deleted;
-        self
-    }
-
-    pub fn dissolve(self) -> (PrunedHashSet, PrunedHashSet, Bitmap) {
-        (self.kernels, self.outputs, self.deleted.deleted)
+    pub fn dissolve(self) -> PrunedHashSet {
+        self.kernels
     }
 
     pub fn kernel_sum(&self) -> &Commitment {
@@ -85,154 +63,16 @@ impl BlockAccumulatedData {
     }
 }
 
-impl Default for BlockAccumulatedData {
-    fn default() -> Self {
-        Self {
-            kernels: Default::default(),
-            outputs: Default::default(),
-            deleted: DeletedBitmap {
-                deleted: Bitmap::create(),
-            },
-            kernel_sum: Default::default(),
-        }
-    }
-}
-
 impl Display for BlockAccumulatedData {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(
-            f,
-            "{} hashes in output MMR, {} spends this block, {} hashes in kernel MMR,",
-            self.outputs.len().unwrap_or(0),
-            self.deleted.deleted.cardinality(),
-            self.kernels.len().unwrap_or(0)
-        )
+        write!(f, "{} hashes in kernel MMR,", self.kernels.len().unwrap_or(0))
     }
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct UpdateBlockAccumulatedData {
     pub kernel_hash_set: Option<PrunedHashSet>,
-    pub utxo_hash_set: Option<PrunedHashSet>,
-    pub deleted_diff: Option<DeletedBitmap>,
     pub kernel_sum: Option<Commitment>,
-}
-
-/// Wrapper struct to serialize and deserialize Bitmap
-#[derive(Debug, Clone)]
-pub struct DeletedBitmap {
-    deleted: Bitmap,
-}
-
-impl DeletedBitmap {
-    pub fn into_bitmap(self) -> Bitmap {
-        self.deleted
-    }
-
-    pub fn bitmap(&self) -> &Bitmap {
-        &self.deleted
-    }
-
-    pub(crate) fn bitmap_mut(&mut self) -> &mut Bitmap {
-        &mut self.deleted
-    }
-}
-
-impl From<Bitmap> for DeletedBitmap {
-    fn from(deleted: Bitmap) -> Self {
-        Self { deleted }
-    }
-}
-
-impl Serialize for DeletedBitmap {
-    fn serialize<S>(&self, serializer: S) -> Result<<S as Serializer>::Ok, <S as Serializer>::Error>
-    where S: Serializer {
-        let mut s = serializer.serialize_struct("DeletedBitmap", 1)?;
-        s.serialize_field("deleted", &self.deleted.serialize())?;
-        s.end()
-    }
-}
-
-impl<'de> Deserialize<'de> for DeletedBitmap {
-    fn deserialize<D>(deserializer: D) -> Result<Self, <D as Deserializer<'de>>::Error>
-    where D: Deserializer<'de> {
-        const FIELDS: &[&str] = &["deleted"];
-
-        deserializer.deserialize_struct("DeletedBitmap", FIELDS, DeletedBitmapVisitor)
-    }
-}
-
-struct DeletedBitmapVisitor;
-
-impl<'de> Visitor<'de> for DeletedBitmapVisitor {
-    type Value = DeletedBitmap;
-
-    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        formatter.write_str("`deleted`")
-    }
-
-    fn visit_seq<V>(self, mut seq: V) -> Result<Self::Value, V::Error>
-    where V: SeqAccess<'de> {
-        let deleted: Vec<u8> = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(2, &self))?;
-        Ok(DeletedBitmap {
-            deleted: Bitmap::deserialize(&deleted),
-        })
-    }
-
-    fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
-    where V: MapAccess<'de> {
-        #[derive(Deserialize)]
-        #[serde(field_identifier, rename_all = "lowercase")]
-        enum Field {
-            Deleted,
-        }
-        let mut deleted = None;
-        while let Some(key) = map.next_key()? {
-            match key {
-                Field::Deleted => {
-                    if deleted.is_some() {
-                        return Err(de::Error::duplicate_field("deleted"));
-                    }
-                    deleted = Some(map.next_value()?);
-                },
-            }
-        }
-        let deleted: Vec<u8> = deleted.ok_or_else(|| de::Error::missing_field("deleted"))?;
-
-        Ok(DeletedBitmap {
-            deleted: Bitmap::deserialize(&deleted),
-        })
-    }
-}
-
-/// Wrapper struct to get a completed bitmap with the height it was created at
-#[derive(Debug, Clone)]
-pub struct CompleteDeletedBitmap {
-    deleted: Bitmap,
-    height: u64,
-    hash: HashOutput,
-}
-
-impl CompleteDeletedBitmap {
-    pub fn new(deleted: Bitmap, height: u64, hash: HashOutput) -> CompleteDeletedBitmap {
-        CompleteDeletedBitmap { deleted, height, hash }
-    }
-
-    pub fn into_bitmap(self) -> Bitmap {
-        self.deleted
-    }
-
-    pub fn bitmap(&self) -> &Bitmap {
-        &self.deleted
-    }
-
-    pub fn dissolve(self) -> (Bitmap, u64, HashOutput) {
-        (self.deleted, self.height, self.hash)
-    }
-
-    pub fn into_bytes(self) -> Vec<u8> {
-        self.deleted.serialize()
-    }
 }
 
 pub struct BlockHeaderAccumulatedDataBuilder<'a> {

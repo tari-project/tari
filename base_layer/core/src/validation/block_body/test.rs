@@ -90,7 +90,7 @@ async fn it_passes_if_large_output_block_is_valid() {
         .unwrap();
     block.header.input_mr = mmr_roots.input_mr;
     block.header.output_mr = mmr_roots.output_mr;
-    block.header.output_mmr_size = mmr_roots.output_mmr_size;
+    block.header.output_smt_size = mmr_roots.output_smt_size;
     block.header.kernel_mr = mmr_roots.kernel_mr;
     block.header.kernel_mmr_size = mmr_roots.kernel_mmr_size;
     block.header.validator_node_mr = mmr_roots.validator_node_mr;
@@ -136,7 +136,7 @@ async fn it_passes_if_large_block_is_valid() {
         .unwrap();
     block.header.input_mr = mmr_roots.input_mr;
     block.header.output_mr = mmr_roots.output_mr;
-    block.header.output_mmr_size = mmr_roots.output_mmr_size;
+    block.header.output_smt_size = mmr_roots.output_smt_size;
     block.header.kernel_mr = mmr_roots.kernel_mr;
     block.header.kernel_mmr_size = mmr_roots.kernel_mmr_size;
     block.header.validator_node_mr = mmr_roots.validator_node_mr;
@@ -163,7 +163,7 @@ async fn it_passes_if_block_is_valid() {
         .unwrap();
     block.header.input_mr = mmr_roots.input_mr;
     block.header.output_mr = mmr_roots.output_mr;
-    block.header.output_mmr_size = mmr_roots.output_mmr_size;
+    block.header.output_smt_size = mmr_roots.output_smt_size;
     block.header.kernel_mr = mmr_roots.kernel_mr;
     block.header.kernel_mmr_size = mmr_roots.kernel_mmr_size;
     block.header.validator_node_mr = mmr_roots.validator_node_mr;
@@ -191,7 +191,7 @@ async fn it_checks_the_coinbase_reward() {
 }
 
 #[tokio::test]
-async fn it_checks_exactly_one_coinbase() {
+async fn it_allows_multiple_coinbases() {
     let (blockchain, validator) = setup(true);
 
     let (mut block, coinbase) = blockchain.create_unmined_block(block_spec!("A1", parent: "GB")).await;
@@ -212,20 +212,6 @@ async fn it_checks_exactly_one_coinbase() {
         .body
         .add_output(coinbase_output.to_transaction_output(&blockchain.km).await.unwrap());
     block.body.sort();
-    let block = blockchain.mine_block("GB", block, Difficulty::min());
-
-    let err = {
-        // `MutexGuard` cannot be held across an `await` point
-        let txn = blockchain.db().db_read_access().unwrap();
-        let err = validator.validate_body(&*txn, block.block()).unwrap_err();
-        err
-    };
-    assert!(matches!(
-        err,
-        ValidationError::BlockError(BlockValidationError::TransactionError(
-            TransactionError::MoreThanOneCoinbase
-        ))
-    ));
 
     let (block, _) = blockchain
         .create_unmined_block(block_spec!("A2", parent: "GB", skip_coinbase: true,))
@@ -241,7 +227,7 @@ async fn it_checks_exactly_one_coinbase() {
 }
 
 #[tokio::test]
-async fn it_checks_double_spends() {
+async fn it_checks_duplicate_kernel() {
     let (mut blockchain, validator) = setup(true);
 
     let (_, coinbase_a) = blockchain.add_next_tip(block_spec!("A")).await.unwrap();
@@ -262,6 +248,36 @@ async fn it_checks_double_spends() {
     let txn = blockchain.db().db_read_access().unwrap();
     let err = validator.validate_body(&*txn, block.block()).unwrap_err();
     assert!(matches!(err, ValidationError::DuplicateKernelError(_)));
+}
+
+#[tokio::test]
+async fn it_checks_double_spends() {
+    let (mut blockchain, validator) = setup(true);
+
+    let (_, coinbase_a) = blockchain.add_next_tip(block_spec!("A")).await.unwrap();
+    let (txs, _) = schema_to_transaction(
+        &[txn_schema!(from: vec![coinbase_a.clone()], to: vec![50 * T])],
+        &blockchain.km,
+    )
+    .await;
+
+    blockchain
+        .add_next_tip(block_spec!("1", transactions: txs.iter().map(|t| (**t).clone()).collect()))
+        .await
+        .unwrap();
+    // lets create a new transction from the same input
+    let (txs2, _) =
+        schema_to_transaction(&[txn_schema!(from: vec![coinbase_a], to: vec![50 * T])], &blockchain.km).await;
+    let (block, _) = blockchain
+        .create_next_tip(
+            BlockSpec::new()
+                .with_transactions(txs2.iter().map(|t| (**t).clone()).collect())
+                .finish(),
+        )
+        .await;
+    let txn = blockchain.db().db_read_access().unwrap();
+    let err = validator.validate_body(&*txn, block.block()).unwrap_err();
+    assert!(matches!(err, ValidationError::ContainsSTxO));
 }
 
 #[tokio::test]
