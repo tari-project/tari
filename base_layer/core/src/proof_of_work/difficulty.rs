@@ -84,12 +84,16 @@ impl Difficulty {
         Difficulty::from_u64(result.low_u64())
     }
 
-    pub fn min_difficulty_checked_div(&self, other: u64) -> Option<Difficulty> {
-        return match self.0.checked_div(other) {
+    pub fn checked_div_u64(&self, other: u64) -> Option<Difficulty> {
+        match self.0.checked_div(other) {
             None => None,
             Some(n) => {
-                n < MIN_DIFFICULTY ? None : Some(Difficulty(n))
-            }
+                if n < MIN_DIFFICULTY {
+                    None
+                } else {
+                    Some(Difficulty(n))
+                }
+            },
         }
     }
 }

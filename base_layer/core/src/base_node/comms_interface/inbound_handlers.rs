@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    cmp::max,
     collections::HashSet,
     convert::{TryFrom, TryInto},
     sync::Arc,
@@ -509,11 +510,14 @@ where B: BlockchainBackend + 'static
         let mut header = self.blockchain_db.fetch_last_chain_header().await?;
         loop {
             if new_block.header.pow_algo() == header.header().pow_algo() {
-                min_difficulty = header
-                    .accumulated_data()
-                    .target_difficulty
-                    .checked_div_u64(2)
-                    .unwrap_or(min_difficulty);
+                min_difficulty = max(
+                    header
+                        .accumulated_data()
+                        .target_difficulty
+                        .checked_div_u64(2)
+                        .unwrap_or(min_difficulty),
+                    min_difficulty,
+                );
                 break;
             }
             if header.height() == 0 {
