@@ -62,7 +62,7 @@ impl HorizonStateSync {
             Err(err) => return err.into(),
         };
 
-        let horizon_sync_height = local_metadata.horizon_block(last_header.height);
+        let horizon_sync_height = local_metadata.horizon_block_height(last_header.height);
         if local_metadata.pruned_height() >= horizon_sync_height {
             info!(target: LOG_TARGET, "Horizon state was already synchronized.");
             return StateEvent::HorizonStateSynchronized;

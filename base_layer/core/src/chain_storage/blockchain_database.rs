@@ -2305,7 +2305,7 @@ fn find_strongest_orphan_tip(
 // block height will also be discarded.
 fn cleanup_orphans<T: BlockchainBackend>(db: &mut T, orphan_storage_capacity: usize) -> Result<(), ChainStorageError> {
     let metadata = db.fetch_chain_metadata()?;
-    let horizon_height = metadata.horizon_block(metadata.height_of_longest_chain());
+    let horizon_height = metadata.horizon_block_height(metadata.height_of_longest_chain());
 
     db.delete_oldest_orphans(horizon_height, orphan_storage_capacity)
 }
