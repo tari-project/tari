@@ -105,6 +105,21 @@ Feature: Wallet CLI
         Then wallet WALLET has at least 1 transactions that are all TRANSACTION_STATUS_MINED_CONFIRMED and not cancelled
         Then I get count of utxos of wallet WALLET and it's at least 10 via command line
 
+    @long-running
+    Scenario: As a user I want to large coin-split via command line
+        Given I have a seed node SEED
+        When I have a base node BASE connected to seed SEED
+        When I have wallet WALLET connected to base node BASE
+        When I have mining node MINE connected to base node BASE and wallet WALLET
+        When mining node MINE mines 4 blocks
+        Then I wait for wallet WALLET to have at least 1100000 uT
+        When I wait 30 seconds
+        When I do coin split on wallet WALLET to 10000 uT 499 coins via command line
+        Then wallet WALLET has at least 1 transactions that are all TRANSACTION_STATUS_BROADCAST and not cancelled
+        When mining node MINE mines 5 blocks
+        Then wallet WALLET has at least 1 transactions that are all TRANSACTION_STATUS_MINED_CONFIRMED and not cancelled
+        Then I get count of utxos of wallet WALLET and it's at least 499 via command line
+
     Scenario: As a user I want to count utxos via command line
         Given I have a base node BASE
         When I have wallet WALLET connected to base node BASE

@@ -1705,7 +1705,7 @@ pub struct CompletedTransactionSql {
     destination_address: Vec<u8>,
     amount: i64,
     fee: i64,
-    transaction_protocol: String,
+    transaction_protocol: Vec<u8>,
     status: i32,
     message: String,
     timestamp: NaiveDateTime,
@@ -2015,13 +2015,16 @@ impl CompletedTransactionSql {
     }
 
     fn try_from(c: CompletedTransaction, cipher: &XChaCha20Poly1305) -> Result<Self, TransactionStorageError> {
+        let transaction_bytes =
+            bincode::serialize(&c.transaction).map_err(|e| TransactionStorageError::BincodeSerialize(e.to_string()))?;
+
         let output = Self {
             tx_id: c.tx_id.as_u64() as i64,
             source_address: c.source_address.to_bytes().to_vec(),
             destination_address: c.destination_address.to_bytes().to_vec(),
             amount: u64::from(c.amount) as i64,
             fee: u64::from(c.fee) as i64,
-            transaction_protocol: serde_json::to_string(&c.transaction)?,
+            transaction_protocol: transaction_bytes.to_vec(),
             status: c.status as i32,
             message: c.message,
             timestamp: c.timestamp,
@@ -2057,26 +2060,15 @@ impl Encryptable<XChaCha20Poly1305> for CompletedTransactionSql {
         self.transaction_protocol = encrypt_bytes_integral_nonce(
             cipher,
             self.domain("transaction_protocol"),
-            Hidden::hide(self.transaction_protocol.as_bytes().to_vec()),
-        )?
-        .to_hex();
+            Hidden::hide(self.transaction_protocol),
+        )?;
 
         Ok(self)
     }
 
     fn decrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
-        let mut decrypted_protocol = decrypt_bytes_integral_nonce(
-            cipher,
-            self.domain("transaction_protocol"),
-            &from_hex(self.transaction_protocol.as_str()).map_err(|e| e.to_string())?,
-        )?;
-
-        self.transaction_protocol = from_utf8(decrypted_protocol.as_slice())
-            .map_err(|e| e.to_string())?
-            .to_string();
-
-        // zeroize sensitive data
-        decrypted_protocol.zeroize();
+        self.transaction_protocol =
+            decrypt_bytes_integral_nonce(cipher, self.domain("transaction_protocol"), &self.transaction_protocol)?;
 
         Ok(self)
     }
@@ -2094,6 +2086,8 @@ pub enum CompletedTransactionConversionError {
     KeyError(#[from] TransactionKeyError),
     #[error("Aead Error: {0}")]
     AeadError(String),
+    #[error("Bincode error: `{0}`")]
+    BincodeDeserialize(String),
 }
 
 impl CompletedTransaction {
@@ -2126,7 +2120,8 @@ impl CompletedTransaction {
                 .map_err(TransactionKeyError::Destination)?,
             amount: MicroMinotari::from(c.amount as u64),
             fee: MicroMinotari::from(c.fee as u64),
-            transaction: serde_json::from_str(&c.transaction_protocol.clone())?,
+            transaction: bincode::deserialize(&c.transaction_protocol)
+                .map_err(|e| CompletedTransactionConversionError::BincodeDeserialize(e.to_string()))?,
             status: TransactionStatus::try_from(c.status)?,
             message: c.message,
             timestamp: c.timestamp,
@@ -2158,7 +2153,7 @@ pub struct UpdateCompletedTransactionSql {
     timestamp: Option<NaiveDateTime>,
     cancelled: Option<Option<i32>>,
     direction: Option<i32>,
-    transaction_protocol: Option<String>,
+    transaction_protocol: Option<Vec<u8>>,
     send_count: Option<i32>,
     last_send_timestamp: Option<Option<NaiveDateTime>>,
     confirmations: Option<Option<i64>>,

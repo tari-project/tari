@@ -742,6 +742,87 @@ async fn single_transaction_to_self() {
 }
 
 #[tokio::test]
+async fn large_coin_split_transaction() {
+    let network = Network::LocalNet;
+    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
+    let factories = CryptoFactories::default();
+    // Alice's parameters
+    let alice_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
+
+    let base_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
+
+    log::info!(
+        "large_coin_split_transaction: Alice: '{}', Base: '{}'",
+        alice_node_identity.node_id().short_str(),
+        base_node_identity.node_id().short_str()
+    );
+
+    let temp_dir = tempdir().unwrap();
+    let database_path = temp_dir.path().to_str().unwrap().to_string();
+
+    let (db_connection, _tempdir) = make_wallet_database_connection(Some(database_path.clone()));
+
+    let shutdown = Shutdown::new();
+    let (mut alice_ts, mut alice_oms, _alice_comms, _alice_connectivity, key_manager_handle) =
+        setup_transaction_service(
+            alice_node_identity.clone(),
+            vec![],
+            consensus_manager,
+            factories.clone(),
+            db_connection,
+            database_path,
+            Duration::from_secs(0),
+            shutdown.to_signal(),
+        )
+        .await;
+
+    let initial_wallet_value = 20 * T;
+    let uo1 = make_input(
+        &mut OsRng,
+        initial_wallet_value,
+        &OutputFeatures::default(),
+        &key_manager_handle,
+    )
+    .await;
+
+    alice_oms.add_output(uo1, None).await.unwrap();
+
+    let fee_per_gram = MicroMinotari::from(1);
+    let split_count = 499;
+    let (tx_id, coin_split_tx, amount) = alice_oms
+        .create_coin_split(vec![], 10000.into(), split_count, fee_per_gram)
+        .await
+        .unwrap();
+    assert_eq!(coin_split_tx.body.inputs().len(), 1);
+    assert_eq!(coin_split_tx.body.outputs().len(), split_count + 1);
+
+    alice_ts
+        .submit_transaction(tx_id, coin_split_tx, amount, "large coin-split".to_string())
+        .await
+        .expect("Alice sending coin-split tx");
+
+    let completed_tx = alice_ts
+        .get_completed_transaction(tx_id)
+        .await
+        .expect("Could not find tx");
+
+    let fees = completed_tx.fee;
+
+    assert_eq!(
+        alice_oms.get_balance().await.unwrap().pending_incoming_balance,
+        initial_wallet_value - fees
+    );
+}
+
+#[tokio::test]
 async fn single_transaction_burn_tari() {
     // let _ = env_logger::builder().is_test(true).try_init(); // Need `$env:RUST_LOG = "trace"` for this to work
     let network = Network::LocalNet;

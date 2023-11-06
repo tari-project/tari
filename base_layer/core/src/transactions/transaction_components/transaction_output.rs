@@ -293,7 +293,7 @@ impl TransactionOutput {
         let e = PrivateKey::from_uniform_bytes(&e_bytes).unwrap();
         let value_as_private_key = PrivateKey::from(self.minimum_value_promise.as_u64());
         let commit_nonce_a = PrivateKey::default(); // This is the deterministic nonce `r_a` of zero
-        if self.metadata_signature.u_a().to_hex() == (commit_nonce_a + e * value_as_private_key).to_hex() {
+        if self.metadata_signature.u_a() == &(commit_nonce_a + e * value_as_private_key) {
             Ok(())
         } else {
             Err(RangeProofError::InvalidRangeProof {
