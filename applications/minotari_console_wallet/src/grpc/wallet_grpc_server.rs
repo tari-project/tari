@@ -1009,7 +1009,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .ok_or_else(|| Status::invalid_argument("Validator node signature is missing!"))?
             .try_into()
             .map_err(|_| Status::invalid_argument("Validator node signature is malformed!"))?;
-        let validator_node_claim_public_key = PublicKey::from_bytes(&request.validator_node_claim_public_key)
+        let validator_node_claim_public_key = PublicKey::from_canonical_bytes(&request.validator_node_claim_public_key)
             .map_err(|_| Status::invalid_argument("Claim public key is malformed"))?;
 
         let constants = self.get_consensus_constants().map_err(|e| {

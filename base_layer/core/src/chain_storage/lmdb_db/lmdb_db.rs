@@ -857,7 +857,7 @@ impl LMDBDatabase {
         )?;
         let mut smt = self.fetch_tip_smt()?;
 
-        self.delete_block_inputs_outputs(write_txn, block_hash.as_slice(), &mut smt, height)?;
+        self.delete_block_inputs_outputs(write_txn, block_hash.as_slice(), height, &mut smt)?;
         self.insert_tip_smt(write_txn, &smt)?;
         self.delete_block_kernels(write_txn, block_hash.as_slice())?;
 
@@ -892,14 +892,15 @@ impl LMDBDatabase {
                 continue;
             }
 
-            if let Some(vn_reg) = output
+            if let Some(vn_reg) = utxo
+                .output
                 .features
                 .sidechain_feature
                 .as_ref()
                 .and_then(|f| f.validator_node_registration())
             {
                 self.validator_node_store(txn)
-                    .delete(height, vn_reg.public_key(), &output.commitment)?;
+                    .delete(height, vn_reg.public_key(), &utxo.output.commitment)?;
             }
 
             // if an output was burned, it was never created as an unspent utxo
