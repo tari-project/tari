@@ -346,7 +346,11 @@ impl TariScript {
         // This differs from compare_height due to a stack number being used, which can be lower than 0
         let item = match block_height.checked_sub(height) {
             Some(num) => StackItem::Number(num),
-            None => return Err(ScriptError::CompareFailed),
+            None => {
+                return Err(ScriptError::CompareFailed(
+                    "Subtraction of given height from current block height failed".to_string(),
+                ))
+            },
         };
 
         stack.push(item)
@@ -370,7 +374,11 @@ impl TariScript {
         // height does not use a stack number and it's minimum can't be lower than 0.
         let item = match block_height.checked_sub(target_height) {
             Some(num) => StackItem::Number(num),
-            None => return Err(ScriptError::CompareFailed),
+            None => {
+                return Err(ScriptError::CompareFailed(
+                    "Couldn't subtract the target height from the current block height".to_string(),
+                ))
+            },
         };
 
         stack.push(item)
@@ -1757,7 +1765,7 @@ mod test {
         let inputs = ExecutionStack::new(vec![Number(i64::MIN)]);
         let ctx = context_with_height(i64::MAX as u64);
         let stack_item = script.execute_with_context(&inputs, &ctx);
-        assert!(matches!(stack_item, Err(ScriptError::CompareFailed)));
+        assert!(matches!(stack_item, Err(ScriptError::CompareFailed(_))));
     }
 
     #[test]
