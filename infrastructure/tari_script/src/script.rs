@@ -368,7 +368,7 @@ impl TariScript {
 
         // Here it is possible to underflow because the stack can take lower numbers where check
         // height does not use a stack number and it's minimum can't be lower than 0.
-        let item = match target_height.checked_sub(block_height) {
+        let item = match block_height.checked_sub(target_height) {
             Some(num) => StackItem::Number(num),
             None => return Err(ScriptError::CompareFailed),
         };
@@ -921,7 +921,7 @@ mod test {
             let ctx = context_with_height(u64::try_from(block_height).unwrap());
             assert_eq!(
                 script.execute_with_context(&inputs, &ctx).unwrap(),
-                Number(5 - block_height)
+                Number(block_height - 5)
             );
         }
 
@@ -1778,7 +1778,7 @@ mod test {
         let ctx = context_with_height(24_u64);
         let stack_item = script.execute_with_context(&inputs, &ctx);
         assert!(stack_item.is_ok());
-        assert_eq!(stack_item.unwrap(), Number(76))
+        assert_eq!(stack_item.unwrap(), Number(-76))
     }
 
     #[test]
@@ -1789,7 +1789,7 @@ mod test {
         let ctx = context_with_height(110_u64);
         let stack_item = script.execute_with_context(&inputs, &ctx);
         assert!(stack_item.is_ok());
-        assert_eq!(stack_item.unwrap(), Number(-10))
+        assert_eq!(stack_item.unwrap(), Number(10))
     }
 
     #[test]
