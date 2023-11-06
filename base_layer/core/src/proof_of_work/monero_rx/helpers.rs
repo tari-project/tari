@@ -674,7 +674,7 @@ mod test {
             prev_hash: FixedHash::zero(),
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
-            output_mmr_size: 0,
+            output_smt_size: 0,
             kernel_mr: FixedHash::zero(),
             kernel_mmr_size: 0,
             input_mr: FixedHash::zero(),
@@ -683,6 +683,7 @@ mod test {
             nonce: 0,
             pow: ProofOfWork::default(),
             validator_node_mr: FixedHash::zero(),
+            validator_node_size: 2,
         };
 
         // Let us manipulate the extra field to make it invalid
