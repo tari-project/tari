@@ -23,6 +23,7 @@
 use std::{borrow::Cow, ops::Deref, string::FromUtf8Error};
 
 use argon2::{password_hash::Encoding, Argon2, PasswordHash, PasswordVerifier};
+use subtle::{ConstantTimeEq, Choice};
 use tari_utilities::SafePassword;
 use tonic::metadata::{errors::InvalidMetadataValue, Ascii, MetadataValue};
 use zeroize::{Zeroize, Zeroizing};
@@ -79,12 +80,17 @@ impl BasicAuthCredentials {
 
     pub fn validate(&self, username: &str, password: &[u8]) -> Result<(), BasicAuthError> {
         // We should always validate both username and passphrase to avoid leaking where a failure occurs
-        let mut validated = true;
+        let mut validated: Choice = Choice::from(1); // true, but the compiler doesn't know this
 
-        // First check the username
-        if self.user_name.as_bytes() != username.as_bytes() {
-            validated = false;
-        }
+        // First check the username by length and padded contents
+        validated &= self.user_name.len().ct_eq(&username.len());
+
+        let mut correct_bytes = self.user_name.as_bytes().to_vec();
+        correct_bytes.resize(256, 0);
+        let mut provided_bytes = username.as_bytes().to_vec();
+        provided_bytes.resize(256, 0);
+
+        validated &= correct_bytes.ct_eq(&provided_bytes);
 
         // Now validate the passphrase
         // Note that it's safe to fail early on corrupt data
@@ -94,14 +100,13 @@ impl BasicAuthCredentials {
         let header_password = PasswordHash::parse(&str_password, Encoding::B64)
             .map_err(|_| BasicAuthError::InvalidAuthorizationHeader)?;
         if Argon2::default().verify_password(password, &header_password).is_err() {
-            validated = false;
+            validated &= Choice::from(0); // false, but the compiler doesn't know this
         }
 
         // Now return whether the entire username/passphrase validation succeeded or failed
-        if validated {
-            Ok(())
-        } else {
-            Err(BasicAuthError::InvalidUsernameOrPassphrase)
+        match validated.unwrap_u8() {
+            1 => Ok(()),
+            _ => Err(BasicAuthError::InvalidUsernameOrPassphrase),
         }
     }
 
@@ -169,6 +174,13 @@ mod tests {
     }
 
     mod validate {
+        use std::time::Instant;
+        use std::cmp::{max, min};
+        use std::thread::sleep;
+        
+        use rand::RngCore;
+        use tari_utilities::hex::Hex;
+
         use super::*;
         use crate::authentication::salted_password::create_salted_hashed_password;
 
@@ -198,6 +210,92 @@ mod tests {
             let credentials = BasicAuthCredentials::new("good".to_string(), hashed.to_string().into());
             let err = credentials.validate("evil", b"evil").unwrap_err();
             assert!(matches!(err, BasicAuthError::InvalidUsernameOrPassphrase));
+        }
+
+        #[test]
+        fn it_authenticates_in_constant_time_by_username() {
+            #[allow(clippy::cast_possible_truncation)]
+            fn round_to_6_decimals(num: f64) -> f64 {
+                ((num * 100000.0) as u128) as f64 / 100000.0
+            }
+
+            const ITERATIONS: usize = 5; // 100
+            const COUNTS: usize = 5; // 2500
+            const SHORT_USERNAME_LENGTH: usize = 12;
+            const LONG_USERNAME_LENGTH: usize = 256;
+
+            let mut variances = Vec::with_capacity(ITERATIONS);
+            let mut short = Vec::with_capacity(ITERATIONS);
+            let mut long = Vec::with_capacity(ITERATIONS);
+            let mut actual = Vec::with_capacity(ITERATIONS);
+            let hashed_password = create_salted_hashed_password(b"secret").unwrap();
+            for i in 1..=ITERATIONS {
+                println!("Iteration {:?}", i);
+                let username_actual = "admin";
+                let credentials =
+                    BasicAuthCredentials::new(username_actual.to_string(), hashed_password.to_string().into());
+                assert!(credentials.validate(username_actual, b"secret").is_ok());
+                assert!(credentials.validate("", b"secret").is_err());
+
+                let mut short_usernames = Vec::with_capacity(COUNTS);
+                let mut long_usernames = Vec::with_capacity(COUNTS);
+                for _ in 0..COUNTS {
+                    let mut bytes_long = [0u8; LONG_USERNAME_LENGTH];
+                    let mut rng = rand::thread_rng();
+                    rng.fill_bytes(&mut bytes_long);
+                    let username = bytes_long.to_vec().to_hex();
+                    long_usernames.push(username);
+                    let mut bytes_short = [0u8; SHORT_USERNAME_LENGTH];
+                    bytes_short.copy_from_slice(&bytes_long[..SHORT_USERNAME_LENGTH]);
+                    let username = bytes_short.to_vec().to_hex();
+                    short_usernames.push(username);
+                }
+
+                let start = Instant::now();
+                for short in &short_usernames {
+                    assert!(credentials.validate(short, b"secret").is_err());
+                }
+                let time_taken_1 = start.elapsed().as_micros();
+
+                let start = Instant::now();
+                for long in &long_usernames {
+                    assert!(credentials.validate(long, b"secret").is_err());
+                }
+                let time_taken_2 = start.elapsed().as_micros();
+
+                let start = Instant::now();
+                for _ in 0..COUNTS {
+                    assert!(credentials.validate(username_actual, b"secret").is_ok());
+                }
+                let time_taken_3 = start.elapsed().as_micros();
+
+                let max_time = max(time_taken_1, max(time_taken_2, time_taken_3));
+                let min_time = min(time_taken_1, min(time_taken_2, time_taken_3));
+                let variance = round_to_6_decimals((max_time - min_time) as f64 / min_time as f64 * 100.0);
+                variances.push(variance);
+                short.push(time_taken_1);
+                long.push(time_taken_2);
+                actual.push(time_taken_3);
+
+                // The use of sleep between iterations helps ensure that the tests are run under different conditions,
+                // simulating real-world scenarios.
+                if i < ITERATIONS {
+                    sleep(std::time::Duration::from_millis(100));
+                }
+            }
+
+            let min_variance = variances.iter().min_by(|x, y| x.partial_cmp(y).unwrap()).unwrap();
+            let avg_variance = round_to_6_decimals(variances.iter().sum::<f64>() / variances.len() as f64);
+            let avg_short = round_to_6_decimals(short.iter().sum::<u128>() as f64 / short.len() as f64 / COUNTS as f64);
+            let avg_long = round_to_6_decimals(long.iter().sum::<u128>() as f64 / long.len() as f64 / COUNTS as f64);
+            let avg_actual =
+                round_to_6_decimals(actual.iter().sum::<u128>() as f64 / actual.len() as f64 / COUNTS as f64);
+            println!("Minimum variance:                          {} %", min_variance);
+            println!("Average variance:                          {} %", avg_variance);
+            println!("Average short username time:               {} microseconds", avg_short);
+            println!("Average long username time:                {} microseconds", avg_long);
+            println!("Average actual username time:              {} microseconds", avg_actual);
+            assert!(*min_variance < 10.0);
         }
     }
 
