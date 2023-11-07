@@ -21,12 +21,14 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
+use blake2::Blake2b;
 use croaring::Bitmap;
-use tari_crypto::{hash::blake2::Blake256, hash_domain, hashing::DomainSeparatedHasher};
+use digest::{consts::U32, Digest};
+use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
 use tari_mmr::{Hash, HashSlice, MerkleMountainRange, MutableMmr};
 
-hash_domain!(MmrTestHashDomain, "com.tari.tari_project.base_layer.core.kernel_mmr", 1);
-pub type MmrTestHasherBlake256 = DomainSeparatedHasher<Blake256, MmrTestHashDomain>;
+hash_domain!(MmrTestHashDomain, "com.tari.test.base_layer.core.kernel_mmr", 1);
+pub type MmrTestHasherBlake256 = DomainSeparatedHasher<Blake2b<U32>, MmrTestHashDomain>;
 pub type TestMmr = MerkleMountainRange<MmrTestHasherBlake256, Vec<Hash>>;
 pub type MutableTestMmr = MutableMmr<MmrTestHasherBlake256, Vec<Hash>>;
 
@@ -56,7 +58,7 @@ pub fn combine_hashes(hashe_slices: &[&HashSlice]) -> Hash {
     let hasher = MmrTestHasherBlake256::new();
     hashe_slices
         .iter()
-        .fold(hasher, |hasher, h| hasher.chain(*h))
+        .fold(hasher, |hasher, h| hasher.chain_update(*h))
         .finalize()
         .as_ref()
         .to_vec()

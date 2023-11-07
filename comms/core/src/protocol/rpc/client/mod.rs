@@ -55,7 +55,7 @@ use tokio::{
     time,
 };
 use tower::{Service, ServiceExt};
-use tracing::{event, span, Instrument, Level};
+use tracing::{span, Instrument, Level};
 
 use super::message::RpcMethod;
 use crate::{
@@ -72,6 +72,7 @@ use crate::{
             NamedProtocolService,
             Response,
             RpcError,
+            RpcServerError,
             RpcStatus,
             RPC_CHUNKING_MAX_CHUNKS,
         },
@@ -439,7 +440,6 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         self.framed.stream_id()
     }
 
-    #[tracing::instrument(level="trace", name = "rpc_client_worker run", skip(self), fields(next_request_id = self.next_request_id))]
     async fn run(mut self) {
         debug!(
             target: LOG_TARGET,
@@ -478,6 +478,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         metrics::num_sessions(&self.node_id, &self.protocol_id).inc();
         loop {
             tokio::select! {
+                // Check the futures in the order they are listed
                 biased;
                 _ = &mut self.shutdown_signal => {
                     break;
@@ -535,7 +536,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
 
     async fn do_ping_pong(&mut self, reply: oneshot::Sender<Result<Duration, RpcStatus>>) -> Result<(), RpcError> {
         let ack = proto::rpc::RpcRequest {
-            flags: u32::try_from(RpcMessageFlags::ACK.bits()).unwrap(),
+            flags: u32::from(RpcMessageFlags::ACK.bits()),
             deadline: self.config.deadline.map(|t| t.as_secs()).unwrap_or(0),
             ..Default::default()
         };
@@ -573,7 +574,14 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
             return Err(status.into());
         }
 
-        let resp_flags = RpcMessageFlags::from_bits_truncate(u8::try_from(resp.flags).unwrap());
+        let resp_flags =
+            RpcMessageFlags::from_bits(u8::try_from(resp.flags).map_err(|_| {
+                RpcStatus::protocol_error(&format!("invalid message flag: must be less than {}", u8::MAX))
+            })?)
+            .ok_or(RpcStatus::protocol_error(&format!(
+                "invalid message flag, does not match any flags ({})",
+                resp.flags
+            )))?;
         if !resp_flags.contains(RpcMessageFlags::ACK) {
             warn!(
                 target: LOG_TARGET,
@@ -592,7 +600,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         Ok(())
     }
 
-    #[tracing::instrument(level="trace", name = "rpc_do_request_response", skip(self, reply, request), fields(request_method = ?request.method, request_body_size = request.message.len()))]
+    #[allow(clippy::too_many_lines)]
     async fn do_request_response(
         &mut self,
         request: BaseRequest<Bytes>,
@@ -603,7 +611,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         let request_id = self.next_request_id();
         let method = request.method.into();
         let req = proto::rpc::RpcRequest {
-            request_id: u32::try_from(request_id).unwrap(),
+            request_id: u32::from(request_id),
             method,
             deadline: self.config.deadline.map(|t| t.as_secs()).unwrap_or(0),
             flags: 0,
@@ -613,7 +621,6 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         trace!(target: LOG_TARGET, "Sending request: {}", req);
 
         if reply.is_closed() {
-            event!(Level::WARN, "Client request was cancelled before request was sent");
             warn!(
                 target: LOG_TARGET,
                 "Client request was cancelled before request was sent"
@@ -622,7 +629,6 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
 
         let (response_tx, response_rx) = mpsc::channel(5);
         if let Err(mut rx) = reply.send(response_rx) {
-            event!(Level::WARN, "Client request was cancelled after request was sent");
             warn!(
                 target: LOG_TARGET,
                 "Client request was cancelled after request was sent. This means that you are making an RPC request \
@@ -677,13 +683,11 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                 },
             };
 
-            // let resp = match self.read_response(request_id).await {
             let resp = match resp_result {
                 Ok((resp, time_to_first_msg)) => {
                     if let Some(t) = time_to_first_msg {
                         let _ = self.last_request_latency_tx.send(Some(partial_latency + t));
                     }
-                    event!(Level::TRACE, "Message received");
                     trace!(
                         target: LOG_TARGET,
                         "Received response ({} byte(s)) from request #{} (protocol = {}, method={})",
@@ -703,7 +707,6 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                         target: LOG_TARGET,
                         "Request {} (method={}) timed out", request_id, method,
                     );
-                    event!(Level::ERROR, "Response timed out");
                     metrics::client_timeouts(&self.node_id, &self.protocol_id).inc();
                     if response_tx.is_closed() {
                         self.premature_close(request_id, method).await?;
@@ -721,13 +724,6 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                     break;
                 },
                 Err(err) => {
-                    event!(
-                        Level::WARN,
-                        "Request {} (method={}) returned an error: {}",
-                        request_id,
-                        method,
-                        err
-                    );
                     return Err(err);
                 },
             };
@@ -778,7 +774,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
             self.protocol_name()
         );
         let req = proto::rpc::RpcRequest {
-            request_id: u32::try_from(request_id).unwrap(),
+            request_id: u32::from(request_id),
             method,
             flags: RpcMessageFlags::FIN.bits().into(),
             deadline: self.config.deadline.map(|d| d.as_secs()).unwrap_or(0),
@@ -869,9 +865,12 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         if !status.is_ok() {
             return Ok(Err(status));
         }
-
+        let flags = match resp.flags() {
+            Ok(flags) => flags,
+            Err(e) => return Ok(Err(RpcError::ServerError(RpcServerError::ProtocolError(e)).into())),
+        };
         let resp = Response {
-            flags: resp.flags(),
+            flags,
             payload: resp.payload.into(),
         };
 
@@ -922,7 +921,14 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
         self.time_to_first_msg = Some(timer.elapsed());
         self.check_response(&resp)?;
         let mut chunk_count = 1;
-        let mut last_chunk_flags = RpcMessageFlags::from_bits_truncate(u8::try_from(resp.flags).unwrap());
+        let mut last_chunk_flags =
+            RpcMessageFlags::from_bits(u8::try_from(resp.flags).map_err(|_| {
+                RpcStatus::protocol_error(&format!("invalid message flag: must be less than {}", u8::MAX))
+            })?)
+            .ok_or(RpcStatus::protocol_error(&format!(
+                "invalid message flag, does not match any flags ({})",
+                resp.flags
+            )))?;
         let mut last_chunk_size = resp.payload.len();
         self.bytes_read += last_chunk_size;
         loop {
@@ -939,13 +945,19 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             }
 
             if chunk_count >= RPC_CHUNKING_MAX_CHUNKS {
-                return Err(RpcError::ExceededMaxChunkCount {
+                return Err(RpcError::RemotePeerExceededMaxChunkCount {
                     expected: RPC_CHUNKING_MAX_CHUNKS,
                 });
             }
 
             let msg = self.next().await?;
-            last_chunk_flags = RpcMessageFlags::from_bits_truncate(u8::try_from(msg.flags).unwrap());
+            last_chunk_flags = RpcMessageFlags::from_bits(u8::try_from(msg.flags).map_err(|_| {
+                RpcStatus::protocol_error(&format!("invalid message flag: must be less than {}", u8::MAX))
+            })?)
+            .ok_or(RpcStatus::protocol_error(&format!(
+                "invalid message flag, does not match any flags ({})",
+                resp.flags
+            )))?;
             last_chunk_size = msg.payload.len();
             self.bytes_read += last_chunk_size;
             self.check_response(&resp)?;
@@ -963,7 +975,14 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
         let resp_id = u16::try_from(resp.request_id)
             .map_err(|_| RpcStatus::protocol_error(&format!("invalid request_id: must be less than {}", u16::MAX)))?;
 
-        let flags = RpcMessageFlags::from_bits_truncate(u8::try_from(resp.flags).unwrap());
+        let flags =
+            RpcMessageFlags::from_bits(u8::try_from(resp.flags).map_err(|_| {
+                RpcStatus::protocol_error(&format!("invalid message flag: must be less than {}", u8::MAX))
+            })?)
+            .ok_or(RpcStatus::protocol_error(&format!(
+                "invalid message flag, does not match any flags ({})",
+                resp.flags
+            )))?;
         if flags.contains(RpcMessageFlags::ACK) {
             return Err(RpcError::UnexpectedAckResponse);
         }
@@ -971,7 +990,9 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
         if resp_id != self.request_id {
             return Err(RpcError::ResponseIdDidNotMatchRequest {
                 expected: self.request_id,
-                actual: u16::try_from(resp.request_id).unwrap(),
+                actual: u16::try_from(resp.request_id).map_err(|_| {
+                    RpcStatus::protocol_error(&format!("invalid request_id: must be less than {}", u16::MAX))
+                })?,
             });
         }
 

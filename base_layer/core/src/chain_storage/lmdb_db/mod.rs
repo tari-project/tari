@@ -27,7 +27,6 @@ use tari_crypto::hash_domain;
 
 use crate::transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput};
 
-// mod composite_key;
 mod composite_key;
 pub(crate) mod cursors;
 pub(crate) mod helpers;
@@ -38,11 +37,9 @@ mod validator_node_store;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub(crate) struct TransactionOutputRowData {
-    pub output: Option<TransactionOutput>,
+    pub output: TransactionOutput,
     pub header_hash: HashOutput,
-    pub mmr_position: u32,
     pub hash: HashOutput,
-    pub witness_hash: HashOutput,
     pub mined_height: u64,
     pub mined_timestamp: u64,
 }
@@ -54,7 +51,8 @@ pub(crate) struct TransactionInputRowDataRef<'a> {
     pub input: &'a TransactionInput,
     #[allow(clippy::ptr_arg)]
     pub header_hash: &'a HashOutput,
-    pub mmr_position: u32,
+    pub spent_timestamp: u64,
+    pub spent_height: u64,
     #[allow(clippy::ptr_arg)]
     pub hash: &'a HashOutput,
 }
@@ -63,7 +61,8 @@ pub(crate) struct TransactionInputRowDataRef<'a> {
 pub(crate) struct TransactionInputRowData {
     pub input: TransactionInput,
     pub header_hash: HashOutput,
-    pub mmr_position: u32,
+    pub spent_timestamp: u64,
+    pub spent_height: u64,
     pub hash: HashOutput,
 }
 
@@ -75,8 +74,4 @@ pub(crate) struct TransactionKernelRowData {
     pub hash: HashOutput,
 }
 
-hash_domain!(
-    CoreChainStorageHashDomain,
-    "com.tari.tari-project.base_layer.core.lmdb_db",
-    1
-);
+hash_domain!(CoreChainStorageHashDomain, "com.tari.base_layer.core.lmdb_db", 1);

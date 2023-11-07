@@ -126,7 +126,7 @@ fn test_utxo_order() {
     let mut utxos = Vec::with_capacity(2000);
     let version = TransactionOutputVersion::V0;
     let features = OutputFeatures::default();
-    let script = TariScript::default();
+    let script = script!(Nop);
     let proof = RangeProof::default();
     let sig = ComAndPubSignature::default();
     let covenant = Covenant::default();
@@ -164,11 +164,10 @@ fn test_utxo_order() {
     };
     let chainheader = ChainHeader::try_construct(header, data).unwrap();
     let sum = block_data.kernel_sum().clone();
-    let (kernels, utxo_set, witness, deleted) = block_data.dissolve();
+    let (kernels, utxo_set, deleted) = block_data.dissolve();
     let update_data = UpdateBlockAccumulatedData {
         kernel_hash_set: Some(kernels),
         utxo_hash_set: Some(utxo_set),
-        witness_hash_set: Some(witness),
         deleted_diff: Some(deleted.into()),
         kernel_sum: Some(sum),
     };
@@ -177,7 +176,7 @@ fn test_utxo_order() {
 
     db.write(tx).unwrap();
 
-    let read_utxos = db.fetch_utxos_in_block(&block_hash, None).unwrap().0;
+    let read_utxos = db.fetch_outputs_in_block_with_spend_state(&block_hash).unwrap();
     assert_eq!(utxos.len(), read_utxos.len());
     for i in 0..2000 {
         assert_eq!(&utxos[i], read_utxos[i].as_transaction_output().unwrap());

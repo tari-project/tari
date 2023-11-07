@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    convert::TryFrom,
     fmt::{Display, Error, Formatter},
     sync::Arc,
 };
@@ -29,14 +30,19 @@ use chrono::{DateTime, Local, NaiveDateTime};
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::peer_manager::NodeId;
 use tari_service_framework::reply_channel::SenderService;
+use tari_utilities::epoch_time::EpochTime;
 use tokio::sync::broadcast;
 use tower::Service;
 
 use crate::contacts_service::{
     error::ContactsServiceError,
     service::{ContactMessageType, ContactOnlineStatus},
-    types::{Contact, Message},
+    types::{Confirmation, Contact, Message, MessageDispatch},
 };
+
+pub static DEFAULT_MESSAGE_LIMIT: u64 = 35;
+pub static MAX_MESSAGE_LIMIT: u64 = 2500;
+pub static DEFAULT_MESSAGE_PAGE: u64 = 0;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContactsLivenessData {
@@ -105,7 +111,7 @@ impl Display for ContactsLivenessData {
             self.address,
             self.node_id,
             if let Some(time) = self.last_seen {
-                let local_time = DateTime::<Local>::from_utc(time, Local::now().offset().to_owned())
+                let local_time = DateTime::<Local>::from_naive_utc_and_offset(time, Local::now().offset().to_owned())
                     .format("%FT%T")
                     .to_string();
                 format!("last seen {} is '{}'", local_time, self.online_status)
@@ -131,7 +137,9 @@ pub enum ContactsServiceRequest {
     GetContacts,
     GetContactOnlineStatus(Contact),
     SendMessage(TariAddress, Message),
-    GetAllMessages(TariAddress),
+    GetMessages(TariAddress, i64, i64),
+    SendReadConfirmation(TariAddress, Confirmation),
+    GetConversationalists,
 }
 
 #[derive(Debug)]
@@ -143,6 +151,8 @@ pub enum ContactsServiceResponse {
     OnlineStatus(ContactOnlineStatus),
     Messages(Vec<Message>),
     MessageSent,
+    ReadConfirmationSent,
+    Conversationalists(Vec<TariAddress>),
 }
 
 #[derive(Clone)]
@@ -150,6 +160,7 @@ pub struct ContactsServiceHandle {
     request_response_service:
         SenderService<ContactsServiceRequest, Result<ContactsServiceResponse, ContactsServiceError>>,
     liveness_events: broadcast::Sender<Arc<ContactsLivenessEvent>>,
+    message_events: broadcast::Sender<Arc<MessageDispatch>>,
 }
 
 impl ContactsServiceHandle {
@@ -159,10 +170,12 @@ impl ContactsServiceHandle {
             Result<ContactsServiceResponse, ContactsServiceError>,
         >,
         liveness_events: broadcast::Sender<Arc<ContactsLivenessEvent>>,
+        message_events: broadcast::Sender<Arc<MessageDispatch>>,
     ) -> Self {
         Self {
             request_response_service,
             liveness_events,
+            message_events,
         }
     }
 
@@ -214,6 +227,10 @@ impl ContactsServiceHandle {
         self.liveness_events.subscribe()
     }
 
+    pub fn get_messages_event_stream(&self) -> broadcast::Receiver<Arc<MessageDispatch>> {
+        self.message_events.subscribe()
+    }
+
     /// Determines the contact's online status based on their last seen time
     pub async fn get_contact_online_status(
         &mut self,
@@ -229,10 +246,30 @@ impl ContactsServiceHandle {
         }
     }
 
-    pub async fn get_all_messages(&mut self, pk: TariAddress) -> Result<Vec<Message>, ContactsServiceError> {
+    pub async fn get_messages(
+        &mut self,
+        pk: TariAddress,
+        mut limit: u64,
+        mut page: u64,
+    ) -> Result<Vec<Message>, ContactsServiceError> {
+        if limit == 0 || limit > MAX_MESSAGE_LIMIT {
+            limit = DEFAULT_MESSAGE_LIMIT;
+        }
+
+        page = match page.checked_mul(limit) {
+            Some(_) => page,
+            None => DEFAULT_MESSAGE_PAGE,
+        };
+
+        // const values won't be a problem here
+        #[allow(clippy::cast_possible_wrap)]
         match self
             .request_response_service
-            .call(ContactsServiceRequest::GetAllMessages(pk))
+            .call(ContactsServiceRequest::GetMessages(
+                pk,
+                i64::try_from(limit).unwrap_or(DEFAULT_MESSAGE_LIMIT as i64),
+                i64::try_from(page).unwrap_or(DEFAULT_MESSAGE_PAGE as i64),
+            ))
             .await??
         {
             ContactsServiceResponse::Messages(messages) => Ok(messages),
@@ -247,6 +284,38 @@ impl ContactsServiceHandle {
             .await??
         {
             ContactsServiceResponse::MessageSent => Ok(()),
+            _ => Err(ContactsServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn send_read_confirmation(
+        &mut self,
+        address: TariAddress,
+        message_id: Vec<u8>,
+    ) -> Result<(), ContactsServiceError> {
+        match self
+            .request_response_service
+            .call(ContactsServiceRequest::SendReadConfirmation(
+                address.clone(),
+                Confirmation {
+                    message_id,
+                    timestamp: EpochTime::now().as_u64(),
+                },
+            ))
+            .await??
+        {
+            ContactsServiceResponse::ReadConfirmationSent => Ok(()),
+            _ => Err(ContactsServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_conversationalists(&mut self) -> Result<Vec<TariAddress>, ContactsServiceError> {
+        match self
+            .request_response_service
+            .call(ContactsServiceRequest::GetConversationalists)
+            .await??
+        {
+            ContactsServiceResponse::Conversationalists(addresses) => Ok(addresses),
             _ => Err(ContactsServiceError::UnexpectedApiResponse),
         }
     }

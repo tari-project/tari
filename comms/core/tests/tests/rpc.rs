@@ -52,14 +52,13 @@ async fn spawn_node(signal: ShutdownSignal) -> (CommsNode, RpcServerHandle) {
 
     comms
         .node_identity()
-        .replace_public_address(comms.listening_address().clone());
+        .set_public_addresses(vec![comms.listening_address().clone()]);
 
     (comms, rpc_server_hnd)
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn client_prematurely_ends_session() {
-    env_logger::init();
     let shutdown = Shutdown::new();
     let (node1, _rpc_server1) = spawn_node(shutdown.to_signal()).await;
     let (node2, mut rpc_server2) = spawn_node(shutdown.to_signal()).await;

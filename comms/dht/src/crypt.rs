@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{iter, mem::size_of};
+use std::{convert::TryFrom, iter, mem::size_of};
 
 use chacha20poly1305::{aead::AeadInPlace, ChaCha20Poly1305, KeyInit, Nonce, Tag};
 use digest::{generic_array::GenericArray, Digest, FixedOutput};
@@ -30,7 +30,10 @@ use tari_comms::{
     types::{CommsDHKE, CommsPublicKey, CommsSecretKey},
     BufMut,
 };
-use tari_crypto::tari_utilities::{epoch_time::EpochTime, ByteArray};
+use tari_crypto::{
+    keys::SecretKey,
+    tari_utilities::{epoch_time::EpochTime, ByteArray},
+};
 use tari_utilities::{hidden_type, safe_array::SafeArray, ByteArrayError, Hidden};
 use zeroize::Zeroize;
 
@@ -46,9 +49,9 @@ use crate::{
 // `ChaCha20` key used to encrypt messages
 hidden_type!(CommsMessageKey, SafeArray<u8, { size_of::<chacha20::Key>() }>);
 
-// Mask used (as a secret key) for sender key offset; we fix it to 32 bytes for compatibility
-// This isn't fully generic, but will work for 32-byte hashers and byte-to-scalar functionality
-hidden_type!(CommsKeyMask, SafeArray<u8, 32>);
+// Mask used (as a secret key) for sender key offset; we fix it to 64 bytes for wide reduction
+// Note that this is not fully generic!
+hidden_type!(CommsKeyMask, SafeArray<u8, 64>);
 
 const MESSAGE_BASE_LENGTH: usize = 6000;
 
@@ -125,9 +128,10 @@ fn get_original_message_from_padded_text(padded_message: &mut BytesMut) -> Resul
 /// Generate the key for a message
 pub fn generate_key_message(data: &CommsDHKE) -> CommsMessageKey {
     let mut comms_message_key = CommsMessageKey::from(SafeArray::default());
-    comms_dht_hash_domain_key_message()
-        .chain(data.as_bytes())
-        .finalize_into(GenericArray::from_mut_slice(comms_message_key.reveal_mut()));
+    FixedOutput::finalize_into(
+        comms_dht_hash_domain_key_message().chain(data.as_bytes()),
+        GenericArray::from_mut_slice(comms_message_key.reveal_mut()),
+    );
 
     comms_message_key
 }
@@ -135,12 +139,12 @@ pub fn generate_key_message(data: &CommsDHKE) -> CommsMessageKey {
 /// Generate the mask used to protect a sender public key
 pub fn generate_key_mask(data: &CommsDHKE) -> Result<CommsSecretKey, ByteArrayError> {
     let mut comms_key_mask = CommsKeyMask::from(SafeArray::default());
-    comms_dht_hash_domain_key_mask()
-        .chain(data.as_bytes())
-        .finalize_into(GenericArray::from_mut_slice(comms_key_mask.reveal_mut()));
+    FixedOutput::finalize_into(
+        comms_dht_hash_domain_key_mask().chain(data.as_bytes()),
+        GenericArray::from_mut_slice(comms_key_mask.reveal_mut()),
+    );
 
-    // This is infallible since we require 32 bytes of hash output
-    CommsSecretKey::from_bytes(comms_key_mask.reveal())
+    CommsSecretKey::from_uniform_bytes(comms_key_mask.reveal())
 }
 
 /// Decrypt a message using the `ChaCha20Poly1305` authenticated stream cipher
@@ -201,23 +205,27 @@ pub fn encrypt_message(
 }
 
 /// Encodes a prost Message, efficiently prepending the little-endian 32-bit length to the encoding
-fn encode_with_prepended_length<T: prost::Message>(msg: &T, additional_prefix_space: usize) -> BytesMut {
+fn encode_with_prepended_length<T: prost::Message>(
+    msg: &T,
+    additional_prefix_space: usize,
+) -> Result<BytesMut, DhtEncryptError> {
     let len = msg.encoded_len();
     let mut buf = BytesMut::with_capacity(size_of::<u32>() + additional_prefix_space + len);
     buf.extend(iter::repeat(0).take(additional_prefix_space));
-    buf.put_u32_le(len as u32);
+    let len_u32 = u32::try_from(len).map_err(|_| DhtEncryptError::InvalidMessageBody)?;
+    buf.put_u32_le(len_u32);
     msg.encode(&mut buf).expect(
         "prost::Message::encode documentation says it is infallible unless the buffer has insufficient capacity. This \
          buffer's capacity was set with encoded_len",
     );
-    buf
+    Ok(buf)
 }
 
-pub fn prepare_message<T: prost::Message>(is_encrypted: bool, message: &T) -> BytesMut {
+pub fn prepare_message<T: prost::Message>(is_encrypted: bool, message: &T) -> Result<BytesMut, DhtEncryptError> {
     if is_encrypted {
         encode_with_prepended_length(message, 0)
     } else {
-        message.encode_into_bytes_mut()
+        Ok(message.encode_into_bytes_mut())
     }
 }
 
@@ -285,7 +293,7 @@ mod test {
         let key = CommsMessageKey::from(SafeArray::default());
         let message = "Last enemy position 0830h AJ 9863".to_string();
         let associated_data = b"Associated data";
-        let mut buffer = prepare_message(true, &message);
+        let mut buffer = prepare_message(true, &message).unwrap();
 
         encrypt_message(&key, &mut buffer, associated_data).unwrap();
         decrypt_message(&key, &mut buffer, associated_data).unwrap();
@@ -297,7 +305,7 @@ mod test {
         let key = CommsMessageKey::from(SafeArray::default());
         let message = "Last enemy position 0830h AJ 9863".to_string();
         let associated_data = b"Associated data";
-        let mut buffer = prepare_message(true, &message);
+        let mut buffer = prepare_message(true, &message).unwrap();
 
         encrypt_message(&key, &mut buffer, associated_data).unwrap();
 
@@ -313,7 +321,7 @@ mod test {
         let key = CommsMessageKey::from(SafeArray::default());
         let message = "Last enemy position 0830h AJ 9863".to_string();
         let associated_data = b"Associated data";
-        let mut buffer = prepare_message(true, &message);
+        let mut buffer = prepare_message(true, &message).unwrap();
 
         encrypt_message(&key, &mut buffer, associated_data).unwrap();
 
@@ -329,7 +337,7 @@ mod test {
         let message = "Last enemy position 0830h AJ 9863".to_string();
         let associated_data = b"Associated data";
         let evil_associated_data = b"Evil associated data";
-        let mut buffer = prepare_message(true, &message);
+        let mut buffer = prepare_message(true, &message).unwrap();
 
         encrypt_message(&key, &mut buffer, associated_data).unwrap();
 
@@ -349,7 +357,7 @@ mod test {
 
         let message = "Last enemy position 0830h AJ 9863".to_string();
         let associated_data = b"Associated data";
-        let mut buffer = prepare_message(true, &message);
+        let mut buffer = prepare_message(true, &message).unwrap();
 
         encrypt_message(&key, &mut buffer, associated_data).unwrap();
 
@@ -378,7 +386,7 @@ mod test {
         assert_eq!(pad, pad_message[message.len()..]);
 
         // test for large message
-        let message = encode_with_prepended_length(&vec![100u8; MESSAGE_BASE_LENGTH * 8 - 100], 0);
+        let message = encode_with_prepended_length(&vec![100u8; MESSAGE_BASE_LENGTH * 8 - 100], 0).unwrap();
         let mut pad_message = message.clone();
         pad_message_to_base_length_multiple(&mut pad_message, 0).unwrap();
         let pad = iter::repeat(0u8)
@@ -393,7 +401,7 @@ mod test {
         assert_eq!(pad, pad_message[message.len()..]);
 
         // test for base message of multiple base length
-        let message = encode_with_prepended_length(&vec![100u8; MESSAGE_BASE_LENGTH * 9 - 123], 0);
+        let message = encode_with_prepended_length(&vec![100u8; MESSAGE_BASE_LENGTH * 9 - 123], 0).unwrap();
         let pad = std::iter::repeat(0u8)
             .take((9 * MESSAGE_BASE_LENGTH) - message.len())
             .collect::<Vec<_>>();
@@ -409,7 +417,7 @@ mod test {
         assert_eq!(pad, pad_message[message.len()..]);
 
         // test for empty message
-        let message = encode_with_prepended_length(&vec![], 0);
+        let message = encode_with_prepended_length(&vec![], 0).unwrap();
         let mut pad_message = message.clone();
         pad_message_to_base_length_multiple(&mut pad_message, 0).unwrap();
         let pad = [0u8; MESSAGE_BASE_LENGTH - 4];
@@ -451,7 +459,7 @@ mod test {
     fn get_original_message_from_padded_text_successful() {
         // test for short message
         let message = vec![0u8, 10, 22, 11, 38, 74, 59, 91, 73, 82, 75, 23, 59];
-        let mut pad_message = encode_with_prepended_length(&message, 0);
+        let mut pad_message = encode_with_prepended_length(&message, 0).unwrap();
         pad_message_to_base_length_multiple(&mut pad_message, 0).unwrap();
 
         //
@@ -461,7 +469,7 @@ mod test {
 
         // test for large message
         let message = vec![100u8; 1024];
-        let mut pad_message = encode_with_prepended_length(&message, 0);
+        let mut pad_message = encode_with_prepended_length(&message, 0).unwrap();
         pad_message_to_base_length_multiple(&mut pad_message, 0).unwrap();
 
         let mut output_message = pad_message.clone();
@@ -470,7 +478,7 @@ mod test {
 
         // test for base message of base length
         let message = vec![100u8; 984];
-        let mut pad_message = encode_with_prepended_length(&message, 0);
+        let mut pad_message = encode_with_prepended_length(&message, 0).unwrap();
         pad_message_to_base_length_multiple(&mut pad_message, 0).unwrap();
 
         let mut output_message = pad_message.clone();
@@ -479,7 +487,7 @@ mod test {
 
         // test for empty message
         let message: Vec<u8> = vec![];
-        let mut pad_message = encode_with_prepended_length(&message, 0);
+        let mut pad_message = encode_with_prepended_length(&message, 0).unwrap();
         pad_message_to_base_length_multiple(&mut pad_message, 0).unwrap();
 
         let mut output_message = pad_message.clone();
@@ -490,7 +498,7 @@ mod test {
     #[test]
     fn padding_fails_if_pad_message_prepend_length_is_bigger_than_plaintext_length() {
         let message = "This is my secret message, keep it secret !".as_bytes().to_vec();
-        let mut pad_message = encode_with_prepended_length(&message, 0);
+        let mut pad_message = encode_with_prepended_length(&message, 0).unwrap();
         pad_message_to_base_length_multiple(&mut pad_message, 0).unwrap();
         let mut pad_message = pad_message.to_vec();
 

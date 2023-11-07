@@ -31,7 +31,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use tari_common_types::types::{HashOutput, Signature};
+use tari_common_types::types::{FixedHash, HashOutput, Signature};
 use tari_comms::{
     protocol::rpc::{NamedProtocolService, Request, Response, RpcClient, RpcStatus, Streaming},
     PeerConnection,
@@ -70,6 +70,7 @@ use tari_core::{
     },
     transactions::transaction_components::{Transaction, TransactionOutput},
 };
+use tari_utilities::epoch_time::EpochTime;
 use tokio::{sync::mpsc, time::sleep};
 
 pub async fn connect_rpc_client<T>(connection: &mut PeerConnection) -> T
@@ -141,33 +142,30 @@ impl BaseNodeWalletRpcMockState {
             })),
             transaction_query_batch_response: Arc::new(Mutex::new(TxQueryBatchResponsesProto {
                 responses: vec![],
-                tip_hash: Some(vec![]),
+                tip_hash: FixedHash::zero().to_vec(),
                 is_synced: true,
                 height_of_longest_chain: 0,
-                tip_mined_timestamp: Some(0),
+                tip_mined_timestamp: EpochTime::now().as_u64(),
             })),
             tip_info_response: Arc::new(Mutex::new(TipInfoResponse {
                 metadata: Some(ChainMetadataProto {
-                    height_of_longest_chain: Some(std::i64::MAX as u64),
-                    best_block: Some(Vec::new()),
+                    height_of_longest_chain: std::i64::MAX as u64,
+                    best_block: FixedHash::zero().to_vec(),
                     accumulated_difficulty: Vec::new(),
                     pruned_height: 0,
-                    timestamp: Some(0),
+                    timestamp: EpochTime::now().as_u64(),
                 }),
                 is_synced: true,
             })),
             utxo_query_response: Arc::new(Mutex::new(UtxoQueryResponses {
                 responses: vec![],
-                best_block: vec![],
-                height_of_longest_chain: 1,
+                best_block_hash: vec![],
+                best_block_height: 1,
             })),
             query_deleted_response: Arc::new(Mutex::new(QueryDeletedResponse {
-                deleted_positions: vec![],
-                not_deleted_positions: vec![],
-                best_block: vec![],
-                height_of_longest_chain: 1,
-                heights_deleted_at: vec![],
-                blocks_deleted_in: vec![],
+                best_block_hash: vec![],
+                best_block_height: 1,
+                data: Vec::new(),
             })),
             fetch_utxos_calls: Arc::new(Mutex::new(Vec::new())),
             response_delay: Arc::new(Mutex::new(None)),
@@ -865,7 +863,7 @@ pub struct UtxosByBlock {
 mod test {
     use std::convert::{TryFrom, TryInto};
 
-    use tari_common_types::types::BlindingFactor;
+    use tari_common_types::types::PrivateKey;
     use tari_comms::{
         peer_manager::PeerFeatures,
         protocol::rpc::{mock::MockRpcServer, NamedProtocolService},
@@ -879,6 +877,7 @@ mod test {
         proto::base_node::{ChainMetadata, TipInfoResponse},
         transactions::transaction_components::Transaction,
     };
+    use tari_utilities::epoch_time::EpochTime;
     use tokio::time::Duration;
 
     use crate::support::comms_rpc::BaseNodeWalletRpcMockService;
@@ -918,13 +917,7 @@ mod test {
             is_synced: true,
         });
 
-        let tx = Transaction::new(
-            vec![],
-            vec![],
-            vec![],
-            BlindingFactor::default(),
-            BlindingFactor::default(),
-        );
+        let tx = Transaction::new(vec![], vec![], vec![], PrivateKey::default(), PrivateKey::default());
 
         let resp =
             TxSubmissionResponse::try_from(client.submit_transaction(tx.try_into().unwrap()).await.unwrap()).unwrap();
@@ -937,11 +930,11 @@ mod test {
         assert_eq!(calls.len(), 1);
 
         let chain_metadata = ChainMetadata {
-            height_of_longest_chain: Some(444),
-            best_block: Some(Vec::new()),
-            accumulated_difficulty: Vec::new(),
+            height_of_longest_chain: 444,
+            best_block: vec![],
+            accumulated_difficulty: vec![],
             pruned_height: 0,
-            timestamp: Some(0),
+            timestamp: EpochTime::now().as_u64(),
         };
         service_state.set_tip_info_response(TipInfoResponse {
             metadata: Some(chain_metadata),

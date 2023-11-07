@@ -30,10 +30,11 @@
 //   - After running this, make sure that the diesel update did not change BigInt to Integer in 'schema.rs' (check for
 //     any unwanted changes)
 
-use tari_crypto::hash::blake2::Blake256;
+use blake2::Blake2b;
+use digest::consts::U64;
 
 /// Specify the Hash function used by the key manager
-pub type KeyDigest = Blake256;
+pub type KeyDigest = Blake2b<U64>;
 
 mod error;
 pub use error::KeyManagerServiceError;
@@ -47,12 +48,8 @@ pub use initializer::KeyManagerInitializer;
 mod service;
 pub use service::KeyManagerInner;
 
-mod mock;
-pub use mock::KeyManagerMock;
-#[cfg(test)]
-mod test;
-
 mod interface;
+pub use interface::KeyId;
 pub mod storage;
 
-pub use interface::{AddResult, KeyManagerInterface, NextKeyResult};
+pub use interface::{AddResult, KeyManagerInterface};

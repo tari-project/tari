@@ -25,6 +25,30 @@ use std::{collections::HashMap, mem::size_of, sync::Arc, time::Duration};
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use chrono::Utc;
 use futures::StreamExt;
+use minotari_wallet::{
+    connectivity_service::{create_wallet_connectivity_mock, WalletConnectivityMock},
+    output_manager_service::{
+        error::OutputManagerError,
+        handle::{OutputManagerHandle, OutputManagerRequest, OutputManagerResponse},
+    },
+    storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
+    transaction_service::{
+        config::TransactionServiceConfig,
+        error::TransactionServiceError,
+        handle::{TransactionEvent, TransactionEventReceiver, TransactionEventSender},
+        protocols::{
+            transaction_broadcast_protocol::TransactionBroadcastProtocol,
+            transaction_validation_protocol::TransactionValidationProtocol,
+        },
+        service::TransactionServiceResources,
+        storage::{
+            database::TransactionDatabase,
+            models::{CompletedTransaction, TxCancellationReason},
+            sqlite_db::TransactionServiceSqliteDatabase,
+        },
+    },
+    util::{wallet_identity::WalletIdentity, watch::Watch},
+};
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
 use tari_common_types::{
@@ -54,8 +78,9 @@ use tari_core::{
         types::Signature as SignatureProto,
     },
     transactions::{
-        tari_amount::{uT, MicroTari, T},
-        test_helpers::schema_to_transaction,
+        tari_amount::{uT, MicroMinotari, T},
+        test_helpers::{create_test_core_key_manager_with_memory_db, schema_to_transaction, TestKeyManager},
+        transaction_components::OutputFeatures,
         CryptoFactories,
     },
     txn_schema,
@@ -63,40 +88,17 @@ use tari_core::{
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::Shutdown;
 use tari_test_utils::random;
-use tari_wallet::{
-    connectivity_service::{create_wallet_connectivity_mock, WalletConnectivityMock},
-    output_manager_service::{
-        error::OutputManagerError,
-        handle::{OutputManagerHandle, OutputManagerRequest, OutputManagerResponse},
-    },
-    storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
-    transaction_service::{
-        config::TransactionServiceConfig,
-        error::TransactionServiceError,
-        handle::{TransactionEvent, TransactionEventReceiver, TransactionEventSender},
-        protocols::{
-            transaction_broadcast_protocol::TransactionBroadcastProtocol,
-            transaction_validation_protocol::TransactionValidationProtocol,
-        },
-        service::TransactionServiceResources,
-        storage::{
-            database::TransactionDatabase,
-            models::{CompletedTransaction, TxCancellationReason},
-            sqlite_db::TransactionServiceSqliteDatabase,
-        },
-    },
-    util::{wallet_identity::WalletIdentity, watch::Watch},
-};
+use tari_utilities::epoch_time::EpochTime;
 use tempfile::{tempdir, TempDir};
 use tokio::{sync::broadcast, task, time::sleep};
 
 use crate::support::{
     comms_rpc::{connect_rpc_client, BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
-    utils::make_non_recoverable_input,
+    utils::make_input,
 };
 
 pub async fn setup() -> (
-    TransactionServiceResources<TransactionServiceSqliteDatabase, WalletConnectivityMock>,
+    TransactionServiceResources<TransactionServiceSqliteDatabase, WalletConnectivityMock, TestKeyManager>,
     OutboundServiceMockState,
     MockRpcServer<BaseNodeWalletRpcServer<BaseNodeWalletRpcMockService>>,
     Arc<NodeIdentity>,
@@ -143,6 +145,7 @@ pub async fn setup() -> (
 
     let (oms_event_publisher, _) = broadcast::channel(200);
     let output_manager_service_handle = OutputManagerHandle::new(oms_request_sender, oms_event_publisher);
+    let core_key_manager_service_handle = create_test_core_key_manager_with_memory_db();
 
     let (outbound_message_requester, mock_outbound_service) = create_outbound_service_mock(100);
     let outbound_mock_state = mock_outbound_service.get_state();
@@ -153,11 +156,12 @@ pub async fn setup() -> (
 
     let shutdown = Shutdown::new();
     let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build();
+    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
     let wallet_identity = WalletIdentity::new(client_node_identity, network);
     let resources = TransactionServiceResources {
         db,
         output_manager_service: output_manager_service_handle,
+        transaction_key_manager_service: core_key_manager_service_handle,
         outbound_message_service: outbound_message_requester,
         connectivity: wallet_connectivity.clone(),
         event_publisher: ts_event_publisher,
@@ -187,14 +191,15 @@ pub async fn setup() -> (
 
 pub async fn add_transaction_to_database(
     tx_id: TxId,
-    amount: MicroTari,
+    amount: MicroMinotari,
     status: Option<TransactionStatus>,
     coinbase_block_height: Option<u64>,
     db: TransactionDatabase<TransactionServiceSqliteDatabase>,
 ) {
-    let factories = CryptoFactories::default();
-    let (_utxo, uo0) = make_non_recoverable_input(&mut OsRng, 10 * amount, &factories.commitment).await;
-    let (txs1, _uou1) = schema_to_transaction(&[txn_schema!(from: vec![uo0], to: vec![amount])]);
+    let key_manager_handle = create_test_core_key_manager_with_memory_db();
+    let uo0 = make_input(&mut OsRng, 10 * amount, &OutputFeatures::default(), &key_manager_handle).await;
+    let (txs1, _uou1) =
+        schema_to_transaction(&[txn_schema!(from: vec![uo0], to: vec![amount])], &key_manager_handle).await;
     let tx1 = (*txs1[0]).clone();
     let completed_tx1 = CompletedTransaction::new(
         tx_id,
@@ -776,23 +781,24 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
 
     let tx2 = resources.db.get_completed_transaction(2u64.into()).unwrap();
 
+    let timestamp = EpochTime::now().as_u64();
     let transaction_query_batch_responses = vec![TxQueryBatchResponseProto {
         signature: Some(SignatureProto::from(
             tx2.transaction.first_kernel_excess_sig().unwrap().clone(),
         )),
         location: TxLocationProto::from(TxLocation::Mined) as i32,
-        block_hash: Some([1u8; 32].to_vec()),
+        block_hash: [1u8; 32].to_vec(),
         confirmations: 0,
         block_height: 1,
-        mined_timestamp: Some(0),
+        mined_timestamp: timestamp,
     }];
 
     let mut batch_query_response = TxQueryBatchResponsesProto {
         responses: transaction_query_batch_responses.clone(),
         is_synced: true,
-        tip_hash: Some([1u8; 32].to_vec()),
+        tip_hash: [1u8; 32].to_vec(),
         height_of_longest_chain: 1,
-        tip_mined_timestamp: Some(0),
+        tip_mined_timestamp: timestamp,
     };
 
     rpc_service_state.set_transaction_query_batch_responses(batch_query_response.clone());
@@ -855,18 +861,18 @@ async fn tx_validation_protocol_tx_becomes_mined_unconfirmed_then_confirmed() {
             tx2.transaction.first_kernel_excess_sig().unwrap().clone(),
         )),
         location: TxLocationProto::from(TxLocation::Mined) as i32,
-        block_hash: Some([5u8; 32].to_vec()),
+        block_hash: [5u8; 32].to_vec(),
         confirmations: 4,
         block_height: 5,
-        mined_timestamp: Some(0),
+        mined_timestamp: timestamp,
     }];
 
     let batch_query_response = TxQueryBatchResponsesProto {
         responses: transaction_query_batch_responses.clone(),
         is_synced: true,
-        tip_hash: Some([5u8; 32].to_vec()),
+        tip_hash: [5u8; 32].to_vec(),
         height_of_longest_chain: 5,
-        tip_mined_timestamp: Some(0),
+        tip_mined_timestamp: timestamp,
     };
 
     rpc_service_state.set_transaction_query_batch_responses(batch_query_response.clone());
@@ -932,24 +938,25 @@ async fn tx_revalidation() {
 
     let tx2 = resources.db.get_completed_transaction(2u64.into()).unwrap();
 
+    let timestamp = EpochTime::now().as_u64();
     // set tx2 as fully mined
     let transaction_query_batch_responses = vec![TxQueryBatchResponseProto {
         signature: Some(SignatureProto::from(
             tx2.transaction.first_kernel_excess_sig().unwrap().clone(),
         )),
         location: TxLocationProto::from(TxLocation::Mined) as i32,
-        block_hash: Some([5u8; 32].to_vec()),
+        block_hash: [5u8; 32].to_vec(),
         confirmations: 4,
         block_height: 5,
-        mined_timestamp: Some(0),
+        mined_timestamp: timestamp,
     }];
 
     let batch_query_response = TxQueryBatchResponsesProto {
         responses: transaction_query_batch_responses.clone(),
         is_synced: true,
-        tip_hash: Some([5u8; 32].to_vec()),
+        tip_hash: [5u8; 32].to_vec(),
         height_of_longest_chain: 5,
-        tip_mined_timestamp: Some(0),
+        tip_mined_timestamp: timestamp,
     };
 
     rpc_service_state.set_transaction_query_batch_responses(batch_query_response.clone());
@@ -980,18 +987,18 @@ async fn tx_revalidation() {
             tx2.transaction.first_kernel_excess_sig().unwrap().clone(),
         )),
         location: TxLocationProto::from(TxLocation::Mined) as i32,
-        block_hash: Some([5u8; 32].to_vec()),
+        block_hash: [5u8; 32].to_vec(),
         confirmations: 8,
         block_height: 10,
-        mined_timestamp: Some(0),
+        mined_timestamp: timestamp,
     }];
 
     let batch_query_response = TxQueryBatchResponsesProto {
         responses: transaction_query_batch_responses.clone(),
         is_synced: true,
-        tip_hash: Some([5u8; 32].to_vec()),
+        tip_hash: [5u8; 32].to_vec(),
         height_of_longest_chain: 10,
-        tip_mined_timestamp: Some(0),
+        tip_mined_timestamp: timestamp,
     };
 
     rpc_service_state.set_transaction_query_batch_responses(batch_query_response.clone());
@@ -1094,85 +1101,86 @@ async fn tx_validation_protocol_reorg() {
     let coinbase_tx1 = resources.db.get_completed_transaction(6u64.into()).unwrap();
     let coinbase_tx2 = resources.db.get_completed_transaction(7u64.into()).unwrap();
 
+    let timestamp = EpochTime::now().as_u64();
     let transaction_query_batch_responses = vec![
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(
                 tx1.transaction.first_kernel_excess_sig().unwrap().clone(),
             )),
             location: TxLocationProto::from(TxLocation::Mined) as i32,
-            block_hash: Some(block_headers.get(&5).unwrap().hash().to_vec()),
+            block_hash: block_headers.get(&5).unwrap().hash().to_vec(),
             confirmations: 5,
             block_height: 5,
-            mined_timestamp: Some(0),
+            mined_timestamp: timestamp,
         },
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(
                 tx2.transaction.first_kernel_excess_sig().unwrap().clone(),
             )),
             location: TxLocationProto::from(TxLocation::Mined) as i32,
-            block_hash: Some(block_headers.get(&6).unwrap().hash().to_vec()),
+            block_hash: block_headers.get(&6).unwrap().hash().to_vec(),
             confirmations: 4,
             block_height: 6,
-            mined_timestamp: Some(0),
+            mined_timestamp: timestamp,
         },
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(
                 tx3.transaction.first_kernel_excess_sig().unwrap().clone(),
             )),
             location: TxLocationProto::from(TxLocation::Mined) as i32,
-            block_hash: Some(block_headers.get(&7).unwrap().hash().to_vec()),
+            block_hash: block_headers.get(&7).unwrap().hash().to_vec(),
             confirmations: 3,
             block_height: 7,
-            mined_timestamp: Some(0),
+            mined_timestamp: timestamp,
         },
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(
                 tx4.transaction.first_kernel_excess_sig().unwrap().clone(),
             )),
             location: TxLocationProto::from(TxLocation::Mined) as i32,
-            block_hash: Some(block_headers.get(&8).unwrap().hash().to_vec()),
+            block_hash: block_headers.get(&8).unwrap().hash().to_vec(),
             confirmations: 2,
             block_height: 8,
-            mined_timestamp: Some(0),
+            mined_timestamp: timestamp,
         },
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(
                 coinbase_tx1.transaction.first_kernel_excess_sig().unwrap().clone(),
             )),
             location: TxLocationProto::from(TxLocation::Mined) as i32,
-            block_hash: Some(block_headers.get(&8).unwrap().hash().to_vec()),
+            block_hash: block_headers.get(&8).unwrap().hash().to_vec(),
             confirmations: 2,
             block_height: 8,
-            mined_timestamp: Some(0),
+            mined_timestamp: timestamp,
         },
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(
                 tx5.transaction.first_kernel_excess_sig().unwrap().clone(),
             )),
             location: TxLocationProto::from(TxLocation::Mined) as i32,
-            block_hash: Some(block_headers.get(&9).unwrap().hash().to_vec()),
+            block_hash: block_headers.get(&9).unwrap().hash().to_vec(),
             confirmations: 1,
             block_height: 9,
-            mined_timestamp: Some(0),
+            mined_timestamp: timestamp,
         },
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(
                 coinbase_tx2.transaction.first_kernel_excess_sig().unwrap().clone(),
             )),
             location: TxLocationProto::from(TxLocation::Mined) as i32,
-            block_hash: Some(block_headers.get(&9).unwrap().hash().to_vec()),
+            block_hash: block_headers.get(&9).unwrap().hash().to_vec(),
             confirmations: 1,
             block_height: 9,
-            mined_timestamp: Some(0),
+            mined_timestamp: timestamp,
         },
     ];
 
     let batch_query_response = TxQueryBatchResponsesProto {
         responses: transaction_query_batch_responses.clone(),
         is_synced: true,
-        tip_hash: Some(block_headers.get(&10).unwrap().hash().to_vec()),
+        tip_hash: block_headers.get(&10).unwrap().hash().to_vec(),
         height_of_longest_chain: 10,
-        tip_mined_timestamp: Some(0),
+        tip_mined_timestamp: timestamp,
     };
 
     rpc_service_state.set_transaction_query_batch_responses(batch_query_response.clone());
@@ -1221,69 +1229,69 @@ async fn tx_validation_protocol_reorg() {
                 tx1.transaction.first_kernel_excess_sig().unwrap().clone(),
             )),
             location: TxLocationProto::from(TxLocation::Mined) as i32,
-            block_hash: Some(block_headers.get(&5).unwrap().hash().to_vec()),
+            block_hash: block_headers.get(&5).unwrap().hash().to_vec(),
             confirmations: 4,
             block_height: 5,
-            mined_timestamp: Some(0),
+            mined_timestamp: timestamp,
         },
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(
                 tx2.transaction.first_kernel_excess_sig().unwrap().clone(),
             )),
             location: TxLocationProto::from(TxLocation::Mined) as i32,
-            block_hash: Some(block_headers.get(&6).unwrap().hash().to_vec()),
+            block_hash: block_headers.get(&6).unwrap().hash().to_vec(),
             confirmations: 3,
             block_height: 6,
-            mined_timestamp: Some(0),
+            mined_timestamp: timestamp,
         },
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(
                 tx3.transaction.first_kernel_excess_sig().unwrap().clone(),
             )),
             location: TxLocationProto::from(TxLocation::Mined) as i32,
-            block_hash: Some(block_headers.get(&7).unwrap().hash().to_vec()),
+            block_hash: block_headers.get(&7).unwrap().hash().to_vec(),
             confirmations: 2,
             block_height: 7,
-            mined_timestamp: Some(0),
+            mined_timestamp: timestamp,
         },
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(
                 coinbase_tx1.transaction.first_kernel_excess_sig().unwrap().clone(),
             )),
             location: TxLocationProto::from(TxLocation::NotStored) as i32,
-            block_hash: None,
+            block_hash: vec![],
             confirmations: 0,
             block_height: 0,
-            mined_timestamp: None,
+            mined_timestamp: 0,
         },
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(
                 tx5.transaction.first_kernel_excess_sig().unwrap().clone(),
             )),
             location: TxLocationProto::from(TxLocation::Mined) as i32,
-            block_hash: Some(block_headers.get(&8).unwrap().hash().to_vec()),
+            block_hash: block_headers.get(&8).unwrap().hash().to_vec(),
             confirmations: 1,
             block_height: 8,
-            mined_timestamp: Some(0),
+            mined_timestamp: timestamp,
         },
         TxQueryBatchResponseProto {
             signature: Some(SignatureProto::from(
                 coinbase_tx2.transaction.first_kernel_excess_sig().unwrap().clone(),
             )),
             location: TxLocationProto::from(TxLocation::NotStored) as i32,
-            block_hash: None,
+            block_hash: vec![],
             confirmations: 0,
             block_height: 0,
-            mined_timestamp: None,
+            mined_timestamp: 0,
         },
     ];
 
     let batch_query_response = TxQueryBatchResponsesProto {
         responses: transaction_query_batch_responses.clone(),
         is_synced: true,
-        tip_hash: Some(block_headers.get(&8).unwrap().hash().to_vec()),
+        tip_hash: block_headers.get(&8).unwrap().hash().to_vec(),
         height_of_longest_chain: 8,
-        tip_mined_timestamp: Some(0),
+        tip_mined_timestamp: timestamp,
     };
 
     rpc_service_state.set_transaction_query_batch_responses(batch_query_response.clone());

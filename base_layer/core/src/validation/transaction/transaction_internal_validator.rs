@@ -24,7 +24,11 @@ use tari_common_types::{chain_metadata::ChainMetadata, types::HashOutput};
 
 use crate::{
     consensus::ConsensusManager,
-    transactions::{tari_amount::MicroTari, transaction_components::Transaction, CryptoFactories},
+    transactions::{
+        tari_amount::MicroMinotari,
+        transaction_components::{OutputType::Coinbase, Transaction},
+        CryptoFactories,
+    },
     validation::{aggregate_body::AggregateBodyInternalConsistencyValidator, ValidationError},
 };
 
@@ -56,7 +60,7 @@ impl TransactionInternalConsistencyValidator {
     pub fn validate(
         &self,
         tx: &Transaction,
-        reward: Option<MicroTari>,
+        reward: Option<MicroMinotari>,
         prev_header: Option<HashOutput>,
         height: u64,
     ) -> Result<(), ValidationError> {
@@ -70,7 +74,7 @@ impl TransactionInternalConsistencyValidator {
         tip_metadata: ChainMetadata,
     ) -> Result<(), ValidationError> {
         if tx.body.outputs().iter().any(|o| o.features.is_coinbase()) {
-            return Err(ValidationError::ErroneousCoinbaseOutput);
+            return Err(ValidationError::OutputTypeNotPermitted { output_type: Coinbase });
         }
 
         // We can call this function with a constant value, because we've just shown that this is NOT a coinbase, and

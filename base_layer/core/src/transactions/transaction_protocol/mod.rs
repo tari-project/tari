@@ -85,10 +85,12 @@
 
 // #![allow(clippy::op_ref)]
 
+use blake2::Blake2b;
 use derivative::Derivative;
+use digest::consts::U32;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::PrivateKey;
-use tari_crypto::{errors::RangeProofError, hash::blake2::Blake256, signatures::SchnorrSignatureError};
+use tari_crypto::{errors::RangeProofError, signatures::SchnorrSignatureError};
 use thiserror::Error;
 
 use crate::transactions::{tari_amount::*, transaction_components::TransactionError};
@@ -100,6 +102,7 @@ pub mod single_receiver;
 pub mod transaction_initializer;
 use tari_common_types::types::Commitment;
 use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
+use tari_key_manager::key_manager_service::KeyManagerServiceError;
 
 use crate::transactions::transaction_components::KernelFeatures;
 
@@ -114,7 +117,7 @@ pub enum TransactionProtocolError {
     #[error("Invalid state")]
     InvalidStateError,
     #[error("An error occurred while performing a signature: `{0}`")]
-    SigningError(#[from] SchnorrSignatureError),
+    SigningError(String),
     #[error("A signature verification failed: {0}")]
     InvalidSignatureError(String),
     #[error("An error occurred while building the final transaction: `{0}`")]
@@ -122,7 +125,7 @@ pub enum TransactionProtocolError {
     #[error("The transaction construction broke down due to communication failure")]
     TimeoutError,
     #[error("An error was produced while constructing a rangeproof: `{0}`")]
-    RangeProofError(#[from] RangeProofError),
+    RangeProofError(String),
     #[error("This set of parameters is currently not supported: `{0}`")]
     UnsupportedError(String),
     #[error("There has been an error serializing or deserializing this structure")]
@@ -135,13 +138,33 @@ pub enum TransactionProtocolError {
     MinimumValuePromiseNotFound,
     #[error("Value encryption failed")]
     EncryptionError,
+    #[error("Key manager service error: `{0}`")]
+    KeyManagerServiceError(String),
+}
+
+impl From<RangeProofError> for TransactionProtocolError {
+    fn from(e: RangeProofError) -> Self {
+        TransactionProtocolError::RangeProofError(e.to_string())
+    }
+}
+
+impl From<SchnorrSignatureError> for TransactionProtocolError {
+    fn from(e: SchnorrSignatureError) -> Self {
+        TransactionProtocolError::SigningError(e.to_string())
+    }
+}
+
+impl From<KeyManagerServiceError> for TransactionProtocolError {
+    fn from(err: KeyManagerServiceError) -> Self {
+        TransactionProtocolError::KeyManagerServiceError(err.to_string())
+    }
 }
 
 /// Transaction metadata, this includes all the fields that needs to be signed on the kernel
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize)]
 pub struct TransactionMetadata {
     /// The absolute fee for the transaction
-    pub fee: MicroTari,
+    pub fee: MicroMinotari,
     /// The earliest block this transaction can be mined
     pub lock_height: u64,
     /// The kernel features
@@ -151,7 +174,7 @@ pub struct TransactionMetadata {
 }
 
 impl TransactionMetadata {
-    pub fn new(fee: MicroTari, lock_height: u64) -> Self {
+    pub fn new(fee: MicroMinotari, lock_height: u64) -> Self {
         Self {
             fee,
             lock_height,
@@ -160,7 +183,7 @@ impl TransactionMetadata {
         }
     }
 
-    pub fn new_with_features(fee: MicroTari, lock_height: u64, kernel_features: KernelFeatures) -> Self {
+    pub fn new_with_features(fee: MicroMinotari, lock_height: u64, kernel_features: KernelFeatures) -> Self {
         Self {
             fee,
             lock_height,
@@ -179,9 +202,9 @@ pub struct RecoveryData {
 // hash domain
 hash_domain!(
     CalculateTxIdTransactionProtocolHashDomain,
-    "com.tari.tari-project.base_layer.core.transactions.transaction_protocol.calculate_tx_id",
+    "com.tari.base_layer.core.transactions.transaction_protocol.calculate_tx_id",
     1
 );
 
 pub type CalculateTxIdTransactionProtocolHasherBlake256 =
-    DomainSeparatedHasher<Blake256, CalculateTxIdTransactionProtocolHashDomain>;
+    DomainSeparatedHasher<Blake2b<U32>, CalculateTxIdTransactionProtocolHashDomain>;

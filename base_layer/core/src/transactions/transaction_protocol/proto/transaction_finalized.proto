@@ -10,7 +10,7 @@ package tari.transaction_protocol;
 message TransactionFinalizedMessage {
     // The transaction id for the recipient
     uint64 tx_id = 1;
-   // The actual transaction;
+    // The actual transaction;
     tari.types.Transaction transaction = 2;
 }
 

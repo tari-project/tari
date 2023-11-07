@@ -131,7 +131,6 @@
 //!    0 1  2 3  4 5  6  7  8  9 10 11 12  <-- Leaf node indices
 //!    ----------------------------------
 //! ```
-
 pub type Hash = Vec<u8>;
 pub type HashSlice = [u8];
 
@@ -142,6 +141,7 @@ mod mem_backend_vec;
 mod merkle_mountain_range;
 mod merkle_proof;
 mod serde_support;
+pub mod sparse_merkle_tree;
 
 // Less commonly used exports
 pub mod common;

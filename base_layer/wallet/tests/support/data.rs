@@ -22,8 +22,8 @@
 
 use std::path::PathBuf;
 
+use minotari_wallet::storage::sqlite_utilities::{run_migration_and_create_sqlite_connection, WalletDbConnection};
 use tari_test_utils::random;
-use tari_wallet::storage::sqlite_utilities::{run_migration_and_create_sqlite_connection, WalletDbConnection};
 use tempfile::{tempdir, TempDir};
 
 pub fn get_path(name: Option<&str>) -> String {

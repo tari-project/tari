@@ -6,7 +6,7 @@ const protoLoader = require("@grpc/proto-loader");
 const { promisifyAll } = require("grpc-promise");
 
 const packageDefinition = protoLoader.loadSync(
-  `${__dirname}/../../../applications/tari_app_grpc/proto/wallet.proto`,
+  `${__dirname}/../../../applications/minotari_app_grpc/proto/wallet.proto`,
   {
     keepCase: true,
     longs: String,

@@ -23,8 +23,8 @@
 use std::{convert::TryFrom, time::Duration};
 
 use cucumber::{given, then, when};
+use minotari_app_grpc::tari_rpc::{self as grpc, GetTransactionInfoRequest};
 use rand::Rng;
-use tari_app_grpc::tari_rpc::{self as grpc, GetTransactionInfoRequest};
 use tari_common_types::types::BlockHash;
 use tari_core::blocks::Block;
 use tari_integration_tests::{
@@ -65,7 +65,7 @@ async fn mine_blocks_on(world: &mut TariWorld, blocks: u64, base_node: String) {
         .get_node_client(&base_node)
         .await
         .expect("Couldn't get the node client to mine with");
-    mine_blocks_without_wallet(&mut client, blocks, 0).await;
+    mine_blocks_without_wallet(&mut client, blocks, 0, &world.key_manager).await;
 }
 
 #[when(expr = "mining node {word} mines {int} blocks with min difficulty {int} and max difficulty {int}")]
@@ -94,7 +94,7 @@ async fn mine_custom_weight_blocks_with_height(world: &mut TariWorld, num_blocks
         .get_node_client(&node_name)
         .await
         .expect("Couldn't get the node client to mine with");
-    mine_blocks_without_wallet(&mut client, num_blocks, weight).await;
+    mine_blocks_without_wallet(&mut client, num_blocks, weight, &world.key_manager).await;
 }
 
 #[then(expr = "I have a SHA3 miner {word} connected to node {word}")]
@@ -281,7 +281,8 @@ async fn mining_node_mine_blocks(world: &mut TariWorld, blocks: u64) {
 async fn mine_without_submit(world: &mut TariWorld, block: String, node: String) {
     let mut client = world.get_node_client(&node).await.unwrap();
 
-    let unmined_block: Block = Block::try_from(mine_block_before_submit(&mut client).await).unwrap();
+    let unmined_block: Block =
+        Block::try_from(mine_block_before_submit(&mut client, &world.key_manager).await).unwrap();
     world.blocks.insert(block, unmined_block);
 }
 

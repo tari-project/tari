@@ -19,7 +19,6 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#![allow(dead_code)]
 
 use std::{
     fs,
@@ -49,6 +48,7 @@ use tari_comms::{
         messaging::{MessagingEventSender, MessagingProtocolExtension},
         rpc::RpcServer,
         NodeNetworkInfo,
+        ProtocolId,
     },
     tor,
     tor::HiddenServiceControllerError,
@@ -81,6 +81,9 @@ use crate::{
     MINOR_NETWORK_VERSION,
 };
 const LOG_TARGET: &str = "p2p::initialization";
+
+/// ProtocolId for minotari messaging protocol
+pub static MESSAGING_PROTOCOL_ID: ProtocolId = ProtocolId::from_static(b"t/msg/0.1");
 
 #[derive(Debug, Error)]
 pub enum CommsInitializationError {
@@ -132,11 +135,11 @@ pub async fn initialize_local_test_comms<P: AsRef<Path>>(
     discovery_request_timeout: Duration,
     seed_peers: Vec<Peer>,
     shutdown_signal: ShutdownSignal,
-) -> Result<(CommsNode, Dht, MessagingEventSender), CommsInitializationError> {
+) -> Result<(UnspawnedCommsNode, Dht, MessagingEventSender), CommsInitializationError> {
     let peer_database_name = {
         let mut rng = thread_rng();
         iter::repeat(())
-            .map(|_| rng.sample(Alphanumeric))
+            .map(|_| rng.sample(Alphanumeric) as char)
             .take(8)
             .collect::<String>()
     };
@@ -198,14 +201,10 @@ pub async fn initialize_local_test_comms<P: AsRef<Path>>(
         )
         .build();
 
-    let comms = comms
-        .add_protocol_extension(MessagingProtocolExtension::new(event_sender.clone(), pipeline))
-        .spawn_with_transport(MemoryTransport)
-        .await?;
-
-    comms
-        .node_identity()
-        .add_public_address(comms.listening_address().clone());
+    let comms = comms.add_protocol_extension(
+        MessagingProtocolExtension::new(MESSAGING_PROTOCOL_ID.clone(), event_sender.clone(), pipeline)
+            .enable_message_received_event(),
+    );
 
     Ok((comms, dht, event_sender))
 }
@@ -371,12 +370,15 @@ async fn configure_comms_and_dht(
         )
         .build();
 
-    // TODO: messaging events should be optional
     let (messaging_events_sender, _) = broadcast::channel(1);
-    comms = comms.add_protocol_extension(MessagingProtocolExtension::new(
-        messaging_events_sender,
-        messaging_pipeline,
-    ));
+    comms = comms.add_protocol_extension(
+        MessagingProtocolExtension::new(
+            MESSAGING_PROTOCOL_ID.clone(),
+            messaging_events_sender,
+            messaging_pipeline,
+        )
+        .with_ban_duration(config.dht.ban_duration_short),
+    );
 
     Ok((comms, dht))
 }
@@ -415,7 +417,7 @@ fn acquire_exclusive_file_lock(db_path: &Path) -> Result<File, CommsInitializati
 ///
 /// ## Returns
 /// A Result to determine if the call was successful or not, string will indicate the reason on error
-async fn add_seed_peers(
+pub async fn add_seed_peers(
     peer_manager: &PeerManager,
     node_identity: &NodeIdentity,
     peers: Vec<Peer>,
@@ -557,11 +559,11 @@ impl ServiceInitializer for P2pInitializer {
             })
             .set_liveness_check(config.listener_liveness_check_interval);
 
-        if config.allow_test_addresses || config.dht.allow_test_addresses {
+        if config.allow_test_addresses || config.dht.peer_validator_config.allow_test_addresses {
             // The default is false, so ensure that both settings are true in this case
             config.allow_test_addresses = true;
-            config.dht.allow_test_addresses = true;
             builder = builder.allow_test_addresses();
+            config.dht.peer_validator_config = builder.peer_validator_config().clone();
         }
 
         let (comms, dht) = configure_comms_and_dht(builder, &config, connector).await?;
@@ -578,7 +580,6 @@ impl ServiceInitializer for P2pInitializer {
         };
         add_seed_peers(&peer_manager, &node_identity, peers).await?;
 
-        // TODO: Use serde
         let peers = Self::try_parse_seed_peers(&self.seed_config.peer_seeds)?;
 
         add_seed_peers(&peer_manager, &node_identity, peers).await?;

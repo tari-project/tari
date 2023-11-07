@@ -25,7 +25,7 @@ use futures::FutureExt;
 use log::*;
 use tari_common_types::types::HashOutput;
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::Peer, types::CommsPublicKey};
-use tari_core::transactions::{tari_amount::MicroTari, CryptoFactories};
+use tari_core::transactions::{tari_amount::MicroMinotari, CryptoFactories};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{
     sync::{broadcast, watch},
@@ -50,9 +50,6 @@ use crate::{
 pub const LOG_TARGET: &str = "wallet::utxo_scanning";
 
 // Cache 1 days worth of headers.
-// TODO Determine a better strategy for maintaining a cache. Logarithmic sampling has been suggested but the problem
-// with it is that as you move on to the next block you need to resample say a 100 headers where a simple window like
-// this only samples 1 header per new block. A ticket has been added to the backlog to think about this #LOGGED
 pub const SCANNED_BLOCK_CACHE_SIZE: u64 = 720;
 
 pub struct UtxoScannerService<TBackend, TWalletConnectivity> {
@@ -208,6 +205,6 @@ pub struct ScannedBlock {
     pub header_hash: HashOutput,
     pub height: u64,
     pub num_outputs: Option<u64>,
-    pub amount: Option<MicroTari>,
+    pub amount: Option<MicroMinotari>,
     pub timestamp: NaiveDateTime,
 }

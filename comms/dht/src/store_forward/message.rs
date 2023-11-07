@@ -27,7 +27,7 @@ use prost::Message;
 use rand::{rngs::OsRng, RngCore};
 
 use crate::{
-    envelope::datetime_to_timestamp,
+    envelope::datetime_to_epochtime,
     proto::{
         envelope::DhtHeader,
         store_forward::{StoredMessage, StoredMessagesRequest, StoredMessagesResponse},
@@ -38,16 +38,17 @@ use crate::{
 impl StoredMessagesRequest {
     pub fn new() -> Self {
         Self {
-            since: None,
+            since: 0,
             request_id: OsRng.next_u32(),
+            limit: 0,
         }
     }
 
-    #[allow(unused)]
     pub fn since(since: DateTime<Utc>) -> Self {
         Self {
-            since: Some(datetime_to_timestamp(since)),
+            since: datetime_to_epochtime(since).as_u64(),
             request_id: OsRng.next_u32(),
+            limit: 0,
         }
     }
 }
@@ -64,7 +65,7 @@ impl StoredMessage {
             version,
             dht_header: Some(dht_header.into()),
             body,
-            stored_at: Some(datetime_to_timestamp(stored_at)),
+            stored_at: stored_at.timestamp() as u64,
         }
     }
 }
@@ -75,7 +76,7 @@ impl TryFrom<database::StoredMessage> for StoredMessage {
     fn try_from(message: database::StoredMessage) -> Result<Self, Self::Error> {
         let dht_header = DhtHeader::decode(message.header.as_slice())?;
         Ok(Self {
-            stored_at: Some(datetime_to_timestamp(DateTime::from_utc(message.stored_at, Utc))),
+            stored_at: message.stored_at.timestamp() as u64,
             version: message.version as u32,
             body: message.body,
             dht_header: Some(dht_header),

@@ -20,25 +20,25 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{path::PathBuf, str::FromStr, time::Duration};
+use std::{convert::TryFrom, path::PathBuf, str::FromStr, time::Duration};
 
 use cucumber::{then, when};
-use tari_app_grpc::tari_rpc::Empty;
-use tari_app_utilities::utilities::UniPublicKey;
-use tari_common_types::tari_address::TariAddress;
-use tari_comms::multiaddr::Multiaddr;
-use tari_console_wallet::{
-    BurnTariArgs,
+use minotari_app_grpc::tari_rpc::Empty;
+use minotari_app_utilities::utilities::UniPublicKey;
+use minotari_console_wallet::{
+    BurnMinotariArgs,
     CliCommands,
     CoinSplitArgs,
     DiscoverPeerArgs,
     ExportUtxosArgs,
     MakeItRainArgs,
-    SendTariArgs,
+    SendMinotariArgs,
     SetBaseNodeArgs,
     WhoisArgs,
 };
-use tari_core::transactions::tari_amount::MicroTari;
+use tari_common_types::tari_address::TariAddress;
+use tari_comms::multiaddr::Multiaddr;
+use tari_core::transactions::tari_amount::MicroMinotari;
 use tari_integration_tests::{
     wallet_process::{create_wallet_client, get_default_cli, spawn_wallet},
     TariWorld,
@@ -150,12 +150,12 @@ async fn send_from_cli(world: &mut TariWorld, amount: u64, wallet_a: String, wal
 
     let mut cli = get_default_cli();
 
-    let args = SendTariArgs {
-        amount: MicroTari(amount),
+    let args = SendMinotariArgs {
+        amount: MicroMinotari(amount),
         message: format!("Send amount {} from {} to {}", amount, wallet_a, wallet_b),
         destination: wallet_b_address,
     };
-    cli.command2 = Some(CliCommands::SendTari(args));
+    cli.command2 = Some(CliCommands::SendMinotari(args));
 
     let base_node = world.wallet_connected_to_base_node.get(&wallet_a).unwrap();
     let seed_nodes = world.base_nodes.get(base_node).unwrap().seed_nodes.clone();
@@ -172,11 +172,11 @@ async fn create_burn_tx_via_cli(world: &mut TariWorld, amount: u64, wallet: Stri
 
     let mut cli = get_default_cli();
 
-    let args = BurnTariArgs {
-        amount: MicroTari(amount),
+    let args = BurnMinotariArgs {
+        amount: MicroMinotari(amount),
         message: format!("Burn, burn amount {} !!!", amount,),
     };
-    cli.command2 = Some(CliCommands::BurnTari(args));
+    cli.command2 = Some(CliCommands::BurnMinotari(args));
 
     let base_node = world.wallet_connected_to_base_node.get(&wallet).unwrap();
     let seed_nodes = world.base_nodes.get(base_node).unwrap().seed_nodes.clone();
@@ -203,8 +203,8 @@ async fn send_one_sided_tx_via_cli(world: &mut TariWorld, amount: u64, wallet_a:
 
     let mut cli = get_default_cli();
 
-    let args = SendTariArgs {
-        amount: MicroTari(amount),
+    let args = SendMinotariArgs {
+        amount: MicroMinotari(amount),
         message: format!("Send one sided amount {} from {} to {}", amount, wallet_a, wallet_b),
         destination: wallet_b_address,
     };
@@ -247,14 +247,14 @@ async fn make_it_rain(
     let mut cli = get_default_cli();
 
     let args = MakeItRainArgs {
-        start_amount: MicroTari(start_amount),
-        transactions_per_second: txs_per_second as u32,
+        start_amount: MicroMinotari(start_amount),
+        transactions_per_second: u32::try_from(txs_per_second).unwrap(),
         duration: Duration::from_secs(duration),
         message: format!(
             "Make it raing amount {} from {} to {}",
             start_amount, wallet_a, wallet_b
         ),
-        increase_amount: MicroTari(increment_amount),
+        increase_amount: MicroMinotari(increment_amount),
         destination: wallet_b_address,
         start_time: None,
         one_sided: false,
@@ -280,9 +280,9 @@ async fn coin_split_via_cli(world: &mut TariWorld, wallet: String, amount: u64, 
     let mut cli = get_default_cli();
 
     let args = CoinSplitArgs {
-        amount_per_split: MicroTari(amount),
-        num_splits: splits as usize,
-        fee_per_gram: MicroTari(20),
+        amount_per_split: MicroMinotari(amount),
+        num_splits: usize::try_from(splits).unwrap(),
+        fee_per_gram: MicroMinotari(20),
         message: format!("coin split amount {} with splits {}", amount, splits),
     };
 

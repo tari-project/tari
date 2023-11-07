@@ -22,7 +22,6 @@
 
 use std::{
     collections::{HashMap, HashSet},
-    hash::Hash,
     sync::Arc,
 };
 
@@ -31,7 +30,11 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::types::{PrivateKey, Signature};
 use tari_utilities::hex::Hex;
 
-use crate::{blocks::Block, transactions::transaction_components::Transaction};
+use crate::{
+    blocks::Block,
+    mempool::{shrink_hashmap::shrink_hashmap, MempoolError},
+    transactions::transaction_components::Transaction,
+};
 
 pub const LOG_TARGET: &str = "c::mp::reorg_pool::reorg_pool_storage";
 
@@ -77,16 +80,16 @@ impl ReorgPool {
     /// Insert a new transaction into the ReorgPool. Published transactions will be discarded once they are
     /// `config.expiry_height` blocks old.
     fn insert(&mut self, height: u64, tx: Arc<Transaction>) {
-        let excess_hex = tx
-            .first_kernel_excess_sig()
-            .map(|s| s.get_signature().to_hex())
-            .unwrap_or_else(|| "no kernel!".to_string());
         if tx
             .body
             .kernels()
             .iter()
             .all(|k| self.txs_by_signature.contains_key(k.excess_sig.get_signature()))
         {
+            let excess_hex = tx
+                .first_kernel_excess_sig()
+                .map(|s| s.get_signature().to_hex())
+                .unwrap_or_else(|| "no kernel!".to_string());
             debug!(
                 target: LOG_TARGET,
                 "Transaction {} already found in reorg pool", excess_hex
@@ -141,7 +144,10 @@ impl ReorgPool {
         result
     }
 
-    pub fn retrieve_by_excess_sigs(&self, excess_sigs: &[PrivateKey]) -> (Vec<Arc<Transaction>>, Vec<PrivateKey>) {
+    pub fn retrieve_by_excess_sigs(
+        &self,
+        excess_sigs: &[PrivateKey],
+    ) -> Result<(Vec<Arc<Transaction>>, Vec<PrivateKey>), MempoolError> {
         // Hashset used to prevent duplicates
         let mut found = HashSet::new();
         let mut remaining = Vec::new();
@@ -155,15 +161,10 @@ impl ReorgPool {
 
         let found = found
             .into_iter()
-            .map(|id| {
-                self.tx_by_key
-                    .get(id)
-                    .expect("mempool indexes out of sync: transaction exists in txs_by_signature but not in tx_by_key")
-            })
-            .cloned()
-            .collect();
+            .map(|id| self.tx_by_key.get(id).cloned().ok_or(MempoolError::IndexOutOfSync))
+            .collect::<Result<Vec<_>, _>>()?;
 
-        (found, remaining)
+        Ok((found, remaining))
     }
 
     /// Check if a transaction is stored in the ReorgPool
@@ -171,7 +172,7 @@ impl ReorgPool {
         self.txs_by_signature.contains_key(excess_sig.get_signature())
     }
 
-    /// Remove the transactions from the ReorgPoolthat were used in provided removed blocks. The transactions
+    /// Remove the transactions from the ReorgPool that were used in provided removed blocks. The transactions
     /// can be resubmitted to the Unconfirmed Pool.
     pub fn remove_reorged_txs_and_discard_double_spends(
         &mut self,
@@ -287,13 +288,6 @@ impl ReorgPool {
             None => return,
         };
 
-        // let heights_to_remove = self
-        //     .txs_by_height
-        //     .keys()
-        //     .filter(|h| **h <= height)
-        //     .copied()
-        //     .collect::<Vec<_>>();
-        // for height in heights_to_remove {
         if let Some(tx_ids) = self.txs_by_height.remove(&height) {
             debug!(
                 target: LOG_TARGET,
@@ -324,21 +318,11 @@ impl ReorgPool {
     #[allow(clippy::cast_possible_truncation)]
     #[allow(clippy::cast_sign_loss)]
     pub fn compact(&mut self) {
-        fn shrink_hashmap<K: Eq + Hash, V>(map: &mut HashMap<K, V>) -> (usize, usize) {
-            let cap = map.capacity();
-            let extra_cap = cap - map.len();
-            if extra_cap > 100 {
-                map.shrink_to(map.len() + (extra_cap / 2));
-            }
-
-            (cap, map.capacity())
-        }
-
         let (old, new) = shrink_hashmap(&mut self.tx_by_key);
         shrink_hashmap(&mut self.txs_by_signature);
         shrink_hashmap(&mut self.txs_by_height);
 
-        if old - new > 0 {
+        if old > new {
             debug!(
                 target: LOG_TARGET,
                 "Shrunk reorg mempool memory usage ({}/{}) ~{}%",
@@ -359,18 +343,43 @@ mod test {
     use crate::{
         consensus::ConsensusManagerBuilder,
         test_helpers::create_orphan_block,
-        transactions::tari_amount::MicroTari,
+        transactions::{tari_amount::MicroMinotari, test_helpers::create_test_core_key_manager_with_memory_db},
         tx,
     };
 
-    #[test]
-    fn test_insert_expire_by_height() {
-        let tx1 = Arc::new(tx!(MicroTari(100_000), fee: MicroTari(100), lock: 4000, inputs: 2, outputs: 1).0);
-        let tx2 = Arc::new(tx!(MicroTari(100_000), fee: MicroTari(60), lock: 3000, inputs: 2, outputs: 1).0);
-        let tx3 = Arc::new(tx!(MicroTari(100_000), fee: MicroTari(20), lock: 2500, inputs: 2, outputs: 1).0);
-        let tx4 = Arc::new(tx!(MicroTari(100_000), fee: MicroTari(40), lock: 1000, inputs: 2, outputs: 1).0);
-        let tx5 = Arc::new(tx!(MicroTari(100_000), fee: MicroTari(100), lock: 2000, inputs: 2, outputs: 1).0);
-        let tx6 = Arc::new(tx!(MicroTari(100_000), fee: MicroTari(120), lock: 5500, inputs: 2, outputs: 1).0);
+    #[tokio::test]
+    async fn test_insert_expire_by_height() {
+        let key_manager = create_test_core_key_manager_with_memory_db();
+        let tx1 = Arc::new(
+            tx!(MicroMinotari(100_000), fee: MicroMinotari(100), lock: 4000, inputs: 2, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let tx2 = Arc::new(
+            tx!(MicroMinotari(100_000), fee: MicroMinotari(60), lock: 3000, inputs: 2, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let tx3 = Arc::new(
+            tx!(MicroMinotari(100_000), fee: MicroMinotari(20), lock: 2500, inputs: 2, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let tx4 = Arc::new(
+            tx!(MicroMinotari(100_000), fee: MicroMinotari(40), lock: 1000, inputs: 2, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let tx5 = Arc::new(
+            tx!(MicroMinotari(100_000), fee: MicroMinotari(100), lock: 2000, inputs: 2, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let tx6 = Arc::new(
+            tx!(MicroMinotari(100_000), fee: MicroMinotari(120), lock: 5500, inputs: 2, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
 
         let mut reorg_pool = ReorgPool::new(ReorgPoolConfig { expiry_height: 2 });
         reorg_pool.insert(1, tx1.clone());
@@ -398,11 +407,24 @@ mod test {
         assert!(reorg_pool.has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig));
     }
 
-    #[test]
-    fn test_remove_all() {
-        let tx1 = Arc::new(tx!(MicroTari(100_000), fee: MicroTari(100), lock: 4000, inputs: 2, outputs: 1).0);
-        let tx2 = Arc::new(tx!(MicroTari(100_000), fee: MicroTari(60), lock: 3000, inputs: 2, outputs: 1).0);
-        let tx3 = Arc::new(tx!(MicroTari(100_000), fee: MicroTari(20), lock: 2500, inputs: 2, outputs: 1).0);
+    #[tokio::test]
+    async fn test_remove_all() {
+        let key_manager = create_test_core_key_manager_with_memory_db();
+        let tx1 = Arc::new(
+            tx!(MicroMinotari(100_000), fee: MicroMinotari(100), lock: 4000, inputs: 2, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let tx2 = Arc::new(
+            tx!(MicroMinotari(100_000), fee: MicroMinotari(60), lock: 3000, inputs: 2, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let tx3 = Arc::new(
+            tx!(MicroMinotari(100_000), fee: MicroMinotari(20), lock: 2500, inputs: 2, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
 
         let mut reorg_pool = ReorgPool::new(ReorgPoolConfig { expiry_height: 2 });
         reorg_pool.insert(1, tx1.clone());
@@ -422,16 +444,41 @@ mod test {
         assert!(txs.contains(&tx3));
     }
 
-    #[test]
-    fn remove_scan_for_and_remove_reorged_txs() {
+    #[tokio::test]
+    async fn remove_scan_for_and_remove_reorged_txs() {
+        let key_manager = create_test_core_key_manager_with_memory_db();
         let network = Network::LocalNet;
-        let consensus = ConsensusManagerBuilder::new(network).build();
-        let tx1 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(10), lock: 4000, inputs: 2, outputs: 1).0);
-        let tx2 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(6), lock: 3000, inputs: 2, outputs: 1).0);
-        let tx3 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(4), lock: 2500, inputs: 2, outputs: 1).0);
-        let tx4 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(4), lock: 1000, inputs: 2, outputs: 1).0);
-        let tx5 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(10), lock: 2000, inputs: 2, outputs: 1).0);
-        let tx6 = Arc::new(tx!(MicroTari(10_000), fee: MicroTari(12), lock: 5500, inputs: 2, outputs: 1).0);
+        let consensus = ConsensusManagerBuilder::new(network).build().unwrap();
+        let tx1 = Arc::new(
+            tx!(MicroMinotari(10_000), fee: MicroMinotari(10), lock: 4000, inputs: 2, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let tx2 = Arc::new(
+            tx!(MicroMinotari(10_000), fee: MicroMinotari(6), lock: 3000, inputs: 2, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let tx3 = Arc::new(
+            tx!(MicroMinotari(10_000), fee: MicroMinotari(4), lock: 2500, inputs: 2, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let tx4 = Arc::new(
+            tx!(MicroMinotari(10_000), fee: MicroMinotari(4), lock: 1000, inputs: 2, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let tx5 = Arc::new(
+            tx!(MicroMinotari(10_000), fee: MicroMinotari(10), lock: 2000, inputs: 2, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let tx6 = Arc::new(
+            tx!(MicroMinotari(10_000), fee: MicroMinotari(12), lock: 5500, inputs: 2, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
 
         let mut reorg_pool = ReorgPool::new(ReorgPoolConfig { expiry_height: 10 });
         reorg_pool.insert_all(1, vec![

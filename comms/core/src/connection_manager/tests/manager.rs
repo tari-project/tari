@@ -34,14 +34,12 @@ use tokio::{
 use crate::{
     backoff::ConstantBackoff,
     connection_manager::{
-        error::ConnectionManagerError,
-        manager::ConnectionManagerEvent,
         ConnectionManager,
+        ConnectionManagerError,
+        ConnectionManagerEvent,
         ConnectionManagerRequester,
-        PeerConnectionError,
     },
     net_address::{MultiaddressesWithStats, PeerAddressSource},
-    noise::NoiseConfig,
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags, PeerManagerError},
     protocol::{ProtocolEvent, ProtocolId, Protocols},
     test_utils::{
@@ -51,13 +49,13 @@ use crate::{
         test_node::{build_connection_manager, TestNodeConfig},
     },
     transports::{MemoryTransport, TcpTransport},
+    PeerConnectionError,
 };
 
 #[tokio::test]
 async fn connect_to_nonexistent_peer() {
     let rt_handle = Handle::current();
     let node_identity = build_node_identity(PeerFeatures::empty());
-    let noise_config = NoiseConfig::new(node_identity.clone());
     let (request_tx, request_rx) = mpsc::channel(1);
     let (event_tx, _) = broadcast::channel(1);
     let mut requester = ConnectionManagerRequester::new(request_tx, event_tx.clone());
@@ -68,7 +66,6 @@ async fn connect_to_nonexistent_peer() {
     let connection_manager = ConnectionManager::new(
         Default::default(),
         MemoryTransport,
-        noise_config,
         ConstantBackoff::new(Duration::from_secs(1)),
         request_rx,
         node_identity,
@@ -80,8 +77,7 @@ async fn connect_to_nonexistent_peer() {
     rt_handle.spawn(connection_manager.run());
 
     let err = requester.dial_peer(NodeId::default()).await.unwrap_err();
-    unpack_enum!(ConnectionManagerError::PeerManagerError(err) = err);
-    unpack_enum!(PeerManagerError::PeerNotFoundError = err);
+    unpack_enum!(ConnectionManagerError::PeerManagerError(PeerManagerError::PeerNotFoundError) = err);
 
     shutdown.trigger();
 }
@@ -382,10 +378,6 @@ async fn simultaneous_dial_events() {
 
     let _events1 = collect_try_recv!(subscription1, timeout = Duration::from_secs(5));
     let _events2 = collect_try_recv!(subscription2, timeout = Duration::from_secs(5));
-
-    // TODO: Investigate why two PeerDisconnected events are sometimes received
-    // assert!(count_string_occurrences(&events1, &["PeerDisconnected"]) >= 1);
-    // assert!(count_string_occurrences(&events2, &["PeerDisconnected"]) >= 1);
 }
 
 #[tokio::test]

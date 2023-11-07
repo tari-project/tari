@@ -135,6 +135,24 @@ impl PeerManager {
         self.peer_storage.read().await.all()
     }
 
+    /// Return "good" peers for syncing
+    /// Criteria:
+    ///  - Peer is not banned
+    ///  - Peer has been seen within a defined time span (1 week)
+    ///  - Only returns a maximum number of syncable peers (corresponds with the max possible number of requestable
+    ///    peers to sync)
+    pub async fn discovery_syncing(
+        &self,
+        n: usize,
+        excluded_peers: &[NodeId],
+        features: Option<PeerFeatures>,
+    ) -> Result<Vec<Peer>, PeerManagerError> {
+        self.peer_storage
+            .read()
+            .await
+            .discovery_syncing(n, excluded_peers, features)
+    }
+
     /// Adds or updates a peer and sets the last connection as successful.
     /// If the peer is marked as offline, it will be unmarked.
     pub async fn add_or_update_online_peer(
@@ -218,24 +236,25 @@ impl PeerManager {
             .closest_peers(node_id, n, excluded_peers, features)
     }
 
-    pub async fn mark_last_seen(
-        &self,
-        node_id: &NodeId,
-        addr: &Multiaddr,
-        source: &PeerAddressSource,
-    ) -> Result<(), PeerManagerError> {
+    pub async fn mark_last_seen(&self, node_id: &NodeId, addr: &Multiaddr) -> Result<(), PeerManagerError> {
         let mut lock = self.peer_storage.write().await;
-        let peer = lock.find_by_node_id(node_id)?;
-        match peer {
-            Some(mut peer) => {
-                // if we have an address, update it
-                peer.addresses.add_address(addr, source);
-                peer.addresses.mark_last_seen_now(addr);
-                lock.add_peer(peer)?;
-                Ok(())
-            },
-            None => Err(PeerManagerError::PeerNotFoundError),
-        }
+        let mut peer = lock
+            .find_by_node_id(node_id)?
+            .ok_or(PeerManagerError::PeerNotFoundError)?;
+        let source = peer
+            .addresses
+            .iter()
+            .find(|a| a.address() == addr)
+            .map(|a| a.source().clone())
+            .ok_or_else(|| PeerManagerError::AddressNotFoundError {
+                address: addr.clone(),
+                node_id: node_id.clone(),
+            })?;
+        // if we have an address, update it
+        peer.addresses.add_address(addr, &source);
+        peer.addresses.mark_last_seen_now(addr);
+        lock.add_peer(peer)?;
+        Ok(())
     }
 
     /// Fetch n random peers
@@ -347,7 +366,9 @@ impl fmt::Debug for PeerManager {
 
 #[cfg(test)]
 mod test {
-    use rand::rngs::OsRng;
+    use std::borrow::BorrowMut;
+
+    use rand::{rngs::OsRng, Rng};
     use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
     use tari_storage::HashmapDatabase;
 
@@ -364,10 +385,22 @@ mod test {
     fn create_test_peer(ban_flag: bool, features: PeerFeatures) -> Peer {
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut OsRng);
         let node_id = NodeId::from_key(&pk);
-        let net_addresses = MultiaddressesWithStats::from_addresses_with_source(
-            vec!["/ip4/1.2.3.4/tcp/8000".parse::<Multiaddr>().unwrap()],
-            &PeerAddressSource::Config,
-        );
+        let mut net_addresses = MultiaddressesWithStats::from_addresses_with_source(vec![], &PeerAddressSource::Config);
+
+        // Create 1 to 4 random addresses
+        for _i in 1..=rand::thread_rng().gen_range(1..4) {
+            let n = vec![
+                rand::thread_rng().gen_range(1..9),
+                rand::thread_rng().gen_range(1..9),
+                rand::thread_rng().gen_range(1..9),
+                rand::thread_rng().gen_range(1..9),
+            ];
+            let net_address = format!("/ip4/{}.{}.{}.{}/tcp/{0}{1}{2}{3}", n[0], n[1], n[2], n[3],)
+                .parse::<Multiaddr>()
+                .unwrap();
+            net_addresses.add_address(&net_address, &PeerAddressSource::Config);
+        }
+
         let mut peer = Peer::new(
             pk,
             node_id,
@@ -380,6 +413,11 @@ mod test {
         if ban_flag {
             peer.ban_for(Duration::from_secs(1000), "".to_string());
         }
+
+        let good_addresses = peer.addresses.borrow_mut();
+        let good_address = good_addresses.addresses()[0].address().clone();
+        good_addresses.mark_last_seen_now(&good_address);
+
         peer
     }
 

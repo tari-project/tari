@@ -42,7 +42,7 @@ use crate::{
     WalletSqlite,
 };
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Default, Debug, Clone, PartialEq)]
 pub enum UtxoScannerMode {
     #[default]
     Recovery,

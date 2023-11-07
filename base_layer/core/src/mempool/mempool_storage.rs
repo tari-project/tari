@@ -32,14 +32,17 @@ use crate::{
     mempool::{
         error::MempoolError,
         reorg_pool::ReorgPool,
-        unconfirmed_pool::UnconfirmedPool,
+        unconfirmed_pool::{UnconfirmedPool, UnconfirmedPoolError},
         FeePerGramStat,
         MempoolConfig,
         StateResponse,
         StatsResponse,
         TxStorageResponse,
     },
-    transactions::{transaction_components::Transaction, weight::TransactionWeight},
+    transactions::{
+        transaction_components::{Transaction, TransactionError},
+        weight::TransactionWeight,
+    },
     validation::{TransactionValidator, ValidationError},
 };
 
@@ -53,6 +56,7 @@ pub struct MempoolStorage {
     reorg_pool: ReorgPool,
     validator: Box<dyn TransactionValidator>,
     rules: ConsensusManager,
+    last_seen_height: u64,
 }
 
 impl MempoolStorage {
@@ -63,12 +67,12 @@ impl MempoolStorage {
             reorg_pool: ReorgPool::new(config.reorg_pool),
             validator,
             rules,
+            last_seen_height: 0,
         }
     }
 
-    /// Insert an unconfirmed transaction into the Mempool. The transaction *MUST* have passed through the validation
-    /// pipeline already and will thus always be internally consistent by this stage
-    pub fn insert(&mut self, tx: Arc<Transaction>) -> TxStorageResponse {
+    /// Insert an unconfirmed transaction into the Mempool.
+    pub fn insert(&mut self, tx: Arc<Transaction>) -> Result<TxStorageResponse, UnconfirmedPoolError> {
         let tx_id = tx
             .body
             .kernels()
@@ -77,6 +81,18 @@ impl MempoolStorage {
             .unwrap_or_else(|| "None?!".into());
         let timer = Instant::now();
         debug!(target: LOG_TARGET, "Inserting tx into mempool: {}", tx_id);
+        let tx_fee = match tx.body.get_total_fee() {
+            Ok(fee) => fee,
+            Err(e) => {
+                warn!(target: LOG_TARGET, "Invalid transaction: {}", e);
+                return Ok(TxStorageResponse::NotStoredConsensus);
+            },
+        };
+        // This check is almost free, so lets check this before we do any expensive validation.
+        if tx_fee.as_u64() < self.unconfirmed_pool.config.min_fee {
+            debug!(target: LOG_TARGET, "Tx: ({}) fee too low, rejecting",tx_id);
+            return Ok(TxStorageResponse::NotStoredFeeTooLow);
+        }
         match self.validator.validate(&tx) {
             Ok(()) => {
                 debug!(
@@ -86,62 +102,66 @@ impl MempoolStorage {
                     timer.elapsed()
                 );
                 let timer = Instant::now();
-                let weight = self.get_transaction_weighting(0);
-                self.unconfirmed_pool.insert(tx, None, &weight);
+                let weight = self.get_transaction_weighting();
+                self.unconfirmed_pool.insert(tx, None, &weight)?;
                 debug!(
                     target: LOG_TARGET,
                     "Transaction {} inserted in {:.2?}",
                     tx_id,
                     timer.elapsed()
                 );
-                TxStorageResponse::UnconfirmedPool
+                Ok(TxStorageResponse::UnconfirmedPool)
             },
             Err(ValidationError::UnknownInputs(dependent_outputs)) => {
                 if self.unconfirmed_pool.contains_all_outputs(&dependent_outputs) {
-                    let weight = self.get_transaction_weighting(0);
-                    self.unconfirmed_pool.insert(tx, Some(dependent_outputs), &weight);
-                    TxStorageResponse::UnconfirmedPool
+                    let weight = self.get_transaction_weighting();
+                    self.unconfirmed_pool.insert(tx, Some(dependent_outputs), &weight)?;
+                    Ok(TxStorageResponse::UnconfirmedPool)
                 } else {
                     warn!(target: LOG_TARGET, "Validation failed due to unknown inputs");
-                    TxStorageResponse::NotStoredOrphan
+                    Ok(TxStorageResponse::NotStoredOrphan)
                 }
             },
             Err(ValidationError::ContainsSTxO) => {
                 warn!(target: LOG_TARGET, "Validation failed due to already spent input");
-                TxStorageResponse::NotStoredAlreadySpent
+                Ok(TxStorageResponse::NotStoredAlreadySpent)
             },
             Err(ValidationError::MaturityError) => {
                 warn!(target: LOG_TARGET, "Validation failed due to maturity error");
-                TxStorageResponse::NotStoredTimeLocked
+                Ok(TxStorageResponse::NotStoredTimeLocked)
             },
             Err(ValidationError::ConsensusError(msg)) => {
                 warn!(target: LOG_TARGET, "Validation failed due to consensus rule: {}", msg);
-                TxStorageResponse::NotStoredConsensus
+                Ok(TxStorageResponse::NotStoredConsensus)
             },
             Err(ValidationError::DuplicateKernelError(msg)) => {
                 debug!(
                     target: LOG_TARGET,
                     "Validation failed due to already mined kernel: {}", msg
                 );
-                TxStorageResponse::NotStoredAlreadyMined
+                Ok(TxStorageResponse::NotStoredAlreadyMined)
             },
             Err(e) => {
                 eprintln!("Validation failed due to error: {}", e);
                 warn!(target: LOG_TARGET, "Validation failed due to error: {}", e);
-                TxStorageResponse::NotStored
+                Ok(TxStorageResponse::NotStored)
             },
         }
     }
 
-    fn get_transaction_weighting(&self, height: u64) -> TransactionWeight {
-        *self.rules.consensus_constants(height).transaction_weight()
+    fn get_transaction_weighting(&self) -> TransactionWeight {
+        *self
+            .rules
+            .consensus_constants(self.last_seen_height)
+            .transaction_weight_params()
     }
 
     // Insert a set of new transactions into the UTxPool.
-    fn insert_txs(&mut self, txs: Vec<Arc<Transaction>>) {
+    fn insert_txs(&mut self, txs: Vec<Arc<Transaction>>) -> Result<(), UnconfirmedPoolError> {
         for tx in txs {
-            self.insert(tx);
+            self.insert(tx)?;
         }
+        Ok(())
     }
 
     /// Update the Mempool based on the received published block.
@@ -157,7 +177,7 @@ impl MempoolStorage {
         // Move published txs to ReOrgPool and discard double spends
         let removed_transactions = self
             .unconfirmed_pool
-            .remove_published_and_discard_deprecated_transactions(published_block);
+            .remove_published_and_discard_deprecated_transactions(published_block)?;
         debug!(
             target: LOG_TARGET,
             "{} transactions removed from unconfirmed pool in {:.2?}, moving them to reorg pool for block #{} ({}) {}",
@@ -182,8 +202,12 @@ impl MempoolStorage {
         self.unconfirmed_pool.compact();
         self.reorg_pool.compact();
 
+        self.last_seen_height = published_block.header.height;
         debug!(target: LOG_TARGET, "Compaction took {:.2?}", timer.elapsed());
-        debug!(target: LOG_TARGET, "{}", self.stats());
+        match self.stats() {
+            Ok(stats) => debug!(target: LOG_TARGET, "{}", stats),
+            Err(e) => warn!(target: LOG_TARGET, "error to obtain stats: {}", e),
+        }
         Ok(())
     }
 
@@ -196,10 +220,11 @@ impl MempoolStorage {
         );
         let txs = self
             .unconfirmed_pool
-            .remove_published_and_discard_deprecated_transactions(failed_block);
+            .remove_published_and_discard_deprecated_transactions(failed_block)?;
 
         // Reinsert them to validate if they are still valid
-        self.insert_txs(txs);
+        self.insert_txs(txs)
+            .map_err(|e| MempoolError::InternalError(e.to_string()))?;
         self.unconfirmed_pool.compact();
 
         Ok(())
@@ -219,12 +244,21 @@ impl MempoolStorage {
         // after a reorg.
         let removed_txs = self.unconfirmed_pool.drain_all_mempool_transactions();
         // Try to add in all the transactions again.
-        self.insert_txs(removed_txs);
+        self.insert_txs(removed_txs)
+            .map_err(|e| MempoolError::InternalError(e.to_string()))?;
         // Remove re-orged transactions from reorg  pool and re-submit them to the unconfirmed mempool
         let removed_txs = self
             .reorg_pool
             .remove_reorged_txs_and_discard_double_spends(removed_blocks, new_blocks);
-        self.insert_txs(removed_txs);
+        self.insert_txs(removed_txs)
+            .map_err(|e| MempoolError::InternalError(e.to_string()))?;
+        if let Some(height) = new_blocks
+            .last()
+            .or_else(|| removed_blocks.first())
+            .map(|block| block.header.height)
+        {
+            self.last_seen_height = height;
+        }
         Ok(())
     }
 
@@ -235,15 +269,16 @@ impl MempoolStorage {
         // we dont have the data to know what.
         let txs = self.unconfirmed_pool.drain_all_mempool_transactions();
         // lets add them all back into the mempool
-        self.insert_txs(txs);
+        self.insert_txs(txs)
+            .map_err(|e| MempoolError::InternalError(e.to_string()))?;
         // let retrieve all re-org pool transactions as well as make sure they are mined as well
         let txs = self.reorg_pool.clear_and_retrieve_all();
-        self.insert_txs(txs);
+        self.insert_txs(txs)
+            .map_err(|e| MempoolError::InternalError(e.to_string()))?;
         Ok(())
     }
 
     /// Returns all unconfirmed transaction stored in the Mempool, except the transactions stored in the ReOrgPool.
-    // TODO: Investigate returning an iterator rather than a large vector of transactions
     pub fn snapshot(&self) -> Vec<Arc<Transaction>> {
         self.unconfirmed_pool.snapshot()
     }
@@ -252,18 +287,24 @@ impl MempoolStorage {
     /// Will only return transactions that will fit into the given weight
     pub fn retrieve_and_revalidate(&mut self, total_weight: u64) -> Result<Vec<Arc<Transaction>>, MempoolError> {
         let results = self.unconfirmed_pool.fetch_highest_priority_txs(total_weight)?;
-        self.insert_txs(results.transactions_to_insert);
+        self.insert_txs(results.transactions_to_insert)
+            .map_err(|e| MempoolError::InternalError(e.to_string()))?;
         Ok(results.retrieved_transactions)
     }
 
-    pub fn retrieve_by_excess_sigs(&self, excess_sigs: &[PrivateKey]) -> (Vec<Arc<Transaction>>, Vec<PrivateKey>) {
-        let (found_txns, remaining) = self.unconfirmed_pool.retrieve_by_excess_sigs(excess_sigs);
-        let (found_published_transactions, remaining) = self.reorg_pool.retrieve_by_excess_sigs(&remaining);
+    pub fn retrieve_by_excess_sigs(
+        &self,
+        excess_sigs: &[PrivateKey],
+    ) -> Result<(Vec<Arc<Transaction>>, Vec<PrivateKey>), MempoolError> {
+        let (found_txns, remaining) = self.unconfirmed_pool.retrieve_by_excess_sigs(excess_sigs)?;
 
-        (
-            found_txns.into_iter().chain(found_published_transactions).collect(),
-            remaining,
-        )
+        match self.reorg_pool.retrieve_by_excess_sigs(&remaining) {
+            Ok((found_published_transactions, remaining)) => Ok((
+                found_txns.into_iter().chain(found_published_transactions).collect(),
+                remaining,
+            )),
+            Err(e) => Err(e),
+        }
     }
 
     /// Check if the specified excess signature is found in the Mempool.
@@ -310,13 +351,13 @@ impl MempoolStorage {
     }
 
     /// Gathers and returns the stats of the Mempool.
-    pub fn stats(&self) -> StatsResponse {
-        let weighting = self.get_transaction_weighting(0);
-        StatsResponse {
+    pub fn stats(&self) -> Result<StatsResponse, TransactionError> {
+        let weighting = self.get_transaction_weighting();
+        Ok(StatsResponse {
             unconfirmed_txs: self.unconfirmed_pool.len() as u64,
             reorg_txs: self.reorg_pool.len() as u64,
-            unconfirmed_weight: self.unconfirmed_pool.calculate_weight(&weighting),
-        }
+            unconfirmed_weight: self.unconfirmed_pool.calculate_weight(&weighting)?,
+        })
     }
 
     /// Gathers and returns a breakdown of all the transaction in the Mempool.
@@ -338,7 +379,8 @@ impl MempoolStorage {
         let target_weight = self
             .rules
             .consensus_constants(tip_height)
-            .get_max_block_weight_excluding_coinbase();
+            .max_block_weight_excluding_coinbase()
+            .map_err(|e| MempoolError::InternalError(e.to_string()))?;
         let stats = self.unconfirmed_pool.get_fee_per_gram_stats(count, target_weight)?;
         Ok(stats)
     }

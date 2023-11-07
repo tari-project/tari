@@ -29,7 +29,7 @@ use tari_comms_dht::Dht;
 use tari_p2p::{
     comms_connector::{PeerMessage, SubscriptionFactory},
     domain_message::DomainMessage,
-    services::utils::{map_decode, ok_or_skip_result},
+    services::utils::map_decode,
     tari_message::TariMessageType,
 };
 use tari_service_framework::{
@@ -39,6 +39,7 @@ use tari_service_framework::{
     ServiceInitializer,
     ServiceInitializerContext,
 };
+use thiserror::Error;
 use tokio::sync::{broadcast, mpsc};
 
 use crate::{
@@ -51,6 +52,7 @@ use crate::{
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     consensus::ConsensusManager,
     mempool::Mempool,
+    proof_of_work::randomx_factory::RandomXFactory,
     proto as shared_protos,
     proto::base_node as proto,
 };
@@ -65,6 +67,7 @@ pub struct BaseNodeServiceInitializer<T> {
     mempool: Mempool,
     consensus_manager: ConsensusManager,
     service_request_timeout: Duration,
+    randomx_factory: RandomXFactory,
 }
 
 impl<T> BaseNodeServiceInitializer<T>
@@ -77,6 +80,7 @@ where T: BlockchainBackend
         mempool: Mempool,
         consensus_manager: ConsensusManager,
         service_request_timeout: Duration,
+        randomx_factory: RandomXFactory,
     ) -> Self {
         Self {
             inbound_message_subscription_factory,
@@ -84,62 +88,62 @@ where T: BlockchainBackend
             mempool,
             consensus_manager,
             service_request_timeout,
+            randomx_factory,
         }
     }
 
     /// Get a stream for inbound Base Node request messages
-    fn inbound_request_stream(&self) -> impl Stream<Item = DomainMessage<proto::BaseNodeServiceRequest>> {
+    fn inbound_request_stream(
+        &self,
+    ) -> impl Stream<Item = DomainMessage<Result<proto::BaseNodeServiceRequest, prost::DecodeError>>> {
         self.inbound_message_subscription_factory
             .get_subscription(TariMessageType::BaseNodeRequest, SUBSCRIPTION_LABEL)
             .map(map_decode::<proto::BaseNodeServiceRequest>)
-            .filter_map(ok_or_skip_result)
     }
 
     /// Get a stream for inbound Base Node response messages
-    fn inbound_response_stream(&self) -> impl Stream<Item = DomainMessage<proto::BaseNodeServiceResponse>> {
+    fn inbound_response_stream(
+        &self,
+    ) -> impl Stream<Item = DomainMessage<Result<proto::BaseNodeServiceResponse, prost::DecodeError>>> {
         self.inbound_message_subscription_factory
             .get_subscription(TariMessageType::BaseNodeResponse, SUBSCRIPTION_LABEL)
             .map(map_decode::<proto::BaseNodeServiceResponse>)
-            .filter_map(ok_or_skip_result)
     }
 
     /// Create a stream of 'New Block` messages
-    fn inbound_block_stream(&self) -> impl Stream<Item = DomainMessage<NewBlock>> {
+    fn inbound_block_stream(&self) -> impl Stream<Item = DomainMessage<Result<NewBlock, ExtractBlockError>>> {
         self.inbound_message_subscription_factory
             .get_subscription(TariMessageType::NewBlock, SUBSCRIPTION_LABEL)
-            .filter_map(extract_block)
+            .map(extract_block)
     }
 }
 
-async fn extract_block(msg: Arc<PeerMessage>) -> Option<DomainMessage<NewBlock>> {
-    match msg.decode_message::<shared_protos::core::NewBlock>() {
+#[derive(Error, Debug)]
+pub enum ExtractBlockError {
+    #[error("Could not decode inbound block message. {0}")]
+    DecodeError(#[from] prost::DecodeError),
+    #[error("Inbound block message was ill-formed. {0}")]
+    MalformedMessage(String),
+}
+
+fn extract_block(msg: Arc<PeerMessage>) -> DomainMessage<Result<NewBlock, ExtractBlockError>> {
+    let new_block = match msg.decode_message::<shared_protos::core::NewBlock>() {
+        Ok(block) => block,
         Err(e) => {
-            warn!(
-                target: LOG_TARGET,
-                "Could not decode inbound block message. {}",
-                e.to_string()
-            );
-            None
-        },
-        Ok(new_block) => {
-            let block = match NewBlock::try_from(new_block) {
-                Err(e) => {
-                    let origin = &msg.source_peer.node_id;
-                    warn!(
-                        target: LOG_TARGET,
-                        "Inbound block message from {} was ill-formed. {}", origin, e
-                    );
-                    return None;
-                },
-                Ok(b) => b,
-            };
-            Some(DomainMessage {
+            return DomainMessage {
                 source_peer: msg.source_peer.clone(),
                 dht_header: msg.dht_header.clone(),
                 authenticated_origin: msg.authenticated_origin.clone(),
-                inner: block,
-            })
+                inner: Err(e.into()),
+            }
         },
+    };
+    let block = NewBlock::try_from(new_block).map_err(ExtractBlockError::MalformedMessage);
+    DomainMessage {
+        source_peer: msg.source_peer.clone(),
+        dht_header: msg.dht_header.clone(),
+        authenticated_origin: msg.authenticated_origin.clone(),
+        inner: block,
     }
 }
 
@@ -175,6 +179,7 @@ where T: BlockchainBackend + 'static
         let blockchain_db = self.blockchain_db.clone();
         let mempool = self.mempool.clone();
         let consensus_manager = self.consensus_manager.clone();
+        let randomx_factory = self.randomx_factory.clone();
 
         context.spawn_when_ready(move |handles| async move {
             let dht = handles.expect_handle::<Dht>();
@@ -189,7 +194,8 @@ where T: BlockchainBackend + 'static
                 mempool,
                 consensus_manager,
                 outbound_nci.clone(),
-                connectivity,
+                connectivity.clone(),
+                randomx_factory,
             );
 
             let streams = BaseNodeStreams {
@@ -206,6 +212,7 @@ where T: BlockchainBackend + 'static
                 inbound_nch,
                 service_request_timeout,
                 state_machine,
+                connectivity,
             )
             .start(streams);
             futures::pin_mut!(service);

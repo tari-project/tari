@@ -140,8 +140,8 @@ loggers:
     appenders:
       - other
     additive: false
-  # Route log events sent to the "tari_mm_proxy" logger to the "mm_proxy" appender
-  tari_mm_proxy:
+  # Route log events sent to the "minotari_mm_proxy" logger to the "mm_proxy" appender
+  minotari_mm_proxy:
     level: debug
     appenders:
       - mm_proxy

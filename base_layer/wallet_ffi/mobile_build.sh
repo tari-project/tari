@@ -88,12 +88,12 @@ if [ -n "${DEPENDENCIES}" ] && [ -n "${PKG_PATH}" ] && [ "${BUILD_IOS}" -eq 1 ] 
   cd universal || exit
   cd release || exit
   # Create the fat library from the thin ones.
-  cp "../../x86_64-apple-ios/release/libtari_wallet_ffi.a" "${PWD}/libtari_wallet_ffi_x86_64.a" || exit
-  cp "../../aarch64-apple-ios/release/libtari_wallet_ffi.a" "${PWD}/libtari_wallet_ffi_aarch64.a" || exit
+  cp "../../x86_64-apple-ios/release/libminotari_wallet_ffi.a" "${PWD}/libminotari_wallet_ffi_x86_64.a" || exit
+  cp "../../aarch64-apple-ios/release/libminotari_wallet_ffi.a" "${PWD}/libminotari_wallet_ffi_aarch64.a" || exit
   lipo -create libtari_wallet_ffi_x86_64.a libtari_wallet_ffi_aarch64.a -output libtari_wallet_ffi.a
   # Copy the fat library (which contains symbols for all built iOS architectures) created by the lipo tool
   # XCode will select the relevant set of symbols to be included in the mobile application depending on which arch is built
-  cp libtari_wallet_ffi.a "${DEPENDENCIES}/MobileWallet/TariLib/" || exit
+  cp libminotari_wallet_ffi.a "${DEPENDENCIES}/MobileWallet/TariLib/" || exit
   cd ../../.. || exit
   if [ "${TARGET_CLEAN}" -eq 1 ]; then
     rm -rf target
@@ -433,7 +433,7 @@ EOF
       cd target || exit
       cd ${PLATFORMABI} || exit
       cd release || exit
-      cp libtari_wallet_ffi.a "${OUTPUT_DIR}"
+      cp libminotari_wallet_ffi.a "${OUTPUT_DIR}"
       cd ../..
       if [ "${TARGET_CLEAN}" -eq 1 ]; then
         rm -rf target
@@ -448,7 +448,7 @@ EOF
         cp "${OUTPUT_DIR}/usr/local/lib/libcrypto.a" "${PWD}"
         cp "${OUTPUT_DIR}/usr/local/lib/libssl.a" "${PWD}"
       fi
-      cp "${OUTPUT_DIR}/libtari_wallet_ffi.a" "${PWD}"
+      cp "${OUTPUT_DIR}/libminotari_wallet_ffi.a" "${PWD}"
       # shellcheck disable=SC2028
       echo "\t${GREEN}Wallet library built for android architecture ${PLATFORM_OUTDIR} with minimum platform level support of ${LEVEL}${NC}"
     done

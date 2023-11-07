@@ -31,7 +31,6 @@ use tokio::{
     sync::{broadcast, broadcast::error::RecvError, mpsc, oneshot},
     time,
 };
-use tracing;
 
 use super::{
     connection_pool::PeerConnectionState,
@@ -128,7 +127,6 @@ impl ConnectivityRequester {
     }
 
     /// Dial a single peer
-    #[tracing::instrument(level = "trace", skip(self))]
     pub async fn dial_peer(&self, peer: NodeId) -> Result<PeerConnection, ConnectivityError> {
         let mut num_cancels = 0;
         loop {
@@ -158,7 +156,6 @@ impl ConnectivityRequester {
     }
 
     /// Dial many peers, returning a Stream that emits the dial Result as each dial completes.
-    #[tracing::instrument(level = "trace", skip(self, peers))]
     #[allow(clippy::let_with_type_underscore)]
     pub fn dial_many_peers<I: IntoIterator<Item = NodeId>>(
         &self,
@@ -171,7 +168,6 @@ impl ConnectivityRequester {
     }
 
     /// Send a request to dial many peers without waiting for the response.
-    #[tracing::instrument(level = "trace", skip(self, peers))]
     pub async fn request_many_dials<I: IntoIterator<Item = NodeId>>(&self, peers: I) -> Result<(), ConnectivityError> {
         future::join_all(peers.into_iter().map(|peer| {
             self.sender.send(ConnectivityRequest::DialPeer {
@@ -248,14 +244,14 @@ impl ConnectivityRequester {
     }
 
     /// Ban peer for the given Duration. The ban `reason` is persisted in the peer database for reference.
-    pub async fn ban_peer_until(
+    pub async fn ban_peer_until<T: Into<String>>(
         &mut self,
         node_id: NodeId,
         duration: Duration,
-        reason: String,
+        reason: T,
     ) -> Result<(), ConnectivityError> {
         self.sender
-            .send(ConnectivityRequest::BanPeer(node_id, duration, reason))
+            .send(ConnectivityRequest::BanPeer(node_id, duration, reason.into()))
             .await
             .map_err(|_| ConnectivityError::ActorDisconnected)?;
         Ok(())

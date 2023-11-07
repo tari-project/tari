@@ -24,8 +24,10 @@ use std::{path::Path, time::Duration};
 
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::serializers;
+use tari_comms::peer_validator::PeerValidatorConfig;
 
 use crate::{
+    actor::OffenceSeverity,
     network_discovery::NetworkDiscoveryConfig,
     storage::DbConnectionUrl,
     store_forward::SafConfig,
@@ -82,16 +84,14 @@ pub struct DhtConfig {
     /// Network discovery config
     pub network_discovery: NetworkDiscoveryConfig,
     /// Length of time to ban a peer if the peer misbehaves at the DHT-level.
-    /// Default: 6 hrs
+    /// Default: 2 hrs
     #[serde(with = "serializers::seconds")]
     pub ban_duration: Duration,
     /// Length of time to ban a peer for a "short" duration.
-    /// Default: 30 mins
+    /// Default: 10 mins
     #[serde(with = "serializers::seconds")]
     pub ban_duration_short: Duration,
-    /// This allows the use of test addresses in the network.
-    /// Default: false
-    pub allow_test_addresses: bool,
+
     /// The maximum number of messages over `flood_ban_timespan` to allow before banning the peer (for
     /// `ban_duration_short`) Default: 100_000 messages
     pub flood_ban_max_msg_count: usize,
@@ -106,6 +106,12 @@ pub struct DhtConfig {
     /// Default: 24 hours
     #[serde(with = "serializers::seconds")]
     pub offline_peer_cooldown: Duration,
+    /// The maximum number of peer claims accepted by this node. Only peer sync sends more than one claim.
+    /// Default: 5
+    pub max_permitted_peer_claims: usize,
+    /// Configuration for peer validation
+    /// See [PeerValidatorConfig]
+    pub peer_validator_config: PeerValidatorConfig,
 }
 
 impl DhtConfig {
@@ -133,7 +139,10 @@ impl DhtConfig {
                 enabled: false,
                 ..Default::default()
             },
-            allow_test_addresses: true,
+            peer_validator_config: PeerValidatorConfig {
+                allow_test_addresses: true,
+                ..Default::default()
+            },
             ..Default::default()
         }
     }
@@ -141,6 +150,14 @@ impl DhtConfig {
     /// Sets relative paths to use a common base path
     pub fn set_base_path<P: AsRef<Path>>(&mut self, base_path: P) {
         self.database_url.set_base_path(base_path);
+    }
+
+    /// Returns a ban duration from the given severity
+    pub fn ban_duration_from_severity(&self, severity: OffenceSeverity) -> Duration {
+        match severity {
+            OffenceSeverity::Low | OffenceSeverity::Medium => self.ban_duration_short,
+            OffenceSeverity::High => self.ban_duration,
+        }
     }
 }
 
@@ -164,16 +181,13 @@ impl Default for DhtConfig {
             auto_join: false,
             join_cooldown_interval: Duration::from_secs(10 * 60),
             network_discovery: Default::default(),
-            ban_duration: Duration::from_secs(6 * 60 * 60),
-            ban_duration_short: Duration::from_secs(60 * 60),
-            allow_test_addresses: false,
+            ban_duration: Duration::from_secs(2 * 60 * 60),
+            ban_duration_short: Duration::from_secs(10 * 60),
             flood_ban_max_msg_count: 100_000,
             flood_ban_timespan: Duration::from_secs(100),
-            // TODO: This should be depending on the kind of offline..... If it has been seen, it is different
-            // to a peer that is not seen at all
-            // Also, 2 hours is too short, because we'll cycle through 2000 peers every two hours
-            // Setting it to 24 hours for now
+            max_permitted_peer_claims: 5,
             offline_peer_cooldown: Duration::from_secs(24 * 60 * 60),
+            peer_validator_config: Default::default(),
         }
     }
 }

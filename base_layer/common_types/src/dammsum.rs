@@ -114,11 +114,9 @@ mod test {
         // Generate identical random data
         let mut rng = rand::thread_rng();
         let data_0: Vec<u8> = (0..SIZE).map(|_| rng.gen::<u8>()).collect();
-        #[allow(clippy::redundant_clone)]
-        let data_1 = data_0.clone();
-
-        // Compute the checksums
         let check_0 = compute_checksum(&data_0);
+
+        let data_1 = data_0;
         let check_1 = compute_checksum(&data_1);
 
         // They should be equal

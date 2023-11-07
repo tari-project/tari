@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use log::*;
+use tari_comms::connectivity::ConnectivityRequester;
 use tari_p2p::services::liveness::LivenessHandle;
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tokio::sync::broadcast;
@@ -36,17 +37,17 @@ pub struct ChainMetadataServiceInitializer;
 impl ServiceInitializer for ChainMetadataServiceInitializer {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         debug!(target: LOG_TARGET, "Initializing Chain Metadata Service");
-        // Buffer size set to 1 because only the most recent metadata is applicable
         let (publisher, _) = broadcast::channel(20);
 
         let handle = ChainMetadataHandle::new(publisher.clone());
         context.register_handle(handle);
 
         context.spawn_until_shutdown(|handles| {
+            let connectivity = handles.expect_handle::<ConnectivityRequester>();
             let liveness = handles.expect_handle::<LivenessHandle>();
             let base_node = handles.expect_handle::<LocalNodeCommsInterface>();
 
-            ChainMetadataService::new(liveness, base_node, publisher).run()
+            ChainMetadataService::new(liveness, base_node, connectivity, publisher).run()
         });
 
         debug!(target: LOG_TARGET, "Chain Metadata Service initialized");

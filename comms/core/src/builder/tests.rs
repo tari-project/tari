@@ -48,6 +48,7 @@ use crate::{
     protocol::{
         messaging::{MessagingEvent, MessagingEventSender, MessagingProtocolExtension},
         ProtocolEvent,
+        ProtocolId,
         Protocols,
     },
     test_utils::node_identity::build_node_identity,
@@ -89,16 +90,20 @@ async fn spawn_node(
     let (messaging_events_sender, _) = broadcast::channel(100);
     let comms_node = comms_node
         .add_protocol_extensions(protocols.into())
-        .add_protocol_extension(MessagingProtocolExtension::new(
-            messaging_events_sender.clone(),
-            pipeline::Builder::new()
+        .add_protocol_extension(
+            MessagingProtocolExtension::new(
+                ProtocolId::from_static(b"test/msg"),
+                messaging_events_sender.clone(),
+                pipeline::Builder::new()
                 // Outbound messages will be forwarded "as is" to outbound messaging
                 .with_outbound_pipeline(outbound_rx, identity)
                 .max_concurrent_inbound_tasks(1)
                 // Inbound messages will be forwarded "as is" to inbound_tx
                 .with_inbound_pipeline(SinkService::new(inbound_tx))
                 .build(),
-        ))
+            )
+            .enable_message_received_event(),
+        )
         .spawn_with_transport(MemoryTransport)
         .await
         .unwrap();
@@ -251,7 +256,7 @@ async fn peer_to_peer_messaging() {
 
     let events = collect_recv!(messaging_events2, take = NUM_MSGS, timeout = Duration::from_secs(10));
     events.into_iter().for_each(|m| {
-        unpack_enum!(MessagingEvent::MessageReceived(_n, _t) = &*m);
+        unpack_enum!(MessagingEvent::MessageReceived(_n, _t) = &m);
     });
 
     // Send NUM_MSGS messages from node 2 to node 1

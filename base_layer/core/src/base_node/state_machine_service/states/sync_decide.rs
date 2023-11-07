@@ -20,8 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::cmp::Ordering;
-
 use log::*;
 
 use crate::{
@@ -40,9 +38,14 @@ const LOG_TARGET: &str = "c::bn::state_machine_service::states::sync_decide";
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DecideNextSync {
     sync_peers: Vec<SyncPeer>,
+    is_synced: bool,
 }
 
 impl DecideNextSync {
+    pub fn is_synced(&self) -> bool {
+        self.is_synced
+    }
+
     pub async fn next_event<B: BlockchainBackend + 'static>(&mut self, shared: &BaseNodeStateMachine<B>) -> StateEvent {
         use StateEvent::{Continue, FatalError, ProceedToBlockSync, ProceedToHorizonSync};
         let local_metadata = match shared.db.get_chain_metadata().await {
@@ -64,7 +67,7 @@ impl DecideNextSync {
                 Err(err) => return err.into(),
             };
 
-            let horizon_sync_height = local_metadata.horizon_block(last_header.height);
+            let horizon_sync_height = local_metadata.horizon_block_height(last_header.height);
             // Filter sync peers that claim to be able to provide blocks up until our pruned height
             let sync_peers = self
                 .sync_peers
@@ -121,55 +124,9 @@ impl DecideNextSync {
 
 impl From<HeaderSyncState> for DecideNextSync {
     fn from(sync: HeaderSyncState) -> Self {
-        sync.into_sync_peers().into()
-    }
-}
-
-impl From<Vec<SyncPeer>> for DecideNextSync {
-    fn from(mut sync_peers: Vec<SyncPeer>) -> Self {
-        sync_peers.sort_by(|a, b| match (a.latency(), b.latency()) {
-            (None, None) => Ordering::Equal,
-            // No latency goes to the end
-            (Some(_), None) => Ordering::Less,
-            (None, Some(_)) => Ordering::Greater,
-            (Some(la), Some(lb)) => la.cmp(&lb),
-        });
-        Self { sync_peers }
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use std::time::Duration;
-
-    use rand::{rngs::OsRng, seq::SliceRandom};
-    use tari_common_types::chain_metadata::ChainMetadata;
-
-    use super::*;
-
-    mod sort_by_latency {
-        use super::*;
-        use crate::base_node::chain_metadata_service::PeerChainMetadata;
-
-        #[test]
-        fn it_sorts_by_latency() {
-            let peers = (0..10)
-                .map(|i| {
-                    PeerChainMetadata::new(
-                        Default::default(),
-                        ChainMetadata::empty(),
-                        Some(Duration::from_millis(i)),
-                    )
-                    .into()
-                })
-                .chain(Some(
-                    PeerChainMetadata::new(Default::default(), ChainMetadata::empty(), None).into(),
-                ))
-                .collect::<Vec<SyncPeer>>();
-            let mut shuffled = peers.clone();
-            shuffled.shuffle(&mut OsRng);
-            let decide = DecideNextSync::from(shuffled);
-            assert_eq!(decide.sync_peers, peers);
-        }
+        let is_synced = sync.is_synced();
+        let mut sync_peers = sync.into_sync_peers();
+        sync_peers.sort();
+        DecideNextSync { sync_peers, is_synced }
     }
 }

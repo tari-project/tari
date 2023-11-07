@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryInto;
 
 use futures::{stream::FuturesUnordered, Stream, StreamExt};
 use log::*;
@@ -36,10 +36,11 @@ use super::{
     NetworkDiscoveryError,
 };
 use crate::{
-    peer_validator::{PeerValidator, PeerValidatorError},
-    proto::rpc::GetPeersRequest,
+    actor::OffenceSeverity,
+    peer_validator::PeerValidator,
+    proto::rpc::{GetPeersRequest, GetPeersResponse},
     rpc,
-    rpc::PeerInfo,
+    rpc::UnvalidatedPeerInfo,
     DhtConfig,
 };
 
@@ -132,7 +133,8 @@ impl Discovering {
             target: LOG_TARGET,
             "Established RPC connection to peer `{}`", peer_node_id
         );
-        self.request_peers(peer_node_id, client).await?;
+        let result = self.request_peers(peer_node_id, client).await;
+        self.ban_on_offence(peer_node_id.clone(), result).await?;
 
         Ok(())
     }
@@ -146,46 +148,37 @@ impl Discovering {
             target: LOG_TARGET,
             "Requesting {} peers from `{}`",
             self.params
-                .num_peers_to_request
-                .as_ref()
-                .map(ToString::to_string)
-                .unwrap_or_else(|| "∞".into()),
+                .num_peers_to_request,
             sync_peer
         );
-        match client
+        let mut stream = client
             .get_peers(GetPeersRequest {
-                n: self
-                    .params
-                    .num_peers_to_request
-                    .map(|v| u32::try_from(v).unwrap())
-                    .unwrap_or_default(),
+                n: self.params.num_peers_to_request,
                 include_clients: true,
+                max_claims: self.config().max_permitted_peer_claims.try_into().unwrap_or_else(|_| {
+                    error!(target: LOG_TARGET, "Node configured to accept more than u32::MAX claims per peer");
+                    u32::MAX
+                }),
+                max_addresses_per_claim: self
+                    .config()
+                    .peer_validator_config
+                    .max_permitted_peer_addresses_per_claim
+                    .try_into()
+                    .unwrap_or_else(|_| {
+                        error!(target: LOG_TARGET, "Node configured to accept more than u32::MAX addresses per claim");
+                        u32::MAX
+                    }),
             })
-            .await
-        {
-            Ok(mut stream) => {
-                while let Some(resp) = stream.next().await {
-                    match resp {
-                        Ok(resp) => match resp.peer.and_then(|peer| peer.try_into().ok()) {
-                            Some(peer) => {
-                                self.validate_and_add_peer(sync_peer, peer).await?;
-                            },
-                            None => {
-                                debug!(target: LOG_TARGET, "Invalid response from peer `{}`", sync_peer);
-                            },
-                        },
-                        Err(err) => {
-                            debug!(target: LOG_TARGET, "Error response from peer `{}`: {}", sync_peer, err);
-                        },
-                    }
-                }
-            },
-            Err(err) => {
-                debug!(
-                    target: LOG_TARGET,
-                    "Failed to request for peers from peer `{}`: {}", sync_peer, err
-                );
-            },
+            .await?;
+
+        while let Some(resp) = stream.next().await {
+            let GetPeersResponse { peer } = resp?;
+
+            let peer = peer.ok_or_else(|| NetworkDiscoveryError::EmptyPeerMessageReceived)?;
+            let new_peer = peer
+                .try_into()
+                .map_err(NetworkDiscoveryError::InvalidPeerDataReceived)?;
+            self.validate_and_add_peer(sync_peer, new_peer).await?;
         }
 
         Ok(())
@@ -194,7 +187,7 @@ impl Discovering {
     async fn validate_and_add_peer(
         &mut self,
         sync_peer: &NodeId,
-        new_peer: PeerInfo,
+        new_peer: UnvalidatedPeerInfo,
     ) -> Result<(), NetworkDiscoveryError> {
         let node_id = NodeId::from_public_key(&new_peer.public_key);
         if self.context.node_identity.node_id() == &node_id {
@@ -202,18 +195,20 @@ impl Discovering {
             return Ok(());
         }
 
-        let peer_validator = PeerValidator::new(self.peer_manager(), self.config());
+        let maybe_existing_peer = self.peer_manager().find_by_public_key(&new_peer.public_key).await?;
+        let peer_exists = maybe_existing_peer.is_some();
 
-        match peer_validator.validate_and_add_peer(new_peer).await {
-            Ok(true) => {
-                self.stats.num_new_peers += 1;
+        let peer_validator = PeerValidator::new(self.config());
+        match peer_validator.validate_peer(new_peer, maybe_existing_peer) {
+            Ok(valid_peer) => {
+                if peer_exists {
+                    self.stats.num_duplicate_peers += 1;
+                } else {
+                    self.stats.num_new_peers += 1;
+                }
+                self.peer_manager().add_peer(valid_peer).await?;
                 Ok(())
             },
-            Ok(false) => {
-                self.stats.num_duplicate_peers += 1;
-                Ok(())
-            },
-            Err(err @ PeerValidatorError::PeerManagerError(_)) => Err(err.into()),
             Err(err) => {
                 warn!(
                     target: LOG_TARGET,
@@ -221,6 +216,56 @@ impl Discovering {
                 );
                 Err(err.into())
             },
+        }
+    }
+
+    async fn ban_on_offence<T>(
+        &mut self,
+        peer: NodeId,
+        result: Result<T, NetworkDiscoveryError>,
+    ) -> Result<T, NetworkDiscoveryError> {
+        match result {
+            Ok(t) => Ok(t),
+            Err(err) => {
+                match &err {
+                    NetworkDiscoveryError::EmptyPeerMessageReceived |
+                    NetworkDiscoveryError::InvalidPeerDataReceived(_) |
+                    NetworkDiscoveryError::PeerValidationError(_) => {
+                        self.ban_peer(peer, OffenceSeverity::High, &err).await;
+                    },
+                    NetworkDiscoveryError::RpcError(rpc_err) if rpc_err.is_caused_by_server() => {
+                        self.ban_peer(peer, OffenceSeverity::High, &err).await;
+                    },
+                    NetworkDiscoveryError::RpcStatus(status) if !status.is_ok() => {
+                        self.ban_peer(peer, OffenceSeverity::Low, &err).await;
+                    },
+                    // Other errors
+                    NetworkDiscoveryError::RpcStatus(_) |
+                    NetworkDiscoveryError::NoSyncPeers |
+                    NetworkDiscoveryError::PeerManagerError(_) |
+                    NetworkDiscoveryError::RpcError(_) |
+                    NetworkDiscoveryError::ConnectivityError(_) => {},
+                }
+                Err(err)
+            },
+        }
+    }
+
+    async fn ban_peer<T: ToString>(&mut self, peer: NodeId, severity: OffenceSeverity, err: T) {
+        if let Err(e) = self
+            .context
+            .connectivity
+            .ban_peer_until(
+                peer.clone(),
+                self.config().ban_duration_from_severity(severity),
+                err.to_string(),
+            )
+            .await
+        {
+            warn!(
+                target: LOG_TARGET,
+                "Failed to ban peer `{}`: {}", peer, e
+            );
         }
     }
 

@@ -40,7 +40,7 @@ use crate::{
 };
 
 /// Determines if an outbound message should be Encrypted and, if so, for which public key
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub enum OutboundEncryption {
     /// Message should not be encrypted
     #[default]
@@ -174,7 +174,7 @@ pub struct DhtOutboundMessage {
     pub reply: MessagingReplyTx,
     pub dht_flags: DhtMessageFlags,
     pub is_broadcast: bool,
-    pub expires: Option<prost_types::Timestamp>,
+    pub expires: Option<u64>,
 }
 
 impl fmt::Display for DhtOutboundMessage {
@@ -189,15 +189,21 @@ impl fmt::Display for DhtOutboundMessage {
                     self.dht_flags, self.destination, self.tag,
                 )
             });
-        write!(
+
+        writeln!(
             f,
-            "\n---- Outgoing message ---- \nSize: {} byte(s)\nType: {}\nPeer: {}\nHeader: {}\n{}\n----\n{:?}\n",
+            "\n---- Outgoing message ---- \nSize: {} byte(s)\nType: {}\nPeer: {}\nHeader: {}\n{}\n----",
             self.body.len(),
             self.dht_message_type,
             self.destination,
             header_str,
             self.tag,
-            self.body
-        )
+        )?;
+
+        if f.alternate() {
+            write!(f, "(body omitted)")
+        } else {
+            write!(f, "{:?}", self.body)
+        }
     }
 }

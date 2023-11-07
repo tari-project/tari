@@ -28,7 +28,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use tari_comms::socks;
 
-#[derive(Clone, Serialize, Deserialize, Default)]
+#[derive(Default, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SocksAuthentication {
     #[default]

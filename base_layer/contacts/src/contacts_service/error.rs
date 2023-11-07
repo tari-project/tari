@@ -47,6 +47,12 @@ pub enum ContactsServiceError {
     ConnectivityError(#[from] ConnectivityError),
     #[error("Outbound comms error: `{0}`")]
     OutboundCommsError(#[from] DhtOutboundError),
+    #[error("Error parsing address: `{0}`")]
+    MessageParsingError(String),
+    #[error("Error decoding message: `{0}`")]
+    MalformedMessageError(#[from] prost::DecodeError),
+    #[error("Message source does not match authenticated origin")]
+    MessageSourceDoesNotMatchOrigin,
 }
 
 #[derive(Debug, Error)]

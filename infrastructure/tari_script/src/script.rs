@@ -18,13 +18,13 @@
 // pending updates to Dalek/Digest
 use std::{cmp::Ordering, collections::HashSet, convert::TryFrom, fmt, io, ops::Deref};
 
+use blake2::Blake2b;
 use borsh::{BorshDeserialize, BorshSerialize};
-use digest::Digest;
+use digest::{consts::U32, Digest};
 use integer_encoding::{VarIntReader, VarIntWriter};
 use sha2::Sha256;
 use sha3::Sha3_256;
 use tari_crypto::{
-    hash::blake2::Blake256,
     keys::PublicKey,
     ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
 };
@@ -55,6 +55,7 @@ macro_rules! script {
 }
 
 const MAX_MULTISIG_LIMIT: u8 = 32;
+const MAX_SCRIPT_BYTES: usize = 4096;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TariScript {
@@ -73,11 +74,18 @@ impl BorshSerialize for TariScript {
 }
 
 impl BorshDeserialize for TariScript {
-    fn deserialize(buf: &mut &[u8]) -> io::Result<Self> {
-        let len = buf.read_varint()?;
+    fn deserialize_reader<R>(reader: &mut R) -> Result<Self, io::Error>
+    where R: io::Read {
+        let len = reader.read_varint()?;
+        if len > MAX_SCRIPT_BYTES {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Larger than max script bytes".to_string(),
+            ));
+        }
         let mut data = Vec::with_capacity(len);
         for _ in 0..len {
-            data.push(u8::deserialize(buf)?);
+            data.push(u8::deserialize_reader(reader)?);
         }
         let script = TariScript::from_bytes(data.as_slice())
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
@@ -88,6 +96,34 @@ impl BorshDeserialize for TariScript {
 impl TariScript {
     pub fn new(script: Vec<Opcode>) -> Self {
         TariScript { script }
+    }
+
+    /// This pattern matches two scripts ensure they have the same instructions in the opcodes, but not the same values
+    /// inside example:
+    /// Script A = {PushPubKey(AA)}, Script B = {PushPubKey(BB)} will pattern match, but doing Script A == Script B will
+    /// not match Script A = {PushPubKey(AA)}, Script B = {PushPubKey(AA)} will pattern match, doing Script A ==
+    /// Script B will also match Script A = {PushPubKey(AA)}, Script B = {PushHash(BB)} will not pattern match, and
+    /// doing Script A == Script B will not match
+    pub fn pattern_match(&self, script: &TariScript) -> bool {
+        for (i, opcode) in self.script.iter().enumerate() {
+            if let Some(code) = script.opcode(i) {
+                if std::mem::discriminant(opcode) != std::mem::discriminant(code) {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        }
+        // We need to ensure they are the same length
+        script.opcode(self.script.len()).is_none()
+    }
+
+    /// Retrieve the opcode at the index, returns None if the index does not exist
+    pub fn opcode(&self, i: usize) -> Option<&Opcode> {
+        if i >= self.script.len() {
+            return None;
+        }
+        Some(&self.script[i])
     }
 
     /// Executes the script using a default context. If successful, returns the final stack item.
@@ -160,10 +196,10 @@ impl TariScript {
     /// `as_hash` returns [ScriptError::InvalidDigest] if the digest function does not produce at least 32 bytes of
     /// output.
     pub fn as_hash<D: Digest>(&self) -> Result<HashValue, ScriptError> {
-        if D::output_size() < 32 {
+        if <D as Digest>::output_size() < 32 {
             return Err(ScriptError::InvalidDigest);
         }
-        let h = D::digest(&self.to_bytes());
+        let h = D::digest(self.to_bytes());
         Ok(slice_to_hash(&h.as_slice()[..32]))
     }
 
@@ -198,15 +234,6 @@ impl TariScript {
     /// ```
     pub fn to_opcodes(&self) -> Vec<String> {
         self.script.iter().map(|op| op.to_string()).collect()
-    }
-
-    /// Calculate the message hash that CHECKSIG uses to verify signatures
-    pub fn script_message(&self, pub_key: &RistrettoPublicKey) -> Result<RistrettoSecretKey, ScriptError> {
-        let b = Blake256::new()
-            .chain(pub_key.as_bytes())
-            .chain(self.to_bytes())
-            .finalize();
-        RistrettoSecretKey::from_bytes(b.as_slice()).map_err(|_| ScriptError::InvalidSignature)
     }
 
     // pending updates to Dalek/Digest
@@ -256,7 +283,7 @@ impl TariScript {
             },
             Or(n) => TariScript::handle_or(stack, *n),
             OrVerify(n) => TariScript::handle_or_verify(stack, *n),
-            HashBlake256 => TariScript::handle_hash::<Blake256>(stack),
+            HashBlake256 => TariScript::handle_hash::<Blake2b<U32>>(stack),
             HashSha256 => TariScript::handle_hash::<Sha256>(stack),
             HashSha3 => TariScript::handle_hash::<Sha3_256>(stack),
             CheckSig(msg) => {
@@ -313,7 +340,18 @@ impl TariScript {
     fn handle_check_height(stack: &mut ExecutionStack, height: u64, block_height: u64) -> Result<(), ScriptError> {
         let height = i64::try_from(height)?;
         let block_height = i64::try_from(block_height)?;
-        let item = StackItem::Number(block_height - height);
+
+        // Due to the conversion of u64 into i64 which would fail above if they overflowed, these
+        // numbers should never enter a state where a `sub` could fail. As they'd both be within range and 0 or above.
+        // This differs from compare_height due to a stack number being used, which can be lower than 0
+        let item = match block_height.checked_sub(height) {
+            Some(num) => StackItem::Number(num),
+            None => {
+                return Err(ScriptError::CompareFailed(
+                    "Subtraction of given height from current block height failed".to_string(),
+                ))
+            },
+        };
 
         stack.push(item)
     }
@@ -332,7 +370,16 @@ impl TariScript {
         let target_height = stack.pop_into_number::<i64>()?;
         let block_height = i64::try_from(block_height)?;
 
-        let item = StackItem::Number(block_height - target_height);
+        // Here it is possible to underflow because the stack can take lower numbers where check
+        // height does not use a stack number and it's minimum can't be lower than 0.
+        let item = match block_height.checked_sub(target_height) {
+            Some(num) => StackItem::Number(num),
+            None => {
+                return Err(ScriptError::CompareFailed(
+                    "Couldn't subtract the target height from the current block height".to_string(),
+                ))
+            },
+        };
 
         stack.push(item)
     }
@@ -526,7 +573,7 @@ impl TariScript {
         let pk = stack.pop().ok_or(ScriptError::StackUnderflow)?;
         let sig = stack.pop().ok_or(ScriptError::StackUnderflow)?;
         match (pk, sig) {
-            (PublicKey(p), Signature(s)) => Ok(s.verify_challenge(&p, &message)),
+            (PublicKey(p), Signature(s)) => Ok(s.verify_raw_canonical(&p, &message)),
             (..) => Err(ScriptError::IncompatibleTypes),
         }
     }
@@ -578,7 +625,7 @@ impl TariScript {
         // Check every signature against each public key looking for a valid signature
         for s in &signatures {
             for (i, pk) in public_keys.iter().enumerate() {
-                if !sig_set.contains(s) && !key_signed[i] && s.verify_challenge(pk, &message) {
+                if !sig_set.contains(s) && !key_signed[i] && s.verify_raw_canonical(pk, &message) {
                     // This prevents Alice creating 2 different sigs against her public key
                     key_signed[i] = true;
                     sig_set.insert(s);
@@ -605,7 +652,7 @@ impl TariScript {
             StackItem::Scalar(scalar) => scalar.as_slice(),
             _ => return Err(ScriptError::IncompatibleTypes),
         };
-        let ristretto_sk = RistrettoSecretKey::from_bytes(scalar).map_err(|_| ScriptError::InvalidData)?;
+        let ristretto_sk = RistrettoSecretKey::from_canonical_bytes(scalar).map_err(|_| ScriptError::InvalidData)?;
         let ristretto_pk = RistrettoPublicKey::from_secret_key(&ristretto_sk);
         stack.push(StackItem::PublicKey(ristretto_pk))?;
         Ok(())
@@ -616,7 +663,7 @@ impl Hex for TariScript {
     fn from_hex(hex: &str) -> Result<Self, HexError>
     where Self: Sized {
         let bytes = from_hex(hex)?;
-        TariScript::from_bytes(&bytes).map_err(|_| HexError::HexConversionError)
+        TariScript::from_bytes(&bytes).map_err(|_| HexError::HexConversionError {})
     }
 
     fn to_hex(&self) -> String {
@@ -624,10 +671,10 @@ impl Hex for TariScript {
     }
 }
 
-/// The default Tari script is to push a single zero onto the stack; which will execute successfully with zero inputs.
+/// The default Tari script is to push a sender pubkey onto the stack
 impl Default for TariScript {
     fn default() -> Self {
-        script!(PushZero)
+        script!(PushPubKey(Box::default()))
     }
 }
 
@@ -668,12 +715,12 @@ impl Default for ExecutionState {
 
 #[cfg(test)]
 mod test {
+    use blake2::Blake2b;
     use borsh::{BorshDeserialize, BorshSerialize};
-    use digest::Digest;
+    use digest::{consts::U32, Digest};
     use sha2::Sha256;
     use sha3::Sha3_256 as Sha3;
     use tari_crypto::{
-        hash::blake2::Blake256,
         keys::{PublicKey, SecretKey},
         ristretto::{pedersen::PedersenCommitment, RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
     };
@@ -689,7 +736,6 @@ mod test {
         StackItem,
         StackItem::{Commitment, Hash, Number},
         TariScript,
-        DEFAULT_SCRIPT_HASH,
     };
 
     fn context_with_height(height: u64) -> ScriptContext {
@@ -697,12 +743,24 @@ mod test {
     }
 
     #[test]
-    fn default_script() {
-        let script = TariScript::default();
-        let inputs = ExecutionStack::default();
-        assert!(script.execute(&inputs).is_ok());
-        assert_eq!(&script.to_hex(), "7b");
-        assert_eq!(script.as_hash::<Blake256>().unwrap(), DEFAULT_SCRIPT_HASH);
+    fn pattern_match() {
+        let script_a = script!(Or(1));
+        let script_b = script!(Or(1));
+        assert_eq!(script_a, script_b);
+        assert!(script_a.pattern_match(&script_b));
+
+        let script_b = script!(Or(2));
+        assert_ne!(script_a, script_b);
+        assert!(script_a.pattern_match(&script_b));
+
+        let script_b = script!(Or(2) Or(2));
+        assert_ne!(script_a, script_b);
+        assert!(!script_a.pattern_match(&script_b));
+
+        let script_a = script!(Or(2) Or(1));
+        let script_b = script!(Or(3) Or(5));
+        assert_ne!(script_a, script_b);
+        assert!(script_a.pattern_match(&script_b));
     }
 
     #[test]
@@ -1021,7 +1079,7 @@ mod test {
         let (pvt_key, pub_key) = RistrettoPublicKey::random_keypair(&mut rng);
         let nonce = RistrettoSecretKey::random(&mut rng);
         let m_key = RistrettoSecretKey::random(&mut rng);
-        let sig = RistrettoSchnorr::sign_raw(&pvt_key, nonce, m_key.as_bytes()).unwrap();
+        let sig = RistrettoSchnorr::sign_raw_canonical(&pvt_key, nonce, m_key.as_bytes()).unwrap();
         let msg = slice_to_boxed_message(m_key.as_bytes());
         let script = script!(CheckSig(msg));
         let inputs = inputs!(sig.clone(), pub_key.clone());
@@ -1043,7 +1101,7 @@ mod test {
         let (pvt_key, pub_key) = RistrettoPublicKey::random_keypair(&mut rng);
         let nonce = RistrettoSecretKey::random(&mut rng);
         let m_key = RistrettoSecretKey::random(&mut rng);
-        let sig = RistrettoSchnorr::sign_raw(&pvt_key, nonce, m_key.as_bytes()).unwrap();
+        let sig = RistrettoSchnorr::sign_raw_canonical(&pvt_key, nonce, m_key.as_bytes()).unwrap();
         let msg = slice_to_boxed_message(m_key.as_bytes());
         let script = script!(CheckSigVerify(msg) PushOne);
         let inputs = inputs!(sig.clone(), pub_key.clone());
@@ -1072,7 +1130,7 @@ mod test {
         for _ in 0..n {
             let (k, p) = RistrettoPublicKey::random_keypair(&mut rng);
             let r = RistrettoSecretKey::random(&mut rng);
-            let s = RistrettoSchnorr::sign_raw(&k, r, m.as_bytes()).unwrap();
+            let s = RistrettoSchnorr::sign_raw_canonical(&k, r, m.as_bytes()).unwrap();
             data.push((k, p, s));
         }
 
@@ -1094,11 +1152,11 @@ mod test {
         let r4 = RistrettoSecretKey::random(&mut rng);
         let r5 = RistrettoSecretKey::random(&mut rng);
         let m = RistrettoSecretKey::random(&mut rng);
-        let s_alice = RistrettoSchnorr::sign_raw(&k_alice, r1, m.as_bytes()).unwrap();
-        let s_bob = RistrettoSchnorr::sign_raw(&k_bob, r2, m.as_bytes()).unwrap();
-        let s_eve = RistrettoSchnorr::sign_raw(&k_eve, r3, m.as_bytes()).unwrap();
-        let s_carol = RistrettoSchnorr::sign_raw(&k_carol, r4, m.as_bytes()).unwrap();
-        let s_alice2 = RistrettoSchnorr::sign_raw(&k_alice, r5, m.as_bytes()).unwrap();
+        let s_alice = RistrettoSchnorr::sign_raw_canonical(&k_alice, r1, m.as_bytes()).unwrap();
+        let s_bob = RistrettoSchnorr::sign_raw_canonical(&k_bob, r2, m.as_bytes()).unwrap();
+        let s_eve = RistrettoSchnorr::sign_raw_canonical(&k_eve, r3, m.as_bytes()).unwrap();
+        let s_carol = RistrettoSchnorr::sign_raw_canonical(&k_carol, r4, m.as_bytes()).unwrap();
+        let s_alice2 = RistrettoSchnorr::sign_raw_canonical(&k_alice, r5, m.as_bytes()).unwrap();
         let msg = slice_to_boxed_message(m.as_bytes());
 
         // 1 of 2
@@ -1283,10 +1341,10 @@ mod test {
         let r3 = RistrettoSecretKey::random(&mut rng);
         let r4 = RistrettoSecretKey::random(&mut rng);
         let m = RistrettoSecretKey::random(&mut rng);
-        let s_alice = RistrettoSchnorr::sign_raw(&k_alice, r1, m.as_bytes()).unwrap();
-        let s_bob = RistrettoSchnorr::sign_raw(&k_bob, r2, m.as_bytes()).unwrap();
-        let s_eve = RistrettoSchnorr::sign_raw(&k_eve, r3, m.as_bytes()).unwrap();
-        let s_carol = RistrettoSchnorr::sign_raw(&k_carol, r4, m.as_bytes()).unwrap();
+        let s_alice = RistrettoSchnorr::sign_raw_canonical(&k_alice, r1, m.as_bytes()).unwrap();
+        let s_bob = RistrettoSchnorr::sign_raw_canonical(&k_bob, r2, m.as_bytes()).unwrap();
+        let s_eve = RistrettoSchnorr::sign_raw_canonical(&k_eve, r3, m.as_bytes()).unwrap();
+        let s_carol = RistrettoSchnorr::sign_raw_canonical(&k_carol, r4, m.as_bytes()).unwrap();
         let msg = slice_to_boxed_message(m.as_bytes());
 
         // 1 of 2
@@ -1465,8 +1523,8 @@ mod test {
         let msg = slice_to_boxed_message(m.as_bytes());
         let script = script!(Add RevRot Add CheckSigVerify(msg) PushOne);
 
-        let s1 = RistrettoSchnorr::sign_raw(&k1, r1, m.as_bytes()).unwrap();
-        let s2 = RistrettoSchnorr::sign_raw(&k2, r2, m.as_bytes()).unwrap();
+        let s1 = RistrettoSchnorr::sign_raw_canonical(&k1, r1, m.as_bytes()).unwrap();
+        let s2 = RistrettoSchnorr::sign_raw_canonical(&k2, r2, m.as_bytes()).unwrap();
         let inputs = inputs!(p1, p2, s1, s2);
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(1));
@@ -1478,7 +1536,7 @@ mod test {
         let k =
             RistrettoSecretKey::from_hex("7212ac93ee205cdbbb57c4f0f815fbf8db25b4d04d3532e2262e31907d82c700").unwrap();
         let p = RistrettoPublicKey::from_secret_key(&k); // 56c0fa32558d6edc0916baa26b48e745de834571534ca253ea82435f08ebbc7c
-        let hash = Blake256::digest(p.as_bytes());
+        let hash = Blake2b::<U32>::digest(p.as_bytes());
         let pkh = slice_to_boxed_hash(hash.as_slice()); // ae2337ce44f9ebb6169c863ec168046cb35ab4ef7aa9ed4f5f1f669bb74b09e5
 
         // Unlike in Bitcoin where P2PKH includes a CheckSig at the end of the script, that part of the process is built
@@ -1600,9 +1658,9 @@ mod test {
         let m = RistrettoSecretKey::random(&mut rng);
         let msg = slice_to_boxed_message(m.as_bytes());
 
-        let s_alice = RistrettoSchnorr::sign_raw(&k_alice, r1, m.as_bytes()).unwrap();
-        let s_bob = RistrettoSchnorr::sign_raw(&k_bob, r2, m.as_bytes()).unwrap();
-        let s_eve = RistrettoSchnorr::sign_raw(&k_eve, r3, m.as_bytes()).unwrap();
+        let s_alice = RistrettoSchnorr::sign_raw_canonical(&k_alice, r1, m.as_bytes()).unwrap();
+        let s_bob = RistrettoSchnorr::sign_raw_canonical(&k_bob, r2, m.as_bytes()).unwrap();
+        let s_eve = RistrettoSchnorr::sign_raw_canonical(&k_eve, r3, m.as_bytes()).unwrap();
 
         // 1 of 2
         use crate::Opcode::{CheckSig, Drop, Dup, Else, EndIf, IfThen, PushPubKey, Return};
@@ -1679,5 +1737,123 @@ mod test {
         let buf = &mut buf.as_slice();
         assert_eq!(script, TariScript::deserialize(buf).unwrap());
         assert_eq!(buf, &[1, 2, 3]);
+    }
+
+    #[test]
+    fn test_borsh_de_serialization_too_large() {
+        // We dont care about the actual script here, just that its not too large on the varint size
+        // We lie about the size to try and get a mem panic, and say this script is u64::max large.
+        let buf = vec![255, 255, 255, 255, 255, 255, 255, 255, 255, 1, 49, 8, 2, 5, 6];
+        let buf = &mut buf.as_slice();
+        assert!(TariScript::deserialize(buf).is_err());
+    }
+
+    #[test]
+    fn test_compare_height_block_height_exceeds_bounds() {
+        let script = script!(CompareHeight);
+
+        let inputs = inputs!(0);
+        let ctx = context_with_height(u64::MAX);
+        let stack_item = script.execute_with_context(&inputs, &ctx);
+        assert!(matches!(stack_item, Err(ScriptError::ValueExceedsBounds)));
+    }
+
+    #[test]
+    fn test_compare_height_underflows() {
+        let script = script!(CompareHeight);
+
+        let inputs = ExecutionStack::new(vec![Number(i64::MIN)]);
+        let ctx = context_with_height(i64::MAX as u64);
+        let stack_item = script.execute_with_context(&inputs, &ctx);
+        assert!(matches!(stack_item, Err(ScriptError::CompareFailed(_))));
+    }
+
+    #[test]
+    fn test_compare_height_underflows_on_empty_stack() {
+        let script = script!(CompareHeight);
+
+        let inputs = ExecutionStack::new(vec![]);
+        let ctx = context_with_height(i64::MAX as u64);
+        let stack_item = script.execute_with_context(&inputs, &ctx);
+        assert!(matches!(stack_item, Err(ScriptError::StackUnderflow)));
+    }
+
+    #[test]
+    fn test_compare_height_valid_with_uint_result() {
+        let script = script!(CompareHeight);
+
+        let inputs = inputs!(100);
+        let ctx = context_with_height(24_u64);
+        let stack_item = script.execute_with_context(&inputs, &ctx);
+        assert!(stack_item.is_ok());
+        assert_eq!(stack_item.unwrap(), Number(-76))
+    }
+
+    #[test]
+    fn test_compare_height_valid_with_int_result() {
+        let script = script!(CompareHeight);
+
+        let inputs = inputs!(100);
+        let ctx = context_with_height(110_u64);
+        let stack_item = script.execute_with_context(&inputs, &ctx);
+        assert!(stack_item.is_ok());
+        assert_eq!(stack_item.unwrap(), Number(10))
+    }
+
+    #[test]
+    fn test_check_height_block_height_exceeds_bounds() {
+        let script = script!(CheckHeight(0));
+
+        let inputs = ExecutionStack::new(vec![]);
+        let ctx = context_with_height(u64::MAX);
+        let stack_item = script.execute_with_context(&inputs, &ctx);
+        assert!(matches!(stack_item, Err(ScriptError::ValueExceedsBounds)));
+    }
+
+    #[test]
+    fn test_check_height_exceeds_bounds() {
+        let script = script!(CheckHeight(u64::MAX));
+
+        let inputs = ExecutionStack::new(vec![]);
+        let ctx = context_with_height(10_u64);
+        let stack_item = script.execute_with_context(&inputs, &ctx);
+        assert!(matches!(stack_item, Err(ScriptError::ValueExceedsBounds)));
+    }
+
+    #[test]
+    fn test_check_height_overflows_on_max_stack() {
+        let script = script!(CheckHeight(0));
+
+        let mut inputs = ExecutionStack::new(vec![]);
+
+        for i in 0..255 {
+            inputs.push(Number(i)).unwrap();
+        }
+
+        let ctx = context_with_height(i64::MAX as u64);
+        let stack_item = script.execute_with_context(&inputs, &ctx);
+        assert!(matches!(stack_item, Err(ScriptError::StackOverflow)));
+    }
+
+    #[test]
+    fn test_check_height_valid_with_uint_result() {
+        let script = script!(CheckHeight(24));
+
+        let inputs = ExecutionStack::new(vec![]);
+        let ctx = context_with_height(100_u64);
+        let stack_item = script.execute_with_context(&inputs, &ctx);
+        assert!(stack_item.is_ok());
+        assert_eq!(stack_item.unwrap(), Number(76))
+    }
+
+    #[test]
+    fn test_check_height_valid_with_int_result() {
+        let script = script!(CheckHeight(100));
+
+        let inputs = ExecutionStack::new(vec![]);
+        let ctx = context_with_height(24_u64);
+        let stack_item = script.execute_with_context(&inputs, &ctx);
+        assert!(stack_item.is_ok());
+        assert_eq!(stack_item.unwrap(), Number(-76))
     }
 }

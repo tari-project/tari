@@ -56,6 +56,8 @@ enum DecryptionError {
     MessageRejectDecryptionFailed,
     #[error("Failed to decode envelope body")]
     EnvelopeBodyDecodeFailed,
+    #[error("Bad clear-text message semantics")]
+    BadClearTextMessageSemantics,
 }
 
 /// This layer is responsible for attempting to decrypt inbound messages.
@@ -294,36 +296,17 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     ///
     /// These failure modes are detectable by any node, so it is generally safe to ban an offending peer.
     fn initial_validation(message: DhtInboundMessage) -> Result<ValidatedDhtInboundMessage, DecryptionError> {
-        // If an unencrypted message has no signature, it passes this validation automatically
-        if !message.dht_header.flags.is_encrypted() && message.dht_header.message_signature.is_empty() {
-            return Ok(ValidatedDhtInboundMessage::new(message, None));
+        if !message.is_semantically_valid() {
+            if message.dht_header.flags.is_encrypted() {
+                return Err(DecryptionError::BadEncryptedMessageSemantics);
+            } else {
+                return Err(DecryptionError::BadClearTextMessageSemantics);
+            }
         }
 
-        // If the message is encrypted:
-        // - it must be nonempty
-        // - it needs a destination
-        // - it needs an ephemeral public key
-        // - it needs a signature
-        if message.dht_header.flags.is_encrypted() {
-            // Must be nonempty
-            if message.body.is_empty() {
-                return Err(DecryptionError::BadEncryptedMessageSemantics);
-            }
-
-            // Must have a destination
-            if message.dht_header.destination.is_unknown() {
-                return Err(DecryptionError::BadEncryptedMessageSemantics);
-            }
-
-            // Must have an ephemeral public key
-            if message.dht_header.ephemeral_public_key.is_none() {
-                return Err(DecryptionError::BadEncryptedMessageSemantics);
-            }
-
-            // Must have a signature
-            if message.dht_header.message_signature.is_empty() {
-                return Err(DecryptionError::BadEncryptedMessageSemantics);
-            }
+        // If a signature is not present, the message is valid at this point
+        if message.dht_header.message_signature.is_empty() {
+            return Ok(ValidatedDhtInboundMessage::new(message, None));
         }
 
         // If a signature is present, it must be valid
@@ -404,7 +387,6 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             },
             Err(err) => {
                 // Message was not encrypted but failed to deserialize - immediately discard
-                // TODO: Bad node behaviour?
                 debug!(
                     target: LOG_TARGET,
                     "Unable to deserialize message {}: {}. Message will be discarded. (Trace: {})",

@@ -20,48 +20,145 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::convert::{TryFrom, TryInto};
+
+use anyhow::anyhow;
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{Peer, PeerFeatures, PeerIdentityClaim},
-    protocol::ProtocolId,
     types::CommsPublicKey,
 };
+use tari_crypto::ristretto::RistrettoPublicKey;
+use tari_utilities::ByteArray;
 
-pub struct PeerInfo {
+use crate::proto::dht::{DiscoveryMessage, DiscoveryResponseMessage, JoinMessage};
+
+pub struct UnvalidatedPeerInfo {
     pub public_key: CommsPublicKey,
-    pub addresses: Vec<PeerInfoAddress>,
-    pub peer_features: PeerFeatures,
-    pub user_agent: String,
-    pub supported_protocols: Vec<ProtocolId>,
+    pub claims: Vec<PeerIdentityClaim>,
 }
 
-pub struct PeerInfoAddress {
-    pub address: Multiaddr,
-    pub peer_identity_claim: PeerIdentityClaim,
-}
+impl UnvalidatedPeerInfo {
+    pub fn from_peer_limited_claims(peer: Peer, max_claims: usize, max_addresse_per_claim: usize) -> Self {
+        let claims = peer
+            .addresses
+            .addresses()
+            .iter()
+            .filter_map(|addr| {
+                if addr.address().is_empty() {
+                    return None;
+                }
 
-impl From<Peer> for PeerInfo {
-    fn from(peer: Peer) -> Self {
-        PeerInfo {
+                let claim = addr.source().peer_identity_claim()?;
+
+                if claim.addresses.len() > max_addresse_per_claim {
+                    return None;
+                }
+
+                Some(claim)
+            })
+            .take(max_claims)
+            .cloned()
+            .collect::<Vec<_>>();
+
+        Self {
             public_key: peer.public_key,
-            addresses: peer
-                .addresses
-                .addresses()
-                .iter()
-                .filter_map(|addr| {
-                    // TODO: find the source of the empty addresses
-                    if addr.address().is_empty() {
-                        return None;
-                    }
-                    addr.source.peer_identity_claim().map(|claim| PeerInfoAddress {
-                        address: addr.address().clone(),
-                        peer_identity_claim: claim.clone(),
-                    })
-                })
-                .collect(),
-            peer_features: peer.features,
-            user_agent: peer.user_agent,
-            supported_protocols: peer.supported_protocols,
+            claims,
         }
+    }
+}
+
+impl TryFrom<DiscoveryMessage> for UnvalidatedPeerInfo {
+    type Error = anyhow::Error;
+
+    fn try_from(value: DiscoveryMessage) -> Result<Self, Self::Error> {
+        let public_key = RistrettoPublicKey::from_canonical_bytes(&value.public_key)
+            .map_err(|e| anyhow!("DiscoveryMessage invalid public key: {}", e))?;
+
+        let features = PeerFeatures::from_bits(value.peer_features)
+            .ok_or_else(|| anyhow!("Invalid peer features. Bits: {:#04x}", value.peer_features))?;
+
+        let identity_signature = value
+            .identity_signature
+            .ok_or_else(|| anyhow!("DiscoveryMessage missing peer_identity_claim"))?
+            .try_into()?;
+        let identity_claim = PeerIdentityClaim {
+            addresses: value
+                .addresses
+                .into_iter()
+                .map(Multiaddr::try_from)
+                .collect::<Result<_, _>>()?,
+            features,
+            signature: identity_signature,
+        };
+
+        Ok(Self {
+            public_key,
+            claims: vec![identity_claim],
+        })
+    }
+}
+
+impl TryFrom<DiscoveryResponseMessage> for UnvalidatedPeerInfo {
+    type Error = anyhow::Error;
+
+    fn try_from(value: DiscoveryResponseMessage) -> Result<Self, Self::Error> {
+        let public_key = RistrettoPublicKey::from_canonical_bytes(&value.public_key)
+            .map_err(|e| anyhow!("DiscoveryMessage invalid public key: {}", e))?;
+
+        let features = PeerFeatures::from_bits(value.peer_features)
+            .ok_or_else(|| anyhow!("Invalid peer features. Bits: {:#04x}", value.peer_features))?;
+
+        let identity_signature = value
+            .identity_signature
+            .ok_or_else(|| anyhow!("DiscoveryMessage missing peer_identity_claim"))?
+            .try_into()?;
+
+        let identity_claim = PeerIdentityClaim {
+            addresses: value
+                .addresses
+                .into_iter()
+                .map(Multiaddr::try_from)
+                .collect::<Result<_, _>>()?,
+            features,
+            signature: identity_signature,
+        };
+
+        Ok(Self {
+            public_key,
+            claims: vec![identity_claim],
+        })
+    }
+}
+
+impl TryFrom<JoinMessage> for UnvalidatedPeerInfo {
+    type Error = anyhow::Error;
+
+    fn try_from(value: JoinMessage) -> Result<Self, Self::Error> {
+        let public_key = RistrettoPublicKey::from_canonical_bytes(&value.public_key)
+            .map_err(|e| anyhow!("JoinMessage invalid public key: {}", e))?;
+
+        let features = PeerFeatures::from_bits(value.peer_features)
+            .ok_or_else(|| anyhow!("Invalid peer features. Bits: {:#04x}", value.peer_features))?;
+
+        let identity_signature = value
+            .identity_signature
+            .ok_or_else(|| anyhow!("JoinMessage missing peer_identity_claim"))?
+            .try_into()?;
+
+        let identity_claim = PeerIdentityClaim {
+            addresses: value
+                .addresses
+                .into_iter()
+                .map(Multiaddr::try_from)
+                .collect::<Result<_, _>>()?,
+            features,
+            signature: identity_signature,
+        };
+
+        Ok(Self {
+            public_key,
+            claims: vec![identity_claim],
+        })
     }
 }

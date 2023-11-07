@@ -26,6 +26,7 @@ use tari_utilities::epoch_time::EpochTime;
 
 use crate::proof_of_work::{difficulty::DifficultyAdjustment, lwma_diff::LinearWeightedMovingAverage, Difficulty};
 
+/// A window of target difficulties
 #[derive(Debug, Clone)]
 pub struct TargetDifficultyWindow {
     lwma: LinearWeightedMovingAverage,
@@ -33,27 +34,21 @@ pub struct TargetDifficultyWindow {
 
 impl TargetDifficultyWindow {
     /// Initialize a new `TargetDifficultyWindow`
-    ///
-    /// # Panics
-    ///
-    /// Panics if block_window is 0
-    pub(crate) fn new(block_window: usize, target_time: u64, max_block_time: u64) -> Self {
-        assert!(
-            block_window > 0,
-            "TargetDifficulty::new expected block_window to be greater than 0, but 0 was given"
-        );
-        Self {
-            lwma: LinearWeightedMovingAverage::new(block_window, target_time, max_block_time),
-        }
+    pub(crate) fn new(block_window: usize, target_time: u64) -> Result<Self, String> {
+        Ok(Self {
+            lwma: LinearWeightedMovingAverage::new(block_window, target_time)?,
+        })
     }
 
-    /// Appends a target difficulty. If the number of stored difficulties exceeds the block window, the oldest block
-    /// window is removed keeping the size of the stored difficulties equal to the block window.
+    /// Appends a target difficulty. If the number of stored difficulties exceeds the block window, the stored
+    /// difficulty at the front is removed keeping the size of the stored difficulties equal to the block window.
     #[inline]
     pub fn add_back(&mut self, time: EpochTime, difficulty: Difficulty) {
         self.lwma.add_back(time, difficulty);
     }
 
+    /// Prepends a target difficulty. If the number of stored difficulties exceeds the block window, the stored
+    /// difficulty at the back is removed keeping the size of the stored difficulties equal to the block window.
     #[inline]
     pub fn add_front(&mut self, time: EpochTime, difficulty: Difficulty) {
         self.lwma.add_front(time, difficulty);
@@ -65,10 +60,12 @@ impl TargetDifficultyWindow {
         self.lwma.is_full()
     }
 
+    /// Returns the number of target difficulties in the window
     pub fn len(&self) -> usize {
         self.lwma.num_samples()
     }
 
+    /// Returns true if the window is empty
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.lwma.num_samples() == 0
@@ -76,7 +73,8 @@ impl TargetDifficultyWindow {
 
     /// Calculates the target difficulty for the current set of target difficulties.
     pub fn calculate(&self, min: Difficulty, max: Difficulty) -> Difficulty {
-        cmp::max(min, cmp::min(max, self.lwma.get_difficulty().unwrap_or(min)))
+        let difficulty = self.lwma.get_difficulty().unwrap_or(min);
+        cmp::max(min, cmp::min(max, difficulty))
     }
 }
 
@@ -86,16 +84,25 @@ mod test {
 
     #[test]
     fn it_calculates_the_target_difficulty() {
-        let mut target_difficulties = TargetDifficultyWindow::new(5, 60, 60 * 6);
-        let mut time = 60.into();
-        target_difficulties.add_back(time, 100.into());
-        time += 60.into();
-        target_difficulties.add_back(time, 100.into());
-        time += 60.into();
-        target_difficulties.add_back(time, 100.into());
-        time += 60.into();
-        target_difficulties.add_back(time, 100.into());
+        let mut target_difficulties = TargetDifficultyWindow::new(5, 60).unwrap();
+        let mut time = Difficulty::from_u64(60).unwrap().as_u64().into();
+        target_difficulties.add_back(time, Difficulty::from_u64(100).unwrap());
+        time = time
+            .checked_add(EpochTime::from(Difficulty::from_u64(60).unwrap().as_u64()))
+            .unwrap();
+        target_difficulties.add_back(time, Difficulty::from_u64(100).unwrap());
+        time = time
+            .checked_add(EpochTime::from(Difficulty::from_u64(60).unwrap().as_u64()))
+            .unwrap();
+        target_difficulties.add_back(time, Difficulty::from_u64(100).unwrap());
+        time = time
+            .checked_add(EpochTime::from(Difficulty::from_u64(60).unwrap().as_u64()))
+            .unwrap();
+        target_difficulties.add_back(time, Difficulty::from_u64(100).unwrap());
 
-        assert_eq!(target_difficulties.calculate(1.into(), 400.into()), 100.into());
+        assert_eq!(
+            target_difficulties.calculate(Difficulty::from_u64(1).unwrap(), Difficulty::from_u64(400).unwrap()),
+            Difficulty::from_u64(100).unwrap()
+        );
     }
 }

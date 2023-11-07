@@ -22,7 +22,7 @@
 
 use std::{path::PathBuf, str::FromStr};
 
-use tari_app_utilities::identity_management::setup_node_identity;
+use minotari_app_utilities::identity_management::setup_node_identity;
 use tari_chat_client::{
     config::{ApplicationConfig, ChatClientConfig},
     database,
@@ -72,6 +72,8 @@ pub fn test_config(address: Multiaddr) -> ApplicationConfig {
     let mut chat_client_config = ChatClientConfig::default_local_test();
     chat_client_config.p2p.transport.tcp.listener_address = address.clone();
     chat_client_config.p2p.public_addresses = MultiaddrList::from(vec![address]);
+    chat_client_config.log_path = Some(PathBuf::from("log/chat_client/chat_client.log"));
+    chat_client_config.log_verbosity = Some(11);
 
     ApplicationConfig {
         chat_client: chat_client_config,

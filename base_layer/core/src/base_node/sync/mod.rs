@@ -21,6 +21,9 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #[cfg(feature = "base_node")]
+pub mod ban;
+
+#[cfg(feature = "base_node")]
 mod config;
 #[cfg(feature = "base_node")]
 pub use self::config::BlockchainSyncConfig;
@@ -33,7 +36,7 @@ pub use block_sync::{BlockSyncError, BlockSynchronizer};
 #[cfg(feature = "base_node")]
 mod header_sync;
 #[cfg(feature = "base_node")]
-pub use header_sync::{BlockHeaderSyncError, HeaderSynchronizer};
+pub use header_sync::{AttemptSyncResult, BlockHeaderSyncError, HeaderSyncStatus, HeaderSynchronizer};
 
 #[cfg(feature = "base_node")]
 mod horizon_state_sync;

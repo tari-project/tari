@@ -20,5 +20,5 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub use tari_app_grpc::tari_rpc as grpc;
+pub use minotari_app_grpc::tari_rpc as grpc;
 pub type BaseNodeGrpcClient<TChannel> = grpc::base_node_client::BaseNodeClient<TChannel>;

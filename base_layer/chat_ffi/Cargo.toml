@@ -1,30 +1,48 @@
 [package]
-name = "tari_chat_ffi"
+name = "minotari_chat_ffi"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency chat C FFI bindings"
 license = "BSD-3-Clause"
-version = "0.50.0-hotfix.1"
+version = "0.52.0"
+
 edition = "2018"
 
 [dependencies]
-tari_app_utilities = { path = "../../applications/tari_app_utilities" }
-tari_chat_client = { path = "../contacts/examples/chat_client" }
+minotari_app_utilities = { path = "../../applications/minotari_app_utilities" }
+tari_chat_client = { path = "../contacts/src/chat_client" }
 tari_common = { path = "../../common" }
 tari_common_types = { path = "../common_types" }
-tari_comms = { path = "../../comms/core" }
 tari_contacts = { path = "../contacts" }
+tari_p2p = { path = "../p2p" }
+tari_shutdown = { path = "../../infrastructure/shutdown" }
+tari_utilities = { version = "0.6" }
 
 libc = "0.2.65"
+libsqlite3-sys = { version = "0.25.1", features = ["bundled"], optional = true }
 log = "0.4.6"
+log4rs = { git = "https://github.com/tari-project/log4rs.git", features = ["console_appender", "file_appender", "yaml_format"] }
 thiserror = "1.0.26"
 tokio = "1.23"
 
 [target.'cfg(target_os="android")'.dependencies]
-openssl = { version = "0.10.48", features = ["vendored"] }
+openssl = { version = "0.10.55", features = ["vendored"] }
 
 [lib]
 crate-type = ["staticlib","cdylib"]
 
+[dev-dependencies]
+chrono = { version = "0.4.19", default-features = false }
+rand = "0.8"
+tari_crypto = { version = "0.19" }
+
 [build-dependencies]
 cbindgen = "0.24.3"
 tari_common = { path = "../../common", features = ["build", "static-application-info"] }
+
+[features]
+default = ["bundled_sqlite"]
+c_integration = []
+bundled_sqlite = ["libsqlite3-sys"]
+
+[package.metadata.cargo-machete]
+ignored = ["libsqlite3-sys"] # this is so we can run cargo machete without getting false positive about macro dependancies

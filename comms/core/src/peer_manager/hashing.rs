@@ -26,11 +26,7 @@ use tari_crypto::{
     hashing::{DomainSeparatedHasher, LengthExtensionAttackResistant},
 };
 
-hash_domain!(
-    CommsCorePeerManagerDomain,
-    "com.tari.tari_project.comms.core.peer_manager",
-    1
-);
+hash_domain!(CommsCorePeerManagerDomain, "com.tari.comms.core.peer_manager", 1);
 
 pub(crate) const IDENTITY_SIGNATURE: &str = "identity_signature";
 

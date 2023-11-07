@@ -83,10 +83,11 @@ impl<T> ServiceInitializer for ContactsServiceInitializer<T>
 where T: ContactsBackend + 'static
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
-        let (sender, receiver) = reply_channel::unbounded();
+        let (liveness_tx, liveness_rx) = reply_channel::unbounded();
         let (publisher, _) = broadcast::channel(250);
+        let (message_publisher, _) = broadcast::channel(250);
 
-        let contacts_handle = ContactsServiceHandle::new(sender, publisher.clone());
+        let contacts_handle = ContactsServiceHandle::new(liveness_tx, publisher.clone(), message_publisher.clone());
 
         // Register handle before waiting for handles to be ready
         context.register_handle(contacts_handle);
@@ -108,13 +109,14 @@ where T: ContactsBackend + 'static
 
             let service = ContactsService::new(
                 ContactsDatabase::new(backend),
-                receiver,
+                liveness_rx,
                 handles.get_shutdown_signal(),
                 liveness,
                 connectivity,
                 dht,
                 subscription_factory,
                 publisher,
+                message_publisher,
                 contacts_auto_ping_interval,
                 contacts_online_ping_window,
             )

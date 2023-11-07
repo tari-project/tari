@@ -25,22 +25,27 @@
 
 use std::{iter, path::Path, sync::Arc};
 
+use blake2::Blake2b;
 pub use block_spec::{BlockSpec, BlockSpecs};
+use digest::consts::U32;
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
 use tari_common::configuration::Network;
 use tari_common_types::types::PublicKey;
 use tari_comms::PeerManager;
 use tari_crypto::keys::PublicKey as PublicKeyT;
+use tari_key_manager::key_manager_service::KeyId;
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
+use tari_utilities::epoch_time::EpochTime;
 
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainHeader},
     consensus::{ConsensusConstants, ConsensusManager},
-    proof_of_work::{sha3x_difficulty, AchievedTargetDifficulty, Difficulty},
+    proof_of_work::{difficulty::CheckedAdd, sha3x_difficulty, AchievedTargetDifficulty, Difficulty},
     transactions::{
-        transaction_components::{Transaction, UnblindedOutput},
+        key_manager::TransactionKeyManagerBranch,
+        test_helpers::TestKeyManager,
+        transaction_components::{Transaction, WalletOutput},
         CoinbaseBuilder,
-        CryptoFactories,
     },
 };
 
@@ -49,7 +54,7 @@ mod block_spec;
 pub mod blockchain;
 
 pub fn create_consensus_rules() -> ConsensusManager {
-    ConsensusManager::builder(Network::LocalNet).build()
+    ConsensusManager::builder(Network::LocalNet).build().unwrap()
 }
 
 pub fn create_consensus_constants(height: u64) -> ConsensusConstants {
@@ -64,28 +69,40 @@ pub fn create_orphan_block(block_height: u64, transactions: Vec<Transaction>, co
     header.into_builder().with_transactions(transactions).build()
 }
 
-pub fn create_block(rules: &ConsensusManager, prev_block: &Block, spec: BlockSpec) -> (Block, UnblindedOutput) {
+pub async fn create_block(
+    rules: &ConsensusManager,
+    prev_block: &Block,
+    spec: BlockSpec,
+    km: &TestKeyManager,
+) -> (Block, WalletOutput) {
     let mut header = BlockHeader::from_previous(&prev_block.header);
     let block_height = spec.height_override.unwrap_or(prev_block.header.height + 1);
     header.height = block_height;
     // header.prev_hash = prev_block.hash();
     let reward = spec.reward_override.unwrap_or_else(|| {
-        rules.calculate_coinbase_and_fees(
-            header.height,
-            &spec
-                .transactions
-                .iter()
-                .flat_map(|tx| tx.body.kernels().clone())
-                .collect::<Vec<_>>(),
-        )
+        rules
+            .calculate_coinbase_and_fees(
+                header.height,
+                &spec
+                    .transactions
+                    .iter()
+                    .flat_map(|tx| tx.body.kernels().clone())
+                    .collect::<Vec<_>>(),
+            )
+            .unwrap()
     });
 
-    let (coinbase, coinbase_output) = CoinbaseBuilder::new(CryptoFactories::default())
+    let spend_key_id = KeyId::Managed {
+        branch: TransactionKeyManagerBranch::Coinbase.get_branch_key(),
+        index: block_height,
+    };
+    let (coinbase, coinbase_output) = CoinbaseBuilder::new(km.clone())
         .with_block_height(header.height)
         .with_fees(0.into())
-        .with_nonce(0.into())
-        .with_spend_key(block_height.into())
+        .with_spend_key_id(spend_key_id.clone())
+        .with_script_key_id(spend_key_id)
         .build_with_reward(rules.consensus_constants(block_height), reward)
+        .await
         .unwrap();
 
     let mut block = header
@@ -100,8 +117,12 @@ pub fn create_block(rules: &ConsensusManager, prev_block: &Block, spec: BlockSpe
         .build();
 
     // Keep times constant in case we need a particular target difficulty
-    block.header.timestamp = prev_block.header.timestamp.increase(spec.block_time);
-    block.header.output_mmr_size = prev_block.header.output_mmr_size + block.body.outputs().len() as u64;
+    block.header.timestamp = prev_block
+        .header
+        .timestamp
+        .checked_add(EpochTime::from(spec.block_time))
+        .unwrap();
+    block.header.output_smt_size = prev_block.header.output_smt_size + block.body.outputs().len() as u64;
     block.header.kernel_mmr_size = prev_block.header.kernel_mmr_size + block.body.kernels().len() as u64;
 
     (block, coinbase_output)
@@ -112,7 +133,7 @@ pub fn mine_to_difficulty(mut block: Block, difficulty: Difficulty) -> Result<Bl
     // hash changing. This introduces the required entropy
     block.header.nonce = rand::thread_rng().gen();
     for _i in 0..20000 {
-        if sha3x_difficulty(&block.header) == difficulty {
+        if sha3x_difficulty(&block.header).map_err(|e| e.to_string())? == difficulty {
             return Ok(block);
         }
         block.header.nonce += 1;
@@ -124,7 +145,7 @@ pub fn create_peer_manager<P: AsRef<Path>>(data_path: P) -> Arc<PeerManager> {
     let peer_database_name = {
         let mut rng = rand::thread_rng();
         iter::repeat(())
-            .map(|_| rng.sample(Alphanumeric))
+            .map(|_| rng.sample(Alphanumeric) as char)
             .take(8)
             .collect::<String>()
     };
@@ -141,7 +162,12 @@ pub fn create_peer_manager<P: AsRef<Path>>(data_path: P) -> Arc<PeerManager> {
 }
 
 pub fn create_chain_header(header: BlockHeader, prev_accum: &BlockHeaderAccumulatedData) -> ChainHeader {
-    let achieved_target_diff = AchievedTargetDifficulty::try_construct(header.pow_algo(), 1.into(), 1.into()).unwrap();
+    let achieved_target_diff = AchievedTargetDifficulty::try_construct(
+        header.pow_algo(),
+        Difficulty::min().checked_add(1).unwrap(),
+        Difficulty::min().checked_add(1).unwrap(),
+    )
+    .unwrap();
     let accumulated_data = BlockHeaderAccumulatedData::builder(prev_accum)
         .with_hash(header.hash())
         .with_achieved_target_difficulty(achieved_target_diff)
@@ -157,6 +183,8 @@ pub fn new_public_key() -> PublicKey {
 
 pub fn make_hash<T: AsRef<[u8]>>(preimage: T) -> [u8; 32] {
     use digest::Digest;
-    use tari_crypto::hash::blake2::Blake256;
-    Blake256::new().chain(preimage.as_ref()).finalize().into()
+    Blake2b::<U32>::default()
+        .chain_update(preimage.as_ref())
+        .finalize()
+        .into()
 }

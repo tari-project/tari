@@ -22,7 +22,7 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use tari_common_types::types::PublicKey;
+use tari_common_types::types::{PrivateKey, PublicKey};
 use tari_utilities::ByteArray;
 
 use super::protocol as proto;
@@ -37,7 +37,8 @@ impl TryFrom<proto::RecipientSignedMessage> for RecipientSignedMessage {
             .map(TryInto::try_into)
             .ok_or_else(|| "Transaction output not provided".to_string())??;
 
-        let public_spend_key = PublicKey::from_bytes(&message.public_spend_key).map_err(|err| format!("{}", err))?;
+        let public_spend_key = PublicKey::from_canonical_bytes(&message.public_spend_key)
+            .map_err(|err| format!("public_spend_key: {}", err))?;
 
         let partial_signature = message
             .partial_signature
@@ -48,12 +49,15 @@ impl TryFrom<proto::RecipientSignedMessage> for RecipientSignedMessage {
             .map(TryInto::try_into)
             .ok_or_else(|| "Transaction metadata not provided".to_string())??;
 
+        let offset = PrivateKey::from_canonical_bytes(&message.offset).map_err(|err| format!("offset: {}", err))?;
+
         Ok(Self {
             tx_id: message.tx_id.into(),
             output,
             public_spend_key,
             partial_signature,
             tx_metadata: metadata,
+            offset,
         })
     }
 }
@@ -68,6 +72,7 @@ impl TryFrom<RecipientSignedMessage> for proto::RecipientSignedMessage {
             public_spend_key: message.public_spend_key.to_vec(),
             partial_signature: Some(message.partial_signature.into()),
             metadata: Some(message.tx_metadata.into()),
+            offset: message.offset.to_vec(),
         })
     }
 }

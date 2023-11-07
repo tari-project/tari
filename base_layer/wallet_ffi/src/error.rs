@@ -20,6 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use log::*;
+use minotari_wallet::{
+    error::{WalletError, WalletStorageError},
+    output_manager_service::error::{OutputManagerError, OutputManagerStorageError},
+    transaction_service::error::{TransactionServiceError, TransactionStorageError},
+};
 use tari_common_types::tari_address::TariAddressError;
 use tari_comms::multiaddr;
 use tari_comms_dht::store_forward::StoreAndForwardError;
@@ -29,11 +34,6 @@ use tari_crypto::{
     tari_utilities::{hex::HexError, ByteArrayError},
 };
 use tari_key_manager::error::{KeyManagerError, MnemonicError};
-use tari_wallet::{
-    error::{WalletError, WalletStorageError},
-    output_manager_service::error::{OutputManagerError, OutputManagerStorageError},
-    transaction_service::error::{TransactionServiceError, TransactionStorageError},
-};
 use thiserror::Error;
 
 const LOG_TARGET: &str = "wallet_ffi::error";
@@ -86,10 +86,6 @@ impl From<InterfaceError> for LibWalletError {
                 code: 4,
                 message: format!("{:?}", v),
             },
-            // InterfaceError::NetworkError(_) => Self {
-            //     code: 5,
-            //     message: format!("{:?}", v),
-            // },
             InterfaceError::InvalidEmojiId => Self {
                 code: 6,
                 message: format!("{:?}", v),
@@ -362,15 +358,15 @@ impl From<HexError> for LibWalletError {
     fn from(h: HexError) -> Self {
         error!(target: LOG_TARGET, "{}", format!("{:?}", h));
         match h {
-            HexError::HexConversionError => Self {
+            HexError::HexConversionError {} => Self {
                 code: 404,
                 message: format!("{:?}", h),
             },
-            HexError::LengthError => Self {
+            HexError::LengthError {} => Self {
                 code: 501,
                 message: format!("{:?}", h),
             },
-            HexError::InvalidCharacter(_) => Self {
+            HexError::InvalidCharacter {} => Self {
                 code: 503,
                 message: format!("{:?}", h),
             },
@@ -384,11 +380,11 @@ impl From<ByteArrayError> for LibWalletError {
     fn from(b: ByteArrayError) -> Self {
         error!(target: LOG_TARGET, "{}", format!("{:?}", b));
         match b {
-            ByteArrayError::ConversionError(_) => Self {
+            ByteArrayError::ConversionError { .. } => Self {
                 code: 404,
                 message: format!("{:?}", b),
             },
-            ByteArrayError::IncorrectLength => Self {
+            ByteArrayError::IncorrectLength {} => Self {
                 code: 601,
                 message: format!("{:?}", b),
             },

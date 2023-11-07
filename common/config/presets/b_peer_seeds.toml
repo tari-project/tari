@@ -62,19 +62,10 @@ peer_seeds = [
 dns_seeds = ["seeds.esmeralda.tari.com"]
 # Custom specified peer seed nodes
 peer_seeds = [
-    # 0000008034cc6453ffae1d0b80  **  area8
-    "40717ea5146cf6183c07469d188792b12a57b9da2e5af5bc50df270ff789257f::/onion3/qhmrwr2h3fnszwc4udhlgfpealm7mvw64enqghullrarc633fzmd6zqd:18141",
-    "40717ea5146cf6183c07469d188792b12a57b9da2e5af5bc50df270ff789257f::/ip4/63.34.72.64/tcp/18189",
-    # 222222c9629a9fcf5a71a18838  **  seoul
-    "78b2c0bda70fd12a9987757ffc2851e197080af804353e8e025d28c785b6b447::/onion3/ysj76foyp7qkl7d5x63hyocmp5ydwcgkb25oalo23kj2vvx7zjvofqad:18141",
-    # 3333334aee7f7bfde22e77af02  **  oregon
-    "8648575c606269b032f43cd0d54728628ddb911e636bd65ea36e867a5ffd3643::/onion3/5d2owx6uoqcsoapprattb4fmektm3rcpfyzmmwmf64dsu55mhcqef2yd:18141",
-    # 444444f30fe3a4bf8e5937773e  **  nvir
-    "f688c69f2397dc0d4ad18168cd6ad13f93241a665acf19ab7f358fd661ac3d1c::/onion3/qejny5yprzidxt4rhstjmhsyfmeq4yb4r6tnn3pqowjr7e7roxcpxsqd:18141",
-    # 555555cf2a79f8da9a6b1fecb3  **  ncal
-    "ea420ae2948739bc35907b8ab5a2d41526ccef22ec92f8f8e2bb398500bf435a::/onion3/uybnlnzve4j4w2lj5bdoe2uurwsbjm73ck2cotlnknhu2l7msn26oeyd:18141",
-    # 6666663e4836ebe2999bc78e57  **  ireland
-    "747d45b8416ffe605d17958d36747eab7d3f5fc3d671e1b1b4884b2a44b98365::/onion3/n35n5fikcqqhhhjcdzpqul5v74mu7k6nikpafmlnwgiapphiw45tmryd:18141",
+    # 111111df4003f0c2c827eddad8
+    "18386842a298724e50ae4690a2c6dc57337fb5efcc42f75813226c0436948714::/onion3/p7k4tvpefibjew6cnbiqnb4q5zjojdm3kzw2fpu7lt2zm6an547tnkad:18141",
+    # fffffffb1801b9dd652dc74b19
+    "3e39734233e413c4935396f335b65dfc49c1f78e48940be6770a8b82966d1551::/onion3/6w2heg6oahozcio5zqsa5w5txeah2zkrf4nlq5igzdnkygvaqqt3mzid:18141",
 ]
 
 

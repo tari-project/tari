@@ -262,7 +262,14 @@ pub unsafe extern "C" fn share_difficulty(header: *mut ByteVector, error_out: *m
             return 2;
         },
     };
-    let difficulty = sha3x_difficulty(&block_header);
+    let difficulty = match sha3x_difficulty(&block_header) {
+        Ok(v) => v,
+        Err(e) => {
+            error = MiningHelperError::from(InterfaceError::Conversion(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return 3;
+        },
+    };
     difficulty.as_u64()
 }
 
@@ -281,6 +288,7 @@ pub unsafe extern "C" fn share_difficulty(header: *mut ByteVector, error_out: *m
 ///             0: Valid Block
 ///             1: Valid Share
 ///             2: Invalid Share
+///             3: Invalid Difficulty
 /// `error_out` - Error code returned, 0 means no error
 ///
 /// # Safety
@@ -321,7 +329,14 @@ pub unsafe extern "C" fn share_validate(
         ptr::swap(error_out, &mut error as *mut c_int);
         return 2;
     }
-    let difficulty = sha3x_difficulty(&block_header).as_u64();
+    let difficulty = match sha3x_difficulty(&block_header) {
+        Ok(v) => v.as_u64(),
+        Err(e) => {
+            error = MiningHelperError::from(InterfaceError::Conversion(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return 3;
+        },
+    };
     if difficulty >= template_difficulty {
         0
     } else if difficulty >= share_difficulty {
@@ -345,7 +360,9 @@ mod tests {
     use super::*;
     use crate::{inject_nonce, public_key_hex_validate, share_difficulty, share_validate};
 
-    const MIN_DIFFICULTY: Difficulty = Difficulty::from_u64(1000);
+    fn min_difficulty() -> Difficulty {
+        Difficulty::from_u64(1000).expect("Failed to create difficulty")
+    }
 
     fn create_test_block() -> Block {
         get_genesis_block(Network::LocalNet).block().clone()
@@ -356,8 +373,8 @@ mod tests {
         let mut block = create_test_block();
         block.header.nonce = rand::thread_rng().gen();
         for _ in 0..20000 {
-            if sha3x_difficulty(&block.header) >= difficulty {
-                return Ok((sha3x_difficulty(&block.header), block.header.nonce));
+            if sha3x_difficulty(&block.header).unwrap() >= difficulty {
+                return Ok((sha3x_difficulty(&block.header).unwrap(), block.header.nonce));
             }
             block.header.nonce += 1;
         }
@@ -369,8 +386,8 @@ mod tests {
 
     #[test]
     fn detect_change_in_consensus_encoding() {
-        const NONCE: u64 = 12842033328323362566;
-        const DIFFICULTY: Difficulty = Difficulty::from_u64(1256);
+        const NONCE: u64 = 15659498815241072292;
+        let difficulty = Difficulty::from_u64(2817).expect("Failed to create difficulty");
         unsafe {
             let mut error = -1;
             let error_ptr = &mut error as *mut c_int;
@@ -382,10 +399,10 @@ mod tests {
             inject_nonce(byte_vec, NONCE, error_ptr);
             assert_eq!(error, 0);
             let result = share_difficulty(byte_vec, error_ptr);
-            if result != DIFFICULTY.as_u64() {
+            if result != difficulty.as_u64() {
                 // Use this to generate new NONCE and DIFFICULTY
                 // Use ONLY if you know encoding has changed
-                let (difficulty, nonce) = generate_nonce_with_min_difficulty(MIN_DIFFICULTY).unwrap();
+                let (difficulty, nonce) = generate_nonce_with_min_difficulty(min_difficulty()).unwrap();
                 eprintln!("nonce = {:?}", nonce);
                 eprintln!("difficulty = {:?}", difficulty);
                 panic!(
@@ -400,12 +417,12 @@ mod tests {
     #[test]
     fn check_difficulty() {
         unsafe {
-            let (difficulty, nonce) = generate_nonce_with_min_difficulty(MIN_DIFFICULTY).unwrap();
+            let (difficulty, nonce) = generate_nonce_with_min_difficulty(min_difficulty()).unwrap();
             let mut error = -1;
             let error_ptr = &mut error as *mut c_int;
             let block = create_test_block();
             let header_bytes = block.header.try_to_vec().unwrap();
-            let len = header_bytes.len() as u32;
+            let len = u32::try_from(header_bytes.len()).unwrap();
             let byte_vec = byte_vector_create(header_bytes.as_ptr(), len, error_ptr);
             inject_nonce(byte_vec, nonce, error_ptr);
             assert_eq!(error, 0);
@@ -436,7 +453,7 @@ mod tests {
     #[test]
     fn check_share() {
         unsafe {
-            let (difficulty, nonce) = generate_nonce_with_min_difficulty(MIN_DIFFICULTY).unwrap();
+            let (difficulty, nonce) = generate_nonce_with_min_difficulty(min_difficulty()).unwrap();
             let mut error = -1;
             let error_ptr = &mut error as *mut c_int;
             let block = create_test_block();

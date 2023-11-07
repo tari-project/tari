@@ -32,7 +32,9 @@ mod tests;
 pub mod async_db;
 
 mod block_add_result;
+
 pub use block_add_result::BlockAddResult;
+use serde::{Deserialize, Serialize};
 
 mod blockchain_database;
 pub use blockchain_database::{
@@ -64,9 +66,6 @@ pub use error::{ChainStorageError, Optional, OrNotFound};
 mod horizon_data;
 pub use horizon_data::HorizonData;
 
-mod pruned_output;
-pub use pruned_output::PrunedOutput;
-
 mod reorg;
 pub use reorg::Reorg;
 
@@ -83,6 +82,13 @@ pub use utxo_mined_info::*;
 
 mod active_validator_node;
 pub use active_validator_node::ValidatorNodeEntry;
+use tari_common_types::types::HashOutput;
 
 mod template_registation;
 pub use template_registation::TemplateRegistrationEntry;
+
+#[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
+pub struct ChainTipData {
+    pub hash: HashOutput,
+    pub total_accumulated_difficulty: u128,
+}

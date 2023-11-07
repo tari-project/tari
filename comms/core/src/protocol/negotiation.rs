@@ -63,6 +63,7 @@ pub struct ProtocolNegotiation<'a, TSocket> {
 }
 
 bitflags! {
+    #[derive(Debug)]
     struct Flags: u8 {
         const NONE = 0x00;
         const OPTIMISTIC = 0x01;
@@ -189,7 +190,10 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
         // Len can never overflow the buffer because the buffer len is u8::MAX and the length delimiter
         // is a u8. If that changes, then len should be checked for overflow
         let len = u8::from_be_bytes([self.buf[0]]) as usize;
-        let flags = Flags::from_bits_truncate(u8::from_be_bytes([self.buf[1]]));
+        let flags = Flags::from_bits(u8::from_be_bytes([self.buf[1]])).ok_or(ProtocolError::InvalidFlag(format!(
+            "Does not match any flags ({})",
+            self.buf[1]
+        )))?;
         self.socket.read_exact(&mut self.buf[0..len]).await?;
         trace!(
             target: LOG_TARGET,

@@ -20,33 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use core::default::Default;
 use std::mem::size_of;
 
 use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
 use chrono::{NaiveDateTime, Utc};
-use rand::{rngs::OsRng, RngCore};
-use tari_common::configuration::Network;
-use tari_common_types::{
-    tari_address::TariAddress,
-    transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::{FixedHash, PrivateKey, PublicKey, Signature},
-};
-use tari_core::{
-    covenants::Covenant,
-    transactions::{
-        tari_amount::{uT, MicroTari},
-        test_helpers::{create_non_recoverable_unblinded_output, TestParams},
-        transaction_components::{OutputFeatures, Transaction},
-        transaction_protocol::sender::TransactionSenderMessage,
-        CryptoFactories,
-        ReceiverTransactionProtocol,
-        SenderTransactionProtocol,
-    },
-};
-use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
-use tari_script::{script, ExecutionStack, TariScript};
-use tari_test_utils::random;
-use tari_wallet::{
+use minotari_wallet::{
     storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
     test_utils::create_consensus_constants,
     transaction_service::storage::{
@@ -61,50 +40,87 @@ use tari_wallet::{
         sqlite_db::TransactionServiceSqliteDatabase,
     },
 };
+use rand::{rngs::OsRng, RngCore};
+use tari_common::configuration::Network;
+use tari_common_types::{
+    tari_address::TariAddress,
+    transaction::{TransactionDirection, TransactionStatus, TxId},
+    types::{FixedHash, PrivateKey, PublicKey, Signature},
+};
+use tari_core::{
+    covenants::Covenant,
+    transactions::{
+        key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface},
+        tari_amount::{uT, MicroMinotari},
+        test_helpers::{create_test_core_key_manager_with_memory_db, create_wallet_output_with_data, TestParams},
+        transaction_components::{
+            OutputFeatures,
+            RangeProofType,
+            Transaction,
+            TransactionOutput,
+            TransactionOutputVersion,
+            WalletOutput,
+        },
+        transaction_protocol::sender::TransactionSenderMessage,
+        ReceiverTransactionProtocol,
+        SenderTransactionProtocol,
+    },
+};
+use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
+use tari_key_manager::key_manager_service::KeyManagerInterface;
+use tari_script::{inputs, script};
+use tari_test_utils::random;
 use tempfile::tempdir;
 
-pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
+pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let mut db = TransactionDatabase::new(backend);
-    let factories = CryptoFactories::default();
-    let input = create_non_recoverable_unblinded_output(
-        TariScript::default(),
+    let key_manager = create_test_core_key_manager_with_memory_db();
+    let input = create_wallet_output_with_data(
+        script!(Nop),
         OutputFeatures::default(),
-        &TestParams::new(),
-        MicroTari::from(100_000),
+        &TestParams::new(&key_manager).await,
+        MicroMinotari::from(100_000),
+        &key_manager,
     )
+    .await
     .unwrap();
     let constants = create_consensus_constants(0);
-    let mut builder = SenderTransactionProtocol::builder(1, constants);
-    let amount = MicroTari::from(10_000);
+    let key_manager = create_test_core_key_manager_with_memory_db();
+    let mut builder = SenderTransactionProtocol::builder(constants.clone(), key_manager.clone());
+    let amount = MicroMinotari::from(10_000);
     builder
         .with_lock_height(0)
-        .with_fee_per_gram(MicroTari::from(177 / 5))
-        .with_offset(PrivateKey::random(&mut OsRng))
-        .with_private_nonce(PrivateKey::random(&mut OsRng))
-        .with_amount(0, amount)
+        .with_fee_per_gram(MicroMinotari::from(177 / 5))
         .with_message("Yo!".to_string())
-        .with_input(
-            input
-                .as_transaction_input(&factories.commitment)
-                .expect("Should be able to make transaction input"),
-            input,
-        )
-        .with_change_secret(PrivateKey::random(&mut OsRng))
+        .with_input(input)
+        .await
+        .unwrap()
         .with_recipient_data(
-            0,
             script!(Nop),
-            PrivateKey::random(&mut OsRng),
             Default::default(),
-            PrivateKey::random(&mut OsRng),
             Covenant::default(),
-            MicroTari::zero(),
+            MicroMinotari::zero(),
+            amount,
         )
-        .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
+        .await
+        .unwrap();
+    let change = TestParams::new(&key_manager).await;
+    builder.with_change_data(
+        script!(Nop),
+        inputs!(change.script_key_pk),
+        change.script_key_id.clone(),
+        change.spend_key_id.clone(),
+        Covenant::default(),
+    );
 
-    let stp = builder.build(&factories, None, u64::MAX).unwrap();
+    let stp = builder.build().await.unwrap();
 
     let messages = vec!["Hey!".to_string(), "Yo!".to_string(), "Sup!".to_string()];
-    let amounts = vec![MicroTari::from(10_000), MicroTari::from(23_000), MicroTari::from(5_000)];
+    let amounts = vec![
+        MicroMinotari::from(10_000),
+        MicroMinotari::from(23_000),
+        MicroMinotari::from(5_000),
+    ];
 
     let mut outbound_txs = Vec::new();
 
@@ -158,13 +174,58 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     } else {
         panic!("Should have found outbound tx");
     }
+    let sender = stp.clone().build_single_round_message(&key_manager).await.unwrap();
+    let (spending_key_id, _) = key_manager
+        .get_next_key(TransactionKeyManagerBranch::CommitmentMask.get_branch_key())
+        .await
+        .unwrap();
+    let (script_key_id, public_script_key) = key_manager
+        .get_next_key(TransactionKeyManagerBranch::ScriptKey.get_branch_key())
+        .await
+        .unwrap();
+    let encrypted_data = key_manager
+        .encrypt_data_for_recovery(&spending_key_id, None, sender.amount.as_u64())
+        .await
+        .unwrap();
+    let mut output = WalletOutput::new(
+        TransactionOutputVersion::get_current_version(),
+        sender.amount,
+        spending_key_id.clone(),
+        sender.features.clone(),
+        sender.script.clone(),
+        inputs!(public_script_key),
+        script_key_id,
+        sender.sender_offset_public_key.clone(),
+        Default::default(),
+        0,
+        Covenant::default(),
+        encrypted_data,
+        MicroMinotari::zero(),
+        &key_manager,
+    )
+    .await
+    .unwrap();
+    let output_message = TransactionOutput::metadata_signature_message(&output);
+    output.metadata_signature = key_manager
+        .get_receiver_partial_metadata_signature(
+            &spending_key_id,
+            &sender.amount.into(),
+            &sender.sender_offset_public_key,
+            &sender.ephemeral_public_nonce,
+            &TransactionOutputVersion::get_current_version(),
+            &output_message,
+            RangeProofType::BulletProofPlus,
+        )
+        .await
+        .unwrap();
 
     let rtp = ReceiverTransactionProtocol::new(
-        TransactionSenderMessage::Single(Box::new(stp.clone().build_single_round_message().unwrap())),
-        PrivateKey::random(&mut OsRng),
-        PrivateKey::random(&mut OsRng),
-        &factories,
-    );
+        TransactionSenderMessage::Single(Box::new(sender)),
+        output,
+        &key_manager,
+        &constants,
+    )
+    .await;
 
     let mut inbound_txs = Vec::new();
 
@@ -251,7 +312,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             source_address,
             destination_address: dest_address,
             amount: outbound_txs[i].amount,
-            fee: MicroTari::from(200),
+            fee: MicroMinotari::from(200),
             transaction: tx.clone(),
             status: match i {
                 0 => TransactionStatus::Completed,
@@ -466,8 +527,8 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     assert_eq!(unmined_txs.len(), 5);
 }
 
-#[test]
-pub fn test_transaction_service_sqlite_db() {
+#[tokio::test]
+pub async fn test_transaction_service_sqlite_db() {
     let db_name = format!("{}.sqlite3", random::string(8));
     let db_tempdir = tempdir().unwrap();
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
@@ -479,7 +540,7 @@ pub fn test_transaction_service_sqlite_db() {
     let key_ga = Key::from_slice(&key);
     let cipher = XChaCha20Poly1305::new(key_ga);
 
-    test_db_backend(TransactionServiceSqliteDatabase::new(connection, cipher));
+    test_db_backend(TransactionServiceSqliteDatabase::new(connection, cipher)).await;
 }
 
 #[tokio::test]
@@ -500,8 +561,8 @@ async fn import_tx_and_read_it_from_db() {
         TxId::from(1u64),
         TariAddress::default(),
         TariAddress::default(),
-        MicroTari::from(100000),
-        MicroTari::from(0),
+        MicroMinotari::from(100000),
+        MicroMinotari::from(0),
         Transaction::new(
             Vec::new(),
             Vec::new(),
@@ -529,8 +590,8 @@ async fn import_tx_and_read_it_from_db() {
         TxId::from(2u64),
         TariAddress::default(),
         TariAddress::default(),
-        MicroTari::from(100000),
-        MicroTari::from(0),
+        MicroMinotari::from(100000),
+        MicroMinotari::from(0),
         Transaction::new(
             Vec::new(),
             Vec::new(),
@@ -558,8 +619,8 @@ async fn import_tx_and_read_it_from_db() {
         TxId::from(3u64),
         TariAddress::default(),
         TariAddress::default(),
-        MicroTari::from(100000),
-        MicroTari::from(0),
+        MicroMinotari::from(100000),
+        MicroMinotari::from(0),
         Transaction::new(
             Vec::new(),
             Vec::new(),

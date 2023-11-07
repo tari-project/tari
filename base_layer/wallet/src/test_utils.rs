@@ -34,7 +34,10 @@ use crate::storage::sqlite_utilities::{
 };
 
 pub fn random_string(len: usize) -> String {
-    iter::repeat(()).map(|_| OsRng.sample(Alphanumeric)).take(len).collect()
+    iter::repeat(())
+        .map(|_| OsRng.sample(Alphanumeric) as char)
+        .take(len)
+        .collect()
 }
 
 /// A test helper to create a temporary wallet service databases
@@ -56,7 +59,7 @@ pub fn make_wallet_database_connection(path: Option<String>) -> (WalletDbConnect
 }
 
 pub fn create_consensus_rules() -> ConsensusManager {
-    ConsensusManager::builder(Network::LocalNet).build()
+    ConsensusManager::builder(Network::LocalNet).build().unwrap()
 }
 
 pub fn create_consensus_constants(height: u64) -> ConsensusConstants {

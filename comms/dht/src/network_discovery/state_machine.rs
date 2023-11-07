@@ -134,17 +134,17 @@ pub(super) struct NetworkDiscoveryContext {
 impl NetworkDiscoveryContext {
     /// Increment the number of rounds by 1
     pub(super) fn increment_num_rounds(&self) -> usize {
-        self.num_rounds.fetch_add(1, Ordering::AcqRel)
+        self.num_rounds.fetch_add(1, Ordering::SeqCst)
     }
 
     /// Get the number of rounds
     pub fn num_rounds(&self) -> usize {
-        self.num_rounds.load(Ordering::Relaxed)
+        self.num_rounds.load(Ordering::SeqCst)
     }
 
     /// Reset the number of rounds to 0
     pub(super) fn reset_num_rounds(&self) {
-        self.num_rounds.store(0, Ordering::Release);
+        self.num_rounds.store(0, Ordering::SeqCst);
     }
 
     pub(super) fn publish_event(&self, event: DhtEvent) {
@@ -295,7 +295,7 @@ where Fut: Future<Output = StateEvent> + Unpin {
 #[derive(Debug, Clone)]
 pub struct DiscoveryParams {
     pub peers: Vec<NodeId>,
-    pub num_peers_to_request: Option<usize>,
+    pub num_peers_to_request: u32,
 }
 
 impl Display for DiscoveryParams {
@@ -306,9 +306,6 @@ impl Display for DiscoveryParams {
             self.peers.len(),
             self.peers.iter().map(|p| format!("{}, ", p)).collect::<String>(),
             self.num_peers_to_request
-                .as_ref()
-                .map(ToString::to_string)
-                .unwrap_or_else(|| "∞".into()),
         )
     }
 }

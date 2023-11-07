@@ -21,18 +21,19 @@
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    convert::TryFrom,
     ffi::{c_void, CString},
     path::PathBuf,
     str::FromStr,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, Once},
 };
 
 use async_trait::async_trait;
 
 type ClientFFI = c_void;
 
-use libc::{c_char, c_int};
-use tari_app_utilities::identity_management::setup_node_identity;
+use libc::{c_char, c_int, c_uchar, c_uint};
+use minotari_app_utilities::identity_management::setup_node_identity;
 use tari_chat_client::{database, ChatClient};
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::{
@@ -40,23 +41,69 @@ use tari_comms::{
     peer_manager::{Peer, PeerFeatures},
     NodeIdentity,
 };
-use tari_contacts::contacts_service::{service::ContactOnlineStatus, types::Message};
+use tari_contacts::contacts_service::{
+    service::ContactOnlineStatus,
+    types::{Message, MessageMetadataType},
+};
 
 use crate::{chat_client::test_config, get_port};
 
-#[cfg_attr(windows, link(name = "tari_chat_ffi.dll"))]
-#[cfg_attr(not(windows), link(name = "tari_chat_ffi"))]
+extern "C" fn callback_contact_status_change(_state: *mut c_void) {
+    let callback = ChatCallback::instance();
+    *callback.contact_status_change.lock().unwrap() += 1;
+}
+
+extern "C" fn callback_message_received(_state: *mut c_void) {
+    let callback = ChatCallback::instance();
+    *callback.message_received.lock().unwrap() += 1;
+}
+
+extern "C" fn callback_delivery_confirmation_received(_state: *mut c_void) {
+    let callback = ChatCallback::instance();
+    *callback.delivery_confirmation_received.lock().unwrap() += 1;
+}
+
+extern "C" fn callback_read_confirmation_received(_state: *mut c_void) {
+    let callback = ChatCallback::instance();
+    *callback.read_confirmation_received.lock().unwrap() += 1;
+}
+
+#[cfg_attr(windows, link(name = "minotari_chat_ffi.dll"))]
+#[cfg_attr(not(windows), link(name = "minotari_chat_ffi"))]
 extern "C" {
     pub fn create_chat_client(
         config: *mut c_void,
-        identity_file_path: *const c_char,
-        out_error: *const c_int,
+        error_out: *const c_int,
+        callback_contact_status_change: unsafe extern "C" fn(*mut c_void),
+        callback_message_received: unsafe extern "C" fn(*mut c_void),
+        callback_delivery_confirmation_received: unsafe extern "C" fn(*mut c_void),
+        callback_read_confirmation_received: unsafe extern "C" fn(*mut c_void),
     ) -> *mut ClientFFI;
-    pub fn send_message(client: *mut ClientFFI, receiver: *mut c_void, message: *const c_char, out_error: *const c_int);
-    pub fn add_contact(client: *mut ClientFFI, address: *mut c_void, out_error: *const c_int);
-    pub fn check_online_status(client: *mut ClientFFI, address: *mut c_void, out_error: *const c_int) -> c_int;
-    pub fn get_all_messages(client: *mut ClientFFI, sender: *mut c_void, out_error: *const c_int) -> *mut c_void;
-    pub fn destroy_client_ffi(client: *mut ClientFFI);
+    pub fn create_chat_message(receiver: *mut c_void, message: *const c_char, error_out: *const c_int) -> *mut c_void;
+    pub fn send_chat_message(client: *mut ClientFFI, message: *mut c_void, error_out: *const c_int);
+    pub fn add_chat_message_metadata(
+        message: *mut c_void,
+        metadata_type: c_int,
+        data: *const c_char,
+        error_out: *const c_int,
+    ) -> *mut c_void;
+    pub fn add_chat_contact(client: *mut ClientFFI, address: *mut c_void, error_out: *const c_int);
+    pub fn check_online_status(client: *mut ClientFFI, address: *mut c_void, error_out: *const c_int) -> c_int;
+    pub fn get_chat_messages(
+        client: *mut ClientFFI,
+        sender: *mut c_void,
+        limit: c_int,
+        page: c_int,
+        error_out: *const c_int,
+    ) -> *mut c_void;
+    pub fn destroy_chat_client(client: *mut ClientFFI);
+    pub fn chat_byte_vector_create(
+        byte_array: *const c_uchar,
+        element_count: c_uint,
+        error_our: *const c_int,
+    ) -> *mut c_void;
+    pub fn send_read_confirmation_for_message(client: *mut ClientFFI, message: *mut c_void, error_out: *const c_int);
+    pub fn get_conversationalists(client: *mut ClientFFI, error_out: *const c_int) -> *mut c_void;
 }
 
 #[derive(Debug)]
@@ -69,6 +116,9 @@ pub struct ChatFFI {
     pub identity: Arc<NodeIdentity>,
 }
 
+struct Conversationalists(Vec<TariAddress>);
+struct MessagesVector(Vec<Message>);
+
 #[async_trait]
 impl ChatClient for ChatFFI {
     async fn add_contact(&self, address: &TariAddress) {
@@ -76,8 +126,8 @@ impl ChatClient for ChatFFI {
 
         let address_ptr = Box::into_raw(Box::new(address.to_owned())) as *mut c_void;
 
-        let out_error = Box::into_raw(Box::new(0));
-        unsafe { add_contact(client.0, address_ptr, out_error) }
+        let error_out = Box::into_raw(Box::new(0));
+        unsafe { add_chat_contact(client.0, address_ptr, error_out) }
     }
 
     async fn check_online_status(&self, address: &TariAddress) -> ContactOnlineStatus {
@@ -86,39 +136,96 @@ impl ChatClient for ChatFFI {
         let address_ptr = Box::into_raw(Box::new(address.clone())) as *mut c_void;
 
         let result;
-        let out_error = Box::into_raw(Box::new(0));
-        unsafe { result = check_online_status(client.0, address_ptr, out_error) }
+        let error_out = Box::into_raw(Box::new(0));
+        unsafe { result = check_online_status(client.0, address_ptr, error_out) }
 
-        ContactOnlineStatus::from_byte(result as u8).expect("A valid u8 from FFI status")
+        ContactOnlineStatus::from_byte(u8::try_from(result).unwrap()).expect("A valid u8 from FFI status")
     }
 
-    async fn send_message(&self, receiver: TariAddress, message: String) {
+    async fn send_message(&self, message: Message) {
         let client = self.ptr.lock().unwrap();
 
-        let message_c_str = CString::new(message).unwrap();
-        let message_c_char: *const c_char = CString::into_raw(message_c_str) as *const c_char;
-
-        let receiver_ptr = Box::into_raw(Box::new(receiver)) as *mut c_void;
-        let out_error = Box::into_raw(Box::new(0));
+        let error_out = Box::into_raw(Box::new(0));
+        let message_ptr = Box::into_raw(Box::new(message)) as *mut c_void;
 
         unsafe {
-            send_message(client.0, receiver_ptr, message_c_char, out_error);
+            send_chat_message(client.0, message_ptr, error_out);
         }
     }
 
-    async fn get_all_messages(&self, address: &TariAddress) -> Vec<Message> {
+    async fn get_messages(&self, address: &TariAddress, limit: u64, page: u64) -> Vec<Message> {
         let client = self.ptr.lock().unwrap();
 
         let address_ptr = Box::into_raw(Box::new(address.clone())) as *mut c_void;
 
         let messages;
         unsafe {
-            let out_error = Box::into_raw(Box::new(0));
-            let all_messages = get_all_messages(client.0, address_ptr, out_error) as *mut Vec<Message>;
-            messages = (*all_messages).clone();
+            let error_out = Box::into_raw(Box::new(0));
+            let limit = i32::try_from(limit).expect("Truncation occurred") as c_int;
+            let page = i32::try_from(page).expect("Truncation occurred") as c_int;
+            let all_messages = get_chat_messages(client.0, address_ptr, limit, page, error_out) as *mut MessagesVector;
+            messages = (*all_messages).0.clone();
         }
 
         messages
+    }
+
+    fn create_message(&self, receiver: &TariAddress, message: String) -> Message {
+        let address_ptr = Box::into_raw(Box::new(receiver.to_owned())) as *mut c_void;
+
+        let message_c_str = CString::new(message).unwrap();
+        let message_c_char: *const c_char = CString::into_raw(message_c_str) as *const c_char;
+
+        let error_out = Box::into_raw(Box::new(0));
+
+        unsafe {
+            let message_ptr = create_chat_message(address_ptr, message_c_char, error_out) as *mut Message;
+            *Box::from_raw(message_ptr)
+        }
+    }
+
+    fn add_metadata(&self, message: Message, metadata_type: MessageMetadataType, data: String) -> Message {
+        let message_ptr = Box::into_raw(Box::new(message)) as *mut c_void;
+        let message_type = metadata_type.as_byte();
+
+        let error_out = Box::into_raw(Box::new(0));
+
+        let bytes = data.into_bytes();
+        let len = i32::try_from(bytes.len()).expect("Truncation occurred") as c_uint;
+        let byte_data = unsafe { chat_byte_vector_create(bytes.as_ptr(), len, error_out) };
+
+        unsafe {
+            add_chat_message_metadata(
+                message_ptr,
+                i32::from(message_type),
+                byte_data as *const c_char,
+                error_out,
+            );
+            *Box::from_raw(message_ptr as *mut Message)
+        }
+    }
+
+    async fn send_read_receipt(&self, message: Message) {
+        let client = self.ptr.lock().unwrap();
+        let message_ptr = Box::into_raw(Box::new(message)) as *mut c_void;
+        let error_out = Box::into_raw(Box::new(0));
+
+        unsafe {
+            send_read_confirmation_for_message(client.0, message_ptr, error_out);
+        }
+    }
+
+    async fn get_conversationalists(&self) -> Vec<TariAddress> {
+        let client = self.ptr.lock().unwrap();
+
+        let addresses;
+        unsafe {
+            let error_out = Box::into_raw(Box::new(0));
+            let vector = get_conversationalists(client.0, error_out) as *mut Conversationalists;
+            addresses = (*vector).0.clone();
+        }
+
+        addresses
     }
 
     fn identity(&self) -> &NodeIdentity {
@@ -128,7 +235,7 @@ impl ChatClient for ChatFFI {
     fn shutdown(&mut self) {
         let client = self.ptr.lock().unwrap();
 
-        unsafe { destroy_client_ffi(client.0) }
+        unsafe { destroy_chat_client(client.0) }
     }
 }
 
@@ -160,30 +267,49 @@ pub async fn spawn_ffi_chat_client(name: &str, seed_peers: Vec<Peer>, base_dir: 
         .collect::<Vec<String>>()
         .into();
 
-    let identity_path_c_str = CString::new(
-        config
-            .chat_client
-            .identity_file
-            .clone()
-            .into_os_string()
-            .into_string()
-            .unwrap(),
-    )
-    .unwrap();
-    let identity_path_c_char: *const c_char = CString::into_raw(identity_path_c_str) as *const c_char;
-
     let config_ptr = Box::into_raw(Box::new(config)) as *mut c_void;
 
     let client_ptr;
 
-    let out_error = Box::into_raw(Box::new(0));
+    let error_out = Box::into_raw(Box::new(0));
 
     unsafe {
-        client_ptr = create_chat_client(config_ptr, identity_path_c_char, out_error);
+        *ChatCallback::instance().contact_status_change.lock().unwrap() = 0;
+
+        client_ptr = create_chat_client(
+            config_ptr,
+            error_out,
+            callback_contact_status_change,
+            callback_message_received,
+            callback_delivery_confirmation_received,
+            callback_read_confirmation_received,
+        );
     }
 
     ChatFFI {
         ptr: Arc::new(Mutex::new(PtrWrapper(client_ptr))),
         identity,
+    }
+}
+
+static mut INSTANCE: Option<ChatCallback> = None;
+static START: Once = Once::new();
+
+#[derive(Default)]
+pub struct ChatCallback {
+    pub contact_status_change: Mutex<u64>,
+    pub message_received: Mutex<u64>,
+    pub delivery_confirmation_received: Mutex<u64>,
+    pub read_confirmation_received: Mutex<u64>,
+}
+
+impl ChatCallback {
+    pub fn instance() -> &'static mut Self {
+        unsafe {
+            START.call_once(|| {
+                INSTANCE = Some(Self::default());
+            });
+            INSTANCE.as_mut().unwrap()
+        }
     }
 }

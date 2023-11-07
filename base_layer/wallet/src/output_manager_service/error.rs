@@ -51,7 +51,7 @@ pub enum OutputManagerError {
     #[error("Build error: `{0}`")]
     BuildError(String),
     #[error("Byte array error: `{0}`")]
-    ByteArrayError(#[from] ByteArrayError),
+    ByteArrayError(String),
     #[error("Transaction protocol error: `{0}`")]
     TransactionProtocolError(#[from] TransactionProtocolError),
     #[error("Transport channel error: `{0}`")]
@@ -116,7 +116,15 @@ pub enum OutputManagerError {
     NodeIdError(#[from] NodeIdError),
     #[error("Script hash does not match expected script")]
     InvalidScriptHash,
-    #[error("Tari script error : {0}")]
+    #[error("Unsupported Covenant")]
+    InvalidCovenant,
+    #[error("Unsupported Output Features")]
+    InvalidOutputFeatures,
+    #[error("Unsupported Kernel Features")]
+    InvalidKernelFeatures,
+    #[error("Unsupported Lock Height")]
+    InvalidLockHeight,
+    #[error("Tari script error: {0}")]
     ScriptError(#[from] ScriptError),
     #[error("Master secret key does not match persisted key manager state")]
     MasterSeedMismatch,
@@ -129,9 +137,9 @@ pub enum OutputManagerError {
         #[from]
         source: ConnectivityError,
     },
-    #[error("Invalid message received:{0}")]
+    #[error("Invalid message received: {0}")]
     InvalidMessageError(String),
-    #[error("Key manager service error : {0}")]
+    #[error("Key manager service error: {0}")]
     KeyManagerServiceError(#[from] KeyManagerServiceError),
     #[error("Value can't be encrypted/decrypted")]
     ValueEncryptionError(#[from] EncryptedDataError),
@@ -142,7 +150,19 @@ pub enum OutputManagerError {
     #[error("Validation in progress")]
     ValidationInProgress,
     #[error("Invalid data: `{0}`")]
-    RangeProofError(#[from] RangeProofError),
+    RangeProofError(String),
+}
+
+impl From<RangeProofError> for OutputManagerError {
+    fn from(e: RangeProofError) -> Self {
+        OutputManagerError::RangeProofError(e.to_string())
+    }
+}
+
+impl From<ByteArrayError> for OutputManagerError {
+    fn from(e: ByteArrayError) -> Self {
+        OutputManagerError::ByteArrayError(e.to_string())
+    }
 }
 
 #[derive(Debug, Error)]
@@ -184,15 +204,15 @@ pub enum OutputManagerStorageError {
     #[error("Wallet db is already encrypted and cannot be encrypted until the previous encryption is removed")]
     AlreadyEncrypted,
     #[error("Byte array error: `{0}`")]
-    ByteArrayError(#[from] ByteArrayError),
+    ByteArrayError(String),
     #[error("Aead error: `{0}`")]
     AeadError(String),
     #[error("Tried to insert a script that already exists in the database")]
     DuplicateScript,
-    #[error("Tari script error : {0}")]
+    #[error("Tari script error: {0}")]
     ScriptError(#[from] ScriptError),
     #[error("Binary not stored as valid hex:{0}")]
-    HexError(#[from] HexError),
+    HexError(String),
     #[error("Key Manager Service Error: `{0}`")]
     KeyManagerServiceError(#[from] KeyManagerServiceError),
     #[error("IO Error: `{0}`")]
@@ -201,6 +221,18 @@ pub enum OutputManagerStorageError {
     SqliteStorageError(#[from] SqliteStorageError),
     #[error("Encryption error: `{0}`")]
     EncryptedOpeningsError(#[from] EncryptedDataError),
+}
+
+impl From<HexError> for OutputManagerStorageError {
+    fn from(err: HexError) -> Self {
+        OutputManagerStorageError::HexError(err.to_string())
+    }
+}
+
+impl From<ByteArrayError> for OutputManagerStorageError {
+    fn from(e: ByteArrayError) -> Self {
+        OutputManagerStorageError::ByteArrayError(e.to_string())
+    }
 }
 
 impl From<OutputManagerError> for ExitError {

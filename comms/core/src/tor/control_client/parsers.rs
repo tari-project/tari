@@ -57,7 +57,7 @@ impl fmt::Display for ParseError {
 }
 
 pub fn response_line(line: &str) -> Result<ResponseLine, ParseError> {
-    let parser = map_res(digit1, |code: &str| code.parse::<u16>());
+    let mut parser = map_res(digit1, |code: &str| code.parse::<u16>());
     let (rest, code) = parser(line)?;
     let (rest, ch) = anychar(rest)?;
     if ![' ', '-', '+'].contains(&ch) {
@@ -93,10 +93,7 @@ pub fn key_value(line: &str) -> Result<(Cow<'_, str>, Vec<Cow<'_, str>>), ParseE
     let lines = rest.lines();
     let parts = lines
         .filter(|s| !s.is_empty())
-        .flat_map(|line| {
-            // TODO: this doesnt correctly handle responses with inner quotes i.e "Hello\" world"
-            line.split('"').filter(|part| !part.trim().is_empty()).map(Cow::from)
-        })
+        .flat_map(|line| line.split('"').filter(|part| !part.trim().is_empty()).map(Cow::from))
         .collect();
     Ok((identifier.trim().into(), parts))
 }

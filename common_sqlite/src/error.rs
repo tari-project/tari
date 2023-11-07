@@ -51,16 +51,22 @@ pub enum SqliteStorageError {
 pub enum StorageError {
     #[error("ConnectionError: {0}")]
     ConnectionError(#[from] diesel::ConnectionError),
-    #[error("Error when joining to tokio task : {0}")]
+    #[error("Error when joining to tokio task: {0}")]
     JoinError(#[from] task::JoinError),
     #[error("DatabaseMigrationFailed: {0}")]
     DatabaseMigrationFailed(String),
     #[error("ResultError: {0}")]
     ResultError(#[from] diesel::result::Error),
     #[error("MessageFormatError: {0}")]
-    MessageFormatError(#[from] MessageFormatError),
+    MessageFormatError(String),
     #[error("Unexpected result: {0}")]
     UnexpectedResult(String),
     #[error("Diesel R2d2 error: `{0}`")]
     DieselR2d2Error(#[from] SqliteStorageError),
+}
+
+impl From<MessageFormatError> for StorageError {
+    fn from(value: MessageFormatError) -> Self {
+        StorageError::MessageFormatError(value.to_string())
+    }
 }

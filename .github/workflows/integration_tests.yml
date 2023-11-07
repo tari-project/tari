@@ -8,9 +8,6 @@ name: Integration tests
       - reopened
       - synchronize
   merge_group:
-  push:
-    paths-ignore:
-      - '**/*.md'
   schedule:
     - cron: '0 2 * * *'   # daily @ 02h00 (non-critical)
     - cron: '0 12 * * 6'  # weekly - Saturday @ noon (long-running)
@@ -30,7 +27,7 @@ name: Integration tests
         type: string
 
 env:
-  toolchain: nightly-2023-06-03
+  toolchain: nightly-2023-06-04
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -42,7 +39,7 @@ jobs:
     runs-on: [self-hosted, ubuntu-high-cpu]
     steps:
       - name: checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Envs setup
         id: envs_setup
@@ -75,8 +72,24 @@ jobs:
           sudo apt-get update
           sudo bash scripts/install_ubuntu_dependencies.sh
 
-      - name: Cache cargo files and outputs
-        uses: Swatinem/rust-cache@v2
+      - name: caching (nightly)
+        # Don't use rust-cache.
+        # Rust-cache disables a key feature of actions/cache: restoreKeys.
+        # Without restore keys, we lose the ability to get partial matches on caches, and end
+        # up with too many cache misses.
+        # This job runs on self-hosted, so use local-cache instead.
+        uses: maxnowack/local-cache@v1
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/CACHEDIR.TAG
+            ~/.cargo/git
+            target
+          key: tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly
 
       - name: cargo test compile
         run: cargo test --no-run --locked --all-features --release ${{ env.TARGET_BINS }}
@@ -107,7 +120,7 @@ jobs:
     runs-on: [self-hosted, ubuntu-high-cpu]
     steps:
       - name: checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Envs setup
         id: envs_setup
@@ -144,7 +157,20 @@ jobs:
 
       - name: Cache cargo files and outputs
         if: ${{ env.CI_FFI == 'true' }}
-        uses: Swatinem/rust-cache@v2
+        # Don't use rust-cache.
+        # This job runs on self-hosted, so use local-cache instead.
+        uses: maxnowack/local-cache@v1
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/CACHEDIR.TAG
+            ~/.cargo/git
+            target
+          key: tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly-${{ hashFiles('**/Cargo.lock') }}
+            tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-nightly
 
       - name: cargo test compile
         if: ${{ env.CI_FFI == 'true' }}
