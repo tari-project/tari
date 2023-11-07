@@ -143,7 +143,7 @@ mod test {
     use tari_common_types::types::PublicKey;
     use tari_crypto::{keys::PublicKey as PublicKeyTrait, signatures::CommitmentAndPublicKeySignature};
     use tari_key_manager::key_manager_service::KeyManagerInterface;
-    use tari_script::{script, ExecutionStack, TariScript};
+    use tari_script::{script, ExecutionStack};
 
     use crate::{
         covenants::Covenant,
@@ -255,7 +255,7 @@ mod test {
         let m = TransactionMetadata::new(MicroMinotari(100), 0);
         let test_params = TestParams::new(&key_manager).await;
         let test_params2 = TestParams::new(&key_manager).await;
-        let script = TariScript::default();
+        let script = script!(Nop);
         let sender_offset_public_key = key_manager
             .get_public_key_at_key_id(&test_params.sender_offset_key_id)
             .await
@@ -345,7 +345,7 @@ mod test {
             &m,
         );
         assert!(
-            prot.partial_signature.verify_challenge(&signing_pubkey, &e),
+            prot.partial_signature.verify_raw_uniform(&signing_pubkey, &e),
             "Partial signature is incorrect"
         );
     }

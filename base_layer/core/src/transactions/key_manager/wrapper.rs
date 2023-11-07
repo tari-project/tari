@@ -23,7 +23,7 @@
 use std::sync::Arc;
 
 use blake2::Blake2b;
-use digest::consts::U32;
+use digest::consts::U64;
 use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature};
 use tari_comms::types::CommsDHKE;
 use tari_crypto::{hashing::DomainSeparatedHash, ristretto::RistrettoComSig};
@@ -206,6 +206,18 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             .await
     }
 
+    async fn find_script_key_id_from_spend_key_id(
+        &self,
+        spend_key_id: &TariKeyId,
+        public_script_key: Option<&PublicKey>,
+    ) -> Result<Option<TariKeyId>, KeyManagerServiceError> {
+        self.transaction_key_manager_inner
+            .read()
+            .await
+            .find_script_key_id_from_spend_key_id(spend_key_id, public_script_key)
+            .await
+    }
+
     async fn get_diffie_hellman_shared_secret(
         &self,
         secret_key_id: &TariKeyId,
@@ -222,7 +234,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         &self,
         secret_key_id: &TariKeyId,
         public_key: &PublicKey,
-    ) -> Result<DomainSeparatedHash<Blake2b<U32>>, TransactionError> {
+    ) -> Result<DomainSeparatedHash<Blake2b<U64>>, TransactionError> {
         self.transaction_key_manager_inner
             .read()
             .await

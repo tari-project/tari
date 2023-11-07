@@ -44,9 +44,9 @@ impl Filter for FieldsHashedEqFilter {
 
 #[cfg(test)]
 mod test {
+    use blake2::Blake2b;
     use borsh::BorshSerialize;
-    use digest::Update;
-    use tari_common_types::types::Challenge;
+    use digest::{consts::U32, Update};
     use tari_crypto::hashing::DomainSeparation;
 
     use super::*;
@@ -72,7 +72,7 @@ mod test {
             sidechain_feature: Some(make_sample_sidechain_feature()),
             ..Default::default()
         };
-        let mut hasher = Challenge::new();
+        let mut hasher = Blake2b::<U32>::new();
         BaseLayerCovenantsDomain::add_domain_separation_tag(&mut hasher, COVENANTS_FIELD_HASHER_LABEL);
         let hash = hasher.chain(features.try_to_vec().unwrap()).finalize();
         let covenant = covenant!(fields_hashed_eq(@fields(@field::features), @hash(hash.into())));

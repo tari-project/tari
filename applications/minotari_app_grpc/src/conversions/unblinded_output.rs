@@ -67,8 +67,8 @@ impl TryFrom<grpc::UnblindedOutput> for UnblindedOutput {
     type Error = String;
 
     fn try_from(mut output: grpc::UnblindedOutput) -> Result<Self, Self::Error> {
-        let spending_key =
-            PrivateKey::from_bytes(output.spending_key.as_bytes()).map_err(|e| format!("spending_key: {:?}", e))?;
+        let spending_key = PrivateKey::from_canonical_bytes(output.spending_key.as_bytes())
+            .map_err(|e| format!("spending_key: {:?}", e))?;
 
         let features = output
             .features
@@ -80,10 +80,10 @@ impl TryFrom<grpc::UnblindedOutput> for UnblindedOutput {
         let input_data =
             ExecutionStack::from_bytes(output.input_data.as_bytes()).map_err(|e| format!("input_data: {:?}", e))?;
 
-        let script_private_key = PrivateKey::from_bytes(output.script_private_key.as_bytes())
+        let script_private_key = PrivateKey::from_canonical_bytes(output.script_private_key.as_bytes())
             .map_err(|e| format!("script_private_key: {:?}", e))?;
 
-        let sender_offset_public_key = PublicKey::from_bytes(output.sender_offset_public_key.as_bytes())
+        let sender_offset_public_key = PublicKey::from_canonical_bytes(output.sender_offset_public_key.as_bytes())
             .map_err(|err| format!("sender_offset_public_key {:?}", err))?;
 
         let metadata_signature = output

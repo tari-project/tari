@@ -24,6 +24,7 @@ use std::{cmp::Ordering, time::Instant};
 
 use log::*;
 use tari_common_types::chain_metadata::ChainMetadata;
+use tari_comms::peer_manager::NodeId;
 
 use crate::{
     base_node::{
@@ -35,7 +36,6 @@ use crate::{
     },
     chain_storage::BlockchainBackend,
 };
-
 const LOG_TARGET: &str = "c::bn::header_sync";
 
 #[derive(Clone, Debug)]
@@ -70,12 +70,42 @@ impl HeaderSyncState {
         self.sync_peers
     }
 
+    fn remove_sync_peer(&mut self, node_id: &NodeId) {
+        if let Some(pos) = self.sync_peers.iter().position(|p| p.node_id() == node_id) {
+            self.sync_peers.remove(pos);
+        }
+    }
+
     // converting u64 to i64 is okay as the future time limit is the hundreds so way below u32 even
+    #[allow(clippy::too_many_lines)]
     #[allow(clippy::cast_possible_wrap)]
     pub async fn next_event<B: BlockchainBackend + 'static>(
         &mut self,
         shared: &mut BaseNodeStateMachine<B>,
     ) -> StateEvent {
+        // Only sync to peers with better claimed accumulated difficulty than the local chain: this may be possible
+        // at this stage due to read-write lock race conditions in the database
+        match shared.db.get_chain_metadata().await {
+            Ok(best_block_metadata) => {
+                let mut remove = Vec::new();
+                for sync_peer in &self.sync_peers {
+                    if sync_peer.claimed_chain_metadata().accumulated_difficulty() <=
+                        best_block_metadata.accumulated_difficulty()
+                    {
+                        remove.push(sync_peer.node_id().clone());
+                    }
+                }
+                for node_id in remove {
+                    self.remove_sync_peer(&node_id);
+                }
+                if self.sync_peers.is_empty() {
+                    // Go back to Listening state
+                    return StateEvent::Continue;
+                }
+            },
+            Err(e) => return StateEvent::FatalError(format!("{}", e)),
+        }
+
         let mut synchronizer = HeaderSynchronizer::new(
             shared.config.blockchain_sync_config.clone(),
             shared.db.clone(),
@@ -116,7 +146,7 @@ impl HeaderSyncState {
 
         let local_nci = shared.local_node_interface.clone();
         synchronizer.on_rewind(move |removed| {
-            if let Some(fork_height) = removed.last().map(|b| b.height() - 1) {
+            if let Some(fork_height) = removed.last().map(|b| b.height().saturating_sub(1)) {
                 metrics::tip_height().set(fork_height as i64);
                 metrics::reorg(fork_height, 0, removed.len()).inc();
             }
@@ -128,7 +158,7 @@ impl HeaderSyncState {
         let mut mdc = vec![];
         log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
         match synchronizer.synchronize().await {
-            Ok(sync_peer) => {
+            Ok((sync_peer, sync_result)) => {
                 log_mdc::extend(mdc);
                 info!(
                     target: LOG_TARGET,
@@ -144,7 +174,7 @@ impl HeaderSyncState {
                     }
                 }
                 self.is_synced = true;
-                StateEvent::HeadersSynchronized(sync_peer)
+                StateEvent::HeadersSynchronized(sync_peer, sync_result)
             },
             Err(err) => {
                 let _ignore = shared.status_event_sender.send(StatusInfo {
@@ -160,16 +190,10 @@ impl HeaderSyncState {
                         warn!(target: LOG_TARGET, "{}. Continuing...", err);
                         StateEvent::Continue
                     },
-                    BlockHeaderSyncError::NetworkSilence => {
-                        log_mdc::extend(mdc);
-                        warn!(target: LOG_TARGET, "{}", err);
-                        self.is_synced = true;
-                        StateEvent::NetworkSilence
-                    },
                     _ => {
                         log_mdc::extend(mdc);
                         debug!(target: LOG_TARGET, "Header sync failed: {}", err);
-                        StateEvent::HeaderSyncFailed
+                        StateEvent::HeaderSyncFailed(err.to_string())
                     },
                 }
             },

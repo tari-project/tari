@@ -137,6 +137,7 @@ impl DhtActorMock {
                 reply_tx.send(Ok(())).unwrap();
             },
             DialDiscoverPeer { .. } => unimplemented!(),
+            BanPeer { .. } => unimplemented!(),
         }
     }
 }

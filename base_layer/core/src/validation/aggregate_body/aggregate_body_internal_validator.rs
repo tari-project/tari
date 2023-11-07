@@ -195,7 +195,7 @@ fn validate_kernel_sum(
     factory: &CommitmentFactory,
 ) -> Result<(), ValidationError> {
     trace!(target: LOG_TARGET, "Checking kernel total");
-    let KernelSum { sum: excess, fees } = sum_kernels(body, offset_and_reward);
+    let KernelSum { sum: excess, fees } = sum_kernels(body, offset_and_reward)?;
     let sum_io = sum_commitments(body)?;
     trace!(target: LOG_TARGET, "Total outputs - inputs:{}", sum_io.to_hex());
     let fees = factory.commit_value(&PrivateKey::default(), fees.into());
@@ -207,26 +207,26 @@ fn validate_kernel_sum(
         fees.to_hex()
     );
     if excess != &sum_io + &fees {
-        return Err(ValidationError::CustomError(
-            "Sum of inputs and outputs did not equal sum of kernels with fees".into(),
-        ));
+        return Err(ValidationError::InvalidAccountingBalance);
     }
 
     Ok(())
 }
 /// Calculate the sum of the kernels, taking into account the provided offset, and their constituent fees
-fn sum_kernels(body: &AggregateBody, offset_with_fee: PedersenCommitment) -> KernelSum {
+fn sum_kernels(body: &AggregateBody, offset_with_fee: PedersenCommitment) -> Result<KernelSum, ValidationError> {
     // Sum all kernel excesses and fees
-    body.kernels().iter().fold(
-        KernelSum {
-            fees: MicroMinotari(0),
-            sum: offset_with_fee,
-        },
-        |acc, val| KernelSum {
-            fees: acc.fees + val.fee,
-            sum: &acc.sum + &val.excess,
-        },
-    )
+    let mut kernel_sum = KernelSum {
+        fees: MicroMinotari(0),
+        sum: offset_with_fee,
+    };
+    for kernel in body.kernels() {
+        kernel_sum.fees = kernel_sum
+            .fees
+            .checked_add(kernel.fee)
+            .ok_or(ValidationError::InvalidAccountingBalance)?;
+        kernel_sum.sum = &kernel_sum.sum + &kernel.excess;
+    }
+    Ok(kernel_sum)
 }
 
 /// Calculate the sum of the outputs - inputs
@@ -306,7 +306,7 @@ fn check_weight(
 ) -> Result<(), ValidationError> {
     let block_weight = body
         .calculate_weight(consensus_constants.transaction_weight_params())
-        .map_err(|e| ValidationError::CustomError(e.to_string()))?;
+        .map_err(|e| ValidationError::SerializationError(format!("Unable to calculate body weight: {}", e)))?;
     let max_weight = consensus_constants.max_block_transaction_weight();
     if block_weight <= max_weight {
         trace!(
@@ -427,7 +427,7 @@ mod test {
     use rand::seq::SliceRandom;
     use tari_common::configuration::Network;
     use tari_common_types::types::RANGE_PROOF_AGGREGATION_FACTOR;
-    use tari_script::TariScript;
+    use tari_script::script;
 
     use super::*;
     use crate::{
@@ -504,7 +504,7 @@ mod test {
             100.into(),
             &key_manager,
             &OutputFeatures::create_burn_output(),
-            &TariScript::default(),
+            &script!(Nop),
             &Covenant::default(),
             0.into(),
         )
@@ -513,7 +513,7 @@ mod test {
             101.into(),
             &key_manager,
             &OutputFeatures::create_burn_output(),
-            &TariScript::default(),
+            &script!(Nop),
             &Covenant::default(),
             0.into(),
         )
@@ -522,7 +522,7 @@ mod test {
             102.into(),
             &key_manager,
             &OutputFeatures::create_burn_output(),
-            &TariScript::default(),
+            &script!(Nop),
             &Covenant::default(),
             0.into(),
         )
@@ -567,7 +567,7 @@ mod test {
                     100.into(),
                     &key_manager,
                     &OutputFeatures::create_burn_output(),
-                    &TariScript::default(),
+                    &script!(Nop),
                     &Covenant::default(),
                     0.into(),
                 )

@@ -37,8 +37,13 @@ use crate::{
         shrink_hashmap::shrink_hashmap,
         unconfirmed_pool::UnconfirmedPoolError,
         FeePerGramStat,
+        MempoolError,
     },
-    transactions::{tari_amount::MicroMinotari, transaction_components::Transaction, weight::TransactionWeight},
+    transactions::{
+        tari_amount::MicroMinotari,
+        transaction_components::{Transaction, TransactionError},
+        weight::TransactionWeight,
+    },
 };
 
 pub const LOG_TARGET: &str = "c::mp::unconfirmed_pool::unconfirmed_pool_storage";
@@ -116,7 +121,7 @@ impl UnconfirmedPool {
         tx: Arc<Transaction>,
         dependent_outputs: Option<Vec<HashOutput>>,
         transaction_weighting: &TransactionWeight,
-    ) -> std::io::Result<()> {
+    ) -> Result<(), UnconfirmedPoolError> {
         if tx
             .body
             .kernels()
@@ -129,10 +134,10 @@ impl UnconfirmedPool {
         let new_key = self.get_next_key();
         let prioritized_tx = PrioritizedTransaction::new(new_key, transaction_weighting, tx, dependent_outputs)?;
         if self.tx_by_key.len() >= self.config.storage_capacity {
-            if prioritized_tx.priority < *self.lowest_priority() {
+            if prioritized_tx.priority < *self.lowest_priority()? {
                 return Ok(());
             }
-            self.remove_lowest_priority_tx();
+            self.remove_lowest_priority_tx()?;
         }
 
         self.tx_by_priority.insert(prioritized_tx.priority.clone(), new_key);
@@ -164,7 +169,7 @@ impl UnconfirmedPool {
         &mut self,
         txs: I,
         transaction_weighting: &TransactionWeight,
-    ) -> std::io::Result<()> {
+    ) -> Result<(), UnconfirmedPoolError> {
         for tx in txs {
             self.insert(tx, None, transaction_weighting)?;
         }
@@ -226,7 +231,7 @@ impl UnconfirmedPool {
                 &mut depended_on,
                 &mut recompute,
                 prioritized_transaction.fee_per_byte,
-            );
+            )?;
             if curr_skip_count >= self.config.weight_tx_skip_count {
                 break;
             }
@@ -243,7 +248,12 @@ impl UnconfirmedPool {
                 &mut total_transaction_fees,
                 &mut unique_ids,
             )?;
-            let total_weight_after_candidates = curr_weight + total_transaction_weight;
+            let total_weight_after_candidates =
+                curr_weight
+                    .checked_add(total_transaction_weight)
+                    .ok_or(UnconfirmedPoolError::InternalError(
+                        "Overflow when calculating transaction weights".to_string(),
+                    ))?;
             if total_weight_after_candidates <= total_weight && potential_transactions_to_remove_and_recheck.is_empty()
             {
                 for dependend_on_tx_key in candidate_transactions_to_select.keys() {
@@ -255,7 +265,7 @@ impl UnconfirmedPool {
                             .or_insert_with(|| vec![tx_key]);
                     }
                 }
-                let fee_per_byte = (total_transaction_fees * 1000) / total_transaction_weight;
+                let fee_per_byte = total_transaction_fees.saturating_mul(1000) / total_transaction_weight;
                 complete_transaction_branch.insert(
                     *tx_key,
                     (
@@ -285,7 +295,7 @@ impl UnconfirmedPool {
                 &mut depended_on,
                 &mut recompute,
                 0,
-            );
+            )?;
         }
         if !transactions_to_remove_and_recheck.is_empty() {
             // we need to remove all transactions that need to be rechecked.
@@ -296,7 +306,7 @@ impl UnconfirmedPool {
             );
         }
         for (tx_key, _) in &transactions_to_remove_and_recheck {
-            self.remove_transaction(*tx_key);
+            self.remove_transaction(*tx_key)?;
         }
 
         let results = RetrieveResults {
@@ -320,13 +330,13 @@ impl UnconfirmedPool {
         depended_on: &mut HashMap<TransactionKey, Vec<&'a TransactionKey>>,
         recompute: &mut HashSet<&'a TransactionKey>,
         fee_per_byte_threshold: u64,
-    ) {
+    ) -> Result<(), UnconfirmedPoolError> {
         while match potentional_to_add.peek() {
             Some((fee_per_byte, _)) => *fee_per_byte >= fee_per_byte_threshold,
             None => false,
         } {
             // If the current TXs has lower fee than the ones we already processed, we can add some.
-            let (_fee_per_byte, tx_key) = potentional_to_add.pop().unwrap(); // Safe, we already checked we have some.
+            let (_fee_per_byte, tx_key) = potentional_to_add.pop().ok_or(UnconfirmedPoolError::StorageOutofSync)?;
             if selected_txs.contains_key(&tx_key) {
                 continue;
             }
@@ -334,19 +344,29 @@ impl UnconfirmedPool {
             if recompute.contains(&tx_key) {
                 recompute.remove(&tx_key);
                 // So we recompute the total fees based on updated weights and fees.
-                let (_, total_transaction_weight, total_transaction_fees) =
-                    complete_transaction_branch.get(&tx_key).unwrap();
-                let fee_per_byte = (*total_transaction_fees * 1000) / *total_transaction_weight;
+                let (_, total_transaction_weight, total_transaction_fees) = complete_transaction_branch
+                    .get(&tx_key)
+                    .ok_or(UnconfirmedPoolError::StorageOutofSync)?;
+                let fee_per_byte = total_transaction_fees.saturating_mul(1000) / *total_transaction_weight;
                 potentional_to_add.push((fee_per_byte, tx_key));
                 continue;
             }
             let (candidate_transactions_to_select, total_transaction_weight, _total_transaction_fees) =
-                complete_transaction_branch.remove(&tx_key).unwrap();
+                complete_transaction_branch
+                    .remove(&tx_key)
+                    .ok_or(UnconfirmedPoolError::StorageOutofSync)?;
 
-            let total_weight_after_candidates = *curr_weight + total_transaction_weight;
+            let total_weight_after_candidates =
+                curr_weight
+                    .checked_add(total_transaction_weight)
+                    .ok_or(UnconfirmedPoolError::InternalError(
+                        "Overflow when calculating total weights".to_string(),
+                    ))?;
             if total_weight_after_candidates <= total_weight {
                 if !UnconfirmedPool::find_duplicate_input(selected_txs, &candidate_transactions_to_select) {
-                    *curr_weight += total_transaction_weight;
+                    *curr_weight = curr_weight.checked_add(total_transaction_weight).ok_or(
+                        UnconfirmedPoolError::InternalError("Overflow when calculating total weights".to_string()),
+                    )?;
                     // So we processed the transaction, let's mark the dependents to be recomputed.
                     for tx_key in candidate_transactions_to_select.keys() {
                         self.remove_transaction_from_the_dependants(
@@ -354,7 +374,7 @@ impl UnconfirmedPool {
                             complete_transaction_branch,
                             depended_on,
                             recompute,
-                        );
+                        )?;
                     }
                     selected_txs.extend(candidate_transactions_to_select);
                 }
@@ -368,21 +388,21 @@ impl UnconfirmedPool {
             complete_transaction_branch.remove(&tx_key);
             depended_on.remove(&tx_key);
         }
+        Ok(())
     }
 
-    pub fn remove_transaction_from_the_dependants<'a>(
+    fn remove_transaction_from_the_dependants<'a>(
         &self,
         tx_key: TransactionKey,
         complete_transaction_branch: &mut CompleteTransactionBranch,
         depended_on: &mut HashMap<TransactionKey, Vec<&'a TransactionKey>>,
         recompute: &mut HashSet<&'a TransactionKey>,
-    ) {
+    ) -> Result<(), UnconfirmedPoolError> {
         if let Some(txs) = depended_on.remove(&tx_key) {
             let prioritized_transaction = self
                 .tx_by_key
                 .get(&tx_key)
-                .ok_or(UnconfirmedPoolError::StorageOutofSync)
-                .unwrap();
+                .ok_or(UnconfirmedPoolError::StorageOutofSync)?;
             for tx in txs {
                 if let Some((
                     update_candidate_transactions_to_select,
@@ -391,17 +411,25 @@ impl UnconfirmedPool {
                 )) = complete_transaction_branch.get_mut(tx)
                 {
                     update_candidate_transactions_to_select.remove(&tx_key);
-                    *update_total_transaction_weight -= prioritized_transaction.weight;
-                    *update_total_transaction_fees -= prioritized_transaction.transaction.body.get_total_fee().0;
+                    *update_total_transaction_weight = update_total_transaction_weight
+                        .checked_sub(prioritized_transaction.weight)
+                        .ok_or(UnconfirmedPoolError::StorageOutofSync)?;
+                    *update_total_transaction_fees = update_total_transaction_fees
+                        .checked_sub(prioritized_transaction.transaction.body.get_total_fee()?.0)
+                        .ok_or(UnconfirmedPoolError::StorageOutofSync)?;
                     // We mark it as recompute, we don't have to update the Heap, because it will never be
                     // better as it was (see the note at the top of the function).
                     recompute.insert(tx);
                 }
             }
         }
+        Ok(())
     }
 
-    pub fn retrieve_by_excess_sigs(&self, excess_sigs: &[PrivateKey]) -> (Vec<Arc<Transaction>>, Vec<PrivateKey>) {
+    pub fn retrieve_by_excess_sigs(
+        &self,
+        excess_sigs: &[PrivateKey],
+    ) -> Result<(Vec<Arc<Transaction>>, Vec<PrivateKey>), MempoolError> {
         // Hashset used to prevent duplicates
         let mut found = HashSet::new();
         let mut remaining = Vec::new();
@@ -419,11 +447,11 @@ impl UnconfirmedPool {
                 self.tx_by_key
                     .get(&id)
                     .map(|tx| tx.transaction.clone())
-                    .expect("mempool indexes out of sync: transaction exists in txs_by_signature but not in tx_by_key")
+                    .ok_or(MempoolError::IndexOutOfSync)
             })
-            .collect();
+            .collect::<Result<Vec<_>, _>>()?;
 
-        (found, remaining)
+        Ok((found, remaining))
     }
 
     fn get_all_dependent_transactions(
@@ -470,8 +498,16 @@ impl UnconfirmedPool {
             .insert(transaction.key, transaction.transaction.clone())
             .is_none()
         {
-            *total_fees += transaction.transaction.body.get_total_fee().0;
-            *total_weight += transaction.weight;
+            *total_fees = total_fees
+                .checked_add(transaction.transaction.body.get_total_fee()?.0)
+                .ok_or(UnconfirmedPoolError::InternalError(
+                    "Overflow when calculating total fees".to_string(),
+                ))?;
+            *total_weight = total_weight
+                .checked_add(transaction.weight)
+                .ok_or(UnconfirmedPoolError::InternalError(
+                    "Overflow when calculating total weights".to_string(),
+                ))?;
         }
 
         Ok(())
@@ -518,17 +554,18 @@ impl UnconfirmedPool {
         false
     }
 
-    fn lowest_priority(&self) -> &FeePriority {
+    fn lowest_priority(&self) -> Result<&FeePriority, UnconfirmedPoolError> {
         self.tx_by_priority
             .keys()
             .next()
-            .expect("lowest_priority called on empty mempool")
+            .ok_or(UnconfirmedPoolError::StorageOutofSync)
     }
 
-    fn remove_lowest_priority_tx(&mut self) {
+    fn remove_lowest_priority_tx(&mut self) -> Result<(), UnconfirmedPoolError> {
         if let Some(tx_key) = self.tx_by_priority.values().next().copied() {
-            self.remove_transaction(tx_key);
+            self.remove_transaction(tx_key)?;
         }
+        Ok(())
     }
 
     /// Remove all current mempool transactions from the UnconfirmedPoolStorage, returning that which have been removed
@@ -543,7 +580,7 @@ impl UnconfirmedPool {
     pub fn remove_published_and_discard_deprecated_transactions(
         &mut self,
         published_block: &Block,
-    ) -> Vec<Arc<Transaction>> {
+    ) -> Result<Vec<Arc<Transaction>>, UnconfirmedPoolError> {
         trace!(
             target: LOG_TARGET,
             "Searching for transactions to remove from unconfirmed pool in block {} ({})",
@@ -568,8 +605,12 @@ impl UnconfirmedPool {
 
             removed_transactions = to_remove
                 .iter()
-                .filter_map(|key| self.remove_transaction(*key))
-                .collect::<Vec<_>>();
+                .filter_map(|key| match self.remove_transaction(*key) {
+                    Err(e) => Some(Err(e)),
+                    Ok(Some(v)) => Some(Ok(v)),
+                    Ok(None) => None,
+                })
+                .collect::<Result<Vec<_>, _>>()?;
             debug!(
                 target: LOG_TARGET,
                 "Found {} transactions with matching kernel sigs from unconfirmed pool in {:.2?}",
@@ -597,7 +638,17 @@ impl UnconfirmedPool {
                     .map(|(key, _)| *key),
             );
 
-            removed_transactions.extend(to_remove.iter().filter_map(|key| self.remove_transaction(*key)));
+            removed_transactions.extend(
+                to_remove
+                    .iter()
+                    .filter_map(|key| match self.remove_transaction(*key) {
+                        Err(e) => Some(Err(e)),
+                        Ok(Some(v)) => Some(Ok(v)),
+                        Ok(None) => None,
+                    })
+                    .collect::<Result<Vec<_>, _>>()?
+                    .into_iter(),
+            );
             debug!(
                 target: LOG_TARGET,
                 "Found {} transactions with matching inputs from unconfirmed pool in {:.2?}",
@@ -621,7 +672,17 @@ impl UnconfirmedPool {
                     .copied(),
             );
 
-            removed_transactions.extend(to_remove.iter().filter_map(|key| self.remove_transaction(*key)));
+            removed_transactions.extend(
+                to_remove
+                    .iter()
+                    .filter_map(|key| match self.remove_transaction(*key) {
+                        Err(e) => Some(Err(e)),
+                        Ok(Some(v)) => Some(Ok(v)),
+                        Ok(None) => None,
+                    })
+                    .collect::<Result<Vec<_>, _>>()?
+                    .into_iter(),
+            );
             debug!(
                 target: LOG_TARGET,
                 "Found {} transactions with matching outputs from unconfirmed pool in {:.2?}",
@@ -630,7 +691,7 @@ impl UnconfirmedPool {
             );
         }
 
-        removed_transactions
+        Ok(removed_transactions)
     }
 
     /// Searches a block and transaction for matching inputs
@@ -644,15 +705,21 @@ impl UnconfirmedPool {
     }
 
     /// Ensures that all transactions are safely deleted in order and from all storage
-    fn remove_transaction(&mut self, tx_key: TransactionKey) -> Option<Arc<Transaction>> {
-        let prioritized_transaction = self.tx_by_key.remove(&tx_key)?;
+    fn remove_transaction(&mut self, tx_key: TransactionKey) -> Result<Option<Arc<Transaction>>, UnconfirmedPoolError> {
+        let prioritized_transaction = match self.tx_by_key.remove(&tx_key) {
+            Some(tx) => tx,
+            None => return Ok(None),
+        };
 
         self.tx_by_priority.remove(&prioritized_transaction.priority);
 
         for kernel in prioritized_transaction.transaction.body.kernels() {
             let sig = kernel.excess_sig.get_signature();
             if let Some(keys) = self.txs_by_signature.get_mut(sig) {
-                let pos = keys.iter().position(|k| *k == tx_key).expect("mempool out of sync");
+                let pos = keys
+                    .iter()
+                    .position(|k| *k == tx_key)
+                    .ok_or(UnconfirmedPoolError::StorageOutofSync)?;
                 keys.remove(pos);
                 if keys.is_empty() {
                     self.txs_by_signature.remove(sig);
@@ -677,7 +744,7 @@ impl UnconfirmedPool {
             "Deleted transaction: {}",
             &prioritized_transaction.transaction
         );
-        Some(prioritized_transaction.transaction)
+        Ok(Some(prioritized_transaction.transaction))
     }
 
     /// Returns the total number of unconfirmed transactions stored in the UnconfirmedPool.
@@ -691,7 +758,7 @@ impl UnconfirmedPool {
     }
 
     /// Returns the total weight of all transactions stored in the pool.
-    pub fn calculate_weight(&self, transaction_weight: &TransactionWeight) -> std::io::Result<u64> {
+    pub fn calculate_weight(&self, transaction_weight: &TransactionWeight) -> Result<u64, TransactionError> {
         let weights = self
             .tx_by_key
             .values()
@@ -716,7 +783,7 @@ impl UnconfirmedPool {
         let mut stats = Vec::new();
         let mut offset = 0usize;
         for start in 0..count {
-            let mut total_weight = 0;
+            let mut total_weight: u64 = 0;
             let mut total_fees = MicroMinotari::zero();
             let mut min_fee_per_gram = MicroMinotari::from(u64::MAX);
             let mut max_fee_per_gram = MicroMinotari::zero();
@@ -724,17 +791,25 @@ impl UnconfirmedPool {
                 let tx = self.tx_by_key.get(key).ok_or(UnconfirmedPoolError::StorageOutofSync)?;
                 let weight = tx.weight;
 
-                if total_weight + weight > target_block_weight {
+                if total_weight.saturating_add(weight) > target_block_weight {
                     break;
                 }
 
-                let total_tx_fee = tx.transaction.body.get_total_fee();
+                let total_tx_fee = tx.transaction.body.get_total_fee()?;
                 offset += 1;
                 let fee_per_gram = total_tx_fee / weight;
                 min_fee_per_gram = min_fee_per_gram.min(fee_per_gram);
                 max_fee_per_gram = max_fee_per_gram.max(fee_per_gram);
-                total_fees += total_tx_fee;
-                total_weight += weight;
+                total_fees = total_fees
+                    .checked_add(total_tx_fee)
+                    .ok_or(UnconfirmedPoolError::InternalError(
+                        "Overflow when calculating total fees".to_string(),
+                    ))?;
+                total_weight = total_weight
+                    .checked_add(weight)
+                    .ok_or(UnconfirmedPoolError::InternalError(
+                        "Overflow when calculating total weights".to_string(),
+                    ))?;
             }
             if total_weight == 0 {
                 break;
@@ -789,7 +864,7 @@ impl UnconfirmedPool {
                 "Shrunk reorg mempool memory usage ({}/{}) ~{}%",
                 new,
                 old,
-                (((old - new) as f32 / old as f32) * 100.0).round() as usize
+                (old - new).saturating_mul(100) / old
             );
         }
     }
@@ -798,7 +873,7 @@ impl UnconfirmedPool {
 #[cfg(test)]
 mod test {
     use tari_common::configuration::Network;
-    use tari_script::{inputs, script};
+    use tari_script::{ExecutionStack, TariScript};
 
     use super::*;
     use crate::{
@@ -924,8 +999,8 @@ mod test {
             .with_lock_height(0)
             .with_fee_per_gram(5.into())
             .with_change_data(
-                script!(Nop),
-                inputs!(change.script_key_pk),
+                TariScript::default(),
+                ExecutionStack::default(),
                 change.script_key_id.clone(),
                 change.spend_key_id.clone(),
                 Covenant::default(),
@@ -1204,14 +1279,14 @@ mod test {
             .unwrap()
             .first()
             .unwrap();
-        unconfirmed_pool.remove_transaction(k);
+        unconfirmed_pool.remove_transaction(k).unwrap();
         let k = *unconfirmed_pool
             .txs_by_signature
             .get(tx4.first_kernel_excess_sig().unwrap().get_signature())
             .unwrap()
             .first()
             .unwrap();
-        unconfirmed_pool.remove_transaction(k);
+        unconfirmed_pool.remove_transaction(k).unwrap();
 
         let txns = vec![
             Arc::new(tx2),

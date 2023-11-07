@@ -28,59 +28,56 @@ use futures::{
     SinkExt,
 };
 use log::*;
-use minotari_app_grpc::{
-    conversions::naive_datetime_to_timestamp,
-    tari_rpc::{
-        self,
-        payment_recipient::PaymentType,
-        wallet_server,
-        CheckConnectivityResponse,
-        ClaimHtlcRefundRequest,
-        ClaimHtlcRefundResponse,
-        ClaimShaAtomicSwapRequest,
-        ClaimShaAtomicSwapResponse,
-        CoinSplitRequest,
-        CoinSplitResponse,
-        CommitmentSignature,
-        CreateBurnTransactionRequest,
-        CreateBurnTransactionResponse,
-        CreateTemplateRegistrationRequest,
-        CreateTemplateRegistrationResponse,
-        GetAddressResponse,
-        GetBalanceRequest,
-        GetBalanceResponse,
-        GetCoinbaseRequest,
-        GetCoinbaseResponse,
-        GetCompletedTransactionsRequest,
-        GetCompletedTransactionsResponse,
-        GetConnectivityRequest,
-        GetIdentityRequest,
-        GetIdentityResponse,
-        GetTransactionInfoRequest,
-        GetTransactionInfoResponse,
-        GetUnspentAmountsResponse,
-        GetVersionRequest,
-        GetVersionResponse,
-        ImportUtxosRequest,
-        ImportUtxosResponse,
-        RegisterValidatorNodeRequest,
-        RegisterValidatorNodeResponse,
-        RevalidateRequest,
-        RevalidateResponse,
-        SendShaAtomicSwapRequest,
-        SendShaAtomicSwapResponse,
-        SetBaseNodeRequest,
-        SetBaseNodeResponse,
-        TransactionDirection,
-        TransactionEvent,
-        TransactionEventRequest,
-        TransactionEventResponse,
-        TransactionInfo,
-        TransactionStatus,
-        TransferRequest,
-        TransferResponse,
-        TransferResult,
-    },
+use minotari_app_grpc::tari_rpc::{
+    self,
+    payment_recipient::PaymentType,
+    wallet_server,
+    CheckConnectivityResponse,
+    ClaimHtlcRefundRequest,
+    ClaimHtlcRefundResponse,
+    ClaimShaAtomicSwapRequest,
+    ClaimShaAtomicSwapResponse,
+    CoinSplitRequest,
+    CoinSplitResponse,
+    CommitmentSignature,
+    CreateBurnTransactionRequest,
+    CreateBurnTransactionResponse,
+    CreateTemplateRegistrationRequest,
+    CreateTemplateRegistrationResponse,
+    GetAddressResponse,
+    GetBalanceRequest,
+    GetBalanceResponse,
+    GetCoinbaseRequest,
+    GetCoinbaseResponse,
+    GetCompletedTransactionsRequest,
+    GetCompletedTransactionsResponse,
+    GetConnectivityRequest,
+    GetIdentityRequest,
+    GetIdentityResponse,
+    GetTransactionInfoRequest,
+    GetTransactionInfoResponse,
+    GetUnspentAmountsResponse,
+    GetVersionRequest,
+    GetVersionResponse,
+    ImportUtxosRequest,
+    ImportUtxosResponse,
+    RegisterValidatorNodeRequest,
+    RegisterValidatorNodeResponse,
+    RevalidateRequest,
+    RevalidateResponse,
+    SendShaAtomicSwapRequest,
+    SendShaAtomicSwapResponse,
+    SetBaseNodeRequest,
+    SetBaseNodeResponse,
+    TransactionDirection,
+    TransactionEvent,
+    TransactionEventRequest,
+    TransactionEventResponse,
+    TransactionInfo,
+    TransactionStatus,
+    TransferRequest,
+    TransferResponse,
+    TransferResult,
 };
 use minotari_wallet::{
     connectivity_service::{OnlineStatus, WalletConnectivityInterface},
@@ -604,7 +601,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     None
                 } else {
                     Some(
-                        PublicKey::from_bytes(&message.claim_public_key)
+                        PublicKey::from_canonical_bytes(&message.claim_public_key)
                             .map_err(|e| Status::invalid_argument(e.to_string()))?,
                     )
                 },
@@ -777,7 +774,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         is_cancelled: txn.cancelled.is_some(),
                         direction: TransactionDirection::from(txn.direction) as i32,
                         fee: txn.fee.into(),
-                        timestamp: Some(naive_datetime_to_timestamp(txn.timestamp)),
+                        timestamp: txn.timestamp.timestamp() as u64,
                         excess_sig: txn
                             .transaction
                             .first_kernel_excess_sig()
@@ -1005,7 +1002,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
     ) -> Result<Response<RegisterValidatorNodeResponse>, Status> {
         let request = request.into_inner();
         let mut transaction_service = self.get_transaction_service();
-        let validator_node_public_key = CommsPublicKey::from_bytes(&request.validator_node_public_key)
+        let validator_node_public_key = CommsPublicKey::from_canonical_bytes(&request.validator_node_public_key)
             .map_err(|_| Status::internal("Destination address is malformed".to_string()))?;
         let validator_node_signature = request
             .validator_node_signature
@@ -1113,7 +1110,7 @@ fn convert_wallet_transaction_into_transaction_info(
             direction: TransactionDirection::Inbound as i32,
             fee: 0,
             excess_sig: Default::default(),
-            timestamp: Some(naive_datetime_to_timestamp(tx.timestamp)),
+            timestamp: tx.timestamp.timestamp() as u64,
             message: tx.message,
         },
         PendingOutbound(tx) => TransactionInfo {
@@ -1126,7 +1123,7 @@ fn convert_wallet_transaction_into_transaction_info(
             direction: TransactionDirection::Outbound as i32,
             fee: tx.fee.into(),
             excess_sig: Default::default(),
-            timestamp: Some(naive_datetime_to_timestamp(tx.timestamp)),
+            timestamp: tx.timestamp.timestamp() as u64,
             message: tx.message,
         },
         Completed(tx) => TransactionInfo {
@@ -1138,7 +1135,7 @@ fn convert_wallet_transaction_into_transaction_info(
             is_cancelled: tx.cancelled.is_some(),
             direction: TransactionDirection::from(tx.direction) as i32,
             fee: tx.fee.into(),
-            timestamp: Some(naive_datetime_to_timestamp(tx.timestamp)),
+            timestamp: tx.timestamp.timestamp() as u64,
             excess_sig: tx
                 .transaction
                 .first_kernel_excess_sig()

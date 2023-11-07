@@ -42,4 +42,6 @@ pub enum MempoolError {
     BlockingTaskError(#[from] JoinError),
     #[error("Internal error: {0}")]
     InternalError(String),
+    #[error("Mempool indexes out of sync: transaction exists in txs_by_signature but not in tx_by_key")]
+    IndexOutOfSync,
 }

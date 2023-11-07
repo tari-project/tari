@@ -160,7 +160,7 @@ where
         master_seed: CipherSeed,
     ) -> Result<Self, WalletError> {
         let buf_size = cmp::max(WALLET_BUFFER_MIN_SIZE, config.buffer_size);
-        let (publisher, subscription_factory) = pubsub_connector(buf_size, config.buffer_rate_limit);
+        let (publisher, subscription_factory) = pubsub_connector(buf_size);
         let peer_message_subscription_factory = Arc::new(subscription_factory);
 
         debug!(target: LOG_TARGET, "Wallet Initializing");
@@ -170,12 +170,11 @@ where
         );
         trace!(
             target: LOG_TARGET,
-            "Wallet config: {:?}, {:?}, {:?}, buffer_size: {}, rate_limit: {}",
+            "Wallet config: {:?}, {:?}, {:?}, buffer_size: {}",
             config.base_node_service_config,
             config.output_manager_service_config,
             config.transaction_service_config,
             config.buffer_size,
-            config.buffer_rate_limit
         );
         let wallet_identity = WalletIdentity::new(node_identity.clone(), config.network);
         let stack = StackBuilder::new(shutdown_signal)
@@ -506,7 +505,7 @@ where
         secret: &PrivateKey,
         message: &str,
     ) -> Result<SignatureWithDomain<WalletMessageSigningDomain>, SchnorrSignatureError> {
-        SignatureWithDomain::<WalletMessageSigningDomain>::sign_message(secret, message.as_bytes(), &mut OsRng)
+        SignatureWithDomain::<WalletMessageSigningDomain>::sign(secret, message.as_bytes(), &mut OsRng)
     }
 
     pub fn verify_message_signature(
@@ -515,7 +514,7 @@ where
         signature: &SignatureWithDomain<WalletMessageSigningDomain>,
         message: &str,
     ) -> bool {
-        signature.verify_message(public_key, message)
+        signature.verify(public_key, message)
     }
 
     /// Appraise the expected outputs and a fee

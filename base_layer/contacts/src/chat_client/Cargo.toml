@@ -3,7 +3,11 @@ name = "tari_chat_client"
 authors = ["The Tari Development Community"]
 description = "Tari cucumber chat client"
 license = "BSD-3-Clause"
+<<<<<<< HEAD:base_layer/contacts/examples/chat_client/Cargo.toml
 version = "0.51.0-rc.1"
+=======
+version = "0.53.0-pre.0"
+>>>>>>> development:base_layer/contacts/src/chat_client/Cargo.toml
 
 edition = "2018"
 

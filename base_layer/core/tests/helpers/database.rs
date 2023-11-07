@@ -44,7 +44,7 @@ pub async fn create_orphan_block(
     let lock_height = consensus.consensus_constants(block_height).coinbase_min_maturity();
     coinbase_value += transactions
         .iter()
-        .fold(MicroMinotari(0), |acc, x| acc + x.body.get_total_fee());
+        .fold(MicroMinotari(0), |acc, x| acc + x.body.get_total_fee().unwrap());
     let (coinbase_utxo, coinbase_kernel, _coinbase_output) =
         create_coinbase(coinbase_value, block_height + lock_height, None, key_manager).await;
     let mut header = BlockHeader::new(consensus.consensus_constants(block_height).blockchain_version());
@@ -59,7 +59,8 @@ pub async fn create_orphan_block(
             .build(),
         Difficulty::min(),
         coinbase_value,
-    );
+    )
+    .unwrap();
     Block::new(template.header.into(), template.body)
 }
 

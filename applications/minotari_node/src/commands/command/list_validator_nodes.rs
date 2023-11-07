@@ -69,13 +69,17 @@ impl CommandContext {
             .epoch
             .map(|epoch| constants.epoch_to_block_height(epoch))
             .unwrap_or_else(|| metadata.height_of_longest_chain());
+        let current_epoch = constants.block_height_to_epoch(height);
+        let next_epoch = VnEpoch(current_epoch.as_u64() + 1);
+        let next_epoch_height = constants.epoch_to_block_height(next_epoch);
         let vns = self.blockchain_db.fetch_active_validator_nodes(height).await?;
+        let next_vns = self
+            .blockchain_db
+            .fetch_active_validator_nodes(next_epoch_height)
+            .await?;
 
         println!();
-        println!(
-            "Registered validator nodes for epoch {}",
-            constants.block_height_to_epoch(height).as_u64()
-        );
+        println!("Registered validator nodes for epoch {}", current_epoch.as_u64());
         println!("----------------------------------");
         if vns.is_empty() {
             println!("No active validator nodes.");
@@ -83,6 +87,16 @@ impl CommandContext {
             println!();
             self.print_validator_nodes_list(&vns).await;
         }
+        println!();
+        println!("Registered validator nodes for next epoch {}", next_epoch.as_u64());
+        println!("----------------------------------");
+        if next_vns.is_empty() {
+            println!("No active validator nodes.");
+        } else {
+            println!();
+            self.print_validator_nodes_list(&next_vns).await;
+        }
+
         Ok(())
     }
 }

@@ -63,7 +63,7 @@ impl TryFrom<proto::types::TransactionKernel> for TransactionKernel {
     type Error = String;
 
     fn try_from(kernel: proto::types::TransactionKernel) -> Result<Self, Self::Error> {
-        let excess = Commitment::from_bytes(
+        let excess = Commitment::from_canonical_bytes(
             &kernel
                 .excess
                 .ok_or_else(|| "Excess not provided in kernel".to_string())?
@@ -77,7 +77,9 @@ impl TryFrom<proto::types::TransactionKernel> for TransactionKernel {
             .try_into()?;
         let kernel_features = u8::try_from(kernel.features).map_err(|_| "Kernel features must be a single byte")?;
         let commitment = match kernel.burn_commitment {
-            Some(burn_commitment) => Some(Commitment::from_bytes(&burn_commitment.data).map_err(|e| e.to_string())?),
+            Some(burn_commitment) => {
+                Some(Commitment::from_canonical_bytes(&burn_commitment.data).map_err(|e| e.to_string())?)
+            },
             None => None,
         };
 
@@ -125,14 +127,14 @@ impl TryFrom<proto::types::TransactionInput> for TransactionInput {
 
         // Check if the received Transaction input is in compact form or not
         if let Some(commitment) = input.commitment {
-            let commitment = Commitment::from_bytes(&commitment.data).map_err(|e| e.to_string())?;
+            let commitment = Commitment::from_canonical_bytes(&commitment.data).map_err(|e| e.to_string())?;
             let features = input
                 .features
                 .map(TryInto::try_into)
                 .ok_or_else(|| "transaction output features not provided".to_string())??;
 
-            let sender_offset_public_key =
-                PublicKey::from_bytes(input.sender_offset_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
+            let sender_offset_public_key = PublicKey::from_canonical_bytes(input.sender_offset_public_key.as_bytes())
+                .map_err(|err| format!("{:?}", err))?;
 
             let metadata_signature = input
                 .metadata_signature
@@ -263,15 +265,15 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
 
         let commitment = output
             .commitment
-            .map(|commit| Commitment::from_bytes(&commit.data))
+            .map(|commit| Commitment::from_canonical_bytes(&commit.data))
             .ok_or_else(|| "Transaction output commitment not provided".to_string())?
             .map_err(|err| err.to_string())?;
 
-        let sender_offset_public_key =
-            PublicKey::from_bytes(output.sender_offset_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
+        let sender_offset_public_key = PublicKey::from_canonical_bytes(output.sender_offset_public_key.as_bytes())
+            .map_err(|err| format!("{:?}", err))?;
 
         let range_proof = if let Some(proof) = output.range_proof {
-            Some(BulletRangeProof::from_bytes(&proof.proof_bytes).map_err(|err| err.to_string())?)
+            Some(BulletRangeProof::from_canonical_bytes(&proof.proof_bytes).map_err(|err| err.to_string())?)
         } else {
             None
         };
@@ -422,7 +424,7 @@ impl TryFrom<proto::types::Transaction> for Transaction {
     fn try_from(tx: proto::types::Transaction) -> Result<Self, Self::Error> {
         let offset = tx
             .offset
-            .map(|offset| PrivateKey::from_bytes(&offset.data))
+            .map(|offset| PrivateKey::from_canonical_bytes(&offset.data))
             .ok_or_else(|| "Blinding factor offset not provided".to_string())?
             .map_err(|err| err.to_string())?;
         let body = tx
@@ -431,7 +433,7 @@ impl TryFrom<proto::types::Transaction> for Transaction {
             .ok_or_else(|| "Body not provided".to_string())??;
         let script_offset = tx
             .script_offset
-            .map(|script_offset| PrivateKey::from_bytes(&script_offset.data))
+            .map(|script_offset| PrivateKey::from_canonical_bytes(&script_offset.data))
             .ok_or_else(|| "Script offset not provided".to_string())?
             .map_err(|err| err.to_string())?;
 

@@ -333,7 +333,6 @@ where
         }
     }
 
-    #[tracing::instrument(name = "rpc::server::new_client_connection", skip(self, notification), err)]
     async fn handle_protocol_notification(
         &mut self,
         notification: ProtocolNotification<Substream>,
@@ -393,7 +392,6 @@ where
         }
     }
 
-    #[tracing::instrument(name = "rpc::server::try_initiate_service", skip(self, framed), err)]
     async fn try_initiate_service(
         &mut self,
         protocol: ProtocolId,
@@ -629,7 +627,13 @@ where
             return Ok(());
         }
 
-        let msg_flags = RpcMessageFlags::from_bits_truncate(u8::try_from(decoded_msg.flags).unwrap());
+        let msg_flags = RpcMessageFlags::from_bits(u8::try_from(decoded_msg.flags).map_err(|_| {
+            RpcServerError::ProtocolError(format!("invalid message flag: must be less than {}", u8::MAX))
+        })?)
+        .ok_or(RpcServerError::ProtocolError(format!(
+            "invalid message flag, does not match any flags ({})",
+            decoded_msg.flags
+        )))?;
 
         if msg_flags.contains(RpcMessageFlags::FIN) {
             debug!(target: LOG_TARGET, "({}) Client sent FIN.", self.logging_context_string);
@@ -815,7 +819,27 @@ where
                         return Poll::Ready(Some(RpcServerError::UnexpectedIncomingMessageMalformed));
                     },
                 };
-                let msg_flags = RpcMessageFlags::from_bits_truncate(u8::try_from(decoded_msg.flags).unwrap());
+                let u8_bits = match u8::try_from(decoded_msg.flags) {
+                    Ok(bits) => bits,
+                    Err(err) => {
+                        error!(target: LOG_TARGET, "Client send MALFORMED flags: {}", err);
+                        return Poll::Ready(Some(RpcServerError::ProtocolError(format!(
+                            "invalid message flag: must be less than {}",
+                            u8::MAX
+                        ))));
+                    },
+                };
+
+                let msg_flags = match RpcMessageFlags::from_bits(u8_bits) {
+                    Some(flags) => flags,
+                    None => {
+                        error!(target: LOG_TARGET, "Client send MALFORMED flags: {}", u8_bits);
+                        return Poll::Ready(Some(RpcServerError::ProtocolError(format!(
+                            "invalid message flag, does not match any flags ({})",
+                            u8_bits
+                        ))));
+                    },
+                };
                 if msg_flags.is_fin() {
                     Poll::Ready(Some(RpcServerError::ClientInterruptedStream))
                 } else {

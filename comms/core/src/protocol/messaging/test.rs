@@ -33,13 +33,18 @@ use tokio::{
     time,
 };
 
-use super::protocol::{MessagingEvent, MessagingEventReceiver, MessagingProtocol, MESSAGING_PROTOCOL};
+use super::protocol::{MessagingEventReceiver, MessagingProtocol};
 use crate::{
     message::{InboundMessage, MessageTag, MessagingReplyRx, OutboundMessage},
     multiplexing::Substream,
     net_address::MultiaddressesWithStats,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
-    protocol::{messaging::SendFailReason, ProtocolEvent, ProtocolNotification},
+    protocol::{
+        messaging::{MessagingEvent, SendFailReason},
+        ProtocolEvent,
+        ProtocolId,
+        ProtocolNotification,
+    },
     test_utils::{
         mocks::{create_connectivity_mock, create_peer_connection_mock_pair, ConnectivityManagerMockState},
         node_id,
@@ -50,6 +55,8 @@ use crate::{
 };
 
 static TEST_MSG1: Bytes = Bytes::from_static(b"TEST_MSG1");
+
+static MESSAGING_PROTOCOL_ID: ProtocolId = ProtocolId::from_static(b"test/msg");
 
 async fn spawn_messaging_protocol() -> (
     Arc<PeerManager>,
@@ -75,13 +82,15 @@ async fn spawn_messaging_protocol() -> (
     let (events_tx, events_rx) = broadcast::channel(100);
 
     let msg_proto = MessagingProtocol::new(
+        MESSAGING_PROTOCOL_ID.clone(),
         requester,
         proto_rx,
         request_rx,
         events_tx,
         inbound_msg_tx,
         shutdown.to_signal(),
-    );
+    )
+    .set_message_received_event_enabled(true);
     tokio::spawn(msg_proto.run());
 
     (
@@ -123,7 +132,7 @@ async fn new_inbound_substream_handling() {
     let stream_ours = muxer_ours.get_yamux_control().open_stream().await.unwrap();
     proto_tx
         .send(ProtocolNotification::new(
-            MESSAGING_PROTOCOL.clone(),
+            MESSAGING_PROTOCOL_ID.clone(),
             ProtocolEvent::NewInboundSubstream(expected_node_id.clone(), stream_ours),
         ))
         .await
@@ -146,7 +155,7 @@ async fn new_inbound_substream_handling() {
         .await
         .unwrap()
         .unwrap();
-    unpack_enum!(MessagingEvent::MessageReceived(node_id, tag) = &*event);
+    unpack_enum!(MessagingEvent::MessageReceived(node_id, tag) = &event);
     assert_eq!(tag, &expected_tag);
     assert_eq!(*node_id, expected_node_id);
 }
@@ -188,7 +197,7 @@ async fn send_message_dial_failed() {
     request_tx.send(out_msg).unwrap();
 
     let event = event_tx.recv().await.unwrap();
-    unpack_enum!(MessagingEvent::OutboundProtocolExited(_node_id) = &*event);
+    unpack_enum!(MessagingEvent::OutboundProtocolExited(_node_id) = &event);
     let reply = reply_rx.await.unwrap().unwrap_err();
     unpack_enum!(SendFailReason::PeerDialFailed = reply);
 
@@ -260,7 +269,7 @@ async fn send_message_substream_bulk_failure() {
         .await
         .unwrap()
         .unwrap();
-    unpack_enum!(MessagingEvent::OutboundProtocolExited(node_id) = &*event);
+    unpack_enum!(MessagingEvent::OutboundProtocolExited(node_id) = &event);
     assert_eq!(node_id, peer_node_id);
 }
 
@@ -338,4 +347,94 @@ async fn many_concurrent_send_message_requests_that_fail() {
     let unordered = reply_rxs.into_iter().collect::<FuturesUnordered<_>>();
     let results = unordered.collect::<Vec<_>>().await;
     assert!(results.into_iter().map(|r| r.unwrap()).all(|r| r.is_err()));
+}
+
+#[tokio::test]
+async fn new_inbound_substream_only_single_session_permitted() {
+    let (peer_manager, _, _, proto_tx, _, mut inbound_msg_rx, _, _shutdown) = spawn_messaging_protocol().await;
+
+    let expected_node_id = node_id::random();
+    let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng);
+    peer_manager
+        .add_peer(Peer::new(
+            pk.clone(),
+            expected_node_id.clone(),
+            MultiaddressesWithStats::default(),
+            PeerFlags::empty(),
+            PeerFeatures::COMMUNICATION_CLIENT,
+            Default::default(),
+            Default::default(),
+        ))
+        .await
+        .unwrap();
+
+    // Create connected memory sockets - we use each end of the connection as if they exist on different nodes
+    let (_, muxer_ours, mut muxer_theirs) = transport::build_multiplexed_connections().await;
+
+    // Notify the messaging protocol that a new substream has been established that wants to talk the messaging.
+    let stream_ours = muxer_ours.get_yamux_control().open_stream().await.unwrap();
+    proto_tx
+        .send(ProtocolNotification::new(
+            MESSAGING_PROTOCOL_ID.clone(),
+            ProtocolEvent::NewInboundSubstream(expected_node_id.clone(), stream_ours),
+        ))
+        .await
+        .unwrap();
+
+    // First stream is open
+    let stream_theirs = muxer_theirs.incoming_mut().next().await.unwrap();
+
+    // Open another one for messaging
+    let stream_ours2 = muxer_ours.get_yamux_control().open_stream().await.unwrap();
+    proto_tx
+        .send(ProtocolNotification::new(
+            MESSAGING_PROTOCOL_ID.clone(),
+            ProtocolEvent::NewInboundSubstream(expected_node_id.clone(), stream_ours2),
+        ))
+        .await
+        .unwrap();
+
+    // Check the second stream closes immediately
+    let stream_theirs2 = muxer_theirs.incoming_mut().next().await.unwrap();
+    let mut framed_ours2 = MessagingProtocol::framed(stream_theirs2);
+    let next = framed_ours2.next().await;
+    // The stream is closed
+    assert!(next.is_none());
+
+    // The first stream is still active
+    let mut framed_theirs = MessagingProtocol::framed(stream_theirs);
+
+    framed_theirs.send(TEST_MSG1.clone()).await.unwrap();
+
+    let in_msg = time::timeout(Duration::from_secs(5), inbound_msg_rx.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(in_msg.source_peer, expected_node_id);
+    assert_eq!(in_msg.body, TEST_MSG1);
+
+    // Close the first
+    framed_theirs.close().await.unwrap();
+
+    // Open another one for messaging
+    let stream_ours2 = muxer_ours.get_yamux_control().open_stream().await.unwrap();
+    proto_tx
+        .send(ProtocolNotification::new(
+            MESSAGING_PROTOCOL_ID.clone(),
+            ProtocolEvent::NewInboundSubstream(expected_node_id.clone(), stream_ours2),
+        ))
+        .await
+        .unwrap();
+
+    let stream_theirs = muxer_theirs.incoming_mut().next().await.unwrap();
+    let mut framed_theirs = MessagingProtocol::framed(stream_theirs);
+    framed_theirs.send(TEST_MSG1.clone()).await.unwrap();
+
+    // The second message comes through
+    let in_msg = time::timeout(Duration::from_secs(5), inbound_msg_rx.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(in_msg.source_peer, expected_node_id);
+    assert_eq!(in_msg.body, TEST_MSG1);
 }

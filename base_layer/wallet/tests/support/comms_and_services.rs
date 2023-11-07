@@ -26,6 +26,7 @@ use tari_comms::{
     message::MessageTag,
     net_address::MultiaddressesWithStats,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags},
+    transports::MemoryTransport,
     types::CommsPublicKey,
     CommsNode,
 };
@@ -57,10 +58,16 @@ pub async fn setup_comms_services(
     .await
     .unwrap();
 
+    let comms = comms.spawn_with_transport(MemoryTransport).await.unwrap();
+    // Set the public address for tests
+    comms
+        .node_identity()
+        .add_public_address(comms.listening_address().clone());
+
     (comms, dht)
 }
 
-pub fn create_dummy_message<T>(inner: T, public_key: &CommsPublicKey) -> DomainMessage<T> {
+pub fn create_dummy_message<T>(inner: T, public_key: &CommsPublicKey) -> DomainMessage<Result<T, prost::DecodeError>> {
     let peer_source = Peer::new(
         public_key.clone(),
         NodeId::from_key(public_key),
@@ -83,6 +90,6 @@ pub fn create_dummy_message<T>(inner: T, public_key: &CommsPublicKey) -> DomainM
         },
         authenticated_origin: None,
         source_peer: peer_source,
-        inner,
+        inner: Ok(inner),
     }
 }

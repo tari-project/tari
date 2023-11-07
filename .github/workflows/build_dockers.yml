@@ -91,11 +91,18 @@ jobs:
             echo "tag_alias=${{ github.event.inputs.tag_alias }}" >> $GITHUB_OUTPUT
             echo "build_items=${{ github.event.inputs.build_items }}" >> $GITHUB_OUTPUT
           fi
-          if [ "${{ github.event_name }}" == "schedule" ] && [ "${{ github.event.schedule }}" == "05 00 * * *" ] ; then
-            echo "Daily Build - limited"
-            echo "platforms=linux/amd64" >> $GITHUB_OUTPUT
-            echo "tag_alias=latest-daily" >> $GITHUB_OUTPUT
-            echo "build_items=minotari_all" >> $GITHUB_OUTPUT
+          if [ "${{ github.event_name }}" == "schedule" ] ; then
+            if [[ $(date +%u) -eq 7 ]] ; then
+              echo "Weekly Build - limited dual arch"
+              echo "platforms=linux/arm64, linux/amd64" >> $GITHUB_OUTPUT
+              echo "tag_alias=latest-weekly" >> $GITHUB_OUTPUT
+              echo "build_items=minotari_all" >> $GITHUB_OUTPUT
+            else
+              echo "Daily Build - limited"
+              echo "platforms=linux/amd64" >> $GITHUB_OUTPUT
+              echo "tag_alias=latest-daily" >> $GITHUB_OUTPUT
+              echo "build_items=minotari_all" >> $GITHUB_OUTPUT
+            fi
           fi
 
   builds_run:

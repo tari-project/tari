@@ -24,7 +24,7 @@ use std::{
     convert::TryFrom,
     fmt::{Display, Formatter},
     ops::Deref,
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 use log::*;
@@ -46,6 +46,7 @@ use crate::{
                 StateEvent::FatalError,
                 StateInfo,
                 SyncStatus,
+                SyncStatus::{Lagging, SyncNotPossible, UpToDate},
                 Waiting,
             },
             BaseNodeStateMachine,
@@ -55,9 +56,7 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::listening";
-
-/// The length of time to wait for a propagated block when one block behind before proceeding to sync
-const ONE_BLOCK_BEHIND_WAIT_PERIOD: Duration = Duration::from_secs(20);
+const INITIAL_SYNC_PEER_COUNT: usize = 5;
 
 /// This struct contains the info of the peer, and is used to serialised and deserialised.
 #[derive(Serialize, Deserialize)]
@@ -120,6 +119,8 @@ impl Listening {
         info!(target: LOG_TARGET, "Listening for chain metadata updates");
         shared.set_state_info(StateInfo::Listening(ListeningInfo::new(self.is_synced)));
         let mut time_since_better_block = None;
+        let mut initial_sync_counter = 0;
+        let mut initial_sync_peer_list = Vec::new();
         let mut mdc = vec![];
         log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
         loop {
@@ -135,6 +136,8 @@ impl Listening {
                     }
                 },
                 Ok(ChainMetadataEvent::PeerChainMetadataReceived(peer_metadata)) => {
+                    // We already ban the peer based on some previous logic, but this message was already in the
+                    // pipeline before the ban went into effect.
                     match shared.peer_manager.is_peer_banned(peer_metadata.node_id()).await {
                         Ok(true) => {
                             warn!(
@@ -170,34 +173,7 @@ impl Listening {
                         }
                     };
 
-                    let local = match shared.db.get_chain_metadata().await {
-                        Ok(m) => m,
-                        Err(e) => {
-                            return FatalError(format!("Could not get local blockchain metadata. {}", e));
-                        },
-                    };
                     log_mdc::extend(mdc.clone());
-
-                    // If this node is just one block behind, wait for block propagation before
-                    // rushing to sync mode
-                    if self.is_synced &&
-                        peer_metadata.claimed_chain_metadata().height_of_longest_chain() ==
-                            local.height_of_longest_chain() + 1 &&
-                        time_since_better_block
-                            .map(|ts: Instant| ts.elapsed() < ONE_BLOCK_BEHIND_WAIT_PERIOD)
-                            .unwrap_or(true)
-                    {
-                        if time_since_better_block.is_none() {
-                            time_since_better_block = Some(Instant::now());
-                        }
-                        debug!(
-                            target: LOG_TARGET,
-                            "This node is one block behind. Best network metadata is at height {}.",
-                            peer_metadata.claimed_chain_metadata().height_of_longest_chain()
-                        );
-                        continue;
-                    }
-                    time_since_better_block = None;
 
                     let local_metadata = match shared.db.get_chain_metadata().await {
                         Ok(m) => m,
@@ -207,20 +183,95 @@ impl Listening {
                     };
                     log_mdc::extend(mdc.clone());
 
-                    let sync_mode = determine_sync_mode(
+                    let mut sync_mode = determine_sync_mode(
                         shared.config.blocks_behind_before_considered_lagging,
                         &local_metadata,
                         peer_metadata,
                     );
 
-                    if sync_mode.is_lagging() {
-                        return StateEvent::FallenBehind(sync_mode);
+                    // Generally we will receive a block via incoming blocks, but something might have
+                    // happened that we have not synced to them, e.g. our network could have been down.
+                    // If we know about a stronger chain, but haven't synced to it, because we didn't get
+                    // the blocks propagated to us, or we have a high `blocks_before_considered_lagging`
+                    // then we will wait at least `time_before_considered_lagging` before we try to sync
+                    // to that new chain. If you want to sync to a new chain immediately, then you can
+                    // set this value to 1 second or lower.
+                    if let SyncStatus::BehindButNotYetLagging {
+                        local,
+                        network,
+                        sync_peers,
+                    } = &sync_mode
+                    {
+                        if time_since_better_block.is_none() {
+                            time_since_better_block = Some(Instant::now());
+                        }
+                        if time_since_better_block
+                            .map(|t| t.elapsed() > shared.config.time_before_considered_lagging)
+                            .unwrap()
+                        // unwrap is safe because time_since_better_block is set right above
+                        {
+                            sync_mode = SyncStatus::Lagging {
+                                local: local.clone(),
+                                network: network.clone(),
+                                sync_peers: sync_peers.clone(),
+                            };
+                        }
+                    } else {
+                        // We might have gotten up to date via propagation outside of this state, so reset the timer
+                        if sync_mode == SyncStatus::UpToDate {
+                            time_since_better_block = None;
+                        }
                     }
 
-                    if !self.is_synced {
+                    if !self.is_synced && sync_mode.is_up_to_date() {
                         self.is_synced = true;
                         shared.set_state_info(StateInfo::Listening(ListeningInfo::new(true)));
                         debug!(target: LOG_TARGET, "Initial sync achieved");
+                    }
+
+                    // If we have already reached initial sync before, as indicated by the `is_synced` flagged we can
+                    // immediately return fallen behind with the peer that has a higher pow than us
+                    if sync_mode.is_lagging() && self.is_synced {
+                        return StateEvent::FallenBehind(sync_mode);
+                    }
+                    // if we are lagging and not yet reached initial sync, we delay a bit till we get
+                    // INITIAL_SYNC_PEER_COUNT metadata updates from peers to ensure we make a better choice of which
+                    // peer to sync from in the next stages
+                    if let SyncStatus::Lagging {
+                        local,
+                        network,
+                        sync_peers,
+                    } = sync_mode
+                    {
+                        initial_sync_counter += 1;
+                        for peer in sync_peers {
+                            let mut found = false;
+                            // lets search the list list to ensure we only have unique peers in the list with the latest
+                            // up-to-date information
+                            for initial_peer in &mut initial_sync_peer_list {
+                                // we compare the two peers via the comparison operator on syncpeer
+                                if *initial_peer == peer {
+                                    found = true;
+                                    // if the peer is already in the list, we replace all the information about the peer
+                                    // with the newest up-to-date information
+                                    *initial_peer = peer.clone();
+                                    break;
+                                }
+                            }
+                            if !found {
+                                initial_sync_peer_list.push(peer.clone());
+                            }
+                        }
+                        // We use a list here to ensure that we dont wait for even for INITIAL_SYNC_PEER_COUNT different
+                        // peers
+                        if initial_sync_counter >= INITIAL_SYNC_PEER_COUNT {
+                            // lets return now that we have enough peers to chose from
+                            return StateEvent::FallenBehind(SyncStatus::Lagging {
+                                local,
+                                network,
+                                sync_peers: initial_sync_peer_list,
+                            });
+                        }
                     }
                 },
                 Err(broadcast::error::RecvError::Lagged(n)) => {
@@ -264,8 +315,10 @@ impl From<BlockSync> for Listening {
 }
 
 impl From<DecideNextSync> for Listening {
-    fn from(_: DecideNextSync) -> Self {
-        Self { is_synced: false }
+    fn from(sync: DecideNextSync) -> Self {
+        Self {
+            is_synced: sync.is_synced(),
+        }
     }
 }
 
@@ -275,7 +328,6 @@ fn determine_sync_mode(
     local: &ChainMetadata,
     network: &PeerChainMetadata,
 ) -> SyncStatus {
-    use SyncStatus::{Lagging, UpToDate};
     let network_tip_accum_difficulty = network.claimed_chain_metadata().accumulated_difficulty();
     let local_tip_accum_difficulty = local.accumulated_difficulty();
     if local_tip_accum_difficulty < network_tip_accum_difficulty {
@@ -292,17 +344,55 @@ fn determine_sync_mode(
             network_tip_accum_difficulty.to_formatted_string(&Locale::en),
         );
 
+        // If both the local and remote are pruned mode, we need to ensure that the remote pruning horizon is
+        // greater_equal to ours so that we can sync all the data from it. If the remote is a pruned mode, and
+        // we only require some data from it, we need to ensure that they can supply the data we need, as in their
+        // effective pruned horizon is greater than our local current chain tip.
+        let pruned_mode = local.pruning_horizon() > 0;
+        let pruning_horizon_check = network.claimed_chain_metadata().pruning_horizon() > 0 &&
+            network.claimed_chain_metadata().pruning_horizon() < local.pruning_horizon();
+        let pruning_height_check = network.claimed_chain_metadata().pruned_height() > local.height_of_longest_chain();
+        let sync_able_peer = match (pruned_mode, pruning_horizon_check, pruning_height_check) {
+            (true, true, _) => {
+                info!(
+                    target: LOG_TARGET,
+                    "The remote peer is a pruned node, and it's pruning_horizon is less than ours. Remote pruning horizon # {}, current local pruning horizon #{}",
+                    network.claimed_chain_metadata(),
+                    local.pruning_horizon(),
+                );
+                false
+            },
+            (false, _, true) => {
+                info!(
+                    target: LOG_TARGET,
+                    "The remote peer is a pruned node, and it cannot supply the blocks we need. Remote pruned height # {}, current local tip #{}",
+                    network.claimed_chain_metadata().pruned_height(),
+                    local.height_of_longest_chain(),
+                );
+                false
+            },
+            _ => true,
+        };
+
+        if !sync_able_peer {
+            return SyncNotPossible {
+                peers: vec![network.clone().into()],
+            };
+        }
+
         // This is to test the block propagation by delaying lagging.
-        if local_tip_height + blocks_behind_before_considered_lagging > network_tip_height &&
-            local_tip_height < network_tip_height + blocks_behind_before_considered_lagging
-        {
+        if local_tip_height.saturating_add(blocks_behind_before_considered_lagging) > network_tip_height {
             info!(
                 target: LOG_TARGET,
                 "While we are behind, we are still within {} blocks of them, so we are staying as listening and \
                  waiting for the propagated blocks",
                 blocks_behind_before_considered_lagging
             );
-            return UpToDate;
+            return SyncStatus::BehindButNotYetLagging {
+                local: local.clone(),
+                network: network.claimed_chain_metadata().clone(),
+                sync_peers: vec![network.clone().into()],
+            };
         };
 
         debug!(
@@ -390,6 +480,6 @@ mod test {
         assert!(sync_mode.is_lagging());
 
         let sync_mode = determine_sync_mode(2, behind_node.claimed_chain_metadata(), &archival_node);
-        assert!(sync_mode.is_up_to_date());
+        assert!(matches!(sync_mode, SyncStatus::BehindButNotYetLagging { .. }));
     }
 }

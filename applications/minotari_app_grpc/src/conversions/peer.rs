@@ -23,7 +23,7 @@
 use tari_comms::{connectivity::ConnectivityStatus, net_address::MultiaddrWithStats, peer_manager::Peer};
 use tari_utilities::ByteArray;
 
-use crate::{conversions::naive_datetime_to_timestamp, tari_rpc as grpc};
+use crate::tari_rpc as grpc;
 
 #[allow(clippy::cast_possible_truncation)]
 #[allow(clippy::cast_sign_loss)]
@@ -32,14 +32,18 @@ impl From<Peer> for grpc::Peer {
         let public_key = peer.public_key.to_vec();
         let node_id = peer.node_id.to_vec();
         let mut addresses = Vec::with_capacity(peer.addresses.len());
-        let last_connection = peer.addresses.last_seen().map(naive_datetime_to_timestamp);
+        let last_connection = peer
+            .addresses
+            .last_seen()
+            .map(|f| f.timestamp() as u64)
+            .unwrap_or_default();
         for address in peer.addresses.addresses() {
             addresses.push(address.clone().into())
         }
         let flags = u32::from(peer.flags.bits());
-        let banned_until = peer.banned_until.map(naive_datetime_to_timestamp);
+        let banned_until = peer.banned_until.map(|f| f.timestamp() as u64).unwrap_or_default();
         let banned_reason = peer.banned_reason.to_string();
-        let offline_at = peer.offline_at().map(naive_datetime_to_timestamp);
+        let offline_at = peer.offline_at().map(|f| f.timestamp() as u64).unwrap_or_default();
         let features = peer.features.bits();
 
         let supported_protocols = peer.supported_protocols.into_iter().map(|p| p.to_vec()).collect();
@@ -63,12 +67,12 @@ impl From<Peer> for grpc::Peer {
 impl From<MultiaddrWithStats> for grpc::Address {
     fn from(address_with_stats: MultiaddrWithStats) -> Self {
         let address = address_with_stats.address().to_vec();
-        let last_seen = match address_with_stats.last_seen {
+        let last_seen = match address_with_stats.last_seen() {
             Some(v) => v.to_string(),
             None => String::new(),
         };
-        let connection_attempts = address_with_stats.connection_attempts;
-        let avg_latency = address_with_stats.avg_latency.as_secs();
+        let connection_attempts = address_with_stats.connection_attempts();
+        let avg_latency = address_with_stats.avg_latency().as_secs();
         Self {
             address,
             last_seen,

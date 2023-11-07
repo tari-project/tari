@@ -125,7 +125,7 @@ impl Mempool {
         &self,
         excess_sigs: Vec<PrivateKey>,
     ) -> Result<(Vec<Arc<Transaction>>, Vec<PrivateKey>), MempoolError> {
-        self.with_read_access(move |storage| Ok(storage.retrieve_by_excess_sigs(&excess_sigs)))
+        self.with_read_access(move |storage| storage.retrieve_by_excess_sigs(&excess_sigs))
             .await
     }
 

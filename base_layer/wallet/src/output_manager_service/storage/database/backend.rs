@@ -43,7 +43,6 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
         hash: FixedHash,
         mined_height: u64,
         mined_in_block: FixedHash,
-        mmr_position: u64,
         confirmed: bool,
         mined_timestamp: u64,
     ) -> Result<(), OutputManagerStorageError>;

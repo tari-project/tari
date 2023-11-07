@@ -21,14 +21,15 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    convert::{TryFrom, TryInto},
+    convert::TryFrom,
     fmt::{Display, Error, Formatter},
 };
 
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{BlockHash, Signature};
+use tari_utilities::ByteArray;
 
-use crate::proto::{base_node as proto, types};
+use crate::proto::base_node as proto;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TxSubmissionResponse {
@@ -191,13 +192,22 @@ impl TryFrom<proto::TxQueryResponse> for TxQueryResponse {
     type Error = String;
 
     fn try_from(proto_response: proto::TxQueryResponse) -> Result<Self, Self::Error> {
-        let hash = match proto_response.block_hash {
-            Some(v) => match v.try_into() {
-                Ok(v) => Some(v),
-                Err(e) => return Err(format!("Malformed block hash: {}", e)),
-            },
-            None => None,
+        let hash = if proto_response.block_hash.is_empty() {
+            None
+        } else {
+            Some(match BlockHash::try_from(proto_response.block_hash.clone()) {
+                Ok(h) => h,
+                Err(e) => {
+                    return Err(format!("Malformed block hash: {}", e));
+                },
+            })
         };
+
+        let mined_timestamp = match proto_response.mined_timestamp {
+            0 => None,
+            t => Some(t),
+        };
+
         Ok(Self {
             location: TxLocation::try_from(
                 proto::TxLocation::from_i32(proto_response.location)
@@ -207,7 +217,7 @@ impl TryFrom<proto::TxQueryResponse> for TxQueryResponse {
             confirmations: proto_response.confirmations,
             is_synced: proto_response.is_synced,
             height_of_longest_chain: proto_response.height_of_longest_chain,
-            mined_timestamp: proto_response.mined_timestamp,
+            mined_timestamp,
         })
     }
 }
@@ -216,11 +226,11 @@ impl From<TxQueryResponse> for proto::TxQueryResponse {
     fn from(response: TxQueryResponse) -> Self {
         Self {
             location: proto::TxLocation::from(response.location) as i32,
-            block_hash: response.block_hash.map(|v| v.to_vec()),
+            block_hash: response.block_hash.map(|v| v.to_vec()).unwrap_or(vec![]),
             confirmations: response.confirmations,
             is_synced: response.is_synced,
             height_of_longest_chain: response.height_of_longest_chain,
-            mined_timestamp: response.mined_timestamp,
+            mined_timestamp: response.mined_timestamp.unwrap_or_default(),
         }
     }
 }
@@ -229,12 +239,19 @@ impl TryFrom<proto::TxQueryBatchResponse> for TxQueryBatchResponse {
     type Error = String;
 
     fn try_from(proto_response: proto::TxQueryBatchResponse) -> Result<Self, Self::Error> {
-        let hash = match proto_response.block_hash {
-            Some(v) => match v.try_into() {
-                Ok(v) => Some(v),
-                Err(e) => return Err(format!("Malformed block hash: {}", e)),
-            },
-            None => None,
+        let hash = if proto_response.block_hash.is_empty() {
+            None
+        } else {
+            Some(match BlockHash::try_from(proto_response.block_hash.clone()) {
+                Ok(h) => h,
+                Err(e) => {
+                    return Err(format!("Malformed block hash: {}", e));
+                },
+            })
+        };
+        let mined_timestamp = match proto_response.mined_timestamp {
+            0 => None,
+            t => Some(t),
         };
         Ok(Self {
             signature: Signature::try_from(
@@ -249,35 +266,7 @@ impl TryFrom<proto::TxQueryBatchResponse> for TxQueryBatchResponse {
             block_hash: hash,
             block_height: proto_response.block_height,
             confirmations: proto_response.confirmations,
-            mined_timestamp: proto_response.mined_timestamp,
+            mined_timestamp,
         })
-    }
-}
-
-impl proto::SyncUtxosResponse {
-    pub fn into_utxo(self) -> Option<proto::SyncUtxo> {
-        use proto::sync_utxos_response::UtxoOrDeleted::{DeletedDiff, Utxo};
-        match self.utxo_or_deleted? {
-            Utxo(utxo) => Some(utxo),
-            DeletedDiff(_) => None,
-        }
-    }
-
-    pub fn into_bitmap(self) -> Option<Vec<u8>> {
-        use proto::sync_utxos_response::UtxoOrDeleted::{DeletedDiff, Utxo};
-        match self.utxo_or_deleted? {
-            Utxo(_) => None,
-            DeletedDiff(bitmap) => Some(bitmap),
-        }
-    }
-}
-
-impl proto::sync_utxo::Utxo {
-    pub fn into_transaction_output(self) -> Option<types::TransactionOutput> {
-        use proto::sync_utxo::Utxo::{Output, PrunedOutput};
-        match self {
-            Output(output) => Some(output),
-            PrunedOutput(_) => None,
-        }
     }
 }

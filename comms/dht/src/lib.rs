@@ -122,23 +122,28 @@ pub mod inbound;
 pub mod outbound;
 pub mod store_forward;
 
-use tari_comms::types::CommsChallenge;
+use blake2::Blake2b;
+use digest::consts::{U32, U64};
 use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
 
 hash_domain!(DHTCommsHashDomain, "com.tari.comms.dht");
 
-pub fn comms_dht_hash_domain_challenge() -> DomainSeparatedHasher<CommsChallenge, DHTCommsHashDomain> {
-    DomainSeparatedHasher::<CommsChallenge, DHTCommsHashDomain>::new_with_label("challenge")
+/// Hash domain used to produce binding message hashes
+pub fn comms_dht_hash_domain_challenge() -> DomainSeparatedHasher<Blake2b<U32>, DHTCommsHashDomain> {
+    DomainSeparatedHasher::<Blake2b<U32>, DHTCommsHashDomain>::new_with_label("challenge")
 }
 
-pub fn comms_dht_hash_domain_key_message() -> DomainSeparatedHasher<CommsChallenge, DHTCommsHashDomain> {
-    DomainSeparatedHasher::<CommsChallenge, DHTCommsHashDomain>::new_with_label("key_message")
+/// Hash domain used for message encryption keys
+pub fn comms_dht_hash_domain_key_message() -> DomainSeparatedHasher<Blake2b<U32>, DHTCommsHashDomain> {
+    DomainSeparatedHasher::<Blake2b<U32>, DHTCommsHashDomain>::new_with_label("key_message")
 }
 
-pub fn comms_dht_hash_domain_key_mask() -> DomainSeparatedHasher<CommsChallenge, DHTCommsHashDomain> {
-    DomainSeparatedHasher::<CommsChallenge, DHTCommsHashDomain>::new_with_label("key_mask")
+/// Hash domain used for message encryption key masking
+pub fn comms_dht_hash_domain_key_mask() -> DomainSeparatedHasher<Blake2b<U64>, DHTCommsHashDomain> {
+    DomainSeparatedHasher::<Blake2b<U64>, DHTCommsHashDomain>::new_with_label("key_mask")
 }
 
-pub fn comms_dht_hash_domain_message_signature() -> DomainSeparatedHasher<CommsChallenge, DHTCommsHashDomain> {
-    DomainSeparatedHasher::<CommsChallenge, DHTCommsHashDomain>::new_with_label("message_signature")
+/// Hash domain used for message signing
+pub fn comms_dht_hash_domain_message_signature() -> DomainSeparatedHasher<Blake2b<U64>, DHTCommsHashDomain> {
+    DomainSeparatedHasher::<Blake2b<U64>, DHTCommsHashDomain>::new_with_label("message_signature")
 }

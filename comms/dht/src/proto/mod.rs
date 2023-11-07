@@ -34,14 +34,9 @@ use tari_comms::{
     types::{CommsPublicKey, CommsSecretKey, Signature},
     NodeIdentity,
 };
-use tari_crypto::ristretto::RistrettoPublicKey;
-use tari_utilities::{hex::Hex, ByteArray, ByteArrayError};
-use thiserror::Error;
+use tari_utilities::{hex::Hex, ByteArray};
 
-use crate::{
-    proto::dht::{DiscoveryMessage, JoinMessage},
-    rpc::{PeerInfo, PeerInfoAddress},
-};
+use crate::{proto::dht::JoinMessage, rpc::UnvalidatedPeerInfo};
 
 pub mod common {
     tari_comms::outdir_include!("tari.dht.common.rs");
@@ -87,89 +82,21 @@ impl fmt::Display for dht::JoinMessage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "JoinMessage(PK = {}, Addresses = {:?}, Features = {:?})",
+            "JoinMessage(PK = {}, {} Addresses, Features = {:?})",
             self.public_key.to_hex(),
-            self.addresses,
-            PeerFeatures::from_bits_truncate(self.peer_features),
+            self.addresses.len(),
+            PeerFeatures::from_bits(self.peer_features),
         )
     }
 }
 
 //---------------------------------- Rpc Message Conversions --------------------------------------------//
 
-#[derive(Debug, Error, PartialEq)]
-enum PeerInfoConvertError {
-    #[error("Could not convert into byte array: `{0}`")]
-    ByteArrayError(String),
-}
-
-impl From<ByteArrayError> for PeerInfoConvertError {
-    fn from(e: ByteArrayError) -> Self {
-        PeerInfoConvertError::ByteArrayError(e.to_string())
-    }
-}
-
-impl TryFrom<DiscoveryMessage> for PeerInfo {
-    type Error = anyhow::Error;
-
-    fn try_from(value: DiscoveryMessage) -> Result<Self, Self::Error> {
-        let identity_signature = value
-            .identity_signature
-            .ok_or_else(|| anyhow!("DiscoveryMessage missing peer_identity_claim"))?
-            .try_into()?;
-
-        let identity_claim = PeerIdentityClaim {
-            addresses: value
-                .addresses
-                .iter()
-                .map(|a| Multiaddr::try_from(a.clone()))
-                .collect::<Result<_, _>>()?,
-            features: PeerFeatures::from_bits_truncate(value.peer_features),
-            signature: identity_signature,
-            unverified_data: None,
-        };
-
-        Ok(Self {
-            public_key: RistrettoPublicKey::from_bytes(&value.public_key)
-                .map_err(|e| PeerInfoConvertError::ByteArrayError(format!("{}", e)))?,
-            addresses: value
-                .addresses
-                .iter()
-                .map(|a| {
-                    Ok(PeerInfoAddress {
-                        address: Multiaddr::try_from(a.clone())?,
-                        peer_identity_claim: identity_claim.clone(),
-                    })
-                })
-                .collect::<Result<_, Self::Error>>()?,
-            peer_features: PeerFeatures::from_bits_truncate(value.peer_features),
-            supported_protocols: vec![],
-            user_agent: "".to_string(),
-        })
-    }
-}
-
-impl From<PeerInfo> for rpc::PeerInfo {
-    fn from(value: PeerInfo) -> Self {
+impl From<UnvalidatedPeerInfo> for rpc::PeerInfo {
+    fn from(value: UnvalidatedPeerInfo) -> Self {
         Self {
             public_key: value.public_key.to_vec(),
-            addresses: value.addresses.into_iter().map(Into::into).collect(),
-            peer_features: value.peer_features.bits(),
-            supported_protocols: value
-                .supported_protocols
-                .into_iter()
-                .map(|b| b.as_ref().to_vec())
-                .collect(),
-            user_agent: value.user_agent,
-        }
-    }
-}
-
-impl From<PeerInfoAddress> for rpc::PeerInfoAddress {
-    fn from(value: PeerInfoAddress) -> Self {
-        Self {
-            address: value.address.to_vec(),
-            peer_identity_claim: Some(value.peer_identity_claim.into()),
+            claims: value.claims.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -184,62 +111,34 @@ impl From<PeerIdentityClaim> for rpc::PeerIdentityClaim {
     }
 }
 
-impl TryInto<PeerInfo> for rpc::PeerInfo {
+impl TryFrom<rpc::PeerInfo> for UnvalidatedPeerInfo {
     type Error = anyhow::Error;
 
-    fn try_into(self) -> Result<PeerInfo, Self::Error> {
-        let public_key = CommsPublicKey::from_bytes(&self.public_key)
-            .map_err(|e| PeerInfoConvertError::ByteArrayError(format!("{}", e)))?;
-        let addresses = self
-            .addresses
+    fn try_from(value: rpc::PeerInfo) -> Result<UnvalidatedPeerInfo, Self::Error> {
+        let public_key = CommsPublicKey::from_canonical_bytes(&value.public_key)
+            .map_err(|e| anyhow!("PeerInfo invalid public key: {}", e))?;
+        let claims = value
+            .claims
             .into_iter()
             .map(TryInto::try_into)
-            .collect::<Result<Vec<_>, _>>()?;
-        let peer_features = PeerFeatures::from_bits_truncate(self.peer_features);
-        let supported_protocols = self
-            .supported_protocols
-            .into_iter()
-            .map(|b| b.try_into())
-            .collect::<Result<Vec<_>, _>>()?;
-        Ok(PeerInfo {
-            public_key,
-            addresses,
-            peer_features,
-            user_agent: self.user_agent,
-            supported_protocols,
-        })
+            .collect::<Result<_, _>>()?;
+
+        Ok(Self { public_key, claims })
     }
 }
 
-impl TryInto<PeerInfoAddress> for rpc::PeerInfoAddress {
+impl TryFrom<rpc::PeerIdentityClaim> for PeerIdentityClaim {
     type Error = anyhow::Error;
 
-    fn try_into(self) -> Result<PeerInfoAddress, Self::Error> {
-        let address = Multiaddr::try_from(self.address)?;
-        let peer_identity_claim = self
-            .peer_identity_claim
-            .ok_or_else(|| anyhow::anyhow!("Missing peer identity claim"))?
-            .try_into()?;
-
-        Ok(PeerInfoAddress {
-            address,
-            peer_identity_claim,
-        })
-    }
-}
-
-impl TryInto<PeerIdentityClaim> for rpc::PeerIdentityClaim {
-    type Error = anyhow::Error;
-
-    fn try_into(self) -> Result<PeerIdentityClaim, Self::Error> {
-        let addresses = self
+    fn try_from(value: rpc::PeerIdentityClaim) -> Result<PeerIdentityClaim, Self::Error> {
+        let addresses = value
             .addresses
             .into_iter()
             .filter_map(|addr| Multiaddr::try_from(addr).ok())
             .collect::<Vec<_>>();
 
-        let features = PeerFeatures::from_bits_truncate(self.peer_features);
-        let signature = self
+        let features = PeerFeatures::from_bits(value.peer_features).ok_or_else(|| anyhow!("Invalid peer features"))?;
+        let signature = value
             .identity_signature
             .map(TryInto::try_into)
             .ok_or_else(|| anyhow::anyhow!("No signature"))??;
@@ -247,7 +146,6 @@ impl TryInto<PeerIdentityClaim> for rpc::PeerIdentityClaim {
             addresses,
             features,
             signature,
-            unverified_data: None,
         })
     }
 }
@@ -258,13 +156,13 @@ impl TryFrom<common::IdentitySignature> for IdentitySignature {
     fn try_from(value: common::IdentitySignature) -> Result<Self, Self::Error> {
         let version = u8::try_from(value.version)
             .map_err(|_| anyhow::anyhow!("Invalid peer identity signature version {}", value.version))?;
-        let public_nonce = CommsPublicKey::from_bytes(&value.public_nonce)
-            .map_err(|e| PeerInfoConvertError::ByteArrayError(format!("{}", e)))?;
-        let signature = CommsSecretKey::from_bytes(&value.signature)
-            .map_err(|e| PeerInfoConvertError::ByteArrayError(format!("{}", e)))?;
+        let public_nonce = CommsPublicKey::from_canonical_bytes(&value.public_nonce)
+            .map_err(|e| anyhow!("Invalid public nonce: {}", e))?;
+        let signature =
+            CommsSecretKey::from_canonical_bytes(&value.signature).map_err(|e| anyhow!("Invalid signature: {}", e))?;
         let updated_at = NaiveDateTime::from_timestamp_opt(value.updated_at, 0)
             .ok_or_else(|| anyhow::anyhow!("updated_at overflowed"))?;
-        let updated_at = DateTime::<Utc>::from_utc(updated_at, Utc);
+        let updated_at = DateTime::<Utc>::from_naive_utc_and_offset(updated_at, Utc);
 
         Ok(Self::new(version, Signature::new(public_nonce, signature), updated_at))
     }

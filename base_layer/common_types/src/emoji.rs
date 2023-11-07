@@ -148,7 +148,7 @@ impl EmojiId {
         bytes.pop();
 
         // Convert to a public key
-        match PublicKey::from_bytes(&bytes) {
+        match PublicKey::from_canonical_bytes(&bytes) {
             Ok(public_key) => Ok(Self(public_key)),
             Err(_) => Err(EmojiIdError::CannotRecoverPublicKey),
         }

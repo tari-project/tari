@@ -87,6 +87,8 @@ pub struct BaseNodeConfig {
     pub grpc_enabled: bool,
     /// GRPC address of base node
     pub grpc_address: Option<Multiaddr>,
+    /// GRPC server config - which methods are active and which not
+    pub grpc_server_deny_methods: Vec<GrpcMethod>,
     /// A path to the file that stores the base node identity and secret key
     pub identity_file: PathBuf,
     /// Spin up and use a built-in Tor instance. This only works on macos/linux - requires that the wallet was built
@@ -122,9 +124,6 @@ pub struct BaseNodeConfig {
     pub status_line_interval: Duration,
     /// The buffer size for the publish/subscribe connector channel, connecting comms messages to the domain layer
     pub buffer_size: usize,
-    /// The rate limit for the publish/subscribe connector channel, i.e. maximum amount of inbound messages to
-    /// accept - any rate attempting to exceed this limit will be throttled
-    pub buffer_rate_limit: usize,
     /// Liveness meta data auto ping interval between peers
     #[serde(with = "serializers::seconds")]
     pub metadata_auto_ping_interval: Duration,
@@ -146,6 +145,16 @@ impl Default for BaseNodeConfig {
             network: Network::default(),
             grpc_enabled: true,
             grpc_address: None,
+            grpc_server_deny_methods: vec![
+                // These gRPC server methods share sensitive information, thus disabled by default
+                GrpcMethod::GetVersion,
+                GrpcMethod::CheckForUpdates,
+                GrpcMethod::GetSyncInfo,
+                GrpcMethod::GetSyncProgress,
+                GrpcMethod::GetTipInfo,
+                GrpcMethod::Identify,
+                GrpcMethod::GetNetworkStatus,
+            ],
             identity_file: PathBuf::from("config/base_node_id.json"),
             use_libtor: false,
             tor_identity_file: PathBuf::from("config/base_node_tor_id.json"),
@@ -162,7 +171,6 @@ impl Default for BaseNodeConfig {
             mempool: Default::default(),
             status_line_interval: Duration::from_secs(5),
             buffer_size: 1_500,
-            buffer_rate_limit: 1_000,
             metadata_auto_ping_interval: Duration::from_secs(30),
             state_machine: Default::default(),
             report_grpc_error: false,
@@ -198,4 +206,84 @@ impl BaseNodeConfig {
 #[serde(rename_all = "snake_case")]
 pub enum DatabaseType {
     Lmdb,
+}
+
+/// A list of all the GRPC methods that can be enabled/disabled
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum GrpcMethod {
+    ListHeaders,
+    GetHeaderByHash,
+    GetBlocks,
+    GetBlockTiming,
+    GetConstants,
+    GetBlockSize,
+    GetBlockFees,
+    GetVersion,
+    CheckForUpdates,
+    GetTokensInCirculation,
+    GetNetworkDifficulty,
+    GetNewBlockTemplate,
+    GetNewBlock,
+    GetNewBlockBlob,
+    SubmitBlock,
+    SubmitBlockBlob,
+    SubmitTransaction,
+    GetSyncInfo,
+    GetSyncProgress,
+    GetTipInfo,
+    SearchKernels,
+    SearchUtxos,
+    FetchMatchingUtxos,
+    GetPeers,
+    GetMempoolTransactions,
+    TransactionState,
+    Identify,
+    GetNetworkStatus,
+    ListConnectedPeers,
+    GetMempoolStats,
+    GetActiveValidatorNodes,
+    GetShardKey,
+    GetTemplateRegistrations,
+    GetSideChainUtxos,
+}
+
+#[cfg(test)]
+mod tests {
+    use serde::{Deserialize, Serialize};
+
+    use crate::config::GrpcMethod;
+
+    #[derive(Clone, Serialize, Deserialize, Debug)]
+    #[allow(clippy::struct_excessive_bools)]
+    struct TestConfig {
+        name: String,
+        inner_config: TestInnerConfig,
+    }
+
+    #[derive(Clone, Serialize, Deserialize, Debug)]
+    #[allow(clippy::struct_excessive_bools)]
+    struct TestInnerConfig {
+        deny_methods: Vec<GrpcMethod>,
+    }
+
+    #[test]
+    fn it_deserializes_enums() {
+        let config_str = r#"name = "blockchain champion"
+                inner_config.deny_methods = [
+                    "list_headers",
+                    "get_constants",
+            #        "get_blocks"
+                    "identify",
+            #        "get_shard_key"
+                ]"#;
+        let config = toml::from_str::<TestConfig>(config_str).unwrap();
+
+        // Enums in the config
+        assert!(config.inner_config.deny_methods.contains(&GrpcMethod::ListHeaders));
+        assert!(config.inner_config.deny_methods.contains(&GrpcMethod::GetConstants));
+        assert!(!config.inner_config.deny_methods.contains(&GrpcMethod::GetBlocks)); // commented out in the config
+        assert!(config.inner_config.deny_methods.contains(&GrpcMethod::Identify));
+        assert!(!config.inner_config.deny_methods.contains(&GrpcMethod::GetShardKey)); // commented out in the config
+    }
 }

@@ -124,16 +124,33 @@ impl ConsensusManager {
         let constants = self.consensus_constants(height);
         let block_window = constants.difficulty_block_window();
 
-        TargetDifficultyWindow::new(
-            usize::try_from(block_window).expect("difficulty block window exceeds usize::MAX"),
-            constants.pow_target_block_interval(pow_algo),
-        )
+        let block_window_u =
+            usize::try_from(block_window).map_err(|e| format!("difficulty block window exceeds usize::MAX: {}", e))?;
+
+        TargetDifficultyWindow::new(block_window_u, constants.pow_target_block_interval(pow_algo))
     }
 
     /// Creates a total_coinbase offset containing all fees for the validation from the height and kernel set
-    pub fn calculate_coinbase_and_fees(&self, height: u64, kernels: &[TransactionKernel]) -> MicroMinotari {
-        let coinbase = self.emission_schedule().block_reward(height);
-        kernels.iter().fold(coinbase, |total, k| total + k.fee)
+    pub fn calculate_coinbase_and_fees(
+        &self,
+        height: u64,
+        kernels: &[TransactionKernel],
+    ) -> Result<MicroMinotari, String> {
+        let mut total = self.emission_schedule().block_reward(height);
+
+        for kernel in kernels {
+            match total.checked_add(kernel.fee) {
+                Some(t) => total = t,
+                None => {
+                    return Err(format!(
+                        "Coinbase total ({}) + fee ({}) exceeds max transactions allowance",
+                        total, kernel.fee
+                    ))
+                },
+            }
+        }
+
+        Ok(total)
     }
 
     /// Returns a ref to the chain strength comparer

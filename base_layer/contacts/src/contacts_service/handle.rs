@@ -30,13 +30,14 @@ use chrono::{DateTime, Local, NaiveDateTime};
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::peer_manager::NodeId;
 use tari_service_framework::reply_channel::SenderService;
+use tari_utilities::epoch_time::EpochTime;
 use tokio::sync::broadcast;
 use tower::Service;
 
 use crate::contacts_service::{
     error::ContactsServiceError,
     service::{ContactMessageType, ContactOnlineStatus},
-    types::{Contact, Message},
+    types::{Confirmation, Contact, Message, MessageDispatch},
 };
 
 pub static DEFAULT_MESSAGE_LIMIT: u64 = 35;
@@ -110,7 +111,7 @@ impl Display for ContactsLivenessData {
             self.address,
             self.node_id,
             if let Some(time) = self.last_seen {
-                let local_time = DateTime::<Local>::from_utc(time, Local::now().offset().to_owned())
+                let local_time = DateTime::<Local>::from_naive_utc_and_offset(time, Local::now().offset().to_owned())
                     .format("%FT%T")
                     .to_string();
                 format!("last seen {} is '{}'", local_time, self.online_status)
@@ -137,6 +138,8 @@ pub enum ContactsServiceRequest {
     GetContactOnlineStatus(Contact),
     SendMessage(TariAddress, Message),
     GetMessages(TariAddress, i64, i64),
+    SendReadConfirmation(TariAddress, Confirmation),
+    GetConversationalists,
 }
 
 #[derive(Debug)]
@@ -148,6 +151,8 @@ pub enum ContactsServiceResponse {
     OnlineStatus(ContactOnlineStatus),
     Messages(Vec<Message>),
     MessageSent,
+    ReadConfirmationSent,
+    Conversationalists(Vec<TariAddress>),
 }
 
 #[derive(Clone)]
@@ -155,7 +160,7 @@ pub struct ContactsServiceHandle {
     request_response_service:
         SenderService<ContactsServiceRequest, Result<ContactsServiceResponse, ContactsServiceError>>,
     liveness_events: broadcast::Sender<Arc<ContactsLivenessEvent>>,
-    message_events: broadcast::Sender<Arc<Message>>,
+    message_events: broadcast::Sender<Arc<MessageDispatch>>,
 }
 
 impl ContactsServiceHandle {
@@ -165,7 +170,7 @@ impl ContactsServiceHandle {
             Result<ContactsServiceResponse, ContactsServiceError>,
         >,
         liveness_events: broadcast::Sender<Arc<ContactsLivenessEvent>>,
-        message_events: broadcast::Sender<Arc<Message>>,
+        message_events: broadcast::Sender<Arc<MessageDispatch>>,
     ) -> Self {
         Self {
             request_response_service,
@@ -222,7 +227,7 @@ impl ContactsServiceHandle {
         self.liveness_events.subscribe()
     }
 
-    pub fn get_messages_event_stream(&self) -> broadcast::Receiver<Arc<Message>> {
+    pub fn get_messages_event_stream(&self) -> broadcast::Receiver<Arc<MessageDispatch>> {
         self.message_events.subscribe()
     }
 
@@ -279,6 +284,38 @@ impl ContactsServiceHandle {
             .await??
         {
             ContactsServiceResponse::MessageSent => Ok(()),
+            _ => Err(ContactsServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn send_read_confirmation(
+        &mut self,
+        address: TariAddress,
+        message_id: Vec<u8>,
+    ) -> Result<(), ContactsServiceError> {
+        match self
+            .request_response_service
+            .call(ContactsServiceRequest::SendReadConfirmation(
+                address.clone(),
+                Confirmation {
+                    message_id,
+                    timestamp: EpochTime::now().as_u64(),
+                },
+            ))
+            .await??
+        {
+            ContactsServiceResponse::ReadConfirmationSent => Ok(()),
+            _ => Err(ContactsServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_conversationalists(&mut self) -> Result<Vec<TariAddress>, ContactsServiceError> {
+        match self
+            .request_response_service
+            .call(ContactsServiceRequest::GetConversationalists)
+            .await??
+        {
+            ContactsServiceResponse::Conversationalists(addresses) => Ok(addresses),
             _ => Err(ContactsServiceError::UnexpectedApiResponse),
         }
     }

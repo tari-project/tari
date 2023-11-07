@@ -58,7 +58,7 @@ use tari_comms::{
 use tari_contacts::contacts_service::{handle::ContactsLivenessEvent, types::Contact};
 use tari_core::transactions::{
     tari_amount::{uT, MicroMinotari},
-    transaction_components::{OutputFeatures, TemplateType},
+    transaction_components::{OutputFeatures, TemplateType, TransactionError},
     weight::TransactionWeight,
 };
 use tari_shutdown::ShutdownSignal;
@@ -1176,7 +1176,7 @@ impl CompletedTransactionInfo {
     pub fn from_completed_transaction(
         tx: CompletedTransaction,
         transaction_weighting: &TransactionWeight,
-    ) -> std::io::Result<Self> {
+    ) -> Result<Self, TransactionError> {
         let excess_signature = tx
             .transaction
             .first_kernel_excess_sig()
@@ -1345,6 +1345,7 @@ pub enum UiTransactionBurnStatus {
 }
 
 bitflags! {
+    #[derive(Clone)]
     pub struct TransactionFilter: u8 {
         const NONE = 0b0000_0000;
         const ABANDONED_COINBASES = 0b0000_0001;

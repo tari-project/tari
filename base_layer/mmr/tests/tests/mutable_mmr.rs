@@ -42,7 +42,7 @@ fn hash_with_bitmap(hash: &HashSlice, bitmap: &mut Bitmap) -> Hash {
 #[test]
 fn zero_length_mmr() {
     let mmr = MutableTestMmr::new(Vec::default(), Bitmap::create()).unwrap();
-    assert_eq!(mmr.len(), 0);
+    assert_eq!(mmr.len().unwrap(), 0);
     assert_eq!(mmr.is_empty(), Ok(true));
     let empty_hash = MmrTestHasherBlake256::new().digest(b"").as_ref().to_vec();
     assert_eq!(
@@ -59,7 +59,7 @@ fn delete() {
     for i in 0..5 {
         assert!(mmr.push(int_to_hash(i)).is_ok());
     }
-    assert_eq!(mmr.len(), 5);
+    assert_eq!(mmr.len().unwrap(), 5);
     let root = mmr.get_merkle_root().unwrap();
     assert_eq!(
         &root.to_hex(),
@@ -67,7 +67,7 @@ fn delete() {
     );
     // Can't delete past bounds
     assert!(!mmr.delete(5));
-    assert_eq!(mmr.len(), 5);
+    assert_eq!(mmr.len().unwrap(), 5);
     assert_eq!(mmr.is_empty(), Ok(false));
     assert_eq!(mmr.get_merkle_root(), Ok(root));
     // Delete some nodes
@@ -80,7 +80,7 @@ fn delete() {
         &root.to_hex(),
         "9418eecd5f30ae1d892024e068c18013bb4f79f584c9aa5fdba818f9bd40da1e"
     );
-    assert_eq!(mmr.len(), 3);
+    assert_eq!(mmr.len().unwrap(), 3);
     assert_eq!(mmr.is_empty(), Ok(false));
     // Can't delete that which has already been deleted
     assert!(!mmr.delete(0,));
@@ -88,14 +88,14 @@ fn delete() {
     assert!(!mmr.delete(0,));
     // .. or beyond bounds of MMR
     assert!(!mmr.delete(9));
-    assert_eq!(mmr.len(), 3);
+    assert_eq!(mmr.len().unwrap(), 3);
     assert_eq!(mmr.is_empty(), Ok(false));
     // Merkle root should not have changed:
     assert_eq!(mmr.get_merkle_root(), Ok(root));
     assert!(mmr.delete(1));
     assert!(mmr.delete(5));
     assert!(mmr.delete(3));
-    assert_eq!(mmr.len(), 0);
+    assert_eq!(mmr.len().unwrap(), 0);
     assert_eq!(mmr.is_empty(), Ok(true));
     mmr.compress();
     let root = mmr.get_merkle_root().unwrap();
@@ -118,7 +118,7 @@ fn build_mmr() {
         assert!(mmr.push(int_to_hash(i)).is_ok());
     }
     // MutableMmr::len gives the size in terms of leaf nodes:
-    assert_eq!(mmr.len(), 5);
+    assert_eq!(mmr.len().unwrap(), 5);
     let mmr_root = mmr_check.get_merkle_root().unwrap();
     let root_check = hash_with_bitmap(&mmr_root, &mut bitmap);
     assert_eq!(mmr.get_merkle_root(), Ok(root_check));

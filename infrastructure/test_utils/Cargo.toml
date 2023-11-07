@@ -1,7 +1,8 @@
 [package]
 name = "tari_test_utils"
 description = "Utility functions used in Tari test functions"
-version = "0.51.0-rc.1"
+version = "0.52.0-rc.0"
+
 authors = ["The Tari Development Community"]
 edition = "2018"
 license = "BSD-3-Clause"

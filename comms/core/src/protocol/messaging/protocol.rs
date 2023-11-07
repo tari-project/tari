@@ -23,17 +23,17 @@
 use std::{
     collections::{hash_map::Entry, HashMap},
     fmt,
-    sync::Arc,
+    fmt::Display,
     time::Duration,
 };
 
-use bytes::Bytes;
 use log::*;
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use thiserror::Error;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     sync::{broadcast, mpsc},
+    task::JoinHandle,
 };
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
@@ -47,21 +47,18 @@ use crate::{
     protocol::{
         messaging::{inbound::InboundMessaging, outbound::OutboundMessaging},
         ProtocolEvent,
+        ProtocolId,
         ProtocolNotification,
     },
 };
 
 const LOG_TARGET: &str = "comms::protocol::messaging";
-pub(super) static MESSAGING_PROTOCOL: Bytes = Bytes::from_static(b"t/msg/0.1");
 const INTERNAL_MESSAGING_EVENT_CHANNEL_SIZE: usize = 10;
 
-/// The maximum amount of inbound messages to accept within the `RATE_LIMIT_RESTOCK_INTERVAL` window
-const RATE_LIMIT_CAPACITY: usize = 10;
-const RATE_LIMIT_RESTOCK_INTERVAL: Duration = Duration::from_millis(100);
 const MAX_FRAME_LENGTH: usize = 8 * 1_024 * 1_024;
 
-pub type MessagingEventSender = broadcast::Sender<Arc<MessagingEvent>>;
-pub type MessagingEventReceiver = broadcast::Receiver<Arc<MessagingEvent>>;
+pub type MessagingEventSender = broadcast::Sender<MessagingEvent>;
+pub type MessagingEventReceiver = broadcast::Receiver<MessagingEvent>;
 
 /// The reason for dial failure. This enum should contain simple variants which describe the kind of failure that
 /// occurred
@@ -80,31 +77,39 @@ pub enum SendFailReason {
 }
 
 /// Events emitted by the messaging protocol.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum MessagingEvent {
     MessageReceived(NodeId, MessageTag),
-    InvalidMessageReceived(NodeId),
     OutboundProtocolExited(NodeId),
+    InboundProtocolExited(NodeId),
+    ProtocolViolation { peer_node_id: NodeId, details: String },
 }
 
 impl fmt::Display for MessagingEvent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use MessagingEvent::{InvalidMessageReceived, MessageReceived, OutboundProtocolExited};
+        use MessagingEvent::*;
         match self {
-            MessageReceived(node_id, tag) => write!(f, "MessageReceived({}, {})", node_id.short_str(), tag),
-            InvalidMessageReceived(node_id) => write!(f, "InvalidMessageReceived({})", node_id.short_str()),
+            MessageReceived(node_id, tag) => write!(f, "MessageReceived({}, {})", node_id, tag),
             OutboundProtocolExited(node_id) => write!(f, "OutboundProtocolExited({})", node_id),
+            InboundProtocolExited(node_id) => write!(f, "InboundProtocolExited({})", node_id),
+            ProtocolViolation { peer_node_id, details } => {
+                write!(f, "ProtocolViolation({}, {})", peer_node_id, details)
+            },
         }
     }
 }
 
 /// Actor responsible for lazily spawning inbound (protocol notifications) and outbound (mpsc channel) messaging actors.
 pub struct MessagingProtocol {
+    protocol_id: ProtocolId,
     connectivity: ConnectivityRequester,
     proto_notification: mpsc::Receiver<ProtocolNotification<Substream>>,
     active_queues: HashMap<NodeId, mpsc::UnboundedSender<OutboundMessage>>,
+    active_inbound: HashMap<NodeId, JoinHandle<()>>,
     outbound_message_rx: mpsc::UnboundedReceiver<OutboundMessage>,
     messaging_events_tx: MessagingEventSender,
+    enable_message_received_event: bool,
+    ban_duration: Option<Duration>,
     inbound_message_tx: mpsc::Sender<InboundMessage>,
     internal_messaging_event_tx: mpsc::Sender<MessagingEvent>,
     internal_messaging_event_rx: mpsc::Receiver<MessagingEvent>,
@@ -117,6 +122,7 @@ pub struct MessagingProtocol {
 impl MessagingProtocol {
     /// Create a new messaging protocol actor.
     pub(super) fn new(
+        protocol_id: ProtocolId,
         connectivity: ConnectivityRequester,
         proto_notification: mpsc::Receiver<ProtocolNotification<Substream>>,
         outbound_message_rx: mpsc::UnboundedReceiver<OutboundMessage>,
@@ -129,19 +135,36 @@ impl MessagingProtocol {
         let (retry_queue_tx, retry_queue_rx) = mpsc::unbounded_channel();
 
         Self {
+            protocol_id,
             connectivity,
             proto_notification,
             outbound_message_rx,
+            active_inbound: Default::default(),
             active_queues: Default::default(),
             messaging_events_tx,
+            enable_message_received_event: false,
             internal_messaging_event_rx,
             internal_messaging_event_tx,
+            ban_duration: None,
             retry_queue_tx,
             retry_queue_rx,
             inbound_message_tx,
             shutdown_signal,
             complete_trigger: Shutdown::new(),
         }
+    }
+
+    /// Set to true to enable emitting the MessageReceived event for each message received. Typically only useful in
+    /// tests.
+    pub fn set_message_received_event_enabled(mut self, enabled: bool) -> Self {
+        self.enable_message_received_event = enabled;
+        self
+    }
+
+    /// Sets a custom ban duration. Banning is disabled by default.
+    pub fn with_ban_duration(mut self, ban_duration: Duration) -> Self {
+        self.ban_duration = Some(ban_duration);
+        self
     }
 
     /// Returns a signal that resolves when this actor exits.
@@ -156,7 +179,7 @@ impl MessagingProtocol {
         loop {
             tokio::select! {
                 Some(event) = self.internal_messaging_event_rx.recv() => {
-                    self.handle_internal_messaging_event(event);
+                    self.handle_internal_messaging_event(event).await;
                 },
 
                 Some(msg) = self.retry_queue_rx.recv() => {
@@ -197,17 +220,17 @@ impl MessagingProtocol {
         framing::canonical(socket, MAX_FRAME_LENGTH)
     }
 
-    fn handle_internal_messaging_event(&mut self, event: MessagingEvent) {
-        use MessagingEvent::OutboundProtocolExited;
+    async fn handle_internal_messaging_event(&mut self, event: MessagingEvent) {
+        use MessagingEvent::*;
         trace!(target: LOG_TARGET, "Internal messaging event '{}'", event);
-        match event {
+        match &event {
             OutboundProtocolExited(node_id) => {
                 debug!(
                     target: LOG_TARGET,
                     "Outbound protocol handler exited for peer `{}`",
                     node_id.short_str()
                 );
-                if self.active_queues.remove(&node_id).is_none() {
+                if self.active_queues.remove(node_id).is_none() {
                     debug!(
                         target: LOG_TARGET,
                         "OutboundProtocolExited event, but MessagingProtocol has no record of the outbound protocol \
@@ -215,13 +238,30 @@ impl MessagingProtocol {
                         node_id.short_str()
                     );
                 }
-                let _result = self.messaging_events_tx.send(Arc::new(OutboundProtocolExited(node_id)));
             },
-            evt => {
-                // Forward the event
-                let _result = self.messaging_events_tx.send(Arc::new(evt));
+            InboundProtocolExited(node_id) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Inbound protocol handler exited for peer `{}`",
+                    node_id.short_str()
+                );
+                if self.active_inbound.remove(node_id).is_none() {
+                    debug!(
+                        target: LOG_TARGET,
+                        "InboundProtocolExited event, but MessagingProtocol has no record of the inbound protocol \
+                         for peer `{}`",
+                        node_id.short_str()
+                    );
+                }
             },
+            ProtocolViolation { peer_node_id, details } => {
+                self.ban_peer(peer_node_id.clone(), details.to_string()).await;
+            },
+            _ => {},
         }
+
+        // Forward the event
+        let _result = self.messaging_events_tx.send(event);
     }
 
     fn handle_retry_queue_messages(&mut self, msg: OutboundMessage) -> Result<(), MessagingProtocolError> {
@@ -230,7 +270,6 @@ impl MessagingProtocol {
         Ok(())
     }
 
-    // #[tracing::instrument(skip(self, out_msg), err)]
     fn send_message(&mut self, out_msg: OutboundMessage) -> Result<(), MessagingProtocolError> {
         trace!(target: LOG_TARGET, "Received request to send message ({})", out_msg);
         let peer_node_id = out_msg.peer_node_id.clone();
@@ -249,6 +288,7 @@ impl MessagingProtocol {
                         self.internal_messaging_event_tx.clone(),
                         peer_node_id,
                         self.retry_queue_tx.clone(),
+                        self.protocol_id.clone(),
                     );
                     break entry.insert(sender);
                 },
@@ -277,24 +317,43 @@ impl MessagingProtocol {
         events_tx: mpsc::Sender<MessagingEvent>,
         peer_node_id: NodeId,
         retry_queue_tx: mpsc::UnboundedSender<OutboundMessage>,
+        protocol_id: ProtocolId,
     ) -> mpsc::UnboundedSender<OutboundMessage> {
         let (msg_tx, msg_rx) = mpsc::unbounded_channel();
-        let outbound_messaging = OutboundMessaging::new(connectivity, events_tx, msg_rx, retry_queue_tx, peer_node_id);
+        let outbound_messaging = OutboundMessaging::new(
+            connectivity,
+            events_tx,
+            msg_rx,
+            retry_queue_tx,
+            peer_node_id,
+            protocol_id,
+        );
         tokio::spawn(outbound_messaging.run());
         msg_tx
     }
 
     fn spawn_inbound_handler(&mut self, peer: NodeId, substream: Substream) {
+        if let Some(handle) = self.active_inbound.get(&peer) {
+            if handle.is_finished() {
+                self.active_inbound.remove(&peer);
+            } else {
+                debug!(
+                    target: LOG_TARGET,
+                    "InboundMessaging for peer '{}' already exists", peer.short_str()
+                );
+                return;
+            }
+        }
         let messaging_events_tx = self.messaging_events_tx.clone();
         let inbound_message_tx = self.inbound_message_tx.clone();
         let inbound_messaging = InboundMessaging::new(
-            peer,
+            peer.clone(),
             inbound_message_tx,
             messaging_events_tx,
-            RATE_LIMIT_CAPACITY,
-            RATE_LIMIT_RESTOCK_INTERVAL,
+            self.enable_message_received_event,
         );
-        tokio::spawn(inbound_messaging.run(substream));
+        let handle = tokio::spawn(inbound_messaging.run(substream));
+        self.active_inbound.insert(peer, handle);
     }
 
     fn handle_protocol_notification(&mut self, notification: ProtocolNotification<Substream>) {
@@ -308,6 +367,37 @@ impl MessagingProtocol {
                 );
 
                 self.spawn_inbound_handler(node_id, substream);
+            },
+        }
+    }
+
+    async fn ban_peer<T: Display>(&mut self, peer_node_id: NodeId, reason: T) {
+        warn!(
+            target: LOG_TARGET,
+            "Banning peer '{}' because it violated the messaging protocol: {}", peer_node_id.short_str(), reason
+        );
+        if let Some(handle) = self.active_inbound.remove(&peer_node_id) {
+            handle.abort();
+        }
+        drop(self.active_queues.remove(&peer_node_id));
+        match self.ban_duration {
+            Some(ban_duration) => {
+                if let Err(err) = self
+                    .connectivity
+                    .ban_peer_until(peer_node_id.clone(), ban_duration, reason.to_string())
+                    .await
+                {
+                    error!(
+                        target: LOG_TARGET,
+                        "Failed to ban peer '{}' because '{:?}'", peer_node_id.short_str(), err
+                    );
+                }
+            },
+            None => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Banning disabled in MessagingProtocol, so peer '{peer_node_id}' will not be banned (reason: {reason})",
+                );
             },
         }
     }

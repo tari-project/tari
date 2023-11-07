@@ -104,7 +104,6 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
 
     /// Connects to a address through a SOCKS5 proxy and returns the 'upgraded' socket. This consumes the
     /// `Socks5Client` as once connected, the socks protocol does not recognise any further commands.
-    #[tracing::instrument(level = "trace", name = "socks::connect", skip(self))]
     pub async fn connect(mut self, address: &Multiaddr) -> Result<(TSocket, Multiaddr)> {
         let address = self.execute_command(Command::Connect, address).await?;
         Ok((self.protocol.socket, address))
@@ -112,7 +111,6 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
 
     /// Requests the tor proxy to resolve a DNS address is resolved into an IP address.
     /// This operation only works with the tor SOCKS proxy.
-    #[tracing::instrument(name = "socks:tor_resolve", skip(self))]
     pub async fn tor_resolve(&mut self, address: &Multiaddr) -> Result<Multiaddr> {
         // Tor resolve does not return the port back
         let (dns, rest) = multiaddr_split_first(address);
@@ -126,7 +124,6 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
 
     /// Requests the tor proxy to reverse resolve an IP address into a DNS address if it is able.
     /// This operation only works with the tor SOCKS proxy.
-    #[tracing::instrument(name = "socks::tor_resolve_ptr", skip(self))]
     pub async fn tor_resolve_ptr(&mut self, address: &Multiaddr) -> Result<Multiaddr> {
         self.execute_command(Command::TorResolvePtr, address).await
     }

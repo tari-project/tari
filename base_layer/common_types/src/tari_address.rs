@@ -134,7 +134,8 @@ impl TariAddress {
         if validate_checksum(&fixed_data).is_err() {
             return Err(TariAddressError::InvalidNetworkOrChecksum);
         }
-        let key = PublicKey::from_bytes(&bytes[0..32]).map_err(|_| TariAddressError::CannotRecoverPublicKey)?;
+        let key =
+            PublicKey::from_canonical_bytes(&bytes[0..32]).map_err(|_| TariAddressError::CannotRecoverPublicKey)?;
         Ok(TariAddress {
             public_key: key,
             network,
@@ -151,7 +152,8 @@ impl TariAddress {
         // if the network is a valid network number, we can assume that the checksum as valid
         let network =
             Network::try_from(checksum ^ bytes[32]).map_err(|_| TariAddressError::InvalidNetworkOrChecksum)?;
-        let key = PublicKey::from_bytes(&bytes[0..32]).map_err(|_| TariAddressError::CannotRecoverPublicKey)?;
+        let key =
+            PublicKey::from_canonical_bytes(&bytes[0..32]).map_err(|_| TariAddressError::CannotRecoverPublicKey)?;
         Ok(TariAddress {
             public_key: key,
             network,

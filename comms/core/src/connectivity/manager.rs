@@ -164,7 +164,6 @@ impl ConnectivityManagerActor {
         })
     }
 
-    #[tracing::instrument(level = "trace", name = "connectivity_manager_actor::run", skip(self))]
     pub async fn run(mut self) {
         debug!(target: LOG_TARGET, "ConnectivityManager started");
 
@@ -265,7 +264,7 @@ impl ConnectivityManagerActor {
                 } else if let Err(err) = self.ban_peer(&node_id, duration, reason).await {
                     error!(target: LOG_TARGET, "Error when banning peer: {:?}", err);
                 } else {
-                    // we ban the peer
+                    // we banned the peer
                 }
             },
             AddPeerToAllowList(node_id) => {
@@ -473,7 +472,7 @@ impl ConnectivityManagerActor {
         }
     }
 
-    fn mark_peer_succeeded(&mut self, node_id: NodeId) {
+    fn mark_connection_success(&mut self, node_id: NodeId) {
         let entry = self.get_connection_stat_mut(node_id);
         entry.set_connection_success();
     }
@@ -540,11 +539,12 @@ impl ConnectivityManagerActor {
         Ok(())
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn update_state_on_connectivity_event(
         &mut self,
         event: &ConnectionManagerEvent,
     ) -> Result<(), ConnectivityError> {
-        use ConnectionManagerEvent::{PeerConnectFailed, PeerConnected, PeerDisconnected};
+        use ConnectionManagerEvent::*;
         match event {
             PeerConnected(new_conn) => {
                 match self.on_new_connection(new_conn).await {
@@ -572,6 +572,15 @@ impl ConnectivityManagerActor {
                         return Ok(());
                     }
                 }
+            },
+            PeerViolation { peer_node_id, details } => {
+                self.ban_peer(
+                    peer_node_id,
+                    Duration::from_secs(2 * 60 * 60),
+                    format!("Peer violation: {details}"),
+                )
+                .await?;
+                return Ok(());
             },
             _ => {},
         }
@@ -625,7 +634,7 @@ impl ConnectivityManagerActor {
         match (old_status, new_status) {
             (_, Connected) => match self.pool.get_connection(&node_id).cloned() {
                 Some(conn) => {
-                    self.mark_peer_succeeded(node_id.clone());
+                    self.mark_connection_success(conn.peer_node_id().clone());
                     self.publish_event(ConnectivityEvent::PeerConnected(conn.into()));
                 },
                 None => unreachable!(

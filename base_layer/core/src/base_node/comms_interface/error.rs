@@ -31,6 +31,7 @@ use crate::{
     consensus::ConsensusManagerError,
     mempool::MempoolError,
     proof_of_work::{monero_rx::MergeMineError, DifficultyError},
+    transactions::transaction_components::TransactionError,
 };
 
 #[derive(Debug, Error)]
@@ -75,4 +76,6 @@ pub enum CommsInterfaceError {
     MergeMineError(#[from] MergeMineError),
     #[error("Invalid difficulty: {0}")]
     DifficultyError(#[from] DifficultyError),
+    #[error("Transaction error: {0}")]
+    TransactionError(#[from] TransactionError),
 }

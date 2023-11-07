@@ -22,10 +22,10 @@
 
 use blake2::Blake2b;
 use borsh::{BorshDeserialize, BorshSerialize};
-use digest::consts::U32;
+use digest::consts::U64;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{FixedHash, PrivateKey, PublicKey, Signature};
+use tari_common_types::types::{PrivateKey, PublicKey, Signature};
 use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher, keys::PublicKey as PublicKeyT};
 use tari_utilities::ByteArray;
 
@@ -50,13 +50,13 @@ impl ValidatorNodeSignature {
         let (secret_nonce, public_nonce) = PublicKey::random_keypair(&mut OsRng);
         let public_key = PublicKey::from_secret_key(private_key);
         let challenge = Self::construct_challenge(&public_key, &public_nonce, msg);
-        let signature = Signature::sign_raw(private_key, secret_nonce, &*challenge)
-            .expect("Sign cannot fail with 32-byte challenge and a RistrettoPublicKey");
+        let signature = Signature::sign_raw_uniform(private_key, secret_nonce, &challenge)
+            .expect("Sign cannot fail with 64-byte challenge and a RistrettoPublicKey");
         Self { public_key, signature }
     }
 
-    fn construct_challenge(public_key: &PublicKey, public_nonce: &PublicKey, msg: &[u8]) -> FixedHash {
-        let hasher = DomainSeparatedHasher::<Blake2b<U32>, ValidatorNodeHashDomain>::new_with_label("registration")
+    fn construct_challenge(public_key: &PublicKey, public_nonce: &PublicKey, msg: &[u8]) -> [u8; 64] {
+        let hasher = DomainSeparatedHasher::<Blake2b<U64>, ValidatorNodeHashDomain>::new_with_label("registration")
             .chain(public_key.as_bytes())
             .chain(public_nonce.as_bytes())
             .chain(msg);
@@ -65,7 +65,7 @@ impl ValidatorNodeSignature {
 
     pub fn is_valid_signature_for(&self, msg: &[u8]) -> bool {
         let challenge = Self::construct_challenge(&self.public_key, self.signature.get_public_nonce(), msg);
-        self.signature.verify_challenge(&self.public_key, &*challenge)
+        self.signature.verify_raw_uniform(&self.public_key, &challenge)
     }
 
     pub fn public_key(&self) -> &PublicKey {

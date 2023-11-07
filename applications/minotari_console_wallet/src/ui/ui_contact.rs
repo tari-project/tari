@@ -47,7 +47,7 @@ impl From<Contact> for UiContact {
             address: c.address.to_hex(),
             emoji_id: c.address.to_emoji_string(),
             last_seen: match c.last_seen {
-                Some(val) => DateTime::<Local>::from_utc(val, Local::now().offset().to_owned())
+                Some(val) => DateTime::<Local>::from_naive_utc_and_offset(val, Local::now().offset().to_owned())
                     .format("%m-%dT%H:%M")
                     .to_string(),
                 None => "".to_string(),

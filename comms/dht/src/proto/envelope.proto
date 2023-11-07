@@ -45,7 +45,7 @@ message DhtHeader {
     // Message trace ID
     uint64 message_tag = 11;
     // Expiry timestamp for the message
-    google.protobuf.Timestamp expires = 12;
+    uint64 expires = 12;
 }
 
 message DhtEnvelope {

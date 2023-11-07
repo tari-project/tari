@@ -95,7 +95,7 @@ where
             flags: dht_flags.bits(),
             destination: Some(destination.into()),
             message_tag: tag.as_value(),
-            expires,
+            expires: expires.unwrap_or_default(),
         });
         let envelope = DhtEnvelope::new(dht_header, body.into());
 

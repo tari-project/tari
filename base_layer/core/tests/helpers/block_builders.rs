@@ -19,10 +19,8 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use std::{convert::TryFrom, sync::Arc};
 
-use croaring::Bitmap;
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::types::{Commitment, FixedHash};
 use tari_core::{
@@ -52,13 +50,12 @@ use tari_core::{
         },
     },
     KernelMmr,
-    KernelMmrHasherBlake256,
-    MutableOutputMmr,
+    OutputSmt,
 };
-use tari_crypto::tari_utilities::hex::Hex;
 use tari_key_manager::key_manager_service::KeyManagerInterface;
-use tari_mmr::{Hash, MutableMmr};
+use tari_mmr::sparse_merkle_tree::{NodeKey, ValueHash};
 use tari_script::script;
+use tari_utilities::{hex::Hex, ByteArray};
 
 pub async fn create_coinbase(
     value: MicroMinotari,
@@ -134,7 +131,8 @@ async fn genesis_template(
         header.into_builder().with_coinbase_utxo(utxo, kernel).build(),
         Difficulty::min(),
         coinbase_value,
-    );
+    )
+    .unwrap();
     (block, output)
 }
 
@@ -145,10 +143,7 @@ fn print_new_genesis_block_values() {
 
     // Note: An em empty MMR will have a root of `MerkleMountainRange::<D, B>::null_hash()`
     let kernel_mr = KernelMmr::new(Vec::new()).get_merkle_root().unwrap();
-    let output_mr = MutableOutputMmr::new(Vec::new(), Bitmap::create())
-        .unwrap()
-        .get_merkle_root()
-        .unwrap();
+    let output_mr = FixedHash::try_from(OutputSmt::new().hash().as_slice()).unwrap();
 
     // Note: This is printed in the same order as needed for 'fn get_xxxx_genesis_block_raw()'
     println!();
@@ -181,27 +176,22 @@ pub async fn create_genesis_block(
 
 // Calculate the MMR Merkle roots for the genesis block template and update the header.
 fn update_genesis_block_mmr_roots(template: NewBlockTemplate) -> Result<Block, ChainStorageError> {
-    type BaseLayerKernelMutableMmr = MutableMmr<KernelMmrHasherBlake256, Vec<Hash>>;
-
     let NewBlockTemplate { header, mut body, .. } = template;
     // Make sure the body components are sorted. If they already are, this is a very cheap call.
     body.sort();
     let kernel_hashes: Vec<Vec<u8>> = body.kernels().iter().map(|k| k.hash().to_vec()).collect();
-    let out_hashes: Vec<Vec<u8>> = body.outputs().iter().map(|out| out.hash().to_vec()).collect();
 
     let mut header = BlockHeader::from(header);
-    header.kernel_mr = FixedHash::try_from(
-        BaseLayerKernelMutableMmr::new(kernel_hashes, Bitmap::create())
-            .unwrap()
-            .get_merkle_root()?,
-    )
-    .unwrap();
-    let mut mmr = MutableOutputMmr::new(Vec::<Vec<u8>>::new(), Bitmap::create()).unwrap();
-    for output in out_hashes {
-        let _ = mmr.push(output).unwrap();
+    let kernel_mmr = KernelMmr::new(kernel_hashes);
+    header.kernel_mr = FixedHash::try_from(kernel_mmr.get_merkle_root()?).unwrap();
+    let mut mmr = OutputSmt::new();
+    for output in body.outputs() {
+        let smt_key = NodeKey::try_from(output.commitment.as_bytes())?;
+        let smt_node = ValueHash::try_from(output.smt_hash(header.height).as_slice())?;
+        mmr.insert(smt_key, smt_node).unwrap();
     }
 
-    header.output_mr = FixedHash::try_from(mmr.get_merkle_root()?).unwrap();
+    header.output_mr = FixedHash::try_from(mmr.hash().as_slice()).unwrap();
     Ok(Block { header, body })
 }
 
@@ -300,6 +290,7 @@ pub async fn chain_block(
         Difficulty::min(),
         reward,
     )
+    .unwrap()
 }
 
 /// Create a new block using the provided coinbase and transactions that adds to the blockchain given in `prev_block`.
@@ -309,6 +300,7 @@ pub fn chain_block_with_coinbase(
     coinbase_utxo: TransactionOutput,
     coinbase_kernel: TransactionKernel,
     consensus: &ConsensusManager,
+    achieved_difficulty: Option<Difficulty>,
 ) -> NewBlockTemplate {
     let mut header = BlockHeader::from_previous(prev_block.header());
     header.version = consensus.consensus_constants(header.height).blockchain_version();
@@ -319,9 +311,10 @@ pub fn chain_block_with_coinbase(
             .with_transactions(transactions)
             .with_coinbase_utxo(coinbase_utxo, coinbase_kernel)
             .build(),
-        Difficulty::min(),
+        achieved_difficulty.unwrap_or(Difficulty::min()),
         consensus.get_block_reward_at(height),
     )
+    .unwrap()
 }
 
 /// Create a new block using the provided coinbase and transactions that adds to the blockchain given in `prev_block`.
@@ -336,7 +329,7 @@ pub async fn chain_block_with_new_coinbase(
     let mut coinbase_value = consensus_manager.emission_schedule().block_reward(height);
     coinbase_value += transactions
         .iter()
-        .fold(MicroMinotari(0), |acc, x| acc + x.body.get_total_fee());
+        .fold(MicroMinotari(0), |acc, x| acc + x.body.get_total_fee().unwrap());
     let (coinbase_utxo, coinbase_kernel, coinbase_output) = create_coinbase(
         coinbase_value,
         height + consensus_manager.consensus_constants(height).coinbase_min_maturity(),
@@ -358,7 +351,8 @@ pub async fn chain_block_with_new_coinbase(
             .build(),
         Difficulty::min(),
         reward,
-    );
+    )
+    .unwrap();
     (template, coinbase_output)
 }
 
@@ -389,9 +383,9 @@ pub async fn append_block_with_coinbase<B: BlockchainBackend>(
 ) -> Result<(ChainBlock, WalletOutput), ChainStorageError> {
     let height = prev_block.height() + 1;
     let mut coinbase_value = consensus_manager.emission_schedule().block_reward(height);
-    coinbase_value += txns
-        .iter()
-        .fold(MicroMinotari(0), |acc, x| acc + x.body.get_total_fee());
+    for tx in &txns {
+        coinbase_value += tx.body.get_total_fee()?;
+    }
     let (coinbase_utxo, coinbase_kernel, coinbase_output) = create_coinbase(
         coinbase_value,
         height + consensus_manager.consensus_constants(0).coinbase_min_maturity(),
@@ -399,7 +393,14 @@ pub async fn append_block_with_coinbase<B: BlockchainBackend>(
         key_manager,
     )
     .await;
-    let template = chain_block_with_coinbase(prev_block, txns, coinbase_utxo, coinbase_kernel, consensus_manager);
+    let template = chain_block_with_coinbase(
+        prev_block,
+        txns,
+        coinbase_utxo,
+        coinbase_kernel,
+        consensus_manager,
+        None,
+    );
     let mut block = db.prepare_new_block(template)?;
     block.header.nonce = OsRng.next_u64();
     find_header_with_achieved_difficulty(&mut block.header, achieved_difficulty);
@@ -465,7 +466,7 @@ pub async fn generate_new_block_with_coinbase<B: BlockchainBackend>(
     let mut fees = MicroMinotari(0);
     for schema in schemas {
         let (tx, mut utxos) = spend_utxos(schema, key_manager).await;
-        fees += tx.body.get_total_fee();
+        fees += tx.body.get_total_fee()?;
         txns.push(tx);
         block_utxos.append(&mut utxos);
     }
@@ -475,7 +476,7 @@ pub async fn generate_new_block_with_coinbase<B: BlockchainBackend>(
     block_utxos.push(coinbase_output);
 
     outputs.push(block_utxos);
-    generate_block_with_coinbase(db, blocks, txns, coinbase_utxo, coinbase_kernel, consensus)
+    generate_block_with_coinbase(db, blocks, txns, coinbase_utxo, coinbase_kernel, consensus, None)
 }
 
 pub fn find_header_with_achieved_difficulty(header: &mut BlockHeader, achieved_difficulty: Difficulty) {
@@ -541,23 +542,25 @@ pub async fn generate_block_with_achieved_difficulty<B: BlockchainBackend>(
 /// with the correct MMR roots.
 pub fn generate_block_with_coinbase<B: BlockchainBackend>(
     db: &mut BlockchainDatabase<B>,
-    blocks: &mut Vec<ChainBlock>,
+    prev_blocks: &mut Vec<ChainBlock>,
     transactions: Vec<Transaction>,
     coinbase_utxo: TransactionOutput,
     coinbase_kernel: TransactionKernel,
     consensus: &ConsensusManager,
+    achieved_difficulty: Option<Difficulty>,
 ) -> Result<BlockAddResult, ChainStorageError> {
     let template = chain_block_with_coinbase(
-        blocks.last().unwrap(),
+        prev_blocks.last().unwrap(),
         transactions,
         coinbase_utxo,
         coinbase_kernel,
         consensus,
+        achieved_difficulty,
     );
     let new_block = db.prepare_new_block(template)?;
     let result = db.add_block(new_block.into())?;
     if let BlockAddResult::Ok(ref b) = result {
-        blocks.push(b.as_ref().clone());
+        prev_blocks.push(b.as_ref().clone());
     }
     Ok(result)
 }

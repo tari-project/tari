@@ -36,7 +36,7 @@ impl TryFrom<proto::Commitment> for Commitment {
     type Error = ByteArrayError;
 
     fn try_from(commitment: proto::Commitment) -> Result<Self, Self::Error> {
-        Commitment::from_bytes(&commitment.data)
+        Commitment::from_canonical_bytes(&commitment.data)
     }
 }
 
@@ -53,8 +53,8 @@ impl TryFrom<proto::Signature> for Signature {
     type Error = String;
 
     fn try_from(sig: proto::Signature) -> Result<Self, Self::Error> {
-        let public_nonce = PublicKey::from_bytes(&sig.public_nonce).map_err(|e| e.to_string())?;
-        let signature = PrivateKey::from_bytes(&sig.signature).map_err(|e| e.to_string())?;
+        let public_nonce = PublicKey::from_canonical_bytes(&sig.public_nonce).map_err(|e| e.to_string())?;
+        let signature = PrivateKey::from_canonical_bytes(&sig.signature).map_err(|e| e.to_string())?;
 
         Ok(Self::new(public_nonce, signature))
     }
@@ -75,11 +75,11 @@ impl TryFrom<proto::ComAndPubSignature> for ComAndPubSignature {
     type Error = ByteArrayError;
 
     fn try_from(sig: proto::ComAndPubSignature) -> Result<Self, Self::Error> {
-        let ephemeral_commitment = Commitment::from_bytes(&sig.ephemeral_commitment)?;
-        let ephemeral_pubkey = PublicKey::from_bytes(&sig.ephemeral_pubkey)?;
-        let u_a = PrivateKey::from_bytes(&sig.u_a)?;
-        let u_x = PrivateKey::from_bytes(&sig.u_x)?;
-        let u_y = PrivateKey::from_bytes(&sig.u_y)?;
+        let ephemeral_commitment = Commitment::from_canonical_bytes(&sig.ephemeral_commitment)?;
+        let ephemeral_pubkey = PublicKey::from_canonical_bytes(&sig.ephemeral_pubkey)?;
+        let u_a = PrivateKey::from_canonical_bytes(&sig.u_a)?;
+        let u_x = PrivateKey::from_canonical_bytes(&sig.u_x)?;
+        let u_y = PrivateKey::from_canonical_bytes(&sig.u_y)?;
 
         Ok(Self::new(ephemeral_commitment, ephemeral_pubkey, u_a, u_x, u_y))
     }
@@ -122,7 +122,7 @@ impl TryFrom<proto::PrivateKey> for PrivateKey {
     type Error = ByteArrayError;
 
     fn try_from(offset: proto::PrivateKey) -> Result<Self, Self::Error> {
-        PrivateKey::from_bytes(&offset.data)
+        PrivateKey::from_canonical_bytes(&offset.data)
     }
 }
 

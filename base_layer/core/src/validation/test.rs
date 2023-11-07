@@ -25,7 +25,7 @@ use std::{cmp, sync::Arc};
 use tari_common::configuration::Network;
 use tari_common_types::types::Commitment;
 use tari_crypto::commitment::HomomorphicCommitment;
-use tari_script::script;
+use tari_script::TariScript;
 use tari_test_utils::unpack_enum;
 
 use crate::{
@@ -89,7 +89,7 @@ mod header_validators {
             header.prev_hash = *prev.hash();
             // These have to be unique
             header.kernel_mmr_size = 2 + i;
-            header.output_mmr_size = 4001 + i;
+            header.output_smt_size = 4001 + i;
 
             let chain_header = create_chain_header(header, prev.accumulated_data());
             acc.push(chain_header);
@@ -182,7 +182,7 @@ async fn chain_balance_validation() {
         faucet_value,
         &key_manager,
         &OutputFeatures::default(),
-        &script!(Nop),
+        &TariScript::default(),
         &Covenant::default(),
         MicroMinotari::zero(),
     )
@@ -240,7 +240,7 @@ async fn chain_balance_validation() {
         coinbase_value,
         &key_manager,
         &OutputFeatures::create_coinbase(1, None),
-        &script!(Nop),
+        &TariScript::default(),
         &Covenant::default(),
         MicroMinotari::zero(),
     )
@@ -265,7 +265,7 @@ async fn chain_balance_validation() {
 
     let mut header1 = BlockHeader::from_previous(genesis.header());
     header1.kernel_mmr_size += 1;
-    header1.output_mmr_size += 1;
+    header1.output_smt_size += 1;
     let achieved_difficulty = AchievedTargetDifficulty::try_construct(
         genesis.header().pow_algo(),
         genesis.accumulated_data().target_difficulty,
@@ -282,10 +282,9 @@ async fn chain_balance_validation() {
     txn.insert_chain_header(header1.clone());
 
     let mut mmr_position = 4;
-    let mut mmr_leaf_index = 4;
 
     txn.insert_kernel(kernel.clone(), *header1.hash(), mmr_position);
-    txn.insert_utxo(coinbase.clone(), *header1.hash(), 1, mmr_leaf_index, 0);
+    txn.insert_utxo(coinbase.clone(), *header1.hash(), 1, 0);
 
     db.commit(txn).unwrap();
     utxo_sum = &coinbase.commitment + &utxo_sum;
@@ -302,7 +301,7 @@ async fn chain_balance_validation() {
         v,
         &key_manager,
         &OutputFeatures::create_coinbase(1, None),
-        &script!(Nop),
+        &TariScript::default(),
         &Covenant::default(),
         MicroMinotari::zero(),
     )
@@ -326,7 +325,7 @@ async fn chain_balance_validation() {
 
     let mut header2 = BlockHeader::from_previous(header1.header());
     header2.kernel_mmr_size += 1;
-    header2.output_mmr_size += 1;
+    header2.output_smt_size += 1;
     let achieved_difficulty = AchievedTargetDifficulty::try_construct(
         genesis.header().pow_algo(),
         genesis.accumulated_data().target_difficulty,
@@ -343,8 +342,7 @@ async fn chain_balance_validation() {
     txn.insert_chain_header(header2.clone());
     utxo_sum = &coinbase.commitment + &utxo_sum;
     kernel_sum = &kernel.excess + &kernel_sum;
-    mmr_leaf_index += 1;
-    txn.insert_utxo(coinbase, *header2.hash(), 2, mmr_leaf_index, 0);
+    txn.insert_utxo(coinbase, *header2.hash(), 2, 0);
     mmr_position += 1;
     txn.insert_kernel(kernel, *header2.hash(), mmr_position);
 
@@ -367,7 +365,7 @@ async fn chain_balance_validation_burned() {
         faucet_value,
         &key_manager,
         &OutputFeatures::default(),
-        &script!(Nop),
+        &TariScript::default(),
         &Covenant::default(),
         MicroMinotari::zero(),
     )
@@ -425,7 +423,7 @@ async fn chain_balance_validation_burned() {
         coinbase_value,
         &key_manager,
         &OutputFeatures::create_coinbase(1, None),
-        &script!(Nop),
+        &TariScript::default(),
         &Covenant::default(),
         MicroMinotari::zero(),
     )
@@ -451,7 +449,7 @@ async fn chain_balance_validation_burned() {
         100.into(),
         &key_manager,
         &OutputFeatures::create_burn_output(),
-        &script!(Nop),
+        &TariScript::default(),
         &Covenant::default(),
         MicroMinotari::zero(),
     )
@@ -477,7 +475,7 @@ async fn chain_balance_validation_burned() {
     burned_sum = &burned_sum + kernel2.get_burn_commitment().unwrap();
     let mut header1 = BlockHeader::from_previous(genesis.header());
     header1.kernel_mmr_size += 2;
-    header1.output_mmr_size += 2;
+    header1.output_smt_size += 2;
     let achieved_difficulty = AchievedTargetDifficulty::try_construct(
         genesis.header().pow_algo(),
         genesis.accumulated_data().target_difficulty,
@@ -494,16 +492,14 @@ async fn chain_balance_validation_burned() {
     txn.insert_chain_header(header1.clone());
 
     let mut mmr_position = 4;
-    let mut mmr_leaf_index = 4;
 
     txn.insert_kernel(kernel.clone(), *header1.hash(), mmr_position);
-    txn.insert_utxo(coinbase.clone(), *header1.hash(), 1, mmr_leaf_index, 0);
+    txn.insert_utxo(coinbase.clone(), *header1.hash(), 1, 0);
 
     mmr_position = 5;
-    mmr_leaf_index = 5;
 
     txn.insert_kernel(kernel2.clone(), *header1.hash(), mmr_position);
-    txn.insert_pruned_utxo(burned.hash(), *header1.hash(), header1.height(), mmr_leaf_index, 0);
+    // txn.insert_pruned_utxo(burned.hash(), *header1.hash(), header1.height(),  0);
 
     db.commit(txn).unwrap();
     utxo_sum = &coinbase.commitment + &utxo_sum;
@@ -518,7 +514,7 @@ mod transaction_validator {
     use crate::{
         transactions::{
             test_helpers::create_test_core_key_manager_with_memory_db,
-            transaction_components::TransactionError,
+            transaction_components::{OutputType, TransactionError},
         },
         validation::transaction::TransactionInternalConsistencyValidator,
     };
@@ -538,7 +534,11 @@ mod transaction_validator {
         };
         let tip = db.get_chain_metadata().unwrap();
         let err = validator.validate_with_current_tip(&tx, tip).unwrap_err();
-        unpack_enum!(ValidationError::ErroneousCoinbaseOutput = err);
+        unpack_enum!(
+            ValidationError::OutputTypeNotPermitted {
+                output_type: OutputType::Coinbase
+            } = err
+        );
     }
 
     #[tokio::test]
