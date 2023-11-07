@@ -356,6 +356,10 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                 block.header().pow_algo(),
                 block.block().body.to_counts_string(),
             );
+            trace!(
+                target: LOG_TARGET,
+                "{}",block
+            );
 
             let timer = Instant::now();
             self.db

@@ -620,22 +620,15 @@ impl LMDBDatabase {
             &self.utxo_commitment_index,
             input.commitment()?.as_bytes(),
             "utxo_commitment_index",
-        )
-        .or_else(|err| match err {
-            // The commitment may not yet be included in the DB in the 0-conf transaction case
-            ChainStorageError::ValueNotFound { .. } => Ok(()),
-            _ => Err(err),
-        })?;
-        // do I need to look into changing this index to be input.hash -> header hash
-        // does the key need to include the mmr pos
-        // make index safe key
+        )?;
+
         let hash = input.canonical_hash();
         let output_hash = input.output_hash();
         let key = InputKey::new(header_hash, &hash)?;
         lmdb_insert(
             txn,
             &self.deleted_txo_hash_to_header_index,
-            &output_hash.to_vec(),
+            output_hash.as_slice(),
             &(key.clone().convert_to_comp_key().to_vec()),
             "deleted_txo_hash_to_header_index",
         )?;
@@ -912,7 +905,7 @@ impl LMDBDatabase {
             lmdb_delete(
                 txn,
                 &self.deleted_txo_hash_to_header_index,
-                &output_hash.to_vec(),
+                output_hash.as_slice(),
                 "deleted_txo_hash_to_header_index",
             )?;
             if output_rows.iter().any(|r| r.hash == output_hash) {
@@ -1884,10 +1877,10 @@ impl BlockchainBackend for LMDBDatabase {
         self.fetch_output_in_txn(&txn, output_hash.as_slice())
     }
 
-    fn fetch_input(&self, input_hash: &HashOutput) -> Result<Option<InputMinedInfo>, ChainStorageError> {
-        debug!(target: LOG_TARGET, "Fetch input: {}", input_hash.to_hex());
+    fn fetch_input(&self, output_hash: &HashOutput) -> Result<Option<InputMinedInfo>, ChainStorageError> {
+        debug!(target: LOG_TARGET, "Fetch input: {}", output_hash.to_hex());
         let txn = self.read_transaction()?;
-        self.fetch_input_in_txn(&txn, input_hash.as_slice())
+        self.fetch_input_in_txn(&txn, output_hash.as_slice())
     }
 
     fn fetch_unspent_output_hash_by_commitment(
