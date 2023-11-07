@@ -22,7 +22,7 @@
 use std::{collections::HashMap, ops::Shl};
 
 use blake2::Blake2b;
-use digest::consts::U32;
+use digest::consts::U64;
 use log::*;
 use rand::rngs::OsRng;
 use strum::IntoEnumIterator;
@@ -217,6 +217,33 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         Ok((spend_key_id, spend_public_key, script_key_id, script_public_key))
     }
 
+    /// Calculates a script key id from the spend key id, if a public key is provided, it will only return a result of
+    /// the public keys match
+    pub async fn find_script_key_id_from_spend_key_id(
+        &self,
+        spend_key_id: &TariKeyId,
+        public_script_key: Option<&PublicKey>,
+    ) -> Result<Option<TariKeyId>, KeyManagerServiceError> {
+        let index = match spend_key_id {
+            KeyId::Managed { index, .. } => *index,
+            KeyId::Imported { .. } => return Ok(None),
+            KeyId::Zero => return Ok(None),
+        };
+        let script_key_id = KeyId::Managed {
+            branch: TransactionKeyManagerBranch::ScriptKey.get_branch_key(),
+            index,
+        };
+
+        if let Some(key) = public_script_key {
+            let script_public_key = self.get_public_key_at_key_id(&script_key_id).await?;
+            if *key == script_public_key {
+                return Ok(Some(script_key_id));
+            }
+            return Ok(None);
+        }
+        Ok(Some(script_key_id))
+    }
+
     /// Search the specified branch key manager key chain to find the index of the specified key.
     pub async fn find_key_index(&self, branch: &str, key: &PublicKey) -> Result<u64, KeyManagerServiceError> {
         let km = self
@@ -352,7 +379,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         &self,
         secret_key_id: &TariKeyId,
         public_key: &PublicKey,
-    ) -> Result<DomainSeparatedHash<Blake2b<U32>>, TransactionError> {
+    ) -> Result<DomainSeparatedHash<Blake2b<U64>>, TransactionError> {
         let secret_key = self.get_private_key(secret_key_id).await?;
         Ok(diffie_hellman_stealth_domain_hasher(&secret_key, public_key))
     }
@@ -467,7 +494,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         if self.crypto_factories.range_proof.range() < 64 &&
             value >= 1u64.shl(&self.crypto_factories.range_proof.range())
         {
-            return Err(TransactionError::ValidationError(
+            return Err(TransactionError::BuilderError(
                 "Value provided is outside the range allowed by the range proof".into(),
             ));
         }
@@ -495,7 +522,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         let proof_bytes = proof_bytes_result
             .map_err(|err| TransactionError::RangeProofError(format!("Failed to construct range proof: {}", err)))?;
 
-        RangeProof::from_bytes(&proof_bytes).map_err(|_| {
+        RangeProof::from_canonical_bytes(&proof_bytes).map_err(|_| {
             TransactionError::RangeProofError("Rangeproof factory returned invalid range proof bytes".to_string())
         })
     }
@@ -528,23 +555,23 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         // With RevealedValue type range proofs, the nonce is always 0 and the minimum value promise equal to the value
         let nonce_a = match range_proof_type {
             RangeProofType::BulletProofPlus => {
-                let hasher_a = DomainSeparatedHasher::<Blake2b<U32>, KeyManagerHashingDomain>::new_with_label(
+                let hasher_a = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerHashingDomain>::new_with_label(
                     "metadata_signature_ephemeral_nonce_a",
                 );
                 let a_hash = hasher_a.chain(nonce_private_key.as_bytes()).finalize();
-                PrivateKey::from_bytes(a_hash.as_ref()).map_err(|_| {
-                    TransactionError::ConversionError("Invalid private key for sender offset private key".to_string())
+                PrivateKey::from_uniform_bytes(a_hash.as_ref()).map_err(|_| {
+                    TransactionError::KeyManagerError("Invalid private key for sender offset private key".to_string())
                 })
             },
             RangeProofType::RevealedValue => Ok(PrivateKey::default()),
         }?;
 
-        let hasher_b = DomainSeparatedHasher::<Blake2b<U32>, KeyManagerHashingDomain>::new_with_label(
+        let hasher_b = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerHashingDomain>::new_with_label(
             "metadata_signature_ephemeral_nonce_b",
         );
         let b_hash = hasher_b.chain(nonce_private_key.as_bytes()).finalize();
-        let nonce_b = PrivateKey::from_bytes(b_hash.as_ref()).map_err(|_| {
-            TransactionError::ConversionError("Invalid private key for sender offset private key".to_string())
+        let nonce_b = PrivateKey::from_uniform_bytes(b_hash.as_ref()).map_err(|_| {
+            TransactionError::KeyManagerError("Invalid private key for sender offset private key".to_string())
         })?;
         Ok((nonce_a, nonce_b))
     }
@@ -726,15 +753,15 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
         nonce_id: &TariKeyId,
     ) -> Result<PrivateKey, TransactionError> {
         let hasher =
-            DomainSeparatedHasher::<Blake2b<U32>, KeyManagerHashingDomain>::new_with_label("kernel_excess_offset");
+            DomainSeparatedHasher::<Blake2b<U64>, KeyManagerHashingDomain>::new_with_label("kernel_excess_offset");
         let spending_private_key = self.get_private_key(spend_key_id).await?;
         let nonce_private_key = self.get_private_key(nonce_id).await?;
         let key_hash = hasher
             .chain(spending_private_key.as_bytes())
             .chain(nonce_private_key.as_bytes())
             .finalize();
-        PrivateKey::from_bytes(key_hash.as_ref()).map_err(|_| {
-            TransactionError::ConversionError("Invalid private key for kernel signature nonce".to_string())
+        PrivateKey::from_uniform_bytes(key_hash.as_ref()).map_err(|_| {
+            TransactionError::KeyManagerError("Invalid private key for kernel signature nonce".to_string())
         })
     }
 
@@ -775,7 +802,7 @@ where TBackend: KeyManagerBackend<PublicKey> + 'static
             kernel_message,
         );
 
-        let signature = Signature::sign_raw(&final_signing_key, private_nonce, &challenge)?;
+        let signature = Signature::sign_raw_uniform(&final_signing_key, private_nonce, &challenge)?;
         Ok(signature)
     }
 

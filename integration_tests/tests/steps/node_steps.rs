@@ -674,12 +674,12 @@ async fn no_meddling_with_data(world: &mut TariWorld, node: String) {
 
     // Meddle with output_mmr_size
     let mut block: Block = Block::try_from(mine_block_before_submit(&mut client, &world.key_manager).await).unwrap();
-    block.header.output_mmr_size += 1;
+    block.header.output_smt_size += 1;
     match client.submit_block(grpc::Block::try_from(block).unwrap()).await {
         Ok(_) => panic!("The block should not have been valid"),
         Err(e) => assert_eq!(
             "Chain storage error: Validation error: Block validation error: MMR size for UTXO does not match. \
-             Expected: 4967, received: 4968"
+             Expected: 457, received: 458"
                 .to_string(),
             e.message()
         ),

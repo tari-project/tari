@@ -73,7 +73,8 @@ impl TargetDifficultyWindow {
 
     /// Calculates the target difficulty for the current set of target difficulties.
     pub fn calculate(&self, min: Difficulty, max: Difficulty) -> Difficulty {
-        cmp::max(min, cmp::min(max, self.lwma.get_difficulty().unwrap_or(min)))
+        let difficulty = self.lwma.get_difficulty().unwrap_or(min);
+        cmp::max(min, cmp::min(max, difficulty))
     }
 }
 
@@ -86,11 +87,17 @@ mod test {
         let mut target_difficulties = TargetDifficultyWindow::new(5, 60).unwrap();
         let mut time = Difficulty::from_u64(60).unwrap().as_u64().into();
         target_difficulties.add_back(time, Difficulty::from_u64(100).unwrap());
-        time += Difficulty::from_u64(60).unwrap().as_u64().into();
+        time = time
+            .checked_add(EpochTime::from(Difficulty::from_u64(60).unwrap().as_u64()))
+            .unwrap();
         target_difficulties.add_back(time, Difficulty::from_u64(100).unwrap());
-        time += Difficulty::from_u64(60).unwrap().as_u64().into();
+        time = time
+            .checked_add(EpochTime::from(Difficulty::from_u64(60).unwrap().as_u64()))
+            .unwrap();
         target_difficulties.add_back(time, Difficulty::from_u64(100).unwrap());
-        time += Difficulty::from_u64(60).unwrap().as_u64().into();
+        time = time
+            .checked_add(EpochTime::from(Difficulty::from_u64(60).unwrap().as_u64()))
+            .unwrap();
         target_difficulties.add_back(time, Difficulty::from_u64(100).unwrap());
 
         assert_eq!(

@@ -24,7 +24,13 @@ mod contact;
 pub use contact::Contact;
 
 mod message;
-pub use message::{Direction, Message};
+pub use message::{Direction, Message, MessageMetadata, MessageMetadataType};
 
 mod message_builder;
 pub use message_builder::MessageBuilder;
+
+mod message_dispatch;
+pub use message_dispatch::MessageDispatch;
+
+mod confirmation;
+pub use confirmation::Confirmation;

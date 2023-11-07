@@ -30,7 +30,7 @@ use crate::{
     blocks::{BlockHeader, BlockHeaderValidationError},
     chain_storage::BlockchainBackend,
     consensus::{ConsensusConstants, ConsensusManager},
-    proof_of_work::{monero_rx::MoneroPowData, AchievedTargetDifficulty, Difficulty, PowAlgorithm},
+    proof_of_work::{monero_rx::MoneroPowData, AchievedTargetDifficulty, Difficulty, PowAlgorithm, PowError},
     validation::{
         helpers::{check_header_timestamp_greater_than_median, check_target_difficulty},
         DifficultyCalculator,
@@ -70,11 +70,11 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for HeaderFullValidator
         check_not_bad_block(db, header.hash())?;
         check_blockchain_version(constants, header.version)?;
         check_height(header, prev_header)?;
+        check_prev_hash(header, prev_header)?;
 
         sanity_check_timestamp_count(header, prev_timestamps, constants)?;
         check_header_timestamp_greater_than_median(header, prev_timestamps)?;
 
-        check_prev_hash(header, prev_header)?;
         check_timestamp_ftl(header, &self.rules)?;
         check_pow_data(header, &self.rules, db)?;
 
@@ -187,8 +187,7 @@ fn check_pow_data<B: BlockchainBackend>(
                     BlockHeaderValidationError::InvalidNonce,
                 ));
             }
-            let monero_data =
-                MoneroPowData::from_header(block_header).map_err(|e| ValidationError::CustomError(e.to_string()))?;
+            let monero_data = MoneroPowData::from_header(block_header)?;
             let seed_height = db.fetch_monero_seed_first_seen_height(&monero_data.randomx_key)?;
             if seed_height != 0 {
                 // Saturating sub: subtraction can underflow in reorgs / rewind-blockchain command
@@ -204,9 +203,7 @@ fn check_pow_data<B: BlockchainBackend>(
         },
         Sha3x => {
             if !block_header.pow.pow_data.is_empty() {
-                return Err(ValidationError::CustomError(
-                    "Proof of work data must be empty for Sha3 blocks".to_string(),
-                ));
+                return Err(PowError::Sha3HeaderNonEmptyPowBytes.into());
             }
             Ok(())
         },

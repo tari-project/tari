@@ -29,6 +29,8 @@ use thiserror::Error;
 pub enum ProtocolError {
     #[error("IO error: {0}")]
     IoError(#[from] io::Error),
+    #[error("Invalid flag: {0}")]
+    InvalidFlag(String),
     #[error("The ProtocolId was longer than {}", u8::max_value())]
     ProtocolIdTooLong,
     #[error("Protocol negotiation failed because the peer did not accept any of the given protocols: {protocols}")]
@@ -43,4 +45,20 @@ pub enum ProtocolError {
     ProtocolNotRegistered,
     #[error("Failed to send notification because notification sender disconnected")]
     NotificationSenderDisconnected,
+}
+
+impl ProtocolError {
+    pub fn is_ban_offence(&self) -> bool {
+        match self {
+            ProtocolError::IoError(_) |
+            ProtocolError::ProtocolNegotiationTerminatedByPeer |
+            ProtocolError::ProtocolOutboundNegotiationFailed { .. } |
+            ProtocolError::ProtocolNotRegistered |
+            ProtocolError::ProtocolInboundNegotiationFailed |
+            ProtocolError::ProtocolOptimisticNegotiationFailed |
+            ProtocolError::NotificationSenderDisconnected => false,
+
+            ProtocolError::ProtocolIdTooLong | ProtocolError::InvalidFlag(_) => true,
+        }
+    }
 }

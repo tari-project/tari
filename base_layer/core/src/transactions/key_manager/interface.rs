@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use blake2::Blake2b;
-use digest::consts::U32;
+use digest::consts::U64;
 use strum_macros::EnumIter;
 use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature};
 use tari_comms::types::CommsDHKE;
@@ -101,6 +101,12 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
         &self,
     ) -> Result<(TariKeyId, PublicKey, TariKeyId, PublicKey), KeyManagerServiceError>;
 
+    async fn find_script_key_id_from_spend_key_id(
+        &self,
+        spend_key_id: &TariKeyId,
+        public_script_key: Option<&PublicKey>,
+    ) -> Result<Option<TariKeyId>, KeyManagerServiceError>;
+
     async fn get_diffie_hellman_shared_secret(
         &self,
         secret_key_id: &TariKeyId,
@@ -111,7 +117,7 @@ pub trait TransactionKeyManagerInterface: KeyManagerInterface<PublicKey> {
         &self,
         secret_key_id: &TariKeyId,
         public_key: &PublicKey,
-    ) -> Result<DomainSeparatedHash<Blake2b<U32>>, TransactionError>;
+    ) -> Result<DomainSeparatedHash<Blake2b<U64>>, TransactionError>;
 
     async fn import_add_offset_to_private_key(
         &self,

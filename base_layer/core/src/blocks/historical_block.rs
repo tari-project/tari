@@ -24,7 +24,6 @@ use std::{fmt, fmt::Display, sync::Arc};
 
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::HashOutput;
-use tari_utilities::hex::Hex;
 
 use crate::blocks::{error::BlockError, Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock};
 
@@ -39,24 +38,14 @@ pub struct HistoricalBlock {
     block: Block,
     /// Accumulated data in the block header
     accumulated_data: BlockHeaderAccumulatedData,
-    pruned_outputs: Vec<HashOutput>,
-    pruned_input_count: u64,
 }
 
 impl HistoricalBlock {
-    pub fn new(
-        block: Block,
-        confirmations: u64,
-        accumulated_data: BlockHeaderAccumulatedData,
-        pruned_outputs: Vec<HashOutput>,
-        pruned_input_count: u64,
-    ) -> Self {
+    pub fn new(block: Block, confirmations: u64, accumulated_data: BlockHeaderAccumulatedData) -> Self {
         HistoricalBlock {
             confirmations,
             block,
             accumulated_data,
-            pruned_outputs,
-            pruned_input_count,
         }
     }
 
@@ -85,23 +74,7 @@ impl HistoricalBlock {
         &self.accumulated_data.hash
     }
 
-    pub fn contains_pruned_txos(&self) -> bool {
-        !self.pruned_outputs.is_empty() || self.pruned_input_count > 0
-    }
-
-    pub fn try_into_block(self) -> Result<Block, BlockError> {
-        if self.contains_pruned_txos() {
-            Err(BlockError::HistoricalBlockContainsPrunedTxos)
-        } else {
-            Ok(self.block)
-        }
-    }
-
     pub fn try_into_chain_block(self) -> Result<ChainBlock, BlockError> {
-        if self.contains_pruned_txos() {
-            return Err(BlockError::HistoricalBlockContainsPrunedTxos);
-        }
-
         let chain_block = ChainBlock::try_construct(Arc::new(self.block), self.accumulated_data).ok_or_else(|| {
             BlockError::ChainBlockInvariantError(
                 "Unable to construct ChainBlock because of a hash mismatch".to_string(),
@@ -111,30 +84,14 @@ impl HistoricalBlock {
         Ok(chain_block)
     }
 
-    pub fn pruned_outputs(&self) -> &[HashOutput] {
-        self.pruned_outputs.as_slice()
-    }
-
-    pub fn dissolve(self) -> (Block, BlockHeaderAccumulatedData, u64, u64) {
-        (
-            self.block,
-            self.accumulated_data,
-            self.confirmations,
-            self.pruned_input_count,
-        )
+    pub fn dissolve(self) -> (Block, BlockHeaderAccumulatedData, u64) {
+        (self.block, self.accumulated_data, self.confirmations)
     }
 }
 
 impl Display for HistoricalBlock {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "{}", self.block())?;
-
-        if !self.pruned_outputs.is_empty() {
-            writeln!(f, "Pruned outputs: ")?;
-            for output in &self.pruned_outputs {
-                writeln!(f, "Output hash: {}", output.to_hex())?;
-            }
-        }
         Ok(())
     }
 }

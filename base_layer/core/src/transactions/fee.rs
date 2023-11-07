@@ -52,7 +52,9 @@ impl Fee {
             num_outputs,
             rounded_features_and_scripts_byte_size,
         );
-        MicroMinotari::from(weight) * fee_per_gram
+        // Saturating multiplication is used here to prevent overflow only; invalid values will be caught with
+        // validation
+        MicroMinotari::from(weight.saturating_mul(fee_per_gram.0))
     }
 
     pub fn calculate_body(&self, fee_per_gram: MicroMinotari, body: &AggregateBody) -> std::io::Result<MicroMinotari> {

@@ -28,7 +28,9 @@ use std::{
     fmt::{Display, Formatter},
 };
 
+use blake2::Blake2b;
 use borsh::{BorshDeserialize, BorshSerialize};
+use digest::consts::{U32, U64};
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{Commitment, FixedHash, PublicKey, Signature};
 use tari_utilities::{hex::Hex, message_format::MessageFormat};
@@ -92,7 +94,7 @@ impl TransactionKernel {
 
     /// Produce a canonical hash for a transaction kernel.
     pub fn hash(&self) -> FixedHash {
-        DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("transaction_kernel")
+        DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("transaction_kernel")
             .chain(self)
             .finalize()
             .into()
@@ -138,7 +140,7 @@ impl TransactionKernel {
             &self.features,
             &self.burn_commitment,
         );
-        if self.excess_sig.verify_challenge(excess, &c) {
+        if self.excess_sig.verify_raw_uniform(excess, &c) {
             Ok(())
         } else {
             Err(TransactionError::InvalidSignatureError(
@@ -162,7 +164,7 @@ impl TransactionKernel {
         sum_public_nonces: &PublicKey,
         total_excess: &PublicKey,
         tx_meta: &TransactionMetadata,
-    ) -> [u8; 32] {
+    ) -> [u8; 64] {
         TransactionKernel::build_kernel_signature_challenge(
             version,
             sum_public_nonces,
@@ -189,7 +191,7 @@ impl TransactionKernel {
         lock_height: u64,
         features: &KernelFeatures,
         burn_commitment: &Option<Commitment>,
-    ) -> [u8; 32] {
+    ) -> [u8; 64] {
         // We build the message separately to help with hardware wallet support. This reduces the amount of data that
         // needs to be transferred in order to sign the signature.
         let message =
@@ -203,8 +205,8 @@ impl TransactionKernel {
         sum_public_nonces: &PublicKey,
         total_excess: &PublicKey,
         message: &[u8; 32],
-    ) -> [u8; 32] {
-        let common = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("kernel_signature")
+    ) -> [u8; 64] {
+        let common = DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U64>>::new("kernel_signature")
             .chain(sum_public_nonces)
             .chain(total_excess)
             .chain(message);
@@ -222,7 +224,7 @@ impl TransactionKernel {
         features: &KernelFeatures,
         burn_commitment: &Option<Commitment>,
     ) -> [u8; 32] {
-        let common = DomainSeparatedConsensusHasher::<TransactionHashDomain>::new("kernel_message")
+        let common = DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("kernel_message")
             .chain(version)
             .chain(&fee)
             .chain(&lock_height)

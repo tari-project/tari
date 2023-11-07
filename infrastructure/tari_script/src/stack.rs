@@ -150,7 +150,7 @@ impl StackItem {
         if b.len() < 32 {
             return None;
         }
-        let c = PedersenCommitment::from_bytes(&b[..32]).ok()?;
+        let c = PedersenCommitment::from_canonical_bytes(&b[..32]).ok()?;
         Some((StackItem::Commitment(c), &b[32..]))
     }
 
@@ -158,7 +158,7 @@ impl StackItem {
         if b.len() < 32 {
             return None;
         }
-        let p = RistrettoPublicKey::from_bytes(&b[..32]).ok()?;
+        let p = RistrettoPublicKey::from_canonical_bytes(&b[..32]).ok()?;
         Some((StackItem::PublicKey(p), &b[32..]))
     }
 
@@ -166,8 +166,8 @@ impl StackItem {
         if b.len() < 64 {
             return None;
         }
-        let r = RistrettoPublicKey::from_bytes(&b[..32]).ok()?;
-        let s = RistrettoSecretKey::from_bytes(&b[32..64]).ok()?;
+        let r = RistrettoPublicKey::from_canonical_bytes(&b[..32]).ok()?;
+        let s = RistrettoSecretKey::from_canonical_bytes(&b[32..64]).ok()?;
         let sig = RistrettoSchnorr::new(r, s);
         Some((StackItem::Signature(sig), &b[64..]))
     }
@@ -199,6 +199,12 @@ impl BorshDeserialize for ExecutionStack {
     fn deserialize_reader<R>(reader: &mut R) -> Result<Self, io::Error>
     where R: io::Read {
         let len = reader.read_varint()?;
+        if len > MAX_STACK_SIZE {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Larger than max execution stack bytes".to_string(),
+            ));
+        }
         let mut data = Vec::with_capacity(len);
         for _ in 0..len {
             data.push(u8::deserialize_reader(reader)?);
@@ -385,7 +391,10 @@ fn counter(values: [u8; 6], item: &StackItem) -> [u8; 6] {
 mod test {
     use blake2::Blake2b;
     use borsh::{BorshDeserialize, BorshSerialize};
-    use digest::{consts::U32, Digest};
+    use digest::{
+        consts::{U32, U64},
+        Digest,
+    };
     use rand::rngs::OsRng;
     use tari_crypto::{
         keys::{PublicKey, SecretKey},
@@ -394,6 +403,7 @@ mod test {
     use tari_utilities::{
         hex::{from_hex, Hex},
         message_format::MessageFormat,
+        ByteArray,
     };
 
     use crate::{op_codes::ScalarValue, ExecutionStack, HashValue, StackItem};
@@ -403,7 +413,7 @@ mod test {
         use crate::StackItem::{Number, PublicKey, Signature};
         let k = RistrettoSecretKey::random(&mut rand::thread_rng());
         let p = RistrettoPublicKey::from_secret_key(&k);
-        let s = RistrettoSchnorr::sign_message(&k, b"hi", &mut OsRng).unwrap();
+        let s = RistrettoSchnorr::sign(&k, b"hi", &mut OsRng).unwrap();
         let items = vec![Number(5432), Number(21), Signature(s), PublicKey(p)];
         let stack = ExecutionStack::new(items);
         let bytes = stack.to_bytes();
@@ -418,11 +428,12 @@ mod test {
         let r =
             RistrettoSecretKey::from_hex("193ee873f3de511eda8ae387db6498f3d194d31a130a94cdf13dc5890ec1ad0f").unwrap();
         let p = RistrettoPublicKey::from_secret_key(&k);
-        let m = Blake2b::<U32>::digest(b"Hello Tari Script");
-        let sig = RistrettoSchnorr::sign_raw(&k, r, m.as_slice()).unwrap();
-        let scalar: ScalarValue = m.into();
+        let m = RistrettoSecretKey::from_uniform_bytes(&Blake2b::<U64>::digest(b"Hello Tari Script")).unwrap();
+        let sig = RistrettoSchnorr::sign_raw_canonical(&k, r, m.as_bytes()).unwrap();
+        let mut scalar: ScalarValue = [0u8; 32];
+        scalar.copy_from_slice(m.as_bytes());
         let inputs = inputs!(sig, p, scalar);
-        assert_eq!(inputs.to_hex(), "0500f7c695528c858cde76dab3076908e01228b6dbdd5f671bed1b03b89e170c316db1023d5c46d78a97da8eb6c5a37e00d5f2fee182dcb38c1b6c65e90a43c1090456c0fa32558d6edc0916baa26b48e745de834571534ca253ea82435f08ebbc7c06fdf9fc345d2cdd8aff624a55f824c7c9ce3cc972e011b4e750e417a90ecc5da5");
+        assert_eq!(inputs.to_hex(), "0500f7c695528c858cde76dab3076908e01228b6dbdd5f671bed1b03b89e170c315c4a28c0202dec8769e7a6cc5b407e90664ce73c57404ab9c288bfe6a72d0d090456c0fa32558d6edc0916baa26b48e745de834571534ca253ea82435f08ebbc7c067c8f42406bb109bfcf5aadf0c72d9324a49b9f4758c83fb2f3364baf562f7d00");
     }
 
     #[test]
@@ -519,5 +530,14 @@ mod test {
         let buf = &mut buf.as_slice();
         assert_eq!(stack, ExecutionStack::deserialize(buf).unwrap());
         assert_eq!(buf, &[1, 2, 3]);
+    }
+
+    #[test]
+    fn test_borsh_de_serialization_too_large() {
+        // We dont care about the actual stack here, just that its not too large on the varint size
+        // We lie about the size to try and get a mem panic, and say this stack is u64::max large.
+        let buf = vec![255, 255, 255, 255, 255, 255, 255, 255, 255, 1, 49, 8, 2, 5, 6];
+        let buf = &mut buf.as_slice();
+        assert!(ExecutionStack::deserialize(buf).is_err());
     }
 }

@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::convert::TryFrom;
+
 use log::*;
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex};
 use tari_script::TariScript;
@@ -50,16 +52,15 @@ pub const LOG_TARGET: &str = "c::val::helpers";
 /// ## Panics
 /// When an empty slice is given as this is undefined for median average.
 /// https://math.stackexchange.com/a/3451015
-pub fn calc_median_timestamp(timestamps: &[EpochTime]) -> EpochTime {
-    assert!(
-        !timestamps.is_empty(),
-        "calc_median_timestamp: timestamps cannot be empty"
-    );
+pub fn calc_median_timestamp(timestamps: &[EpochTime]) -> Result<EpochTime, ValidationError> {
     trace!(
         target: LOG_TARGET,
         "Calculate the median timestamp from {} timestamps",
         timestamps.len()
     );
+    if timestamps.is_empty() {
+        return Err(ValidationError::IncorrectNumberOfTimestampsProvided { expected: 1, actual: 0 });
+    }
 
     let mid_index = timestamps.len() / 2;
     let median_timestamp = if timestamps.len() % 2 == 0 {
@@ -69,12 +70,20 @@ pub fn calc_median_timestamp(timestamps: &[EpochTime]) -> EpochTime {
             timestamps[mid_index - 1],
             timestamps[mid_index],
         );
-        (timestamps[mid_index - 1] + timestamps[mid_index]) / 2
+        // To compute this mean, we use `u128` to avoid overflow with the internal `u64` typing
+        // Note that the final cast back to `u64` will never truncate since each summand is bounded by `u64`
+        // To make the linter happy, we use `u64::MAX` in the impossible case that the cast fails
+        EpochTime::from(
+            u64::try_from(
+                (u128::from(timestamps[mid_index - 1].as_u64()) + u128::from(timestamps[mid_index].as_u64())) / 2,
+            )
+            .unwrap_or(u64::MAX),
+        )
     } else {
         timestamps[mid_index]
     };
     trace!(target: LOG_TARGET, "Median timestamp:{}", median_timestamp);
-    median_timestamp
+    Ok(median_timestamp)
 }
 pub fn check_header_timestamp_greater_than_median(
     block_header: &BlockHeader,
@@ -87,7 +96,7 @@ pub fn check_header_timestamp_greater_than_median(
         ));
     }
 
-    let median_timestamp = calc_median_timestamp(timestamps);
+    let median_timestamp = calc_median_timestamp(timestamps)?;
     if block_header.timestamp < median_timestamp {
         warn!(
             target: LOG_TARGET,
@@ -200,7 +209,7 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
 pub fn check_tari_script_byte_size(script: &TariScript, max_script_size: usize) -> Result<(), ValidationError> {
     let script_size = script
         .get_serialized_size()
-        .map_err(|e| ValidationError::CustomError(e.to_string()))?;
+        .map_err(|e| ValidationError::SerializationError(format!("Failed to get serialized script size: {}", e)))?;
     if script_size > max_script_size {
         return Err(ValidationError::TariScriptExceedsMaxSize {
             max_script_size,
@@ -215,13 +224,6 @@ pub fn check_not_duplicate_txo<B: BlockchainBackend>(
     db: &B,
     output: &TransactionOutput,
 ) -> Result<(), ValidationError> {
-    if let Some(index) = db.fetch_mmr_leaf_index(MmrTree::Utxo, &output.hash())? {
-        warn!(
-            target: LOG_TARGET,
-            "Validation failed due to previously spent output: {} (MMR index = {})", output, index
-        );
-        return Err(ValidationError::ContainsTxO);
-    }
     if db
         .fetch_unspent_output_hash_by_commitment(&output.commitment)?
         .is_some()
@@ -278,18 +280,18 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
             kind: "Utxo",
         }));
     };
-    if header.output_mmr_size != mmr_roots.output_mmr_size {
+    if header.output_smt_size != mmr_roots.output_smt_size {
         warn!(
             target: LOG_TARGET,
             "Block header output MMR size in {} does not match. Expected: {}, Actual: {}",
             header.hash().to_hex(),
-            header.output_mmr_size,
-            mmr_roots.output_mmr_size
+            header.output_smt_size,
+            mmr_roots.output_smt_size
         );
         return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrSize {
-            mmr_tree: MmrTree::Utxo.to_string(),
-            expected: mmr_roots.output_mmr_size,
-            actual: header.output_mmr_size,
+            mmr_tree: "UTXO".to_string(),
+            expected: mmr_roots.output_smt_size,
+            actual: header.output_smt_size,
         }));
     }
     if header.input_mr != mmr_roots.input_mr {
@@ -315,6 +317,22 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
         );
         return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots {
             kind: "Validator Node",
+        }));
+    }
+
+    if header.validator_node_size != mmr_roots.validator_node_size {
+        warn!(
+            target: LOG_TARGET,
+            "Block header validator size in #{} {} does not match. Expected: {}, Actual:{}",
+            header.height,
+            header.hash().to_hex(),
+            header.validator_node_size,
+            mmr_roots.validator_node_size
+        );
+        return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrSize {
+            mmr_tree: "Validator_node".to_string(),
+            expected: mmr_roots.validator_node_size,
+            actual: header.validator_node_size,
         }));
     }
     Ok(())
@@ -484,29 +502,28 @@ mod test {
         use super::*;
 
         #[test]
-        #[should_panic]
-        fn it_panics_if_empty() {
-            calc_median_timestamp(&[]);
+        fn it_errors_on_empty() {
+            assert!(calc_median_timestamp(&[]).is_err());
         }
 
         #[test]
         fn it_calculates_the_correct_median_timestamp() {
-            let median_timestamp = calc_median_timestamp(&[0.into()]);
+            let median_timestamp = calc_median_timestamp(&[0.into()]).unwrap();
             assert_eq!(median_timestamp, 0.into());
 
-            let median_timestamp = calc_median_timestamp(&[123.into()]);
+            let median_timestamp = calc_median_timestamp(&[123.into()]).unwrap();
             assert_eq!(median_timestamp, 123.into());
 
-            let median_timestamp = calc_median_timestamp(&[2.into(), 4.into()]);
+            let median_timestamp = calc_median_timestamp(&[2.into(), 4.into()]).unwrap();
             assert_eq!(median_timestamp, 3.into());
 
-            let median_timestamp = calc_median_timestamp(&[0.into(), 100.into(), 0.into()]);
+            let median_timestamp = calc_median_timestamp(&[0.into(), 100.into(), 0.into()]).unwrap();
             assert_eq!(median_timestamp, 100.into());
 
-            let median_timestamp = calc_median_timestamp(&[1.into(), 2.into(), 3.into(), 4.into()]);
+            let median_timestamp = calc_median_timestamp(&[1.into(), 2.into(), 3.into(), 4.into()]).unwrap();
             assert_eq!(median_timestamp, 2.into());
 
-            let median_timestamp = calc_median_timestamp(&[1.into(), 2.into(), 3.into(), 4.into(), 5.into()]);
+            let median_timestamp = calc_median_timestamp(&[1.into(), 2.into(), 3.into(), 4.into(), 5.into()]).unwrap();
             assert_eq!(median_timestamp, 3.into());
         }
     }
@@ -534,7 +551,7 @@ mod test {
 
             let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
 
-            let reward = rules.calculate_coinbase_and_fees(height, body.kernels());
+            let reward = rules.calculate_coinbase_and_fees(height, body.kernels()).unwrap();
             let coinbase_lock_height = rules.consensus_constants(height).coinbase_min_maturity();
             body.check_coinbase_output(reward, coinbase_lock_height, &CryptoFactories::default(), height)
                 .unwrap();
@@ -553,7 +570,7 @@ mod test {
 
             let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
 
-            let reward = rules.calculate_coinbase_and_fees(height, body.kernels());
+            let reward = rules.calculate_coinbase_and_fees(height, body.kernels()).unwrap();
             let coinbase_lock_height = rules.consensus_constants(height).coinbase_min_maturity();
 
             let err = body
@@ -574,7 +591,7 @@ mod test {
             let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key_id, &key_manager).await;
 
             let body = AggregateBody::new(vec![], vec![coinbase_output], vec![coinbase_kernel]);
-            let reward = rules.calculate_coinbase_and_fees(height, body.kernels());
+            let reward = rules.calculate_coinbase_and_fees(height, body.kernels()).unwrap();
             let coinbase_lock_height = rules.consensus_constants(height).coinbase_min_maturity();
 
             let err = body

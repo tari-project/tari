@@ -80,7 +80,7 @@ pub struct PeerListener<TTransport> {
     noise_config: NoiseConfig,
     peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
-    our_supported_protocols: Vec<ProtocolId>,
+    our_supported_protocols: Arc<Vec<ProtocolId>>,
     liveness_session_count: Arc<AtomicUsize>,
     on_listening: OneshotTrigger<Result<Multiaddr, ConnectionManagerError>>,
 }
@@ -108,7 +108,7 @@ where
             peer_manager,
             node_identity,
             shutdown_signal,
-            our_supported_protocols: Vec::new(),
+            our_supported_protocols: Arc::new(Vec::new()),
             bounded_executor: BoundedExecutor::new(config.max_simultaneous_inbound_connects),
             liveness_session_count: Arc::new(AtomicUsize::new(config.liveness_max_sessions)),
             config,
@@ -127,7 +127,7 @@ where
 
     /// Set the supported protocols of this node to send to peers during the peer identity exchange
     pub fn set_supported_protocols(&mut self, our_supported_protocols: Vec<ProtocolId>) -> &mut Self {
-        self.our_supported_protocols = our_supported_protocols;
+        self.our_supported_protocols = Arc::new(our_supported_protocols);
         self
     }
 
@@ -245,8 +245,8 @@ where
                 Ok(WireMode::Comms(byte)) if byte == config.network_info.network_byte => {
                     let this_node_id_str = node_identity.node_id().short_str();
                     let result = Self::perform_socket_upgrade_procedure(
-                        node_identity,
-                        peer_manager,
+                        &node_identity,
+                        &peer_manager,
                         noise_config.clone(),
                         conn_man_notifier.clone(),
                         socket,
@@ -335,28 +335,23 @@ where
     }
 
     async fn perform_socket_upgrade_procedure(
-        node_identity: Arc<NodeIdentity>,
-        peer_manager: Arc<PeerManager>,
+        node_identity: &NodeIdentity,
+        peer_manager: &PeerManager,
         noise_config: NoiseConfig,
         conn_man_notifier: mpsc::Sender<ConnectionManagerEvent>,
         socket: TTransport::Output,
         peer_addr: Multiaddr,
-        our_supported_protocols: Vec<ProtocolId>,
+        our_supported_protocols: Arc<Vec<ProtocolId>>,
         config: &ConnectionManagerConfig,
     ) -> Result<PeerConnection, ConnectionManagerError> {
-        static CONNECTION_DIRECTION: ConnectionDirection = ConnectionDirection::Inbound;
+        const CONNECTION_DIRECTION: ConnectionDirection = ConnectionDirection::Inbound;
         debug!(
             target: LOG_TARGET,
             "Starting noise protocol upgrade for peer at address '{}'", peer_addr
         );
 
         let timer = Instant::now();
-        let mut noise_socket = time::timeout(
-            Duration::from_secs(30),
-            noise_config.upgrade_socket(socket, CONNECTION_DIRECTION),
-        )
-        .await
-        .map_err(|_| ConnectionManagerError::NoiseProtocolTimeout)??;
+        let mut noise_socket = noise_config.upgrade_socket(socket, CONNECTION_DIRECTION).await?;
 
         let authenticated_public_key = noise_socket
             .get_remote_public_key()
@@ -370,44 +365,56 @@ where
         );
 
         // Check if we know the peer and if it is banned
-        let known_peer = common::find_unbanned_peer(&peer_manager, &authenticated_public_key).await?;
+        let known_peer = common::find_unbanned_peer(peer_manager, &authenticated_public_key).await?;
 
         debug!(
             target: LOG_TARGET,
             "Starting peer identity exchange for peer with public key '{}'", authenticated_public_key
         );
 
-        let peer_identity = common::perform_identity_exchange(
+        let peer_identity_result = common::perform_identity_exchange(
             &mut noise_socket,
-            &node_identity,
-            &our_supported_protocols,
+            node_identity,
+            &*our_supported_protocols,
             config.network_info.clone(),
         )
-        .await?;
+        .await;
 
-        let peer_node_id = common::validate_and_add_peer_from_peer_identity(
-            &peer_manager,
+        let peer_identity =
+            common::ban_on_offence(peer_manager, &authenticated_public_key, peer_identity_result).await?;
+
+        let valid_peer_identity_result = common::validate_peer_identity_message(
+            &config.peer_validation_config,
+            &authenticated_public_key,
+            peer_identity,
+        );
+
+        let valid_peer_identity =
+            common::ban_on_offence(peer_manager, &authenticated_public_key, valid_peer_identity_result).await?;
+
+        let peer = common::create_or_update_peer_from_validated_peer_identity(
             known_peer,
             authenticated_public_key,
-            &peer_identity,
-            config.allow_test_addresses,
-        )
-        .await?;
+            &valid_peer_identity,
+        );
 
         let muxer = Yamux::upgrade_connection(noise_socket, CONNECTION_DIRECTION)
             .map_err(|err| ConnectionManagerError::YamuxUpgradeFailure(err.to_string()))?;
 
-        peer_connection::try_create(
+        let conn = peer_connection::create(
             muxer,
             peer_addr,
-            peer_node_id,
-            peer_identity.features,
+            peer.node_id.clone(),
+            peer.features,
             CONNECTION_DIRECTION,
             conn_man_notifier,
             our_supported_protocols,
-            peer_identity.supported_protocols(),
-            peer_identity,
-        )
+            valid_peer_identity.metadata.supported_protocols,
+        );
+
+        peer_manager.add_peer(peer).await?;
+
+        Ok(conn)
     }
 
     async fn bind(&mut self) -> Result<(TTransport::Listener, Multiaddr), ConnectionManagerError> {

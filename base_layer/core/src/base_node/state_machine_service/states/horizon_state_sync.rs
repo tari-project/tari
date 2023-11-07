@@ -23,8 +23,6 @@
 //!
 //! Horizon state synchronisation module for pruned mode.
 
-use std::mem;
-
 use log::*;
 
 use super::{StateEvent, StateInfo};
@@ -64,7 +62,7 @@ impl HorizonStateSync {
             Err(err) => return err.into(),
         };
 
-        let horizon_sync_height = local_metadata.horizon_block(last_header.height);
+        let horizon_sync_height = local_metadata.horizon_block_height(last_header.height);
         if local_metadata.pruned_height() >= horizon_sync_height {
             info!(target: LOG_TARGET, "Horizon state was already synchronized.");
             return StateEvent::HorizonStateSynchronized;
@@ -78,7 +76,7 @@ impl HorizonStateSync {
             );
             return StateEvent::HorizonStateSynchronized;
         }
-        let sync_peers = mem::take(&mut self.sync_peers);
+        let sync_peers = &mut self.sync_peers;
 
         let db = shared.db.clone();
         let config = shared.config.blockchain_sync_config.clone();
@@ -91,7 +89,7 @@ impl HorizonStateSync {
             db,
             connectivity,
             rules,
-            &sync_peers,
+            sync_peers,
             horizon_sync_height,
             prover,
             validator,

@@ -20,7 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, sync::Arc, time::Duration};
+use std::{
+    convert::{TryFrom, TryInto},
+    sync::Arc,
+    time::Duration,
+};
 
 use chrono::{DateTime, NaiveDateTime, Utc};
 use log::*;
@@ -67,6 +71,7 @@ pub struct FetchStoredMessageQuery {
     node_id: Box<NodeId>,
     since: Option<DateTime<Utc>>,
     response_type: SafResponseType,
+    limit: Option<u32>,
 }
 
 impl FetchStoredMessageQuery {
@@ -77,7 +82,14 @@ impl FetchStoredMessageQuery {
             node_id,
             since: None,
             response_type: SafResponseType::Anonymous,
+            limit: None,
         }
+    }
+
+    /// Limit the number of messages returned
+    pub fn with_limit(&mut self, limit: u32) -> &mut Self {
+        self.limit = Some(limit);
+        self
     }
 
     /// Modify query to only include messages since the given date.
@@ -401,8 +413,7 @@ impl StoreAndForwardService {
                     .finish(),
                 request,
             )
-            .await
-            .map_err(StoreAndForwardError::RequestMessagesFailed)?;
+            .await?;
 
         Ok(())
     }
@@ -428,19 +439,20 @@ impl StoreAndForwardService {
                     .finish(),
                 request,
             )
-            .await
-            .map_err(StoreAndForwardError::RequestMessagesFailed)?;
+            .await?;
 
         Ok(())
     }
 
     async fn get_saf_request(&mut self) -> SafResult<StoredMessagesRequest> {
-        let request = self
+        let mut request = self
             .dht_requester
             .get_metadata(DhtMetadataKey::LastSafMessageReceived)
             .await?
             .map(StoredMessagesRequest::since)
             .unwrap_or_else(StoredMessagesRequest::new);
+
+        request.limit = self.config.max_returned_messages.try_into().unwrap_or(u32::MAX);
 
         Ok(request)
     }
@@ -473,9 +485,10 @@ impl StoreAndForwardService {
 
     fn handle_fetch_message_query(&self, query: &FetchStoredMessageQuery) -> SafResult<Vec<StoredMessage>> {
         use SafResponseType::{Anonymous, Discovery, ForMe, Join};
-        let limit = i64::try_from(self.config.max_returned_messages)
-            .ok()
-            .unwrap_or(std::i64::MAX);
+        let limit = query
+            .limit
+            .and_then(|v| i64::try_from(v).ok())
+            .unwrap_or(self.config.max_returned_messages as i64);
         let db = &self.database;
         let messages = match query.response_type {
             ForMe => db.find_messages_for_peer(&query.public_key, &query.node_id, query.since, limit)?,

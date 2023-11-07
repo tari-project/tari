@@ -49,7 +49,7 @@ use crate::{
 
 bitflags! {
     /// Miscellaneous Peer flags
-    #[derive(Default, Deserialize, Serialize)]
+    #[derive(Default, Deserialize, Serialize, Eq, PartialEq, Debug, Clone, Copy)]
     pub struct PeerFlags: u8 {
         const NONE = 0x00;
         const SEED = 0x01;
@@ -132,9 +132,11 @@ impl Peer {
     /// database so that data is not overwritten
     pub fn merge(&mut self, other: &Peer) {
         self.addresses.merge(&other.addresses);
-        self.banned_reason = other.banned_reason.clone();
-        self.added_at = cmp::min(self.added_at, other.added_at);
+        if !other.banned_reason.is_empty() {
+            self.banned_reason = other.banned_reason.clone();
+        }
         self.banned_until = cmp::max(self.banned_until, other.banned_until);
+        self.added_at = cmp::min(self.added_at, other.added_at);
         for protocol in &other.supported_protocols {
             if !self.supported_protocols.contains(protocol) {
                 self.supported_protocols.push(protocol.clone());
@@ -159,20 +161,11 @@ impl Peer {
     }
 
     pub fn last_connect_attempt(&self) -> Option<NaiveDateTime> {
-        let mut last_connected_attempt = None;
-        for address in self.addresses.addresses() {
-            if let Some(address_time) = address.last_attempted {
-                match last_connected_attempt {
-                    Some(last_time) => {
-                        if last_time < address_time {
-                            last_connected_attempt = address.last_attempted
-                        }
-                    },
-                    None => last_connected_attempt = address.last_attempted,
-                }
-            }
-        }
-        last_connected_attempt
+        self.addresses
+            .addresses()
+            .iter()
+            .max_by_key(|a| a.last_attempted())
+            .and_then(|a| a.last_attempted())
     }
 
     /// Returns true if the peer is marked as offline
@@ -210,11 +203,6 @@ impl Peer {
     pub fn last_seen_since(&self) -> Option<Duration> {
         self.last_seen()
             .and_then(|dt| Utc::now().naive_utc().signed_duration_since(dt).to_std().ok())
-    }
-
-    /// Returns true if this peer has the given feature, otherwise false
-    pub fn has_features(&self, features: PeerFeatures) -> bool {
-        self.features.contains(features)
     }
 
     /// Returns the ban status of the peer

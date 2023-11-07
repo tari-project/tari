@@ -76,9 +76,25 @@ impl Difficulty {
     }
 
     fn u256_scalar_to_difficulty(scalar: U256) -> Result<Difficulty, DifficultyError> {
+        if scalar == U256::zero() {
+            return Err(DifficultyError::DivideByZero);
+        }
         let result = U256::MAX / scalar;
         let result = result.min(u64::MAX.into());
         Difficulty::from_u64(result.low_u64())
+    }
+
+    pub fn checked_div_u64(&self, other: u64) -> Option<Difficulty> {
+        match self.0.checked_div(other) {
+            None => None,
+            Some(n) => {
+                if n < MIN_DIFFICULTY {
+                    None
+                } else {
+                    Some(Difficulty(n))
+                }
+            },
+        }
     }
 }
 
@@ -284,5 +300,15 @@ mod test {
             Difficulty::little_endian_difficulty(&target.to_be_bytes()).unwrap(),
             Difficulty::from_u64(expected).unwrap()
         );
+    }
+
+    #[test]
+    fn u256_scalar_to_difficulty_division_by_zero() {
+        let bytes = [];
+        assert!(Difficulty::little_endian_difficulty(&bytes).is_err());
+        assert!(Difficulty::big_endian_difficulty(&bytes).is_err());
+        let bytes = [0u8; 32];
+        assert!(Difficulty::little_endian_difficulty(&bytes).is_err());
+        assert!(Difficulty::big_endian_difficulty(&bytes).is_err());
     }
 }

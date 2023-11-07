@@ -109,7 +109,7 @@ fn main() {
             insert_into_mmr(&keys, &mut mmr);
         });
         time_function("MMR: Calculating root hash", || {
-            let size = mmr.len();
+            let size = mmr.len().unwrap();
             let hash = mmr.get_merkle_root().unwrap();
             println!("Tree size: {size}. Root hash: {}", hash.to_hex());
         });
@@ -117,7 +117,7 @@ fn main() {
             delete_from_mmr(0, u32::try_from(half_size).unwrap(), &mut mmr);
         });
         time_function("MMR: Calculating root hash", || {
-            let size = mmr.len();
+            let size = mmr.len().unwrap();
             let hash = mmr.get_merkle_root().unwrap();
             println!("Tree size: {size}. Root hash: {}", hash.to_hex());
         });
@@ -129,7 +129,7 @@ fn main() {
             );
         });
         time_function("MMR: Calculating root hash", || {
-            let size = mmr.len();
+            let size = mmr.len().unwrap();
             let hash = mmr.get_merkle_root().unwrap();
             println!("Tree size: {size}. Root hash: {}", hash.to_hex());
         });

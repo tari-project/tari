@@ -235,7 +235,6 @@ impl NodeIdentity {
                 &self.public_addresses(),
                 Utc::now(),
             ),
-            unverified_data: None,
         };
         let peer = Peer::new(
             self.public_key().clone(),

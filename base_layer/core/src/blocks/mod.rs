@@ -29,8 +29,6 @@ pub use accumulated_data::{
     BlockHeaderAccumulatedData,
     ChainBlock,
     ChainHeader,
-    CompleteDeletedBitmap,
-    DeletedBitmap,
     UpdateBlockAccumulatedData,
 };
 use tari_crypto::hash_domain;

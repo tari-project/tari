@@ -6,7 +6,8 @@ repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version = "0.51.0-rc.1"
+version = "0.52.0-rc.0"
+
 edition = "2018"
 
 [features]
@@ -14,7 +15,7 @@ build = ["toml", "prost-build"]
 static-application-info = ["git2"]
 
 [dependencies]
-tari_crypto = { version = "0.18" }
+tari_crypto = { version = "0.19" }
 
 anyhow = "1.0.53"
 blake2 = "0.10"

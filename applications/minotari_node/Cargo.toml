@@ -4,7 +4,8 @@ authors = ["The Tari Development Community"]
 description = "The tari full base node implementation"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "0.51.0-rc.1"
+version = "0.52.0-rc.0"
+
 edition = "2018"
 
 [dependencies]
@@ -15,13 +16,13 @@ tari_comms = { path = "../../comms/core", features = ["rpc"] }
 tari_common_types = { path = "../../base_layer/common_types" }
 tari_comms_dht = { path = "../../comms/dht" }
 tari_core = { path = "../../base_layer/core", default-features = false, features = ["transactions"] }
-tari_crypto = { version = "0.18" }
+tari_crypto = { version = "0.19" }
 tari_libtor = { path = "../../infrastructure/libtor", optional = true }
 tari_p2p = { path = "../../base_layer/p2p", features = ["auto-update"] }
 tari_storage = {path="../../infrastructure/storage"}
 tari_service_framework = { path = "../../base_layer/service_framework" }
 tari_shutdown = { path = "../../infrastructure/shutdown" }
-tari_utilities = { version = "0.5" }
+tari_utilities = { version = "0.6" }
 
 anyhow = "1.0.53"
 async-trait = "0.1.52"
@@ -65,3 +66,6 @@ ignored = [
     # We need to specify extra features for log4rs even though it is not used directly in this crate
     "log4rs"
 ]
+
+[dev-dependencies]
+toml = { version = "0.5" }

@@ -60,7 +60,7 @@ impl BorshDeserialize for FixedByteArray {
             bytes.push(u8::deserialize_reader(reader)?);
         }
         // This unwrap should never fail, the len is checked above.
-        Ok(Self::from_bytes(bytes.as_bytes()).unwrap())
+        Ok(Self::from_canonical_bytes(bytes.as_bytes()).unwrap())
     }
 }
 
@@ -113,7 +113,7 @@ impl Default for FixedByteArray {
 }
 
 impl ByteArray for FixedByteArray {
-    fn from_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError> {
+    fn from_canonical_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError> {
         if bytes.len() > MAX_ARR_SIZE {
             return Err(ByteArrayError::IncorrectLength {});
         }
@@ -141,7 +141,9 @@ mod test {
 
     #[test]
     fn from_bytes() {
-        let arr = FixedByteArray::from_bytes(&[1u8][..]).unwrap();
+        let empty = FixedByteArray::from_canonical_bytes(&[]).unwrap();
+        assert_eq!(empty.len(), 0);
+        let arr = FixedByteArray::from_canonical_bytes(&[1u8][..]).unwrap();
         assert_eq!(arr.len(), 1);
         assert!(arr.iter().all(|b| *b == 1));
         // Iterates only up to len
@@ -152,11 +154,11 @@ mod test {
         }
         assert!(used);
 
-        let arr = FixedByteArray::from_bytes(&[1u8; 63][..]).unwrap();
+        let arr = FixedByteArray::from_canonical_bytes(&[1u8; 63][..]).unwrap();
         assert_eq!(arr.len(), 63);
         assert!(arr.iter().all(|b| *b == 1));
 
-        FixedByteArray::from_bytes(&[1u8; 64][..]).unwrap_err();
+        FixedByteArray::from_canonical_bytes(&[1u8; 64][..]).unwrap_err();
     }
 
     #[test]
@@ -176,12 +178,22 @@ mod test {
 
     #[test]
     fn test_borsh_de_serialization() {
-        let fixed_byte_array = FixedByteArray::from_bytes(&[5, 6, 7]).unwrap();
+        let fixed_byte_array = FixedByteArray::from_canonical_bytes(&[5, 6, 7]).unwrap();
         let mut buf = Vec::new();
         fixed_byte_array.serialize(&mut buf).unwrap();
         buf.extend_from_slice(&[1, 2, 3]);
         let buf = &mut buf.as_slice();
         assert_eq!(fixed_byte_array, FixedByteArray::deserialize(buf).unwrap());
         assert_eq!(buf, &[1, 2, 3]);
+    }
+
+    #[test]
+    fn test_borsh_deserialize_wrong_length() {
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&[3, 1, 1]);
+        let buf = &mut buf.as_slice();
+        let result = FixedByteArray::deserialize(buf);
+        assert!(result.is_err());
+        assert_eq!(buf, &[1u8; 0]);
     }
 }

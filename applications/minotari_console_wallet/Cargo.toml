@@ -1,6 +1,7 @@
 [package]
 name = "minotari_console_wallet"
-version = "0.51.0-rc.1"
+version = "0.52.0-rc.0"
+
 authors = ["The Tari Development Community"]
 edition = "2018"
 license = "BSD-3-Clause"
@@ -13,13 +14,13 @@ tari_common_types = { path = "../../base_layer/common_types" }
 tari_comms = { path = "../../comms/core" }
 tari_comms_dht = { path = "../../comms/dht" }
 tari_contacts = { path = "../../base_layer/contacts" }
-tari_crypto = { version = "0.18" }
+tari_crypto = { version = "0.19" }
 tari_key_manager = { path = "../../base_layer/key_manager" }
 tari_libtor = { path = "../../infrastructure/libtor", optional = true }
 tari_p2p = { path = "../../base_layer/p2p", features = ["auto-update"] }
 tari_script = { path = "../../infrastructure/tari_script" }
 tari_shutdown = { path = "../../infrastructure/shutdown" }
-tari_utilities = { version = "0.5" }
+tari_utilities = { version = "0.6" }
 minotari_wallet = { path = "../../base_layer/wallet", features = ["bundled_sqlite"] }
 
 # Uncomment for tokio tracing via tokio-console (needs "tracing" featurs)
@@ -28,7 +29,7 @@ console-subscriber = "0.1.8"
 # Uncomment for normal use (non tokio-console tracing)
 tokio = { version = "1.23", features = ["signal"] }
 
-bitflags = "1.2.1"
+bitflags = { version = "2.4", features = ["serde"] }
 chrono = { version = "0.4.19", default-features = false }
 clap = { version = "3.2", features = ["derive", "env"] }
 config = "0.13.0"

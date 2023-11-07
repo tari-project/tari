@@ -30,7 +30,12 @@ use tari_common_types::types::FixedHash;
 use tari_core::{
     blocks::{Block, BlockHeaderAccumulatedData, BlockHeaderValidationError, BlockValidationError, ChainBlock},
     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, ChainStorageError, Validators},
-    consensus::{consensus_constants::PowAlgorithmConstants, ConsensusConstantsBuilder, ConsensusManager},
+    consensus::{
+        consensus_constants::PowAlgorithmConstants,
+        emission::Emission,
+        ConsensusConstantsBuilder,
+        ConsensusManager,
+    },
     proof_of_work::{
         monero_rx,
         monero_rx::{verify_header, FixedByteArray, MoneroPowData},
@@ -42,7 +47,7 @@ use tari_core::{
     transactions::{
         aggregated_body::AggregateBody,
         key_manager::TransactionKeyManagerInterface,
-        tari_amount::{uT, T},
+        tari_amount::{uT, MicroMinotari, T},
         test_helpers::{
             create_test_core_key_manager_with_memory_db,
             create_wallet_output_with_data,
@@ -70,7 +75,7 @@ use tari_core::{
 use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tari_script::{inputs, script};
 use tari_test_utils::unpack_enum;
-use tari_utilities::hex::Hex;
+use tari_utilities::{epoch_time::EpochTime, hex::Hex};
 use tokio::time::Instant;
 
 use crate::{
@@ -155,7 +160,7 @@ async fn test_monero_blocks() {
     add_bad_monero_data(&mut extra_bytes_block_3, seed2);
     match db.add_block(Arc::new(extra_bytes_block_3)) {
         Err(ChainStorageError::ValidationError {
-            source: ValidationError::CustomError(_),
+            source: ValidationError::MergeMineError(_),
         }) => (),
         Err(e) => {
             panic!("Failed due to other error:{:?}", e);
@@ -195,7 +200,7 @@ fn add_monero_data(tblock: &mut Block, seed_key: &str) {
     let bytes = hex::decode(blocktemplate_blob).unwrap();
     let mut mblock = monero_rx::deserialize::<MoneroBlock>(&bytes[..]).unwrap();
     let hash = tblock.header.merge_mining_hash();
-    monero_rx::append_merge_mining_tag(&mut mblock, hash).unwrap();
+    monero_rx::insert_merge_mining_tag_into_block(&mut mblock, hash).unwrap();
     let hashes = monero_rx::create_ordered_transaction_hashes_from_block(&mblock);
     let merkle_root = monero_rx::tree_hash(&hashes).unwrap();
     let coinbase_merkle_proof = monero_rx::create_merkle_proof(&hashes).unwrap();
@@ -310,7 +315,7 @@ async fn test_orphan_validator() {
     let key_manager = create_test_core_key_manager_with_memory_db();
     let network = Network::Igor;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_max_block_transaction_weight(321)
+        .with_max_block_transaction_weight(325)
         .build();
     let (genesis, outputs) = create_genesis_block_with_utxos(&[T, T, T], &consensus_constants, &key_manager).await;
     let network = Network::LocalNet;
@@ -408,13 +413,14 @@ async fn test_orphan_validator() {
         coinbase_utxo,
         coinbase_kernel,
         &rules,
+        None,
     );
     let new_block = db.prepare_new_block(template).unwrap();
     assert!(orphan_validator.validate_internal_consistency(&new_block).is_err());
 
     // let break coinbase lock height
     let (coinbase_utxo, coinbase_kernel, _) = create_coinbase(
-        rules.get_block_reward_at(1) + tx01.body.get_total_fee() + tx02.body.get_total_fee(),
+        rules.get_block_reward_at(1) + tx01.body.get_total_fee().unwrap() + tx02.body.get_total_fee().unwrap(),
         1,
         None,
         &key_manager,
@@ -426,6 +432,7 @@ async fn test_orphan_validator() {
         coinbase_utxo,
         coinbase_kernel,
         &rules,
+        None,
     );
     let new_block = db.prepare_new_block(template).unwrap();
     assert!(orphan_validator.validate_internal_consistency(&new_block).is_err());
@@ -727,7 +734,11 @@ OutputFeatures::default()),
     let mut new_block = db.prepare_new_block(template.clone()).unwrap();
     new_block.header.nonce = OsRng.next_u64();
     // we take the max ftl time and give 10 seconds for mining then check it, it should still be more than the ftl
-    new_block.header.timestamp = rules.consensus_constants(0).ftl().increase(10);
+    new_block.header.timestamp = rules
+        .consensus_constants(0)
+        .ftl()
+        .checked_add(EpochTime::from(10))
+        .unwrap();
     find_header_with_achieved_difficulty(&mut new_block.header, Difficulty::from_u64(20).unwrap());
     assert!(header_validator
         .validate(
@@ -885,7 +896,7 @@ async fn test_block_sync_body_validator() {
         matches!(
             err,
             ValidationError::BlockTooLarge { actual_weight, max_weight } if
-            actual_weight == 449 && max_weight == 400
+            actual_weight == 455 && max_weight == 400
         ),
         "{}",
         err
@@ -978,6 +989,7 @@ async fn test_block_sync_body_validator() {
         coinbase_utxo,
         coinbase_kernel,
         &rules,
+        None,
     );
     let new_block = db.prepare_new_block(template).unwrap();
     {
@@ -988,7 +1000,7 @@ async fn test_block_sync_body_validator() {
 
     // let break coinbase lock height
     let (coinbase_utxo, coinbase_kernel, _) = create_coinbase(
-        rules.get_block_reward_at(1) + tx01.body.get_total_fee() + tx02.body.get_total_fee(),
+        rules.get_block_reward_at(1) + tx01.body.get_total_fee().unwrap() + tx02.body.get_total_fee().unwrap(),
         1 + rules.consensus_constants(1).coinbase_min_maturity(),
         None,
         &key_manager,
@@ -1000,6 +1012,7 @@ async fn test_block_sync_body_validator() {
         coinbase_utxo,
         coinbase_kernel,
         &rules,
+        None,
     );
     let new_block = db.prepare_new_block(template).unwrap();
     {
@@ -1165,4 +1178,141 @@ async fn add_block_with_large_many_output_block() {
     // we can extrapolate full block validation by 4.59, this we get from the 127_795/block_weight
     // of the block
     println!("finished validating in: {}", finished.as_millis());
+}
+
+use tari_core::{
+    blocks::{BlockHeader, NewBlockTemplate},
+    transactions::{
+        test_helpers::create_stx_protocol_internal,
+        transaction_components::{Transaction, TransactionKernel},
+    },
+};
+
+use crate::helpers::{block_builders::generate_new_block, sample_blockchains::create_new_blockchain};
+
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn test_fee_overflow() {
+    let network = Network::LocalNet;
+    let (mut store, mut blocks, mut outputs, consensus_manager, key_manager) = create_new_blockchain(network).await;
+    let schemas = vec![txn_schema!(
+        from: vec![outputs[0][0].clone()],
+        to: vec![10 * T, 10 * T, 10 * T, 10 * T]
+    )];
+    generate_new_block(
+        &mut store,
+        &mut blocks,
+        &mut outputs,
+        schemas,
+        &consensus_manager,
+        &key_manager,
+    )
+    .await
+    .unwrap();
+
+    let schemas = vec![
+        txn_schema!(
+            from: vec![outputs[1][0].clone()],
+            to: vec![1 * T, 1 * T, 1 * T, 1 * T]
+        ),
+        txn_schema!(
+            from: vec![outputs[1][1].clone()],
+            to: vec![1 * T, 1 * T, 1 * T, 1 * T]
+        ),
+        txn_schema!(
+            from: vec![outputs[1][2].clone()],
+            to: vec![1 * T, 1 * T, 1 * T, 1 * T]
+        ),
+    ];
+
+    let coinbase_value = consensus_manager
+        .emission_schedule()
+        .block_reward(store.get_height().unwrap() + 1);
+
+    let mut transactions = Vec::new();
+    let mut block_utxos = Vec::new();
+    let mut fees = MicroMinotari(0);
+    for schema in schemas {
+        let (tx, mut utxos) = spend_utxos(schema, &key_manager).await;
+        fees += tx.body.get_total_fee().unwrap();
+        transactions.push(tx);
+        block_utxos.append(&mut utxos);
+    }
+
+    let (coinbase_utxo, coinbase_kernel, coinbase_output) =
+        create_coinbase(coinbase_value + fees, 100, None, &key_manager).await;
+    block_utxos.push(coinbase_output);
+
+    outputs.push(block_utxos);
+
+    let mut header = BlockHeader::from_previous(blocks.last().unwrap().header());
+    header.version = consensus_manager
+        .consensus_constants(header.height)
+        .blockchain_version();
+    let height = header.height;
+
+    let mut transactions_new = Vec::with_capacity(transactions.len());
+    for txn in transactions {
+        transactions_new.push(Transaction {
+            offset: txn.offset,
+            body: {
+                let mut inputs = Vec::with_capacity(txn.body.inputs().len());
+                for input in txn.body.inputs().iter() {
+                    inputs.push(input.clone());
+                }
+                let mut outputs = Vec::with_capacity(txn.body.outputs().len());
+                for output in txn.body.outputs().iter() {
+                    outputs.push(output.clone());
+                }
+                let mut kernels = Vec::with_capacity(txn.body.kernels().len());
+                for kernel in txn.body.kernels().iter() {
+                    kernels.push(TransactionKernel {
+                        version: kernel.version,
+                        features: kernel.features,
+                        fee: (u64::MAX / 2).into(), // This is the adversary's attack!
+                        lock_height: kernel.lock_height,
+                        excess_sig: kernel.excess_sig.clone(),
+                        excess: kernel.excess.clone(),
+                        burn_commitment: kernel.burn_commitment.clone(),
+                    });
+                }
+                AggregateBody::new(inputs, outputs, kernels)
+            },
+            script_offset: txn.script_offset,
+        });
+    }
+
+    // This will call `BlockBuilder::add_kernels(...)` and `AggregateBody::get_total_fee(...)`, which will overflow if
+    // regressed
+    let template_result = NewBlockTemplate::from_block(
+        header
+            .into_builder()
+            .with_transactions(transactions_new)
+            .with_coinbase_utxo(coinbase_utxo, coinbase_kernel)
+            .build(),
+        Difficulty::min(),
+        consensus_manager.get_block_reward_at(height),
+    );
+    assert!(template_result.is_err());
+    assert_eq!(
+        template_result.unwrap_err().to_string(),
+        "Invalid kernel in body: Aggregated body has greater fee than u64::MAX".to_string()
+    );
+
+    let schema = txn_schema!(
+        from: vec![outputs[1][3].clone()],
+        to: vec![],
+        fee: MicroMinotari(u64::MAX / 2), // This is the adversary's attack!
+        lock: 0,
+        features: OutputFeatures::default()
+    );
+    let stx_builder = create_stx_protocol_internal(schema, &key_manager, &mut Vec::new()).await;
+
+    // This will call `Fee::calculate(...)`, which will overflow if regressed
+    let build_result = stx_builder.build().await;
+    assert!(build_result.is_err());
+    assert_eq!(
+        &format!("{:?}", build_result.unwrap_err()),
+        "You are spending more than you're providing: provided 10.000000 T, required 18446744073709.551615 T."
+    );
 }

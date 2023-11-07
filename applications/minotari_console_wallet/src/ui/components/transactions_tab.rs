@@ -139,7 +139,7 @@ impl TransactionsTab {
                     None => String::new(),
                     Some(mined_timestamp) => format!(
                         "{}",
-                        DateTime::<Local>::from_utc(mined_timestamp, Local::now().offset().to_owned())
+                        DateTime::<Local>::from_naive_utc_and_offset(mined_timestamp, Local::now().offset().to_owned())
                             .format("%Y-%m-%d %H:%M:%S")
                     ),
                 },
@@ -246,7 +246,7 @@ impl TransactionsTab {
                     None => String::new(),
                     Some(mined_timestamp) => format!(
                         "{}",
-                        DateTime::<Local>::from_utc(mined_timestamp, Local::now().offset().to_owned())
+                        DateTime::<Local>::from_naive_utc_and_offset(mined_timestamp, Local::now().offset().to_owned())
                             .format("%Y-%m-%d %H:%M:%S")
                     ),
                 },
@@ -388,21 +388,22 @@ impl TransactionsTab {
             let status = Span::styled(status_msg, Style::default().fg(Color::White));
             let message = Span::styled(tx.message.as_str(), Style::default().fg(Color::White));
 
-            // let mined_time = DateTime::<Local>::from_utc(tx.mined_timestamp, Local::now().offset().to_owned());
+            // let mined_time = DateTime::<Local>::from_naive_utc_and_offset(tx.mined_timestamp,
+            // Local::now().offset().to_owned());
             let mined_timestamp = Span::styled(
                 match tx.mined_timestamp {
                     None => String::new(),
                     Some(mined_timestamp) => format!(
                         "{}",
-                        DateTime::<Local>::from_utc(mined_timestamp, Local::now().offset().to_owned())
+                        DateTime::<Local>::from_naive_utc_and_offset(mined_timestamp, Local::now().offset().to_owned())
                             .format("%Y-%m-%d %H:%M:%S")
                     ),
                 },
-                // format!("{}", mined_time.format("%Y-%m-%d %H:%M:%S")),
                 Style::default().fg(Color::White),
             );
 
-            let imported_time = DateTime::<Local>::from_utc(tx.timestamp, Local::now().offset().to_owned());
+            let imported_time =
+                DateTime::<Local>::from_naive_utc_and_offset(tx.timestamp, Local::now().offset().to_owned());
             let imported_timestamp = Span::styled(
                 format!("{}", imported_time.format("%Y-%m-%d %H:%M:%S")),
                 Style::default().fg(Color::White),

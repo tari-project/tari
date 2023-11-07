@@ -69,6 +69,15 @@ async fn input_and_output_and_wallet_output_hash_match() {
     assert_eq!(output.hash(), i.hash(&key_manager).await.unwrap());
 }
 
+#[test]
+fn test_smt_hashes() {
+    let input = TransactionInput::default();
+    let output = TransactionOutput::default();
+    let input_hash = input.smt_hash(10);
+    let output_hash = output.smt_hash(10);
+    assert_eq!(input_hash, output_hash);
+}
+
 #[tokio::test]
 async fn key_manager_input() {
     let key_manager = create_test_core_key_manager_with_memory_db();
@@ -135,7 +144,7 @@ async fn range_proof_verification() {
     match wallet_output2 {
         Ok(_) => panic!("Range proof should have failed to verify"),
         Err(e) => {
-            unpack_enum!(TransactionError::ValidationError(s) = e);
+            unpack_enum!(TransactionError::BuilderError(s) = e);
             assert_eq!(s, "Value provided is outside the range allowed by the range proof");
         },
     }
@@ -566,7 +575,7 @@ mod validate_internal_consistency {
         let validator = TransactionInternalConsistencyValidator::new(false, rules, CryptoFactories::default());
         validator
             .validate(&tx, None, None, height)
-            .map_err(|err| TransactionError::ValidationError(err.to_string()))?;
+            .map_err(|err| TransactionError::BuilderError(err.to_string()))?;
         Ok(())
     }
 
@@ -636,7 +645,7 @@ mod validate_internal_consistency {
         .unwrap_err();
 
         unpack_enum!(TransactionProtocolError::TransactionBuildError(err) = err);
-        unpack_enum!(TransactionError::ValidationError(_s) = err);
+        unpack_enum!(TransactionError::BuilderError(_s) = err);
 
         //---------------------------------- Case4 - PASS --------------------------------------------//
         // Pass because maturity is set

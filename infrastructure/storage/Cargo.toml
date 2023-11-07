@@ -6,7 +6,8 @@ repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version = "0.51.0-rc.1"
+version = "0.52.0-rc.0"
+
 edition = "2018"
 
 [dependencies]
@@ -18,4 +19,4 @@ serde = "1.0.80"
 
 [dev-dependencies]
 rand = "0.8"
-tari_utilities = { version = "0.5", features = ["borsh"] }
+tari_utilities = { version = "0.6", features = ["borsh"] }

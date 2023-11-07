@@ -29,4 +29,10 @@ pub enum SMTError {
     IllegalKey(String),
     #[error("The hash for the tree needs to be recalculated before calling this function")]
     StaleHash,
+    #[error(
+        "Cannot construct a proof. Either the key exists for an exclusion proof, or it does not for an inclusion proof"
+    )]
+    NonViableProof,
+    #[error("A duplicate key was found when trying to inserting")]
+    KeyExists,
 }

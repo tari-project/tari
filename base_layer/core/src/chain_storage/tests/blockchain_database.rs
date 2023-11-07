@@ -67,10 +67,11 @@ fn apply_mmr_to_block(db: &BlockchainDatabase<TempDatabase>, block: Block) -> Bl
     let (mut block, mmr_roots) = db.calculate_mmr_roots(block).unwrap();
     block.header.input_mr = mmr_roots.input_mr;
     block.header.output_mr = mmr_roots.output_mr;
-    block.header.output_mmr_size = mmr_roots.output_mmr_size;
+    block.header.output_smt_size = mmr_roots.output_smt_size;
     block.header.kernel_mr = mmr_roots.kernel_mr;
     block.header.kernel_mmr_size = mmr_roots.kernel_mmr_size;
     block.header.validator_node_mr = mmr_roots.validator_node_mr;
+    block.header.validator_node_size = mmr_roots.validator_node_size;
     block
 }
 
@@ -80,12 +81,7 @@ async fn add_many_chained_blocks(
     key_manager: &TestKeyManager,
 ) -> (Vec<Arc<Block>>, Vec<WalletOutput>) {
     let last_header = db.fetch_last_header().unwrap();
-    let mut prev_block = db
-        .fetch_block(last_header.height, true)
-        .unwrap()
-        .try_into_block()
-        .map(Arc::new)
-        .unwrap();
+    let mut prev_block = Arc::new(db.fetch_block(last_header.height, true).unwrap().into_block());
     let mut blocks = Vec::with_capacity(size);
     let mut outputs = Vec::with_capacity(size);
     for _ in 1..=size {
@@ -405,7 +401,7 @@ mod fetch_total_size_stats {
     #[tokio::test]
     async fn it_measures_the_number_of_entries() {
         let db = setup();
-        let genesis_output_count = db.fetch_header(0).unwrap().unwrap().output_mmr_size;
+        let genesis_output_count = db.fetch_header(0).unwrap().unwrap().output_smt_size;
         let key_manager = create_test_core_key_manager_with_memory_db();
         let _block_and_outputs = add_many_chained_blocks(2, &db, &key_manager).await;
         let stats = db.fetch_total_size_stats().unwrap();
@@ -423,7 +419,7 @@ mod prepare_new_block {
     fn it_errors_for_genesis_block() {
         let db = setup();
         let genesis = db.fetch_block(0, true).unwrap();
-        let template = NewBlockTemplate::from_block(genesis.block().clone(), Difficulty::min(), 5000 * T);
+        let template = NewBlockTemplate::from_block(genesis.block().clone(), Difficulty::min(), 5000 * T).unwrap();
         let err = db.prepare_new_block(template).unwrap_err();
         assert!(matches!(err, ChainStorageError::InvalidArguments { .. }));
     }
@@ -433,7 +429,8 @@ mod prepare_new_block {
         let db = setup();
         let genesis = db.fetch_block(0, true).unwrap();
         let next_block = BlockHeader::from_previous(genesis.header());
-        let mut template = NewBlockTemplate::from_block(next_block.into_builder().build(), Difficulty::min(), 5000 * T);
+        let mut template =
+            NewBlockTemplate::from_block(next_block.into_builder().build(), Difficulty::min(), 5000 * T).unwrap();
         // This would cause a panic if the sanity checks were not there
         template.header.height = 100;
         let err = db.prepare_new_block(template.clone()).unwrap_err();
@@ -448,50 +445,10 @@ mod prepare_new_block {
         let db = setup();
         let genesis = db.fetch_block(0, true).unwrap();
         let next_block = BlockHeader::from_previous(genesis.header());
-        let template = NewBlockTemplate::from_block(next_block.into_builder().build(), Difficulty::min(), 5000 * T);
+        let template =
+            NewBlockTemplate::from_block(next_block.into_builder().build(), Difficulty::min(), 5000 * T).unwrap();
         let block = db.prepare_new_block(template).unwrap();
         assert_eq!(block.header.height, 1);
-    }
-}
-
-mod fetch_header_containing_utxo_mmr {
-    use super::*;
-
-    #[test]
-    fn it_returns_genesis() {
-        let db = setup();
-        let genesis = db.fetch_block(0, true).unwrap();
-        assert!(!genesis.block().body.outputs().is_empty());
-        let mut mmr_position = 0;
-        genesis.block().body.outputs().iter().for_each(|_| {
-            let header = db.fetch_header_containing_utxo_mmr(mmr_position).unwrap();
-            assert_eq!(header.height(), 0);
-            mmr_position += 1;
-        });
-        let err = db.fetch_header_containing_utxo_mmr(mmr_position).unwrap_err();
-        matches!(err, ChainStorageError::ValueNotFound { .. });
-    }
-
-    #[tokio::test]
-    async fn it_returns_corresponding_header() {
-        let db = setup();
-        let genesis = db.fetch_block(0, true).unwrap();
-        let key_manager = create_test_core_key_manager_with_memory_db();
-        let _block_and_outputs = add_many_chained_blocks(5, &db, &key_manager).await;
-        let num_genesis_outputs = genesis.block().body.outputs().len() as u64;
-
-        let header = db.fetch_header_containing_utxo_mmr(num_genesis_outputs - 1).unwrap();
-        assert_eq!(header.height(), 0);
-
-        for i in 1..=5 {
-            let index = num_genesis_outputs + i - 1;
-            let header = db.fetch_header_containing_utxo_mmr(index).unwrap();
-            assert_eq!(header.height(), i, "Incorrect header for MMR index = {}", index);
-        }
-        let err = db
-            .fetch_header_containing_utxo_mmr(num_genesis_outputs + 5)
-            .unwrap_err();
-        matches!(err, ChainStorageError::ValueNotFound { .. });
     }
 }
 
@@ -578,7 +535,7 @@ mod clear_all_pending_headers {
             .map(|_| {
                 let mut header = BlockHeader::from_previous(prev_header.header());
                 header.kernel_mmr_size += 1;
-                header.output_mmr_size += 1;
+                header.output_smt_size += 1;
                 let accum = BlockHeaderAccumulatedData::builder(&prev_accum)
                     .with_hash(header.hash())
                     .with_achieved_target_difficulty(

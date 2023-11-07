@@ -29,7 +29,7 @@ jobs:
     runs-on: [ubuntu-20.04]
     steps:
       - name: checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: toolchain
         uses: dtolnay/rust-toolchain@master
         with:
@@ -70,7 +70,7 @@ jobs:
     runs-on: [ubuntu-20.04]
     steps:
       - name: checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: toolchain
         uses: dtolnay/rust-toolchain@master
         with:
@@ -109,7 +109,7 @@ jobs:
     runs-on: [self-hosted, ubuntu-high-cpu]
     steps:
       - name: checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: caching (stable)
         # Don't use rust-cache.
         # Rust-cache disables a key feature of actions/cache: restoreKeys.
@@ -151,7 +151,7 @@ jobs:
     runs-on: [ubuntu-20.04]
     steps:
       - name: checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: install ripgrep
         run: |
           wget https://github.com/BurntSushi/ripgrep/releases/download/13.0.0/ripgrep_13.0.0_amd64.deb
@@ -167,7 +167,7 @@ jobs:
       pull-requests: write
     steps:
       - name: checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: toolchain
         uses: dtolnay/rust-toolchain@master
         with:

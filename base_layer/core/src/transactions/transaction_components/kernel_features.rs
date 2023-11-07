@@ -23,10 +23,12 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 
+/// Options for a kernel's structure or use.
+#[derive(Serialize, Deserialize, BorshSerialize, BorshDeserialize, Clone, Copy, Debug, Eq, PartialEq)]
+pub struct KernelFeatures(u8);
+
 bitflags! {
-    /// Options for a kernel's structure or use.
-    #[derive(Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
-    pub struct KernelFeatures: u8 {
+    impl KernelFeatures: u8 {
         /// Coinbase transaction
         const COINBASE_KERNEL = 1u8;
         /// Burned output transaction
@@ -59,5 +61,28 @@ impl KernelFeatures {
 impl Default for KernelFeatures {
     fn default() -> Self {
         KernelFeatures::empty()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    #[test]
+    fn test_all_possible_parses() {
+        let x = super::KernelFeatures::from_bits(0);
+        assert_eq!(x, Some(super::KernelFeatures::empty()));
+        let x = super::KernelFeatures::from_bits(1);
+        assert_eq!(x, Some(super::KernelFeatures::COINBASE_KERNEL));
+        let x = super::KernelFeatures::from_bits(2);
+        assert_eq!(x, Some(super::KernelFeatures::BURN_KERNEL));
+        let x = super::KernelFeatures::from_bits(3);
+        assert_eq!(
+            x,
+            Some(super::KernelFeatures::COINBASE_KERNEL | super::KernelFeatures::BURN_KERNEL)
+        );
+        let x = super::KernelFeatures::from_bits(4);
+        assert_eq!(x, None);
+        for i in 5..=u8::max_value() {
+            assert_eq!(None, super::KernelFeatures::from_bits(i));
+        }
     }
 }

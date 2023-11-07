@@ -22,7 +22,12 @@
 
 use std::{sync::Arc, time::Duration};
 
-use tari_comms::{peer_manager::NodeIdentity, protocol::messaging::MessagingEventSender, CommsNode};
+use tari_comms::{
+    peer_manager::NodeIdentity,
+    protocol::messaging::MessagingEventSender,
+    transports::MemoryTransport,
+    CommsNode,
+};
 use tari_comms_dht::Dht;
 use tari_p2p::{comms_connector::InboundDomainConnector, initialization::initialize_local_test_comms};
 use tari_shutdown::ShutdownSignal;
@@ -45,6 +50,12 @@ pub async fn setup_comms_services(
     )
     .await
     .unwrap();
+
+    let comms = comms.spawn_with_transport(MemoryTransport).await.unwrap();
+    // Set the public address for tests
+    comms
+        .node_identity()
+        .add_public_address(comms.listening_address().clone());
 
     (comms, dht, messaging_events)
 }

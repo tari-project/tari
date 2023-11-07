@@ -27,7 +27,11 @@ use serde::{Deserialize, Serialize};
 use crate::{
     blocks::{new_blockheader_template::NewBlockHeaderTemplate, Block},
     proof_of_work::Difficulty,
-    transactions::{aggregated_body::AggregateBody, tari_amount::MicroMinotari},
+    transactions::{
+        aggregated_body::AggregateBody,
+        tari_amount::MicroMinotari,
+        transaction_components::TransactionError,
+    },
 };
 
 /// The new block template is used constructing a new partial block, allowing a miner to added the coinbase utxo and as
@@ -49,16 +53,20 @@ pub struct NewBlockTemplate {
 }
 
 impl NewBlockTemplate {
-    pub fn from_block(block: Block, target_difficulty: Difficulty, reward: MicroMinotari) -> Self {
+    pub fn from_block(
+        block: Block,
+        target_difficulty: Difficulty,
+        reward: MicroMinotari,
+    ) -> Result<Self, TransactionError> {
         let Block { header, body } = block;
-        let total_fees = body.get_total_fee();
-        Self {
+        let total_fees = body.get_total_fee()?;
+        Ok(Self {
             header: NewBlockHeaderTemplate::from_header(header),
             body,
             target_difficulty,
             reward,
             total_fees,
-        }
+        })
     }
 }
 

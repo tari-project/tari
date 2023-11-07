@@ -38,7 +38,8 @@
     "cross": false,
     "target_cpu": "generic",
     "target_bins": "--bin minotari_node --bin minotari_console_wallet --bin minotari_merge_mining_proxy --bin minotari_miner",
-    "features": "safe"
+    "features": "safe",
+    "build_enabled": false
   },
   {
     "name": "windows-x64",

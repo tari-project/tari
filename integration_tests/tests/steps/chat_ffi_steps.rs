@@ -80,3 +80,47 @@ async fn message_reveived_callback(_world: &mut TariWorld, callback_count: usize
         callback_count, count
     );
 }
+
+#[then(expr = "there will be a DeliveryConfirmationReceived callback of at least {int}")]
+async fn delivery_confirmation_reveived_callback(_world: &mut TariWorld, callback_count: usize) {
+    let mut count = 0;
+    for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
+        count = *ChatCallback::instance().delivery_confirmation_received.lock().unwrap();
+
+        if count >= callback_count as u64 {
+            return;
+        }
+
+        tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
+    }
+
+    panic!(
+        "contact status update never received. Callbacks expected: {}, Callbacks received: {:?}",
+        callback_count, count
+    );
+}
+
+#[then(expr = "there will be a ReadConfirmationReceived callback of at least {int}")]
+async fn read_confirmation_received_callback(_world: &mut TariWorld, callback_count: usize) {
+    let mut count = 0;
+    for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
+        count = *ChatCallback::instance().read_confirmation_received.lock().unwrap();
+
+        if count >= callback_count as u64 {
+            return;
+        }
+
+        tokio::time::sleep(Duration::from_millis(HALF_SECOND)).await;
+    }
+
+    panic!(
+        "contact status update never received. Callbacks expected: {}, Callbacks received: {:?}",
+        callback_count, count
+    );
+}
+
+#[then(expr = "I can shutdown {word} without a problem")]
+async fn can_shutdown(world: &mut TariWorld, name: String) {
+    let mut client = world.chat_clients.remove(&name).unwrap();
+    client.shutdown();
+}

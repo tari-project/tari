@@ -1,6 +1,7 @@
 [package]
 name = "minotari_app_utilities"
-version = "0.51.0-rc.1"
+version = "0.52.0-rc.0"
+
 authors = ["The Tari Development Community"]
 edition = "2018"
 license = "BSD-3-Clause"
@@ -10,7 +11,7 @@ tari_common = { path = "../../common" }
 tari_common_types = { path = "../../base_layer/common_types" }
 tari_comms = { path = "../../comms/core" }
 tari_features = { path = "../../common/tari_features"}
-tari_utilities = { version = "0.5" }
+tari_utilities = { version = "0.6" }
 
 clap = { version = "3.2", features = ["derive", "env"] }
 futures = { version = "^0.3.16", default-features = false, features = ["alloc"] }

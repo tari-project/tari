@@ -21,10 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_common_types::tari_address::TariAddress;
-use tari_utilities::ByteArray;
 use uuid::Uuid;
 
-use crate::contacts_service::types::Message;
+use crate::contacts_service::types::{message::MessageMetadata, Message};
 
 #[derive(Clone, Debug, Default)]
 pub struct MessageBuilder {
@@ -33,7 +32,9 @@ pub struct MessageBuilder {
 
 impl MessageBuilder {
     pub fn new() -> Self {
-        let message_id = Uuid::new_v4().into_bytes().to_vec();
+        // We're forcing it to a String before bytes so we can have the same representation used in
+        // all places. Otherwise the UUID byte format will differ if displayed somewhere.
+        let message_id = Uuid::new_v4().to_string().into_bytes();
 
         Self {
             inner: Message {
@@ -62,7 +63,27 @@ impl MessageBuilder {
         }
     }
 
+    pub fn metadata(&self, new_metadata: MessageMetadata) -> Self {
+        let mut metadata = self.inner.metadata.clone();
+        metadata.push(new_metadata);
+
+        Self {
+            inner: Message {
+                metadata,
+                ..self.inner.clone()
+            },
+        }
+    }
+
     pub fn build(&self) -> Message {
         self.inner.clone()
+    }
+}
+
+impl From<Message> for MessageBuilder {
+    fn from(message: Message) -> Self {
+        Self {
+            inner: Message { ..message },
+        }
     }
 }

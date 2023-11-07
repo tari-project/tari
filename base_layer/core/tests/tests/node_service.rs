@@ -308,13 +308,13 @@ async fn propagate_and_forward_invalid_block_hash() {
     let msg_event = event_stream_next(&mut bob_message_events, Duration::from_secs(10))
         .await
         .unwrap();
-    unpack_enum!(MessagingEvent::MessageReceived(_a, _b) = &*msg_event);
+    unpack_enum!(MessagingEvent::MessageReceived(_a, _b) = &msg_event);
 
     // Bob asks Alice for missing transaction
     let msg_event = event_stream_next(&mut bob_message_events, Duration::from_secs(10))
         .await
         .unwrap();
-    unpack_enum!(MessagingEvent::MessageReceived(node_id, _a) = &*msg_event);
+    unpack_enum!(MessagingEvent::MessageReceived(node_id, _a) = &msg_event);
     assert_eq!(node_id, alice_node.node_identity.node_id());
 
     // Checking a negative: Bob should not have propagated this hash to Carol. If Bob does, this assertion will be
@@ -459,9 +459,18 @@ async fn propagate_and_forward_invalid_block() {
     }
     assert!(has_banned);
 
-    assert!(!bob_node.blockchain_db.block_exists(*block1_hash).unwrap());
-    assert!(!carol_node.blockchain_db.block_exists(*block1_hash).unwrap());
-    assert!(!dan_node.blockchain_db.block_exists(*block1_hash).unwrap());
+    assert!(!bob_node
+        .blockchain_db
+        .chain_block_or_orphan_block_exists(*block1_hash)
+        .unwrap());
+    assert!(!carol_node
+        .blockchain_db
+        .chain_block_or_orphan_block_exists(*block1_hash)
+        .unwrap());
+    assert!(!dan_node
+        .blockchain_db
+        .chain_block_or_orphan_block_exists(*block1_hash)
+        .unwrap());
 
     alice_node.shutdown().await;
     bob_node.shutdown().await;
@@ -600,7 +609,7 @@ async fn local_get_new_block_with_zero_conf() {
         .unwrap();
     assert_eq!(block_template.header.height, 1);
     assert_eq!(block_template.body.kernels().len(), 4);
-    let coinbase_value = rules.get_block_reward_at(1) + block_template.body.get_total_fee();
+    let coinbase_value = rules.get_block_reward_at(1) + block_template.body.get_total_fee().unwrap();
     let (output, kernel, _) = create_coinbase(
         coinbase_value,
         rules.consensus_constants(1).coinbase_min_maturity() + 1,
@@ -681,7 +690,7 @@ async fn local_get_new_block_with_combined_transaction() {
         .unwrap();
     assert_eq!(block_template.header.height, 1);
     assert_eq!(block_template.body.kernels().len(), 4);
-    let coinbase_value = rules.get_block_reward_at(1) + block_template.body.get_total_fee();
+    let coinbase_value = rules.get_block_reward_at(1) + block_template.body.get_total_fee().unwrap();
     let (output, kernel, _) = create_coinbase(
         coinbase_value,
         rules.consensus_constants(1).coinbase_min_maturity() + 1,
@@ -718,7 +727,7 @@ async fn local_submit_block() {
         .prepare_new_block(chain_block(&block0, vec![], &consensus_manager, &key_manager).await)
         .unwrap();
     block1.header.kernel_mmr_size += 1;
-    block1.header.output_mmr_size += 1;
+    block1.header.output_smt_size += 1;
     node.local_nci.submit_block(block1.clone()).await.unwrap();
 
     let event = event_stream_next(&mut event_stream, Duration::from_millis(20000)).await;

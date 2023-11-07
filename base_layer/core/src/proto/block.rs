@@ -22,13 +22,13 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use tari_common_types::types::{FixedHash, PrivateKey};
+use tari_common_types::types::PrivateKey;
 use tari_utilities::ByteArray;
 
 use super::core as proto;
 use crate::{
-    blocks::{Block, BlockHeaderAccumulatedData, HistoricalBlock, NewBlock, NewBlockHeaderTemplate, NewBlockTemplate},
-    proof_of_work::{Difficulty, ProofOfWork},
+    blocks::{Block, BlockHeaderAccumulatedData, HistoricalBlock, NewBlock},
+    proof_of_work::Difficulty,
 };
 
 //---------------------------------- Block --------------------------------------------//
@@ -78,18 +78,10 @@ impl TryFrom<proto::HistoricalBlock> for HistoricalBlock {
             .map(TryInto::try_into)
             .ok_or_else(|| "accumulated_data in historical block not provided".to_string())??;
 
-        let output_hashes: Vec<FixedHash> = historical_block
-            .pruned_output_hashes
-            .into_iter()
-            .map(|hash| hash.try_into().map_err(|_| "Malformed pruned hash".to_string()))
-            .collect::<Result<_, _>>()?;
-
         Ok(HistoricalBlock::new(
             block,
             historical_block.confirmations,
             accumulated_data,
-            output_hashes,
-            historical_block.pruned_input_count,
         ))
     }
 }
@@ -98,14 +90,11 @@ impl TryFrom<HistoricalBlock> for proto::HistoricalBlock {
     type Error = String;
 
     fn try_from(block: HistoricalBlock) -> Result<Self, Self::Error> {
-        let pruned_output_hashes = block.pruned_outputs().iter().map(|x| x.to_vec()).collect();
-        let (block, accumulated_data, confirmations, pruned_input_count) = block.dissolve();
+        let (block, accumulated_data, confirmations) = block.dissolve();
         Ok(Self {
             confirmations,
             accumulated_data: Some(accumulated_data.into()),
             block: Some(block.try_into()?),
-            pruned_output_hashes,
-            pruned_input_count,
         })
     }
 }
@@ -141,89 +130,9 @@ impl TryFrom<proto::BlockHeaderAccumulatedData> for BlockHeaderAccumulatedData {
             accumulated_sha3x_difficulty: Difficulty::from_u64(source.accumulated_sha3x_difficulty)
                 .map_err(|e| e.to_string())?,
             target_difficulty: Difficulty::from_u64(source.target_difficulty).map_err(|e| e.to_string())?,
-            total_kernel_offset: PrivateKey::from_bytes(source.total_kernel_offset.as_slice())
+            total_kernel_offset: PrivateKey::from_canonical_bytes(source.total_kernel_offset.as_slice())
                 .map_err(|err| format!("Invalid value for total_kernel_offset: {}", err))?,
         })
-    }
-}
-
-//--------------------------------- NewBlockTemplate -------------------------------------------//
-
-impl TryFrom<proto::NewBlockTemplate> for NewBlockTemplate {
-    type Error = String;
-
-    fn try_from(block_template: proto::NewBlockTemplate) -> Result<Self, Self::Error> {
-        let header = block_template
-            .header
-            .map(TryInto::try_into)
-            .ok_or_else(|| "Block header template not provided".to_string())??;
-
-        let body = block_template
-            .body
-            .map(TryInto::try_into)
-            .ok_or_else(|| "Block body not provided".to_string())??;
-
-        Ok(Self {
-            header,
-            body,
-            target_difficulty: Difficulty::from_u64(block_template.target_difficulty).map_err(|e| e.to_string())?,
-            reward: block_template.reward.into(),
-            total_fees: block_template.total_fees.into(),
-        })
-    }
-}
-
-impl TryFrom<NewBlockTemplate> for proto::NewBlockTemplate {
-    type Error = String;
-
-    fn try_from(block_template: NewBlockTemplate) -> Result<Self, Self::Error> {
-        Ok(Self {
-            header: Some(block_template.header.into()),
-            body: Some(block_template.body.try_into()?),
-            target_difficulty: block_template.target_difficulty.as_u64(),
-            reward: block_template.reward.0,
-            total_fees: block_template.total_fees.0,
-        })
-    }
-}
-
-//------------------------------ NewBlockHeaderTemplate ----------------------------------------//
-
-impl TryFrom<proto::NewBlockHeaderTemplate> for NewBlockHeaderTemplate {
-    type Error = String;
-
-    fn try_from(header: proto::NewBlockHeaderTemplate) -> Result<Self, Self::Error> {
-        let total_kernel_offset = PrivateKey::from_bytes(&header.total_kernel_offset).map_err(|err| err.to_string())?;
-        let total_script_offset = PrivateKey::from_bytes(&header.total_script_offset).map_err(|err| err.to_string())?;
-        let pow = match header.pow {
-            Some(p) => ProofOfWork::try_from(p)?,
-            None => return Err("No proof of work provided".into()),
-        };
-        let prev_hash = header
-            .prev_hash
-            .try_into()
-            .map_err(|_| "Malformed prev block hash".to_string())?;
-        Ok(Self {
-            version: u16::try_from(header.version).map_err(|err| err.to_string())?,
-            height: header.height,
-            prev_hash,
-            total_kernel_offset,
-            total_script_offset,
-            pow,
-        })
-    }
-}
-
-impl From<NewBlockHeaderTemplate> for proto::NewBlockHeaderTemplate {
-    fn from(header: NewBlockHeaderTemplate) -> Self {
-        Self {
-            version: u32::try_from(header.version).unwrap(),
-            height: header.height,
-            prev_hash: header.prev_hash.to_vec(),
-            total_kernel_offset: header.total_kernel_offset.to_vec(),
-            total_script_offset: header.total_script_offset.to_vec(),
-            pow: Some(proto::ProofOfWork::from(header.pow)),
-        }
     }
 }
 
@@ -246,7 +155,7 @@ impl TryFrom<proto::NewBlock> for NewBlock {
             kernel_excess_sigs: new_block
                 .kernel_excess_sigs
                 .iter()
-                .map(|bytes| PrivateKey::from_bytes(bytes))
+                .map(|bytes| PrivateKey::from_canonical_bytes(bytes))
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|_| "Invalid excess signature scalar")?,
         })

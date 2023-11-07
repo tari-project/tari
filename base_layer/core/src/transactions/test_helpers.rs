@@ -65,7 +65,7 @@ use crate::{
             WalletOutput,
             WalletOutputBuilder,
         },
-        transaction_protocol::TransactionMetadata,
+        transaction_protocol::{transaction_initializer::SenderTransactionInitializer, TransactionMetadata},
         weight::TransactionWeight,
         SenderTransactionProtocol,
     },
@@ -266,7 +266,7 @@ pub fn create_signature(k: PrivateKey, fee: MicroMinotari, lock_height: u64, fea
         &PublicKey::from_secret_key(&k),
         &tx_meta,
     );
-    Signature::sign_raw(&k, r, &e).unwrap()
+    Signature::sign_raw_uniform(&k, r, &e).unwrap()
 }
 
 /// Generate a random transaction signature given a key, returning the public key (excess) and the signature.
@@ -615,8 +615,8 @@ pub async fn create_transaction_with(
         .with_fee_per_gram(fee_per_gram)
         .with_kernel_features(KernelFeatures::empty())
         .with_change_data(
-            script!(Nop),
-            inputs!(change.script_key_pk),
+            TariScript::default(),
+            ExecutionStack::default(),
             change.script_key_id,
             change.spend_key_id,
             Covenant::default(),
@@ -651,6 +651,22 @@ pub async fn create_stx_protocol(
     schema: TransactionSchema,
     key_manager: &TestKeyManager,
 ) -> (SenderTransactionProtocol, Vec<WalletOutput>) {
+    let mut outputs = Vec::with_capacity(schema.to.len());
+    let stx_builder = create_stx_protocol_internal(schema, key_manager, &mut outputs).await;
+
+    let stx_protocol = stx_builder.build().await.unwrap();
+    let change_output = stx_protocol.get_change_output().unwrap().unwrap();
+
+    outputs.push(change_output);
+    (stx_protocol, outputs)
+}
+
+#[allow(clippy::too_many_lines)]
+pub async fn create_stx_protocol_internal(
+    schema: TransactionSchema,
+    key_manager: &TestKeyManager,
+    outputs: &mut Vec<WalletOutput>,
+) -> SenderTransactionInitializer<TestKeyManager> {
     let constants = ConsensusManager::builder(Network::LocalNet)
         .build()
         .unwrap()
@@ -658,12 +674,16 @@ pub async fn create_stx_protocol(
         .clone();
     let mut stx_builder = SenderTransactionProtocol::builder(constants, key_manager.clone());
     let change = TestParams::new(key_manager).await;
+    let script_public_key = key_manager
+        .get_public_key_at_key_id(&change.script_key_id)
+        .await
+        .unwrap();
     stx_builder
         .with_lock_height(schema.lock_height)
         .with_fee_per_gram(schema.fee)
         .with_change_data(
-            script!(Nop),
-            inputs!(change.script_key_pk),
+            script!(PushPubKey(Box::new(script_public_key))),
+            ExecutionStack::default(),
             change.script_key_id,
             change.spend_key_id,
             Covenant::default(),
@@ -672,7 +692,6 @@ pub async fn create_stx_protocol(
     for tx_input in &schema.from {
         stx_builder.with_input(tx_input.clone()).await.unwrap();
     }
-    let mut outputs = Vec::with_capacity(schema.to.len());
     for val in schema.to {
         let (spending_key, _) = key_manager
             .get_next_key(TransactionKeyManagerBranch::CommitmentMask.get_branch_key())
@@ -737,11 +756,7 @@ pub async fn create_stx_protocol(
         stx_builder.with_output(utxo, sender_offset_key_id).await.unwrap();
     }
 
-    let stx_protocol = stx_builder.build().await.unwrap();
-    let change_output = stx_protocol.get_change_output().unwrap().unwrap();
-
-    outputs.push(change_output);
-    (stx_protocol, outputs)
+    stx_builder
 }
 
 pub async fn create_coinbase_kernel(spending_key_id: &TariKeyId, key_manager: &TestKeyManager) -> TransactionKernel {

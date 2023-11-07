@@ -1117,7 +1117,7 @@ async fn get_tip_height(wallet: &WalletSqlite) -> Option<u64> {
             .await
             .ok()
             .and_then(|t| t.metadata)
-            .and_then(|m| m.height_of_longest_chain),
+            .map(|m| m.height_of_longest_chain),
         None => None,
     }
 }

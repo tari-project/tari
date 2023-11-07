@@ -72,7 +72,7 @@ pub fn slice_to_vec_pubkeys(slice: &[u8], num: usize) -> Result<Vec<RistrettoPub
     let public_keys = slice
         .chunks_exact(PUBLIC_KEY_LENGTH)
         .take(num)
-        .map(RistrettoPublicKey::from_bytes)
+        .map(RistrettoPublicKey::from_canonical_bytes)
         .collect::<Result<Vec<RistrettoPublicKey>, ByteArrayError>>()?;
 
     Ok(public_keys)
@@ -143,7 +143,7 @@ pub enum Opcode {
     /// if there is not a valid integer value on top of the stack. Fails with `StackUnderflow` if the stack is empty.
     /// Fails with `VerifyFailed` if the block height < `height`.
     CompareHeightVerify,
-    /// Pops the top of the stack as `height`, then pushes the value of (`height` - the current height) to the stack.
+    /// Pops the top of the stack as `height`, then pushes the value of (the current height - `height`) to the stack.
     /// In other words, this opcode replaces the top of the stack with the difference between `height` and the
     /// current height. Fails with `InvalidInput` if there is not a valid integer value on top of the stack. Fails
     /// with `StackUnderflow` if the stack is empty.
@@ -373,7 +373,7 @@ impl Opcode {
                 if bytes.len() < 33 {
                     return Err(ScriptError::InvalidData);
                 }
-                let p = RistrettoPublicKey::from_bytes(&bytes[1..33])?;
+                let p = RistrettoPublicKey::from_canonical_bytes(&bytes[1..33])?;
                 Ok((PushPubKey(Box::new(p)), &bytes[33..]))
             },
             OP_DROP => Ok((Drop, &bytes[1..])),

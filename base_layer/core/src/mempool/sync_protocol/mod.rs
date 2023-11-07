@@ -204,7 +204,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
         // we want to at least sync initial_sync_num_peers, so we reset the num_synced to 0, so it can run till
         // initial_sync_num_peers again. This is made to run as a best effort in that it will at least run the
         // initial_sync_num_peers
-        self.num_synched.store(0, Ordering::Release);
+        self.num_synched.store(0, Ordering::SeqCst);
         let connections = match self
             .connectivity
             .select_connections(ConnectivitySelection::random_nodes(

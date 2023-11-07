@@ -28,10 +28,11 @@ use std::{
     time::{Duration, Instant},
 };
 
+use chrono::Utc;
 use crossbeam::channel::{bounded, Select, Sender, TrySendError};
 use futures::Stream;
 use log::*;
-use minotari_app_grpc::{conversions::timestamp, tari_rpc::BlockHeader};
+use minotari_app_grpc::tari_rpc::BlockHeader;
 use thread::JoinHandle;
 
 use super::difficulty::BlockHeaderSha3;
@@ -246,8 +247,7 @@ pub fn mining_task(
                 return;
             }
             if !(share_mode) {
-                #[allow(clippy::cast_sign_loss)]
-                hasher.set_forward_timestamp(timestamp().seconds as u64);
+                hasher.set_forward_timestamp(Utc::now().timestamp() as u64);
             }
         }
         hasher.inc_nonce();

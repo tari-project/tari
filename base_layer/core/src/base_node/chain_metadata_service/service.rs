@@ -27,7 +27,7 @@ use num_format::{Locale, ToFormattedString};
 use prost::Message;
 use tari_common::log_if_error;
 use tari_common_types::chain_metadata::ChainMetadata;
-use tari_comms::message::MessageExt;
+use tari_comms::{connectivity::ConnectivityRequester, message::MessageExt, BAN_DURATION_LONG};
 use tari_p2p::services::liveness::{LivenessEvent, LivenessHandle, MetadataKey, PingPongEvent};
 use tokio::sync::broadcast;
 
@@ -46,6 +46,7 @@ const NUM_ROUNDS_NETWORK_SILENCE: u16 = 3;
 pub(super) struct ChainMetadataService {
     liveness: LivenessHandle,
     base_node: LocalNodeCommsInterface,
+    connectivity: ConnectivityRequester,
     event_publisher: broadcast::Sender<Arc<ChainMetadataEvent>>,
     number_of_rounds_no_pings: u16,
 }
@@ -60,12 +61,14 @@ impl ChainMetadataService {
     pub fn new(
         liveness: LivenessHandle,
         base_node: LocalNodeCommsInterface,
+        connectivity: ConnectivityRequester,
         event_publisher: broadcast::Sender<Arc<ChainMetadataEvent>>,
     ) -> Self {
         Self {
             liveness,
             base_node,
             event_publisher,
+            connectivity,
             number_of_rounds_no_pings: 0,
         }
     }
@@ -85,7 +88,7 @@ impl ChainMetadataService {
             tokio::select! {
                 Ok(block_event) = block_event_stream.recv() => {
                     log_if_error!(
-                        level: debug,
+                        level: info,
                         target: LOG_TARGET,
                         "Failed to handle block event because '{}'",
                         self.handle_block_event(&block_event).await
@@ -93,13 +96,20 @@ impl ChainMetadataService {
                 },
 
                 Ok(event) = liveness_event_stream.recv() => {
-                    log_if_error!(
-                        target: LOG_TARGET,
-                        "Failed to handle liveness event because '{}'",
-                        self.handle_liveness_event(&event).await
-                    );
-                },
+                    match
+                        self.handle_liveness_event(&event).await {
+                        Ok(_) => {}
+                        Err(e) => {
+                           info!( target: LOG_TARGET, "Failed to handle liveness event because '{}'", e);
+                           if let ChainMetadataSyncError::ReceivedInvalidChainMetadata(node_id,reason) = e {
+                               log_if_error!(
+                                 level: info,
+                                 target: LOG_TARGET, "Failed to ban node '{}'",
+                                 self.connectivity.ban_peer_until(node_id, BAN_DURATION_LONG, reason).await);                                           }
+                        }
+                    }
 
+                },
             }
         }
     }
@@ -215,7 +225,7 @@ mod test {
     use std::convert::TryInto;
 
     use futures::StreamExt;
-    use tari_comms::peer_manager::NodeId;
+    use tari_comms::{peer_manager::NodeId, test_utils::mocks::create_connectivity_mock};
     use tari_p2p::services::liveness::{
         mock::{create_p2p_liveness_mock, LivenessMockState},
         LivenessRequest,
@@ -224,6 +234,7 @@ mod test {
     };
     use tari_service_framework::reply_channel;
     use tari_test_utils::unpack_enum;
+    use tari_utilities::epoch_time::EpochTime;
     use tokio::{sync::broadcast, task};
 
     use super::*;
@@ -244,14 +255,14 @@ mod test {
     fn create_sample_proto_chain_metadata() -> proto::ChainMetadata {
         let diff: u128 = 1;
         proto::ChainMetadata {
-            height_of_longest_chain: Some(1),
-            best_block: Some(vec![
+            height_of_longest_chain: 1,
+            best_block: vec![
                 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
                 28, 29, 30, 31,
-            ]),
+            ],
             pruned_height: 0,
             accumulated_difficulty: diff.to_be_bytes().to_vec(),
-            timestamp: Some(0),
+            timestamp: EpochTime::now().as_u64(),
         }
     }
 
@@ -268,7 +279,9 @@ mod test {
         let (base_node, base_node_receiver) = create_base_node_nci();
         let (publisher, event_rx) = broadcast::channel(10);
 
-        let service = ChainMetadataService::new(liveness_handle, base_node, publisher);
+        let connectivity = create_connectivity_mock();
+
+        let service = ChainMetadataService::new(liveness_handle, base_node, connectivity.0, publisher);
 
         (service, liveness_mock_state, base_node_receiver, event_rx)
     }
@@ -278,7 +291,7 @@ mod test {
         let (mut service, liveness_mock_state, mut base_node_receiver, _) = setup();
 
         let mut proto_chain_metadata = create_sample_proto_chain_metadata();
-        proto_chain_metadata.height_of_longest_chain = Some(123);
+        proto_chain_metadata.height_of_longest_chain = 123;
         let chain_metadata = proto_chain_metadata.clone().try_into().unwrap();
 
         task::spawn(async move {
@@ -297,7 +310,7 @@ mod test {
         unpack_enum!(LivenessRequest::SetMetadataEntry(metadata_key, data) = last_call);
         assert_eq!(metadata_key, MetadataKey::ChainMetadata);
         let chain_metadata = proto::ChainMetadata::decode(data.as_slice()).unwrap();
-        assert_eq!(chain_metadata.height_of_longest_chain, Some(123));
+        assert_eq!(chain_metadata.height_of_longest_chain, 123);
     }
     #[tokio::test]
     async fn handle_liveness_event_ok() {
@@ -320,7 +333,7 @@ mod test {
         assert_eq!(*metadata.node_id(), node_id);
         assert_eq!(
             metadata.claimed_chain_metadata().height_of_longest_chain(),
-            proto_chain_metadata.height_of_longest_chain.unwrap()
+            proto_chain_metadata.height_of_longest_chain
         );
     }
 

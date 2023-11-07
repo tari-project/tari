@@ -28,8 +28,6 @@ enum TariMessageType {
     TariMessageTypeTransactionFinalized = 73;
     TariMessageTypeTransactionCancelled = 74;
 
-    // -- DAN Messages --
-    TariMessageTypeDanConsensusMessage = 101;
     // -- Extended --
 
     TariMessageTypeText = 225;

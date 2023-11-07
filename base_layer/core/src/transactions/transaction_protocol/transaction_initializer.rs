@@ -294,12 +294,20 @@ where KM: TransactionKeyManagerInterface
         // The number of outputs excluding a possible residual change output
         let num_outputs = self.sender_custom_outputs.len() + usize::from(self.recipient.is_some());
         let num_inputs = self.inputs.len();
-        let total_being_spent = self.inputs.iter().map(|i| i.output.value).sum::<MicroMinotari>();
+        let total_being_spent = self
+            .inputs
+            .iter()
+            .map(|i| i.output.value)
+            .fold(Ok(MicroMinotari::zero()), |acc, x| {
+                acc?.checked_add(x).ok_or("Total inputs being spent amount overflow")
+            })?;
         let total_to_self = self
             .sender_custom_outputs
             .iter()
             .map(|o| o.output.value)
-            .sum::<MicroMinotari>();
+            .fold(Ok(MicroMinotari::zero()), |acc, x| {
+                acc?.checked_add(x).ok_or("Total outputs to self amount overflow")
+            })?;
         let total_amount = match &self.recipient {
             Some(data) => data.amount,
             None => 0.into(),
@@ -332,19 +340,23 @@ where KM: TransactionKeyManagerInterface
             .weighting()
             .round_up_features_and_scripts_size(change_features_and_scripts_size);
 
-        let change_fee = self
-            .fee()
-            .calculate(fee_per_gram, 0, 0, 1, change_features_and_scripts_size);
         // Subtract with a check on going negative
-        let total_input_value = total_to_self + total_amount + fee_without_change;
+        let total_input_value = [total_to_self, total_amount, fee_without_change]
+            .iter()
+            .fold(Ok(MicroMinotari::zero()), |acc, x| {
+                acc?.checked_add(x).ok_or("Total input value overflow")
+            })?;
         let change_amount = total_being_spent.checked_sub(total_input_value);
         match change_amount {
             None => Err(format!(
-                "You are spending ({}) more than you're providing ({}).",
-                total_input_value, total_being_spent
+                "You are spending more than you're providing: provided {}, required {}.",
+                total_being_spent, total_input_value
             )),
             Some(MicroMinotari(0)) => Ok((fee_without_change, MicroMinotari(0), None)),
             Some(v) => {
+                let change_fee = self
+                    .fee()
+                    .calculate(fee_per_gram, 0, 0, 1, change_features_and_scripts_size);
                 let change_amount = v.checked_sub(change_fee);
                 match change_amount {
                     // You can't win. Just add the change to the fee (which is less than the cost of adding another
@@ -581,7 +593,7 @@ where KM: TransactionKeyManagerInterface
 
 #[cfg(test)]
 mod test {
-    use tari_script::{inputs, script, TariScript};
+    use tari_script::{inputs, script};
 
     use crate::{
         covenants::Covenant,
@@ -696,7 +708,7 @@ mod test {
         );
 
         let output = create_wallet_output_with_data(
-            TariScript::default(),
+            script!(Nop),
             OutputFeatures::default(),
             &p,
             MicroMinotari(5000) - expected_fee,
@@ -791,7 +803,7 @@ mod test {
         let p = TestParams::new(&key_manager).await;
 
         let output = create_wallet_output_with_data(
-            TariScript::default(),
+            script!(Nop),
             OutputFeatures::default(),
             &p,
             MicroMinotari(500),
@@ -909,7 +921,7 @@ mod test {
         let err = builder.build().await.unwrap_err();
         assert_eq!(
             err.message,
-            "You are spending (528 µT) more than you're providing (400 µT)."
+            "You are spending more than you're providing: provided 400 µT, required 528 µT."
         );
     }
 

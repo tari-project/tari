@@ -59,7 +59,7 @@ impl ByteArray for BulletRangeProof {
         Ok(BulletRangeProof(v.clone()))
     }
 
-    fn from_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError> {
+    fn from_canonical_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError> {
         Ok(BulletRangeProof(bytes.to_vec()))
     }
 
@@ -105,7 +105,7 @@ impl<'de> Deserialize<'de> for BulletRangeProof {
 
             fn visit_bytes<E>(self, v: &[u8]) -> Result<BulletRangeProof, E>
             where E: de::Error {
-                BulletRangeProof::from_bytes(v).map_err(E::custom)
+                BulletRangeProof::from_canonical_bytes(v).map_err(E::custom)
             }
         }
 

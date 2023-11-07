@@ -27,7 +27,7 @@ use std::{
 use borsh::{BorshDeserialize, BorshSerialize};
 use log::*;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::PrivateKey;
+use tari_common_types::types::{Commitment, PrivateKey};
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
 
 use crate::transactions::{
@@ -219,23 +219,14 @@ impl AggregateBody {
         Ok(())
     }
 
-    pub fn get_total_fee(&self) -> MicroMinotari {
+    pub fn get_total_fee(&self) -> Result<MicroMinotari, TransactionError> {
         let mut fee = MicroMinotari::from(0);
         for kernel in &self.kernels {
-            fee += kernel.fee;
+            fee = fee.checked_add(kernel.fee).ok_or(TransactionError::InvalidKernel(
+                "Aggregated body has greater fee than u64::MAX".to_string(),
+            ))?;
         }
-        fee
-    }
-
-    /// This function will check spent kernel rules like tx lock height etc
-    pub fn check_kernel_rules(&self, height: u64) -> Result<(), TransactionError> {
-        for kernel in self.kernels() {
-            if kernel.lock_height > height {
-                warn!(target: LOG_TARGET, "Kernel lock height was not reached: {}", kernel);
-                return Err(TransactionError::InvalidKernel("Invalid lock height".to_string()));
-            }
-        }
-        Ok(())
+        Ok(fee)
     }
 
     /// Run through the outputs of the block and check that
@@ -249,9 +240,9 @@ impl AggregateBody {
         factories: &CryptoFactories,
         height: u64,
     ) -> Result<(), TransactionError> {
-        let mut coinbase_utxo = None;
+        let mut coinbase_utxo_sum = Commitment::default();
         let mut coinbase_kernel = None;
-        let mut coinbase_counter = 0; // there should be exactly 1 coinbase
+        let mut coinbase_counter = 0;
         for utxo in self.outputs() {
             if utxo.features.output_type == OutputType::Coinbase {
                 coinbase_counter += 1;
@@ -259,45 +250,41 @@ impl AggregateBody {
                     warn!(target: LOG_TARGET, "Coinbase {} found with maturity set too low", utxo);
                     return Err(TransactionError::InvalidCoinbaseMaturity);
                 }
-                coinbase_utxo = Some(utxo);
+                coinbase_utxo_sum = &coinbase_utxo_sum + &utxo.commitment;
             }
         }
-        if coinbase_counter > 1 {
-            warn!(
-                target: LOG_TARGET,
-                "{} coinbases found in body. Only a single coinbase is permitted.", coinbase_counter,
-            );
-            return Err(TransactionError::MoreThanOneCoinbase);
-        }
 
-        if coinbase_utxo.is_none() || coinbase_counter == 0 {
+        if coinbase_counter == 0 {
             return Err(TransactionError::NoCoinbase);
         }
 
-        let coinbase_utxo = coinbase_utxo.expect("coinbase_utxo: none checked");
+        debug!(
+            target: LOG_TARGET,
+            "{} coinbases found in body.", coinbase_counter,
+        );
 
-        let mut coinbase_counter = 0; // there should be exactly 1 coinbase kernel as well
+        let mut coinbase_kernel_counter = 0; // there should be exactly 1 coinbase kernel as well
         for kernel in self.kernels() {
             if kernel.features.contains(KernelFeatures::COINBASE_KERNEL) {
-                coinbase_counter += 1;
+                coinbase_kernel_counter += 1;
                 coinbase_kernel = Some(kernel);
             }
         }
-        if coinbase_kernel.is_none() || coinbase_counter != 1 {
+        if coinbase_kernel.is_none() || coinbase_kernel_counter != 1 {
             warn!(
                 target: LOG_TARGET,
                 "{} coinbase kernels found in body. Only a single coinbase kernel is permitted.", coinbase_counter,
             );
-            return Err(TransactionError::MoreThanOneCoinbase);
+            return Err(TransactionError::MoreThanOneCoinbaseKernel);
         }
 
         let coinbase_kernel = coinbase_kernel.expect("coinbase_kernel: none checked");
 
         let rhs = &coinbase_kernel.excess + &factories.commitment.commit_value(&PrivateKey::default(), reward.0);
-        if rhs != coinbase_utxo.commitment {
+        if rhs != coinbase_utxo_sum {
             warn!(
                 target: LOG_TARGET,
-                "Coinbase {} amount validation failed", coinbase_utxo
+                "Coinbase amount validation failed"
             );
             return Err(TransactionError::InvalidCoinbase);
         }
@@ -340,8 +327,10 @@ impl AggregateBody {
     }
 
     /// Returns the weight in grams of a body
-    pub fn calculate_weight(&self, transaction_weight: &TransactionWeight) -> std::io::Result<u64> {
-        transaction_weight.calculate_body(self)
+    pub fn calculate_weight(&self, transaction_weight: &TransactionWeight) -> Result<u64, TransactionError> {
+        transaction_weight
+            .calculate_body(self)
+            .map_err(|e| TransactionError::SerializationError(e.to_string()))
     }
 
     pub fn sum_features_and_scripts_size(&self) -> std::io::Result<usize> {

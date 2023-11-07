@@ -68,9 +68,11 @@ impl CryptoResolver for TariCryptoResolver {
     }
 }
 
+type TariCommsNoiseHasher = DomainSeparatedHasher<Blake2b<U32>, CommsCoreHashDomain>;
+
 fn noise_kdf(shared_key: &CommsDHKE) -> CommsNoiseKey {
     let mut comms_noise_key = CommsNoiseKey::from(SafeArray::default());
-    DomainSeparatedHasher::<Blake2b<U32>, CommsCoreHashDomain>::new_with_label("noise.dh")
+    TariCommsNoiseHasher::new_with_label("noise.dh")
         .chain(shared_key.as_bytes())
         .finalize_into(GenericArray::from_mut_slice(comms_noise_key.reveal_mut()));
 
@@ -99,7 +101,7 @@ impl Dh for CommsDiffieHellman {
 
     fn set(&mut self, privkey: &[u8]) {
         // `set` is used in the Builder, so this will panic if given an invalid secret key.
-        self.secret_key = CommsSecretKey::from_bytes(privkey).expect("invalid secret key");
+        self.secret_key = CommsSecretKey::from_canonical_bytes(privkey).expect("invalid secret key");
         self.public_key = CommsPublicKey::from_secret_key(&self.secret_key);
     }
 
@@ -119,7 +121,7 @@ impl Dh for CommsDiffieHellman {
     }
 
     fn dh(&self, public_key: &[u8], out: &mut [u8]) -> Result<(), snow::Error> {
-        let pk = CommsPublicKey::from_bytes(&public_key[..self.pub_len()]).map_err(|_| snow::Error::Dh)?;
+        let pk = CommsPublicKey::from_canonical_bytes(&public_key[..self.pub_len()]).map_err(|_| snow::Error::Dh)?;
         let shared = CommsDHKE::new(&self.secret_key, &pk);
         let hash = noise_kdf(&shared);
         copy_slice!(hash.reveal(), out);
@@ -132,24 +134,21 @@ mod test {
     use snow::Keypair;
 
     use super::{super::NOISE_KEY_LEN, *};
-    use crate::noise::config::NOISE_IX_PARAMETER;
+    use crate::noise::config::NOISE_PARAMETERS;
 
     fn build_keypair() -> Keypair {
-        snow::Builder::with_resolver(
-            NOISE_IX_PARAMETER.parse().unwrap(),
-            Box::<TariCryptoResolver>::default(),
-        )
-        .generate_keypair()
-        .unwrap()
+        snow::Builder::with_resolver(NOISE_PARAMETERS.parse().unwrap(), Box::<TariCryptoResolver>::default())
+            .generate_keypair()
+            .unwrap()
     }
 
     #[test]
     fn generate() {
         let keypair = build_keypair();
 
-        let sk = CommsSecretKey::from_bytes(&keypair.private).unwrap();
+        let sk = CommsSecretKey::from_canonical_bytes(&keypair.private).unwrap();
         let expected_pk = CommsPublicKey::from_secret_key(&sk);
-        let pk = CommsPublicKey::from_bytes(&keypair.public).unwrap();
+        let pk = CommsPublicKey::from_canonical_bytes(&keypair.public).unwrap();
         assert_eq!(pk, expected_pk);
     }
 

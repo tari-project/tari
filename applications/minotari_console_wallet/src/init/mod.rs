@@ -503,7 +503,7 @@ async fn detect_local_base_node(network: Network) -> Option<SeedPeer> {
     };
     let resp = node_conn.identify(Empty {}).await.ok()?;
     let identity = resp.get_ref();
-    let public_key = CommsPublicKey::from_bytes(&identity.public_key).ok()?;
+    let public_key = CommsPublicKey::from_canonical_bytes(&identity.public_key).ok()?;
     let addresses = identity
         .public_addresses
         .iter()
@@ -656,6 +656,35 @@ pub(crate) fn confirm_seed_words(wallet: &mut WalletSqlite) -> Result<(), ExitEr
     }
 }
 
+pub(crate) fn confirm_direct_only_send(wallet: &mut WalletSqlite) -> Result<(), ExitError> {
+    let seed_words = wallet.get_seed_words(&MnemonicLanguage::English)?;
+
+    println!();
+    println!("=========================");
+    println!("       IMPORTANT!        ");
+    println!("=========================");
+    println!("This wallet is set to use DirectOnly.");
+    println!("This is primarily used for testing and can result in not all messages being sent.");
+    println!();
+    println!("\x07"); // beep!
+
+    let mut rl = Editor::<()>::new();
+    loop {
+        println!("I confirm this warning.");
+        println!(r#"Type the word "confirm" , "yes" or "y" to continue."#);
+        let readline = rl.readline(">> ");
+        match readline {
+            Ok(line) => match line.to_lowercase().as_ref() {
+                "confirm" | "yes" | "y" => return Ok(()),
+                _ => continue,
+            },
+            Err(e) => {
+                return Err(ExitError::new(ExitCode::IOError, e));
+            },
+        }
+    }
+}
+
 /// Clear the terminal and print the Tari splash
 pub fn tari_splash_screen(heading: &str) {
     // clear the terminal
@@ -757,13 +786,19 @@ pub(crate) fn boot_with_password(
     }
 
     let password = match boot_mode {
+        // A new wallet requires entering and confirming a passphrase
         WalletBoot::New => {
-            // Get a new passphrase
-            debug!(target: LOG_TARGET, "Prompting for passphrase.");
+            debug!(target: LOG_TARGET, "Prompting for passphrase for new wallet.");
             get_new_passphrase("Create wallet passphrase: ", "Confirm wallet passphrase: ")?
         },
-        WalletBoot::Existing | WalletBoot::Recovery => {
-            debug!(target: LOG_TARGET, "Prompting for passphrase.");
+        // Recovery from a seed requires entering and confirming a passphrase
+        WalletBoot::Recovery => {
+            debug!(target: LOG_TARGET, "Prompting for passphrase for wallet recovery.");
+            get_new_passphrase("Create wallet passphrase: ", "Confirm wallet passphrase: ")?
+        },
+        // Opening an existing wallet only requires entering a passphrase
+        WalletBoot::Existing => {
+            debug!(target: LOG_TARGET, "Prompting for passphrase for existing wallet.");
             prompt_password("Enter wallet passphrase: ")?
         },
     };

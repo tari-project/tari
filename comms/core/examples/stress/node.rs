@@ -29,7 +29,7 @@ use tari_comms::{
     multiaddr::Multiaddr,
     pipeline,
     pipeline::SinkService,
-    protocol::{messaging::MessagingProtocolExtension, ProtocolNotification, Protocols},
+    protocol::{messaging::MessagingProtocolExtension, ProtocolId, ProtocolNotification, Protocols},
     tor,
     tor::TorIdentity,
     transports::{predicate::FalsePredicate, SocksConfig, TcpWithTorTransport},
@@ -46,6 +46,8 @@ use tari_storage::{
 use tokio::sync::{broadcast, mpsc};
 
 use super::{error::Error, STRESS_PROTOCOL_NAME, TOR_CONTROL_PORT_ADDR, TOR_SOCKS_ADDR};
+
+static MSG_PROTOCOL_ID: ProtocolId = ProtocolId::from_static(b"example/msg/1.0");
 
 pub async fn create(
     node_identity: Option<Arc<NodeIdentity>>,
@@ -115,6 +117,7 @@ pub async fn create(
             .build()?
             .add_protocol_extensions(protocols.into())
             .add_protocol_extension(MessagingProtocolExtension::new(
+                MSG_PROTOCOL_ID.clone(),
                 event_tx,
                 pipeline::Builder::new()
                     .with_inbound_pipeline(SinkService::new(inbound_tx))
@@ -148,6 +151,7 @@ pub async fn create(
             .with_hidden_service_controller(hs_ctl)
             .add_protocol_extensions(protocols.into())
             .add_protocol_extension(MessagingProtocolExtension::new(
+                MSG_PROTOCOL_ID.clone(),
                 event_tx,
                 pipeline::Builder::new()
                     .with_inbound_pipeline(SinkService::new(inbound_tx))

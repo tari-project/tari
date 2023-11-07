@@ -49,8 +49,6 @@ message FindChainSplitResponse {
   // `FindChainSplitRequest::block_hashes`. This value could also be used to
   // know how far back a split occurs.
   uint64 fork_hash_index = 2;
-  // The current header height of this node
-  uint64 tip_height = 3;
 }
 
 message SyncKernelsRequest {
@@ -59,26 +57,12 @@ message SyncKernelsRequest {
 }
 
 message SyncUtxosRequest {
-  uint64 start = 1;
+  bytes start_header_hash = 1;
   bytes end_header_hash = 2;
-  bool include_pruned_utxos = 3;
-  bool include_deleted_bitmaps = 4;
 }
 message SyncUtxosResponse {
-  oneof utxo_or_deleted {
-    SyncUtxo utxo = 1;
-    bytes deleted_diff = 2;
-  }
-  uint64 mmr_index = 3;
-}
-
-message SyncUtxo {
-  oneof utxo {
-    // The unspent transaction output
-    tari.types.TransactionOutput output = 1;
-    // If the UTXO is deleted/pruned, the hashes are returned
-    PrunedOutput pruned_output = 2;
-  }
+  tari.types.TransactionOutput output = 1;
+  bytes mined_header = 2;
 }
 
 message PrunedOutput {

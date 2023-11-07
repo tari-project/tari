@@ -14,7 +14,7 @@ use tari_comms::{
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures},
     pipeline,
     pipeline::SinkService,
-    protocol::messaging::MessagingProtocolExtension,
+    protocol::{messaging::MessagingProtocolExtension, ProtocolId},
     tor,
     CommsBuilder,
     CommsNode,
@@ -33,6 +33,8 @@ use tokio::{
 // Tor example for tari_comms.
 //
 // _Note:_ A running tor proxy with `ControlPort` set is required for this example to work.
+
+static MSG_PROTOCOL_ID: ProtocolId = ProtocolId::from_static(b"example/tor/msg/1.0");
 
 type Error = anyhow::Error;
 
@@ -195,6 +197,7 @@ async fn setup_node_with_tor<P: Into<tor::PortMapping>>(
     let (event_tx, _) = broadcast::channel(1);
     let comms_node = comms_node
         .add_protocol_extension(MessagingProtocolExtension::new(
+            MSG_PROTOCOL_ID.clone(),
             event_tx,
             pipeline::Builder::new()
             // Outbound messages will be forwarded "as is" to outbound messaging

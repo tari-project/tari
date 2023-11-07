@@ -26,7 +26,6 @@ use std::{
     sync::Arc,
 };
 
-use croaring::Bitmap;
 use tari_common_types::types::{BlockHash, Commitment, HashOutput};
 use tari_utilities::hex::Hex;
 
@@ -34,6 +33,7 @@ use crate::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, UpdateBlockAccumulatedData},
     chain_storage::{error::ChainStorageError, HorizonData, Reorg},
     transactions::transaction_components::{TransactionKernel, TransactionOutput},
+    OutputSmt,
 };
 
 #[derive(Debug)]
@@ -80,8 +80,8 @@ impl DbTransaction {
     }
 
     /// Delete a block
-    pub fn delete_block(&mut self, block_hash: HashOutput) -> &mut Self {
-        self.operations.push(WriteOperation::DeleteBlock(block_hash));
+    pub fn delete_tip_block(&mut self, block_hash: HashOutput) -> &mut Self {
+        self.operations.push(WriteOperation::DeleteTipBlock(block_hash));
         self
     }
 
@@ -114,41 +114,20 @@ impl DbTransaction {
         utxo: TransactionOutput,
         header_hash: HashOutput,
         header_height: u64,
-        mmr_leaf_index: u32,
         timestamp: u64,
     ) -> &mut Self {
         self.operations.push(WriteOperation::InsertOutput {
             header_hash,
             header_height,
+            timestamp,
             output: Box::new(utxo),
-            mmr_position: mmr_leaf_index,
-            timestamp,
         });
         self
     }
 
-    pub fn insert_pruned_utxo(
-        &mut self,
-        output_hash: HashOutput,
-        header_hash: HashOutput,
-        header_height: u64,
-        mmr_leaf_index: u32,
-        timestamp: u64,
-    ) -> &mut Self {
-        self.operations.push(WriteOperation::InsertPrunedOutput {
-            header_hash,
-            header_height,
-            output_hash,
-            mmr_position: mmr_leaf_index,
-            timestamp,
-        });
-        self
-    }
-
-    pub fn prune_outputs_at_positions(&mut self, output_mmr_positions: Vec<u32>) -> &mut Self {
-        self.operations.push(WriteOperation::PruneOutputsAtMmrPositions {
-            output_positions: output_mmr_positions,
-        });
+    pub fn prune_outputs_spent_at_hash(&mut self, block_hash: BlockHash) -> &mut Self {
+        self.operations
+            .push(WriteOperation::PruneOutputsSpentAtHash { block_hash });
         self
     }
 
@@ -168,17 +147,11 @@ impl DbTransaction {
         self
     }
 
-    /// Updates the deleted tip bitmap with the indexes of the given bitmap.
-    pub fn update_deleted_bitmap(&mut self, deleted: Bitmap) -> &mut Self {
-        self.operations.push(WriteOperation::UpdateDeletedBitmap { deleted });
-        self
-    }
-
     /// Add the BlockHeader and contents of a `Block` (i.e. inputs, outputs and kernels) to the database.
     /// If the `BlockHeader` already exists, then just the contents are updated along with the relevant accumulated
     /// data.
-    pub fn insert_block_body(&mut self, block: Arc<ChainBlock>) -> &mut Self {
-        self.operations.push(WriteOperation::InsertBlockBody { block });
+    pub fn insert_tip_block_body(&mut self, block: Arc<ChainBlock>) -> &mut Self {
+        self.operations.push(WriteOperation::InsertTipBlockBody { block });
         self
     }
 
@@ -213,8 +186,9 @@ impl DbTransaction {
     }
 
     /// Add an orphan to the orphan tip set
-    pub fn insert_orphan_chain_tip(&mut self, hash: HashOutput) -> &mut Self {
-        self.operations.push(WriteOperation::InsertOrphanChainTip(hash));
+    pub fn insert_orphan_chain_tip(&mut self, hash: HashOutput, total_accumulated_difficulty: u128) -> &mut Self {
+        self.operations
+            .push(WriteOperation::InsertOrphanChainTip(hash, total_accumulated_difficulty));
         self
     }
 
@@ -283,6 +257,11 @@ impl DbTransaction {
         self.operations.push(WriteOperation::ClearAllReorgs);
         self
     }
+
+    pub fn insert_tip_smt(&mut self, smt: OutputSmt) -> &mut Self {
+        self.operations.push(WriteOperation::InsertTipSmt { smt });
+        self
+    }
 }
 
 #[derive(Debug)]
@@ -293,7 +272,7 @@ pub enum WriteOperation {
     InsertChainHeader {
         header: Box<ChainHeader>,
     },
-    InsertBlockBody {
+    InsertTipBlockBody {
         block: Arc<ChainBlock>,
     },
     InsertKernel {
@@ -304,16 +283,8 @@ pub enum WriteOperation {
     InsertOutput {
         header_hash: HashOutput,
         header_height: u64,
+        timestamp: u64,
         output: Box<TransactionOutput>,
-        mmr_position: u32,
-        timestamp: u64,
-    },
-    InsertPrunedOutput {
-        header_hash: HashOutput,
-        header_height: u64,
-        output_hash: HashOutput,
-        mmr_position: u32,
-        timestamp: u64,
     },
     InsertBadBlock {
         hash: HashOutput,
@@ -321,19 +292,16 @@ pub enum WriteOperation {
     },
     DeleteHeader(u64),
     DeleteOrphan(HashOutput),
-    DeleteBlock(HashOutput),
+    DeleteTipBlock(HashOutput),
     DeleteOrphanChainTip(HashOutput),
-    InsertOrphanChainTip(HashOutput),
+    InsertOrphanChainTip(HashOutput, u128),
     InsertMoneroSeedHeight(Vec<u8>, u64),
     UpdateBlockAccumulatedData {
         header_hash: HashOutput,
         values: UpdateBlockAccumulatedData,
     },
-    UpdateDeletedBitmap {
-        deleted: Bitmap,
-    },
-    PruneOutputsAtMmrPositions {
-        output_positions: Vec<u32>,
+    PruneOutputsSpentAtHash {
+        block_hash: BlockHash,
     },
     DeleteAllInputsInBlock {
         block_hash: BlockHash,
@@ -357,6 +325,9 @@ pub enum WriteOperation {
         reorg: Reorg,
     },
     ClearAllReorgs,
+    InsertTipSmt {
+        smt: OutputSmt,
+    },
 }
 
 impl fmt::Display for WriteOperation {
@@ -373,9 +344,9 @@ impl fmt::Display for WriteOperation {
             InsertChainHeader { header } => {
                 write!(f, "InsertChainHeader(#{} {})", header.height(), header.hash().to_hex())
             },
-            InsertBlockBody { block } => write!(
+            InsertTipBlockBody { block } => write!(
                 f,
-                "InsertBlockBody({}, {})",
+                "InsertTipBlockBody({}, {})",
                 block.accumulated_data().hash.to_hex(),
                 block.block().body.to_counts_string(),
             ),
@@ -394,38 +365,30 @@ impl fmt::Display for WriteOperation {
                 header_hash,
                 header_height,
                 output,
-                mmr_position,
-                timestamp,
+                ..
             } => write!(
                 f,
-                "Insert output {} in block:{},#{} position: {}, timestamp: {}",
+                "Insert output {} in block({}):{},",
                 output.hash().to_hex(),
-                header_hash.to_hex(),
                 header_height,
-                mmr_position,
-                timestamp
+                header_hash.to_hex(),
             ),
             DeleteOrphanChainTip(hash) => write!(f, "DeleteOrphanChainTip({})", hash.to_hex()),
-            InsertOrphanChainTip(hash) => write!(f, "InsertOrphanChainTip({})", hash.to_hex()),
-            DeleteBlock(hash) => write!(f, "DeleteBlock({})", hash.to_hex()),
+            InsertOrphanChainTip(hash, total_accumulated_difficulty) => write!(
+                f,
+                "InsertOrphanChainTip({}, {})",
+                hash.to_hex(),
+                total_accumulated_difficulty
+            ),
+            DeleteTipBlock(hash) => write!(f, "DeleteTipBlock({})", hash.to_hex()),
             InsertMoneroSeedHeight(data, height) => {
                 write!(f, "Insert Monero seed string {} for height: {}", data.to_hex(), height)
             },
             InsertChainOrphanBlock(block) => write!(f, "InsertChainOrphanBlock({})", block.hash().to_hex()),
-            InsertPrunedOutput {
-                header_hash: _,
-                header_height: _,
-                output_hash: _,
-                mmr_position: _,
-                timestamp: _,
-            } => write!(f, "Insert pruned output"),
             UpdateBlockAccumulatedData { header_hash, .. } => {
                 write!(f, "Update Block data for block {}", header_hash.to_hex())
             },
-            UpdateDeletedBitmap { deleted } => {
-                write!(f, "Merge deleted bitmap at tip ({} new indexes)", deleted.cardinality())
-            },
-            PruneOutputsAtMmrPositions { output_positions } => write!(f, "Prune {} output(s)", output_positions.len()),
+            PruneOutputsSpentAtHash { block_hash } => write!(f, "Prune output(s) at hash: {}", block_hash.to_hex()),
             DeleteAllInputsInBlock { block_hash } => write!(f, "Delete outputs in block {}", block_hash.to_hex()),
             SetAccumulatedDataForOrphan(accumulated_data) => {
                 write!(f, "Set accumulated data for orphan {}", accumulated_data)
@@ -452,22 +415,29 @@ impl fmt::Display for WriteOperation {
             SetHorizonData { .. } => write!(f, "Set horizon data"),
             InsertReorg { .. } => write!(f, "Insert reorg"),
             ClearAllReorgs => write!(f, "Clear all reorgs"),
+            InsertTipSmt { smt: output_smt } => {
+                write!(
+                    f,
+                    "Inserting sparse merkle tree with root: {}",
+                    output_smt.unsafe_hash()
+                )
+            },
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DbKey {
-    BlockHeader(u64),
-    BlockHash(BlockHash),
+    HeaderHeight(u64),
+    HeaderHash(BlockHash),
     OrphanBlock(HashOutput),
 }
 
 impl DbKey {
     pub fn to_value_not_found_error(&self) -> ChainStorageError {
         let (entity, field, value) = match self {
-            DbKey::BlockHeader(v) => ("BlockHeader", "Height", v.to_string()),
-            DbKey::BlockHash(v) => ("Block", "Hash", v.to_hex()),
+            DbKey::HeaderHeight(v) => ("BlockHeader", "Height", v.to_string()),
+            DbKey::HeaderHash(v) => ("Header", "Hash", v.to_hex()),
             DbKey::OrphanBlock(v) => ("Orphan", "Hash", v.to_hex()),
         };
         ChainStorageError::ValueNotFound { entity, field, value }
@@ -476,16 +446,16 @@ impl DbKey {
 
 #[derive(Debug)]
 pub enum DbValue {
-    BlockHeader(Box<BlockHeader>),
-    BlockHash(Box<BlockHeader>),
+    HeaderHeight(Box<BlockHeader>),
+    HeaderHash(Box<BlockHeader>),
     OrphanBlock(Box<Block>),
 }
 
 impl Display for DbValue {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
-            DbValue::BlockHeader(_) => f.write_str("Block header"),
-            DbValue::BlockHash(_) => f.write_str("Block hash"),
+            DbValue::HeaderHeight(_) => f.write_str("Header by height"),
+            DbValue::HeaderHash(_) => f.write_str("Header by hash"),
             DbValue::OrphanBlock(_) => f.write_str("Orphan block"),
         }
     }
@@ -494,8 +464,8 @@ impl Display for DbValue {
 impl Display for DbKey {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
-            DbKey::BlockHeader(v) => f.write_str(&format!("Block header (#{})", v)),
-            DbKey::BlockHash(v) => f.write_str(&format!("Block hash (#{})", v.to_hex())),
+            DbKey::HeaderHeight(v) => f.write_str(&format!("Header height (#{})", v)),
+            DbKey::HeaderHash(v) => f.write_str(&format!("Header hash (#{})", v.to_hex())),
             DbKey::OrphanBlock(v) => f.write_str(&format!("Orphan block hash ({})", v.to_hex())),
         }
     }

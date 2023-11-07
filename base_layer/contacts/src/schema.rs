@@ -16,7 +16,10 @@ diesel::table! {
         address -> Binary,
         message_id -> Binary,
         body -> Binary,
+        metadata -> Binary,
         stored_at -> Timestamp,
+        delivery_confirmation_at -> Nullable<Timestamp>,
+        read_confirmation_at -> Nullable<Timestamp>,
         direction -> Integer,
     }
 }

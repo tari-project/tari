@@ -59,7 +59,8 @@ use tari_core::{
         SenderTransactionProtocol,
     },
 };
-use tari_script::{inputs, script, Opcode, TariScript};
+use tari_crypto::keys::SecretKey;
+use tari_script::{inputs, script, ExecutionStack, Opcode, TariScript};
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::{hex::Hex, ByteArray};
@@ -661,10 +662,10 @@ where
         value: MicroMinotari,
         features: OutputFeatures,
     ) -> Result<WalletOutputBuilder, OutputManagerError> {
-        let (spending_key_id, _, script_key_id, script_public_key) =
+        let (spending_key_id, _spending_key_id, script_key_id, _script_public_key) =
             self.resources.key_manager.get_next_spend_and_script_key_ids().await?;
-        let input_data = inputs!(script_public_key);
-        let script = script!(Nop);
+        let input_data = ExecutionStack::default();
+        let script = TariScript::default();
 
         Ok(WalletOutputBuilder::new(value, spending_key_id)
             .with_features(features)
@@ -697,6 +698,16 @@ where
         // Confirm output features is default
         if single_round_sender_data.features != OutputFeatures::default() {
             return Err(OutputManagerError::InvalidOutputFeatures);
+        }
+
+        // Confirm lock height is 0
+        if single_round_sender_data.metadata.lock_height != 0 {
+            return Err(OutputManagerError::InvalidLockHeight);
+        }
+
+        // Confirm kernel features
+        if single_round_sender_data.metadata.kernel_features != KernelFeatures::default() {
+            return Err(OutputManagerError::InvalidKernelFeatures);
         }
 
         let (spending_key_id, _, script_key_id, script_public_key) =
@@ -747,7 +758,7 @@ where
             spending_key_id.clone(),
             single_round_sender_data.features.clone(),
             script,
-            inputs!(script_public_key),
+            ExecutionStack::default(),
             script_key_id,
             single_round_sender_data.sender_offset_public_key.clone(),
             // Note: The signature at this time is only partially built
@@ -802,7 +813,7 @@ where
             num_kernels,
             num_outputs
         );
-        // We assume that default OutputFeatures and Nop TariScript is used
+        // We assume that default OutputFeatures and PushPubKey TariScript is used
         let features_and_scripts_byte_size = self
             .resources
             .consensus_constants
@@ -811,7 +822,7 @@ where
                 OutputFeatures::default()
                     .get_serialized_size()
                     .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
-                    script![Nop]
+                    TariScript::default()
                         .get_serialized_size()
                         .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
                     Covenant::new()
@@ -842,7 +853,7 @@ where
                     output_features_estimate
                         .get_serialized_size()
                         .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
-                        script![Nop]
+                        TariScript::default()
                             .get_serialized_size()
                             .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
                         Covenant::new()
@@ -945,8 +956,8 @@ where
         let (change_spending_key_id, _, change_script_key_id, change_script_public_key) =
             self.resources.key_manager.get_next_spend_and_script_key_ids().await?;
         builder.with_change_data(
-            script!(Nop),
-            inputs!(change_script_public_key),
+            script!(PushPubKey(Box::new(change_script_public_key.clone()))),
+            ExecutionStack::default(),
             change_script_key_id,
             change_spending_key_id,
             Covenant::default(),
@@ -1113,8 +1124,8 @@ where
             let (change_spending_key_id, _, change_script_key_id, change_script_public_key) =
                 self.resources.key_manager.get_next_spend_and_script_key_ids().await?;
             builder.with_change_data(
-                script!(Nop),
-                inputs!(change_script_public_key),
+                script!(PushPubKey(Box::new(change_script_public_key))),
+                ExecutionStack::default(),
                 change_script_key_id,
                 change_spending_key_id,
                 Covenant::default(),
@@ -1186,7 +1197,6 @@ where
         fee_per_gram: MicroMinotari,
         lock_height: Option<u64>,
     ) -> Result<(MicroMinotari, Transaction), OutputManagerError> {
-        let script = script!(Nop);
         let covenant = Covenant::default();
 
         let features_and_scripts_byte_size = self
@@ -1197,7 +1207,7 @@ where
                 output_features
                     .get_serialized_size()
                     .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
-                    script
+                    TariScript::default()
                         .get_serialized_size()
                         .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
                     covenant
@@ -1231,7 +1241,7 @@ where
             builder.with_input(kmo.wallet_output.clone()).await?;
         }
 
-        let (output, sender_offset_key_id) = self.output_to_self(output_features, amount, covenant, script).await?;
+        let (output, sender_offset_key_id) = self.output_to_self(output_features, amount, covenant).await?;
 
         builder
             .with_output(output.wallet_output.clone(), sender_offset_key_id.clone())
@@ -1243,8 +1253,8 @@ where
         let (change_spending_key_id, _spend_public_key, change_script_key_id, change_script_public_key) =
             self.resources.key_manager.get_next_spend_and_script_key_ids().await?;
         builder.with_change_data(
-            script!(Nop),
-            inputs!(change_script_public_key),
+            script!(PushPubKey(Box::new(change_script_public_key.clone()))),
+            ExecutionStack::default(),
             change_script_key_id.clone(),
             change_spending_key_id,
             Covenant::default(),
@@ -1374,7 +1384,7 @@ where
                 Covenant::new()
                     .get_serialized_size()
                     .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
-                script![Nop]
+                TariScript::default()
                     .get_serialized_size()
                     .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?,
         );
@@ -1466,7 +1476,7 @@ where
             .consensus_constants
             .transaction_weight_params()
             .round_up_features_and_scripts_size(
-                script!(Nop)
+                TariScript::default()
                     .get_serialized_size()
                     .map_err(|e| OutputManagerError::ConversionError(e.to_string()))? +
                     OutputFeatures::default()
@@ -1681,12 +1691,7 @@ where
             };
 
             let (output, sender_offset_key_id) = self
-                .output_to_self(
-                    OutputFeatures::default(),
-                    amount_per_split,
-                    Covenant::default(),
-                    script!(Nop),
-                )
+                .output_to_self(OutputFeatures::default(), amount_per_split, Covenant::default())
                 .await?;
 
             tx_builder
@@ -1841,12 +1846,7 @@ where
 
         for _ in 0..number_of_splits {
             let (output, sender_offset_key_id) = self
-                .output_to_self(
-                    OutputFeatures::default(),
-                    amount_per_split,
-                    Covenant::default(),
-                    script!(Nop),
-                )
+                .output_to_self(OutputFeatures::default(), amount_per_split, Covenant::default())
                 .await?;
 
             tx_builder
@@ -1864,8 +1864,8 @@ where
             let (change_spending_key_id, _, change_script_key_id, change_script_public_key) =
                 self.resources.key_manager.get_next_spend_and_script_key_ids().await?;
             tx_builder.with_change_data(
-                script!(Nop),
-                inputs!(change_script_public_key),
+                script!(PushPubKey(Box::new(change_script_public_key))),
+                ExecutionStack::default(),
                 change_script_key_id,
                 change_spending_key_id,
                 Covenant::default(),
@@ -1939,10 +1939,10 @@ where
         output_features: OutputFeatures,
         amount: MicroMinotari,
         covenant: Covenant,
-        script: TariScript,
     ) -> Result<(DbWalletOutput, TariKeyId), OutputManagerError> {
         let (spending_key_id, _, script_key_id, script_public_key) =
             self.resources.key_manager.get_next_spend_and_script_key_ids().await?;
+        let script = script!(PushPubKey(Box::new(script_public_key.clone())));
 
         let encrypted_data = self
             .resources
@@ -1982,7 +1982,7 @@ where
                 spending_key_id,
                 output_features,
                 script,
-                inputs!(script_public_key),
+                ExecutionStack::default(),
                 script_key_id,
                 sender_offset_public_key,
                 metadata_signature,
@@ -2066,12 +2066,7 @@ where
         }
 
         let (output, sender_offset_key_id) = self
-            .output_to_self(
-                OutputFeatures::default(),
-                accumulated_amount,
-                Covenant::default(),
-                script!(Nop),
-            )
+            .output_to_self(OutputFeatures::default(), accumulated_amount, Covenant::default())
             .await?;
 
         tx_builder
@@ -2201,8 +2196,8 @@ where
                 let (change_spending_key_id, _, change_script_key_id, change_script_public_key) =
                     self.resources.key_manager.get_next_spend_and_script_key_ids().await?;
                 builder.with_change_data(
-                    script!(Nop),
-                    inputs!(change_script_public_key),
+                    script!(PushPubKey(Box::new(change_script_public_key.clone()))),
+                    ExecutionStack::default(),
                     change_script_key_id,
                     change_spending_key_id,
                     Covenant::default(),
@@ -2282,8 +2277,8 @@ where
         let (change_spending_key_id, _, change_script_key_id, change_script_public_key) =
             self.resources.key_manager.get_next_spend_and_script_key_ids().await?;
         builder.with_change_data(
-            script!(Nop),
-            inputs!(change_script_public_key),
+            script!(PushPubKey(Box::new(change_script_public_key.clone()))),
+            ExecutionStack::default(),
             change_script_key_id,
             change_spending_key_id,
             Covenant::default(),
@@ -2410,8 +2405,8 @@ where
                     }
 
                     // Compute the stealth address offset
-                    let stealth_address_offset = PrivateKey::from_bytes(stealth_address_hasher.as_ref())
-                        .expect("'DomainSeparatedHash<Blake2b<U32>>' has correct size");
+                    let stealth_address_offset = PrivateKey::from_uniform_bytes(stealth_address_hasher.as_ref())
+                        .expect("'DomainSeparatedHash<Blake2b<U64>>' has correct size");
                     let stealth_key = self
                         .resources
                         .key_manager

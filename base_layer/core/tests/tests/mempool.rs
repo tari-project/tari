@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, ops::Deref, panic, sync::Arc, time::Duration};
+use std::{convert::TryFrom, ops::Deref, sync::Arc, time::Duration};
 
 use randomx_rs::RandomXFlag;
 use tari_common::configuration::Network;
@@ -69,7 +69,7 @@ use tari_core::{
     },
 };
 use tari_key_manager::key_manager_service::KeyManagerInterface;
-use tari_p2p::{services::liveness::LivenessConfig, tari_message::TariMessageType};
+use tari_p2p::{services::liveness::LivenessConfig, tari_message::TariMessageType, P2pConfig};
 use tari_script::script;
 use tari_test_utils::async_assert_eventually;
 use tempfile::tempdir;
@@ -152,7 +152,6 @@ async fn test_insert_and_process_published_block() {
     mempool.insert(tx3.clone()).await.unwrap();
     mempool.insert(tx5.clone()).await.unwrap();
     mempool.process_published_block(blocks[1].to_arc_block()).await.unwrap();
-
     assert_eq!(
         mempool
             .has_tx_with_excess_sig(orphan.body.kernels()[0].excess_sig.clone())
@@ -197,18 +196,10 @@ async fn test_insert_and_process_published_block() {
     let stats = mempool.stats().await.unwrap();
     assert_eq!(stats.unconfirmed_txs, 1);
     assert_eq!(stats.reorg_txs, 0);
-    let expected_weight = consensus_manager
-        .consensus_constants(0)
-        .transaction_weight_params()
-        .calculate(
-            1,
-            1,
-            2,
-            TestParams::new(&key_manager)
-                .await
-                .get_size_for_default_features_and_scripts(2)
-                .expect("Failed to get size for default features and scripts"),
-        );
+    let expected_weight = tx2
+        .body
+        .calculate_weight(consensus_manager.consensus_constants(0).transaction_weight_params())
+        .unwrap();
     assert_eq!(stats.unconfirmed_weight, expected_weight);
 
     // Spend tx2, so it goes in Reorg pool
@@ -1730,6 +1721,7 @@ async fn block_event_and_reorg_event_handling() {
     let (mut alice, mut bob, consensus_manager) = create_network_with_2_base_nodes_with_config(
         MempoolServiceConfig::default(),
         LivenessConfig::default(),
+        P2pConfig::default(),
         consensus_manager,
         temp_dir.path().to_str().unwrap(),
     )
