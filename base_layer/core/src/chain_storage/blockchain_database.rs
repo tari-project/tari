@@ -1571,8 +1571,6 @@ fn fetch_block<T: BlockchainBackend>(db: &T, height: u64, compact: bool) -> Resu
         })
         .collect::<Result<Vec<TransactionInput>, _>>()?;
 
-    // let inputs = db.fetch_inputs_in_block(&accumulated_data.hash)?;
-
     let block = header
         .into_builder()
         .add_inputs(inputs)

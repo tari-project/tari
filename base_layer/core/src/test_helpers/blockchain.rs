@@ -282,8 +282,8 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().fetch_output(output_hash)
     }
 
-    fn fetch_input(&self, input_hash: &HashOutput) -> Result<Option<InputMinedInfo>, ChainStorageError> {
-        self.db.as_ref().unwrap().fetch_input(input_hash)
+    fn fetch_input(&self, output_hash: &HashOutput) -> Result<Option<InputMinedInfo>, ChainStorageError> {
+        self.db.as_ref().unwrap().fetch_input(output_hash)
     }
 
     fn fetch_unspent_output_hash_by_commitment(
