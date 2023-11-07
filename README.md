@@ -96,13 +96,8 @@ depending on the choices you make when prompted:
 
 - Depending on your choice of mining:
 
-<<<<<<< HEAD
-  - SHA3 stand-alone mining
-    - Execute the `start_tari_miner` soft link/shortcut.
-=======
   - SHA3 standalone mining
     - Execute the `start_minotari_miner` soft link/shortcut.
->>>>>>> development
   - Merge mining with Monero
     - Execute the `start_tari_merge_mining_proxy` soft link/shortcut.
     - Execute the `start_xmrig` shortcut.
@@ -262,15 +257,9 @@ The executables will either be inside your `~/tari/target/release` (on Linux) or
 (on Windows) directory, or alternatively, inside your `~/.cargo/bin` (on Linux) `%USERPROFILE%\.cargo\bin` (on Windows)
 directory, depending on the build choice above, and must be run from the command line. If the former build method was
 used, you can run it from that directory, or you more likely want to copy it somewhere more convenient. Make sure to
-<<<<<<< HEAD
-start Tor service `~/tari/applications/tari_base_node/osx/start_tor` (on Mac),
-`~/tari/applications/tari_base_node/linux/start_tor` (on Linux) or
-`%USERPROFILE%\Code\tari\applications\tari_base_node\windows\start_tor.lnk` (on Windows).
-=======
 start the Tor service `~/tari/applications/minotari_node/osx/start_tor` (on Mac),
 `~/tari/applications/minotari_node/linux/start_tor` (on Linux) or
 `%USERPROFILE%\Code\tari\applications\minotari_node\windows\start_tor.lnk` (on Windows).
->>>>>>> development
 
 To run from any directory of your choice, where the executable is visible in the path (first-time use):
 
@@ -367,11 +356,7 @@ CONTAINER ID        IMAGE                                    COMMAND            
 73427509a4bb        quay.io/tarilabs/tari_base_node:v0.5.4   "start.sh"          45 minutes ago      Up 26 minutes       0.0.0.0:18142->18142/tcp   tbn_tari_base_node_1
 ```
 
-<<<<<<< HEAD
-With the container ID `73427509a4bb`, connect to the tari_base_node console as follows `docker attach 73427509a4bb`
-=======
 With the container ID `73427509a4bb`, connect to the `minotari_node`` console using `docker attach 73427509a4bb`:
->>>>>>> development
 
 ```
 >> help
@@ -425,15 +410,9 @@ Default Docker builds for base x86-64 CPU. Better performing builds can be creat
 
 ## Mining
 
-<<<<<<< HEAD
-The Tari protocol supports hybrid mining; stand-alone or pooled SHA3 mining using the Tari Miner or merged mining with
-Monero using the Tari Merge Mining Proxy in conjunction with XMRig (RandomX-based mining). Blocks to be won by
-stand-alone and pooled SHA3 mining has been apportioned to approximately 40% and with Monero merged mining to approximately 60%.
-=======
 The Tari protocol supports hybrid mining; stand-alone or pooled SHA3 mining using the Minotari Miner or merged mining with
 Monero using the Minotari Merge Mining Proxy in conjunction with XMRig (RandomX-based mining). Blocks to be won by
 standalone and pooled SHA3 mining have been apportioned to approximately 40% and with Monero merged mining to approximately 60%.
->>>>>>> development
 This apportionment is deeply baked into the Tari protocol and part of the consensus rules. The 40/60 split is determined
 by slightly different block target times for each algorithm, that when combined will give an average block time of
 approximately 120 seconds. Each mining algorithm makes use of Linear Weighted Moving Average (LWMA) maths to gracefully adjust
@@ -853,11 +832,7 @@ activity for that address. The configuration file used for this exercise is show
 
 #### Perform merge mining
 
-<<<<<<< HEAD
-Tor and the required Tari applications must be started and preferably in this order:
-=======
 Tor and the required Minotari applications must be started, preferably in this order:
->>>>>>> development
 
 - Tor:
 
@@ -943,13 +918,8 @@ and accepting jobs:
 [2021-01-21 12:12:57.983]  cpu      accepted (1/1) diff 293330 (594 ms)
 ```
 
-<<<<<<< HEAD
-The `cpu: rejected` and `cpu: accepted` messages originates from stagenet or mainnet `monerod`, and shows the Monero
-statistics. At this point, the mined and rejected Tari coinbases should be visible in the Tari Console Wallet.
-=======
 The `cpu: rejected` and `cpu: accepted` messages originate from stagenet or mainnet `monerod`, and show the Monero
 statistics. At this point, the mined and rejected Minotari coinbases should be visible in the Minotari Wallet.
->>>>>>> development
 
 ##### Pool merged mining with Monero (self select)
 
@@ -962,11 +932,7 @@ its reference pool implementation running [here](http://monerop.com/), and
 [cryptonote.social](https://cryptonote.social/xmr). With normal self select mode, XMRig requests a Monero block
 template from a third party and submits the solution to the mining pool. Tari added a `submit-to-origin` option to the
 self select mode whereby, if a solution has been found that only matches the pool difficulty, XMRig will submit the
-<<<<<<< HEAD
-solution to the pool only, but if the achieved difficulty meets both that of the pool and Tari, it will be submitted to
-=======
 solution to the pool only; but if the achieved difficulty meets both that of the pool and Minotari, it will be submitted to
->>>>>>> development
 the Merge Mining Proxy as well as to the mining pool.
 
 ###### Merge Mining Proxy configuration
