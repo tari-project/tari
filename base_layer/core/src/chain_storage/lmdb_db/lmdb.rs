@@ -63,22 +63,35 @@ where
     V: Serialize + Debug,
 {
     let val_buf = serialize(val)?;
-    trace!(target: LOG_TARGET, "LMDB: {} bytes inserted", val_buf.len());
     match txn.access().put(db, key, &val_buf, put::NOOVERWRITE) {
-        Ok(_) => Ok(()),
-        Err(lmdb_zero::Error::Code(lmdb_zero::error::KEYEXIST)) => Err(ChainStorageError::KeyExists {
-            table_name,
-            key: to_hex(key.as_lmdb_bytes()),
-        }),
-        Err(lmdb_zero::Error::Code(lmdb_zero::error::MAP_FULL)) => Err(ChainStorageError::DbResizeRequired),
+        Ok(_) => {
+            trace!(
+                target: LOG_TARGET, "Inserted {} bytes with key '{}' into '{}'",
+                val_buf.len(), to_hex(key.as_lmdb_bytes()), table_name
+            );
+            Ok(())
+        },
+        err @ Err(lmdb_zero::Error::Code(lmdb_zero::error::KEYEXIST)) => {
+            error!(
+                target: LOG_TARGET, "Could not insert {} bytes with key '{}' into '{}' ({:?})",
+                val_buf.len(), to_hex(key.as_lmdb_bytes()), table_name, err
+            );
+            Err(ChainStorageError::KeyExists {
+                table_name,
+                key: to_hex(key.as_lmdb_bytes()),
+            })
+        },
+        err @ Err(lmdb_zero::Error::Code(lmdb_zero::error::MAP_FULL)) => {
+            error!(
+                target: LOG_TARGET, "Could not insert {} bytes with key '{}' into '{}' ({:?})",
+                val_buf.len(), to_hex(key.as_lmdb_bytes()), table_name, err
+            );
+            Err(ChainStorageError::DbResizeRequired)
+        },
         Err(e) => {
             error!(
-                target: LOG_TARGET,
-                "Could not insert value into lmdb {} ({}/{:?}): {:?}",
-                table_name,
-                to_hex(key.as_lmdb_bytes()),
-                val,
-                e,
+                target: LOG_TARGET, "Could not insert {} bytes with key '{}' into '{}' ({:?})",
+                val_buf.len(), to_hex(key.as_lmdb_bytes()), table_name, e
             );
             Err(ChainStorageError::InsertError {
                 table: table_name,
