@@ -14,7 +14,7 @@ name: Build docker images - workflow_call/on-demand
       toolchain:
         type: string
         description: 'Rust toolchain'
-        default: nightly-2023-06-03
+        default: nightly-2023-06-04
       arch:
         type: string
         default: x86-64
@@ -29,7 +29,7 @@ name: Build docker images - workflow_call/on-demand
         description: 'build tag alias'
       build_items:
         type: string
-        default: tari_sha3_miner
+        default: minotari_sha3_miner
         description: 'build images'
       platforms:
         type: string
@@ -48,7 +48,7 @@ jobs:
 
     steps:
       - name: checkout tari-launchpad
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: ${{ env.LAUNCHPAD_REPO }}
           ref: ${{ env.LAUNCHPAD_BRANCH }}
@@ -60,11 +60,11 @@ jobs:
         run: |
           build_items=${{ inputs.build_items }}
           echo "Building with ${build_items}."
-          if [ -z "${build_items}" ] || [ "${build_items}" = "tari_all" ] ; then
-            echo "Build all tari images"
+          if [ -z "${build_items}" ] || [ "${build_items}" = "minotari_all" ] ; then
+            echo "Build all Minotari images"
             matrix_selection=$( jq -s -c '.[]' tari-launchpad/tarisuite.json )
-          elif [ "${build_items:0:5}" = "tari_" ] ; then
-            echo "Build only selected tari images - ${build_items}"
+          elif [ "${build_items:0:9}" = "minotari_" ] ; then
+            echo "Build only selected minotari images - ${build_items}"
             matrix_selection=$( jq --arg jsonVar "${build_items}" -r '[. []
               | select(."image_name"==$jsonVar)]' tari-launchpad/tarisuite.json )
           elif [ "${build_items}" = "all" ] ; then
@@ -101,12 +101,12 @@ jobs:
 
     steps:
       - name: checkout tari
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           path: tari
 
       - name: checkout tari-launchpad
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: ${{ env.LAUNCHPAD_REPO }}
           ref: ${{ env.LAUNCHPAD_BRANCH }}
@@ -124,12 +124,12 @@ jobs:
         shell: bash
         run: |
           IMAGE_NAME=${{ matrix.builds.image_name }}
-          if [ -z "${{ inputs.version }}" ]; then
+          if [ -z "${{ inputs.version }}" ] ; then
             echo "Get tari version"
             TARI_SOURCE_ROOT="tari/"
             VAPP=$(awk -F ' = ' \
               '$1 ~ /version/ { gsub(/["]/, "", $2); printf("%s",$2) }' \
-              "${TARI_SOURCE_ROOT}/applications/tari_base_node/Cargo.toml")
+              "${TARI_SOURCE_ROOT}/applications/minotari_node/Cargo.toml")
 
             VBRANCH=$(git --git-dir ${TARI_SOURCE_ROOT}/.git branch --show-current)
             VSHA_SHORT=$(git --git-dir ${TARI_SOURCE_ROOT}/.git rev-parse --short HEAD)
@@ -139,12 +139,17 @@ jobs:
           fi
           echo "Setting ${VERSION} as docker tag"
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
-          if [ ! -z "${{ inputs.tag_alias }}" ]; then
-            echo "Setup tag_alias"
-            echo "TAG_ALIAS=${{ secrets.DOCKER_PROVIDER }}/${{ secrets.DOCKER_REPO }}/${{ matrix.builds.image_name }}:${{ inputs.tag_alias }}" >> $GITHUB_ENV
+          if [ ! -z "${{ inputs.tag_alias }}" ] ; then
+            if [ -z "${{ env.TARI_NETWORK }}" ] ; then
+              echo "Setup tag_alias"
+              echo "TAG_ALIAS=${{ secrets.DOCKER_PROVIDER }}/${{ secrets.DOCKER_REPO }}/${{ matrix.builds.image_name }}:${{ inputs.tag_alias }}" >> $GITHUB_ENV
+            else
+              echo "Setup tag_alias with network"
+              echo "TAG_ALIAS=${{ secrets.DOCKER_PROVIDER }}/${{ secrets.DOCKER_REPO }}/${{ matrix.builds.image_name }}:${{ inputs.tag_alias }}-${{ env.TARI_NETWORK }}" >> $GITHUB_ENV
+            fi
           fi
-          if [ "${IMAGE_NAME:0:5}" = "tari_" ] ; then
-            echo "Tari builds"
+          if [ "${IMAGE_NAME:0:9}" = "minotari_" ] ; then
+            echo "Minotari builds"
             mkdir -p tari/buildtools/docker_rig
             cp -v tari-launchpad/docker_rig/start_tari_app.sh tari/buildtools/docker_rig/start_tari_app.sh
             echo "DOCKERFILE=tarilabs" >> $GITHUB_ENV
@@ -152,7 +157,7 @@ jobs:
             echo "APP_EXEC=${{ matrix.builds.app_exec }}" >> $GITHUB_ENV
           else
             echo "3rd Party builds - ${IMAGE_NAME}"
-            if [ -f "./tari-launchpad/docker_rig/${IMAGE_NAME}.Dockerfile" ]; then
+            if [ -f "./tari-launchpad/docker_rig/${IMAGE_NAME}.Dockerfile" ] ; then
               echo "DOCKERFILE=${IMAGE_NAME}" >> $GITHUB_ENV
               SUBTAG=$(awk -v search="^ARG ${IMAGE_NAME^^}?_VERSION=" -F '=' '$0 ~ search \
                 { gsub(/["]/, "", $2); printf("%s",$2) }' \
@@ -167,14 +172,14 @@ jobs:
           fi
 
       - name: Set up QEMU for Docker
-        uses: docker/setup-qemu-action@v2
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
 
       - name: Extract metadata (tags, labels) for Docker
         id: meta
-        uses: docker/metadata-action@v4
+        uses: docker/metadata-action@v5
         with:
           images: |
             #name/${{ matrix.builds.image_name }}
@@ -188,7 +193,7 @@ jobs:
             type=sha
 
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
@@ -196,7 +201,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Login to Docker Image Provider
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           registry: ${{ secrets.DOCKER_PROVIDER }}
           username: ${{ secrets.DOCKER_USERNAME }}
@@ -204,7 +209,7 @@ jobs:
 
       - name: Docker image build and push
         id: docker_build
-        uses: docker/build-push-action@v4
+        uses: docker/build-push-action@v5
         with:
           context: ./tari/
           file: ./tari-launchpad/docker_rig/${{ env.DOCKERFILE }}.Dockerfile

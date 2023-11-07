@@ -2,10 +2,11 @@
   {
     "name": "linux-x86_64",
     "runs-on": "ubuntu-20.04",
-    "rust": "nightly-2023-06-03",
+    "rust": "nightly-2023-06-04",
     "target": "x86_64-unknown-linux-gnu",
     "cross": false,
     "target_cpu": "x86-64",
+    "target_bins": "--bin minotari_node --bin minotari_console_wallet --bin minotari_merge_mining_proxy --bin minotari_miner",
     "features": "safe"
   },
   {
@@ -14,9 +15,10 @@
     "rust": "stable",
     "target": "aarch64-unknown-linux-gnu",
     "cross": true,
-    "target_bins": "--bin tari_base_node --bin tari_console_wallet --bin tari_merge_mining_proxy --bin tari_miner",
     "target_cpu": "generic",
-    "features": "safe"
+    "features": "safe",
+    "target_bins": "--bin minotari_node --bin minotari_console_wallet --bin minotari_merge_mining_proxy --bin minotari_miner",
+    "flags": "--workspace --exclude minotari_mining_helper_ffi --exclude tari_integration_tests"
   },
   {
     "name": "macos-x86_64",
@@ -25,6 +27,7 @@
     "target": "x86_64-apple-darwin",
     "cross": false,
     "target_cpu": "x86-64",
+    "target_bins": "--bin minotari_node --bin minotari_console_wallet --bin minotari_merge_mining_proxy --bin minotari_miner",
     "features": "safe"
   },
   {
@@ -34,7 +37,9 @@
     "target": "aarch64-apple-darwin",
     "cross": false,
     "target_cpu": "generic",
-    "features": "safe"
+    "target_bins": "--bin minotari_node --bin minotari_console_wallet --bin minotari_merge_mining_proxy --bin minotari_miner",
+    "features": "safe",
+    "build_enabled": false
   },
   {
     "name": "windows-x64",
@@ -44,6 +49,7 @@
     "cross": false,
     "target_cpu": "x86-64",
     "features": "safe",
+    "target_bins": "--bin minotari_node --bin minotari_console_wallet --bin minotari_merge_mining_proxy --bin minotari_miner",
     "flags": "--workspace --exclude tari_libtor"
   },
   {
@@ -54,7 +60,7 @@
     "cross": false,
     "target_cpu": "generic",
     "features": "safe",
-    "target_bins": "--bin tari_base_node --bin tari_console_wallet --bin tari_merge_mining_proxy --bin tari_miner",
+    "target_bins": "--bin minotari_node --bin minotari_console_wallet --bin minotari_merge_mining_proxy --bin minotari_miner",
     "build_enabled": false
   }
 ]

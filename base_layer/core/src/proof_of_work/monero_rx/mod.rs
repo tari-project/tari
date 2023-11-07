@@ -24,14 +24,15 @@ pub use error::MergeMineError;
 
 mod helpers;
 pub use helpers::{
-    append_merge_mining_tag,
     construct_monero_data,
     create_blockhashing_blob_from_block,
     create_ordered_transaction_hashes_from_block,
     deserialize_monero_block_from_hex,
-    extract_tari_hash,
-    monero_difficulty,
+    extract_tari_hash_from_block,
+    insert_merge_mining_tag_into_block,
+    randomx_difficulty,
     serialize_monero_block_to_hex,
+    verify_header,
 };
 
 mod fixed_array;

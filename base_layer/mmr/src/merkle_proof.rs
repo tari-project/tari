@@ -209,10 +209,10 @@ impl MerkleProof {
             .iter()
             .fold((hasher, peak_hashes), |(hasher, mut peak_hashes), i| {
                 if *i == pos {
-                    (hasher.chain(hash), peak_hashes)
+                    (hasher.chain_update(hash), peak_hashes)
                 } else {
                     let hash = peak_hashes.next().unwrap();
-                    (hasher.chain(hash), peak_hashes)
+                    (hasher.chain_update(hash), peak_hashes)
                 }
             });
         Ok(hasher.finalize().to_vec())

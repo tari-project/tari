@@ -28,11 +28,12 @@ mod dedup_cache;
 
 use std::task::Poll;
 
+use blake2::Blake2b;
 pub use dedup_cache::DedupCacheDatabase;
-use digest::Digest;
+use digest::{consts::U32, Digest};
 use futures::{future::BoxFuture, task::Context};
 use log::*;
-use tari_comms::{pipeline::PipelineError, types::CommsChallenge};
+use tari_comms::pipeline::PipelineError;
 use tari_crypto::{
     hash_domain,
     hashing::{DomainSeparatedHasher, LengthExtensionAttackResistant},
@@ -48,7 +49,7 @@ use crate::{
 const LOG_TARGET: &str = "comms::dht::dedup";
 const DEDUP_MESSAGE_HASH_LABEL: &str = "dedup.meesage_hash";
 
-hash_domain!(CommsDhtDedupDomain, "com.tari.tari_project.comms.dht", 1);
+hash_domain!(CommsDhtDedupDomain, "com.tari.comms.dht", 1);
 
 fn comms_dht_dedup_message_hash<D: Digest + LengthExtensionAttackResistant>(
     label: &'static str,
@@ -61,7 +62,7 @@ pub fn hash_inbound_message(msg: &DhtInboundMessage) -> [u8; 32] {
 }
 
 pub fn create_message_hash(message_signature: &[u8], body: &[u8]) -> [u8; 32] {
-    let result = comms_dht_dedup_message_hash::<CommsChallenge>(DEDUP_MESSAGE_HASH_LABEL)
+    let result = comms_dht_dedup_message_hash::<Blake2b<U32>>(DEDUP_MESSAGE_HASH_LABEL)
         .chain(message_signature)
         .chain(body)
         .finalize();
@@ -213,7 +214,7 @@ mod test {
     #[test]
     fn deterministic_hash() {
         const TEST_MSG: &[u8] = b"test123";
-        const EXPECTED_HASH: &str = "1c2bb1bcff443af4441b789bd1d6984bb8d7bed2c9f85e8cf4f45615fdd9e47d";
+        const EXPECTED_HASH: &str = "64f1db1039353cf2ff7e09889d14ffd9885766c3dc494a59823a499edfe6997c";
 
         let node_identity = make_node_identity();
         let dht_message = make_dht_inbound_message(

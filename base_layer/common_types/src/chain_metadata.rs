@@ -81,7 +81,7 @@ impl ChainMetadata {
     /// The block height at the pruning horizon, given the chain height of the network. Typically database backends
     /// cannot provide any block data earlier than this point.
     /// Zero is returned if the blockchain still hasn't reached the pruning horizon.
-    pub fn horizon_block(&self, chain_tip: u64) -> u64 {
+    pub fn horizon_block_height(&self, chain_tip: u64) -> u64 {
         match self.pruning_horizon {
             0 => 0,
             horizon => chain_tip.saturating_sub(horizon),
@@ -146,11 +146,11 @@ impl Display for ChainMetadata {
         let height = self.height_of_longest_chain;
         let best_block = self.best_block.to_hex();
         let accumulated_difficulty = self.accumulated_difficulty;
-        writeln!(f, "Height of longest chain : {}", height)?;
+        writeln!(f, "Height of longest chain: {}", height)?;
         writeln!(f, "Total accumulated difficulty: {}", accumulated_difficulty)?;
-        writeln!(f, "Best block : {}", best_block)?;
-        writeln!(f, "Pruning horizon : {}", self.pruning_horizon)?;
-        writeln!(f, "Effective pruned height : {}", self.pruned_height)?;
+        writeln!(f, "Best block: {}", best_block)?;
+        writeln!(f, "Pruning horizon: {}", self.pruning_horizon)?;
+        writeln!(f, "Effective pruned height: {}", self.pruned_height)?;
         Ok(())
     }
 }
@@ -162,7 +162,7 @@ mod test {
     #[test]
     fn horizon_block_on_default() {
         let metadata = ChainMetadata::empty();
-        assert_eq!(metadata.horizon_block(0), 0);
+        assert_eq!(metadata.horizon_block_height(0), 0);
     }
 
     #[test]
@@ -173,10 +173,10 @@ mod test {
         metadata.set_pruning_horizon(2880);
         assert!(metadata.is_pruned_node());
         assert!(!metadata.is_archival_node());
-        assert_eq!(metadata.horizon_block(0), 0);
-        assert_eq!(metadata.horizon_block(100), 0);
-        assert_eq!(metadata.horizon_block(2880), 0);
-        assert_eq!(metadata.horizon_block(2881), 1);
+        assert_eq!(metadata.horizon_block_height(0), 0);
+        assert_eq!(metadata.horizon_block_height(100), 0);
+        assert_eq!(metadata.horizon_block_height(2880), 0);
+        assert_eq!(metadata.horizon_block_height(2881), 1);
     }
 
     #[test]
@@ -184,10 +184,10 @@ mod test {
         let mut metadata = ChainMetadata::empty();
         metadata.archival_mode();
         // Chain is still empty
-        assert_eq!(metadata.horizon_block(0), 0);
+        assert_eq!(metadata.horizon_block_height(0), 0);
         // When pruning horizon is zero, the horizon block is always 0, the genesis block
-        assert_eq!(metadata.horizon_block(0), 0);
-        assert_eq!(metadata.horizon_block(100), 0);
-        assert_eq!(metadata.horizon_block(2881), 0);
+        assert_eq!(metadata.horizon_block_height(0), 0);
+        assert_eq!(metadata.horizon_block_height(100), 0);
+        assert_eq!(metadata.horizon_block_height(2881), 0);
     }
 }

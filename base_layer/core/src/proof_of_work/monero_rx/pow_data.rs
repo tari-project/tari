@@ -69,15 +69,16 @@ impl BorshSerialize for MoneroPowData {
 }
 
 impl BorshDeserialize for MoneroPowData {
-    fn deserialize(buf: &mut &[u8]) -> io::Result<Self> {
-        let header = monero::BlockHeader::consensus_decode(buf)
+    fn deserialize_reader<R>(reader: &mut R) -> Result<Self, io::Error>
+    where R: io::Read {
+        let header = monero::BlockHeader::consensus_decode(reader)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
-        let randomx_key = BorshDeserialize::deserialize(buf)?;
-        let transaction_count = BorshDeserialize::deserialize(buf)?;
-        let merkle_root = monero::Hash::consensus_decode(buf)
+        let randomx_key = BorshDeserialize::deserialize_reader(reader)?;
+        let transaction_count = BorshDeserialize::deserialize_reader(reader)?;
+        let merkle_root = monero::Hash::consensus_decode(reader)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
-        let coinbase_merkle_proof = BorshDeserialize::deserialize(buf)?;
-        let coinbase_tx = monero::Transaction::consensus_decode(buf)
+        let coinbase_merkle_proof = BorshDeserialize::deserialize_reader(reader)?;
+        let coinbase_tx = monero::Transaction::consensus_decode(reader)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
         Ok(Self {
             header,
@@ -91,9 +92,33 @@ impl BorshDeserialize for MoneroPowData {
 }
 
 impl MoneroPowData {
+    /// Create a new MoneroPowData struct from the given header
     pub fn from_header(tari_header: &BlockHeader) -> Result<MoneroPowData, MergeMineError> {
         let mut v = tari_header.pow.pow_data.as_slice();
-        BorshDeserialize::deserialize(&mut v).map_err(|e| MergeMineError::DeserializeError(format!("{:?}", e)))
+        let pow_data =
+            BorshDeserialize::deserialize(&mut v).map_err(|e| MergeMineError::DeserializeError(format!("{:?}", e)))?;
+        if !v.is_empty() {
+            return Err(MergeMineError::DeserializeError(format!(
+                "{} bytes leftover after deserialize",
+                v.len()
+            )));
+        }
+        let mut test_serialized_data = vec![];
+
+        // This is an inefficient test, so maybe it can be removed in future, but because we rely
+        // on third party parsing libraries, there could be a case where the data we deserialized
+        // can be generated from multiple input data. This way we test that there is only one of those
+        // inputs that is allowed. Remember that the data in powdata is used for the hash, so having
+        // multiple pow_data that generate the same randomx difficulty could be a problem.
+        BorshSerialize::serialize(&pow_data, &mut test_serialized_data)
+            .map_err(|e| MergeMineError::SerializeError(format!("{:?}", e)))?;
+        if test_serialized_data != tari_header.pow.pow_data {
+            return Err(MergeMineError::SerializedPowDataDoesNotMatch(
+                "Serialized pow data does not match original pow data".to_string(),
+            ));
+        }
+
+        Ok(pow_data)
     }
 
     /// Returns true if the coinbase merkle proof produces the `merkle_root` hash, otherwise false
@@ -103,10 +128,12 @@ impl MoneroPowData {
         self.merkle_root == merkle_root
     }
 
+    /// Returns the blockhashing_blob for the Monero block
     pub fn to_blockhashing_blob(&self) -> Vec<u8> {
         create_block_hashing_blob(&self.header, &self.merkle_root, u64::from(self.transaction_count))
     }
 
+    /// Returns the RandomX vm key
     pub fn randomx_key(&self) -> &[u8] {
         self.randomx_key.as_slice()
     }
@@ -141,7 +168,7 @@ mod test {
                 prev_id: Hash::new([4; 32]),
                 nonce: 5,
             },
-            randomx_key: FixedByteArray::from_bytes(&[6, 7, 8]).unwrap(),
+            randomx_key: FixedByteArray::from_canonical_bytes(&[6, 7, 8]).unwrap(),
             transaction_count: 9,
             merkle_root: Hash::new([10; 32]),
             coinbase_merkle_proof: MerkleProof::default(),

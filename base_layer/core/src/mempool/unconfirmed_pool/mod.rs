@@ -31,6 +31,6 @@ pub use unconfirmed_pool::{UnconfirmedPool, UnconfirmedPoolConfig};
 
 hash_domain!(
     UnconfirmedPoolOutputTokenIdHashDomain,
-    "com.tari.tari-project.base_layer.core.mempool.unconfirmed_pool_output_token_id",
+    "com.tari.base_layer.core.mempool.unconfirmed_pool_output_token_id",
     1
 );

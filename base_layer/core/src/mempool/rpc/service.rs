@@ -48,11 +48,9 @@ impl MempoolRpcService {
     }
 }
 
-// TODO: Logging the error and returning a general error to the requester is a common requirement. Figure out a clean
-//       way to provide this functionality.
 fn to_internal_error<T: std::error::Error>(err: T) -> RpcStatus {
     error!(target: LOG_TARGET, "Internal error: {}", err);
-    RpcStatus::general(&err.to_string())
+    RpcStatus::general_default()
 }
 
 #[tari_comms::async_trait]

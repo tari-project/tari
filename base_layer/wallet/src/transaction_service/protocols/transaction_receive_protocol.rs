@@ -30,6 +30,7 @@ use tari_common_types::{
     transaction::{TransactionDirection, TransactionStatus, TxId},
 };
 use tari_core::transactions::{
+    key_manager::TransactionKeyManagerInterface,
     transaction_components::Transaction,
     transaction_protocol::{recipient::RecipientState, sender::TransactionSenderMessage},
 };
@@ -61,27 +62,29 @@ pub enum TransactionReceiveProtocolStage {
     WaitForFinalize,
 }
 
-pub struct TransactionReceiveProtocol<TBackend, TWalletConnectivity> {
+pub struct TransactionReceiveProtocol<TBackend, TWalletConnectivity, TKeyManagerInterface> {
     id: TxId,
     source_address: TariAddress,
     sender_message: TransactionSenderMessage,
     stage: TransactionReceiveProtocolStage,
-    resources: TransactionServiceResources<TBackend, TWalletConnectivity>,
+    resources: TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManagerInterface>,
     transaction_finalize_receiver: Option<mpsc::Receiver<(TariAddress, TxId, Transaction)>>,
     cancellation_receiver: Option<oneshot::Receiver<()>>,
 }
 
-impl<TBackend, TWalletConnectivity> TransactionReceiveProtocol<TBackend, TWalletConnectivity>
+impl<TBackend, TWalletConnectivity, TKeyManagerInterface>
+    TransactionReceiveProtocol<TBackend, TWalletConnectivity, TKeyManagerInterface>
 where
     TBackend: TransactionBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
+    TKeyManagerInterface: TransactionKeyManagerInterface,
 {
     pub fn new(
         id: TxId,
         source_address: TariAddress,
         sender_message: TransactionSenderMessage,
         stage: TransactionReceiveProtocolStage,
-        resources: TransactionServiceResources<TBackend, TWalletConnectivity>,
+        resources: TransactionServiceResources<TBackend, TWalletConnectivity, TKeyManagerInterface>,
         transaction_finalize_receiver: mpsc::Receiver<(TariAddress, TxId, Transaction)>,
         cancellation_receiver: oneshot::Receiver<()>,
     ) -> Self {
@@ -376,7 +379,7 @@ where
             // Update output metadata signature if not valid (typically the receiver after the sender finalized)
             match finalized_outputs
                 .iter()
-                .find(|output| output.hash() == rtp_output.hash())
+                .find(|output| output.commitment() == rtp_output.commitment())
             {
                 Some(v) => {
                     if rtp_output.verify_metadata_signature().is_err() {
@@ -421,7 +424,10 @@ where
                 self.source_address.clone(),
                 self.resources.wallet_identity.address.clone(),
                 inbound_tx.amount,
-                finalized_transaction.body.get_total_fee(),
+                finalized_transaction
+                    .body
+                    .get_total_fee()
+                    .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?,
                 finalized_transaction.clone(),
                 TransactionStatus::Completed,
                 inbound_tx.message.clone(),

@@ -20,11 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    collections::HashMap,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{collections::HashMap, sync::Arc, time::Instant};
 
 use futures::{
     future,
@@ -50,6 +46,7 @@ use crate::{
     backoff::Backoff,
     connection_manager::{
         common,
+        common::ValidatedPeerIdentityExchange,
         dial_state::DialState,
         manager::{ConnectionManagerConfig, ConnectionManagerEvent},
         metrics,
@@ -68,8 +65,15 @@ use crate::{
 const LOG_TARGET: &str = "comms::connection_manager::dialer";
 
 type DialResult<TSocket> = Result<(NoiseSocket<TSocket>, Multiaddr), ConnectionManagerError>;
-type DialFuturesUnordered =
-    FuturesUnordered<BoxFuture<'static, (DialState, Result<PeerConnection, ConnectionManagerError>)>>;
+type DialFuturesUnordered = FuturesUnordered<
+    BoxFuture<
+        'static,
+        (
+            DialState,
+            Result<(PeerConnection, ValidatedPeerIdentityExchange), ConnectionManagerError>,
+        ),
+    >,
+>;
 
 #[derive(Debug)]
 pub(crate) enum DialerRequest {
@@ -94,7 +98,7 @@ pub struct Dialer<TTransport, TBackoff> {
     conn_man_notifier: mpsc::Sender<ConnectionManagerEvent>,
     shutdown: Option<ShutdownSignal>,
     pending_dial_requests: HashMap<NodeId, Vec<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>>,
-    our_supported_protocols: Vec<ProtocolId>,
+    our_supported_protocols: Arc<Vec<ProtocolId>>,
 }
 
 impl<TTransport, TBackoff> Dialer<TTransport, TBackoff>
@@ -126,13 +130,13 @@ where
             conn_man_notifier,
             shutdown: Some(shutdown),
             pending_dial_requests: Default::default(),
-            our_supported_protocols: Vec::new(),
+            our_supported_protocols: Arc::new(Vec::new()),
         }
     }
 
     /// Set the supported protocols of this node to send to peers during the peer identity exchange
     pub fn set_supported_protocols(&mut self, our_supported_protocols: Vec<ProtocolId>) -> &mut Self {
-        self.our_supported_protocols = our_supported_protocols;
+        self.our_supported_protocols = Arc::new(our_supported_protocols);
         self
     }
 
@@ -193,7 +197,7 @@ where
 
     fn resolve_pending_dials(&mut self, conn: PeerConnection) {
         let peer = conn.peer_node_id().clone();
-        self.reply_to_pending_requests(&peer, &Ok(conn));
+        self.reply_to_pending_requests(&peer, Ok(conn));
         self.cancel_dial(&peer);
     }
 
@@ -215,53 +219,33 @@ where
     async fn handle_dial_result(
         &mut self,
         mut dial_state: DialState,
-        dial_result: Result<PeerConnection, ConnectionManagerError>,
+        dial_result: Result<(PeerConnection, ValidatedPeerIdentityExchange), ConnectionManagerError>,
     ) {
         let node_id = dial_state.peer().node_id.clone();
         metrics::pending_connections(Some(&node_id), ConnectionDirection::Outbound).inc();
 
-        // try save the peer back to the peer manager
-        let peer = dial_state.peer_mut();
-        if let Ok(peer_connection) = &dial_result {
-            if let Some(peer_identity) = peer_connection.peer_identity_claim() {
-                peer.update_addresses(&peer_identity.addresses, &PeerAddressSource::FromPeerConnection {
-                    peer_identity_claim: peer_identity.clone(),
+        match dial_result {
+            Ok((conn, peer_identity)) => {
+                // try save the peer back to the peer manager
+                let peer = dial_state.peer_mut();
+                peer.update_addresses(&peer_identity.claim.addresses, &PeerAddressSource::FromPeerConnection {
+                    peer_identity_claim: peer_identity.claim.clone(),
                 });
-                if let Some(unverified_data) = &peer_identity.unverified_data {
-                    for protocol in &unverified_data.supported_protocols {
-                        if !peer.supported_protocols.contains(protocol) {
-                            peer.supported_protocols.push(protocol.clone());
-                        }
-                    }
-                    if peer.user_agent != unverified_data.user_agent && !unverified_data.user_agent.is_empty() {
-                        peer.user_agent = unverified_data.user_agent.clone();
-                    }
-                }
-            } else {
-                error!(target: LOG_TARGET, "No identity claim provided");
-                let _ = dial_state
-                    .send_reply(Err(ConnectionManagerError::PeerConnectionError(
-                        "No identity claim provided".to_string(),
-                    )))
-                    .map_err(|e| error!(target: LOG_TARGET, "Could not send reply to dial request: {:?}", e));
-            }
-        }
+                peer.supported_protocols = peer_identity.metadata.supported_protocols;
+                peer.user_agent = peer_identity.metadata.user_agent;
 
-        let _ = self
-            .peer_manager
-            .add_peer(dial_state.peer().clone())
-            .await
-            .map_err(|e| {
-                error!("Could not update peer data:{}", e);
-                let _ = dial_state
-                    .send_reply(Err(ConnectionManagerError::PeerManagerError(e)))
-                    .map_err(|e| error!(target: LOG_TARGET, "Could not send reply to dial request: {:?}", e));
-            });
-        match &dial_result {
-            Ok(conn) => {
                 debug!(target: LOG_TARGET, "Successfully dialed peer '{}'", node_id);
                 self.notify_connection_manager(ConnectionManagerEvent::PeerConnected(conn.clone().into()))
-                    .await
+                    .await;
+
+                if dial_state.send_reply(Ok(conn.clone())).is_err() {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Reply oneshot was closed before dial response for peer '{}' was sent", node_id
+                    );
+                }
+
+                self.reply_to_pending_requests(&node_id, Ok(conn));
             },
             Err(err) => {
                 debug!(
@@ -269,20 +253,31 @@ where
                     "Failed to dial peer '{}' because '{:?}'", node_id, err
                 );
                 self.notify_connection_manager(ConnectionManagerEvent::PeerConnectFailed(node_id.clone(), err.clone()))
-                    .await
+                    .await;
+
+                if dial_state.send_reply(Err(err.clone())).is_err() {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Reply oneshot was closed before dial response for peer '{}' was sent", node_id
+                    );
+                }
+                self.reply_to_pending_requests(&node_id, Err(err));
             },
         }
 
+        let _ = self
+            .peer_manager
+            .add_peer(dial_state.peer().clone())
+            .await
+            .map_err(|e| {
+                error!(target: LOG_TARGET, "Could not update peer data: {}", e);
+                let _ = dial_state
+                    .send_reply(Err(ConnectionManagerError::PeerManagerError(e)))
+                    .map_err(|e| error!(target: LOG_TARGET, "Could not send reply to dial request: {:?}", e));
+            });
+
         metrics::pending_connections(Some(&node_id), ConnectionDirection::Outbound).dec();
 
-        if dial_state.send_reply(dial_result.clone()).is_err() {
-            warn!(
-                target: LOG_TARGET,
-                "Reply oneshot was closed before dial response for peer '{}' was sent", node_id
-            );
-        }
-
-        self.reply_to_pending_requests(&node_id, &dial_result);
         self.cancel_dial(&node_id);
     }
 
@@ -297,7 +292,7 @@ where
     fn reply_to_pending_requests(
         &mut self,
         peer_node_id: &NodeId,
-        result: &Result<PeerConnection, ConnectionManagerError>,
+        result: Result<PeerConnection, ConnectionManagerError>,
     ) {
         self.pending_dial_requests
             .remove(peer_node_id)
@@ -345,6 +340,7 @@ where
         let supported_protocols = self.our_supported_protocols.clone();
         let noise_config = self.noise_config.clone();
         let config = self.config.clone();
+        let peer_manager = self.peer_manager.clone();
 
         let span = span!(Level::TRACE, "handle_dial_peer_request_inner1");
         let dial_fut = async move {
@@ -369,7 +365,8 @@ where
                         };
 
                     let result = Self::perform_socket_upgrade_procedure(
-                        node_identity,
+                        &peer_manager,
+                        &node_identity,
                         socket,
                         addr.clone(),
                         authenticated_public_key,
@@ -418,34 +415,44 @@ where
     }
 
     async fn perform_socket_upgrade_procedure(
-        node_identity: Arc<NodeIdentity>,
+        peer_manager: &PeerManager,
+        node_identity: &NodeIdentity,
         mut socket: NoiseSocket<TTransport::Output>,
         dialed_addr: Multiaddr,
         authenticated_public_key: CommsPublicKey,
         conn_man_notifier: mpsc::Sender<ConnectionManagerEvent>,
-        our_supported_protocols: Vec<ProtocolId>,
+        our_supported_protocols: Arc<Vec<ProtocolId>>,
         config: &ConnectionManagerConfig,
         cancel_signal: ShutdownSignal,
-    ) -> Result<PeerConnection, ConnectionManagerError> {
+    ) -> Result<(PeerConnection, ValidatedPeerIdentityExchange), ConnectionManagerError> {
         static CONNECTION_DIRECTION: ConnectionDirection = ConnectionDirection::Outbound;
         debug!(
             target: LOG_TARGET,
             "Starting peer identity exchange for peer with public key '{}'", authenticated_public_key
         );
 
-        let peer_identity = common::perform_identity_exchange(
+        let peer_identity_result = common::perform_identity_exchange(
             &mut socket,
-            &node_identity,
-            &our_supported_protocols,
+            node_identity,
+            &*our_supported_protocols,
             config.network_info.clone(),
         )
-        .await?;
+        .await;
+
+        let peer_identity =
+            common::ban_on_offence(peer_manager, &authenticated_public_key, peer_identity_result).await?;
 
         if cancel_signal.is_terminated() {
             return Err(ConnectionManagerError::DialCancelled);
         }
 
-        common::validate_peer_identity(&authenticated_public_key, &peer_identity, config.allow_test_addresses).await?;
+        let peer_identity_result = common::validate_peer_identity_message(
+            &config.peer_validation_config,
+            &authenticated_public_key,
+            peer_identity,
+        );
+        let peer_identity =
+            common::ban_on_offence(peer_manager, &authenticated_public_key, peer_identity_result).await?;
 
         if cancel_signal.is_terminated() {
             return Err(ConnectionManagerError::DialCancelled);
@@ -459,17 +466,18 @@ where
             return Err(ConnectionManagerError::DialCancelled);
         }
 
-        peer_connection::try_create(
+        let peer_connection = peer_connection::create(
             muxer,
             dialed_addr,
             NodeId::from_public_key(&authenticated_public_key),
-            peer_identity.features,
+            peer_identity.claim.features,
             CONNECTION_DIRECTION,
             conn_man_notifier,
             our_supported_protocols,
-            peer_identity.supported_protocols(),
-            peer_identity,
-        )
+            peer_identity.metadata.supported_protocols.clone(),
+        );
+
+        Ok((peer_connection, peer_identity))
     }
 
     async fn dial_peer_with_retry(
@@ -581,13 +589,9 @@ where
                     .await
                     .map_err(|_| ConnectionManagerError::WireFormatSendFailed)?;
 
-                // todo!("40 seconds?");
-                let noise_socket = time::timeout(
-                    Duration::from_secs(40),
-                    noise_config.upgrade_socket(socket, ConnectionDirection::Outbound),
-                )
-                .await
-                .map_err(|_| ConnectionManagerError::NoiseProtocolTimeout)??;
+                let noise_socket = noise_config
+                    .upgrade_socket(socket, ConnectionDirection::Outbound)
+                    .await?;
 
                 let noise_upgrade_time = timer.elapsed();
                 debug!(

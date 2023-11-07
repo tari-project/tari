@@ -23,10 +23,11 @@
 use std::collections::HashSet;
 
 use log::warn;
+use tari_common_types::types::FixedHash;
 use tari_utilities::hex::Hex;
 
 use crate::{
-    chain_storage::{BlockchainBackend, PrunedOutput},
+    chain_storage::BlockchainBackend,
     consensus::{ConsensusConstants, ConsensusManager},
     transactions::{
         aggregated_body::AggregateBody,
@@ -90,6 +91,7 @@ impl AggregateBodyChainLinkedValidator {
         // inputs may be "slim", only containing references to outputs
         // so we need to resolve those references, creating a new body in the process
         let inputs = validate_input_not_pruned(body, db)?;
+        // UNCHECKED: sorting has been checked by the AggregateBodyInternalConsistencyValidator
         let body = AggregateBody::new_sorted_unchecked(inputs, body.outputs().to_vec(), body.kernels().to_vec());
 
         validate_input_maturity(&body, height)?;
@@ -112,25 +114,24 @@ fn validate_input_not_pruned<B: BlockchainBackend>(
         if input.is_compact() {
             let output_mined_info = db
                 .fetch_output(&input.output_hash())?
-                .ok_or(ValidationError::TransactionInputSpentOutputMissing)?;
+                .ok_or(ValidationError::UnknownInput)?;
 
-            match output_mined_info.output {
-                PrunedOutput::Pruned { .. } => {
-                    return Err(ValidationError::TransactionInputSpendsPrunedOutput);
-                },
-                PrunedOutput::NotPruned { output } => {
-                    input.add_output_data(
-                        output.version,
-                        output.features,
-                        output.commitment,
-                        output.script,
-                        output.sender_offset_public_key,
-                        output.covenant,
-                        output.encrypted_data,
-                        output.minimum_value_promise,
-                    );
-                },
-            }
+            let rp_hash = match output_mined_info.output.proof {
+                Some(proof) => proof.hash(),
+                None => FixedHash::zero(),
+            };
+            input.add_output_data(
+                output_mined_info.output.version,
+                output_mined_info.output.features,
+                output_mined_info.output.commitment,
+                output_mined_info.output.script,
+                output_mined_info.output.sender_offset_public_key,
+                output_mined_info.output.covenant,
+                output_mined_info.output.encrypted_data,
+                output_mined_info.output.metadata_signature,
+                rp_hash,
+                output_mined_info.output.minimum_value_promise,
+            );
         }
     }
 
@@ -183,9 +184,6 @@ fn check_validator_node_registration_utxo(
             });
         }
 
-        // TODO(SECURITY): Signing this with a blank msg allows the signature to be replayed. Using the commitment
-        //                 is ideal as uniqueness is enforced. However, because the VN and wallet have different
-        //                 keys this becomes difficult. Fix this once we have decided on a solution.
         if !reg.is_valid_signature_for(&[]) {
             return Err(ValidationError::InvalidValidatorNodeSignature);
         }
@@ -237,7 +235,7 @@ pub fn check_outputs<B: BlockchainBackend>(
     constants: &ConsensusConstants,
     body: &AggregateBody,
 ) -> Result<(), ValidationError> {
-    let max_script_size = constants.get_max_script_byte_size();
+    let max_script_size = constants.max_script_byte_size();
     for output in body.outputs() {
         check_tari_script_byte_size(&output.script, max_script_size)?;
         check_not_duplicate_txo(db, output)?;
@@ -246,7 +244,7 @@ pub fn check_outputs<B: BlockchainBackend>(
     Ok(())
 }
 
-/// This function checks the at the body contains no duplicated inputs or outputs.
+/// This function checks the body contains no duplicated inputs or outputs.
 fn verify_no_duplicated_inputs_outputs(body: &AggregateBody) -> Result<(), ValidationError> {
     if body.contains_duplicated_inputs() {
         warn!(
@@ -265,7 +263,7 @@ fn verify_no_duplicated_inputs_outputs(body: &AggregateBody) -> Result<(), Valid
     Ok(())
 }
 
-/// THis function checks the total burned sum in the header ensuring that every burned output is counted in the total
+/// This function checks the total burned sum in the header ensuring that every burned output is counted in the total
 /// sum.
 #[allow(clippy::mutable_key_type)]
 fn check_total_burned(body: &AggregateBody) -> Result<(), ValidationError> {
@@ -295,7 +293,7 @@ fn check_total_burned(body: &AggregateBody) -> Result<(), ValidationError> {
 // This function checks that all the timelocks in the provided transaction pass. It checks kernel lock heights and
 // input maturities
 fn verify_timelocks(body: &AggregateBody, current_height: u64) -> Result<(), ValidationError> {
-    if body.min_spendable_height() > current_height + 1 {
+    if body.min_spendable_height()? > current_height.saturating_add(1) {
         warn!(
             target: LOG_TARGET,
             "AggregateBody has a min spend height higher than the current tip"

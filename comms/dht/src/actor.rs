@@ -118,6 +118,18 @@ pub enum DhtRequest {
         public_key: CommsPublicKey,
         reply: oneshot::Sender<Result<PeerConnection, DhtActorError>>,
     },
+    BanPeer {
+        public_key: CommsPublicKey,
+        severity: OffenceSeverity,
+        reason: String,
+    },
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum OffenceSeverity {
+    Low,
+    Medium,
+    High,
 }
 
 impl Display for DhtRequest {
@@ -143,6 +155,15 @@ impl Display for DhtRequest {
                 write!(f, "SetMetadata (key={}, value={} bytes)", key, value.len())
             },
             DialDiscoverPeer { public_key, .. } => write!(f, "DialDiscoverPeer(public_key={})", public_key),
+            BanPeer {
+                public_key,
+                severity,
+                reason,
+            } => write!(
+                f,
+                "BanPeer (peer={:#.5}, severity={:?}, reason={})",
+                public_key, severity, reason
+            ),
         }
     }
 }
@@ -231,6 +252,21 @@ impl DhtRequester {
             })
             .await?;
         reply_rx.await.map_err(|_| DhtActorError::ReplyCanceled)?
+    }
+
+    pub async fn ban_peer<T: ToString>(&mut self, public_key: CommsPublicKey, severity: OffenceSeverity, reason: T) {
+        if self
+            .sender
+            .send(DhtRequest::BanPeer {
+                public_key,
+                severity,
+                reason: reason.to_string(),
+            })
+            .await
+            .is_err()
+        {
+            debug!(target: LOG_TARGET, "DhtActor is shut down and no longer responding to requests. This is expected during shutdown.");
+        }
     }
 }
 
@@ -345,6 +381,7 @@ impl DhtActor {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     fn request_handler(&mut self, request: DhtRequest) -> BoxFuture<'static, Result<(), DhtActorError>> {
         #[allow(clippy::enum_glob_use)]
         use DhtRequest::*;
@@ -435,6 +472,20 @@ impl DhtActor {
                     Ok(())
                 })
             },
+            BanPeer {
+                public_key,
+                severity,
+                reason,
+            } => {
+                let mut connectivity = self.connectivity.clone();
+                let ban_duration = self.config.ban_duration_from_severity(severity);
+                Box::pin(async move {
+                    connectivity
+                        .ban_peer_until(NodeId::from_public_key(&public_key), ban_duration, reason)
+                        .await?;
+                    Ok(())
+                })
+            },
         }
     }
 
@@ -463,7 +514,6 @@ impl DhtActor {
         Ok(())
     }
 
-    // TODO: Break up this function
     #[allow(clippy::too_many_lines)]
     async fn select_peers(
         config: &DhtConfig,

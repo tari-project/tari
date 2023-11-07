@@ -43,7 +43,6 @@ use crate::{
     },
     connectivity::{ConnectivityEventRx, ConnectivityManager, ConnectivityRequest, ConnectivityRequester},
     multiaddr::Multiaddr,
-    noise::NoiseConfig,
     peer_manager::{NodeIdentity, PeerManager},
     protocol::{
         ProtocolExtension,
@@ -188,12 +187,9 @@ impl UnspawnedCommsNode {
 
         //---------------------------------- Connection Manager --------------------------------------------//
 
-        let noise_config = NoiseConfig::new(node_identity.clone());
-
         let mut connection_manager = ConnectionManager::new(
             connection_manager_config.clone(),
             transport.clone(),
-            noise_config,
             dial_backoff,
             connection_manager_request_rx,
             node_identity.clone(),
@@ -256,13 +252,14 @@ impl UnspawnedCommsNode {
         );
 
         // Spawn liveness check now that we have the final address
-        let liveness_watch = if let Some(public_address) = node_identity.first_public_address() {
+        let public_addresses = node_identity.public_addresses();
+        let liveness_watch = if public_addresses.is_empty() {
+            watch::channel(LivenessStatus::Disabled).1
+        } else {
             connection_manager_config
                 .liveness_self_check_interval
-                .map(|interval| LivenessCheck::spawn(transport, public_address, interval, shutdown_signal.clone()))
+                .map(|interval| LivenessCheck::spawn(transport, public_addresses, interval, shutdown_signal.clone()))
                 .unwrap_or_else(|| watch::channel(LivenessStatus::Disabled).1)
-        } else {
-            watch::channel(LivenessStatus::Disabled).1
         };
 
         Ok(CommsNode {

@@ -23,7 +23,7 @@ use std::iter;
 
 use log::*;
 use monero::{
-    blockdata::transaction::{ExtraField, SubField},
+    blockdata::transaction::{ExtraField, RawExtraField, SubField},
     consensus,
     cryptonote::hash::Hashable,
     VarInt,
@@ -39,7 +39,6 @@ use super::{
 use crate::{
     blocks::BlockHeader,
     proof_of_work::{
-        difficulty::util::little_endian_difficulty,
         randomx_factory::{RandomXFactory, RandomXVMInstance},
         Difficulty,
     },
@@ -48,7 +47,10 @@ use crate::{
 pub const LOG_TARGET: &str = "c::pow::monero_rx";
 ///  Calculates the achieved Monero difficulty for the `BlockHeader`. An error is returned if the BlockHeader does not
 /// contain valid Monero PoW data.
-pub fn monero_difficulty(header: &BlockHeader, randomx_factory: &RandomXFactory) -> Result<Difficulty, MergeMineError> {
+pub fn randomx_difficulty(
+    header: &BlockHeader,
+    randomx_factory: &RandomXFactory,
+) -> Result<Difficulty, MergeMineError> {
     let monero_pow_data = verify_header(header)?;
     debug!(target: LOG_TARGET, "Valid Monero data: {}", monero_pow_data);
     let blockhashing_blob = monero_pow_data.to_blockhashing_blob();
@@ -56,11 +58,29 @@ pub fn monero_difficulty(header: &BlockHeader, randomx_factory: &RandomXFactory)
     get_random_x_difficulty(&blockhashing_blob, &vm).map(|(diff, _)| diff)
 }
 
+/// Calculate the RandomX mining hash using the virtual machine together with the achieved difficulty
 fn get_random_x_difficulty(input: &[u8], vm: &RandomXVMInstance) -> Result<(Difficulty, Vec<u8>), MergeMineError> {
     let hash = vm.calculate_hash(input)?;
     debug!(target: LOG_TARGET, "RandomX Hash: {:?}", hash);
-    let difficulty = little_endian_difficulty(&hash);
+    let difficulty = Difficulty::little_endian_difficulty(&hash)?;
     Ok((difficulty, hash))
+}
+
+// Parsing an extra field from bytes will always return an extra field with sub-fields that could be read, even if it
+// does not represent the original extra field. As per Monero consensus rules, an error here will not represent a
+// failure to deserialize a block, so no need to error here.
+fn parse_extra_field_truncate_on_error(raw_extra_field: &RawExtraField) -> ExtraField {
+    match ExtraField::try_parse(raw_extra_field) {
+        Ok(val) => val,
+        Err(val) => {
+            warn!(
+                target: LOG_TARGET,
+                "Some sub-fields could not be parsed successfully from the Monero coinbase extra field and will be \
+                excluded"
+            );
+            val
+        },
+    }
 }
 
 /// Validates the monero data contained in the given header, making these assetions:
@@ -69,18 +89,29 @@ fn get_random_x_difficulty(input: &[u8], vm: &RandomXVMInstance) -> Result<(Diff
 /// 1. The merkle proof and coinbase hash produce a matching merkle root
 ///
 /// If these assertions pass, a valid `MoneroPowData` instance is returned
-fn verify_header(header: &BlockHeader) -> Result<MoneroPowData, MergeMineError> {
+pub fn verify_header(header: &BlockHeader) -> Result<MoneroPowData, MergeMineError> {
     let monero_data = MoneroPowData::from_header(header)?;
-    let expected_merge_mining_hash = header.mining_hash();
+    let expected_merge_mining_hash = header.merge_mining_hash();
     let extra_field = ExtraField::try_parse(&monero_data.coinbase_tx.prefix.extra)
         .map_err(|_| MergeMineError::DeserializeError("Invalid extra field".to_string()))?;
-    // Check that the Tari MM hash is found in the monero coinbase transaction
-    let is_found = extra_field.0.iter().any(|item| match item {
-        SubField::MergeMining(Some(depth), merge_mining_hash) => {
-            depth == &VarInt(0) && merge_mining_hash.as_bytes() == expected_merge_mining_hash.as_slice()
-        },
-        _ => false,
-    });
+    // Check that the Tari MM hash is found in the Monero coinbase transaction
+    // and that only 1 Tari header is found
+
+    let mut is_found = false;
+    let mut already_seen_mmfield = false;
+    for item in extra_field.0 {
+        if let SubField::MergeMining(Some(depth), merge_mining_hash) = item {
+            if already_seen_mmfield {
+                return Err(MergeMineError::ValidationError(
+                    "More than one merge mining tag found in coinbase".to_string(),
+                ));
+            }
+            already_seen_mmfield = true;
+            if depth == VarInt(0) && merge_mining_hash.as_bytes() == expected_merge_mining_hash.as_slice() {
+                is_found = true;
+            }
+        }
+    }
 
     if !is_found {
         return Err(MergeMineError::ValidationError(
@@ -95,35 +126,57 @@ fn verify_header(header: &BlockHeader) -> Result<MoneroPowData, MergeMineError> 
     Ok(monero_data)
 }
 
-pub fn extract_tari_hash(monero: &monero::Block) -> Result<Option<monero::Hash>, MergeMineError> {
-    let extra_field = ExtraField::try_parse(&monero.miner_tx.prefix.extra)
-        .map_err(|_| MergeMineError::DeserializeError("Invalid extra field".to_string()))?;
-    for item in &extra_field.0 {
-        if let SubField::MergeMining(_depth, merge_mining_hash) = item {
-            return Ok(Some(*merge_mining_hash));
-        }
+/// Extracts the Monero block hash from the coinbase transaction's extra field
+pub fn extract_tari_hash_from_block(monero: &monero::Block) -> Result<Option<monero::Hash>, MergeMineError> {
+    // When we extract the merge mining hash, we do not care if the extra field can be parsed without error.
+    let extra_field = parse_extra_field_truncate_on_error(&monero.miner_tx.prefix.extra);
+
+    // Only one merge mining tag is allowed
+    let merge_mining_hashes: Vec<monero::Hash> = extra_field
+        .0
+        .iter()
+        .filter_map(|item| {
+            if let SubField::MergeMining(_depth, merge_mining_hash) = item {
+                Some(*merge_mining_hash)
+            } else {
+                None
+            }
+        })
+        .collect();
+    if merge_mining_hashes.len() > 1 {
+        return Err(MergeMineError::ValidationError(
+            "More than one merge mining tag found in coinbase".to_string(),
+        ));
     }
-    Ok(None)
+
+    if let Some(merge_mining_hash) = merge_mining_hashes.into_iter().next() {
+        Ok(Some(merge_mining_hash))
+    } else {
+        Ok(None)
+    }
 }
 
+/// Deserializes the given hex-encoded string into a Monero block
 pub fn deserialize_monero_block_from_hex<T>(data: T) -> Result<monero::Block, MergeMineError>
 where T: AsRef<[u8]> {
-    let bytes = hex::decode(data).map_err(|_| HexError::HexConversionError)?;
+    let bytes = hex::decode(data).map_err(|_| HexError::HexConversionError {})?;
     let obj = consensus::deserialize::<monero::Block>(&bytes)
         .map_err(|_| MergeMineError::ValidationError("blocktemplate blob invalid".to_string()))?;
     Ok(obj)
 }
 
+/// Serializes the given Monero block into a hex-encoded string
 pub fn serialize_monero_block_to_hex(obj: &monero::Block) -> Result<String, MergeMineError> {
     let data = consensus::serialize::<monero::Block>(obj);
     let bytes = hex::encode(data);
     Ok(bytes)
 }
 
+/// Constructs the Monero PoW data from the given block and seed
 pub fn construct_monero_data(block: monero::Block, seed: FixedByteArray) -> Result<MoneroPowData, MergeMineError> {
     let hashes = create_ordered_transaction_hashes_from_block(&block);
     let root = tree_hash(&hashes)?;
-    let coinbase_merkle_proof = create_merkle_proof(&hashes, &hashes[0]).ok_or_else(|| {
+    let coinbase_merkle_proof = create_merkle_proof(&hashes).ok_or_else(|| {
         MergeMineError::ValidationError(
             "create_merkle_proof returned None because the block had no coinbase (which is impossible because the \
              Block type does not allow that)"
@@ -149,14 +202,18 @@ pub fn create_blockhashing_blob_from_block(block: &monero::Block) -> Result<Stri
     Ok(hex::encode(blob))
 }
 
+/// Create a set of ordered transaction hashes from a Monero block
 pub fn create_ordered_transaction_hashes_from_block(block: &monero::Block) -> Vec<monero::Hash> {
     iter::once(block.miner_tx.hash())
         .chain(block.tx_hashes.clone())
         .collect()
 }
 
-/// Appends merge mining hash to a Monero block
-pub fn append_merge_mining_tag<T: AsRef<[u8]>>(block: &mut monero::Block, hash: T) -> Result<(), MergeMineError> {
+/// Inserts merge mining hash into a Monero block
+pub fn insert_merge_mining_tag_into_block<T: AsRef<[u8]>>(
+    block: &mut monero::Block,
+    hash: T,
+) -> Result<(), MergeMineError> {
     if hash.as_ref().len() != monero::Hash::len_bytes() {
         return Err(MergeMineError::HashingError(format!(
             "Expected source to be {} bytes, but it was {} bytes",
@@ -164,11 +221,26 @@ pub fn append_merge_mining_tag<T: AsRef<[u8]>>(block: &mut monero::Block, hash: 
             hash.as_ref().len()
         )));
     }
-    let hash = monero::Hash::from_slice(hash.as_ref());
-    let mm_tag = SubField::MergeMining(Some(VarInt(0)), hash);
+    // When we insert the merge mining tag, we need to make sure that the extra field is valid.
     let mut extra_field = ExtraField::try_parse(&block.miner_tx.prefix.extra)
         .map_err(|_| MergeMineError::DeserializeError("Invalid extra field".to_string()))?;
-    extra_field.0.push(mm_tag);
+
+    // Adding more than one merge mining tag is not allowed
+    for item in &extra_field.0 {
+        if let SubField::MergeMining(Some(_), _) = item {
+            return Err(MergeMineError::ValidationError(
+                "More than one merge mining tag in coinbase not allowed".to_string(),
+            ));
+        }
+    }
+
+    // If `SubField::Padding(n)` with `n < 255` is the last sub field in the extra field, then appending a new field
+    // will always fail deserialization (`ExtraField::try_parse`) - the new field cannot be parsed in that sequence.
+    // To circumvent this, we create a new extra field by appending the original extra field to the merge mining field
+    // instead.
+    let hash = monero::Hash::from_slice(hash.as_ref());
+    extra_field.0.insert(0, SubField::MergeMining(Some(VarInt(0)), hash));
+
     block.miner_tx.prefix.extra = extra_field.into();
     Ok(())
 }
@@ -307,8 +379,7 @@ mod test {
             prev_hash: FixedHash::zero(),
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
-            witness_mr: FixedHash::zero(),
-            output_mmr_size: 0,
+            output_smt_size: 0,
             kernel_mr: FixedHash::zero(),
             kernel_mmr_size: 0,
             input_mr: FixedHash::zero(),
@@ -317,17 +388,18 @@ mod test {
             nonce: 0,
             pow: ProofOfWork::default(),
             validator_node_mr: FixedHash::zero(),
+            validator_node_size: 0,
         };
-        let hash = block_header.mining_hash();
-        append_merge_mining_tag(&mut block, hash).unwrap();
+        let hash = block_header.merge_mining_hash();
+        insert_merge_mining_tag_into_block(&mut block, hash).unwrap();
         let hashes = create_ordered_transaction_hashes_from_block(&block);
         assert_eq!(hashes.len(), block.tx_hashes.len() + 1);
         let root = tree_hash(&hashes).unwrap();
-        let coinbase_merkle_proof = create_merkle_proof(&hashes, &hashes[0]).unwrap();
+        let coinbase_merkle_proof = create_merkle_proof(&hashes).unwrap();
 
         let monero_data = MoneroPowData {
             header: block.header,
-            randomx_key: FixedByteArray::from_bytes(&from_hex(&seed_hash).unwrap()).unwrap(),
+            randomx_key: FixedByteArray::from_canonical_bytes(&from_hex(&seed_hash).unwrap()).unwrap(),
             transaction_count: u16::try_from(hashes.len()).unwrap(),
             merkle_root: root,
             coinbase_merkle_proof,
@@ -336,7 +408,7 @@ mod test {
         let mut serialized = Vec::new();
         monero_data.serialize(&mut serialized).unwrap();
         let pow = ProofOfWork {
-            pow_algo: PowAlgorithm::Monero,
+            pow_algo: PowAlgorithm::RandomX,
             pow_data: serialized,
         };
         block_header.pow = pow;
@@ -364,8 +436,7 @@ mod test {
             prev_hash: FixedHash::zero(),
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
-            witness_mr: FixedHash::zero(),
-            output_mmr_size: 0,
+            output_smt_size: 0,
             kernel_mr: FixedHash::zero(),
             kernel_mmr_size: 0,
             input_mr: FixedHash::zero(),
@@ -374,9 +445,10 @@ mod test {
             nonce: 0,
             pow: ProofOfWork::default(),
             validator_node_mr: FixedHash::zero(),
+            validator_node_size: 0,
         };
-        let hash = block_header.mining_hash();
-        append_merge_mining_tag(&mut block, hash).unwrap();
+        let hash = block_header.merge_mining_hash();
+        insert_merge_mining_tag_into_block(&mut block, hash).unwrap();
         let count = 1 + (u16::try_from(block.tx_hashes.len()).unwrap());
         let mut hashes = Vec::with_capacity(count as usize);
         hashes.push(block.miner_tx.hash());
@@ -386,10 +458,10 @@ mod test {
         }
         let root = tree_hash(&hashes).unwrap();
         assert_eq!(root, hashes[0]);
-        let coinbase_merkle_proof = create_merkle_proof(&hashes, &hashes[0]).unwrap();
+        let coinbase_merkle_proof = create_merkle_proof(&hashes).unwrap();
         let monero_data = MoneroPowData {
             header: block.header,
-            randomx_key: FixedByteArray::from_bytes(&from_hex(&seed_hash).unwrap()).unwrap(),
+            randomx_key: FixedByteArray::from_canonical_bytes(&from_hex(&seed_hash).unwrap()).unwrap(),
             transaction_count: count,
             merkle_root: root,
             coinbase_merkle_proof,
@@ -398,7 +470,7 @@ mod test {
         let mut serialized = Vec::new();
         monero_data.serialize(&mut serialized).unwrap();
         let pow = ProofOfWork {
-            pow_algo: PowAlgorithm::Monero,
+            pow_algo: PowAlgorithm::RandomX,
             pow_data: serialized,
         };
         block_header.pow = pow;
@@ -417,8 +489,7 @@ mod test {
             prev_hash: FixedHash::zero(),
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
-            witness_mr: FixedHash::zero(),
-            output_mmr_size: 0,
+            output_smt_size: 0,
             kernel_mr: FixedHash::zero(),
             kernel_mmr_size: 0,
             input_mr: FixedHash::zero(),
@@ -427,6 +498,7 @@ mod test {
             nonce: 0,
             pow: ProofOfWork::default(),
             validator_node_mr: FixedHash::zero(),
+            validator_node_size: 0,
         };
         let count = 1 + (u16::try_from(block.tx_hashes.len()).unwrap());
         let mut hashes = Vec::with_capacity(count as usize);
@@ -435,10 +507,10 @@ mod test {
             hashes.push(item);
         }
         let root = tree_hash(&hashes).unwrap();
-        let coinbase_merkle_proof = create_merkle_proof(&hashes, &hashes[0]).unwrap();
+        let coinbase_merkle_proof = create_merkle_proof(&hashes).unwrap();
         let monero_data = MoneroPowData {
             header: block.header,
-            randomx_key: FixedByteArray::from_bytes(&from_hex(&seed_hash).unwrap()).unwrap(),
+            randomx_key: FixedByteArray::from_canonical_bytes(&from_hex(&seed_hash).unwrap()).unwrap(),
             transaction_count: count,
             merkle_root: root,
             coinbase_merkle_proof,
@@ -448,7 +520,7 @@ mod test {
         let mut serialized = Vec::new();
         monero_data.serialize(&mut serialized).unwrap();
         let pow = ProofOfWork {
-            pow_algo: PowAlgorithm::Monero,
+            pow_algo: PowAlgorithm::RandomX,
             pow_data: serialized,
         };
         block_header.pow = pow;
@@ -469,8 +541,7 @@ mod test {
             prev_hash: FixedHash::zero(),
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
-            witness_mr: FixedHash::zero(),
-            output_mmr_size: 0,
+            output_smt_size: 0,
             kernel_mr: FixedHash::zero(),
             kernel_mmr_size: 0,
             input_mr: FixedHash::zero(),
@@ -479,9 +550,10 @@ mod test {
             nonce: 0,
             pow: ProofOfWork::default(),
             validator_node_mr: FixedHash::zero(),
+            validator_node_size: 0,
         };
         let hash = Hash::null();
-        append_merge_mining_tag(&mut block, hash).unwrap();
+        insert_merge_mining_tag_into_block(&mut block, hash).unwrap();
         let count = 1 + (u16::try_from(block.tx_hashes.len()).unwrap());
         let mut hashes = Vec::with_capacity(count as usize);
         let mut proof = Vec::with_capacity(count as usize);
@@ -492,10 +564,10 @@ mod test {
             proof.push(item);
         }
         let root = tree_hash(&hashes).unwrap();
-        let coinbase_merkle_proof = create_merkle_proof(&hashes, &hashes[0]).unwrap();
+        let coinbase_merkle_proof = create_merkle_proof(&hashes).unwrap();
         let monero_data = MoneroPowData {
             header: block.header,
-            randomx_key: FixedByteArray::from_bytes(&from_hex(&seed_hash).unwrap()).unwrap(),
+            randomx_key: FixedByteArray::from_canonical_bytes(&from_hex(&seed_hash).unwrap()).unwrap(),
             transaction_count: count,
             merkle_root: root,
             coinbase_merkle_proof,
@@ -504,13 +576,149 @@ mod test {
         let mut serialized = Vec::new();
         monero_data.serialize(&mut serialized).unwrap();
         let pow = ProofOfWork {
-            pow_algo: PowAlgorithm::Monero,
+            pow_algo: PowAlgorithm::RandomX,
             pow_data: serialized,
         };
         block_header.pow = pow;
         let err = verify_header(&block_header).unwrap_err();
         unpack_enum!(MergeMineError::ValidationError(details) = err);
         assert!(details.contains("Expected merge mining tag was not found in Monero coinbase transaction"));
+    }
+
+    #[test]
+    fn test_duplicate_append_mm_tag() {
+        let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
+        let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
+        let bytes = hex::decode(blocktemplate_blob).unwrap();
+        let mut block = deserialize::<monero::Block>(&bytes[..]).unwrap();
+        let mut block_header = BlockHeader {
+            version: 0,
+            height: 0,
+            prev_hash: FixedHash::zero(),
+            timestamp: EpochTime::now(),
+            output_mr: FixedHash::zero(),
+            output_smt_size: 0,
+            kernel_mr: FixedHash::zero(),
+            kernel_mmr_size: 0,
+            input_mr: FixedHash::zero(),
+            total_kernel_offset: Default::default(),
+            total_script_offset: Default::default(),
+            nonce: 0,
+            pow: ProofOfWork::default(),
+            validator_node_mr: FixedHash::zero(),
+            validator_node_size: 0,
+        };
+        let hash = block_header.merge_mining_hash();
+        insert_merge_mining_tag_into_block(&mut block, hash).unwrap();
+        #[allow(clippy::redundant_clone)]
+        let mut block_header2 = block_header.clone();
+        block_header2.version = 1;
+        let hash2 = block_header2.merge_mining_hash();
+        assert!(extract_tari_hash_from_block(&block).is_ok());
+
+        // Try via the API - this will fail because more than one merge mining tag is not allowed
+        assert!(insert_merge_mining_tag_into_block(&mut block, hash2).is_err());
+
+        // Now bypass the API - this will effectively allow us to insert more than one merge mining tag,
+        // like trying to sneek it in. Later on, when we call `verify_header(&block_header)`, it should fail.
+        let mut extra_field = ExtraField::try_parse(&block.miner_tx.prefix.extra).unwrap();
+        let hash = monero::Hash::from_slice(hash.as_ref());
+        extra_field.0.insert(0, SubField::MergeMining(Some(VarInt(0)), hash));
+        block.miner_tx.prefix.extra = extra_field.into();
+
+        // Trying to extract the Tari hash will fail because there are more than one merge mining tag
+        let err = extract_tari_hash_from_block(&block).unwrap_err();
+        unpack_enum!(MergeMineError::ValidationError(details) = err);
+        assert!(details.contains("More than one merge mining tag found in coinbase"));
+
+        let count = 1 + (u16::try_from(block.tx_hashes.len()).unwrap());
+        let mut hashes = Vec::with_capacity(count as usize);
+        hashes.push(block.miner_tx.hash());
+        // Note: tx_hashes is empty, so |hashes| == 1
+        for item in block.clone().tx_hashes {
+            hashes.push(item);
+        }
+        let root = tree_hash(&hashes).unwrap();
+        assert_eq!(root, hashes[0]);
+        let coinbase_merkle_proof = create_merkle_proof(&hashes).unwrap();
+        let monero_data = MoneroPowData {
+            header: block.header,
+            randomx_key: FixedByteArray::from_canonical_bytes(&from_hex(&seed_hash).unwrap()).unwrap(),
+            transaction_count: count,
+            merkle_root: root,
+            coinbase_merkle_proof,
+            coinbase_tx: block.miner_tx,
+        };
+        let mut serialized = Vec::new();
+        monero_data.serialize(&mut serialized).unwrap();
+        let pow = ProofOfWork {
+            pow_algo: PowAlgorithm::RandomX,
+            pow_data: serialized,
+        };
+        block_header.pow = pow;
+
+        // Header verification will fail because there are more than one merge mining tag
+        let err = verify_header(&block_header).unwrap_err();
+        unpack_enum!(MergeMineError::ValidationError(details) = err);
+        assert!(details.contains("More than one merge mining tag found in coinbase"));
+    }
+
+    #[test]
+    fn test_extra_field_with_parsing_error() {
+        let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
+        let bytes = hex::decode(blocktemplate_blob).unwrap();
+        let mut block = deserialize::<monero::Block>(&bytes[..]).unwrap();
+        let block_header = BlockHeader {
+            version: 0,
+            height: 0,
+            prev_hash: FixedHash::zero(),
+            timestamp: EpochTime::now(),
+            output_mr: FixedHash::zero(),
+            output_smt_size: 0,
+            kernel_mr: FixedHash::zero(),
+            kernel_mmr_size: 0,
+            input_mr: FixedHash::zero(),
+            total_kernel_offset: Default::default(),
+            total_script_offset: Default::default(),
+            nonce: 0,
+            pow: ProofOfWork::default(),
+            validator_node_mr: FixedHash::zero(),
+            validator_node_size: 2,
+        };
+
+        // Let us manipulate the extra field to make it invalid
+        let mut extra_field_before_parse = ExtraField::try_parse(&block.miner_tx.prefix.extra).unwrap();
+        assert_eq!(
+            "ExtraField([TxPublicKey(06225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa4782), Nonce([246, \
+             58, 168, 109, 46, 133, 127, 7])])",
+            &format!("{:?}", extra_field_before_parse)
+        );
+        assert!(ExtraField::try_parse(&extra_field_before_parse.clone().into()).is_ok());
+
+        extra_field_before_parse.0.insert(0, SubField::Padding(230));
+        assert_eq!(
+            "ExtraField([Padding(230), TxPublicKey(06225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa4782), \
+             Nonce([246, 58, 168, 109, 46, 133, 127, 7])])",
+            &format!("{:?}", extra_field_before_parse)
+        );
+        assert!(ExtraField::try_parse(&extra_field_before_parse.clone().into()).is_err());
+
+        // Now insert the merge mining tag - this would also clean up the extra field and remove the invalid sub-fields
+        let hash = block_header.merge_mining_hash();
+        insert_merge_mining_tag_into_block(&mut block, hash).unwrap();
+        assert!(ExtraField::try_parse(&block.miner_tx.prefix.extra.clone()).is_ok());
+
+        // Verify that the merge mining tag is there
+        let extra_field_after_tag = ExtraField::try_parse(&block.miner_tx.prefix.extra.clone()).unwrap();
+        assert_eq!(
+            &format!(
+                "ExtraField([MergeMining(Some(0), 0x{}), \
+                 TxPublicKey(06225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa4782), Nonce([246, 58, 168, \
+                 109, 46, 133, 127, 7])])",
+                hex::encode(hash)
+            ),
+            &format!("{:?}", extra_field_after_tag)
+        );
     }
 
     #[test]
@@ -525,8 +733,7 @@ mod test {
             prev_hash: FixedHash::zero(),
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
-            witness_mr: FixedHash::zero(),
-            output_mmr_size: 0,
+            output_smt_size: 0,
             kernel_mr: FixedHash::zero(),
             kernel_mmr_size: 0,
             input_mr: FixedHash::zero(),
@@ -535,9 +742,10 @@ mod test {
             nonce: 0,
             pow: ProofOfWork::default(),
             validator_node_mr: FixedHash::zero(),
+            validator_node_size: 0,
         };
-        let hash = block_header.mining_hash();
-        append_merge_mining_tag(&mut block, hash).unwrap();
+        let hash = block_header.merge_mining_hash();
+        insert_merge_mining_tag_into_block(&mut block, hash).unwrap();
         let count = 1 + (u16::try_from(block.tx_hashes.len()).unwrap());
         let mut hashes = Vec::with_capacity(count as usize);
         let mut proof = Vec::with_capacity(count as usize);
@@ -548,10 +756,10 @@ mod test {
             proof.push(item);
         }
         let root = tree_hash(&hashes).unwrap();
-        let coinbase_merkle_proof = create_merkle_proof(&hashes, &hashes[0]).unwrap();
+        let coinbase_merkle_proof = create_merkle_proof(&hashes).unwrap();
         let monero_data = MoneroPowData {
             header: block.header,
-            randomx_key: FixedByteArray::from_bytes(&from_hex(&seed_hash).unwrap()).unwrap(),
+            randomx_key: FixedByteArray::from_canonical_bytes(&from_hex(&seed_hash).unwrap()).unwrap(),
             transaction_count: count,
             merkle_root: root,
             coinbase_merkle_proof,
@@ -560,7 +768,7 @@ mod test {
         let mut serialized = Vec::new();
         monero_data.serialize(&mut serialized).unwrap();
         let pow = ProofOfWork {
-            pow_algo: PowAlgorithm::Monero,
+            pow_algo: PowAlgorithm::RandomX,
             pow_data: serialized,
         };
         block_header.pow = pow;
@@ -577,8 +785,7 @@ mod test {
             prev_hash: FixedHash::zero(),
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
-            witness_mr: FixedHash::zero(),
-            output_mmr_size: 0,
+            output_smt_size: 0,
             kernel_mr: FixedHash::zero(),
             kernel_mmr_size: 0,
             input_mr: FixedHash::zero(),
@@ -587,19 +794,20 @@ mod test {
             nonce: 0,
             pow: ProofOfWork::default(),
             validator_node_mr: FixedHash::zero(),
+            validator_node_size: 0,
         };
         let monero_data = MoneroPowData {
             header: Default::default(),
             randomx_key: FixedByteArray::default(),
             transaction_count: 1,
             merkle_root: Default::default(),
-            coinbase_merkle_proof: create_merkle_proof(&[Hash::null()], &Hash::null()).unwrap(),
+            coinbase_merkle_proof: create_merkle_proof(&[Hash::null()]).unwrap(),
             coinbase_tx: Default::default(),
         };
         let mut serialized = Vec::new();
         monero_data.serialize(&mut serialized).unwrap();
         let pow = ProofOfWork {
-            pow_algo: PowAlgorithm::Monero,
+            pow_algo: PowAlgorithm::RandomX,
             pow_data: serialized,
         };
         block_header.pow = pow;
@@ -620,8 +828,7 @@ mod test {
             prev_hash: FixedHash::zero(),
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
-            witness_mr: FixedHash::zero(),
-            output_mmr_size: 0,
+            output_smt_size: 0,
             kernel_mr: FixedHash::zero(),
             kernel_mmr_size: 0,
             input_mr: FixedHash::zero(),
@@ -630,9 +837,10 @@ mod test {
             nonce: 0,
             pow: ProofOfWork::default(),
             validator_node_mr: FixedHash::zero(),
+            validator_node_size: 0,
         };
-        let hash = block_header.mining_hash();
-        append_merge_mining_tag(&mut block, hash).unwrap();
+        let hash = block_header.merge_mining_hash();
+        insert_merge_mining_tag_into_block(&mut block, hash).unwrap();
         let count = 1 + (u16::try_from(block.tx_hashes.len()).unwrap());
         let mut hashes = Vec::with_capacity(count as usize);
         let mut proof = Vec::with_capacity(count as usize);
@@ -643,10 +851,10 @@ mod test {
             proof.push(item);
         }
 
-        let coinbase_merkle_proof = create_merkle_proof(&hashes, &hashes[0]).unwrap();
+        let coinbase_merkle_proof = create_merkle_proof(&hashes).unwrap();
         let monero_data = MoneroPowData {
             header: block.header,
-            randomx_key: FixedByteArray::from_bytes(&from_hex(&seed_hash).unwrap()).unwrap(),
+            randomx_key: FixedByteArray::from_canonical_bytes(&from_hex(&seed_hash).unwrap()).unwrap(),
             transaction_count: count,
             merkle_root: Hash::null(),
             coinbase_merkle_proof,
@@ -655,7 +863,7 @@ mod test {
         let mut serialized = Vec::new();
         monero_data.serialize(&mut serialized).unwrap();
         let pow = ProofOfWork {
-            pow_algo: PowAlgorithm::Monero,
+            pow_algo: PowAlgorithm::RandomX,
             pow_data: serialized,
         };
         block_header.pow = pow;

@@ -23,7 +23,7 @@
 use std::fmt::{Display, Error, Formatter};
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{BlindingFactor, BlockHash};
+use tari_common_types::types::{BlockHash, PrivateKey};
 use tari_utilities::hex::Hex;
 
 use crate::{blocks::block_header::BlockHeader, proof_of_work::ProofOfWork};
@@ -40,9 +40,9 @@ pub struct NewBlockHeaderTemplate {
     pub prev_hash: BlockHash,
     /// Total accumulated sum of kernel offsets since genesis block. We can derive the kernel offset sum for *this*
     /// block from the total kernel offset of the previous block header.
-    pub total_kernel_offset: BlindingFactor,
+    pub total_kernel_offset: PrivateKey,
     /// Sum of script offsets for all kernels in this block.
-    pub total_script_offset: BlindingFactor,
+    pub total_script_offset: PrivateKey,
     /// Proof of work summary
     pub pow: ProofOfWork,
 }

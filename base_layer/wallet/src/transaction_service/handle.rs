@@ -36,11 +36,19 @@ use tari_common_types::{
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::{
+    consensus::{MaxSizeBytes, MaxSizeString},
     mempool::FeePerGramStat,
     proto,
     transactions::{
-        tari_amount::MicroTari,
-        transaction_components::{OutputFeatures, Transaction, TransactionOutput},
+        tari_amount::MicroMinotari,
+        transaction_components::{
+            BuildInfo,
+            CodeTemplateRegistration,
+            OutputFeatures,
+            TemplateType,
+            Transaction,
+            TransactionOutput,
+        },
     },
 };
 use tari_service_framework::reply_channel::SenderService;
@@ -76,47 +84,58 @@ pub enum TransactionServiceRequest {
     GetAnyTransaction(TxId),
     SendTransaction {
         destination: TariAddress,
-        amount: MicroTari,
+        amount: MicroMinotari,
         selection_criteria: UtxoSelectionCriteria,
         output_features: Box<OutputFeatures>,
-        fee_per_gram: MicroTari,
+        fee_per_gram: MicroMinotari,
         message: String,
     },
     BurnTari {
-        amount: MicroTari,
+        amount: MicroMinotari,
         selection_criteria: UtxoSelectionCriteria,
-        fee_per_gram: MicroTari,
+        fee_per_gram: MicroMinotari,
         message: String,
         claim_public_key: Option<PublicKey>,
     },
     RegisterValidatorNode {
-        amount: MicroTari,
+        amount: MicroMinotari,
         validator_node_public_key: CommsPublicKey,
         validator_node_signature: Signature,
         selection_criteria: UtxoSelectionCriteria,
-        fee_per_gram: MicroTari,
+        fee_per_gram: MicroMinotari,
         message: String,
+    },
+    RegisterCodeTemplate {
+        author_public_key: PublicKey,
+        author_signature: Signature,
+        template_name: MaxSizeString<32>,
+        template_version: u16,
+        template_type: TemplateType,
+        build_info: BuildInfo,
+        binary_sha: MaxSizeBytes<32>,
+        binary_url: MaxSizeString<255>,
+        fee_per_gram: MicroMinotari,
     },
     SendOneSidedTransaction {
         destination: TariAddress,
-        amount: MicroTari,
+        amount: MicroMinotari,
         selection_criteria: UtxoSelectionCriteria,
         output_features: Box<OutputFeatures>,
-        fee_per_gram: MicroTari,
+        fee_per_gram: MicroMinotari,
         message: String,
     },
     SendOneSidedToStealthAddressTransaction {
         destination: TariAddress,
-        amount: MicroTari,
+        amount: MicroMinotari,
         selection_criteria: UtxoSelectionCriteria,
         output_features: Box<OutputFeatures>,
-        fee_per_gram: MicroTari,
+        fee_per_gram: MicroMinotari,
         message: String,
     },
-    SendShaAtomicSwapTransaction(TariAddress, MicroTari, UtxoSelectionCriteria, MicroTari, String),
+    SendShaAtomicSwapTransaction(TariAddress, MicroMinotari, UtxoSelectionCriteria, MicroMinotari, String),
     CancelTransaction(TxId),
     ImportUtxoWithStatus {
-        amount: MicroTari,
+        amount: MicroMinotari,
         source_address: TariAddress,
         message: String,
         maturity: Option<u64>,
@@ -125,12 +144,12 @@ pub enum TransactionServiceRequest {
         current_height: Option<u64>,
         mined_timestamp: Option<NaiveDateTime>,
     },
-    SubmitTransactionToSelf(TxId, Transaction, MicroTari, MicroTari, String),
+    SubmitTransactionToSelf(TxId, Transaction, MicroMinotari, MicroMinotari, String),
     SetLowPowerMode,
     SetNormalPowerMode,
     GenerateCoinbaseTransaction {
-        reward: MicroTari,
-        fees: MicroTari,
+        reward: MicroMinotari,
+        fees: MicroMinotari,
         block_height: u64,
         extra: Vec<u8>,
     },
@@ -229,6 +248,9 @@ impl fmt::Display for TransactionServiceRequest {
             Self::GetFeePerGramStatsPerBlock { count } => {
                 write!(f, "GetFeePerGramEstimatesPerBlock(count: {})", count,)
             },
+            TransactionServiceRequest::RegisterCodeTemplate { template_name, .. } => {
+                write!(f, "RegisterCodeTemplate: {}", template_name)
+            },
         }
     }
 }
@@ -237,7 +259,14 @@ impl fmt::Display for TransactionServiceRequest {
 #[derive(Debug)]
 pub enum TransactionServiceResponse {
     TransactionSent(TxId),
-    BurntTransactionSent { tx_id: TxId, proof: Box<BurntProof> },
+    BurntTransactionSent {
+        tx_id: TxId,
+        proof: Box<BurntProof>,
+    },
+    TemplateRegistrationTransactionSent {
+        tx_id: TxId,
+        template_registration: Box<CodeTemplateRegistration>,
+    },
     TransactionCancelled,
     PendingInboundTransactions(HashMap<TxId, InboundTransaction>),
     PendingOutboundTransactions(HashMap<TxId, OutboundTransaction>),
@@ -440,10 +469,10 @@ impl TransactionServiceHandle {
     pub async fn send_transaction(
         &mut self,
         destination: TariAddress,
-        amount: MicroTari,
+        amount: MicroMinotari,
         selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
-        fee_per_gram: MicroTari,
+        fee_per_gram: MicroMinotari,
         message: String,
     ) -> Result<TxId, TransactionServiceError> {
         match self
@@ -465,11 +494,11 @@ impl TransactionServiceHandle {
 
     pub async fn register_validator_node(
         &mut self,
-        amount: MicroTari,
+        amount: MicroMinotari,
         validator_node_public_key: PublicKey,
         validator_node_signature: Signature,
         selection_criteria: UtxoSelectionCriteria,
-        fee_per_gram: MicroTari,
+        fee_per_gram: MicroMinotari,
         message: String,
     ) -> Result<TxId, TransactionServiceError> {
         match self
@@ -489,13 +518,45 @@ impl TransactionServiceHandle {
         }
     }
 
+    pub async fn register_code_template(
+        &mut self,
+        author_public_key: PublicKey,
+        author_signature: Signature,
+        template_name: MaxSizeString<32>,
+        template_version: u16,
+        template_type: TemplateType,
+        build_info: BuildInfo,
+        binary_sha: MaxSizeBytes<32>,
+        binary_url: MaxSizeString<255>,
+        fee_per_gram: MicroMinotari,
+    ) -> Result<TxId, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::RegisterCodeTemplate {
+                author_public_key,
+                author_signature,
+                template_name,
+                template_version,
+                template_type,
+                build_info,
+                binary_sha,
+                binary_url,
+                fee_per_gram,
+            })
+            .await??
+        {
+            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
     pub async fn send_one_sided_transaction(
         &mut self,
         destination: TariAddress,
-        amount: MicroTari,
+        amount: MicroMinotari,
         selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
-        fee_per_gram: MicroTari,
+        fee_per_gram: MicroMinotari,
         message: String,
     ) -> Result<TxId, TransactionServiceError> {
         match self
@@ -518,9 +579,9 @@ impl TransactionServiceHandle {
     /// Burns the given amount of Tari from the wallet
     pub async fn burn_tari(
         &mut self,
-        amount: MicroTari,
+        amount: MicroMinotari,
         selection_criteria: UtxoSelectionCriteria,
-        fee_per_gram: MicroTari,
+        fee_per_gram: MicroMinotari,
         message: String,
         claim_public_key: Option<PublicKey>,
     ) -> Result<(TxId, BurntProof), TransactionServiceError> {
@@ -543,10 +604,10 @@ impl TransactionServiceHandle {
     pub async fn send_one_sided_to_stealth_address_transaction(
         &mut self,
         destination: TariAddress,
-        amount: MicroTari,
+        amount: MicroMinotari,
         selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
-        fee_per_gram: MicroTari,
+        fee_per_gram: MicroMinotari,
         message: String,
     ) -> Result<TxId, TransactionServiceError> {
         match self
@@ -685,7 +746,7 @@ impl TransactionServiceHandle {
 
     pub async fn import_utxo_with_status(
         &mut self,
-        amount: MicroTari,
+        amount: MicroMinotari,
         source_address: TariAddress,
         message: String,
         maturity: Option<u64>,
@@ -717,10 +778,10 @@ impl TransactionServiceHandle {
         &mut self,
         tx_id: TxId,
         tx: Transaction,
-        amount: MicroTari,
+        amount: MicroMinotari,
         message: String,
     ) -> Result<(), TransactionServiceError> {
-        let fee = tx.body.get_total_fee();
+        let fee = tx.body.get_total_fee()?;
         match self
             .handle
             .call(TransactionServiceRequest::SubmitTransactionToSelf(
@@ -786,8 +847,8 @@ impl TransactionServiceHandle {
 
     pub async fn generate_coinbase_transaction(
         &mut self,
-        reward: MicroTari,
-        fees: MicroTari,
+        reward: MicroMinotari,
+        fees: MicroMinotari,
         block_height: u64,
         extra: Vec<u8>,
     ) -> Result<Transaction, TransactionServiceError> {
@@ -842,9 +903,9 @@ impl TransactionServiceHandle {
     pub async fn send_sha_atomic_swap_transaction(
         &mut self,
         destination: TariAddress,
-        amount: MicroTari,
+        amount: MicroMinotari,
         selection_criteria: UtxoSelectionCriteria,
-        fee_per_gram: MicroTari,
+        fee_per_gram: MicroMinotari,
         message: String,
     ) -> Result<(TxId, PublicKey, TransactionOutput), TransactionServiceError> {
         match self

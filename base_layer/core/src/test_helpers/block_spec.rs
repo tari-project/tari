@@ -22,7 +22,7 @@
 
 use crate::{
     proof_of_work::Difficulty,
-    transactions::{tari_amount::MicroTari, transaction_components::Transaction},
+    transactions::{tari_amount::MicroMinotari, transaction_components::Transaction},
 };
 
 pub struct BlockSpecs {
@@ -64,7 +64,7 @@ impl<'a> From<&'a [(&'static str, u64, u64)]> for BlockSpecs {
                     BlockSpec::builder()
                         .with_name(name)
                         .with_block_time(*time)
-                        .with_difficulty((*diff).into())
+                        .with_difficulty(Difficulty::from_u64(*diff).unwrap())
                         .finish()
                 })
                 .collect(),
@@ -167,7 +167,7 @@ pub struct BlockSpec {
     pub parent: &'static str,
     pub difficulty: Difficulty,
     pub block_time: u64,
-    pub reward_override: Option<MicroTari>,
+    pub reward_override: Option<MicroMinotari>,
     pub height_override: Option<u64>,
     pub transactions: Vec<Transaction>,
     pub skip_coinbase: bool,
@@ -212,7 +212,7 @@ impl BlockSpec {
         self
     }
 
-    pub fn with_reward(mut self, reward: MicroTari) -> Self {
+    pub fn with_reward(mut self, reward: MicroMinotari) -> Self {
         self.reward_override = Some(reward);
         self
     }
@@ -237,7 +237,7 @@ impl Default for BlockSpec {
         Self {
             name: "<unnamed>",
             parent: "",
-            difficulty: 1.into(),
+            difficulty: Difficulty::min(),
             block_time: 120,
             height_override: None,
             reward_override: None,

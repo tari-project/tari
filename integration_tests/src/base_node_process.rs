@@ -29,10 +29,10 @@ use std::{
     time::Duration,
 };
 
+use minotari_app_utilities::identity_management::save_as_json;
+use minotari_node::{run_base_node, BaseNodeConfig, MetricsConfig};
+use minotari_node_grpc_client::BaseNodeGrpcClient;
 use rand::rngs::OsRng;
-use tari_app_utilities::identity_management::save_as_json;
-use tari_base_node::{run_base_node, BaseNodeConfig, MetricsConfig};
-use tari_base_node_grpc_client::BaseNodeGrpcClient;
 use tari_common::configuration::{CommonConfig, MultiaddrList};
 use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, NodeIdentity};
 use tari_comms_dht::{DbConnectionUrl, DhtConfig};
@@ -80,6 +80,7 @@ pub async fn spawn_base_node(world: &mut TariWorld, is_seed_node: bool, bn_name:
     spawn_base_node_with_config(world, is_seed_node, bn_name, peers, BaseNodeConfig::default()).await;
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn spawn_base_node_with_config(
     world: &mut TariWorld,
     is_seed_node: bool,
@@ -140,7 +141,7 @@ pub async fn spawn_base_node_with_config(
     let mut common_config = CommonConfig::default();
     common_config.base_path = temp_dir_path.clone();
     task::spawn(async move {
-        let mut base_node_config = tari_base_node::ApplicationConfig {
+        let mut base_node_config = minotari_node::ApplicationConfig {
             common: common_config,
             auto_update: AutoUpdateConfig::default(),
             base_node: base_node_config,
@@ -184,6 +185,8 @@ pub async fn spawn_base_node_with_config(
             base_node_config.base_node.storage.pruning_interval = 1;
         };
 
+        base_node_config.base_node.grpc_server_deny_methods = vec![];
+
         // Heirachically set the base path for all configs
         base_node_config.base_node.set_base_path(temp_dir_path.clone());
 
@@ -207,12 +210,6 @@ pub async fn spawn_base_node_with_config(
     wait_for_service(port).await;
     wait_for_service(grpc_port).await;
 }
-
-// pub async fn get_base_node_client(port: u64) -> GrpcBaseNodeClient {
-//     let endpoint: SocketAddr = format!("127.0.0.1:{}", port).parse().unwrap();
-//     GrpcBaseNodeClient::new(endpoint)
-// todo!()
-// }
 
 impl BaseNodeProcess {
     pub async fn get_grpc_client(&self) -> anyhow::Result<BaseNodeGrpcClient<Channel>> {

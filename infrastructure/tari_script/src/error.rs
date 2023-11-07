@@ -49,6 +49,8 @@ pub enum ScriptError {
     VerifyFailed,
     #[error("as_hash requires a Digest function that returns at least 32 bytes")]
     InvalidDigest,
+    #[error("A compare opcode failed, aborting the script immediately with reason: `{0}`")]
+    CompareFailed(String),
 }
 
 impl From<TryFromIntError> for ScriptError {

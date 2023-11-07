@@ -47,14 +47,14 @@ impl MempoolHandle {
 
     pub async fn get_stats(&mut self) -> Result<StatsResponse, MempoolServiceError> {
         match self.inner.call(MempoolRequest::GetStats).await?? {
-            MempoolResponse::Stats(resp) => Ok(resp),
+            MempoolResponse::Stats(response) => Ok(response),
             _ => panic!("Incorrect response"),
         }
     }
 
     pub async fn get_state(&mut self) -> Result<StateResponse, MempoolServiceError> {
         match self.inner.call(MempoolRequest::GetState).await?? {
-            MempoolResponse::State(resp) => Ok(resp),
+            MempoolResponse::State(response) => Ok(response),
             _ => panic!("Incorrect response"),
         }
     }
@@ -64,7 +64,7 @@ impl MempoolHandle {
         sig: Signature,
     ) -> Result<TxStorageResponse, MempoolServiceError> {
         match self.inner.call(MempoolRequest::GetTxStateByExcessSig(sig)).await?? {
-            MempoolResponse::TxStorage(resp) => Ok(resp),
+            MempoolResponse::TxStorage(response) => Ok(response),
             _ => panic!("Incorrect response"),
         }
     }
@@ -78,7 +78,7 @@ impl MempoolHandle {
             .call(MempoolRequest::SubmitTransaction(transaction))
             .await??
         {
-            MempoolResponse::TxStorage(resp) => Ok(resp),
+            MempoolResponse::TxStorage(response) => Ok(response),
             _ => panic!("Incorrect response"),
         }
     }

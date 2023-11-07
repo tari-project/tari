@@ -16,7 +16,7 @@ import "common.proto";
 message JoinMessage {
     bytes public_key =1;
     repeated bytes addresses = 2;
-    uint64 peer_features = 3;
+    uint32 peer_features = 3;
     uint64 nonce = 4;
     tari.dht.common.IdentitySignature identity_signature = 5;
 }
@@ -29,7 +29,7 @@ message JoinMessage {
 message DiscoveryMessage {
     bytes public_key =1;
     repeated bytes addresses = 2;
-    uint64 peer_features = 3;
+    uint32 peer_features = 3;
     uint64 nonce = 4;
     tari.dht.common.IdentitySignature identity_signature = 5;
 }
@@ -37,7 +37,7 @@ message DiscoveryMessage {
 message DiscoveryResponseMessage {
     bytes public_key = 1;
     repeated bytes addresses = 2;
-    uint64 peer_features = 3;
+    uint32 peer_features = 3;
     uint64 nonce = 4;
     tari.dht.common.IdentitySignature identity_signature = 5;
 }

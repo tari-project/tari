@@ -30,10 +30,10 @@ pub use backend::OutputManagerBackend;
 use log::*;
 use tari_common_types::{
     transaction::TxId,
-    types::{BlindingFactor, Commitment, HashOutput},
+    types::{Commitment, HashOutput},
 };
 use tari_core::transactions::{
-    tari_amount::MicroTari,
+    tari_amount::MicroMinotari,
     transaction_components::{OutputType, TransactionOutput},
 };
 use tari_utilities::hex::Hex;
@@ -43,7 +43,7 @@ use crate::output_manager_service::{
     input_selection::UtxoSelectionCriteria,
     service::Balance,
     storage::{
-        models::{DbUnblindedOutput, KnownOneSidedPaymentScript},
+        models::{DbWalletOutput, KnownOneSidedPaymentScript},
         OutputStatus,
     },
 };
@@ -83,8 +83,8 @@ impl Default for OutputBackendQuery {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DbKey {
-    SpentOutput(BlindingFactor),
-    UnspentOutput(BlindingFactor),
+    SpentOutput(String),
+    UnspentOutput(String),
     UnspentOutputHash(HashOutput),
     AnyOutputByCommitment(Commitment),
     TimeLockedUnspentOutputs(u64),
@@ -97,20 +97,20 @@ pub enum DbKey {
 
 #[derive(Debug)]
 pub enum DbValue {
-    SpentOutput(Box<DbUnblindedOutput>),
-    UnspentOutput(Box<DbUnblindedOutput>),
-    UnspentOutputs(Vec<DbUnblindedOutput>),
-    SpentOutputs(Vec<DbUnblindedOutput>),
-    InvalidOutputs(Vec<DbUnblindedOutput>),
+    SpentOutput(Box<DbWalletOutput>),
+    UnspentOutput(Box<DbWalletOutput>),
+    UnspentOutputs(Vec<DbWalletOutput>),
+    SpentOutputs(Vec<DbWalletOutput>),
+    InvalidOutputs(Vec<DbWalletOutput>),
     KnownOneSidedPaymentScripts(Vec<KnownOneSidedPaymentScript>),
-    AnyOutput(Box<DbUnblindedOutput>),
-    AnyOutputs(Vec<DbUnblindedOutput>),
+    AnyOutput(Box<DbWalletOutput>),
+    AnyOutputs(Vec<DbWalletOutput>),
 }
 
 pub enum DbKeyValuePair {
-    UnspentOutput(Commitment, Box<DbUnblindedOutput>),
-    UnspentOutputWithTxId(Commitment, (TxId, Box<DbUnblindedOutput>)),
-    OutputToBeReceived(Commitment, (TxId, Box<DbUnblindedOutput>, Option<u64>)),
+    UnspentOutput(Commitment, Box<DbWalletOutput>),
+    UnspentOutputWithTxId(Commitment, (TxId, Box<DbWalletOutput>)),
+    OutputToBeReceived(Commitment, (TxId, Box<DbWalletOutput>, Option<u64>)),
     KnownOneSidedPaymentScripts(KnownOneSidedPaymentScript),
 }
 
@@ -133,7 +133,7 @@ where T: OutputManagerBackend + 'static
         Self { db: Arc::new(db) }
     }
 
-    pub fn add_unspent_output(&self, output: DbUnblindedOutput) -> Result<(), OutputManagerStorageError> {
+    pub fn add_unspent_output(&self, output: DbWalletOutput) -> Result<(), OutputManagerStorageError> {
         self.db.write(WriteOperation::Insert(DbKeyValuePair::UnspentOutput(
             output.commitment.clone(),
             Box::new(output),
@@ -145,7 +145,7 @@ where T: OutputManagerBackend + 'static
     pub fn add_unspent_output_with_tx_id(
         &self,
         tx_id: TxId,
-        output: DbUnblindedOutput,
+        output: DbWalletOutput,
     ) -> Result<(), OutputManagerStorageError> {
         self.db
             .write(WriteOperation::Insert(DbKeyValuePair::UnspentOutputWithTxId(
@@ -156,12 +156,23 @@ where T: OutputManagerBackend + 'static
         Ok(())
     }
 
-    pub fn add_unvalidated_output(
+    pub fn add_unvalidated_output(&self, tx_id: TxId, output: DbWalletOutput) -> Result<(), OutputManagerStorageError> {
+        self.db.add_unvalidated_output(output, tx_id)?;
+
+        Ok(())
+    }
+
+    pub fn add_output_to_be_received_remove_this(
         &self,
         tx_id: TxId,
-        output: DbUnblindedOutput,
+        output: DbWalletOutput,
+        coinbase_block_height: Option<u64>,
     ) -> Result<(), OutputManagerStorageError> {
-        self.db.add_unvalidated_output(output, tx_id)?;
+        self.db
+            .write(WriteOperation::Insert(DbKeyValuePair::OutputToBeReceived(
+                output.commitment.clone(),
+                (tx_id, Box::new(output), coinbase_block_height),
+            )))?;
 
         Ok(())
     }
@@ -169,7 +180,7 @@ where T: OutputManagerBackend + 'static
     pub fn add_output_to_be_received(
         &self,
         tx_id: TxId,
-        output: DbUnblindedOutput,
+        output: DbWalletOutput,
         coinbase_block_height: Option<u64>,
     ) -> Result<(), OutputManagerStorageError> {
         self.db
@@ -193,8 +204,8 @@ where T: OutputManagerBackend + 'static
     pub fn encumber_outputs(
         &self,
         tx_id: TxId,
-        outputs_to_send: Vec<DbUnblindedOutput>,
-        outputs_to_receive: Vec<DbUnblindedOutput>,
+        outputs_to_send: Vec<DbWalletOutput>,
+        outputs_to_receive: Vec<DbWalletOutput>,
     ) -> Result<(), OutputManagerStorageError> {
         self.db
             .short_term_encumber_outputs(tx_id, &outputs_to_send, &outputs_to_receive)
@@ -218,7 +229,7 @@ where T: OutputManagerBackend + 'static
         self.db.cancel_pending_transaction(tx_id)
     }
 
-    pub fn fetch_all_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+    pub fn fetch_all_unspent_outputs(&self) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError> {
         let result = match self.db.fetch(&DbKey::UnspentOutputs)? {
             Some(DbValue::UnspentOutputs(outputs)) => outputs,
             Some(other) => return unexpected_result(DbKey::UnspentOutputs, other),
@@ -227,7 +238,7 @@ where T: OutputManagerBackend + 'static
         Ok(result)
     }
 
-    pub fn fetch_by_commitment(&self, commitment: Commitment) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
+    pub fn fetch_by_commitment(&self, commitment: Commitment) -> Result<DbWalletOutput, OutputManagerStorageError> {
         let req = DbKey::AnyOutputByCommitment(commitment);
         match self.db.fetch(&req)? {
             Some(DbValue::AnyOutput(output)) => Ok(*output),
@@ -236,10 +247,7 @@ where T: OutputManagerBackend + 'static
         }
     }
 
-    pub fn fetch_with_features(
-        &self,
-        feature: OutputType,
-    ) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+    pub fn fetch_with_features(&self, feature: OutputType) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError> {
         self.db.fetch_with_features(feature)
     }
 
@@ -247,16 +255,16 @@ where T: OutputManagerBackend + 'static
     pub fn fetch_unspent_outputs_for_spending(
         &self,
         selection_criteria: &UtxoSelectionCriteria,
-        amount: MicroTari,
+        amount: MicroMinotari,
         tip_height: Option<u64>,
-    ) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+    ) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError> {
         let utxos = self
             .db
             .fetch_unspent_outputs_for_spending(selection_criteria, amount.as_u64(), tip_height)?;
         Ok(utxos)
     }
 
-    pub fn fetch_spent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+    pub fn fetch_spent_outputs(&self) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError> {
         let uo = match self.db.fetch(&DbKey::SpentOutputs) {
             Ok(None) => log_error(
                 DbKey::SpentOutputs,
@@ -269,28 +277,28 @@ where T: OutputManagerBackend + 'static
         Ok(uo)
     }
 
-    pub fn fetch_unconfirmed_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+    pub fn fetch_unconfirmed_outputs(&self) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError> {
         let utxos = self.db.fetch_unspent_mined_unconfirmed_outputs()?;
         Ok(utxos)
     }
 
-    pub fn fetch_sorted_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+    pub fn fetch_sorted_unspent_outputs(&self) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError> {
         let mut utxos = self.db.fetch_sorted_unspent_outputs()?;
         utxos.sort();
         Ok(utxos)
     }
 
-    pub fn fetch_mined_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+    pub fn fetch_mined_unspent_outputs(&self) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError> {
         let utxos = self.db.fetch_mined_unspent_outputs()?;
         Ok(utxos)
     }
 
-    pub fn fetch_invalid_outputs(&self, timestamp: i64) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+    pub fn fetch_invalid_outputs(&self, timestamp: i64) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError> {
         let utxos = self.db.fetch_invalid_outputs(timestamp)?;
         Ok(utxos)
     }
 
-    pub fn get_timelocked_outputs(&self, tip: u64) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+    pub fn get_timelocked_outputs(&self, tip: u64) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError> {
         let uo = match self.db.fetch(&DbKey::TimeLockedUnspentOutputs(tip)) {
             Ok(None) => log_error(
                 DbKey::UnspentOutputs,
@@ -303,7 +311,7 @@ where T: OutputManagerBackend + 'static
         Ok(uo)
     }
 
-    pub fn get_invalid_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+    pub fn get_invalid_outputs(&self) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError> {
         let uo = match self.db.fetch(&DbKey::InvalidOutputs) {
             Ok(None) => log_error(
                 DbKey::InvalidOutputs,
@@ -343,7 +351,7 @@ where T: OutputManagerBackend + 'static
         Ok(scripts)
     }
 
-    pub fn get_unspent_output(&self, output: HashOutput) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
+    pub fn get_unspent_output(&self, output: HashOutput) -> Result<DbWalletOutput, OutputManagerStorageError> {
         let uo = match self.db.fetch(&DbKey::UnspentOutputHash(output)) {
             Ok(None) => log_error(
                 DbKey::UnspentOutputHash(output),
@@ -358,11 +366,11 @@ where T: OutputManagerBackend + 'static
         Ok(*uo)
     }
 
-    pub fn get_last_mined_output(&self) -> Result<Option<DbUnblindedOutput>, OutputManagerStorageError> {
+    pub fn get_last_mined_output(&self) -> Result<Option<DbWalletOutput>, OutputManagerStorageError> {
         self.db.get_last_mined_output()
     }
 
-    pub fn get_last_spent_output(&self) -> Result<Option<DbUnblindedOutput>, OutputManagerStorageError> {
+    pub fn get_last_spent_output(&self) -> Result<Option<DbWalletOutput>, OutputManagerStorageError> {
         self.db.get_last_spent_output()
     }
 
@@ -393,19 +401,11 @@ where T: OutputManagerBackend + 'static
         hash: HashOutput,
         mined_height: u64,
         mined_in_block: HashOutput,
-        mmr_position: u64,
         confirmed: bool,
         mined_timestamp: u64,
     ) -> Result<(), OutputManagerStorageError> {
         let db = self.db.clone();
-        db.set_received_output_mined_height_and_status(
-            hash,
-            mined_height,
-            mined_in_block,
-            mmr_position,
-            confirmed,
-            mined_timestamp,
-        )?;
+        db.set_received_output_mined_height_and_status(hash, mined_height, mined_in_block, confirmed, mined_timestamp)?;
         Ok(())
     }
 
@@ -451,12 +451,12 @@ where T: OutputManagerBackend + 'static
         Ok(())
     }
 
-    pub fn fetch_outputs_by_tx_id(&self, tx_id: TxId) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+    pub fn fetch_outputs_by_tx_id(&self, tx_id: TxId) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError> {
         let outputs = self.db.fetch_outputs_by_tx_id(tx_id)?;
         Ok(outputs)
     }
 
-    pub fn fetch_outputs_by(&self, q: OutputBackendQuery) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+    pub fn fetch_outputs_by(&self, q: OutputBackendQuery) -> Result<Vec<DbWalletOutput>, OutputManagerStorageError> {
         self.db.fetch_outputs_by(q)
     }
 }

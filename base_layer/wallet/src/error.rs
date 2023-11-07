@@ -90,7 +90,7 @@ pub enum WalletError {
     #[error("Transaction Error: {0}")]
     TransactionError(#[from] TransactionError),
     #[error("Byte array error")]
-    ByteArrayError(#[from] tari_utilities::ByteArrayError),
+    ByteArrayError(String),
     #[error("Utxo Scanner Error: {0}")]
     UtxoScannerError(#[from] UtxoScannerError),
     #[error("Key manager error: `{0}`")]
@@ -105,7 +105,12 @@ pub enum WalletError {
     PublicAddressNotSet,
 }
 
-pub const LOG_TARGET: &str = "tari::application";
+pub const LOG_TARGET: &str = "minotari::application";
+impl From<ByteArrayError> for WalletError {
+    fn from(err: ByteArrayError) -> Self {
+        Self::ByteArrayError(err.to_string())
+    }
+}
 
 impl From<WalletError> for ExitError {
     fn from(err: WalletError) -> Self {
@@ -149,7 +154,7 @@ pub enum WalletStorageError {
     #[error("The storage path was invalid unicode or not supported by the host OS")]
     InvalidUnicodePath,
     #[error("Hex error: `{0}`")]
-    HexError(#[from] HexError),
+    HexError(String),
     #[error("Invalid Encryption Cipher was provided to database")]
     InvalidEncryptionCipher,
     #[error("Invalid passphrase was provided")]
@@ -161,7 +166,7 @@ pub enum WalletStorageError {
     #[error("Wallet db is already encrypted and cannot be encrypted until the previous encryption is removed")]
     AlreadyEncrypted,
     #[error("Byte array error: `{0}`")]
-    ByteArrayError(#[from] ByteArrayError),
+    ByteArrayError(String),
     #[error("Cannot acquire exclusive file lock, another instance of the application is already running")]
     CannotAcquireFileLock,
     #[error("Database file cannot be a root path")]
@@ -178,6 +183,18 @@ pub enum WalletStorageError {
     RecoverySeedError(String),
     #[error("Bad encryption version: `{0}`")]
     BadEncryptionVersion(String),
+}
+
+impl From<HexError> for WalletStorageError {
+    fn from(err: HexError) -> Self {
+        WalletStorageError::HexError(err.to_string())
+    }
+}
+
+impl From<ByteArrayError> for WalletStorageError {
+    fn from(e: ByteArrayError) -> Self {
+        WalletStorageError::ByteArrayError(e.to_string())
+    }
 }
 
 impl From<WalletStorageError> for ExitError {

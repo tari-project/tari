@@ -22,6 +22,7 @@
 
 use diesel::result::Error as DieselError;
 use tari_common_sqlite::error::SqliteStorageError;
+use tari_crypto::errors::RangeProofError;
 use tari_utilities::{hex::HexError, ByteArrayError};
 
 use crate::error::KeyManagerError as KMError;
@@ -32,6 +33,8 @@ use crate::error::KeyManagerError as KMError;
 pub enum KeyManagerServiceError {
     #[error("Branch does not exist")]
     UnknownKeyBranch,
+    #[error("Key ID without an index, most likely `Imported`")]
+    KyeIdWithoutIndex,
     #[error("Master seed does not match stored version")]
     MasterSeedMismatch,
     #[error("Could not find key in key manager")]
@@ -39,10 +42,25 @@ pub enum KeyManagerServiceError {
     #[error("Storage error: `{0}`")]
     KeyManagerStorageError(#[from] KeyManagerStorageError),
     #[error("Byte array error: `{0}`")]
-    ByteArrayError(#[from] ByteArrayError),
+    ByteArrayError(String),
+    #[error("Invalid range proof: `{0}`")]
+    RangeProofError(String),
     #[error("Tari Key Manager error: `{0}`")]
     TariKeyManagerError(#[from] KMError),
 }
+
+impl From<RangeProofError> for KeyManagerServiceError {
+    fn from(e: RangeProofError) -> Self {
+        KeyManagerServiceError::RangeProofError(e.to_string())
+    }
+}
+
+impl From<ByteArrayError> for KeyManagerServiceError {
+    fn from(e: ByteArrayError) -> Self {
+        KeyManagerServiceError::ByteArrayError(e.to_string())
+    }
+}
+
 /// Error enum for the [KeyManagerStorage]
 #[derive(Debug, thiserror::Error)]
 pub enum KeyManagerStorageError {
@@ -71,13 +89,25 @@ pub enum KeyManagerStorageError {
     #[error("Wallet db is currently encrypted, decrypt before use")]
     ValueEncrypted,
     #[error("Byte array error: `{0}`")]
-    ByteArrayError(#[from] ByteArrayError),
+    ByteArrayError(String),
     #[error("Aead error: `{0}`")]
     AeadError(String),
     #[error("Binary not stored as valid hex:{0}")]
-    HexError(#[from] HexError),
+    HexError(String),
     #[error("Tari Key Manager error: `{0}`")]
     TariKeyManagerError(#[from] KMError),
     #[error("Db error: `{0}`")]
     SqliteStorageError(#[from] SqliteStorageError),
+}
+
+impl From<HexError> for KeyManagerStorageError {
+    fn from(e: HexError) -> Self {
+        KeyManagerStorageError::HexError(e.to_string())
+    }
+}
+
+impl From<ByteArrayError> for KeyManagerStorageError {
+    fn from(e: ByteArrayError) -> Self {
+        KeyManagerStorageError::ByteArrayError(e.to_string())
+    }
 }

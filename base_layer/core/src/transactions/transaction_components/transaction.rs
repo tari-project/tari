@@ -29,30 +29,30 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{BlindingFactor, Signature};
+use tari_common_types::types::{PrivateKey, Signature};
 use tari_utilities::hex::Hex;
 
 use crate::transactions::{
     aggregated_body::AggregateBody,
-    transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
+    transaction_components::{TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
     weight::TransactionWeight,
 };
 
 /// A transaction which consists of a kernel offset and an aggregate body made up of inputs, outputs and kernels.
-/// This struct is used to describe single transactions only. The common part between transactions and Tari blocks is
-/// accessible via the `body` field, but single transactions also need to carry the public offset around with them so
+/// This struct is used to describe single transactions only. The common part between transactions and Minotari blocks
+/// is accessible via the `body` field, but single transactions also need to carry the public offset around with them so
 /// that these can be aggregated into block offsets.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Transaction {
     /// This kernel offset will be accumulated when transactions are aggregated to prevent the "subset" problem where
     /// kernels can be linked to inputs and outputs by testing a series of subsets and see which produce valid
     /// transactions.
-    pub offset: BlindingFactor,
+    pub offset: PrivateKey,
     /// The constituents of a transaction which has the same structure as the body of a block.
     pub body: AggregateBody,
     /// A scalar offset that links outputs and inputs to prevent cut-through, enforcing the correct application of
     /// the output script.
-    pub script_offset: BlindingFactor,
+    pub script_offset: PrivateKey,
 }
 
 impl Transaction {
@@ -61,8 +61,8 @@ impl Transaction {
         inputs: Vec<TransactionInput>,
         outputs: Vec<TransactionOutput>,
         kernels: Vec<TransactionKernel>,
-        offset: BlindingFactor,
-        script_offset: BlindingFactor,
+        offset: PrivateKey,
+        script_offset: PrivateKey,
     ) -> Self {
         Self {
             offset,
@@ -76,17 +76,12 @@ impl Transaction {
     }
 
     /// Returns the byte size or weight of a transaction
-    pub fn calculate_weight(&self, transaction_weight: &TransactionWeight) -> u64 {
+    pub fn calculate_weight(&self, transaction_weight: &TransactionWeight) -> Result<u64, TransactionError> {
         self.body.calculate_weight(transaction_weight)
     }
 
-    /// Returns the minimum maturity of the input UTXOs
-    pub fn min_input_maturity(&self) -> u64 {
-        self.body.min_input_maturity()
-    }
-
     /// Returns the maximum maturity of the input UTXOs
-    pub fn max_input_maturity(&self) -> u64 {
+    pub fn max_input_maturity(&self) -> Result<u64, TransactionError> {
         self.body.max_input_maturity()
     }
 
@@ -97,20 +92,8 @@ impl Transaction {
 
     /// Returns the height of the minimum height where the transaction is spendable. This is calculated from the
     /// transaction kernel lock_heights and the maturity of the input UTXOs.
-    pub fn min_spendable_height(&self) -> u64 {
+    pub fn min_spendable_height(&self) -> Result<u64, TransactionError> {
         self.body.min_spendable_height()
-    }
-
-    /// This function adds two transactions together. It does not do cut-through. Calling Tx1 + Tx2 will result in
-    /// vut-through being applied.
-    pub fn add_no_cut_through(mut self, other: Self) -> Self {
-        self.offset = self.offset + other.offset;
-        self.script_offset = self.script_offset + other.script_offset;
-        let (mut inputs, mut outputs, mut kernels) = other.body.dissolve();
-        self.body.add_inputs(&mut inputs);
-        self.body.add_outputs(&mut outputs);
-        self.body.add_kernels(&mut kernels);
-        self
     }
 
     pub fn first_kernel_excess_sig(&self) -> Option<&Signature> {
@@ -121,8 +104,15 @@ impl Transaction {
 impl Add for Transaction {
     type Output = Self;
 
+    /// This function adds two transactions together by summing up the offset, script offset and
+    /// extending inputs, outputs and kernels.
     fn add(mut self, other: Self) -> Self {
-        self = self.add_no_cut_through(other);
+        self.offset = self.offset + other.offset;
+        self.script_offset = self.script_offset + other.script_offset;
+        let (inputs, outputs, kernels) = other.body.dissolve();
+        self.body.add_inputs(inputs);
+        self.body.add_outputs(outputs);
+        self.body.add_kernels(kernels);
         self
     }
 }

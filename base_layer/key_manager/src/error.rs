@@ -28,7 +28,7 @@ use thiserror::Error;
 #[derive(Debug, Error, PartialEq)]
 pub enum KeyManagerError {
     #[error("Could not convert into byte array: `{0}`")]
-    ByteArrayError(#[from] ByteArrayError),
+    ByteArrayError(String),
     #[error("Mnemonic Error: `{0}`")]
     MnemonicError(#[from] MnemonicError),
     #[error("Error with password hashing: `{0}`")]
@@ -44,7 +44,21 @@ pub enum KeyManagerError {
     #[error("Decrypted data failed Version or MAC validation")]
     DecryptionFailed,
     #[error("The requested fixed slice length exceeds the available slice length")]
-    SliceError(#[from] SliceError),
+    SliceError(String),
+    #[error("Key ID not valid")]
+    InvalidKeyID,
+}
+
+impl From<ByteArrayError> for KeyManagerError {
+    fn from(e: ByteArrayError) -> Self {
+        KeyManagerError::ByteArrayError(e.to_string())
+    }
+}
+
+impl From<SliceError> for KeyManagerError {
+    fn from(e: SliceError) -> Self {
+        KeyManagerError::SliceError(e.to_string())
+    }
 }
 
 #[derive(Debug, Error, PartialEq)]
@@ -59,11 +73,17 @@ pub enum MnemonicError {
     #[error("A mnemonic word does not exist for the requested index")]
     IndexOutOfBounds,
     #[error("A problem encountered constructing a secret key from bytes or mnemonic sequence: `{0}`")]
-    ByteArrayError(#[from] ByteArrayError),
+    ByteArrayError(String),
     #[error("Encoding a mnemonic sequence to bytes requires exactly 24 mnemonic words")]
     EncodeInvalidLength,
     #[error("Bits to integer conversion error")]
     BitsToIntConversion,
     #[error("Integer to bits conversion error")]
     IntToBitsConversion,
+}
+
+impl From<ByteArrayError> for MnemonicError {
+    fn from(e: ByteArrayError) -> Self {
+        MnemonicError::ByteArrayError(e.to_string())
+    }
 }

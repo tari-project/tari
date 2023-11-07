@@ -12,18 +12,21 @@ A number of applications have been developed by the Tari community to implement 
 
 Only the first four applications will be discussed in this README (see [wallet-android](https://github.com/tari-project/wallet-android) and [wallet-ios](https://github.com/tari-project/wallet-ios) for mobile wallets' repos).
 
+## Developers
+Want to contribute? Start by reading the [Contributing Guide](Contributing.md) and the [Reviewing Guide](docs/src/reviewing_guide.md).
+
 ## Installing using binaries
 
 ### Versions
 The recommended running versions of each network are:
 
-| Network  | Version     | 
-|----------|-------------|
-| Stagenet | 0.50.0-hotfix.1      |
-| Nextnet  | 0.51.0-rc.0 |
-| Development | 0.52.0-pre.0 |
+| Network   | Version      |
+|-----------|--------------|
+| Stagenet  | 0.52.0       |
+| Nextnet   | 0.52.0-rc.0  |
+| Esmeralda | 0.53.0-pre.0 |
 
-For more detail about versioning see [Release Ideology](https://github.com/tari-project/tari/blob/development/docs/src/branching_releases.md)
+For more detail about versioning, see [Release Ideology](https://github.com/tari-project/tari/blob/development/docs/src/branching_releases.md).
 
 ### Download
 
@@ -51,7 +54,7 @@ After you have downloaded the binaries, you need to install them. This is easy t
 
 #### On \*Nix
 
-Assuming you want to install the Tari applications into your home folder, then, from within a terminal:
+Assuming you want to install the Tari applications into your home folder, run the following:
 
     cd ~
     tar -xf <PATH_TO_BINARY_INSTALL_FILE>
@@ -93,8 +96,8 @@ depending on the choices you make when prompted:
 
 - Depending on your choice of mining:
 
-  - SHA3 stand-alone mining
-    - Execute the `start_tari_miner` soft link/shortcut.
+  - SHA3 standalone mining
+    - Execute the `start_minotari_miner` soft link/shortcut.
   - Merge mining with Monero
     - Execute the `start_tari_merge_mining_proxy` soft link/shortcut.
     - Execute the `start_xmrig` shortcut.
@@ -116,10 +119,8 @@ brew install --cask powershell
 ```
 
 #### (macOS M1 chipset)
-It is important to note that RandomX does not work on Xcode version 14.1 and newer. To compile Tari and run properly you need to run XCode version 14.0 or earlier.
-To run multiple versions of XCode you can use this guide [here](https://hacknicity.medium.com/working-with-multiple-versions-of-xcode-e331c01aa6bc)
 
-If randomX unit tests are still failing, please update the Mac to ensure its running at least `Darwin Kernel Version 22.3.0`
+If RandomX unit tests are failing, please update the Mac to ensure it's running at least `Darwin Kernel Version 22.3.0`.
 
 
 #### (Ubuntu 18.04, including WSL-2 on Windows)
@@ -175,31 +176,31 @@ First you'll need to make sure you have a full development environment set up:
 #### Install Rust (\*nix)
 
 You can follow along at [The Rust Website](https://www.rust-lang.org/tools/install) or just follow these steps to get
-Rust installed on your machine.
+Rust installed on your machine:
 
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
-Then make sure that `cargo` has been added to your path.
+Then make sure that `cargo` has been added to your path:
 
     export PATH="$HOME/.cargo/bin:$PATH"
 
 #### Install Rust (Windows 10)
 
 Follow the installation process for Windows at [The Rust Website](https://www.rust-lang.org/tools/install). Then make
-sure that `cargo` and `rustc` has been added to your path:
+sure that `cargo` and `rustc` have been added to your path:
 
     cargo --version
     rustc --version
 
 ### Checkout the source code
 
-In your directory of choice (e.g. `%USERPROFILE%\Code` on Windows), clone the Tari repo
+In your directory of choice (_e.g._ `%USERPROFILE%\Code` on Windows), clone the Tari repo:
 
     git clone https://github.com/tari-project/tari.git
 
 ### Build
 
-Grab a cup of coffee and begin the Tari build
+Grab a cup of coffee and begin the Tari build.
 
 (\*nix)
 
@@ -215,7 +216,7 @@ build, which will create the executable inside your `%USERPROFILE%\Code\tari\tar
     cd %USERPROFILE%\Code\tari
     cargo build --release
 
-A successful build should output something as follows
+A successful build should output something like this:
 
 ```
    Compiling tari_wallet v0.0.9 (.../tari/base_layer/wallet)
@@ -225,15 +226,15 @@ A successful build should output something as follows
     Finished release [optimized] target(s) in 12m 24s
 ```
 
-Compiled executable can be found by following path:
+Compiled executables can be found at these paths::
 
     ./target/release/tari_base_node
     ./target/release/tari_console_wallet
     ./target/release/tari_merge_mining_proxy
     ./target/release/tari_miner
 
-Alternatively, cargo can build and install the executable into `~/.cargo/bin` (`%USERPROFILE%\.cargo\bin` on Windows), so it will be executable from anywhere
-on your system.
+Alternatively, `cargo` can build and install the executable into `~/.cargo/bin` (`%USERPROFILE%\.cargo\bin` on Windows), so it will be executable from anywhere
+on your system:
 
     cargo install --path=applications/tari_base_node --force
     cargo install --path=applications/tari_console_wallet --force
@@ -242,8 +243,8 @@ on your system.
 
 ---
 
-Alternatively, cargo can build and install the executable into `%USERPROFILE%\.cargo\bin`, so it will be executable from
-anywhere on your system.
+Alternatively, `cargo` can build and install the executable into `%USERPROFILE%\.cargo\bin`, so it will be executable from
+anywhere on your system:
 
     cargo install --path=applications/tari_base_node --force
     cargo install --path=applications/tari_console_wallet --force
@@ -256,11 +257,11 @@ The executables will either be inside your `~/tari/target/release` (on Linux) or
 (on Windows) directory, or alternatively, inside your `~/.cargo/bin` (on Linux) `%USERPROFILE%\.cargo\bin` (on Windows)
 directory, depending on the build choice above, and must be run from the command line. If the former build method was
 used, you can run it from that directory, or you more likely want to copy it somewhere more convenient. Make sure to
-start Tor service `~/tari/applications/tari_base_node/osx/start_tor` (on Mac),
-`~/tari/applications/tari_base_node/linux/start_tor` (on Linux) or
-`%USERPROFILE%\Code\tari\applications\tari_base_node\windows\start_tor.lnk` (on Windows).
+start the Tor service `~/tari/applications/minotari_node/osx/start_tor` (on Mac),
+`~/tari/applications/minotari_node/linux/start_tor` (on Linux) or
+`%USERPROFILE%\Code\tari\applications\minotari_node\windows\start_tor.lnk` (on Windows).
 
-To run from any directory of your choice, where the executable is visible in the path (first time use):
+To run from any directory of your choice, where the executable is visible in the path (first-time use):
 
     tari_base_node --init
     tari_base_node
@@ -293,7 +294,7 @@ flag if you want to run in debug mode (first time use):
 
     cargo run --bin tari_miner --release
 
-Consecutive runs:
+On consecutive runs:
 
     cargo run --bin tari_base_node --release
 
@@ -314,11 +315,11 @@ directory.
 
 ## Using Docker
 
-### Running the base node with a docker image
+### Running the base node with a Docker image
 
 Tari Base Node Docker images can be found at https://quay.io/repository/tarilabs/tari_base_node
 
-Using `docker-compose.yaml`
+Using `docker-compose.yaml`:
 
 ```
 version: "3"
@@ -340,7 +341,7 @@ services:
 
 Then run `docker-compose up -d` to start your docker service.
 
-Check the running state with `docker-compose ps`
+Check the running state with `docker-compose ps`:
 
 ```
         Name           Command    State            Ports
@@ -348,14 +349,14 @@ Check the running state with `docker-compose ps`
 tbn_tari_base_node_1   start.sh   Up      0.0.0.0:18142->18142/tcp
 ```
 
-To connect to the console, use `docker ps` to get the container ID which to attach to the tari_base_node in docker
+To connect to the console, use `docker ps` to get the container ID to which to attach the `tari_base_node`` in Docker:
 
 ```
 CONTAINER ID        IMAGE                                    COMMAND             CREATED             STATUS              PORTS                      NAMES
 73427509a4bb        quay.io/tarilabs/tari_base_node:v0.5.4   "start.sh"          45 minutes ago      Up 26 minutes       0.0.0.0:18142->18142/tcp   tbn_tari_base_node_1
 ```
 
-With the container ID `73427509a4bb`, connect to the tari_base_node console as follows `docker attach 73427509a4bb`
+With the container ID `73427509a4bb`, connect to the `minotari_node`` console using `docker attach 73427509a4bb`:
 
 ```
 >> help
@@ -378,30 +379,30 @@ Syncing 5229/5233
 
 ---
 
-### Building a docker image
+### Building a Docker image
 
-If you don't want to use the docker images provided by the community, you can roll your own!
+If you don't want to use the Docker images provided by the community, you can roll your own!
 
-First, clone the Tari repo
+First, clone the Tari repo:
 
 ```bash
 git clone git@github.com:tari-project/tari.git
 ```
 
-Then build the image using the dockerfile in `buildtools`. The base node docker file build the application and then
-places the binary inside a small container, keeping the executable binary to a minimum.
+Then build the image using the dockerfile in `buildtools`. The base node dockerfile builds the application and then
+places the binary inside a small container, keeping the executable binary to a minimum:
 
     docker build -t tari_base_node:latest -f ./buildtools/base_node.Dockerfile .
 
-Test your image
+Test your image:
 
     docker run --rm -ti tari_base_node tari_base_node --help
 
-Run the base node
+Run the base node:
 
     docker run -ti -v /path/to/config/dir:/root/.tari tari_base_node
 
-Default docker builds for base x86-64 CPU. Better performing builds can be created by passing build options
+Default Docker builds for base x86-64 CPU. Better performing builds can be created by passing build options:
 
     docker build -t tari_base_node:performance --build-arg TBN_ARCH=skylake --build-arg TBN_FEATURES=avx2 -f ./buildtools/base_node.Dockerfile .
 
@@ -409,14 +410,14 @@ Default docker builds for base x86-64 CPU. Better performing builds can be creat
 
 ## Mining
 
-The Tari protocol supports hybrid mining; stand-alone or pooled SHA3 mining using the Tari Miner or merged mining with
-Monero using the Tari Merge Mining Proxy in conjunction with XMRig (RandomX-based mining). Blocks to be won by
-stand-alone and pooled SHA3 mining has been apportioned to approximately 40% and with Monero merged mining to approximately 60%.
+The Tari protocol supports hybrid mining; stand-alone or pooled SHA3 mining using the Minotari Miner or merged mining with
+Monero using the Minotari Merge Mining Proxy in conjunction with XMRig (RandomX-based mining). Blocks to be won by
+standalone and pooled SHA3 mining have been apportioned to approximately 40% and with Monero merged mining to approximately 60%.
 This apportionment is deeply baked into the Tari protocol and part of the consensus rules. The 40/60 split is determined
 by slightly different block target times for each algorithm, that when combined will give an average block time of
-approximately 120s. Each mining algorithms make use of Linear Weighted Moving Average (LWMA) maths to gracefully adjust
+approximately 120 seconds. Each mining algorithm makes use of Linear Weighted Moving Average (LWMA) maths to gracefully adjust
 the target difficulties to adhere to the respective target block times. Any block won by either mining algorithm will be
-accepted, and when there is a tie a geometric mean calculation will be used to decide the winner. This system is
+accepted, and when there is a tie, a geometric mean calculation will be used to decide the winner. This system is
 completely fair without any additional empirical meddling to try force a certain outcome.
 
 ### Tari SHA3 mining
@@ -642,7 +643,7 @@ they are not enabled already:
   base_node_grpc_address = "127.0.0.1:18142"
   ```
 
-And then depending on if you are using solo mining or self-select mining you will use one of the following:
+Depending on if you are using solo mining or self-select mining, you will use one of the following:
 
 ###### Solo mining
 
@@ -751,7 +752,7 @@ in JSON format:
 
 - Result -> With `Config file`, copy or download, than save as `config.json`.
 
-Using the public stagenet wallet address above the resulting configuration file should look like this:
+Using the public stagenet wallet address above, the resulting configuration file should look like this:
 
 ```
 {
@@ -831,7 +832,7 @@ activity for that address. The configuration file used for this exercise is show
 
 #### Perform merge mining
 
-Tor and the required Tari applications must be started and preferably in this order:
+Tor and the required Minotari applications must be started, preferably in this order:
 
 - Tor:
 
@@ -917,8 +918,8 @@ and accepting jobs:
 [2021-01-21 12:12:57.983]  cpu      accepted (1/1) diff 293330 (594 ms)
 ```
 
-The `cpu: rejected` and `cpu: accepted` messages originates from stagenet or mainnet `monerod`, and shows the Monero
-statistics. At this point, the mined and rejected Tari coinbases should be visible in the Tari Console Wallet.
+The `cpu: rejected` and `cpu: accepted` messages originate from stagenet or mainnet `monerod`, and show the Monero
+statistics. At this point, the mined and rejected Minotari coinbases should be visible in the Minotari Wallet.
 
 ##### Pool merged mining with Monero (self select)
 
@@ -931,7 +932,7 @@ its reference pool implementation running [here](http://monerop.com/), and
 [cryptonote.social](https://cryptonote.social/xmr). With normal self select mode, XMRig requests a Monero block
 template from a third party and submits the solution to the mining pool. Tari added a `submit-to-origin` option to the
 self select mode whereby, if a solution has been found that only matches the pool difficulty, XMRig will submit the
-solution to the pool only, but if the achieved difficulty meets both that of the pool and Tari, it will be submitted to
+solution to the pool only; but if the achieved difficulty meets both that of the pool and Minotari, it will be submitted to
 the Merge Mining Proxy as well as to the mining pool.
 
 ###### Merge Mining Proxy configuration
@@ -985,7 +986,7 @@ your wallet identity under `Username:` to see your shares, or try `taritest` if 
 ## RFC documents
 
 The RFCs are long-form technical documents proposing changes and features to the Tari network and ecosystem. 
-They are hosted at https://rfc.tari.com, and the RFC repo is at https://github.com/tari-project/rfcs
+They are hosted at https://rfc.tari.com, and the RFC repo is at https://github.com/tari-project/rfcs.
 
 ### Source code documentation
 
@@ -993,14 +994,10 @@ Run
 
     cargo doc
 
-to generate the documentation. The generated html sits in `target/doc/`. Alternatively, to open a specific package's documentation directly in your browser, run
+to generate the documentation. The generated html sits in `target/doc/`. Alternatively, to open a specific package's documentation directly in your browser, run the following:
 
     cargo doc -p <package> --open
 
-## Code organisation
-
-_Out of date as of July 2022._ TODO - Good first issue?
-
 ## Conversation channels
 
-We're generally on [Discord](https://discord.gg/q3Sfzb8S2V)
+We're generally on [Discord](https://discord.gg/q3Sfzb8S2V).

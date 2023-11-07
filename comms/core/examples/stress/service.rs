@@ -474,7 +474,6 @@ async fn messaging_flood(
         while let Some(msg) = inbound_rx.recv().await {
             let msg_id = decode_msg(&msg.body);
             if msgs.len() == protocol.num_messages as usize {
-                // msg_id == 0 {
                 break;
             }
             msgs.push(msg_id);

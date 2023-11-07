@@ -29,7 +29,8 @@ use std::{
 use anyhow::anyhow;
 use futures::future;
 use tari_common::configuration::bootstrap::ApplicationType;
-use tari_utilities::hex::{from_hex, Hex};
+use tari_utilities::hex::{from_hex, Hex, HexError};
+use thiserror::Error;
 
 use super::{error::AutoUpdateError, AutoUpdateConfig, Version};
 use crate::dns::{default_trust_anchor, DnsClient};
@@ -132,6 +133,18 @@ impl DnsSoftwareUpdate {
     }
 }
 
+#[derive(Debug, Error, PartialEq)]
+enum DnsError {
+    #[error("Could not convert into hex: `{0}`")]
+    HexError(String),
+}
+
+impl From<HexError> for DnsError {
+    fn from(e: HexError) -> Self {
+        DnsError::HexError(e.to_string())
+    }
+}
+
 /// Software update records
 #[derive(Debug, Clone)]
 pub struct UpdateSpec {
@@ -162,7 +175,7 @@ impl FromStr for UpdateSpec {
             .next()
             .filter(|s| !s.is_empty())
             .ok_or_else(|| anyhow!("No hash in TXT record"))?;
-        let hash = from_hex(hash)?;
+        let hash = from_hex(hash).map_err(|e| DnsError::HexError(format!("{}", e)))?;
         if parts.next().is_some() {
             return Err(anyhow!("String contained too many parts"));
         }

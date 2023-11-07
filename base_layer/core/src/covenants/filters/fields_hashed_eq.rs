@@ -23,10 +23,14 @@
 use digest::Digest;
 
 use crate::covenants::{context::CovenantContext, error::CovenantError, filters::Filter, output_set::OutputSet};
+
+/// Holding struct for the "output fields that hash to a given hash" filter
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FieldsHashedEqFilter;
 
 impl Filter for FieldsHashedEqFilter {
+    // Filters out all outputs that do not have the hashed output field equal to the specified hash value
+    // based on the next two arguments in the covenant context.
     fn filter(&self, context: &mut CovenantContext<'_>, output_set: &mut OutputSet<'_>) -> Result<(), CovenantError> {
         let fields = context.next_arg()?.require_outputfields()?;
         let hash = context.next_arg()?.require_hash()?;
@@ -40,8 +44,9 @@ impl Filter for FieldsHashedEqFilter {
 
 #[cfg(test)]
 mod test {
+    use blake2::Blake2b;
     use borsh::BorshSerialize;
-    use tari_common_types::types::Challenge;
+    use digest::{consts::U32, Update};
     use tari_crypto::hashing::DomainSeparation;
 
     use super::*;
@@ -53,25 +58,41 @@ mod test {
             BaseLayerCovenantsDomain,
             COVENANTS_FIELD_HASHER_LABEL,
         },
-        transactions::transaction_components::OutputFeatures,
+        transactions::{
+            test_helpers::create_test_core_key_manager_with_memory_db,
+            transaction_components::OutputFeatures,
+        },
     };
 
-    #[test]
-    fn it_filters_outputs_with_fields_that_hash_to_given_hash() {
+    #[tokio::test]
+    async fn it_filters_outputs_with_fields_that_hash_to_given_hash() {
+        let key_manager = create_test_core_key_manager_with_memory_db();
         let features = OutputFeatures {
             maturity: 42,
             sidechain_feature: Some(make_sample_sidechain_feature()),
             ..Default::default()
         };
-        let mut hasher = Challenge::new();
+        let mut hasher = Blake2b::<U32>::new();
         BaseLayerCovenantsDomain::add_domain_separation_tag(&mut hasher, COVENANTS_FIELD_HASHER_LABEL);
         let hash = hasher.chain(features.try_to_vec().unwrap()).finalize();
         let covenant = covenant!(fields_hashed_eq(@fields(@field::features), @hash(hash.into())));
-        let input = create_input();
-        let (mut context, outputs) = setup_filter_test(&covenant, &input, 0, |outputs| {
-            outputs[5].features = features.clone();
-            outputs[7].features = features;
-        });
+        let input = create_input(&key_manager).await;
+        let (mut context, outputs) = setup_filter_test(
+            &covenant,
+            &input,
+            0,
+            |outputs| {
+                outputs[5].features = features.clone();
+                outputs[6].features = OutputFeatures {
+                    maturity: 41,
+                    sidechain_feature: Some(make_sample_sidechain_feature()),
+                    ..Default::default()
+                };
+                outputs[7].features = features;
+            },
+            &key_manager,
+        )
+        .await;
         let mut output_set = OutputSet::new(&outputs);
         FieldsHashedEqFilter.filter(&mut context, &mut output_set).unwrap();
 

@@ -83,6 +83,38 @@ use log4rs::{
     config::{Appender, Config, Logger, Root},
     encode::pattern::PatternEncoder,
 };
+use minotari_wallet::{
+    base_node_service::config::BaseNodeServiceConfig,
+    connectivity_service::{WalletConnectivityHandle, WalletConnectivityInterface},
+    error::{WalletError, WalletStorageError},
+    output_manager_service::{
+        error::OutputManagerError,
+        storage::{
+            database::{OutputBackendQuery, OutputManagerDatabase, SortDirection},
+            models::DbWalletOutput,
+            OutputStatus,
+        },
+        UtxoSelectionCriteria,
+    },
+    storage::{
+        database::WalletDatabase,
+        sqlite_db::wallet::WalletSqliteDatabase,
+        sqlite_utilities::{get_last_network, get_last_version, initialize_sqlite_database_backends},
+    },
+    transaction_service::{
+        config::TransactionServiceConfig,
+        error::TransactionServiceError,
+        storage::{
+            database::TransactionDatabase,
+            models::{CompletedTransaction, InboundTransaction, OutboundTransaction},
+        },
+    },
+    utxo_scanner_service::{service::UtxoScannerService, RECOVERY_KEY},
+    wallet::{derive_comms_secret_key, read_or_create_master_seed, WalletMessageSigningDomain},
+    Wallet,
+    WalletConfig,
+    WalletSqlite,
+};
 use num_traits::FromPrimitive;
 use rand::rngs::OsRng;
 use tari_common::configuration::{MultiaddrList, StringList};
@@ -104,7 +136,7 @@ use tari_core::{
     borsh::FromBytes,
     consensus::ConsensusManager,
     transactions::{
-        tari_amount::MicroTari,
+        tari_amount::MicroMinotari,
         transaction_components::{OutputFeatures, OutputFeaturesVersion, OutputType, RangeProofType, UnblindedOutput},
         CryptoFactories,
     },
@@ -133,38 +165,6 @@ use tari_utilities::{
     hex,
     hex::{Hex, HexError},
     SafePassword,
-};
-use tari_wallet::{
-    base_node_service::config::BaseNodeServiceConfig,
-    connectivity_service::{WalletConnectivityHandle, WalletConnectivityInterface},
-    error::{WalletError, WalletStorageError},
-    output_manager_service::{
-        error::OutputManagerError,
-        storage::{
-            database::{OutputBackendQuery, OutputManagerDatabase, SortDirection},
-            models::DbUnblindedOutput,
-            OutputStatus,
-        },
-        UtxoSelectionCriteria,
-    },
-    storage::{
-        database::WalletDatabase,
-        sqlite_db::wallet::WalletSqliteDatabase,
-        sqlite_utilities::{get_last_network, get_last_version, initialize_sqlite_database_backends},
-    },
-    transaction_service::{
-        config::TransactionServiceConfig,
-        error::TransactionServiceError,
-        storage::{
-            database::TransactionDatabase,
-            models::{CompletedTransaction, InboundTransaction, OutboundTransaction},
-        },
-    },
-    utxo_scanner_service::{service::UtxoScannerService, RECOVERY_KEY},
-    wallet::{derive_comms_secret_key, read_or_create_master_seed, WalletMessageSigningDomain},
-    Wallet,
-    WalletConfig,
-    WalletSqlite,
 };
 use tokio::runtime::Runtime;
 use zeroize::Zeroize;
@@ -206,23 +206,23 @@ pub type TariEncryptedOpenings = tari_core::transactions::transaction_components
 pub type TariComAndPubSignature = tari_common_types::types::ComAndPubSignature;
 pub type TariUnblindedOutput = tari_core::transactions::transaction_components::UnblindedOutput;
 
-pub struct TariUnblindedOutputs(Vec<DbUnblindedOutput>);
+pub struct TariUnblindedOutputs(Vec<UnblindedOutput>);
 
 pub struct TariContacts(Vec<TariContact>);
 
 pub type TariContact = tari_contacts::contacts_service::types::Contact;
-pub type TariCompletedTransaction = tari_wallet::transaction_service::storage::models::CompletedTransaction;
-pub type TariTransactionSendStatus = tari_wallet::transaction_service::handle::TransactionSendStatus;
-pub type TariFeePerGramStats = tari_wallet::transaction_service::handle::FeePerGramStatsResponse;
+pub type TariCompletedTransaction = minotari_wallet::transaction_service::storage::models::CompletedTransaction;
+pub type TariTransactionSendStatus = minotari_wallet::transaction_service::handle::TransactionSendStatus;
+pub type TariFeePerGramStats = minotari_wallet::transaction_service::handle::FeePerGramStatsResponse;
 pub type TariFeePerGramStat = tari_core::mempool::FeePerGramStat;
 pub type TariContactsLivenessData = tari_contacts::contacts_service::handle::ContactsLivenessData;
-pub type TariBalance = tari_wallet::output_manager_service::service::Balance;
+pub type TariBalance = minotari_wallet::output_manager_service::service::Balance;
 pub type TariMnemonicLanguage = tari_key_manager::mnemonic::MnemonicLanguage;
 
 pub struct TariCompletedTransactions(Vec<TariCompletedTransaction>);
 
-pub type TariPendingInboundTransaction = tari_wallet::transaction_service::storage::models::InboundTransaction;
-pub type TariPendingOutboundTransaction = tari_wallet::transaction_service::storage::models::OutboundTransaction;
+pub type TariPendingInboundTransaction = minotari_wallet::transaction_service::storage::models::InboundTransaction;
+pub type TariPendingOutboundTransaction = minotari_wallet::transaction_service::storage::models::OutboundTransaction;
 
 pub struct TariPendingInboundTransactions(Vec<TariPendingInboundTransaction>);
 
@@ -294,13 +294,13 @@ pub struct TariUtxo {
     pub status: u8,
 }
 
-impl From<DbUnblindedOutput> for TariUtxo {
-    fn from(x: DbUnblindedOutput) -> Self {
+impl From<DbWalletOutput> for TariUtxo {
+    fn from(x: DbWalletOutput) -> Self {
         Self {
             commitment: CString::new(x.commitment.to_hex())
                 .expect("failed to obtain hex from a commitment")
                 .into_raw(),
-            value: x.unblinded_output.value.as_u64(),
+            value: x.wallet_output.value.as_u64(),
             mined_height: x.mined_height.unwrap_or(0),
             mined_timestamp: x
                 .mined_timestamp
@@ -395,8 +395,8 @@ impl From<Vec<Commitment>> for TariVector {
     }
 }
 
-impl From<Vec<DbUnblindedOutput>> for TariVector {
-    fn from(v: Vec<DbUnblindedOutput>) -> TariVector {
+impl From<Vec<DbWalletOutput>> for TariVector {
+    fn from(v: Vec<DbWalletOutput>) -> TariVector {
         let mut v = ManuallyDrop::new(v.into_iter().map(TariUtxo::from).collect_vec());
 
         Self {
@@ -812,6 +812,8 @@ pub unsafe extern "C" fn byte_vector_destroy(bytes: *mut ByteVector) {
 ///
 /// # Safety
 /// None
+// converting between here is fine as its used to clamp the the array to length
+#[allow(clippy::cast_possible_wrap)]
 #[no_mangle]
 pub unsafe extern "C" fn byte_vector_get_at(ptr: *mut ByteVector, position: c_uint, error_out: *mut c_int) -> c_uchar {
     let mut error = 0;
@@ -843,6 +845,8 @@ pub unsafe extern "C" fn byte_vector_get_at(ptr: *mut ByteVector, position: c_ui
 ///
 /// # Safety
 /// None
+// casting here is okay a byte vector wont go larger than u32
+#[allow(clippy::cast_possible_truncation)]
 #[no_mangle]
 pub unsafe extern "C" fn byte_vector_get_length(vec: *const ByteVector, error_out: *mut c_int) -> c_uint {
     let mut error = 0;
@@ -852,6 +856,7 @@ pub unsafe extern "C" fn byte_vector_get_length(vec: *const ByteVector, error_ou
         ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     }
+
     (*vec).0.len() as c_uint
 }
 
@@ -882,7 +887,7 @@ pub unsafe extern "C" fn public_key_create(bytes: *mut ByteVector, error_out: *m
         return ptr::null_mut();
     }
     let v = (*bytes).0.clone();
-    let pk = TariPublicKey::from_bytes(&v);
+    let pk = TariPublicKey::from_canonical_bytes(&v);
     match pk {
         Ok(pk) => Box::into_raw(Box::new(pk)),
         Err(e) => {
@@ -1127,6 +1132,8 @@ pub unsafe extern "C" fn tari_address_get_bytes(
 ///
 /// # Safety
 /// The ```private_key_destroy``` method must be called when finished with a private key to prevent a memory leak
+// casting here is network is a u8
+#[allow(clippy::cast_possible_truncation)]
 #[no_mangle]
 pub unsafe extern "C" fn tari_address_from_private_key(
     secret_key: *mut TariPrivateKey,
@@ -1333,7 +1340,7 @@ pub unsafe extern "C" fn commitment_and_public_signature_create_from_bytes(
         return ptr::null_mut();
     }
 
-    let ephemeral_commitment = match Commitment::from_bytes(&(*ephemeral_commitment_bytes).0.clone()) {
+    let ephemeral_commitment = match Commitment::from_canonical_bytes(&(*ephemeral_commitment_bytes).0.clone()) {
         Ok(ephemeral_commitment) => ephemeral_commitment,
         Err(e) => {
             error!(
@@ -1345,7 +1352,7 @@ pub unsafe extern "C" fn commitment_and_public_signature_create_from_bytes(
             return ptr::null_mut();
         },
     };
-    let ephemeral_pubkey = match PublicKey::from_bytes(&(*ephemeral_pubkey_bytes).0.clone()) {
+    let ephemeral_pubkey = match PublicKey::from_canonical_bytes(&(*ephemeral_pubkey_bytes).0.clone()) {
         Ok(ephemeral_pubkey) => ephemeral_pubkey,
         Err(e) => {
             error!(
@@ -1358,7 +1365,7 @@ pub unsafe extern "C" fn commitment_and_public_signature_create_from_bytes(
         },
     };
 
-    let u_a = match TariPrivateKey::from_bytes(&(*u_a_bytes).0.clone()) {
+    let u_a = match TariPrivateKey::from_canonical_bytes(&(*u_a_bytes).0.clone()) {
         Ok(u) => u,
         Err(e) => {
             error!(
@@ -1370,7 +1377,7 @@ pub unsafe extern "C" fn commitment_and_public_signature_create_from_bytes(
             return ptr::null_mut();
         },
     };
-    let u_x = match TariPrivateKey::from_bytes(&(*u_x_bytes).0.clone()) {
+    let u_x = match TariPrivateKey::from_canonical_bytes(&(*u_x_bytes).0.clone()) {
         Ok(u) => u,
         Err(e) => {
             error!(
@@ -1382,7 +1389,7 @@ pub unsafe extern "C" fn commitment_and_public_signature_create_from_bytes(
             return ptr::null_mut();
         },
     };
-    let u_y = match TariPrivateKey::from_bytes(&(*u_y_bytes).0.clone()) {
+    let u_y = match TariPrivateKey::from_canonical_bytes(&(*u_y_bytes).0.clone()) {
         Ok(u) => u,
         Err(e) => {
             error!(
@@ -1423,7 +1430,7 @@ pub unsafe extern "C" fn commitment_and_public_signature_destroy(compub_sig: *mu
 /// Creates an unblinded output
 ///
 /// ## Arguments
-/// `amount` - The value of the UTXO in MicroTari
+/// `amount` - The value of the UTXO in MicroMinotari
 /// `spending_key` - The private spending key
 /// `source_address` - The tari address of the source of the transaction
 /// `features` - Options for an output's structure or use
@@ -1624,7 +1631,7 @@ pub unsafe extern "C" fn tari_unblinded_output_to_json(
                 },
             },
             Err(_) => {
-                error = LibWalletError::from(HexError::HexConversionError).code;
+                error = LibWalletError::from(HexError::HexConversionError {}).code;
                 ptr::swap(error_out, &mut error as *mut c_int);
             },
         }
@@ -1677,7 +1684,7 @@ pub unsafe extern "C" fn create_tari_unblinded_output_from_json(
         Err(e) => {
             error!(target: LOG_TARGET, "Error creating a output from json: {:?}", e);
 
-            error = LibWalletError::from(HexError::HexConversionError).code;
+            error = LibWalletError::from(HexError::HexConversionError {}).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             ptr::null_mut()
         },
@@ -1700,6 +1707,8 @@ pub unsafe extern "C" fn create_tari_unblinded_output_from_json(
 ///
 /// # Safety
 /// None
+// casting here is okay the length of the array wont go over u32
+#[allow(clippy::cast_possible_truncation)]
 #[no_mangle]
 pub unsafe extern "C" fn unblinded_outputs_get_length(
     outputs: *mut TariUnblindedOutputs,
@@ -1731,6 +1740,8 @@ pub unsafe extern "C" fn unblinded_outputs_get_length(
 ///
 /// # Safety
 /// The ```contact_destroy``` method must be called when finished with a TariContact to prevent a memory leak
+// converting between here is fine as its used to clamp the the array to length
+#[allow(clippy::cast_possible_wrap)]
 #[no_mangle]
 pub unsafe extern "C" fn unblinded_outputs_get_at(
     outputs: *mut TariUnblindedOutputs,
@@ -1750,48 +1761,7 @@ pub unsafe extern "C" fn unblinded_outputs_get_at(
         ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
-    Box::into_raw(Box::new((*outputs).0[position as usize].unblinded_output.clone()))
-}
-
-/// Gets a TariUnblindedOutput from TariUnblindedOutputs at position
-///
-/// ## Arguments
-/// `outputs` - The pointer to a TariUnblindedOutputs
-/// `position` - The integer position
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter.
-///
-/// ## Returns
-/// `*mut TariUnblindedOutput` - Returns a TariUnblindedOutput, note that it returns ptr::null_mut() if
-/// TariUnblindedOutputs is null or position is invalid
-///
-/// # Safety
-/// The ```contact_destroy``` method must be called when finished with a TariContact to prevent a memory leak
-#[no_mangle]
-pub unsafe extern "C" fn unblinded_outputs_received_tx_id_get_at(
-    outputs: *mut TariUnblindedOutputs,
-    position: c_uint,
-    error_out: *mut c_int,
-) -> *mut c_ulonglong {
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-    if outputs.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("outputs".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return ptr::null_mut();
-    }
-    let len = unblinded_outputs_get_length(outputs, error_out) as c_int - 1;
-    if len < 0 || position > len as c_uint {
-        error = LibWalletError::from(InterfaceError::PositionInvalidError).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return ptr::null_mut();
-    }
-    Box::into_raw(Box::new(
-        (*outputs).0[position as usize]
-            .received_in_tx_id
-            .unwrap_or_default()
-            .as_u64(),
-    ))
+    Box::into_raw(Box::new((*outputs).0[position as usize].clone()))
 }
 
 /// Frees memory for a TariUnblindedOutputs
@@ -1816,7 +1786,7 @@ pub unsafe extern "C" fn unblinded_outputs_destroy(outputs: *mut TariUnblindedOu
 ///
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
-/// `amount` - The value of the UTXO in MicroTari
+/// `amount` - The value of the UTXO in MicroMinotari
 /// `spending_key` - The private spending key
 /// `source_address` - The tari address of the source of the transaction
 /// `features` - Options for an output's structure or use
@@ -1929,8 +1899,23 @@ pub unsafe extern "C" fn wallet_get_unspent_outputs(
         .runtime
         .block_on((*wallet).wallet.output_manager_service.get_unspent_outputs());
     match received_outputs {
-        Ok(mut output) => {
-            outputs.append(&mut output);
+        Ok(rec_outputs) => {
+            for output in rec_outputs {
+                let unblinded = (*wallet).runtime.block_on(UnblindedOutput::from_wallet_output(
+                    output.wallet_output,
+                    &(*wallet).wallet.key_manager_service,
+                ));
+                match unblinded {
+                    Ok(uo) => {
+                        outputs.push(uo);
+                    },
+                    Err(e) => {
+                        error = LibWalletError::from(WalletError::TransactionError(e)).code;
+                        ptr::swap(error_out, &mut error as *mut c_int);
+                        return ptr::null_mut();
+                    },
+                }
+            }
             Box::into_raw(Box::new(TariUnblindedOutputs(outputs)))
         },
         Err(e) => {
@@ -1968,7 +1953,7 @@ pub unsafe extern "C" fn private_key_create(bytes: *mut ByteVector, error_out: *
         return ptr::null_mut();
     }
     let v = (*bytes).0.clone();
-    let pk = TariPrivateKey::from_bytes(&v);
+    let pk = TariPrivateKey::from_canonical_bytes(&v);
     match pk {
         Ok(pk) => Box::into_raw(Box::new(pk)),
         Err(e) => {
@@ -2441,6 +2426,8 @@ pub unsafe extern "C" fn seed_words_get_mnemonic_word_list_for_language(
 ///
 /// # Safety
 /// None
+// casting here is okay as we wont get more than u32 seed words
+#[allow(clippy::cast_possible_truncation)]
 #[no_mangle]
 pub unsafe extern "C" fn seed_words_get_length(seed_words: *const TariSeedWords, error_out: *mut c_int) -> c_uint {
     let mut error = 0;
@@ -2469,6 +2456,8 @@ pub unsafe extern "C" fn seed_words_get_length(seed_words: *const TariSeedWords,
 ///
 /// # Safety
 /// The ```string_destroy``` method must be called when finished with a string from rust to prevent a memory leak
+// casting here is okay as there aint more as u32 seed words
+#[allow(clippy::cast_possible_truncation)]
 #[no_mangle]
 pub unsafe extern "C" fn seed_words_get_at(
     seed_words: *mut TariSeedWords,
@@ -2827,6 +2816,8 @@ pub unsafe extern "C" fn contact_destroy(contact: *mut TariContact) {
 ///
 /// # Safety
 /// None
+// casting here is okay as we dont have more thant u32 contacts
+#[allow(clippy::cast_possible_truncation)]
 #[no_mangle]
 pub unsafe extern "C" fn contacts_get_length(contacts: *mut TariContacts, error_out: *mut c_int) -> c_uint {
     let mut error = 0;
@@ -2855,6 +2846,8 @@ pub unsafe extern "C" fn contacts_get_length(contacts: *mut TariContacts, error_
 ///
 /// # Safety
 /// The ```contact_destroy``` method must be called when finished with a TariContact to prevent a memory leak
+// converting between here is fine as its used to clamp the the array to length
+#[allow(clippy::cast_possible_wrap)]
 #[no_mangle]
 pub unsafe extern "C" fn contacts_get_at(
     contacts: *mut TariContacts,
@@ -2936,27 +2929,28 @@ pub unsafe extern "C" fn liveness_data_get_public_key(
 ///
 /// ## Returns
 /// `*mut c_int` - Returns a pointer to a c_int if the optional latency data (in milli-seconds (ms)) exists, with a
-/// value of '-1' if it is None. Note that it also returns '-1' if liveness_data is null.
+/// value of '0' if it is None. Note that it also returns '0' if liveness_data is null.
 ///
 /// # Safety
 /// The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
 /// memory leak
+
 #[no_mangle]
 pub unsafe extern "C" fn liveness_data_get_latency(
     liveness_data: *mut TariContactsLivenessData,
     error_out: *mut c_int,
-) -> c_int {
+) -> c_uint {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     if liveness_data.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("liveness_data".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
-        return -1;
+        return 0;
     }
     if let Some(latency) = (*liveness_data).latency() {
-        latency as c_int
+        latency as c_uint
     } else {
-        -1
+        0
     }
 }
 
@@ -2987,9 +2981,10 @@ pub unsafe extern "C" fn liveness_data_get_last_seen(
         return ptr::null_mut();
     }
     if let Some(last_seen) = (*liveness_data).last_ping_pong_received() {
-        let last_seen_local_time = DateTime::<Local>::from_utc(last_seen, Local::now().offset().to_owned())
-            .format("%FT%T")
-            .to_string();
+        let last_seen_local_time =
+            DateTime::<Local>::from_naive_utc_and_offset(last_seen, Local::now().offset().to_owned())
+                .format("%FT%T")
+                .to_string();
         let mut return_value = CString::new("").expect("Blank CString will not fail.");
         match CString::new(last_seen_local_time) {
             Ok(val) => {
@@ -3118,6 +3113,8 @@ pub unsafe extern "C" fn liveness_data_destroy(liveness_data: *mut TariContactsL
 ///
 /// # Safety
 /// None
+// casting here is okay as we wont have more than u32 transctions
+#[allow(clippy::cast_possible_truncation)]
 #[no_mangle]
 pub unsafe extern "C" fn completed_transactions_get_length(
     transactions: *mut TariCompletedTransactions,
@@ -3150,6 +3147,8 @@ pub unsafe extern "C" fn completed_transactions_get_length(
 /// # Safety
 /// The ```completed_transaction_destroy``` method must be called when finished with a TariCompletedTransaction to
 /// prevent a memory leak
+// converting between here is fine as its used to clamp the the array to length
+#[allow(clippy::cast_possible_wrap)]
 #[no_mangle]
 pub unsafe extern "C" fn completed_transactions_get_at(
     transactions: *mut TariCompletedTransactions,
@@ -3206,6 +3205,8 @@ pub unsafe extern "C" fn completed_transactions_destroy(transactions: *mut TariC
 ///
 /// # Safety
 /// None
+// casting here is we wont have more than u32 transctions
+#[allow(clippy::cast_possible_truncation)]
 #[no_mangle]
 pub unsafe extern "C" fn pending_outbound_transactions_get_length(
     transactions: *mut TariPendingOutboundTransactions,
@@ -3239,6 +3240,8 @@ pub unsafe extern "C" fn pending_outbound_transactions_get_length(
 /// # Safety
 /// The ```pending_outbound_transaction_destroy``` method must be called when finished with a
 /// TariPendingOutboundTransaction to prevent a memory leak
+// converting between here is fine as its used to clamp the the array to length
+#[allow(clippy::cast_possible_wrap)]
 #[no_mangle]
 pub unsafe extern "C" fn pending_outbound_transactions_get_at(
     transactions: *mut TariPendingOutboundTransactions,
@@ -3295,6 +3298,8 @@ pub unsafe extern "C" fn pending_outbound_transactions_destroy(transactions: *mu
 ///
 /// # Safety
 /// None
+// casting here is okay as we wont have mroe than u32 tranasctions
+#[allow(clippy::cast_possible_truncation)]
 #[no_mangle]
 pub unsafe extern "C" fn pending_inbound_transactions_get_length(
     transactions: *mut TariPendingInboundTransactions,
@@ -3327,6 +3332,8 @@ pub unsafe extern "C" fn pending_inbound_transactions_get_length(
 /// # Safety
 /// The ```pending_inbound_transaction_destroy``` method must be called when finished with a
 /// TariPendingOutboundTransaction to prevent a memory leak
+// converting between here is fine as its used to clamp the the array to length
+#[allow(clippy::cast_possible_wrap)]
 #[no_mangle]
 pub unsafe extern "C" fn pending_inbound_transactions_get_at(
     transactions: *mut TariPendingInboundTransactions,
@@ -3804,7 +3811,7 @@ pub unsafe extern "C" fn tari_completed_transaction_to_json(
                 },
             },
             Err(_) => {
-                error = LibWalletError::from(HexError::HexConversionError).code;
+                error = LibWalletError::from(HexError::HexConversionError {}).code;
                 ptr::swap(error_out, &mut error as *mut c_int);
             },
         }
@@ -3857,7 +3864,7 @@ pub unsafe extern "C" fn create_tari_completed_transaction_from_json(
         Err(e) => {
             error!(target: LOG_TARGET, "Error creating a transaction from json: {:?}", e);
 
-            error = LibWalletError::from(HexError::HexConversionError).code;
+            error = LibWalletError::from(HexError::HexConversionError {}).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             ptr::null_mut()
         },
@@ -4817,8 +4824,6 @@ pub unsafe extern "C" fn comms_config_create(
                     },
                     ..Default::default()
                 },
-                // TODO: This should be set to false for non-test wallets. See the `allow_test_addresses` field
-                //       docstring for more info. #LOGGED
                 allow_test_addresses: true,
                 listener_liveness_allowlist_cidrs: StringList::new(),
                 listener_liveness_max_sessions: 0,
@@ -4912,6 +4917,8 @@ pub unsafe extern "C" fn comms_list_connected_public_keys(
 ///
 /// # Safety
 /// None
+// casting here is okay as we wont have more than u32 public keys
+#[allow(clippy::cast_possible_truncation)]
 #[no_mangle]
 pub unsafe extern "C" fn public_keys_get_length(public_keys: *const TariPublicKeys, error_out: *mut c_int) -> c_uint {
     let mut error = 0;
@@ -5266,7 +5273,7 @@ pub unsafe extern "C" fn wallet_create(
             .to_str()
             .expect("A non-null network should be able to be converted to string");
         info!(target: LOG_TARGET, "network set to {}", network);
-        // eprintln!("network set to {}", network);
+
         match Network::from_str(network) {
             Ok(n) => n,
             Err(_) => {
@@ -5413,7 +5420,14 @@ pub unsafe extern "C" fn wallet_create(
     };
 
     let auto_update = AutoUpdateConfig::default();
-    let consensus_manager = ConsensusManager::builder(network).build();
+    let consensus_manager = match ConsensusManager::builder(network).build() {
+        Ok(cm) => cm,
+        Err(_) => {
+            error = 10;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    };
 
     let w = runtime.block_on(Wallet::start(
         wallet_config,
@@ -5632,6 +5646,8 @@ pub unsafe extern "C" fn wallet_get_balance(wallet: *mut TariWallet, error_out: 
 /// `destroy_tari_vector()` must be called after use.
 /// Items that fail to produce `.as_transaction_output()` are omitted from the list and a `warn!()` message is logged to
 /// LOG_TARGET.
+// casting here is okay as we wont have more than u32 utxos
+#[allow(clippy::cast_possible_truncation)]
 #[no_mangle]
 pub unsafe extern "C" fn wallet_get_utxos(
     wallet: *mut TariWallet,
@@ -5827,7 +5843,7 @@ pub unsafe extern "C" fn wallet_coin_split(
     match (*wallet).runtime.block_on((*wallet).wallet.coin_split_even(
         commitments,
         number_of_splits,
-        MicroTari(fee_per_gram),
+        MicroMinotari(fee_per_gram),
         String::new(),
     )) {
         Ok(tx_id) => {
@@ -5963,7 +5979,7 @@ pub unsafe extern "C" fn wallet_preview_coin_join(
     match (*wallet).runtime.block_on(
         (*wallet)
             .wallet
-            .preview_coin_join_with_commitments(commitments, MicroTari(fee_per_gram)),
+            .preview_coin_join_with_commitments(commitments, MicroMinotari(fee_per_gram)),
     ) {
         Ok((expected_outputs, fee)) => {
             ptr::replace(error_ptr, 0);
@@ -6047,7 +6063,7 @@ pub unsafe extern "C" fn wallet_preview_coin_split(
         .block_on((*wallet).wallet.preview_coin_split_with_commitments_no_amount(
             commitments,
             number_of_splits,
-            MicroTari(fee_per_gram),
+            MicroMinotari(fee_per_gram),
         )) {
         Ok((expected_outputs, fee)) => {
             ptr::replace(error_ptr, 0);
@@ -6452,7 +6468,7 @@ pub unsafe extern "C" fn balance_get_time_locked(balance: *mut TariBalance, erro
     let b = if let Some(bal) = (*balance).time_locked_balance {
         bal
     } else {
-        MicroTari::from(0)
+        MicroMinotari::from(0)
     };
     c_ulonglong::from(b)
 }
@@ -6612,10 +6628,10 @@ pub unsafe extern "C" fn wallet_send_transaction(
                 .transaction_service
                 .send_one_sided_to_stealth_address_transaction(
                     (*destination).clone(),
-                    MicroTari::from(amount),
+                    MicroMinotari::from(amount),
                     selection_criteria,
                     OutputFeatures::default(),
-                    MicroTari::from(fee_per_gram),
+                    MicroMinotari::from(fee_per_gram),
                     message_string,
                 ),
         ) {
@@ -6631,10 +6647,10 @@ pub unsafe extern "C" fn wallet_send_transaction(
             .runtime
             .block_on((*wallet).wallet.transaction_service.send_transaction(
                 (*destination).clone(),
-                MicroTari::from(amount),
+                MicroMinotari::from(amount),
                 selection_criteria,
                 OutputFeatures::default(),
-                MicroTari::from(fee_per_gram),
+                MicroMinotari::from(fee_per_gram),
                 message_string,
             )) {
             Ok(tx_id) => tx_id.as_u64(),
@@ -6661,7 +6677,7 @@ pub unsafe extern "C" fn wallet_send_transaction(
 /// as an out parameter.
 ///
 /// ## Returns
-/// `unsigned long long` - Returns 0 if unsuccessful or the fee estimate in MicroTari if successful
+/// `unsigned long long` - Returns 0 if unsuccessful or the fee estimate in MicroMinotari if successful
 ///
 /// # Safety
 /// None
@@ -6671,8 +6687,8 @@ pub unsafe extern "C" fn wallet_get_fee_estimate(
     amount: c_ulonglong,
     commitments: *mut TariVector,
     fee_per_gram: c_ulonglong,
-    num_kernels: c_ulonglong,
-    num_outputs: c_ulonglong,
+    num_kernels: c_uint,
+    num_outputs: c_uint,
     error_out: *mut c_int,
 ) -> c_ulonglong {
     let mut error = 0;
@@ -6698,9 +6714,9 @@ pub unsafe extern "C" fn wallet_get_fee_estimate(
     match (*wallet)
         .runtime
         .block_on((*wallet).wallet.output_manager_service.fee_estimate(
-            MicroTari::from(amount),
+            MicroMinotari::from(amount),
             selection_criteria,
-            MicroTari::from(fee_per_gram),
+            MicroMinotari::from(fee_per_gram),
             num_kernels as usize,
             num_outputs as usize,
         )) {
@@ -7984,7 +8000,7 @@ pub unsafe extern "C" fn wallet_is_recovery_in_progress(wallet: *mut TariWallet,
 ///     - ConnectedToBaseNode, 0, 1
 ///     - ConnectionToBaseNodeFailed, number of retries, retry limit
 ///     - Progress, current block, total number of blocks
-///     - Completed, total number of UTXO's recovered, MicroTari recovered,
+///     - Completed, total number of UTXO's recovered, MicroMinotari recovered,
 ///     - ScanningRoundFailed, number of retries, retry limit
 ///     - RecoveryFailed, 0, 0
 ///
@@ -7995,7 +8011,7 @@ pub unsafe extern "C" fn wallet_is_recovery_in_progress(wallet: *mut TariWallet,
 ///       started
 ///     - In Progress callbacks will be of the form (n, m) where n < m
 ///     - If the process completed successfully then the final `Completed` callback will return how many UTXO's were
-///       scanned and how much MicroTari was recovered
+///       scanned and how much MicroMinotari was recovered
 ///     - If there is an error in the connection process then the `ConnectionToBaseNodeFailed` will be returned
 ///     - If there is a minor error in scanning then `ScanningRoundFailed` will be returned and another connection/sync
 ///       attempt will be made
@@ -8155,6 +8171,8 @@ pub unsafe extern "C" fn get_emoji_set() -> *mut EmojiSet {
 ///
 /// # Safety
 /// None
+// casting here is okay as emoji set wont get larger than u32
+#[allow(clippy::cast_possible_truncation)]
 #[no_mangle]
 pub unsafe extern "C" fn emoji_set_get_length(emoji_set: *const EmojiSet, error_out: *mut c_int) -> c_uint {
     let mut error = 0;
@@ -8330,6 +8348,8 @@ pub unsafe extern "C" fn wallet_get_fee_per_gram_stats(
 ///
 /// # Safety
 /// None
+// casting here is okay as fee per gram stats cannot get larger than u32
+#[allow(clippy::cast_possible_truncation)]
 #[no_mangle]
 pub unsafe extern "C" fn fee_per_gram_stats_get_length(
     fee_per_gram_stats: *mut TariFeePerGramStats,
@@ -8553,20 +8573,27 @@ mod test {
 
     use borsh::BorshSerialize;
     use libc::{c_char, c_uchar, c_uint};
+    use minotari_wallet::{
+        storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
+        transaction_service::handle::TransactionSendStatus,
+    };
     use tari_common_types::{emoji, transaction::TransactionStatus, types::PrivateKey};
     use tari_comms::peer_manager::PeerFeatures;
     use tari_core::{
         covenant,
-        transactions::test_helpers::{create_non_recoverable_unblinded_output, create_test_input, TestParams},
+        transactions::{
+            key_manager::SecretTransactionKeyManagerInterface,
+            test_helpers::{
+                create_test_core_key_manager_with_memory_db,
+                create_test_input,
+                create_wallet_output_with_data,
+                TestParams,
+            },
+        },
     };
-    use tari_crypto::ristretto::pedersen::extended_commitment_factory::ExtendedPedersenCommitmentFactory;
     use tari_key_manager::{mnemonic::MnemonicLanguage, mnemonic_wordlists};
     use tari_script::script;
     use tari_test_utils::random;
-    use tari_wallet::{
-        storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
-        transaction_service::handle::TransactionSendStatus,
-    };
     use tempfile::tempdir;
 
     use crate::*;
@@ -8803,9 +8830,11 @@ mod test {
         // assert!(true); //optimized out by compiler
     }
 
-    const NETWORK_STRING: &str = "dibbler";
+    const NETWORK_STRING: &str = "localnet";
 
     #[test]
+    // casting is okay in tests
+    #[allow(clippy::cast_possible_truncation)]
     fn test_bytevector() {
         unsafe {
             let mut error = 0;
@@ -9121,7 +9150,7 @@ mod test {
             let spending_key = PrivateKey::random(&mut OsRng);
             let commitment = Commitment::from_public_key(&PublicKey::from_secret_key(&spending_key));
             let encryption_key = PrivateKey::random(&mut OsRng);
-            let amount = MicroTari::from(123456);
+            let amount = MicroMinotari::from(123456);
             let encrypted_data =
                 TariEncryptedOpenings::encrypt_data(&encryption_key, &commitment, amount, &spending_key).unwrap();
             let encrypted_data_bytes = encrypted_data.to_byte_vec();
@@ -9143,6 +9172,8 @@ mod test {
     }
 
     #[test]
+    // casting is okay in tests
+    #[allow(clippy::cast_possible_truncation)]
     fn test_output_features_create_empty() {
         unsafe {
             let mut error = 0;
@@ -9861,7 +9892,6 @@ mod test {
 
             assert_eq!(*seed_words, *recovered_seed_words);
             assert_eq!(*public_address, *recovered_address);
-            // TODO: Clean up memory leaks please
         }
     }
 
@@ -9869,6 +9899,7 @@ mod test {
     #[allow(clippy::too_many_lines)]
     fn test_wallet_get_utxos() {
         unsafe {
+            let key_manager = create_test_core_key_manager_with_memory_db();
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
             let mut recovery_in_progress = true;
@@ -9930,13 +9961,15 @@ mod test {
             );
 
             assert_eq!(error, 0);
-            (0..10).for_each(|i| {
-                let (_, uout) = create_test_input((1000 * i).into(), 0, &ExtendedPedersenCommitmentFactory::default());
+            for i in 0..10 {
+                let uout = (*alice_wallet)
+                    .runtime
+                    .block_on(create_test_input((1000 * i).into(), 0, &key_manager));
                 (*alice_wallet)
                     .runtime
                     .block_on((*alice_wallet).wallet.output_manager_service.add_output(uout, None))
                     .unwrap();
-            });
+            }
 
             // ascending order
             let outputs = wallet_get_utxos(
@@ -10076,13 +10109,16 @@ mod test {
             );
             assert_eq!(error, 0);
 
-            (0..10).for_each(|i| {
-                let (_, uout) = create_test_input((1000 * i).into(), 0, &ExtendedPedersenCommitmentFactory::default());
+            let key_manager = create_test_core_key_manager_with_memory_db();
+            for i in 0..10 {
+                let uout = (*alice_wallet)
+                    .runtime
+                    .block_on(create_test_input((1000 * i).into(), 0, &key_manager));
                 (*alice_wallet)
                     .runtime
                     .block_on((*alice_wallet).wallet.output_manager_service.add_output(uout, None))
                     .unwrap();
-            });
+            }
 
             let outputs = wallet_get_utxos(
                 alice_wallet,
@@ -10128,6 +10164,7 @@ mod test {
     #[allow(clippy::too_many_lines, clippy::needless_collect)]
     fn test_wallet_coin_join() {
         unsafe {
+            let key_manager = create_test_core_key_manager_with_memory_db();
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
             let mut recovery_in_progress = true;
@@ -10189,15 +10226,19 @@ mod test {
             );
 
             assert_eq!(error, 0);
-            (1..=5).for_each(|i| {
+            for i in 1..=5 {
                 (*alice_wallet)
                     .runtime
-                    .block_on((*alice_wallet).wallet.output_manager_service.add_output(
-                        create_test_input((15000 * i).into(), 0, &ExtendedPedersenCommitmentFactory::default()).1,
-                        None,
-                    ))
+                    .block_on(
+                        (*alice_wallet).wallet.output_manager_service.add_output(
+                            (*alice_wallet)
+                                .runtime
+                                .block_on(create_test_input((15000 * i).into(), 0, &key_manager)),
+                            None,
+                        ),
+                    )
                     .unwrap();
-            });
+            }
 
             // ----------------------------------------------------------------------------
             // preview
@@ -10259,8 +10300,8 @@ mod test {
                 })
                 .unwrap()
                 .into_iter()
-                .map(|x| x.unblinded_output.value)
-                .collect::<Vec<MicroTari>>();
+                .map(|x| x.wallet_output.value)
+                .collect::<Vec<MicroMinotari>>();
 
             let new_pending_outputs = (*alice_wallet)
                 .wallet
@@ -10271,8 +10312,8 @@ mod test {
                 })
                 .unwrap()
                 .into_iter()
-                .map(|x| x.unblinded_output.value)
-                .collect::<Vec<MicroTari>>();
+                .map(|x| x.wallet_output.value)
+                .collect::<Vec<MicroMinotari>>();
 
             let post_join_total_amount = new_pending_outputs.iter().fold(0u64, |acc, x| acc + x.as_u64());
             let expected_output_values: Vec<u64> = Vec::from_raw_parts(
@@ -10324,6 +10365,7 @@ mod test {
     #[allow(clippy::too_many_lines, clippy::needless_collect)]
     fn test_wallet_coin_split() {
         unsafe {
+            let key_manager = create_test_core_key_manager_with_memory_db();
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
             let mut recovery_in_progress = true;
@@ -10383,15 +10425,19 @@ mod test {
                 error_ptr,
             );
             assert_eq!(error, 0);
-            (1..=5).for_each(|i| {
+            for i in 1..=5 {
                 (*alice_wallet)
                     .runtime
-                    .block_on((*alice_wallet).wallet.output_manager_service.add_output(
-                        create_test_input((15000 * i).into(), 0, &ExtendedPedersenCommitmentFactory::default()).1,
-                        None,
-                    ))
+                    .block_on(
+                        (*alice_wallet).wallet.output_manager_service.add_output(
+                            (*alice_wallet)
+                                .runtime
+                                .block_on(create_test_input((15000 * i).into(), 0, &key_manager)),
+                            None,
+                        ),
+                    )
                     .unwrap();
-            });
+            }
 
             // ----------------------------------------------------------------------------
             // preview
@@ -10456,7 +10502,7 @@ mod test {
                 })
                 .unwrap()
                 .into_iter()
-                .map(|x| x.unblinded_output.value)
+                .map(|x| x.wallet_output.value)
                 .collect::<Vec<_>>();
 
             let new_pending_outputs = (*alice_wallet)
@@ -10468,7 +10514,7 @@ mod test {
                 })
                 .unwrap()
                 .into_iter()
-                .map(|x| x.unblinded_output.value)
+                .map(|x| x.wallet_output.value)
                 .collect::<Vec<_>>();
 
             let post_split_total_amount = new_pending_outputs.iter().fold(0u64, |acc, x| acc + x.as_u64());
@@ -10498,7 +10544,7 @@ mod test {
 
             // comparing resulting output values relative to itself
             assert_eq!(new_pending_outputs[0], new_pending_outputs[1]);
-            assert_eq!(new_pending_outputs[2], new_pending_outputs[1] + MicroTari(1));
+            assert_eq!(new_pending_outputs[2], new_pending_outputs[1] + MicroMinotari(1));
 
             // comparing resulting output values to the expected
             assert_eq!(new_pending_outputs[0].as_u64(), expected_output_values[0]);
@@ -10586,15 +10632,21 @@ mod test {
                 error_ptr,
             );
             assert_eq!(error, 0);
-            (1..=5).for_each(|i| {
+
+            let key_manager = create_test_core_key_manager_with_memory_db();
+            for i in 1..=5 {
                 (*alice_wallet)
                     .runtime
-                    .block_on((*alice_wallet).wallet.output_manager_service.add_output(
-                        create_test_input((15000 * i).into(), 0, &ExtendedPedersenCommitmentFactory::default()).1,
-                        None,
-                    ))
+                    .block_on(
+                        (*alice_wallet).wallet.output_manager_service.add_output(
+                            (*alice_wallet)
+                                .runtime
+                                .block_on(create_test_input((15000 * i).into(), 0, &key_manager)),
+                            None,
+                        ),
+                    )
                     .unwrap();
-            });
+            }
 
             // obtaining network and version
             let _ = wallet_get_last_version(alice_config, &mut error as *mut c_int);
@@ -10698,23 +10750,33 @@ mod test {
 
     #[test]
     pub fn test_create_external_utxo() {
+        let runtime = Runtime::new().unwrap();
         unsafe {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
             // Test the consistent features case
-            let utxo_1 = create_non_recoverable_unblinded_output(
-                script!(Nop),
-                OutputFeatures::default(),
-                &TestParams::new(),
-                MicroTari(1234u64),
-            )
-            .unwrap();
+            let key_manager = create_test_core_key_manager_with_memory_db();
+            let utxo_1 = runtime
+                .block_on(create_wallet_output_with_data(
+                    script!(Nop),
+                    OutputFeatures::default(),
+                    &runtime.block_on(TestParams::new(&key_manager)),
+                    MicroMinotari(1234u64),
+                    &key_manager,
+                ))
+                .unwrap();
             let amount = utxo_1.value.as_u64();
-            let spending_key_ptr = Box::into_raw(Box::new(utxo_1.spending_key.clone()));
+            let spending_key = runtime
+                .block_on(key_manager.get_private_key(&utxo_1.spending_key_id))
+                .unwrap();
+            let script_private_key = runtime
+                .block_on(key_manager.get_private_key(&utxo_1.script_key_id))
+                .unwrap();
+            let spending_key_ptr = Box::into_raw(Box::new(spending_key));
             let features_ptr = Box::into_raw(Box::new(utxo_1.features.clone()));
             let metadata_signature_ptr = Box::into_raw(Box::new(utxo_1.metadata_signature.clone()));
             let sender_offset_public_key_ptr = Box::into_raw(Box::new(utxo_1.sender_offset_public_key.clone()));
-            let script_private_key_ptr = Box::into_raw(Box::new(utxo_1.script_private_key.clone()));
+            let script_private_key_ptr = Box::into_raw(Box::new(script_private_key));
             let covenant_ptr = Box::into_raw(Box::new(utxo_1.covenant.clone()));
             let encrypted_data_ptr = Box::into_raw(Box::new(utxo_1.encrypted_data));
             let minimum_value_promise = utxo_1.minimum_value_promise.as_u64();
@@ -10738,7 +10800,7 @@ mod test {
             );
 
             assert_eq!(error, 0);
-            assert_eq!(*tari_utxo, utxo_1);
+            assert_eq!((*tari_utxo).sender_offset_public_key, utxo_1.sender_offset_public_key);
             tari_unblinded_output_destroy(tari_utxo);
 
             // Cleanup
@@ -10761,6 +10823,7 @@ mod test {
     #[test]
     #[allow(clippy::too_many_lines)]
     pub fn test_import_external_utxo() {
+        let runtime = Runtime::new().unwrap();
         unsafe {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
@@ -10833,20 +10896,30 @@ mod test {
             );
 
             // Test the consistent features case
-            let utxo_1 = create_non_recoverable_unblinded_output(
-                script!(Nop),
-                OutputFeatures::default(),
-                &TestParams::new(),
-                MicroTari(1234u64),
-            )
-            .unwrap();
+            let key_manager = create_test_core_key_manager_with_memory_db();
+            let utxo_1 = runtime
+                .block_on(create_wallet_output_with_data(
+                    script!(Nop),
+                    OutputFeatures::default(),
+                    &runtime.block_on(TestParams::new(&key_manager)),
+                    MicroMinotari(1234u64),
+                    &key_manager,
+                ))
+                .unwrap();
             let amount = utxo_1.value.as_u64();
-            let spending_key_ptr = Box::into_raw(Box::new(utxo_1.spending_key.clone()));
+
+            let spending_key = runtime
+                .block_on(key_manager.get_private_key(&utxo_1.spending_key_id))
+                .unwrap();
+            let script_private_key = runtime
+                .block_on(key_manager.get_private_key(&utxo_1.script_key_id))
+                .unwrap();
+            let spending_key_ptr = Box::into_raw(Box::new(spending_key));
             let features_ptr = Box::into_raw(Box::new(utxo_1.features.clone()));
             let source_address_ptr = Box::into_raw(Box::default());
             let metadata_signature_ptr = Box::into_raw(Box::new(utxo_1.metadata_signature.clone()));
             let sender_offset_public_key_ptr = Box::into_raw(Box::new(utxo_1.sender_offset_public_key.clone()));
-            let script_private_key_ptr = Box::into_raw(Box::new(utxo_1.script_private_key.clone()));
+            let script_private_key_ptr = Box::into_raw(Box::new(script_private_key));
             let covenant_ptr = Box::into_raw(Box::new(utxo_1.covenant.clone()));
             let encrypted_data_ptr = Box::into_raw(Box::new(utxo_1.encrypted_data));
             let minimum_value_promise = utxo_1.minimum_value_promise.as_u64();
@@ -10914,24 +10987,34 @@ mod test {
 
     #[test]
     pub fn test_utxo_json() {
+        let runtime = Runtime::new().unwrap();
         unsafe {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
 
-            let utxo_1 = create_non_recoverable_unblinded_output(
-                script!(Nop),
-                OutputFeatures::default(),
-                &TestParams::new(),
-                MicroTari(1234u64),
-            )
-            .unwrap();
+            let key_manager = create_test_core_key_manager_with_memory_db();
+            let utxo_1 = runtime
+                .block_on(create_wallet_output_with_data(
+                    script!(Nop),
+                    OutputFeatures::default(),
+                    &runtime.block_on(TestParams::new(&key_manager)),
+                    MicroMinotari(1234u64),
+                    &key_manager,
+                ))
+                .unwrap();
             let amount = utxo_1.value.as_u64();
-            let spending_key_ptr = Box::into_raw(Box::new(utxo_1.spending_key.clone()));
+            let spending_key = runtime
+                .block_on(key_manager.get_private_key(&utxo_1.spending_key_id))
+                .unwrap();
+            let script_private_key = runtime
+                .block_on(key_manager.get_private_key(&utxo_1.script_key_id))
+                .unwrap();
+            let spending_key_ptr = Box::into_raw(Box::new(spending_key));
             let features_ptr = Box::into_raw(Box::new(utxo_1.features.clone()));
             let source_address_ptr = Box::into_raw(Box::<TariWalletAddress>::default());
             let metadata_signature_ptr = Box::into_raw(Box::new(utxo_1.metadata_signature.clone()));
             let sender_offset_public_key_ptr = Box::into_raw(Box::new(utxo_1.sender_offset_public_key.clone()));
-            let script_private_key_ptr = Box::into_raw(Box::new(utxo_1.script_private_key.clone()));
+            let script_private_key_ptr = Box::into_raw(Box::new(script_private_key));
             let covenant_ptr = Box::into_raw(Box::new(utxo_1.covenant.clone()));
             let encrypted_data_ptr = Box::into_raw(Box::new(utxo_1.encrypted_data));
             let minimum_value_promise = utxo_1.minimum_value_promise.as_u64();

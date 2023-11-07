@@ -158,7 +158,6 @@ impl TraitInfoCollector {
         Ok(())
     }
 
-    // TODO: remove this after PR #4063 is merged
     #[allow(clippy::too_many_lines)]
     fn parse_method_signature(&self, node: &syn::TraitItemMethod, info: &mut RpcMethodInfo) -> syn::Result<()> {
         info.method_ident = node.sig.ident.clone();

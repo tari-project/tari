@@ -23,13 +23,13 @@
 use std::sync::{Arc, Mutex};
 
 use futures::StreamExt;
-use tari_service_framework::reply_channel::Receiver;
-use tari_shutdown::ShutdownSignal;
-use tari_wallet::output_manager_service::{
+use minotari_wallet::output_manager_service::{
     error::OutputManagerError,
     handle::{OutputManagerRequest, OutputManagerResponse},
     service::Balance,
 };
+use tari_service_framework::reply_channel::Receiver;
+use tari_shutdown::ShutdownSignal;
 
 /// This macro unlocks a Mutex or RwLock. If the lock is poisoned (i.e. panic while unlocked) the last value
 /// before the panic is used.

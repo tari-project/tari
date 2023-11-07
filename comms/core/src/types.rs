@@ -24,7 +24,6 @@
 
 use tari_crypto::{
     dhke::DiffieHellmanSharedSecret,
-    hash::blake2::Blake256,
     hash_domain,
     keys::PublicKey,
     ristretto::RistrettoPublicKey,
@@ -45,8 +44,6 @@ pub type CommsSecretKey = <CommsPublicKey as PublicKey>::K;
 // Diffie-Hellman key exchange type
 pub type CommsDHKE = DiffieHellmanSharedSecret<CommsPublicKey>;
 
-/// Specify the digest type for the signature challenges
-pub type CommsChallenge = Blake256;
 /// Comms signature type
 pub type Signature = SchnorrSignature<CommsPublicKey, CommsSecretKey>;
 

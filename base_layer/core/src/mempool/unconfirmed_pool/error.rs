@@ -22,10 +22,16 @@
 
 use thiserror::Error;
 
+use crate::transactions::transaction_components::TransactionError;
+
 #[derive(Debug, Error)]
 pub enum UnconfirmedPoolError {
     #[error("The HashMap and BTreeMap are out of sync")]
     StorageOutofSync,
+    #[error("Mempool encountered an internal error: {0}")]
+    InternalError(String),
     #[error("Transaction has no kernels")]
     TransactionNoKernels,
+    #[error("Transaction error: `{0}`")]
+    TransactionError(#[from] TransactionError),
 }

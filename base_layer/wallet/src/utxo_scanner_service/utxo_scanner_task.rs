@@ -45,8 +45,8 @@ use tari_core::{
     blocks::BlockHeader,
     proto::base_node::SyncUtxosByBlockRequest,
     transactions::{
-        tari_amount::MicroTari,
-        transaction_components::{TransactionOutput, UnblindedOutput},
+        tari_amount::MicroMinotari,
+        transaction_components::{TransactionOutput, WalletOutput},
     },
 };
 use tari_key_manager::get_birthday_from_unix_epoch_in_seconds;
@@ -150,7 +150,7 @@ where
         &self,
         num_outputs_recovered: u64,
         final_height: u64,
-        total_value: MicroTari,
+        total_value: MicroMinotari,
         elapsed: Duration,
     ) -> Result<(), UtxoScannerError> {
         self.publish_event(UtxoScannerEvent::Progress {
@@ -197,7 +197,7 @@ where
         }
     }
 
-    async fn attempt_sync(&mut self, peer: NodeId) -> Result<(u64, u64, MicroTari, Duration), UtxoScannerError> {
+    async fn attempt_sync(&mut self, peer: NodeId) -> Result<(u64, u64, MicroMinotari, Duration), UtxoScannerError> {
         self.publish_event(UtxoScannerEvent::ConnectingToBaseNode(peer.clone()));
         let selected_peer = self.resources.wallet_connectivity.get_current_base_node_id();
 
@@ -237,7 +237,7 @@ where
                     return Ok((
                         last_scanned_block.num_outputs.unwrap_or(0),
                         last_scanned_block.height,
-                        last_scanned_block.amount.unwrap_or_else(|| MicroTari::from(0)),
+                        last_scanned_block.amount.unwrap_or_else(|| MicroMinotari::from(0)),
                         timer.elapsed(),
                     ));
                 }
@@ -273,7 +273,7 @@ where
                 return Ok((
                     next_block_to_scan.num_outputs.unwrap_or(0),
                     next_block_to_scan.height,
-                    next_block_to_scan.amount.unwrap_or_else(|| MicroTari::from(0)),
+                    next_block_to_scan.amount.unwrap_or_else(|| MicroMinotari::from(0)),
                     timer.elapsed(),
                 ));
             }
@@ -357,7 +357,7 @@ where
         let mut last_missing_scanned_block = None;
         let mut found_scanned_block = None;
         let mut num_outputs = 0u64;
-        let mut amount = MicroTari::from(0);
+        let mut amount = MicroMinotari::from(0);
         for sb in scanned_blocks {
             // The scanned block has a higher height than the current tip, meaning the previously scanned block was
             // reorged out.
@@ -391,7 +391,7 @@ where
             if found_scanned_block.is_some() {
                 num_outputs = num_outputs.saturating_add(sb.num_outputs.unwrap_or(0));
                 amount = amount
-                    .checked_add(sb.amount.unwrap_or_else(|| MicroTari::from(0)))
+                    .checked_add(sb.amount.unwrap_or_else(|| MicroMinotari::from(0)))
                     .ok_or(UtxoScannerError::OverflowError)?;
             }
         }
@@ -429,18 +429,20 @@ where
     }
 
     #[allow(clippy::too_many_lines)]
+    // converting u64 to i64 is its only used for timestamps
+    #[allow(clippy::cast_possible_wrap)]
     async fn scan_utxos(
         &mut self,
         client: &mut BaseNodeWalletRpcClient,
         start_header_hash: HashOutput,
         end_header_hash: HashOutput,
         tip_height: u64,
-    ) -> Result<(u64, u64, MicroTari), UtxoScannerError> {
+    ) -> Result<(u64, u64, MicroMinotari), UtxoScannerError> {
         // Setting how often the progress event and log should occur during scanning. Defined in blocks
         const PROGRESS_REPORT_INTERVAL: u64 = 100;
 
         let mut num_recovered = 0u64;
-        let mut total_amount = MicroTari::from(0);
+        let mut total_amount = MicroMinotari::from(0);
         let mut total_scanned = 0;
 
         let request = SyncUtxosByBlockRequest {
@@ -551,8 +553,8 @@ where
     async fn scan_for_outputs(
         &mut self,
         outputs: Vec<TransactionOutput>,
-    ) -> Result<Vec<(UnblindedOutput, String, ImportStatus, TxId)>, UtxoScannerError> {
-        let mut found_outputs: Vec<(UnblindedOutput, String, ImportStatus, TxId)> = Vec::new();
+    ) -> Result<Vec<(WalletOutput, String, ImportStatus, TxId)>, UtxoScannerError> {
+        let mut found_outputs: Vec<(WalletOutput, String, ImportStatus, TxId)> = Vec::new();
         found_outputs.append(
             &mut self
                 .resources
@@ -593,12 +595,12 @@ where
 
     async fn import_utxos_to_transaction_service(
         &mut self,
-        utxos: Vec<(UnblindedOutput, String, ImportStatus, TxId)>,
+        utxos: Vec<(WalletOutput, String, ImportStatus, TxId)>,
         current_height: u64,
         mined_timestamp: NaiveDateTime,
-    ) -> Result<(u64, MicroTari), UtxoScannerError> {
+    ) -> Result<(u64, MicroMinotari), UtxoScannerError> {
         let mut num_recovered = 0u64;
-        let mut total_amount = MicroTari::from(0);
+        let mut total_amount = MicroMinotari::from(0);
         for (uo, message, import_status, tx_id) in utxos {
             let source_address = if uo.features.is_coinbase() {
                 // its a coinbase, so we know we mined it and it comes from us.
@@ -609,7 +611,7 @@ where
                 TariAddress::default()
             };
             match self
-                .import_unblinded_utxo_to_transaction_service(
+                .import_key_manager_utxo_to_transaction_service(
                     uo.clone(),
                     source_address,
                     message,
@@ -666,9 +668,9 @@ where
 
     /// A faux incoming transaction will be created to provide a record of the event of importing a scanned UTXO. The
     /// TxId of the generated transaction is returned.
-    pub async fn import_unblinded_utxo_to_transaction_service(
+    pub async fn import_key_manager_utxo_to_transaction_service(
         &mut self,
-        unblinded_output: UnblindedOutput,
+        wallet_output: WalletOutput,
         source_address: TariAddress,
         message: String,
         import_status: ImportStatus,
@@ -680,10 +682,10 @@ where
             .resources
             .transaction_service
             .import_utxo_with_status(
-                unblinded_output.value,
+                wallet_output.value,
                 source_address,
                 message,
-                Some(unblinded_output.features.maturity),
+                Some(wallet_output.features.maturity),
                 import_status.clone(),
                 Some(tx_id),
                 Some(current_height),
@@ -693,13 +695,7 @@ where
 
         info!(
             target: LOG_TARGET,
-            "UTXO (Commitment: {}) imported into wallet as 'ImportStatus::{}'",
-            unblinded_output
-                .as_transaction_input(&self.resources.factories.commitment)?
-                .commitment()
-                .map_err(WalletError::TransactionError)?
-                .to_hex(),
-            import_status
+            "UTXO with value {},  imported into wallet as 'ImportStatus::{}'", wallet_output.value, import_status
         );
 
         Ok(tx_id)

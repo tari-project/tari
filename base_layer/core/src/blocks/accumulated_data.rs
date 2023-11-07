@@ -25,67 +25,37 @@ use std::{
     sync::Arc,
 };
 
-use croaring::Bitmap;
 use log::*;
 use num_format::{Locale, ToFormattedString};
-use serde::{
-    de,
-    de::{MapAccess, SeqAccess, Visitor},
-    ser::SerializeStruct,
-    Deserialize,
-    Deserializer,
-    Serialize,
-    Serializer,
-};
-use tari_common_types::types::{BlindingFactor, Commitment, HashOutput};
+use serde::{Deserialize, Serialize};
+use tari_common_types::types::{Commitment, HashOutput, PrivateKey};
 use tari_mmr::{pruned_hashset::PrunedHashSet, ArrayLike};
 use tari_utilities::hex::Hex;
 
 use crate::{
     blocks::{error::BlockError, Block, BlockHeader},
-    proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
+    proof_of_work::{difficulty::CheckedAdd, AchievedTargetDifficulty, Difficulty, PowAlgorithm},
     transactions::aggregated_body::AggregateBody,
 };
 
 const LOG_TARGET: &str = "c::bn::acc_data";
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Default, Debug, Serialize, Deserialize)]
 pub struct BlockAccumulatedData {
     pub(crate) kernels: PrunedHashSet,
-    pub(crate) outputs: PrunedHashSet,
-    pub(crate) witness: PrunedHashSet,
-    pub(crate) deleted: DeletedBitmap,
     pub(crate) kernel_sum: Commitment,
 }
 
 impl BlockAccumulatedData {
-    pub fn new(
-        kernels: PrunedHashSet,
-        outputs: PrunedHashSet,
-        witness: PrunedHashSet,
-        deleted: Bitmap,
-        total_kernel_sum: Commitment,
-    ) -> Self {
+    pub fn new(kernels: PrunedHashSet, total_kernel_sum: Commitment) -> Self {
         Self {
             kernels,
-            outputs,
-            witness,
-            deleted: DeletedBitmap { deleted },
             kernel_sum: total_kernel_sum,
         }
     }
 
-    pub fn deleted(&self) -> &Bitmap {
-        &self.deleted.deleted
-    }
-
-    pub fn set_deleted(&mut self, deleted: DeletedBitmap) -> &mut Self {
-        self.deleted = deleted;
-        self
-    }
-
-    pub fn dissolve(self) -> (PrunedHashSet, PrunedHashSet, PrunedHashSet, Bitmap) {
-        (self.kernels, self.outputs, self.witness, self.deleted.deleted)
+    pub fn dissolve(self) -> PrunedHashSet {
+        self.kernels
     }
 
     pub fn kernel_sum(&self) -> &Commitment {
@@ -93,163 +63,22 @@ impl BlockAccumulatedData {
     }
 }
 
-impl Default for BlockAccumulatedData {
-    fn default() -> Self {
-        Self {
-            kernels: Default::default(),
-            outputs: Default::default(),
-            deleted: DeletedBitmap {
-                deleted: Bitmap::create(),
-            },
-            witness: Default::default(),
-            kernel_sum: Default::default(),
-        }
-    }
-}
-
 impl Display for BlockAccumulatedData {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(
-            f,
-            "{} hashes in output MMR, {} spends this block, {} hashes in kernel MMR, {} hashes in witness MMR",
-            self.outputs.len().unwrap_or(0),
-            self.deleted.deleted.cardinality(),
-            self.kernels.len().unwrap_or(0),
-            self.witness.len().unwrap_or(0)
-        )
+        write!(f, "{} hashes in kernel MMR,", self.kernels.len().unwrap_or(0))
     }
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct UpdateBlockAccumulatedData {
     pub kernel_hash_set: Option<PrunedHashSet>,
-    pub utxo_hash_set: Option<PrunedHashSet>,
-    pub witness_hash_set: Option<PrunedHashSet>,
-    pub deleted_diff: Option<DeletedBitmap>,
     pub kernel_sum: Option<Commitment>,
-}
-
-/// Wrapper struct to serialize and deserialize Bitmap
-#[derive(Debug, Clone)]
-pub struct DeletedBitmap {
-    deleted: Bitmap,
-}
-
-impl DeletedBitmap {
-    pub fn into_bitmap(self) -> Bitmap {
-        self.deleted
-    }
-
-    pub fn bitmap(&self) -> &Bitmap {
-        &self.deleted
-    }
-
-    pub(crate) fn bitmap_mut(&mut self) -> &mut Bitmap {
-        &mut self.deleted
-    }
-}
-
-impl From<Bitmap> for DeletedBitmap {
-    fn from(deleted: Bitmap) -> Self {
-        Self { deleted }
-    }
-}
-
-impl Serialize for DeletedBitmap {
-    fn serialize<S>(&self, serializer: S) -> Result<<S as Serializer>::Ok, <S as Serializer>::Error>
-    where S: Serializer {
-        let mut s = serializer.serialize_struct("DeletedBitmap", 1)?;
-        s.serialize_field("deleted", &self.deleted.serialize())?;
-        s.end()
-    }
-}
-
-impl<'de> Deserialize<'de> for DeletedBitmap {
-    fn deserialize<D>(deserializer: D) -> Result<Self, <D as Deserializer<'de>>::Error>
-    where D: Deserializer<'de> {
-        const FIELDS: &[&str] = &["deleted"];
-
-        deserializer.deserialize_struct("DeletedBitmap", FIELDS, DeletedBitmapVisitor)
-    }
-}
-
-struct DeletedBitmapVisitor;
-
-impl<'de> Visitor<'de> for DeletedBitmapVisitor {
-    type Value = DeletedBitmap;
-
-    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        formatter.write_str("`deleted`")
-    }
-
-    fn visit_seq<V>(self, mut seq: V) -> Result<Self::Value, V::Error>
-    where V: SeqAccess<'de> {
-        let deleted: Vec<u8> = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(2, &self))?;
-        Ok(DeletedBitmap {
-            deleted: Bitmap::deserialize(&deleted),
-        })
-    }
-
-    fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
-    where V: MapAccess<'de> {
-        #[derive(Deserialize)]
-        #[serde(field_identifier, rename_all = "lowercase")]
-        enum Field {
-            Deleted,
-        }
-        let mut deleted = None;
-        while let Some(key) = map.next_key()? {
-            match key {
-                Field::Deleted => {
-                    if deleted.is_some() {
-                        return Err(de::Error::duplicate_field("deleted"));
-                    }
-                    deleted = Some(map.next_value()?);
-                },
-            }
-        }
-        let deleted: Vec<u8> = deleted.ok_or_else(|| de::Error::missing_field("deleted"))?;
-
-        Ok(DeletedBitmap {
-            deleted: Bitmap::deserialize(&deleted),
-        })
-    }
-}
-
-/// Wrapper struct to get a completed bitmap with the height it was created at
-#[derive(Debug, Clone)]
-pub struct CompleteDeletedBitmap {
-    deleted: Bitmap,
-    height: u64,
-    hash: HashOutput,
-}
-
-impl CompleteDeletedBitmap {
-    pub fn new(deleted: Bitmap, height: u64, hash: HashOutput) -> CompleteDeletedBitmap {
-        CompleteDeletedBitmap { deleted, height, hash }
-    }
-
-    pub fn into_bitmap(self) -> Bitmap {
-        self.deleted
-    }
-
-    pub fn bitmap(&self) -> &Bitmap {
-        &self.deleted
-    }
-
-    pub fn dissolve(self) -> (Bitmap, u64, HashOutput) {
-        (self.deleted, self.height, self.hash)
-    }
-
-    pub fn into_bytes(self) -> Vec<u8> {
-        self.deleted.serialize()
-    }
 }
 
 pub struct BlockHeaderAccumulatedDataBuilder<'a> {
     previous_accum: &'a BlockHeaderAccumulatedData,
     hash: Option<HashOutput>,
-    current_total_kernel_offset: Option<BlindingFactor>,
+    current_total_kernel_offset: Option<PrivateKey>,
     current_achieved_target: Option<AchievedTargetDifficulty>,
 }
 
@@ -270,7 +99,7 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
         self
     }
 
-    pub fn with_total_kernel_offset(mut self, current_offset: BlindingFactor) -> Self {
+    pub fn with_total_kernel_offset(mut self, current_offset: PrivateKey) -> Self {
         self.current_total_kernel_offset = Some(current_offset);
         self
     }
@@ -295,14 +124,20 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
             field: "Current achieved difficulty",
         })?;
 
-        let (monero_diff, blake_diff) = match achieved_target.pow_algo() {
-            PowAlgorithm::Monero => (
-                previous_accum.accumulated_monero_difficulty + achieved_target.achieved(),
-                previous_accum.accumulated_sha_difficulty,
+        let (randomx_diff, sha3x_diff) = match achieved_target.pow_algo() {
+            PowAlgorithm::RandomX => (
+                previous_accum
+                    .accumulated_randomx_difficulty
+                    .checked_add(achieved_target.achieved())
+                    .ok_or(BlockError::DifficultyOverflow)?,
+                previous_accum.accumulated_sha3x_difficulty,
             ),
-            PowAlgorithm::Sha3 => (
-                previous_accum.accumulated_monero_difficulty,
-                previous_accum.accumulated_sha_difficulty + achieved_target.achieved(),
+            PowAlgorithm::Sha3x => (
+                previous_accum.accumulated_randomx_difficulty,
+                previous_accum
+                    .accumulated_sha3x_difficulty
+                    .checked_add(achieved_target.achieved())
+                    .ok_or(BlockError::DifficultyOverflow)?,
             ),
         };
 
@@ -317,35 +152,40 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
             hash,
             total_kernel_offset,
             achieved_difficulty: achieved_target.achieved(),
-            total_accumulated_difficulty: u128::from(monero_diff.as_u64()) * u128::from(blake_diff.as_u64()),
-            accumulated_monero_difficulty: monero_diff,
-            accumulated_sha_difficulty: blake_diff,
+            total_accumulated_difficulty: u128::from(randomx_diff.as_u64()) * u128::from(sha3x_diff.as_u64()),
+            accumulated_randomx_difficulty: randomx_diff,
+            accumulated_sha3x_difficulty: sha3x_diff,
             target_difficulty: achieved_target.target(),
         };
         trace!(
             target: LOG_TARGET,
-            "Calculated: Tot_acc_diff {}, Monero {}, SHA3 {}",
+            "Calculated: Tot_acc_diff {}, RandomX {}, SHA3 {}",
             result.total_accumulated_difficulty.to_formatted_string(&Locale::en),
-            result.accumulated_monero_difficulty,
-            result.accumulated_sha_difficulty,
+            result.accumulated_randomx_difficulty,
+            result.accumulated_sha3x_difficulty,
         );
         Ok(result)
     }
 }
 
-// TODO: Find a better name and move into `core::blocks` mod
+/// Accumulated and other pertinent data in the block header acting as a "condensed blockchain snapshot" for the block
 #[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
 pub struct BlockHeaderAccumulatedData {
+    /// The block hash.
     pub hash: HashOutput,
-    pub total_kernel_offset: BlindingFactor,
+    /// The total accumulated offset for all kernels in the block.
+    pub total_kernel_offset: PrivateKey,
+    /// The achieved difficulty for solving the current block using the specified proof of work algorithm.
     pub achieved_difficulty: Difficulty,
+    /// The total accumulated difficulty for all blocks since Genesis, but not including this block, tracked
+    /// separately.
     pub total_accumulated_difficulty: u128,
-    /// The total accumulated difficulty for monero proof of work for all blocks since Genesis,
+    /// The total accumulated difficulty for RandomX proof of work for all blocks since Genesis,
     /// but not including this block, tracked separately.
-    pub accumulated_monero_difficulty: Difficulty,
+    pub accumulated_randomx_difficulty: Difficulty,
     /// The total accumulated difficulty for SHA3 proof of work for all blocks since Genesis,
     /// but not including this block, tracked separately.
-    pub accumulated_sha_difficulty: Difficulty,
+    pub accumulated_sha3x_difficulty: Difficulty,
     /// The target difficulty for solving the current block using the specified proof of work algorithm.
     pub target_difficulty: Difficulty,
 }
@@ -363,10 +203,10 @@ impl Display for BlockHeaderAccumulatedData {
         writeln!(f, "Total accumulated difficulty: {}", self.total_accumulated_difficulty)?;
         writeln!(
             f,
-            "Accumulated monero difficulty: {}",
-            self.accumulated_monero_difficulty
+            "Accumulated RandomX difficulty: {}",
+            self.accumulated_randomx_difficulty
         )?;
-        writeln!(f, "Accumulated sha3 difficulty: {}", self.accumulated_sha_difficulty)?;
+        writeln!(f, "Accumulated sha3 difficulty: {}", self.accumulated_sha3x_difficulty)?;
         writeln!(f, "Target difficulty: {}", self.target_difficulty)?;
         Ok(())
     }

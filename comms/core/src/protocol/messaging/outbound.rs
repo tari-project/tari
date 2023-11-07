@@ -24,7 +24,7 @@ use std::time::Instant;
 
 use futures::{future, SinkExt, StreamExt};
 use tokio::{pin, sync::mpsc};
-use tracing::{debug, error, event, span, Instrument, Level};
+use tracing::{debug, error, span, Instrument, Level};
 
 use super::{error::MessagingProtocolError, metrics, MessagingEvent, MessagingProtocol, SendFailReason};
 use crate::{
@@ -33,7 +33,7 @@ use crate::{
     message::OutboundMessage,
     multiplexing::Substream,
     peer_manager::NodeId,
-    protocol::messaging::protocol::MESSAGING_PROTOCOL,
+    protocol::ProtocolId,
     stream_id::StreamId,
 };
 
@@ -50,6 +50,7 @@ pub struct OutboundMessaging {
     messaging_events_tx: mpsc::Sender<MessagingEvent>,
     retry_queue_tx: mpsc::UnboundedSender<OutboundMessage>,
     peer_node_id: NodeId,
+    protocol_id: ProtocolId,
 }
 
 impl OutboundMessaging {
@@ -59,6 +60,7 @@ impl OutboundMessaging {
         messages_rx: mpsc::UnboundedReceiver<OutboundMessage>,
         retry_queue_tx: mpsc::UnboundedSender<OutboundMessage>,
         peer_node_id: NodeId,
+        protocol_id: ProtocolId,
     ) -> Self {
         Self {
             connectivity,
@@ -66,6 +68,7 @@ impl OutboundMessaging {
             messaging_events_tx,
             retry_queue_tx,
             peer_node_id,
+            protocol_id,
         }
     }
 
@@ -85,12 +88,6 @@ impl OutboundMessaging {
             let messaging_events_tx = self.messaging_events_tx.clone();
             match self.run_inner().await {
                 Ok(_) => {
-                    event!(
-                        Level::DEBUG,
-                        "Outbound messaging for peer '{}' has stopped because the stream was closed",
-                        peer_node_id
-                    );
-
                     debug!(
                         target: LOG_TARGET,
                         "Outbound messaging for peer '{}' has stopped because the stream was closed", peer_node_id
@@ -123,7 +120,7 @@ impl OutboundMessaging {
             }
 
             metrics::num_sessions().dec();
-            let _ = messaging_events_tx
+            let _ignore = messaging_events_tx
                 .send(MessagingEvent::OutboundProtocolExited(peer_node_id))
                 .await;
         }
@@ -137,7 +134,6 @@ impl OutboundMessaging {
         let (conn, substream) = loop {
             match self.try_establish().await {
                 Ok(conn_and_substream) => {
-                    event!(Level::DEBUG, "Substream established");
                     break conn_and_substream;
                 },
                 Err(err) => {
@@ -223,7 +219,7 @@ impl OutboundMessaging {
         &mut self,
         conn: &mut PeerConnection,
     ) -> Result<NegotiatedSubstream<Substream>, MessagingProtocolError> {
-        match conn.open_substream(&MESSAGING_PROTOCOL).await {
+        match conn.open_substream(&self.protocol_id).await {
             Ok(substream) => Ok(substream),
             Err(err) => {
                 debug!(
@@ -268,13 +264,6 @@ impl OutboundMessaging {
         let outbound_count = metrics::outbound_message_count(&peer_node_id);
         let stream = outbound_stream.map(|mut out_msg| {
             outbound_count.inc();
-            event!(
-                Level::DEBUG,
-                "Message for peer '{}' sending {} on stream {}",
-                peer_node_id,
-                out_msg,
-                stream_id
-            );
             debug!(
                 target: LOG_TARGET,
                 "Message for peer '{}' sending {} on stream {}", peer_node_id, out_msg, stream_id

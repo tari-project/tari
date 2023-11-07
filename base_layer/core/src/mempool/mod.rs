@@ -45,6 +45,8 @@ pub use rpc::{MempoolRpcClient, MempoolRpcServer, MempoolRpcService, MempoolServ
 #[cfg(feature = "base_node")]
 mod metrics;
 #[cfg(feature = "base_node")]
+mod shrink_hashmap;
+#[cfg(feature = "base_node")]
 mod unconfirmed_pool;
 
 // Public re-exports
@@ -76,7 +78,7 @@ use tari_common_types::types::Signature;
 
 use crate::{
     proto::base_node as base_node_proto,
-    transactions::{tari_amount::MicroTari, transaction_components::Transaction},
+    transactions::{tari_amount::MicroMinotari, transaction_components::Transaction},
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -112,6 +114,7 @@ pub enum TxStorageResponse {
     NotStoredConsensus,
     NotStored,
     NotStoredAlreadyMined,
+    NotStoredFeeTooLow,
 }
 
 impl TxStorageResponse {
@@ -131,6 +134,7 @@ impl Display for TxStorageResponse {
             TxStorageResponse::NotStoredConsensus => "Not stored due to consensus rule",
             TxStorageResponse::NotStored => "Not stored",
             TxStorageResponse::NotStoredAlreadyMined => "Not stored tx already mined",
+            TxStorageResponse::NotStoredFeeTooLow => "Not stored tx fee is below the minimum accepted by this mempool",
         };
         fmt.write_str(storage)
     }
@@ -139,9 +143,9 @@ impl Display for TxStorageResponse {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FeePerGramStat {
     pub order: u64,
-    pub min_fee_per_gram: MicroTari,
-    pub avg_fee_per_gram: MicroTari,
-    pub max_fee_per_gram: MicroTari,
+    pub min_fee_per_gram: MicroMinotari,
+    pub avg_fee_per_gram: MicroMinotari,
+    pub max_fee_per_gram: MicroMinotari,
 }
 
 impl From<base_node_proto::MempoolFeePerGramStat> for FeePerGramStat {

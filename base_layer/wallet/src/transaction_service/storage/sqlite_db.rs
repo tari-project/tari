@@ -44,7 +44,7 @@ use tari_common_types::{
     },
     types::{BlockHash, PrivateKey, PublicKey, Signature},
 };
-use tari_core::transactions::tari_amount::MicroTari;
+use tari_core::transactions::tari_amount::MicroMinotari;
 use tari_utilities::{
     hex::{from_hex, Hex},
     ByteArray,
@@ -785,7 +785,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
     fn find_coinbase_transaction_at_block_height(
         &self,
         block_height: u64,
-        amount: MicroTari,
+        amount: MicroMinotari,
     ) -> Result<Option<CompletedTransaction>, TransactionStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
@@ -1407,7 +1407,7 @@ impl InboundTransaction {
         Ok(Self {
             tx_id: (i.tx_id as u64).into(),
             source_address: TariAddress::from_bytes(&i.source_address).map_err(TransactionKeyError::Source)?,
-            amount: MicroTari::from(i.amount as u64),
+            amount: MicroMinotari::from(i.amount as u64),
             receiver_protocol: serde_json::from_str(&i.receiver_protocol.clone())?,
             status: TransactionStatus::Pending,
             message: i.message,
@@ -1667,8 +1667,8 @@ impl OutboundTransaction {
             tx_id: (o.tx_id as u64).into(),
             destination_address: TariAddress::from_bytes(&o.destination_address)
                 .map_err(TransactionKeyError::Destination)?,
-            amount: MicroTari::from(o.amount as u64),
-            fee: MicroTari::from(o.fee as u64),
+            amount: MicroMinotari::from(o.amount as u64),
+            fee: MicroMinotari::from(o.fee as u64),
             sender_protocol: serde_json::from_str(&o.sender_protocol.clone())?,
             status: TransactionStatus::Pending,
             message: o.message,
@@ -1705,7 +1705,7 @@ pub struct CompletedTransactionSql {
     destination_address: Vec<u8>,
     amount: i64,
     fee: i64,
-    transaction_protocol: String,
+    transaction_protocol: Vec<u8>,
     status: i32,
     message: String,
     timestamp: NaiveDateTime,
@@ -2015,13 +2015,16 @@ impl CompletedTransactionSql {
     }
 
     fn try_from(c: CompletedTransaction, cipher: &XChaCha20Poly1305) -> Result<Self, TransactionStorageError> {
+        let transaction_bytes =
+            bincode::serialize(&c.transaction).map_err(|e| TransactionStorageError::BincodeSerialize(e.to_string()))?;
+
         let output = Self {
             tx_id: c.tx_id.as_u64() as i64,
             source_address: c.source_address.to_bytes().to_vec(),
             destination_address: c.destination_address.to_bytes().to_vec(),
             amount: u64::from(c.amount) as i64,
             fee: u64::from(c.fee) as i64,
-            transaction_protocol: serde_json::to_string(&c.transaction)?,
+            transaction_protocol: transaction_bytes.to_vec(),
             status: c.status as i32,
             message: c.message,
             timestamp: c.timestamp,
@@ -2057,26 +2060,15 @@ impl Encryptable<XChaCha20Poly1305> for CompletedTransactionSql {
         self.transaction_protocol = encrypt_bytes_integral_nonce(
             cipher,
             self.domain("transaction_protocol"),
-            Hidden::hide(self.transaction_protocol.as_bytes().to_vec()),
-        )?
-        .to_hex();
+            Hidden::hide(self.transaction_protocol),
+        )?;
 
         Ok(self)
     }
 
     fn decrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
-        let mut decrypted_protocol = decrypt_bytes_integral_nonce(
-            cipher,
-            self.domain("transaction_protocol"),
-            &from_hex(self.transaction_protocol.as_str()).map_err(|e| e.to_string())?,
-        )?;
-
-        self.transaction_protocol = from_utf8(decrypted_protocol.as_slice())
-            .map_err(|e| e.to_string())?
-            .to_string();
-
-        // zeroize sensitive data
-        decrypted_protocol.zeroize();
+        self.transaction_protocol =
+            decrypt_bytes_integral_nonce(cipher, self.domain("transaction_protocol"), &self.transaction_protocol)?;
 
         Ok(self)
     }
@@ -2094,6 +2086,8 @@ pub enum CompletedTransactionConversionError {
     KeyError(#[from] TransactionKeyError),
     #[error("Aead Error: {0}")]
     AeadError(String),
+    #[error("Bincode error: `{0}`")]
+    BincodeDeserialize(String),
 }
 
 impl CompletedTransaction {
@@ -2124,9 +2118,10 @@ impl CompletedTransaction {
             source_address: TariAddress::from_bytes(&c.source_address).map_err(TransactionKeyError::Source)?,
             destination_address: TariAddress::from_bytes(&c.destination_address)
                 .map_err(TransactionKeyError::Destination)?,
-            amount: MicroTari::from(c.amount as u64),
-            fee: MicroTari::from(c.fee as u64),
-            transaction: serde_json::from_str(&c.transaction_protocol.clone())?,
+            amount: MicroMinotari::from(c.amount as u64),
+            fee: MicroMinotari::from(c.fee as u64),
+            transaction: bincode::deserialize(&c.transaction_protocol)
+                .map_err(|e| CompletedTransactionConversionError::BincodeDeserialize(e.to_string()))?,
             status: TransactionStatus::try_from(c.status)?,
             message: c.message,
             timestamp: c.timestamp,
@@ -2158,7 +2153,7 @@ pub struct UpdateCompletedTransactionSql {
     timestamp: Option<NaiveDateTime>,
     cancelled: Option<Option<i32>>,
     direction: Option<i32>,
-    transaction_protocol: Option<String>,
+    transaction_protocol: Option<Vec<u8>>,
     send_count: Option<i32>,
     last_send_timestamp: Option<Option<NaiveDateTime>>,
     confirmations: Option<Option<i64>>,
@@ -2217,7 +2212,6 @@ impl UnconfirmedTransactionInfoSql {
     pub fn fetch_unconfirmed_transactions_info(
         conn: &mut SqliteConnection,
     ) -> Result<Vec<UnconfirmedTransactionInfoSql>, TransactionStorageError> {
-        // TODO: Should we not return cancelled transactions as well and handle it upstream? It could be mined. #LOGGED
         let query_result = completed_transactions::table
             .select((
                 completed_transactions::tx_id,
@@ -2246,7 +2240,7 @@ impl UnconfirmedTransactionInfoSql {
 
 #[cfg(test)]
 mod test {
-    use std::{mem::size_of, time::Duration};
+    use std::{default::Default, mem::size_of, time::Duration};
 
     use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
     use chrono::Utc;
@@ -2261,20 +2255,16 @@ mod test {
         transaction::{TransactionDirection, TransactionStatus, TxId},
         types::{PrivateKey, PublicKey, Signature},
     };
-    use tari_core::{
-        covenants::Covenant,
-        transactions::{
-            tari_amount::MicroTari,
-            test_helpers::{create_non_recoverable_unblinded_output, TestParams},
-            transaction_components::{OutputFeatures, Transaction},
-            transaction_protocol::sender::TransactionSenderMessage,
-            CryptoFactories,
-            ReceiverTransactionProtocol,
-            SenderTransactionProtocol,
-        },
+    use tari_core::transactions::{
+        tari_amount::MicroMinotari,
+        test_helpers::{create_test_core_key_manager_with_memory_db, create_wallet_output_with_data, TestParams},
+        transaction_components::{OutputFeatures, Transaction},
+        transaction_protocol::sender::TransactionSenderMessage,
+        ReceiverTransactionProtocol,
+        SenderTransactionProtocol,
     };
     use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
-    use tari_script::{script, ExecutionStack, TariScript};
+    use tari_script::{inputs, script};
     use tari_test_utils::random::string;
     use tempfile::tempdir;
 
@@ -2295,10 +2285,11 @@ mod test {
         },
     };
 
-    #[test]
+    #[tokio::test]
     #[allow(clippy::too_many_lines)]
-    fn test_crud() {
-        let factories = CryptoFactories::default();
+    async fn test_crud() {
+        let key_manager = create_test_core_key_manager_with_memory_db();
+        let consensus_constants = create_consensus_constants(0);
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let temp_dir = tempdir().unwrap();
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
@@ -2331,42 +2322,43 @@ mod test {
         sql_query("PRAGMA foreign_keys = ON").execute(&mut conn).unwrap();
 
         let constants = create_consensus_constants(0);
-        let mut builder = SenderTransactionProtocol::builder(1, constants);
-        let test_params = TestParams::new();
-        let input = create_non_recoverable_unblinded_output(
-            TariScript::default(),
+        let mut builder = SenderTransactionProtocol::builder(constants, key_manager.clone());
+        let test_params = TestParams::new(&key_manager).await;
+        let input = create_wallet_output_with_data(
+            script!(Nop),
             OutputFeatures::default(),
             &test_params,
-            MicroTari::from(100_000),
+            MicroMinotari::from(100_000),
+            &key_manager,
         )
+        .await
         .unwrap();
-        let amount = MicroTari::from(10_000);
+        let amount = MicroMinotari::from(10_000);
+        let change = TestParams::new(&key_manager).await;
         builder
             .with_lock_height(0)
-            .with_fee_per_gram(MicroTari::from(177 / 5))
-            .with_offset(PrivateKey::random(&mut OsRng))
-            .with_private_nonce(PrivateKey::random(&mut OsRng))
-            .with_amount(0, amount)
+            .with_fee_per_gram(MicroMinotari::from(177 / 5))
             .with_message("Yo!".to_string())
-            .with_input(
-                input
-                    .as_transaction_input(&factories.commitment)
-                    .expect("Should be able to make transaction input"),
-                input,
-            )
-            .with_change_secret(PrivateKey::random(&mut OsRng))
+            .with_input(input)
+            .await
+            .unwrap()
             .with_recipient_data(
-                0,
                 script!(Nop),
-                PrivateKey::random(&mut OsRng),
+                OutputFeatures::default(),
                 Default::default(),
-                PrivateKey::random(&mut OsRng),
-                Covenant::default(),
-                MicroTari::zero(),
+                MicroMinotari::zero(),
+                amount,
             )
-            .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
-
-        let mut stp = builder.build(&factories, None, u64::MAX).unwrap();
+            .await
+            .unwrap()
+            .with_change_data(
+                script!(Nop),
+                inputs!(change.script_key_pk),
+                change.script_key_id,
+                change.spend_key_id,
+                Default::default(),
+            );
+        let mut stp = builder.build().await.unwrap();
 
         let address = TariAddress::new(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
@@ -2436,12 +2428,23 @@ mod test {
                 .unwrap()
         );
 
+        let output = create_wallet_output_with_data(
+            script!(Nop),
+            OutputFeatures::default(),
+            &test_params,
+            MicroMinotari::from(100_000),
+            &key_manager,
+        )
+        .await
+        .unwrap();
+
         let rtp = ReceiverTransactionProtocol::new(
-            TransactionSenderMessage::Single(Box::new(stp.build_single_round_message().unwrap())),
-            PrivateKey::random(&mut OsRng),
-            PrivateKey::random(&mut OsRng),
-            &factories,
-        );
+            TransactionSenderMessage::Single(Box::new(stp.build_single_round_message(&key_manager).await.unwrap())),
+            output,
+            &key_manager,
+            &consensus_constants,
+        )
+        .await;
         let address = TariAddress::new(
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             Network::LocalNet,
@@ -2525,7 +2528,7 @@ mod test {
             source_address,
             destination_address,
             amount,
-            fee: MicroTari::from(100),
+            fee: MicroMinotari::from(100),
             transaction: tx.clone(),
             status: TransactionStatus::MinedUnconfirmed,
             message: "Yo!".to_string(),
@@ -2554,7 +2557,7 @@ mod test {
             source_address,
             destination_address,
             amount,
-            fee: MicroTari::from(100),
+            fee: MicroMinotari::from(100),
             transaction: tx.clone(),
             status: TransactionStatus::Broadcast,
             message: "Hey!".to_string(),
@@ -2695,7 +2698,7 @@ mod test {
             source_address,
             destination_address,
             amount,
-            fee: MicroTari::from(100),
+            fee: MicroMinotari::from(100),
             transaction: tx.clone(),
             status: TransactionStatus::Coinbase,
             message: "Hey!".to_string(),
@@ -2725,7 +2728,7 @@ mod test {
             source_address,
             destination_address,
             amount,
-            fee: MicroTari::from(100),
+            fee: MicroMinotari::from(100),
             transaction: tx.clone(),
             status: TransactionStatus::Coinbase,
             message: "Hey!".to_string(),
@@ -2755,7 +2758,7 @@ mod test {
             source_address,
             destination_address,
             amount,
-            fee: MicroTari::from(100),
+            fee: MicroMinotari::from(100),
             transaction: tx.clone(),
             status: TransactionStatus::Coinbase,
             message: "Hey!".to_string(),
@@ -2834,7 +2837,7 @@ mod test {
         let inbound_tx = InboundTransaction {
             tx_id: 1u64.into(),
             source_address,
-            amount: MicroTari::from(100),
+            amount: MicroMinotari::from(100),
             receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
             status: TransactionStatus::Pending,
             message: "Yo!".to_string(),
@@ -2860,8 +2863,8 @@ mod test {
         let outbound_tx = OutboundTransaction {
             tx_id: 2u64.into(),
             destination_address,
-            amount: MicroTari::from(100),
-            fee: MicroTari::from(10),
+            amount: MicroMinotari::from(100),
+            fee: MicroMinotari::from(10),
             sender_protocol: SenderTransactionProtocol::new_placeholder(),
             status: TransactionStatus::Pending,
             message: "Yo!".to_string(),
@@ -2893,8 +2896,8 @@ mod test {
             tx_id: 3u64.into(),
             source_address,
             destination_address,
-            amount: MicroTari::from(100),
-            fee: MicroTari::from(100),
+            amount: MicroMinotari::from(100),
+            fee: MicroMinotari::from(100),
             transaction: Transaction::new(
                 vec![],
                 vec![],
@@ -2974,7 +2977,7 @@ mod test {
             let inbound_tx = InboundTransaction {
                 tx_id: 1u64.into(),
                 source_address,
-                amount: MicroTari::from(100),
+                amount: MicroMinotari::from(100),
                 receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
                 status: TransactionStatus::Pending,
                 message: "Yo!".to_string(),
@@ -2995,8 +2998,8 @@ mod test {
             let outbound_tx = OutboundTransaction {
                 tx_id: 2u64.into(),
                 destination_address,
-                amount: MicroTari::from(100),
-                fee: MicroTari::from(10),
+                amount: MicroMinotari::from(100),
+                fee: MicroMinotari::from(10),
                 sender_protocol: SenderTransactionProtocol::new_placeholder(),
                 status: TransactionStatus::Pending,
                 message: "Yo!".to_string(),
@@ -3022,8 +3025,8 @@ mod test {
                 tx_id: 3u64.into(),
                 source_address,
                 destination_address,
-                amount: MicroTari::from(100),
-                fee: MicroTari::from(100),
+                amount: MicroMinotari::from(100),
+                fee: MicroMinotari::from(100),
                 transaction: Transaction::new(
                     vec![],
                     vec![],
@@ -3168,8 +3171,8 @@ mod test {
                 tx_id: TxId::from(i),
                 source_address,
                 destination_address,
-                amount: MicroTari::from(100),
-                fee: MicroTari::from(100),
+                amount: MicroMinotari::from(100),
+                fee: MicroMinotari::from(100),
                 transaction: Transaction::new(
                     vec![],
                     vec![],

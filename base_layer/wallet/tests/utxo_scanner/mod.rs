@@ -20,9 +20,31 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashMap, convert::TryInto, sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    convert::{TryFrom, TryInto},
+    sync::Arc,
+    time::Duration,
+};
 
 use chrono::{Duration as ChronoDuration, Utc};
+use minotari_wallet::{
+    base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
+    connectivity_service::{create_wallet_connectivity_mock, WalletConnectivityMock},
+    output_manager_service::storage::{models::DbWalletOutput, OutputSource},
+    storage::{
+        database::WalletDatabase,
+        sqlite_db::wallet::WalletSqliteDatabase,
+        sqlite_utilities::run_migration_and_create_sqlite_connection,
+    },
+    transaction_service::handle::TransactionServiceRequest,
+    util::{wallet_identity::WalletIdentity, watch::Watch},
+    utxo_scanner_service::{
+        handle::{UtxoScannerEvent, UtxoScannerHandle},
+        service::{ScannedBlock, UtxoScannerService},
+        uxto_scanner_service_builder::UtxoScannerMode,
+    },
+};
 use rand::{rngs::OsRng, RngCore};
 use tari_common::configuration::Network;
 use tari_common_types::tari_address::TariAddress;
@@ -38,30 +60,18 @@ use tari_core::{
     base_node::rpc::BaseNodeWalletRpcServer,
     blocks::BlockHeader,
     proto::base_node::{ChainMetadata, TipInfoResponse},
-    transactions::{tari_amount::MicroTari, transaction_components::UnblindedOutput, CryptoFactories},
+    transactions::{
+        tari_amount::MicroMinotari,
+        test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager},
+        transaction_components::{OutputFeatures, WalletOutput},
+        CryptoFactories,
+    },
 };
 use tari_key_manager::{cipher_seed::CipherSeed, get_birthday_from_unix_epoch_in_seconds};
 use tari_service_framework::reply_channel;
 use tari_shutdown::Shutdown;
 use tari_test_utils::random;
 use tari_utilities::{epoch_time::EpochTime, ByteArray, SafePassword};
-use tari_wallet::{
-    base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
-    connectivity_service::{create_wallet_connectivity_mock, WalletConnectivityMock},
-    output_manager_service::storage::{models::DbUnblindedOutput, OutputSource},
-    storage::{
-        database::WalletDatabase,
-        sqlite_db::wallet::WalletSqliteDatabase,
-        sqlite_utilities::run_migration_and_create_sqlite_connection,
-    },
-    transaction_service::handle::TransactionServiceRequest,
-    util::{wallet_identity::WalletIdentity, watch::Watch},
-    utxo_scanner_service::{
-        handle::{UtxoScannerEvent, UtxoScannerHandle},
-        service::{ScannedBlock, UtxoScannerService},
-        uxto_scanner_service_builder::UtxoScannerMode,
-    },
-};
 use tempfile::{tempdir, TempDir};
 use tokio::{
     sync::{broadcast, mpsc},
@@ -74,7 +84,7 @@ use crate::support::{
     comms_rpc::{BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState, UtxosByBlock},
     output_manager_service_mock::{make_output_manager_service_mock, OutputManagerMockState},
     transaction_service_mock::{make_transaction_service_mock, TransactionServiceMockState},
-    utils::make_non_recoverable_input,
+    utils::make_input,
 };
 
 pub struct UtxoScannerTestInterface {
@@ -215,24 +225,27 @@ async fn setup(
 
 pub struct TestBlockData {
     block_headers: HashMap<u64, BlockHeader>,
-    unblinded_outputs: HashMap<u64, Vec<UnblindedOutput>>,
+    wallet_outputs: HashMap<u64, Vec<WalletOutput>>,
     utxos_by_block: Vec<UtxosByBlock>,
 }
 
-/// Generates a set of block headers and unblinded outputs for each header. The `birthday_offset` specifies at which
+/// Generates a set of block headers and key manager outputs for each header. The `birthday_offset` specifies at which
 /// block in the `num_block` the birthday timestamp will have passed i.e. it occured during the previous block period.
 /// e.g. with `num_blocks` = 10 and `birthday_offset` = 5 the birthday timestamp will occur between block 4 and 5
+// casting wrap around here is okay as this is all tests. Here its used to calculate the birthday offsets, they wont be
+// large enough in the test to actually wrap around
+#[allow(clippy::cast_possible_wrap)]
 async fn generate_block_headers_and_utxos(
     start_height: u64,
     num_blocks: u64,
     birthday_epoch_time: u64,
     birthday_offset: u64,
     only_coinbase: bool,
+    key_manager: &TestKeyManager,
 ) -> TestBlockData {
-    let factories = CryptoFactories::default();
     let mut block_headers = HashMap::new();
     let mut utxos_by_block = Vec::new();
-    let mut unblinded_outputs = HashMap::new();
+    let mut wallet_outputs = HashMap::new();
     for i in start_height..num_blocks + start_height {
         let mut block_header = BlockHeader::new(0);
         block_header.height = i;
@@ -243,10 +256,11 @@ async fn generate_block_headers_and_utxos(
         let mut block_outputs = Vec::new();
 
         for _j in 0..=i + 1 {
-            let (_ti, uo) = make_non_recoverable_input(
+            let uo = make_input(
                 &mut OsRng,
-                MicroTari::from(100 + OsRng.next_u64() % 1000),
-                &factories.commitment,
+                MicroMinotari::from(100 + OsRng.next_u64() % 1000),
+                &OutputFeatures::default(),
+                key_manager,
             )
             .await;
             block_outputs.push(uo);
@@ -254,30 +268,27 @@ async fn generate_block_headers_and_utxos(
                 break;
             }
         }
-
-        let transaction_outputs = block_outputs
-            .clone()
-            .iter()
-            .map(|uo| uo.as_transaction_output(&factories).unwrap())
-            .collect();
+        let mut transaction_outputs = Vec::new();
+        for output in &block_outputs {
+            transaction_outputs.push(output.to_transaction_output(key_manager).await.unwrap())
+        }
         let utxos = UtxosByBlock {
             height: i,
             header_hash: block_header.hash().to_vec(),
             utxos: transaction_outputs,
         };
         utxos_by_block.push(utxos);
-        unblinded_outputs.insert(i, block_outputs);
+        wallet_outputs.insert(i, block_outputs);
     }
     TestBlockData {
         block_headers,
-        unblinded_outputs,
+        wallet_outputs,
         utxos_by_block,
     }
 }
 
 #[tokio::test]
 async fn test_utxo_scanner_recovery() {
-    let factories = CryptoFactories::default();
     let mut test_interface = setup(UtxoScannerMode::Recovery, None, None, None).await;
 
     let cipher_seed = CipherSeed::new();
@@ -288,11 +299,13 @@ async fn test_utxo_scanner_recovery() {
     const NUM_BLOCKS: u64 = 11;
     const BIRTHDAY_OFFSET: u64 = 5;
 
+    let key_manager = create_test_core_key_manager_with_memory_db();
     let TestBlockData {
         block_headers,
-        unblinded_outputs,
+        wallet_outputs,
         utxos_by_block,
-    } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false).await;
+    } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false, &key_manager)
+        .await;
 
     test_interface
         .rpc_service_state
@@ -300,11 +313,11 @@ async fn test_utxo_scanner_recovery() {
     test_interface.rpc_service_state.set_blocks(block_headers.clone());
 
     let chain_metadata = ChainMetadata {
-        height_of_longest_chain: Some(NUM_BLOCKS - 1),
-        best_block: Some(block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec()),
+        height_of_longest_chain: NUM_BLOCKS - 1,
+        best_block: block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec(),
         accumulated_difficulty: Vec::new(),
         pruned_height: 0,
-        timestamp: Some(0),
+        timestamp: 0,
     };
     test_interface.rpc_service_state.set_tip_info_response(TipInfoResponse {
         metadata: Some(chain_metadata),
@@ -312,31 +325,30 @@ async fn test_utxo_scanner_recovery() {
     });
 
     // Adding half the outputs of the blocks to the OMS mock
-    let mut db_unblinded_outputs = Vec::new();
+    let mut db_wallet_outputs = Vec::new();
     let mut total_outputs_to_recover = 0;
-    let mut total_amount_to_recover = MicroTari::from(0);
-    for (h, outputs) in &unblinded_outputs {
+    let mut total_amount_to_recover = MicroMinotari::from(0);
+    for (h, outputs) in &wallet_outputs {
         for output in outputs.iter().skip(outputs.len() / 2) {
-            let dbo = DbUnblindedOutput::from_unblinded_output(
+            let dbo = DbWalletOutput::from_wallet_output(
                 output.clone(),
-                &factories,
+                &key_manager,
                 None,
                 OutputSource::Unknown,
                 None,
                 None,
             )
+            .await
             .unwrap();
             // Only the outputs in blocks after the birthday should be included in the recovered total
             if *h >= NUM_BLOCKS.saturating_sub(BIRTHDAY_OFFSET).saturating_sub(2) {
                 total_outputs_to_recover += 1;
-                total_amount_to_recover += dbo.unblinded_output.value;
+                total_amount_to_recover += dbo.wallet_output.value;
             }
-            db_unblinded_outputs.push(dbo);
+            db_wallet_outputs.push(dbo);
         }
     }
-    test_interface
-        .oms_mock_state
-        .set_recoverable_outputs(db_unblinded_outputs);
+    test_interface.oms_mock_state.set_recoverable_outputs(db_wallet_outputs);
 
     let mut scanner_event_stream = test_interface.scanner_handle.get_event_receiver();
 
@@ -368,7 +380,6 @@ async fn test_utxo_scanner_recovery() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn test_utxo_scanner_recovery_with_restart() {
-    let factories = CryptoFactories::default();
     let mut test_interface = setup(UtxoScannerMode::Recovery, None, None, None).await;
 
     let cipher_seed = CipherSeed::new();
@@ -387,11 +398,13 @@ async fn test_utxo_scanner_recovery_with_restart() {
     const BIRTHDAY_OFFSET: u64 = 5;
     const SYNC_INTERRUPT: u64 = 6;
 
+    let key_manager = create_test_core_key_manager_with_memory_db();
     let TestBlockData {
         block_headers,
-        unblinded_outputs,
+        wallet_outputs,
         utxos_by_block,
-    } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false).await;
+    } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false, &key_manager)
+        .await;
 
     test_interface
         .rpc_service_state
@@ -399,11 +412,11 @@ async fn test_utxo_scanner_recovery_with_restart() {
     test_interface.rpc_service_state.set_blocks(block_headers.clone());
 
     let chain_metadata = ChainMetadata {
-        height_of_longest_chain: Some(NUM_BLOCKS - 1),
-        best_block: Some(block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec()),
+        height_of_longest_chain: NUM_BLOCKS - 1,
+        best_block: block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec(),
         accumulated_difficulty: Vec::new(),
         pruned_height: 0,
-        timestamp: Some(0),
+        timestamp: 0,
     };
     test_interface.rpc_service_state.set_tip_info_response(TipInfoResponse {
         metadata: Some(chain_metadata.clone()),
@@ -411,38 +424,39 @@ async fn test_utxo_scanner_recovery_with_restart() {
     });
 
     // Adding half the outputs of the blocks to the OMS mock
-    let mut db_unblinded_outputs = Vec::new();
+    let mut db_wallet_outputs = Vec::new();
     let mut total_outputs_to_recover = 0;
-    let mut total_amount_to_recover = MicroTari::from(0);
-    for (h, outputs) in &unblinded_outputs {
+    let mut total_amount_to_recover = MicroMinotari::from(0);
+    for (h, outputs) in &wallet_outputs {
         for output in outputs.iter().skip(outputs.len() / 2) {
-            let dbo = DbUnblindedOutput::from_unblinded_output(
+            let dbo = DbWalletOutput::from_wallet_output(
                 output.clone(),
-                &factories,
+                &key_manager,
                 None,
                 OutputSource::Unknown,
                 None,
                 None,
             )
+            .await
             .unwrap();
             // Only the outputs in blocks after the birthday should be included in the recovered total
             if *h >= NUM_BLOCKS.saturating_sub(BIRTHDAY_OFFSET).saturating_sub(2) {
                 total_outputs_to_recover += 1;
-                total_amount_to_recover += dbo.unblinded_output.value;
+                total_amount_to_recover += dbo.wallet_output.value;
             }
-            db_unblinded_outputs.push(dbo);
+            db_wallet_outputs.push(dbo);
         }
     }
     test_interface
         .oms_mock_state
-        .set_recoverable_outputs(db_unblinded_outputs.clone());
+        .set_recoverable_outputs(db_wallet_outputs.clone());
 
     let (tx, rx) = mpsc::channel(100);
     test_interface.rpc_service_state.set_utxos_by_block_trigger_channel(rx);
 
     tokio::spawn(test_interface.scanner_service.take().unwrap().run());
 
-    tx.send(SYNC_INTERRUPT as usize).await.unwrap();
+    tx.send(usize::try_from(SYNC_INTERRUPT).unwrap()).await.unwrap();
 
     let _result = test_interface
         .rpc_service_state
@@ -491,7 +505,7 @@ async fn test_utxo_scanner_recovery_with_restart() {
         });
     test_interface2
         .oms_mock_state
-        .set_recoverable_outputs(db_unblinded_outputs);
+        .set_recoverable_outputs(db_wallet_outputs);
     let mut scanner_event_stream = test_interface2.scanner_handle.get_event_receiver();
     tokio::spawn(test_interface2.scanner_service.take().unwrap().run());
 
@@ -540,7 +554,6 @@ async fn test_utxo_scanner_recovery_with_restart() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
-    let factories = CryptoFactories::default();
     let mut test_interface = setup(UtxoScannerMode::Recovery, None, None, None).await;
 
     let cipher_seed = CipherSeed::new();
@@ -551,12 +564,13 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
     const NUM_BLOCKS: u64 = 11;
     const BIRTHDAY_OFFSET: u64 = 5;
     const SYNC_INTERRUPT: u64 = 6;
-
+    let key_manager = create_test_core_key_manager_with_memory_db();
     let TestBlockData {
         mut block_headers,
-        mut unblinded_outputs,
+        mut wallet_outputs,
         utxos_by_block,
-    } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false).await;
+    } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false, &key_manager)
+        .await;
 
     test_interface
         .rpc_service_state
@@ -564,11 +578,11 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
     test_interface.rpc_service_state.set_blocks(block_headers.clone());
 
     let chain_metadata = ChainMetadata {
-        height_of_longest_chain: Some(NUM_BLOCKS - 1),
-        best_block: Some(block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec()),
+        height_of_longest_chain: NUM_BLOCKS - 1,
+        best_block: block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec(),
         accumulated_difficulty: Vec::new(),
         pruned_height: 0,
-        timestamp: Some(0),
+        timestamp: 0,
     };
     test_interface.rpc_service_state.set_tip_info_response(TipInfoResponse {
         metadata: Some(chain_metadata.clone()),
@@ -576,31 +590,32 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
     });
 
     // Adding half the outputs of the blocks to the OMS mock
-    let mut db_unblinded_outputs = Vec::new();
-    for outputs in unblinded_outputs.values() {
+    let mut db_wallet_outputs = Vec::new();
+    for outputs in wallet_outputs.values() {
         for output in outputs.iter().skip(outputs.len() / 2) {
-            let dbo = DbUnblindedOutput::from_unblinded_output(
+            let dbo = DbWalletOutput::from_wallet_output(
                 output.clone(),
-                &factories,
+                &key_manager,
                 None,
                 OutputSource::Unknown,
                 None,
                 None,
             )
+            .await
             .unwrap();
-            db_unblinded_outputs.push(dbo);
+            db_wallet_outputs.push(dbo);
         }
     }
     test_interface
         .oms_mock_state
-        .set_recoverable_outputs(db_unblinded_outputs.clone());
+        .set_recoverable_outputs(db_wallet_outputs.clone());
 
     let (tx, rx) = mpsc::channel(100);
     test_interface.rpc_service_state.set_utxos_by_block_trigger_channel(rx);
 
     tokio::spawn(test_interface.scanner_service.take().unwrap().run());
 
-    tx.send(SYNC_INTERRUPT as usize).await.unwrap();
+    tx.send(usize::try_from(SYNC_INTERRUPT).unwrap()).await.unwrap();
 
     let _result = test_interface
         .rpc_service_state
@@ -613,21 +628,22 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
     // So at this point we have synced to block 6. We are going to create a reorg back to block 4 so that blocks 5-10
     // are new blocks.
     block_headers.retain(|h, _| h <= &4u64);
-    unblinded_outputs.retain(|h, _| h <= &4u64);
+    wallet_outputs.retain(|h, _| h <= &4u64);
     let mut utxos_by_block = utxos_by_block
         .into_iter()
         .filter(|u| u.height <= 4)
         .collect::<Vec<UtxosByBlock>>();
 
+    let key_manager = create_test_core_key_manager_with_memory_db();
     let TestBlockData {
         block_headers: new_block_headers,
-        unblinded_outputs: new_unblinded_outputs,
+        wallet_outputs: new_wallet_outputs,
         utxos_by_block: mut new_utxos_by_block,
-    } = generate_block_headers_and_utxos(5, 5, birthday_epoch_time + 500, 0, false).await;
+    } = generate_block_headers_and_utxos(5, 5, birthday_epoch_time + 500, 0, false, &key_manager).await;
 
     block_headers.extend(new_block_headers);
     utxos_by_block.append(&mut new_utxos_by_block);
-    unblinded_outputs.extend(new_unblinded_outputs);
+    wallet_outputs.extend(new_wallet_outputs);
 
     let mut test_interface2 = setup(UtxoScannerMode::Recovery, Some(test_interface.wallet_db), None, None).await;
     test_interface2
@@ -635,11 +651,11 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
         .set_utxos_by_block(utxos_by_block.clone());
     test_interface2.rpc_service_state.set_blocks(block_headers.clone());
     let chain_metadata = ChainMetadata {
-        height_of_longest_chain: Some(9),
-        best_block: Some(block_headers.get(&9).unwrap().clone().hash().to_vec()),
+        height_of_longest_chain: 9,
+        best_block: block_headers.get(&9).unwrap().clone().hash().to_vec(),
         accumulated_difficulty: Vec::new(),
         pruned_height: 0,
-        timestamp: Some(0),
+        timestamp: 0,
     };
     test_interface2
         .rpc_service_state
@@ -650,32 +666,33 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
 
     // calculate new recoverable outputs for the reorg
     // Adding half the outputs of the blocks to the OMS mock
-    let mut db_unblinded_outputs = Vec::new();
+    let mut db_wallet_outputs = Vec::new();
     let mut total_outputs_to_recover = 0;
-    let mut total_amount_to_recover = MicroTari::from(0);
-    for (h, outputs) in &unblinded_outputs {
+    let mut total_amount_to_recover = MicroMinotari::from(0);
+    for (h, outputs) in &wallet_outputs {
         for output in outputs.iter().skip(outputs.len() / 2) {
-            let dbo = DbUnblindedOutput::from_unblinded_output(
+            let dbo = DbWalletOutput::from_wallet_output(
                 output.clone(),
-                &factories,
+                &key_manager,
                 None,
                 OutputSource::Unknown,
                 None,
                 None,
             )
+            .await
             .unwrap();
             // Only the outputs in blocks after the birthday should be included in the recovered total
             if *h >= 4 {
                 total_outputs_to_recover += 1;
-                total_amount_to_recover += dbo.unblinded_output.value;
+                total_amount_to_recover += dbo.wallet_output.value;
             }
-            db_unblinded_outputs.push(dbo);
+            db_wallet_outputs.push(dbo);
         }
     }
 
     test_interface2
         .oms_mock_state
-        .set_recoverable_outputs(db_unblinded_outputs);
+        .set_recoverable_outputs(db_wallet_outputs);
 
     let mut scanner_event_stream = test_interface2.scanner_handle.get_event_receiver();
     tokio::spawn(test_interface2.scanner_service.take().unwrap().run());
@@ -692,7 +709,9 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
                     final_height,
                     num_recovered,
                     value_recovered,
-                    time_taken: _,} = event.unwrap() {
+                    time_taken: _,
+                } = event.unwrap()
+                {
                     assert_eq!(final_height, 9);
                     assert_eq!(num_recovered, total_outputs_to_recover);
                     assert_eq!(value_recovered, total_amount_to_recover);
@@ -704,6 +723,7 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn test_utxo_scanner_scanned_block_cache_clearing() {
     let mut test_interface = setup(UtxoScannerMode::Recovery, None, None, None).await;
 
@@ -735,11 +755,20 @@ async fn test_utxo_scanner_scanned_block_cache_clearing() {
     const NUM_BLOCKS: u64 = 11;
     const BIRTHDAY_OFFSET: u64 = 5;
 
+    let key_manager = create_test_core_key_manager_with_memory_db();
     let TestBlockData {
         block_headers,
-        unblinded_outputs: _unblinded_outputs,
+        wallet_outputs: _wallet_outputs,
         utxos_by_block,
-    } = generate_block_headers_and_utxos(800, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, true).await;
+    } = generate_block_headers_and_utxos(
+        800,
+        NUM_BLOCKS,
+        birthday_epoch_time,
+        BIRTHDAY_OFFSET,
+        true,
+        &key_manager,
+    )
+    .await;
 
     test_interface
         .rpc_service_state
@@ -747,18 +776,16 @@ async fn test_utxo_scanner_scanned_block_cache_clearing() {
     test_interface.rpc_service_state.set_blocks(block_headers.clone());
 
     let chain_metadata = ChainMetadata {
-        height_of_longest_chain: Some(800 + NUM_BLOCKS - 1),
-        best_block: Some(
-            block_headers
-                .get(&(800 + NUM_BLOCKS - 1))
-                .unwrap()
-                .clone()
-                .hash()
-                .to_vec(),
-        ),
+        height_of_longest_chain: 800 + NUM_BLOCKS - 1,
+        best_block: block_headers
+            .get(&(800 + NUM_BLOCKS - 1))
+            .unwrap()
+            .clone()
+            .hash()
+            .to_vec(),
         accumulated_difficulty: Vec::new(),
         pruned_height: 0,
-        timestamp: Some(0),
+        timestamp: 0,
     };
     test_interface.rpc_service_state.set_tip_info_response(TipInfoResponse {
         metadata: Some(chain_metadata),
@@ -801,7 +828,7 @@ async fn test_utxo_scanner_scanned_block_cache_clearing() {
     }
     let scanned_blocks = test_interface.wallet_db.get_scanned_blocks().unwrap();
 
-    use tari_wallet::utxo_scanner_service::service::SCANNED_BLOCK_CACHE_SIZE;
+    use minotari_wallet::utxo_scanner_service::service::SCANNED_BLOCK_CACHE_SIZE;
     let threshold = 800 + NUM_BLOCKS - 1 - SCANNED_BLOCK_CACHE_SIZE;
 
     // Below the threshold the even indices had no outputs and should be cleared
@@ -821,7 +848,6 @@ async fn test_utxo_scanner_scanned_block_cache_clearing() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn test_utxo_scanner_one_sided_payments() {
-    let factories = CryptoFactories::default();
     let mut test_interface = setup(
         UtxoScannerMode::Scanning,
         None,
@@ -838,11 +864,13 @@ async fn test_utxo_scanner_one_sided_payments() {
     const NUM_BLOCKS: u64 = 11;
     const BIRTHDAY_OFFSET: u64 = 5;
 
+    let key_manager = create_test_core_key_manager_with_memory_db();
     let TestBlockData {
         mut block_headers,
-        unblinded_outputs,
+        wallet_outputs,
         mut utxos_by_block,
-    } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false).await;
+    } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false, &key_manager)
+        .await;
 
     test_interface
         .rpc_service_state
@@ -850,11 +878,11 @@ async fn test_utxo_scanner_one_sided_payments() {
     test_interface.rpc_service_state.set_blocks(block_headers.clone());
 
     let chain_metadata = ChainMetadata {
-        height_of_longest_chain: Some(NUM_BLOCKS - 1),
-        best_block: Some(block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec()),
+        height_of_longest_chain: NUM_BLOCKS - 1,
+        best_block: block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec(),
         accumulated_difficulty: Vec::new(),
         pruned_height: 0,
-        timestamp: Some(0),
+        timestamp: 0,
     };
     test_interface.rpc_service_state.set_tip_info_response(TipInfoResponse {
         metadata: Some(chain_metadata),
@@ -862,31 +890,32 @@ async fn test_utxo_scanner_one_sided_payments() {
     });
 
     // Adding half the outputs of the blocks to the OMS mock
-    let mut db_unblinded_outputs = Vec::new();
+    let mut db_wallet_outputs = Vec::new();
     let mut total_outputs_to_recover = 0;
-    let mut total_amount_to_recover = MicroTari::from(0);
-    for (h, outputs) in &unblinded_outputs {
+    let mut total_amount_to_recover = MicroMinotari::from(0);
+    for (h, outputs) in &wallet_outputs {
         for output in outputs.iter().skip(outputs.len() / 2) {
-            let dbo = DbUnblindedOutput::from_unblinded_output(
+            let dbo = DbWalletOutput::from_wallet_output(
                 output.clone(),
-                &factories,
+                &key_manager,
                 None,
                 OutputSource::Unknown,
                 None,
                 None,
             )
+            .await
             .unwrap();
             // Only the outputs in blocks after the birthday should be included in the recovered total
             if *h >= NUM_BLOCKS.saturating_sub(BIRTHDAY_OFFSET).saturating_sub(2) {
                 total_outputs_to_recover += 1;
-                total_amount_to_recover += dbo.unblinded_output.value;
+                total_amount_to_recover += dbo.wallet_output.value;
             }
-            db_unblinded_outputs.push(dbo);
+            db_wallet_outputs.push(dbo);
         }
     }
     test_interface
         .oms_mock_state
-        .set_one_sided_payments(db_unblinded_outputs.clone());
+        .set_one_sided_payments(db_wallet_outputs.clone());
 
     let mut scanner_event_stream = test_interface.scanner_handle.get_event_receiver();
 
@@ -937,23 +966,29 @@ async fn test_utxo_scanner_one_sided_payments() {
     let mut block_header11 = BlockHeader::new(0);
     block_header11.height = 11;
     block_header11.timestamp = EpochTime::from(block_headers.get(&10).unwrap().timestamp.as_u64() + 1000000u64);
-    let (_ti, uo) = make_non_recoverable_input(&mut OsRng, MicroTari::from(666000u64), &factories.commitment).await;
+    let uo = make_input(
+        &mut OsRng,
+        MicroMinotari::from(666000u64),
+        &OutputFeatures::default(),
+        &key_manager,
+    )
+    .await;
 
     let block11 = UtxosByBlock {
         height: NUM_BLOCKS,
         header_hash: block_header11.hash().to_vec(),
-        utxos: vec![uo.as_transaction_output(&factories).unwrap()],
+        utxos: vec![uo.to_transaction_output(&key_manager).await.unwrap()],
     };
 
     utxos_by_block.push(block11);
     block_headers.insert(NUM_BLOCKS, block_header11);
 
-    db_unblinded_outputs.push(
-        DbUnblindedOutput::from_unblinded_output(uo, &factories, None, OutputSource::Unknown, None, None).unwrap(),
+    db_wallet_outputs.push(
+        DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Unknown, None, None)
+            .await
+            .unwrap(),
     );
-    test_interface
-        .oms_mock_state
-        .set_one_sided_payments(db_unblinded_outputs);
+    test_interface.oms_mock_state.set_one_sided_payments(db_wallet_outputs);
 
     test_interface.rpc_service_state.set_utxos_by_block(utxos_by_block);
     test_interface.rpc_service_state.set_blocks(block_headers.clone());
@@ -963,11 +998,11 @@ async fn test_utxo_scanner_one_sided_payments() {
         .set_one_sided_payment_message("new one-sided message".to_string());
 
     let chain_metadata = ChainMetadata {
-        height_of_longest_chain: Some(NUM_BLOCKS),
-        best_block: Some(block_headers.get(&(NUM_BLOCKS)).unwrap().clone().hash().to_vec()),
+        height_of_longest_chain: NUM_BLOCKS,
+        best_block: block_headers.get(&(NUM_BLOCKS)).unwrap().clone().hash().to_vec(),
         accumulated_difficulty: Vec::new(),
         pruned_height: 0,
-        timestamp: Some(0),
+        timestamp: 0,
     };
 
     test_interface.rpc_service_state.set_tip_info_response(TipInfoResponse {
@@ -979,7 +1014,7 @@ async fn test_utxo_scanner_one_sided_payments() {
     test_interface
         .base_node_service_event_publisher
         .send(Arc::new(BaseNodeEvent::NewBlockDetected(
-            chain_metadata.best_block.as_ref().cloned().unwrap().try_into().unwrap(),
+            chain_metadata.best_block.try_into().unwrap(),
             11,
         )))
         .unwrap();
@@ -1038,21 +1073,23 @@ async fn test_birthday_timestamp_over_chain() {
     const NUM_BLOCKS: u64 = 10;
     const BIRTHDAY_OFFSET: u64 = 5;
 
+    let key_manager = create_test_core_key_manager_with_memory_db();
     let TestBlockData {
         block_headers,
         utxos_by_block,
         ..
-    } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false).await;
+    } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false, &key_manager)
+        .await;
 
     test_interface.rpc_service_state.set_utxos_by_block(utxos_by_block);
     test_interface.rpc_service_state.set_blocks(block_headers.clone());
 
     let chain_metadata = ChainMetadata {
-        height_of_longest_chain: Some(NUM_BLOCKS - 1),
-        best_block: Some(block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec()),
+        height_of_longest_chain: NUM_BLOCKS - 1,
+        best_block: block_headers.get(&(NUM_BLOCKS - 1)).unwrap().clone().hash().to_vec(),
         accumulated_difficulty: Vec::new(),
         pruned_height: 0,
-        timestamp: Some(0),
+        timestamp: 0,
     };
     test_interface.rpc_service_state.set_tip_info_response(TipInfoResponse {
         metadata: Some(chain_metadata),

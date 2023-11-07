@@ -6,41 +6,42 @@ repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version = "0.50.0-hotfix.1"
+version = "0.52.0"
+
 edition = "2018"
 
 [dependencies]
-tari_crypto = { version = "0.16"}
+tari_crypto = { version = "0.19" }
 tari_metrics = { path = "../../infrastructure/metrics" }
 tari_storage = {  path = "../../infrastructure/storage" }
 tari_shutdown = {  path = "../../infrastructure/shutdown" }
-tari_utilities = "0.4.10"
+tari_utilities = { version = "0.6" }
 
 anyhow = "1.0.53"
 async-trait = "0.1.36"
-bitflags = "1.0.4"
-blake2 = "0.10.4"
+bitflags = { version = "2.4", features = ["serde"] }
+blake2 = "0.10"
 bytes = { version = "1", features = ["serde"] }
 chrono = { version = "0.4.19", default-features = false, features = ["serde", "clock"] }
 cidr = "0.1.0"
 data-encoding = "2.2.0"
 derivative = "2.2.0"
-digest = "0.9.0"
+digest = "0.10"
 futures = { version = "^0.3", features = ["async-await"] }
 lazy_static = "1.4.0"
 lmdb-zero = "0.4.4"
 log = { version = "0.4.0", features = ["std"] }
 log-mdc = "0.1.0"
 multiaddr = { version = "0.14.0" }
-nom = { version = "5.1.0", features = ["std"], default-features = false }
+nom = { version = "7.1", features = ["std"], default-features = false }
 once_cell = "1.8.0"
 pin-project = "1.0.8"
 prost = "=0.9.0"
-rand = "0.7.3"
+rand = "0.8"
 serde = "1.0.119"
 serde_derive = "1.0.119"
-sha3 = "0.9"
-snow = { version = "=0.9.1", features = ["default-resolver"] }
+sha3 = "0.10"
+snow = { version = "=0.9.3", features = ["default-resolver"] }
 thiserror = "1.0.26"
 tokio = { version = "1.23", features = ["rt-multi-thread", "time", "sync", "signal", "net", "macros", "io-util"] }
 tokio-stream = { version = "0.1.9", features = ["sync"] }
@@ -63,6 +64,5 @@ tari_common = {  path = "../../common", features = ["build"] }
 
 [features]
 c_integration = []
-avx2 = ["tari_crypto/simd_backend"]
 metrics = []
 rpc = ["tower/make", "tower/util"]

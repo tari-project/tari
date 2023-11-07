@@ -37,7 +37,7 @@ use crate::base_node::{
         Starting,
         Waiting,
     },
-    sync::{HorizonSyncInfo, SyncPeer},
+    sync::{AttemptSyncResult, HorizonSyncInfo, SyncPeer},
 };
 
 #[derive(Debug)]
@@ -57,8 +57,8 @@ pub enum BaseNodeState {
 #[derive(Debug, Clone, PartialEq)]
 pub enum StateEvent {
     Initialized,
-    HeadersSynchronized(SyncPeer),
-    HeaderSyncFailed,
+    HeadersSynchronized(SyncPeer, AttemptSyncResult),
+    HeaderSyncFailed(String),
     ProceedToHorizonSync(Vec<SyncPeer>),
     ProceedToBlockSync(Vec<SyncPeer>),
     HorizonStateSynchronized,
@@ -90,12 +90,25 @@ pub enum SyncStatus {
         network: ChainMetadata,
         sync_peers: Vec<SyncPeer>,
     },
+    // There is a stronger chain but we are less the `blocks_before_considered_lagging` blocks behind it.
+    BehindButNotYetLagging {
+        local: ChainMetadata,
+        network: ChainMetadata,
+        sync_peers: Vec<SyncPeer>,
+    },
     UpToDate,
+    SyncNotPossible {
+        peers: Vec<SyncPeer>,
+    },
 }
 
 impl SyncStatus {
     pub fn is_lagging(&self) -> bool {
-        !self.is_up_to_date()
+        matches!(self, SyncStatus::Lagging { .. })
+    }
+
+    pub fn is_sync_not_possible(&self) -> bool {
+        matches!(self, SyncStatus::SyncNotPossible { .. })
     }
 
     pub fn is_up_to_date(&self) -> bool {
@@ -117,6 +130,10 @@ impl Display for SyncStatus {
                 network.accumulated_difficulty(),
             ),
             UpToDate => f.write_str("UpToDate"),
+            SyncStatus::BehindButNotYetLagging { .. } => f.write_str("Behind but not yet lagging"),
+            SyncStatus::SyncNotPossible { .. } => {
+                f.write_str("Behind but we cannot sync as we have no viable peers to sync to")
+            },
         }
     }
 }
@@ -128,8 +145,8 @@ impl Display for StateEvent {
         match self {
             Initialized => write!(f, "Initialized"),
             BlocksSynchronized => write!(f, "Synchronised Blocks"),
-            HeadersSynchronized(peer) => write!(f, "Headers Synchronized from peer `{}`", peer),
-            HeaderSyncFailed => write!(f, "Header Synchronization Failed"),
+            HeadersSynchronized(peer, result) => write!(f, "Headers Synchronized from peer `{}` ({:?})", peer, result),
+            HeaderSyncFailed(err) => write!(f, "Header Synchronization Failed ({})", err),
             ProceedToHorizonSync(_) => write!(f, "Proceed to horizon sync"),
             ProceedToBlockSync(_) => write!(f, "Proceed to block sync"),
             HorizonStateSynchronized => write!(f, "Horizon State Synchronized"),

@@ -188,7 +188,7 @@ pub fn is_left_sibling(pos: usize) -> bool {
 }
 
 pub fn hash_together<D: Digest + DomainDigest>(left: &[u8], right: &[u8]) -> Hash {
-    D::new().chain(left).chain(right).finalize().to_vec()
+    D::new().chain_update(left).chain_update(right).finalize().to_vec()
 }
 
 /// The number of leaves in a MMR of the provided size.

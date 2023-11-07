@@ -25,8 +25,9 @@ use std::{convert::TryFrom, time::Duration};
 use cucumber::{given, then, when};
 use futures::StreamExt;
 use indexmap::IndexMap;
-use tari_app_grpc::tari_rpc::{self as grpc, GetBlocksRequest, ListHeadersRequest};
-use tari_base_node::BaseNodeConfig;
+use minotari_app_grpc::tari_rpc::{self as grpc, GetBlocksRequest, ListHeadersRequest};
+use minotari_node::BaseNodeConfig;
+use minotari_wallet_grpc_client::grpc::{Empty, GetIdentityRequest};
 use tari_core::blocks::Block;
 use tari_integration_tests::{
     base_node_process::{spawn_base_node, spawn_base_node_with_config},
@@ -35,7 +36,6 @@ use tari_integration_tests::{
     world::NodeClient,
     TariWorld,
 };
-use tari_wallet_grpc_client::grpc::{Empty, GetIdentityRequest};
 
 use crate::steps::{HALF_SECOND, TWO_MINUTES_WITH_HALF_SECOND_SLEEP};
 
@@ -290,8 +290,6 @@ async fn transaction_in_state(
 
         let inner = resp.into_inner();
 
-        // panic!("{:?}", inner);
-
         last_state = match inner.result {
             0 => "UNKNOWN",
             1 => "MEMPOOL",
@@ -341,7 +339,8 @@ async fn base_node_has_unconfirmed_transaction_in_mempool(world: &mut TariWorld,
 async fn tx_in_state_all_nodes(world: &mut TariWorld, tx_name: String, pool: String) -> anyhow::Result<()> {
     tx_in_state_all_nodes_with_allowed_failure(world, tx_name, pool, 0).await
 }
-
+// casting is okay in tests
+#[allow(clippy::cast_possible_truncation)]
 #[then(expr = "{word} is in the {word} of all nodes, where {int}% can fail")]
 async fn tx_in_state_all_nodes_with_allowed_failure(
     world: &mut TariWorld,
@@ -646,7 +645,7 @@ async fn no_meddling_with_data(world: &mut TariWorld, node: String) {
     // No meddling
     let chain_tip = client.get_tip_info(Empty {}).await.unwrap().into_inner();
     let current_height = chain_tip.metadata.unwrap().height_of_longest_chain;
-    let block = mine_block_before_submit(&mut client).await;
+    let block = mine_block_before_submit(&mut client, &world.key_manager).await;
     let _sumbmit_res = client.submit_block(block).await.unwrap();
 
     let chain_tip = client.get_tip_info(Empty {}).await.unwrap().into_inner();
@@ -661,26 +660,26 @@ async fn no_meddling_with_data(world: &mut TariWorld, node: String) {
     );
 
     // Meddle with kernal_mmr_size
-    let mut block: Block = Block::try_from(mine_block_before_submit(&mut client).await).unwrap();
+    let mut block: Block = Block::try_from(mine_block_before_submit(&mut client, &world.key_manager).await).unwrap();
     block.header.kernel_mmr_size += 1;
     match client.submit_block(grpc::Block::try_from(block).unwrap()).await {
         Ok(_) => panic!("The block should not have been valid"),
         Err(e) => assert_eq!(
             "Chain storage error: Validation error: Block validation error: MMR size for Kernel does not match. \
-             Expected: 4, received: 5"
+             Expected: 3, received: 4"
                 .to_string(),
             e.message()
         ),
     }
 
     // Meddle with output_mmr_size
-    let mut block: Block = Block::try_from(mine_block_before_submit(&mut client).await).unwrap();
-    block.header.output_mmr_size += 1;
+    let mut block: Block = Block::try_from(mine_block_before_submit(&mut client, &world.key_manager).await).unwrap();
+    block.header.output_smt_size += 1;
     match client.submit_block(grpc::Block::try_from(block).unwrap()).await {
         Ok(_) => panic!("The block should not have been valid"),
         Err(e) => assert_eq!(
             "Chain storage error: Validation error: Block validation error: MMR size for UTXO does not match. \
-             Expected: 4968, received: 4969"
+             Expected: 457, received: 458"
                 .to_string(),
             e.message()
         ),
@@ -756,7 +755,7 @@ async fn has_at_least_num_peers(world: &mut TariWorld, node: String, num_peers: 
             }
         }
 
-        if last_num_of_peers >= num_peers as usize {
+        if last_num_of_peers >= usize::try_from(num_peers).unwrap() {
             return;
         }
 

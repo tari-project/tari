@@ -56,7 +56,7 @@ impl From<SideChainFeature> for proto::types::side_chain_feature::SideChainFeatu
             SideChainFeature::ValidatorNodeRegistration(template_reg) => {
                 proto::types::side_chain_feature::SideChainFeature::ValidatorNodeRegistration(template_reg.into())
             },
-            SideChainFeature::TemplateRegistration(template_reg) => {
+            SideChainFeature::CodeTemplateRegistration(template_reg) => {
                 proto::types::side_chain_feature::SideChainFeature::TemplateRegistration(template_reg.into())
             },
             SideChainFeature::ConfidentialOutput(output_data) => {
@@ -75,7 +75,7 @@ impl TryFrom<proto::types::side_chain_feature::SideChainFeature> for SideChainFe
                 Ok(SideChainFeature::ValidatorNodeRegistration(vn_reg.try_into()?))
             },
             proto::types::side_chain_feature::SideChainFeature::TemplateRegistration(template_reg) => {
-                Ok(SideChainFeature::TemplateRegistration(template_reg.try_into()?))
+                Ok(SideChainFeature::CodeTemplateRegistration(template_reg.try_into()?))
             },
             proto::types::side_chain_feature::SideChainFeature::ConfidentialOutput(output_data) => {
                 Ok(SideChainFeature::ConfidentialOutput(output_data.try_into()?))
@@ -90,7 +90,7 @@ impl TryFrom<proto::types::ValidatorNodeRegistration> for ValidatorNodeRegistrat
 
     fn try_from(value: proto::types::ValidatorNodeRegistration) -> Result<Self, Self::Error> {
         Ok(Self::new(ValidatorNodeSignature::new(
-            PublicKey::from_bytes(&value.public_key).map_err(|e| e.to_string())?,
+            PublicKey::from_canonical_bytes(&value.public_key).map_err(|e| e.to_string())?,
             value
                 .signature
                 .map(Signature::try_from)
@@ -114,7 +114,7 @@ impl TryFrom<proto::types::TemplateRegistration> for CodeTemplateRegistration {
 
     fn try_from(value: proto::types::TemplateRegistration) -> Result<Self, Self::Error> {
         Ok(Self {
-            author_public_key: PublicKey::from_bytes(&value.author_public_key).map_err(|e| e.to_string())?,
+            author_public_key: PublicKey::from_canonical_bytes(&value.author_public_key).map_err(|e| e.to_string())?,
             author_signature: value
                 .author_signature
                 .map(Signature::try_from)
@@ -159,7 +159,7 @@ impl TryFrom<proto::types::ConfidentialOutputData> for ConfidentialOutputData {
 
     fn try_from(value: proto::types::ConfidentialOutputData) -> Result<Self, Self::Error> {
         Ok(ConfidentialOutputData {
-            claim_public_key: PublicKey::from_bytes(&value.claim_public_key).map_err(|e| e.to_string())?,
+            claim_public_key: PublicKey::from_canonical_bytes(&value.claim_public_key).map_err(|e| e.to_string())?,
         })
     }
 }

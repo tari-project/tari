@@ -43,10 +43,12 @@ use std::{
     fmt::{Display, Error, Formatter},
 };
 
+use blake2::Blake2b;
 use borsh::{BorshDeserialize, BorshSerialize};
 use chrono::{DateTime, NaiveDateTime, Utc};
+use digest::consts::U32;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{BlindingFactor, BlockHash, FixedHash};
+use tari_common_types::types::{BlockHash, FixedHash, PrivateKey};
 use tari_utilities::{epoch_time::EpochTime, hex::Hex};
 use thiserror::Error;
 
@@ -74,6 +76,8 @@ pub enum BlockHeaderValidationError {
     ProofOfWorkError(#[from] PowError),
     #[error("Monero seed hash too old")]
     OldSeedHash,
+    #[error("Monero blocks must have a nonce of 0")]
+    InvalidNonce,
     #[error("Incorrect height: Expected {expected} but got {actual}")]
     InvalidHeight { expected: u64, actual: u64 },
     #[error("Incorrect previous hash: Expected {expected} but got {actual}")]
@@ -92,29 +96,29 @@ pub struct BlockHeader {
     pub prev_hash: BlockHash,
     /// Timestamp at which the block was built.
     pub timestamp: EpochTime,
+    /// This is the Merkle root of the inputs in this block
+    pub input_mr: FixedHash,
     /// This is the UTXO merkle root of the outputs
     /// This is calculated as Hash (txo MMR root  || roaring bitmap hash of UTXO indices)
     pub output_mr: FixedHash,
-    /// This is the MMR root of the witness proofs
-    pub witness_mr: FixedHash,
     /// The size (number  of leaves) of the output and range proof MMRs at the time of this header
-    pub output_mmr_size: u64,
+    pub output_smt_size: u64,
     /// This is the MMR root of the kernels
     pub kernel_mr: FixedHash,
     /// The number of MMR leaves in the kernel MMR
     pub kernel_mmr_size: u64,
-    /// This is the Merkle root of the inputs in this block
-    pub input_mr: FixedHash,
     /// Sum of kernel offsets for all kernels in this block.
-    pub total_kernel_offset: BlindingFactor,
+    pub total_kernel_offset: PrivateKey,
     /// Sum of script offsets for all kernels in this block.
-    pub total_script_offset: BlindingFactor,
-    /// Nonce increment used to mine this block.
-    pub nonce: u64,
-    /// Proof of work summary
-    pub pow: ProofOfWork,
+    pub total_script_offset: PrivateKey,
     /// Merkle root of all active validator node.
     pub validator_node_mr: FixedHash,
+    /// The number of validator node hashes
+    pub validator_node_size: u64,
+    /// Proof of work summary
+    pub pow: ProofOfWork,
+    /// Nonce increment used to mine this block.
+    pub nonce: u64,
 }
 
 impl BlockHeader {
@@ -126,21 +130,21 @@ impl BlockHeader {
             prev_hash: FixedHash::zero(),
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
-            witness_mr: FixedHash::zero(),
-            output_mmr_size: 0,
+            output_smt_size: 0,
             kernel_mr: FixedHash::zero(),
             kernel_mmr_size: 0,
             input_mr: FixedHash::zero(),
-            total_kernel_offset: BlindingFactor::default(),
-            total_script_offset: BlindingFactor::default(),
+            total_kernel_offset: PrivateKey::default(),
+            total_script_offset: PrivateKey::default(),
             nonce: 0,
             pow: ProofOfWork::default(),
             validator_node_mr: FixedHash::zero(),
+            validator_node_size: 0,
         }
     }
 
     pub fn hash(&self) -> FixedHash {
-        DomainSeparatedConsensusHasher::<BlocksHashDomain>::new("block_header")
+        DomainSeparatedConsensusHasher::<BlocksHashDomain, Blake2b<U32>>::new("block_header")
             .chain(&self.mining_hash())
             .chain(&self.pow)
             .chain(&self.nonce)
@@ -159,16 +163,16 @@ impl BlockHeader {
             prev_hash,
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
-            witness_mr: FixedHash::zero(),
-            output_mmr_size: prev.output_mmr_size,
+            output_smt_size: prev.output_smt_size,
             kernel_mr: FixedHash::zero(),
             kernel_mmr_size: prev.kernel_mmr_size,
             input_mr: FixedHash::zero(),
-            total_kernel_offset: BlindingFactor::default(),
-            total_script_offset: BlindingFactor::default(),
+            total_kernel_offset: PrivateKey::default(),
+            total_script_offset: PrivateKey::default(),
             nonce: 0,
             pow: ProofOfWork::default(),
             validator_node_mr: FixedHash::zero(),
+            validator_node_size: prev.validator_node_size,
         }
     }
 
@@ -196,7 +200,7 @@ impl BlockHeader {
             let last_ts = headers.first().unwrap().timestamp;
             let first_ts = headers.last().unwrap().timestamp;
 
-            let (max, min) = headers.windows(2).fold((0u64, std::u64::MAX), |(max, min), next| {
+            let (max, min) = headers.windows(2).fold((0u64, u64::MAX), |(max, min), next| {
                 let dt = match next[0].timestamp.checked_sub(next[1].timestamp) {
                     Some(delta) => delta.as_u64(),
                     None => 0u64,
@@ -218,21 +222,29 @@ impl BlockHeader {
     /// Provides a mining hash of the header, used for the mining.
     /// This differs from the normal hash by not hashing the nonce and kernel pow.
     pub fn mining_hash(&self) -> FixedHash {
-        DomainSeparatedConsensusHasher::<BlocksHashDomain>::new("block_header")
+        DomainSeparatedConsensusHasher::<BlocksHashDomain, Blake2b<U32>>::new("block_header")
             .chain(&self.version)
             .chain(&self.height)
             .chain(&self.prev_hash)
             .chain(&self.timestamp)
             .chain(&self.input_mr)
             .chain(&self.output_mr)
-            .chain(&self.output_mmr_size)
-            .chain(&self.witness_mr)
+            .chain(&self.output_smt_size)
             .chain(&self.kernel_mr)
             .chain(&self.kernel_mmr_size)
             .chain(&self.total_kernel_offset)
             .chain(&self.total_script_offset)
+            .chain(&self.validator_node_mr)
+            .chain(&self.validator_node_size)
             .finalize()
             .into()
+    }
+
+    pub fn merge_mining_hash(&self) -> FixedHash {
+        // let mining_hash = self.mining_hash();
+        // At a later stage if we want to allow other coins to be merge mined, we can add a prefix
+        // mining_hash[0..4].copy_from_slice(b"TARI"); // Maybe put this in a `const`
+        self.mining_hash()
     }
 
     #[inline]
@@ -243,7 +255,7 @@ impl BlockHeader {
     pub fn to_chrono_datetime(&self) -> DateTime<Utc> {
         let dt = NaiveDateTime::from_timestamp_opt(i64::try_from(self.timestamp.as_u64()).unwrap_or(i64::MAX), 0)
             .unwrap_or(NaiveDateTime::MAX);
-        DateTime::from_utc(dt, Utc)
+        DateTime::from_naive_utc_and_offset(dt, Utc)
     }
 
     #[inline]
@@ -261,9 +273,7 @@ impl From<NewBlockHeaderTemplate> for BlockHeader {
             prev_hash: header_template.prev_hash,
             timestamp: EpochTime::now(),
             output_mr: FixedHash::zero(),
-            witness_mr: FixedHash::zero(),
-            // TODO: put  mmr sizes in template
-            output_mmr_size: 0,
+            output_smt_size: 0,
             kernel_mr: FixedHash::zero(),
             kernel_mmr_size: 0,
             input_mr: FixedHash::zero(),
@@ -272,6 +282,7 @@ impl From<NewBlockHeaderTemplate> for BlockHeader {
             nonce: 0,
             pow: header_template.pow,
             validator_node_mr: FixedHash::zero(),
+            validator_node_size: 0,
         }
     }
 }
@@ -296,11 +307,10 @@ impl Display for BlockHeader {
         )?;
         writeln!(
             fmt,
-            "Merkle roots:\nInputs: {},\nOutputs: {} ({})\nWitness: {}\nKernels: {} ({})",
+            "Merkle roots:\nInputs: {},\nOutputs: {} ({})\n\nKernels: {} ({})",
             self.input_mr.to_hex(),
             self.output_mr.to_hex(),
-            self.output_mmr_size,
-            self.witness_mr.to_hex(),
+            self.output_smt_size,
             self.kernel_mr.to_hex(),
             self.kernel_mmr_size
         )?;
@@ -322,7 +332,7 @@ mod test {
 
     #[test]
     fn from_previous() {
-        let mut h1 = crate::proof_of_work::sha3_test::get_header();
+        let mut h1 = crate::proof_of_work::sha3x_test::get_header();
         h1.nonce = 7600;
         assert_eq!(h1.height, 0, "Default block height");
         let hash1 = h1.hash();

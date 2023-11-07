@@ -38,15 +38,16 @@ use grpc::{
     SendShaAtomicSwapRequest,
     TransferRequest,
 };
-use tari_app_grpc::tari_rpc::{self as grpc};
+use minotari_app_grpc::tari_rpc::{self as grpc};
+use minotari_console_wallet::{CliCommands, ExportUtxosArgs};
+use minotari_wallet::transaction_service::config::TransactionRoutingMechanism;
 use tari_common::configuration::Network;
-use tari_common_types::types::{BlindingFactor, ComAndPubSignature, Commitment, PrivateKey, PublicKey};
-use tari_console_wallet::{CliCommands, ExportUtxosArgs};
+use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey};
 use tari_core::{
     consensus::ConsensusManager,
     covenants::Covenant,
     transactions::{
-        tari_amount::MicroTari,
+        tari_amount::MicroMinotari,
         transaction_components::{
             EncryptedData,
             OutputFeatures,
@@ -61,7 +62,7 @@ use tari_crypto::{commitment::HomomorphicCommitment, keys::PublicKey as PublicKe
 use tari_integration_tests::{
     transaction::{
         build_transaction_with_output,
-        build_transaction_with_output_and_fee,
+        build_transaction_with_output_and_fee_per_gram,
         build_transaction_with_output_and_lockheight,
     },
     wallet_process::{create_wallet_client, get_default_cli, spawn_wallet},
@@ -69,7 +70,6 @@ use tari_integration_tests::{
 };
 use tari_script::{ExecutionStack, StackItem, TariScript};
 use tari_utilities::hex::Hex;
-use tari_wallet::transaction_service::config::TransactionRoutingMechanism;
 
 use crate::steps::{mining_steps::create_miner, CONFIRMATION_PERIOD, HALF_SECOND, TWO_MINUTES_WITH_HALF_SECOND_SLEEP};
 
@@ -548,20 +548,26 @@ pub async fn create_tx_spending_coinbase(world: &mut TariWorld, transaction: Str
         .map(|i| world.utxos.get(&i.to_string()).unwrap().clone())
         .collect::<Vec<_>>();
 
-    let (tx, utxo) = build_transaction_with_output(utxos);
+    let (tx, utxo) = build_transaction_with_output(utxos, &world.key_manager).await;
     world.utxos.insert(output, utxo);
     world.transactions.insert(transaction, tx);
 }
 
-#[when(expr = "I create a custom fee transaction {word} spending {word} to {word} with fee {word}")]
-async fn create_tx_custom_fee(world: &mut TariWorld, transaction: String, inputs: String, output: String, fee: u64) {
+#[when(expr = "I create a custom fee transaction {word} spending {word} to {word} with fee per gram {word}")]
+async fn create_tx_custom_fee_per_gram(
+    world: &mut TariWorld,
+    transaction: String,
+    inputs: String,
+    output: String,
+    fee: u64,
+) {
     let inputs = inputs.split(',').collect::<Vec<&str>>();
     let utxos = inputs
         .iter()
         .map(|i| world.utxos.get(&i.to_string()).unwrap().clone())
         .collect::<Vec<_>>();
 
-    let (tx, utxo) = build_transaction_with_output_and_fee(utxos, fee);
+    let (tx, utxo) = build_transaction_with_output_and_fee_per_gram(utxos, fee, &world.key_manager).await;
     world.utxos.insert(output, utxo);
     world.transactions.insert(transaction, tx);
 }
@@ -580,7 +586,7 @@ async fn create_tx_custom_lock(
         .map(|i| world.utxos.get(&i.to_string()).unwrap().clone())
         .collect::<Vec<_>>();
 
-    let (tx, utxo) = build_transaction_with_output_and_lockheight(utxos, lockheight);
+    let (tx, utxo) = build_transaction_with_output_and_lockheight(utxos, lockheight, &world.key_manager).await;
     world.utxos.insert(output, utxo);
     world.transactions.insert(transaction, tx);
 }
@@ -1524,7 +1530,7 @@ async fn wallet_with_tari_connected_to_base_node(
     let mut num_blocks = 0;
     let mut reward = 0;
 
-    let consensus_manager = ConsensusManager::builder(Network::LocalNet).build();
+    let consensus_manager = ConsensusManager::builder(Network::LocalNet).build().unwrap();
 
     while reward < amount {
         current_height += 1;
@@ -2193,8 +2199,8 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
             "V1" => TransactionOutputVersion::V1,
             _ => panic!("Invalid output version"),
         };
-        let value = MicroTari(output[2].parse::<u64>().unwrap());
-        let spending_key = BlindingFactor::from_hex(&output[3]).unwrap();
+        let value = MicroMinotari(output[2].parse::<u64>().unwrap());
+        let spending_key = PrivateKey::from_hex(&output[3]).unwrap();
         let flags = match &output[5] {
             "Standard" => OutputType::Standard,
             "Coinbase" => OutputType::Coinbase,
@@ -2218,7 +2224,7 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
         let signature_u_y = PrivateKey::from_hex(&output[17]).unwrap();
         let script_lock_height = output[18].parse::<u64>().unwrap();
         let encrypted_data = EncryptedData::from_hex(&output[19]).unwrap();
-        let minimum_value_promise = MicroTari(output[20].parse::<u64>().unwrap());
+        let minimum_value_promise = MicroMinotari(output[20].parse::<u64>().unwrap());
 
         let features =
             OutputFeatures::new_current_version(flags, maturity, coinbase_extra, None, RangeProofType::BulletProofPlus);
@@ -2252,7 +2258,7 @@ async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, 
     let import_utxos_req = ImportUtxosRequest {
         outputs: outputs
             .iter()
-            .map(|o| grpc::UnblindedOutput::try_from(o.clone()).expect("Unable to make grpc conversino"))
+            .map(|o| grpc::UnblindedOutput::try_from(o.clone()).expect("Unable to make grpc conversion"))
             .collect::<Vec<grpc::UnblindedOutput>>(),
     };
 
@@ -2297,8 +2303,8 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
             "V1" => TransactionOutputVersion::V1,
             _ => panic!("Invalid output version"),
         };
-        let value = MicroTari(output[2].parse::<u64>().unwrap());
-        let spending_key = BlindingFactor::from_hex(&output[3]).unwrap();
+        let value = MicroMinotari(output[2].parse::<u64>().unwrap());
+        let spending_key = PrivateKey::from_hex(&output[3]).unwrap();
         let flags = match &output[5] {
             "Standard" => OutputType::Standard,
             "Coinbase" => OutputType::Coinbase,
@@ -2322,7 +2328,7 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
         let signature_u_y = PrivateKey::from_hex(&output[17]).unwrap();
         let script_lock_height = output[18].parse::<u64>().unwrap();
         let encrypted_data = EncryptedData::from_hex(&output[19]).unwrap();
-        let minimum_value_promise = MicroTari(output[20].parse::<u64>().unwrap());
+        let minimum_value_promise = MicroMinotari(output[20].parse::<u64>().unwrap());
 
         let features =
             OutputFeatures::new_current_version(flags, maturity, coinbase_extra, None, RangeProofType::BulletProofPlus);
@@ -2356,7 +2362,7 @@ async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wa
     let import_utxos_req = ImportUtxosRequest {
         outputs: outputs
             .iter()
-            .map(|o| grpc::UnblindedOutput::try_from(o.clone()).expect("Unable to make grpc conversino"))
+            .map(|o| grpc::UnblindedOutput::try_from(o.clone()).expect("Unable to make grpc conversion"))
             .collect::<Vec<grpc::UnblindedOutput>>(),
     };
 
@@ -2401,8 +2407,8 @@ async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: Stri
             "V1" => TransactionOutputVersion::V1,
             _ => panic!("Invalid output version"),
         };
-        let value = MicroTari(output[2].parse::<u64>().unwrap());
-        let spending_key = BlindingFactor::from_hex(&output[3]).unwrap();
+        let value = MicroMinotari(output[2].parse::<u64>().unwrap());
+        let spending_key = PrivateKey::from_hex(&output[3]).unwrap();
         let flags = match &output[5] {
             "Standard" => OutputType::Standard,
             "Coinbase" => OutputType::Coinbase,
@@ -2426,7 +2432,7 @@ async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: Stri
         let signature_u_y = PrivateKey::from_hex(&output[17]).unwrap();
         let script_lock_height = output[18].parse::<u64>().unwrap();
         let encrypted_data = EncryptedData::from_hex(&output[19]).unwrap();
-        let minimum_value_promise = MicroTari(output[20].parse::<u64>().unwrap());
+        let minimum_value_promise = MicroMinotari(output[20].parse::<u64>().unwrap());
 
         let features =
             OutputFeatures::new_current_version(flags, maturity, coinbase_extra, None, RangeProofType::BulletProofPlus);
@@ -2471,7 +2477,7 @@ async fn import_unspent_outputs_as_faucets(world: &mut TariWorld, wallet_a: Stri
     let import_utxos_req = ImportUtxosRequest {
         outputs: outputs
             .iter()
-            .map(|o| grpc::UnblindedOutput::try_from(o.clone()).expect("Unable to make grpc conversino"))
+            .map(|o| grpc::UnblindedOutput::try_from(o.clone()).expect("Unable to make grpc conversion"))
             .collect::<Vec<grpc::UnblindedOutput>>(),
     };
 
@@ -2559,7 +2565,7 @@ async fn multi_send_txs_from_wallet(
             amount,
             fee_per_gram,
             message: format!(
-                "I send multi-transfers with amount {} from {} to {} with fee {}",
+                "I send multi-transfers with amount {} from {} to {} with fee per gram {}",
                 amount,
                 sender.as_str(),
                 receiver.as_str(),

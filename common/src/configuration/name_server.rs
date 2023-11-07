@@ -47,8 +47,6 @@ impl Display for DnsNameServer {
     }
 }
 
-// TODO: Instead of using our own format, we should use multiaddresses in the format
-//       /ip4/1.1.1.1/tcp/853/tls/sni/cloudflare-dns.com
 impl FromStr for DnsNameServer {
     type Err = anyhow::Error;
 

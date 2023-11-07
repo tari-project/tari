@@ -22,9 +22,9 @@
 
 use std::{convert::TryInto, thread};
 
+use minotari_app_utilities::common_cli_args::CommonCliArgs;
+use minotari_merge_mining_proxy::{merge_miner, Cli};
 use serde_json::{json, Value};
-use tari_app_utilities::common_cli_args::CommonCliArgs;
-use tari_merge_mining_proxy::{merge_miner, Cli};
 use tempfile::tempdir;
 use tokio::runtime;
 

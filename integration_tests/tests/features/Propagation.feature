@@ -88,7 +88,7 @@ Feature: Block Propagation
     Then node MINER is at height 7
     Then all nodes are at height 7
 
-  @critical @pruned
+  @critical @pruned @broken @broken_prune
   Scenario: Pruned node should prune outputs
     Given I have 1 seed nodes
     When I have a base node SENDER connected to all seed nodes

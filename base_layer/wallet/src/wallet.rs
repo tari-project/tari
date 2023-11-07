@@ -22,7 +22,10 @@
 
 use std::{cmp, marker::PhantomData, sync::Arc};
 
+use blake2::Blake2b;
+use digest::consts::U32;
 use log::*;
+use rand::rngs::OsRng;
 use tari_common::configuration::bootstrap::ApplicationType;
 use tari_common_types::{
     tari_address::TariAddress,
@@ -48,16 +51,17 @@ use tari_core::{
     consensus::{ConsensusManager, NetworkConsensus},
     covenants::Covenant,
     transactions::{
-        tari_amount::MicroTari,
+        key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInitializer},
+        tari_amount::MicroMinotari,
         transaction_components::{EncryptedData, OutputFeatures, UnblindedOutput},
         CryptoFactories,
     },
 };
-use tari_crypto::{hash::blake2::Blake256, hash_domain, signatures::SchnorrSignatureError, tari_utilities::hex::Hex};
+use tari_crypto::{hash_domain, signatures::SchnorrSignatureError};
 use tari_key_manager::{
     cipher_seed::CipherSeed,
     key_manager::KeyManager,
-    key_manager_service::{storage::database::KeyManagerBackend, KeyDigest, KeyManagerHandle, KeyManagerInitializer},
+    key_manager_service::{storage::database::KeyManagerBackend, KeyDigest},
     mnemonic::{Mnemonic, MnemonicLanguage},
     SeedWords,
 };
@@ -72,7 +76,7 @@ use tari_p2p::{
 use tari_script::{one_sided_payment_script, ExecutionStack, TariScript};
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::ByteArray;
+use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::{
     base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
@@ -104,21 +108,18 @@ const LOG_TARGET: &str = "wallet";
 const WALLET_BUFFER_MIN_SIZE: usize = 300;
 
 // Domain separator for signing arbitrary messages with a wallet secret key
-hash_domain!(
-    WalletMessageSigningDomain,
-    "com.tari.tari_project.base_layer.wallet.message_signing"
-);
+hash_domain!(WalletMessageSigningDomain, "com.tari.base_layer.wallet.message_signing");
 
 /// A structure containing the config and services that a Wallet application will require. This struct will start up all
 /// the services and provide the APIs that applications will use to interact with the services
 #[derive(Clone)]
-pub struct Wallet<T, U, V, W, X> {
+pub struct Wallet<T, U, V, W, TKeyManagerInterface> {
     pub network: NetworkConsensus,
     pub comms: CommsNode,
     pub dht_service: Dht,
     pub store_and_forward_requester: StoreAndForwardRequester,
     pub output_manager_service: OutputManagerHandle,
-    pub key_manager_service: KeyManagerHandle<X>,
+    pub key_manager_service: TKeyManagerInterface,
     pub transaction_service: TransactionServiceHandle,
     pub wallet_connectivity: WalletConnectivityHandle,
     pub contacts_service: ContactsServiceHandle,
@@ -133,16 +134,16 @@ pub struct Wallet<T, U, V, W, X> {
     _w: PhantomData<W>,
 }
 
-impl<T, U, V, W, X> Wallet<T, U, V, W, X>
+impl<T, U, V, W, TKeyManagerInterface> Wallet<T, U, V, W, TKeyManagerInterface>
 where
     T: WalletBackend + 'static,
     U: TransactionBackend + 'static,
     V: OutputManagerBackend + 'static,
     W: ContactsBackend + 'static,
-    X: KeyManagerBackend + 'static,
+    TKeyManagerInterface: SecretTransactionKeyManagerInterface,
 {
     #[allow(clippy::too_many_lines)]
-    pub async fn start(
+    pub async fn start<TKeyManagerBackend: KeyManagerBackend<PublicKey> + 'static>(
         config: WalletConfig,
         peer_seeds: PeerSeedsConfig,
         auto_update: AutoUpdateConfig,
@@ -154,12 +155,12 @@ where
         transaction_backend: U,
         output_manager_backend: V,
         contacts_backend: W,
-        key_manager_backend: X,
+        key_manager_backend: TKeyManagerBackend,
         shutdown_signal: ShutdownSignal,
         master_seed: CipherSeed,
     ) -> Result<Self, WalletError> {
         let buf_size = cmp::max(WALLET_BUFFER_MIN_SIZE, config.buffer_size);
-        let (publisher, subscription_factory) = pubsub_connector(buf_size, config.buffer_rate_limit);
+        let (publisher, subscription_factory) = pubsub_connector(buf_size);
         let peer_message_subscription_factory = Arc::new(subscription_factory);
 
         debug!(target: LOG_TARGET, "Wallet Initializing");
@@ -169,12 +170,11 @@ where
         );
         trace!(
             target: LOG_TARGET,
-            "Wallet config: {:?}, {:?}, {:?}, buffer_size: {}, rate_limit: {}",
+            "Wallet config: {:?}, {:?}, {:?}, buffer_size: {}",
             config.base_node_service_config,
             config.output_manager_service_config,
             config.transaction_service_config,
             config.buffer_size,
-            config.buffer_rate_limit
         );
         let wallet_identity = WalletIdentity::new(node_identity.clone(), config.network);
         let stack = StackBuilder::new(shutdown_signal)
@@ -185,15 +185,19 @@ where
                 node_identity.clone(),
                 publisher,
             ))
-            .add_initializer(OutputManagerServiceInitializer::<V, X>::new(
+            .add_initializer(OutputManagerServiceInitializer::<V, TKeyManagerInterface>::new(
                 config.output_manager_service_config,
                 output_manager_backend.clone(),
                 factories.clone(),
                 config.network.into(),
-                node_identity.clone(),
+                wallet_identity.clone(),
             ))
-            .add_initializer(KeyManagerInitializer::new(key_manager_backend, master_seed))
-            .add_initializer(TransactionServiceInitializer::new(
+            .add_initializer(TransactionKeyManagerInitializer::new(
+                key_manager_backend,
+                master_seed,
+                factories.clone(),
+            ))
+            .add_initializer(TransactionServiceInitializer::<U, T, TKeyManagerInterface>::new(
                 config.transaction_service_config,
                 peer_message_subscription_factory.clone(),
                 transaction_backend,
@@ -225,7 +229,7 @@ where
             .add_initializer(UtxoScannerServiceInitializer::new(
                 wallet_database.clone(),
                 factories.clone(),
-                wallet_identity,
+                wallet_identity.clone(),
             ));
 
         // Check if we have update config. FFI wallets don't do this, the update on mobile is done differently.
@@ -250,7 +254,7 @@ where
         let comms = initialization::spawn_comms_using_transport(comms, config.p2p.transport).await?;
 
         let mut output_manager_handle = handles.expect_handle::<OutputManagerHandle>();
-        let key_manager_handle = handles.expect_handle::<KeyManagerHandle<X>>();
+        let key_manager_handle = handles.expect_handle::<TKeyManagerInterface>();
         let transaction_service_handle = handles.expect_handle::<TransactionServiceHandle>();
         let contacts_handle = handles.expect_handle::<ContactsServiceHandle>();
         let dht = handles.expect_handle::<Dht>();
@@ -265,7 +269,7 @@ where
             None
         };
 
-        persist_one_sided_payment_script_for_node_identity(&mut output_manager_handle, comms.node_identity())
+        persist_one_sided_payment_script_for_node_identity(&mut output_manager_handle, wallet_identity.clone())
             .await
             .map_err(|e| {
                 error!(target: LOG_TARGET, "{:?}", e);
@@ -425,7 +429,7 @@ where
     /// provide a record of the event. The TxId of the generated transaction is returned.
     pub async fn import_external_utxo_as_non_rewindable(
         &mut self,
-        amount: MicroTari,
+        amount: MicroMinotari,
         spending_key: &PrivateKey,
         script: TariScript,
         input_data: ExecutionStack,
@@ -438,8 +442,9 @@ where
         script_lock_height: u64,
         covenant: Covenant,
         encrypted_data: EncryptedData,
-        minimum_value_promise: MicroTari,
+        minimum_value_promise: MicroMinotari,
     ) -> Result<TxId, WalletError> {
+        // lets import the private keys
         let unblinded_output = UnblindedOutput::new_current_version(
             amount,
             spending_key.clone(),
@@ -480,20 +485,16 @@ where
                 None,
             )
             .await?;
-
+        let wallet_output = unblinded_output.to_wallet_output(&self.key_manager_service).await?;
         // As non-rewindable
         self.output_manager_service
-            .add_unvalidated_output(tx_id, unblinded_output.clone(), None)
+            .add_unvalidated_output(tx_id, wallet_output.clone(), None)
             .await?;
-
         info!(
             target: LOG_TARGET,
-            "UTXO (Commitment: {}) imported into wallet as 'ImportStatus::Imported' and is non-rewindable",
-            unblinded_output
-                .as_transaction_input(&self.factories.commitment)?
-                .commitment()
-                .map_err(WalletError::TransactionError)?
-                .to_hex(),
+            "UTXO (Commitment: {}, value: {}) imported into wallet as 'ImportStatus::Imported' and is non-rewindable",
+            wallet_output.commitment(&self.key_manager_service).await?.to_hex(),
+            wallet_output.value,
         );
 
         Ok(tx_id)
@@ -504,7 +505,7 @@ where
         secret: &PrivateKey,
         message: &str,
     ) -> Result<SignatureWithDomain<WalletMessageSigningDomain>, SchnorrSignatureError> {
-        SignatureWithDomain::<WalletMessageSigningDomain>::sign_message(secret, message.as_bytes())
+        SignatureWithDomain::<WalletMessageSigningDomain>::sign(secret, message.as_bytes(), &mut OsRng)
     }
 
     pub fn verify_message_signature(
@@ -513,7 +514,7 @@ where
         signature: &SignatureWithDomain<WalletMessageSigningDomain>,
         message: &str,
     ) -> bool {
-        signature.verify_message(public_key, message)
+        signature.verify(public_key, message)
     }
 
     /// Appraise the expected outputs and a fee
@@ -521,8 +522,8 @@ where
         &mut self,
         commitments: Vec<Commitment>,
         split_count: usize,
-        fee_per_gram: MicroTari,
-    ) -> Result<(Vec<MicroTari>, MicroTari), WalletError> {
+        fee_per_gram: MicroMinotari,
+    ) -> Result<(Vec<MicroMinotari>, MicroMinotari), WalletError> {
         self.output_manager_service
             .preview_coin_split_with_commitments_no_amount(commitments, split_count, fee_per_gram)
             .await
@@ -533,8 +534,8 @@ where
     pub async fn preview_coin_join_with_commitments(
         &mut self,
         commitments: Vec<Commitment>,
-        fee_per_gram: MicroTari,
-    ) -> Result<(Vec<MicroTari>, MicroTari), WalletError> {
+        fee_per_gram: MicroMinotari,
+    ) -> Result<(Vec<MicroMinotari>, MicroMinotari), WalletError> {
         self.output_manager_service
             .preview_coin_join_with_commitments(commitments, fee_per_gram)
             .await
@@ -545,9 +546,9 @@ where
     pub async fn coin_split(
         &mut self,
         commitments: Vec<Commitment>,
-        amount_per_split: MicroTari,
+        amount_per_split: MicroMinotari,
         split_count: usize,
-        fee_per_gram: MicroTari,
+        fee_per_gram: MicroMinotari,
         message: String,
     ) -> Result<TxId, WalletError> {
         let coin_split_tx = self
@@ -575,7 +576,7 @@ where
         &mut self,
         commitments: Vec<Commitment>,
         split_count: usize,
-        fee_per_gram: MicroTari,
+        fee_per_gram: MicroMinotari,
         message: String,
     ) -> Result<TxId, WalletError> {
         let coin_split_tx = self
@@ -603,7 +604,7 @@ where
         &mut self,
         commitments: Vec<Commitment>,
         split_count: usize,
-        fee_per_gram: MicroTari,
+        fee_per_gram: MicroMinotari,
         message: String,
     ) -> Result<TxId, WalletError> {
         let coin_split_tx = self
@@ -629,7 +630,7 @@ where
     pub async fn coin_join(
         &mut self,
         commitments: Vec<Commitment>,
-        fee_per_gram: MicroTari,
+        fee_per_gram: MicroMinotari,
         msg: Option<String>,
     ) -> Result<TxId, WalletError> {
         let coin_join_tx = self
@@ -705,12 +706,12 @@ pub fn read_or_create_master_seed<T: WalletBackend + 'static>(
 }
 
 pub fn derive_comms_secret_key(master_seed: &CipherSeed) -> Result<CommsSecretKey, WalletError> {
-    let comms_key_manager = KeyManager::<PrivateKey, KeyDigest>::from(
+    let comms_key_manager = KeyManager::<PublicKey, KeyDigest>::from(
         master_seed.clone(),
         KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY.to_string(),
         0,
     );
-    Ok(comms_key_manager.derive_key(0)?.k)
+    Ok(comms_key_manager.derive_key(0)?.key)
 }
 
 /// Persist the one-sided payment script for the current wallet NodeIdentity for use during scanning for One-sided
@@ -718,15 +719,15 @@ pub fn derive_comms_secret_key(master_seed: &CipherSeed) -> Result<CommsSecretKe
 /// using old node identities.
 async fn persist_one_sided_payment_script_for_node_identity(
     output_manager_service: &mut OutputManagerHandle,
-    node_identity: Arc<NodeIdentity>,
+    wallet_identity: WalletIdentity,
 ) -> Result<(), WalletError> {
-    let script = one_sided_payment_script(node_identity.public_key());
+    let script = one_sided_payment_script(wallet_identity.node_identity.public_key());
     let known_script = KnownOneSidedPaymentScript {
         script_hash: script
-            .as_hash::<Blake256>()
+            .as_hash::<Blake2b<U32>>()
             .map_err(|e| WalletError::OutputManagerError(OutputManagerError::ScriptError(e)))?
             .to_vec(),
-        private_key: node_identity.secret_key().clone(),
+        script_key_id: wallet_identity.wallet_node_key_id.clone(),
         script,
         input: ExecutionStack::default(),
         script_lock_height: 0,

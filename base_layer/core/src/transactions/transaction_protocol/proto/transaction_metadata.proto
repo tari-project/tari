@@ -14,7 +14,7 @@ message TransactionMetadata {
     uint64 lock_height = 2;
     // features of the kernel for this transaction
     uint32 kernel_features = 3;
-    /// optional burn commitment if present
+    // optional burn commitment if present
     tari.types.Commitment burned_commitment = 4;
 }
 

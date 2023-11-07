@@ -23,17 +23,17 @@ Scenario: Get Transaction Info
     Then wallet WALLET_B detects all transactions are at least Completed
     Then wallet WALLET_A detects all transactions are at least Broadcast
     Then wallet WALLET_B detects all transactions are at least Broadcast
-    # TODO: This wait is needed to stop next merge mining task from continuing
+    # This wait is needed to stop next merge mining task from continuing
     When I wait 1 seconds
     When mining node MINER mines 1 blocks
     Then all nodes are at height 5
     Then wallet WALLET_A detects all transactions are at least Mined_Unconfirmed
     Then wallet WALLET_B detects all transactions are at least Mined_Unconfirmed
-    # TODO: This wait is needed to stop base nodes from shutting down
+    # This wait is needed to stop base nodes from shutting down
     When I wait 1 seconds
     When mining node MINER mines 10 blocks
     Then all nodes are at height 15
     Then wallet WALLET_A detects all transactions as Mined_Confirmed
     Then wallet WALLET_B detects all transactions as Mined_Confirmed
-    # TODO: This wait is needed to stop base nodes from shutting down
+    # This wait is needed to stop base nodes from shutting down
     When I wait 1 seconds

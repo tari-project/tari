@@ -140,7 +140,7 @@ mod submit_transaction {
     use super::*;
     use crate::{
         mempool::{MempoolService, TxStorageResponse},
-        proto::types::{AggregateBody, BlindingFactor, Transaction},
+        proto::types::{AggregateBody, PrivateKey, Transaction},
     };
 
     #[tokio::test]
@@ -149,7 +149,7 @@ mod submit_transaction {
         let expected = TxStorageResponse::UnconfirmedPool;
         mempool.set_submit_transaction_response(expected.clone()).await;
         let txn = Transaction {
-            offset: Some(BlindingFactor {
+            offset: Some(PrivateKey {
                 data: RistrettoSecretKey::default().to_vec(),
             }),
             body: Some(AggregateBody {
@@ -157,7 +157,7 @@ mod submit_transaction {
                 outputs: vec![],
                 kernels: vec![],
             }),
-            script_offset: Some(BlindingFactor {
+            script_offset: Some(PrivateKey {
                 data: RistrettoSecretKey::default().to_vec(),
             }),
         };
