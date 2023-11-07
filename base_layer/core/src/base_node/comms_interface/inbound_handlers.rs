@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    cmp::max,
     collections::HashSet,
     convert::{TryFrom, TryInto},
     sync::Arc,
@@ -448,10 +449,11 @@ where B: BlockchainBackend + 'static
             return Ok(());
         }
 
-        // lets check that the difficulty at least matches the min required difficulty
-        // We cannot check the target difficulty as orphan blocks dont have a target difficulty.
-        // All we care here is that bad blocks are not free to make, and that they are more expensive to make then they
-        // are to validate. As soon as a block can be linked to the main chain, a proper full proof of work check will
+        // lets check that the difficulty at least matches 50% of the tip header. The max difficulty drop is 16%, thus
+        // 50% is way more than that and in order to attack the node, you need 50% of the mining power. We cannot check
+        // the target difficulty as orphan blocks dont have a target difficulty. All we care here is that bad
+        // blocks are not free to make, and that they are more expensive to make then they are to validate. As
+        // soon as a block can be linked to the main chain, a proper full proof of work check will
         // be done before any other validation.
         self.check_min_block_difficulty(&new_block).await?;
 
@@ -504,7 +506,29 @@ where B: BlockchainBackend + 'static
 
     async fn check_min_block_difficulty(&self, new_block: &NewBlock) -> Result<(), CommsInterfaceError> {
         let constants = self.consensus_manager.consensus_constants(new_block.header.height);
-        let min_difficulty = constants.min_pow_difficulty(new_block.header.pow.pow_algo);
+        let mut min_difficulty = constants.min_pow_difficulty(new_block.header.pow.pow_algo);
+        let mut header = self.blockchain_db.fetch_last_chain_header().await?;
+        loop {
+            if new_block.header.pow_algo() == header.header().pow_algo() {
+                min_difficulty = max(
+                    header
+                        .accumulated_data()
+                        .target_difficulty
+                        .checked_div_u64(2)
+                        .unwrap_or(min_difficulty),
+                    min_difficulty,
+                );
+                break;
+            }
+            if header.height() == 0 {
+                break;
+            }
+            // we have not reached gen block, and the pow algo does not match, so lets go further back
+            header = self
+                .blockchain_db
+                .fetch_chain_header(header.height().saturating_sub(1))
+                .await?;
+        }
         let achieved = match new_block.header.pow_algo() {
             PowAlgorithm::RandomX => randomx_difficulty(&new_block.header, &self.randomx_factory)?,
             PowAlgorithm::Sha3x => sha3x_difficulty(&new_block.header)?,
