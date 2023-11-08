@@ -20,10 +20,16 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{borrow::Cow, cmp::min, ops::Deref, string::FromUtf8Error};
+use std::{
+    borrow::Cow,
+    cmp::min,
+    ops::{BitAnd, Deref},
+    string::FromUtf8Error,
+};
 
 use argon2::{password_hash::Encoding, Argon2, PasswordHash, PasswordVerifier};
-use subtle::ConstantTimeEq;
+use rand::RngCore;
+use subtle::{Choice, ConstantTimeEq};
 use tari_utilities::{ByteArray, SafePassword};
 use tonic::metadata::{errors::InvalidMetadataValue, Ascii, MetadataValue};
 use zeroize::{Zeroize, Zeroizing};
@@ -36,22 +42,44 @@ const MAX_USERNAME_LEN: usize = 256;
 /// Represents the username and password contained within a Authenticate header.
 #[derive(Debug)]
 pub struct BasicAuthCredentials {
-    pub user_name: String,
-    pub password: SafePassword,
+    /// The username bytes length
+    pub user_name_bytes_length: usize,
+    /// The username in bytes representation for constant time comparison
+    pub user_name_bytes: [u8; MAX_USERNAME_LEN],
+    /// The hashed password
+    pub phc_password_hash: SafePassword,
+    /// Random bytes to help with constant time username comparison
+    pub random_bytes: [u8; MAX_USERNAME_LEN],
 }
 
 impl BasicAuthCredentials {
-    pub fn new(user_name: String, password: SafePassword) -> Result<Self, BasicAuthError> {
+    /// Creates a new `Credentials` instance from a username and password (PHC string bytes).
+    pub fn new(user_name: String, phc_password_hash: SafePassword) -> Result<Self, BasicAuthError> {
         // Validate the username is well formed
-        if user_name.as_bytes().is_empty() || user_name.as_bytes().len() > MAX_USERNAME_LEN {
+        if user_name.as_bytes().len() > MAX_USERNAME_LEN {
             return Err(BasicAuthError::InvalidUsername);
         }
-        // Validate the password is well formed
-        let bytes = password.reveal().to_vec();
-        let str_password = Zeroizing::new(String::from_utf8(bytes)?);
-        let _parse_result = PasswordHash::parse(&str_password, Encoding::B64)?;
-        // We are happy with the username and password
-        Ok(Self { user_name, password })
+        // Validate the password is a well formed byte representation of a PHC string
+        let bytes = phc_password_hash.reveal().to_vec();
+        let _parse_result = PasswordHash::parse(&String::from_utf8(bytes)?, Encoding::B64)?;
+        // Random bytes are used for constant time username comparison to ensure that the compiler does not do any
+        // funny optimizations and to ensure that comparison for the same username for every new credentials instance
+        // forces a different bitwise comparison.
+        let mut random_bytes = [0u8; MAX_USERNAME_LEN];
+        let mut rng = rand::thread_rng();
+        rng.fill_bytes(&mut random_bytes);
+        // Prepare the username bytes for constant time comparison ahead of time
+        let bytes = user_name.as_bytes();
+        let mut user_name_bytes = [0u8; MAX_USERNAME_LEN];
+        user_name_bytes[0..bytes.len()].clone_from_slice(bytes);
+        user_name_bytes[bytes.len()..MAX_USERNAME_LEN].clone_from_slice(&random_bytes[bytes.len()..MAX_USERNAME_LEN]);
+
+        Ok(Self {
+            user_name_bytes_length: user_name.as_bytes().len(),
+            user_name_bytes,
+            phc_password_hash,
+            random_bytes,
+        })
     }
 
     /// Creates a `Credentials` instance from a base64 `String`
@@ -93,41 +121,56 @@ impl BasicAuthCredentials {
     }
 
     // This function provides a constant time comparison of the given username with the registered username.
-    fn constant_time_compare_username(&self, username: &str) -> bool {
-        let a_bytes = self.user_name.as_bytes();
-        let b_bytes = username.as_bytes();
+    fn constant_time_verify_username(&self, username: &str) -> Choice {
+        // The username is valid if the lengths are equal and the length is not greater than the maximum allowed length;
+        // any error here will only be factored in after the bitwise comparison has been done to force constant time.
+        let bytes = username.as_bytes();
+        let valid_username = Choice::from(u8::from(
+            !(self.user_name_bytes_length != bytes.len() || bytes.len() > MAX_USERNAME_LEN),
+        ));
 
-        let valid_username = !(b_bytes.is_empty() || b_bytes.len() > MAX_USERNAME_LEN);
-        let b_bytes_len_clipped = min(b_bytes.len(), MAX_USERNAME_LEN);
+        // We start with an empty default buffer
+        let mut compare_bytes = [0u8; MAX_USERNAME_LEN];
 
-        // Comparison bytes for both usernames are initialized to a large array of equal bytes.
-        let mut a_compare_bytes = [7u8; MAX_USERNAME_LEN];
-        let mut b_compare_bytes = a_compare_bytes;
+        // Add the username bytes to the buffer
+        let bytes_len_clipped = min(bytes.len(), MAX_USERNAME_LEN);
+        compare_bytes[0..bytes_len_clipped].clone_from_slice(&bytes[..bytes_len_clipped]);
 
-        // Add the comparison bytes for the actual username to the respective comparison byte arrays.
-        a_compare_bytes[0..a_bytes.len()].clone_from_slice(a_bytes);
-        b_compare_bytes[0..b_bytes_len_clipped].clone_from_slice(&b_bytes[..b_bytes_len_clipped]);
+        // The remaining bytes are padded afterwards (and not initialized at the start) to ensure that this function
+        // always does the same amount of work irrespective of the username length.
+        compare_bytes[bytes.len()..MAX_USERNAME_LEN]
+            .clone_from_slice(&self.random_bytes[bytes.len()..MAX_USERNAME_LEN]);
 
-        (a_compare_bytes.ct_eq(&b_compare_bytes).unwrap_u8() != 0) && valid_username
+        // Perform the bitwise comparison and combine the result with the valid username result.
+        // The use of `Choice` logic here is by design to hide the boolean logic from compiler optimizations.
+        self.user_name_bytes.ct_eq(&compare_bytes).bitand(valid_username)
     }
 
-    pub fn validate(&self, username: &str, password: &[u8]) -> Result<(), BasicAuthError> {
-        let valid_username = self.constant_time_compare_username(username);
+    /// Validates the given username and password against the registered username and password. The function will always
+    /// do the same amount of work irrespective if the username or password is correct or not. This is to prevent timing
+    /// attacks. Also, no distinction is made between a non-existent username or an incorrect password in the error
+    /// that is returned.
+    pub fn constant_time_validate(&self, username: &str, password: &[u8]) -> Result<(), BasicAuthError> {
+        let valid_username = self.constant_time_verify_username(username);
 
         // These bytes can leak if the password is not utf-8, but since argon encoding is utf-8 the given
         // password must be incorrect if conversion to utf-8 fails.
-        let bytes = self.password.reveal().to_vec();
+        let bytes = self.phc_password_hash.reveal().to_vec();
         let str_password = Zeroizing::new(String::from_utf8(bytes)?);
         let header_password = PasswordHash::parse(&str_password, Encoding::B64)?;
-        let valid_password = Argon2::default().verify_password(password, &header_password).is_ok();
+        let valid_password = Choice::from(u8::from(
+            Argon2::default().verify_password(password, &header_password).is_ok(),
+        ));
 
-        if valid_username && valid_password {
+        // The use of `Choice` logic here is by design to hide the boolean logic from compiler optimizations.
+        if valid_username.bitand(valid_password).into() {
             Ok(())
         } else {
             Err(BasicAuthError::InvalidUsernameOrPassword)
         }
     }
 
+    /// Generates a `Basic` HTTP Authorization header value from the given username and password.
     pub fn generate_header(username: &str, password: &[u8]) -> Result<MetadataValue<Ascii>, BasicAuthError> {
         let password_str = String::from_utf8_lossy(password);
         let token_str = Zeroizing::new(format!("{}:{}", username, password_str));
@@ -176,8 +219,14 @@ mod tests {
         #[test]
         fn it_decodes_from_well_formed_header() {
             let credentials = BasicAuthCredentials::from_header("Basic YWRtaW46c2VjcmV0").unwrap();
-            assert_eq!(credentials.user_name, "admin");
-            assert!(credentials.validate("admin", b"secret").is_ok());
+            assert_eq!(credentials.user_name_bytes_length, "admin".as_bytes().len());
+            let bytes = "admin".as_bytes();
+            let mut user_name_bytes = [0u8; MAX_USERNAME_LEN];
+            user_name_bytes[0..bytes.len()].clone_from_slice(bytes);
+            user_name_bytes[bytes.len()..MAX_USERNAME_LEN]
+                .clone_from_slice(&credentials.random_bytes[bytes.len()..MAX_USERNAME_LEN]);
+            assert_eq!(credentials.user_name_bytes, user_name_bytes);
+            assert!(credentials.constant_time_validate("admin", b"secret").is_ok());
         }
 
         #[test]
@@ -212,9 +261,13 @@ mod tests {
         #[test]
         fn it_validates_for_matching_salted_credentials() {
             let hashed_password = create_salted_hashed_password(b"secret").unwrap();
+            // Typical username
             let credentials =
                 BasicAuthCredentials::new("admin".to_string(), hashed_password.to_string().into()).unwrap();
-            credentials.validate("admin", b"secret").unwrap();
+            credentials.constant_time_validate("admin", b"secret").unwrap();
+            // Empty username is also fine
+            let credentials = BasicAuthCredentials::new("".to_string(), hashed_password.to_string().into()).unwrap();
+            credentials.constant_time_validate("", b"secret").unwrap();
         }
 
         #[test]
@@ -232,24 +285,26 @@ mod tests {
             let credentials =
                 BasicAuthCredentials::new("admin".to_string(), hashed_password.to_string().into()).unwrap();
 
-            let err = credentials.validate("admin", b"bruteforce").unwrap_err();
+            let err = credentials.constant_time_validate("admin", b"bruteforce").unwrap_err();
             assert!(matches!(err, BasicAuthError::InvalidUsernameOrPassword));
 
-            let err = credentials.validate("wrong_user", b"secret").unwrap_err();
+            let err = credentials.constant_time_validate("wrong_user", b"secret").unwrap_err();
             assert!(matches!(err, BasicAuthError::InvalidUsernameOrPassword));
         }
 
         #[test]
-        fn it_rejects_registering_empty_or_over_sized_username_credentials() {
+        fn it_rejects_registering_over_sized_username_credentials() {
             let hashed_password = create_salted_hashed_password(b"secret").unwrap();
 
+            // Maximum length username is ok
             let username = [0u8; MAX_USERNAME_LEN / 2].to_hex();
             assert!(BasicAuthCredentials::new(username, hashed_password.to_string().into()).is_ok());
 
+            // Empty length username is ok
             let username = [].to_hex();
-            let err = BasicAuthCredentials::new(username, hashed_password.to_string().into()).unwrap_err();
-            assert!(matches!(err, BasicAuthError::InvalidUsername));
+            assert!(BasicAuthCredentials::new(username, hashed_password.to_string().into()).is_ok());
 
+            // Do not accept username that is too long
             let username = [0u8; MAX_USERNAME_LEN / 2 + 1].to_hex();
             let err = BasicAuthCredentials::new(username, hashed_password.to_string().into()).unwrap_err();
             assert!(matches!(err, BasicAuthError::InvalidUsername));
@@ -260,43 +315,43 @@ mod tests {
         //
         // Some consecutive results running in release mode on a Core i7-12700H (with no other processes running):
         //
-        // Minimum variance:                          0.247 %
-        // Average variance:                          4.65738 %
-        // Average short username time:               1.17486 microseconds
-        // Average long username time:                1.17344 microseconds
-        // Average actual username time:              1.18388 microseconds
+        // Minimum variance:                          0.12574 %
+        // Average variance:                          5.51684 %
+        // Average short username time:               1.2922 microseconds
+        // Average long username time:                1.27837 microseconds
+        // Average actual username time:              1.28199 microseconds
         //
-        // Minimum variance:                          0.10214 %
-        // Average variance:                          4.32226 %
-        // Average short username time:               1.1619 microseconds
-        // Average long username time:                1.16591 microseconds
-        // Average actual username time:              1.18157 microseconds
+        // Minimum variance:                          0.06754 %
+        // Average variance:                          3.64757 %
+        // Average short username time:               1.27054 microseconds
+        // Average long username time:                1.26604 microseconds
+        // Average actual username time:              1.2615 microseconds
         //
-        // Minimum variance:                          0.17953 %
-        // Average variance:                          5.51519 %
-        // Average short username time:               1.17974 microseconds
-        // Average long username time:                1.19232 microseconds
-        // Average actual username time:              1.18709 microseconds
+        // Minimum variance:                          0.13508 %
+        // Average variance:                          5.97782 %
+        // Average short username time:               1.26488 microseconds
+        // Average long username time:                1.27111 microseconds
+        // Average actual username time:              1.26225 microseconds
         //
         // Some consecutive results running in release mode on a Core i7-12700H (while entire CPU fully stressed):
         //
-        // Minimum variance:                          0.60357 %
-        // Average variance:                          6.30167 %
-        // Average short username time:               1.81708 microseconds
-        // Average long username time:                1.77562 microseconds
-        // Average actual username time:              1.74824 microseconds
+        // Minimum variance:                          0.7276 %
+        // Average variance:                          7.50704 %
+        // Average short username time:               1.7147 microseconds
+        // Average long username time:                1.6953 microseconds
+        // Average actual username time:              1.6494 microseconds
         //
-        // Minimum variance:                          0.28176 %
-        // Average variance:                          6.47136 %
-        // Average short username time:               1.8317 microseconds
-        // Average long username time:                1.8304 microseconds
-        // Average actual username time:              1.80362 microseconds
+        // Minimum variance:                          0.41439 %
+        // Average variance:                          7.17822 %
+        // Average short username time:               1.80315 microseconds
+        // Average long username time:                1.75904 microseconds
+        // Average actual username time:              1.71591 microseconds
         //
-        // Minimum variance:                          0.53593 %
-        // Average variance:                          6.99394 %
-        // Average short username time:               1.82322 microseconds
-        // Average long username time:                1.81431 microseconds
-        // Average actual username time:              1.78002 microseconds
+        // Minimum variance:                          0.44736 %
+        // Average variance:                          5.48951 %
+        // Average short username time:               1.81177 microseconds
+        // Average long username time:                1.78756 microseconds
+        // Average actual username time:              1.73798 microseconds
         //
         #[test]
         fn it_compares_user_names_in_constant_time() {
@@ -316,8 +371,8 @@ mod tests {
             for i in 1..=ITERATIONS {
                 let credentials =
                     BasicAuthCredentials::new(username_actual.to_string(), hashed_password.to_string().into()).unwrap();
-                assert!(credentials.constant_time_compare_username(username_actual));
-                assert!(!credentials.constant_time_compare_username(""));
+                assert!(bool::from(credentials.constant_time_verify_username(username_actual)));
+                assert!(!bool::from(credentials.constant_time_verify_username("")));
 
                 let mut short_usernames = Vec::with_capacity(COUNTS);
                 let mut long_usernames = Vec::with_capacity(COUNTS);
@@ -335,22 +390,22 @@ mod tests {
 
                 let start = Instant::now();
                 for short in &short_usernames {
-                    let res = credentials.constant_time_compare_username(short);
-                    assert!(!res);
+                    let res = credentials.constant_time_verify_username(short);
+                    assert!(!bool::from(res));
                 }
                 let time_taken_1 = start.elapsed().as_micros();
 
                 let start = Instant::now();
                 for long in &long_usernames {
-                    let res = credentials.constant_time_compare_username(long);
-                    assert!(!res);
+                    let res = credentials.constant_time_verify_username(long);
+                    assert!(!bool::from(res));
                 }
                 let time_taken_2 = start.elapsed().as_micros();
 
                 let start = Instant::now();
                 for _ in 0..COUNTS {
-                    let res = credentials.constant_time_compare_username(username_actual);
-                    assert!(res);
+                    let res = credentials.constant_time_verify_username(username_actual);
+                    assert!(bool::from(res));
                 }
                 let time_taken_3 = start.elapsed().as_micros();
 
@@ -388,43 +443,43 @@ mod tests {
         //
         // Some consecutive results running in release mode on a Core i7-12700H (with no other processes running):
         //
-        // Minimum variance:                          0.43478 %
-        // Average variance:                          2.08995 %
-        // Average short username time:               34.580 microseconds
-        // Average long username time:                34.315 microseconds
-        // Average actual username time:              34.260 microseconds
-        //
         // Minimum variance:                          0.43731 %
-        // Average variance:                          1.77209 %
-        // Average short username time:               34.560 microseconds
-        // Average long username time:                34.755 microseconds
-        // Average actual username time:              34.690 microseconds
+        // Average variance:                          2.66751 %
+        // Average short username time:               35.04999 microseconds
+        // Average long username time:                34.95 microseconds
+        // Average actual username time:              34.9 microseconds
         //
-        // Minimum variance:                          0.43988 %
-        // Average variance:                          1.61299 %
-        // Average short username time:               34.33999 microseconds
-        // Average long username time:                34.38500 microseconds
-        // Average actual username time:              34.28500 microseconds
+        // Minimum variance:                          1.1713 %
+        // Average variance:                          2.82044 %
+        // Average short username time:               34.605 microseconds
+        // Average long username time:                34.69 microseconds
+        // Average actual username time:              34.67499 microseconds
+        //
+        // Minimum variance:                          0.9929 %
+        // Average variance:                          2.35816 %
+        // Average short username time:               35.285 microseconds
+        // Average long username time:                35.285 microseconds
+        // Average actual username time:              34.94 microseconds
         //
         // Some consecutive results running in release mode on a Core i7-12700H (while entire CPU fully stressed):
         //
-        // Minimum variance:                          0.30326 %
-        // Average variance:                          2.29341 %
-        // Average short username time:               64.87500 microseconds
-        // Average long username time:                65.55499 microseconds
-        // Average actual username time:              65.81000 microseconds
+        // Minimum variance:                          0.43668 %
+        // Average variance:                          1.61542 %
+        // Average short username time:               68.45 microseconds
+        // Average long username time:                68.245 microseconds
+        // Average actual username time:              68.81 microseconds
         //
-        // Minimum variance:                          1.18168 %
-        // Average variance:                          2.99206 %
-        // Average short username time:               67.970 microseconds
-        // Average long username time:                68.000 microseconds
-        // Average actual username time:              68.005 microseconds
+        // Minimum variance:                          0.86268 %
+        // Average variance:                          1.58273 %
+        // Average short username time:               69.925 microseconds
+        // Average long username time:                70.34999 microseconds
+        // Average actual username time:              69.965 microseconds
         //
-        // Minimum variance:                          1.01083 %
-        // Average variance:                          2.31316 %
-        // Average short username time:               68.715 microseconds
-        // Average long username time:                69.675 microseconds
-        // Average actual username time:              69.715 microseconds
+        // Minimum variance:                          0.4961 %
+        // Average variance:                          1.61912 %
+        // Average short username time:               69.85499 microseconds
+        // Average long username time:                70.08 microseconds
+        // Average actual username time:              70.645 microseconds
         //
         #[test]
         fn it_compares_credentials_in_constant_time() {
@@ -461,21 +516,21 @@ mod tests {
 
                 let start = Instant::now();
                 for short in &short_usernames {
-                    let res = credentials.validate(short, b"bruteforce");
+                    let res = credentials.constant_time_validate(short, b"bruteforce");
                     assert!(res.is_err());
                 }
                 let time_taken_1 = start.elapsed().as_millis();
 
                 let start = Instant::now();
                 for long in &long_usernames {
-                    let res = credentials.validate(long, b"bruteforce");
+                    let res = credentials.constant_time_validate(long, b"bruteforce");
                     assert!(res.is_err());
                 }
                 let time_taken_2 = start.elapsed().as_millis();
 
                 let start = Instant::now();
                 for _ in 0..COUNTS {
-                    let res = credentials.validate(username_actual, b"secret");
+                    let res = credentials.constant_time_validate(username_actual, b"secret");
                     assert!(res.is_ok());
                 }
                 let time_taken_3 = start.elapsed().as_millis();
@@ -517,8 +572,14 @@ mod tests {
         fn it_generates_a_valid_header() {
             let header = BasicAuthCredentials::generate_header("admin", b"secret").unwrap();
             let cred = BasicAuthCredentials::from_header(header.to_str().unwrap()).unwrap();
-            assert_eq!(cred.user_name, "admin");
-            assert!(cred.validate("admin", b"secret").is_ok());
+            assert_eq!(cred.user_name_bytes_length, "admin".as_bytes().len());
+            let bytes = "admin".as_bytes();
+            let mut user_name_bytes = [0u8; MAX_USERNAME_LEN];
+            user_name_bytes[0..bytes.len()].clone_from_slice(bytes);
+            user_name_bytes[bytes.len()..MAX_USERNAME_LEN]
+                .clone_from_slice(&cred.random_bytes[bytes.len()..MAX_USERNAME_LEN]);
+            assert_eq!(cred.user_name_bytes, user_name_bytes);
+            assert!(cred.constant_time_validate("admin", b"secret").is_ok());
         }
     }
 }
