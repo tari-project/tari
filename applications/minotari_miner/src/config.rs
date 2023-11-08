@@ -49,6 +49,8 @@ use tari_comms::multiaddr::Multiaddr;
 pub struct MinerConfig {
     /// GRPC address of base node
     pub base_node_grpc_address: Option<Multiaddr>,
+    /// GRPC authentication for base node
+    pub base_node_grpc_authentication: GrpcAuthentication,
     /// GRPC address of console wallet
     pub wallet_grpc_address: Option<Multiaddr>,
     /// GRPC authentication for console wallet
@@ -97,6 +99,7 @@ impl Default for MinerConfig {
     fn default() -> Self {
         Self {
             base_node_grpc_address: None,
+            base_node_grpc_authentication: GrpcAuthentication::default(),
             wallet_grpc_address: None,
             wallet_grpc_authentication: GrpcAuthentication::default(),
             num_mining_threads: num_cpus::get(),
