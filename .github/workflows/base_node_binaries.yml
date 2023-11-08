@@ -485,8 +485,7 @@ jobs:
           SOURCE: "${{ github.workspace }}${{ env.TBN_DIST }}"
           DEST_DIR: "${{ env.S3DESTOVERRIDE }}${{ env.PLATFORM_SPECIFIC_DIR }}/${{ env.TARI_NETWORK_DIR }}/"
           S3CMD: "cp"
-          S3OPTIONS: '--recursive --exclude "*" --include "*.zip*" --include "*.pkg*"'
-          # S3OPTIONS: '--recursive --exclude "*" --include "*.zip*"'
+          S3OPTIONS: '--recursive --exclude "*" --include "*.zip*" --include "*.pkg*" --include "*.exe*"'
           # S3OPTIONS: '--acl public-read'
 
       - name: Copy tags to latest s3 - Bash
@@ -521,7 +520,7 @@ jobs:
           SOURCE: "${{ github.workspace }}${{ env.TBN_DIST }}"
           DEST_DIR: "${{ env.S3DESTOVERRIDE }}${{ env.PLATFORM_SPECIFIC_DIR }}/${{ env.TARI_NETWORK_DIR }}/"
           S3CMD: "cp"
-          S3OPTIONS: '--recursive --exclude "*" --include "*.zip*" --include "*.pkg*"'
+          S3OPTIONS: '--recursive --exclude "*" --include "*.zip*" --include "*.pkg*" --include "*.exe*"'
           # S3OPTIONS: '--acl public-read'
 
   create-release:
