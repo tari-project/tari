@@ -72,12 +72,12 @@ peer_seeds = [
 [igor.p2p.seeds]
 # Custom specified peer seed nodes
 peer_seeds = [
-    # 2222bb888618d65d7b16e355f9
-    "8e7eb81e512f3d6347bf9b1ca9cd67d2c8e29f2836fc5bd608206505cc72af34::/ip6/fd56:2026:93c0:0:9e:96fb:e119:d8ec/tcp/18189",
-    # aaaaf562a6ef070706fb9a7244
-    "40a9d8573745072534bce7d0ecafe882b1c79570375a69841c08a98dee9ecb5f::/ip6/fd56:2026:93c0:0:9e:96fb:e119:d8ec/tcp/18189",
-    # dddd69c587a10c41ef2bf51397
-    "126c7ee64f71aca36398b977dd31fbbe9f9dad615df96473fb655bef5709c540::/ip6/fd56:2026:93c0:0:9e:96fb:e119:d8ec/tcp/18189",
+    # 2222bb888618d65d7b16e355f9 / 9412
+    "2ef6e02aeaa6e22d637f03a19999730eb7768bb04e35cbc056f4abbda019a577::/onion3/l4wouomx42nezhzexjdzfh7pcou5l7df24ggmwgekuih7tkv2rsaokqd:18141",
+    # dddd69c587a10c41ef2bf51397 /  b382
+    "94d674cc134afe26f56f499f6fed1af5b9ee8d8e3e848a1361798dae40b24f57::/onion3/6ilmgndocop7ybgmcvivbdsetzr5ggj4hhsivievoa2dx2b43wqlrlid:18141",
+    # aaaaf562a6ef070706fb9a7244 / a933
+    "5a3b226660a56044fe54a055098dd9b45448452ab7052433cff661c04b4ced04::/onion3/io37fylc2pupg4cte4siqlsmuszkeythgjsxs2i3prm6jyz2dtophaad:18141",
 
     # stringhandler's seed - b864effe95a2bade7ac7d8279d
     "c6222cb64297275572c04017e3f60457d4bb8249722bcfa6f236296cb561986f::/onion3/6zjczklptyqfcvbb37wy3724cxm42fjtdyepx2alhdh5m7cmztltguqd:18141",
