@@ -103,8 +103,8 @@ impl BlockHeaderSyncError {
             BlockHeaderSyncError::AllSyncPeersExceedLatency |
             BlockHeaderSyncError::ConnectivityError(_) |
             BlockHeaderSyncError::NotInSync |
-            BlockHeaderSyncError::PeerNotFound |
-            BlockHeaderSyncError::ChainStorageError(_) => None,
+            BlockHeaderSyncError::PeerNotFound => None,
+            BlockHeaderSyncError::ChainStorageError(e) => e.get_ban_reason(short_ban, long_ban),
 
             // short ban
             err @ BlockHeaderSyncError::MaxLatencyExceeded { .. } |
@@ -129,7 +129,7 @@ impl BlockHeaderSyncError {
                 ban_duration: long_ban,
             }),
 
-            BlockHeaderSyncError::ValidationFailed(err) => ValidationError::get_ban_reason(err, Some(long_ban)),
+            BlockHeaderSyncError::ValidationFailed(err) => ValidationError::get_ban_reason(err, short_ban, long_ban),
         }
     }
 }

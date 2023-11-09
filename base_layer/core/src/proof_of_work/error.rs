@@ -20,11 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::time::Duration;
+
 use thiserror::Error;
 
 #[cfg(feature = "base_node")]
 use crate::proof_of_work::monero_rx::MergeMineError;
-use crate::proof_of_work::Difficulty;
+use crate::{common::BanReason, proof_of_work::Difficulty};
 
 /// Errors that can occur when validating a proof of work
 #[derive(Debug, Error)]
@@ -42,6 +44,22 @@ pub enum PowError {
     #[cfg(feature = "base_node")]
     #[error("Invalid merge mining data or operation: {0}")]
     MergeMineError(#[from] MergeMineError),
+}
+
+impl PowError {
+    pub fn get_ban_reason(&self, short_ban: Duration, long_ban: Duration) -> Option<BanReason> {
+        match self {
+            err @ PowError::InvalidProofOfWork |
+            err @ PowError::AchievedDifficultyBelowMin |
+            err @ PowError::Sha3HeaderNonEmptyPowBytes |
+            err @ PowError::AchievedDifficultyTooLow { .. } |
+            err @ PowError::InvalidTargetDifficulty { .. } => Some(BanReason {
+                reason: err.to_string(),
+                ban_duration: long_ban,
+            }),
+            PowError::MergeMineError(e) => e.get_ban_reason(short_ban, long_ban),
+        }
+    }
 }
 
 /// Errors that can occur when adjusting the difficulty

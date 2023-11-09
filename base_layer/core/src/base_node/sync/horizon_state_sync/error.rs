@@ -115,7 +115,7 @@ impl HorizonSyncError {
     pub fn get_ban_reason(&self, short_ban: Duration, long_ban: Duration) -> Option<BanReason> {
         match self {
             // no ban
-            HorizonSyncError::ChainStorageError(_) |
+            HorizonSyncError::ChainStorageError(e) => e.get_ban_reason(short_ban, long_ban),
             HorizonSyncError::NoSyncPeers |
             HorizonSyncError::FailedSyncAllPeers |
             HorizonSyncError::AllSyncPeersExceedLatency |
@@ -147,7 +147,7 @@ impl HorizonSyncError {
                 ban_duration: long_ban,
             }),
 
-            HorizonSyncError::ValidationError(err) => ValidationError::get_ban_reason(err, Some(long_ban)),
+            HorizonSyncError::ValidationError(err) => ValidationError::get_ban_reason(err, short_ban, long_ban),
         }
     }
 }

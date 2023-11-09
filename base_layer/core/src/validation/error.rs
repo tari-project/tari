@@ -137,8 +137,9 @@ impl From<ChainStorageError> for ValidationError {
 }
 
 impl ValidationError {
-    pub fn get_ban_reason(&self, long_ban_duration: Option<Duration>) -> Option<BanReason> {
+    pub fn get_ban_reason(&self, short_ban: Duration, long_ban: Duration) -> Option<BanReason> {
         match self {
+            ValidationError::ProofOfWorkError(e) => e.get_ban_reason(short_ban, long_ban),
             err @ ValidationError::SerializationError(_) |
             err @ ValidationError::BlockHeaderError(_) |
             err @ ValidationError::BlockError(_) |
@@ -152,12 +153,10 @@ impl ValidationError {
             err @ ValidationError::ContainsTxO |
             err @ ValidationError::ContainsDuplicateUtxoCommitment |
             err @ ValidationError::ChainBalanceValidationFailed(_) |
-            err @ ValidationError::ProofOfWorkError(_) |
             err @ ValidationError::ValidatingGenesis |
             err @ ValidationError::UnsortedOrDuplicateInput |
             err @ ValidationError::UnsortedOrDuplicateOutput |
             err @ ValidationError::UnsortedOrDuplicateKernel |
-            err @ ValidationError::MergeMineError(_) |
             err @ ValidationError::MaxTransactionWeightExceeded |
             err @ ValidationError::IncorrectHeight { .. } |
             err @ ValidationError::IncorrectPreviousHash { .. } |
@@ -176,9 +175,10 @@ impl ValidationError {
             err @ ValidationError::DifficultyError(_) |
             err @ ValidationError::CoinbaseExceedsMaxLimit |
             err @ ValidationError::CovenantTooLarge { .. } => Some(BanReason {
-                reason: format!("{}", err),
-                ban_duration: long_ban_duration.unwrap_or_else(|| Duration::from_secs(2 * 60 * 60)),
+                reason: err.to_string(),
+                ban_duration: long_ban,
             }),
+            ValidationError::MergeMineError(e) => e.get_ban_reason(short_ban, long_ban),
             ValidationError::FatalStorageError(_) | ValidationError::IncorrectNumberOfTimestampsProvided { .. } => None,
         }
     }

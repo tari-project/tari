@@ -105,14 +105,13 @@ impl BlockSyncError {
         match self {
             // no ban
             BlockSyncError::AsyncTaskFailed(_) |
-            BlockSyncError::ChainStorageError(_) |
             BlockSyncError::ConnectivityError(_) |
             BlockSyncError::NoMoreSyncPeers(_) |
             BlockSyncError::AllSyncPeersExceedLatency |
             BlockSyncError::FailedToConstructChainBlock |
             BlockSyncError::PeerNotFound |
             BlockSyncError::SyncRoundFailed => None,
-
+            BlockSyncError::ChainStorageError(e) => e.get_ban_reason(short_ban, long_ban),
             // short ban
             err @ BlockSyncError::MaxLatencyExceeded { .. } |
             err @ BlockSyncError::PeerDidNotSupplyAllClaimedBlocks(_) |
@@ -131,7 +130,7 @@ impl BlockSyncError {
                 ban_duration: long_ban,
             }),
 
-            BlockSyncError::ValidationError(err) => ValidationError::get_ban_reason(err, Some(long_ban)),
+            BlockSyncError::ValidationError(err) => ValidationError::get_ban_reason(err, short_ban, long_ban),
         }
     }
 }

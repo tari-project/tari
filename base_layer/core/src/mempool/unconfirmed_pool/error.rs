@@ -20,9 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::time::Duration;
+
 use thiserror::Error;
 
-use crate::transactions::transaction_components::TransactionError;
+use crate::{common::BanReason, transactions::transaction_components::TransactionError};
 
 #[derive(Debug, Error)]
 pub enum UnconfirmedPoolError {
@@ -34,4 +36,19 @@ pub enum UnconfirmedPoolError {
     TransactionNoKernels,
     #[error("Transaction error: `{0}`")]
     TransactionError(#[from] TransactionError),
+}
+impl UnconfirmedPoolError {
+    pub fn get_ban_reason(&self, _short_ban: Duration, long_ban: Duration) -> Option<BanReason> {
+        match self {
+            UnconfirmedPoolError::StorageOutofSync | UnconfirmedPoolError::InternalError(_) => None,
+            err @ UnconfirmedPoolError::TransactionNoKernels => Some(BanReason {
+                reason: err.to_string(),
+                ban_duration: long_ban,
+            }),
+            err @ UnconfirmedPoolError::TransactionError(_) => Some(BanReason {
+                reason: format!("Invalid transaction: {}", err),
+                ban_duration: long_ban,
+            }),
+        }
+    }
 }

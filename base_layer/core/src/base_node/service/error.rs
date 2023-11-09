@@ -45,61 +45,46 @@ pub enum BaseNodeServiceError {
 }
 
 impl BaseNodeServiceError {
-    pub fn get_ban_reason(&self) -> Option<BanReason> {
+    pub fn get_ban_reason(&self, short_ban: Duration, long_ban: Duration) -> Option<BanReason> {
         match self {
             BaseNodeServiceError::CommsInterfaceError(comms) => match comms {
-                CommsInterfaceError::UnexpectedApiResponse => Some(BanReason {
-                    reason: "Unexpected API response".to_string(),
-                    ban_duration: Duration::from_secs(60),
+                err @ CommsInterfaceError::UnexpectedApiResponse | err @ CommsInterfaceError::RequestTimedOut => {
+                    Some(BanReason {
+                        reason: err.to_string(),
+                        ban_duration: short_ban,
+                    })
+                },
+                err @ CommsInterfaceError::InvalidPeerResponse(_) |
+                err @ CommsInterfaceError::InvalidBlockHeader(_) |
+                err @ CommsInterfaceError::TransactionError(_) |
+                err @ CommsInterfaceError::InvalidFullBlock { .. } |
+                err @ CommsInterfaceError::InvalidRequest { .. } => Some(BanReason {
+                    reason: err.to_string(),
+                    ban_duration: long_ban,
                 }),
-                CommsInterfaceError::RequestTimedOut => Some(BanReason {
-                    reason: "Request timed out".to_string(),
-                    ban_duration: Duration::from_secs(60),
+                CommsInterfaceError::MempoolError(e) => e.get_ban_reason(short_ban, long_ban),
+                CommsInterfaceError::TransportChannelError(e) => Some(BanReason {
+                    reason: e.to_string(),
+                    ban_duration: short_ban,
                 }),
-                CommsInterfaceError::InvalidPeerResponse(e) => Some(BanReason {
-                    reason: format!("Invalid peer response: {}", e),
-                    ban_duration: Duration::from_secs(60),
-                }),
-                CommsInterfaceError::InvalidBlockHeader(e) => Some(BanReason {
-                    reason: format!("Invalid block header: {}", e),
-                    ban_duration: Duration::from_secs(60),
-                }),
-                CommsInterfaceError::TransactionError(e) => Some(BanReason {
-                    reason: format!("Invalid transaction: {}", e),
-                    ban_duration: Duration::from_secs(60),
-                }),
-                CommsInterfaceError::InvalidRequest { request, details } => Some(BanReason {
-                    reason: format!("Invalid request: {} ({})", request, details),
-                    ban_duration: Duration::from_secs(60),
-                }),
+                CommsInterfaceError::ChainStorageError(e) => e.get_ban_reason(short_ban, long_ban),
+                CommsInterfaceError::MergeMineError(e) => e.get_ban_reason(short_ban, long_ban),
                 CommsInterfaceError::NoBootstrapNodesConfigured |
-                CommsInterfaceError::TransportChannelError(_) |
-                CommsInterfaceError::ChainStorageError(_) |
                 CommsInterfaceError::OutboundMessageError(_) |
-                CommsInterfaceError::MempoolError(_) |
                 CommsInterfaceError::BroadcastFailed |
                 CommsInterfaceError::InternalChannelError(_) |
                 CommsInterfaceError::DifficultyAdjustmentManagerError(_) |
                 CommsInterfaceError::InternalError(_) |
                 CommsInterfaceError::ApiError(_) |
-                CommsInterfaceError::BlockHeaderNotFound(_) |
                 CommsInterfaceError::BlockError(_) |
-                CommsInterfaceError::InvalidFullBlock { .. } |
-                CommsInterfaceError::MergeMineError(_) |
                 CommsInterfaceError::DifficultyError(_) => None,
             },
             BaseNodeServiceError::DhtOutboundError(_) => None,
-            BaseNodeServiceError::InvalidRequest(e) => Some(BanReason {
-                reason: format!("Invalid request: {}", e),
-                ban_duration: Duration::from_secs(60),
-            }),
-            BaseNodeServiceError::InvalidResponse(e) => Some(BanReason {
-                reason: format!("Invalid response: {}", e),
-                ban_duration: Duration::from_secs(60),
-            }),
-            BaseNodeServiceError::InvalidBlockMessage(e) => Some(BanReason {
-                reason: format!("Invalid block message: {}", e),
-                ban_duration: Duration::from_secs(60),
+            err @ BaseNodeServiceError::InvalidRequest(_) |
+            err @ BaseNodeServiceError::InvalidResponse(_) |
+            err @ BaseNodeServiceError::InvalidBlockMessage(_) => Some(BanReason {
+                reason: err.to_string(),
+                ban_duration: long_ban,
             }),
         }
     }
