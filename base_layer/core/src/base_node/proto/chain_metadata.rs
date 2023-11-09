@@ -22,7 +22,7 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use primitive_types::U512;
+use primitive_types::U256;
 use tari_common_types::{chain_metadata::ChainMetadata, types::FixedHash};
 
 use crate::proto::base_node as proto;
@@ -31,15 +31,15 @@ impl TryFrom<proto::ChainMetadata> for ChainMetadata {
     type Error = String;
 
     fn try_from(metadata: proto::ChainMetadata) -> Result<Self, Self::Error> {
-        if metadata.accumulated_difficulty.len() != 64 {
+        if metadata.accumulated_difficulty.len() != 32 {
             return Err(format!(
                 "Invalid accumulated difficulty byte length. {} was expected but the actual length was {}",
-                64,
+                32,
                 metadata.accumulated_difficulty.len()
             ));
         }
 
-        let accumulated_difficulty = U512::from_big_endian(&metadata.accumulated_difficulty);
+        let accumulated_difficulty = U256::from_big_endian(&metadata.accumulated_difficulty);
         let height_of_longest_chain = metadata.height_of_longest_chain;
 
         let pruning_horizon = if metadata.pruned_height == 0 {
@@ -68,7 +68,7 @@ impl TryFrom<proto::ChainMetadata> for ChainMetadata {
 
 impl From<ChainMetadata> for proto::ChainMetadata {
     fn from(metadata: ChainMetadata) -> Self {
-        let mut accumulated_difficulty = [0u8; 64];
+        let mut accumulated_difficulty = [0u8; 32];
         metadata
             .accumulated_difficulty()
             .to_big_endian(&mut accumulated_difficulty);

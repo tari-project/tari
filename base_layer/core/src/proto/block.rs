@@ -14,7 +14,7 @@
 //
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
 // INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTcAL,
 // SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
@@ -25,7 +25,7 @@ use std::{
     mem,
 };
 
-use primitive_types::{U256, U512};
+use primitive_types::U256;
 use tari_common_types::types::PrivateKey;
 use tari_utilities::ByteArray;
 
@@ -107,7 +107,7 @@ impl From<BlockHeaderAccumulatedData> for proto::BlockHeaderAccumulatedData {
     fn from(source: BlockHeaderAccumulatedData) -> Self {
         let accumulated_randomx_difficulty = source.accumulated_randomx_difficulty.to_be_bytes();
         let accumulated_sha3x_difficulty = source.accumulated_sha3x_difficulty.to_be_bytes();
-        let mut total_accumulated_difficulty = [0u8; 64];
+        let mut total_accumulated_difficulty = [0u8; 32];
         source
             .total_accumulated_difficulty
             .to_big_endian(&mut total_accumulated_difficulty);
@@ -127,7 +127,7 @@ impl TryFrom<proto::BlockHeaderAccumulatedData> for BlockHeaderAccumulatedData {
     type Error = String;
 
     fn try_from(source: proto::BlockHeaderAccumulatedData) -> Result<Self, Self::Error> {
-        const TOTAL_ACC_DIFFICULTY_ARRAY_LEN: usize = mem::size_of::<U512>();
+        const TOTAL_ACC_DIFFICULTY_ARRAY_LEN: usize = 32;
         if source.total_accumulated_difficulty.len() != TOTAL_ACC_DIFFICULTY_ARRAY_LEN {
             return Err(format!(
                 "Invalid accumulated difficulty byte length. {} was expected but the actual length was {}",
@@ -135,11 +135,11 @@ impl TryFrom<proto::BlockHeaderAccumulatedData> for BlockHeaderAccumulatedData {
                 source.total_accumulated_difficulty.len()
             ));
         }
-        let mut acc_diff = [0; TOTAL_ACC_DIFFICULTY_ARRAY_LEN];
+        let mut acc_diff = [0u8; TOTAL_ACC_DIFFICULTY_ARRAY_LEN];
         acc_diff.copy_from_slice(&source.total_accumulated_difficulty[0..TOTAL_ACC_DIFFICULTY_ARRAY_LEN]);
-        let accumulated_difficulty = U512::from_big_endian(&acc_diff);
+        let accumulated_difficulty = U256::from_big_endian(&acc_diff);
 
-        const SINGLE_ACC_DIFFICULTY_ARRAY_LEN: usize = mem::size_of::<U256>();
+        const SINGLE_ACC_DIFFICULTY_ARRAY_LEN: usize = mem::size_of::<u128>();
         if source.accumulated_sha3x_difficulty.len() != SINGLE_ACC_DIFFICULTY_ARRAY_LEN {
             return Err(format!(
                 "Invalid accumulated Sha3x difficulty byte length. {} was expected but the actual length was {}",
@@ -149,7 +149,7 @@ impl TryFrom<proto::BlockHeaderAccumulatedData> for BlockHeaderAccumulatedData {
         }
         let mut acc_diff = [0; SINGLE_ACC_DIFFICULTY_ARRAY_LEN];
         acc_diff.copy_from_slice(&source.accumulated_randomx_difficulty[0..SINGLE_ACC_DIFFICULTY_ARRAY_LEN]);
-        let accumulated_sha3x_difficulty = U256::from_big_endian(&acc_diff);
+        let accumulated_sha3x_difficulty = u128::from_be_bytes(acc_diff);
 
         if source.accumulated_randomx_difficulty.len() != SINGLE_ACC_DIFFICULTY_ARRAY_LEN {
             return Err(format!(
@@ -160,16 +160,16 @@ impl TryFrom<proto::BlockHeaderAccumulatedData> for BlockHeaderAccumulatedData {
         }
         let mut acc_diff = [0; SINGLE_ACC_DIFFICULTY_ARRAY_LEN];
         acc_diff.copy_from_slice(&source.accumulated_randomx_difficulty[0..SINGLE_ACC_DIFFICULTY_ARRAY_LEN]);
-        let accumulated_randomx_difficulty = U256::from_big_endian(&acc_diff);
+        let accumulated_randomx_difficulty = u128::from_be_bytes(acc_diff);
 
         let hash = source.hash.try_into().map_err(|_| "Malformed hash".to_string())?;
         Ok(Self {
             hash,
             achieved_difficulty: Difficulty::from_u64(source.achieved_difficulty).map_err(|e| e.to_string())?,
             total_accumulated_difficulty: accumulated_difficulty,
-            accumulated_randomx_difficulty: AccumulatedDifficulty::from_u256(accumulated_randomx_difficulty)
+            accumulated_randomx_difficulty: AccumulatedDifficulty::from_u128(accumulated_randomx_difficulty)
                 .map_err(|e| e.to_string())?,
-            accumulated_sha3x_difficulty: AccumulatedDifficulty::from_u256(accumulated_sha3x_difficulty)
+            accumulated_sha3x_difficulty: AccumulatedDifficulty::from_u128(accumulated_sha3x_difficulty)
                 .map_err(|e| e.to_string())?,
             target_difficulty: Difficulty::from_u64(source.target_difficulty).map_err(|e| e.to_string())?,
             total_kernel_offset: PrivateKey::from_canonical_bytes(source.total_kernel_offset.as_slice())

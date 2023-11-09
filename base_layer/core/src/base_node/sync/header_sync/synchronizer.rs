@@ -27,7 +27,7 @@ use std::{
 
 use futures::StreamExt;
 use log::*;
-use primitive_types::U512;
+use primitive_types::U256;
 use tari_common_types::{chain_metadata::ChainMetadata, types::HashOutput};
 use tari_comms::{
     connectivity::ConnectivityRequester,
@@ -632,7 +632,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
 
         let mut last_sync_timer = Instant::now();
 
-        let mut last_total_accumulated_difficulty = U512::zero();
+        let mut last_total_accumulated_difficulty = U256::zero();
         let mut avg_latency = RollingAverageTime::new(20);
         let mut prev_height: Option<u64> = None;
         while let Some(header) = header_stream.next().await {

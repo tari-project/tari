@@ -26,7 +26,7 @@ use crate::tari_rpc as grpc;
 
 impl From<ChainMetadata> for grpc::MetaData {
     fn from(meta: ChainMetadata) -> Self {
-        let mut diff = [0u8; 64];
+        let mut diff = [0u8; 32];
         meta.accumulated_difficulty().to_big_endian(&mut diff);
         Self {
             height_of_longest_chain: meta.height_of_longest_chain(),

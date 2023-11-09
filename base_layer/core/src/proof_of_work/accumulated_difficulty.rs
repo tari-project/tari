@@ -22,7 +22,6 @@
 
 use std::fmt;
 
-use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 use tari_utilities::ByteArray;
 
@@ -30,19 +29,19 @@ use crate::proof_of_work::{difficulty::MIN_DIFFICULTY, error::DifficultyError, D
 
 /// The difficulty is defined as the maximum target divided by the block hash.
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Eq, Ord, Deserialize, Serialize)]
-pub struct AccumulatedDifficulty(U256);
+pub struct AccumulatedDifficulty(u128);
 
 impl AccumulatedDifficulty {
     /// A const constructor for Difficulty
-    pub fn from_u256(d: U256) -> Result<Self, DifficultyError> {
-        if d < U256::from(MIN_DIFFICULTY) {
+    pub fn from_u128(d: u128) -> Result<Self, DifficultyError> {
+        if d < u128::from(MIN_DIFFICULTY) {
             return Err(DifficultyError::InvalidDifficulty);
         }
         Ok(Self(d))
     }
 
     /// Return the difficulty as a u64
-    pub fn as_u256(self) -> U256 {
+    pub fn as_u128(self) -> u128 {
         self.0
     }
 
@@ -53,20 +52,19 @@ impl AccumulatedDifficulty {
 
     /// Maximum Difficulty
     pub fn max() -> AccumulatedDifficulty {
-        AccumulatedDifficulty(U256::MAX)
+        AccumulatedDifficulty(u128::MAX)
     }
 
     pub fn checked_add_difficulty(&self, d: Difficulty) -> Option<AccumulatedDifficulty> {
-        if U256::MAX - d.as_u64() < self.0 {
+        let difficulty = d.as_u64() as u128;
+        if u128::MAX - difficulty < self.0 {
             return None;
         }
-        Some(AccumulatedDifficulty(self.0 + d.as_u64()))
+        Some(AccumulatedDifficulty(self.0 + difficulty))
     }
 
     pub fn to_be_bytes(&self) -> Vec<u8> {
-        let mut bytes = [0u8; 32];
-        self.0.to_big_endian(&mut bytes);
-        bytes.to_vec()
+        self.0.to_be_bytes().to_vec()
     }
 }
 

@@ -22,7 +22,7 @@
 
 use std::time::Duration;
 
-use primitive_types::U512;
+use primitive_types::U256;
 use tari_comms::{
     connectivity::ConnectivityError,
     peer_manager::NodeId,
@@ -78,9 +78,9 @@ pub enum BlockHeaderSyncError {
          {local}"
     )]
     PeerSentInaccurateChainMetadata {
-        claimed: U512,
-        actual: Option<U512>,
-        local: U512,
+        claimed: U256,
+        actual: Option<U256>,
+        local: U256,
     },
     #[error("This peer sent too many headers ({0}) in response to a chain split request")]
     PeerSentTooManyHeaders(usize),

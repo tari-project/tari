@@ -34,7 +34,7 @@ use std::{
 use blake2::Blake2b;
 use digest::consts::U32;
 use log::*;
-use primitive_types::U512;
+use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
@@ -372,7 +372,7 @@ where B: BlockchainBackend
 
     /// Return the accumulated proof of work of the longest chain.
     /// The proof of work is returned as the product of total difficulties of all PoW algorithms
-    pub fn get_accumulated_difficulty(&self) -> Result<U512, ChainStorageError> {
+    pub fn get_accumulated_difficulty(&self) -> Result<U256, ChainStorageError> {
         let db = self.db_read_access()?;
         Ok(db.fetch_chain_metadata()?.accumulated_difficulty())
     }
@@ -3347,8 +3347,8 @@ mod test {
         );
     }
 
-    fn assert_difficulty_eq(result: &BlockAddResult, values: Vec<U512>) {
-        let accum_difficulty: Vec<U512> = result
+    fn assert_difficulty_eq(result: &BlockAddResult, values: Vec<U256>) {
+        let accum_difficulty: Vec<U256> = result
             .added_blocks()
             .iter()
             .map(|cb| cb.accumulated_data().total_accumulated_difficulty)

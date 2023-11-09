@@ -26,7 +26,7 @@ use std::{
 };
 
 use log::*;
-use primitive_types::U512;
+use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{Commitment, HashOutput, PrivateKey};
 use tari_mmr::{pruned_hashset::PrunedHashSet, ArrayLike};
@@ -152,7 +152,7 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
             hash,
             total_kernel_offset,
             achieved_difficulty: achieved_target.achieved(),
-            total_accumulated_difficulty: U512::from(randomx_diff.as_u256()) * U512::from(sha3x_diff.as_u256()),
+            total_accumulated_difficulty: U256::from(randomx_diff.as_u128()) * U256::from(sha3x_diff.as_u128()),
             accumulated_randomx_difficulty: randomx_diff,
             accumulated_sha3x_difficulty: sha3x_diff,
             target_difficulty: achieved_target.target(),
@@ -179,7 +179,7 @@ pub struct BlockHeaderAccumulatedData {
     pub achieved_difficulty: Difficulty,
     /// The total accumulated difficulty for all blocks since Genesis, but not including this block, tracked
     /// separately.
-    pub total_accumulated_difficulty: U512,
+    pub total_accumulated_difficulty: U256,
     /// The total accumulated difficulty for RandomX proof of work for all blocks since Genesis,
     /// but not including this block, tracked separately.
     pub accumulated_randomx_difficulty: AccumulatedDifficulty,

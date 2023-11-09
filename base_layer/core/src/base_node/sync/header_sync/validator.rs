@@ -22,7 +22,7 @@
 use std::cmp::Ordering;
 
 use log::*;
-use primitive_types::U512;
+use primitive_types::U256;
 use tari_common_types::types::HashOutput;
 use tari_utilities::{epoch_time::EpochTime, hex::Hex};
 
@@ -110,7 +110,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
         self.valid_headers().last()
     }
 
-    pub async fn validate(&mut self, header: BlockHeader) -> Result<U512, BlockHeaderSyncError> {
+    pub async fn validate(&mut self, header: BlockHeader) -> Result<U256, BlockHeaderSyncError> {
         let state = self.state();
         let constants = self.consensus_rules.consensus_constants(header.height);
 
