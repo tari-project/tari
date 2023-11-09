@@ -98,10 +98,10 @@ message BlockHeaderAccumulatedData {
     uint64 achieved_difficulty = 1;
     // The total accumulated difficulty for RandomX proof of work for all blocks since Genesis,
     // but not including this block, tracked separately.
-    uint64 accumulated_randomx_difficulty = 2;
+    bytes accumulated_randomx_difficulty = 2;
     // The total accumulated difficulty for SHA3 proof of work for all blocks since Genesis,
     // but not including this block, tracked separately.
-    uint64 accumulated_sha3x_difficulty = 3;
+    bytes accumulated_sha3x_difficulty = 3;
     // The target difficulty for solving the current block using the specified proof of work algorithm.
     uint64 target_difficulty = 4;
     // The total accumulated offset for all kernels in the block.

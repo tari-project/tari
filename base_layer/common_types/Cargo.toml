@@ -23,3 +23,4 @@ thiserror = "1.0.29"
 tokio = { version = "1.23", features = ["time", "sync"] }
 base64 = "0.21.0"
 blake2 = "0.10"
+primitive-types = { version = "0.12", features = ["serde"] }

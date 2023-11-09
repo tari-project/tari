@@ -28,7 +28,6 @@ use std::{
 };
 
 use log::*;
-use num_format::{Locale, ToFormattedString};
 use serde::{Deserialize, Serialize};
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_utilities::epoch_time::EpochTime;
@@ -339,9 +338,9 @@ fn determine_sync_mode(
              with an accumulated difficulty of {}, and the network chain tip is at #{} with an accumulated difficulty \
              of {}",
             local_tip_height,
-            local_tip_accum_difficulty.to_formatted_string(&Locale::en),
+            local_tip_accum_difficulty,
             network_tip_height,
-            network_tip_accum_difficulty.to_formatted_string(&Locale::en),
+            network_tip_accum_difficulty,
         );
 
         // If both the local and remote are pruned mode, we need to ensure that the remote pruning horizon is
@@ -423,9 +422,9 @@ fn determine_sync_mode(
                 "Our blockchain is up-to-date."
             },
             local.height_of_longest_chain(),
-            local_tip_accum_difficulty.to_formatted_string(&Locale::en),
+            local_tip_accum_difficulty,
             network.claimed_chain_metadata().height_of_longest_chain(),
-            network_tip_accum_difficulty.to_formatted_string(&Locale::en),
+            network_tip_accum_difficulty,
         );
         UpToDate
     }
@@ -433,6 +432,7 @@ fn determine_sync_mode(
 
 #[cfg(test)]
 mod test {
+    use primitive_types::U512;
     use rand::rngs::OsRng;
     use tari_common_types::types::FixedHash;
     use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
@@ -452,11 +452,11 @@ mod test {
             0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
             29, 30, 31,
         ]);
-        const ACCUMULATED_DIFFICULTY: u128 = 10000;
+        let accumulated_difficulty = U512::from(10000);
 
         let archival_node = PeerChainMetadata::new(
             random_node_id(),
-            ChainMetadata::new(NETWORK_TIP_HEIGHT, block_hash, 0, 0, ACCUMULATED_DIFFICULTY, 0),
+            ChainMetadata::new(NETWORK_TIP_HEIGHT, block_hash, 0, 0, accumulated_difficulty, 0),
             None,
         );
 
@@ -467,7 +467,7 @@ mod test {
                 block_hash,
                 0,
                 0,
-                ACCUMULATED_DIFFICULTY - 1000,
+                accumulated_difficulty - U512::from(1000),
                 0,
             ),
             None,

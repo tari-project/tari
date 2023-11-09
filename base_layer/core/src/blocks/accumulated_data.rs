@@ -26,7 +26,7 @@ use std::{
 };
 
 use log::*;
-use num_format::{Locale, ToFormattedString};
+use primitive_types::U512;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{Commitment, HashOutput, PrivateKey};
 use tari_mmr::{pruned_hashset::PrunedHashSet, ArrayLike};
@@ -34,7 +34,7 @@ use tari_utilities::hex::Hex;
 
 use crate::{
     blocks::{error::BlockError, Block, BlockHeader},
-    proof_of_work::{difficulty::CheckedAdd, AchievedTargetDifficulty, Difficulty, PowAlgorithm},
+    proof_of_work::{AccumulatedDifficulty, AchievedTargetDifficulty, Difficulty, PowAlgorithm},
     transactions::aggregated_body::AggregateBody,
 };
 
@@ -128,7 +128,7 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
             PowAlgorithm::RandomX => (
                 previous_accum
                     .accumulated_randomx_difficulty
-                    .checked_add(achieved_target.achieved())
+                    .checked_add_difficulty(achieved_target.achieved())
                     .ok_or(BlockError::DifficultyOverflow)?,
                 previous_accum.accumulated_sha3x_difficulty,
             ),
@@ -136,7 +136,7 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
                 previous_accum.accumulated_randomx_difficulty,
                 previous_accum
                     .accumulated_sha3x_difficulty
-                    .checked_add(achieved_target.achieved())
+                    .checked_add_difficulty(achieved_target.achieved())
                     .ok_or(BlockError::DifficultyOverflow)?,
             ),
         };
@@ -152,7 +152,7 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
             hash,
             total_kernel_offset,
             achieved_difficulty: achieved_target.achieved(),
-            total_accumulated_difficulty: u128::from(randomx_diff.as_u64()) * u128::from(sha3x_diff.as_u64()),
+            total_accumulated_difficulty: U512::from(randomx_diff.as_u256()) * U512::from(sha3x_diff.as_u256()),
             accumulated_randomx_difficulty: randomx_diff,
             accumulated_sha3x_difficulty: sha3x_diff,
             target_difficulty: achieved_target.target(),
@@ -160,7 +160,7 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
         trace!(
             target: LOG_TARGET,
             "Calculated: Tot_acc_diff {}, RandomX {}, SHA3 {}",
-            result.total_accumulated_difficulty.to_formatted_string(&Locale::en),
+            result.total_accumulated_difficulty,
             result.accumulated_randomx_difficulty,
             result.accumulated_sha3x_difficulty,
         );
@@ -179,13 +179,13 @@ pub struct BlockHeaderAccumulatedData {
     pub achieved_difficulty: Difficulty,
     /// The total accumulated difficulty for all blocks since Genesis, but not including this block, tracked
     /// separately.
-    pub total_accumulated_difficulty: u128,
+    pub total_accumulated_difficulty: U512,
     /// The total accumulated difficulty for RandomX proof of work for all blocks since Genesis,
     /// but not including this block, tracked separately.
-    pub accumulated_randomx_difficulty: Difficulty,
+    pub accumulated_randomx_difficulty: AccumulatedDifficulty,
     /// The total accumulated difficulty for SHA3 proof of work for all blocks since Genesis,
     /// but not including this block, tracked separately.
-    pub accumulated_sha3x_difficulty: Difficulty,
+    pub accumulated_sha3x_difficulty: AccumulatedDifficulty,
     /// The target difficulty for solving the current block using the specified proof of work algorithm.
     pub target_difficulty: Difficulty,
 }

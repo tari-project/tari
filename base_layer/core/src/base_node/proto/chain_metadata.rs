@@ -20,11 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    convert::{TryFrom, TryInto},
-    mem,
-};
+use std::convert::{TryFrom, TryInto};
 
+use primitive_types::U512;
 use tari_common_types::{chain_metadata::ChainMetadata, types::FixedHash};
 
 use crate::proto::base_node as proto;
@@ -33,18 +31,15 @@ impl TryFrom<proto::ChainMetadata> for ChainMetadata {
     type Error = String;
 
     fn try_from(metadata: proto::ChainMetadata) -> Result<Self, Self::Error> {
-        const ACC_DIFFICULTY_ARRAY_LEN: usize = mem::size_of::<u128>();
-        if metadata.accumulated_difficulty.len() != ACC_DIFFICULTY_ARRAY_LEN {
+        if metadata.accumulated_difficulty.len() != 64 {
             return Err(format!(
                 "Invalid accumulated difficulty byte length. {} was expected but the actual length was {}",
-                ACC_DIFFICULTY_ARRAY_LEN,
+                64,
                 metadata.accumulated_difficulty.len()
             ));
         }
 
-        let mut acc_diff = [0; ACC_DIFFICULTY_ARRAY_LEN];
-        acc_diff.copy_from_slice(&metadata.accumulated_difficulty[0..ACC_DIFFICULTY_ARRAY_LEN]);
-        let accumulated_difficulty = u128::from_be_bytes(acc_diff);
+        let accumulated_difficulty = U512::from_big_endian(&metadata.accumulated_difficulty);
         let height_of_longest_chain = metadata.height_of_longest_chain;
 
         let pruning_horizon = if metadata.pruned_height == 0 {
@@ -73,12 +68,15 @@ impl TryFrom<proto::ChainMetadata> for ChainMetadata {
 
 impl From<ChainMetadata> for proto::ChainMetadata {
     fn from(metadata: ChainMetadata) -> Self {
-        let accumulated_difficulty = metadata.accumulated_difficulty().to_be_bytes().to_vec();
+        let mut accumulated_difficulty = [0u8; 64];
+        metadata
+            .accumulated_difficulty()
+            .to_big_endian(&mut accumulated_difficulty);
         Self {
             height_of_longest_chain: metadata.height_of_longest_chain(),
             best_block: metadata.best_block().to_vec(),
             pruned_height: metadata.pruned_height(),
-            accumulated_difficulty,
+            accumulated_difficulty: accumulated_difficulty.to_vec(),
             timestamp: metadata.timestamp(),
         }
     }

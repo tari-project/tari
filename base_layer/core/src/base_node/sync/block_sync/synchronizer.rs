@@ -28,7 +28,6 @@ use std::{
 
 use futures::StreamExt;
 use log::*;
-use num_format::{Locale, ToFormattedString};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId, protocol::rpc::RpcClient, PeerConnection};
 use tari_utilities::hex::Hex;
 use tokio::task;
@@ -393,8 +392,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                 timer.elapsed(),
                 block
                     .accumulated_data()
-                    .total_accumulated_difficulty
-                    .to_formatted_string(&Locale::en),
+                    .total_accumulated_difficulty,
                 block.accumulated_data().accumulated_randomx_difficulty,
                 block.accumulated_data().accumulated_sha3x_difficulty,
                 latency

@@ -25,6 +25,10 @@
 pub(crate) mod difficulty;
 #[cfg(any(feature = "base_node", feature = "transactions"))]
 pub use difficulty::{Difficulty, DifficultyAdjustment};
+#[cfg(any(feature = "base_node", feature = "transactions"))]
+pub(crate) mod accumulated_difficulty;
+#[cfg(any(feature = "base_node", feature = "transactions"))]
+pub use accumulated_difficulty::AccumulatedDifficulty;
 
 /// Crates for proof of work error
 #[cfg(any(feature = "base_node", feature = "transactions"))]

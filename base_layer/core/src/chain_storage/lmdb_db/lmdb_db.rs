@@ -25,6 +25,7 @@ use std::{convert::TryFrom, fmt, fs, fs::File, ops::Deref, path::Path, sync::Arc
 use fs2::FileExt;
 use lmdb_zero::{open, ConstTransaction, Database, Environment, ReadTransaction, WriteTransaction};
 use log::*;
+use primitive_types::U512;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
@@ -2391,7 +2392,7 @@ fn fetch_best_block_timestamp(txn: &ConstTransaction<'_>, db: &Database) -> Resu
 }
 
 // Fetches the accumulated work from the provided metadata db.
-fn fetch_accumulated_work(txn: &ConstTransaction<'_>, db: &Database) -> Result<u128, ChainStorageError> {
+fn fetch_accumulated_work(txn: &ConstTransaction<'_>, db: &Database) -> Result<U512, ChainStorageError> {
     let k = MetadataKey::AccumulatedWork;
     let val: Option<MetadataValue> = lmdb_get(txn, db, &k.as_u32())?;
     match val {
@@ -2462,7 +2463,7 @@ impl fmt::Display for MetadataKey {
 enum MetadataValue {
     ChainHeight(u64),
     BestBlock(BlockHash),
-    AccumulatedWork(u128),
+    AccumulatedWork(U512),
     PruningHorizon(u64),
     PrunedHeight(u64),
     HorizonData(HorizonData),

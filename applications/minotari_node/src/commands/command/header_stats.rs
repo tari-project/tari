@@ -145,8 +145,8 @@ impl CommandContext {
                     Utc
                 ),
                 target_diff.get(pow_algo).len(),
-                acc_monero.as_u64(),
-                acc_sha3.as_u64(),
+                acc_monero,
+                acc_sha3,
             )?;
             output.write_all(&buff).await?;
 
