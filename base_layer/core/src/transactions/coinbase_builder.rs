@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use tari_common_types::types::{Commitment, PrivateKey};
+use tari_common_types::types::{Commitment, PrivateKey, PublicKey};
 use tari_key_manager::key_manager_service::KeyManagerServiceError;
 use tari_script::{inputs, script, TariScript};
 use thiserror::Error;
@@ -64,6 +64,14 @@ pub enum CoinbaseBuildError {
     MissingSpendKey,
     #[error("The script key for this coinbase transaction wasn't provided")]
     MissingScriptKey,
+    #[error("The script for this coinbase transaction wasn't provided")]
+    MissingScript,
+    #[error("The wallet public key for this coinbase transaction wasn't provided")]
+    MissingWalletPublicKey,
+    #[error("The encryption key for this coinbase transaction wasn't provided")]
+    MissingEncryptionKey,
+    #[error("The sender offset key for this coinbase transaction wasn't provided")]
+    MissingSenderOffsetKey,
     #[error("The value encryption was not succeed")]
     ValueEncryptionFailed,
     #[error("An error occurred building the final transaction: `{0}`")]
@@ -90,7 +98,10 @@ pub struct CoinbaseBuilder<TKeyManagerInterface> {
     fees: Option<MicroMinotari>,
     spend_key_id: Option<TariKeyId>,
     script_key_id: Option<TariKeyId>,
+    encryption_key_id: Option<TariKeyId>,
+    sender_offset_key_id: Option<TariKeyId>,
     script: Option<TariScript>,
+    wallet_public_key: Option<PublicKey>,
     covenant: Covenant,
     extra: Option<Vec<u8>>,
 }
@@ -107,7 +118,10 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             fees: None,
             spend_key_id: None,
             script_key_id: None,
+            encryption_key_id: None,
+            sender_offset_key_id: None,
             script: None,
+            wallet_public_key: None,
             covenant: Covenant::default(),
             extra: None,
         }
@@ -125,22 +139,42 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         self
     }
 
-    /// Provides the spend key for this transaction. This will usually be provided by a miner's wallet instance.
+    /// Provides the spend key ID for this transaction. This will usually be provided by a miner's wallet instance.
     pub fn with_spend_key_id(mut self, key: TariKeyId) -> Self {
         self.spend_key_id = Some(key);
         self
     }
 
-    /// Provides the script key for this transaction. This will usually be provided by a miner's wallet
+    /// Provides the script key ID for this transaction. This will usually be provided by a miner's wallet
     /// instance.
     pub fn with_script_key_id(mut self, key: TariKeyId) -> Self {
         self.script_key_id = Some(key);
         self
     }
 
+    /// Provides the encryption key ID for this transaction. This will usually be provided by a Diffie-Hellman shared
+    /// secret.
+    pub fn with_encryption_key_id(mut self, key: TariKeyId) -> Self {
+        self.encryption_key_id = Some(key);
+        self
+    }
+
+    /// Provides the sender offset key ID for this transaction. This will usually be provided by a miner's wallet
+    /// instance.
+    pub fn with_sender_offset_key_id(mut self, key: TariKeyId) -> Self {
+        self.sender_offset_key_id = Some(key);
+        self
+    }
+
     /// Provides the script for this transaction, usually by a miner's wallet instance.
     pub fn with_script(mut self, script: TariScript) -> Self {
         self.script = Some(script);
+        self
+    }
+
+    /// Provides the script for this transaction, usually by a miner's wallet instance.
+    pub fn with_wallet_public_key(mut self, wallet_public_key: PublicKey) -> Self {
+        self.wallet_public_key = Some(wallet_public_key);
         self
     }
 
@@ -178,6 +212,143 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
     #[allow(clippy::too_many_lines)]
     #[allow(clippy::erasing_op)] // This is for 0 * uT
     pub async fn build_with_reward(
+        self,
+        constants: &ConsensusConstants,
+        block_reward: MicroMinotari,
+    ) -> Result<(Transaction, WalletOutput), CoinbaseBuildError> {
+        // gets tx details
+        let height = self.block_height.ok_or(CoinbaseBuildError::MissingBlockHeight)?;
+        let total_reward = block_reward + self.fees.ok_or(CoinbaseBuildError::MissingFees)?;
+        let spending_key_id = self.spend_key_id.ok_or(CoinbaseBuildError::MissingSpendKey)?;
+        let script_key_id = self.script_key_id.ok_or(CoinbaseBuildError::MissingScriptKey)?;
+        let encryption_key_id = self.encryption_key_id.ok_or(CoinbaseBuildError::MissingEncryptionKey)?;
+        let sender_offset_key_id = self
+            .sender_offset_key_id
+            .ok_or(CoinbaseBuildError::MissingSenderOffsetKey)?;
+        let covenant = self.covenant;
+        let script = self.script.ok_or(CoinbaseBuildError::MissingScript)?;
+        let wallet_public_key = self
+            .wallet_public_key
+            .ok_or(CoinbaseBuildError::MissingWalletPublicKey)?;
+
+        let kernel_features = KernelFeatures::create_coinbase();
+        let metadata = TransactionMetadata::new_with_features(0.into(), 0, kernel_features);
+        // generate kernel signature
+        let kernel_version = TransactionKernelVersion::get_current_version();
+        let kernel_message = TransactionKernel::build_kernel_signature_message(
+            &kernel_version,
+            metadata.fee,
+            metadata.lock_height,
+            &metadata.kernel_features,
+            &metadata.burn_commitment,
+        );
+        let (public_nonce_id, public_nonce) = self
+            .key_manager
+            .get_next_key(TransactionKeyManagerBranch::KernelNonce.get_branch_key())
+            .await?;
+
+        let public_spend_key = self.key_manager.get_public_key_at_key_id(&spending_key_id).await?;
+
+        let kernel_signature = self
+            .key_manager
+            .get_partial_txo_kernel_signature(
+                &spending_key_id,
+                &public_nonce_id,
+                &public_nonce,
+                &public_spend_key,
+                &kernel_version,
+                &kernel_message,
+                &metadata.kernel_features,
+                TxoStage::Output,
+            )
+            .await?;
+
+        let excess = Commitment::from_public_key(&public_spend_key);
+        // generate tx details
+        let value: u64 = total_reward.into();
+        let output_features = OutputFeatures::create_coinbase(height + constants.coinbase_min_maturity(), self.extra);
+        let encrypted_data = self
+            .key_manager
+            .encrypt_data_for_recovery(&spending_key_id, Some(&encryption_key_id), total_reward.into())
+            .await?;
+        let minimum_value_promise = MicroMinotari::zero();
+
+        let output_version = TransactionOutputVersion::get_current_version();
+        let metadata_message = TransactionOutput::metadata_signature_message_from_parts(
+            &output_version,
+            &script,
+            &output_features,
+            &covenant,
+            &encrypted_data,
+            &minimum_value_promise,
+        );
+
+        let sender_offset_public_key = self.key_manager.get_public_key_at_key_id(&sender_offset_key_id).await?;
+
+        let metadata_sig = self
+            .key_manager
+            .get_metadata_signature(
+                &spending_key_id,
+                &value.into(),
+                &sender_offset_key_id,
+                &output_version,
+                &metadata_message,
+                output_features.range_proof_type,
+            )
+            .await?;
+
+        let wallet_output = WalletOutput::new(
+            output_version,
+            total_reward,
+            spending_key_id,
+            output_features,
+            script,
+            inputs!(wallet_public_key),
+            script_key_id,
+            sender_offset_public_key,
+            metadata_sig,
+            0,
+            covenant,
+            encrypted_data,
+            minimum_value_promise,
+            &self.key_manager,
+        )
+        .await?;
+        let output = wallet_output
+            .to_transaction_output(&self.key_manager)
+            .await
+            .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
+        let kernel = KernelBuilder::new()
+            .with_fee(0 * uT)
+            .with_features(kernel_features)
+            .with_lock_height(0)
+            .with_excess(&excess)
+            .with_signature(kernel_signature)
+            .build()
+            .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
+
+        let mut builder = TransactionBuilder::new();
+        builder
+            .add_output(output)
+            // A coinbase must have 0 offset or the reward balance check will fail.
+            .add_offset(PrivateKey::default())
+            // Coinbase has no script offset https://rfc.tari.com/RFC-0201_TariScript.html#script-offset
+            .add_script_offset(PrivateKey::default())
+            .with_reward(total_reward)
+            .with_kernel(kernel);
+        let tx = builder
+            .build()
+            .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
+        Ok((tx, wallet_output))
+    }
+
+    /// Try and construct a Coinbase Transaction while specifying the block reward. The other parameters (keys, nonces
+    /// etc.) are provided by the caller. Other data is automatically set: Coinbase transactions have an offset of
+    /// zero, no fees, the `COINBASE_OUTPUT` flags are set on the output and kernel, and the maturity schedule is
+    /// set from the consensus rules.
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::erasing_op)] // This is for 0 * uT
+    pub async fn build_with_reward_(
         self,
         constants: &ConsensusConstants,
         block_reward: MicroMinotari,

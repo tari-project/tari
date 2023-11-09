@@ -25,7 +25,8 @@ use std::{convert::TryFrom, time::Duration};
 use cucumber::{given, then, when};
 use minotari_app_grpc::tari_rpc::{self as grpc, GetTransactionInfoRequest};
 use rand::Rng;
-use tari_common_types::types::BlockHash;
+use tari_utilities::hex::Hex;
+use tari_common_types::types::{BlockHash, PublicKey};
 use tari_core::blocks::Block;
 use tari_integration_tests::{
     base_node_process::spawn_base_node,
@@ -162,9 +163,12 @@ async fn while_mining_in_node_all_txs_in_wallet_are_mined_confirmed(
     world: &mut TariWorld,
     node: String,
     wallet: String,
+    wallet_payment: String,
 ) {
     let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
     let wallet_address = world.get_wallet_address(&wallet).await.unwrap();
+    let payment_address = world.get_wallet_payment_address(&wallet_payment).await.unwrap();
+    let wallet_payment_address = PublicKey::from_hex(&payment_address).unwrap();
     let wallet_tx_ids = world.wallet_tx_ids.get(&wallet_address).unwrap();
 
     if wallet_tx_ids.is_empty() {
@@ -200,7 +204,7 @@ async fn while_mining_in_node_all_txs_in_wallet_are_mined_confirmed(
             }
 
             println!("Mine a block for tx_id {} to have status Mined_Confirmed", tx_id);
-            mine_block(&mut node_client, &mut wallet_client).await;
+            mine_block(&mut node_client, &mut wallet_client, &wallet_payment_address).await;
 
             tokio::time::sleep(Duration::from_secs(5)).await;
         }

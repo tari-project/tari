@@ -43,6 +43,7 @@ use minotari_wallet::{
     util::wallet_identity::WalletIdentity,
 };
 use rand::{rngs::OsRng, RngCore};
+use tari_crypto::keys::PublicKey as PK;
 use tari_common::configuration::Network;
 use tari_common_types::{
     transaction::TxId,
@@ -77,7 +78,7 @@ use tari_core::{
     },
 };
 use tari_key_manager::key_manager_service::KeyManagerInterface;
-use tari_script::{inputs, script, TariScript};
+use tari_script::{inputs, one_sided_payment_script, script, stealth_payment_script, TariScript};
 use tari_service_framework::reply_channel;
 use tari_shutdown::Shutdown;
 use tokio::{
@@ -85,6 +86,9 @@ use tokio::{
     task,
     time::sleep,
 };
+use tari_common_types::tari_address::TariAddress;
+use tari_core::one_sided::{diffie_hellman_stealth_domain_hasher, shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key, stealth_address_script_spending_key};
+use tari_core::transactions::key_manager::TariKeyId;
 
 use crate::support::{
     base_node_service_mock::MockBaseNodeService,
@@ -1257,6 +1261,39 @@ async fn it_handles_large_coin_splits() {
     assert_eq!(coin_split_tx.body.outputs().len(), split_count + 1);
 }
 
+async fn get_coinbase_inputs(oms: &TestOmsService, wallet_payment_address: &TariAddress, stealth_payment: bool) -> (TariScript, TariKeyId, TariKeyId, TariKeyId) {
+    let (sender_offset_key_id, _) = oms
+        .key_manager_handle
+        .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
+        .await.unwrap();
+    let shared_secret = oms
+        .key_manager_handle
+        .get_diffie_hellman_shared_secret(&sender_offset_key_id, wallet_payment_address.public_key())
+        .await.unwrap();
+    let spending_key = shared_secret_to_output_spending_key(&shared_secret).unwrap();
+
+    let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret).unwrap();
+    let encryption_key_id = oms
+        .key_manager_handle
+        .import_key(encryption_private_key)
+        .await.unwrap();
+
+    let spending_key_id = oms
+        .key_manager_handle
+        .import_key(spending_key)
+        .await.unwrap();
+
+    let script = if stealth_payment {
+        let (nonce_private_key, nonce_public_key) = PublicKey::random_keypair(&mut OsRng);
+        let c = diffie_hellman_stealth_domain_hasher(&nonce_private_key, wallet_payment_address.public_key());
+        let script_spending_key = stealth_address_script_spending_key(&c, wallet_payment_address.public_key());
+        stealth_payment_script(&nonce_public_key, &script_spending_key)
+    } else {
+        one_sided_payment_script(wallet_payment_address.public_key())
+    };
+    (script, spending_key_id, encryption_key_id, sender_offset_key_id)
+}
+
 #[tokio::test]
 async fn handle_coinbase_with_bulletproofs_rewinding() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
@@ -1271,9 +1308,10 @@ async fn handle_coinbase_with_bulletproofs_rewinding() {
     let fees3 = MicroMinotari::from(500);
     let value3 = reward3 + fees3;
 
+    let (script, spending_key_id, encryption_key_id, sender_offset_key_id) = get_coinbase_inputs(&oms, &TariAddress::default(), false).await;
     let _transaction = oms
         .output_manager_handle
-        .get_coinbase_transaction(1u64.into(), reward1, fees1, 1, b"test".to_vec())
+        .get_coinbase_transaction(1u64.into(), reward1, fees1, 1, b"test".to_vec(), script.clone(), spending_key_id.clone(), encryption_key_id.clone(), sender_offset_key_id.clone())
         .await
         .unwrap();
     assert_eq!(oms.output_manager_handle.get_unspent_outputs().await.unwrap().len(), 0);
@@ -1289,7 +1327,7 @@ async fn handle_coinbase_with_bulletproofs_rewinding() {
 
     let _tx2 = oms
         .output_manager_handle
-        .get_coinbase_transaction(2u64.into(), reward2, fees2, 1, b"test".to_vec())
+        .get_coinbase_transaction(2u64.into(), reward2, fees2, 1, b"test".to_vec(), script.clone(), spending_key_id.clone(), encryption_key_id.clone(), sender_offset_key_id.clone())
         .await
         .unwrap();
     assert_eq!(oms.output_manager_handle.get_unspent_outputs().await.unwrap().len(), 0);
@@ -1303,7 +1341,7 @@ async fn handle_coinbase_with_bulletproofs_rewinding() {
     );
     let tx3 = oms
         .output_manager_handle
-        .get_coinbase_transaction(3u64.into(), reward3, fees3, 2, b"test".to_vec())
+        .get_coinbase_transaction(3u64.into(), reward3, fees3, 2, b"test".to_vec(), script, spending_key_id, encryption_key_id, sender_offset_key_id)
         .await
         .unwrap();
     assert_eq!(oms.output_manager_handle.get_unspent_outputs().await.unwrap().len(), 0);
@@ -1329,18 +1367,18 @@ async fn handle_coinbase_with_bulletproofs_rewinding() {
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn test_txo_validation() {
-    let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    let backend = OutputManagerSqliteDatabase::new(connection.clone());
+    let (db_connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(db_connection.clone());
     let oms_db = backend.clone();
     let mut oms = setup_output_manager_service(backend, true).await;
 
     // Now we add the connection
-    let mut connection = oms
+    let mut peer_connection = oms
         .mock_rpc_service
         .create_connection(oms.node_id.to_peer(), "t/bnwallet/1".into())
         .await;
     oms.wallet_connectivity_mock
-        .set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
+        .set_base_node_wallet_rpc_client(connect_rpc_client(&mut peer_connection).await);
 
     let output1_value = 1_000_000;
     let output1 = make_input(
@@ -1481,7 +1519,9 @@ async fn test_txo_validation() {
         .get_recipient_transaction(sender_message)
         .await
         .unwrap();
+    let (script, spending_key_id, encryption_key_id, sender_offset_key_id) = get_coinbase_inputs(&oms, &TariAddress::default(), false).await;
 
+    // The coinbase will not be detected in the responses, as it will go to a different wallet
     oms.output_manager_handle
         .get_coinbase_transaction(
             6u64.into(),
@@ -1489,23 +1529,19 @@ async fn test_txo_validation() {
             MicroMinotari::from(1_000_000),
             2,
             b"test".to_vec(),
+            script, spending_key_id, encryption_key_id, sender_offset_key_id
         )
         .await
         .unwrap();
 
     let mut outputs = oms_db.fetch_pending_incoming_outputs().unwrap();
-    assert_eq!(outputs.len(), 3);
+    assert_eq!(outputs.len(), 2);
 
     let o5_pos = outputs
         .iter()
         .position(|o| o.wallet_output.value == MicroMinotari::from(8_000_000))
         .unwrap();
     let output5 = outputs.remove(o5_pos);
-    let o6_pos = outputs
-        .iter()
-        .position(|o| o.wallet_output.value == MicroMinotari::from(16_000_000))
-        .unwrap();
-    let output6 = outputs.remove(o6_pos);
     let output4 = outputs[0].clone();
 
     let output4_tx_output = output4
@@ -1514,11 +1550,6 @@ async fn test_txo_validation() {
         .await
         .unwrap();
     let output5_tx_output = output5
-        .wallet_output
-        .to_transaction_output(&oms.key_manager_handle)
-        .await
-        .unwrap();
-    let output6_tx_output = output6
         .wallet_output
         .to_transaction_output(&oms.key_manager_handle)
         .await
@@ -1579,13 +1610,6 @@ async fn test_txo_validation() {
             mined_at_height: 5,
             mined_in_block: block5_header.hash().to_vec(),
             output_hash: output5_tx_output.hash().to_vec(),
-            mined_timestamp: 0,
-        },
-        UtxoQueryResponse {
-            output: Some(output6_tx_output.clone().try_into().unwrap()),
-            mined_at_height: 5,
-            mined_in_block: block5_header.hash().to_vec(),
-            output_hash: output6_tx_output.hash().to_vec(),
             mined_timestamp: 0,
         },
     ];

@@ -36,6 +36,7 @@ use tari_core::{
         SenderTransactionProtocol,
     },
 };
+use tari_key_manager::key_manager_service::KeyId;
 use tari_script::TariScript;
 use tari_service_framework::reply_channel::SenderService;
 use tari_utilities::hex::Hex;
@@ -67,6 +68,10 @@ pub enum OutputManagerRequest {
         fees: MicroMinotari,
         block_height: u64,
         extra: Vec<u8>,
+        script: TariScript,
+        spending_key_id: KeyId<PublicKey>,
+        encryption_key: KeyId<PublicKey>,
+        sender_offset_private_key_id: KeyId<PublicKey>,
     },
     ConfirmPendingTransaction(TxId),
     PrepareToSendTransaction {
@@ -445,6 +450,10 @@ impl OutputManagerHandle {
         fees: MicroMinotari,
         block_height: u64,
         extra: Vec<u8>,
+        script: TariScript,
+        spending_key_id: KeyId<PublicKey>,
+        encryption_key: KeyId<PublicKey>,
+        sender_offset_private_key_id: KeyId<PublicKey>,
     ) -> Result<Transaction, OutputManagerError> {
         match self
             .handle
@@ -454,6 +463,38 @@ impl OutputManagerHandle {
                 fees,
                 block_height,
                 extra,
+                script,
+                spending_key_id,
+                encryption_key,
+                sender_offset_private_key_id,
+            })
+            .await??
+        {
+            OutputManagerResponse::CoinbaseTransaction(tx) => Ok(tx),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn _get_coinbase_transaction(
+        &mut self,
+        tx_id: TxId,
+        reward: MicroMinotari,
+        fees: MicroMinotari,
+        block_height: u64,
+        extra: Vec<u8>,
+    ) -> Result<Transaction, OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::GetCoinbaseTransaction {
+                tx_id,
+                reward,
+                fees,
+                block_height,
+                extra,
+                script: TariScript::default(),
+                spending_key_id: KeyId::default(),
+                encryption_key: KeyId::default(),
+                sender_offset_private_key_id: KeyId::default(),
             })
             .await??
         {

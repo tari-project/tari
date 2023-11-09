@@ -79,6 +79,7 @@ pub struct TariWorld {
     pub merge_mining_proxies: IndexMap<String, MergeMiningProxyProcess>,
     pub transactions: IndexMap<String, Transaction>,
     pub wallet_addresses: IndexMap<String, String>, // values are strings representing tari addresses
+    pub wallet_payment_addresses: IndexMap<String, String>, // values are strings representing tari addresses
     pub utxos: IndexMap<String, WalletOutput>,
     pub output_hash: Option<String>,
     pub pre_image: Option<String>,
@@ -110,6 +111,7 @@ impl Default for TariWorld {
             merge_mining_proxies: Default::default(),
             transactions: Default::default(),
             wallet_addresses: Default::default(),
+            wallet_payment_addresses: Default::default(),
             utxos: Default::default(),
             output_hash: None,
             pre_image: None,
@@ -136,6 +138,7 @@ impl Debug for TariWorld {
             .field("chat_clients", &self.chat_clients.keys())
             .field("transactions", &self.transactions)
             .field("wallet_addresses", &self.wallet_addresses)
+            .field("wallet_payment_addresses", &self.wallet_payment_addresses)
             .field("utxos", &self.utxos)
             .field("output_hash", &self.output_hash)
             .field("pre_image", &self.pre_image)
@@ -177,6 +180,30 @@ impl TariWorld {
 
     pub async fn get_wallet_address<S: AsRef<str>>(&self, name: &S) -> anyhow::Result<String> {
         if let Some(address) = self.wallet_addresses.get(name.as_ref()) {
+            return Ok(address.clone());
+        }
+        match self.get_wallet_client(name).await {
+            Ok(wallet) => {
+                let mut wallet = wallet;
+
+                Ok(wallet
+                    .get_address(minotari_wallet_grpc_client::grpc::Empty {})
+                    .await
+                    .unwrap()
+                    .into_inner()
+                    .address
+                    .to_hex())
+            },
+            Err(_) => {
+                let ffi_wallet = self.get_ffi_wallet(name).unwrap();
+
+                Ok(ffi_wallet.get_address().address().get_as_hex())
+            },
+        }
+    }
+
+    pub async fn get_wallet_payment_address<S: AsRef<str>>(&self, name: &S) -> anyhow::Result<String> {
+        if let Some(address) = self.wallet_payment_addresses.get(name.as_ref()) {
             return Ok(address.clone());
         }
         match self.get_wallet_client(name).await {

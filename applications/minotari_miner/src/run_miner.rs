@@ -43,6 +43,8 @@ use tonic::{
     codegen::InterceptedService,
     transport::{Channel, Endpoint},
 };
+use tari_common_types::tari_address::TariAddress;
+use tari_common_types::types::PublicKey;
 
 use crate::{
     cli::Cli,
@@ -245,7 +247,13 @@ async fn mining_cycle(
     }
 
     debug!(target: LOG_TARGET, "Getting coinbase");
-    let request = coinbase_request(&template, config.coinbase_extra.as_bytes().to_vec())?;
+    let request = coinbase_request(
+        &template,
+        config.coinbase_extra.as_bytes().to_vec(),
+        &TariAddress::from_hex(&config.wallet_payment_address)
+            .map_err(|e| MinerError::Conversion(e.to_string()))?,
+        config.stealth_payment,
+    )?;
     let coinbase = wallet_conn.get_coinbase(request).await?.into_inner();
     let (output, kernel) = extract_outputs_and_kernels(coinbase)?;
     let body = block_template

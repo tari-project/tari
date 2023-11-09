@@ -249,6 +249,8 @@ message GetCoinbaseRequest {
     uint64 fee = 2;
     uint64 height = 3;
     bytes extra = 4;
+    bytes wallet_payment_address = 5;
+    bool stealth_payment = 6;
 }
 
 message GetCoinbaseResponse {

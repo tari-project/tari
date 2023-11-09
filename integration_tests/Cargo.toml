@@ -18,6 +18,7 @@ tari_common = { path = "../common" }
 tari_common_types = { path = "../base_layer/common_types" }
 tari_comms = { path = "../comms/core" }
 tari_comms_dht = { path = "../comms/dht" }
+tari_key_manager = {  path = "../base_layer/key_manager", features = ["key_manager_service"] }
 minotari_console_wallet = { path = "../applications/minotari_console_wallet" }
 tari_contacts = { path = "../base_layer/contacts" }
 tari_core = { path = "../base_layer/core" }

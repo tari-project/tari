@@ -41,7 +41,7 @@ use std::time::Duration;
 use minotari_app_grpc::tari_rpc::{pow_algo::PowAlgos, NewBlockTemplateRequest, PowAlgo};
 use serde::{Deserialize, Serialize};
 use tari_common::{configuration::Network, SubConfigPath};
-use tari_common_types::grpc_authentication::GrpcAuthentication;
+use tari_common_types::{grpc_authentication::GrpcAuthentication, tari_address::TariAddress};
 use tari_comms::multiaddr::Multiaddr;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -77,6 +77,11 @@ pub struct MinerConfig {
     pub network: Network,
     /// Base node reconnect timeout after any GRPC or miner error
     pub wait_timeout_on_error: u64,
+    /// The Tari wallet address where the mining funds will be sent to (must be different wallet from the one used for
+    /// the wallet_grpc_address)
+    pub wallet_payment_address: String,
+    /// Stealth payment yes or no
+    pub stealth_payment: bool,
 }
 
 /// The proof of work data structure that is included in the block header. For the Minotari miner only `Sha3x` is
@@ -109,6 +114,8 @@ impl Default for MinerConfig {
             coinbase_extra: "minotari_miner".to_string(),
             network: Default::default(),
             wait_timeout_on_error: 10,
+            wallet_payment_address: TariAddress::default().to_hex(),
+            stealth_payment: true,
         }
     }
 }

@@ -35,7 +35,10 @@ use tari_core::{
     borsh::SerializedSize,
     consensus::ConsensusConstants,
     covenants::Covenant,
-    one_sided::{shared_secret_to_output_encryption_key, stealth_address_script_spending_key},
+    one_sided::{
+        shared_secret_to_output_encryption_key,
+        stealth_address_script_spending_key,
+    },
     proto::base_node::FetchMatchingUtxos,
     transactions::{
         fee::Fee,
@@ -59,7 +62,8 @@ use tari_core::{
         SenderTransactionProtocol,
     },
 };
-use tari_crypto::keys::SecretKey;
+use tari_crypto::keys::{PublicKey as PK, SecretKey};
+use tari_key_manager::key_manager_service::KeyId;
 use tari_script::{inputs, script, ExecutionStack, Opcode, TariScript};
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
@@ -243,8 +247,22 @@ where
                 fees,
                 block_height,
                 extra,
+                script,
+                spending_key_id,
+                encryption_key,
+                sender_offset_private_key_id,
             } => self
-                .get_coinbase_transaction(tx_id, reward, fees, block_height, extra)
+                .get_coinbase_transaction(
+                    tx_id,
+                    reward,
+                    fees,
+                    block_height,
+                    extra,
+                    script,
+                    spending_key_id,
+                    encryption_key,
+                    sender_offset_private_key_id,
+                )
                 .await
                 .map(OutputManagerResponse::CoinbaseTransaction),
             OutputManagerRequest::PrepareToSendTransaction {
@@ -1005,6 +1023,68 @@ where
     /// The key will be derived from the coinbase specific keychain using the blockheight as an index. The coinbase
     /// keychain is based on the wallets master_key and the "coinbase" branch.
     async fn get_coinbase_transaction(
+        &mut self,
+        tx_id: TxId,
+        reward: MicroMinotari,
+        fees: MicroMinotari,
+        block_height: u64,
+        extra: Vec<u8>,
+        script: TariScript,
+        spending_key_id: KeyId<PublicKey>,
+        encryption_key_id: KeyId<PublicKey>,
+        sender_offset_key_id: KeyId<PublicKey>,
+    ) -> Result<Transaction, OutputManagerError> {
+        debug!(
+            target: LOG_TARGET,
+            "Building coinbase transaction for block_height {} with TxId: {}", block_height, tx_id
+        );
+
+        let (tx, wallet_output) = CoinbaseBuilder::new(self.resources.key_manager.clone())
+            .with_block_height(block_height)
+            .with_fees(fees)
+            .with_spend_key_id(spending_key_id)
+            .with_encryption_key_id(encryption_key_id)
+            .with_sender_offset_key_id(sender_offset_key_id)
+            .with_script_key_id(self.resources.wallet_identity.wallet_node_key_id.clone())
+            .with_script(script)
+            .with_wallet_public_key(PublicKey::from_secret_key(
+                self.resources.wallet_identity.node_identity.secret_key(),
+            ))
+            .with_extra(extra)
+            .build_with_reward(&self.resources.consensus_constants, reward)
+            .await?;
+
+        let output = DbWalletOutput::from_wallet_output(
+            wallet_output,
+            &self.resources.key_manager,
+            None,
+            OutputSource::Coinbase,
+            Some(tx_id),
+            None,
+        )
+        .await?;
+
+        // If there is no existing output available, we store the one we produced.
+        match self.resources.db.fetch_by_commitment(output.commitment.clone()) {
+            Ok(_) => {},
+            Err(OutputManagerStorageError::ValueNotFound) => {
+                self.resources
+                    .db
+                    .add_output_to_be_received(tx_id, output, Some(block_height))?;
+
+                self.confirm_encumberance(tx_id)?;
+            },
+            Err(e) => return Err(e.into()),
+        };
+
+        Ok(tx)
+    }
+
+    /// Request a Coinbase transaction for a specific block height. All existing pending transactions with
+    /// the corresponding output hash will be cancelled.
+    /// The key will be derived from the coinbase specific keychain using the blockheight as an index. The coinbase
+    /// keychain is based on the wallets master_key and the "coinbase" branch.
+    async fn _get_coinbase_transaction(
         &mut self,
         tx_id: TxId,
         reward: MicroMinotari,

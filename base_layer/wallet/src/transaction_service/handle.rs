@@ -148,6 +148,8 @@ pub enum TransactionServiceRequest {
     SetLowPowerMode,
     SetNormalPowerMode,
     GenerateCoinbaseTransaction {
+        wallet_payment_address: TariAddress,
+        stealth_payment: bool,
         reward: MicroMinotari,
         fees: MicroMinotari,
         block_height: u64,
@@ -847,6 +849,8 @@ impl TransactionServiceHandle {
 
     pub async fn generate_coinbase_transaction(
         &mut self,
+        wallet_payment_address: TariAddress,
+        stealth_payment: bool,
         reward: MicroMinotari,
         fees: MicroMinotari,
         block_height: u64,
@@ -855,6 +859,8 @@ impl TransactionServiceHandle {
         match self
             .handle
             .call(TransactionServiceRequest::GenerateCoinbaseTransaction {
+                wallet_payment_address,
+                stealth_payment,
                 reward,
                 fees,
                 block_height,

@@ -41,22 +41,36 @@ use minotari_app_grpc::{
 use minotari_app_utilities::common_cli_args::CommonCliArgs;
 use minotari_miner::{run_miner, Cli};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
+use rand::rngs::OsRng;
 use tari_common::configuration::Network;
-use tari_common_types::grpc_authentication::GrpcAuthentication;
+use tari_common_types::{
+    grpc_authentication::GrpcAuthentication,
+    types::{PrivateKey, PublicKey},
+};
 use tari_core::{
     consensus::ConsensusManager,
+    one_sided::{
+        diffie_hellman_stealth_domain_hasher,
+        shared_secret_to_output_encryption_key,
+        shared_secret_to_output_spending_key,
+        stealth_address_script_spending_key,
+    },
     transactions::{
-        key_manager::TransactionKeyManagerInterface,
+        key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface},
         test_helpers::TestKeyManager,
         transaction_components::WalletOutput,
         CoinbaseBuilder,
     },
 };
+use tari_crypto::keys::PublicKey as PK;
+use tari_script::{one_sided_payment_script, stealth_payment_script};
+use tari_utilities::ByteArray;
 use tonic::{
     codegen::InterceptedService,
     transport::{Channel, Endpoint},
 };
-
+use tari_common_types::tari_address::TariAddress;
+use tari_key_manager::key_manager_service::KeyManagerInterface;
 use crate::TariWorld;
 
 type BaseNodeClient = BaseNodeGrpcClient<Channel>;
@@ -131,12 +145,12 @@ impl MinerProcess {
 }
 
 #[allow(dead_code)]
-pub async fn mine_blocks(world: &mut TariWorld, miner_name: String, num_blocks: u64) {
+pub async fn mine_blocks(world: &mut TariWorld, miner_name: String, num_blocks: u64, wallet_payment_address: &PublicKey) {
     let mut base_client = create_base_node_client(world, &miner_name).await;
     let mut wallet_client = create_wallet_client(world, &miner_name).await;
 
     for _ in 0..num_blocks {
-        mine_block(&mut base_client, &mut wallet_client).await;
+        mine_block(&mut base_client, &mut wallet_client, wallet_payment_address).await;
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
 
@@ -179,8 +193,8 @@ async fn create_wallet_client(world: &TariWorld, miner_name: &String) -> WalletG
     )
 }
 
-pub async fn mine_block(base_client: &mut BaseNodeClient, wallet_client: &mut WalletGrpcClient) {
-    let block_template = create_block_template_with_coinbase(base_client, wallet_client).await;
+pub async fn mine_block(base_client: &mut BaseNodeClient, wallet_client: &mut WalletGrpcClient, wallet_payment_address: &PublicKey) {
+    let block_template = create_block_template_with_coinbase(base_client, wallet_client, wallet_payment_address).await;
 
     // Ask the base node for a valid block using the template
     let block_result = base_client
@@ -224,6 +238,7 @@ async fn mine_block_without_wallet_with_template(base_client: &mut BaseNodeClien
 async fn create_block_template_with_coinbase(
     base_client: &mut BaseNodeClient,
     wallet_client: &mut WalletGrpcClient,
+    wallet_payment_address: &PublicKey,
 ) -> NewBlockTemplate {
     // get the block template from the base node
     let template_req = NewBlockTemplateRequest {
@@ -242,7 +257,8 @@ async fn create_block_template_with_coinbase(
     let mut block_template = template_res.new_block_template.clone().unwrap();
 
     // add the coinbase outputs and kernels to the block template
-    let (output, kernel) = get_coinbase_outputs_and_kernels(wallet_client, template_res).await;
+    let (output, kernel) = get_coinbase_outputs_and_kernels(wallet_client, template_res,
+                                                            wallet_payment_address).await;
     let body = block_template.body.as_mut().unwrap();
 
     body.outputs.push(output);
@@ -273,7 +289,11 @@ async fn create_block_template_with_coinbase_without_wallet(
     // let mut block_template = template_res.new_block_template.clone().unwrap();
 
     // add the coinbase outputs and kernels to the block template
-    let (output, kernel, wallet_output) = get_coinbase_without_wallet_client(template_res.clone(), key_manager).await;
+    let (output, kernel, wallet_output) = get_coinbase_without_wallet_client(
+        template_res.clone(),
+        key_manager,
+    )
+    .await;
     // let body = block_template.body.as_mut().unwrap();
 
     template_res
@@ -301,8 +321,9 @@ async fn create_block_template_with_coinbase_without_wallet(
 async fn get_coinbase_outputs_and_kernels(
     wallet_client: &mut WalletGrpcClient,
     template_res: NewBlockTemplateResponse,
+    wallet_payment_address: &PublicKey,
 ) -> (TransactionOutput, TransactionKernel) {
-    let coinbase_req = coinbase_request(&template_res);
+    let coinbase_req = coinbase_request(&template_res, wallet_payment_address);
     let coinbase_res = wallet_client.get_coinbase(coinbase_req).await.unwrap().into_inner();
     extract_outputs_and_kernels(coinbase_res)
 }
@@ -311,20 +332,50 @@ async fn get_coinbase_without_wallet_client(
     template_res: NewBlockTemplateResponse,
     key_manager: &TestKeyManager,
 ) -> (TransactionOutput, TransactionKernel, WalletOutput) {
-    let coinbase_req = coinbase_request(&template_res);
-    generate_coinbase(coinbase_req, key_manager).await
+    let wallet_payment_address = PublicKey::default();
+    let wallet_private_key = PrivateKey::default();
+    let coinbase_req = coinbase_request(&template_res, &wallet_payment_address);
+    generate_coinbase(coinbase_req, key_manager, &wallet_private_key).await
 }
 
 async fn generate_coinbase(
     coinbase_req: GetCoinbaseRequest,
     key_manager: &TestKeyManager,
+    wallet_private_key: &PrivateKey,
 ) -> (TransactionOutput, TransactionKernel, WalletOutput) {
     let reward = coinbase_req.reward;
     let height = coinbase_req.height;
     let fee = coinbase_req.fee;
     let extra = coinbase_req.extra;
+    let wallet_payment_address = TariAddress::from_bytes(&coinbase_req.wallet_payment_address).unwrap();
+    let stealth_payment = coinbase_req.stealth_payment;
 
-    let (spending_key_id, _, script_key_id, _) = key_manager.get_next_spend_and_script_key_ids().await.unwrap();
+    let (sender_offset_key_id, _) = key_manager
+        .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
+        .await
+        .unwrap();
+    let shared_secret = key_manager
+        .get_diffie_hellman_shared_secret(&sender_offset_key_id, wallet_payment_address.public_key())
+        .await
+        .unwrap();
+    let spending_key = shared_secret_to_output_spending_key(&shared_secret).unwrap();
+
+    let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret).unwrap();
+    let encryption_key_id = key_manager.import_key(encryption_private_key).await.unwrap();
+
+    let spending_key_id = key_manager.import_key(spending_key).await.unwrap();
+
+    let script = if stealth_payment {
+        let (nonce_private_key, nonce_public_key) = PublicKey::random_keypair(&mut OsRng);
+        let c = diffie_hellman_stealth_domain_hasher(&nonce_private_key, wallet_payment_address.public_key());
+        let script_spending_key = stealth_address_script_spending_key(&c, wallet_payment_address.public_key());
+        stealth_payment_script(&nonce_public_key, &script_spending_key)
+    } else {
+        one_sided_payment_script(wallet_payment_address.public_key())
+    };
+
+    let wallet_public_key = PublicKey::from_secret_key(wallet_private_key);
+    let wallet_node_key_id = key_manager.import_key(wallet_private_key.clone()).await.unwrap();
 
     let consensus_manager = ConsensusManager::builder(Network::LocalNet).build().unwrap();
     let consensus_constants = consensus_manager.consensus_constants(height);
@@ -333,7 +384,11 @@ async fn generate_coinbase(
         .with_block_height(height)
         .with_fees(fee.into())
         .with_spend_key_id(spending_key_id)
-        .with_script_key_id(script_key_id)
+        .with_encryption_key_id(encryption_key_id)
+        .with_sender_offset_key_id(sender_offset_key_id)
+        .with_script_key_id(wallet_node_key_id.clone())
+        .with_script(script)
+        .with_wallet_public_key(wallet_public_key)
         .with_extra(extra)
         .build_with_reward(consensus_constants, reward.into())
         .await
@@ -345,17 +400,23 @@ async fn generate_coinbase(
     (tx_out.try_into().unwrap(), tx_krnl.into(), ubutxo)
 }
 
-fn coinbase_request(template_response: &NewBlockTemplateResponse) -> GetCoinbaseRequest {
+fn coinbase_request(
+    template_response: &NewBlockTemplateResponse,
+    wallet_payment_address: &PublicKey,
+) -> GetCoinbaseRequest {
     let template = template_response.new_block_template.as_ref().unwrap();
     let miner_data = template_response.miner_data.as_ref().unwrap();
     let fee = miner_data.total_fees;
     let reward = miner_data.reward;
     let height = template.header.as_ref().unwrap().height;
+    let wallet_payment_address = wallet_payment_address.as_bytes().to_vec();
     GetCoinbaseRequest {
         reward,
         fee,
         height,
         extra: vec![],
+        wallet_payment_address,
+        stealth_payment: true,
     }
 }
 

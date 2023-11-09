@@ -26,6 +26,7 @@ use tari_common::{
     configuration::{Network, StringList},
     SubConfigPath,
 };
+use tari_common_types::tari_address::TariAddress;
 use tari_comms::multiaddr::Multiaddr;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -69,6 +70,11 @@ pub struct MergeMiningProxyConfig {
     pub coinbase_extra: String,
     /// Selected network
     pub network: Network,
+    /// The Tari wallet address where the mining funds will be sent to (must be different wallet from the one used for
+    /// the wallet_grpc_address)
+    pub wallet_payment_address: String,
+    /// Stealth payment yes or no
+    pub stealth_payment: bool,
 }
 
 impl Default for MergeMiningProxyConfig {
@@ -89,6 +95,8 @@ impl Default for MergeMiningProxyConfig {
             max_randomx_vms: 5,
             coinbase_extra: "tari_merge_mining_proxy".to_string(),
             network: Default::default(),
+            wallet_payment_address: TariAddress::default().to_hex(),
+            stealth_payment: true,
         }
     }
 }

@@ -25,8 +25,12 @@
 use std::{cmp, sync::Arc};
 
 use log::*;
+use tari_utilities::ByteArray;
+use tari_utilities::hex::Hex;
 use minotari_node_grpc_client::{grpc, BaseNodeGrpcClient};
 use minotari_wallet_grpc_client::WalletGrpcClient;
+use tari_common_types::tari_address::TariAddress;
+use tari_common_types::types::PublicKey;
 use tari_core::proof_of_work::{monero_rx, monero_rx::FixedByteArray, Difficulty};
 
 use crate::{
@@ -185,6 +189,9 @@ impl BlockTemplateProtocol<'_> {
         let block_reward = miner_data.reward;
         let total_fees = miner_data.total_fees;
         let extra = self.config.coinbase_extra.as_bytes().to_vec();
+        let wallet_payment_address = TariAddress::from_hex(&self.config.wallet_payment_address)
+            .map_err(|e| MmProxyError::ConversionError(e.to_string()))?
+            .to_vec();
 
         let coinbase_response = self
             .wallet_client
@@ -193,6 +200,8 @@ impl BlockTemplateProtocol<'_> {
                 fee: total_fees,
                 height: tari_height,
                 extra,
+                wallet_payment_address,
+                stealth_payment: self.config.stealth_payment,
             })
             .await
             .map_err(|status| MmProxyError::GrpcRequestError {

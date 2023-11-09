@@ -53,7 +53,7 @@ use tari_core::{
     },
     proto::base_node as base_node_proto,
     transactions::{
-        key_manager::TransactionKeyManagerInterface,
+        key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface},
         tari_amount::MicroMinotari,
         transaction_components::{
             CodeTemplateRegistration,
@@ -801,12 +801,14 @@ where
                 .submit_transaction_to_self(transaction_broadcast_join_handles, tx_id, tx, fee, amount, message)
                 .map(|_| TransactionServiceResponse::TransactionSubmitted),
             TransactionServiceRequest::GenerateCoinbaseTransaction {
+                wallet_payment_address,
+                stealth_payment,
                 reward,
                 fees,
                 block_height,
                 extra,
             } => self
-                .generate_coinbase_transaction(reward, fees, block_height, extra)
+                .generate_coinbase_transaction(wallet_payment_address, stealth_payment, reward, fees, block_height, extra)
                 .await
                 .map(|tx| TransactionServiceResponse::CoinbaseTransactionGenerated(Box::new(tx))),
             TransactionServiceRequest::SetLowPowerMode => {
@@ -2921,6 +2923,126 @@ where
 
     async fn generate_coinbase_transaction(
         &mut self,
+        wallet_payment_address: TariAddress,
+        stealth_payment: bool,
+        reward: MicroMinotari,
+        fees: MicroMinotari,
+        block_height: u64,
+        extra: Vec<u8>,
+    ) -> Result<Transaction, TransactionServiceError> {
+        let amount = reward + fees;
+
+        // first check if we already have a coinbase tx for this height and amount
+        let find_result = self
+            .db
+            .find_coinbase_transaction_at_block_height(block_height, amount)?;
+
+        let mut completed_transaction = None;
+        if let Some(tx) = find_result {
+            if let Some(coinbase) = tx.transaction.body.outputs().first() {
+                if coinbase.features.coinbase_extra == extra {
+                    completed_transaction = Some(tx.transaction);
+                }
+            }
+        };
+        if completed_transaction.is_none() {
+            // otherwise create a new coinbase tx
+            let tx_id = TxId::new_random();
+
+            let (sender_offset_key_id, _) = self
+                .resources
+                .transaction_key_manager_service
+                .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
+                .await?;
+            let shared_secret = self
+                .resources
+                .transaction_key_manager_service
+                .get_diffie_hellman_shared_secret(&sender_offset_key_id, wallet_payment_address.public_key())
+                .await?;
+            let spending_key = shared_secret_to_output_spending_key(&shared_secret)
+                .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
+
+            let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret)?;
+            let encryption_key_id = self
+                .resources
+                .transaction_key_manager_service
+                .import_key(encryption_private_key)
+                .await?;
+
+            let spending_key_id = self
+                .resources
+                .transaction_key_manager_service
+                .import_key(spending_key)
+                .await?;
+
+            let script = if stealth_payment {
+                let (nonce_private_key, nonce_public_key) = PublicKey::random_keypair(&mut OsRng);
+                let c = diffie_hellman_stealth_domain_hasher(&nonce_private_key, wallet_payment_address.public_key());
+                let script_spending_key = stealth_address_script_spending_key(&c, wallet_payment_address.public_key());
+                stealth_payment_script(&nonce_public_key, &script_spending_key)
+            } else {
+                one_sided_payment_script(wallet_payment_address.public_key())
+            };
+
+            let tx = self
+                .resources
+                .output_manager_service
+                .get_coinbase_transaction(
+                    tx_id,
+                    reward,
+                    fees,
+                    block_height,
+                    extra,
+                    script,
+                    spending_key_id,
+                    encryption_key_id,
+                    sender_offset_key_id,
+                )
+                .await?;
+            self.db.insert_completed_transaction(
+                tx_id,
+                CompletedTransaction::new(
+                    tx_id,
+                    self.resources.wallet_identity.address.clone(),
+                    self.resources.wallet_identity.address.clone(),
+                    amount,
+                    MicroMinotari::from(0),
+                    tx.clone(),
+                    TransactionStatus::Coinbase,
+                    format!("Coinbase Transaction for Block #{}", block_height),
+                    Utc::now().naive_utc(),
+                    TransactionDirection::Inbound,
+                    Some(block_height),
+                    None,
+                    None,
+                ),
+            )?;
+
+            let _size = self
+                .resources
+                .event_publisher
+                .send(Arc::new(TransactionEvent::ReceivedFinalizedTransaction(tx_id)))
+                .map_err(|e| {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Error sending event because there are no subscribers: {:?}",
+                        e
+                    );
+                    e
+                });
+
+            info!(
+                target: LOG_TARGET,
+                "Coinbase transaction (TxId: {}) for Block Height: {} added", tx_id, block_height
+            );
+            completed_transaction = Some(tx);
+        };
+
+        Ok(completed_transaction.unwrap())
+    }
+
+    async fn _generate_coinbase_transaction(
+        &mut self,
         reward: MicroMinotari,
         fees: MicroMinotari,
         block_height: u64,
@@ -2947,7 +3069,7 @@ where
             let tx = self
                 .resources
                 .output_manager_service
-                .get_coinbase_transaction(tx_id, reward, fees, block_height, extra)
+                ._get_coinbase_transaction(tx_id, reward, fees, block_height, extra)
                 .await?;
             self.db.insert_completed_transaction(
                 tx_id,

@@ -315,9 +315,18 @@ impl wallet_server::Wallet for WalletGrpcServer {
     ) -> Result<Response<GetCoinbaseResponse>, Status> {
         let request = request.into_inner();
         let mut tx_service = self.get_transaction_service();
+        let wallet_payment_address =
+            TariAddress::from_bytes(&request.wallet_payment_address).map_err(|e| Status::invalid_argument(e.to_string()))?;
 
         let coinbase = tx_service
-            .generate_coinbase_transaction(request.reward.into(), request.fee.into(), request.height, request.extra)
+            .generate_coinbase_transaction(
+                wallet_payment_address,
+                request.stealth_payment,
+                request.reward.into(),
+                request.fee.into(),
+                request.height,
+                request.extra,
+            )
             .await
             .map_err(|err| Status::unknown(err.to_string()))?;
 
