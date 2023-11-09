@@ -23,7 +23,7 @@
 use std::{
     borrow::Cow,
     cmp::min,
-    ops::{BitAnd, Deref},
+    ops::{BitAnd, BitOr, Deref, Not},
     string::FromUtf8Error,
 };
 
@@ -125,9 +125,9 @@ impl BasicAuthCredentials {
         // The username is valid if the lengths are equal and the length is not greater than the maximum allowed length;
         // any error here will only be factored in after the bitwise comparison has been done to force constant time.
         let bytes = username.as_bytes();
-        let valid_username = Choice::from(u8::from(
-            !(self.user_name_bytes_length != bytes.len() || bytes.len() > MAX_USERNAME_LEN),
-        ));
+        let valid_username = (Choice::from(u8::from(self.user_name_bytes_length != bytes.len()))
+            .bitor(Choice::from(u8::from(bytes.len() > MAX_USERNAME_LEN))))
+        .not();
 
         // We start with an empty default buffer
         let mut compare_bytes = [0u8; MAX_USERNAME_LEN];
@@ -285,10 +285,18 @@ mod tests {
             let credentials =
                 BasicAuthCredentials::new("admin".to_string(), hashed_password.to_string().into()).unwrap();
 
+            // Wrong password
             let err = credentials.constant_time_validate("admin", b"bruteforce").unwrap_err();
             assert!(matches!(err, BasicAuthError::InvalidUsernameOrPassword));
 
+            // Wrong username
             let err = credentials.constant_time_validate("wrong_user", b"secret").unwrap_err();
+            assert!(matches!(err, BasicAuthError::InvalidUsernameOrPassword));
+
+            // Wrong username and password
+            let err = credentials
+                .constant_time_validate("wrong_user", b"bruteforce")
+                .unwrap_err();
             assert!(matches!(err, BasicAuthError::InvalidUsernameOrPassword));
         }
 
