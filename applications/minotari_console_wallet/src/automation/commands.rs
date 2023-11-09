@@ -34,7 +34,6 @@ use chrono::{DateTime, Utc};
 use digest::Digest;
 use futures::FutureExt;
 use log::*;
-use minotari_app_grpc::authentication::salted_password::create_salted_hashed_password;
 use minotari_wallet::{
     connectivity_service::WalletConnectivityInterface,
     output_manager_service::{handle::OutputManagerHandle, UtxoSelectionCriteria},
@@ -960,36 +959,6 @@ pub async fn command_runner(
                     .map_err(CommandError::TransactionServiceError)
                 {
                     eprintln!("RevalidateWalletDb error! {}", e);
-                }
-            },
-            HashGrpcPassword(args) => {
-                match config
-                    .grpc_authentication
-                    .username_password()
-                    .ok_or_else(|| CommandError::General("GRPC basic auth is not configured".to_string()))
-                {
-                    Ok((username, password)) => {
-                        match create_salted_hashed_password(password.reveal())
-                            .map_err(|e| CommandError::General(e.to_string()))
-                        {
-                            Ok(hashed_password) => {
-                                if args.short {
-                                    println!("{}", *hashed_password);
-                                } else {
-                                    println!("Your hashed password is:");
-                                    println!("{}", *hashed_password);
-                                    println!();
-                                    println!(
-                                        "Use HTTP basic auth with username '{}' and the hashed password to make GRPC \
-                                         requests",
-                                        username
-                                    );
-                                }
-                            },
-                            Err(e) => eprintln!("HashGrpcPassword error! {}", e),
-                        }
-                    },
-                    Err(e) => eprintln!("HashGrpcPassword error! {}", e),
                 }
             },
             RegisterValidatorNode(args) => {
