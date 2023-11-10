@@ -68,7 +68,7 @@ DefaultDirName={userdocs}\..\.tari-testnet
 DefaultGroupName={#MyOrgName} - Testnet
 AllowNoIcons=yes
 LicenseFile=..\LICENSE
-OutputBaseFilename=tari_suite-{#MyAppVersion}
+OutputBaseFilename=minotari_suite-{#MyAppVersion}
 SetupIconFile=.\tari_logo_black.ico
 Compression=lzma
 SolidCompression=yes
@@ -143,7 +143,7 @@ Name: "{group}\Start {#MergeMiningProxyName}"; Filename: "{app}\runtime\{#MergeM
 Name: "{group}\Start {#MergeMiningName}"; Filename: "{app}\runtime\{#MergeMiningExeName}"; WorkingDir: "{app}"
 Name: "{group}\Start {#TorServicesName}"; Filename: "{app}\runtime\{#TorServicesExeName}"; WorkingDir: "{app}"
 Name: "{group}\{#ReadmeName}"; Filename: "{app}\{#ReadmeName}"; WorkingDir: "{app}"
-Name: "{group}\{cm:ProgramOnTheWeb,{#BaseNodeName}}"; Filename: "{#MyAppURL}"
+Name: "{group}\{cm:TariGit,{#BaseNodeName}}"; Filename: "{#MyAppURL}"
 Name: "{group}\{cm:TariWeb,{#MyAppSupp}}"; Filename: "{#MyAppSuppURL}"
 Name: "{group}\{cm:UninstallProgram,{#MyOrgName} - Testnet}"; Filename: "{uninstallexe}"
 Name: "{userdesktop}\{#MyOrgName} {#AllName}"; Filename: "{app}\runtime\{#AllExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
