@@ -40,7 +40,7 @@ impl AccumulatedDifficulty {
         Ok(Self(d))
     }
 
-    /// Return the difficulty as a u64
+    /// Return the difficulty as a `u128`
     pub fn as_u128(self) -> u128 {
         self.0
     }
