@@ -34,10 +34,14 @@ use tari_core::{
     proto,
     transactions::{
         fee::Fee,
-        key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface, TxoStage},
+        key_manager::{
+            create_memory_db_key_manager,
+            TransactionKeyManagerBranch,
+            TransactionKeyManagerInterface,
+            TxoStage,
+        },
         tari_amount::{uT, MicroMinotari, T},
         test_helpers::{
-            create_test_core_key_manager_with_memory_db,
             create_wallet_output_with_data,
             schema_to_transaction,
             spend_utxos,
@@ -1042,7 +1046,7 @@ async fn receive_and_propagate_transaction() {
         .with_coinbase_lockheight(100)
         .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let (block0, utxo) = create_genesis_block(&consensus_constants, &key_manager).await;
     let consensus_manager = ConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants)
@@ -1077,7 +1081,7 @@ async fn receive_and_propagate_transaction() {
     });
 
     let (tx, _) = spend_utxos(
-        txn_schema!(from: vec![utxo], to: vec![2 * T, 2 * T, 2 * T]),
+        txn_schema!(from: vec![utxo.clone()], to: vec![2 * T, 2 * T, 2 * T]),
         &key_manager,
     )
     .await;
@@ -1705,7 +1709,7 @@ async fn block_event_and_reorg_event_handling() {
     // When block B2A is submitted, then both nodes have TX2A and TX3A in their reorg pools
     // When block B2B is submitted with TX2B, TX3B, then TX2A, TX3A are discarded (Not Stored)
     let network = Network::LocalNet;
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let consensus_constants = ConsensusConstantsBuilder::new(Network::LocalNet)
         .with_coinbase_lockheight(1)
         .build();
@@ -1735,8 +1739,11 @@ async fn block_event_and_reorg_event_handling() {
 
     // Bob creates Block 1 and sends it to Alice. Alice adds it to her chain and creates a block event that the Mempool
     // service will receive.
-    let (tx1, utxos1) =
-        schema_to_transaction(&[txn_schema!(from: vec![utxos0], to: vec![1 * T, 1 * T])], &key_manager).await;
+    let (tx1, utxos1) = schema_to_transaction(
+        &[txn_schema!(from: vec![utxos0.clone()], to: vec![1 * T, 1 * T])],
+        &key_manager,
+    )
+    .await;
     let (txs_a, _utxos2) = schema_to_transaction(
         &[
             txn_schema!(from: vec![utxos1[0].clone()], to: vec![400_000 * uT, 590_000 * uT]),

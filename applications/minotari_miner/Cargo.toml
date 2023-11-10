@@ -16,6 +16,7 @@ minotari_app_utilities = { path = "../minotari_app_utilities" }
 minotari_app_grpc = { path = "../minotari_app_grpc" }
 tari_crypto = { version = "0.19" }
 tari_utilities = { version = "0.6" }
+tari_key_manager = {  path = "../../base_layer/key_manager", features = ["key_manager_service"] }
 
 borsh = "0.10"
 crossterm = { version = "0.25.0" }

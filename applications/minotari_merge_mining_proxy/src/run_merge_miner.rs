@@ -26,7 +26,7 @@ use futures::future;
 use hyper::{service::make_service_fn, Server};
 use log::*;
 use minotari_node_grpc_client::grpc::base_node_client::BaseNodeClient;
-use minotari_wallet_grpc_client::{grpc::wallet_client::WalletClient, ClientAuthenticationInterceptor};
+use minotari_wallet_grpc_client::ClientAuthenticationInterceptor;
 use tari_common::{
     configuration::bootstrap::{grpc_default_port, ApplicationType},
     load_configuration,
@@ -64,7 +64,6 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
         .map_err(MmProxyError::ReqwestError)?;
 
     let base_node_client = connect_base_node(&config).await?;
-    let wallet_client = connect_wallet(&config).await?;
 
     let listen_addr = multiaddr_to_socketaddr(&config.listener_address)?;
     let randomx_factory = RandomXFactory::new(config.max_randomx_vms);
@@ -72,7 +71,6 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
         config,
         client,
         base_node_client,
-        wallet_client,
         BlockTemplateRepository::new(),
         randomx_factory,
     );
@@ -96,28 +94,6 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
             Err(err.into())
         },
     }
-}
-
-async fn connect_wallet(
-    config: &MergeMiningProxyConfig,
-) -> Result<WalletClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>, MmProxyError> {
-    let wallet_addr = format!(
-        "http://{}",
-        multiaddr_to_socketaddr(
-            &config
-                .console_wallet_grpc_address
-                .clone()
-                .expect("Wallet grpc address not found")
-        )?
-    );
-    info!(target: LOG_TARGET, "👛 Connecting to wallet at {}", wallet_addr);
-    let channel = Endpoint::from_str(&wallet_addr)?.connect().await?;
-    let wallet_conn = WalletClient::with_interceptor(
-        channel,
-        ClientAuthenticationInterceptor::create(&config.console_wallet_grpc_authentication)?,
-    );
-
-    Ok(wallet_conn)
 }
 
 async fn connect_base_node(

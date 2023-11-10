@@ -30,6 +30,7 @@ tari_utilities = { version = "0.6" }
 minotari_wallet = { path = "../base_layer/wallet" }
 minotari_wallet_ffi = { path = "../base_layer/wallet_ffi" }
 minotari_wallet_grpc_client = { path = "../clients/rust/wallet_grpc_client" }
+tari_key_manager = { path = "../base_layer/key_manager" }
 
 anyhow = "1.0.53"
 async-trait = "0.1.50"

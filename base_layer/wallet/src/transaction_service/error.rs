@@ -96,8 +96,6 @@ pub enum TransactionServiceError {
     DiscoveryProcessFailed(TxId),
     #[error("Invalid Completed Transaction provided")]
     InvalidCompletedTransaction,
-    #[error("Attempted to broadcast a coinbase transaction. TxId `{0}`")]
-    AttemptedToBroadcastCoinbaseTransaction(TxId),
     #[error("No Base Node public keys are provided for Base chain broadcast and monitoring")]
     NoBaseNodeKeysProvided,
     #[error("Base node changed during {task_name}")]
@@ -112,8 +110,6 @@ pub enum TransactionServiceError {
     UnexpectedBaseNodeResponse,
     #[error("The current transaction has been cancelled")]
     TransactionCancelled,
-    #[error("Chain tip has moved beyond this coinbase before it was mined so it must be cancelled")]
-    ChainTipHigherThanCoinbaseHeight,
     #[error("DHT outbound error: `{0}`")]
     DhtOutboundError(#[from] DhtOutboundError),
     #[error("Output manager error: `{0}`")]
@@ -271,10 +267,10 @@ pub enum TransactionStorageError {
     ByteArrayError(String),
     #[error("Tari address error: `{0}`")]
     TariAddressError(#[from] TariAddressError),
-    #[error("Not a coinbase transaction so cannot be abandoned")]
-    NotCoinbase,
     #[error("Db error: `{0}`")]
     SqliteStorageError(#[from] SqliteStorageError),
+    #[error("Coinbase transactions are not supported in the wallet")]
+    CoinbaseNotSupported,
 }
 
 impl From<ByteArrayError> for TransactionStorageError {

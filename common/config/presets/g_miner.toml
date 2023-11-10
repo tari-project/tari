@@ -12,11 +12,6 @@
 # GRPC authentication for the base node (default = "none")
 #base_node_grpc_authentication = { username = "miner", password = "xxxx" }
 
-# GRPC address of console wallet (default = "/ip4/127.0.0.1/tcp/18143")
-#wallet_grpc_address = "/ip4/127.0.0.1/tcp/18143"
-# GRPC authentication for the console wallet (default = "none")
-#wallet_grpc_authentication = { username = "miner", password = "xxxx" }
-
 # Number of mining threads (default: number of logical CPU cores)
 #num_mining_threads = 8
 

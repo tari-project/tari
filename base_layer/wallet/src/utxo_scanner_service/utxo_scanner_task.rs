@@ -563,11 +563,7 @@ where
                 .await?
                 .into_iter()
                 .map(|ro| {
-                    let status = if ro.output.features.is_coinbase() {
-                        ImportStatus::Coinbase
-                    } else {
-                        ImportStatus::Imported
-                    };
+                    let status = ImportStatus::Imported;
                     (ro.output, self.resources.recovery_message.clone(), status, ro.tx_id)
                 })
                 .collect(),
@@ -603,7 +599,7 @@ where
         let mut total_amount = MicroMinotari::from(0);
         for (uo, message, import_status, tx_id) in utxos {
             let source_address = if uo.features.is_coinbase() {
-                // its a coinbase, so we know we mined it and it comes from us.
+                // It's a coinbase, so we know we mined it (we do mining with cold wallets).
                 self.resources.wallet_identity.address.clone()
             } else {
                 // Because we do not know the source public key we are making it the default key of zeroes to make it
@@ -685,7 +681,6 @@ where
                 wallet_output.value,
                 source_address,
                 message,
-                Some(wallet_output.features.maturity),
                 import_status.clone(),
                 Some(tx_id),
                 Some(current_height),

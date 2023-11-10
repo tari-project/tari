@@ -754,59 +754,6 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         Ok(())
     }
 
-    fn cancel_coinbase_transactions_at_block_height(&self, block_height: u64) -> Result<(), TransactionStorageError> {
-        let start = Instant::now();
-        let mut conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
-
-        CompletedTransactionSql::reject_coinbases_at_block_height(
-            block_height as i64,
-            TxCancellationReason::AbandonedCoinbase,
-            &mut conn,
-        )?;
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - cancel_coinbase_transaction_at_block_height: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
-
-        Ok(())
-    }
-
-    fn find_coinbase_transaction_at_block_height(
-        &self,
-        block_height: u64,
-        amount: MicroMinotari,
-    ) -> Result<Option<CompletedTransaction>, TransactionStorageError> {
-        let start = Instant::now();
-        let mut conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
-        let cipher = acquire_read_lock!(self.cipher);
-
-        let coinbase_txs = CompletedTransactionSql::index_coinbase_at_block_height(block_height as i64, &mut conn)?;
-        for c in coinbase_txs {
-            let completed_tx = CompletedTransaction::try_from(c, &cipher)?;
-            if completed_tx.amount == amount {
-                return Ok(Some(completed_tx));
-            }
-        }
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - find_coinbase_transaction_at_block_height: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
-
-        Ok(None)
-    }
-
     fn increment_send_count(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
@@ -956,11 +903,6 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                     .eq(TransactionStatus::Completed as i32)
                     .or(completed_transactions::status.eq(TransactionStatus::Broadcast as i32)),
             )
-            .filter(
-                completed_transactions::coinbase_block_height
-                    .is_null()
-                    .or(completed_transactions::coinbase_block_height.eq(0)),
-            )
             .filter(completed_transactions::cancelled.is_null())
             .order_by(completed_transactions::tx_id)
             .load::<CompletedTransactionSql>(&mut conn)?;
@@ -1101,21 +1043,6 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             CompletedTransaction::try_from(ct, &cipher).map_err(TransactionStorageError::from)
         })
         .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()
-    }
-
-    fn abandon_coinbase_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
-        let mut conn = self.database_connection.get_pooled_connection()?;
-        match CompletedTransactionSql::find_and_abandon_coinbase(tx_id, &mut conn) {
-            Ok(_) => {},
-            Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
-                return Err(TransactionStorageError::ValueNotFound(DbKey::CompletedTransaction(
-                    tx_id,
-                )));
-            },
-            Err(e) => return Err(e),
-        };
-
-        Ok(())
     }
 }
 
@@ -1688,7 +1615,6 @@ pub struct CompletedTransactionSql {
     timestamp: NaiveDateTime,
     cancelled: Option<i32>,
     direction: Option<i32>,
-    coinbase_block_height: Option<i64>,
     send_count: i32,
     last_send_timestamp: Option<NaiveDateTime>,
     confirmations: Option<i64>,
@@ -1762,33 +1688,6 @@ impl CompletedTransactionSql {
             .load::<CompletedTransactionSql>(conn)?)
     }
 
-    pub fn index_coinbase_at_block_height(
-        block_height: i64,
-        conn: &mut SqliteConnection,
-    ) -> Result<Vec<CompletedTransactionSql>, TransactionStorageError> {
-        Ok(completed_transactions::table
-            .filter(completed_transactions::status.eq(TransactionStatus::Coinbase as i32))
-            .filter(completed_transactions::coinbase_block_height.eq(block_height))
-            .load::<CompletedTransactionSql>(conn)?)
-    }
-
-    pub fn find_and_abandon_coinbase(tx_id: TxId, conn: &mut SqliteConnection) -> Result<(), TransactionStorageError> {
-        let _ = diesel::update(
-            completed_transactions::table
-                .filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64))
-                .filter(completed_transactions::cancelled.is_null())
-                .filter(completed_transactions::coinbase_block_height.is_not_null()),
-        )
-        .set(UpdateCompletedTransactionSql {
-            cancelled: Some(Some(TxCancellationReason::AbandonedCoinbase as i32)),
-            ..Default::default()
-        })
-        .execute(conn)
-        .num_rows_affected_or_not_found(1)?;
-
-        Ok(())
-    }
-
     pub fn find(tx_id: TxId, conn: &mut SqliteConnection) -> Result<CompletedTransactionSql, TransactionStorageError> {
         Ok(completed_transactions::table
             .filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64))
@@ -1859,24 +1758,6 @@ impl CompletedTransactionSql {
         Ok(())
     }
 
-    pub fn reject_coinbases_at_block_height(
-        block_height: i64,
-        reason: TxCancellationReason,
-        conn: &mut SqliteConnection,
-    ) -> Result<usize, TransactionStorageError> {
-        Ok(diesel::update(
-            completed_transactions::table
-                .filter(completed_transactions::status.eq(TransactionStatus::Coinbase as i32))
-                .filter(completed_transactions::coinbase_block_height.eq(block_height)),
-        )
-        .set(UpdateCompletedTransactionSql {
-            cancelled: Some(Some(reason as i32)),
-            status: Some(TransactionStatus::Rejected as i32),
-            ..Default::default()
-        })
-        .execute(conn)?)
-    }
-
     pub fn delete(&self, conn: &mut SqliteConnection) -> Result<(), TransactionStorageError> {
         let num_deleted =
             diesel::delete(completed_transactions::table.filter(completed_transactions::tx_id.eq(&self.tx_id)))
@@ -1938,14 +1819,7 @@ impl CompletedTransactionSql {
         diesel::update(completed_transactions::table.filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64)))
             .set(UpdateCompletedTransactionSql {
                 status: {
-                    if let Some(Some(_coinbase_block_height)) = completed_transactions::table
-                        .filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64))
-                        .select(completed_transactions::coinbase_block_height)
-                        .load::<Option<i64>>(conn)?
-                        .first()
-                    {
-                        Some(TransactionStatus::Coinbase as i32)
-                    } else if let Some(status) = completed_transactions::table
+                    if let Some(status) = completed_transactions::table
                         .filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64))
                         .select(completed_transactions::status)
                         .load::<i32>(conn)?
@@ -2007,7 +1881,6 @@ impl CompletedTransactionSql {
             timestamp: c.timestamp,
             cancelled: c.cancelled.map(|v| v as i32),
             direction: Some(c.direction as i32),
-            coinbase_block_height: c.coinbase_block_height.map(|b| b as i64),
             send_count: c.send_count as i32,
             last_send_timestamp: c.last_send_timestamp,
             confirmations: c.confirmations.map(|ic| ic as i64),
@@ -2106,7 +1979,6 @@ impl CompletedTransaction {
                 .cancelled
                 .map(|v| TxCancellationReason::try_from(v as u32).unwrap_or(TxCancellationReason::Unknown)),
             direction: TransactionDirection::try_from(c.direction.unwrap_or(2i32))?,
-            coinbase_block_height: c.coinbase_block_height.map(|b| b as u64),
             send_count: c.send_count as u32,
             last_send_timestamp: c.last_send_timestamp,
             transaction_signature,
@@ -2146,17 +2018,6 @@ pub struct UnconfirmedTransactionInfo {
     pub tx_id: TxId,
     pub signature: Signature,
     pub status: TransactionStatus,
-    pub coinbase_block_height: Option<u64>,
-}
-
-impl UnconfirmedTransactionInfo {
-    pub fn is_coinbase(&self) -> bool {
-        if let Some(height) = self.coinbase_block_height {
-            height > 0
-        } else {
-            false
-        }
-    }
 }
 
 impl TryFrom<UnconfirmedTransactionInfoSql> for UnconfirmedTransactionInfo {
@@ -2170,7 +2031,6 @@ impl TryFrom<UnconfirmedTransactionInfoSql> for UnconfirmedTransactionInfo {
                 PrivateKey::from_vec(&i.transaction_signature_key)?,
             ),
             status: TransactionStatus::try_from(i.status)?,
-            coinbase_block_height: i.coinbase_block_height.map(|b| b as u64),
         })
     }
 }
@@ -2181,7 +2041,6 @@ pub struct UnconfirmedTransactionInfoSql {
     pub status: i32,
     pub transaction_signature_nonce: Vec<u8>,
     pub transaction_signature_key: Vec<u8>,
-    pub coinbase_block_height: Option<i64>,
 }
 
 impl UnconfirmedTransactionInfoSql {
@@ -2195,7 +2054,6 @@ impl UnconfirmedTransactionInfoSql {
                 completed_transactions::status,
                 completed_transactions::transaction_signature_nonce,
                 completed_transactions::transaction_signature_key,
-                completed_transactions::coinbase_block_height,
             ))
             .filter(
                 completed_transactions::status
@@ -2233,8 +2091,9 @@ mod test {
         types::{PrivateKey, PublicKey, Signature},
     };
     use tari_core::transactions::{
+        key_manager::create_memory_db_key_manager,
         tari_amount::MicroMinotari,
-        test_helpers::{create_test_core_key_manager_with_memory_db, create_wallet_output_with_data, TestParams},
+        test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{OutputFeatures, Transaction},
         transaction_protocol::sender::TransactionSenderMessage,
         ReceiverTransactionProtocol,
@@ -2265,7 +2124,7 @@ mod test {
     #[tokio::test]
     #[allow(clippy::too_many_lines)]
     async fn test_crud() {
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let consensus_constants = create_consensus_constants(0);
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let temp_dir = tempdir().unwrap();
@@ -2512,7 +2371,6 @@ mod test {
             timestamp: Utc::now().naive_utc(),
             cancelled: None,
             direction: TransactionDirection::Unknown,
-            coinbase_block_height: None,
             send_count: 0,
             last_send_timestamp: None,
             transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
@@ -2541,7 +2399,6 @@ mod test {
             timestamp: Utc::now().naive_utc(),
             cancelled: None,
             direction: TransactionDirection::Unknown,
-            coinbase_block_height: None,
             send_count: 0,
             last_send_timestamp: None,
             transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
@@ -2661,116 +2518,6 @@ mod test {
             .unwrap();
         assert!(CompletedTransactionSql::find_by_cancelled(completed_tx1.tx_id, false, &mut conn).is_err());
         assert!(CompletedTransactionSql::find_by_cancelled(completed_tx1.tx_id, true, &mut conn).is_ok());
-
-        let source_address = TariAddress::new(
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            Network::LocalNet,
-        );
-        let destination_address = TariAddress::new(
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            Network::LocalNet,
-        );
-        let coinbase_tx1 = CompletedTransaction {
-            tx_id: 101u64.into(),
-            source_address,
-            destination_address,
-            amount,
-            fee: MicroMinotari::from(100),
-            transaction: tx.clone(),
-            status: TransactionStatus::Coinbase,
-            message: "Hey!".to_string(),
-            timestamp: Utc::now().naive_utc(),
-            cancelled: None,
-            direction: TransactionDirection::Unknown,
-            coinbase_block_height: Some(2),
-            send_count: 0,
-            last_send_timestamp: None,
-            transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
-            confirmations: None,
-            mined_height: None,
-            mined_in_block: None,
-            mined_timestamp: None,
-        };
-
-        let source_address = TariAddress::new(
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            Network::LocalNet,
-        );
-        let destination_address = TariAddress::new(
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            Network::LocalNet,
-        );
-        let coinbase_tx2 = CompletedTransaction {
-            tx_id: 102u64.into(),
-            source_address,
-            destination_address,
-            amount,
-            fee: MicroMinotari::from(100),
-            transaction: tx.clone(),
-            status: TransactionStatus::Coinbase,
-            message: "Hey!".to_string(),
-            timestamp: Utc::now().naive_utc(),
-            cancelled: None,
-            direction: TransactionDirection::Unknown,
-            coinbase_block_height: Some(2),
-            send_count: 0,
-            last_send_timestamp: None,
-            transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
-            confirmations: None,
-            mined_height: None,
-            mined_in_block: None,
-            mined_timestamp: None,
-        };
-
-        let source_address = TariAddress::new(
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            Network::LocalNet,
-        );
-        let destination_address = TariAddress::new(
-            PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
-            Network::LocalNet,
-        );
-        let coinbase_tx3 = CompletedTransaction {
-            tx_id: 103u64.into(),
-            source_address,
-            destination_address,
-            amount,
-            fee: MicroMinotari::from(100),
-            transaction: tx.clone(),
-            status: TransactionStatus::Coinbase,
-            message: "Hey!".to_string(),
-            timestamp: Utc::now().naive_utc(),
-            cancelled: None,
-            direction: TransactionDirection::Unknown,
-            coinbase_block_height: Some(3),
-            send_count: 0,
-            last_send_timestamp: None,
-            transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
-            confirmations: None,
-            mined_height: None,
-            mined_in_block: None,
-            mined_timestamp: None,
-        };
-
-        CompletedTransactionSql::try_from(coinbase_tx1, &cipher)
-            .unwrap()
-            .commit(&mut conn)
-            .unwrap();
-        CompletedTransactionSql::try_from(coinbase_tx2, &cipher)
-            .unwrap()
-            .commit(&mut conn)
-            .unwrap();
-        CompletedTransactionSql::try_from(coinbase_tx3, &cipher)
-            .unwrap()
-            .commit(&mut conn)
-            .unwrap();
-
-        let coinbase_txs = CompletedTransactionSql::index_coinbase_at_block_height(2, &mut conn).unwrap();
-
-        assert_eq!(coinbase_txs.len(), 2);
-        assert!(coinbase_txs.iter().any(|c| c.tx_id == 101));
-        assert!(coinbase_txs.iter().any(|c| c.tx_id == 102));
-        assert!(!coinbase_txs.iter().any(|c| c.tx_id == 103));
     }
 
     #[test]
@@ -2887,7 +2634,6 @@ mod test {
             timestamp: Utc::now().naive_utc(),
             cancelled: None,
             direction: TransactionDirection::Unknown,
-            coinbase_block_height: None,
             send_count: 0,
             last_send_timestamp: None,
             transaction_signature: Signature::default(),
@@ -3016,7 +2762,6 @@ mod test {
                 timestamp: Utc::now().naive_utc(),
                 cancelled: None,
                 direction: TransactionDirection::Unknown,
-                coinbase_block_height: None,
                 send_count: 0,
                 last_send_timestamp: None,
                 transaction_signature: Signature::default(),
@@ -3090,7 +2835,7 @@ mod test {
 
         let mut info_list_reference: Vec<InboundTransactionSenderInfo> = vec![];
         for i in 0..1000 {
-            let (cancelled, status, coinbase_block_height) = match i % 13 {
+            let (cancelled, status) = match i % 13 {
                 0 => (
                     if i % 3 == 0 {
                         Some(TxCancellationReason::Unknown)
@@ -3098,7 +2843,6 @@ mod test {
                         None
                     },
                     TransactionStatus::Completed,
-                    None,
                 ),
                 1 => (
                     if i % 5 == 0 {
@@ -3107,7 +2851,6 @@ mod test {
                         None
                     },
                     TransactionStatus::Broadcast,
-                    None,
                 ),
                 2 => (
                     if i % 7 == 0 {
@@ -3116,7 +2859,6 @@ mod test {
                         None
                     },
                     TransactionStatus::Completed,
-                    Some(i % 2),
                 ),
                 3 => (
                     if i % 11 == 0 {
@@ -3125,16 +2867,14 @@ mod test {
                         None
                     },
                     TransactionStatus::Broadcast,
-                    Some(i % 2),
                 ),
-                4 => (None, TransactionStatus::Completed, None),
-                5 => (None, TransactionStatus::Broadcast, None),
-                6 => (None, TransactionStatus::Pending, None),
-                7 => (None, TransactionStatus::Coinbase, None),
-                8 => (None, TransactionStatus::MinedUnconfirmed, None),
-                9 => (None, TransactionStatus::Imported, None),
-                10 => (None, TransactionStatus::MinedConfirmed, None),
-                _ => (None, TransactionStatus::Completed, Some(i)),
+                4 => (None, TransactionStatus::Completed),
+                5 => (None, TransactionStatus::Broadcast),
+                6 => (None, TransactionStatus::Pending),
+                8 => (None, TransactionStatus::MinedUnconfirmed),
+                9 => (None, TransactionStatus::Imported),
+                10 => (None, TransactionStatus::MinedConfirmed),
+                _ => (None, TransactionStatus::Completed),
             };
             let source_address = TariAddress::new(
                 PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
@@ -3145,7 +2885,7 @@ mod test {
                 Network::LocalNet,
             );
             let completed_tx = CompletedTransaction {
-                tx_id: TxId::from(i),
+                tx_id: TxId::from(i as u64),
                 source_address,
                 destination_address,
                 amount: MicroMinotari::from(100),
@@ -3162,7 +2902,6 @@ mod test {
                 timestamp: Utc::now().naive_utc(),
                 cancelled,
                 direction: TransactionDirection::Unknown,
-                coinbase_block_height,
                 send_count: 0,
                 last_send_timestamp: None,
                 transaction_signature: Signature::default(),
@@ -3192,11 +2931,10 @@ mod test {
         let db1 = TransactionServiceSqliteDatabase::new(connection, cipher);
 
         let txn_list = db1.get_transactions_to_be_broadcast().unwrap();
-        assert_eq!(txn_list.len(), 335);
+        assert_eq!(txn_list.len(), 633);
         for txn in &txn_list {
             assert!(txn.status == TransactionStatus::Completed || txn.status == TransactionStatus::Broadcast);
             assert!(txn.cancelled.is_none());
-            assert!(txn.coinbase_block_height.is_none() || txn.coinbase_block_height == Some(0));
         }
 
         let info_list = db1.get_pending_inbound_transaction_sender_info().unwrap();

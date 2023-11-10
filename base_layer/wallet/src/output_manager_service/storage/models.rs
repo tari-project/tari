@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::cmp::Ordering;
+use std::{cmp::Ordering, convert::TryFrom};
 
 use chrono::NaiveDateTime;
 use derivative::Derivative;
@@ -114,27 +114,48 @@ impl Eq for DbWalletOutput {}
 
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum SpendingPriority {
     Normal,
     HtlcSpendAsap,
-    Unknown,
+    // Unknown,
 }
 
-impl From<u32> for SpendingPriority {
-    fn from(value: u32) -> Self {
+// impl From<u32> for SpendingPriority {
+//     fn from(value: u32) -> Self {
+//         match value {
+//             0 => SpendingPriority::Normal,
+//             1 => SpendingPriority::HtlcSpendAsap,
+//             _ => SpendingPriority::Unknown,
+//         }
+//     }
+// }
+
+impl TryFrom<u32> for SpendingPriority {
+    type Error = String;
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
         match value {
-            0 => SpendingPriority::Normal,
-            1 => SpendingPriority::HtlcSpendAsap,
-            _ => SpendingPriority::Unknown,
+            0 => Ok(SpendingPriority::Normal),
+            1 => Ok(SpendingPriority::HtlcSpendAsap),
+            _ => Err(format!("Invalid spending priority value: {}", value)),
         }
     }
 }
 
-impl From<SpendingPriority> for u32 {
+// impl From<SpendingPriority> for u32 {
+//     fn from(value: SpendingPriority) -> Self {
+//         match value {
+//             SpendingPriority::Normal => 0,
+//             SpendingPriority::HtlcSpendAsap => 1,
+//         }
+//     }
+// }
+
+impl From<SpendingPriority> for i32 {
     fn from(value: SpendingPriority) -> Self {
         match value {
-            SpendingPriority::Normal | SpendingPriority::Unknown => 0,
+            SpendingPriority::Normal => 0,
             SpendingPriority::HtlcSpendAsap => 1,
         }
     }

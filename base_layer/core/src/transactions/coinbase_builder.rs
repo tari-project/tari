@@ -21,9 +21,15 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use tari_common_types::types::{Commitment, PrivateKey};
-use tari_key_manager::key_manager_service::KeyManagerServiceError;
-use tari_script::{inputs, script, TariScript};
+use chacha20poly1305::aead::OsRng;
+use tari_common_types::{
+    tari_address::TariAddress,
+    types::{Commitment, PrivateKey, PublicKey},
+};
+use tari_crypto::keys::PublicKey as PK;
+use tari_key_manager::key_manager_service::{KeyManagerInterface, KeyManagerServiceError};
+use tari_script::{one_sided_payment_script, stealth_payment_script, ExecutionStack, TariScript};
+use tari_utilities::ByteArrayError;
 use thiserror::Error;
 
 use crate::{
@@ -32,8 +38,21 @@ use crate::{
         ConsensusConstants,
     },
     covenants::Covenant,
+    one_sided::{
+        diffie_hellman_stealth_domain_hasher,
+        shared_secret_to_output_encryption_key,
+        shared_secret_to_output_spending_key,
+        stealth_address_script_spending_key,
+    },
     transactions::{
-        key_manager::{TariKeyId, TransactionKeyManagerBranch, TransactionKeyManagerInterface, TxoStage},
+        key_manager::{
+            CoreKeyManagerError,
+            MemoryDbKeyManager,
+            TariKeyId,
+            TransactionKeyManagerBranch,
+            TransactionKeyManagerInterface,
+            TxoStage,
+        },
         tari_amount::{uT, MicroMinotari},
         transaction_components::{
             KernelBuilder,
@@ -64,6 +83,14 @@ pub enum CoinbaseBuildError {
     MissingSpendKey,
     #[error("The script key for this coinbase transaction wasn't provided")]
     MissingScriptKey,
+    #[error("The script for this coinbase transaction wasn't provided")]
+    MissingScript,
+    #[error("The wallet public key for this coinbase transaction wasn't provided")]
+    MissingWalletPublicKey,
+    #[error("The encryption key for this coinbase transaction wasn't provided")]
+    MissingEncryptionKey,
+    #[error("The sender offset key for this coinbase transaction wasn't provided")]
+    MissingSenderOffsetKey,
     #[error("The value encryption was not succeed")]
     ValueEncryptionFailed,
     #[error("An error occurred building the final transaction: `{0}`")]
@@ -74,8 +101,24 @@ pub enum CoinbaseBuildError {
     InvalidSenderOffsetKey,
     #[error("An invalid transaction has been encountered: {0}")]
     TransactionError(#[from] TransactionError),
+    #[error("Key manager error: {0}")]
+    CoreKeyManagerError(String),
     #[error("Key manager service error: `{0}`")]
     KeyManagerServiceError(String),
+    #[error("Conversion error: {0}")]
+    ByteArrayError(String),
+}
+
+impl From<ByteArrayError> for CoinbaseBuildError {
+    fn from(err: ByteArrayError) -> Self {
+        CoinbaseBuildError::ByteArrayError(err.to_string())
+    }
+}
+
+impl From<CoreKeyManagerError> for CoinbaseBuildError {
+    fn from(err: CoreKeyManagerError) -> Self {
+        CoinbaseBuildError::CoreKeyManagerError(err.to_string())
+    }
 }
 
 impl From<KeyManagerServiceError> for CoinbaseBuildError {
@@ -90,6 +133,8 @@ pub struct CoinbaseBuilder<TKeyManagerInterface> {
     fees: Option<MicroMinotari>,
     spend_key_id: Option<TariKeyId>,
     script_key_id: Option<TariKeyId>,
+    encryption_key_id: Option<TariKeyId>,
+    sender_offset_key_id: Option<TariKeyId>,
     script: Option<TariScript>,
     covenant: Covenant,
     extra: Option<Vec<u8>>,
@@ -107,6 +152,8 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             fees: None,
             spend_key_id: None,
             script_key_id: None,
+            encryption_key_id: None,
+            sender_offset_key_id: None,
             script: None,
             covenant: Covenant::default(),
             extra: None,
@@ -125,16 +172,30 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         self
     }
 
-    /// Provides the spend key for this transaction. This will usually be provided by a miner's wallet instance.
+    /// Provides the spend key ID for this transaction. This will usually be provided by a miner's wallet instance.
     pub fn with_spend_key_id(mut self, key: TariKeyId) -> Self {
         self.spend_key_id = Some(key);
         self
     }
 
-    /// Provides the script key for this transaction. This will usually be provided by a miner's wallet
+    /// Provides the script key ID for this transaction. This will usually be provided by a miner's wallet
     /// instance.
     pub fn with_script_key_id(mut self, key: TariKeyId) -> Self {
         self.script_key_id = Some(key);
+        self
+    }
+
+    /// Provides the encryption key ID for this transaction. This will usually be provided by a Diffie-Hellman shared
+    /// secret.
+    pub fn with_encryption_key_id(mut self, key: TariKeyId) -> Self {
+        self.encryption_key_id = Some(key);
+        self
+    }
+
+    /// Provides the sender offset key ID for this transaction. This will usually be provided by a miner's wallet
+    /// instance.
+    pub fn with_sender_offset_key_id(mut self, key: TariKeyId) -> Self {
+        self.sender_offset_key_id = Some(key);
         self
     }
 
@@ -187,8 +248,12 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         let total_reward = block_reward + self.fees.ok_or(CoinbaseBuildError::MissingFees)?;
         let spending_key_id = self.spend_key_id.ok_or(CoinbaseBuildError::MissingSpendKey)?;
         let script_key_id = self.script_key_id.ok_or(CoinbaseBuildError::MissingScriptKey)?;
+        let encryption_key_id = self.encryption_key_id.ok_or(CoinbaseBuildError::MissingEncryptionKey)?;
+        let sender_offset_key_id = self
+            .sender_offset_key_id
+            .ok_or(CoinbaseBuildError::MissingSenderOffsetKey)?;
         let covenant = self.covenant;
-        let script = self.script.unwrap_or_else(|| script!(Nop));
+        let script = self.script.ok_or(CoinbaseBuildError::MissingScript)?;
 
         let kernel_features = KernelFeatures::create_coinbase();
         let metadata = TransactionMetadata::new_with_features(0.into(), 0, kernel_features);
@@ -207,7 +272,6 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             .await?;
 
         let public_spend_key = self.key_manager.get_public_key_at_key_id(&spending_key_id).await?;
-        let public_script_key = self.key_manager.get_public_key_at_key_id(&script_key_id).await?;
 
         let kernel_signature = self
             .key_manager
@@ -229,7 +293,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         let output_features = OutputFeatures::create_coinbase(height + constants.coinbase_min_maturity(), self.extra);
         let encrypted_data = self
             .key_manager
-            .encrypt_data_for_recovery(&spending_key_id, None, total_reward.into())
+            .encrypt_data_for_recovery(&spending_key_id, Some(&encryption_key_id), total_reward.into())
             .await?;
         let minimum_value_promise = MicroMinotari::zero();
 
@@ -243,17 +307,14 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             &minimum_value_promise,
         );
 
-        let (sender_offset_public_key_id, sender_offset_public_key) = self
-            .key_manager
-            .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
-            .await?;
+        let sender_offset_public_key = self.key_manager.get_public_key_at_key_id(&sender_offset_key_id).await?;
 
         let metadata_sig = self
             .key_manager
             .get_metadata_signature(
                 &spending_key_id,
                 &value.into(),
-                &sender_offset_public_key_id,
+                &sender_offset_key_id,
                 &output_version,
                 &metadata_message,
                 output_features.range_proof_type,
@@ -266,7 +327,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             spending_key_id,
             output_features,
             script,
-            inputs!(public_script_key),
+            ExecutionStack::default(),
             script_key_id,
             sender_offset_public_key,
             metadata_sig,
@@ -306,10 +367,69 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
     }
 }
 
+pub async fn generate_coinbase(
+    fee: MicroMinotari,
+    reward: MicroMinotari,
+    height: u64,
+    extra: &[u8],
+    key_manager: &MemoryDbKeyManager,
+    miner_node_script_key_id: &TariKeyId,
+    wallet_payment_address: &TariAddress,
+    stealth_payment: bool,
+    consensus_constants: &ConsensusConstants,
+) -> Result<(Transaction, TransactionOutput, TransactionKernel, WalletOutput), CoinbaseBuildError> {
+    let (sender_offset_key_id, _) = key_manager
+        .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
+        .await?;
+    let shared_secret = key_manager
+        .get_diffie_hellman_shared_secret(&sender_offset_key_id, wallet_payment_address.public_key())
+        .await?;
+    let spending_key = shared_secret_to_output_spending_key(&shared_secret)?;
+
+    let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret)?;
+    let encryption_key_id = key_manager.import_key(encryption_private_key).await?;
+
+    let spending_key_id = key_manager.import_key(spending_key).await?;
+
+    let script = if stealth_payment {
+        let (nonce_private_key, nonce_public_key) = PublicKey::random_keypair(&mut OsRng);
+        let c = diffie_hellman_stealth_domain_hasher(&nonce_private_key, wallet_payment_address.public_key());
+        let script_spending_key = stealth_address_script_spending_key(&c, wallet_payment_address.public_key());
+        stealth_payment_script(&nonce_public_key, &script_spending_key)
+    } else {
+        one_sided_payment_script(wallet_payment_address.public_key())
+    };
+
+    let (transaction, wallet_output) = CoinbaseBuilder::new(key_manager.clone())
+        .with_block_height(height)
+        .with_fees(fee)
+        .with_spend_key_id(spending_key_id)
+        .with_encryption_key_id(encryption_key_id)
+        .with_sender_offset_key_id(sender_offset_key_id)
+        .with_script_key_id(miner_node_script_key_id.clone())
+        .with_script(script)
+        .with_extra(extra.to_vec())
+        .build_with_reward(consensus_constants, reward)
+        .await?;
+
+    let output = transaction
+        .body()
+        .outputs()
+        .first()
+        .ok_or(CoinbaseBuildError::BuildError("No output found".to_string()))?;
+    let kernel = transaction
+        .body()
+        .kernels()
+        .first()
+        .ok_or(CoinbaseBuildError::BuildError("No kernel found".to_string()))?;
+
+    Ok((transaction.clone(), output.clone(), kernel.clone(), wallet_output))
+}
+
 #[cfg(test)]
 mod test {
     use tari_common::configuration::Network;
-    use tari_common_types::types::Commitment;
+    use tari_common_types::{tari_address::TariAddress, types::Commitment};
 
     use crate::{
         consensus::{emission::Emission, ConsensusManager, ConsensusManagerBuilder},
@@ -325,14 +445,14 @@ mod test {
     };
 
     fn get_builder() -> (
-        CoinbaseBuilder<TestKeyManager>,
+        CoinbaseBuilder<MemoryDbKeyManager>,
         ConsensusManager,
         CryptoFactories,
-        TestKeyManager,
+        MemoryDbKeyManager,
     ) {
         let network = Network::LocalNet;
         let rules = ConsensusManagerBuilder::new(network).build().unwrap();
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let factories = CryptoFactories::default();
         (CoinbaseBuilder::new(key_manager.clone()), rules, factories, key_manager)
     }
@@ -382,11 +502,15 @@ mod test {
     async fn valid_coinbase() {
         let (builder, rules, factories, key_manager) = get_builder();
         let p = TestParams::new(&key_manager).await;
+        let wallet_payment_address = TariAddress::default();
         let builder = builder
             .with_block_height(42)
             .with_fees(145 * uT)
             .with_spend_key_id(p.spend_key_id.clone())
-            .with_script_key_id(p.script_key_id);
+            .with_encryption_key_id(TariKeyId::default())
+            .with_sender_offset_key_id(p.sender_offset_key_id)
+            .with_script_key_id(p.script_key_id)
+            .with_script(one_sided_payment_script(wallet_payment_address.public_key()));
         let (tx, _unblinded_output) = builder
             .build(rules.consensus_constants(42), rules.emission_schedule())
             .await
@@ -428,11 +552,15 @@ mod test {
         let (builder, rules, factories, key_manager) = get_builder();
         let p = TestParams::new(&key_manager).await;
         let block_reward = rules.emission_schedule().block_reward(42) + 145 * uT;
+        let wallet_payment_address = TariAddress::default();
         let builder = builder
             .with_block_height(42)
             .with_fees(145 * uT)
             .with_spend_key_id(p.spend_key_id)
-            .with_script_key_id(p.script_key_id);
+            .with_encryption_key_id(TariKeyId::default())
+            .with_sender_offset_key_id(p.sender_offset_key_id)
+            .with_script_key_id(p.script_key_id)
+            .with_script(one_sided_payment_script(wallet_payment_address.public_key()));
         let (mut tx, _) = builder
             .build(rules.consensus_constants(42), rules.emission_schedule())
             .await
@@ -458,11 +586,15 @@ mod test {
         let p = TestParams::new(&key_manager).await;
         // We just want some small amount here.
         let missing_fee = rules.emission_schedule().block_reward(4200000) + (2 * uT);
+        let wallet_payment_address = TariAddress::default();
         let builder = builder
             .with_block_height(42)
             .with_fees(1 * uT)
             .with_spend_key_id(p.spend_key_id.clone())
-            .with_script_key_id(p.script_key_id.clone());
+            .with_encryption_key_id(TariKeyId::default())
+            .with_sender_offset_key_id(p.sender_offset_key_id.clone())
+            .with_script_key_id(p.script_key_id.clone())
+            .with_script(one_sided_payment_script(wallet_payment_address.public_key()));
         let (mut tx, _) = builder
             .build(rules.consensus_constants(0), rules.emission_schedule())
             .await
@@ -473,7 +605,10 @@ mod test {
             .with_block_height(4200000)
             .with_fees(1 * uT)
             .with_spend_key_id(p.spend_key_id.clone())
-            .with_script_key_id(p.script_key_id.clone());
+            .with_encryption_key_id(TariKeyId::default())
+            .with_sender_offset_key_id(p.sender_offset_key_id.clone())
+            .with_script_key_id(p.script_key_id.clone())
+            .with_script(one_sided_payment_script(wallet_payment_address.public_key()));
         let (tx2, _) = builder
             .build(rules.consensus_constants(0), rules.emission_schedule())
             .await
@@ -501,7 +636,10 @@ mod test {
             .with_block_height(42)
             .with_fees(missing_fee)
             .with_spend_key_id(p.spend_key_id)
-            .with_script_key_id(p.script_key_id);
+            .with_encryption_key_id(TariKeyId::default())
+            .with_sender_offset_key_id(p.sender_offset_key_id)
+            .with_script_key_id(p.script_key_id)
+            .with_script(one_sided_payment_script(wallet_payment_address.public_key()));
         let (tx3, _) = builder
             .build(rules.consensus_constants(0), rules.emission_schedule())
             .await
@@ -517,11 +655,18 @@ mod test {
             .is_ok());
     }
     use tari_key_manager::key_manager_service::KeyManagerInterface;
+    use tari_script::one_sided_payment_script;
 
     use crate::transactions::{
         aggregated_body::AggregateBody,
-        key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface, TxoStage},
-        test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager},
+        key_manager::{
+            create_memory_db_key_manager,
+            MemoryDbKeyManager,
+            TariKeyId,
+            TransactionKeyManagerBranch,
+            TransactionKeyManagerInterface,
+            TxoStage,
+        },
         transaction_components::TransactionKernelVersion,
     };
 
@@ -535,11 +680,15 @@ mod test {
         let p = TestParams::new(&key_manager).await;
         // We just want some small amount here.
         let missing_fee = rules.emission_schedule().block_reward(4200000) + (2 * uT);
+        let wallet_payment_address = TariAddress::default();
         let builder = builder
             .with_block_height(42)
             .with_fees(1 * uT)
             .with_spend_key_id(p.spend_key_id.clone())
-            .with_script_key_id(p.script_key_id.clone());
+            .with_encryption_key_id(TariKeyId::default())
+            .with_sender_offset_key_id(p.sender_offset_key_id.clone())
+            .with_script_key_id(p.script_key_id.clone())
+            .with_script(one_sided_payment_script(wallet_payment_address.public_key()));
         let (mut tx, _) = builder
             .build(rules.consensus_constants(0), rules.emission_schedule())
             .await
@@ -552,7 +701,10 @@ mod test {
             .with_block_height(4200000)
             .with_fees(1 * uT)
             .with_spend_key_id(p.spend_key_id.clone())
-            .with_script_key_id(p.script_key_id);
+            .with_encryption_key_id(TariKeyId::default())
+            .with_sender_offset_key_id(p.sender_offset_key_id)
+            .with_script_key_id(p.script_key_id)
+            .with_script(one_sided_payment_script(wallet_payment_address.public_key()));
         let (tx2, output) = builder
             .build(rules.consensus_constants(0), rules.emission_schedule())
             .await

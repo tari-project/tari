@@ -115,20 +115,10 @@ pub trait TransactionBackend: Send + Sync + Clone {
     ) -> Result<TariAddress, TransactionStorageError>;
     /// Mark a pending transaction direct send attempt as a success
     fn mark_direct_send_success(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
-    /// Cancel coinbase transactions at a specific block height
-    fn cancel_coinbase_transactions_at_block_height(&self, block_height: u64) -> Result<(), TransactionStorageError>;
-    /// Find coinbase transaction at a specific block height for a given amount
-    fn find_coinbase_transaction_at_block_height(
-        &self,
-        block_height: u64,
-        amount: MicroMinotari,
-    ) -> Result<Option<CompletedTransaction>, TransactionStorageError>;
     /// Increment the send counter and timestamp of a transaction
     fn increment_send_count(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
     /// Update a transactions mined height. A transaction can either be mined as valid or mined as invalid
     /// A normal transaction can only be mined with valid = true,
-    /// A coinbase transaction can either be mined as valid = true, meaning that it is the coinbase in that block
-    /// or valid =false, meaning that the coinbase has been awarded to another tx, but this has been confirmed by blocks
     /// The mined height and block are used to determine reorgs
     fn update_mined_height(
         &self,
@@ -154,7 +144,6 @@ pub trait TransactionBackend: Send + Sync + Clone {
         &self,
         height: u64,
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
-    fn abandon_coinbase_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
 }
 
 #[derive(Clone, PartialEq)]
@@ -649,7 +638,6 @@ where T: TransactionBackend + 'static
         source_address: TariAddress,
         comms_address: TariAddress,
         message: String,
-        maturity: Option<u64>,
         import_status: ImportStatus,
         current_height: Option<u64>,
         mined_timestamp: Option<NaiveDateTime>,
@@ -671,10 +659,9 @@ where T: TransactionBackend + 'static
             message,
             mined_timestamp.unwrap_or_else(|| Utc::now().naive_utc()),
             TransactionDirection::Inbound,
-            maturity,
             current_height,
             mined_timestamp,
-        );
+        )?;
 
         self.db
             .write(WriteOperation::Insert(DbKeyValuePair::CompletedTransaction(
@@ -682,21 +669,6 @@ where T: TransactionBackend + 'static
                 Box::new(transaction),
             )))?;
         Ok(())
-    }
-
-    pub fn cancel_coinbase_transaction_at_block_height(
-        &self,
-        block_height: u64,
-    ) -> Result<(), TransactionStorageError> {
-        self.db.cancel_coinbase_transactions_at_block_height(block_height)
-    }
-
-    pub fn find_coinbase_transaction_at_block_height(
-        &self,
-        block_height: u64,
-        amount: MicroMinotari,
-    ) -> Result<Option<CompletedTransaction>, TransactionStorageError> {
-        self.db.find_coinbase_transaction_at_block_height(block_height, amount)
     }
 
     pub fn increment_send_count(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
@@ -740,10 +712,6 @@ where T: TransactionBackend + 'static
             Err(e) => log_error(DbKey::PendingInboundTransactions, e),
         }?;
         Ok(t)
-    }
-
-    pub fn abandon_coinbase_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
-        self.db.abandon_coinbase_transaction(tx_id)
     }
 }
 

@@ -28,15 +28,24 @@ use std::{
 
 use cucumber::gherkin::{Feature, Scenario};
 use indexmap::IndexMap;
+use rand::rngs::OsRng;
 use serde_json::Value;
 use tari_chat_client::ChatClient;
+use tari_common::configuration::Network;
+use tari_common_types::{
+    tari_address::TariAddress,
+    types::{PrivateKey, PublicKey},
+};
 use tari_core::{
     blocks::Block,
+    consensus::ConsensusManager,
     transactions::{
-        test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager},
+        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TariKeyId},
         transaction_components::{Transaction, WalletOutput},
     },
 };
+use tari_crypto::keys::{PublicKey as PK, SecretKey};
+use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tari_utilities::hex::Hex;
 use thiserror::Error;
 
@@ -91,12 +100,26 @@ pub struct TariWorld {
     pub last_imported_tx_ids: Vec<u64>,
     // We need to store this for the merge mining proxy steps. The checks are get and check are done on separate steps.
     pub last_merge_miner_response: Value,
-    pub key_manager: TestKeyManager,
+    pub key_manager: MemoryDbKeyManager,
+    // This will be used for all one-sided coinbase payments
+    pub miner_node_script_key_id: TariKeyId,
+    // This receiver wallet address will be used for default one-sided coinbase payments
+    pub default_payment_address: TariAddress,
+    pub consensus_manager: ConsensusManager,
 }
 
 impl Default for TariWorld {
     fn default() -> Self {
         println!("\nWorld initialized - remove this line when called!\n");
+        let key_manager = create_memory_db_key_manager();
+        let wallet_private_key = PrivateKey::random(&mut OsRng);
+        let miner_node_script_key_id = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(key_manager.import_key(wallet_private_key))
+            .unwrap();
+        let payment_private_key = PrivateKey::random(&mut OsRng);
+        let default_payment_address =
+            TariAddress::new(PublicKey::from_secret_key(&payment_private_key), Network::LocalNet);
         Self {
             current_scenario_name: None,
             current_feature_name: None,
@@ -119,7 +142,10 @@ impl Default for TariWorld {
             errors: Default::default(),
             last_imported_tx_ids: vec![],
             last_merge_miner_response: Default::default(),
-            key_manager: create_test_core_key_manager_with_memory_db(),
+            key_manager: create_memory_db_key_manager(),
+            miner_node_script_key_id,
+            default_payment_address,
+            consensus_manager: ConsensusManager::builder(Network::LocalNet).build().unwrap(),
         }
     }
 }

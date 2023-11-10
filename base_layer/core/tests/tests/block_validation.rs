@@ -49,7 +49,6 @@ use tari_core::{
         key_manager::TransactionKeyManagerInterface,
         tari_amount::{uT, MicroMinotari, T},
         test_helpers::{
-            create_test_core_key_manager_with_memory_db,
             create_wallet_output_with_data,
             schema_to_transaction,
             spend_utxos,
@@ -98,7 +97,7 @@ async fn test_monero_blocks() {
     let seed1 = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97";
     let seed2 = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad98";
 
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let network = Network::Esmeralda;
     let cc = ConsensusConstantsBuilder::new(network)
         .with_max_randomx_seed_height(1)
@@ -312,7 +311,7 @@ async fn inputs_are_not_malleable() {
 #[allow(clippy::too_many_lines)]
 async fn test_orphan_validator() {
     let factories = CryptoFactories::default();
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let network = Network::Igor;
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_max_block_transaction_weight(325)
@@ -460,7 +459,7 @@ async fn test_orphan_body_validation() {
         .clear_proof_of_work()
         .add_proof_of_work(PowAlgorithm::Sha3x, sha3x_constants)
         .build();
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let (genesis, outputs) = create_genesis_block_with_utxos(&[T, T, T], &consensus_constants, &key_manager).await;
     let network = Network::LocalNet;
     let rules = ConsensusManager::builder(network)
@@ -665,7 +664,7 @@ OutputFeatures::default()),
 #[allow(clippy::too_many_lines)]
 async fn test_header_validation() {
     let factories = CryptoFactories::default();
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let network = Network::Igor;
     // we dont want localnet's 1 difficulty or the full mined difficulty of weather wax but we want some.
     let sha3x_constants = PowAlgorithmConstants {
@@ -790,7 +789,7 @@ async fn test_block_sync_body_validator() {
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_max_block_transaction_weight(400)
         .build();
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let (genesis, outputs) = create_genesis_block_with_utxos(&[T, T, T], &consensus_constants, &key_manager).await;
     let network = Network::LocalNet;
     let rules = ConsensusManager::builder(network)
@@ -1050,7 +1049,7 @@ async fn add_block_with_large_block() {
     let factories = CryptoFactories::default();
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network).build();
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let (genesis, outputs) = create_genesis_block_with_utxos(
         &[
             5 * T,
@@ -1095,7 +1094,7 @@ async fn add_block_with_large_block() {
     // lets make our big block (1 -> 5) * 12
     let mut schemas = Vec::new();
     for output in outputs.into_iter().skip(1) {
-        let new_schema = txn_schema!(from: vec![output], to: vec![1 * T, 1 * T, 1 * T, 1 * T]);
+        let new_schema = txn_schema!(from: vec![output.clone()], to: vec![1 * T, 1 * T, 1 * T, 1 * T]);
         schemas.push(new_schema);
     }
 
@@ -1127,7 +1126,7 @@ async fn add_block_with_large_many_output_block() {
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_max_block_transaction_weight(127_795)
         .build();
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let (genesis, outputs) = create_genesis_block_with_utxos(&[501 * T], &consensus_constants, &key_manager).await;
     let network = Network::LocalNet;
     let rules = ConsensusManager::builder(network)
@@ -1183,6 +1182,7 @@ async fn add_block_with_large_many_output_block() {
 use tari_core::{
     blocks::{BlockHeader, NewBlockTemplate},
     transactions::{
+        key_manager::create_memory_db_key_manager,
         test_helpers::create_stx_protocol_internal,
         transaction_components::{Transaction, TransactionKernel},
     },

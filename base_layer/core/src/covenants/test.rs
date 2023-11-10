@@ -25,7 +25,8 @@ use std::convert::TryInto;
 use crate::{
     covenants::{context::CovenantContext, Covenant},
     transactions::{
-        test_helpers::{TestKeyManager, TestParams, UtxoTestParams},
+        key_manager::MemoryDbKeyManager,
+        test_helpers::{TestParams, UtxoTestParams},
         transaction_components::{
             BuildInfo,
             CodeTemplateRegistration,
@@ -40,7 +41,7 @@ use crate::{
 pub async fn create_outputs(
     n: usize,
     utxo_params: UtxoTestParams,
-    key_manager: &TestKeyManager,
+    key_manager: &MemoryDbKeyManager,
 ) -> Vec<TransactionOutput> {
     let mut outputs = Vec::new();
     for _i in 0..n {
@@ -51,7 +52,7 @@ pub async fn create_outputs(
     outputs
 }
 
-pub async fn create_input(key_manager: &TestKeyManager) -> TransactionInput {
+pub async fn create_input(key_manager: &MemoryDbKeyManager) -> TransactionInput {
     let params = TestParams::new(key_manager).await;
     let output = params.create_output(Default::default(), key_manager).await.unwrap();
     output.to_transaction_input(key_manager).await.unwrap()

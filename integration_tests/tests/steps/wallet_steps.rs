@@ -41,10 +41,8 @@ use grpc::{
 use minotari_app_grpc::tari_rpc::{self as grpc};
 use minotari_console_wallet::{CliCommands, ExportUtxosArgs};
 use minotari_wallet::transaction_service::config::TransactionRoutingMechanism;
-use tari_common::configuration::Network;
 use tari_common_types::types::{ComAndPubSignature, Commitment, PrivateKey, PublicKey};
 use tari_core::{
-    consensus::ConsensusManager,
     covenants::Covenant,
     transactions::{
         tari_amount::MicroMinotari,
@@ -1530,12 +1528,11 @@ async fn wallet_with_tari_connected_to_base_node(
     let mut num_blocks = 0;
     let mut reward = 0;
 
-    let consensus_manager = ConsensusManager::builder(Network::LocalNet).build().unwrap();
-
     while reward < amount {
         current_height += 1;
         num_blocks += 1;
-        reward += consensus_manager.get_block_reward_at(current_height).as_u64() / 1_000_000; // 1 T = 1_000_000 uT
+        reward += world.consensus_manager.get_block_reward_at(current_height).as_u64() / 1_000_000; // 1 T = 1_000_000
+                                                                                                    // uT
     }
 
     println!("Creating miner...");

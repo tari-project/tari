@@ -138,7 +138,6 @@ pub enum TransactionServiceRequest {
         amount: MicroMinotari,
         source_address: TariAddress,
         message: String,
-        maturity: Option<u64>,
         import_status: ImportStatus,
         tx_id: Option<TxId>,
         current_height: Option<u64>,
@@ -147,12 +146,6 @@ pub enum TransactionServiceRequest {
     SubmitTransactionToSelf(TxId, Transaction, MicroMinotari, MicroMinotari, String),
     SetLowPowerMode,
     SetNormalPowerMode,
-    GenerateCoinbaseTransaction {
-        reward: MicroMinotari,
-        fees: MicroMinotari,
-        block_height: u64,
-        extra: Vec<u8>,
-    },
     RestartTransactionProtocols,
     RestartBroadcastProtocols,
     GetNumConfirmationsRequired,
@@ -215,29 +208,18 @@ impl fmt::Display for TransactionServiceRequest {
                 amount,
                 source_address,
                 message,
-                maturity,
                 import_status,
                 tx_id,
                 current_height,
                 mined_timestamp,
             } => write!(
                 f,
-                "ImportUtxo (from {}, {}, {} with maturity {} and {:?} and {:?} and {:?} and {:?})",
-                source_address,
-                amount,
-                message,
-                maturity.unwrap_or(0),
-                import_status,
-                tx_id,
-                current_height,
-                mined_timestamp
+                "ImportUtxo (from {}, {}, {} and {:?} and {:?} and {:?} and {:?})",
+                source_address, amount, message, import_status, tx_id, current_height, mined_timestamp
             ),
             Self::SubmitTransactionToSelf(tx_id, _, _, _, _) => write!(f, "SubmitTransaction ({})", tx_id),
             Self::SetLowPowerMode => write!(f, "SetLowPowerMode "),
             Self::SetNormalPowerMode => write!(f, "SetNormalPowerMode"),
-            Self::GenerateCoinbaseTransaction { block_height, .. } => {
-                write!(f, "GenerateCoinbaseTransaction (Blockheight {})", block_height)
-            },
             Self::RestartTransactionProtocols => write!(f, "RestartTransactionProtocols"),
             Self::RestartBroadcastProtocols => write!(f, "RestartBroadcastProtocols"),
             Self::GetNumConfirmationsRequired => write!(f, "GetNumConfirmationsRequired"),
@@ -277,7 +259,6 @@ pub enum TransactionServiceResponse {
     TransactionSubmitted,
     LowPowerModeSet,
     NormalPowerModeSet,
-    CoinbaseTransactionGenerated(Box<Transaction>),
     ProtocolsRestarted,
     AnyTransaction(Box<Option<WalletTransaction>>),
     NumConfirmationsRequired(u64),
@@ -749,7 +730,6 @@ impl TransactionServiceHandle {
         amount: MicroMinotari,
         source_address: TariAddress,
         message: String,
-        maturity: Option<u64>,
         import_status: ImportStatus,
         tx_id: Option<TxId>,
         current_height: Option<u64>,
@@ -761,7 +741,6 @@ impl TransactionServiceHandle {
                 amount,
                 source_address,
                 message,
-                maturity,
                 import_status,
                 tx_id,
                 current_height,
@@ -841,28 +820,6 @@ impl TransactionServiceHandle {
             .await??
         {
             TransactionServiceResponse::NumConfirmationsSet => Ok(()),
-            _ => Err(TransactionServiceError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn generate_coinbase_transaction(
-        &mut self,
-        reward: MicroMinotari,
-        fees: MicroMinotari,
-        block_height: u64,
-        extra: Vec<u8>,
-    ) -> Result<Transaction, TransactionServiceError> {
-        match self
-            .handle
-            .call(TransactionServiceRequest::GenerateCoinbaseTransaction {
-                reward,
-                fees,
-                block_height,
-                extra,
-            })
-            .await??
-        {
-            TransactionServiceResponse::CoinbaseTransactionGenerated(tx) => Ok(*tx),
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

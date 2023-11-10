@@ -41,8 +41,6 @@ service Wallet {
     rpc Identify (GetIdentityRequest) returns (GetIdentityResponse);
     // This returns the tari address
     rpc GetAddress (Empty) returns (GetAddressResponse);
-    // This returns a coinbase transaction
-    rpc GetCoinbase (GetCoinbaseRequest) returns (GetCoinbaseResponse);
     // Send Minotari to a number of recipients
     rpc Transfer (TransferRequest)  returns (TransferResponse);
     // Returns the transaction details for the given transaction IDs
@@ -244,17 +242,6 @@ message GetUnspentAmountsResponse {
     repeated uint64 amount = 1;
 }
 
-message GetCoinbaseRequest {
-    uint64 reward = 1;
-    uint64 fee = 2;
-    uint64 height = 3;
-    bytes extra = 4;
-}
-
-message GetCoinbaseResponse {
-    Transaction transaction = 1;
-}
-
 message CoinSplitRequest {
     uint64 amount_per_split = 1;
     uint64 split_count = 2;
@@ -329,7 +316,6 @@ message TransactionEvent {
     string direction = 6;
     uint64 amount = 7;
     string message = 8;
-    bool is_coinbase = 9;
 }
 
 message TransactionEventResponse {

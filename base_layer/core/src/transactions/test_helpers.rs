@@ -20,21 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{iter, mem::size_of, sync::Arc};
+use std::sync::Arc;
 
-use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
-use rand::{distributions::Alphanumeric, rngs::OsRng, Rng, RngCore};
+use rand::rngs::OsRng;
 use tari_common::configuration::Network;
-use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
 use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
 use tari_crypto::keys::{PublicKey as PK, SecretKey};
-use tari_key_manager::{
-    cipher_seed::CipherSeed,
-    key_manager_service::{
-        storage::{database::KeyManagerDatabase, sqlite_db::KeyManagerSqliteDatabase},
-        KeyManagerInterface,
-    },
-};
+use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tari_script::{inputs, script, ExecutionStack, TariScript};
 
 use super::transaction_components::{TransactionInputVersion, TransactionOutputVersion};
@@ -46,10 +38,11 @@ use crate::{
         crypto_factories::CryptoFactories,
         fee::Fee,
         key_manager::{
+            create_memory_db_key_manager,
+            MemoryDbKeyManager,
             TariKeyId,
             TransactionKeyManagerBranch,
             TransactionKeyManagerInterface,
-            TransactionKeyManagerWrapper,
             TxoStage,
         },
         tari_amount::MicroMinotari,
@@ -71,7 +64,7 @@ use crate::{
     },
 };
 
-pub async fn create_test_input(amount: MicroMinotari, maturity: u64, key_manager: &TestKeyManager) -> WalletOutput {
+pub async fn create_test_input(amount: MicroMinotari, maturity: u64, key_manager: &MemoryDbKeyManager) -> WalletOutput {
     let params = TestParams::new(key_manager).await;
     params
         .create_input(
@@ -106,7 +99,7 @@ pub struct TestParams {
 }
 
 impl TestParams {
-    pub async fn new(key_manager: &TestKeyManager) -> TestParams {
+    pub async fn new(key_manager: &MemoryDbKeyManager) -> TestParams {
         let (spend_key_id, spend_key_pk, script_key_id, script_key_pk) =
             key_manager.get_next_spend_and_script_key_ids().await.unwrap();
         let (sender_offset_key_id, sender_offset_key_pk) = key_manager
@@ -150,7 +143,7 @@ impl TestParams {
     pub async fn create_output(
         &self,
         params: UtxoTestParams,
-        key_manager: &TestKeyManager,
+        key_manager: &MemoryDbKeyManager,
     ) -> Result<WalletOutput, String> {
         let version = match params.output_version {
             Some(v) => v,
@@ -182,7 +175,7 @@ impl TestParams {
 
     /// Create a random transaction input for the given amount and maturity period. The input's wallet
     /// parameters are returned.
-    pub async fn create_input(&self, params: UtxoTestParams, key_manager: &TestKeyManager) -> WalletOutput {
+    pub async fn create_input(&self, params: UtxoTestParams, key_manager: &MemoryDbKeyManager) -> WalletOutput {
         self.create_output(params, key_manager).await.unwrap()
     }
 
@@ -271,7 +264,7 @@ pub fn create_signature(k: PrivateKey, fee: MicroMinotari, lock_height: u64, fea
 
 /// Generate a random transaction signature given a key, returning the public key (excess) and the signature.
 pub async fn create_random_signature_from_secret_key(
-    key_manager: &TestKeyManager,
+    key_manager: &MemoryDbKeyManager,
     secret_key_id: TariKeyId,
     fee: MicroMinotari,
     lock_height: u64,
@@ -318,7 +311,7 @@ pub async fn create_coinbase_wallet_output(
     extra: Option<Vec<u8>>,
 ) -> WalletOutput {
     let rules = create_consensus_manager();
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let constants = rules.consensus_constants(height);
     test_params
         .create_output(
@@ -338,7 +331,7 @@ pub async fn create_wallet_output_with_data(
     output_features: OutputFeatures,
     test_params: &TestParams,
     value: MicroMinotari,
-    key_manager: &TestKeyManager,
+    key_manager: &MemoryDbKeyManager,
 ) -> Result<WalletOutput, String> {
     test_params
         .create_output(
@@ -399,9 +392,9 @@ macro_rules! tx {
 /// The output of this macro is intended to be used in [spend_utxos].
 #[macro_export]
 macro_rules! txn_schema {
-    (from: $input:expr, to: $outputs:expr, fee: $fee:expr, lock: $lock:expr, features: $features:expr, input_version: $input_version:expr, output_version: $output_version:expr) => {{
+    (from: $inputs:expr, to: $outputs:expr, fee: $fee:expr, lock: $lock:expr, features: $features:expr, input_version: $input_version:expr, output_version: $output_version:expr) => {{
         $crate::transactions::test_helpers::TransactionSchema {
-            from: $input.clone(),
+            from: $inputs.clone(),
             to: $outputs.clone(),
             to_outputs: vec![],
             fee: $fee,
@@ -500,7 +493,7 @@ pub async fn create_tx(
     input_maturity: u64,
     output_count: usize,
     output_features: OutputFeatures,
-    key_manager: &TestKeyManager,
+    key_manager: &MemoryDbKeyManager,
 ) -> std::io::Result<(Transaction, Vec<WalletOutput>, Vec<WalletOutput>)> {
     let (inputs, outputs) = create_wallet_outputs(
         amount,
@@ -527,7 +520,7 @@ pub async fn create_wallet_outputs(
     output_features: &OutputFeatures,
     output_script: &TariScript,
     output_covenant: &Covenant,
-    key_manager: &TestKeyManager,
+    key_manager: &MemoryDbKeyManager,
 ) -> std::io::Result<(Vec<WalletOutput>, Vec<(WalletOutput, TariKeyId)>)> {
     let weighting = TransactionWeight::latest();
     // This is a best guess to not underestimate metadata size
@@ -604,7 +597,7 @@ pub async fn create_transaction_with(
     fee_per_gram: MicroMinotari,
     inputs: Vec<WalletOutput>,
     outputs: Vec<(WalletOutput, TariKeyId)>,
-    key_manager: &TestKeyManager,
+    key_manager: &MemoryDbKeyManager,
 ) -> Transaction {
     let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
     let constants = rules.consensus_constants(0).clone();
@@ -639,7 +632,10 @@ pub async fn create_transaction_with(
 /// You only need to provide the wallet outputs to spend. This function will calculate the commitment for you.
 /// This is obviously less efficient, but is offered as a convenience.
 /// The output features will be applied to every output
-pub async fn spend_utxos(schema: TransactionSchema, key_manager: &TestKeyManager) -> (Transaction, Vec<WalletOutput>) {
+pub async fn spend_utxos(
+    schema: TransactionSchema,
+    key_manager: &MemoryDbKeyManager,
+) -> (Transaction, Vec<WalletOutput>) {
     let (mut stx_protocol, outputs) = create_stx_protocol(schema, key_manager).await;
     stx_protocol.finalize(key_manager).await.unwrap();
     let txn = stx_protocol.get_transaction().unwrap().clone();
@@ -649,7 +645,7 @@ pub async fn spend_utxos(schema: TransactionSchema, key_manager: &TestKeyManager
 #[allow(clippy::too_many_lines)]
 pub async fn create_stx_protocol(
     schema: TransactionSchema,
-    key_manager: &TestKeyManager,
+    key_manager: &MemoryDbKeyManager,
 ) -> (SenderTransactionProtocol, Vec<WalletOutput>) {
     let mut outputs = Vec::with_capacity(schema.to.len());
     let stx_builder = create_stx_protocol_internal(schema, key_manager, &mut outputs).await;
@@ -664,9 +660,9 @@ pub async fn create_stx_protocol(
 #[allow(clippy::too_many_lines)]
 pub async fn create_stx_protocol_internal(
     schema: TransactionSchema,
-    key_manager: &TestKeyManager,
+    key_manager: &MemoryDbKeyManager,
     outputs: &mut Vec<WalletOutput>,
-) -> SenderTransactionInitializer<TestKeyManager> {
+) -> SenderTransactionInitializer<MemoryDbKeyManager> {
     let constants = ConsensusManager::builder(Network::LocalNet)
         .build()
         .unwrap()
@@ -759,7 +755,10 @@ pub async fn create_stx_protocol_internal(
     stx_builder
 }
 
-pub async fn create_coinbase_kernel(spending_key_id: &TariKeyId, key_manager: &TestKeyManager) -> TransactionKernel {
+pub async fn create_coinbase_kernel(
+    spending_key_id: &TariKeyId,
+    key_manager: &MemoryDbKeyManager,
+) -> TransactionKernel {
     let kernel_version = TransactionKernelVersion::get_current_version();
     let kernel_features = KernelFeatures::COINBASE_KERNEL;
     let kernel_message =
@@ -808,7 +807,7 @@ pub fn create_test_kernel(fee: MicroMinotari, lock_height: u64, features: Kernel
 /// Create a new UTXO for the specified value and return the output and spending key
 pub async fn create_utxo(
     value: MicroMinotari,
-    key_manager: &TestKeyManager,
+    key_manager: &MemoryDbKeyManager,
     features: &OutputFeatures,
     script: &TariScript,
     covenant: &Covenant,
@@ -878,7 +877,7 @@ pub async fn create_utxo(
 
 pub async fn schema_to_transaction(
     txns: &[TransactionSchema],
-    key_manager: &TestKeyManager,
+    key_manager: &MemoryDbKeyManager,
 ) -> (Vec<Arc<Transaction>>, Vec<WalletOutput>) {
     let mut txs = Vec::new();
     let mut utxos = Vec::new();
@@ -889,35 +888,4 @@ pub async fn schema_to_transaction(
     }
 
     (txs, utxos)
-}
-
-pub type TestKeyManager = TransactionKeyManagerWrapper<KeyManagerSqliteDatabase<DbConnection>>;
-
-fn random_string(len: usize) -> String {
-    iter::repeat(())
-        .map(|_| OsRng.sample(Alphanumeric) as char)
-        .take(len)
-        .collect()
-}
-
-pub fn create_test_core_key_manager_with_memory_db_with_range_proof_size(size: usize) -> TestKeyManager {
-    let connection = DbConnection::connect_url(&DbConnectionUrl::MemoryShared(random_string(8))).unwrap();
-    let cipher = CipherSeed::new();
-
-    let mut key = [0u8; size_of::<Key>()];
-    OsRng.fill_bytes(&mut key);
-    let key_ga = Key::from_slice(&key);
-    let db_cipher = XChaCha20Poly1305::new(key_ga);
-    let factory = CryptoFactories::new(size);
-
-    TransactionKeyManagerWrapper::<KeyManagerSqliteDatabase<DbConnection>>::new(
-        cipher,
-        KeyManagerDatabase::new(KeyManagerSqliteDatabase::init(connection, db_cipher)),
-        factory,
-    )
-    .unwrap()
-}
-
-pub fn create_test_core_key_manager_with_memory_db() -> TestKeyManager {
-    create_test_core_key_manager_with_memory_db_with_range_proof_size(64)
 }

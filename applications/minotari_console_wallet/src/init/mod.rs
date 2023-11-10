@@ -188,7 +188,6 @@ fn display_password_feedback(passphrase: &SafePassword) -> bool {
             "The password you chose is weak; a determined attacker with access to your device may be able to guess it."
         );
         println!("You may want to consider changing it to a stronger one.");
-        println!("Here are some suggestions:");
         for suggestion in feedback {
             println!("- {}", suggestion);
         }

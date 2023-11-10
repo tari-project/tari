@@ -140,6 +140,7 @@ fn validate_input_not_pruned<B: BlockchainBackend>(
 
 fn validate_input_maturity(body: &AggregateBody, height: u64) -> Result<(), ValidationError> {
     for input in body.inputs() {
+        println!("input: {:?}", input);
         if !input.is_mature_at(height)? {
             return Err(TransactionError::InputMaturity.into());
         }

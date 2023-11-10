@@ -61,13 +61,6 @@ pub enum OutputManagerRequest {
     AddUnvalidatedOutput((TxId, Box<WalletOutput>, Option<SpendingPriority>)),
     UpdateOutputMetadataSignature(Box<TransactionOutput>),
     GetRecipientTransaction(TransactionSenderMessage),
-    GetCoinbaseTransaction {
-        tx_id: TxId,
-        reward: MicroMinotari,
-        fees: MicroMinotari,
-        block_height: u64,
-        extra: Vec<u8>,
-    },
     ConfirmPendingTransaction(TxId),
     PrepareToSendTransaction {
         tx_id: TxId,
@@ -126,7 +119,6 @@ pub enum OutputManagerRequest {
     },
 
     ReinstateCancelledInboundTx(TxId),
-    SetCoinbaseAbandoned(TxId, bool),
     CreateClaimShaAtomicSwapTransaction(HashOutput, PublicKey, MicroMinotari),
     CreateHtlcRefundTransaction(HashOutput, MicroMinotari),
     GetOutputStatusesByTxId(TxId),
@@ -184,7 +176,6 @@ impl fmt::Display for OutputManagerRequest {
                 "CreateCoinJoin: commitments={:#?}, fee_per_gram={}",
                 commitments, fee_per_gram,
             ),
-            GetCoinbaseTransaction { .. } => write!(f, "GetCoinbaseTransaction"),
             FeeEstimate {
                 amount,
                 selection_criteria,
@@ -204,7 +195,6 @@ impl fmt::Display for OutputManagerRequest {
             },
             CreatePayToSelfWithOutputs { .. } => write!(f, "CreatePayToSelfWithOutputs"),
             ReinstateCancelledInboundTx(_) => write!(f, "ReinstateCancelledInboundTx"),
-            SetCoinbaseAbandoned(_, _) => write!(f, "SetCoinbaseAbandoned"),
             CreateClaimShaAtomicSwapTransaction(output, pre_image, fee_per_gram) => write!(
                 f,
                 "ClaimShaAtomicSwap(output hash: {}, pre_image: {}, fee_per_gram: {} )",
@@ -232,7 +222,6 @@ pub enum OutputManagerResponse {
     ConvertedToTransactionOutput(Box<TransactionOutput>),
     OutputMetadataSignatureUpdated,
     RecipientTransactionGenerated(ReceiverTransactionProtocol),
-    CoinbaseTransaction(Transaction),
     OutputConfirmed,
     PendingTransactionConfirmed,
     PayToSelfTransaction((MicroMinotari, Transaction)),
@@ -254,7 +243,6 @@ pub enum OutputManagerResponse {
     CreateOutputWithFeatures { output: Box<WalletOutputBuilder> },
     CreatePayToSelfWithOutputs { transaction: Box<Transaction>, tx_id: TxId },
     ReinstatedCancelledInboundTx,
-    CoinbaseAbandonedSet,
     ClaimHtlcTransaction((TxId, MicroMinotari, MicroMinotari, Transaction)),
     OutputStatusesByTxId(OutputStatusesByTxId),
     CoinPreview((Vec<MicroMinotari>, MicroMinotari)),
@@ -434,30 +422,6 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::RecipientTransactionGenerated(rtp) => Ok(rtp),
-            _ => Err(OutputManagerError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn get_coinbase_transaction(
-        &mut self,
-        tx_id: TxId,
-        reward: MicroMinotari,
-        fees: MicroMinotari,
-        block_height: u64,
-        extra: Vec<u8>,
-    ) -> Result<Transaction, OutputManagerError> {
-        match self
-            .handle
-            .call(OutputManagerRequest::GetCoinbaseTransaction {
-                tx_id,
-                reward,
-                fees,
-                block_height,
-                extra,
-            })
-            .await??
-        {
-            OutputManagerResponse::CoinbaseTransaction(tx) => Ok(tx),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }
@@ -796,17 +760,6 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::ReinstatedCancelledInboundTx => Ok(()),
-            _ => Err(OutputManagerError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn set_coinbase_abandoned(&mut self, tx_id: TxId, abandoned: bool) -> Result<(), OutputManagerError> {
-        match self
-            .handle
-            .call(OutputManagerRequest::SetCoinbaseAbandoned(tx_id, abandoned))
-            .await??
-        {
-            OutputManagerResponse::CoinbaseAbandonedSet => Ok(()),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

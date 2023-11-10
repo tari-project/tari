@@ -37,15 +37,14 @@ use crate::{
     consensus::ConsensusManager,
     transactions::{
         aggregated_body::AggregateBody,
-        key_manager::TransactionKeyManagerInterface,
+        key_manager::{
+            create_memory_db_key_manager,
+            create_memory_db_key_manager_with_range_proof_size,
+            TransactionKeyManagerInterface,
+        },
         tari_amount::{uT, MicroMinotari, T},
         test_helpers,
-        test_helpers::{
-            create_test_core_key_manager_with_memory_db,
-            create_test_core_key_manager_with_memory_db_with_range_proof_size,
-            TestParams,
-            UtxoTestParams,
-        },
+        test_helpers::{TestParams, UtxoTestParams},
         transaction_components::{transaction_output::batch_verify_range_proofs, EncryptedData, OutputFeatures},
         transaction_protocol::TransactionProtocolError,
         CryptoFactories,
@@ -56,7 +55,7 @@ use crate::{
 
 #[tokio::test]
 async fn input_and_output_and_wallet_output_hash_match() {
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let test_params = TestParams::new(&key_manager).await;
 
     let i = test_params
@@ -80,7 +79,7 @@ fn test_smt_hashes() {
 
 #[tokio::test]
 async fn key_manager_input() {
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let test_params = TestParams::new(&key_manager).await;
 
     let i = test_params
@@ -105,7 +104,7 @@ async fn key_manager_input() {
 #[tokio::test]
 async fn range_proof_verification() {
     let factories = CryptoFactories::new(32);
-    let key_manager = create_test_core_key_manager_with_memory_db_with_range_proof_size(32);
+    let key_manager = create_memory_db_key_manager_with_range_proof_size(32);
     // Directly test the tx_output verification
     let test_params_1 = TestParams::new(&key_manager).await;
     let test_params_2 = TestParams::new(&key_manager).await;
@@ -165,7 +164,7 @@ async fn range_proof_verification() {
 #[tokio::test]
 async fn range_proof_verification_batch() {
     let factories = CryptoFactories::new(64);
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let wallet_output1 = TestParams::new(&key_manager)
         .await
         .create_output(
@@ -256,7 +255,7 @@ async fn range_proof_verification_batch() {
 
 #[tokio::test]
 async fn sender_signature_verification() {
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let test_params = TestParams::new(&key_manager).await;
     let wallet_output = test_params
         .create_output(Default::default(), &key_manager)
@@ -383,7 +382,7 @@ fn check_timelocks() {
 #[tokio::test]
 async fn test_validate_internal_consistency() {
     let features = OutputFeatures { ..Default::default() };
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let (tx, _, _) = test_helpers::create_tx(5000.into(), 3.into(), 1, 2, 1, 4, features, &key_manager)
         .await
         .expect("Failed to create tx");
@@ -396,7 +395,7 @@ async fn test_validate_internal_consistency() {
 #[tokio::test]
 #[allow(clippy::identity_op)]
 async fn check_cut_through() {
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let (tx, _, outputs) =
         test_helpers::create_tx(50000000.into(), 3.into(), 1, 2, 1, 2, Default::default(), &key_manager)
             .await
@@ -453,7 +452,7 @@ async fn check_cut_through() {
 
 #[tokio::test]
 async fn check_duplicate_inputs_outputs() {
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let (tx, _, _outputs) =
         test_helpers::create_tx(50000000.into(), 3.into(), 1, 2, 1, 2, Default::default(), &key_manager)
             .await
@@ -476,7 +475,7 @@ async fn check_duplicate_inputs_outputs() {
 
 #[tokio::test]
 async fn inputs_not_malleable() {
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let (inputs, outputs) = test_helpers::create_wallet_outputs(
         5000.into(),
         1,
@@ -511,7 +510,7 @@ async fn inputs_not_malleable() {
 
 #[tokio::test]
 async fn test_output_recover_openings() {
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let test_params = TestParams::new(&key_manager).await;
     let v = MicroMinotari::from(42);
 
@@ -543,14 +542,17 @@ mod validate_internal_consistency {
     use super::*;
     use crate::{
         covenants::{BaseLayerCovenantsDomain, COVENANTS_FIELD_HASHER_LABEL},
-        transactions::test_helpers::{create_transaction_with, create_wallet_outputs, TestKeyManager},
+        transactions::{
+            key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
+            test_helpers::{create_transaction_with, create_wallet_outputs},
+        },
     };
 
     async fn test_case(
         input_params: &UtxoTestParams,
         utxo_params: &UtxoTestParams,
         height: u64,
-        key_manager: &TestKeyManager,
+        key_manager: &MemoryDbKeyManager,
     ) -> Result<(), TransactionProtocolError> {
         let (mut inputs, outputs) = create_wallet_outputs(
             100 * T,
@@ -584,7 +586,7 @@ mod validate_internal_consistency {
         //---------------------------------- Case1 - PASS --------------------------------------------//
         let covenant = covenant!(fields_preserved(@fields( @field::covenant)));
         let features = OutputFeatures { ..Default::default() };
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         test_case(
             &UtxoTestParams {
                 features: features.clone(),

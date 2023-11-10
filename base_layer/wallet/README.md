@@ -18,6 +18,7 @@ See README.md in wallet_ffi crate
 - Ensure that you installed diesel with the sqlite feature flag:
   - `cargo install diesel_cli --no-default-features --features sqlite`
 - If you updated the tables the following needs to be run from the `base_layer/wallet/` folder:
+  - manually delete `base_layer/wallet/test.sqlite3` if present 
   - `diesel setup --database-url test.sqlite3`
   - `diesel migration run --database-url test.sqlite3`
  - After running this, make sure that the diesel update did not change BigInt to Integer in `schema.rs` (check for

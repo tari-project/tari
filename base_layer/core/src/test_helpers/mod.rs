@@ -30,10 +30,13 @@ pub use block_spec::{BlockSpec, BlockSpecs};
 use digest::consts::U32;
 use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
 use tari_common::configuration::Network;
-use tari_common_types::types::PublicKey;
+use tari_common_types::{
+    tari_address::TariAddress,
+    types::{PrivateKey, PublicKey},
+};
 use tari_comms::PeerManager;
-use tari_crypto::keys::PublicKey as PublicKeyT;
-use tari_key_manager::key_manager_service::KeyId;
+use tari_crypto::keys::{PublicKey as PublicKeyT, SecretKey};
+use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
 use tari_utilities::epoch_time::EpochTime;
 
@@ -42,10 +45,10 @@ use crate::{
     consensus::{ConsensusConstants, ConsensusManager},
     proof_of_work::{difficulty::CheckedAdd, sha3x_difficulty, AchievedTargetDifficulty, Difficulty},
     transactions::{
-        key_manager::TransactionKeyManagerBranch,
-        test_helpers::TestKeyManager,
+        generate_coinbase,
+        key_manager::{MemoryDbKeyManager, TariKeyId},
+        tari_amount::MicroMinotari,
         transaction_components::{Transaction, WalletOutput},
-        CoinbaseBuilder,
     },
 };
 
@@ -69,16 +72,24 @@ pub fn create_orphan_block(block_height: u64, transactions: Vec<Transaction>, co
     header.into_builder().with_transactions(transactions).build()
 }
 
+pub async fn default_coinbase_entities(key_manager: &MemoryDbKeyManager) -> (TariKeyId, TariAddress) {
+    let wallet_private_key = PrivateKey::random(&mut OsRng);
+    let miner_node_script_key_id = key_manager.import_key(wallet_private_key.clone()).await.unwrap();
+    let wallet_payment_address = TariAddress::new(PublicKey::from_secret_key(&wallet_private_key), Network::LocalNet);
+    (miner_node_script_key_id, wallet_payment_address)
+}
+
 pub async fn create_block(
     rules: &ConsensusManager,
     prev_block: &Block,
     spec: BlockSpec,
-    km: &TestKeyManager,
+    km: &MemoryDbKeyManager,
+    miner_node_script_key_id: &TariKeyId,
+    wallet_payment_address: &TariAddress,
 ) -> (Block, WalletOutput) {
     let mut header = BlockHeader::from_previous(&prev_block.header);
     let block_height = spec.height_override.unwrap_or(prev_block.header.height + 1);
     header.height = block_height;
-    // header.prev_hash = prev_block.hash();
     let reward = spec.reward_override.unwrap_or_else(|| {
         rules
             .calculate_coinbase_and_fees(
@@ -92,18 +103,19 @@ pub async fn create_block(
             .unwrap()
     });
 
-    let spend_key_id = KeyId::Managed {
-        branch: TransactionKeyManagerBranch::Coinbase.get_branch_key(),
-        index: block_height,
-    };
-    let (coinbase, coinbase_output) = CoinbaseBuilder::new(km.clone())
-        .with_block_height(header.height)
-        .with_fees(0.into())
-        .with_spend_key_id(spend_key_id.clone())
-        .with_script_key_id(spend_key_id)
-        .build_with_reward(rules.consensus_constants(block_height), reward)
-        .await
-        .unwrap();
+    let (coinbase, _, _, coinbase_output) = generate_coinbase(
+        MicroMinotari::from(0),
+        reward,
+        header.height,
+        &[],
+        km,
+        miner_node_script_key_id,
+        wallet_payment_address,
+        false,
+        rules.consensus_constants(header.height),
+    )
+    .await
+    .unwrap();
 
     let mut block = header
         .into_builder()

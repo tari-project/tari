@@ -85,26 +85,21 @@ impl OutputManagerSqliteDatabase {
                 if OutputSql::find_by_commitment_and_cancelled(&c.to_vec(), false, conn).is_ok() {
                     return Err(OutputManagerStorageError::DuplicateOutput);
                 }
-                let new_output = NewOutputSql::new(*o, OutputStatus::Unspent, None, None)?;
+                let new_output = NewOutputSql::new(*o, OutputStatus::Unspent, None)?;
                 new_output.commit(conn)?
             },
             DbKeyValuePair::UnspentOutputWithTxId(c, (tx_id, o)) => {
                 if OutputSql::find_by_commitment_and_cancelled(&c.to_vec(), false, conn).is_ok() {
                     return Err(OutputManagerStorageError::DuplicateOutput);
                 }
-                let new_output = NewOutputSql::new(*o, OutputStatus::Unspent, Some(tx_id), None)?;
+                let new_output = NewOutputSql::new(*o, OutputStatus::Unspent, Some(tx_id))?;
                 new_output.commit(conn)?
             },
-            DbKeyValuePair::OutputToBeReceived(c, (tx_id, o, coinbase_block_height)) => {
+            DbKeyValuePair::OutputToBeReceived(c, (tx_id, o)) => {
                 if OutputSql::find_by_commitment_and_cancelled(&c.to_vec(), false, conn).is_ok() {
                     return Err(OutputManagerStorageError::DuplicateOutput);
                 }
-                let new_output = NewOutputSql::new(
-                    *o,
-                    OutputStatus::EncumberedToBeReceived,
-                    Some(tx_id),
-                    coinbase_block_height,
-                )?;
+                let new_output = NewOutputSql::new(*o, OutputStatus::EncumberedToBeReceived, Some(tx_id))?;
                 new_output.commit(conn)?
             },
 
@@ -663,12 +658,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         })?;
 
         for co in outputs_to_receive {
-            let new_output = NewOutputSql::new(
-                co.clone(),
-                OutputStatus::ShortTermEncumberedToBeReceived,
-                Some(tx_id),
-                None,
-            )?;
+            let new_output = NewOutputSql::new(co.clone(), OutputStatus::ShortTermEncumberedToBeReceived, Some(tx_id))?;
             new_output.commit(&mut conn)?;
         }
         if start.elapsed().as_millis() > 0 {
@@ -955,47 +945,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(())
     }
 
-    fn set_coinbase_abandoned(&self, tx_id: TxId, abandoned: bool) -> Result<(), OutputManagerStorageError> {
-        let start = Instant::now();
-        let mut conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
-
-        if abandoned {
-            debug!(
-                target: LOG_TARGET,
-                "set_coinbase_abandoned(TxID: {}) as {}", tx_id, abandoned
-            );
-            diesel::update(
-                outputs::table.filter(
-                    outputs::received_in_tx_id
-                        .eq(Some(tx_id.as_u64() as i64))
-                        .and(outputs::coinbase_block_height.is_not_null()),
-                ),
-            )
-            .set((outputs::status.eq(OutputStatus::AbandonedCoinbase as i32),))
-            .execute(&mut conn)
-            .num_rows_affected_or_not_found(1)?;
-        } else {
-            update_outputs_with_tx_id_and_status_to_new_status(
-                &mut conn,
-                tx_id,
-                OutputStatus::AbandonedCoinbase,
-                OutputStatus::EncumberedToBeReceived,
-            )?;
-        };
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - set_coinbase_abandoned: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
-
-        Ok(())
-    }
-
     fn reinstate_cancelled_inbound_output(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
@@ -1028,7 +977,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         if OutputSql::find_by_commitment_and_cancelled(&output.commitment.to_vec(), false, &mut conn).is_ok() {
             return Err(OutputManagerStorageError::DuplicateOutput);
         }
-        let new_output = NewOutputSql::new(output, OutputStatus::EncumberedToBeReceived, Some(tx_id), None)?;
+        let new_output = NewOutputSql::new(output, OutputStatus::EncumberedToBeReceived, Some(tx_id))?;
         new_output.commit(&mut conn)?;
 
         if start.elapsed().as_millis() > 0 {
@@ -1307,13 +1256,9 @@ mod test {
     use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
     use rand::{rngs::OsRng, RngCore};
     use tari_core::transactions::{
+        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
         tari_amount::MicroMinotari,
-        test_helpers::{
-            create_test_core_key_manager_with_memory_db,
-            create_wallet_output_with_data,
-            TestKeyManager,
-            TestParams,
-        },
+        test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{OutputFeatures, TransactionInput, WalletOutput},
     };
     use tari_script::script;
@@ -1326,7 +1271,7 @@ mod test {
         OutputSource,
     };
 
-    pub async fn make_input(val: MicroMinotari, key_manager: &TestKeyManager) -> (TransactionInput, WalletOutput) {
+    pub async fn make_input(val: MicroMinotari, key_manager: &MemoryDbKeyManager) -> (TransactionInput, WalletOutput) {
         let test_params = TestParams::new(key_manager).await;
 
         let wallet_output =
@@ -1371,13 +1316,13 @@ mod test {
         let mut outputs_spent = Vec::new();
         let mut outputs_unspent = Vec::new();
 
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         for _i in 0..2 {
             let (_, uo) = make_input(MicroMinotari::from(100 + OsRng.next_u64() % 1000), &key_manager).await;
-            let uo = DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Unknown, None, None)
+            let uo = DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Standard, None, None)
                 .await
                 .unwrap();
-            let o = NewOutputSql::new(uo, OutputStatus::Unspent, None, None).unwrap();
+            let o = NewOutputSql::new(uo, OutputStatus::Unspent, None).unwrap();
             outputs.push(o.clone());
             outputs_unspent.push(o.clone());
             o.commit(&mut conn).unwrap();
@@ -1385,10 +1330,10 @@ mod test {
 
         for _i in 0..3 {
             let (_, uo) = make_input(MicroMinotari::from(100 + OsRng.next_u64() % 1000), &key_manager).await;
-            let uo = DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Unknown, None, None)
+            let uo = DbWalletOutput::from_wallet_output(uo, &key_manager, None, OutputSource::Standard, None, None)
                 .await
                 .unwrap();
-            let o = NewOutputSql::new(uo, OutputStatus::Spent, None, None).unwrap();
+            let o = NewOutputSql::new(uo, OutputStatus::Spent, None).unwrap();
             outputs.push(o.clone());
             outputs_spent.push(o.clone());
             o.commit(&mut conn).unwrap();

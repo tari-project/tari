@@ -27,8 +27,6 @@
 //! specific options:
 //! - base_node_grpc_address - is IPv4/IPv6 address including port
 //! number, by which Minotari Base Node can be found
-//! - wallet_grpc_address - is IPv4/IPv6 address including port number,
-//! where Minotari Wallet Node can be found
 //! - num_mining_threads - number of mining threads, defaults to number of cpu cores
 //! - mine_on_tip_only - will start mining only when node is reporting bootstrapped state
 //! - validate_tip_timeout_sec - will check tip with node every N seconds to validate that still
@@ -41,20 +39,16 @@ use std::time::Duration;
 use minotari_app_grpc::tari_rpc::{pow_algo::PowAlgos, NewBlockTemplateRequest, PowAlgo};
 use serde::{Deserialize, Serialize};
 use tari_common::{configuration::Network, SubConfigPath};
-use tari_common_types::grpc_authentication::GrpcAuthentication;
+use tari_common_types::{grpc_authentication::GrpcAuthentication, tari_address::TariAddress};
 use tari_comms::multiaddr::Multiaddr;
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct MinerConfig {
-    /// GRPC address of base node
+    /// gRPC address of base node
     pub base_node_grpc_address: Option<Multiaddr>,
     /// GRPC authentication for base node
     pub base_node_grpc_authentication: GrpcAuthentication,
-    /// GRPC address of console wallet
-    pub wallet_grpc_address: Option<Multiaddr>,
-    /// GRPC authentication for console wallet
-    pub wallet_grpc_authentication: GrpcAuthentication,
     /// Number of mining threads
     pub num_mining_threads: usize,
     /// Start mining only when base node is bootstrapped and current block height is on the tip of network
@@ -77,8 +71,12 @@ pub struct MinerConfig {
     pub coinbase_extra: String,
     /// Selected network
     pub network: Network,
-    /// Base node reconnect timeout after any GRPC or miner error
+    /// Base node reconnect timeout after any gRPC or miner error
     pub wait_timeout_on_error: u64,
+    /// The Tari wallet address where the mining funds will be sent to
+    pub wallet_payment_address: String,
+    /// Stealth payment yes or no
+    pub stealth_payment: bool,
 }
 
 /// The proof of work data structure that is included in the block header. For the Minotari miner only `Sha3x` is
@@ -100,8 +98,6 @@ impl Default for MinerConfig {
         Self {
             base_node_grpc_address: None,
             base_node_grpc_authentication: GrpcAuthentication::default(),
-            wallet_grpc_address: None,
-            wallet_grpc_authentication: GrpcAuthentication::default(),
             num_mining_threads: num_cpus::get(),
             mine_on_tip_only: true,
             proof_of_work_algo: ProofOfWork::Sha3x,
@@ -112,6 +108,8 @@ impl Default for MinerConfig {
             coinbase_extra: "minotari_miner".to_string(),
             network: Default::default(),
             wait_timeout_on_error: 10,
+            wallet_payment_address: TariAddress::default().to_hex(),
+            stealth_payment: true,
         }
     }
 }
@@ -158,7 +156,6 @@ mine_on_tip_only = false
             .unwrap();
         let config = MinerConfig::load_from(&cfg).expect("Failed to load config");
         assert_eq!(config.num_mining_threads, 2);
-        assert_eq!(config.wallet_grpc_address, MinerConfig::default().wallet_grpc_address);
         assert_eq!(
             config.base_node_grpc_address,
             Some(Multiaddr::from_str("/dns4/my_base_node/tcp/1234").unwrap())

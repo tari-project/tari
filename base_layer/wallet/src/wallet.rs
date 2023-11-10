@@ -482,7 +482,6 @@ where
                 unblinded_output.value,
                 source_address,
                 message,
-                Some(unblinded_output.features.maturity),
                 ImportStatus::Imported,
                 None,
                 None,

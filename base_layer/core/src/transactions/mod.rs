@@ -9,7 +9,7 @@ pub use crypto_factories::CryptoFactories;
 use tari_crypto::hash_domain;
 
 mod coinbase_builder;
-pub use coinbase_builder::{CoinbaseBuildError, CoinbaseBuilder};
+pub use coinbase_builder::{generate_coinbase, CoinbaseBuildError, CoinbaseBuilder};
 
 pub mod fee;
 pub mod tari_amount;

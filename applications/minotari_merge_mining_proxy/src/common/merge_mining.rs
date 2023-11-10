@@ -34,16 +34,13 @@ use crate::error::MmProxyError;
 
 /// Add [coinbase](grpc::Transaction) to [block template](grpc::NewBlockTemplate)
 pub fn add_coinbase(
-    coinbase: grpc::Transaction,
+    coinbase_output: &TransactionOutput,
+    coinbase_kernel: &TransactionKernel,
     block_template: grpc::NewBlockTemplate,
 ) -> Result<grpc::NewBlockTemplate, MmProxyError> {
     let mut block_template = NewBlockTemplate::try_from(block_template)
         .map_err(|e| MmProxyError::MissingDataError(format!("GRPC Conversion Error: {}", e)))?;
-    let output = TransactionOutput::try_from(coinbase.body.as_ref().unwrap().outputs[0].clone())
-        .map_err(MmProxyError::MissingDataError)?;
-    let kernel = TransactionKernel::try_from(coinbase.body.as_ref().unwrap().kernels[0].clone())
-        .map_err(MmProxyError::MissingDataError)?;
-    block_template.body.add_output(output);
-    block_template.body.add_kernel(kernel);
+    block_template.body.add_output(coinbase_output.clone());
+    block_template.body.add_kernel(coinbase_kernel.clone());
     block_template.try_into().map_err(MmProxyError::ConversionError)
 }

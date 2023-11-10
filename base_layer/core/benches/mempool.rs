@@ -38,8 +38,8 @@ mod benches {
         mempool::{Mempool, MempoolConfig},
         test_helpers::blockchain::create_new_blockchain,
         transactions::{
+            key_manager::create_memory_db_key_manager,
             tari_amount::{uT, T},
-            test_helpers::create_test_core_key_manager_with_memory_db,
             transaction_components::{OutputFeatures, Transaction, MAX_TRANSACTION_OUTPUTS},
             CryptoFactories,
         },
@@ -54,7 +54,7 @@ mod benches {
         num_outputs: usize,
         features: OutputFeatures,
     ) -> std::io::Result<Vec<Arc<Transaction>>> {
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let mut txs = Vec::new();
         for _ in 0..num_txs {
             let (tx, _, _) =

@@ -26,6 +26,7 @@ use tari_common::{
     configuration::{Network, StringList},
     SubConfigPath,
 };
+use tari_common_types::tari_address::TariAddress;
 use tari_comms::multiaddr::Multiaddr;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -47,8 +48,6 @@ pub struct MergeMiningProxyConfig {
     pub base_node_grpc_authentication: GrpcAuthentication,
     /// The Minotari wallet's GRPC address
     pub console_wallet_grpc_address: Option<Multiaddr>,
-    /// GRPC authentication for console wallet
-    pub console_wallet_grpc_authentication: GrpcAuthentication,
     /// Address of the minotari_merge_mining_proxy application
     pub listener_address: Multiaddr,
     /// In sole merged mining, the block solution is usually submitted to the Monero blockchain (monerod) as well as to
@@ -71,6 +70,10 @@ pub struct MergeMiningProxyConfig {
     pub coinbase_extra: String,
     /// Selected network
     pub network: Network,
+    /// The Tari wallet address where the mining funds will be sent to
+    pub wallet_payment_address: String,
+    /// Stealth payment yes or no
+    pub stealth_payment: bool,
 }
 
 impl Default for MergeMiningProxyConfig {
@@ -84,7 +87,6 @@ impl Default for MergeMiningProxyConfig {
             base_node_grpc_address: None,
             base_node_grpc_authentication: GrpcAuthentication::default(),
             console_wallet_grpc_address: None,
-            console_wallet_grpc_authentication: GrpcAuthentication::default(),
             listener_address: "/ip4/127.0.0.1/tcp/18081".parse().unwrap(),
             submit_to_origin: true,
             wait_for_initial_sync_at_startup: true,
@@ -92,6 +94,8 @@ impl Default for MergeMiningProxyConfig {
             max_randomx_vms: 5,
             coinbase_extra: "tari_merge_mining_proxy".to_string(),
             network: Default::default(),
+            wallet_payment_address: TariAddress::default().to_hex(),
+            stealth_payment: true,
         }
     }
 }

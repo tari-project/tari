@@ -53,7 +53,6 @@ use tari_core::{
             WalletOutputBuilder,
         },
         transaction_protocol::{sender::TransactionSenderMessage, TransactionMetadata},
-        CoinbaseBuilder,
         CryptoFactories,
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
@@ -237,16 +236,6 @@ where
                 .get_default_recipient_transaction(tsm)
                 .await
                 .map(OutputManagerResponse::RecipientTransactionGenerated),
-            OutputManagerRequest::GetCoinbaseTransaction {
-                tx_id,
-                reward,
-                fees,
-                block_height,
-                extra,
-            } => self
-                .get_coinbase_transaction(tx_id, reward, fees, block_height, extra)
-                .await
-                .map(OutputManagerResponse::CoinbaseTransaction),
             OutputManagerRequest::PrepareToSendTransaction {
                 tx_id,
                 amount,
@@ -411,9 +400,6 @@ where
                     tx_id,
                 })
             },
-            OutputManagerRequest::SetCoinbaseAbandoned(tx_id, abandoned) => self
-                .set_coinbase_abandoned(tx_id, abandoned)
-                .map(|_| OutputManagerResponse::CoinbaseAbandonedSet),
             OutputManagerRequest::CreateClaimShaAtomicSwapTransaction(output_hash, pre_image, fee_per_gram) => {
                 self.claim_sha_atomic_swap_with_hash(output_hash, pre_image, fee_per_gram)
                     .await
@@ -782,7 +768,7 @@ where
 
         self.resources
             .db
-            .add_output_to_be_received(single_round_sender_data.tx_id, output, None)?;
+            .add_output_to_be_received(single_round_sender_data.tx_id, output)?;
 
         let rtp = ReceiverTransactionProtocol::new(
             sender_message.clone(),
@@ -998,70 +984,6 @@ where
         debug!(target: LOG_TARGET, "Prepared transaction (TxId: {}) to send", tx_id);
 
         Ok(stp)
-    }
-
-    /// Request a Coinbase transaction for a specific block height. All existing pending transactions with
-    /// the corresponding output hash will be cancelled.
-    /// The key will be derived from the coinbase specific keychain using the blockheight as an index. The coinbase
-    /// keychain is based on the wallets master_key and the "coinbase" branch.
-    async fn get_coinbase_transaction(
-        &mut self,
-        tx_id: TxId,
-        reward: MicroMinotari,
-        fees: MicroMinotari,
-        block_height: u64,
-        extra: Vec<u8>,
-    ) -> Result<Transaction, OutputManagerError> {
-        debug!(
-            target: LOG_TARGET,
-            "Building coinbase transaction for block_height {} with TxId: {}", block_height, tx_id
-        );
-
-        let (coinbase_spending_key, _) = self
-            .resources
-            .key_manager
-            .get_next_key(TransactionKeyManagerBranch::Coinbase.get_branch_key())
-            .await?;
-        let (coinbase_script_key, _) = self
-            .resources
-            .key_manager
-            .get_next_key(TransactionKeyManagerBranch::CoinbaseScript.get_branch_key())
-            .await?;
-
-        let (tx, wallet_output) = CoinbaseBuilder::new(self.resources.key_manager.clone())
-            .with_block_height(block_height)
-            .with_fees(fees)
-            .with_spend_key_id(coinbase_spending_key)
-            .with_script_key_id(coinbase_script_key)
-            .with_script(script!(Nop))
-            .with_extra(extra)
-            .build_with_reward(&self.resources.consensus_constants, reward)
-            .await?;
-
-        let output = DbWalletOutput::from_wallet_output(
-            wallet_output,
-            &self.resources.key_manager,
-            None,
-            OutputSource::Coinbase,
-            Some(tx_id),
-            None,
-        )
-        .await?;
-
-        // If there is no existing output available, we store the one we produced.
-        match self.resources.db.fetch_by_commitment(output.commitment.clone()) {
-            Ok(_) => {},
-            Err(OutputManagerStorageError::ValueNotFound) => {
-                self.resources
-                    .db
-                    .add_output_to_be_received(tx_id, output, Some(block_height))?;
-
-                self.confirm_encumberance(tx_id)?;
-            },
-            Err(e) => return Err(e.into()),
-        };
-
-        Ok(tx)
     }
 
     #[allow(clippy::too_many_lines)]
@@ -1463,11 +1385,6 @@ where
 
     pub fn fetch_invalid_outputs(&self) -> Result<Vec<DbWalletOutput>, OutputManagerError> {
         Ok(self.resources.db.get_invalid_outputs()?)
-    }
-
-    pub fn set_coinbase_abandoned(&self, tx_id: TxId, abandoned: bool) -> Result<(), OutputManagerError> {
-        self.resources.db.set_coinbase_abandoned(tx_id, abandoned)?;
-        Ok(())
     }
 
     fn default_features_and_scripts_size(&self) -> Result<usize, OutputManagerError> {
@@ -2299,7 +2216,7 @@ where
             wallet_output,
             &self.resources.key_manager,
             None,
-            OutputSource::Refund,
+            OutputSource::HtlcRefund,
             Some(tx_id),
             None,
         )

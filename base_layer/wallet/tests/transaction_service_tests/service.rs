@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    collections::HashMap,
     convert::{TryFrom, TryInto},
     mem::size_of,
     path::Path,
@@ -50,7 +49,7 @@ use minotari_wallet::{
     output_manager_service::{
         config::OutputManagerServiceConfig,
         handle::{OutputManagerEvent, OutputManagerHandle},
-        service::{Balance, OutputManagerService},
+        service::OutputManagerService,
         storage::{
             database::OutputManagerDatabase,
             models::KnownOneSidedPaymentScript,
@@ -108,29 +107,20 @@ use tari_core::{
         proto::wallet_rpc::{TxLocation, TxQueryResponse, TxSubmissionRejectionReason, TxSubmissionResponse},
         rpc::BaseNodeWalletRpcServer,
     },
-    blocks::BlockHeader,
     consensus::{ConsensusConstantsBuilder, ConsensusManager},
     covenants::Covenant,
     one_sided::shared_secret_to_output_encryption_key,
-    proto::{
-        base_node as base_node_proto,
-        base_node::{
-            TxLocation as TxLocationProto,
-            TxQueryBatchResponse as TxQueryBatchResponseProto,
-            TxQueryBatchResponses as TxQueryBatchResponsesProto,
-        },
-        types::Signature as SignatureProto,
-    },
+    proto::base_node as base_node_proto,
     transactions::{
         fee::Fee,
-        key_manager::{TransactionKeyManagerInitializer, TransactionKeyManagerInterface},
-        tari_amount::*,
-        test_helpers::{
-            create_test_core_key_manager_with_memory_db,
-            create_wallet_output_with_data,
-            TestKeyManager,
-            TestParams,
+        key_manager::{
+            create_memory_db_key_manager,
+            MemoryDbKeyManager,
+            TransactionKeyManagerInitializer,
+            TransactionKeyManagerInterface,
         },
+        tari_amount::*,
+        test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{KernelBuilder, OutputFeatures, Transaction},
         transaction_protocol::{
             proto::protocol as proto,
@@ -159,7 +149,7 @@ use tari_script::{inputs, one_sided_payment_script, script, ExecutionStack};
 use tari_service_framework::{reply_channel, RegisterHandle, StackBuilder};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::{comms_and_services::get_next_memory_address, random};
-use tari_utilities::{epoch_time::EpochTime, ByteArray, SafePassword};
+use tari_utilities::{ByteArray, SafePassword};
 use tempfile::tempdir;
 use tokio::{
     sync::{broadcast, broadcast::channel},
@@ -188,7 +178,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
     OutputManagerHandle,
     CommsNode,
     WalletConnectivityHandle,
-    TestKeyManager,
+    MemoryDbKeyManager,
 ) {
     let (publisher, subscription_factory) = pubsub_connector(100);
     let subscription_factory = Arc::new(subscription_factory);
@@ -230,7 +220,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
         .add_initializer(RegisterHandle::new(comms.connectivity()))
         .add_initializer(OutputManagerServiceInitializer::<
             OutputManagerSqliteDatabase,
-            TestKeyManager,
+            MemoryDbKeyManager,
         >::new(
             OutputManagerServiceConfig::default(),
             oms_backend,
@@ -243,7 +233,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
             cipher,
             factories.clone(),
         ))
-        .add_initializer(TransactionServiceInitializer::<_, _, TestKeyManager>::new(
+        .add_initializer(TransactionServiceInitializer::<_, _, MemoryDbKeyManager>::new(
             TransactionServiceConfig {
                 broadcast_monitoring_timeout: Duration::from_secs(5),
                 chain_monitoring_timeout: Duration::from_secs(5),
@@ -265,7 +255,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
         .unwrap();
 
     let output_manager_handle = handles.expect_handle::<OutputManagerHandle>();
-    let key_manager_handle = handles.expect_handle::<TestKeyManager>();
+    let key_manager_handle = handles.expect_handle::<MemoryDbKeyManager>();
     let transaction_service_handle = handles.expect_handle::<TransactionServiceHandle>();
     let connectivity_service_handle = handles.expect_handle::<WalletConnectivityHandle>();
 
@@ -283,7 +273,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
 pub struct TransactionServiceNoCommsInterface {
     transaction_service_handle: TransactionServiceHandle,
     output_manager_service_handle: OutputManagerHandle,
-    key_manager_handle: TestKeyManager,
+    key_manager_handle: MemoryDbKeyManager,
     outbound_service_mock_state: OutboundServiceMockState,
     transaction_send_message_channel:
         Sender<DomainMessage<Result<proto::TransactionSenderMessage, prost::DecodeError>>>,
@@ -373,7 +363,7 @@ async fn setup_transaction_service_no_comms(
 
     let ts_service_db = TransactionServiceSqliteDatabase::new(db_connection.clone(), cipher.clone());
     let ts_db = TransactionDatabase::new(ts_service_db.clone());
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let oms_db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(db_connection));
     let wallet_identity = WalletIdentity::new(node_identity.clone(), Network::LocalNet);
     let output_manager_service = OutputManagerService::new(
@@ -1980,7 +1970,7 @@ async fn test_accepting_unknown_tx_id_and_malformed_reply() {
 #[tokio::test]
 async fn finalize_tx_with_incorrect_pubkey() {
     let factories = CryptoFactories::default();
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
 
     let temp_dir = tempdir().unwrap();
     let path_string = temp_dir.path().to_str().unwrap().to_string();
@@ -2101,7 +2091,7 @@ async fn finalize_tx_with_incorrect_pubkey() {
 #[tokio::test]
 async fn finalize_tx_with_missing_output() {
     let factories = CryptoFactories::default();
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let temp_dir = tempdir().unwrap();
     let path_string = temp_dir.path().to_str().unwrap().to_string();
 
@@ -2463,7 +2453,6 @@ async fn test_power_mode_updates() {
         timestamp: Utc::now().naive_utc(),
         cancelled: None,
         direction: TransactionDirection::Outbound,
-        coinbase_block_height: None,
         send_count: 0,
         last_send_timestamp: None,
         transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
@@ -2493,7 +2482,6 @@ async fn test_power_mode_updates() {
         timestamp: Utc::now().naive_utc(),
         cancelled: None,
         direction: TransactionDirection::Outbound,
-        coinbase_block_height: None,
         send_count: 0,
         last_send_timestamp: None,
         transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
@@ -2749,7 +2737,7 @@ async fn test_transaction_cancellation() {
         .remove(&tx_id)
         .is_none());
 
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let input = create_wallet_output_with_data(
         script!(Nop),
         OutputFeatures::default(),
@@ -2761,7 +2749,7 @@ async fn test_transaction_cancellation() {
     .unwrap();
 
     let constants = create_consensus_constants(0);
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let mut builder = SenderTransactionProtocol::builder(constants, key_manager.clone());
     let amount = MicroMinotari::from(10_000);
     let change = TestParams::new(&key_manager).await;
@@ -3567,7 +3555,7 @@ async fn test_restarting_transaction_protocols() {
     .await;
     let constants = create_consensus_constants(0);
     let fee_calc = Fee::new(*constants.transaction_weight_params());
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let mut builder = SenderTransactionProtocol::builder(constants.clone(), key_manager.clone());
     let fee = fee_calc.calculate(MicroMinotari(4), 1, 1, 1, 0);
     let change = TestParams::new(&key_manager).await;
@@ -3746,951 +3734,6 @@ async fn test_restarting_transaction_protocols() {
         }
     }
     assert!(received_finalized, "Should have received finalized tx");
-}
-
-#[tokio::test]
-async fn test_coinbase_transactions_rejection_same_hash_but_accept_on_same_height() {
-    let factories = CryptoFactories::default();
-
-    let (connection, _temp_dir) = make_wallet_database_connection(None);
-
-    let mut alice_ts_interface = setup_transaction_service_no_comms(factories, connection, None).await;
-
-    let block_height_a = 10;
-    let block_height_b = block_height_a + 1;
-
-    let fees1 = 1000 * uT;
-    let reward1 = 1_000_000 * uT;
-
-    let fees2 = 2000 * uT;
-    let reward2 = 2_000_000 * uT;
-
-    let fees3 = 4000 * uT;
-    let reward3 = 4_000_000 * uT;
-
-    // Create a coinbase Txn at the first block height
-    let _tx1 = alice_ts_interface
-        .transaction_service_handle
-        .generate_coinbase_transaction(reward1, fees1, block_height_a, b"test".to_vec())
-        .await
-        .unwrap();
-    let transactions = alice_ts_interface
-        .transaction_service_handle
-        .get_completed_transactions()
-        .await
-        .unwrap();
-    assert_eq!(transactions.len(), 1);
-    let _tx_id1 = transactions
-        .values()
-        .find(|tx| tx.amount == fees1 + reward1)
-        .unwrap()
-        .tx_id;
-    assert_eq!(
-        alice_ts_interface
-            .output_manager_service_handle
-            .get_balance()
-            .await
-            .unwrap()
-            .pending_incoming_balance,
-        MicroMinotari::from(0)
-    );
-
-    // Create a second coinbase txn at the first block height, with same output hash as the previous one
-    // the previous one should be cancelled
-    let _tx1b = alice_ts_interface
-        .transaction_service_handle
-        .generate_coinbase_transaction(reward1, fees1, block_height_a, b"test".to_vec())
-        .await
-        .unwrap();
-    let transactions = alice_ts_interface
-        .transaction_service_handle
-        .get_completed_transactions()
-        .await
-        .unwrap();
-    assert_eq!(transactions.len(), 1);
-    let _tx_id1b = transactions
-        .values()
-        .find(|tx| tx.amount == fees1 + reward1)
-        .unwrap()
-        .tx_id;
-    assert_eq!(
-        alice_ts_interface
-            .output_manager_service_handle
-            .get_balance()
-            .await
-            .unwrap()
-            .pending_incoming_balance,
-        MicroMinotari::from(0)
-    );
-
-    // Create another coinbase Txn at the same block height; the previous one should not be cancelled
-    let _tx2 = alice_ts_interface
-        .transaction_service_handle
-        .generate_coinbase_transaction(reward2, fees2, block_height_a, b"test".to_vec())
-        .await
-        .unwrap();
-    let transactions = alice_ts_interface
-        .transaction_service_handle
-        .get_completed_transactions()
-        .await
-        .unwrap(); // Only one valid coinbase txn remains
-    assert_eq!(transactions.len(), 2);
-    let _tx_id2 = transactions
-        .values()
-        .find(|tx| tx.amount == fees2 + reward2)
-        .unwrap()
-        .tx_id;
-    assert_eq!(
-        alice_ts_interface
-            .output_manager_service_handle
-            .get_balance()
-            .await
-            .unwrap()
-            .pending_incoming_balance,
-        MicroMinotari::from(0)
-    );
-
-    // Create a third coinbase Txn at the second block height; all the three should be valid
-    let _tx3 = alice_ts_interface
-        .transaction_service_handle
-        .generate_coinbase_transaction(reward3, fees3, block_height_b, b"test".to_vec())
-        .await
-        .unwrap();
-    let transactions = alice_ts_interface
-        .transaction_service_handle
-        .get_completed_transactions()
-        .await
-        .unwrap();
-    assert_eq!(transactions.len(), 3);
-    let _tx_id3 = transactions
-        .values()
-        .find(|tx| tx.amount == fees3 + reward3)
-        .unwrap()
-        .tx_id;
-    assert_eq!(
-        alice_ts_interface
-            .output_manager_service_handle
-            .get_balance()
-            .await
-            .unwrap()
-            .pending_incoming_balance,
-        MicroMinotari::from(0)
-    );
-
-    assert!(transactions.values().any(|tx| tx.amount == fees1 + reward1));
-    assert!(transactions.values().any(|tx| tx.amount == fees2 + reward2));
-    assert!(transactions.values().any(|tx| tx.amount == fees3 + reward3));
-}
-
-#[tokio::test]
-async fn test_coinbase_generation_and_monitoring() {
-    let factories = CryptoFactories::default();
-
-    let (connection, _temp_dir) = make_wallet_database_connection(None);
-    let mut alice_ts_interface = setup_transaction_service_no_comms(factories, connection, None).await;
-
-    let tx_backend = alice_ts_interface.ts_db;
-    let db = TransactionDatabase::new(tx_backend);
-    let mut alice_event_stream = alice_ts_interface.transaction_service_handle.get_event_stream();
-    alice_ts_interface
-        .base_node_rpc_mock_state
-        .set_response_delay(Some(Duration::from_secs(1)));
-
-    let block_height_a = 10;
-    let block_height_b = block_height_a + 1;
-
-    let fees1 = 1000 * uT;
-    let reward1 = 1_000_000 * uT;
-
-    let fees2 = 2000 * uT;
-    let fees2b = 5000 * uT;
-    let reward2 = 2_000_000 * uT;
-
-    // Create a coinbase Txn at the first block height
-    let _tx1 = alice_ts_interface
-        .transaction_service_handle
-        .generate_coinbase_transaction(reward1, fees1, block_height_a, b"test".to_vec())
-        .await
-        .unwrap();
-    let transactions = alice_ts_interface
-        .transaction_service_handle
-        .get_completed_transactions()
-        .await
-        .unwrap();
-    assert_eq!(transactions.len(), 1);
-    let tx_id1 = transactions
-        .values()
-        .find(|tx| tx.amount == fees1 + reward1)
-        .unwrap()
-        .tx_id;
-    assert_eq!(
-        alice_ts_interface
-            .output_manager_service_handle
-            .get_balance()
-            .await
-            .unwrap()
-            .pending_incoming_balance,
-        MicroMinotari::from(0)
-    );
-
-    // Create another coinbase Txn at the next block height
-    let _tx2 = alice_ts_interface
-        .transaction_service_handle
-        .generate_coinbase_transaction(reward2, fees2, block_height_b, b"test".to_vec())
-        .await
-        .unwrap();
-    let transactions = alice_ts_interface
-        .transaction_service_handle
-        .get_completed_transactions()
-        .await
-        .unwrap();
-    assert_eq!(transactions.len(), 2);
-    let tx_id2 = transactions
-        .values()
-        .find(|tx| tx.amount == fees2 + reward2)
-        .unwrap()
-        .tx_id;
-    assert_eq!(
-        alice_ts_interface
-            .output_manager_service_handle
-            .get_balance()
-            .await
-            .unwrap()
-            .pending_incoming_balance,
-        MicroMinotari::from(0)
-    );
-
-    // Take out a second one at the second height which should not overwrite the initial one
-    let _tx2b = alice_ts_interface
-        .transaction_service_handle
-        .generate_coinbase_transaction(reward2, fees2b, block_height_b, b"test".to_vec())
-        .await
-        .unwrap();
-    let transactions = alice_ts_interface
-        .transaction_service_handle
-        .get_completed_transactions()
-        .await
-        .unwrap();
-    assert_eq!(transactions.len(), 3);
-    let tx_id2b = transactions
-        .values()
-        .find(|tx| tx.amount == fees2b + reward2)
-        .unwrap()
-        .tx_id;
-    assert_eq!(
-        alice_ts_interface
-            .output_manager_service_handle
-            .get_balance()
-            .await
-            .unwrap()
-            .pending_incoming_balance,
-        MicroMinotari::from(0)
-    );
-
-    assert!(transactions.values().any(|tx| tx.amount == fees1 + reward1));
-    assert!(transactions.values().any(|tx| tx.amount == fees2b + reward2));
-
-    let delay = sleep(Duration::from_secs(30));
-    tokio::pin!(delay);
-    let mut count = 0usize;
-    loop {
-        tokio::select! {
-            event = alice_event_stream.recv() => {
-                if let TransactionEvent::ReceivedFinalizedTransaction(tx_id) = &*event.unwrap() {
-                    if tx_id == &tx_id1 || tx_id == &tx_id2 || tx_id == &tx_id2b {
-                        count += 1;
-                    }
-                    if count == 3 {
-                        break;
-                    }
-                }
-            },
-            () = &mut delay => {
-                break;
-            },
-        }
-    }
-    assert_eq!(
-        count, 3,
-        "Expected exactly two 'ReceivedFinalizedTransaction(_)' events"
-    );
-
-    // Now we will test validation where tx1 will not be found but tx2b will be unconfirmed, then confirmed.
-    let tx1 = db.get_completed_transaction(tx_id1).unwrap();
-    let tx2b = db.get_completed_transaction(tx_id2b).unwrap();
-
-    let timestamp = EpochTime::now().as_u64();
-    let mut block_headers = HashMap::new();
-    for i in 0..=4 {
-        let mut block_header = BlockHeader::new(1);
-        block_header.height = i;
-        block_headers.insert(i, block_header.clone());
-    }
-    alice_ts_interface
-        .base_node_rpc_mock_state
-        .set_blocks(block_headers.clone());
-    let mut transaction_query_batch_responses = vec![
-        TxQueryBatchResponseProto {
-            signature: Some(SignatureProto::from(
-                tx1.transaction.first_kernel_excess_sig().unwrap().clone(),
-            )),
-            location: TxLocationProto::from(TxLocation::NotStored) as i32,
-            block_hash: vec![],
-            confirmations: 0,
-            block_height: 0,
-            mined_timestamp: 0,
-        },
-        TxQueryBatchResponseProto {
-            signature: Some(SignatureProto::from(
-                tx2b.transaction.first_kernel_excess_sig().unwrap().clone(),
-            )),
-            location: TxLocationProto::from(TxLocation::Mined) as i32,
-            block_hash: block_headers.get(&1).unwrap().hash().to_vec(),
-            confirmations: 0,
-            block_height: 1,
-            mined_timestamp: timestamp,
-        },
-    ];
-    let batch_query_response = TxQueryBatchResponsesProto {
-        responses: transaction_query_batch_responses.clone(),
-        is_synced: true,
-        tip_hash: block_headers.get(&1).unwrap().hash().to_vec(),
-        height_of_longest_chain: 1,
-        tip_mined_timestamp: timestamp,
-    };
-
-    alice_ts_interface
-        .base_node_rpc_mock_state
-        .set_transaction_query_batch_responses(batch_query_response);
-
-    alice_ts_interface
-        .transaction_service_handle
-        .validate_transactions()
-        .await
-        .expect("Validation should start");
-
-    let _tx_batch_query_calls = alice_ts_interface
-        .base_node_rpc_mock_state
-        .wait_pop_transaction_batch_query_calls(2, Duration::from_secs(30))
-        .await
-        .unwrap();
-
-    let completed_txs = alice_ts_interface
-        .transaction_service_handle
-        .get_completed_transactions()
-        .await
-        .unwrap();
-
-    assert_eq!(completed_txs.len(), 3);
-
-    let tx = completed_txs.get(&tx_id1).unwrap();
-    assert_eq!(tx.status, TransactionStatus::Coinbase);
-
-    let tx = completed_txs.get(&tx_id2b).unwrap();
-    assert_eq!(tx.status, TransactionStatus::MinedUnconfirmed);
-
-    // Now we will have tx_id2b becoming confirmed
-    let _tx_query_batch_responses = transaction_query_batch_responses.pop();
-    transaction_query_batch_responses.push(TxQueryBatchResponseProto {
-        signature: Some(SignatureProto::from(
-            tx2b.transaction.first_kernel_excess_sig().unwrap().clone(),
-        )),
-        location: TxLocationProto::from(TxLocation::Mined) as i32,
-        block_hash: block_headers.get(&4).unwrap().hash().to_vec(),
-        confirmations: 3,
-        block_height: 4,
-        mined_timestamp: timestamp,
-    });
-
-    let batch_query_response = TxQueryBatchResponsesProto {
-        responses: transaction_query_batch_responses,
-        is_synced: true,
-        tip_hash: block_headers.get(&4).unwrap().hash().to_vec(),
-        height_of_longest_chain: 4,
-        tip_mined_timestamp: timestamp,
-    };
-    alice_ts_interface
-        .base_node_rpc_mock_state
-        .set_transaction_query_batch_responses(batch_query_response);
-
-    alice_ts_interface
-        .transaction_service_handle
-        .validate_transactions()
-        .await
-        .expect("Validation should start");
-
-    let _tx_batch_query_calls = alice_ts_interface
-        .base_node_rpc_mock_state
-        .wait_pop_transaction_batch_query_calls(2, Duration::from_secs(30))
-        .await
-        .unwrap();
-
-    let completed_txs = alice_ts_interface
-        .transaction_service_handle
-        .get_completed_transactions()
-        .await
-        .unwrap();
-
-    let tx = completed_txs.get(&tx_id2b).unwrap();
-    assert_eq!(tx.status, TransactionStatus::MinedConfirmed);
-}
-
-#[tokio::test]
-async fn test_coinbase_abandoned() {
-    let factories = CryptoFactories::default();
-
-    let (connection, _temp_dir) = make_wallet_database_connection(None);
-
-    let mut alice_ts_interface = setup_transaction_service_no_comms(factories, connection, None).await;
-    let mut alice_event_stream = alice_ts_interface.transaction_service_handle.get_event_stream();
-
-    let block_height_a = 10;
-
-    // First we create un unmined coinbase and then abandon it
-    let fees1 = 1000 * uT;
-    let reward1 = 1_000_000 * uT;
-
-    let tx1 = alice_ts_interface
-        .transaction_service_handle
-        .generate_coinbase_transaction(reward1, fees1, block_height_a, b"test".to_vec())
-        .await
-        .unwrap();
-    let transactions = alice_ts_interface
-        .transaction_service_handle
-        .get_completed_transactions()
-        .await
-        .unwrap();
-    assert_eq!(transactions.len(), 1);
-    let tx_id1 = transactions
-        .values()
-        .find(|tx| tx.amount == fees1 + reward1)
-        .unwrap()
-        .tx_id;
-    assert_eq!(
-        alice_ts_interface
-            .output_manager_service_handle
-            .get_balance()
-            .await
-            .unwrap()
-            .pending_incoming_balance,
-        MicroMinotari::from(0)
-    );
-
-    let timestamp = EpochTime::now().as_u64();
-
-    let transaction_query_batch_responses = vec![TxQueryBatchResponseProto {
-        signature: Some(SignatureProto::from(tx1.first_kernel_excess_sig().unwrap().clone())),
-        location: TxLocationProto::from(TxLocation::InMempool) as i32,
-        block_hash: vec![],
-        confirmations: 0,
-        block_height: 0,
-        mined_timestamp: 0,
-    }];
-
-    let batch_query_response = TxQueryBatchResponsesProto {
-        responses: transaction_query_batch_responses,
-        is_synced: true,
-        tip_hash: [5u8; 32].to_vec(),
-        height_of_longest_chain: block_height_a + TransactionServiceConfig::default().num_confirmations_required + 1,
-        tip_mined_timestamp: timestamp,
-    };
-
-    alice_ts_interface
-        .base_node_rpc_mock_state
-        .set_transaction_query_batch_responses(batch_query_response);
-
-    let balance = alice_ts_interface
-        .output_manager_service_handle
-        .get_balance()
-        .await
-        .unwrap();
-    assert_eq!(balance.pending_incoming_balance, MicroMinotari::from(0));
-
-    let validation_id = alice_ts_interface
-        .transaction_service_handle
-        .validate_transactions()
-        .await
-        .expect("Validation should start");
-
-    let delay = sleep(Duration::from_secs(30));
-    tokio::pin!(delay);
-    let mut cancelled = false;
-    let mut completed = false;
-    loop {
-        tokio::select! {
-            event = alice_event_stream.recv() => {
-                match &*event.unwrap() {
-                    TransactionEvent::TransactionValidationCompleted(id) => {
-                        if id == &validation_id  {
-                            completed = true;
-                        }
-                    },
-                    TransactionEvent::TransactionCancelled(tx_id, _) => {
-                         if tx_id == &tx_id1  {
-                            cancelled = true;
-                        }
-                    },
-                    _ => (),
-                }
-
-                if cancelled && completed {
-                    break;
-                }
-            },
-            () = &mut delay => {
-                break;
-            },
-        }
-    }
-    assert!(cancelled, "Expected a TransactionCancelled event");
-    assert!(completed, "Expected a TransactionValidationCompleted event");
-
-    let txs = alice_ts_interface
-        .transaction_service_handle
-        .get_cancelled_completed_transactions()
-        .await
-        .unwrap();
-    assert!(txs.get(&tx_id1).is_some());
-
-    let balance = alice_ts_interface
-        .output_manager_service_handle
-        .get_balance()
-        .await
-        .unwrap();
-    assert_eq!(balance, Balance {
-        available_balance: MicroMinotari(0),
-        time_locked_balance: Some(MicroMinotari(0)),
-        pending_incoming_balance: MicroMinotari(0),
-        pending_outgoing_balance: MicroMinotari(0)
-    });
-
-    let invalid_txs = alice_ts_interface
-        .output_manager_service_handle
-        .get_invalid_outputs()
-        .await
-        .unwrap();
-    assert!(invalid_txs.is_empty());
-
-    // Now we will make a coinbase that will be mined, reorged out and then reorged back in
-    let fees2 = 2000 * uT;
-    let reward2 = 2_000_000 * uT;
-    let block_height_b = 11;
-
-    let tx2 = alice_ts_interface
-        .transaction_service_handle
-        .generate_coinbase_transaction(reward2, fees2, block_height_b, b"test".to_vec())
-        .await
-        .unwrap();
-    let transactions = alice_ts_interface
-        .transaction_service_handle
-        .get_completed_transactions()
-        .await
-        .unwrap();
-    assert_eq!(transactions.len(), 1);
-    let tx_id2 = transactions
-        .values()
-        .find(|tx| tx.amount == fees2 + reward2)
-        .unwrap()
-        .tx_id;
-    assert_eq!(
-        alice_ts_interface
-            .output_manager_service_handle
-            .get_balance()
-            .await
-            .unwrap()
-            .pending_incoming_balance,
-        MicroMinotari::from(0)
-    );
-
-    let transaction_query_batch_responses = vec![
-        TxQueryBatchResponseProto {
-            signature: Some(SignatureProto::from(tx1.first_kernel_excess_sig().unwrap().clone())),
-            location: TxLocationProto::from(TxLocation::NotStored) as i32,
-            block_hash: vec![],
-            confirmations: 0,
-            block_height: 0,
-            mined_timestamp: 0,
-        },
-        TxQueryBatchResponseProto {
-            signature: Some(SignatureProto::from(tx2.first_kernel_excess_sig().unwrap().clone())),
-            location: TxLocationProto::from(TxLocation::Mined) as i32,
-            block_hash: [11u8; 32].to_vec(),
-            confirmations: 2,
-            block_height: block_height_b,
-            mined_timestamp: timestamp,
-        },
-    ];
-
-    let batch_query_response = TxQueryBatchResponsesProto {
-        responses: transaction_query_batch_responses,
-        is_synced: true,
-        tip_hash: [13u8; 32].to_vec(),
-        height_of_longest_chain: block_height_b + 2,
-        tip_mined_timestamp: timestamp,
-    };
-
-    alice_ts_interface
-        .base_node_rpc_mock_state
-        .set_transaction_query_batch_responses(batch_query_response);
-
-    let mut block_headers = HashMap::new();
-    for i in 0..=(block_height_b + 2) {
-        let mut block_header = BlockHeader::new(1);
-        block_header.height = i;
-        block_headers.insert(i, block_header.clone());
-    }
-    alice_ts_interface.base_node_rpc_mock_state.set_blocks(block_headers);
-
-    let validation_id = alice_ts_interface
-        .transaction_service_handle
-        .validate_transactions()
-        .await
-        .expect("Validation should start");
-
-    let delay = sleep(Duration::from_secs(30));
-    tokio::pin!(delay);
-    let mut completed = false;
-    let mut mined_unconfirmed = false;
-    loop {
-        tokio::select! {
-            event = alice_event_stream.recv() => {
-                match &*event.unwrap() {
-                    TransactionEvent::TransactionValidationCompleted(id) => {
-                        if id == &validation_id  {
-                            completed = true;
-                        }
-                    },
-                    TransactionEvent::TransactionMinedUnconfirmed{tx_id, num_confirmations:_, is_valid: _} => {
-                         if tx_id == &tx_id2  {
-                            mined_unconfirmed = true;
-                        }
-                    },
-                    _ => (),
-                }
-
-                if mined_unconfirmed && completed {
-                    break;
-                }
-            },
-            () = &mut delay => {
-                break;
-            },
-        }
-    }
-    assert!(mined_unconfirmed, "Expected a TransactionMinedUnconfirmed event");
-    assert!(completed, "Expected a TransactionValidationCompleted event");
-
-    let tx = alice_ts_interface
-        .transaction_service_handle
-        .get_completed_transaction(tx_id2)
-        .await
-        .unwrap();
-    assert_eq!(tx.status, TransactionStatus::MinedUnconfirmed);
-
-    // Now we create a reorg
-    let transaction_query_batch_responses = vec![
-        TxQueryBatchResponseProto {
-            signature: Some(SignatureProto::from(tx1.first_kernel_excess_sig().unwrap().clone())),
-            location: TxLocationProto::from(TxLocation::NotStored) as i32,
-            block_hash: vec![],
-            confirmations: 0,
-            block_height: 0,
-            mined_timestamp: 0,
-        },
-        TxQueryBatchResponseProto {
-            signature: Some(SignatureProto::from(tx2.first_kernel_excess_sig().unwrap().clone())),
-            location: TxLocationProto::from(TxLocation::NotStored) as i32,
-            block_hash: vec![],
-            confirmations: 0,
-            block_height: 0,
-            mined_timestamp: 0,
-        },
-    ];
-
-    let batch_query_response = TxQueryBatchResponsesProto {
-        responses: transaction_query_batch_responses,
-        is_synced: true,
-        tip_hash: [12u8; 32].to_vec(),
-        height_of_longest_chain: block_height_b + TransactionServiceConfig::default().num_confirmations_required + 1,
-        tip_mined_timestamp: timestamp,
-    };
-
-    alice_ts_interface
-        .base_node_rpc_mock_state
-        .set_transaction_query_batch_responses(batch_query_response);
-
-    let mut block_headers = HashMap::new();
-    for i in 0..=(block_height_b + TransactionServiceConfig::default().num_confirmations_required + 1) {
-        let mut block_header = BlockHeader::new(2);
-        block_header.height = i;
-        block_headers.insert(i, block_header.clone());
-    }
-    alice_ts_interface.base_node_rpc_mock_state.set_blocks(block_headers);
-
-    let validation_id = alice_ts_interface
-        .transaction_service_handle
-        .validate_transactions()
-        .await
-        .expect("Validation should start");
-
-    let delay = sleep(Duration::from_secs(30));
-    tokio::pin!(delay);
-    let mut completed = false;
-    let mut broadcast = false;
-    let mut cancelled = false;
-    loop {
-        tokio::select! {
-            event = alice_event_stream.recv() => {
-                match &*event.unwrap() {
-                    TransactionEvent::TransactionBroadcast(tx_id) => {
-                        if tx_id == &tx_id2  {
-                           broadcast = true;
-                        }
-                    },
-                    TransactionEvent::TransactionCancelled(tx_id, _) => {
-                         if tx_id == &tx_id2  {
-                            cancelled = true;
-                        }
-                    },
-                    TransactionEvent::TransactionValidationCompleted(id) => {
-                        if id == &validation_id  {
-                            completed = true;
-                        }
-                    },
-                    _ => (),
-                }
-
-                if cancelled && broadcast && completed {
-                    break;
-                }
-            },
-            () = &mut delay => {
-                break;
-            },
-        }
-    }
-    assert!(cancelled, "Expected a TransactionCancelled event");
-    assert!(broadcast, "Expected a TransactionBroadcast event");
-    assert!(completed, "Expected a TransactionValidationCompleted event");
-
-    let txs = alice_ts_interface
-        .transaction_service_handle
-        .get_cancelled_completed_transactions()
-        .await
-        .unwrap();
-
-    assert!(txs.get(&tx_id1).is_some());
-    assert!(txs.get(&tx_id2).is_some());
-
-    let balance = alice_ts_interface
-        .output_manager_service_handle
-        .get_balance()
-        .await
-        .unwrap();
-    assert_eq!(balance, Balance {
-        available_balance: MicroMinotari(0),
-        time_locked_balance: Some(MicroMinotari(0)),
-        pending_incoming_balance: MicroMinotari(0),
-        pending_outgoing_balance: MicroMinotari(0)
-    });
-
-    // Now reorg again and have tx2 be mined
-    let mut block_headers = HashMap::new();
-    for i in 0..=15 {
-        let mut block_header = BlockHeader::new(1);
-        block_header.height = i;
-        block_headers.insert(i, block_header.clone());
-    }
-    alice_ts_interface
-        .base_node_rpc_mock_state
-        .set_blocks(block_headers.clone());
-
-    let transaction_query_batch_responses = vec![
-        TxQueryBatchResponseProto {
-            signature: Some(SignatureProto::from(tx1.first_kernel_excess_sig().unwrap().clone())),
-            location: TxLocationProto::from(TxLocation::NotStored) as i32,
-            block_hash: vec![],
-            confirmations: 0,
-            block_height: 0,
-            mined_timestamp: 0,
-        },
-        TxQueryBatchResponseProto {
-            signature: Some(SignatureProto::from(tx2.first_kernel_excess_sig().unwrap().clone())),
-            location: TxLocationProto::from(TxLocation::Mined) as i32,
-            block_hash: block_headers.get(&10).unwrap().hash().to_vec(),
-            confirmations: 5,
-            block_height: 10,
-            mined_timestamp: timestamp,
-        },
-    ];
-
-    let batch_query_response = TxQueryBatchResponsesProto {
-        responses: transaction_query_batch_responses,
-        is_synced: true,
-        tip_hash: [20u8; 32].to_vec(),
-        height_of_longest_chain: 20,
-        tip_mined_timestamp: timestamp,
-    };
-
-    alice_ts_interface
-        .base_node_rpc_mock_state
-        .set_transaction_query_batch_responses(batch_query_response);
-
-    let validation_id = alice_ts_interface
-        .transaction_service_handle
-        .validate_transactions()
-        .await
-        .expect("Validation should start");
-
-    let delay = sleep(Duration::from_secs(60));
-    tokio::pin!(delay);
-    let mut mined = false;
-    let mut cancelled = false;
-    let mut completed = false;
-    loop {
-        tokio::select! {
-            event = alice_event_stream.recv() => {
-                match &*event.unwrap() {
-                    TransactionEvent::TransactionMined { tx_id, is_valid: _ }  => {
-                        if tx_id == &tx_id2  {
-                            mined = true;
-                        }
-                    },
-                    TransactionEvent::TransactionCancelled(tx_id, _) => {
-                         if tx_id == &tx_id1  {
-                            cancelled = true;
-                        }
-                    },
-                    TransactionEvent::TransactionValidationCompleted(id) => {
-                        if id == &validation_id  {
-                            completed = true;
-                        }
-                    },
-                    _ => (),
-                }
-
-                if mined && cancelled && completed {
-                    break;
-                }
-            },
-            () = &mut delay => {
-                break;
-            },
-        }
-    }
-    assert!(mined, "Expected to received TransactionMined event");
-    assert!(cancelled, "Expected to received TransactionCancelled event");
-    assert!(completed, "Expected a TransactionValidationCompleted event");
-}
-
-#[tokio::test]
-async fn test_coinbase_transaction_reused_for_same_height() {
-    let factories = CryptoFactories::default();
-    let (connection, _temp_dir) = make_wallet_database_connection(None);
-
-    let mut ts_interface = setup_transaction_service_no_comms(factories, connection, None).await;
-
-    let blockheight1 = 10;
-    let fees1 = 2000 * uT;
-    let reward1 = 1_000_000 * uT;
-
-    let blockheight2 = 11;
-    let fees2 = 3000 * uT;
-    let reward2 = 2_000_000 * uT;
-
-    // a requested coinbase transaction for the same height and amount should be the same
-    let tx1 = ts_interface
-        .transaction_service_handle
-        .generate_coinbase_transaction(reward1, fees1, blockheight1, b"test".to_vec())
-        .await
-        .unwrap();
-
-    let tx2 = ts_interface
-        .transaction_service_handle
-        .generate_coinbase_transaction(reward1, fees1, blockheight1, b"test".to_vec())
-        .await
-        .unwrap();
-
-    assert_eq!(tx1, tx2);
-    let transactions = ts_interface
-        .transaction_service_handle
-        .get_completed_transactions()
-        .await
-        .unwrap();
-
-    assert_eq!(transactions.len(), 1);
-    let mut amount = MicroMinotari::zero();
-    for tx in transactions.values() {
-        amount += tx.amount;
-    }
-    assert_eq!(amount, fees1 + reward1);
-    assert_eq!(
-        ts_interface
-            .output_manager_service_handle
-            .get_balance()
-            .await
-            .unwrap()
-            .pending_incoming_balance,
-        MicroMinotari::from(0)
-    );
-
-    // a requested coinbase transaction for the same height but new amount should be different
-    let tx3 = ts_interface
-        .transaction_service_handle
-        .generate_coinbase_transaction(reward2, fees2, blockheight1, b"test".to_vec())
-        .await
-        .unwrap();
-
-    assert_ne!(tx3, tx1);
-    let transactions = ts_interface
-        .transaction_service_handle
-        .get_completed_transactions()
-        .await
-        .unwrap();
-    assert_eq!(transactions.len(), 2);
-    let mut amount = MicroMinotari::zero();
-    for tx in transactions.values() {
-        amount += tx.amount;
-    }
-    assert_eq!(amount, fees1 + reward1 + fees2 + reward2);
-    assert_eq!(
-        ts_interface
-            .output_manager_service_handle
-            .get_balance()
-            .await
-            .unwrap()
-            .pending_incoming_balance,
-        MicroMinotari::from(0)
-    );
-
-    // a requested coinbase transaction for a new height should be different
-    let tx_height2 = ts_interface
-        .transaction_service_handle
-        .generate_coinbase_transaction(reward2, fees2, blockheight2, b"test".to_vec())
-        .await
-        .unwrap();
-
-    assert_ne!(tx1, tx_height2);
-    let transactions = ts_interface
-        .transaction_service_handle
-        .get_completed_transactions()
-        .await
-        .unwrap();
-    assert_eq!(transactions.len(), 3);
-    let mut amount = MicroMinotari::zero();
-    for tx in transactions.values() {
-        amount += tx.amount;
-    }
-    assert_eq!(amount, fees1 + reward1 + fees2 + reward2 + fees2 + reward2);
-    assert_eq!(
-        ts_interface
-            .output_manager_service_handle
-            .get_balance()
-            .await
-            .unwrap()
-            .pending_incoming_balance,
-        MicroMinotari::from(0)
-    );
 }
 
 #[tokio::test]
@@ -4911,7 +3954,7 @@ async fn test_resend_on_startup() {
         NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
 
     // First we will check the Send Tranasction message
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let input = create_wallet_output_with_data(
         script!(Nop),
         OutputFeatures::default(),
@@ -4922,7 +3965,7 @@ async fn test_resend_on_startup() {
     .await
     .unwrap();
     let constants = create_consensus_constants(0);
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let mut builder = SenderTransactionProtocol::builder(constants.clone(), key_manager.clone());
     let amount = MicroMinotari::from(10_000);
     let change = TestParams::new(&key_manager).await;
@@ -5418,7 +4461,7 @@ async fn test_transaction_timeout_cancellation() {
 
     // Now to test if the timeout has elapsed during downtime and that it is honoured on startup
     // First we will check the Send Transction message
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let input = create_wallet_output_with_data(
         script!(Nop),
         OutputFeatures::default(),
@@ -5429,7 +4472,7 @@ async fn test_transaction_timeout_cancellation() {
     .await
     .unwrap();
     let constants = create_consensus_constants(0);
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let mut builder = SenderTransactionProtocol::builder(constants, key_manager.clone());
     let amount = MicroMinotari::from(10_000);
     let change = TestParams::new(&key_manager).await;
@@ -6003,7 +5046,6 @@ async fn broadcast_all_completed_transactions_on_startup() {
         timestamp: Utc::now().naive_utc(),
         cancelled: None,
         direction: TransactionDirection::Outbound,
-        coinbase_block_height: None,
         send_count: 0,
         last_send_timestamp: None,
         transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
@@ -6119,7 +5161,6 @@ async fn test_update_faux_tx_on_oms_validation() {
             MicroMinotari::from(10000),
             alice_address.clone(),
             "blah".to_string(),
-            None,
             ImportStatus::Imported,
             None,
             None,
@@ -6133,7 +5174,6 @@ async fn test_update_faux_tx_on_oms_validation() {
             MicroMinotari::from(20000),
             alice_address.clone(),
             "one-sided 1".to_string(),
-            None,
             ImportStatus::FauxUnconfirmed,
             None,
             None,
@@ -6148,7 +5188,6 @@ async fn test_update_faux_tx_on_oms_validation() {
             MicroMinotari::from(30000),
             alice_address,
             "one-sided 2".to_string(),
-            None,
             ImportStatus::FauxConfirmed,
             None,
             None,

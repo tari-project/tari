@@ -393,14 +393,14 @@ mod test {
         mod is_eq {
             use super::*;
             use crate::transactions::{
+                key_manager::create_memory_db_key_manager,
                 tari_amount::MicroMinotari,
-                test_helpers::create_test_core_key_manager_with_memory_db,
                 transaction_components::RangeProofType,
             };
 
             #[tokio::test]
             async fn it_returns_true_if_eq() {
-                let key_manager = create_test_core_key_manager_with_memory_db();
+                let key_manager = create_memory_db_key_manager();
                 let side_chain_features = make_sample_sidechain_feature();
                 let output = create_outputs(
                     1,
@@ -443,7 +443,7 @@ mod test {
 
             #[tokio::test]
             async fn it_returns_false_if_not_eq() {
-                let key_manager = create_test_core_key_manager_with_memory_db();
+                let key_manager = create_memory_db_key_manager();
                 let side_chain_features = make_sample_sidechain_feature();
                 let output = create_outputs(
                     1,
@@ -490,11 +490,11 @@ mod test {
 
         mod is_eq_input {
             use super::*;
-            use crate::transactions::test_helpers::create_test_core_key_manager_with_memory_db;
+            use crate::transactions::key_manager::create_memory_db_key_manager;
 
             #[tokio::test]
             async fn it_returns_true_if_eq_input() {
-                let key_manager = create_test_core_key_manager_with_memory_db();
+                let key_manager = create_memory_db_key_manager();
                 let output = create_outputs(
                     1,
                     UtxoTestParams {
@@ -561,6 +561,7 @@ mod test {
 
     mod output_fields {
         use super::*;
+        use crate::transactions::key_manager::create_memory_db_key_manager;
 
         mod construct_challenge_from {
             use blake2::Digest;
@@ -568,15 +569,11 @@ mod test {
             use tari_crypto::hashing::DomainSeparation;
 
             use super::*;
-            use crate::transactions::{
-                tari_amount::MicroMinotari,
-                test_helpers::create_test_core_key_manager_with_memory_db,
-                transaction_components::RangeProofType,
-            };
+            use crate::transactions::{tari_amount::MicroMinotari, transaction_components::RangeProofType};
 
             #[tokio::test]
             async fn it_constructs_challenge_using_consensus_encoding() {
-                let key_manager = create_test_core_key_manager_with_memory_db();
+                let key_manager = create_memory_db_key_manager();
                 let features = OutputFeatures {
                     maturity: 42,
                     output_type: OutputType::Coinbase,
@@ -621,14 +618,14 @@ mod test {
         mod get_field_value_ref {
             use super::*;
             use crate::transactions::{
+                key_manager::create_memory_db_key_manager,
                 tari_amount::MicroMinotari,
-                test_helpers::create_test_core_key_manager_with_memory_db,
                 transaction_components::RangeProofType,
             };
 
             #[tokio::test]
             async fn it_retrieves_the_value_as_ref() {
-                let key_manager = create_test_core_key_manager_with_memory_db();
+                let key_manager = create_memory_db_key_manager();
                 let features = OutputFeatures {
                     maturity: 42,
                     range_proof_type: RangeProofType::RevealedValue,

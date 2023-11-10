@@ -42,7 +42,6 @@ mod errors;
 mod miner;
 mod run_miner;
 mod stratum;
-mod utils;
 
 /// Application entry point
 fn main() {
