@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{panic, process};
+use std::process;
 
 use clap::Parser;
 use log::*;
@@ -47,14 +47,6 @@ mod utils;
 mod wallet_modes;
 
 fn main() {
-    // Setup a panic hook which prints the default rust panic message but also exits the process. This makes a panic in
-    // any thread "crash" the system instead of silently continuing.
-    let default_hook = panic::take_hook();
-    panic::set_hook(Box::new(move |info| {
-        default_hook(info);
-        process::exit(1);
-    }));
-
     match main_inner() {
         Ok(_) => process::exit(0),
         Err(err) => {
