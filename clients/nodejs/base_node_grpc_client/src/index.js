@@ -44,6 +44,7 @@ function Client(address = "127.0.0.1:18142") {
     "getTokens",
     "getNetworkDifficulty",
     "getActiveValidatorNodes",
+    "getHeaderByHash"
   ];
   methods.forEach((method) => {
     this[method] = (arg) => this.inner[method]().sendMessage(arg);
