@@ -20,10 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#[cfg(feature = "metrics")]
+use std::convert::{TryFrom, TryInto};
 use std::{
     cmp::max,
     collections::HashSet,
-    convert::{TryFrom, TryInto},
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -35,17 +36,16 @@ use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
 use tari_utilities::hex::Hex;
 use tokio::sync::RwLock;
 
+#[cfg(feature = "metrics")]
+use crate::base_node::metrics;
 use crate::{
-    base_node::{
-        comms_interface::{
-            error::CommsInterfaceError,
-            local_interface::BlockEventSender,
-            FetchMempoolTransactionsResponse,
-            NodeCommsRequest,
-            NodeCommsResponse,
-            OutboundNodeCommsInterface,
-        },
-        metrics,
+    base_node::comms_interface::{
+        error::CommsInterfaceError,
+        local_interface::BlockEventSender,
+        FetchMempoolTransactionsResponse,
+        NodeCommsRequest,
+        NodeCommsResponse,
+        OutboundNodeCommsInterface,
     },
     blocks::{Block, BlockBuilder, BlockHeader, BlockHeaderValidationError, ChainBlock, NewBlock, NewBlockTemplate},
     chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend, ChainStorageError},
@@ -619,6 +619,7 @@ where B: BlockchainBackend + 'static
                     .build();
                 return Ok(block);
             }
+            #[cfg(feature = "metrics")]
             metrics::compact_block_tx_misses(header.height).set(excess_sigs.len() as i64);
             let block = self.request_full_block_from_peer(source_peer, block_hash).await?;
             return Ok(block);
@@ -628,6 +629,7 @@ where B: BlockchainBackend + 'static
         let (known_transactions, missing_excess_sigs) = self.mempool.retrieve_by_excess_sigs(excess_sigs).await?;
         let known_transactions = known_transactions.into_iter().map(|tx| (*tx).clone()).collect();
 
+        #[cfg(feature = "metrics")]
         metrics::compact_block_tx_misses(header.height).set(missing_excess_sigs.len() as i64);
 
         let mut builder = BlockBuilder::new(header.version)
@@ -673,6 +675,7 @@ where B: BlockchainBackend + 'static
                     not_found.len()
                 );
 
+                #[cfg(feature = "metrics")]
                 metrics::compact_block_full_misses(header.height).inc();
                 let block = self.request_full_block_from_peer(source_peer, block_hash).await?;
                 return Ok(block);
@@ -710,6 +713,7 @@ where B: BlockchainBackend + 'static
                 e,
             );
 
+            #[cfg(feature = "metrics")]
             metrics::compact_block_mmr_mismatch(header.height).inc();
             let block = self.request_full_block_from_peer(source_peer, block_hash).await?;
             return Ok(block);
@@ -834,8 +838,11 @@ where B: BlockchainBackend + 'static
             },
 
             Err(e @ ChainStorageError::ValidationError { .. }) => {
-                let block_hash = block.hash();
-                metrics::rejected_blocks(block.header.height, &block_hash).inc();
+                #[cfg(feature = "metrics")]
+                {
+                    let block_hash = block.hash();
+                    metrics::rejected_blocks(block.header.height, &block_hash).inc();
+                }
                 warn!(
                     target: LOG_TARGET,
                     "Peer {} sent an invalid block: {}",
@@ -856,14 +863,20 @@ where B: BlockchainBackend + 'static
                         }
                     },
                     // SECURITY: This indicates an issue in the transaction validator.
-                    None => metrics::rejected_local_blocks(block.header.height, &block_hash).inc(),
+                    None => {
+                        #[cfg(feature = "metrics")]
+                        metrics::rejected_local_blocks(block.header.height, &block_hash).inc();
+                        debug!(target: LOG_TARGET, "There may have been an issue in the transaction validator");
+                    },
                 }
                 self.publish_block_event(BlockEvent::AddBlockValidationFailed { block, source_peer });
                 Err(e.into())
             },
 
             Err(e) => {
+                #[cfg(feature = "metrics")]
                 metrics::rejected_blocks(block.header.height, &block.hash()).inc();
+
                 self.publish_block_event(BlockEvent::AddBlockErrored { block });
                 Err(e.into())
             },
@@ -936,6 +949,7 @@ where B: BlockchainBackend + 'static
 
     async fn update_block_result_metrics(&self, block_add_result: &BlockAddResult) -> Result<(), CommsInterfaceError> {
         fn update_target_difficulty(block: &ChainBlock) {
+            #[cfg(feature = "metrics")]
             match block.header().pow_algo() {
                 PowAlgorithm::Sha3x => {
                     metrics::target_difficulty_sha()
@@ -950,25 +964,33 @@ where B: BlockchainBackend + 'static
 
         match block_add_result {
             BlockAddResult::Ok(ref block) => {
-                #[allow(clippy::cast_possible_wrap)]
-                metrics::tip_height().set(block.height() as i64);
                 update_target_difficulty(block);
-                let utxo_set_size = self.blockchain_db.utxo_count().await?;
-                metrics::utxo_set_size().set(utxo_set_size.try_into().unwrap_or(i64::MAX));
+
+                #[cfg(feature = "metrics")]
+                {
+                    #[allow(clippy::cast_possible_wrap)]
+                    metrics::tip_height().set(block.height() as i64);
+                    let utxo_set_size = self.blockchain_db.utxo_count().await?;
+                    metrics::utxo_set_size().set(utxo_set_size.try_into().unwrap_or(i64::MAX));
+                }
             },
+            #[allow(unused_variables)] // `removed` variable is used if metrics are compiled
             BlockAddResult::ChainReorg { added, removed } => {
+                #[cfg(feature = "metrics")]
                 if let Some(fork_height) = added.last().map(|b| b.height()) {
                     #[allow(clippy::cast_possible_wrap)]
                     metrics::tip_height().set(fork_height as i64);
                     metrics::reorg(fork_height, added.len(), removed.len()).inc();
+
+                    let utxo_set_size = self.blockchain_db.utxo_count().await?;
+                    metrics::utxo_set_size().set(utxo_set_size.try_into().unwrap_or(i64::MAX));
                 }
                 for block in added {
                     update_target_difficulty(block);
                 }
-                let utxo_set_size = self.blockchain_db.utxo_count().await?;
-                metrics::utxo_set_size().set(utxo_set_size.try_into().unwrap_or(i64::MAX));
             },
             BlockAddResult::OrphanBlock => {
+                #[cfg(feature = "metrics")]
                 metrics::orphaned_blocks().inc();
             },
             _ => {},

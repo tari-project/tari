@@ -42,7 +42,7 @@ mod rpc;
 pub use rpc::create_mempool_rpc_service;
 #[cfg(feature = "base_node")]
 pub use rpc::{MempoolRpcClient, MempoolRpcServer, MempoolRpcService, MempoolService};
-#[cfg(feature = "base_node")]
+#[cfg(feature = "metrics")]
 mod metrics;
 #[cfg(feature = "base_node")]
 mod shrink_hashmap;

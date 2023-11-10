@@ -26,11 +26,12 @@ use log::*;
 use tari_comms::peer_manager::NodeId;
 use tari_utilities::hex::Hex;
 
+#[cfg(feature = "metrics")]
+use crate::mempool::metrics;
 use crate::{
     base_node::comms_interface::{BlockEvent, BlockEvent::AddBlockErrored},
     chain_storage::BlockAddResult,
     mempool::{
-        metrics,
         service::{MempoolRequest, MempoolResponse, MempoolServiceError, OutboundMempoolServiceInterface},
         Mempool,
         TxStorageResponse,
@@ -135,6 +136,7 @@ impl MempoolInboundHandlers {
         }
         match self.mempool.insert(tx.clone()).await {
             Ok(tx_storage) => {
+                #[cfg(feature = "metrics")]
                 if tx_storage.is_stored() {
                     metrics::inbound_transactions(source_peer.as_ref()).inc();
                 } else {
@@ -164,6 +166,7 @@ impl MempoolInboundHandlers {
 
     #[allow(clippy::cast_possible_wrap)]
     async fn update_pool_size_metrics(&self) {
+        #[cfg(feature = "metrics")]
         if let Ok(stats) = self.mempool.stats().await {
             metrics::unconfirmed_pool_size().set(stats.unconfirmed_txs as i64);
             metrics::reorg_pool_size().set(stats.reorg_txs as i64);
