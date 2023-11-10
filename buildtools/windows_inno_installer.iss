@@ -21,14 +21,13 @@
 ;      - "<path to console-mode compiler>\ISCC.exe" "/SSignTool=signtool sign
 ;         /tr http://timestamp.digicert.com /f "<path and filename of the certificate>"
 ;         /p <password used to create the certificate> $f"
-;         "/DMyAppVersion=<base node version>" "windows_inno_installer.iss"
+;         "/DMyAppVersion=<version>" "/DMinotariSuite=<suite>" "windows_inno_installer.iss"
 ;  (4) Windows shortcuts
 ;      - To edit any of the *.lnk* files, first copy their icons 
 ;        "<project_root>/buildtools/*.ico" to "%USERPROFILE%\temp\tari_icons"
 
 
 #define MyOrgName "Tari"
-;#define MyAppVersion "?.?.?-???????-release"
 #define MyAppPublisher "The Tari Development Community"
 #define MyAppURL "https://github.com/tari-project/tari"
 #define MyAppSupp "Tari Website"
@@ -49,7 +48,7 @@
 #define MergeMiningExeName "start_xmrig.bat"
 #define ReadmeName "README.txt"
 #ifndef TariSuitePath
-#define public TariSuitePath "..\target\release"
+  #define public TariSuitePath "..\target\release"
 #endif
 
 [Setup]
@@ -59,7 +58,6 @@
 AppId={{35C6E863-EDE5-4CBD-A824-E1418ECB1D1D}
 AppName={#MyOrgName} {#BaseNodeName}
 AppVersion={#MyAppVersion}
-;AppVerName={#BaseNodeName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppSuppURL}
@@ -68,7 +66,7 @@ DefaultDirName={userdocs}\..\.tari-testnet
 DefaultGroupName={#MyOrgName} - Testnet
 AllowNoIcons=yes
 LicenseFile=..\LICENSE
-OutputBaseFilename=minotari_suite-{#MyAppVersion}
+OutputBaseFilename={#MinotariSuite}-{#MyAppVersion}
 SetupIconFile=.\tari_logo_black.ico
 Compression=lzma
 SolidCompression=yes
