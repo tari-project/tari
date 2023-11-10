@@ -40,7 +40,6 @@ hash_domain!(ConfidentialOutputHashDomain, "com.tari.dan.confidential_output", 1
 pub type ConfidentialOutputHasher = DomainSeparatedConsensusHasher<ConfidentialOutputHashDomain, Blake2b<U64>>;
 
 /// The reason for a peer being banned
-#[cfg(feature = "base_node")]
 #[derive(Clone, Debug)]
 pub struct BanReason {
     /// The reason for the ban
@@ -48,14 +47,13 @@ pub struct BanReason {
     /// The duration of the ban
     pub ban_duration: BanPeriod,
 }
-#[cfg(feature = "base_node")]
+
 #[derive(Clone, Copy, Debug)]
 pub enum BanPeriod {
     Short,
     Long,
 }
 
-#[cfg(feature = "base_node")]
 impl BanReason {
     /// Create a new ban reason
     pub fn reason(&self) -> &str {
