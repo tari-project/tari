@@ -27,14 +27,15 @@ use tari_common_types::{chain_metadata::ChainMetadata, types::FixedHash};
 
 use crate::proto::base_node as proto;
 
+const ACCUMULATED_DIFFICULTY_BYTE_SIZE: usize = 32;
 impl TryFrom<proto::ChainMetadata> for ChainMetadata {
     type Error = String;
 
     fn try_from(metadata: proto::ChainMetadata) -> Result<Self, Self::Error> {
-        if metadata.accumulated_difficulty.len() != 32 {
+        if metadata.accumulated_difficulty.len() != ACCUMULATED_DIFFICULTY_BYTE_SIZE {
             return Err(format!(
                 "Invalid accumulated difficulty byte length. {} was expected but the actual length was {}",
-                32,
+                ACCUMULATED_DIFFICULTY_BYTE_SIZE,
                 metadata.accumulated_difficulty.len()
             ));
         }
@@ -68,7 +69,7 @@ impl TryFrom<proto::ChainMetadata> for ChainMetadata {
 
 impl From<ChainMetadata> for proto::ChainMetadata {
     fn from(metadata: ChainMetadata) -> Self {
-        let mut accumulated_difficulty = [0u8; 32];
+        let mut accumulated_difficulty = [0u8; ACCUMULATED_DIFFICULTY_BYTE_SIZE];
         metadata
             .accumulated_difficulty()
             .to_big_endian(&mut accumulated_difficulty);

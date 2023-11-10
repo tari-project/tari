@@ -56,11 +56,7 @@ impl AccumulatedDifficulty {
     }
 
     pub fn checked_add_difficulty(&self, d: Difficulty) -> Option<AccumulatedDifficulty> {
-        let difficulty = d.as_u64() as u128;
-        if u128::MAX - difficulty < self.0 {
-            return None;
-        }
-        Some(AccumulatedDifficulty(self.0 + difficulty))
+        self.0.checked_add(u128::from(d.as_u64())).map(AccumulatedDifficulty)
     }
 
     pub fn to_be_bytes(&self) -> Vec<u8> {
