@@ -305,7 +305,6 @@ mod test {
         });
 
         service.update_liveness_chain_metadata().await.unwrap();
-        //
         assert_eq!(liveness_mock_state.call_count(), 1);
 
         let last_call = liveness_mock_state.take_calls().remove(0);
