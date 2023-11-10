@@ -20,14 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Duration;
-
 use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
 use tokio::task::JoinError;
 
 use crate::{
-    common::BanReason,
+    common::{BanPeriod, BanReason},
     mempool::unconfirmed_pool::UnconfirmedPoolError,
     transactions::transaction_components::TransactionError,
 };
@@ -52,16 +50,16 @@ pub enum MempoolError {
     IndexOutOfSync,
 }
 impl MempoolError {
-    pub fn get_ban_reason(&self, short_ban: Duration, long_ban: Duration) -> Option<BanReason> {
+    pub fn get_ban_reason(&self) -> Option<BanReason> {
         match self {
-            _err @ MempoolError::UnconfirmedPoolError(e) => e.get_ban_reason(short_ban, long_ban),
+            _err @ MempoolError::UnconfirmedPoolError(e) => e.get_ban_reason(),
             err @ MempoolError::TransactionError(_) | err @ MempoolError::TransactionNoKernels => Some(BanReason {
                 reason: err.to_string(),
-                ban_duration: long_ban,
+                ban_duration: BanPeriod::Long,
             }),
             err @ MempoolError::TransportChannelError(_) => Some(BanReason {
                 reason: err.to_string(),
-                ban_duration: short_ban,
+                ban_duration: BanPeriod::Short,
             }),
             _err @ MempoolError::RwLockPoisonError |
             _err @ MempoolError::BlockingTaskError(_) |

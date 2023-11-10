@@ -20,12 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Duration;
-
 use tari_utilities::hex::HexError;
 
 use crate::{
-    common::BanReason,
+    common::{BanPeriod, BanReason},
     proof_of_work::{randomx_factory::RandomXVMFactoryError, DifficultyError},
 };
 
@@ -53,7 +51,7 @@ pub enum MergeMineError {
 }
 
 impl MergeMineError {
-    pub fn get_ban_reason(&self, _short_ban: Duration, long_ban: Duration) -> Option<BanReason> {
+    pub fn get_ban_reason(&self) -> Option<BanReason> {
         match self {
             err @ MergeMineError::SerializedPowDataDoesNotMatch(_) |
             err @ MergeMineError::SerializeError(_) |
@@ -64,7 +62,7 @@ impl MergeMineError {
             err @ MergeMineError::DifficultyError(_) |
             err @ MergeMineError::HexError(_) => Some(BanReason {
                 reason: err.to_string(),
-                ban_duration: long_ban,
+                ban_duration: BanPeriod::Long,
             }),
             MergeMineError::RandomXVMFactoryError(_) => None,
         }

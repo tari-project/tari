@@ -20,8 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Duration;
-
 use lmdb_zero::error;
 use tari_common_types::types::FixedHashSizeError;
 use tari_mmr::{error::MerkleMountainRangeError, sparse_merkle_tree::SMTError, MerkleProofError};
@@ -32,7 +30,7 @@ use tokio::task;
 use crate::{
     blocks::BlockError,
     chain_storage::MmrTree,
-    common::BanReason,
+    common::{BanPeriod, BanReason},
     proof_of_work::PowError,
     transactions::transaction_components::TransactionError,
     validation::ValidationError,
@@ -152,17 +150,17 @@ impl ChainStorageError {
         matches!(self, ChainStorageError::KeyExists { .. })
     }
 
-    pub fn get_ban_reason(&self, short_ban: Duration, long_ban: Duration) -> Option<BanReason> {
+    pub fn get_ban_reason(&self) -> Option<BanReason> {
         match self {
-            ChainStorageError::ProofOfWorkError { source: e } => e.get_ban_reason(short_ban, long_ban),
-            ChainStorageError::ValidationError { source: e } => e.get_ban_reason(short_ban, long_ban),
+            ChainStorageError::ProofOfWorkError { source: e } => e.get_ban_reason(),
+            ChainStorageError::ValidationError { source: e } => e.get_ban_reason(),
             err @ ChainStorageError::UnspendableInput |
             err @ ChainStorageError::MerkleMountainRangeError { .. } |
             err @ ChainStorageError::MismatchedMmrRoot(_) |
             err @ ChainStorageError::TransactionError(_) |
             err @ ChainStorageError::SMTError(_) => Some(BanReason {
                 reason: err.to_string(),
-                ban_duration: long_ban,
+                ban_duration: BanPeriod::Long,
             }),
             _err @ ChainStorageError::AccessError(_) |
             _err @ ChainStorageError::CorruptedDatabase(_) |

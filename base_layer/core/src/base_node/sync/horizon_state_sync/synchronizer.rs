@@ -48,7 +48,7 @@ use crate::{
     },
     blocks::{BlockHeader, ChainHeader, UpdateBlockAccumulatedData},
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError, MmrTree},
-    common::rolling_avg::RollingAverageTime,
+    common::{rolling_avg::RollingAverageTime, BanPeriod},
     consensus::ConsensusManager,
     proto::base_node::{SyncKernelsRequest, SyncUtxosRequest, SyncUtxosResponse},
     transactions::transaction_components::{
@@ -180,13 +180,16 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 Ok(_) => return Ok(()),
                 // Try another peer
                 Err(err) => {
-                    let ban_reason =
-                        HorizonSyncError::get_ban_reason(&err, self.config.short_ban_period, self.config.ban_period);
+                    let ban_reason = HorizonSyncError::get_ban_reason(&err);
 
                     if let Some(reason) = ban_reason {
+                        let duration = match reason.ban_duration {
+                            BanPeriod::Short => self.config.short_ban_period,
+                            BanPeriod::Long => self.config.ban_period,
+                        };
                         warn!(target: LOG_TARGET, "{}", err);
                         self.peer_ban_manager
-                            .ban_peer_if_required(&node_id, &Some(reason.clone()))
+                            .ban_peer_if_required(&node_id, reason.reason, duration)
                             .await;
                     }
                     if let HorizonSyncError::MaxLatencyExceeded { .. } = err {

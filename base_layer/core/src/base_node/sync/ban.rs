@@ -20,10 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::time::Duration;
+
 use log::*;
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
 
-use crate::{base_node::BlockchainSyncConfig, common::BanReason};
+use crate::base_node::BlockchainSyncConfig;
 
 const LOG_TARGET: &str = "c::bn::sync";
 
@@ -39,27 +41,25 @@ impl PeerBanManager {
         Self { config, connectivity }
     }
 
-    pub async fn ban_peer_if_required(&mut self, node_id: &NodeId, ban_reason: &Option<BanReason>) {
-        if let Some(ban) = ban_reason {
-            if self.config.forced_sync_peers.contains(node_id) {
-                debug!(
-                    target: LOG_TARGET,
-                    "Not banning peer that is on the allow list for sync. Ban reason = {}", ban.reason()
-                );
-                return;
-            }
-            debug!(target: LOG_TARGET, "Sync peer {} removed from the sync peer list because {}", node_id, ban.reason());
+    pub async fn ban_peer_if_required(&mut self, node_id: &NodeId, ban_reason: String, ban_duration: Duration) {
+        if self.config.forced_sync_peers.contains(node_id) {
+            debug!(
+                target: LOG_TARGET,
+                "Not banning peer that is on the allow list for sync. Ban reason = {}", ban_reason
+            );
+            return;
+        }
+        debug!(target: LOG_TARGET, "Sync peer {} removed from the sync peer list because {}", node_id, ban_reason);
 
-            match self
-                .connectivity
-                .ban_peer_until(node_id.clone(), ban.ban_duration, ban.reason().to_string())
-                .await
-            {
-                Ok(_) => {
-                    warn!(target: LOG_TARGET, "Banned sync peer {} for {:?} because {}", node_id, ban.ban_duration, ban.reason())
-                },
-                Err(err) => error!(target: LOG_TARGET, "Failed to ban sync peer {}: {}", node_id, err),
-            }
+        match self
+            .connectivity
+            .ban_peer_until(node_id.clone(), ban_duration, ban_reason.clone())
+            .await
+        {
+            Ok(_) => {
+                warn!(target: LOG_TARGET, "Banned sync peer {} for {:?} because {}", node_id, ban_duration, ban_reason)
+            },
+            Err(err) => error!(target: LOG_TARGET, "Failed to ban sync peer {}: {}", node_id, err),
         }
     }
 }

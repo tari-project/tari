@@ -60,6 +60,7 @@ use crate::{
     },
     blocks::{Block, NewBlock},
     chain_storage::{BlockchainBackend, ChainStorageError},
+    common::BanPeriod,
     proto as shared_protos,
     proto::base_node as proto,
 };
@@ -271,13 +272,13 @@ where B: BlockchainBackend + 'static
             )
             .await;
             if let Err(e) = result {
-                if let Some(ban_reason) = e.get_ban_reason(short_ban, long_ban) {
+                if let Some(ban_reason) = e.get_ban_reason() {
+                    let duration = match ban_reason.ban_duration {
+                        BanPeriod::Short => short_ban,
+                        BanPeriod::Long => long_ban,
+                    };
                     let _drop = connectivity
-                        .ban_peer_until(
-                            domain_msg.source_peer.node_id.clone(),
-                            ban_reason.ban_duration(),
-                            ban_reason.reason().to_string(),
-                        )
+                        .ban_peer_until(domain_msg.source_peer.node_id.clone(), duration, ban_reason.reason)
                         .await
                         .map_err(|e| error!(target: LOG_TARGET, "Failed to ban peer: {:?}", e));
                 }
@@ -300,13 +301,13 @@ where B: BlockchainBackend + 'static
             let result = handle_incoming_response(waiting_requests, domain_msg).await;
 
             if let Err(e) = result {
-                if let Some(ban_reason) = e.get_ban_reason(short_ban, long_ban) {
+                if let Some(ban_reason) = e.get_ban_reason() {
+                    let duration = match ban_reason.ban_duration {
+                        BanPeriod::Short => short_ban,
+                        BanPeriod::Long => long_ban,
+                    };
                     let _drop = connectivity_requester
-                        .ban_peer_until(
-                            source_peer.node_id,
-                            ban_reason.ban_duration(),
-                            ban_reason.reason().to_string(),
-                        )
+                        .ban_peer_until(source_peer.node_id, duration, ban_reason.reason)
                         .await
                         .map_err(|e| error!(target: LOG_TARGET, "Failed to ban peer: {:?}", e));
                 }
@@ -357,13 +358,13 @@ where B: BlockchainBackend + 'static
                     // Special case, dont log this again as an error
                 },
                 Err(e) => {
-                    if let Some(ban_reason) = e.get_ban_reason(short_ban, long_ban) {
+                    if let Some(ban_reason) = e.get_ban_reason() {
+                        let duration = match ban_reason.ban_duration {
+                            BanPeriod::Short => short_ban,
+                            BanPeriod::Long => long_ban,
+                        };
                         let _drop = connectivity_requester
-                            .ban_peer_until(
-                                source_peer.node_id,
-                                ban_reason.ban_duration(),
-                                ban_reason.reason().to_string(),
-                            )
+                            .ban_peer_until(source_peer.node_id, duration, ban_reason.reason)
                             .await
                             .map_err(|e| error!(target: LOG_TARGET, "Failed to ban peer: {:?}", e));
                     }

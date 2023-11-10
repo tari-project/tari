@@ -20,14 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Duration;
-
 use tari_comms_dht::outbound::DhtOutboundError;
 use thiserror::Error;
 
 use crate::{
     base_node::{comms_interface::CommsInterfaceError, service::initializer::ExtractBlockError},
-    common::BanReason,
+    common::{BanPeriod, BanReason},
 };
 
 #[derive(Debug, Error)]
@@ -45,13 +43,13 @@ pub enum BaseNodeServiceError {
 }
 
 impl BaseNodeServiceError {
-    pub fn get_ban_reason(&self, short_ban: Duration, long_ban: Duration) -> Option<BanReason> {
+    pub fn get_ban_reason(&self) -> Option<BanReason> {
         match self {
             BaseNodeServiceError::CommsInterfaceError(comms) => match comms {
                 err @ CommsInterfaceError::UnexpectedApiResponse | err @ CommsInterfaceError::RequestTimedOut => {
                     Some(BanReason {
                         reason: err.to_string(),
-                        ban_duration: short_ban,
+                        ban_duration: BanPeriod::Short,
                     })
                 },
                 err @ CommsInterfaceError::InvalidPeerResponse(_) |
@@ -60,15 +58,15 @@ impl BaseNodeServiceError {
                 err @ CommsInterfaceError::InvalidFullBlock { .. } |
                 err @ CommsInterfaceError::InvalidRequest { .. } => Some(BanReason {
                     reason: err.to_string(),
-                    ban_duration: long_ban,
+                    ban_duration: BanPeriod::Long,
                 }),
-                CommsInterfaceError::MempoolError(e) => e.get_ban_reason(short_ban, long_ban),
+                CommsInterfaceError::MempoolError(e) => e.get_ban_reason(),
                 CommsInterfaceError::TransportChannelError(e) => Some(BanReason {
                     reason: e.to_string(),
-                    ban_duration: short_ban,
+                    ban_duration: BanPeriod::Short,
                 }),
-                CommsInterfaceError::ChainStorageError(e) => e.get_ban_reason(short_ban, long_ban),
-                CommsInterfaceError::MergeMineError(e) => e.get_ban_reason(short_ban, long_ban),
+                CommsInterfaceError::ChainStorageError(e) => e.get_ban_reason(),
+                CommsInterfaceError::MergeMineError(e) => e.get_ban_reason(),
                 CommsInterfaceError::NoBootstrapNodesConfigured |
                 CommsInterfaceError::OutboundMessageError(_) |
                 CommsInterfaceError::BroadcastFailed |
@@ -84,7 +82,7 @@ impl BaseNodeServiceError {
             err @ BaseNodeServiceError::InvalidResponse(_) |
             err @ BaseNodeServiceError::InvalidBlockMessage(_) => Some(BanReason {
                 reason: err.to_string(),
-                ban_duration: long_ban,
+                ban_duration: BanPeriod::Long,
             }),
         }
     }

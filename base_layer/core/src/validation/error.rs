@@ -20,15 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Duration;
-
 use tari_common_types::types::HashOutput;
 use thiserror::Error;
 
 use crate::{
     blocks::{BlockHeaderValidationError, BlockValidationError},
     chain_storage::ChainStorageError,
-    common::BanReason,
+    common::{BanPeriod, BanReason},
     covenants::CovenantError,
     proof_of_work::{monero_rx::MergeMineError, DifficultyError, PowError},
     transactions::{
@@ -137,9 +135,9 @@ impl From<ChainStorageError> for ValidationError {
 }
 
 impl ValidationError {
-    pub fn get_ban_reason(&self, short_ban: Duration, long_ban: Duration) -> Option<BanReason> {
+    pub fn get_ban_reason(&self) -> Option<BanReason> {
         match self {
-            ValidationError::ProofOfWorkError(e) => e.get_ban_reason(short_ban, long_ban),
+            ValidationError::ProofOfWorkError(e) => e.get_ban_reason(),
             err @ ValidationError::SerializationError(_) |
             err @ ValidationError::BlockHeaderError(_) |
             err @ ValidationError::BlockError(_) |
@@ -176,9 +174,9 @@ impl ValidationError {
             err @ ValidationError::CoinbaseExceedsMaxLimit |
             err @ ValidationError::CovenantTooLarge { .. } => Some(BanReason {
                 reason: err.to_string(),
-                ban_duration: long_ban,
+                ban_duration: BanPeriod::Long,
             }),
-            ValidationError::MergeMineError(e) => e.get_ban_reason(short_ban, long_ban),
+            ValidationError::MergeMineError(e) => e.get_ban_reason(),
             ValidationError::FatalStorageError(_) | ValidationError::IncorrectNumberOfTimestampsProvided { .. } => None,
         }
     }
