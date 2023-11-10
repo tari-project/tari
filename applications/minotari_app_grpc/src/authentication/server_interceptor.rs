@@ -49,7 +49,7 @@ impl ServerAuthenticationInterceptor {
                 let val = t.to_str().map_err(unauthenticated)?;
                 let credentials = BasicAuthCredentials::from_header(val).map_err(unauthenticated)?;
                 credentials
-                    .validate(valid_username, valid_password)
+                    .constant_time_validate(valid_username, valid_password)
                     .map_err(unauthenticated)?;
                 Ok(req)
             },

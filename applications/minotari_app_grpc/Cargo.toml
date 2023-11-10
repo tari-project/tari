@@ -26,6 +26,7 @@ rand = "0.8"
 thiserror = "1"
 tonic = "0.6.2"
 zeroize = "1"
+subtle = { version = "2.5.0", features = ["core_hint_black_box"] }
 
 [build-dependencies]
 tonic-build = "0.6.2"
