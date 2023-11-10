@@ -711,7 +711,7 @@ A typical response would be:
 ```
 
 _**Note:** A guide to setting up a local Monero stagenet on Linux can be found
-[here](https://github.com/tari-project/tari/blob/development/applications/tari_merge_mining_proxy/monero_stagenet_setup.md)._
+[here](https://github.com/tari-project/tari/blob/development/applications/minotari_merge_mining_proxy/monero_stagenet_setup.md)._
 
 ##### XMRig configuration
 
@@ -854,7 +854,7 @@ Tor and the required Minotari applications must be started, preferably in this o
 - Tari Merge Mining Proxy:
   - Linux/OSX: As per [Runtime links](#runtime-links).
   - Windows: As per [Runtime links](#runtime-links) or `Start Merge Mining Proxy` menu item
-    or `start_tari_merge_mining_proxy` shortcut in the Tari installation folder.
+    or `start_minotari_merge_mining_proxy` shortcut in the Tari installation folder.
 
 In addition, select one of the merge mining options as outlined in solo or pool mining in the next paragraphs.
 

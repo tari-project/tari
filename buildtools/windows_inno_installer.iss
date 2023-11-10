@@ -44,7 +44,7 @@
 #define TorServicesName "Tor Services"
 #define TorServicesExeName "start_tor.bat"
 #define MergeMiningProxyName "Merge Mining Proxy"
-#define MergeMiningProxyExeName "start_tari_merge_mining_proxy.bat"
+#define MergeMiningProxyExeName "start_minotari_merge_mining_proxy.bat"
 #define MergeMiningName "XMRig"
 #define MergeMiningExeName "start_xmrig.bat"
 #define ReadmeName "README.txt"
@@ -103,7 +103,7 @@ Source: "..\applications\minotari_node\windows\start_all.lnk"; DestDir: "{app}";
 Source: "..\applications\minotari_node\windows\start_minotari_node.lnk"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\applications\minotari_console_wallet\windows\start_minotari_console_wallet.lnk"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\applications\minotari_miner\windows\start_minotari_miner.lnk"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\applications\minotari_merge_mining_proxy\windows\start_tari_merge_mining_proxy.lnk"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\applications\minotari_merge_mining_proxy\windows\start_minotari_merge_mining_proxy.lnk"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\applications\minotari_merge_mining_proxy\windows\start_xmrig.lnk"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\applications\minotari_node\windows\start_tor.lnk"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#TariSuitePath}\minotari_node.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
@@ -175,7 +175,7 @@ Type: files; Name: "{app}\start_all.lnk"
 Type: files; Name: "{app}\start_minotari_node.lnk"
 Type: files; Name: "{app}\start_minotari_console_wallet.lnk"
 Type: files; Name: "{app}\start_minotari_miner.lnk"
-Type: files; Name: "{app}\start_tari_merge_mining_proxy.lnk"
+Type: files; Name: "{app}\start_minotari_merge_mining_proxy.lnk"
 Type: files; Name: "{app}\start_xmrig.lnk"
 Type: files; Name: "{app}\start_tor.lnk"
 Type: files; Name: "{userdesktop}\Tari All.lnk"
