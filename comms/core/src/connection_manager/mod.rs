@@ -30,6 +30,7 @@
 mod dial_state;
 mod dialer;
 mod listener;
+#[cfg(feature = "metrics")]
 mod metrics;
 
 mod common;

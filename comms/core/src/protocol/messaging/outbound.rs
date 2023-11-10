@@ -26,7 +26,9 @@ use futures::{future, SinkExt, StreamExt};
 use tokio::{pin, sync::mpsc};
 use tracing::{debug, error, span, Instrument, Level};
 
-use super::{error::MessagingProtocolError, metrics, MessagingEvent, MessagingProtocol, SendFailReason};
+#[cfg(feature = "metrics")]
+use super::metrics;
+use super::{error::MessagingProtocolError, MessagingEvent, MessagingProtocol, SendFailReason};
 use crate::{
     connection_manager::{NegotiatedSubstream, PeerConnection},
     connectivity::{ConnectivityError, ConnectivityRequester},
@@ -78,6 +80,7 @@ impl OutboundMessaging {
             "comms::messaging::outbound",
             node_id = self.peer_node_id.to_string().as_str()
         );
+        #[cfg(feature = "metrics")]
         metrics::num_sessions().inc();
         async move {
             debug!(
@@ -101,6 +104,7 @@ impl OutboundMessaging {
                 },
                 Err(MessagingProtocolError::ConnectionClosed(err)) => {
                     // Not sure about the metrics, but feels safer to keep on registering the error in metrics for now
+                    #[cfg(feature = "metrics")]
                     metrics::error_count(&peer_node_id).inc();
                     debug!(
                         target: LOG_TARGET,
@@ -111,6 +115,7 @@ impl OutboundMessaging {
                     );
                 },
                 Err(err) => {
+                    #[cfg(feature = "metrics")]
                     metrics::error_count(&peer_node_id).inc();
                     error!(
                         target: LOG_TARGET,
@@ -119,6 +124,7 @@ impl OutboundMessaging {
                 },
             }
 
+            #[cfg(feature = "metrics")]
             metrics::num_sessions().dec();
             let _ignore = messaging_events_tx
                 .send(MessagingEvent::OutboundProtocolExited(peer_node_id))
@@ -261,8 +267,10 @@ impl OutboundMessaging {
             v.map(|v| (v, rx))
         });
 
+        #[cfg(feature = "metrics")]
         let outbound_count = metrics::outbound_message_count(&peer_node_id);
         let stream = outbound_stream.map(|mut out_msg| {
+            #[cfg(feature = "metrics")]
             outbound_count.inc();
             debug!(
                 target: LOG_TARGET,
