@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use chrono::Utc;
 use minotari_wallet::connectivity_service::{OnlineStatus, WalletConnectivityInterface};
 use tui::{
     backend::Backend,
@@ -88,6 +89,8 @@ impl<B: Backend> Component<B> for BaseNode {
                         )
                     };
 
+                    let updated = base_node_state.updated.unwrap_or(Utc::now().naive_utc());
+
                     let latency = base_node_state.latency.unwrap_or_default().as_millis();
                     let latency_color = match latency {
                         0 => Color::Gray, // offline? default duration is 0
@@ -96,18 +99,31 @@ impl<B: Backend> Component<B> for BaseNode {
                         _ => Color::Red,
                     };
 
-                    let tip_info = vec![
+                    let mut tip_info = vec![
                         Span::styled("Chain Tip:", Style::default().fg(Color::Magenta)),
                         Span::raw(" "),
                         Span::styled(format!("#{}", tip), Style::default().fg(tip_color)),
                         Span::raw("  "),
                         Span::styled(sync_text.to_string(), Style::default().fg(Color::White)),
                         Span::raw("  "),
-                        Span::styled("Latency", Style::default().fg(Color::White)),
-                        Span::raw(" "),
-                        Span::styled(latency.to_string(), Style::default().fg(latency_color)),
-                        Span::styled(" ms", Style::default().fg(Color::DarkGray)),
                     ];
+
+                    let mut latency_span = if Utc::now().naive_utc().timestamp() - updated.timestamp() > 15 * 60 {
+                        vec![
+                            Span::styled("Last updated", Style::default().fg(Color::Red)),
+                            Span::raw(" "),
+                            Span::styled(updated.to_string(), Style::default().fg(Color::Red)),
+                            Span::styled(" s", Style::default().fg(Color::Red)),
+                        ]
+                    } else {
+                        vec![
+                            Span::styled("Latency", Style::default().fg(Color::White)),
+                            Span::raw(" "),
+                            Span::styled(latency.to_string(), Style::default().fg(latency_color)),
+                            Span::styled(" ms", Style::default().fg(Color::DarkGray)),
+                        ]
+                    };
+                    tip_info.append(&mut latency_span);
 
                     Spans::from(tip_info)
                 } else {
