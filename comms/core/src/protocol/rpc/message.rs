@@ -128,6 +128,7 @@ impl<T> BaseRequest<T> {
         self.message
     }
 
+    #[allow(dead_code)]
     pub fn get_ref(&self) -> &T {
         &self.message
     }

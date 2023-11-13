@@ -40,10 +40,11 @@ use tokio::{
 };
 use tracing::{instrument, span, Instrument, Level};
 
+#[cfg(feature = "metrics")]
+use crate::base_node::metrics;
 use crate::{
     base_node::{
         comms_interface::{BlockEvent, BlockEvent::BlockSyncRewind},
-        metrics,
         sync::{
             header_sync::HEADER_SYNC_INITIAL_MAX_HEADERS,
             rpc::{sync_utxos_task::SyncUtxosTask, BaseNodeSyncService},
@@ -99,6 +100,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncRpcService<B> {
 
         let token = Arc::new(peer);
         lock.push(Arc::downgrade(&token));
+        #[cfg(feature = "metrics")]
         metrics::active_sync_peers().set(lock.len() as i64);
         Ok(token)
     }
@@ -256,6 +258,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                     }
                 }
 
+                #[cfg(feature = "metrics")]
                 metrics::active_sync_peers().dec();
                 debug!(
                     target: LOG_TARGET,
@@ -355,6 +358,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                     }
                 }
 
+                #[cfg(feature = "metrics")]
                 metrics::active_sync_peers().dec();
                 debug!(
                     target: LOG_TARGET,
@@ -572,6 +576,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                 }
             }
 
+            #[cfg(feature = "metrics")]
             metrics::active_sync_peers().dec();
             debug!(
                 target: LOG_TARGET,

@@ -41,9 +41,13 @@ use super::{
     peer_connection::PeerConnection,
     requester::ConnectionManagerRequest,
 };
+#[cfg(feature = "metrics")]
+use crate::connection_manager::metrics;
+#[cfg(feature = "metrics")]
+use crate::connection_manager::ConnectionDirection;
 use crate::{
     backoff::Backoff,
-    connection_manager::{metrics, ConnectionDirection, ConnectionId},
+    connection_manager::ConnectionId,
     multiplexing::Substream,
     noise::NoiseConfig,
     peer_manager::{NodeId, NodeIdentity, PeerManagerError},
@@ -421,6 +425,7 @@ where
                     node_id.short_str(),
                     proto_str
                 );
+                #[cfg(feature = "metrics")]
                 metrics::inbound_substream_counter(&node_id, &protocol).inc();
                 let notify_fut = self
                     .protocols
@@ -452,14 +457,17 @@ where
                         .send(DialerRequest::NotifyNewInboundConnection(conn.clone()))
                         .await;
                 }
+                #[cfg(feature = "metrics")]
                 metrics::successful_connections(conn.peer_node_id(), conn.direction()).inc();
                 self.publish_event(PeerConnected(conn));
             },
             PeerConnectFailed(peer, err) => {
+                #[cfg(feature = "metrics")]
                 metrics::failed_connections(&peer, ConnectionDirection::Outbound).inc();
                 self.publish_event(PeerConnectFailed(peer, err));
             },
             PeerInboundConnectFailed(err) => {
+                #[cfg(feature = "metrics")]
                 metrics::failed_connections(&Default::default(), ConnectionDirection::Inbound).inc();
                 self.publish_event(PeerInboundConnectFailed(err));
             },
