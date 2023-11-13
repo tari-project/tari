@@ -131,6 +131,7 @@ where B: BlockchainBackend + 'static
                 self.rules.clone(),
                 base_node_config.messaging_request_timeout,
                 self.randomx_factory.clone(),
+                base_node_config.state_machine.clone(),
             ))
             .add_initializer(MempoolServiceInitializer::new(
                 self.mempool.clone(),

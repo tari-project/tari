@@ -20,46 +20,50 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Duration;
+use anyhow::{anyhow, Error};
+use async_trait::async_trait;
+use clap::Parser;
+use minotari_app_grpc::authentication::salted_password::create_salted_hashed_password;
 
-use log::*;
-use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
+use super::{CommandContext, HandleCommand};
 
-use crate::base_node::BlockchainSyncConfig;
+/// Hashes the GRPC authentication password from the config and returns an argon2 hash
+#[derive(Debug, Parser)]
+pub struct Args {}
 
-const LOG_TARGET: &str = "c::bn::sync";
-
-// Sync peers are banned if there exists a ban reason for the error and the peer is not on the allow list for sync.
-
-pub struct PeerBanManager {
-    config: BlockchainSyncConfig,
-    connectivity: ConnectivityRequester,
+#[async_trait]
+impl HandleCommand<Args> for CommandContext {
+    async fn handle_command(&mut self, _: Args) -> Result<(), Error> {
+        self.hash_grpc_password().await
+    }
 }
 
-impl PeerBanManager {
-    pub fn new(config: BlockchainSyncConfig, connectivity: ConnectivityRequester) -> Self {
-        Self { config, connectivity }
-    }
-
-    pub async fn ban_peer_if_required(&mut self, node_id: &NodeId, ban_reason: String, ban_duration: Duration) {
-        if self.config.forced_sync_peers.contains(node_id) {
-            debug!(
-                target: LOG_TARGET,
-                "Not banning peer that is on the allow list for sync. Ban reason = {}", ban_reason
-            );
-            return;
-        }
-        debug!(target: LOG_TARGET, "Sync peer {} removed from the sync peer list because {}", node_id, ban_reason);
-
+impl CommandContext {
+    pub async fn hash_grpc_password(&mut self) -> Result<(), Error> {
         match self
-            .connectivity
-            .ban_peer_until(node_id.clone(), ban_duration, ban_reason.clone())
-            .await
+            .config
+            .base_node
+            .grpc_authentication
+            .username_password()
+            .ok_or_else(|| anyhow!("GRPC basic auth is not configured"))
         {
-            Ok(_) => {
-                warn!(target: LOG_TARGET, "Banned sync peer {} for {:?} because {}", node_id, ban_duration, ban_reason)
+            Ok((username, password)) => {
+                match create_salted_hashed_password(password.reveal()).map_err(|e| anyhow!(e.to_string())) {
+                    Ok(hashed_password) => {
+                        println!("Your hashed password is:");
+                        println!("{}", *hashed_password);
+                        println!();
+                        println!(
+                            "Use HTTP basic auth with username '{}' and the hashed password to make GRPC requests",
+                            username
+                        );
+                    },
+                    Err(e) => eprintln!("HashGrpcPassword error! {}", e),
+                }
             },
-            Err(err) => error!(target: LOG_TARGET, "Failed to ban sync peer {}: {}", node_id, err),
+            Err(e) => eprintln!("HashGrpcPassword error! {}", e),
         }
+
+        Ok(())
     }
 }

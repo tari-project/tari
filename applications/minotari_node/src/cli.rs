@@ -45,6 +45,8 @@ pub struct Cli {
     pub watch: Option<String>,
     #[clap(long, alias = "profile")]
     pub profile_with_tokio_console: bool,
+    #[clap(long, env = "MINOTARI_NODE_ENABLE_GRPC", alias = "enable-grpc")]
+    pub grpc_enabled: bool,
 }
 
 impl ConfigOverrideProvider for Cli {

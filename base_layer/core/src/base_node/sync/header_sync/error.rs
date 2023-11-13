@@ -29,7 +29,12 @@ use tari_comms::{
     protocol::rpc::{RpcError, RpcStatus},
 };
 
-use crate::{blocks::BlockError, chain_storage::ChainStorageError, common::BanReason, validation::ValidationError};
+use crate::{
+    blocks::BlockError,
+    chain_storage::ChainStorageError,
+    common::{BanPeriod, BanReason},
+    validation::ValidationError,
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum BlockHeaderSyncError {
@@ -95,7 +100,7 @@ pub enum BlockHeaderSyncError {
 }
 
 impl BlockHeaderSyncError {
-    pub fn get_ban_reason(&self, short_ban: Duration, long_ban: Duration) -> Option<BanReason> {
+    pub fn get_ban_reason(&self) -> Option<BanReason> {
         match self {
             // no ban
             BlockHeaderSyncError::NoMoreSyncPeers(_) |
@@ -104,15 +109,15 @@ impl BlockHeaderSyncError {
             BlockHeaderSyncError::AllSyncPeersExceedLatency |
             BlockHeaderSyncError::ConnectivityError(_) |
             BlockHeaderSyncError::NotInSync |
-            BlockHeaderSyncError::PeerNotFound |
-            BlockHeaderSyncError::ChainStorageError(_) => None,
+            BlockHeaderSyncError::PeerNotFound => None,
+            BlockHeaderSyncError::ChainStorageError(e) => e.get_ban_reason(),
 
             // short ban
             err @ BlockHeaderSyncError::MaxLatencyExceeded { .. } |
             err @ BlockHeaderSyncError::RpcError { .. } |
             err @ BlockHeaderSyncError::RpcRequestError { .. } => Some(BanReason {
                 reason: format!("{}", err),
-                ban_duration: short_ban,
+                ban_duration: BanPeriod::Short,
             }),
 
             // long ban
@@ -127,10 +132,10 @@ impl BlockHeaderSyncError {
             err @ BlockHeaderSyncError::PeerSentInaccurateChainMetadata { .. } |
             err @ BlockHeaderSyncError::PeerSentTooManyHeaders(_) => Some(BanReason {
                 reason: format!("{}", err),
-                ban_duration: long_ban,
+                ban_duration: BanPeriod::Long,
             }),
 
-            BlockHeaderSyncError::ValidationFailed(err) => ValidationError::get_ban_reason(err, Some(long_ban)),
+            BlockHeaderSyncError::ValidationFailed(err) => ValidationError::get_ban_reason(err),
         }
     }
 }

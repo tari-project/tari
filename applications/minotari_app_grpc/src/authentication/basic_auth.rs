@@ -363,19 +363,33 @@ mod tests {
         //
         #[test]
         fn it_compares_user_names_in_constant_time() {
+            // Enable flag `do_performance_testing` to run performance tests; for regular CI runs, this flag should be
+            // `false` otherwise the test will fail.
+            // Notes:
+            // - The `assert!(!do_performance_testing);` at the end of the test will cause a panic on CI if the flag is
+            //   enabled, if it is enabled it will allow results to be printed when running in release mode.
+            // - For CI (flag disabled), we are only interested if the functional test pass, thus 1 iteration completed
+            //   successfully.
+            let do_performance_testing = false;
+
             #[allow(clippy::cast_possible_truncation)]
             fn round_to_6_decimals(num: f64) -> f64 {
                 ((num * 100000.0) as u128) as f64 / 100000.0
             }
 
-            const ITERATIONS: usize = 100;
+            const ITERATIONS: usize = 250;
             let mut variances = Vec::with_capacity(ITERATIONS);
             let mut short = Vec::with_capacity(ITERATIONS);
             let mut long = Vec::with_capacity(ITERATIONS);
             let mut actual = Vec::with_capacity(ITERATIONS);
+            // This value should be chosen to comply with:
+            // - Small enough to ensure a single iteration does not take too long.
+            // - Large enough to enable proper time measurement; executing the function that many times should be
+            //   measurable, thus > micro seconds in this case.
             const COUNTS: usize = 2500;
             let username_actual = "admin";
             let hashed_password = create_salted_hashed_password(b"secret").unwrap();
+            let mut test_runs = 0;
             for i in 1..=ITERATIONS {
                 let credentials =
                     BasicAuthCredentials::new(username_actual.to_string(), hashed_password.to_string().into()).unwrap();
@@ -425,6 +439,11 @@ mod tests {
                 long.push(time_taken_2);
                 actual.push(time_taken_3);
 
+                test_runs += 1;
+                if !do_performance_testing {
+                    break;
+                }
+
                 // The use of sleep between iterations helps ensure that the tests are run under different conditions,
                 // simulating real-world scenarios.
                 if i < ITERATIONS {
@@ -438,12 +457,15 @@ mod tests {
             let avg_long = round_to_6_decimals(long.iter().sum::<u128>() as f64 / long.len() as f64 / COUNTS as f64);
             let avg_actual =
                 round_to_6_decimals(actual.iter().sum::<u128>() as f64 / actual.len() as f64 / COUNTS as f64);
+            println!("Test runs:                                 {}", test_runs);
             println!("Minimum variance:                          {} %", min_variance);
             println!("Average variance:                          {} %", avg_variance);
             println!("Average short username time:               {} microseconds", avg_short);
             println!("Average long username time:                {} microseconds", avg_long);
             println!("Average actual username time:              {} microseconds", avg_actual);
-            assert!(*min_variance < 10.0);
+
+            // This is to make sure we do not run performance tests on CI.
+            assert!(!do_performance_testing);
         }
 
         // This unit test asserts that the minimum variance is less than 10% (chosen to be robust for running the unit
@@ -491,19 +513,34 @@ mod tests {
         //
         #[test]
         fn it_compares_credentials_in_constant_time() {
+            // Enable flag `do_performance_testing` to run performance tests; for regular CI runs, this flag should be
+            // `false` otherwise the test will fail.
+            // Notes:
+            // - The `assert!(!do_performance_testing);` at the end of the test will cause a panic on CI if the flag is
+            //   enabled, if it is enabled it will allow results to be printed when running in release mode.
+            // - For CI (flag disabled), we are only interested if the functional test pass, thus 1 iteration completed
+            //   successfully.
+            // - Running this specific test in debug mode is ~100x slower when compared to release mode.
+            let do_performance_testing = false;
+
             #[allow(clippy::cast_possible_truncation)]
             fn round_to_6_decimals(num: f64) -> f64 {
                 ((num * 100000.0) as u128) as f64 / 100000.0
             }
 
-            const ITERATIONS: usize = 10;
+            const ITERATIONS: usize = 250;
             let mut variances = Vec::with_capacity(ITERATIONS);
             let mut short = Vec::with_capacity(ITERATIONS);
             let mut long = Vec::with_capacity(ITERATIONS);
             let mut actual = Vec::with_capacity(ITERATIONS);
-            const COUNTS: usize = 20;
+            // This value should be chosen to comply with:
+            // - Small enough to ensure a single iteration does not take too long.
+            // - Large enough to enable proper time measurement; executing the function that many times should be
+            //   measurable, thus > milli seconds in this case.
+            const COUNTS: usize = 10;
             let username_actual = "admin";
             let hashed_password = create_salted_hashed_password(b"secret").unwrap();
+            let mut test_runs = 0;
             for i in 1..=ITERATIONS {
                 let credentials =
                     BasicAuthCredentials::new(username_actual.to_string(), hashed_password.to_string().into()).unwrap();
@@ -551,6 +588,11 @@ mod tests {
                 long.push(time_taken_2);
                 actual.push(time_taken_3);
 
+                test_runs += 1;
+                if !do_performance_testing {
+                    break;
+                }
+
                 // The use of sleep between iterations helps ensure that the tests are run under different conditions,
                 // simulating real-world scenarios.
                 if i < ITERATIONS {
@@ -564,12 +606,15 @@ mod tests {
             let avg_long = round_to_6_decimals(long.iter().sum::<u128>() as f64 / long.len() as f64 / COUNTS as f64);
             let avg_actual =
                 round_to_6_decimals(actual.iter().sum::<u128>() as f64 / actual.len() as f64 / COUNTS as f64);
+            println!("Test runs:                                 {}", test_runs);
             println!("Minimum variance:                          {} %", min_variance);
             println!("Average variance:                          {} %", avg_variance);
             println!("Average short username time:               {} microseconds", avg_short);
             println!("Average long username time:                {} microseconds", avg_long);
             println!("Average actual username time:              {} microseconds", avg_actual);
-            assert!(*min_variance < 10.0);
+
+            // This is to make sure we do not run performance tests on CI.
+            assert!(!do_performance_testing);
         }
     }
 

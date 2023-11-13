@@ -3216,6 +3216,7 @@ dependencies = [
  "hyper",
  "jsonrpc",
  "log",
+ "minotari_app_grpc",
  "minotari_app_utilities",
  "minotari_node_grpc_client",
  "minotari_wallet_grpc_client",

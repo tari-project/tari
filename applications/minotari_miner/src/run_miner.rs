@@ -57,6 +57,7 @@ pub const LOG_TARGET: &str = "minotari::miner::main";
 pub const LOG_TARGET_FILE: &str = "minotari::logging::miner::main";
 
 type WalletGrpcClient = WalletClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>;
+type BaseNodeGrpcClient = BaseNodeClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>;
 
 #[allow(clippy::too_many_lines)]
 pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
@@ -167,18 +168,18 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
     }
 }
 
-async fn connect(config: &MinerConfig) -> Result<(BaseNodeClient<Channel>, WalletGrpcClient), MinerError> {
-    let base_node_addr = format!(
-        "http://{}",
-        multiaddr_to_socketaddr(
-            &config
-                .base_node_grpc_address
-                .clone()
-                .expect("no base node grpc address found"),
-        )?
-    );
-    info!(target: LOG_TARGET, "🔗 Connecting to base node at {}", base_node_addr);
-    let node_conn = BaseNodeClient::connect(base_node_addr).await?;
+async fn connect(config: &MinerConfig) -> Result<(BaseNodeGrpcClient, WalletGrpcClient), MinerError> {
+    let node_conn = match connect_base_node(config).await {
+        Ok(client) => client,
+        Err(e) => {
+            error!(target: LOG_TARGET, "Could not connect to base node");
+            error!(
+                target: LOG_TARGET,
+                "Is its grpc running? try running it with `--enable-grpc` or enable it in config"
+            );
+            return Err(e);
+        },
+    };
 
     let wallet_conn = match connect_wallet(config).await {
         Ok(client) => client,
@@ -215,8 +216,28 @@ async fn connect_wallet(config: &MinerConfig) -> Result<WalletGrpcClient, MinerE
     Ok(wallet_conn)
 }
 
+async fn connect_base_node(config: &MinerConfig) -> Result<BaseNodeGrpcClient, MinerError> {
+    let base_node_addr = format!(
+        "http://{}",
+        multiaddr_to_socketaddr(
+            &config
+                .base_node_grpc_address
+                .clone()
+                .expect("Base node grpc address not found")
+        )?
+    );
+    info!(target: LOG_TARGET, "👛 Connecting to base node at {}", base_node_addr);
+    let channel = Endpoint::from_str(&base_node_addr)?.connect().await?;
+    let node_conn = BaseNodeClient::with_interceptor(
+        channel,
+        ClientAuthenticationInterceptor::create(&config.base_node_grpc_authentication)?,
+    );
+
+    Ok(node_conn)
+}
+
 async fn mining_cycle(
-    node_conn: &mut BaseNodeClient<Channel>,
+    node_conn: &mut BaseNodeGrpcClient,
     wallet_conn: &mut WalletGrpcClient,
     config: &MinerConfig,
     cli: &Cli,
@@ -336,7 +357,7 @@ pub async fn display_report(report: &MiningReport, num_mining_threads: usize) {
 
 /// If config
 async fn validate_tip(
-    node_conn: &mut BaseNodeClient<Channel>,
+    node_conn: &mut BaseNodeGrpcClient,
     height: u64,
     mine_until_height: Option<u64>,
 ) -> Result<(), MinerError> {

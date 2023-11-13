@@ -39,11 +39,14 @@ monerod_url = [# stagenet
 # The Minotari base node's GRPC address. (default = "/ip4/127.0.0.1/tcp/18142")
 #base_node_grpc_address = "/ip4/127.0.0.1/tcp/18142"
 
+# GRPC authentication for the base node (default = "none")
+#base_node_grpc_authentication = { username = "miner", password = "$argon..." }
+
 # The Minotari wallet's GRPC address. (default = "/ip4/127.0.0.1/tcp/18143")
 #console_wallet_grpc_address = "/ip4/127.0.0.1/tcp/18143"
 
 # GRPC authentication for the Minotari wallet (default = "none")
-#wallet_grpc_authentication = { username: "miner", password: "$argon..." }
+#wallet_grpc_authentication = { username = "miner", password = "$argon..." }
 
 # Address of the minotari_merge_mining_proxy application. (default = "/ip4/127.0.0.1/tcp/18081")
 #listener_address = "/ip4/127.0.0.1/tcp/18081"

@@ -29,7 +29,9 @@ use tokio::{
     sync::{broadcast, mpsc},
 };
 
-use super::{metrics, MessagingEvent, MessagingProtocol};
+#[cfg(feature = "metrics")]
+use super::metrics;
+use super::{MessagingEvent, MessagingProtocol};
 use crate::{message::InboundMessage, peer_manager::NodeId};
 
 const LOG_TARGET: &str = "comms::protocol::messaging::inbound";
@@ -60,6 +62,7 @@ impl InboundMessaging {
     pub async fn run<S>(self, socket: S)
     where S: AsyncRead + AsyncWrite + Unpin {
         let peer = &self.peer;
+        #[cfg(feature = "metrics")]
         metrics::num_sessions().inc();
         debug!(
             target: LOG_TARGET,
@@ -71,11 +74,11 @@ impl InboundMessaging {
 
         tokio::pin!(stream);
 
-        let inbound_count = metrics::inbound_message_count(&self.peer);
         while let Some(result) = stream.next().await {
             match result {
                 Ok(raw_msg) => {
-                    inbound_count.inc();
+                    #[cfg(feature = "metrics")]
+                    metrics::inbound_message_count(&self.peer).inc();
                     let msg_len = raw_msg.len();
                     let inbound_msg = InboundMessage::new(peer.clone(), raw_msg.freeze());
                     debug!(
@@ -107,6 +110,7 @@ impl InboundMessaging {
                 },
                 // LengthDelimitedCodec emits a InvalidData io error when the message length exceeds the maximum allowed
                 Err(err) if err.kind() == io::ErrorKind::InvalidData => {
+                    #[cfg(feature = "metrics")]
                     metrics::error_count(peer).inc();
                     debug!(
                         target: LOG_TARGET,
@@ -121,6 +125,7 @@ impl InboundMessaging {
                     break;
                 },
                 Err(err) => {
+                    #[cfg(feature = "metrics")]
                     metrics::error_count(peer).inc();
                     error!(
                         target: LOG_TARGET,
@@ -136,6 +141,7 @@ impl InboundMessaging {
         let _ignore = self
             .messaging_events_tx
             .send(MessagingEvent::InboundProtocolExited(peer.clone()));
+        #[cfg(feature = "metrics")]
         metrics::num_sessions().dec();
         debug!(
             target: LOG_TARGET,

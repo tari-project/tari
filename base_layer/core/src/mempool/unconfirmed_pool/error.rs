@@ -22,7 +22,10 @@
 
 use thiserror::Error;
 
-use crate::transactions::transaction_components::TransactionError;
+use crate::{
+    common::{BanPeriod, BanReason},
+    transactions::transaction_components::TransactionError,
+};
 
 #[derive(Debug, Error)]
 pub enum UnconfirmedPoolError {
@@ -34,4 +37,19 @@ pub enum UnconfirmedPoolError {
     TransactionNoKernels,
     #[error("Transaction error: `{0}`")]
     TransactionError(#[from] TransactionError),
+}
+impl UnconfirmedPoolError {
+    pub fn get_ban_reason(&self) -> Option<BanReason> {
+        match self {
+            UnconfirmedPoolError::StorageOutofSync | UnconfirmedPoolError::InternalError(_) => None,
+            err @ UnconfirmedPoolError::TransactionNoKernels => Some(BanReason {
+                reason: err.to_string(),
+                ban_duration: BanPeriod::Long,
+            }),
+            err @ UnconfirmedPoolError::TransactionError(_) => Some(BanReason {
+                reason: format!("Invalid transaction: {}", err),
+                ban_duration: BanPeriod::Long,
+            }),
+        }
+    }
 }

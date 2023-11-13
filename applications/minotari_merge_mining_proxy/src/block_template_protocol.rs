@@ -25,9 +25,13 @@
 use std::{cmp, sync::Arc};
 
 use log::*;
-use minotari_node_grpc_client::{grpc, BaseNodeGrpcClient};
-use minotari_wallet_grpc_client::WalletGrpcClient;
+use minotari_app_grpc::{
+    authentication::ClientAuthenticationInterceptor,
+    tari_rpc::{base_node_client::BaseNodeClient, wallet_client::WalletClient},
+};
+use minotari_node_grpc_client::grpc;
 use tari_core::proof_of_work::{monero_rx, monero_rx::FixedByteArray, Difficulty};
+use tonic::{codegen::InterceptedService, transport::Channel};
 
 use crate::{
     block_template_data::{BlockTemplateData, BlockTemplateDataBuilder},
@@ -41,14 +45,14 @@ const LOG_TARGET: &str = "minotari_mm_proxy::proxy::block_template_protocol";
 /// Structure holding grpc connections.
 pub struct BlockTemplateProtocol<'a> {
     config: Arc<MergeMiningProxyConfig>,
-    base_node_client: &'a mut BaseNodeGrpcClient<tonic::transport::Channel>,
-    wallet_client: &'a mut WalletGrpcClient<tonic::transport::Channel>,
+    base_node_client: &'a mut BaseNodeClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>,
+    wallet_client: &'a mut WalletClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>,
 }
 
 impl<'a> BlockTemplateProtocol<'a> {
     pub fn new(
-        base_node_client: &'a mut BaseNodeGrpcClient<tonic::transport::Channel>,
-        wallet_client: &'a mut WalletGrpcClient<tonic::transport::Channel>,
+        base_node_client: &'a mut BaseNodeClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>,
+        wallet_client: &'a mut WalletClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>,
         config: Arc<MergeMiningProxyConfig>,
     ) -> Self {
         Self {

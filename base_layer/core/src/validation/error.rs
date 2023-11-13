@@ -20,15 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Duration;
-
 use tari_common_types::types::HashOutput;
 use thiserror::Error;
 
 use crate::{
     blocks::{BlockHeaderValidationError, BlockValidationError},
     chain_storage::ChainStorageError,
-    common::BanReason,
+    common::{BanPeriod, BanReason},
     covenants::CovenantError,
     proof_of_work::{monero_rx::MergeMineError, DifficultyError, PowError},
     transactions::{
@@ -137,8 +135,9 @@ impl From<ChainStorageError> for ValidationError {
 }
 
 impl ValidationError {
-    pub fn get_ban_reason(&self, long_ban_duration: Option<Duration>) -> Option<BanReason> {
+    pub fn get_ban_reason(&self) -> Option<BanReason> {
         match self {
+            ValidationError::ProofOfWorkError(e) => e.get_ban_reason(),
             err @ ValidationError::SerializationError(_) |
             err @ ValidationError::BlockHeaderError(_) |
             err @ ValidationError::BlockError(_) |
@@ -152,12 +151,10 @@ impl ValidationError {
             err @ ValidationError::ContainsTxO |
             err @ ValidationError::ContainsDuplicateUtxoCommitment |
             err @ ValidationError::ChainBalanceValidationFailed(_) |
-            err @ ValidationError::ProofOfWorkError(_) |
             err @ ValidationError::ValidatingGenesis |
             err @ ValidationError::UnsortedOrDuplicateInput |
             err @ ValidationError::UnsortedOrDuplicateOutput |
             err @ ValidationError::UnsortedOrDuplicateKernel |
-            err @ ValidationError::MergeMineError(_) |
             err @ ValidationError::MaxTransactionWeightExceeded |
             err @ ValidationError::IncorrectHeight { .. } |
             err @ ValidationError::IncorrectPreviousHash { .. } |
@@ -176,9 +173,10 @@ impl ValidationError {
             err @ ValidationError::DifficultyError(_) |
             err @ ValidationError::CoinbaseExceedsMaxLimit |
             err @ ValidationError::CovenantTooLarge { .. } => Some(BanReason {
-                reason: format!("{}", err),
-                ban_duration: long_ban_duration.unwrap_or_else(|| Duration::from_secs(2 * 60 * 60)),
+                reason: err.to_string(),
+                ban_duration: BanPeriod::Long,
             }),
+            ValidationError::MergeMineError(e) => e.get_ban_reason(),
             ValidationError::FatalStorageError(_) | ValidationError::IncorrectNumberOfTimestampsProvided { .. } => None,
         }
     }

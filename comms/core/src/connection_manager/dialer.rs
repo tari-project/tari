@@ -42,6 +42,8 @@ use tokio_stream::StreamExt;
 use tracing::{self, span, Instrument, Level};
 
 use super::{direction::ConnectionDirection, error::ConnectionManagerError, peer_connection::PeerConnection};
+#[cfg(feature = "metrics")]
+use crate::connection_manager::metrics;
 use crate::{
     backoff::Backoff,
     connection_manager::{
@@ -49,7 +51,6 @@ use crate::{
         common::ValidatedPeerIdentityExchange,
         dial_state::DialState,
         manager::{ConnectionManagerConfig, ConnectionManagerEvent},
-        metrics,
         peer_connection,
     },
     multiaddr::Multiaddr,
@@ -222,6 +223,7 @@ where
         dial_result: Result<(PeerConnection, ValidatedPeerIdentityExchange), ConnectionManagerError>,
     ) {
         let node_id = dial_state.peer().node_id.clone();
+        #[cfg(feature = "metrics")]
         metrics::pending_connections(Some(&node_id), ConnectionDirection::Outbound).inc();
 
         match dial_result {
@@ -276,6 +278,7 @@ where
                     .map_err(|e| error!(target: LOG_TARGET, "Could not send reply to dial request: {:?}", e));
             });
 
+        #[cfg(feature = "metrics")]
         metrics::pending_connections(Some(&node_id), ConnectionDirection::Outbound).dec();
 
         self.cancel_dial(&node_id);

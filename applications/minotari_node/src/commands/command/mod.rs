@@ -35,6 +35,7 @@ mod get_mempool_stats;
 mod get_network_stats;
 mod get_peer;
 mod get_state_info;
+mod hash_grpc_password;
 mod header_stats;
 mod list_banned_peers;
 mod list_connections;
@@ -136,6 +137,7 @@ pub enum Command {
     Quit(quit::Args),
     Exit(quit::Args),
     Watch(watch_command::Args),
+    HashGrpcPassword(hash_grpc_password::Args),
 }
 
 impl Command {
@@ -228,6 +230,7 @@ impl CommandContext {
                 Command::Status(_) |
                 Command::Watch(_) |
                 Command::ListValidatorNodes(_) |
+                Command::HashGrpcPassword(_) |
                 Command::Quit(_) |
                 Command::Exit(_) => 30,
                 // These commands involve intense blockchain db operations and needs a lot of time to complete
@@ -293,6 +296,7 @@ impl HandleCommand<Command> for CommandContext {
             Command::Quit(args) | Command::Exit(args) => self.handle_command(args).await,
             Command::Watch(args) => self.handle_command(args).await,
             Command::ListValidatorNodes(args) => self.handle_command(args).await,
+            Command::HashGrpcPassword(args) => self.handle_command(args).await,
         }
     }
 }
