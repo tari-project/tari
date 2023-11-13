@@ -43,6 +43,8 @@ pub struct MergeMiningProxyConfig {
     pub monerod_use_auth: bool,
     /// The Minotari base node's GRPC address
     pub base_node_grpc_address: Option<Multiaddr>,
+    /// GRPC authentication for base node
+    pub base_node_grpc_authentication: GrpcAuthentication,
     /// The Minotari wallet's GRPC address
     pub console_wallet_grpc_address: Option<Multiaddr>,
     /// GRPC authentication for console wallet
@@ -80,6 +82,7 @@ impl Default for MergeMiningProxyConfig {
             monerod_password: String::new(),
             monerod_use_auth: false,
             base_node_grpc_address: None,
+            base_node_grpc_authentication: GrpcAuthentication::default(),
             console_wallet_grpc_address: None,
             console_wallet_grpc_authentication: GrpcAuthentication::default(),
             listener_address: "/ip4/127.0.0.1/tcp/18081".parse().unwrap(),
