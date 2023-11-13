@@ -1607,7 +1607,7 @@ where
                 let selection = self
                     .select_utxos(
                         amount_per_split * MicroMinotari(number_of_splits as u64),
-                        UtxoSelectionCriteria::largest_first(),
+                        UtxoSelectionCriteria::largest_first(self.resources.config.dust_ignore_value),
                         fee_per_gram,
                         number_of_splits,
                         self.default_features_and_scripts_size()

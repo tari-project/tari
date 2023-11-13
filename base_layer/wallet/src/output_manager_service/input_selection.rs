@@ -40,22 +40,25 @@ pub struct UtxoSelectionCriteria {
     pub filter: UtxoSelectionFilter,
     pub ordering: UtxoSelectionOrdering,
     pub excluding: Vec<Commitment>,
+    pub min_dust: u64,
     pub excluding_onesided: bool,
 }
 
 impl UtxoSelectionCriteria {
-    pub fn smallest_first() -> Self {
+    pub fn smallest_first(min_dust: u64) -> Self {
         Self {
             filter: UtxoSelectionFilter::Standard,
             ordering: UtxoSelectionOrdering::SmallestFirst,
+            min_dust,
             ..Default::default()
         }
     }
 
-    pub fn largest_first() -> Self {
+    pub fn largest_first(min_dust: u64) -> Self {
         Self {
             filter: UtxoSelectionFilter::Standard,
             ordering: UtxoSelectionOrdering::LargestFirst,
+            min_dust,
             ..Default::default()
         }
     }
@@ -64,6 +67,7 @@ impl UtxoSelectionCriteria {
         Self {
             filter: UtxoSelectionFilter::SpecificOutputs { commitments },
             ordering: UtxoSelectionOrdering::Default,
+            min_dust: 0,
             ..Default::default()
         }
     }
