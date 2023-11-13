@@ -821,7 +821,9 @@ where B: BlockchainBackend + 'static
                     BlockAddResult::ChainReorg { .. } => true,
                 };
 
+                #[cfg(feature = "metrics")]
                 self.update_block_result_metrics(&block_add_result).await?;
+
                 self.publish_block_event(BlockEvent::ValidBlockAdded(block.clone(), block_add_result));
 
                 if should_propagate {
@@ -947,9 +949,9 @@ where B: BlockchainBackend + 'static
         }
     }
 
+    #[cfg(feature = "metrics")]
     async fn update_block_result_metrics(&self, block_add_result: &BlockAddResult) -> Result<(), CommsInterfaceError> {
         fn update_target_difficulty(block: &ChainBlock) {
-            #[cfg(feature = "metrics")]
             match block.header().pow_algo() {
                 PowAlgorithm::Sha3x => {
                     metrics::target_difficulty_sha()
@@ -965,18 +967,12 @@ where B: BlockchainBackend + 'static
         match block_add_result {
             BlockAddResult::Ok(ref block) => {
                 update_target_difficulty(block);
-
-                #[cfg(feature = "metrics")]
-                {
-                    #[allow(clippy::cast_possible_wrap)]
-                    metrics::tip_height().set(block.height() as i64);
-                    let utxo_set_size = self.blockchain_db.utxo_count().await?;
-                    metrics::utxo_set_size().set(utxo_set_size.try_into().unwrap_or(i64::MAX));
-                }
+                #[allow(clippy::cast_possible_wrap)]
+                metrics::tip_height().set(block.height() as i64);
+                let utxo_set_size = self.blockchain_db.utxo_count().await?;
+                metrics::utxo_set_size().set(utxo_set_size.try_into().unwrap_or(i64::MAX));
             },
-            #[allow(unused_variables)] // `removed` variable is used if metrics are compiled
             BlockAddResult::ChainReorg { added, removed } => {
-                #[cfg(feature = "metrics")]
                 if let Some(fork_height) = added.last().map(|b| b.height()) {
                     #[allow(clippy::cast_possible_wrap)]
                     metrics::tip_height().set(fork_height as i64);
@@ -990,7 +986,6 @@ where B: BlockchainBackend + 'static
                 }
             },
             BlockAddResult::OrphanBlock => {
-                #[cfg(feature = "metrics")]
                 metrics::orphaned_blocks().inc();
             },
             _ => {},
