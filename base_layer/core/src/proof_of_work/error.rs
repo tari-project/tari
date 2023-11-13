@@ -62,4 +62,6 @@ pub enum DifficultyError {
     MaxBlockTimeOverflow,
     #[error("Divide by zero")]
     DivideByZero,
+    #[error("Overflow")]
+    Overflow,
 }

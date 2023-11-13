@@ -34,6 +34,7 @@ use std::{
 use blake2::Blake2b;
 use digest::consts::U32;
 use log::*;
+use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
@@ -371,7 +372,7 @@ where B: BlockchainBackend
 
     /// Return the accumulated proof of work of the longest chain.
     /// The proof of work is returned as the product of total difficulties of all PoW algorithms
-    pub fn get_accumulated_difficulty(&self) -> Result<u128, ChainStorageError> {
+    pub fn get_accumulated_difficulty(&self) -> Result<U256, ChainStorageError> {
         let db = self.db_read_access()?;
         Ok(db.fetch_chain_metadata()?.accumulated_difficulty())
     }
@@ -2631,7 +2632,7 @@ mod test {
                 .unwrap();
             let fork_tip = access.fetch_orphan_chain_tip_by_hash(block.hash()).unwrap().unwrap();
             assert_eq!(fork_tip, block.to_chain_header());
-            assert_eq!(fork_tip.accumulated_data().total_accumulated_difficulty, 3);
+            assert_eq!(fork_tip.accumulated_data().total_accumulated_difficulty, 3.into());
             let strongest_tips = access.fetch_strongest_orphan_chain_tips().unwrap().len();
             assert_eq!(strongest_tips, 1);
 
@@ -2689,7 +2690,7 @@ mod test {
             let fork_tip_1 = access.fetch_orphan_chain_tip_by_hash(block.hash()).unwrap().unwrap();
 
             assert_eq!(fork_tip_1, block.to_chain_header());
-            assert_eq!(fork_tip_1.accumulated_data().total_accumulated_difficulty, 5);
+            assert_eq!(fork_tip_1.accumulated_data().total_accumulated_difficulty, 5.into());
 
             // Fork 2 (add 1 block)
             let block = orphan_chain_2.get("B3").unwrap().clone();
@@ -2698,7 +2699,7 @@ mod test {
             let fork_tip_2 = access.fetch_orphan_chain_tip_by_hash(block.hash()).unwrap().unwrap();
 
             assert_eq!(fork_tip_2, block.to_chain_header());
-            assert_eq!(fork_tip_2.accumulated_data().total_accumulated_difficulty, 2);
+            assert_eq!(fork_tip_2.accumulated_data().total_accumulated_difficulty, 2.into());
 
             // Fork 3 (add 1 block)
             let block = orphan_chain_3.get("B4").unwrap().clone();
@@ -2707,7 +2708,7 @@ mod test {
             let fork_tip_3 = access.fetch_orphan_chain_tip_by_hash(block.hash()).unwrap().unwrap();
 
             assert_eq!(fork_tip_3, block.to_chain_header());
-            assert_eq!(fork_tip_3.accumulated_data().total_accumulated_difficulty, 5);
+            assert_eq!(fork_tip_3.accumulated_data().total_accumulated_difficulty, 5.into());
 
             assert_ne!(fork_tip_1, fork_tip_2);
             assert_ne!(fork_tip_1, fork_tip_3);
@@ -3035,16 +3036,16 @@ mod test {
         result[8].assert_reorg(1, 1);
 
         assert_added_hashes_eq(&result[5], vec!["B2"], &blocks);
-        assert_difficulty_eq(&result[5], vec![7]);
+        assert_difficulty_eq(&result[5], vec![7.into()]);
 
         assert_added_hashes_eq(&result[6], vec!["B", "C", "D2"], &blocks);
-        assert_difficulty_eq(&result[6], vec![3, 4, 10]);
+        assert_difficulty_eq(&result[6], vec![3.into(), 4.into(), 10.into()]);
 
         assert_added_hashes_eq(&result[7], vec!["D3"], &blocks);
-        assert_difficulty_eq(&result[7], vec![11]);
+        assert_difficulty_eq(&result[7], vec![11.into()]);
 
         assert_added_hashes_eq(&result[8], vec!["D4"], &blocks);
-        assert_difficulty_eq(&result[8], vec![12]);
+        assert_difficulty_eq(&result[8], vec![12.into()]);
     }
 
     #[tokio::test]
@@ -3291,17 +3292,17 @@ mod test {
         result[1].assert_added();
         result[2].assert_added();
 
-        assert_difficulty_eq(&result[0], vec![2]);
-        assert_difficulty_eq(&result[1], vec![3]);
-        assert_difficulty_eq(&result[2], vec![4]);
+        assert_difficulty_eq(&result[0], vec![2.into()]);
+        assert_difficulty_eq(&result[1], vec![3.into()]);
+        assert_difficulty_eq(&result[2], vec![4.into()]);
 
         result[3].assert_added();
         result[4].assert_added();
         result[5].assert_added();
 
-        assert_difficulty_eq(&result[3], vec![6]);
-        assert_difficulty_eq(&result[4], vec![8]);
-        assert_difficulty_eq(&result[5], vec![10]);
+        assert_difficulty_eq(&result[3], vec![6.into()]);
+        assert_difficulty_eq(&result[4], vec![8.into()]);
+        assert_difficulty_eq(&result[5], vec![10.into()]);
 
         result[6].assert_orphaned();
         result[7].assert_orphaned();
@@ -3309,14 +3310,14 @@ mod test {
 
         // ("D2->C2", 1, 120),   // Chain 2 at 11
         result[9].assert_reorg(4, 3);
-        assert_difficulty_eq(&result[9], vec![6, 8, 10, 11]);
+        assert_difficulty_eq(&result[9], vec![6.into(), 8.into(), 10.into(), 11.into()]);
 
         // ("D1->C1", 1, 120),   // Chain 1 at 11
         result[10].assert_orphaned();
 
         // ("E1->D1", 1, 120),   // Chain 1 at 12
         result[11].assert_reorg(5, 4);
-        assert_difficulty_eq(&result[11], vec![6, 8, 10, 11, 12]);
+        assert_difficulty_eq(&result[11], vec![6.into(), 8.into(), 10.into(), 11.into(), 12.into()]);
 
         // ("E2->D2", 1, 120),   // Chain 2 at 12
         result[12].assert_orphaned();
@@ -3346,8 +3347,8 @@ mod test {
         );
     }
 
-    fn assert_difficulty_eq(result: &BlockAddResult, values: Vec<u128>) {
-        let accum_difficulty: Vec<u128> = result
+    fn assert_difficulty_eq(result: &BlockAddResult, values: Vec<U256>) {
+        let accum_difficulty: Vec<U256> = result
             .added_blocks()
             .iter()
             .map(|cb| cb.accumulated_data().total_accumulated_difficulty)

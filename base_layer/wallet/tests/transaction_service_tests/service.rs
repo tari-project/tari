@@ -204,7 +204,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
 
     let passphrase = SafePassword::from("My lovely secret passphrase");
     let db = WalletDatabase::new(WalletSqliteDatabase::new(db_connection.clone(), passphrase).unwrap());
-    let metadata = ChainMetadata::new(std::i64::MAX as u64, FixedHash::zero(), 0, 0, 0, 0);
+    let metadata = ChainMetadata::new(std::i64::MAX as u64, FixedHash::zero(), 0, 0, 0.into(), 0);
 
     db.set_chain_metadata(metadata).unwrap();
 

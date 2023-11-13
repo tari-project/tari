@@ -52,23 +52,6 @@ pub mod transactions;
 mod common;
 pub use common::{borsh, one_sided, ConfidentialOutputHasher};
 
-#[allow(clippy::ptr_offset_with_cast)]
-#[allow(clippy::assign_op_pattern)]
-#[allow(clippy::manual_range_contains)]
-#[allow(clippy::range_plus_one)]
-pub mod large_ints {
-    uint::construct_uint! {
-        /// 256-bit unsigned integer.
-        pub struct U256(4);
-    }
-
-    uint::construct_uint! {
-        /// 512-bit unsigned integer.
-        pub struct U512(8);
-    }
-}
-
-pub use large_ints::{U256, U512};
 #[cfg(feature = "base_node")]
 mod domain_hashing {
     use blake2::Blake2b;

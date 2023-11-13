@@ -501,7 +501,14 @@ mod test {
         )
         .unwrap();
 
-        let chain_metadata = ChainMetadata::new(1, Default::default(), 0, 0, 123, ts_now.timestamp_millis() as u64);
+        let chain_metadata = ChainMetadata::new(
+            1,
+            Default::default(),
+            0,
+            0,
+            123.into(),
+            ts_now.timestamp_millis() as u64,
+        );
 
         base_node_event_sender
             .send(Arc::new(BaseNodeEvent::BaseNodeStateChanged(BaseNodeState {

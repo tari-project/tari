@@ -23,13 +23,11 @@
 use std::fmt;
 
 use num_format::{Locale, ToFormattedString};
+use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 use tari_utilities::epoch_time::EpochTime;
 
-use crate::{
-    proof_of_work::{error::DifficultyError, DifficultyAdjustmentError},
-    U256,
-};
+use crate::proof_of_work::{error::DifficultyError, DifficultyAdjustmentError};
 
 /// Minimum difficulty, enforced in diff retargeting
 /// avoids getting stuck when trying to increase difficulty subject to dampening
@@ -187,14 +185,12 @@ pub trait DifficultyAdjustment {
 
 #[cfg(test)]
 mod test {
-    use crate::{
-        proof_of_work::{
-            difficulty::{CheckedAdd, CheckedSub, MIN_DIFFICULTY},
-            Difficulty,
-        },
-        U256,
-    };
+    use primitive_types::U256;
 
+    use crate::proof_of_work::{
+        difficulty::{CheckedAdd, CheckedSub, MIN_DIFFICULTY},
+        Difficulty,
+    };
     #[test]
     fn add_difficulty() {
         assert_eq!(

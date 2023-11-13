@@ -22,6 +22,7 @@
 
 use std::fmt::{Display, Error, Formatter};
 
+use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 use tari_utilities::hex::Hex;
 
@@ -43,7 +44,7 @@ pub struct ChainMetadata {
     /// provided. Archival nodes wil always have an `pruned_height` of zero.
     pruned_height: u64,
     /// The total accumulated proof of work of the longest chain
-    accumulated_difficulty: u128,
+    accumulated_difficulty: U256,
     /// Timestamp of the tip block in the longest valid chain
     timestamp: u64,
 }
@@ -54,7 +55,7 @@ impl ChainMetadata {
         hash: BlockHash,
         pruning_horizon: u64,
         pruned_height: u64,
-        accumulated_difficulty: u128,
+        accumulated_difficulty: U256,
         timestamp: u64,
     ) -> ChainMetadata {
         ChainMetadata {
@@ -73,7 +74,7 @@ impl ChainMetadata {
             best_block: FixedHash::zero(),
             pruning_horizon: 0,
             pruned_height: 0,
-            accumulated_difficulty: 0,
+            accumulated_difficulty: 0.into(),
             timestamp: 0,
         }
     }
@@ -128,7 +129,7 @@ impl ChainMetadata {
         self.pruned_height
     }
 
-    pub fn accumulated_difficulty(&self) -> u128 {
+    pub fn accumulated_difficulty(&self) -> U256 {
         self.accumulated_difficulty
     }
 
