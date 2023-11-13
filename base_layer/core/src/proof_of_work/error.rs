@@ -58,6 +58,7 @@ impl PowError {
                 reason: err.to_string(),
                 ban_duration: BanPeriod::Long,
             }),
+            #[cfg(feature = "base_node")]
             PowError::MergeMineError(e) => e.get_ban_reason(),
         }
     }
