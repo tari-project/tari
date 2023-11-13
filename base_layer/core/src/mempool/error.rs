@@ -24,7 +24,11 @@ use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
 use tokio::task::JoinError;
 
-use crate::{mempool::unconfirmed_pool::UnconfirmedPoolError, transactions::transaction_components::TransactionError};
+use crate::{
+    common::{BanPeriod, BanReason},
+    mempool::unconfirmed_pool::UnconfirmedPoolError,
+    transactions::transaction_components::TransactionError,
+};
 
 #[derive(Debug, Error)]
 pub enum MempoolError {
@@ -44,4 +48,23 @@ pub enum MempoolError {
     InternalError(String),
     #[error("Mempool indexes out of sync: transaction exists in txs_by_signature but not in tx_by_key")]
     IndexOutOfSync,
+}
+impl MempoolError {
+    pub fn get_ban_reason(&self) -> Option<BanReason> {
+        match self {
+            _err @ MempoolError::UnconfirmedPoolError(e) => e.get_ban_reason(),
+            err @ MempoolError::TransactionError(_) | err @ MempoolError::TransactionNoKernels => Some(BanReason {
+                reason: err.to_string(),
+                ban_duration: BanPeriod::Long,
+            }),
+            err @ MempoolError::TransportChannelError(_) => Some(BanReason {
+                reason: err.to_string(),
+                ban_duration: BanPeriod::Short,
+            }),
+            _err @ MempoolError::RwLockPoisonError |
+            _err @ MempoolError::BlockingTaskError(_) |
+            _err @ MempoolError::InternalError(_) |
+            _err @ MempoolError::IndexOutOfSync => None,
+        }
+    }
 }

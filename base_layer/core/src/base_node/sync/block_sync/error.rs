@@ -29,7 +29,11 @@ use tari_comms::{
     protocol::rpc::{RpcError, RpcStatus, RpcStatusCode},
 };
 
-use crate::{chain_storage::ChainStorageError, common::BanReason, validation::ValidationError};
+use crate::{
+    chain_storage::ChainStorageError,
+    common::{BanPeriod, BanReason},
+    validation::ValidationError,
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum BlockSyncError {
@@ -101,25 +105,24 @@ impl BlockSyncError {
 }
 
 impl BlockSyncError {
-    pub fn get_ban_reason(&self, short_ban: Duration, long_ban: Duration) -> Option<BanReason> {
+    pub fn get_ban_reason(&self) -> Option<BanReason> {
         match self {
             // no ban
             BlockSyncError::AsyncTaskFailed(_) |
-            BlockSyncError::ChainStorageError(_) |
             BlockSyncError::ConnectivityError(_) |
             BlockSyncError::NoMoreSyncPeers(_) |
             BlockSyncError::AllSyncPeersExceedLatency |
             BlockSyncError::FailedToConstructChainBlock |
             BlockSyncError::PeerNotFound |
             BlockSyncError::SyncRoundFailed => None,
-
+            BlockSyncError::ChainStorageError(e) => e.get_ban_reason(),
             // short ban
             err @ BlockSyncError::MaxLatencyExceeded { .. } |
             err @ BlockSyncError::PeerDidNotSupplyAllClaimedBlocks(_) |
             err @ BlockSyncError::RpcError(_) |
             err @ BlockSyncError::RpcRequestError(_) => Some(BanReason {
                 reason: format!("{}", err),
-                ban_duration: short_ban,
+                ban_duration: BanPeriod::Short,
             }),
 
             // long ban
@@ -128,10 +131,10 @@ impl BlockSyncError {
             err @ BlockSyncError::InvalidBlockBody(_) |
             err @ BlockSyncError::FixedHashSizeError(_) => Some(BanReason {
                 reason: format!("{}", err),
-                ban_duration: long_ban,
+                ban_duration: BanPeriod::Long,
             }),
 
-            BlockSyncError::ValidationError(err) => ValidationError::get_ban_reason(err, Some(long_ban)),
+            BlockSyncError::ValidationError(err) => ValidationError::get_ban_reason(err),
         }
     }
 }

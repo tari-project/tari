@@ -49,7 +49,7 @@ use crate::{
     },
     blocks::{BlockHeader, ChainBlock, ChainHeader},
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError},
-    common::rolling_avg::RollingAverageTime,
+    common::{rolling_avg::RollingAverageTime, BanPeriod},
     consensus::ConsensusManager,
     proof_of_work::randomx_factory::RandomXFactory,
     proto::{
@@ -156,15 +156,15 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             match self.connect_and_attempt_sync(&node_id, max_latency).await {
                 Ok((peer, sync_result)) => return Ok((peer, sync_result)),
                 Err(err) => {
-                    let ban_reason = BlockHeaderSyncError::get_ban_reason(
-                        &err,
-                        self.config.short_ban_period,
-                        self.config.ban_period,
-                    );
+                    let ban_reason = BlockHeaderSyncError::get_ban_reason(&err);
                     if let Some(reason) = ban_reason {
                         warn!(target: LOG_TARGET, "{}", err);
+                        let duration = match reason.ban_duration {
+                            BanPeriod::Short => self.config.short_ban_period,
+                            BanPeriod::Long => self.config.ban_period,
+                        };
                         self.peer_ban_manager
-                            .ban_peer_if_required(&node_id, &Some(reason.clone()))
+                            .ban_peer_if_required(&node_id, reason.reason, duration)
                             .await;
                     }
                     if let BlockHeaderSyncError::MaxLatencyExceeded { .. } = err {

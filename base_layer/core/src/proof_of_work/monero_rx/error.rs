@@ -22,7 +22,10 @@
 
 use tari_utilities::hex::HexError;
 
-use crate::proof_of_work::{randomx_factory::RandomXVMFactoryError, DifficultyError};
+use crate::{
+    common::{BanPeriod, BanReason},
+    proof_of_work::{randomx_factory::RandomXVMFactoryError, DifficultyError},
+};
 
 /// Errors that can occur when merging Monero PoW data with Tari PoW data
 #[derive(Debug, thiserror::Error)]
@@ -45,6 +48,25 @@ pub enum MergeMineError {
     InvalidMerkleRoot,
     #[error("Invalid difficulty: {0}")]
     DifficultyError(#[from] DifficultyError),
+}
+
+impl MergeMineError {
+    pub fn get_ban_reason(&self) -> Option<BanReason> {
+        match self {
+            err @ MergeMineError::SerializedPowDataDoesNotMatch(_) |
+            err @ MergeMineError::SerializeError(_) |
+            err @ MergeMineError::DeserializeError(_) |
+            err @ MergeMineError::HashingError(_) |
+            err @ MergeMineError::ValidationError(_) |
+            err @ MergeMineError::InvalidMerkleRoot |
+            err @ MergeMineError::DifficultyError(_) |
+            err @ MergeMineError::HexError(_) => Some(BanReason {
+                reason: err.to_string(),
+                ban_duration: BanPeriod::Long,
+            }),
+            MergeMineError::RandomXVMFactoryError(_) => None,
+        }
+    }
 }
 
 impl From<HexError> for MergeMineError {

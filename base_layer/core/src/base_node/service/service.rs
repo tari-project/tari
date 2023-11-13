@@ -55,10 +55,12 @@ use crate::{
         comms_interface::{CommsInterfaceError, InboundNodeCommsHandlers, NodeCommsRequest, NodeCommsResponse},
         service::{error::BaseNodeServiceError, initializer::ExtractBlockError},
         state_machine_service::states::StateInfo,
+        BaseNodeStateMachineConfig,
         StateMachineHandle,
     },
     blocks::{Block, NewBlock},
     chain_storage::{BlockchainBackend, ChainStorageError},
+    common::BanPeriod,
     proto as shared_protos,
     proto::base_node as proto,
 };
@@ -97,6 +99,7 @@ pub(super) struct BaseNodeService<B> {
     service_request_timeout: Duration,
     state_machine_handle: StateMachineHandle,
     connectivity: ConnectivityRequester,
+    base_node_config: BaseNodeStateMachineConfig,
 }
 
 impl<B> BaseNodeService<B>
@@ -108,6 +111,7 @@ where B: BlockchainBackend + 'static
         service_request_timeout: Duration,
         state_machine_handle: StateMachineHandle,
         connectivity: ConnectivityRequester,
+        base_node_config: BaseNodeStateMachineConfig,
     ) -> Self {
         let (timeout_sender, timeout_receiver) = mpsc::channel(100);
         Self {
@@ -119,6 +123,7 @@ where B: BlockchainBackend + 'static
             service_request_timeout,
             state_machine_handle,
             connectivity,
+            base_node_config,
         }
     }
 
@@ -256,7 +261,8 @@ where B: BlockchainBackend + 'static
         let outbound_message_service = self.outbound_message_service.clone();
         let state_machine_handle = self.state_machine_handle.clone();
         let mut connectivity = self.connectivity.clone();
-
+        let short_ban = self.base_node_config.blockchain_sync_config.short_ban_period;
+        let long_ban = self.base_node_config.blockchain_sync_config.ban_period;
         task::spawn(async move {
             let result = handle_incoming_request(
                 inbound_nch,
@@ -267,12 +273,12 @@ where B: BlockchainBackend + 'static
             .await;
             if let Err(e) = result {
                 if let Some(ban_reason) = e.get_ban_reason() {
+                    let duration = match ban_reason.ban_duration {
+                        BanPeriod::Short => short_ban,
+                        BanPeriod::Long => long_ban,
+                    };
                     let _drop = connectivity
-                        .ban_peer_until(
-                            domain_msg.source_peer.node_id.clone(),
-                            ban_reason.ban_duration(),
-                            ban_reason.reason().to_string(),
-                        )
+                        .ban_peer_until(domain_msg.source_peer.node_id.clone(), duration, ban_reason.reason)
                         .await
                         .map_err(|e| error!(target: LOG_TARGET, "Failed to ban peer: {:?}", e));
                 }
@@ -287,18 +293,21 @@ where B: BlockchainBackend + 'static
     ) {
         let waiting_requests = self.waiting_requests.clone();
         let mut connectivity_requester = self.connectivity.clone();
+
+        let short_ban = self.base_node_config.blockchain_sync_config.short_ban_period;
+        let long_ban = self.base_node_config.blockchain_sync_config.ban_period;
         task::spawn(async move {
             let source_peer = domain_msg.source_peer.clone();
             let result = handle_incoming_response(waiting_requests, domain_msg).await;
 
             if let Err(e) = result {
                 if let Some(ban_reason) = e.get_ban_reason() {
+                    let duration = match ban_reason.ban_duration {
+                        BanPeriod::Short => short_ban,
+                        BanPeriod::Long => long_ban,
+                    };
                     let _drop = connectivity_requester
-                        .ban_peer_until(
-                            source_peer.node_id,
-                            ban_reason.ban_duration(),
-                            ban_reason.reason().to_string(),
-                        )
+                        .ban_peer_until(source_peer.node_id, duration, ban_reason.reason)
                         .await
                         .map_err(|e| error!(target: LOG_TARGET, "Failed to ban peer: {:?}", e));
                 }
@@ -334,6 +343,10 @@ where B: BlockchainBackend + 'static
             return;
         }
         let inbound_nch = self.inbound_nch.clone();
+        let mut connectivity_requester = self.connectivity.clone();
+        let source_peer = new_block.source_peer.clone();
+        let short_ban = self.base_node_config.blockchain_sync_config.short_ban_period;
+        let long_ban = self.base_node_config.blockchain_sync_config.ban_period;
         task::spawn(async move {
             let result = handle_incoming_block(inbound_nch, new_block).await;
 
@@ -344,7 +357,19 @@ where B: BlockchainBackend + 'static
                 ))) => {
                     // Special case, dont log this again as an error
                 },
-                Err(e) => error!(target: LOG_TARGET, "Failed to handle incoming block message: {}", e),
+                Err(e) => {
+                    if let Some(ban_reason) = e.get_ban_reason() {
+                        let duration = match ban_reason.ban_duration {
+                            BanPeriod::Short => short_ban,
+                            BanPeriod::Long => long_ban,
+                        };
+                        let _drop = connectivity_requester
+                            .ban_peer_until(source_peer.node_id, duration, ban_reason.reason)
+                            .await
+                            .map_err(|e| error!(target: LOG_TARGET, "Failed to ban peer: {:?}", e));
+                    }
+                    error!(target: LOG_TARGET, "Failed to handle incoming block message: {}", e)
+                },
             }
         });
     }

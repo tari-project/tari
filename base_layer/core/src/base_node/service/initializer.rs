@@ -46,6 +46,7 @@ use crate::{
     base_node::{
         comms_interface::{InboundNodeCommsHandlers, LocalNodeCommsInterface, OutboundNodeCommsInterface},
         service::service::{BaseNodeService, BaseNodeStreams},
+        BaseNodeStateMachineConfig,
         StateMachineHandle,
     },
     blocks::NewBlock,
@@ -68,6 +69,7 @@ pub struct BaseNodeServiceInitializer<T> {
     consensus_manager: ConsensusManager,
     service_request_timeout: Duration,
     randomx_factory: RandomXFactory,
+    base_node_config: BaseNodeStateMachineConfig,
 }
 
 impl<T> BaseNodeServiceInitializer<T>
@@ -81,6 +83,7 @@ where T: BlockchainBackend
         consensus_manager: ConsensusManager,
         service_request_timeout: Duration,
         randomx_factory: RandomXFactory,
+        base_node_config: BaseNodeStateMachineConfig,
     ) -> Self {
         Self {
             inbound_message_subscription_factory,
@@ -89,6 +92,7 @@ where T: BlockchainBackend
             consensus_manager,
             service_request_timeout,
             randomx_factory,
+            base_node_config,
         }
     }
 
@@ -180,6 +184,7 @@ where T: BlockchainBackend + 'static
         let mempool = self.mempool.clone();
         let consensus_manager = self.consensus_manager.clone();
         let randomx_factory = self.randomx_factory.clone();
+        let config = self.base_node_config.clone();
 
         context.spawn_when_ready(move |handles| async move {
             let dht = handles.expect_handle::<Dht>();
@@ -213,6 +218,7 @@ where T: BlockchainBackend + 'static
                 service_request_timeout,
                 state_machine,
                 connectivity,
+                config,
             )
             .start(streams);
             futures::pin_mut!(service);

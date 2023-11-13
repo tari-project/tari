@@ -427,6 +427,7 @@ async fn setup_base_node_services(
             consensus_manager,
             Duration::from_secs(60),
             randomx_factory,
+            Default::default(),
         ))
         .add_initializer(MempoolServiceInitializer::new(mempool.clone(), subscription_factory))
         .add_initializer(mock_state_machine.get_initializer())
