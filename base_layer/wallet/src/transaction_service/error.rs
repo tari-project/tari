@@ -231,6 +231,8 @@ pub enum TransactionStorageError {
     UnexpectedResult(String),
     #[error("Bincode error: `{0}`")]
     BincodeSerialize(String),
+    #[error("Bincode error: `{0}`")]
+    BincodeDeserialize(String),
     #[error("This write operation is not supported for provided DbKey")]
     OperationNotSupported,
     #[error("Could not find all values specified for batch operation")]
