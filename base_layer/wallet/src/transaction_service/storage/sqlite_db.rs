@@ -23,7 +23,6 @@
 use std::{
     collections::HashMap,
     convert::{TryFrom, TryInto},
-    str::from_utf8,
     sync::{Arc, RwLock},
 };
 
@@ -45,11 +44,7 @@ use tari_common_types::{
     types::{BlockHash, PrivateKey, PublicKey, Signature},
 };
 use tari_core::transactions::tari_amount::MicroMinotari;
-use tari_utilities::{
-    hex::{from_hex, Hex},
-    ByteArray,
-    Hidden,
-};
+use tari_utilities::{ByteArray, Hidden};
 use thiserror::Error;
 use tokio::time::Instant;
 use zeroize::Zeroize;
@@ -1166,7 +1161,7 @@ struct InboundTransactionSql {
     tx_id: i64,
     source_address: Vec<u8>,
     amount: i64,
-    receiver_protocol: String,
+    receiver_protocol: Vec<u8>,
     message: String,
     timestamp: NaiveDateTime,
     cancelled: i32,
@@ -1345,11 +1340,13 @@ impl InboundTransactionSql {
     }
 
     fn try_from(i: InboundTransaction, cipher: &XChaCha20Poly1305) -> Result<Self, TransactionStorageError> {
+        let receiver_protocol_bytes = bincode::serialize(&i.receiver_protocol)
+            .map_err(|e| TransactionStorageError::BincodeSerialize(e.to_string()))?;
         let i = Self {
             tx_id: i.tx_id.as_u64() as i64,
             source_address: i.source_address.to_bytes().to_vec(),
             amount: u64::from(i.amount) as i64,
-            receiver_protocol: serde_json::to_string(&i.receiver_protocol)?,
+            receiver_protocol: receiver_protocol_bytes.to_vec(),
             message: i.message,
             timestamp: i.timestamp,
             cancelled: i32::from(i.cancelled),
@@ -1376,26 +1373,15 @@ impl Encryptable<XChaCha20Poly1305> for InboundTransactionSql {
         self.receiver_protocol = encrypt_bytes_integral_nonce(
             cipher,
             self.domain("receiver_protocol"),
-            Hidden::hide(self.receiver_protocol.as_bytes().to_vec()),
-        )?
-        .to_hex();
+            Hidden::hide(self.receiver_protocol),
+        )?;
 
         Ok(self)
     }
 
     fn decrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
-        let mut decrypted_protocol = decrypt_bytes_integral_nonce(
-            cipher,
-            self.domain("receiver_protocol"),
-            &from_hex(self.receiver_protocol.as_str()).map_err(|e| e.to_string())?,
-        )?;
-
-        self.receiver_protocol = from_utf8(decrypted_protocol.as_slice())
-            .map_err(|e| e.to_string())?
-            .to_string();
-
-        // zeroize sensitive data
-        decrypted_protocol.zeroize();
+        self.receiver_protocol =
+            decrypt_bytes_integral_nonce(cipher, self.domain("receiver_protocol"), &self.receiver_protocol)?;
 
         Ok(self)
     }
@@ -1408,7 +1394,8 @@ impl InboundTransaction {
             tx_id: (i.tx_id as u64).into(),
             source_address: TariAddress::from_bytes(&i.source_address).map_err(TransactionKeyError::Source)?,
             amount: MicroMinotari::from(i.amount as u64),
-            receiver_protocol: serde_json::from_str(&i.receiver_protocol.clone())?,
+            receiver_protocol: bincode::deserialize(&i.receiver_protocol)
+                .map_err(|e| TransactionStorageError::BincodeDeserialize(e.to_string()))?,
             status: TransactionStatus::Pending,
             message: i.message,
             timestamp: i.timestamp,
@@ -1425,7 +1412,7 @@ impl InboundTransaction {
 pub struct UpdateInboundTransactionSql {
     cancelled: Option<i32>,
     direct_send_success: Option<i32>,
-    receiver_protocol: Option<String>,
+    receiver_protocol: Option<Vec<u8>>,
     send_count: Option<i32>,
     last_send_timestamp: Option<Option<NaiveDateTime>>,
 }
@@ -1438,7 +1425,7 @@ struct OutboundTransactionSql {
     destination_address: Vec<u8>,
     amount: i64,
     fee: i64,
-    sender_protocol: String,
+    sender_protocol: Vec<u8>,
     message: String,
     timestamp: NaiveDateTime,
     cancelled: i32,
@@ -1601,12 +1588,14 @@ impl OutboundTransactionSql {
     }
 
     fn try_from(o: OutboundTransaction, cipher: &XChaCha20Poly1305) -> Result<Self, TransactionStorageError> {
+        let sender_protocol_bytes = bincode::serialize(&o.sender_protocol)
+            .map_err(|e| TransactionStorageError::BincodeSerialize(e.to_string()))?;
         let outbound_tx = Self {
             tx_id: o.tx_id.as_u64() as i64,
             destination_address: o.destination_address.to_bytes().to_vec(),
             amount: u64::from(o.amount) as i64,
             fee: u64::from(o.fee) as i64,
-            sender_protocol: serde_json::to_string(&o.sender_protocol)?,
+            sender_protocol: sender_protocol_bytes.to_vec(),
             message: o.message,
             timestamp: o.timestamp,
             cancelled: i32::from(o.cancelled),
@@ -1634,27 +1623,15 @@ impl Encryptable<XChaCha20Poly1305> for OutboundTransactionSql {
         self.sender_protocol = encrypt_bytes_integral_nonce(
             cipher,
             self.domain("sender_protocol"),
-            Hidden::hide(self.sender_protocol.as_bytes().to_vec()),
-        )?
-        .to_hex();
+            Hidden::hide(self.sender_protocol),
+        )?;
 
         Ok(self)
     }
 
     fn decrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
-        let mut decrypted_protocol = decrypt_bytes_integral_nonce(
-            cipher,
-            self.domain("sender_protocol"),
-            &from_hex(self.sender_protocol.as_str()).map_err(|e| e.to_string())?,
-        )?;
-
-        self.sender_protocol = from_utf8(decrypted_protocol.as_slice())
-            .map_err(|e| e.to_string())?
-            .to_string();
-
-        // zeroize sensitive data
-        decrypted_protocol.zeroize();
-
+        self.sender_protocol =
+            decrypt_bytes_integral_nonce(cipher, self.domain("sender_protocol"), &self.sender_protocol)?;
         Ok(self)
     }
 }
@@ -1662,14 +1639,14 @@ impl Encryptable<XChaCha20Poly1305> for OutboundTransactionSql {
 impl OutboundTransaction {
     fn try_from(o: OutboundTransactionSql, cipher: &XChaCha20Poly1305) -> Result<Self, TransactionStorageError> {
         let mut o = o.decrypt(cipher).map_err(TransactionStorageError::AeadError)?;
-
         let outbound_tx = Self {
             tx_id: (o.tx_id as u64).into(),
             destination_address: TariAddress::from_bytes(&o.destination_address)
                 .map_err(TransactionKeyError::Destination)?,
             amount: MicroMinotari::from(o.amount as u64),
             fee: MicroMinotari::from(o.fee as u64),
-            sender_protocol: serde_json::from_str(&o.sender_protocol.clone())?,
+            sender_protocol: bincode::deserialize(&o.sender_protocol)
+                .map_err(|e| TransactionStorageError::BincodeDeserialize(e.to_string()))?,
             status: TransactionStatus::Pending,
             message: o.message,
             timestamp: o.timestamp,
@@ -1691,7 +1668,7 @@ impl OutboundTransaction {
 pub struct UpdateOutboundTransactionSql {
     cancelled: Option<i32>,
     direct_send_success: Option<i32>,
-    sender_protocol: Option<String>,
+    sender_protocol: Option<Vec<u8>>,
     send_count: Option<i32>,
     last_send_timestamp: Option<Option<NaiveDateTime>>,
 }
