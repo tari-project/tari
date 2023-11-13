@@ -70,7 +70,6 @@ pub fn setup_node_identity<P: AsRef<Path>>(
             ),
         )),
         Err(e) => {
-            debug!(target: LOG_TARGET, "Failed to load node identity: {}", e);
             if !create_id {
                 let prompt = prompt("Node identity does not exist.\nWould you like to to create one (Y/n)?");
                 if !prompt {
@@ -89,8 +88,9 @@ pub fn setup_node_identity<P: AsRef<Path>>(
                         ),
                     ));
                 };
+            } else {
+                warn!(target: LOG_TARGET, "Failed to load node identity: {}", e);
             }
-
             debug!(target: LOG_TARGET, "Existing node id not found. {}. Creating new ID", e);
 
             match create_new_node_identity(&identity_file, public_addresses, peer_features) {
