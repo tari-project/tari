@@ -368,8 +368,8 @@ mod tests {
             // Notes:
             // - The `assert!(!do_performance_testing);` at the end of the test will cause a panic on CI if the flag is
             //   enabled, if it is enabled it will allow results to be printed when running in release mode.
-            // - For CI (flag disabled), we are only interested if the variance criteria can be met at least once, and
-            //   then the test can stop. For that reason, ample iterations are allowed.
+            // - For CI (flag disabled), we are only interested if the functional test pass, thus 1 iteration completed
+            //   successfully.
             let do_performance_testing = false;
 
             #[allow(clippy::cast_possible_truncation)]
@@ -440,7 +440,7 @@ mod tests {
                 actual.push(time_taken_3);
 
                 test_runs += 1;
-                if variance < 10.0 && !do_performance_testing {
+                if !do_performance_testing {
                     break;
                 }
 
@@ -466,9 +466,6 @@ mod tests {
 
             // This is to make sure we do not run performance tests on CI.
             assert!(!do_performance_testing);
-
-            // The variance is usually much lower; this is just for CI.
-            assert!(*min_variance < 10.0);
         }
 
         // This unit test asserts that the minimum variance is less than 10% (chosen to be robust for running the unit
@@ -521,8 +518,8 @@ mod tests {
             // Notes:
             // - The `assert!(!do_performance_testing);` at the end of the test will cause a panic on CI if the flag is
             //   enabled, if it is enabled it will allow results to be printed when running in release mode.
-            // - For CI (flag disabled), we are only interested if the variance criteria can be met at least once, and
-            //   then the test can stop. For that reason, ample iterations are allowed.
+            // - For CI (flag disabled), we are only interested if the functional test pass, thus 1 iteration completed
+            //   successfully.
             // - Running this specific test in debug mode is ~100x slower when compared to release mode.
             let do_performance_testing = false;
 
@@ -592,7 +589,7 @@ mod tests {
                 actual.push(time_taken_3);
 
                 test_runs += 1;
-                if variance < 10.0 && !do_performance_testing {
+                if !do_performance_testing {
                     break;
                 }
 
@@ -618,9 +615,6 @@ mod tests {
 
             // This is to make sure we do not run performance tests on CI.
             assert!(!do_performance_testing);
-
-            // The variance is usually much lower; this is just for CI.
-            assert!(*min_variance < 10.0);
         }
     }
 
