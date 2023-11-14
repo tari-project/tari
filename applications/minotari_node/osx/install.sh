@@ -82,8 +82,8 @@ if [ -f ./minotari_node ]; then
 fi
 
 # Configure Base Node
-./tari_base_node --init
+./minotari_node --init
 
 banner Running Tari Base Node
 # Run Base Node
-./tari_base_node
+./minotari_node

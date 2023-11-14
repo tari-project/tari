@@ -20,7 +20,7 @@ if [ "$1" == "-h" ] || [ "$1" == "--help" ]; then
 fi
 
 # Env
-distName="tari_base_node"
+distName="minotari_node"
 sName=$(basename $0)
 #sPath=$(realpath $0)
 sPath=$(dirname $0)
@@ -169,7 +169,7 @@ gitCommitHash="$(git rev-parse --short HEAD)"
 cargo build --release
 
 # ToDo: Might have multiple consts.rs files?
-rustConsts=$(find target -name "consts.rs" | grep -i "tari_base_node")
+rustConsts=$(find target -name "consts.rs" | grep -i "minotari_node")
 if [ -f "$rustConsts" ];then
   rustVer=$(grep -i 'VERSION' "$rustConsts" | cut -d "\"" -f 2)
   archiveBase="$distFullName-$rustVer"
@@ -209,14 +209,14 @@ fi
 mkdir $distDir/dist
 
 COPY_FILES=(
-  "target/release/tari_base_node"
-  "target/release/tari_console_wallet"
-  "target/release/tari_merge_mining_proxy"
-  "target/release/tari_miner"
+  "target/release/minotari_node"
+  "target/release/minotari_console_wallet"
+  "target/release/minotari_merge_mining_proxy"
+  "target/release/minotari_miner"
   "common/config/presets/*.toml"
   "common/logging/log4rs_sample_base_node.yml"
-  "applications/tari_base_node/README.md"
-  applications/tari_base_node/$osname/*
+  "applications/minotari_node/README.md"
+  applications/minotari_node/$osname/*
   "scripts/install_tor.sh"
 )
 
