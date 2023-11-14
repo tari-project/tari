@@ -133,7 +133,7 @@ transaction_event_channel_size = 25000
 # transaction amount. Set this value to `false` to allow spending of "dust" UTXOs for small valued transactions
 # (default = true).
 prevent_fee_gt_amount = false
-# Ignores dust below this value, value in micro MinoTari
+# Ignores dust below this value, value in micro MinoTari, defaults to 100
 # dust_ignore_value: 100,
 # This is the size of the event channel used to communicate output manager events to the wallet. A busy console
 # wallet doing thousands of bulk payments or used for stress testing needs a fairly big size (>3000) (default = 250).
