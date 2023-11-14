@@ -31,4 +31,4 @@ cd "${INSTALL_ROOT}" || exit
 tari_base-node --init
 
 # Run Base Node
-tari_base_node
+minotari_node

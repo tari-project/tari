@@ -91,7 +91,7 @@ pub struct WalletConfig {
     pub command_send_wait_stage: TransactionStage,
     /// Notification script file for a notifier service - allows a wallet to execute a script or program when certain
     /// transaction events are received by the console wallet .
-    /// (see example at 'applications/tari_console_wallet/src/notifier/notify_example.sh')
+    /// (see example at 'applications/minotari_console_wallet/src/notifier/notify_example.sh')
     pub notify_file: Option<PathBuf>,
     /// If true, a GRPC server will bind to the configured address and listen for incoming GRPC requests.
     pub grpc_enabled: bool,
