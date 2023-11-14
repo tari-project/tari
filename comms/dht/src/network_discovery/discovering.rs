@@ -175,7 +175,7 @@ impl Discovering {
         while let Some(resp) = stream.next().await {
             counter += 1;
             if counter > self.params.num_peers_to_request {
-                error!(target: LOG_TARGET, "Remote peer sent more peers than we requested.");
+                warn!(target: LOG_TARGET, "Remote peer sent more peers than we requested.");
                 return Err(NetworkDiscoveryError::TooManyPeersReceived);
             }
             let GetPeersResponse { peer } = resp?;
@@ -185,7 +185,7 @@ impl Discovering {
                 .try_into()
                 .map_err(NetworkDiscoveryError::InvalidPeerDataReceived)?;
             if !peers_received.insert(new_peer.public_key.clone()) {
-                error!(target: LOG_TARGET, "Remote peer sent duplicate peer.");
+                warn!(target: LOG_TARGET, "Remote peer sent duplicate peer.");
                 return Err(NetworkDiscoveryError::DuplicatePeerReceived);
             }
             self.validate_and_add_peer(sync_peer, new_peer).await?;
