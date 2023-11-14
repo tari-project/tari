@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::TryInto;
+use std::{collections::HashSet, convert::TryInto};
 
 use futures::{stream::FuturesUnordered, Stream, StreamExt};
 use log::*;
@@ -170,14 +170,24 @@ impl Discovering {
                     }),
             })
             .await?;
-
+        let mut counter = 0;
+        let mut peers_received = HashSet::new();
         while let Some(resp) = stream.next().await {
+            counter += 1;
+            if counter > self.params.num_peers_to_request {
+                warn!(target: LOG_TARGET, "Remote peer sent more peers than we requested.");
+                return Err(NetworkDiscoveryError::TooManyPeersReceived);
+            }
             let GetPeersResponse { peer } = resp?;
 
             let peer = peer.ok_or_else(|| NetworkDiscoveryError::EmptyPeerMessageReceived)?;
-            let new_peer = peer
+            let new_peer: UnvalidatedPeerInfo = peer
                 .try_into()
                 .map_err(NetworkDiscoveryError::InvalidPeerDataReceived)?;
+            if !peers_received.insert(new_peer.public_key.clone()) {
+                warn!(target: LOG_TARGET, "Remote peer sent duplicate peer.");
+                return Err(NetworkDiscoveryError::DuplicatePeerReceived);
+            }
             self.validate_and_add_peer(sync_peer, new_peer).await?;
         }
 
@@ -230,7 +240,9 @@ impl Discovering {
                 match &err {
                     NetworkDiscoveryError::EmptyPeerMessageReceived |
                     NetworkDiscoveryError::InvalidPeerDataReceived(_) |
-                    NetworkDiscoveryError::PeerValidationError(_) => {
+                    NetworkDiscoveryError::PeerValidationError(_) |
+                    NetworkDiscoveryError::DuplicatePeerReceived |
+                    NetworkDiscoveryError::TooManyPeersReceived => {
                         self.ban_peer(peer, OffenceSeverity::High, &err).await;
                     },
                     NetworkDiscoveryError::RpcError(rpc_err) if rpc_err.is_caused_by_server() => {
