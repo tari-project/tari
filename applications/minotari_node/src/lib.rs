@@ -181,7 +181,8 @@ async fn run_grpc(
     info!(target: LOG_TARGET, "Starting GRPC on {}", grpc_address);
 
     let grpc_address = multiaddr_to_socketaddr(&grpc_address)?;
-    let auth = ServerAuthenticationInterceptor::new(auth_config);
+    let auth = ServerAuthenticationInterceptor::new(auth_config)
+        .ok_or(anyhow::anyhow!("Unable to prepare server gRPC authentication"))?;
     let service = minotari_app_grpc::tari_rpc::base_node_server::BaseNodeServer::with_interceptor(grpc, auth);
 
     Server::builder()

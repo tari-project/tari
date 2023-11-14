@@ -404,7 +404,8 @@ async fn run_grpc(
 
     info!(target: LOG_TARGET, "Starting GRPC on {}", grpc_listener_addr);
     let address = multiaddr_to_socketaddr(&grpc_listener_addr).map_err(|e| e.to_string())?;
-    let auth = ServerAuthenticationInterceptor::new(auth_config);
+    let auth = ServerAuthenticationInterceptor::new(auth_config)
+        .ok_or("Unable to prepare server gRPC authentication".to_string())?;
     let service = minotari_app_grpc::tari_rpc::wallet_server::WalletServer::with_interceptor(grpc, auth);
 
     Server::builder()
@@ -481,7 +482,6 @@ mod test {
                 CliCommands::FinaliseShaAtomicSwap(_) => {},
                 CliCommands::ClaimShaAtomicSwapRefund(_) => {},
                 CliCommands::RevalidateWalletDb => {},
-                CliCommands::HashGrpcPassword(_) => {},
                 CliCommands::RegisterValidatorNode(_) => {},
             }
         }

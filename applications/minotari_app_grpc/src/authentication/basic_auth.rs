@@ -34,12 +34,9 @@ use tari_utilities::{ByteArray, SafePassword};
 use tonic::metadata::{errors::InvalidMetadataValue, Ascii, MetadataValue};
 use zeroize::{Zeroize, Zeroizing};
 
-use crate::authentication::salted_password::create_salted_hashed_password;
-
 const MAX_USERNAME_LEN: usize = 256;
 
-/// Implements [RFC 2617](https://www.ietf.org/rfc/rfc2617.txt#:~:text=The%20%22basic%22%20authentication%20scheme%20is,other%20realms%20on%20that%20server.)
-/// Represents the username and password contained within a Authenticate header.
+/// Implements [RFC 2617](https://www.ietf.org/rfc/rfc2617.txt) by allowing authentication of provided credentials
 #[derive(Debug)]
 pub struct BasicAuthCredentials {
     /// The username bytes length
@@ -82,42 +79,29 @@ impl BasicAuthCredentials {
         })
     }
 
-    /// Creates a `Credentials` instance from a base64 `String`
-    /// which must encode user credentials as `username:password`
-    pub fn decode(auth_header_value: &str) -> Result<Self, BasicAuthError> {
-        let decoded = base64::decode(auth_header_value)?;
-        let as_utf8 = Zeroizing::new(String::from_utf8(decoded)?);
-
-        if let Some((user_name, password)) = as_utf8.split_once(':') {
-            let hashed_password = create_salted_hashed_password(password.as_bytes())?;
-            let credentials = Self::new(user_name.into(), hashed_password.to_string().into())?;
-            return Ok(credentials);
-        }
-
-        Err(BasicAuthError::InvalidAuthorizationHeader)
-    }
-
-    /// Creates a `Credentials` instance from an HTTP Authorization header
-    /// which schema is a valid `Basic` HTTP Authorization Schema.
-    pub fn from_header(auth_header: &str) -> Result<BasicAuthCredentials, BasicAuthError> {
-        // check if its a valid basic auth header
+    /// Parses the contents of an HTTP Authorization (Basic) header into a username and password
+    /// These can be used later to validate against `BasicAuthCredentials`
+    /// The input must be of the form `Basic base64(username:password)`
+    pub fn parse_header(auth_header: &str) -> Result<(String, SafePassword), BasicAuthError> {
+        // Check that the authentication type is `Basic`
         let (auth_type, encoded_credentials) = auth_header
             .split_once(' ')
             .ok_or(BasicAuthError::InvalidAuthorizationHeader)?;
 
-        if encoded_credentials.contains(' ') {
-            // Invalid authorization token received
-            return Err(BasicAuthError::InvalidAuthorizationHeader);
-        }
-
-        // Check the provided authorization header
-        // to be a "Basic" authorization header
         if auth_type.to_lowercase() != "basic" {
             return Err(BasicAuthError::InvalidScheme(auth_type.to_string()));
         }
 
-        let credentials = BasicAuthCredentials::decode(encoded_credentials)?;
-        Ok(credentials)
+        // Decode the credentials using base64
+        let decoded = base64::decode(encoded_credentials)?;
+        let as_utf8 = Zeroizing::new(String::from_utf8(decoded)?);
+
+        // Parse the username and password, which must be separated by a colon
+        if let Some((user_name, password)) = as_utf8.split_once(':') {
+            return Ok((user_name.into(), password.into()));
+        }
+
+        Err(BasicAuthError::InvalidAuthorizationHeader)
     }
 
     // This function provides a constant time comparison of the given username with the registered username.
@@ -150,7 +134,7 @@ impl BasicAuthCredentials {
     /// do the same amount of work irrespective if the username or password is correct or not. This is to prevent timing
     /// attacks. Also, no distinction is made between a non-existent username or an incorrect password in the error
     /// that is returned.
-    pub fn constant_time_validate(&self, username: &str, password: &[u8]) -> Result<(), BasicAuthError> {
+    pub fn constant_time_validate(&self, username: &str, password: &SafePassword) -> Result<(), BasicAuthError> {
         let valid_username = self.constant_time_verify_username(username);
 
         // These bytes can leak if the password is not utf-8, but since argon encoding is utf-8 the given
@@ -159,7 +143,9 @@ impl BasicAuthCredentials {
         let str_password = Zeroizing::new(String::from_utf8(bytes)?);
         let header_password = PasswordHash::parse(&str_password, Encoding::B64)?;
         let valid_password = Choice::from(u8::from(
-            Argon2::default().verify_password(password, &header_password).is_ok(),
+            Argon2::default()
+                .verify_password(password.reveal(), &header_password)
+                .is_ok(),
         ));
 
         // The use of `Choice` logic here is by design to hide the boolean logic from compiler optimizations.
@@ -218,26 +204,20 @@ mod tests {
 
         #[test]
         fn it_decodes_from_well_formed_header() {
-            let credentials = BasicAuthCredentials::from_header("Basic YWRtaW46c2VjcmV0").unwrap();
-            assert_eq!(credentials.user_name_bytes_length, "admin".as_bytes().len());
-            let bytes = "admin".as_bytes();
-            let mut user_name_bytes = [0u8; MAX_USERNAME_LEN];
-            user_name_bytes[0..bytes.len()].clone_from_slice(bytes);
-            user_name_bytes[bytes.len()..MAX_USERNAME_LEN]
-                .clone_from_slice(&credentials.random_bytes[bytes.len()..MAX_USERNAME_LEN]);
-            assert_eq!(credentials.user_name_bytes, user_name_bytes);
-            assert!(credentials.constant_time_validate("admin", b"secret").is_ok());
+            let (username, password) = BasicAuthCredentials::parse_header("Basic YWRtaW46c2VjcmV0").unwrap();
+            assert_eq!(username, "admin".to_string());
+            assert_eq!(password.reveal(), b"secret");
         }
 
         #[test]
         fn it_rejects_header_without_basic_scheme() {
-            let err = BasicAuthCredentials::from_header(" YWRtaW46c2VjcmV0").unwrap_err();
+            let err = BasicAuthCredentials::parse_header(" YWRtaW46c2VjcmV0").unwrap_err();
             if let BasicAuthError::InvalidScheme(s) = err {
                 assert_eq!(s, "");
             } else {
                 panic!("Unexpected error: {:?}", err);
             };
-            let err = BasicAuthCredentials::from_header("Cookie YWRtaW46c2VjcmV0").unwrap_err();
+            let err = BasicAuthCredentials::parse_header("Cookie YWRtaW46c2VjcmV0").unwrap_err();
             if let BasicAuthError::InvalidScheme(s) = err {
                 assert_eq!(s, "Cookie");
             } else {
@@ -264,10 +244,14 @@ mod tests {
             // Typical username
             let credentials =
                 BasicAuthCredentials::new("admin".to_string(), hashed_password.to_string().into()).unwrap();
-            credentials.constant_time_validate("admin", b"secret").unwrap();
+            credentials
+                .constant_time_validate("admin", &SafePassword::from("secret".to_string()))
+                .unwrap();
             // Empty username is also fine
             let credentials = BasicAuthCredentials::new("".to_string(), hashed_password.to_string().into()).unwrap();
-            credentials.constant_time_validate("", b"secret").unwrap();
+            credentials
+                .constant_time_validate("", &SafePassword::from("secret".to_string()))
+                .unwrap();
         }
 
         #[test]
@@ -286,16 +270,20 @@ mod tests {
                 BasicAuthCredentials::new("admin".to_string(), hashed_password.to_string().into()).unwrap();
 
             // Wrong password
-            let err = credentials.constant_time_validate("admin", b"bruteforce").unwrap_err();
+            let err = credentials
+                .constant_time_validate("admin", &SafePassword::from("bruteforce".to_string()))
+                .unwrap_err();
             assert!(matches!(err, BasicAuthError::InvalidUsernameOrPassword));
 
             // Wrong username
-            let err = credentials.constant_time_validate("wrong_user", b"secret").unwrap_err();
+            let err = credentials
+                .constant_time_validate("wrong_user", &SafePassword::from("secret".to_string()))
+                .unwrap_err();
             assert!(matches!(err, BasicAuthError::InvalidUsernameOrPassword));
 
             // Wrong username and password
             let err = credentials
-                .constant_time_validate("wrong_user", b"bruteforce")
+                .constant_time_validate("wrong_user", &SafePassword::from("bruteforce".to_string()))
                 .unwrap_err();
             assert!(matches!(err, BasicAuthError::InvalidUsernameOrPassword));
         }
@@ -561,21 +549,22 @@ mod tests {
 
                 let start = Instant::now();
                 for short in &short_usernames {
-                    let res = credentials.constant_time_validate(short, b"bruteforce");
+                    let res = credentials.constant_time_validate(short, &SafePassword::from("bruteforce".to_string()));
                     assert!(res.is_err());
                 }
                 let time_taken_1 = start.elapsed().as_millis();
 
                 let start = Instant::now();
                 for long in &long_usernames {
-                    let res = credentials.constant_time_validate(long, b"bruteforce");
+                    let res = credentials.constant_time_validate(long, &SafePassword::from("bruteforce".to_string()));
                     assert!(res.is_err());
                 }
                 let time_taken_2 = start.elapsed().as_millis();
 
                 let start = Instant::now();
                 for _ in 0..COUNTS {
-                    let res = credentials.constant_time_validate(username_actual, b"secret");
+                    let res =
+                        credentials.constant_time_validate(username_actual, &SafePassword::from("secret".to_string()));
                     assert!(res.is_ok());
                 }
                 let time_taken_3 = start.elapsed().as_millis();
@@ -624,15 +613,9 @@ mod tests {
         #[test]
         fn it_generates_a_valid_header() {
             let header = BasicAuthCredentials::generate_header("admin", b"secret").unwrap();
-            let cred = BasicAuthCredentials::from_header(header.to_str().unwrap()).unwrap();
-            assert_eq!(cred.user_name_bytes_length, "admin".as_bytes().len());
-            let bytes = "admin".as_bytes();
-            let mut user_name_bytes = [0u8; MAX_USERNAME_LEN];
-            user_name_bytes[0..bytes.len()].clone_from_slice(bytes);
-            user_name_bytes[bytes.len()..MAX_USERNAME_LEN]
-                .clone_from_slice(&cred.random_bytes[bytes.len()..MAX_USERNAME_LEN]);
-            assert_eq!(cred.user_name_bytes, user_name_bytes);
-            assert!(cred.constant_time_validate("admin", b"secret").is_ok());
+            let (username, password) = BasicAuthCredentials::parse_header(header.to_str().unwrap()).unwrap();
+            assert_eq!(username, "admin".to_string());
+            assert_eq!(password.reveal(), b"secret");
         }
     }
 }
