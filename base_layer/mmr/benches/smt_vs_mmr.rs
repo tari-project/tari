@@ -4,25 +4,8 @@
 use std::convert::TryFrom;
 
 use blake2::Blake2b;
-#[cfg(feature = "native_bitmap")]
-use croaring::Bitmap;
 use digest::consts::U32;
-#[cfg(feature = "native_bitmap")]
-use tari_crypto::hash_domain;
-#[cfg(feature = "native_bitmap")]
-use tari_crypto::hashing::DomainSeparatedHasher;
-#[cfg(feature = "native_bitmap")]
-use tari_crypto::tari_utilities::hex::Hex;
 use tari_mmr::sparse_merkle_tree::{NodeKey, SparseMerkleTree, ValueHash};
-#[cfg(feature = "native_bitmap")]
-use tari_mmr::{Hash, MutableMmr};
-
-#[cfg(feature = "native_bitmap")]
-hash_domain!(MmrBenchTestHashDomain, "com.tari.base_layer.mmr.benches", 1);
-#[cfg(feature = "native_bitmap")]
-pub type MmrTestHasherBlake256 = DomainSeparatedHasher<Blake2b<U32>, MmrBenchTestHashDomain>;
-#[cfg(feature = "native_bitmap")]
-pub type TestMmr = MutableMmr<MmrTestHasherBlake256, Vec<Hash>>;
 
 fn random_key() -> NodeKey {
     let key = rand::random::<[u8; 32]>();
@@ -46,20 +29,6 @@ fn insert_into_smt(keys: &[NodeKey], tree: &mut SparseMerkleTree<Blake2b<U32>>) 
 fn delete_from_smt(keys: &[NodeKey], tree: &mut SparseMerkleTree<Blake2b<U32>>) {
     keys.iter().for_each(|key| {
         tree.delete(key).unwrap();
-    });
-}
-
-#[cfg(feature = "native_bitmap")]
-fn insert_into_mmr(keys: &[Vec<u8>], mmr: &mut TestMmr) {
-    keys.iter().for_each(|key| {
-        mmr.push(key.clone()).unwrap();
-    });
-}
-
-#[cfg(feature = "native_bitmap")]
-fn delete_from_mmr(start: u32, n: u32, mmr: &mut TestMmr) {
-    (start..start + n).for_each(|i| {
-        mmr.delete(i);
     });
 }
 
@@ -101,37 +70,4 @@ fn main() {
         let hash = tree.hash();
         println!("Tree size: {size}. Root hash: {hash:x}");
     });
-    #[cfg(feature = "native_bitmap")]
-    {
-        let mut mmr = TestMmr::new(Vec::default(), Bitmap::default()).unwrap();
-        let keys = keys.into_iter().map(|k| k.as_slice().to_vec()).collect::<Vec<_>>();
-        time_function(&format!("MMR: Inserting {size} keys"), || {
-            insert_into_mmr(&keys, &mut mmr);
-        });
-        time_function("MMR: Calculating root hash", || {
-            let size = mmr.len().unwrap();
-            let hash = mmr.get_merkle_root().unwrap();
-            println!("Tree size: {size}. Root hash: {}", hash.to_hex());
-        });
-        time_function(&format!("MMR: Deleting {half_size} keys"), || {
-            delete_from_mmr(0, u32::try_from(half_size).unwrap(), &mut mmr);
-        });
-        time_function("MMR: Calculating root hash", || {
-            let size = mmr.len().unwrap();
-            let hash = mmr.get_merkle_root().unwrap();
-            println!("Tree size: {size}. Root hash: {}", hash.to_hex());
-        });
-        time_function(&format!("MMR: Deleting another {half_size} keys"), || {
-            delete_from_mmr(
-                u32::try_from(half_size).unwrap(),
-                u32::try_from(half_size).unwrap(),
-                &mut mmr,
-            );
-        });
-        time_function("MMR: Calculating root hash", || {
-            let size = mmr.len().unwrap();
-            let hash = mmr.get_merkle_root().unwrap();
-            println!("Tree size: {size}. Root hash: {}", hash.to_hex());
-        });
-    }
 }

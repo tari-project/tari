@@ -9,7 +9,6 @@ edition = "2018"
 
 [features]
 default = []
-native_bitmap = ["croaring"]
 
 [dependencies]
 tari_utilities = { version = "0.6" }
@@ -20,7 +19,6 @@ borsh = "0.10"
 digest = "0.10"
 log = "0.4"
 serde = { version = "1.0", features = ["derive"] }
-croaring = { version = "0.9", optional = true }
 
 [dev-dependencies]
 rand = "0.8"
@@ -48,4 +46,3 @@ harness = false
 [[test]]
 name = "tari_mmr_integration_tests"
 path = "tests/mmr_integration_tests.rs"
-required-features = ["native_bitmap"]
