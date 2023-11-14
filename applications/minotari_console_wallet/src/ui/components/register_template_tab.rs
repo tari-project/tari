@@ -124,7 +124,7 @@ impl RegisterTemplateTab {
         Self {
             balance: Balance::new(),
             input_mode: InputMode::None,
-            binary_url: String::new(),
+            binary_url: "WARNING only use trusted Urls".to_string(),
             repository_url: String::new(),
             repository_commit_hash: String::new(),
             binary_checksum: String::new(),
@@ -170,8 +170,13 @@ impl RegisterTemplateTab {
                 Span::raw("Press "),
                 Span::styled("B", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(" to edit "),
-                Span::styled("Binary URL", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" field, "),
+                Span::styled("Binary URL ", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw(" field"),
+                Span::styled(
+                    "(WARNING only use trusted urls)",
+                    Style::default().add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(", "),
                 Span::styled("U", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(" to edit "),
                 Span::styled("Git Repository URL", Style::default().add_modifier(Modifier::BOLD)),
@@ -649,7 +654,7 @@ impl<B: Backend> Component<B> for RegisterTemplateTab {
                     self.fee_per_gram = app_state.get_default_fee_per_gram().as_u64().to_string();
                     self.template_name = "".to_string();
                     self.template_type = "".to_string();
-                    self.binary_url = "".to_string();
+                    self.binary_url = "WARNING only use trusted Urls".to_string();
                     self.binary_checksum = "".to_string();
                     self.repository_url = "".to_string();
                     self.repository_commit_hash = "".to_string();
@@ -750,7 +755,10 @@ impl<B: Backend> Component<B> for RegisterTemplateTab {
             'n' => self.input_mode = InputMode::TemplateName,
             'v' => self.input_mode = InputMode::TemplateVersion,
             't' => self.input_mode = InputMode::TemplateType,
-            'b' => self.input_mode = InputMode::BinaryUrl,
+            'b' => {
+                self.binary_url = "".to_string();
+                self.input_mode = InputMode::BinaryUrl;
+            },
             'u' => self.input_mode = InputMode::RepositoryUrl,
             'h' => self.input_mode = InputMode::RepositoryCommitHash,
             's' => {
