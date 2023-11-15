@@ -61,3 +61,106 @@ impl Interceptor for ClientAuthenticationInterceptor {
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    use tari_common_types::grpc_authentication::GrpcAuthentication;
+    use tari_utilities::SafePassword;
+    use tonic::{codegen::http::header::AUTHORIZATION, service::Interceptor, Request};
+
+    use super::ClientAuthenticationInterceptor;
+    use crate::authentication::ServerAuthenticationInterceptor;
+
+    #[test]
+    fn test_no_authentication_success() {
+        // Set up the client and server interceptors using no authentication
+        let auth = GrpcAuthentication::None;
+        let mut client_interceptor = ClientAuthenticationInterceptor::create(&auth).unwrap();
+        let mut server_interceptor = ServerAuthenticationInterceptor::new(auth).unwrap();
+
+        // Create a dummy client request and process it through the client interceptor
+        let client_request = client_interceptor.call(Request::new(())).unwrap();
+        assert!(client_request.metadata().is_empty());
+
+        // Process the request through the server interceptor
+        assert!(server_interceptor.call(client_request).is_ok());
+    }
+
+    #[test]
+    fn test_basic_authentication_success() {
+        // Set up the client and server interceptors using basic authentication with matching credentials
+        let auth = GrpcAuthentication::Basic {
+            username: "foo".to_string(),
+            password: SafePassword::from("bar"),
+        };
+        let mut client_interceptor = ClientAuthenticationInterceptor::create(&auth).unwrap();
+        let mut server_interceptor = ServerAuthenticationInterceptor::new(auth).unwrap();
+
+        // Create a dummy client request and process it through the client interceptor
+        let client_request = client_interceptor.call(Request::new(())).unwrap();
+        assert!(client_request.metadata().contains_key(AUTHORIZATION.as_str()));
+
+        // Process the request through the server interceptor
+        assert!(server_interceptor.call(client_request).is_ok());
+    }
+
+    #[test]
+    fn test_basic_authentication_failure() {
+        // Set up the client and server interceptors using basic authentication with mismatched credentials
+        let client_auth = GrpcAuthentication::Basic {
+            username: "foo".to_string(),
+            password: SafePassword::from("evil"),
+        };
+        let server_auth = GrpcAuthentication::Basic {
+            username: "foo".to_string(),
+            password: SafePassword::from("bar"),
+        };
+        let mut client_interceptor = ClientAuthenticationInterceptor::create(&client_auth).unwrap();
+        let mut server_interceptor = ServerAuthenticationInterceptor::new(server_auth).unwrap();
+
+        // Create a dummy client request and process it through the client interceptor
+        let client_request = client_interceptor.call(Request::new(())).unwrap();
+        assert!(client_request.metadata().contains_key(AUTHORIZATION.as_str()));
+
+        // Process the request through the server interceptor
+        assert!(server_interceptor.call(client_request).is_err());
+    }
+
+    #[test]
+    fn test_mixed_authentication_success() {
+        // Set up the client and server interceptors using mismatched authentication
+        let client_auth = GrpcAuthentication::Basic {
+            username: "foo".to_string(),
+            password: SafePassword::from("bar"),
+        };
+        let server_auth = GrpcAuthentication::None;
+        let mut client_interceptor = ClientAuthenticationInterceptor::create(&client_auth).unwrap();
+        let mut server_interceptor = ServerAuthenticationInterceptor::new(server_auth).unwrap();
+
+        // Create a dummy client request and process it through the client interceptor
+        let client_request = client_interceptor.call(Request::new(())).unwrap();
+        assert!(client_request.metadata().contains_key(AUTHORIZATION.as_str()));
+
+        // Process the request through the server interceptor; this mismatch is allowed
+        assert!(server_interceptor.call(client_request).is_ok());
+    }
+
+    #[test]
+    fn test_mixed_authentication_failure() {
+        // Set up the client and server interceptors using mismatched authentication
+        let client_auth = GrpcAuthentication::None;
+        let server_auth = GrpcAuthentication::Basic {
+            username: "foo".to_string(),
+            password: SafePassword::from("bar"),
+        };
+        let mut client_interceptor = ClientAuthenticationInterceptor::create(&client_auth).unwrap();
+        let mut server_interceptor = ServerAuthenticationInterceptor::new(server_auth).unwrap();
+
+        // Create a dummy client request and process it through the client interceptor
+        let client_request = client_interceptor.call(Request::new(())).unwrap();
+        assert!(client_request.metadata().is_empty());
+
+        // Process the request through the server interceptor; this mismatch is not allowed
+        assert!(server_interceptor.call(client_request).is_err());
+    }
+}
