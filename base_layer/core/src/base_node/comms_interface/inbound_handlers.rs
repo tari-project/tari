@@ -22,12 +22,7 @@
 
 #[cfg(feature = "metrics")]
 use std::convert::{TryFrom, TryInto};
-use std::{
-    cmp::max,
-    collections::HashSet,
-    sync::Arc,
-    time::{Instant},
-};
+use std::{cmp::max, collections::HashSet, sync::Arc, time::Instant};
 
 use log::*;
 use strum_macros::Display;
