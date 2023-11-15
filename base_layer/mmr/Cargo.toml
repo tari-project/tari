@@ -39,9 +39,6 @@ harness = false
 name = "smt"
 harness = false
 
-[[bench]]
-name = "smt_vs_mmr"
-harness = false
 
 [[test]]
 name = "tari_mmr_integration_tests"
