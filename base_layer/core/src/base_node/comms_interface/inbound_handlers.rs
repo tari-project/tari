@@ -26,7 +26,7 @@ use std::{
     cmp::max,
     collections::HashSet,
     sync::Arc,
-    time::{Duration, Instant},
+    time::{Instant},
 };
 
 use log::*;
@@ -612,13 +612,6 @@ where B: BlockchainBackend + 'static
                 current_meta.best_block().to_hex(),
                 source_peer,
             );
-            if excess_sigs.is_empty() {
-                let block = BlockBuilder::new(header.version)
-                    .with_coinbase_utxo(coinbase_output, coinbase_kernel)
-                    .with_header(header.clone())
-                    .build();
-                return Ok(block);
-            }
             #[cfg(feature = "metrics")]
             metrics::compact_block_tx_misses(header.height).set(excess_sigs.len() as i64);
             let block = self.request_full_block_from_peer(source_peer, block_hash).await?;
@@ -734,18 +727,6 @@ where B: BlockchainBackend + 'static
         {
             Ok(Some(block)) => Ok(block),
             Ok(None) => {
-                if let Err(e) = self
-                    .connectivity
-                    .ban_peer_until(
-                        source_peer.clone(),
-                        Duration::from_secs(100),
-                        format!("Peer {} failed to return the block that was requested.", source_peer),
-                    )
-                    .await
-                {
-                    error!(target: LOG_TARGET, "Failed to ban peer: {}", e);
-                }
-
                 debug!(
                     target: LOG_TARGET,
                     "Peer `{}` failed to return the block that was requested.", source_peer
@@ -760,13 +741,6 @@ where B: BlockchainBackend + 'static
                     target: LOG_TARGET,
                     "Peer `{}` sent unexpected API response.", source_peer
                 );
-                if let Err(e) = self
-                    .connectivity
-                    .ban_peer(source_peer.clone(), "Peer sent invalid API response".to_string())
-                    .await
-                {
-                    error!(target: LOG_TARGET, "Failed to ban peer: {}", e);
-                }
                 Err(CommsInterfaceError::UnexpectedApiResponse)
             },
             Err(e) => Err(e),
@@ -854,23 +828,6 @@ where B: BlockchainBackend + 'static
                         .unwrap_or_else(|| "<local request>".to_string()),
                     e
                 );
-                match source_peer {
-                    Some(ref source_peer) => {
-                        if let Err(e) = self
-                            .connectivity
-                            .ban_peer(source_peer.clone(), format!("Peer propagated invalid block: {}", e))
-                            .await
-                        {
-                            error!(target: LOG_TARGET, "Failed to ban peer: {}", e);
-                        }
-                    },
-                    // SECURITY: This indicates an issue in the transaction validator.
-                    None => {
-                        #[cfg(feature = "metrics")]
-                        metrics::rejected_local_blocks(block.header.height, &block_hash).inc();
-                        debug!(target: LOG_TARGET, "There may have been an issue in the transaction validator");
-                    },
-                }
                 self.publish_block_event(BlockEvent::AddBlockValidationFailed { block, source_peer });
                 Err(e.into())
             },

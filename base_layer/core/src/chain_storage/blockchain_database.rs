@@ -1328,7 +1328,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
         )
     } else {
         // MR is unchanged except for epoch boundary
-        let tip_header = fetch_header(db, block_height - 1)?;
+        let tip_header = fetch_header(db, block_height.saturating_sub(1))?;
         (tip_header.validator_node_mr, 0)
     };
 
@@ -1584,7 +1584,11 @@ fn fetch_block<T: BlockchainBackend>(db: &T, height: u64, compact: bool) -> Resu
         height,
         mark.elapsed()
     );
-    Ok(HistoricalBlock::new(block, tip_height - height + 1, accumulated_data))
+    Ok(HistoricalBlock::new(
+        block,
+        tip_height - height.saturating_add(1),
+        accumulated_data,
+    ))
 }
 
 fn fetch_blocks<T: BlockchainBackend>(
