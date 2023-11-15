@@ -1586,7 +1586,7 @@ fn fetch_block<T: BlockchainBackend>(db: &T, height: u64, compact: bool) -> Resu
     );
     Ok(HistoricalBlock::new(
         block,
-        tip_height - height.saturating_add(1),
+        tip_height - height + 1,
         accumulated_data,
     ))
 }
