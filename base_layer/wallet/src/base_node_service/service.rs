@@ -22,7 +22,7 @@
 
 use std::{sync::Arc, time::Duration};
 
-use chrono::{NaiveDateTime, Utc};
+use chrono::NaiveDateTime;
 use futures::{future, StreamExt};
 use log::*;
 use tari_common_types::chain_metadata::ChainMetadata;
@@ -152,26 +152,13 @@ where T: WalletBackend + 'static
             "Handling Wallet Base Node Service Request: {:?}", request
         );
         match request {
-            BaseNodeServiceRequest::GetChainMetadata => {
-                // if the wallet has not gotten a ChainMetaData in the last 15 minutes, we dont return one as this can
-                // be an issue using old data to send transactions. Wallets should have up to date ChainMetaData as they
-                // need to have an active connection to a base node to send transactions.
-                let last_updated = self
-                    .get_state()
-                    .await
-                    .updated
-                    .ok_or(BaseNodeServiceError::NoChainMetadata)?;
-                if Utc::now().naive_utc().timestamp() - last_updated.timestamp() > 15 * 60 {
-                    return Err(BaseNodeServiceError::NoChainMetadata);
-                }
-                match self.get_state().await.chain_metadata {
-                    Some(metadata) => Ok(BaseNodeServiceResponse::ChainMetadata(Some(metadata))),
-                    None => {
-                        // if we don't have live state, check if we've previously stored state in the wallet db
-                        let metadata = self.db.get_chain_metadata()?;
-                        Ok(BaseNodeServiceResponse::ChainMetadata(metadata))
-                    },
-                }
+            BaseNodeServiceRequest::GetChainMetadata => match self.get_state().await.chain_metadata {
+                Some(metadata) => Ok(BaseNodeServiceResponse::ChainMetadata(Some(metadata))),
+                None => {
+                    // if we don't have live state, check if we've previously stored state in the wallet db
+                    let metadata = self.db.get_chain_metadata()?;
+                    Ok(BaseNodeServiceResponse::ChainMetadata(metadata))
+                },
             },
             BaseNodeServiceRequest::GetBaseNodeLatency => {
                 Ok(BaseNodeServiceResponse::Latency(self.state.read().await.latency))
