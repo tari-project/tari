@@ -1457,7 +1457,7 @@ mod test {
         let err = script.execute(&inputs).unwrap_err();
         assert_eq!(err, ScriptError::VerifyFailed);
 
-        let inputs = inputs!(s_alice.clone(), s_carol.clone(), s_bob.clone());
+        let inputs = inputs!(s_alice.clone(), s_bob.clone(), s_carol.clone());
         let err = script.execute(&inputs).unwrap_err();
         assert_eq!(err, ScriptError::NonUnitLengthStack);
 
