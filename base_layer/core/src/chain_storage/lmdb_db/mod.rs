@@ -70,7 +70,7 @@ pub(crate) struct TransactionInputRowData {
 pub(crate) struct TransactionKernelRowData {
     pub kernel: TransactionKernel,
     pub header_hash: HashOutput,
-    pub mmr_position: u32,
+    pub mmr_position: u64,
     pub hash: HashOutput,
 }
 

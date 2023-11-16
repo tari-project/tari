@@ -330,7 +330,7 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         &mut self,
         kernel: TransactionKernel,
         header_hash: HashOutput,
-        mmr_position: u32,
+        mmr_position: u64,
     ) -> &mut Self {
         self.transaction.insert_kernel(kernel, header_hash, mmr_position);
         self

@@ -91,7 +91,7 @@ impl DbTransaction {
         &mut self,
         kernel: TransactionKernel,
         header_hash: HashOutput,
-        mmr_position: u32,
+        mmr_position: u64,
     ) -> &mut Self {
         self.operations.push(WriteOperation::InsertKernel {
             header_hash,
@@ -279,7 +279,7 @@ pub enum WriteOperation {
     InsertKernel {
         header_hash: HashOutput,
         kernel: Box<TransactionKernel>,
-        mmr_position: u32,
+        mmr_position: u64,
     },
     InsertOutput {
         header_hash: HashOutput,

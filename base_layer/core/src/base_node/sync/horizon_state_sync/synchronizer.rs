@@ -373,11 +373,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 ));
             }
 
-            let mmr_position_u32 = u32::try_from(mmr_position).map_err(|_| HorizonSyncError::InvalidMmrPosition {
-                at_height: current_header.height(),
-                mmr_position,
-            })?;
-            txn.insert_kernel_via_horizon_sync(kernel, *current_header.hash(), mmr_position_u32);
+            txn.insert_kernel_via_horizon_sync(kernel, *current_header.hash(), mmr_position);
             if mmr_position == current_header.header().kernel_mmr_size - 1 {
                 let num_kernels = kernel_hashes.len();
                 debug!(

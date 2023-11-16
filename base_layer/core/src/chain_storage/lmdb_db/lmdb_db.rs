@@ -134,8 +134,8 @@ const LMDB_DB_VALIDATOR_NODES_MAPPING: &str = "validator_nodes_mapping";
 const LMDB_DB_TEMPLATE_REGISTRATIONS: &str = "template_registrations";
 const LMDB_DB_TIP_UTXO_SMT: &str = "tip_utxo_smt";
 
-/// HeaderHash(32), mmr_pos(4), hash(32)
-type KernelKey = CompositeKey<68>;
+/// HeaderHash(32), mmr_pos(8), hash(32)
+type KernelKey = CompositeKey<72>;
 /// Height(8), Hash(32)
 type ValidatorNodeRegistrationKey = CompositeKey<40>;
 
@@ -566,7 +566,7 @@ impl LMDBDatabase {
         txn: &WriteTransaction<'_>,
         header_hash: &HashOutput,
         kernel: &TransactionKernel,
-        mmr_position: u32,
+        mmr_position: u64,
     ) -> Result<(), ChainStorageError> {
         let hash = kernel.hash();
         let key = KernelKey::try_from_parts(&[
@@ -1131,15 +1131,13 @@ impl LMDBDatabase {
 
         for kernel in kernels {
             total_kernel_sum = &total_kernel_sum + &kernel.excess;
-            let pos = kernel_mmr.push(kernel.hash().to_vec())?;
+            let pos =
+                u64::try_from(kernel_mmr.push(kernel.hash().to_vec())?).map_err(|_| ChainStorageError::OutOfRange)?;
             trace!(
                 target: LOG_TARGET,
                 "Inserting kernel `{}`",
                 kernel.excess_sig.get_signature().to_hex()
             );
-            let pos = u32::try_from(pos).map_err(|_| {
-                ChainStorageError::InvalidOperation(format!("Kernel MMR node count ({}) is greater than u32::MAX", pos))
-            })?;
             self.insert_kernel(txn, &block_hash, &kernel, pos)?;
         }
         let k = MetadataKey::TipSmt;
@@ -1815,7 +1813,7 @@ impl BlockchainBackend for LMDBDatabase {
         key.extend(excess_sig.get_public_nonce().as_bytes());
         key.extend(excess_sig.get_signature().as_bytes());
         if let Some((header_hash, mmr_position, hash)) =
-            lmdb_get::<_, (HashOutput, u32, HashOutput)>(&txn, &self.kernel_excess_sig_index, key.as_slice())?
+            lmdb_get::<_, (HashOutput, u64, HashOutput)>(&txn, &self.kernel_excess_sig_index, key.as_slice())?
         {
             let key = KernelKey::try_from_parts(&[
                 header_hash.as_slice(),
