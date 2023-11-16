@@ -591,6 +591,7 @@ impl TariScript {
     ///
     /// Notes:
     /// * The _m_ signatures are expected to be the top _m_ items on the stack.
+    /// * The public keys and signatures must both be ordered.
     /// * Every public key can be used AT MOST once.
     /// * Every signature MUST be a valid signature using one of the public keys
     /// * _m_ and _n_ must be positive AND m <= n AND n <= MAX_MULTISIG_LIMIT (32).
@@ -622,9 +623,13 @@ impl TariScript {
         let mut sig_set = HashSet::new();
 
         let mut agg_pub_key = RistrettoPublicKey::default();
-        // Check every signature against each public key looking for a valid signature
-        for s in &signatures {
-            for (i, pk) in public_keys.iter().enumerate() {
+
+        // Create an iterator that allows each pubkey to only be checked a single time
+        let mut pub_keys = public_keys.iter();
+
+        // Signatures and public keys must be ordered
+        for (i, s) in signatures.iter().enumerate() {
+            while let Some(pk) = pub_keys.next() {
                 if !sig_set.contains(s) && !key_signed[i] && s.verify_raw_canonical(pk, &message) {
                     // This prevents Alice creating 2 different sigs against her public key
                     key_signed[i] = true;
