@@ -617,7 +617,6 @@ impl TariScript {
             })
             .collect::<Result<Vec<RistrettoSchnorr>, ScriptError>>()?;
 
-        let mut key_signed = vec![false; public_keys.len()];
         // keep a hashset of unique signatures used to prevent someone putting the same signature in more than once.
         #[allow(clippy::mutable_key_type)]
         let mut sig_set = HashSet::new();
@@ -629,15 +628,13 @@ impl TariScript {
         let mut pub_keys = public_keys.iter();
 
         // Signatures and public keys must be ordered
-        for (i, s) in signatures.iter().enumerate() {
+        for s in &signatures {
             if pub_keys.len() == 0 {
                 return Ok(None);
             }
 
             for pk in pub_keys.by_ref() {
-                if !sig_set.contains(s) && !key_signed[i] && s.verify_raw_canonical(pk, &message) {
-                    // This prevents Alice creating 2 different sigs against her public key
-                    key_signed[i] = true;
+                if !sig_set.contains(s) && s.verify_raw_canonical(pk, &message) {
                     sig_set.insert(s);
                     agg_pub_key = agg_pub_key + pk;
                     break;
@@ -1258,7 +1255,7 @@ mod test {
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(1));
         // Interesting case where either sig could match either pubkey
-        let inputs = inputs!(s_alice2.clone(), s_alice.clone());
+        let inputs = inputs!(s_alice2, s_alice.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(1));
 
