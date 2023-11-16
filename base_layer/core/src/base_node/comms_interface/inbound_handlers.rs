@@ -537,7 +537,7 @@ where B: BlockchainBackend + 'static
     }
 
     async fn check_exists_and_not_bad_block(&self, block: FixedHash) -> Result<bool, CommsInterfaceError> {
-        if self.blockchain_db.chain_block_or_orphan_block_exists(block).await? {
+        if self.blockchain_db.chain_header_or_orphan_exists(block).await? {
             debug!(
                 target: LOG_TARGET,
                 "Block with hash `{}` already stored",
@@ -803,7 +803,13 @@ where B: BlockchainBackend + 'static
                     );
                     let exclude_peers = source_peer.into_iter().collect();
                     let new_block_msg = NewBlock::from(&*block);
-                    self.outbound_nci.propagate_block(new_block_msg, exclude_peers).await?;
+                    if let Err(e) = self.outbound_nci.propagate_block(new_block_msg, exclude_peers).await {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Failed to propagate block ({}) to network.",
+                            block_hash.to_hex()
+                        );
+                    }
                 }
                 Ok(block_hash)
             },

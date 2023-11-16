@@ -949,6 +949,9 @@ where B: BlockchainBackend
             after_lock - before_lock,
         );
 
+        // If this is true, we already got the header in our database due to header-sync, between us starting the
+        // process of processing an incoming block and now getting a write-lock on the database. Block-sync will
+        // download the body for us, so we can safely exit here.
         if db.contains(&DbKey::HeaderHash(block_hash))? {
             return Ok(BlockAddResult::BlockExists);
         }
@@ -1119,6 +1122,12 @@ where B: BlockchainBackend
         let db = self.db_read_access()?;
         // we need to check if the block accumulated data exists, and the header might exist without a body
         Ok(db.fetch_block_accumulated_data(&hash)?.is_some() || db.contains(&DbKey::OrphanBlock(hash))?)
+    }
+
+    /// Returns true if this block header in the chain, or is orphaned.
+    pub fn chain_header_or_orphan_exists(&self, hash: BlockHash) -> Result<bool, ChainStorageError> {
+        let db = self.db_read_access()?;
+        Ok(db.contains(&DbKey::HeaderHash(hash))? || db.contains(&DbKey::OrphanBlock(hash))?)
     }
 
     /// Returns true if this block exists in the chain, or is orphaned.
