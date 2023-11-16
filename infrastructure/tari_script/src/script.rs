@@ -624,16 +624,17 @@ impl TariScript {
 
         let mut agg_pub_key = RistrettoPublicKey::default();
 
-        // Create an iterator that allows each pubkey to only be checked a single time
+        // Create an iterator that allows each pubkey to only be checked a single time as they are
+        // removed from the collection when referenced
         let mut pub_keys = public_keys.iter();
 
         // Signatures and public keys must be ordered
         for (i, s) in signatures.iter().enumerate() {
-            if pub_keys.is_empty() {
+            if pub_keys.len() == 0 {
                 return Ok(None);
             }
 
-            while let Some(pk) = pub_keys.next() {
+            for pk in pub_keys.by_ref() {
                 if !sig_set.contains(s) && !key_signed[i] && s.verify_raw_canonical(pk, &message) {
                     // This prevents Alice creating 2 different sigs against her public key
                     key_signed[i] = true;
