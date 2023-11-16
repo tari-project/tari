@@ -26,7 +26,7 @@ tari_comms_dht = {  path = "../../comms/dht" }
 tari_comms_rpc_macros = {  path = "../../comms/rpc_macros" }
 tari_crypto = { version = "0.19", features = ["borsh"] }
 tari_metrics = { path = "../../infrastructure/metrics", optional = true }
-tari_mmr = {  path = "../../base_layer/mmr", optional = true, features = ["native_bitmap"] }
+tari_mmr = {  path = "../../base_layer/mmr", optional = true}
 tari_p2p = {  path = "../../base_layer/p2p" }
 tari_script = { path = "../../infrastructure/tari_script" }
 tari_service_framework = {  path = "../service_framework" }

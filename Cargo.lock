@@ -1161,25 +1161,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7059fff8937831a9ae6f0fe4d658ffabf58f2ca96aa9dec1c889f936f705f216"
 
 [[package]]
-name = "croaring"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7539e9413f81db118bf258689110a9db0298c6089206817df2bd164fc7cd39e5"
-dependencies = [
- "byteorder",
- "croaring-sys",
-]
-
-[[package]]
-name = "croaring-sys"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3e20dc23cebbac3da66d0eb2222341f6991ba779d96119f7bfa508f91784a495"
-dependencies = [
- "cc",
-]
-
-[[package]]
 name = "crossbeam"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6017,7 +5998,6 @@ dependencies = [
  "blake2",
  "borsh",
  "criterion 0.5.1",
- "croaring",
  "digest 0.10.7",
  "log",
  "rand",
