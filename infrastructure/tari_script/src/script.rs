@@ -1187,6 +1187,9 @@ mod test {
         let inputs = inputs!(s_alice.clone(), s_bob.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(1));
+        let inputs = inputs!(s_bob.clone(), s_alice.clone());
+        let result = script.execute(&inputs).unwrap();
+        assert_eq!(result, Number(0));
         let inputs = inputs!(s_eve.clone(), s_bob.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(0));
@@ -1225,9 +1228,12 @@ mod test {
         let inputs = inputs!(s_alice.clone(), s_carol.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(1));
-        let inputs = inputs!(s_carol.clone(), s_bob.clone());
+        let inputs = inputs!(s_bob.clone(), s_carol.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(1));
+        let inputs = inputs!(s_carol.clone(), s_bob.clone());
+        let result = script.execute(&inputs).unwrap();
+        assert_eq!(result, Number(0));
         let inputs = inputs!(s_carol.clone(), s_eve.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(0));
@@ -1243,7 +1249,11 @@ mod test {
         let inputs = inputs!(s_alice.clone(), s_alice.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(0));
-        let inputs = inputs!(s_alice.clone(), s_alice2);
+        let inputs = inputs!(s_alice.clone(), s_alice2.clone());
+        let result = script.execute(&inputs).unwrap();
+        assert_eq!(result, Number(1));
+        // Interesting case where either sig could match either pubkey
+        let inputs = inputs!(s_alice2.clone(), s_alice.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(1));
 
@@ -1255,6 +1265,9 @@ mod test {
         let inputs = inputs!(s_alice.clone(), s_bob.clone(), s_carol.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(1));
+        let inputs = inputs!(s_carol.clone(), s_alice.clone(), s_bob.clone());
+        let result = script.execute(&inputs).unwrap();
+        assert_eq!(result, Number(0));
         let inputs = inputs!(s_eve.clone(), s_bob.clone(), s_carol);
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(0));
@@ -1375,6 +1388,9 @@ mod test {
         let inputs = inputs!(Number(1), s_alice.clone(), s_bob.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(1));
+        let inputs = inputs!(Number(1), s_bob.clone(), s_alice.clone());
+        let err = script.execute(&inputs).unwrap_err();
+        assert_eq!(err, ScriptError::VerifyFailed);
         let inputs = inputs!(Number(1), s_eve.clone(), s_bob.clone());
         let err = script.execute(&inputs).unwrap_err();
         assert_eq!(err, ScriptError::VerifyFailed);
@@ -1408,9 +1424,12 @@ mod test {
         let inputs = inputs!(Number(1), s_alice.clone(), s_carol.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(1));
-        let inputs = inputs!(Number(1), s_carol.clone(), s_bob.clone());
+        let inputs = inputs!(Number(1), s_bob.clone(), s_carol.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(1));
+        let inputs = inputs!(Number(1), s_carol.clone(), s_bob.clone());
+        let err = script.execute(&inputs).unwrap_err();
+        assert_eq!(err, ScriptError::VerifyFailed);
         let inputs = inputs!(Number(1), s_carol.clone(), s_eve.clone());
         let err = script.execute(&inputs).unwrap_err();
         assert_eq!(err, ScriptError::VerifyFailed);
@@ -1432,6 +1451,10 @@ mod test {
         let agg_pub_key = script.execute(&inputs).unwrap();
         assert_eq!(agg_pub_key, StackItem::PublicKey(p_bob.clone() + p_carol.clone()));
 
+        let inputs = inputs!(s_carol.clone(), s_bob.clone());
+        let err = script.execute(&inputs).unwrap_err();
+        assert_eq!(err, ScriptError::VerifyFailed);
+
         let inputs = inputs!(s_alice.clone(), s_carol.clone(), s_bob.clone());
         let err = script.execute(&inputs).unwrap_err();
         assert_eq!(err, ScriptError::NonUnitLengthStack);
@@ -1448,6 +1471,9 @@ mod test {
         let inputs = inputs!(Number(1), s_alice.clone(), s_bob.clone(), s_carol.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(1));
+        let inputs = inputs!(Number(1), s_bob.clone(), s_alice.clone(), s_carol.clone());
+        let err = script.execute(&inputs).unwrap_err();
+        assert_eq!(err, ScriptError::VerifyFailed);
         let inputs = inputs!(Number(1), s_eve.clone(), s_bob.clone(), s_carol);
         let err = script.execute(&inputs).unwrap_err();
         assert_eq!(err, ScriptError::VerifyFailed);
