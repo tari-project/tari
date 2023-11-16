@@ -629,6 +629,10 @@ impl TariScript {
 
         // Signatures and public keys must be ordered
         for (i, s) in signatures.iter().enumerate() {
+            if pub_keys.is_empty() {
+                return Ok(None);
+            }
+
             while let Some(pk) = pub_keys.next() {
                 if !sig_set.contains(s) && !key_signed[i] && s.verify_raw_canonical(pk, &message) {
                     // This prevents Alice creating 2 different sigs against her public key
