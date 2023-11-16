@@ -101,7 +101,7 @@ where T: Into<Vec<ListItem<'a>>>
         constraints.push(Constraint::Length(1));
         let column_areas = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints(constraints.as_ref())
+            .constraints(constraints.as_slice())
             .margin(1)
             .split(area);
 
