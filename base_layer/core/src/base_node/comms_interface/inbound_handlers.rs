@@ -806,8 +806,8 @@ where B: BlockchainBackend + 'static
                     if let Err(e) = self.outbound_nci.propagate_block(new_block_msg, exclude_peers).await {
                         warn!(
                             target: LOG_TARGET,
-                            "Failed to propagate block ({}) to network.",
-                            block_hash.to_hex()
+                            "Failed to propagate block ({}) to network: {}.",
+                            block_hash.to_hex(), e
                         );
                     }
                 }
