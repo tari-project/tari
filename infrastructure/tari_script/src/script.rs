@@ -591,8 +591,8 @@ impl TariScript {
     ///
     /// Notes:
     /// * The _m_ signatures are expected to be the top _m_ items on the stack.
-    /// * The public keys and signatures must both be ordered.
-    /// * Every public key can be used AT MOST once.
+    /// * The ordering of signatures on the stack MUST match the relative ordering of the corresponding public keys.
+    /// * The list may contain duplicate keys, but each occurrence of a public key may be used AT MOST once.
     /// * Every signature MUST be a valid signature using one of the public keys
     /// * _m_ and _n_ must be positive AND m <= n AND n <= MAX_MULTISIG_LIMIT (32).
     fn check_multisig(
@@ -633,8 +633,12 @@ impl TariScript {
                 return Ok(None);
             }
 
+            if sig_set.contains(s) {
+                continue;
+            }
+
             for pk in pub_keys.by_ref() {
-                if !sig_set.contains(s) && s.verify_raw_canonical(pk, &message) {
+                if s.verify_raw_canonical(pk, &message) {
                     sig_set.insert(s);
                     agg_pub_key = agg_pub_key + pk;
                     break;
