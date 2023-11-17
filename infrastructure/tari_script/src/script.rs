@@ -591,7 +591,8 @@ impl TariScript {
     ///
     /// Notes:
     /// * The _m_ signatures are expected to be the top _m_ items on the stack.
-    /// * Every public key can be used AT MOST once.
+    /// * The ordering of signatures on the stack MUST match the relative ordering of the corresponding public keys.
+    /// * The list may contain duplicate keys, but each occurrence of a public key may be used AT MOST once.
     /// * Every signature MUST be a valid signature using one of the public keys
     /// * _m_ and _n_ must be positive AND m <= n AND n <= MAX_MULTISIG_LIMIT (32).
     fn check_multisig(
@@ -616,18 +617,28 @@ impl TariScript {
             })
             .collect::<Result<Vec<RistrettoSchnorr>, ScriptError>>()?;
 
-        let mut key_signed = vec![false; public_keys.len()];
         // keep a hashset of unique signatures used to prevent someone putting the same signature in more than once.
         #[allow(clippy::mutable_key_type)]
         let mut sig_set = HashSet::new();
 
         let mut agg_pub_key = RistrettoPublicKey::default();
-        // Check every signature against each public key looking for a valid signature
+
+        // Create an iterator that allows each pubkey to only be checked a single time as they are
+        // removed from the collection when referenced
+        let mut pub_keys = public_keys.iter();
+
+        // Signatures and public keys must be ordered
         for s in &signatures {
-            for (i, pk) in public_keys.iter().enumerate() {
-                if !sig_set.contains(s) && !key_signed[i] && s.verify_raw_canonical(pk, &message) {
-                    // This prevents Alice creating 2 different sigs against her public key
-                    key_signed[i] = true;
+            if pub_keys.len() == 0 {
+                return Ok(None);
+            }
+
+            if sig_set.contains(s) {
+                continue;
+            }
+
+            for pk in pub_keys.by_ref() {
+                if s.verify_raw_canonical(pk, &message) {
                     sig_set.insert(s);
                     agg_pub_key = agg_pub_key + pk;
                     break;
@@ -1182,6 +1193,9 @@ mod test {
         let inputs = inputs!(s_alice.clone(), s_bob.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(1));
+        let inputs = inputs!(s_bob.clone(), s_alice.clone());
+        let result = script.execute(&inputs).unwrap();
+        assert_eq!(result, Number(0));
         let inputs = inputs!(s_eve.clone(), s_bob.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(0));
@@ -1220,9 +1234,12 @@ mod test {
         let inputs = inputs!(s_alice.clone(), s_carol.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(1));
-        let inputs = inputs!(s_carol.clone(), s_bob.clone());
+        let inputs = inputs!(s_bob.clone(), s_carol.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(1));
+        let inputs = inputs!(s_carol.clone(), s_bob.clone());
+        let result = script.execute(&inputs).unwrap();
+        assert_eq!(result, Number(0));
         let inputs = inputs!(s_carol.clone(), s_eve.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(0));
@@ -1238,7 +1255,11 @@ mod test {
         let inputs = inputs!(s_alice.clone(), s_alice.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(0));
-        let inputs = inputs!(s_alice.clone(), s_alice2);
+        let inputs = inputs!(s_alice.clone(), s_alice2.clone());
+        let result = script.execute(&inputs).unwrap();
+        assert_eq!(result, Number(1));
+        // Interesting case where either sig could match either pubkey
+        let inputs = inputs!(s_alice2, s_alice.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(1));
 
@@ -1250,6 +1271,9 @@ mod test {
         let inputs = inputs!(s_alice.clone(), s_bob.clone(), s_carol.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(1));
+        let inputs = inputs!(s_carol.clone(), s_alice.clone(), s_bob.clone());
+        let result = script.execute(&inputs).unwrap();
+        assert_eq!(result, Number(0));
         let inputs = inputs!(s_eve.clone(), s_bob.clone(), s_carol);
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(0));
@@ -1370,6 +1394,9 @@ mod test {
         let inputs = inputs!(Number(1), s_alice.clone(), s_bob.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(1));
+        let inputs = inputs!(Number(1), s_bob.clone(), s_alice.clone());
+        let err = script.execute(&inputs).unwrap_err();
+        assert_eq!(err, ScriptError::VerifyFailed);
         let inputs = inputs!(Number(1), s_eve.clone(), s_bob.clone());
         let err = script.execute(&inputs).unwrap_err();
         assert_eq!(err, ScriptError::VerifyFailed);
@@ -1403,9 +1430,12 @@ mod test {
         let inputs = inputs!(Number(1), s_alice.clone(), s_carol.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(1));
-        let inputs = inputs!(Number(1), s_carol.clone(), s_bob.clone());
+        let inputs = inputs!(Number(1), s_bob.clone(), s_carol.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(1));
+        let inputs = inputs!(Number(1), s_carol.clone(), s_bob.clone());
+        let err = script.execute(&inputs).unwrap_err();
+        assert_eq!(err, ScriptError::VerifyFailed);
         let inputs = inputs!(Number(1), s_carol.clone(), s_eve.clone());
         let err = script.execute(&inputs).unwrap_err();
         assert_eq!(err, ScriptError::VerifyFailed);
@@ -1427,7 +1457,11 @@ mod test {
         let agg_pub_key = script.execute(&inputs).unwrap();
         assert_eq!(agg_pub_key, StackItem::PublicKey(p_bob.clone() + p_carol.clone()));
 
-        let inputs = inputs!(s_alice.clone(), s_carol.clone(), s_bob.clone());
+        let inputs = inputs!(s_carol.clone(), s_bob.clone());
+        let err = script.execute(&inputs).unwrap_err();
+        assert_eq!(err, ScriptError::VerifyFailed);
+
+        let inputs = inputs!(s_alice.clone(), s_bob.clone(), s_carol.clone());
         let err = script.execute(&inputs).unwrap_err();
         assert_eq!(err, ScriptError::NonUnitLengthStack);
 
@@ -1443,6 +1477,9 @@ mod test {
         let inputs = inputs!(Number(1), s_alice.clone(), s_bob.clone(), s_carol.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(1));
+        let inputs = inputs!(Number(1), s_bob.clone(), s_alice.clone(), s_carol.clone());
+        let err = script.execute(&inputs).unwrap_err();
+        assert_eq!(err, ScriptError::VerifyFailed);
         let inputs = inputs!(Number(1), s_eve.clone(), s_bob.clone(), s_carol);
         let err = script.execute(&inputs).unwrap_err();
         assert_eq!(err, ScriptError::VerifyFailed);
