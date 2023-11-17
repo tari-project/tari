@@ -224,6 +224,8 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(chain_block_or_orphan_block_exists(block_hash: BlockHash) -> bool, "block_exists");
 
+    make_async_fn!(chain_header_or_orphan_exists(block_hash: BlockHash) -> bool, "header_exists");
+
     make_async_fn!(bad_block_exists(block_hash: BlockHash) -> bool, "bad_block_exists");
 
     make_async_fn!(add_bad_block(hash: BlockHash, height: u64) -> (), "add_bad_block");

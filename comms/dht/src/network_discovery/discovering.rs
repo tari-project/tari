@@ -171,6 +171,7 @@ impl Discovering {
             })
             .await?;
         let mut counter = 0;
+        #[allow(clippy::mutable_key_type)]
         let mut peers_received = HashSet::new();
         while let Some(resp) = stream.next().await {
             counter += 1;

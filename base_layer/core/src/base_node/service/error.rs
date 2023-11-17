@@ -45,38 +45,7 @@ pub enum BaseNodeServiceError {
 impl BaseNodeServiceError {
     pub fn get_ban_reason(&self) -> Option<BanReason> {
         match self {
-            BaseNodeServiceError::CommsInterfaceError(comms) => match comms {
-                err @ CommsInterfaceError::UnexpectedApiResponse | err @ CommsInterfaceError::RequestTimedOut => {
-                    Some(BanReason {
-                        reason: err.to_string(),
-                        ban_duration: BanPeriod::Short,
-                    })
-                },
-                err @ CommsInterfaceError::InvalidPeerResponse(_) |
-                err @ CommsInterfaceError::InvalidBlockHeader(_) |
-                err @ CommsInterfaceError::TransactionError(_) |
-                err @ CommsInterfaceError::InvalidFullBlock { .. } |
-                err @ CommsInterfaceError::InvalidRequest { .. } => Some(BanReason {
-                    reason: err.to_string(),
-                    ban_duration: BanPeriod::Long,
-                }),
-                CommsInterfaceError::MempoolError(e) => e.get_ban_reason(),
-                CommsInterfaceError::TransportChannelError(e) => Some(BanReason {
-                    reason: e.to_string(),
-                    ban_duration: BanPeriod::Short,
-                }),
-                CommsInterfaceError::ChainStorageError(e) => e.get_ban_reason(),
-                CommsInterfaceError::MergeMineError(e) => e.get_ban_reason(),
-                CommsInterfaceError::NoBootstrapNodesConfigured |
-                CommsInterfaceError::OutboundMessageError(_) |
-                CommsInterfaceError::BroadcastFailed |
-                CommsInterfaceError::InternalChannelError(_) |
-                CommsInterfaceError::DifficultyAdjustmentManagerError(_) |
-                CommsInterfaceError::InternalError(_) |
-                CommsInterfaceError::ApiError(_) |
-                CommsInterfaceError::BlockError(_) |
-                CommsInterfaceError::DifficultyError(_) => None,
-            },
+            BaseNodeServiceError::CommsInterfaceError(e) => e.get_ban_reason(),
             BaseNodeServiceError::DhtOutboundError(_) => None,
             err @ BaseNodeServiceError::InvalidRequest(_) |
             err @ BaseNodeServiceError::InvalidResponse(_) |

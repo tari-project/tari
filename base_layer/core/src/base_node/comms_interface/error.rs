@@ -28,6 +28,7 @@ use thiserror::Error;
 use crate::{
     blocks::{BlockError, BlockHeaderValidationError},
     chain_storage::ChainStorageError,
+    common::{BanPeriod, BanReason},
     consensus::ConsensusManagerError,
     mempool::MempoolError,
     proof_of_work::{monero_rx::MergeMineError, DifficultyError},
@@ -76,4 +77,37 @@ pub enum CommsInterfaceError {
     DifficultyError(#[from] DifficultyError),
     #[error("Transaction error: {0}")]
     TransactionError(#[from] TransactionError),
+}
+
+impl CommsInterfaceError {
+    pub fn get_ban_reason(&self) -> Option<BanReason> {
+        match self {
+            err @ CommsInterfaceError::UnexpectedApiResponse |
+            err @ CommsInterfaceError::RequestTimedOut |
+            err @ CommsInterfaceError::TransportChannelError(_) => Some(BanReason {
+                reason: err.to_string(),
+                ban_duration: BanPeriod::Short,
+            }),
+            err @ CommsInterfaceError::InvalidPeerResponse(_) |
+            err @ CommsInterfaceError::InvalidBlockHeader(_) |
+            err @ CommsInterfaceError::TransactionError(_) |
+            err @ CommsInterfaceError::InvalidFullBlock { .. } |
+            err @ CommsInterfaceError::InvalidRequest { .. } => Some(BanReason {
+                reason: err.to_string(),
+                ban_duration: BanPeriod::Long,
+            }),
+            CommsInterfaceError::MempoolError(e) => e.get_ban_reason(),
+            CommsInterfaceError::ChainStorageError(e) => e.get_ban_reason(),
+            CommsInterfaceError::MergeMineError(e) => e.get_ban_reason(),
+            CommsInterfaceError::NoBootstrapNodesConfigured |
+            CommsInterfaceError::OutboundMessageError(_) |
+            CommsInterfaceError::BroadcastFailed |
+            CommsInterfaceError::InternalChannelError(_) |
+            CommsInterfaceError::DifficultyAdjustmentManagerError(_) |
+            CommsInterfaceError::InternalError(_) |
+            CommsInterfaceError::ApiError(_) |
+            CommsInterfaceError::BlockError(_) |
+            CommsInterfaceError::DifficultyError(_) => None,
+        }
+    }
 }
