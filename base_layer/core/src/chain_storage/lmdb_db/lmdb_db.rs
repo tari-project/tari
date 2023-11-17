@@ -2154,6 +2154,7 @@ impl BlockchainBackend for LMDBDatabase {
             })?;
         }
 
+        // Sort the orphans by age, oldest first
         orphans.sort_by(|a, b| a.0.cmp(&b.0));
         let mut txn = DbTransaction::new();
         for (removed_count, (height, block_hash)) in orphans.into_iter().enumerate() {

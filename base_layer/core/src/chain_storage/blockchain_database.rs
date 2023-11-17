@@ -2398,6 +2398,7 @@ fn prune_to_height<T: BlockchainBackend>(db: &mut T, target_horizon_height: u64)
 
         txn.prune_outputs_spent_at_hash(*header.hash());
         txn.delete_all_inputs_in_block(*header.hash());
+        // Write the transaction periodically so it wont run into the transaction size limit. 100 was a safe limit.
         if txn.operations().len() >= 100 {
             txn.set_pruned_height(block_to_prune);
             db.write(mem::take(&mut txn))?;
