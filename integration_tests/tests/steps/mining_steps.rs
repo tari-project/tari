@@ -65,12 +65,13 @@ async fn mine_blocks_on(world: &mut TariWorld, blocks: u64, base_node: String) {
         .get_node_client(&base_node)
         .await
         .expect("Couldn't get the node client to mine with");
+    let miner_node_script_key_id = &world.miner_node_script_key_id().await;
     mine_blocks_without_wallet(
         &mut client,
         blocks,
         0,
         &world.key_manager,
-        &world.miner_node_script_key_id.clone(),
+        miner_node_script_key_id,
         &world.default_payment_address.clone(),
         false,
         &world.consensus_manager.clone(),
@@ -104,12 +105,13 @@ async fn mine_custom_weight_blocks_with_height(world: &mut TariWorld, num_blocks
         .get_node_client(&node_name)
         .await
         .expect("Couldn't get the node client to mine with");
+    let miner_node_script_key_id = &world.miner_node_script_key_id().await;
     mine_blocks_without_wallet(
         &mut client,
         num_blocks,
         weight,
         &world.key_manager,
-        &world.miner_node_script_key_id.clone(),
+        miner_node_script_key_id,
         &world.default_payment_address.clone(),
         false,
         &world.consensus_manager.clone(),
@@ -185,6 +187,7 @@ async fn while_mining_in_node_all_txs_in_wallet_are_mined_confirmed(
 ) {
     let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
     let wallet_address = world.get_wallet_address(&wallet).await.unwrap();
+    let miner_node_script_key_id = &world.miner_node_script_key_id().await;
     let wallet_tx_ids = world.wallet_tx_ids.get(&wallet_address).unwrap();
 
     if wallet_tx_ids.is_empty() {
@@ -223,7 +226,7 @@ async fn while_mining_in_node_all_txs_in_wallet_are_mined_confirmed(
             mine_block(
                 &mut node_client,
                 &world.key_manager,
-                &world.miner_node_script_key_id.clone(),
+                miner_node_script_key_id,
                 &world.default_payment_address.clone(),
                 false,
                 &world.consensus_manager.clone(),
@@ -309,11 +312,12 @@ async fn mining_node_mine_blocks(world: &mut TariWorld, blocks: u64) {
 async fn mine_without_submit(world: &mut TariWorld, block: String, node: String) {
     let mut client = world.get_node_client(&node).await.unwrap();
 
+    let miner_node_script_key_id = &world.miner_node_script_key_id().await;
     let unmined_block: Block = Block::try_from(
         mine_block_before_submit(
             &mut client,
             &world.key_manager,
-            &world.miner_node_script_key_id.clone(),
+            miner_node_script_key_id,
             &world.default_payment_address.clone(),
             false,
             &world.consensus_manager.clone(),

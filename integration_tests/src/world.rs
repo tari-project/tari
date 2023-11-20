@@ -45,7 +45,7 @@ use tari_core::{
     },
 };
 use tari_crypto::keys::{PublicKey as PK, SecretKey};
-use tari_key_manager::key_manager_service::KeyManagerInterface;
+use tari_key_manager::key_manager_service::{KeyId, KeyManagerInterface};
 use tari_utilities::hex::Hex;
 use thiserror::Error;
 
@@ -102,7 +102,7 @@ pub struct TariWorld {
     pub last_merge_miner_response: Value,
     pub key_manager: MemoryDbKeyManager,
     // This will be used for all one-sided coinbase payments
-    pub miner_node_script_key_id: TariKeyId,
+    pub wallet_private_key: PrivateKey,
     // This receiver wallet address will be used for default one-sided coinbase payments
     pub default_payment_address: TariAddress,
     pub consensus_manager: ConsensusManager,
@@ -111,15 +111,9 @@ pub struct TariWorld {
 impl Default for TariWorld {
     fn default() -> Self {
         println!("\nWorld initialized - remove this line when called!\n");
-        let key_manager = create_memory_db_key_manager();
         let wallet_private_key = PrivateKey::random(&mut OsRng);
-        let miner_node_script_key_id = tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(key_manager.import_key(wallet_private_key))
-            .unwrap();
-        let payment_private_key = PrivateKey::random(&mut OsRng);
         let default_payment_address =
-            TariAddress::new(PublicKey::from_secret_key(&payment_private_key), Network::LocalNet);
+            TariAddress::new(PublicKey::from_secret_key(&wallet_private_key), Network::LocalNet);
         Self {
             current_scenario_name: None,
             current_feature_name: None,
@@ -143,7 +137,7 @@ impl Default for TariWorld {
             last_imported_tx_ids: vec![],
             last_merge_miner_response: Default::default(),
             key_manager: create_memory_db_key_manager(),
-            miner_node_script_key_id,
+            wallet_private_key,
             default_payment_address,
             consensus_manager: ConsensusManager::builder(Network::LocalNet).build().unwrap(),
         }
@@ -308,6 +302,15 @@ impl TariWorld {
             println!("Shutting down base node {}", name);
             // You have explicitly trigger the shutdown now because of the change to use Arc/Mutex in tari_shutdown
             p.kill_signal.trigger();
+        }
+    }
+
+    pub async fn miner_node_script_key_id(&mut self) -> TariKeyId {
+        match self.key_manager.import_key(self.wallet_private_key.clone()).await {
+            Ok(key_id) => key_id,
+            Err(_) => KeyId::Imported {
+                key: PublicKey::from_secret_key(&self.wallet_private_key),
+            },
         }
     }
 }

@@ -425,7 +425,7 @@ impl InnerService {
             }
         }
 
-        let new_block_protocol = BlockTemplateProtocol::new(&mut grpc_client, self.config.clone())?;
+        let new_block_protocol = BlockTemplateProtocol::new(&mut grpc_client, self.config.clone()).await?;
 
         let seed_hash = FixedByteArray::from_hex(&monerod_resp["result"]["seed_hash"].to_string().replace('\"', ""))
             .map_err(|err| MmProxyError::InvalidMonerodResponse(format!("seed hash hex is invalid: {}", err)))?;

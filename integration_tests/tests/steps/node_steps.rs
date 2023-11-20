@@ -645,10 +645,11 @@ async fn no_meddling_with_data(world: &mut TariWorld, node: String) {
     // No meddling
     let chain_tip = client.get_tip_info(Empty {}).await.unwrap().into_inner();
     let current_height = chain_tip.metadata.unwrap().height_of_longest_chain;
+    let miner_node_script_key_id = &world.miner_node_script_key_id().await;
     let block = mine_block_before_submit(
         &mut client,
         &world.key_manager,
-        &world.miner_node_script_key_id.clone(),
+        miner_node_script_key_id,
         &world.default_payment_address.clone(),
         false,
         &world.consensus_manager.clone(),
@@ -668,11 +669,12 @@ async fn no_meddling_with_data(world: &mut TariWorld, node: String) {
     );
 
     // Meddle with kernal_mmr_size
+    let miner_node_script_key_id = &world.miner_node_script_key_id().await;
     let mut block: Block = Block::try_from(
         mine_block_before_submit(
             &mut client,
             &world.key_manager,
-            &world.miner_node_script_key_id.clone(),
+            miner_node_script_key_id,
             &world.default_payment_address.clone(),
             false,
             &world.consensus_manager.clone(),
@@ -692,11 +694,12 @@ async fn no_meddling_with_data(world: &mut TariWorld, node: String) {
     }
 
     // Meddle with output_mmr_size
+    let miner_node_script_key_id = &world.miner_node_script_key_id().await;
     let mut block: Block = Block::try_from(
         mine_block_before_submit(
             &mut client,
             &world.key_manager,
-            &world.miner_node_script_key_id.clone(),
+            miner_node_script_key_id,
             &world.default_payment_address.clone(),
             false,
             &world.consensus_manager.clone(),

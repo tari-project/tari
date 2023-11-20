@@ -98,8 +98,6 @@ pub enum MmProxyError {
     ServersUnavailable,
     #[error("Invalid difficulty: {0}")]
     DifficultyError(#[from] DifficultyError),
-    #[error("Tokio runtime error: {0}")]
-    TokioRuntimeError(String),
     #[error("Key manager service error: `{0}`")]
     KeyManagerServiceError(String),
     #[error("Key manager error: {0}")]

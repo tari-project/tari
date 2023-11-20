@@ -77,9 +77,9 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
     setup_grpc_config(&mut config);
     let key_manager = create_memory_db_key_manager();
     let wallet_private_key = PrivateKey::random(&mut OsRng);
-    let miner_node_script_key_id = tokio::runtime::Runtime::new()
-        .map_err(|err| ExitError::new(ExitCode::TokioRuntimeError, err.to_string()))?
-        .block_on(key_manager.import_key(wallet_private_key))
+    let miner_node_script_key_id = key_manager
+        .import_key(wallet_private_key)
+        .await
         .map_err(|err| ExitError::new(ExitCode::KeyManagerServiceError, err.to_string()))?;
     let wallet_payment_address = TariAddress::from_str(&config.wallet_payment_address)
         .map_err(|err| ExitError::new(ExitCode::ConversionError, err.to_string()))?;

@@ -62,15 +62,13 @@ pub struct BlockTemplateProtocol<'a> {
 }
 
 impl<'a> BlockTemplateProtocol<'a> {
-    pub fn new(
+    pub async fn new(
         base_node_client: &'a mut BaseNodeClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>,
         config: Arc<MergeMiningProxyConfig>,
-    ) -> Result<Self, MmProxyError> {
+    ) -> Result<BlockTemplateProtocol<'a>, MmProxyError> {
         let key_manager = create_memory_db_key_manager();
         let wallet_private_key = PrivateKey::random(&mut OsRng);
-        let miner_node_script_key_id = tokio::runtime::Runtime::new()
-            .map_err(|err| MmProxyError::TokioRuntimeError(err.to_string()))?
-            .block_on(key_manager.import_key(wallet_private_key))?;
+        let miner_node_script_key_id = key_manager.import_key(wallet_private_key).await?;
         let wallet_payment_address = TariAddress::from_str(&config.wallet_payment_address)
             .map_err(|err| MmProxyError::ConversionError(err.to_string()))?;
         let consensus_manager = ConsensusManager::builder(config.network).build()?;

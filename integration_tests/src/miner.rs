@@ -277,11 +277,12 @@ pub async fn mine_block_with_coinbase_on_node(world: &mut TariWorld, base_node: 
         .get_grpc_client()
         .await
         .unwrap();
+    let miner_node_script_key_id = &world.miner_node_script_key_id().await;
     let (template, wallet_output) = create_block_template_with_coinbase(
         &mut client,
         0,
         &world.key_manager,
-        &world.miner_node_script_key_id.clone(),
+        miner_node_script_key_id,
         &world.default_payment_address.clone(),
         false,
         &world.consensus_manager.clone(),
