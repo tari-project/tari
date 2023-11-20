@@ -83,6 +83,13 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
         .map_err(|err| ExitError::new(ExitCode::KeyManagerServiceError, err.to_string()))?;
     let wallet_payment_address = TariAddress::from_str(&config.wallet_payment_address)
         .map_err(|err| ExitError::new(ExitCode::ConversionError, err.to_string()))?;
+    debug!(target: LOG_TARGET_FILE, "wallet_payment_address: {}", wallet_payment_address);
+    if wallet_payment_address == TariAddress::default() {
+        return Err(ExitError::new(
+            ExitCode::PaymentWalletAddressMissing,
+            "Has default value".to_string(),
+        ));
+    }
     let consensus_manager = ConsensusManager::builder(config.network)
         .build()
         .map_err(|err| ExitError::new(ExitCode::ConsensusManagerBuilderError, err.to_string()))?;
@@ -283,6 +290,8 @@ async fn mining_cycle(
     )
     .await
     .map_err(|e| MinerError::CoinbaseError(e.to_string()))?;
+    debug!(target: LOG_TARGET, "Coinbase kernel: {}", kernel);
+    debug!(target: LOG_TARGET, "Coinbase output: {}", output);
 
     let body = block_template
         .body

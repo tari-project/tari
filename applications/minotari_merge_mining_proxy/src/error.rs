@@ -104,6 +104,8 @@ pub enum MmProxyError {
     CoreKeyManagerError(#[from] CoreKeyManagerError),
     #[error("Consensus build error: {0}")]
     ConsensusBuilderError(#[from] ConsensusBuilderError),
+    #[error("Could not convert data:{0}")]
+    PaymentWalletAddressMissing(String),
 }
 
 impl From<tonic::Status> for MmProxyError {

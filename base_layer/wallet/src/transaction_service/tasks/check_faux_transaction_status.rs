@@ -142,7 +142,7 @@ pub async fn check_faux_transactions<TBackend: 'static + TransactionBackend>(
                     .map_or(0, |mined_timestamp| mined_timestamp.timestamp() as u64),
                 num_confirmations,
                 is_confirmed,
-                is_valid,
+                true,
             );
             if let Err(e) = result {
                 error!(

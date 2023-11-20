@@ -94,6 +94,22 @@ appenders:
         pattern: "{{log_dir}}/log/other.{}.log"
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{X(grpc)}] {f}.{L} {i} [{t}] {l:5} {m}{n}"
+  # An appender named "base_layer" that writes to a file with a custom pattern encoder
+  miner:
+    kind: rolling_file
+    path: "{{log_dir}}/log/miner.log"
+    policy:
+      kind: compound
+      trigger:
+        kind: size
+        limit: 10mb
+      roller:
+        kind: fixed_window
+        base: 1
+        count: 5
+        pattern: "{{log_dir}}/log/miner/miner.{}.log"
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] {l:5} {m}{n}"
 
 # We don't want prints during cucumber test, everything useful will in logs.
 # root:
@@ -108,6 +124,7 @@ loggers:
       - network
       - base_layer_wallet
       - base_layer_base_node
+      - miner
     additive: true
   stdout:
     level: info # we have only single print, and it's info
@@ -135,6 +152,22 @@ loggers:
     level: debug
     appenders:
       - base_layer_wallet
+  # miner
+  minotari::application:
+    level: debug
+    appenders:
+      - miner
+    additive: false
+  minotari::miner:
+    level: debug
+    appenders:
+      - miner
+    additive: false
+  minotari_miner:
+    level: debug
+    appenders:
+      - miner
+    additive: false
   # Route log events sent to the "comms" logger to the "network" appender
   comms:
     level: debug

@@ -25,6 +25,7 @@ use std::{convert::TryFrom, time::Duration};
 use minotari_app_grpc::tari_rpc::{
     pow_algo::PowAlgos,
     Block,
+    GetIdentityRequest,
     NewBlockTemplate,
     NewBlockTemplateRequest,
     PowAlgo,
@@ -33,8 +34,9 @@ use minotari_app_grpc::tari_rpc::{
 use minotari_app_utilities::common_cli_args::CommonCliArgs;
 use minotari_miner::{run_miner, Cli};
 use minotari_node_grpc_client::BaseNodeGrpcClient;
+use minotari_wallet_grpc_client::WalletGrpcClient;
 use tari_common::configuration::Network;
-use tari_common_types::tari_address::TariAddress;
+use tari_common_types::{tari_address::TariAddress, types::PublicKey};
 use tari_core::{
     consensus::ConsensusManager,
     transactions::{
@@ -44,6 +46,7 @@ use tari_core::{
         transaction_components::WalletOutput,
     },
 };
+use tari_utilities::ByteArray;
 use tonic::transport::Channel;
 
 use crate::TariWorld;
@@ -56,14 +59,22 @@ pub struct MinerProcess {
     pub base_node_name: String,
     pub wallet_name: String,
     pub mine_until_height: u64,
+    pub stealth: bool,
 }
 
-pub fn register_miner_process(world: &mut TariWorld, miner_name: String, base_node_name: String, wallet_name: String) {
+pub fn register_miner_process(
+    world: &mut TariWorld,
+    miner_name: String,
+    base_node_name: String,
+    wallet_name: String,
+    stealth: bool,
+) {
     let miner = MinerProcess {
         name: miner_name.clone(),
         base_node_name,
         wallet_name,
         mine_until_height: 100_000,
+        stealth,
     };
 
     world.miners.insert(miner_name, miner);
@@ -77,6 +88,20 @@ impl MinerProcess {
         miner_min_diff: Option<u64>,
         miner_max_diff: Option<u64>,
     ) {
+        let mut wallet_client = create_wallet_client(world, self.wallet_name.clone())
+            .await
+            .expect("wallet grpc client");
+        let wallet_public_key = PublicKey::from_vec(
+            &wallet_client
+                .identify(GetIdentityRequest {})
+                .await
+                .unwrap()
+                .into_inner()
+                .public_key,
+        )
+        .unwrap();
+        let wallet_payment_address = TariAddress::new(wallet_public_key, Network::LocalNet);
+
         let node = world.get_node(&self.base_node_name).unwrap().grpc_port;
         let temp_dir = world
             .current_base_dir
@@ -101,6 +126,11 @@ impl MinerProcess {
                     ),
                     ("miner.num_mining_threads".to_string(), "1".to_string()),
                     ("miner.mine_on_tip_only".to_string(), "false".to_string()),
+                    (
+                        "miner.wallet_payment_address".to_string(),
+                        wallet_payment_address.to_hex(),
+                    ),
+                    ("miner.stealth_payment".to_string(), self.stealth.to_string()),
                 ],
                 network: Some(Network::LocalNet),
             },
@@ -111,6 +141,15 @@ impl MinerProcess {
         };
         run_miner(cli).await.unwrap();
     }
+}
+
+pub async fn create_wallet_client(world: &TariWorld, wallet_name: String) -> anyhow::Result<WalletGrpcClient<Channel>> {
+    let wallet_grpc_port = world.wallets.get(&wallet_name).unwrap().grpc_port;
+    let wallet_addr = format!("http://127.0.0.1:{}", wallet_grpc_port);
+
+    eprintln!("Wallet GRPC at {}", wallet_addr);
+
+    Ok(WalletGrpcClient::connect(wallet_addr.as_str()).await?)
 }
 
 pub async fn mine_blocks_without_wallet(

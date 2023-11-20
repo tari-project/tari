@@ -71,6 +71,11 @@ impl<'a> BlockTemplateProtocol<'a> {
         let miner_node_script_key_id = key_manager.import_key(wallet_private_key).await?;
         let wallet_payment_address = TariAddress::from_str(&config.wallet_payment_address)
             .map_err(|err| MmProxyError::ConversionError(err.to_string()))?;
+        if wallet_payment_address == TariAddress::default() {
+            return Err(MmProxyError::PaymentWalletAddressMissing(
+                "Has default value".to_string(),
+            ));
+        }
         let consensus_manager = ConsensusManager::builder(config.network).build()?;
         Ok(Self {
             config,

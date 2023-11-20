@@ -129,15 +129,4 @@ fn setup_grpc_config(config: &mut MergeMiningProxyConfig) {
             .unwrap(),
         );
     }
-
-    if config.console_wallet_grpc_address.is_none() {
-        config.console_wallet_grpc_address = Some(
-            format!(
-                "/ip4/127.0.0.1/tcp/{}",
-                grpc_default_port(ApplicationType::ConsoleWallet, config.network)
-            )
-            .parse()
-            .unwrap(),
-        );
-    }
 }

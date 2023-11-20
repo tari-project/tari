@@ -126,6 +126,8 @@ pub enum ExitCode {
     KeyManagerServiceError = 121,
     #[error("Consensus manager builder error")]
     ConsensusManagerBuilderError = 122,
+    #[error("Payment wallet address is not defined")]
+    PaymentWalletAddressMissing = 123,
 }
 
 impl From<super::ConfigError> for ExitError {

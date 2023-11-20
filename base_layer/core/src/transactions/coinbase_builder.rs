@@ -22,6 +22,7 @@
 //
 
 use chacha20poly1305::aead::OsRng;
+use log::*;
 use tari_common_types::{
     tari_address::TariAddress,
     types::{Commitment, PrivateKey, PublicKey},
@@ -29,7 +30,7 @@ use tari_common_types::{
 use tari_crypto::keys::PublicKey as PK;
 use tari_key_manager::key_manager_service::{KeyManagerInterface, KeyManagerServiceError};
 use tari_script::{one_sided_payment_script, stealth_payment_script, ExecutionStack, TariScript};
-use tari_utilities::ByteArrayError;
+use tari_utilities::{hex::Hex, ByteArrayError};
 use thiserror::Error;
 
 use crate::{
@@ -70,6 +71,8 @@ use crate::{
         transaction_protocol::TransactionMetadata,
     },
 };
+
+pub const LOG_TARGET: &str = "c::tx::coinbase_builder";
 
 #[derive(Debug, Clone, Error, PartialEq, Eq)]
 pub enum CoinbaseBuildError {
@@ -255,6 +258,12 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         let covenant = self.covenant;
         let script = self.script.ok_or(CoinbaseBuildError::MissingScript)?;
 
+        debug!(target: LOG_TARGET,
+            "Getting coinbase - height: {}, reward: {}, spending_key_id: {}, script_key_id: {}, encryption_key_id: {}, \
+            sender_offset_key_id: {}, script: {}",
+            height, total_reward, spending_key_id, script_key_id, encryption_key_id, sender_offset_key_id, script
+        );
+
         let kernel_features = KernelFeatures::create_coinbase();
         let metadata = TransactionMetadata::new_with_features(0.into(), 0, kernel_features);
         // generate kernel signature
@@ -389,7 +398,12 @@ pub async fn generate_coinbase(
     let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret)?;
     let encryption_key_id = key_manager.import_key(encryption_private_key).await?;
 
+    let spending_key_hex = spending_key.to_hex();
     let spending_key_id = key_manager.import_key(spending_key).await?;
+    debug!(target: LOG_TARGET,
+        "generate coinbase - height: {}, spending_key: {}, spending_key_id: {}, sender_offset_key_id: {}, shared_secret: {}",
+        height, spending_key_hex, spending_key_id, sender_offset_key_id, shared_secret.as_bytes().to_vec().to_hex()
+    );
 
     let script = if stealth_payment {
         let (nonce_private_key, nonce_public_key) = PublicKey::random_keypair(&mut OsRng);
@@ -423,6 +437,9 @@ pub async fn generate_coinbase(
         .first()
         .ok_or(CoinbaseBuildError::BuildError("No kernel found".to_string()))?;
 
+    debug!(target: LOG_TARGET, "Coinbase kernel: {}", kernel.clone());
+    debug!(target: LOG_TARGET, "Coinbase output: {}", output.clone());
+    debug!(target: LOG_TARGET, "Coinbase wallet output: {:?}", wallet_output);
     Ok((transaction.clone(), output.clone(), kernel.clone(), wallet_output))
 }
 

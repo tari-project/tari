@@ -226,7 +226,7 @@ Feature: Wallet Transactions
   #   Then node SEED_A is at height 7
   #   Then node NODE_A1 is at height 7
   #   When I mine 3 blocks on SEED_A
-  #   Then wallet WALLET_A1 detects at least 7 coinbase transactions as Mined_Confirmed
+  #   Then wallet WALLET_A1 detects at least 7 coinbase transactions as Mined_or_Faux_Confirmed
   #   Then node SEED_A is at height 10
   #   Then node NODE_A1 is at height 10
   #   When I multi-send 7 transactions of 1000000 uT from wallet WALLET_A1 to wallet WALLET_A2 at fee 100
@@ -244,7 +244,7 @@ Feature: Wallet Transactions
   #   Then node SEED_B is at height 7
   #   Then node NODE_B1 is at height 7
   #   When I mine 5 blocks on SEED_B
-  #   Then wallet WALLET_B1 detects at least 7 coinbase transactions as Mined_Confirmed
+  #   Then wallet WALLET_B1 detects at least 7 coinbase transactions as Mined_or_Faux_Confirmed
   #   Then node SEED_B is at height 12
   #   Then node NODE_B1 is at height 12
   #   When I multi-send 7 transactions of 1000000 uT from wallet WALLET_B1 to wallet WALLET_B2 at fee 100
@@ -306,7 +306,7 @@ Feature: Wallet Transactions
   #   Then node SEED_A is at height 1
   #   Then node NODE_A1 is at height 1
   #   When I mine 3 blocks on SEED_A
-  #   Then wallet WALLET_A1 detects at least 1 coinbase transactions as Mined_Confirmed
+  #   Then wallet WALLET_A1 detects at least 1 coinbase transactions as Mined_or_Faux_Confirmed
   #   Then node SEED_A is at height 4
   #   Then node NODE_A1 is at height 4
   #   When I multi-send 1 transactions of 10000 uT from wallet WALLET_A1 to wallet WALLET_A2 at fee 20
@@ -324,7 +324,7 @@ Feature: Wallet Transactions
   #   Then node SEED_B is at height 2
   #   Then node NODE_B1 is at height 2
   #   When I mine 3 blocks on SEED_B
-  #   Then wallet WALLET_B1 detects at least 2 coinbase transactions as Mined_Confirmed
+  #   Then wallet WALLET_B1 detects at least 2 coinbase transactions as Mined_or_Faux_Confirmed
   #   Then node SEED_B is at height 5
   #   Then node NODE_B1 is at height 5
   #   When I multi-send 2 transactions of 10000 uT from wallet WALLET_B1 to wallet WALLET_B2 at fee 20
@@ -380,7 +380,7 @@ Feature: Wallet Transactions
   #   When I wait 30 seconds
   #   When mining node MINER mines 5 blocks
   #   Then all nodes are at height 15
-  #   When wallet WALLET_SENDER detects all transactions as Mined_Confirmed
+  #   When wallet WALLET_SENDER detects all transactions as Mined_or_Faux_Confirmed
   #   When I start wallet WALLET_RECV
   #   When I wait 5 seconds
   #   Then I restart wallet WALLET_RECV
@@ -422,5 +422,5 @@ Feature: Wallet Transactions
     When I create a burn transaction of 201552500000 uT from WALLET_A at fee 100
     When mining node MINER_B mines 5 blocks
     Then all nodes are at height 20
-    Then wallet WALLET_A detects all transactions as Mined_Confirmed
+    Then wallet WALLET_A detects all transactions as Mined_or_Faux_Confirmed
     When I wait for wallet WALLET_A to have at least 20000000000 uT
