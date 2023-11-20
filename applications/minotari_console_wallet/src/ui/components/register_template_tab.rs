@@ -10,7 +10,8 @@ use minotari_wallet::output_manager_service::UtxoSelectionCriteria;
 use regex::Regex;
 use reqwest::StatusCode;
 use tari_core::transactions::{tari_amount::MicroMinotari, transaction_components::TemplateType};
-use tari_crypto::{hash_domain, hashing::DomainSeparation};
+use tari_crypto::hashing::DomainSeparation;
+use tari_hash_domains::TariEngineHashDomain;
 use tari_utilities::hex::Hex;
 use tokio::{
     runtime::{Handle, Runtime},
@@ -537,7 +538,6 @@ impl RegisterTemplateTab {
                                     StatusCode::OK => match data.bytes().await {
                                         Ok(bytes) => {
                                             let mut hasher = Blake2b::<U32>::default();
-                                            hash_domain!(TariEngineHashDomain, "com.tari.dan.engine", 0);
                                             TariEngineHashDomain::add_domain_separation_tag(&mut hasher, "Template");
                                             let hash: [u8; 32] = hasher.chain_update(bytes).finalize().into();
                                             hex_string = hash.to_hex();

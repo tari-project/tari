@@ -31,17 +31,12 @@ use tari_crypto::{
     hashing::{DomainSeparatedHash, DomainSeparatedHasher},
     keys::{PublicKey as PKtrait, SecretKey as SKtrait},
 };
+use tari_hash_domains::WalletOutputEncryptionKeysDomain;
 use tari_utilities::byte_array::ByteArrayError;
 
 hash_domain!(
     WalletOutputRewindKeysDomain,
     "com.tari.base_layer.wallet.output_rewind_keys",
-    1
-);
-
-hash_domain!(
-    WalletOutputEncryptionKeysDomain,
-    "com.tari.base_layer.wallet.output_encryption_keys",
     1
 );
 
