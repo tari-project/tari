@@ -37,14 +37,16 @@ fn get_hashes(n: usize) -> Vec<Vec<u8>> {
 }
 
 fn build_mmr(c: &mut Criterion) {
-    let sizes = [100, 10_000];
+    let sizes = [100, 1_000, 10_000, 100_000];
     for size in sizes {
         c.bench_function(&format!("MMR: {size} hashes"), move |b| {
             let hashes = get_hashes(size);
-            let mut mmr = TestMmr::new(Vec::default());
             b.iter_batched(
-                || hashes.clone(),
-                |hashes| {
+                || {
+                    // Set up a fresh tree for this iteration
+                    (TestMmr::new(Vec::default()), hashes.clone())
+                },
+                |(mut mmr, hashes)| {
                     hashes.into_iter().for_each(|hash| {
                         mmr.push(hash).unwrap();
                     });
