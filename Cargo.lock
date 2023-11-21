@@ -3059,7 +3059,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_app_grpc"
-version = "0.53.0-pre.0"
+version = "0.53.0-dan.0"
 dependencies = [
  "argon2",
  "base64 0.13.1",
@@ -3084,7 +3084,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_app_utilities"
-version = "0.53.0-pre.0"
+version = "0.53.0-dan.0"
 dependencies = [
  "clap 3.2.25",
  "futures 0.3.29",
@@ -3128,7 +3128,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_console_wallet"
-version = "0.53.0-pre.0"
+version = "0.53.0-dan.0"
 dependencies = [
  "bitflags 2.4.1",
  "blake2",
@@ -3182,7 +3182,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_merge_mining_proxy"
-version = "0.53.0-pre.0"
+version = "0.53.0-dan.0"
 dependencies = [
  "anyhow",
  "bincode",
@@ -3218,7 +3218,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_miner"
-version = "0.53.0-pre.0"
+version = "0.53.0-dan.0"
 dependencies = [
  "base64 0.13.1",
  "borsh",
@@ -3270,7 +3270,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_node"
-version = "0.53.0-pre.0"
+version = "0.53.0-dan.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3325,7 +3325,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_wallet"
-version = "0.53.0-pre.0"
+version = "0.53.0-dan.0"
 dependencies = [
  "argon2",
  "async-trait",
@@ -3375,7 +3375,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_wallet_ffi"
-version = "0.53.0-pre.0"
+version = "0.53.0-dan.0"
 dependencies = [
  "borsh",
  "cbindgen",
@@ -5582,7 +5582,7 @@ dependencies = [
 
 [[package]]
 name = "tari_common"
-version = "0.53.0-pre.0"
+version = "0.53.0-dan.0"
 dependencies = [
  "anyhow",
  "blake2",
@@ -5609,7 +5609,7 @@ dependencies = [
 
 [[package]]
 name = "tari_common_sqlite"
-version = "0.53.0-pre.0"
+version = "0.53.0-dan.0"
 dependencies = [
  "diesel",
  "diesel_migrations",
@@ -5623,7 +5623,7 @@ dependencies = [
 
 [[package]]
 name = "tari_common_types"
-version = "0.53.0-pre.0"
+version = "0.53.0-dan.0"
 dependencies = [
  "base64 0.21.5",
  "blake2",
@@ -5644,7 +5644,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms"
-version = "0.53.0-pre.0"
+version = "0.53.0-dan.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5694,7 +5694,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms_dht"
-version = "0.53.0-pre.0"
+version = "0.53.0-dan.0"
 dependencies = [
  "anyhow",
  "bitflags 2.4.1",
@@ -5738,7 +5738,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms_rpc_macros"
-version = "0.53.0-pre.0"
+version = "0.53.0-dan.0"
 dependencies = [
  "futures 0.3.29",
  "proc-macro2",
@@ -5753,7 +5753,7 @@ dependencies = [
 
 [[package]]
 name = "tari_contacts"
-version = "0.53.0-pre.0"
+version = "0.53.0-dan.0"
 dependencies = [
  "chrono",
  "diesel",
@@ -5786,7 +5786,7 @@ dependencies = [
 
 [[package]]
 name = "tari_core"
-version = "0.53.0-pre.0"
+version = "0.53.0-dan.0"
 dependencies = [
  "async-trait",
  "bincode",
@@ -5875,7 +5875,7 @@ dependencies = [
 
 [[package]]
 name = "tari_features"
-version = "0.53.0-pre.0"
+version = "0.53.0-dan.0"
 
 [[package]]
 name = "tari_integration_tests"
@@ -5926,7 +5926,7 @@ dependencies = [
 
 [[package]]
 name = "tari_key_manager"
-version = "0.53.0-pre.0"
+version = "0.53.0-dan.0"
 dependencies = [
  "argon2",
  "async-trait",
@@ -5992,7 +5992,7 @@ dependencies = [
 
 [[package]]
 name = "tari_mmr"
-version = "0.53.0-pre.0"
+version = "0.53.0-dan.0"
 dependencies = [
  "bincode",
  "blake2",
@@ -6011,7 +6011,7 @@ dependencies = [
 
 [[package]]
 name = "tari_p2p"
-version = "0.53.0-pre.0"
+version = "0.53.0-dan.0"
 dependencies = [
  "anyhow",
  "clap 3.2.25",
@@ -6065,7 +6065,7 @@ dependencies = [
 
 [[package]]
 name = "tari_service_framework"
-version = "0.53.0-pre.0"
+version = "0.53.0-dan.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6082,7 +6082,7 @@ dependencies = [
 
 [[package]]
 name = "tari_shutdown"
-version = "0.53.0-pre.0"
+version = "0.53.0-dan.0"
 dependencies = [
  "futures 0.3.29",
  "tokio",
@@ -6090,7 +6090,7 @@ dependencies = [
 
 [[package]]
 name = "tari_storage"
-version = "0.53.0-pre.0"
+version = "0.53.0-dan.0"
 dependencies = [
  "bincode",
  "lmdb-zero",
@@ -6103,7 +6103,7 @@ dependencies = [
 
 [[package]]
 name = "tari_test_utils"
-version = "0.53.0-pre.0"
+version = "0.53.0-dan.0"
 dependencies = [
  "futures 0.3.29",
  "futures-test",
