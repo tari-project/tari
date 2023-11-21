@@ -663,7 +663,7 @@ impl TariScript {
             StackItem::Scalar(scalar) => scalar.as_slice(),
             _ => return Err(ScriptError::IncompatibleTypes),
         };
-        let ristretto_sk = RistrettoSecretKey::from_canonical_bytes(scalar).map_err(|_| ScriptError::InvalidData)?;
+        let ristretto_sk = RistrettoSecretKey::from_canonical_bytes(scalar).map_err(|_| ScriptError::InvalidInput)?;
         let ristretto_pk = RistrettoPublicKey::from_secret_key(&ristretto_sk);
         stack.push(StackItem::PublicKey(ristretto_pk))?;
         Ok(())
@@ -1738,11 +1738,13 @@ mod test {
 
     #[test]
     fn to_ristretto_point() {
-        use crate::StackItem::PublicKey;
+        use crate::{Opcode::ToRistrettoPoint, StackItem::PublicKey};
+
+        // Generate a key pair
         let mut rng = rand::thread_rng();
         let (k_1, p_1) = RistrettoPublicKey::random_keypair(&mut rng);
 
-        use crate::Opcode::ToRistrettoPoint;
+        // Generate a test script
         let ops = vec![ToRistrettoPoint];
         let script = TariScript::new(ops);
 
@@ -1751,17 +1753,22 @@ mod test {
         let err = script.execute(&inputs).unwrap_err();
         assert!(matches!(err, ScriptError::IncompatibleTypes));
 
-        // scalar
+        // Valid scalar
         let mut scalar = [0u8; 32];
         scalar.copy_from_slice(k_1.as_bytes());
         let inputs = inputs!(scalar);
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, PublicKey(p_1.clone()));
 
-        // hash
+        // Valid hash
         let inputs = ExecutionStack::new(vec![Hash(scalar)]);
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, PublicKey(p_1));
+
+        // Invalid bytes
+        let invalid = [u8::MAX; 32]; // not a canonical scalar encoding!
+        let inputs = inputs!(invalid);
+        assert!(matches!(script.execute(&inputs), Err(ScriptError::InvalidInput)));
     }
 
     #[test]

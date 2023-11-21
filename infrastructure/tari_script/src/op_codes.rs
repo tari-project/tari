@@ -262,9 +262,11 @@ pub enum Opcode {
     /// Identical to CheckMultiSig, except that the aggregate of the public keys is pushed to the stack if multiple
     /// signature validation succeeds. Fails with `VerifyFailed` if any signature is invalid.
     CheckMultiSigVerifyAggregatePubKey(u8, u8, Vec<RistrettoPublicKey>, Box<Message>),
-    /// Pops the top element from the stack, either a scalar or a hash, calculates the corresponding Ristretto point,
-    /// and pushes the result to the stack. Fails with `StackUnderflow` if the stack is empty. Fails with
-    /// `IncompatibleTypes` if the stack item is not a valid 32 byte sequence.
+    /// Pops the top element from the stack (either a scalar or a hash), parses it canonically as a Ristretto secret
+    /// key if possible, computes the corresponding Ristretto public key, and pushes this value to the stack.
+    /// Fails with `StackUnderflow` if the stack is empty.
+    /// Fails with `IncompatibleTypes` if the stack item is not either a scalar or a hash.
+    /// Fails with `InvalidInput` if the stack item cannot be canonically parsed as a Ristretto secret key.
     ToRistrettoPoint,
 
     // Miscellaneous
