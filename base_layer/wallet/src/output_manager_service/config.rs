@@ -28,6 +28,8 @@ pub struct OutputManagerServiceConfig {
     /// If a large amount of tiny valued uT UTXOs are used as inputs to a transaction, the fee may be larger than the
     /// transaction amount. Set this value to `false` to allow spending of "dust" UTXOs for small valued transactions.
     pub prevent_fee_gt_amount: bool,
+    /// Ignores dust below this value, value in micro MinoTari
+    pub dust_ignore_value: u64,
     /// This is the size of the event channel used to communicate output manager events to the wallet.
     pub event_channel_size: usize,
     /// The number of confirmations (difference between tip height and mined height) required for the output to be
@@ -49,6 +51,7 @@ impl Default for OutputManagerServiceConfig {
     fn default() -> Self {
         Self {
             prevent_fee_gt_amount: true,
+            dust_ignore_value: 100,
             event_channel_size: 250,
             num_confirmations_required: 3,
             tx_validator_batch_size: 100,

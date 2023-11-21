@@ -42,11 +42,13 @@ use std::{process, sync::Arc};
 use commands::{cli_loop::CliLoop, command::CommandContext};
 use futures::FutureExt;
 use log::*;
+use minotari_app_grpc::authentication::ServerAuthenticationInterceptor;
 use minotari_app_utilities::{common_cli_args::CommonCliArgs, network_check::is_network_choice_valid};
 use tari_common::{
     configuration::bootstrap::{grpc_default_port, ApplicationType},
     exit_codes::{ExitCode, ExitError},
 };
+use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tari_comms::{multiaddr::Multiaddr, utils::multiaddr::multiaddr_to_socketaddr, NodeIdentity};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::task;
@@ -85,6 +87,7 @@ pub async fn run_base_node(
         non_interactive_mode: true,
         watch: None,
         profile_with_tokio_console: false,
+        grpc_enabled: false,
     };
 
     run_base_node_with_cli(node_identity, config, cli, shutdown).await
@@ -137,7 +140,8 @@ pub async fn run_base_node_with_cli(
             &ctx,
             config.base_node.grpc_server_deny_methods.clone(),
         );
-        task::spawn(run_grpc(grpc, grpc_address, shutdown.to_signal()));
+        let auth = config.base_node.grpc_authentication.clone();
+        task::spawn(run_grpc(grpc, grpc_address, auth, shutdown.to_signal()));
     }
 
     // Run, node, run!
@@ -171,13 +175,18 @@ pub async fn run_base_node_with_cli(
 async fn run_grpc(
     grpc: grpc::base_node_grpc_server::BaseNodeGrpcServer,
     grpc_address: Multiaddr,
+    auth_config: GrpcAuthentication,
     interrupt_signal: ShutdownSignal,
 ) -> Result<(), anyhow::Error> {
     info!(target: LOG_TARGET, "Starting GRPC on {}", grpc_address);
 
     let grpc_address = multiaddr_to_socketaddr(&grpc_address)?;
+    let auth = ServerAuthenticationInterceptor::new(auth_config)
+        .ok_or(anyhow::anyhow!("Unable to prepare server gRPC authentication"))?;
+    let service = minotari_app_grpc::tari_rpc::base_node_server::BaseNodeServer::with_interceptor(grpc, auth);
+
     Server::builder()
-        .add_service(minotari_app_grpc::tari_rpc::base_node_server::BaseNodeServer::new(grpc))
+        .add_service(service)
         .serve_with_shutdown(grpc_address, interrupt_signal.map(|_| ()))
         .await
         .map_err(|err| {

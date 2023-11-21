@@ -34,6 +34,7 @@ use std::{
 use blake2::Blake2b;
 use digest::consts::U32;
 use log::*;
+use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
@@ -371,7 +372,7 @@ where B: BlockchainBackend
 
     /// Return the accumulated proof of work of the longest chain.
     /// The proof of work is returned as the product of total difficulties of all PoW algorithms
-    pub fn get_accumulated_difficulty(&self) -> Result<u128, ChainStorageError> {
+    pub fn get_accumulated_difficulty(&self) -> Result<U256, ChainStorageError> {
         let db = self.db_read_access()?;
         Ok(db.fetch_chain_metadata()?.accumulated_difficulty())
     }
@@ -858,6 +859,7 @@ where B: BlockchainBackend
         block.header.output_mr = roots.output_mr;
         block.header.output_smt_size = roots.output_smt_size;
         block.header.validator_node_mr = roots.validator_node_mr;
+        block.header.validator_node_size = roots.validator_node_size;
         Ok(block)
     }
 
@@ -947,6 +949,9 @@ where B: BlockchainBackend
             after_lock - before_lock,
         );
 
+        // If this is true, we already got the header in our database due to header-sync, between us starting the
+        // process of processing an incoming block and now getting a write-lock on the database. Block-sync will
+        // download the body for us, so we can safely exit here.
         if db.contains(&DbKey::HeaderHash(block_hash))? {
             return Ok(BlockAddResult::BlockExists);
         }
@@ -1119,6 +1124,12 @@ where B: BlockchainBackend
         Ok(db.fetch_block_accumulated_data(&hash)?.is_some() || db.contains(&DbKey::OrphanBlock(hash))?)
     }
 
+    /// Returns true if this block header in the chain, or is orphaned.
+    pub fn chain_header_or_orphan_exists(&self, hash: BlockHash) -> Result<bool, ChainStorageError> {
+        let db = self.db_read_access()?;
+        Ok(db.contains(&DbKey::HeaderHash(hash))? || db.contains(&DbKey::OrphanBlock(hash))?)
+    }
+
     /// Returns true if this block exists in the chain, or is orphaned.
     pub fn bad_block_exists(&self, hash: BlockHash) -> Result<bool, ChainStorageError> {
         let db = self.db_read_access()?;
@@ -1242,6 +1253,7 @@ pub struct MmrRoots {
     pub output_mr: FixedHash,
     pub output_smt_size: u64,
     pub validator_node_mr: FixedHash,
+    pub validator_node_size: u64,
 }
 
 impl std::fmt::Display for MmrRoots {
@@ -1316,14 +1328,17 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
 
     let block_height = block.header.height;
     let epoch_len = rules.consensus_constants(block_height).epoch_length();
-    let validator_node_mr = if block_height % epoch_len == 0 {
+    let (validator_node_mr, validator_node_size) = if block_height % epoch_len == 0 {
         // At epoch boundary, the MR is rebuilt from the current validator set
         let validator_nodes = db.fetch_active_validator_nodes(block_height)?;
-        FixedHash::try_from(calculate_validator_node_mr(&validator_nodes))?
+        (
+            FixedHash::try_from(calculate_validator_node_mr(&validator_nodes))?,
+            validator_nodes.len(),
+        )
     } else {
         // MR is unchanged except for epoch boundary
-        let tip_header = fetch_header(db, block_height - 1)?;
-        tip_header.validator_node_mr
+        let tip_header = fetch_header(db, block_height.saturating_sub(1))?;
+        (tip_header.validator_node_mr, 0)
     };
 
     let mmr_roots = MmrRoots {
@@ -1333,6 +1348,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(
         output_mr: FixedHash::try_from(output_smt.hash().as_slice())?,
         output_smt_size: output_smt.size(),
         validator_node_mr,
+        validator_node_size: validator_node_size as u64,
     };
     Ok(mmr_roots)
 }
@@ -1564,8 +1580,6 @@ fn fetch_block<T: BlockchainBackend>(db: &T, height: u64, compact: bool) -> Resu
             Ok(compact_input)
         })
         .collect::<Result<Vec<TransactionInput>, _>>()?;
-
-    // let inputs = db.fetch_inputs_in_block(&accumulated_data.hash)?;
 
     let block = header
         .into_builder()
@@ -2305,7 +2319,7 @@ fn find_strongest_orphan_tip(
 // block height will also be discarded.
 fn cleanup_orphans<T: BlockchainBackend>(db: &mut T, orphan_storage_capacity: usize) -> Result<(), ChainStorageError> {
     let metadata = db.fetch_chain_metadata()?;
-    let horizon_height = metadata.horizon_block(metadata.height_of_longest_chain());
+    let horizon_height = metadata.horizon_block_height(metadata.height_of_longest_chain());
 
     db.delete_oldest_orphans(horizon_height, orphan_storage_capacity)
 }
@@ -2384,6 +2398,7 @@ fn prune_to_height<T: BlockchainBackend>(db: &mut T, target_horizon_height: u64)
 
         txn.prune_outputs_spent_at_hash(*header.hash());
         txn.delete_all_inputs_in_block(*header.hash());
+        // Write the transaction periodically so it wont run into the transaction size limit. 100 was a safe limit.
         if txn.operations().len() >= 100 {
             txn.set_pruned_height(block_to_prune);
             db.write(mem::take(&mut txn))?;
@@ -2627,7 +2642,7 @@ mod test {
                 .unwrap();
             let fork_tip = access.fetch_orphan_chain_tip_by_hash(block.hash()).unwrap().unwrap();
             assert_eq!(fork_tip, block.to_chain_header());
-            assert_eq!(fork_tip.accumulated_data().total_accumulated_difficulty, 3);
+            assert_eq!(fork_tip.accumulated_data().total_accumulated_difficulty, 3.into());
             let strongest_tips = access.fetch_strongest_orphan_chain_tips().unwrap().len();
             assert_eq!(strongest_tips, 1);
 
@@ -2685,7 +2700,7 @@ mod test {
             let fork_tip_1 = access.fetch_orphan_chain_tip_by_hash(block.hash()).unwrap().unwrap();
 
             assert_eq!(fork_tip_1, block.to_chain_header());
-            assert_eq!(fork_tip_1.accumulated_data().total_accumulated_difficulty, 5);
+            assert_eq!(fork_tip_1.accumulated_data().total_accumulated_difficulty, 5.into());
 
             // Fork 2 (add 1 block)
             let block = orphan_chain_2.get("B3").unwrap().clone();
@@ -2694,7 +2709,7 @@ mod test {
             let fork_tip_2 = access.fetch_orphan_chain_tip_by_hash(block.hash()).unwrap().unwrap();
 
             assert_eq!(fork_tip_2, block.to_chain_header());
-            assert_eq!(fork_tip_2.accumulated_data().total_accumulated_difficulty, 2);
+            assert_eq!(fork_tip_2.accumulated_data().total_accumulated_difficulty, 2.into());
 
             // Fork 3 (add 1 block)
             let block = orphan_chain_3.get("B4").unwrap().clone();
@@ -2703,7 +2718,7 @@ mod test {
             let fork_tip_3 = access.fetch_orphan_chain_tip_by_hash(block.hash()).unwrap().unwrap();
 
             assert_eq!(fork_tip_3, block.to_chain_header());
-            assert_eq!(fork_tip_3.accumulated_data().total_accumulated_difficulty, 5);
+            assert_eq!(fork_tip_3.accumulated_data().total_accumulated_difficulty, 5.into());
 
             assert_ne!(fork_tip_1, fork_tip_2);
             assert_ne!(fork_tip_1, fork_tip_3);
@@ -3031,16 +3046,16 @@ mod test {
         result[8].assert_reorg(1, 1);
 
         assert_added_hashes_eq(&result[5], vec!["B2"], &blocks);
-        assert_difficulty_eq(&result[5], vec![7]);
+        assert_difficulty_eq(&result[5], vec![7.into()]);
 
         assert_added_hashes_eq(&result[6], vec!["B", "C", "D2"], &blocks);
-        assert_difficulty_eq(&result[6], vec![3, 4, 10]);
+        assert_difficulty_eq(&result[6], vec![3.into(), 4.into(), 10.into()]);
 
         assert_added_hashes_eq(&result[7], vec!["D3"], &blocks);
-        assert_difficulty_eq(&result[7], vec![11]);
+        assert_difficulty_eq(&result[7], vec![11.into()]);
 
         assert_added_hashes_eq(&result[8], vec!["D4"], &blocks);
-        assert_difficulty_eq(&result[8], vec![12]);
+        assert_difficulty_eq(&result[8], vec![12.into()]);
     }
 
     #[tokio::test]
@@ -3287,17 +3302,17 @@ mod test {
         result[1].assert_added();
         result[2].assert_added();
 
-        assert_difficulty_eq(&result[0], vec![2]);
-        assert_difficulty_eq(&result[1], vec![3]);
-        assert_difficulty_eq(&result[2], vec![4]);
+        assert_difficulty_eq(&result[0], vec![2.into()]);
+        assert_difficulty_eq(&result[1], vec![3.into()]);
+        assert_difficulty_eq(&result[2], vec![4.into()]);
 
         result[3].assert_added();
         result[4].assert_added();
         result[5].assert_added();
 
-        assert_difficulty_eq(&result[3], vec![6]);
-        assert_difficulty_eq(&result[4], vec![8]);
-        assert_difficulty_eq(&result[5], vec![10]);
+        assert_difficulty_eq(&result[3], vec![6.into()]);
+        assert_difficulty_eq(&result[4], vec![8.into()]);
+        assert_difficulty_eq(&result[5], vec![10.into()]);
 
         result[6].assert_orphaned();
         result[7].assert_orphaned();
@@ -3305,14 +3320,14 @@ mod test {
 
         // ("D2->C2", 1, 120),   // Chain 2 at 11
         result[9].assert_reorg(4, 3);
-        assert_difficulty_eq(&result[9], vec![6, 8, 10, 11]);
+        assert_difficulty_eq(&result[9], vec![6.into(), 8.into(), 10.into(), 11.into()]);
 
         // ("D1->C1", 1, 120),   // Chain 1 at 11
         result[10].assert_orphaned();
 
         // ("E1->D1", 1, 120),   // Chain 1 at 12
         result[11].assert_reorg(5, 4);
-        assert_difficulty_eq(&result[11], vec![6, 8, 10, 11, 12]);
+        assert_difficulty_eq(&result[11], vec![6.into(), 8.into(), 10.into(), 11.into(), 12.into()]);
 
         // ("E2->D2", 1, 120),   // Chain 2 at 12
         result[12].assert_orphaned();
@@ -3342,8 +3357,8 @@ mod test {
         );
     }
 
-    fn assert_difficulty_eq(result: &BlockAddResult, values: Vec<u128>) {
-        let accum_difficulty: Vec<u128> = result
+    fn assert_difficulty_eq(result: &BlockAddResult, values: Vec<U256>) {
+        let accum_difficulty: Vec<U256> = result
             .added_blocks()
             .iter()
             .map(|cb| cb.accumulated_data().total_accumulated_difficulty)

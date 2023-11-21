@@ -24,7 +24,10 @@ use thiserror::Error;
 
 #[cfg(feature = "base_node")]
 use crate::proof_of_work::monero_rx::MergeMineError;
-use crate::proof_of_work::Difficulty;
+use crate::{
+    common::{BanPeriod, BanReason},
+    proof_of_work::Difficulty,
+};
 
 /// Errors that can occur when validating a proof of work
 #[derive(Debug, Error)]
@@ -42,6 +45,23 @@ pub enum PowError {
     #[cfg(feature = "base_node")]
     #[error("Invalid merge mining data or operation: {0}")]
     MergeMineError(#[from] MergeMineError),
+}
+
+impl PowError {
+    pub fn get_ban_reason(&self) -> Option<BanReason> {
+        match self {
+            err @ PowError::InvalidProofOfWork |
+            err @ PowError::AchievedDifficultyBelowMin |
+            err @ PowError::Sha3HeaderNonEmptyPowBytes |
+            err @ PowError::AchievedDifficultyTooLow { .. } |
+            err @ PowError::InvalidTargetDifficulty { .. } => Some(BanReason {
+                reason: err.to_string(),
+                ban_duration: BanPeriod::Long,
+            }),
+            #[cfg(feature = "base_node")]
+            PowError::MergeMineError(e) => e.get_ban_reason(),
+        }
+    }
 }
 
 /// Errors that can occur when adjusting the difficulty
@@ -62,4 +82,6 @@ pub enum DifficultyError {
     MaxBlockTimeOverflow,
     #[error("Divide by zero")]
     DivideByZero,
+    #[error("Overflow")]
+    Overflow,
 }

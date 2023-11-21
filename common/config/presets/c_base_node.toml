@@ -33,6 +33,9 @@ identity_file = "config/base_node_id_nextnet.json"
 # Set to false to disable the base node GRPC server (default = true)
 #grpc_enabled = true
 
+# gRPC authentication method (default = "none")
+#grpc_authentication = { username = "admin", password = "xxxx" }
+
 # Uncomment all gRPC server methods that should be denied default (only active when `grpc_enabled = true`)
 grpc_server_deny_methods = [
     "get_version",

@@ -15,9 +15,9 @@ v*-rc.*)
   export TARI_NETWORK_DIR=nextnet
   ;;
 v*-dan.*)
-  echo "igor"
+  echo "dan"
   export TARI_NETWORK=igor
-  export TARI_NETWORK_DIR=igor
+  export TARI_NETWORK_DIR=testnetdan
   ;;
 *)
   echo "mainnet"

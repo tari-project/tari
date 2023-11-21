@@ -30,6 +30,7 @@ mod handle;
 pub use handle::RpcServerHandle;
 use handle::RpcServerRequest;
 
+#[cfg(feature = "metrics")]
 mod metrics;
 
 pub mod mock;
@@ -354,6 +355,7 @@ where
                     Ok(_) => {},
                     Err(err @ RpcServerError::HandshakeError(_)) => {
                         debug!(target: LOG_TARGET, "Handshake error: {}", err);
+                        #[cfg(feature = "metrics")]
                         metrics::handshake_error_counter(&node_id, &notification.protocol).inc();
                     },
                     Err(err) => {
@@ -464,10 +466,13 @@ where
         let handle = self
             .executor
             .try_spawn(async move {
+                #[cfg(feature = "metrics")]
                 let num_sessions = metrics::num_sessions(&node_id, &service.protocol);
+                #[cfg(feature = "metrics")]
                 num_sessions.inc();
                 service.start().await;
                 info!(target: LOG_TARGET, "END OF SESSION for {} ", node_id,);
+                #[cfg(feature = "metrics")]
                 num_sessions.dec();
 
                 node_id
@@ -526,6 +531,7 @@ where
             "({}) Rpc server started.", self.logging_context_string,
         );
         if let Err(err) = self.run().await {
+            #[cfg(feature = "metrics")]
             metrics::error_counter(&self.node_id, &self.protocol, &err).inc();
             let level = match &err {
                 RpcServerError::Io(e) => err_to_log_level(e),
@@ -543,12 +549,14 @@ where
     }
 
     async fn run(&mut self) -> Result<(), RpcServerError> {
-        let request_bytes = metrics::inbound_requests_bytes(&self.node_id, &self.protocol);
         while let Some(result) = self.framed.next().await {
             match result {
                 Ok(frame) => {
+                    #[cfg(feature = "metrics")]
+                    metrics::inbound_requests_bytes(&self.node_id, &self.protocol).observe(frame.len() as f64);
+
                     let start = Instant::now();
-                    request_bytes.observe(frame.len() as f64);
+
                     if let Err(err) = self.handle_request(frame.freeze()).await {
                         if let Err(err) = self.framed.close().await {
                             let level = err.io().map(err_to_log_level).unwrap_or(log::Level::Error);
@@ -622,6 +630,7 @@ where
                 flags: RpcMessageFlags::FIN.bits().into(),
                 payload: status.to_details_bytes(),
             };
+            #[cfg(feature = "metrics")]
             metrics::status_error_counter(&self.node_id, &self.protocol, status.as_status_code()).inc();
             self.framed.send(bad_request.to_encoded_bytes().into()).await?;
             return Ok(());
@@ -685,6 +694,7 @@ where
                     deadline,
                 );
 
+                #[cfg(feature = "metrics")]
                 metrics::error_counter(
                     &self.node_id,
                     &self.protocol,
@@ -711,6 +721,7 @@ where
                     payload: err.to_details_bytes(),
                 };
 
+                #[cfg(feature = "metrics")]
                 metrics::status_error_counter(&self.node_id, &self.protocol, err.as_status_code()).inc();
                 self.framed.send(resp.to_encoded_bytes().into()).await?;
             },
@@ -729,15 +740,17 @@ where
         deadline: Duration,
         body: Response<Body>,
     ) -> Result<(), RpcServerError> {
-        let response_bytes = metrics::outbound_response_bytes(&self.node_id, &self.protocol);
         trace!(target: LOG_TARGET, "Service call succeeded");
 
+        #[cfg(feature = "metrics")]
         let node_id = self.node_id.clone();
+        #[cfg(feature = "metrics")]
         let protocol = self.protocol.clone();
         let mut stream = body
             .into_message()
             .map(|result| into_response(request_id, result))
             .flat_map(move |message| {
+                #[cfg(feature = "metrics")]
                 if !message.status.is_ok() {
                     metrics::status_error_counter(&node_id, &protocol, message.status).inc();
                 }
@@ -771,7 +784,8 @@ where
                 msg = next_item => {
                      match msg {
                          Some(msg) => {
-                            response_bytes.observe(msg.len() as f64);
+                            #[cfg(feature = "metrics")]
+                            metrics::outbound_response_bytes(&self.node_id, &self.protocol).observe(msg.len() as f64);
                             debug!(
                                 target: LOG_TARGET,
                                 "({}) Sending body len = {}",
@@ -796,6 +810,7 @@ where
                         deadline
                     );
 
+                    #[cfg(feature = "metrics")]
                     metrics::error_counter(
                         &self.node_id,
                         &self.protocol,

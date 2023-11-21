@@ -25,6 +25,7 @@ use std::{convert::TryFrom, fmt, fs, fs::File, ops::Deref, path::Path, sync::Arc
 use fs2::FileExt;
 use lmdb_zero::{open, ConstTransaction, Database, Environment, ReadTransaction, WriteTransaction};
 use log::*;
+use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
@@ -133,8 +134,8 @@ const LMDB_DB_VALIDATOR_NODES_MAPPING: &str = "validator_nodes_mapping";
 const LMDB_DB_TEMPLATE_REGISTRATIONS: &str = "template_registrations";
 const LMDB_DB_TIP_UTXO_SMT: &str = "tip_utxo_smt";
 
-/// HeaderHash(32), mmr_pos(4), hash(32)
-type KernelKey = CompositeKey<68>;
+/// HeaderHash(32), mmr_pos(8), hash(32)
+type KernelKey = CompositeKey<72>;
 /// Height(8), Hash(32)
 type ValidatorNodeRegistrationKey = CompositeKey<40>;
 
@@ -170,7 +171,7 @@ pub fn create_lmdb_database<P: AsRef<Path>>(
         .add_database(LMDB_DB_UTXO_COMMITMENT_INDEX, flags)
         .add_database(LMDB_DB_UNIQUE_ID_INDEX, flags)
         .add_database(LMDB_DB_CONTRACT_ID_INDEX, flags)
-        .add_database(LMDB_DB_DELETED_TXO_HASH_TO_HEADER_INDEX, flags | db::INTEGERKEY)
+        .add_database(LMDB_DB_DELETED_TXO_HASH_TO_HEADER_INDEX, flags)
         .add_database(LMDB_DB_ORPHANS, flags)
         .add_database(LMDB_DB_ORPHAN_HEADER_ACCUMULATED_DATA, flags)
         .add_database(LMDB_DB_MONERO_SEED_HEIGHT, flags)
@@ -565,7 +566,7 @@ impl LMDBDatabase {
         txn: &WriteTransaction<'_>,
         header_hash: &HashOutput,
         kernel: &TransactionKernel,
-        mmr_position: u32,
+        mmr_position: u64,
     ) -> Result<(), ChainStorageError> {
         let hash = kernel.hash();
         let key = KernelKey::try_from_parts(&[
@@ -620,22 +621,15 @@ impl LMDBDatabase {
             &self.utxo_commitment_index,
             input.commitment()?.as_bytes(),
             "utxo_commitment_index",
-        )
-        .or_else(|err| match err {
-            // The commitment may not yet be included in the DB in the 0-conf transaction case
-            ChainStorageError::ValueNotFound { .. } => Ok(()),
-            _ => Err(err),
-        })?;
-        // do I need to look into changing this index to be input.hash -> header hash
-        // does the key need to include the mmr pos
-        // make index safe key
+        )?;
+
         let hash = input.canonical_hash();
         let output_hash = input.output_hash();
         let key = InputKey::new(header_hash, &hash)?;
         lmdb_insert(
             txn,
             &self.deleted_txo_hash_to_header_index,
-            &output_hash.to_vec(),
+            output_hash.as_slice(),
             &(key.clone().convert_to_comp_key().to_vec()),
             "deleted_txo_hash_to_header_index",
         )?;
@@ -925,7 +919,7 @@ impl LMDBDatabase {
             lmdb_delete(
                 txn,
                 &self.deleted_txo_hash_to_header_index,
-                &output_hash.to_vec(),
+                output_hash.as_slice(),
                 "deleted_txo_hash_to_header_index",
             )?;
             if output_rows.iter().any(|r| r.hash == output_hash) {
@@ -1150,15 +1144,13 @@ impl LMDBDatabase {
 
         for kernel in kernels {
             total_kernel_sum = &total_kernel_sum + &kernel.excess;
-            let pos = kernel_mmr.push(kernel.hash().to_vec())?;
+            let pos =
+                u64::try_from(kernel_mmr.push(kernel.hash().to_vec())?).map_err(|_| ChainStorageError::OutOfRange)?;
             trace!(
                 target: LOG_TARGET,
                 "Inserting kernel `{}`",
                 kernel.excess_sig.get_signature().to_hex()
             );
-            let pos = u32::try_from(pos).map_err(|_| {
-                ChainStorageError::InvalidOperation(format!("Kernel MMR node count ({}) is greater than u32::MAX", pos))
-            })?;
             self.insert_kernel(txn, &block_hash, &kernel, pos)?;
         }
         let k = MetadataKey::TipSmt;
@@ -1835,7 +1827,7 @@ impl BlockchainBackend for LMDBDatabase {
         key.extend(excess_sig.get_public_nonce().as_bytes());
         key.extend(excess_sig.get_signature().as_bytes());
         if let Some((header_hash, mmr_position, hash)) =
-            lmdb_get::<_, (HashOutput, u32, HashOutput)>(&txn, &self.kernel_excess_sig_index, key.as_slice())?
+            lmdb_get::<_, (HashOutput, u64, HashOutput)>(&txn, &self.kernel_excess_sig_index, key.as_slice())?
         {
             let key = KernelKey::try_from_parts(&[
                 header_hash.as_slice(),
@@ -1898,10 +1890,10 @@ impl BlockchainBackend for LMDBDatabase {
         self.fetch_output_in_txn(&txn, output_hash.as_slice())
     }
 
-    fn fetch_input(&self, input_hash: &HashOutput) -> Result<Option<InputMinedInfo>, ChainStorageError> {
-        debug!(target: LOG_TARGET, "Fetch input: {}", input_hash.to_hex());
+    fn fetch_input(&self, output_hash: &HashOutput) -> Result<Option<InputMinedInfo>, ChainStorageError> {
+        debug!(target: LOG_TARGET, "Fetch input: {}", output_hash.to_hex());
         let txn = self.read_transaction()?;
-        self.fetch_input_in_txn(&txn, input_hash.as_slice())
+        self.fetch_input_in_txn(&txn, output_hash.as_slice())
     }
 
     fn fetch_unspent_output_hash_by_commitment(
@@ -2174,6 +2166,7 @@ impl BlockchainBackend for LMDBDatabase {
             })?;
         }
 
+        // Sort the orphans by age, oldest first
         orphans.sort_by(|a, b| a.0.cmp(&b.0));
         let mut txn = DbTransaction::new();
         for (removed_count, (height, block_hash)) in orphans.into_iter().enumerate() {
@@ -2412,7 +2405,7 @@ fn fetch_best_block_timestamp(txn: &ConstTransaction<'_>, db: &Database) -> Resu
 }
 
 // Fetches the accumulated work from the provided metadata db.
-fn fetch_accumulated_work(txn: &ConstTransaction<'_>, db: &Database) -> Result<u128, ChainStorageError> {
+fn fetch_accumulated_work(txn: &ConstTransaction<'_>, db: &Database) -> Result<U256, ChainStorageError> {
     let k = MetadataKey::AccumulatedWork;
     let val: Option<MetadataValue> = lmdb_get(txn, db, &k.as_u32())?;
     match val {
@@ -2483,7 +2476,7 @@ impl fmt::Display for MetadataKey {
 enum MetadataValue {
     ChainHeight(u64),
     BestBlock(BlockHash),
-    AccumulatedWork(u128),
+    AccumulatedWork(U256),
     PruningHorizon(u64),
     PrunedHeight(u64),
     HorizonData(HorizonData),

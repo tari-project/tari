@@ -204,7 +204,7 @@ async fn setup_transaction_service<P: AsRef<Path>>(
 
     let passphrase = SafePassword::from("My lovely secret passphrase");
     let db = WalletDatabase::new(WalletSqliteDatabase::new(db_connection.clone(), passphrase).unwrap());
-    let metadata = ChainMetadata::new(std::i64::MAX as u64, FixedHash::zero(), 0, 0, 0, 0);
+    let metadata = ChainMetadata::new(std::i64::MAX as u64, FixedHash::zero(), 0, 0, 0.into(), 0);
 
     db.set_chain_metadata(metadata).unwrap();
 
@@ -658,6 +658,182 @@ async fn manage_single_transaction() {
         .expect("Could not find tx");
 
     assert_eq!(bob_oms.get_balance().await.unwrap().pending_incoming_balance, value);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn large_interactive_transaction() {
+    let network = Network::LocalNet;
+    let consensus_manager = ConsensusManager::builder(network).build().unwrap();
+    let factories = CryptoFactories::default();
+
+    // Alice's parameters
+    let alice_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
+
+    // Bob's parameters
+    let bob_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
+
+    let base_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
+
+    log::info!(
+        "large_interactive_transaction: Alice: '{}', Bob: '{}', Base: '{}'",
+        alice_node_identity.node_id().short_str(),
+        bob_node_identity.node_id().short_str(),
+        base_node_identity.node_id().short_str()
+    );
+    let temp_dir = tempdir().unwrap();
+    let database_path = temp_dir.path().to_str().unwrap().to_string();
+    let (alice_connection, _tempdir) = make_wallet_database_connection(Some(database_path.clone()));
+    let (bob_connection, _tempdir) = make_wallet_database_connection(Some(database_path.clone()));
+
+    // Alice sets up her Transaction Service
+    let shutdown = Shutdown::new();
+    let (mut alice_ts, mut alice_oms, _alice_comms, _alice_connectivity, alice_key_manager_handle) =
+        setup_transaction_service(
+            alice_node_identity.clone(),
+            vec![],
+            consensus_manager.clone(),
+            factories.clone(),
+            alice_connection,
+            database_path.clone(),
+            Duration::from_secs(0),
+            shutdown.to_signal(),
+        )
+        .await;
+    let mut alice_event_stream = alice_ts.get_event_stream();
+
+    sleep(Duration::from_secs(2)).await;
+
+    // Bob sets up his Transaction Service
+    let (mut bob_ts, mut bob_oms, bob_comms, _bob_connectivity, _bob_key_manager_handle) = setup_transaction_service(
+        bob_node_identity.clone(),
+        vec![alice_node_identity.clone()],
+        consensus_manager,
+        factories.clone(),
+        bob_connection,
+        database_path,
+        Duration::from_secs(0),
+        shutdown.to_signal(),
+    )
+    .await;
+    let mut bob_event_stream = bob_ts.get_event_stream();
+
+    // Verify that Alice and Bob are connected
+    let _peer_connection = bob_comms
+        .connectivity()
+        .dial_peer(alice_node_identity.node_id().clone())
+        .await
+        .unwrap();
+
+    // Alice prepares her large transaction
+    let outputs_count = 1250u64;
+    let output_value = MicroMinotari(20000);
+    for _ in 0..outputs_count {
+        let uo = make_input(
+            &mut OsRng,
+            output_value,
+            &OutputFeatures::default(),
+            &alice_key_manager_handle,
+        )
+        .await;
+        alice_oms.add_output(uo, None).await.unwrap();
+    }
+    let transaction_value = output_value * (outputs_count - 1);
+    let bob_address = TariAddress::new(bob_node_identity.public_key().clone(), network);
+
+    let message = "TAKE MAH MONEYS!".to_string();
+    alice_ts
+        .send_transaction(
+            bob_address,
+            transaction_value,
+            UtxoSelectionCriteria::default(),
+            OutputFeatures::default(),
+            MicroMinotari::from(1),
+            message,
+        )
+        .await
+        .expect("Alice sending large tx");
+
+    // Monitor Alice's and Bob's event streams for the transaction send results
+    let delay = sleep(Duration::from_secs(90));
+    tokio::pin!(delay);
+    let mut bob_finalized = false;
+    let mut alice_finalized = false;
+    let mut tx_id = TxId::from(0u64);
+    loop {
+        tokio::select! {
+            event = alice_event_stream.recv() => {
+                // println!("alice: {:?}", event.as_ref().unwrap());
+                match &*event.clone().unwrap() {
+                    TransactionEvent::TransactionSendResult(id, _) => {
+                        // We want to ensure that we can get the pending outbound transaction from the database,
+                        // and excercise the sender_protocol
+                        let pending_outbound = alice_ts.get_pending_outbound_transactions().await.unwrap();
+                        pending_outbound.get(id).unwrap().sender_protocol.get_amount_to_recipient().unwrap();
+                        assert_eq!(
+                            pending_outbound.get(id).unwrap().sender_protocol.get_amount_to_recipient().unwrap(),
+                            transaction_value
+                        );
+                    },
+                    TransactionEvent::ReceivedTransactionReply(_) => {
+                        alice_finalized = true;
+                        if alice_finalized && bob_finalized {
+                            break;
+                        }
+                    },
+                    _ => (),
+                }
+            },
+           event = bob_event_stream.recv() => {
+                // println!("bob: {:?}", event.as_ref().unwrap());
+                match &*event.clone().unwrap() {
+                    TransactionEvent::ReceivedTransaction(id) => {
+                        // We want to ensure that we can get the pending inbound transaction from the database,
+                        // and excercise the receiver_protocol
+                        let pending_inbound = bob_ts.get_pending_inbound_transactions().await.unwrap();
+                        assert!(pending_inbound.get(id).unwrap().receiver_protocol.get_signed_data().is_ok());
+                        assert_eq!(pending_inbound.get(id).unwrap().amount, transaction_value);
+                    },
+                    TransactionEvent::ReceivedFinalizedTransaction(id) => {
+                        tx_id = *id;
+                        bob_finalized = true;
+                        if alice_finalized && bob_finalized {
+                            break;
+                        }
+                    },
+                    _ => (),
+                }
+            },
+            () = &mut delay => {
+                break;
+            },
+        }
+    }
+    assert!(bob_finalized && alice_finalized);
+
+    let bob_completed_tx = bob_ts
+        .get_completed_transaction(tx_id)
+        .await
+        .expect("Could not find tx");
+    assert_eq!(
+        bob_completed_tx.transaction.body.inputs().len(),
+        usize::try_from(outputs_count).unwrap()
+    );
+    assert_eq!(
+        bob_oms.get_balance().await.unwrap().pending_incoming_balance,
+        transaction_value
+    );
 }
 
 #[tokio::test]

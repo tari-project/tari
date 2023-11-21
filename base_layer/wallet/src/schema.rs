@@ -1,4 +1,6 @@
-table! {
+// @generated automatically by Diesel CLI.
+
+diesel::table! {
     burnt_proofs (id) {
         id -> Integer,
         reciprocal_claim_public_key -> Text,
@@ -7,14 +9,14 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     client_key_values (key) {
         key -> Text,
         value -> Text,
     }
 }
 
-table! {
+diesel::table! {
     completed_transactions (tx_id) {
         tx_id -> BigInt,
         source_address -> Binary,
@@ -39,12 +41,12 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     inbound_transactions (tx_id) {
         tx_id -> BigInt,
         source_address -> Binary,
         amount -> BigInt,
-        receiver_protocol -> Text,
+        receiver_protocol -> Binary,
         message -> Text,
         timestamp -> Timestamp,
         cancelled -> Integer,
@@ -54,7 +56,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     known_one_sided_payment_scripts (script_hash) {
         script_hash -> Binary,
         private_key -> Text,
@@ -64,13 +66,13 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     outbound_transactions (tx_id) {
         tx_id -> BigInt,
         destination_address -> Binary,
         amount -> BigInt,
         fee -> BigInt,
-        sender_protocol -> Text,
+        sender_protocol -> Binary,
         message -> Text,
         timestamp -> Timestamp,
         cancelled -> Integer,
@@ -80,7 +82,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     outputs (id) {
         id -> Integer,
         commitment -> Binary,
@@ -120,7 +122,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     scanned_blocks (header_hash) {
         header_hash -> Binary,
         height -> BigInt,
@@ -130,14 +132,14 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     wallet_settings (key) {
         key -> Text,
         value -> Text,
     }
 }
 
-allow_tables_to_appear_in_same_query!(
+diesel::allow_tables_to_appear_in_same_query!(
     burnt_proofs,
     client_key_values,
     completed_transactions,

@@ -23,7 +23,6 @@
 use std::{convert::TryFrom, sync::Arc};
 
 use log::*;
-use num_format::{Locale, ToFormattedString};
 use prost::Message;
 use tari_common::log_if_error;
 use tari_common_types::chain_metadata::ChainMetadata;
@@ -204,7 +203,7 @@ impl ChainMetadataService {
             "Received chain metadata from NodeId '{}' #{}, Acc_diff {}",
             event.node_id,
             chain_metadata.height_of_longest_chain(),
-            chain_metadata.accumulated_difficulty().to_formatted_string(&Locale::en),
+            chain_metadata.accumulated_difficulty(),
         );
 
         let peer_chain_metadata = PeerChainMetadata::new(event.node_id.clone(), chain_metadata, event.latency);
@@ -225,6 +224,7 @@ mod test {
     use std::convert::TryInto;
 
     use futures::StreamExt;
+    use primitive_types::U256;
     use tari_comms::{peer_manager::NodeId, test_utils::mocks::create_connectivity_mock};
     use tari_p2p::services::liveness::{
         mock::{create_p2p_liveness_mock, LivenessMockState},
@@ -253,7 +253,9 @@ mod test {
     }
 
     fn create_sample_proto_chain_metadata() -> proto::ChainMetadata {
-        let diff: u128 = 1;
+        let diff: U256 = 1.into();
+        let mut bytes = [0u8; 32];
+        diff.to_big_endian(&mut bytes);
         proto::ChainMetadata {
             height_of_longest_chain: 1,
             best_block: vec![
@@ -261,7 +263,7 @@ mod test {
                 28, 29, 30, 31,
             ],
             pruned_height: 0,
-            accumulated_difficulty: diff.to_be_bytes().to_vec(),
+            accumulated_difficulty: bytes.to_vec(),
             timestamp: EpochTime::now().as_u64(),
         }
     }
@@ -303,7 +305,6 @@ mod test {
         });
 
         service.update_liveness_chain_metadata().await.unwrap();
-
         assert_eq!(liveness_mock_state.call_count(), 1);
 
         let last_call = liveness_mock_state.take_calls().remove(0);

@@ -71,6 +71,7 @@ fn apply_mmr_to_block(db: &BlockchainDatabase<TempDatabase>, block: Block) -> Bl
     block.header.kernel_mr = mmr_roots.kernel_mr;
     block.header.kernel_mmr_size = mmr_roots.kernel_mmr_size;
     block.header.validator_node_mr = mmr_roots.validator_node_mr;
+    block.header.validator_node_size = mmr_roots.validator_node_size;
     block
 }
 

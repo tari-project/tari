@@ -4,8 +4,8 @@ FROM quay.io/tarilabs/rust_tari-build-with-deps:nightly-2023-06-04 as builder
 
 # Copy the dependency lists
 #ADD Cargo.toml ./
-ADD . /tari_base_node
-WORKDIR /tari_base_node
+ADD . /minotari_node
+WORKDIR /minotari_node
 
 # RUN rustup component add rustfmt --toolchain nightly-2023-06-04-x86_64-unknown-linux-gnu
 #ARG TBN_ARCH=native
@@ -16,8 +16,8 @@ ENV RUSTFLAGS="-C target_cpu=$TBN_ARCH"
 ENV ROARING_ARCH=$TBN_ARCH
 # Work around for odd issue with broken Cargo.lock and builds
 RUN cargo fetch && \
-  cd applications/tari_base_node && \
-  cargo build --bin tari_base_node --release --features $TBN_FEATURES --locked
+  cd applications/minotari_node && \
+  cargo build --bin minotari_node --release --features $TBN_FEATURES --locked
 
 # Create a base minimal image for adding our executables to
 FROM quay.io/bitnami/minideb:buster as base
@@ -52,25 +52,25 @@ deb-src https://deb.torproject.org/torproject.org buster main\n"\
 #    update-rc.d -f tor enable 3 && \
 #    /etc/init.d/tor start
 
-# Setup tari_base_node group & user
-RUN groupadd --system tari_base_node && \
-  useradd --no-log-init --system --gid tari_base_node --comment "Tari base node" --create-home tari_base_node
+# Setup minotari_node group & user
+RUN groupadd --system minotari_node && \
+  useradd --no-log-init --system --gid minotari_node --comment "Tari base node" --create-home minotari_node
 
 # Now create a new image with only the essentials and throw everything else away
 FROM base
 
-COPY --from=builder /tari_base_node/buildtools/docker/torrc /etc/tor/torrc
-COPY --from=builder /tari_base_node/buildtools/docker/start.sh /usr/local/bin/start_minotari_node.sh
+COPY --from=builder /minotari_node/buildtools/docker/torrc /etc/tor/torrc
+COPY --from=builder /minotari_node/buildtools/docker/start.sh /usr/local/bin/start_minotari_node.sh
 
-COPY --from=builder /tari_base_node/target/release/tari_base_node /usr/local/bin/
+COPY --from=builder /minotari_node/target/release/minotari_node /usr/local/bin/
 
-USER tari_base_node
+USER minotari_node
 #RUN echo ${HOME} && ls -la /home
 RUN mkdir -p ~/.tari
-COPY --from=builder /tari_base_node/common/config/presets/*.toml /home/tari_base_node/.tari
-COPY --from=builder /tari_base_node/common/logging/log4rs_sample_base_node.yml /home/tari_base_node/.tari/log4rs_base_node.yml
+COPY --from=builder /minotari_node/common/config/presets/*.toml /home/minotari_node/.tari
+COPY --from=builder /minotari_node/common/logging/log4rs_sample_base_node.yml /home/minotari_node/.tari/log4rs_base_node.yml
 
 # Keep the .tari directory in a volume by default
-VOLUME ["/home/tari_base_node/.tari"]
-# Use start.sh to run tor then the base node or tari_base_node for the executable
+VOLUME ["/home/minotari_node/.tari"]
+# Use start.sh to run tor then the base node or minotari_node for the executable
 CMD ["/usr/local/bin/start_minotari_node.sh"]

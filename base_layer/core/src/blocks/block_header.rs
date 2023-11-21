@@ -113,6 +113,8 @@ pub struct BlockHeader {
     pub total_script_offset: PrivateKey,
     /// Merkle root of all active validator node.
     pub validator_node_mr: FixedHash,
+    /// The number of validator node hashes
+    pub validator_node_size: u64,
     /// Proof of work summary
     pub pow: ProofOfWork,
     /// Nonce increment used to mine this block.
@@ -137,6 +139,7 @@ impl BlockHeader {
             nonce: 0,
             pow: ProofOfWork::default(),
             validator_node_mr: FixedHash::zero(),
+            validator_node_size: 0,
         }
     }
 
@@ -169,6 +172,7 @@ impl BlockHeader {
             nonce: 0,
             pow: ProofOfWork::default(),
             validator_node_mr: FixedHash::zero(),
+            validator_node_size: prev.validator_node_size,
         }
     }
 
@@ -231,6 +235,7 @@ impl BlockHeader {
             .chain(&self.total_kernel_offset)
             .chain(&self.total_script_offset)
             .chain(&self.validator_node_mr)
+            .chain(&self.validator_node_size)
             .finalize()
             .into()
     }
@@ -277,6 +282,7 @@ impl From<NewBlockHeaderTemplate> for BlockHeader {
             nonce: 0,
             pow: header_template.pow,
             validator_node_mr: FixedHash::zero(),
+            validator_node_size: 0,
         }
     }
 }

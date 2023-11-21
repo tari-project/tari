@@ -283,7 +283,7 @@ async fn test_event_channel() {
 
     let node_identity = random_node_identity();
     let block_hash = Blake2b::<U32>::digest(node_identity.node_id().as_bytes()).into();
-    let metadata = ChainMetadata::new(10, block_hash, 2800, 0, 5000, 0);
+    let metadata = ChainMetadata::new(10, block_hash, 2800, 0, 5000.into(), 0);
 
     node.comms
         .peer_manager()

@@ -26,6 +26,7 @@ use std::{
     sync::Arc,
 };
 
+use primitive_types::U256;
 use tari_common_types::types::{BlockHash, Commitment, HashOutput};
 use tari_utilities::hex::Hex;
 
@@ -90,7 +91,7 @@ impl DbTransaction {
         &mut self,
         kernel: TransactionKernel,
         header_hash: HashOutput,
-        mmr_position: u32,
+        mmr_position: u64,
     ) -> &mut Self {
         self.operations.push(WriteOperation::InsertKernel {
             header_hash,
@@ -186,7 +187,7 @@ impl DbTransaction {
     }
 
     /// Add an orphan to the orphan tip set
-    pub fn insert_orphan_chain_tip(&mut self, hash: HashOutput, total_accumulated_difficulty: u128) -> &mut Self {
+    pub fn insert_orphan_chain_tip(&mut self, hash: HashOutput, total_accumulated_difficulty: U256) -> &mut Self {
         self.operations
             .push(WriteOperation::InsertOrphanChainTip(hash, total_accumulated_difficulty));
         self
@@ -205,7 +206,7 @@ impl DbTransaction {
         &mut self,
         height: u64,
         hash: HashOutput,
-        accumulated_difficulty: u128,
+        accumulated_difficulty: U256,
         expected_prev_best_block: HashOutput,
         timestamp: u64,
     ) -> &mut Self {
@@ -278,7 +279,7 @@ pub enum WriteOperation {
     InsertKernel {
         header_hash: HashOutput,
         kernel: Box<TransactionKernel>,
-        mmr_position: u32,
+        mmr_position: u64,
     },
     InsertOutput {
         header_hash: HashOutput,
@@ -294,7 +295,7 @@ pub enum WriteOperation {
     DeleteOrphan(HashOutput),
     DeleteTipBlock(HashOutput),
     DeleteOrphanChainTip(HashOutput),
-    InsertOrphanChainTip(HashOutput, u128),
+    InsertOrphanChainTip(HashOutput, U256),
     InsertMoneroSeedHeight(Vec<u8>, u64),
     UpdateBlockAccumulatedData {
         header_hash: HashOutput,
@@ -310,7 +311,7 @@ pub enum WriteOperation {
     SetBestBlock {
         height: u64,
         hash: HashOutput,
-        accumulated_difficulty: u128,
+        accumulated_difficulty: U256,
         expected_prev_best_block: HashOutput,
         timestamp: u64,
     },

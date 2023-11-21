@@ -39,8 +39,8 @@ use bytes::Bytes;
 use hyper::{header::HeaderValue, service::Service, Body, Method, Request, Response, StatusCode, Uri};
 use json::json;
 use jsonrpc::error::StandardError;
-use minotari_node_grpc_client::{grpc, BaseNodeGrpcClient};
-use minotari_wallet_grpc_client::WalletGrpcClient;
+use minotari_node_grpc_client::{grpc, grpc::base_node_client::BaseNodeClient};
+use minotari_wallet_grpc_client::{grpc::wallet_client::WalletClient, ClientAuthenticationInterceptor};
 use reqwest::{ResponseBuilderExt, Url};
 use serde_json as json;
 use tari_core::proof_of_work::{
@@ -50,6 +50,7 @@ use tari_core::proof_of_work::{
     randomx_factory::RandomXFactory,
 };
 use tari_utilities::hex::Hex;
+use tonic::{codegen::InterceptedService, transport::Channel};
 use tracing::{debug, error, info, instrument, trace, warn};
 
 use crate::{
@@ -75,8 +76,8 @@ impl MergeMiningProxyService {
     pub fn new(
         config: MergeMiningProxyConfig,
         http_client: reqwest::Client,
-        base_node_client: BaseNodeGrpcClient<tonic::transport::Channel>,
-        wallet_client: WalletGrpcClient<tonic::transport::Channel>,
+        base_node_client: BaseNodeClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>,
+        wallet_client: WalletClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>,
         block_templates: BlockTemplateRepository,
         randomx_factory: RandomXFactory,
     ) -> Self {
@@ -157,8 +158,8 @@ struct InnerService {
     config: Arc<MergeMiningProxyConfig>,
     block_templates: BlockTemplateRepository,
     http_client: reqwest::Client,
-    base_node_client: BaseNodeGrpcClient<tonic::transport::Channel>,
-    wallet_client: WalletGrpcClient<tonic::transport::Channel>,
+    base_node_client: BaseNodeClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>,
+    wallet_client: WalletClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>,
     initial_sync_achieved: Arc<AtomicBool>,
     current_monerod_server: Arc<RwLock<Option<String>>>,
     last_assigned_monerod_server: Arc<RwLock<Option<String>>>,

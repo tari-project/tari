@@ -27,6 +27,7 @@ use std::{
 
 use futures::StreamExt;
 use log::*;
+use primitive_types::U256;
 use tari_common_types::{chain_metadata::ChainMetadata, types::HashOutput};
 use tari_comms::{
     connectivity::ConnectivityRequester,
@@ -48,7 +49,7 @@ use crate::{
     },
     blocks::{BlockHeader, ChainBlock, ChainHeader},
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError},
-    common::rolling_avg::RollingAverageTime,
+    common::{rolling_avg::RollingAverageTime, BanPeriod},
     consensus::ConsensusManager,
     proof_of_work::randomx_factory::RandomXFactory,
     proto::{
@@ -155,15 +156,15 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             match self.connect_and_attempt_sync(&node_id, max_latency).await {
                 Ok((peer, sync_result)) => return Ok((peer, sync_result)),
                 Err(err) => {
-                    let ban_reason = BlockHeaderSyncError::get_ban_reason(
-                        &err,
-                        self.config.short_ban_period,
-                        self.config.ban_period,
-                    );
+                    let ban_reason = BlockHeaderSyncError::get_ban_reason(&err);
                     if let Some(reason) = ban_reason {
                         warn!(target: LOG_TARGET, "{}", err);
+                        let duration = match reason.ban_duration {
+                            BanPeriod::Short => self.config.short_ban_period,
+                            BanPeriod::Long => self.config.ban_period,
+                        };
                         self.peer_ban_manager
-                            .ban_peer_if_required(&node_id, &Some(reason.clone()))
+                            .ban_peer_if_required(&node_id, reason.reason, duration)
                             .await;
                     }
                     if let BlockHeaderSyncError::MaxLatencyExceeded { .. } = err {
@@ -631,7 +632,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
 
         let mut last_sync_timer = Instant::now();
 
-        let mut last_total_accumulated_difficulty = 0;
+        let mut last_total_accumulated_difficulty = U256::zero();
         let mut avg_latency = RollingAverageTime::new(20);
         let mut prev_height: Option<u64> = None;
         while let Some(header) = header_stream.next().await {

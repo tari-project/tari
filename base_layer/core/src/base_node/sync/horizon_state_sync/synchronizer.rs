@@ -48,7 +48,7 @@ use crate::{
     },
     blocks::{BlockHeader, ChainHeader, UpdateBlockAccumulatedData},
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError, MmrTree},
-    common::rolling_avg::RollingAverageTime,
+    common::{rolling_avg::RollingAverageTime, BanPeriod},
     consensus::ConsensusManager,
     proto::base_node::{SyncKernelsRequest, SyncUtxosRequest, SyncUtxosResponse},
     transactions::transaction_components::{
@@ -180,13 +180,16 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 Ok(_) => return Ok(()),
                 // Try another peer
                 Err(err) => {
-                    let ban_reason =
-                        HorizonSyncError::get_ban_reason(&err, self.config.short_ban_period, self.config.ban_period);
+                    let ban_reason = HorizonSyncError::get_ban_reason(&err);
 
                     if let Some(reason) = ban_reason {
+                        let duration = match reason.ban_duration {
+                            BanPeriod::Short => self.config.short_ban_period,
+                            BanPeriod::Long => self.config.ban_period,
+                        };
                         warn!(target: LOG_TARGET, "{}", err);
                         self.peer_ban_manager
-                            .ban_peer_if_required(&node_id, &Some(reason.clone()))
+                            .ban_peer_if_required(&node_id, reason.reason, duration)
                             .await;
                     }
                     if let HorizonSyncError::MaxLatencyExceeded { .. } = err {
@@ -370,11 +373,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 ));
             }
 
-            let mmr_position_u32 = u32::try_from(mmr_position).map_err(|_| HorizonSyncError::InvalidMmrPosition {
-                at_height: current_header.height(),
-                mmr_position,
-            })?;
-            txn.insert_kernel_via_horizon_sync(kernel, *current_header.hash(), mmr_position_u32);
+            txn.insert_kernel_via_horizon_sync(kernel, *current_header.hash(), mmr_position);
             if mmr_position == current_header.header().kernel_mmr_size - 1 {
                 let num_kernels = kernel_hashes.len();
                 debug!(

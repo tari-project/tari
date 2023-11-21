@@ -31,7 +31,7 @@ use tari_utilities::ByteArray;
 
 use crate::{
     blocks::{block::Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock},
-    proof_of_work::{Difficulty, PowAlgorithm, ProofOfWork},
+    proof_of_work::{AccumulatedDifficulty, Difficulty, PowAlgorithm, ProofOfWork},
     transactions::{aggregated_body::AggregateBody, transaction_components::TransactionOutput},
     OutputSmt,
 };
@@ -131,9 +131,9 @@ pub fn get_stagenet_genesis_block() -> ChainBlock {
         hash: block.hash(),
         total_kernel_offset: block.header.total_kernel_offset.clone(),
         achieved_difficulty: Difficulty::min(),
-        total_accumulated_difficulty: 1,
-        accumulated_randomx_difficulty: Difficulty::min(),
-        accumulated_sha3x_difficulty: Difficulty::min(),
+        total_accumulated_difficulty: 1.into(),
+        accumulated_randomx_difficulty: AccumulatedDifficulty::min(),
+        accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
         target_difficulty: Difficulty::min(),
     };
     ChainBlock::try_construct(Arc::new(block), accumulated_data).unwrap()
@@ -141,7 +141,7 @@ pub fn get_stagenet_genesis_block() -> ChainBlock {
 
 fn get_stagenet_genesis_block_raw() -> Block {
     // Set genesis timestamp
-    let genesis_timestamp = DateTime::parse_from_rfc2822("29 Sep 2023 08:00:00 +0200").expect("parse may not fail");
+    let genesis_timestamp = DateTime::parse_from_rfc2822("07 Nov 2023 08:00:00 +0200").expect("parse may not fail");
     let not_before_proof = b"i am the stagenet genesis block, watch out, here i come \
         \
         The New York Times , 2000/01/01 \
@@ -184,9 +184,9 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
         hash: block.hash(),
         total_kernel_offset: block.header.total_kernel_offset.clone(),
         achieved_difficulty: Difficulty::min(),
-        total_accumulated_difficulty: 1,
-        accumulated_randomx_difficulty: Difficulty::min(),
-        accumulated_sha3x_difficulty: Difficulty::min(),
+        total_accumulated_difficulty: 1.into(),
+        accumulated_randomx_difficulty: AccumulatedDifficulty::min(),
+        accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
         target_difficulty: Difficulty::min(),
     };
     ChainBlock::try_construct(Arc::new(block), accumulated_data).unwrap()
@@ -194,7 +194,7 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
 
 fn get_nextnet_genesis_block_raw() -> Block {
     // Set genesis timestamp
-    let genesis_timestamp = DateTime::parse_from_rfc2822("29 Sep 2023 08:10:00 +0200").expect("parse may not fail");
+    let genesis_timestamp = DateTime::parse_from_rfc2822("07 Nov 2023 08:10:00 +0200").expect("parse may not fail");
     // Let us add a "not before" proof to the genesis block
     let not_before_proof = b"nextnet has a blast, its prowess echoed in every gust \
         \
@@ -242,9 +242,9 @@ pub fn get_igor_genesis_block() -> ChainBlock {
         hash: block.hash(),
         total_kernel_offset: block.header.total_kernel_offset.clone(),
         achieved_difficulty: Difficulty::min(),
-        total_accumulated_difficulty: 1,
-        accumulated_randomx_difficulty: Difficulty::min(),
-        accumulated_sha3x_difficulty: Difficulty::min(),
+        total_accumulated_difficulty: 1.into(),
+        accumulated_randomx_difficulty: AccumulatedDifficulty::min(),
+        accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
         target_difficulty: Difficulty::min(),
     };
     ChainBlock::try_construct(Arc::new(block), accumulated_data).unwrap()
@@ -252,7 +252,7 @@ pub fn get_igor_genesis_block() -> ChainBlock {
 
 fn get_igor_genesis_block_raw() -> Block {
     // Set genesis timestamp
-    let genesis_timestamp = DateTime::parse_from_rfc2822("18 Oct 2023 08:00:00 +0200").expect("parse may not fail");
+    let genesis_timestamp = DateTime::parse_from_rfc2822("07 Nov 2023 08:20:00 +0200").expect("parse may not fail");
     // Let us add a "not before" proof to the genesis block
     let not_before_proof = b"but igor is the best, it is whispered in the wind \
         \
@@ -296,9 +296,9 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
         hash: block.hash(),
         total_kernel_offset: block.header.total_kernel_offset.clone(),
         achieved_difficulty: Difficulty::min(),
-        total_accumulated_difficulty: 1,
-        accumulated_randomx_difficulty: Difficulty::min(),
-        accumulated_sha3x_difficulty: Difficulty::min(),
+        total_accumulated_difficulty: 1.into(),
+        accumulated_randomx_difficulty: AccumulatedDifficulty::min(),
+        accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
         target_difficulty: Difficulty::min(),
     };
     ChainBlock::try_construct(Arc::new(block), accumulated_data).unwrap()
@@ -306,7 +306,7 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
 
 fn get_esmeralda_genesis_block_raw() -> Block {
     // Set genesis timestamp
-    let genesis_timestamp = DateTime::parse_from_rfc2822("09 Oct 2023 08:01:00 +0200").expect("parse may not fail");
+    let genesis_timestamp = DateTime::parse_from_rfc2822("07 Nov 2023 08:01:00 +0200").expect("parse may not fail");
     // Let us add a "not before" proof to the genesis block
     let not_before_proof =
         b"as I sip my drink, thoughts of esmeralda consume my mind, like a refreshing nourishing draught \
@@ -344,6 +344,7 @@ fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &[
             kernel_mmr_size: 0,
             validator_node_mr: FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc")
                 .unwrap(),
+            validator_node_size: 0,
             input_mr: FixedHash::zero(),
             total_kernel_offset: PrivateKey::from_hex(
                 "0000000000000000000000000000000000000000000000000000000000000000",

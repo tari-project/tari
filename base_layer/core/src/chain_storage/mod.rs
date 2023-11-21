@@ -34,6 +34,7 @@ pub mod async_db;
 mod block_add_result;
 
 pub use block_add_result::BlockAddResult;
+use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 
 mod blockchain_database;
@@ -90,5 +91,5 @@ pub use template_registation::TemplateRegistrationEntry;
 #[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
 pub struct ChainTipData {
     pub hash: HashOutput,
-    pub total_accumulated_difficulty: u128,
+    pub total_accumulated_difficulty: U256,
 }

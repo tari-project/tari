@@ -204,7 +204,7 @@ fi
 
 banner Running Tari Base Node
 # Run Base Node
-if [ -e ~/Desktop/tari_base_node ]; then
+if [ -e ~/Desktop/minotari_node ]; then
   echo "Desktop Link to Minotari Base Node exits"
 else
   ln -s /usr/local/bin/minotari_node ~/Desktop/minotari_node

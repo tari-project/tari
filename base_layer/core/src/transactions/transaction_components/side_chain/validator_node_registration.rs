@@ -23,6 +23,7 @@
 use blake2::Blake2b;
 use borsh::{BorshDeserialize, BorshSerialize};
 use digest::consts::U32;
+use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     epoch::VnEpoch,
@@ -33,7 +34,6 @@ use tari_utilities::ByteArray;
 use crate::{
     consensus::DomainSeparatedConsensusHasher,
     transactions::{transaction_components::ValidatorNodeSignature, TransactionHashDomain},
-    U256,
 };
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]

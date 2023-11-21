@@ -23,13 +23,11 @@
 use std::fmt;
 
 use num_format::{Locale, ToFormattedString};
+use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 use tari_utilities::epoch_time::EpochTime;
 
-use crate::{
-    proof_of_work::{error::DifficultyError, DifficultyAdjustmentError},
-    U256,
-};
+use crate::proof_of_work::{error::DifficultyError, DifficultyAdjustmentError};
 
 /// Minimum difficulty, enforced in diff retargeting
 /// avoids getting stuck when trying to increase difficulty subject to dampening
@@ -82,6 +80,19 @@ impl Difficulty {
         let result = U256::MAX / scalar;
         let result = result.min(u64::MAX.into());
         Difficulty::from_u64(result.low_u64())
+    }
+
+    pub fn checked_div_u64(&self, other: u64) -> Option<Difficulty> {
+        match self.0.checked_div(other) {
+            None => None,
+            Some(n) => {
+                if n < MIN_DIFFICULTY {
+                    None
+                } else {
+                    Some(Difficulty(n))
+                }
+            },
+        }
     }
 }
 
@@ -174,14 +185,12 @@ pub trait DifficultyAdjustment {
 
 #[cfg(test)]
 mod test {
-    use crate::{
-        proof_of_work::{
-            difficulty::{CheckedAdd, CheckedSub, MIN_DIFFICULTY},
-            Difficulty,
-        },
-        U256,
-    };
+    use primitive_types::U256;
 
+    use crate::proof_of_work::{
+        difficulty::{CheckedAdd, CheckedSub, MIN_DIFFICULTY},
+        Difficulty,
+    };
     #[test]
     fn add_difficulty() {
         assert_eq!(

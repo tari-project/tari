@@ -34,6 +34,7 @@ use tari_common::{
     DefaultConfigLoader,
     SubConfigPath,
 };
+use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tari_comms::multiaddr::Multiaddr;
 use tari_core::{
     base_node::BaseNodeStateMachineConfig,
@@ -89,6 +90,8 @@ pub struct BaseNodeConfig {
     pub grpc_address: Option<Multiaddr>,
     /// GRPC server config - which methods are active and which not
     pub grpc_server_deny_methods: Vec<GrpcMethod>,
+    /// GRPC authentication mode
+    pub grpc_authentication: GrpcAuthentication,
     /// A path to the file that stores the base node identity and secret key
     pub identity_file: PathBuf,
     /// Spin up and use a built-in Tor instance. This only works on macos/linux - requires that the wallet was built
@@ -155,6 +158,7 @@ impl Default for BaseNodeConfig {
                 GrpcMethod::Identify,
                 GrpcMethod::GetNetworkStatus,
             ],
+            grpc_authentication: GrpcAuthentication::default(),
             identity_file: PathBuf::from("config/base_node_id.json"),
             use_libtor: false,
             tor_identity_file: PathBuf::from("config/base_node_tor_id.json"),

@@ -22,6 +22,7 @@
 use std::{mem, ops::RangeBounds, sync::Arc, time::Instant};
 
 use log::*;
+use primitive_types::U256;
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
@@ -223,6 +224,8 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(chain_block_or_orphan_block_exists(block_hash: BlockHash) -> bool, "block_exists");
 
+    make_async_fn!(chain_header_or_orphan_exists(block_hash: BlockHash) -> bool, "header_exists");
+
     make_async_fn!(bad_block_exists(block_hash: BlockHash) -> bool, "bad_block_exists");
 
     make_async_fn!(add_bad_block(hash: BlockHash, height: u64) -> (), "add_bad_block");
@@ -301,7 +304,7 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         &mut self,
         height: u64,
         hash: HashOutput,
-        accumulated_difficulty: u128,
+        accumulated_difficulty: U256,
         expected_prev_best_block: HashOutput,
         timestamp: u64,
     ) -> &mut Self {
@@ -329,7 +332,7 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         &mut self,
         kernel: TransactionKernel,
         header_hash: HashOutput,
-        mmr_position: u32,
+        mmr_position: u64,
     ) -> &mut Self {
         self.transaction.insert_kernel(kernel, header_hash, mmr_position);
         self

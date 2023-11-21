@@ -16,6 +16,7 @@ mempool_proto = []
 base_node = ["tari_mmr", "transactions", "mempool_proto", "base_node_proto", "monero", "randomx-rs"]
 base_node_proto = []
 benches = ["base_node"]
+metrics = ["tari_metrics"]
 
 [dependencies]
 tari_common = {  path = "../../common" }
@@ -24,8 +25,8 @@ tari_comms = {  path = "../../comms/core" }
 tari_comms_dht = {  path = "../../comms/dht" }
 tari_comms_rpc_macros = {  path = "../../comms/rpc_macros" }
 tari_crypto = { version = "0.19", features = ["borsh"] }
-tari_metrics = { path = "../../infrastructure/metrics" }
-tari_mmr = {  path = "../../base_layer/mmr", optional = true, features = ["native_bitmap"] }
+tari_metrics = { path = "../../infrastructure/metrics", optional = true }
+tari_mmr = {  path = "../../base_layer/mmr", optional = true}
 tari_p2p = {  path = "../../base_layer/p2p" }
 tari_script = { path = "../../infrastructure/tari_script" }
 tari_service_framework = {  path = "../service_framework" }
@@ -72,8 +73,8 @@ strum_macros = "0.22"
 thiserror = "1.0.26"
 tokio = { version = "1.23", features = ["time", "sync", "macros"] }
 tracing = "0.1.26"
-uint = { version = "0.9", default-features = false }
 zeroize = "1"
+primitive-types = { version = "0.12", features = ["serde"] }
 
 [dev-dependencies]
 criterion = { version = "0.4.0" }

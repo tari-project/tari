@@ -21,10 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod mem_backend_vec;
-mod merkle_checkpoint;
 mod merkle_mountain_range;
 mod merkle_proof;
-mod mmr_cache;
-mod mutable_mmr;
 mod pruned_mmr;
 mod with_blake512_hash;

@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# Pre install script for tari_base_node pkg
+# Pre install script for minotari_node pkg
 # This script is bundled with OSX PGK verion
 # of the Minotari base node binary distribution.
 #

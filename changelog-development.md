@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.53.0-pre.0](https://github.com/tari-project/tari/compare/v0.52.0-pre.2...v0.53.0-pre.0) (2023-11-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* lmdb flag set wrong on database (#5916)
+* add validator mmr size (#5873)
+* completed transaction use bytes for transaction protocol (not hex string) in wallet database (#5906)
+
+### Features
+
+* adaptable min difficulty check ([#5896](https://github.com/tari-project/tari/issues/5896)) ([76f323c](https://github.com/tari-project/tari/commit/76f323c67ee3f46d772b85c410a1c49376348195))
+* add robustness to monero block extra field handling ([#5826](https://github.com/tari-project/tari/issues/5826)) ([597b9ef](https://github.com/tari-project/tari/commit/597b9ef7698ef705d550f6d3ecb1c27dbea79636))
+* add validator mmr size ([#5873](https://github.com/tari-project/tari/issues/5873)) ([fd51045](https://github.com/tari-project/tari/commit/fd510452c0bf9eefcc4117f378c6434aea7b9fd1))
+* completed transaction use bytes for transaction protocol (not hex string) in wallet database ([#5906](https://github.com/tari-project/tari/issues/5906)) ([61256cd](https://github.com/tari-project/tari/commit/61256cde3630f8d81e5648b1f5038ed6e847b9c2))
+
+
+### Bug Fixes
+
+* lmdb flag set wrong on database ([#5916](https://github.com/tari-project/tari/issues/5916)) ([60efd35](https://github.com/tari-project/tari/commit/60efd353973a87b1e0cebc7246649a38b5731051))
+* **tariscript:** protect compare and check height from underflows ([#5872](https://github.com/tari-project/tari/issues/5872)) ([aa2ae10](https://github.com/tari-project/tari/commit/aa2ae1066818c1776bd268932fbd3be09f21bf0e))
+
 ## [0.52.0-pre.2](https://github.com/tari-project/tari/compare/v0.52.0-pre.1...v0.52.0-pre.2) (2023-11-02)
 
 

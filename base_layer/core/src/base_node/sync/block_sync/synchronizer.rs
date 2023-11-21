@@ -28,7 +28,6 @@ use std::{
 
 use futures::StreamExt;
 use log::*;
-use num_format::{Locale, ToFormattedString};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId, protocol::rpc::RpcClient, PeerConnection};
 use tari_utilities::hex::Hex;
 use tokio::task;
@@ -41,7 +40,7 @@ use crate::{
     },
     blocks::{Block, ChainBlock},
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
-    common::rolling_avg::RollingAverageTime,
+    common::{rolling_avg::RollingAverageTime, BanPeriod},
     proto::base_node::SyncBlocksRequest,
     transactions::aggregated_body::AggregateBody,
     validation::{BlockBodyValidator, ValidationError},
@@ -188,12 +187,15 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                 Ok(_) => return Ok(()),
                 Err(err) => {
                     warn!(target: LOG_TARGET, "{}", err);
-                    let ban_reason =
-                        BlockSyncError::get_ban_reason(&err, self.config.short_ban_period, self.config.ban_period);
+                    let ban_reason = BlockSyncError::get_ban_reason(&err);
                     if let Some(reason) = ban_reason {
+                        let duration = match reason.ban_duration {
+                            BanPeriod::Short => self.config.short_ban_period,
+                            BanPeriod::Long => self.config.ban_period,
+                        };
                         warn!(target: LOG_TARGET, "{}", err);
                         self.peer_ban_manager
-                            .ban_peer_if_required(&node_id, &Some(reason.clone()))
+                            .ban_peer_if_required(&node_id, reason.reason, duration)
                             .await;
                     }
                     if let BlockSyncError::MaxLatencyExceeded { .. } = err {
@@ -356,6 +358,10 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                 block.header().pow_algo(),
                 block.block().body.to_counts_string(),
             );
+            trace!(
+                target: LOG_TARGET,
+                "{}",block
+            );
 
             let timer = Instant::now();
             self.db
@@ -389,8 +395,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                 timer.elapsed(),
                 block
                     .accumulated_data()
-                    .total_accumulated_difficulty
-                    .to_formatted_string(&Locale::en),
+                    .total_accumulated_difficulty,
                 block.accumulated_data().accumulated_randomx_difficulty,
                 block.accumulated_data().accumulated_sha3x_difficulty,
                 latency

@@ -50,11 +50,12 @@ use super::{
     ConnectionManagerConfig,
     ConnectionManagerEvent,
 };
+#[cfg(feature = "metrics")]
+use crate::connection_manager::metrics;
 use crate::{
     bounded_executor::BoundedExecutor,
     connection_manager::{
         liveness::LivenessSession,
-        metrics,
         wire_mode::{WireMode, LIVENESS_WIRE_MODE},
     },
     multiaddr::Multiaddr,
@@ -240,6 +241,7 @@ where
 
         let span = span!(Level::TRACE, "connection_mann::listener::inbound_task",);
         let inbound_fut = async move {
+            #[cfg(feature = "metrics")]
             metrics::pending_connections(None, ConnectionDirection::Inbound).inc();
             match Self::read_wire_format(&mut socket, config.time_to_first_byte).await {
                 Ok(WireMode::Comms(byte)) if byte == config.network_info.network_byte => {
@@ -325,6 +327,7 @@ where
                 },
             }
 
+            #[cfg(feature = "metrics")]
             metrics::pending_connections(None, ConnectionDirection::Inbound).dec();
         }
         .instrument(span);

@@ -196,10 +196,12 @@ impl OutputSql {
         conn: &mut SqliteConnection,
     ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
         let i64_tip_height = tip_height.and_then(|h| i64::try_from(h).ok()).unwrap_or(i64::MAX);
+        let i64_value = i64::try_from(selection_criteria.min_dust).unwrap_or(i64::MAX);
 
         let mut query = outputs::table
             .into_boxed()
             .filter(outputs::status.eq(OutputStatus::Unspent as i32))
+            .filter(outputs::value.gt(i64_value))
             .order_by(outputs::spending_priority.desc());
 
         // NOTE: Safe mode presets `script_lock_height` and `maturity` filters for all queries

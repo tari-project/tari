@@ -60,6 +60,8 @@ message BlockHeader {
     bytes total_script_offset = 15;
     // Merkle root of validator nodes
     bytes validator_node_mr = 16;
+    // Validator size
+    uint64 validator_node_size = 17;
 }
 
 // The proof of work data structure that is included in the block header.

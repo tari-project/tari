@@ -25,7 +25,7 @@ mkdir "${tarball_folder}/runtime"
 
 local_dir="$( cd "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
 project_dir="$(dirname "$(readlink -e "$local_dir")")"
-app_dir="$(dirname "$(readlink -e "$project_dir/applications/tari_base_node")")"
+app_dir="$(dirname "$(readlink -e "$project_dir/applications/minotari_node")")"
 
 if [ ! "${app_dir}" == "${project_dir}/applications" ]; then
     echo
@@ -42,34 +42,34 @@ else
 fi
 
 # One click miner
-cp -f -P "${app_dir}/tari_base_node/linux/start_all" "${tarball_folder}/start_all"
-cp -f "${app_dir}/tari_base_node/linux/runtime/start_all.sh" "${tarball_folder}/runtime/start_all.sh"
+cp -f -P "${app_dir}/minotari_node/linux/start_all" "${tarball_folder}/start_all"
+cp -f "${app_dir}/minotari_node/linux/runtime/start_all.sh" "${tarball_folder}/runtime/start_all.sh"
 
 # Base Node
-cp -f -P "${app_dir}/tari_base_node/linux/setup_tor_service" "${tarball_folder}/setup_tor_service"
-cp -f -P "${app_dir}/tari_base_node/linux/start_minotari_node" "${tarball_folder}/start_minotari_node"
-cp -f -P "${app_dir}/tari_base_node/linux/start_tor" "${tarball_folder}/start_tor"
-cp -f "${app_dir}/tari_base_node/linux/runtime/setup_tor_service.sh" "${tarball_folder}/runtime/setup_tor_service.sh"
-cp -f "${app_dir}/tari_base_node/linux/runtime/start_minotari_node.sh" "${tarball_folder}/runtime/start_minotari_node.sh"
-cp -f "${app_dir}/tari_base_node/linux/runtime/start_tor.sh" "${tarball_folder}/runtime/start_tor.sh"
-cp -f "${project_dir}/${target_release}/tari_base_node" "${tarball_folder}/runtime/tari_base_node"
+cp -f -P "${app_dir}/minotari_node/linux/setup_tor_service" "${tarball_folder}/setup_tor_service"
+cp -f -P "${app_dir}/minotari_node/linux/start_minotari_node" "${tarball_folder}/start_minotari_node"
+cp -f -P "${app_dir}/minotari_node/linux/start_tor" "${tarball_folder}/start_tor"
+cp -f "${app_dir}/minotari_node/linux/runtime/setup_tor_service.sh" "${tarball_folder}/runtime/setup_tor_service.sh"
+cp -f "${app_dir}/minotari_node/linux/runtime/start_minotari_node.sh" "${tarball_folder}/runtime/start_minotari_node.sh"
+cp -f "${app_dir}/minotari_node/linux/runtime/start_tor.sh" "${tarball_folder}/runtime/start_tor.sh"
+cp -f "${project_dir}/${target_release}/minotari_node" "${tarball_folder}/runtime/minotari_node"
 
 # Console Wallet
-cp -f -P "${app_dir}/tari_console_wallet/linux/start_tari_console_wallet" "${tarball_folder}/start_tari_console_wallet"
-cp -f "${app_dir}/tari_console_wallet/linux/runtime/start_tari_console_wallet.sh" "${tarball_folder}/runtime/start_tari_console_wallet.sh"
-cp -f "${project_dir}/${target_release}/tari_console_wallet" "${tarball_folder}/runtime/tari_console_wallet"
+cp -f -P "${app_dir}/minotari_console_wallet/linux/start_minotari_console_wallet" "${tarball_folder}/start_minotari_console_wallet"
+cp -f "${app_dir}/minotari_console_wallet/linux/runtime/start_minotari_console_wallet.sh" "${tarball_folder}/runtime/start_minotari_console_wallet.sh"
+cp -f "${project_dir}/${target_release}/minotari_console_wallet" "${tarball_folder}/runtime/minotari_console_wallet"
 
 # Miner
-cp -f -P "${app_dir}/tari_miner/linux/start_tari_miner" "${tarball_folder}/start_tari_miner"
-cp -f "${app_dir}/tari_miner/linux/runtime/start_tari_minert.sh" "${tarball_folder}/runtime/start_tari_miner.sh"
-cp -f "${project_dir}/${target_release}/tari_miner" "${tarball_folder}/runtime/tari_miner"
+cp -f -P "${app_dir}/minotari_miner/linux/start_minotari_miner" "${tarball_folder}/start_minotari_miner"
+cp -f "${app_dir}/minotari_miner/linux/runtime/start_minotari_minert.sh" "${tarball_folder}/runtime/start_minotari_miner.sh"
+cp -f "${project_dir}/${target_release}/minotari_miner" "${tarball_folder}/runtime/minotari_miner"
 
 # Merge Mining Proxy
-cp -f -P "${app_dir}/tari_merge_mining_proxy/linux/start_tari_merge_mining_proxy" "${tarball_folder}/start_tari_merge_mining_proxy"
-cp -f -P "${app_dir}/tari_merge_mining_proxy/linux/start_xmrig" "${tarball_folder}/start_xmrig"
-cp -f "${app_dir}/tari_merge_mining_proxy/linux/runtime/start_tari_merge_mining_proxy.sh" "${tarball_folder}/runtime/start_tari_merge_mining_proxy.sh"
-cp -f "${app_dir}/tari_merge_mining_proxy/linux/runtime/start_xmrig.sh" "${tarball_folder}/runtime/start_xmrig.sh"
-cp -f "${project_dir}/${target_release}/tari_merge_mining_proxy" "${tarball_folder}/runtime/tari_merge_mining_proxy"
+cp -f -P "${app_dir}/minotari_merge_mining_proxy/linux/start_minotari_merge_mining_proxy" "${tarball_folder}/start_minotari_merge_mining_proxy"
+cp -f -P "${app_dir}/minotari_merge_mining_proxy/linux/start_xmrig" "${tarball_folder}/start_xmrig"
+cp -f "${app_dir}/minotari_merge_mining_proxy/linux/runtime/start_minotari_merge_mining_proxy.sh" "${tarball_folder}/runtime/start_minotari_merge_mining_proxy.sh"
+cp -f "${app_dir}/minotari_merge_mining_proxy/linux/runtime/start_xmrig.sh" "${tarball_folder}/runtime/start_xmrig.sh"
+cp -f "${project_dir}/${target_release}/minotari_merge_mining_proxy" "${tarball_folder}/runtime/minotari_merge_mining_proxy"
 
 # 3rd party install
 cp -f "${local_dir}/install_xmrig.sh" "${tarball_folder}/runtime/install_xmrig.sh"

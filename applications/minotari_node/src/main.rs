@@ -69,7 +69,7 @@
 /// `whoami` - Displays identity information about this Base Node and it's wallet
 /// `quit` - Exits the Base Node
 /// `exit` - Same as quit
-use std::{panic, process, sync::Arc};
+use std::{process, sync::Arc};
 
 use clap::Parser;
 use log::*;
@@ -85,14 +85,6 @@ const LOG_TARGET: &str = "minotari::base_node::app";
 
 /// Application entry point
 fn main() {
-    // Setup a panic hook which prints the default rust panic message but also exits the process. This makes a panic in
-    // any thread "crash" the system instead of silently continuing.
-    let default_hook = panic::take_hook();
-    panic::set_hook(Box::new(move |info| {
-        default_hook(info);
-        process::exit(1);
-    }));
-
     if let Err(err) = main_inner() {
         eprintln!("{:?}", err);
         let exit_code = err.exit_code;

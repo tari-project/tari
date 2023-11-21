@@ -13,6 +13,7 @@ use multiaddr::Multiaddr;
 use serde::{Deserialize, Serialize};
 
 use crate::net_address::{multiaddr_with_stats::PeerAddressSource, MultiaddrWithStats};
+const MAX_ADDRESSES: usize = 10;
 
 /// This struct is used to store a set of different net addresses such as IPv4, IPv6, Tor or I2P for a single peer.
 #[derive(Debug, Clone, Deserialize, Serialize, Default, Eq)]
@@ -29,9 +30,11 @@ impl MultiaddressesWithStats {
         for address in addresses {
             addresses_with_stats.push(MultiaddrWithStats::new(address, source.clone()));
         }
-        MultiaddressesWithStats {
+        let mut addresses = MultiaddressesWithStats {
             addresses: addresses_with_stats,
-        }
+        };
+        addresses.sort_addresses();
+        addresses
     }
 
     pub fn empty() -> Self {
@@ -130,6 +133,7 @@ impl MultiaddressesWithStats {
                 self.addresses.push(addr.clone());
             }
         }
+        self.sort_addresses();
     }
 
     /// Finds the specified address in the set and allow updating of its variables such as its usage stats
@@ -234,7 +238,8 @@ impl MultiaddressesWithStats {
 
     /// Sort the addresses with the greatest quality score first
     fn sort_addresses(&mut self) {
-        self.addresses.sort_by_key(|addr| cmp::Reverse(addr.quality_score()))
+        self.addresses.sort_by_key(|addr| cmp::Reverse(addr.quality_score()));
+        self.addresses.truncate(MAX_ADDRESSES)
     }
 }
 
@@ -303,6 +308,61 @@ mod test {
         assert_eq!(net_addresses[0].address(), &net_address1);
         assert_eq!(net_addresses[1].address(), &net_address2);
         assert_eq!(net_addresses[2].address(), &net_address3);
+    }
+
+    #[test]
+    fn test_max_number() {
+        let net_address1 = "/ip4/121.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap();
+        let net_address2 = "/ip4/122.1.54.254/tcp/7999".parse::<Multiaddr>().unwrap();
+        let net_address3 = "/ip4/123.6.3.145/tcp/8000".parse::<Multiaddr>().unwrap();
+        let net_address4 = "/ip4/124.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap();
+        let net_address5 = "/ip4/125.1.54.254/tcp/7999".parse::<Multiaddr>().unwrap();
+        let net_address6 = "/ip4/126.6.3.145/tcp/8000".parse::<Multiaddr>().unwrap();
+        let net_address7 = "/ip4/127.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap();
+        let net_address8 = "/ip4/128.1.54.254/tcp/7999".parse::<Multiaddr>().unwrap();
+        let net_address9 = "/ip4/129.6.3.145/tcp/8000".parse::<Multiaddr>().unwrap();
+        let net_address10 = "/ip4/130.0.0.123/tcp/8000".parse::<Multiaddr>().unwrap();
+        let net_address11 = "/ip4/131.1.54.254/tcp/7999".parse::<Multiaddr>().unwrap();
+        let net_address12 = "/ip4/132.1.54.254/tcp/7999".parse::<Multiaddr>().unwrap();
+        let mut net_addresses: MultiaddressesWithStats = MultiaddressesWithStats::from_addresses_with_source(
+            vec![
+                net_address1.clone(),
+                net_address2.clone(),
+                net_address3.clone(),
+                net_address4.clone(),
+                net_address5.clone(),
+                net_address6.clone(),
+                net_address7.clone(),
+                net_address8.clone(),
+                net_address9.clone(),
+                net_address10.clone(),
+                net_address11.clone(),
+            ],
+            &PeerAddressSource::Config,
+        );
+        assert_eq!(net_addresses.addresses().len(), 10);
+        // because qaulity is the same, the last address will be trimmed
+        assert!(!net_addresses.contains(&net_address11));
+        // let mark down the quality of the first address
+        net_addresses
+            .find_address_mut(&net_address1)
+            .unwrap()
+            .update_latency(Duration::from_millis(0));
+        net_addresses
+            .find_address_mut(&net_address1)
+            .unwrap()
+            .mark_last_attempted_now();
+        assert_eq!(
+            net_addresses.find_address_mut(&net_address1).unwrap().quality_score(),
+            200
+        );
+        let other: MultiaddressesWithStats = MultiaddressesWithStats::from_addresses_with_source(
+            vec![net_address12.clone()],
+            &PeerAddressSource::Config,
+        );
+        net_addresses.merge(&other);
+        assert!(!net_addresses.contains(&net_address1));
+        assert!(net_addresses.contains(&net_address12));
     }
 
     #[test]

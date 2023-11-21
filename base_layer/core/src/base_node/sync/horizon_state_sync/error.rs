@@ -35,7 +35,7 @@ use tokio::task;
 
 use crate::{
     chain_storage::ChainStorageError,
-    common::BanReason,
+    common::{BanPeriod, BanReason},
     transactions::transaction_components::TransactionError,
     validation::ValidationError,
 };
@@ -112,10 +112,10 @@ impl From<RangeProofError> for HorizonSyncError {
 }
 
 impl HorizonSyncError {
-    pub fn get_ban_reason(&self, short_ban: Duration, long_ban: Duration) -> Option<BanReason> {
+    pub fn get_ban_reason(&self) -> Option<BanReason> {
         match self {
             // no ban
-            HorizonSyncError::ChainStorageError(_) |
+            HorizonSyncError::ChainStorageError(e) => e.get_ban_reason(),
             HorizonSyncError::NoSyncPeers |
             HorizonSyncError::FailedSyncAllPeers |
             HorizonSyncError::AllSyncPeersExceedLatency |
@@ -129,7 +129,7 @@ impl HorizonSyncError {
             err @ HorizonSyncError::RpcError { .. } |
             err @ HorizonSyncError::RpcStatus { .. } => Some(BanReason {
                 reason: format!("{}", err),
-                ban_duration: short_ban,
+                ban_duration: BanPeriod::Short,
             }),
 
             // long ban
@@ -144,10 +144,10 @@ impl HorizonSyncError {
             err @ HorizonSyncError::FixedHashSizeError(_) |
             err @ HorizonSyncError::TransactionError(_) => Some(BanReason {
                 reason: format!("{}", err),
-                ban_duration: long_ban,
+                ban_duration: BanPeriod::Long,
             }),
 
-            HorizonSyncError::ValidationError(err) => ValidationError::get_ban_reason(err, Some(long_ban)),
+            HorizonSyncError::ValidationError(err) => ValidationError::get_ban_reason(err),
         }
     }
 }

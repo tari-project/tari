@@ -20,13 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::Infallible;
+use std::{convert::Infallible, str::FromStr};
 
 use futures::future;
 use hyper::{service::make_service_fn, Server};
 use log::*;
-use minotari_node_grpc_client::BaseNodeGrpcClient;
-use minotari_wallet_grpc_client::WalletGrpcClient;
+use minotari_node_grpc_client::grpc::base_node_client::BaseNodeClient;
+use minotari_wallet_grpc_client::{grpc::wallet_client::WalletClient, ClientAuthenticationInterceptor};
 use tari_common::{
     configuration::bootstrap::{grpc_default_port, ApplicationType},
     load_configuration,
@@ -35,6 +35,10 @@ use tari_common::{
 use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;
 use tari_core::proof_of_work::randomx_factory::RandomXFactory;
 use tokio::time::Duration;
+use tonic::{
+    codegen::InterceptedService,
+    transport::{Channel, Endpoint},
+};
 
 use crate::{
     block_template_data::BlockTemplateRepository,
@@ -59,25 +63,9 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
         .build()
         .map_err(MmProxyError::ReqwestError)?;
 
-    let base_node = multiaddr_to_socketaddr(
-        config
-            .base_node_grpc_address
-            .as_ref()
-            .expect("No base node address provided"),
-    )?;
-    info!(target: LOG_TARGET, "Connecting to base node at {}", base_node);
-    println!("Connecting to base node at {}", base_node);
-    let base_node_client = BaseNodeGrpcClient::connect(format!("http://{}", base_node)).await?;
-    let wallet_addr = multiaddr_to_socketaddr(
-        config
-            .console_wallet_grpc_address
-            .as_ref()
-            .expect("No waller address provided"),
-    )?;
-    info!(target: LOG_TARGET, "Connecting to wallet at {}", wallet_addr);
-    let wallet_addr = format!("http://{}", wallet_addr);
-    let wallet_client =
-        WalletGrpcClient::connect_with_auth(&wallet_addr, &config.console_wallet_grpc_authentication).await?;
+    let base_node_client = connect_base_node(&config).await?;
+    let wallet_client = connect_wallet(&config).await?;
+
     let listen_addr = multiaddr_to_socketaddr(&config.listener_address)?;
     let randomx_factory = RandomXFactory::new(config.max_randomx_vms);
     let randomx_service = MergeMiningProxyService::new(
@@ -108,6 +96,50 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
             Err(err.into())
         },
     }
+}
+
+async fn connect_wallet(
+    config: &MergeMiningProxyConfig,
+) -> Result<WalletClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>, MmProxyError> {
+    let wallet_addr = format!(
+        "http://{}",
+        multiaddr_to_socketaddr(
+            &config
+                .console_wallet_grpc_address
+                .clone()
+                .expect("Wallet grpc address not found")
+        )?
+    );
+    info!(target: LOG_TARGET, "👛 Connecting to wallet at {}", wallet_addr);
+    let channel = Endpoint::from_str(&wallet_addr)?.connect().await?;
+    let wallet_conn = WalletClient::with_interceptor(
+        channel,
+        ClientAuthenticationInterceptor::create(&config.console_wallet_grpc_authentication)?,
+    );
+
+    Ok(wallet_conn)
+}
+
+async fn connect_base_node(
+    config: &MergeMiningProxyConfig,
+) -> Result<BaseNodeClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>, MmProxyError> {
+    let base_node_addr = format!(
+        "http://{}",
+        multiaddr_to_socketaddr(
+            &config
+                .base_node_grpc_address
+                .clone()
+                .expect("Base node grpc address not found")
+        )?
+    );
+    info!(target: LOG_TARGET, "👛 Connecting to base node at {}", base_node_addr);
+    let channel = Endpoint::from_str(&base_node_addr)?.connect().await?;
+    let node_conn = BaseNodeClient::with_interceptor(
+        channel,
+        ClientAuthenticationInterceptor::create(&config.base_node_grpc_authentication)?,
+    );
+
+    Ok(node_conn)
 }
 
 fn setup_grpc_config(config: &mut MergeMiningProxyConfig) {

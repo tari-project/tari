@@ -44,6 +44,10 @@ pub enum NetworkDiscoveryError {
     PeerValidationError(#[from] DhtPeerValidatorError),
     #[error("Sync peer sent empty peer message")]
     EmptyPeerMessageReceived,
+    #[error("Sync peer sent too many peers")]
+    TooManyPeersReceived,
+    #[error("Sync peer sent duplicate peer")]
+    DuplicatePeerReceived,
     #[error("Sync peer sent invalid peer data: {0}")]
     InvalidPeerDataReceived(anyhow::Error),
 }

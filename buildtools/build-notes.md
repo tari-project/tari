@@ -115,7 +115,7 @@ export CROSS_COMPILE=true
 ```bash
 cargo build \
   --target aarch64-unknown-linux-gnu \
-  --bin tari_miner
+  --bin minotari_miner
 ```
 
 # Build target Release
@@ -135,6 +135,6 @@ cross build --locked \
 cross build --locked \
   --release --features safe \
   --target aarch64-unknown-linux-gnu \
-  --bin tari_base_node --bin tari_console_wallet \
-  --bin tari_merge_mining_proxy --bin tari_miner
+  --bin minotari_node --bin minotari_console_wallet \
+  --bin minotari_merge_mining_proxy --bin minotari_miner
 ```

@@ -28,11 +28,11 @@ use rand::{
 };
 use tari_mmr::{
     common::LeafIndex,
-    functions::{calculate_mmr_root, calculate_pruned_mmr_root, prune_mmr},
+    functions::{calculate_mmr_root, prune_mmr},
     Hash,
 };
 
-use crate::support::{create_mmr, create_mutable_mmr, int_to_hash};
+use crate::support::{create_mmr, int_to_hash};
 
 #[test]
 fn pruned_mmr_empty() {
@@ -79,27 +79,6 @@ fn get_changes() -> (usize, Vec<Hash>, Vec<u32>) {
         .map(|v| u32::try_from(v).unwrap())
         .collect();
     (src_size, additions, deletions)
-}
-
-/// Create a random-sized MMR. Add a random number of additions and deletions; and check the new root against the
-/// result of `calculate_pruned_mmr_root`
-#[test]
-pub fn calculate_pruned_mmr_roots() {
-    let (src_size, additions, deletions) = get_changes();
-    let mut src = create_mutable_mmr(src_size);
-    let src_root = src.get_merkle_root().expect("Did not get source root");
-    let root =
-        calculate_pruned_mmr_root(&src, additions.clone(), deletions.clone()).expect("Did not calculate new root");
-    assert_ne!(src_root, root);
-    // Double check
-    additions.into_iter().for_each(|h| {
-        src.push(h).unwrap();
-    });
-    deletions.iter().for_each(|i| {
-        src.delete(*i);
-    });
-    let new_root = src.get_merkle_root().expect("Did not calculate new root");
-    assert_eq!(root, new_root);
 }
 
 /// Create a random-sized MMR. Add a random number of additions; and check the new root against the

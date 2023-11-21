@@ -20,12 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    collections::HashSet,
-    convert::{TryFrom, TryInto},
-    sync::Arc,
-    time::{Duration, Instant},
-};
+#[cfg(feature = "metrics")]
+use std::convert::{TryFrom, TryInto};
+use std::{cmp::max, collections::HashSet, sync::Arc, time::Instant};
 
 use log::*;
 use strum_macros::Display;
@@ -34,17 +31,16 @@ use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
 use tari_utilities::hex::Hex;
 use tokio::sync::RwLock;
 
+#[cfg(feature = "metrics")]
+use crate::base_node::metrics;
 use crate::{
-    base_node::{
-        comms_interface::{
-            error::CommsInterfaceError,
-            local_interface::BlockEventSender,
-            FetchMempoolTransactionsResponse,
-            NodeCommsRequest,
-            NodeCommsResponse,
-            OutboundNodeCommsInterface,
-        },
-        metrics,
+    base_node::comms_interface::{
+        error::CommsInterfaceError,
+        local_interface::BlockEventSender,
+        FetchMempoolTransactionsResponse,
+        NodeCommsRequest,
+        NodeCommsResponse,
+        OutboundNodeCommsInterface,
     },
     blocks::{Block, BlockBuilder, BlockHeader, BlockHeaderValidationError, ChainBlock, NewBlock, NewBlockTemplate},
     chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend, ChainStorageError},
@@ -448,10 +444,11 @@ where B: BlockchainBackend + 'static
             return Ok(());
         }
 
-        // lets check that the difficulty at least matches the min required difficulty
-        // We cannot check the target difficulty as orphan blocks dont have a target difficulty.
-        // All we care here is that bad blocks are not free to make, and that they are more expensive to make then they
-        // are to validate. As soon as a block can be linked to the main chain, a proper full proof of work check will
+        // lets check that the difficulty at least matches 50% of the tip header. The max difficulty drop is 16%, thus
+        // 50% is way more than that and in order to attack the node, you need 50% of the mining power. We cannot check
+        // the target difficulty as orphan blocks dont have a target difficulty. All we care here is that bad
+        // blocks are not free to make, and that they are more expensive to make then they are to validate. As
+        // soon as a block can be linked to the main chain, a proper full proof of work check will
         // be done before any other validation.
         self.check_min_block_difficulty(&new_block).await?;
 
@@ -504,7 +501,29 @@ where B: BlockchainBackend + 'static
 
     async fn check_min_block_difficulty(&self, new_block: &NewBlock) -> Result<(), CommsInterfaceError> {
         let constants = self.consensus_manager.consensus_constants(new_block.header.height);
-        let min_difficulty = constants.min_pow_difficulty(new_block.header.pow.pow_algo);
+        let mut min_difficulty = constants.min_pow_difficulty(new_block.header.pow.pow_algo);
+        let mut header = self.blockchain_db.fetch_last_chain_header().await?;
+        loop {
+            if new_block.header.pow_algo() == header.header().pow_algo() {
+                min_difficulty = max(
+                    header
+                        .accumulated_data()
+                        .target_difficulty
+                        .checked_div_u64(2)
+                        .unwrap_or(min_difficulty),
+                    min_difficulty,
+                );
+                break;
+            }
+            if header.height() == 0 {
+                break;
+            }
+            // we have not reached gen block, and the pow algo does not match, so lets go further back
+            header = self
+                .blockchain_db
+                .fetch_chain_header(header.height().saturating_sub(1))
+                .await?;
+        }
         let achieved = match new_block.header.pow_algo() {
             PowAlgorithm::RandomX => randomx_difficulty(&new_block.header, &self.randomx_factory)?,
             PowAlgorithm::Sha3x => sha3x_difficulty(&new_block.header)?,
@@ -518,7 +537,7 @@ where B: BlockchainBackend + 'static
     }
 
     async fn check_exists_and_not_bad_block(&self, block: FixedHash) -> Result<bool, CommsInterfaceError> {
-        if self.blockchain_db.chain_block_or_orphan_block_exists(block).await? {
+        if self.blockchain_db.chain_header_or_orphan_exists(block).await? {
             debug!(
                 target: LOG_TARGET,
                 "Block with hash `{}` already stored",
@@ -588,13 +607,7 @@ where B: BlockchainBackend + 'static
                 current_meta.best_block().to_hex(),
                 source_peer,
             );
-            if excess_sigs.is_empty() {
-                let block = BlockBuilder::new(header.version)
-                    .with_coinbase_utxo(coinbase_output, coinbase_kernel)
-                    .with_header(header.clone())
-                    .build();
-                return Ok(block);
-            }
+            #[cfg(feature = "metrics")]
             metrics::compact_block_tx_misses(header.height).set(excess_sigs.len() as i64);
             let block = self.request_full_block_from_peer(source_peer, block_hash).await?;
             return Ok(block);
@@ -604,6 +617,7 @@ where B: BlockchainBackend + 'static
         let (known_transactions, missing_excess_sigs) = self.mempool.retrieve_by_excess_sigs(excess_sigs).await?;
         let known_transactions = known_transactions.into_iter().map(|tx| (*tx).clone()).collect();
 
+        #[cfg(feature = "metrics")]
         metrics::compact_block_tx_misses(header.height).set(missing_excess_sigs.len() as i64);
 
         let mut builder = BlockBuilder::new(header.version)
@@ -649,6 +663,7 @@ where B: BlockchainBackend + 'static
                     not_found.len()
                 );
 
+                #[cfg(feature = "metrics")]
                 metrics::compact_block_full_misses(header.height).inc();
                 let block = self.request_full_block_from_peer(source_peer, block_hash).await?;
                 return Ok(block);
@@ -686,6 +701,7 @@ where B: BlockchainBackend + 'static
                 e,
             );
 
+            #[cfg(feature = "metrics")]
             metrics::compact_block_mmr_mismatch(header.height).inc();
             let block = self.request_full_block_from_peer(source_peer, block_hash).await?;
             return Ok(block);
@@ -706,18 +722,6 @@ where B: BlockchainBackend + 'static
         {
             Ok(Some(block)) => Ok(block),
             Ok(None) => {
-                if let Err(e) = self
-                    .connectivity
-                    .ban_peer_until(
-                        source_peer.clone(),
-                        Duration::from_secs(100),
-                        format!("Peer {} failed to return the block that was requested.", source_peer),
-                    )
-                    .await
-                {
-                    error!(target: LOG_TARGET, "Failed to ban peer: {}", e);
-                }
-
                 debug!(
                     target: LOG_TARGET,
                     "Peer `{}` failed to return the block that was requested.", source_peer
@@ -732,13 +736,6 @@ where B: BlockchainBackend + 'static
                     target: LOG_TARGET,
                     "Peer `{}` sent unexpected API response.", source_peer
                 );
-                if let Err(e) = self
-                    .connectivity
-                    .ban_peer(source_peer.clone(), "Peer sent invalid API response".to_string())
-                    .await
-                {
-                    error!(target: LOG_TARGET, "Failed to ban peer: {}", e);
-                }
                 Err(CommsInterfaceError::UnexpectedApiResponse)
             },
             Err(e) => Err(e),
@@ -793,7 +790,9 @@ where B: BlockchainBackend + 'static
                     BlockAddResult::ChainReorg { .. } => true,
                 };
 
+                #[cfg(feature = "metrics")]
                 self.update_block_result_metrics(&block_add_result).await?;
+
                 self.publish_block_event(BlockEvent::ValidBlockAdded(block.clone(), block_add_result));
 
                 if should_propagate {
@@ -804,14 +803,23 @@ where B: BlockchainBackend + 'static
                     );
                     let exclude_peers = source_peer.into_iter().collect();
                     let new_block_msg = NewBlock::from(&*block);
-                    self.outbound_nci.propagate_block(new_block_msg, exclude_peers).await?;
+                    if let Err(e) = self.outbound_nci.propagate_block(new_block_msg, exclude_peers).await {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Failed to propagate block ({}) to network: {}.",
+                            block_hash.to_hex(), e
+                        );
+                    }
                 }
                 Ok(block_hash)
             },
 
             Err(e @ ChainStorageError::ValidationError { .. }) => {
-                let block_hash = block.hash();
-                metrics::rejected_blocks(block.header.height, &block_hash).inc();
+                #[cfg(feature = "metrics")]
+                {
+                    let block_hash = block.hash();
+                    metrics::rejected_blocks(block.header.height, &block_hash).inc();
+                }
                 warn!(
                     target: LOG_TARGET,
                     "Peer {} sent an invalid block: {}",
@@ -821,25 +829,14 @@ where B: BlockchainBackend + 'static
                         .unwrap_or_else(|| "<local request>".to_string()),
                     e
                 );
-                match source_peer {
-                    Some(ref source_peer) => {
-                        if let Err(e) = self
-                            .connectivity
-                            .ban_peer(source_peer.clone(), format!("Peer propagated invalid block: {}", e))
-                            .await
-                        {
-                            error!(target: LOG_TARGET, "Failed to ban peer: {}", e);
-                        }
-                    },
-                    // SECURITY: This indicates an issue in the transaction validator.
-                    None => metrics::rejected_local_blocks(block.header.height, &block_hash).inc(),
-                }
                 self.publish_block_event(BlockEvent::AddBlockValidationFailed { block, source_peer });
                 Err(e.into())
             },
 
             Err(e) => {
+                #[cfg(feature = "metrics")]
                 metrics::rejected_blocks(block.header.height, &block.hash()).inc();
+
                 self.publish_block_event(BlockEvent::AddBlockErrored { block });
                 Err(e.into())
             },
@@ -910,6 +907,7 @@ where B: BlockchainBackend + 'static
         }
     }
 
+    #[cfg(feature = "metrics")]
     async fn update_block_result_metrics(&self, block_add_result: &BlockAddResult) -> Result<(), CommsInterfaceError> {
         fn update_target_difficulty(block: &ChainBlock) {
             match block.header().pow_algo() {
@@ -926,9 +924,9 @@ where B: BlockchainBackend + 'static
 
         match block_add_result {
             BlockAddResult::Ok(ref block) => {
+                update_target_difficulty(block);
                 #[allow(clippy::cast_possible_wrap)]
                 metrics::tip_height().set(block.height() as i64);
-                update_target_difficulty(block);
                 let utxo_set_size = self.blockchain_db.utxo_count().await?;
                 metrics::utxo_set_size().set(utxo_set_size.try_into().unwrap_or(i64::MAX));
             },
@@ -937,12 +935,13 @@ where B: BlockchainBackend + 'static
                     #[allow(clippy::cast_possible_wrap)]
                     metrics::tip_height().set(fork_height as i64);
                     metrics::reorg(fork_height, added.len(), removed.len()).inc();
+
+                    let utxo_set_size = self.blockchain_db.utxo_count().await?;
+                    metrics::utxo_set_size().set(utxo_set_size.try_into().unwrap_or(i64::MAX));
                 }
                 for block in added {
                     update_target_difficulty(block);
                 }
-                let utxo_set_size = self.blockchain_db.utxo_count().await?;
-                metrics::utxo_set_size().set(utxo_set_size.try_into().unwrap_or(i64::MAX));
             },
             BlockAddResult::OrphanBlock => {
                 metrics::orphaned_blocks().inc();

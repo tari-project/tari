@@ -62,6 +62,7 @@ impl TryFrom<proto::BlockHeader> for BlockHeader {
             nonce: header.nonce,
             pow,
             validator_node_mr: FixedHash::try_from(header.validator_node_merkle_root).map_err(|err| err.to_string())?,
+            validator_node_size: header.validator_node_size,
         })
     }
 }
@@ -83,6 +84,7 @@ impl From<BlockHeader> for proto::BlockHeader {
             kernel_mmr_size: header.kernel_mmr_size,
             output_mmr_size: header.output_smt_size,
             validator_node_merkle_root: header.validator_node_mr.to_vec(),
+            validator_node_size: header.validator_node_size,
         }
     }
 }

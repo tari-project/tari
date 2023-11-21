@@ -24,10 +24,11 @@ use std::time::Instant;
 
 use log::*;
 
+#[cfg(feature = "metrics")]
+use crate::base_node::metrics;
 use crate::{
     base_node::{
         comms_interface::BlockEvent,
-        metrics,
         state_machine_service::states::{BlockSyncInfo, HorizonStateSync, StateEvent, StateInfo, StatusInfo},
         sync::{BlockSynchronizer, SyncPeer},
         BaseNodeStateMachine,
@@ -63,6 +64,7 @@ impl BlockSync {
         let local_nci = shared.local_node_interface.clone();
         let randomx_vm_cnt = shared.get_randomx_vm_cnt();
         let randomx_vm_flags = shared.get_randomx_vm_flags();
+        #[cfg(feature = "metrics")]
         let tip_height_metric = metrics::tip_height();
         synchronizer.on_starting(move |sync_peer| {
             let _result = status_event_sender.send(StatusInfo {
@@ -81,6 +83,7 @@ impl BlockSync {
                 BlockAddResult::Ok(block),
             ));
 
+            #[cfg(feature = "metrics")]
             tip_height_metric.set(local_height as i64);
             let _result = status_event_sender.send(StatusInfo {
                 bootstrapped,

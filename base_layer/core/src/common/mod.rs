@@ -20,9 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[cfg(feature = "base_node")]
-use std::time::Duration;
-
 use blake2::Blake2b;
 use digest::consts::U64;
 use tari_crypto::hash_domain;
@@ -43,16 +40,20 @@ hash_domain!(ConfidentialOutputHashDomain, "com.tari.dan.confidential_output", 1
 pub type ConfidentialOutputHasher = DomainSeparatedConsensusHasher<ConfidentialOutputHashDomain, Blake2b<U64>>;
 
 /// The reason for a peer being banned
-#[cfg(feature = "base_node")]
 #[derive(Clone, Debug)]
 pub struct BanReason {
     /// The reason for the ban
     pub reason: String,
     /// The duration of the ban
-    pub ban_duration: Duration,
+    pub ban_duration: BanPeriod,
 }
 
-#[cfg(feature = "base_node")]
+#[derive(Clone, Copy, Debug)]
+pub enum BanPeriod {
+    Short,
+    Long,
+}
+
 impl BanReason {
     /// Create a new ban reason
     pub fn reason(&self) -> &str {
@@ -60,7 +61,7 @@ impl BanReason {
     }
 
     /// The duration of the ban
-    pub fn ban_duration(&self) -> Duration {
+    pub fn ban_duration(&self) -> BanPeriod {
         self.ban_duration
     }
 }

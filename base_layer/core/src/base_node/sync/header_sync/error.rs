@@ -22,13 +22,19 @@
 
 use std::time::Duration;
 
+use primitive_types::U256;
 use tari_comms::{
     connectivity::ConnectivityError,
     peer_manager::NodeId,
     protocol::rpc::{RpcError, RpcStatus},
 };
 
-use crate::{blocks::BlockError, chain_storage::ChainStorageError, common::BanReason, validation::ValidationError};
+use crate::{
+    blocks::BlockError,
+    chain_storage::ChainStorageError,
+    common::{BanPeriod, BanReason},
+    validation::ValidationError,
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum BlockHeaderSyncError {
@@ -77,9 +83,9 @@ pub enum BlockHeaderSyncError {
          {local}"
     )]
     PeerSentInaccurateChainMetadata {
-        claimed: u128,
-        actual: Option<u128>,
-        local: u128,
+        claimed: U256,
+        actual: Option<U256>,
+        local: U256,
     },
     #[error("This peer sent too many headers ({0}) in response to a chain split request")]
     PeerSentTooManyHeaders(usize),
@@ -94,7 +100,7 @@ pub enum BlockHeaderSyncError {
 }
 
 impl BlockHeaderSyncError {
-    pub fn get_ban_reason(&self, short_ban: Duration, long_ban: Duration) -> Option<BanReason> {
+    pub fn get_ban_reason(&self) -> Option<BanReason> {
         match self {
             // no ban
             BlockHeaderSyncError::NoMoreSyncPeers(_) |
@@ -103,15 +109,15 @@ impl BlockHeaderSyncError {
             BlockHeaderSyncError::AllSyncPeersExceedLatency |
             BlockHeaderSyncError::ConnectivityError(_) |
             BlockHeaderSyncError::NotInSync |
-            BlockHeaderSyncError::PeerNotFound |
-            BlockHeaderSyncError::ChainStorageError(_) => None,
+            BlockHeaderSyncError::PeerNotFound => None,
+            BlockHeaderSyncError::ChainStorageError(e) => e.get_ban_reason(),
 
             // short ban
             err @ BlockHeaderSyncError::MaxLatencyExceeded { .. } |
             err @ BlockHeaderSyncError::RpcError { .. } |
             err @ BlockHeaderSyncError::RpcRequestError { .. } => Some(BanReason {
                 reason: format!("{}", err),
-                ban_duration: short_ban,
+                ban_duration: BanPeriod::Short,
             }),
 
             // long ban
@@ -126,10 +132,10 @@ impl BlockHeaderSyncError {
             err @ BlockHeaderSyncError::PeerSentInaccurateChainMetadata { .. } |
             err @ BlockHeaderSyncError::PeerSentTooManyHeaders(_) => Some(BanReason {
                 reason: format!("{}", err),
-                ban_duration: long_ban,
+                ban_duration: BanPeriod::Long,
             }),
 
-            BlockHeaderSyncError::ValidationFailed(err) => ValidationError::get_ban_reason(err, Some(long_ban)),
+            BlockHeaderSyncError::ValidationFailed(err) => ValidationError::get_ban_reason(err),
         }
     }
 }

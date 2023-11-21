@@ -35,7 +35,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ### From source
 
 ```
-cargo install tari_base_node
+cargo install minotari_node
 ```
 
 ## Configuration

@@ -340,7 +340,18 @@ impl TariScript {
     fn handle_check_height(stack: &mut ExecutionStack, height: u64, block_height: u64) -> Result<(), ScriptError> {
         let height = i64::try_from(height)?;
         let block_height = i64::try_from(block_height)?;
-        let item = StackItem::Number(block_height - height);
+
+        // Due to the conversion of u64 into i64 which would fail above if they overflowed, these
+        // numbers should never enter a state where a `sub` could fail. As they'd both be within range and 0 or above.
+        // This differs from compare_height due to a stack number being used, which can be lower than 0
+        let item = match block_height.checked_sub(height) {
+            Some(num) => StackItem::Number(num),
+            None => {
+                return Err(ScriptError::CompareFailed(
+                    "Subtraction of given height from current block height failed".to_string(),
+                ))
+            },
+        };
 
         stack.push(item)
     }
@@ -359,7 +370,16 @@ impl TariScript {
         let target_height = stack.pop_into_number::<i64>()?;
         let block_height = i64::try_from(block_height)?;
 
-        let item = StackItem::Number(block_height - target_height);
+        // Here it is possible to underflow because the stack can take lower numbers where check
+        // height does not use a stack number and it's minimum can't be lower than 0.
+        let item = match block_height.checked_sub(target_height) {
+            Some(num) => StackItem::Number(num),
+            None => {
+                return Err(ScriptError::CompareFailed(
+                    "Couldn't subtract the target height from the current block height".to_string(),
+                ))
+            },
+        };
 
         stack.push(item)
     }
@@ -571,7 +591,8 @@ impl TariScript {
     ///
     /// Notes:
     /// * The _m_ signatures are expected to be the top _m_ items on the stack.
-    /// * Every public key can be used AT MOST once.
+    /// * The ordering of signatures on the stack MUST match the relative ordering of the corresponding public keys.
+    /// * The list may contain duplicate keys, but each occurrence of a public key may be used AT MOST once.
     /// * Every signature MUST be a valid signature using one of the public keys
     /// * _m_ and _n_ must be positive AND m <= n AND n <= MAX_MULTISIG_LIMIT (32).
     fn check_multisig(
@@ -596,18 +617,28 @@ impl TariScript {
             })
             .collect::<Result<Vec<RistrettoSchnorr>, ScriptError>>()?;
 
-        let mut key_signed = vec![false; public_keys.len()];
         // keep a hashset of unique signatures used to prevent someone putting the same signature in more than once.
         #[allow(clippy::mutable_key_type)]
         let mut sig_set = HashSet::new();
 
         let mut agg_pub_key = RistrettoPublicKey::default();
-        // Check every signature against each public key looking for a valid signature
+
+        // Create an iterator that allows each pubkey to only be checked a single time as they are
+        // removed from the collection when referenced
+        let mut pub_keys = public_keys.iter();
+
+        // Signatures and public keys must be ordered
         for s in &signatures {
-            for (i, pk) in public_keys.iter().enumerate() {
-                if !sig_set.contains(s) && !key_signed[i] && s.verify_raw_canonical(pk, &message) {
-                    // This prevents Alice creating 2 different sigs against her public key
-                    key_signed[i] = true;
+            if pub_keys.len() == 0 {
+                return Ok(None);
+            }
+
+            if sig_set.contains(s) {
+                continue;
+            }
+
+            for pk in pub_keys.by_ref() {
+                if s.verify_raw_canonical(pk, &message) {
                     sig_set.insert(s);
                     agg_pub_key = agg_pub_key + pk;
                     break;
@@ -1162,6 +1193,9 @@ mod test {
         let inputs = inputs!(s_alice.clone(), s_bob.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(1));
+        let inputs = inputs!(s_bob.clone(), s_alice.clone());
+        let result = script.execute(&inputs).unwrap();
+        assert_eq!(result, Number(0));
         let inputs = inputs!(s_eve.clone(), s_bob.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(0));
@@ -1200,9 +1234,12 @@ mod test {
         let inputs = inputs!(s_alice.clone(), s_carol.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(1));
-        let inputs = inputs!(s_carol.clone(), s_bob.clone());
+        let inputs = inputs!(s_bob.clone(), s_carol.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(1));
+        let inputs = inputs!(s_carol.clone(), s_bob.clone());
+        let result = script.execute(&inputs).unwrap();
+        assert_eq!(result, Number(0));
         let inputs = inputs!(s_carol.clone(), s_eve.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(0));
@@ -1218,7 +1255,11 @@ mod test {
         let inputs = inputs!(s_alice.clone(), s_alice.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(0));
-        let inputs = inputs!(s_alice.clone(), s_alice2);
+        let inputs = inputs!(s_alice.clone(), s_alice2.clone());
+        let result = script.execute(&inputs).unwrap();
+        assert_eq!(result, Number(1));
+        // Interesting case where either sig could match either pubkey
+        let inputs = inputs!(s_alice2, s_alice.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(1));
 
@@ -1230,6 +1271,9 @@ mod test {
         let inputs = inputs!(s_alice.clone(), s_bob.clone(), s_carol.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(1));
+        let inputs = inputs!(s_carol.clone(), s_alice.clone(), s_bob.clone());
+        let result = script.execute(&inputs).unwrap();
+        assert_eq!(result, Number(0));
         let inputs = inputs!(s_eve.clone(), s_bob.clone(), s_carol);
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(0));
@@ -1350,6 +1394,9 @@ mod test {
         let inputs = inputs!(Number(1), s_alice.clone(), s_bob.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(1));
+        let inputs = inputs!(Number(1), s_bob.clone(), s_alice.clone());
+        let err = script.execute(&inputs).unwrap_err();
+        assert_eq!(err, ScriptError::VerifyFailed);
         let inputs = inputs!(Number(1), s_eve.clone(), s_bob.clone());
         let err = script.execute(&inputs).unwrap_err();
         assert_eq!(err, ScriptError::VerifyFailed);
@@ -1383,9 +1430,12 @@ mod test {
         let inputs = inputs!(Number(1), s_alice.clone(), s_carol.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(1));
-        let inputs = inputs!(Number(1), s_carol.clone(), s_bob.clone());
+        let inputs = inputs!(Number(1), s_bob.clone(), s_carol.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(1));
+        let inputs = inputs!(Number(1), s_carol.clone(), s_bob.clone());
+        let err = script.execute(&inputs).unwrap_err();
+        assert_eq!(err, ScriptError::VerifyFailed);
         let inputs = inputs!(Number(1), s_carol.clone(), s_eve.clone());
         let err = script.execute(&inputs).unwrap_err();
         assert_eq!(err, ScriptError::VerifyFailed);
@@ -1407,7 +1457,11 @@ mod test {
         let agg_pub_key = script.execute(&inputs).unwrap();
         assert_eq!(agg_pub_key, StackItem::PublicKey(p_bob.clone() + p_carol.clone()));
 
-        let inputs = inputs!(s_alice.clone(), s_carol.clone(), s_bob.clone());
+        let inputs = inputs!(s_carol.clone(), s_bob.clone());
+        let err = script.execute(&inputs).unwrap_err();
+        assert_eq!(err, ScriptError::VerifyFailed);
+
+        let inputs = inputs!(s_alice.clone(), s_bob.clone(), s_carol.clone());
         let err = script.execute(&inputs).unwrap_err();
         assert_eq!(err, ScriptError::NonUnitLengthStack);
 
@@ -1423,6 +1477,9 @@ mod test {
         let inputs = inputs!(Number(1), s_alice.clone(), s_bob.clone(), s_carol.clone());
         let result = script.execute(&inputs).unwrap();
         assert_eq!(result, Number(1));
+        let inputs = inputs!(Number(1), s_bob.clone(), s_alice.clone(), s_carol.clone());
+        let err = script.execute(&inputs).unwrap_err();
+        assert_eq!(err, ScriptError::VerifyFailed);
         let inputs = inputs!(Number(1), s_eve.clone(), s_bob.clone(), s_carol);
         let err = script.execute(&inputs).unwrap_err();
         assert_eq!(err, ScriptError::VerifyFailed);
@@ -1726,5 +1783,114 @@ mod test {
         let buf = vec![255, 255, 255, 255, 255, 255, 255, 255, 255, 1, 49, 8, 2, 5, 6];
         let buf = &mut buf.as_slice();
         assert!(TariScript::deserialize(buf).is_err());
+    }
+
+    #[test]
+    fn test_compare_height_block_height_exceeds_bounds() {
+        let script = script!(CompareHeight);
+
+        let inputs = inputs!(0);
+        let ctx = context_with_height(u64::MAX);
+        let stack_item = script.execute_with_context(&inputs, &ctx);
+        assert!(matches!(stack_item, Err(ScriptError::ValueExceedsBounds)));
+    }
+
+    #[test]
+    fn test_compare_height_underflows() {
+        let script = script!(CompareHeight);
+
+        let inputs = ExecutionStack::new(vec![Number(i64::MIN)]);
+        let ctx = context_with_height(i64::MAX as u64);
+        let stack_item = script.execute_with_context(&inputs, &ctx);
+        assert!(matches!(stack_item, Err(ScriptError::CompareFailed(_))));
+    }
+
+    #[test]
+    fn test_compare_height_underflows_on_empty_stack() {
+        let script = script!(CompareHeight);
+
+        let inputs = ExecutionStack::new(vec![]);
+        let ctx = context_with_height(i64::MAX as u64);
+        let stack_item = script.execute_with_context(&inputs, &ctx);
+        assert!(matches!(stack_item, Err(ScriptError::StackUnderflow)));
+    }
+
+    #[test]
+    fn test_compare_height_valid_with_uint_result() {
+        let script = script!(CompareHeight);
+
+        let inputs = inputs!(100);
+        let ctx = context_with_height(24_u64);
+        let stack_item = script.execute_with_context(&inputs, &ctx);
+        assert!(stack_item.is_ok());
+        assert_eq!(stack_item.unwrap(), Number(-76))
+    }
+
+    #[test]
+    fn test_compare_height_valid_with_int_result() {
+        let script = script!(CompareHeight);
+
+        let inputs = inputs!(100);
+        let ctx = context_with_height(110_u64);
+        let stack_item = script.execute_with_context(&inputs, &ctx);
+        assert!(stack_item.is_ok());
+        assert_eq!(stack_item.unwrap(), Number(10))
+    }
+
+    #[test]
+    fn test_check_height_block_height_exceeds_bounds() {
+        let script = script!(CheckHeight(0));
+
+        let inputs = ExecutionStack::new(vec![]);
+        let ctx = context_with_height(u64::MAX);
+        let stack_item = script.execute_with_context(&inputs, &ctx);
+        assert!(matches!(stack_item, Err(ScriptError::ValueExceedsBounds)));
+    }
+
+    #[test]
+    fn test_check_height_exceeds_bounds() {
+        let script = script!(CheckHeight(u64::MAX));
+
+        let inputs = ExecutionStack::new(vec![]);
+        let ctx = context_with_height(10_u64);
+        let stack_item = script.execute_with_context(&inputs, &ctx);
+        assert!(matches!(stack_item, Err(ScriptError::ValueExceedsBounds)));
+    }
+
+    #[test]
+    fn test_check_height_overflows_on_max_stack() {
+        let script = script!(CheckHeight(0));
+
+        let mut inputs = ExecutionStack::new(vec![]);
+
+        for i in 0..255 {
+            inputs.push(Number(i)).unwrap();
+        }
+
+        let ctx = context_with_height(i64::MAX as u64);
+        let stack_item = script.execute_with_context(&inputs, &ctx);
+        assert!(matches!(stack_item, Err(ScriptError::StackOverflow)));
+    }
+
+    #[test]
+    fn test_check_height_valid_with_uint_result() {
+        let script = script!(CheckHeight(24));
+
+        let inputs = ExecutionStack::new(vec![]);
+        let ctx = context_with_height(100_u64);
+        let stack_item = script.execute_with_context(&inputs, &ctx);
+        assert!(stack_item.is_ok());
+        assert_eq!(stack_item.unwrap(), Number(76))
+    }
+
+    #[test]
+    fn test_check_height_valid_with_int_result() {
+        let script = script!(CheckHeight(100));
+
+        let inputs = ExecutionStack::new(vec![]);
+        let ctx = context_with_height(24_u64);
+        let stack_item = script.execute_with_context(&inputs, &ctx);
+        assert!(stack_item.is_ok());
+        assert_eq!(stack_item.unwrap(), Number(-76))
     }
 }

@@ -30,6 +30,7 @@ use tokio::task;
 use crate::{
     blocks::BlockError,
     chain_storage::MmrTree,
+    common::{BanPeriod, BanReason},
     proof_of_work::PowError,
     transactions::transaction_components::TransactionError,
     validation::ValidationError,
@@ -130,8 +131,6 @@ pub enum ChainStorageError {
     TransactionError(#[from] TransactionError),
     #[error("Could not convert data:{0}")]
     ConversionError(String),
-    #[error("Unable to spend UTXO because it has dependant UTXOS: {details}")]
-    UnspendableDueToDependentUtxos { details: String },
     #[error("FixedHashSize Error: {0}")]
     FixedHashSizeError(#[from] FixedHashSizeError),
     #[error("Composite key length was exceeded (THIS SHOULD NEVER HAPPEN)")]
@@ -149,6 +148,50 @@ impl ChainStorageError {
 
     pub fn is_key_exist_error(&self) -> bool {
         matches!(self, ChainStorageError::KeyExists { .. })
+    }
+
+    pub fn get_ban_reason(&self) -> Option<BanReason> {
+        match self {
+            ChainStorageError::ProofOfWorkError { source: e } => e.get_ban_reason(),
+            ChainStorageError::ValidationError { source: e } => e.get_ban_reason(),
+            err @ ChainStorageError::UnspendableInput |
+            err @ ChainStorageError::MerkleMountainRangeError { .. } |
+            err @ ChainStorageError::MismatchedMmrRoot(_) |
+            err @ ChainStorageError::TransactionError(_) |
+            err @ ChainStorageError::SMTError(_) => Some(BanReason {
+                reason: err.to_string(),
+                ban_duration: BanPeriod::Long,
+            }),
+            _err @ ChainStorageError::AccessError(_) |
+            _err @ ChainStorageError::CorruptedDatabase(_) |
+            _err @ ChainStorageError::UnexpectedResult(_) |
+            _err @ ChainStorageError::InvalidOperation(_) |
+            _err @ ChainStorageError::UnspendError |
+            _err @ ChainStorageError::DataInconsistencyDetected { .. } |
+            _err @ ChainStorageError::CriticalError(_) |
+            _err @ ChainStorageError::InsertError { .. } |
+            _err @ ChainStorageError::InvalidQuery(_) |
+            _err @ ChainStorageError::InvalidArguments { .. } |
+            _err @ ChainStorageError::ValueNotFound { .. } |
+            _err @ ChainStorageError::MerkleProofError { .. } |
+            _err @ ChainStorageError::InvalidBlock(_) |
+            _err @ ChainStorageError::BlockingTaskSpawnError(_) |
+            _err @ ChainStorageError::LmdbError { .. } |
+            _err @ ChainStorageError::CannotAcquireFileLock |
+            _err @ ChainStorageError::IoError(_) |
+            _err @ ChainStorageError::CannotCalculateNonTipMmr(_) |
+            _err @ ChainStorageError::KeyExists { .. } |
+            _err @ ChainStorageError::DbResizeRequired |
+            _err @ ChainStorageError::DbTransactionTooLarge(_) |
+            _err @ ChainStorageError::DatabaseResyncRequired(_) |
+            _err @ ChainStorageError::BlockError(_) |
+            _err @ ChainStorageError::AddBlockOperationLocked |
+            _err @ ChainStorageError::ConversionError(_) |
+            _err @ ChainStorageError::FixedHashSizeError(_) |
+            _err @ ChainStorageError::CompositeKeyLengthExceeded |
+            _err @ ChainStorageError::FromKeyBytesFailed(_) |
+            _err @ ChainStorageError::OutOfRange => None,
+        }
     }
 }
 

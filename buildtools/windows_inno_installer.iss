@@ -21,14 +21,13 @@
 ;      - "<path to console-mode compiler>\ISCC.exe" "/SSignTool=signtool sign
 ;         /tr http://timestamp.digicert.com /f "<path and filename of the certificate>"
 ;         /p <password used to create the certificate> $f"
-;         "/DMyAppVersion=<base node version>" "windows_inno_installer.iss"
+;         "/DMyAppVersion=<version>" "/DMinotariSuite=<suite>" "windows_inno_installer.iss"
 ;  (4) Windows shortcuts
 ;      - To edit any of the *.lnk* files, first copy their icons 
 ;        "<project_root>/buildtools/*.ico" to "%USERPROFILE%\temp\tari_icons"
 
 
 #define MyOrgName "Tari"
-;#define MyAppVersion "?.?.?-???????-release"
 #define MyAppPublisher "The Tari Development Community"
 #define MyAppURL "https://github.com/tari-project/tari"
 #define MyAppSupp "Tari Website"
@@ -44,12 +43,12 @@
 #define TorServicesName "Tor Services"
 #define TorServicesExeName "start_tor.bat"
 #define MergeMiningProxyName "Merge Mining Proxy"
-#define MergeMiningProxyExeName "start_tari_merge_mining_proxy.bat"
+#define MergeMiningProxyExeName "start_minotari_merge_mining_proxy.bat"
 #define MergeMiningName "XMRig"
 #define MergeMiningExeName "start_xmrig.bat"
 #define ReadmeName "README.txt"
 #ifndef TariSuitePath
-#define public TariSuitePath "..\target\release"
+  #define public TariSuitePath "..\target\release"
 #endif
 
 [Setup]
@@ -59,7 +58,6 @@
 AppId={{35C6E863-EDE5-4CBD-A824-E1418ECB1D1D}
 AppName={#MyOrgName} {#BaseNodeName}
 AppVersion={#MyAppVersion}
-;AppVerName={#BaseNodeName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppSuppURL}
@@ -68,7 +66,7 @@ DefaultDirName={userdocs}\..\.tari-testnet
 DefaultGroupName={#MyOrgName} - Testnet
 AllowNoIcons=yes
 LicenseFile=..\LICENSE
-OutputBaseFilename=minotari_suite-Windows-{#MyAppVersion}
+OutputBaseFilename={#MinotariSuite}-{#MyAppVersion}
 SetupIconFile=.\tari_logo_black.ico
 Compression=lzma
 SolidCompression=yes
@@ -103,7 +101,7 @@ Source: "..\applications\minotari_node\windows\start_all.lnk"; DestDir: "{app}";
 Source: "..\applications\minotari_node\windows\start_minotari_node.lnk"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\applications\minotari_console_wallet\windows\start_minotari_console_wallet.lnk"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\applications\minotari_miner\windows\start_minotari_miner.lnk"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\applications\minotari_merge_mining_proxy\windows\start_tari_merge_mining_proxy.lnk"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\applications\minotari_merge_mining_proxy\windows\start_minotari_merge_mining_proxy.lnk"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\applications\minotari_merge_mining_proxy\windows\start_xmrig.lnk"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\applications\minotari_node\windows\start_tor.lnk"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#TariSuitePath}\minotari_node.exe"; DestDir: "{app}\runtime"; Flags: ignoreversion
@@ -143,7 +141,7 @@ Name: "{group}\Start {#MergeMiningProxyName}"; Filename: "{app}\runtime\{#MergeM
 Name: "{group}\Start {#MergeMiningName}"; Filename: "{app}\runtime\{#MergeMiningExeName}"; WorkingDir: "{app}"
 Name: "{group}\Start {#TorServicesName}"; Filename: "{app}\runtime\{#TorServicesExeName}"; WorkingDir: "{app}"
 Name: "{group}\{#ReadmeName}"; Filename: "{app}\{#ReadmeName}"; WorkingDir: "{app}"
-Name: "{group}\{cm:ProgramOnTheWeb,{#BaseNodeName}}"; Filename: "{#MyAppURL}"
+Name: "{group}\{cm:TariGit,{#BaseNodeName}}"; Filename: "{#MyAppURL}"
 Name: "{group}\{cm:TariWeb,{#MyAppSupp}}"; Filename: "{#MyAppSuppURL}"
 Name: "{group}\{cm:UninstallProgram,{#MyOrgName} - Testnet}"; Filename: "{uninstallexe}"
 Name: "{userdesktop}\{#MyOrgName} {#AllName}"; Filename: "{app}\runtime\{#AllExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
@@ -175,7 +173,7 @@ Type: files; Name: "{app}\start_all.lnk"
 Type: files; Name: "{app}\start_minotari_node.lnk"
 Type: files; Name: "{app}\start_minotari_console_wallet.lnk"
 Type: files; Name: "{app}\start_minotari_miner.lnk"
-Type: files; Name: "{app}\start_tari_merge_mining_proxy.lnk"
+Type: files; Name: "{app}\start_minotari_merge_mining_proxy.lnk"
 Type: files; Name: "{app}\start_xmrig.lnk"
 Type: files; Name: "{app}\start_tor.lnk"
 Type: files; Name: "{userdesktop}\Tari All.lnk"

@@ -24,7 +24,7 @@ The recommended running versions of each network are:
 |-----------|-----------------|
 | Stagenet  | 0.50.0-hotfix.1 |
 | Nextnet   | 0.51.0-rc.1     |
-| Esmeralda | 0.52.0-pre.1    |
+| Esmeralda | 0.53.0-pre.0    |
 
 For more detail about versioning, see [Release Ideology](https://github.com/tari-project/tari/blob/development/docs/src/branching_releases.md).
 
@@ -317,7 +317,7 @@ directory.
 
 ### Running the base node with a Docker image
 
-Minotari Base Node Docker images can be found at https://quay.io/repository/tarilabs/tari_base_node
+Minotari Base Node Docker images can be found at https://quay.io/repository/tarilabs/minotari_node
 
 Using `docker-compose.yaml`:
 
@@ -325,8 +325,8 @@ Using `docker-compose.yaml`:
 version: "3"
 
 services:
-  tari_base_node:
-    image: quay.io/tarilabs/tari_base_node:v0.5.4
+  minotari_node:
+    image: quay.io/tarilabs/minotari_node:v0.5.4
     restart: unless-stopped
     volumes:
       - ./data:/root/.tari
@@ -346,14 +346,14 @@ Check the running state with `docker-compose ps`:
 ```
         Name           Command    State            Ports
 ------------------------------------------------------------------
-tbn_tari_base_node_1   start.sh   Up      0.0.0.0:18142->18142/tcp
+tbn_minotari_node_1   start.sh   Up      0.0.0.0:18142->18142/tcp
 ```
 
-To connect to the console, use `docker ps` to get the container ID to which to attach the `tari_base_node`` in Docker:
+To connect to the console, use `docker ps` to get the container ID to which to attach the `minotari_node`` in Docker:
 
 ```
 CONTAINER ID        IMAGE                                    COMMAND             CREATED             STATUS              PORTS                      NAMES
-73427509a4bb        quay.io/tarilabs/tari_base_node:v0.5.4   "start.sh"          45 minutes ago      Up 26 minutes       0.0.0.0:18142->18142/tcp   tbn_tari_base_node_1
+73427509a4bb        quay.io/tarilabs/minotari_node:v0.5.4   "start.sh"          45 minutes ago      Up 26 minutes       0.0.0.0:18142->18142/tcp   tbn_minotari_node_1
 ```
 
 With the container ID `73427509a4bb`, connect to the `minotari_node`` console using `docker attach 73427509a4bb`:
@@ -392,19 +392,19 @@ git clone git@github.com:tari-project/tari.git
 Then build the image using the dockerfile in `buildtools`. The base node dockerfile builds the application and then
 places the binary inside a small container, keeping the executable binary to a minimum:
 
-    docker build -t tari_base_node:latest -f ./buildtools/base_node.Dockerfile .
+    docker build -t minotari_node:latest -f ./buildtools/base_node.Dockerfile .
 
 Test your image:
 
-    docker run --rm -ti tari_base_node tari_base_node --help
+    docker run --rm -ti minotari_node minotari_node --help
 
 Run the base node:
 
-    docker run -ti -v /path/to/config/dir:/root/.tari tari_base_node
+    docker run -ti -v /path/to/config/dir:/root/.tari minotari_node
 
 Default Docker builds for base x86-64 CPU. Better performing builds can be created by passing build options:
 
-    docker build -t tari_base_node:performance --build-arg TBN_ARCH=skylake --build-arg TBN_FEATURES=avx2 -f ./buildtools/base_node.Dockerfile .
+    docker build -t minotari_node:performance --build-arg TBN_ARCH=skylake --build-arg TBN_FEATURES=avx2 -f ./buildtools/base_node.Dockerfile .
 
 ---
 
@@ -711,7 +711,7 @@ A typical response would be:
 ```
 
 _**Note:** A guide to setting up a local Monero stagenet on Linux can be found
-[here](https://github.com/tari-project/tari/blob/development/applications/tari_merge_mining_proxy/monero_stagenet_setup.md)._
+[here](https://github.com/tari-project/tari/blob/development/applications/minotari_merge_mining_proxy/monero_stagenet_setup.md)._
 
 ##### XMRig configuration
 
@@ -854,7 +854,7 @@ Tor and the required Minotari applications must be started, preferably in this o
 - Tari Merge Mining Proxy:
   - Linux/OSX: As per [Runtime links](#runtime-links).
   - Windows: As per [Runtime links](#runtime-links) or `Start Merge Mining Proxy` menu item
-    or `start_tari_merge_mining_proxy` shortcut in the Tari installation folder.
+    or `start_minotari_merge_mining_proxy` shortcut in the Tari installation folder.
 
 In addition, select one of the merge mining options as outlined in solo or pool mining in the next paragraphs.
 

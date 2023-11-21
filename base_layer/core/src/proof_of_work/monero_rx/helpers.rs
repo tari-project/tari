@@ -388,6 +388,7 @@ mod test {
             nonce: 0,
             pow: ProofOfWork::default(),
             validator_node_mr: FixedHash::zero(),
+            validator_node_size: 0,
         };
         let hash = block_header.merge_mining_hash();
         insert_merge_mining_tag_into_block(&mut block, hash).unwrap();
@@ -444,6 +445,7 @@ mod test {
             nonce: 0,
             pow: ProofOfWork::default(),
             validator_node_mr: FixedHash::zero(),
+            validator_node_size: 0,
         };
         let hash = block_header.merge_mining_hash();
         insert_merge_mining_tag_into_block(&mut block, hash).unwrap();
@@ -496,6 +498,7 @@ mod test {
             nonce: 0,
             pow: ProofOfWork::default(),
             validator_node_mr: FixedHash::zero(),
+            validator_node_size: 0,
         };
         let count = 1 + (u16::try_from(block.tx_hashes.len()).unwrap());
         let mut hashes = Vec::with_capacity(count as usize);
@@ -547,6 +550,7 @@ mod test {
             nonce: 0,
             pow: ProofOfWork::default(),
             validator_node_mr: FixedHash::zero(),
+            validator_node_size: 0,
         };
         let hash = Hash::null();
         insert_merge_mining_tag_into_block(&mut block, hash).unwrap();
@@ -602,6 +606,7 @@ mod test {
             nonce: 0,
             pow: ProofOfWork::default(),
             validator_node_mr: FixedHash::zero(),
+            validator_node_size: 0,
         };
         let hash = block_header.merge_mining_hash();
         insert_merge_mining_tag_into_block(&mut block, hash).unwrap();
@@ -678,6 +683,7 @@ mod test {
             nonce: 0,
             pow: ProofOfWork::default(),
             validator_node_mr: FixedHash::zero(),
+            validator_node_size: 2,
         };
 
         // Let us manipulate the extra field to make it invalid
@@ -736,6 +742,7 @@ mod test {
             nonce: 0,
             pow: ProofOfWork::default(),
             validator_node_mr: FixedHash::zero(),
+            validator_node_size: 0,
         };
         let hash = block_header.merge_mining_hash();
         insert_merge_mining_tag_into_block(&mut block, hash).unwrap();
@@ -787,6 +794,7 @@ mod test {
             nonce: 0,
             pow: ProofOfWork::default(),
             validator_node_mr: FixedHash::zero(),
+            validator_node_size: 0,
         };
         let monero_data = MoneroPowData {
             header: Default::default(),
@@ -829,6 +837,7 @@ mod test {
             nonce: 0,
             pow: ProofOfWork::default(),
             validator_node_mr: FixedHash::zero(),
+            validator_node_size: 0,
         };
         let hash = block_header.merge_mining_hash();
         insert_merge_mining_tag_into_block(&mut block, hash).unwrap();

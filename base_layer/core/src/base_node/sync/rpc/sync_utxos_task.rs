@@ -31,8 +31,9 @@ use tari_comms::{
 use tari_utilities::hex::Hex;
 use tokio::{sync::mpsc, task};
 
+#[cfg(feature = "metrics")]
+use crate::base_node::metrics;
 use crate::{
-    base_node::metrics,
     blocks::BlockHeader,
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     proto::base_node::{SyncUtxosRequest, SyncUtxosResponse},
@@ -106,6 +107,7 @@ where B: BlockchainBackend + 'static
                 target: LOG_TARGET,
                 "UTXO stream completed for peer '{}'", self.peer_node_id
             );
+            #[cfg(feature = "metrics")]
             metrics::active_sync_peers().dec();
         });
 

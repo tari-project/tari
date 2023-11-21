@@ -143,7 +143,7 @@ pub enum Opcode {
     /// if there is not a valid integer value on top of the stack. Fails with `StackUnderflow` if the stack is empty.
     /// Fails with `VerifyFailed` if the block height < `height`.
     CompareHeightVerify,
-    /// Pops the top of the stack as `height`, then pushes the value of (`height` - the current height) to the stack.
+    /// Pops the top of the stack as `height`, then pushes the value of (the current height - `height`) to the stack.
     /// In other words, this opcode replaces the top of the stack with the difference between `height` and the
     /// current height. Fails with `InvalidInput` if there is not a valid integer value on top of the stack. Fails
     /// with `StackUnderflow` if the stack is empty.
