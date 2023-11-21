@@ -1,4 +1,4 @@
--- Any old 'outputs' will not be valid due to the removal of 'coinbase_block_height' and 'coinbase_extra',
+-- Any old 'outputs' will not be valid due to the removal of 'coinbase_block_height',
 -- so we drop and recreate the table.
 
 DROP TABLE outputs;

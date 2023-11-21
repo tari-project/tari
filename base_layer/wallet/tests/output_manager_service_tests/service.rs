@@ -2095,7 +2095,7 @@ async fn test_get_status_by_tx_id() {
 
     let output_statuses_by_tx_id = oms
         .output_manager_handle
-        .get_output_statuses_by_tx_id(TxId::from(1u64))
+        .get_output_statuses_for_tx_id(TxId::from(1u64))
         .await
         .unwrap();
 

@@ -68,7 +68,7 @@ pub struct MergeMiningProxyConfig {
     pub coinbase_extra: String,
     /// Selected network
     pub network: Network,
-    /// The Tari wallet address where the mining funds will be sent to
+    /// The Tari wallet address (valid address in hex) where the mining funds will be sent to - must be assigned
     pub wallet_payment_address: String,
     /// Stealth payment yes or no
     pub stealth_payment: bool,

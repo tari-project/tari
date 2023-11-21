@@ -764,7 +764,7 @@ impl OutputManagerHandle {
         }
     }
 
-    pub async fn get_output_statuses_by_tx_id(
+    pub async fn get_output_statuses_for_tx_id(
         &mut self,
         tx_id: TxId,
     ) -> Result<OutputStatusesByTxId, OutputManagerError> {

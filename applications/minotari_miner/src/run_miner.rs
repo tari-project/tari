@@ -82,21 +82,27 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
         .await
         .map_err(|err| ExitError::new(ExitCode::KeyManagerServiceError, err.to_string()))?;
     let wallet_payment_address = TariAddress::from_str(&config.wallet_payment_address)
-        .map_err(|err| ExitError::new(ExitCode::ConversionError, err.to_string()))?;
+        .map_err(|err| ExitError::new(ExitCode::WalletPaymentAddress, err.to_string()))?;
     debug!(target: LOG_TARGET_FILE, "wallet_payment_address: {}", wallet_payment_address);
     if wallet_payment_address == TariAddress::default() {
         return Err(ExitError::new(
-            ExitCode::PaymentWalletAddressMissing,
-            "Has default value".to_string(),
+            ExitCode::WalletPaymentAddress,
+            "May not have the default value".to_string(),
+        ));
+    }
+    if wallet_payment_address.network() != config.network {
+        return Err(ExitError::new(
+            ExitCode::WalletPaymentAddress,
+            "Wallet address network does not match miner network".to_string(),
         ));
     }
     let consensus_manager = ConsensusManager::builder(config.network)
         .build()
         .map_err(|err| ExitError::new(ExitCode::ConsensusManagerBuilderError, err.to_string()))?;
 
-    if !config.mining_wallet_address.is_empty() && !config.mining_pool_address.is_empty() {
-        let url = config.mining_pool_address.clone();
-        let mut miner_address = config.mining_wallet_address.clone();
+    if !config.stratum_mining_wallet_address.is_empty() && !config.stratum_mining_pool_address.is_empty() {
+        let url = config.stratum_mining_pool_address.clone();
+        let mut miner_address = config.stratum_mining_wallet_address.clone();
         let _ = RistrettoPublicKey::from_hex(&miner_address).map_err(|_| {
             ExitError::new(
                 ExitCode::ConfigError,

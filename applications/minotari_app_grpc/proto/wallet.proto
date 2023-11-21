@@ -211,16 +211,16 @@ enum TransactionStatus {
     TRANSACTION_STATUS_COINBASE = 5;
     // This transaction is mined and confirmed at the current base node's height
     TRANSACTION_STATUS_MINED_CONFIRMED = 6;
-    // The transaction was not found by the wallet its in transaction database
-    TRANSACTION_STATUS_NOT_FOUND = 7;
     // The transaction was rejected by the mempool
-    TRANSACTION_STATUS_REJECTED = 8;
+    TRANSACTION_STATUS_REJECTED = 7;
     // This is faux transaction mainly for one-sided transaction outputs or wallet recovery outputs have been found
-    TRANSACTION_STATUS_FAUX_UNCONFIRMED = 9;
+    TRANSACTION_STATUS_FAUX_UNCONFIRMED = 8;
     // All Imported and FauxUnconfirmed transactions will end up with this status when the outputs have been confirmed
-    TRANSACTION_STATUS_FAUX_CONFIRMED = 10;
+    TRANSACTION_STATUS_FAUX_CONFIRMED = 9;
     // This transaction is still being queued for sending
-    TRANSACTION_STATUS_QUEUED = 11;
+    TRANSACTION_STATUS_QUEUED = 10;
+    // The transaction was not found by the wallet its in transaction database
+    TRANSACTION_STATUS_NOT_FOUND = 11;
 }
 
 message GetCompletedTransactionsRequest { }

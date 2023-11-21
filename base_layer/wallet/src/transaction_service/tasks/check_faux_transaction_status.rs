@@ -97,83 +97,82 @@ pub async fn check_faux_transactions<TBackend: 'static + TransactionBackend>(
         all_faux_transactions.len()
     );
     for tx in all_faux_transactions {
-        let output_statuses_by_tx_id = match output_manager.get_output_statuses_by_tx_id(tx.tx_id).await {
+        let output_statuses_for_tx_id = match output_manager.get_output_statuses_for_tx_id(tx.tx_id).await {
             Ok(s) => s,
             Err(e) => {
                 error!(target: LOG_TARGET, "Problem retrieving output statuses: {}", e);
                 return;
             },
         };
-        if !output_statuses_by_tx_id
+        let some_outputs_spent = !output_statuses_for_tx_id
             .statuses
             .iter()
-            .any(|s| s != &OutputStatus::Unspent)
-        {
-            let mined_height = if let Some(height) = output_statuses_by_tx_id.mined_height {
-                height
-            } else {
-                tip_height
-            };
-            let mined_in_block: BlockHash = if let Some(hash) = output_statuses_by_tx_id.block_hash {
-                hash
-            } else {
-                FixedHash::zero()
-            };
-            let is_valid = tip_height >= mined_height;
-            let was_confirmed = tx.status == TransactionStatus::FauxConfirmed;
-            let is_confirmed = tip_height.saturating_sub(mined_height) >=
-                TransactionServiceConfig::default().num_confirmations_required;
-            let num_confirmations = tip_height - mined_height;
-            debug!(
+            .any(|s| s != &OutputStatus::Unspent);
+        let mined_height = if let Some(height) = output_statuses_for_tx_id.mined_height {
+            height
+        } else {
+            tip_height
+        };
+        let mined_in_block: BlockHash = if let Some(hash) = output_statuses_for_tx_id.block_hash {
+            hash
+        } else {
+            FixedHash::zero()
+        };
+        let is_valid = tip_height >= mined_height;
+        let was_confirmed = tx.status == TransactionStatus::FauxConfirmed;
+        let is_confirmed =
+            tip_height.saturating_sub(mined_height) >= TransactionServiceConfig::default().num_confirmations_required;
+        let num_confirmations = tip_height - mined_height;
+        debug!(
+            target: LOG_TARGET,
+            "Updating faux transaction: TxId({}), mined_height({}), is_confirmed({}), num_confirmations({}), \
+             no_outputs_spent({}), is_valid({})",
+            tx.tx_id,
+            mined_height,
+            is_confirmed,
+            num_confirmations,
+            some_outputs_spent,
+            is_valid,
+        );
+        let result = db.set_transaction_mined_height(
+            tx.tx_id,
+            mined_height,
+            mined_in_block,
+            tx.mined_timestamp
+                .map_or(0, |mined_timestamp| mined_timestamp.timestamp() as u64),
+            num_confirmations,
+            is_confirmed,
+            true,
+        );
+        if let Err(e) = result {
+            error!(
                 target: LOG_TARGET,
-                "Updating faux transaction: TxId({}), mined_height({}), is_confirmed({}), num_confirmations({}), \
-                 is_valid({})",
-                tx.tx_id,
-                mined_height,
-                is_confirmed,
-                num_confirmations,
-                is_valid,
+                "Error setting faux transaction to mined confirmed: {}", e
             );
-            let result = db.set_transaction_mined_height(
-                tx.tx_id,
-                mined_height,
-                mined_in_block,
-                tx.mined_timestamp
-                    .map_or(0, |mined_timestamp| mined_timestamp.timestamp() as u64),
-                num_confirmations,
-                is_confirmed,
-                true,
-            );
-            if let Err(e) = result {
-                error!(
-                    target: LOG_TARGET,
-                    "Error setting faux transaction to mined confirmed: {}", e
-                );
-            } else {
-                // Only send an event if the transaction was not previously confirmed OR was previously confirmed and is
-                // now not confirmed (i.e. confirmation changed)
-                if !(was_confirmed && is_confirmed) {
-                    let transaction_event = if is_confirmed {
-                        TransactionEvent::FauxTransactionConfirmed {
-                            tx_id: tx.tx_id,
-                            is_valid,
-                        }
-                    } else {
-                        TransactionEvent::FauxTransactionUnconfirmed {
-                            tx_id: tx.tx_id,
-                            num_confirmations: 0,
-                            is_valid,
-                        }
-                    };
-                    let _size = event_publisher.send(Arc::new(transaction_event)).map_err(|e| {
-                        trace!(
-                            target: LOG_TARGET,
-                            "Error sending event, usually because there are no subscribers: {:?}",
-                            e
-                        );
+        } else {
+            // Only send an event if the transaction was not previously confirmed OR was previously confirmed and is
+            // now not confirmed (i.e. confirmation changed)
+            if !(was_confirmed && is_confirmed) {
+                let transaction_event = if is_confirmed {
+                    TransactionEvent::FauxTransactionConfirmed {
+                        tx_id: tx.tx_id,
+                        is_valid,
+                    }
+                } else {
+                    TransactionEvent::FauxTransactionUnconfirmed {
+                        tx_id: tx.tx_id,
+                        num_confirmations: 0,
+                        is_valid,
+                    }
+                };
+                let _size = event_publisher.send(Arc::new(transaction_event)).map_err(|e| {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Error sending event, usually because there are no subscribers: {:?}",
                         e
-                    });
-                }
+                    );
+                    e
+                });
             }
         }
     }

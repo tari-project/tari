@@ -105,7 +105,7 @@ pub enum MmProxyError {
     #[error("Consensus build error: {0}")]
     ConsensusBuilderError(#[from] ConsensusBuilderError),
     #[error("Could not convert data:{0}")]
-    PaymentWalletAddressMissing(String),
+    WalletPaymentAddress(String),
 }
 
 impl From<tonic::Status> for MmProxyError {

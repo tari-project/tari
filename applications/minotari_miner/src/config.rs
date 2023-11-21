@@ -60,9 +60,9 @@ pub struct MinerConfig {
     /// `mine_on_tip_only` is set to true
     pub validate_tip_timeout_sec: u64,
     /// Stratum Mode configuration - mining pool address
-    pub mining_pool_address: String,
+    pub stratum_mining_pool_address: String,
     /// Stratum Mode configuration - mining wallet address/public key
-    pub mining_wallet_address: String,
+    pub stratum_mining_wallet_address: String,
     /// Stratum Mode configuration - mining worker name
     pub mining_worker_name: String,
     /// The extra data to store in the coinbase, usually some data about the mining pool.
@@ -73,7 +73,7 @@ pub struct MinerConfig {
     pub network: Network,
     /// Base node reconnect timeout after any gRPC or miner error
     pub wait_timeout_on_error: u64,
-    /// The Tari wallet address where the mining funds will be sent to
+    /// The Tari wallet address (valid address in hex) where the mining funds will be sent to - must be assigned
     pub wallet_payment_address: String,
     /// Stealth payment yes or no
     pub stealth_payment: bool,
@@ -102,8 +102,8 @@ impl Default for MinerConfig {
             mine_on_tip_only: true,
             proof_of_work_algo: ProofOfWork::Sha3x,
             validate_tip_timeout_sec: 30,
-            mining_pool_address: String::new(),
-            mining_wallet_address: String::new(),
+            stratum_mining_pool_address: String::new(),
+            stratum_mining_wallet_address: String::new(),
             mining_worker_name: String::new(),
             coinbase_extra: "minotari_miner".to_string(),
             network: Default::default(),

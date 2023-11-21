@@ -521,11 +521,11 @@ async fn wallet_has_at_least_num_txs(world: &mut TariWorld, wallet: String, num_
         "TRANSACTION_STATUS_PENDING" => 4,
         "TRANSACTION_STATUS_COINBASE" => 5,
         "TRANSACTION_STATUS_MINED_CONFIRMED" => 6,
-        "TRANSACTION_STATUS_NOT_FOUND" => 7,
-        "TRANSACTION_STATUS_REJECTED" => 8,
-        "TRANSACTION_STATUS_FAUX_UNCONFIRMED" => 9,
-        "TRANSACTION_STATUS_FAUX_CONFIRMED" => 10,
-        "TRANSACTION_STATUS_QUEUED" => 11,
+        "TRANSACTION_STATUS_REJECTED" => 7,
+        "TRANSACTION_STATUS_FAUX_UNCONFIRMED" => 8,
+        "TRANSACTION_STATUS_FAUX_CONFIRMED" => 9,
+        "TRANSACTION_STATUS_QUEUED" => 10,
+        "TRANSACTION_STATUS_NOT_FOUND" => 11,
         _ => panic!("Invalid transaction status {}", transaction_status),
     };
 
