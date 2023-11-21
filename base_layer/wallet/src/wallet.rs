@@ -108,7 +108,11 @@ const LOG_TARGET: &str = "wallet";
 const WALLET_BUFFER_MIN_SIZE: usize = 300;
 
 // Domain separator for signing arbitrary messages with a wallet secret key
-hash_domain!(WalletMessageSigningDomain, "com.tari.base_layer.wallet.message_signing");
+hash_domain!(
+    WalletMessageSigningDomain,
+    "com.tari.base_layer.wallet.message_signing",
+    1
+);
 
 /// A structure containing the config and services that a Wallet application will require. This struct will start up all
 /// the services and provide the APIs that applications will use to interact with the services
