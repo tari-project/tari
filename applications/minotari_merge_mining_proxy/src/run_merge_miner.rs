@@ -32,6 +32,7 @@ use tari_common::{
     load_configuration,
     DefaultConfigLoader,
 };
+use tari_common_types::tari_address::TariAddress;
 use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;
 use tari_core::proof_of_work::randomx_factory::RandomXFactory;
 use tokio::time::Duration;
@@ -54,6 +55,19 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
     let cfg = load_configuration(&config_path, true, &cli)?;
     let mut config = MergeMiningProxyConfig::load_from(&cfg)?;
     setup_grpc_config(&mut config);
+
+    let wallet_payment_address = TariAddress::from_str(&config.wallet_payment_address)
+        .map_err(|err| MmProxyError::WalletPaymentAddress("'wallet_payment_address' ".to_owned() + &err.to_string()))?;
+    if wallet_payment_address == TariAddress::default() {
+        return Err(anyhow::Error::msg(
+            "'wallet_payment_address' may not have the default value",
+        ));
+    }
+    if wallet_payment_address.network() != config.network {
+        return Err(anyhow::Error::msg(
+            "'wallet_payment_address' network does not match miner network".to_string(),
+        ));
+    }
 
     info!(target: LOG_TARGET, "Configuration: {:?}", config);
     let client = reqwest::Client::builder()

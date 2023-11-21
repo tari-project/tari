@@ -81,19 +81,23 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
         .import_key(wallet_private_key)
         .await
         .map_err(|err| ExitError::new(ExitCode::KeyManagerServiceError, err.to_string()))?;
-    let wallet_payment_address = TariAddress::from_str(&config.wallet_payment_address)
-        .map_err(|err| ExitError::new(ExitCode::WalletPaymentAddress, err.to_string()))?;
+    let wallet_payment_address = TariAddress::from_str(&config.wallet_payment_address).map_err(|err| {
+        ExitError::new(
+            ExitCode::WalletPaymentAddress,
+            "'wallet_payment_address' ".to_owned() + &err.to_string(),
+        )
+    })?;
     debug!(target: LOG_TARGET_FILE, "wallet_payment_address: {}", wallet_payment_address);
     if wallet_payment_address == TariAddress::default() {
         return Err(ExitError::new(
             ExitCode::WalletPaymentAddress,
-            "May not have the default value".to_string(),
+            "'wallet_payment_address' may not have the default value".to_string(),
         ));
     }
     if wallet_payment_address.network() != config.network {
         return Err(ExitError::new(
             ExitCode::WalletPaymentAddress,
-            "Wallet address network does not match miner network".to_string(),
+            "'wallet_payment_address' network does not match miner network".to_string(),
         ));
     }
     let consensus_manager = ConsensusManager::builder(config.network)
