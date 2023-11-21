@@ -563,8 +563,13 @@ where
                 .await?
                 .into_iter()
                 .map(|ro| {
+                    let message = if ro.output.features.is_coinbase() {
+                        "**COINBASE** ".to_owned() + &self.resources.recovery_message
+                    } else {
+                        self.resources.recovery_message.clone()
+                    };
                     let status = ImportStatus::Imported;
-                    (ro.output, self.resources.recovery_message.clone(), status, ro.tx_id)
+                    (ro.output, message, status, ro.tx_id)
                 })
                 .collect(),
         );
@@ -577,12 +582,12 @@ where
                 .await?
                 .into_iter()
                 .map(|ro| {
-                    (
-                        ro.output,
-                        self.resources.one_sided_payment_message.clone(),
-                        ImportStatus::FauxUnconfirmed,
-                        ro.tx_id,
-                    )
+                    let message = if ro.output.features.is_coinbase() {
+                        "**COINBASE** ".to_owned() + &self.resources.one_sided_payment_message
+                    } else {
+                        self.resources.one_sided_payment_message.clone()
+                    };
+                    (ro.output, message, ImportStatus::FauxUnconfirmed, ro.tx_id)
                 })
                 .collect(),
         );
