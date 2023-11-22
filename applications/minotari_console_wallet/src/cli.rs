@@ -289,6 +289,7 @@ pub struct RegisterValidatorNodeArgs {
     #[clap(long, parse(try_from_str = parse_hex), required = true)]
     pub validator_node_signature: Vec<Vec<u8>>,
     pub validator_node_claim_public_key: UniPublicKey,
+    pub validator_maturity: Option<u64>,
     #[clap(short, long, default_value = "Registering VN")]
     pub message: String,
 }

@@ -60,7 +60,7 @@ impl AggregateBodyChainLinkedValidator {
     ) -> Result<AggregateBody, ValidationError> {
         let constants = self.consensus_manager.consensus_constants(height);
 
-        self.validate_consensus(body, db, constants)?;
+        self.validate_consensus(body, db, constants, height)?;
         let body = self.validate_input_and_maturity(body, db, constants, height)?;
 
         Ok(body)
@@ -71,11 +71,12 @@ impl AggregateBodyChainLinkedValidator {
         body: &AggregateBody,
         db: &B,
         constants: &ConsensusConstants,
+        height: u64,
     ) -> Result<(), ValidationError> {
         validate_excess_sig_not_in_db(body, db)?;
 
         for output in body.outputs() {
-            check_validator_node_registration_utxo(constants, output)?;
+            check_validator_node_registration_utxo(constants, output, height)?;
         }
 
         Ok(())
@@ -96,7 +97,7 @@ impl AggregateBodyChainLinkedValidator {
 
         validate_input_maturity(&body, height)?;
         check_inputs_are_utxos(db, &body)?;
-        check_outputs(db, constants, &body)?;
+        check_outputs(db, constants, &body, height)?;
         verify_no_duplicated_inputs_outputs(&body)?;
         check_total_burned(&body)?;
         verify_timelocks(&body, height)?;
@@ -169,6 +170,7 @@ fn validate_excess_sig_not_in_db<B: BlockchainBackend>(body: &AggregateBody, db:
 fn check_validator_node_registration_utxo(
     consensus_constants: &ConsensusConstants,
     utxo: &TransactionOutput,
+    height: u64,
 ) -> Result<(), ValidationError> {
     if let Some(reg) = utxo.features.validator_node_registration() {
         if utxo.minimum_value_promise < consensus_constants.validator_node_registration_min_deposit_amount() {
@@ -177,9 +179,9 @@ fn check_validator_node_registration_utxo(
                 actual: utxo.minimum_value_promise,
             });
         }
-        if utxo.features.maturity < consensus_constants.validator_node_registration_min_lock_height() {
+        if utxo.features.maturity < consensus_constants.validator_node_registration_min_lock_height(height) {
             return Err(ValidationError::ValidatorNodeRegistrationMinLockHeight {
-                min: consensus_constants.validator_node_registration_min_lock_height(),
+                min: consensus_constants.validator_node_registration_min_lock_height(height),
                 actual: utxo.features.maturity,
             });
         }
@@ -234,12 +236,13 @@ pub fn check_outputs<B: BlockchainBackend>(
     db: &B,
     constants: &ConsensusConstants,
     body: &AggregateBody,
+    height: u64,
 ) -> Result<(), ValidationError> {
     let max_script_size = constants.max_script_byte_size();
     for output in body.outputs() {
         check_tari_script_byte_size(&output.script, max_script_size)?;
         check_not_duplicate_txo(db, output)?;
-        check_validator_node_registration_utxo(constants, output)?;
+        check_validator_node_registration_utxo(constants, output, height)?;
     }
     Ok(())
 }
