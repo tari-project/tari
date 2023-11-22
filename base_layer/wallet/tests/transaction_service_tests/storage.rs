@@ -516,14 +516,10 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         panic!("Should have found cancelled outbound tx");
     }
 
+    // Transactions with empty kernel signatures should not be returned with this method, as those will be considered
+    // as faux transactions (imported or one-sided)
     let unmined_txs = db.fetch_unconfirmed_transactions_info().unwrap();
-
-    assert_eq!(unmined_txs.len(), 4);
-
-    db.set_transaction_as_unmined(completed_txs[0].tx_id).unwrap();
-
-    let unmined_txs = db.fetch_unconfirmed_transactions_info().unwrap();
-    assert_eq!(unmined_txs.len(), 5);
+    assert_eq!(unmined_txs.len(), 0);
 }
 
 #[tokio::test]

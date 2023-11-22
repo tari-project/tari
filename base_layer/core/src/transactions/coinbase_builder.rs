@@ -27,7 +27,7 @@ use tari_common_types::{
     tari_address::TariAddress,
     types::{Commitment, PrivateKey, PublicKey},
 };
-use tari_crypto::keys::{PublicKey as PK, SecretKey};
+use tari_crypto::keys::PublicKey as PK;
 use tari_key_manager::key_manager_service::{KeyManagerInterface, KeyManagerServiceError};
 use tari_script::{one_sided_payment_script, stealth_payment_script, ExecutionStack, TariScript};
 use tari_utilities::ByteArrayError;
@@ -382,9 +382,8 @@ pub async fn generate_coinbase(
     stealth_payment: bool,
     consensus_constants: &ConsensusConstants,
 ) -> Result<(TransactionOutput, TransactionKernel), CoinbaseBuildError> {
-    // The random script key is to ensure that it is not known to the caller, and it is also not used
-    // in the Diffie-Hellmann protocol.
-    let script_key_id = key_manager.import_key(PrivateKey::random(&mut OsRng)).await?;
+    // The script key is not used in the Diffie-Hellmann protocol, so we assign default.
+    let script_key_id = TariKeyId::default();
     let (_, coinbase_output, coinbase_kernel, _) = generate_coinbase_with_wallet_output(
         fee,
         reward,
