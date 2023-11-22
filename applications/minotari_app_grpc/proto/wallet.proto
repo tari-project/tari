@@ -1,24 +1,30 @@
 // Copyright 2020. The Tari Project
 //
-// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
-// following conditions are met:
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
-// disclaimer.
+// 1. Redistributions of source code must retain the above copyright notice,
+// this list of conditions and the following disclaimer.
 //
-// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
-// following disclaimer in the documentation and/or other materials provided with the distribution.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+// this list of conditions and the following disclaimer in the documentation
+// and/or other materials provided with the distribution.
 //
-// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
-// products derived from this software without specific prior written permission.
+// 3. Neither the name of the copyright holder nor the names of its contributors
+// may be used to endorse or promote products derived from this software without
+// specific prior written permission.
 //
-// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
-// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
-// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+// ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+// LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+// CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+// SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+// INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+// CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+// ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+// POSSIBILITY OF SUCH DAMAGE.
 syntax = "proto3";
 
 package tari.rpc;
@@ -32,58 +38,68 @@ import "network.proto";
 // The gRPC interface for interacting with the wallet.
 service Wallet {
   // This returns the current version
-  rpc GetVersion (GetVersionRequest) returns (GetVersionResponse);
+  rpc GetVersion(GetVersionRequest) returns (GetVersionResponse);
   // This checks if the wallet is healthy and running
-  rpc CheckConnectivity(GetConnectivityRequest) returns (CheckConnectivityResponse);
+  rpc CheckConnectivity(GetConnectivityRequest)
+      returns (CheckConnectivityResponse);
   // Check for new updates
-  rpc CheckForUpdates (Empty) returns (SoftwareUpdate);
+  rpc CheckForUpdates(Empty) returns (SoftwareUpdate);
   // This returns the identity information
-  rpc Identify (GetIdentityRequest) returns (GetIdentityResponse);
+  rpc Identify(GetIdentityRequest) returns (GetIdentityResponse);
   // This returns the tari address
-  rpc GetAddress (Empty) returns (GetAddressResponse);
+  rpc GetAddress(Empty) returns (GetAddressResponse);
   // Send Minotari to a number of recipients
-  rpc Transfer (TransferRequest)  returns (TransferResponse);
+  rpc Transfer(TransferRequest) returns (TransferResponse);
   // Returns the transaction details for the given transaction IDs
-  rpc GetTransactionInfo (GetTransactionInfoRequest) returns (GetTransactionInfoResponse);
+  rpc GetTransactionInfo(GetTransactionInfoRequest)
+      returns (GetTransactionInfoResponse);
   // Returns all transactions' details
-  rpc GetCompletedTransactions (GetCompletedTransactionsRequest) returns (stream GetCompletedTransactionsResponse);
+  rpc GetCompletedTransactions(GetCompletedTransactionsRequest)
+      returns (stream GetCompletedTransactionsResponse);
   // Returns the balance
-  rpc GetBalance (GetBalanceRequest) returns (GetBalanceResponse);
+  rpc GetBalance(GetBalanceRequest) returns (GetBalanceResponse);
   // Returns unspent amounts
-  rpc GetUnspentAmounts (Empty) returns (GetUnspentAmountsResponse);
+  rpc GetUnspentAmounts(Empty) returns (GetUnspentAmountsResponse);
   // Request the wallet perform a coinsplit
-  rpc CoinSplit (CoinSplitRequest) returns (CoinSplitResponse);
+  rpc CoinSplit(CoinSplitRequest) returns (CoinSplitResponse);
   // Import Utxo to wallet
-  rpc ImportUtxos (ImportUtxosRequest) returns (ImportUtxosResponse);
+  rpc ImportUtxos(ImportUtxosRequest) returns (ImportUtxosResponse);
   // Get Base Node network connectivity status
   rpc GetNetworkStatus(Empty) returns (NetworkStatusResponse);
   // List currently connected peers
   rpc ListConnectedPeers(Empty) returns (ListConnectedPeersResponse);
   // Cancel pending transaction
-  rpc CancelTransaction (CancelTransactionRequest) returns (CancelTransactionResponse);
+  rpc CancelTransaction(CancelTransactionRequest)
+      returns (CancelTransactionResponse);
   // Will trigger a complete revalidation of all wallet outputs.
-  rpc RevalidateAllTransactions (RevalidateRequest) returns (RevalidateResponse);
+  rpc RevalidateAllTransactions(RevalidateRequest) returns (RevalidateResponse);
   // Will trigger a validation of all wallet outputs.
-  rpc ValidateAllTransactions (ValidateRequest) returns (ValidateResponse);
+  rpc ValidateAllTransactions(ValidateRequest) returns (ValidateResponse);
   // This will send a XTR SHA Atomic swap transaction
-  rpc SendShaAtomicSwapTransaction(SendShaAtomicSwapRequest) returns (SendShaAtomicSwapResponse);
+  rpc SendShaAtomicSwapTransaction(SendShaAtomicSwapRequest)
+      returns (SendShaAtomicSwapResponse);
   // This will create a burn transaction
-  rpc CreateBurnTransaction(CreateBurnTransactionRequest) returns (CreateBurnTransactionResponse);
+  rpc CreateBurnTransaction(CreateBurnTransactionRequest)
+      returns (CreateBurnTransactionResponse);
   // This will claim a XTR SHA Atomic swap transaction
-  rpc ClaimShaAtomicSwapTransaction(ClaimShaAtomicSwapRequest) returns (ClaimShaAtomicSwapResponse);
+  rpc ClaimShaAtomicSwapTransaction(ClaimShaAtomicSwapRequest)
+      returns (ClaimShaAtomicSwapResponse);
   // This will claim a HTLC refund transaction
-  rpc ClaimHtlcRefundTransaction(ClaimHtlcRefundRequest) returns (ClaimHtlcRefundResponse);
+  rpc ClaimHtlcRefundTransaction(ClaimHtlcRefundRequest)
+      returns (ClaimHtlcRefundResponse);
   // Creates a transaction with a template registration output
-  rpc CreateTemplateRegistration(CreateTemplateRegistrationRequest) returns (CreateTemplateRegistrationResponse);
+  rpc CreateTemplateRegistration(CreateTemplateRegistrationRequest)
+      returns (CreateTemplateRegistrationResponse);
   rpc SetBaseNode(SetBaseNodeRequest) returns (SetBaseNodeResponse);
 
-  rpc StreamTransactionEvents(TransactionEventRequest) returns (stream TransactionEventResponse);
+  rpc StreamTransactionEvents(TransactionEventRequest)
+      returns (stream TransactionEventResponse);
 
-  rpc RegisterValidatorNode(RegisterValidatorNodeRequest) returns (RegisterValidatorNodeResponse);
+  rpc RegisterValidatorNode(RegisterValidatorNodeRequest)
+      returns (RegisterValidatorNodeResponse);
 }
 
 message GetVersionRequest {}
-
 
 message GetVersionResponse {
   string version = 1;
@@ -101,14 +117,13 @@ message SendShaAtomicSwapRequest {
   PaymentRecipient recipient = 1;
 }
 
-message CreateBurnTransactionRequest{
+message CreateBurnTransactionRequest {
   uint64 amount = 1;
   uint64 fee_per_gram = 2;
   string message = 3;
   bytes claim_public_key = 4;
   bytes sidechain_deployment_key = 5;
 }
-
 
 message PaymentRecipient {
   string address = 1;
@@ -135,7 +150,7 @@ message SendShaAtomicSwapResponse {
   string failure_message = 5;
 }
 
-message CreateBurnTransactionResponse{
+message CreateBurnTransactionResponse {
   uint64 transaction_id = 1;
   bool is_success = 2;
   string failure_message = 3;
@@ -152,7 +167,7 @@ message TransferResult {
   string failure_message = 4;
 }
 
-message ClaimShaAtomicSwapRequest{
+message ClaimShaAtomicSwapRequest {
   string output = 1;
   string pre_image = 2;
   uint64 fee_per_gram = 3;
@@ -162,7 +177,7 @@ message ClaimShaAtomicSwapResponse {
   TransferResult results = 1;
 }
 
-message ClaimHtlcRefundRequest{
+message ClaimHtlcRefundRequest {
   string output_hash = 1;
   uint64 fee_per_gram = 2;
 }
@@ -200,9 +215,11 @@ enum TransactionDirection {
 }
 
 enum TransactionStatus {
-  // This transaction has been completed between the parties but has not been broadcast to the base layer network.
+  // This transaction has been completed between the parties but has not been
+  // broadcast to the base layer network.
   TRANSACTION_STATUS_COMPLETED = 0;
-  // This transaction has been broadcast to the base layer network and is currently in one or more base node mempools.
+  // This transaction has been broadcast to the base layer network and is
+  // currently in one or more base node mempools.
   TRANSACTION_STATUS_BROADCAST = 1;
   // This transaction has been mined and included in a block.
   TRANSACTION_STATUS_MINED_UNCONFIRMED = 2;
@@ -216,9 +233,11 @@ enum TransactionStatus {
   TRANSACTION_STATUS_MINED_CONFIRMED = 6;
   // The transaction was rejected by the mempool
   TRANSACTION_STATUS_REJECTED = 7;
-  // This is faux transaction mainly for one-sided transaction outputs or wallet recovery outputs have been found
+  // This is faux transaction mainly for one-sided transaction outputs or wallet
+  // recovery outputs have been found
   TRANSACTION_STATUS_ONE_SIDED_UNCONFIRMED = 8;
-  // All Imported and FauxUnconfirmed transactions will end up with this status when the outputs have been confirmed
+  // All Imported and FauxUnconfirmed transactions will end up with this status
+  // when the outputs have been confirmed
   TRANSACTION_STATUS_ONE_SIDED_CONFIRMED = 9;
   // This transaction is still being queued for sending
   TRANSACTION_STATUS_QUEUED = 10;
@@ -296,24 +315,24 @@ message CancelTransactionResponse {
   string failure_message = 2;
 }
 
-message RevalidateRequest{}
+message RevalidateRequest {}
 
-message RevalidateResponse{}
+message RevalidateResponse {}
 
-message ValidateRequest{}
+message ValidateRequest {}
 
-message ValidateResponse{}
+message ValidateResponse {}
 
 message SetBaseNodeRequest {
   string public_key_hex = 1;
   string net_address = 2;
 }
 
-message SetBaseNodeResponse{}
+message SetBaseNodeResponse {}
 
-message GetConnectivityRequest{}
+message GetConnectivityRequest {}
 
-message CheckConnectivityResponse{
+message CheckConnectivityResponse {
   enum OnlineStatus {
     Connecting = 0;
     Online = 1;
@@ -322,9 +341,7 @@ message CheckConnectivityResponse{
   OnlineStatus status = 1;
 }
 
-message TransactionEventRequest{
-
-}
+message TransactionEventRequest {}
 
 message TransactionEvent {
   string event = 1;
@@ -348,6 +365,7 @@ message RegisterValidatorNodeRequest {
   uint64 fee_per_gram = 4;
   string message = 5;
   bytes sidechain_deployment_key = 6;
+  uint64 validator_maturity = 7;
 }
 
 message RegisterValidatorNodeResponse {

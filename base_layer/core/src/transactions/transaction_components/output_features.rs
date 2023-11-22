@@ -158,6 +158,7 @@ impl OutputFeatures {
         claim_public_key: PublicKey,
         sidechain_id: Option<PublicKey>,
         sidechain_id_knowledge_proof: Option<Signature>,
+        maturity: u64,
     ) -> OutputFeatures {
         OutputFeatures {
             output_type: OutputType::ValidatorNodeRegistration,
@@ -169,6 +170,7 @@ impl OutputFeatures {
                     sidechain_id_knowledge_proof,
                 ),
             )),
+            maturity,
             ..Default::default()
         }
     }

@@ -211,6 +211,7 @@ pub async fn register_validator_node(
     validator_node_signature: Signature,
     validator_node_claim_public_key: PublicKey,
     sidechain_deployment_key: Option<PrivateKey>,
+    validator_maturity: Option<u64>,
     selection_criteria: UtxoSelectionCriteria,
     fee_per_gram: MicroMinotari,
     message: String,
@@ -222,6 +223,7 @@ pub async fn register_validator_node(
             validator_node_signature,
             validator_node_claim_public_key,
             sidechain_deployment_key,
+            validator_maturity,
             selection_criteria,
             fee_per_gram,
             message,
@@ -1037,6 +1039,7 @@ pub async fn command_runner(
                             &args.sidechain_deployment_key[0],
                         )?)
                     },
+                    args.validator_maturity,
                     UtxoSelectionCriteria::default(),
                     config.fee_per_gram * uT,
                     args.message,

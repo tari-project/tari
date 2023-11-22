@@ -685,6 +685,7 @@ where
                 validator_node_signature,
                 validator_node_claim_public_key,
                 sidechain_deployment_key,
+                validator_maturity,
                 selection_criteria,
                 fee_per_gram,
                 message,
@@ -696,6 +697,7 @@ where
                     validator_node_signature,
                     validator_node_claim_public_key,
                     sidechain_deployment_key,
+                    validator_maturity,
                     selection_criteria,
                     fee_per_gram,
                     message,
@@ -1778,6 +1780,7 @@ where
         validator_node_signature: Signature,
         validator_node_claim_public_key: PublicKey,
         sidechain_deployment_key: Option<PrivateKey>,
+        validator_maturity: Option<u64>,
         selection_criteria: UtxoSelectionCriteria,
         fee_per_gram: MicroMinotari,
         message: String,
@@ -1805,6 +1808,12 @@ where
             validator_node_claim_public_key,
             sidechain_id,
             sidechain_id_knowledge_proof,
+            validator_maturity.unwrap_or_else(|| {
+                let next_height = self.last_seen_tip_height.unwrap_or(0) + 1;
+                self.consensus_manager
+                    .consensus_constants(next_height)
+                    .validator_node_registration_min_lock_height(next_height)
+            }),
         );
         self.send_transaction(
             self.resources.wallet_identity.address.clone(),

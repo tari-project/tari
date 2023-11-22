@@ -1005,6 +1005,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map_err(|_| Status::invalid_argument("Validator node signature is malformed!"))?;
         let validator_node_claim_public_key = PublicKey::from_canonical_bytes(&request.validator_node_claim_public_key)
             .map_err(|_| Status::invalid_argument("Claim public key is malformed"))?;
+        let validator_maturity = if request.validator_maturity > 0 {
+            Some(request.validator_maturity)
+        } else {
+            None
+        };
 
         let sidechain_key = if request.sidechain_deployment_key.is_empty() {
             None
@@ -1027,6 +1032,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 validator_node_signature,
                 validator_node_claim_public_key,
                 sidechain_key,
+                validator_maturity,
                 UtxoSelectionCriteria::default(),
                 request.fee_per_gram.into(),
                 request.message,

@@ -117,8 +117,6 @@ pub struct ConsensusConstants {
     vn_validity_period_epochs: VnEpoch,
     /// The min amount of micro Minotari to deposit for a registration transaction to be allowed onto the blockchain
     vn_registration_min_deposit_amount: MicroMinotari,
-    /// The period that the registration funds are required to be locked up.
-    vn_registration_lock_height: u64,
     /// The period after which the VNs will be reshuffled.
     vn_registration_shuffle_interval: VnEpoch,
 }
@@ -346,8 +344,11 @@ impl ConsensusConstants {
         self.vn_registration_min_deposit_amount
     }
 
-    pub fn validator_node_registration_min_lock_height(&self) -> u64 {
-        self.vn_registration_lock_height
+    pub fn validator_node_registration_min_lock_height(&self, height: u64) -> u64 {
+        // This calculates the height of the block in which the VN is not valid anymore.
+        self.epoch_to_block_height(VnEpoch(
+            self.block_height_to_epoch(height).as_u64() + 1 + self.vn_validity_period_epochs.as_u64(),
+        ))
     }
 
     /// Returns the current epoch from the given height
@@ -405,8 +406,7 @@ impl ConsensusConstants {
             max_covenant_length: 100,
             vn_epoch_length: 10,
             vn_validity_period_epochs: VnEpoch(100),
-            vn_registration_min_deposit_amount: MicroMinotari(0),
-            vn_registration_lock_height: 0,
+            vn_registration_min_deposit_amount: MicroMinotari(1000000),
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 64,
         }];
@@ -471,7 +471,6 @@ impl ConsensusConstants {
             vn_epoch_length: 10,
             vn_validity_period_epochs: VnEpoch(3),
             vn_registration_min_deposit_amount: MicroMinotari(0),
-            vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 64,
         }];
@@ -527,7 +526,6 @@ impl ConsensusConstants {
             vn_epoch_length: 60,
             vn_validity_period_epochs: VnEpoch(100),
             vn_registration_min_deposit_amount: MicroMinotari(0),
-            vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 64,
         }];
@@ -583,7 +581,6 @@ impl ConsensusConstants {
             vn_epoch_length: 60,
             vn_validity_period_epochs: VnEpoch(100),
             vn_registration_min_deposit_amount: MicroMinotari(0),
-            vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 64,
         }];
@@ -633,7 +630,6 @@ impl ConsensusConstants {
             vn_epoch_length: 60,
             vn_validity_period_epochs: VnEpoch(100),
             vn_registration_min_deposit_amount: MicroMinotari(0),
-            vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 64,
         }];
@@ -685,7 +681,6 @@ impl ConsensusConstants {
             vn_epoch_length: 60,
             vn_validity_period_epochs: VnEpoch(100),
             vn_registration_min_deposit_amount: MicroMinotari(0),
-            vn_registration_lock_height: 0,
             vn_registration_shuffle_interval: VnEpoch(100),
             coinbase_output_features_extra_max_length: 64,
         }];
