@@ -24,7 +24,7 @@ use std::{fmt, fmt::Formatter, sync::Arc};
 
 use tari_common_types::{
     transaction::TxId,
-    types::{Commitment, HashOutput, PublicKey},
+    types::{Commitment, FixedHash, HashOutput, PublicKey},
 };
 use tari_core::{
     covenants::Covenant,
@@ -44,7 +44,7 @@ use tower::Service;
 
 use crate::output_manager_service::{
     error::OutputManagerError,
-    service::{Balance, OutputStatusesByTxId},
+    service::{Balance, OutputInfoByTxId},
     storage::{
         database::OutputBackendQuery,
         models::{DbWalletOutput, KnownOneSidedPaymentScript, SpendingPriority},
@@ -121,7 +121,7 @@ pub enum OutputManagerRequest {
     ReinstateCancelledInboundTx(TxId),
     CreateClaimShaAtomicSwapTransaction(HashOutput, PublicKey, MicroMinotari),
     CreateHtlcRefundTransaction(HashOutput, MicroMinotari),
-    GetOutputStatusesByTxId(TxId),
+    GetOutputInfoByTxId(TxId),
 }
 
 impl fmt::Display for OutputManagerRequest {
@@ -209,7 +209,7 @@ impl fmt::Display for OutputManagerRequest {
                 fee_per_gram,
             ),
 
-            GetOutputStatusesByTxId(t) => write!(f, "GetOutputStatusesByTxId: {}", t),
+            GetOutputInfoByTxId(t) => write!(f, "GetOutputInfoByTxId: {}", t),
         }
     }
 }
@@ -244,7 +244,7 @@ pub enum OutputManagerResponse {
     CreatePayToSelfWithOutputs { transaction: Box<Transaction>, tx_id: TxId },
     ReinstatedCancelledInboundTx,
     ClaimHtlcTransaction((TxId, MicroMinotari, MicroMinotari, Transaction)),
-    OutputStatusesByTxId(OutputStatusesByTxId),
+    OutputInfoByTxId(OutputInfoByTxId),
     CoinPreview((Vec<MicroMinotari>, MicroMinotari)),
 }
 
@@ -288,6 +288,7 @@ pub struct PublicRewindKeys {
 pub struct RecoveredOutput {
     pub tx_id: TxId,
     pub output: WalletOutput,
+    pub hash: FixedHash,
 }
 
 #[derive(Clone)]
@@ -764,16 +765,13 @@ impl OutputManagerHandle {
         }
     }
 
-    pub async fn get_output_statuses_for_tx_id(
-        &mut self,
-        tx_id: TxId,
-    ) -> Result<OutputStatusesByTxId, OutputManagerError> {
+    pub async fn get_output_info_for_tx_id(&mut self, tx_id: TxId) -> Result<OutputInfoByTxId, OutputManagerError> {
         match self
             .handle
-            .call(OutputManagerRequest::GetOutputStatusesByTxId(tx_id))
+            .call(OutputManagerRequest::GetOutputInfoByTxId(tx_id))
             .await??
         {
-            OutputManagerResponse::OutputStatusesByTxId(output_statuses_by_tx_id) => Ok(output_statuses_by_tx_id),
+            OutputManagerResponse::OutputInfoByTxId(output_info_by_tx_id) => Ok(output_info_by_tx_id),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

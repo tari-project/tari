@@ -408,14 +408,14 @@ where
                 .create_htlc_refund_transaction(output, fee_per_gram)
                 .await
                 .map(OutputManagerResponse::ClaimHtlcTransaction),
-            OutputManagerRequest::GetOutputStatusesByTxId(tx_id) => {
-                let output_statuses_by_tx_id = self.get_output_status_by_tx_id(tx_id)?;
-                Ok(OutputManagerResponse::OutputStatusesByTxId(output_statuses_by_tx_id))
+            OutputManagerRequest::GetOutputInfoByTxId(tx_id) => {
+                let output_statuses_by_tx_id = self.get_output_info_by_tx_id(tx_id)?;
+                Ok(OutputManagerResponse::OutputInfoByTxId(output_statuses_by_tx_id))
             },
         }
     }
 
-    fn get_output_status_by_tx_id(&self, tx_id: TxId) -> Result<OutputStatusesByTxId, OutputManagerError> {
+    fn get_output_info_by_tx_id(&self, tx_id: TxId) -> Result<OutputInfoByTxId, OutputManagerError> {
         let outputs = self.resources.db.fetch_outputs_by_tx_id(tx_id)?;
         let statuses = outputs.clone().into_iter().map(|uo| uo.status).collect();
         // We need the maximum mined height and corresponding block hash (faux transactions outputs can have different
@@ -430,7 +430,7 @@ where
                 }
             }
         }
-        Ok(OutputStatusesByTxId {
+        Ok(OutputInfoByTxId {
             statuses,
             mined_height: max_mined_height,
             block_hash,
@@ -2368,6 +2368,7 @@ where
                     committed_value.into(),
                 )? {
                     let spending_key_id = self.resources.key_manager.import_key(spending_key).await?;
+                    let hash = output.hash();
                     let rewound_output = WalletOutput::new_with_rangeproof(
                         output.version,
                         committed_value,
@@ -2408,6 +2409,7 @@ where
                             rewound_outputs.push(RecoveredOutput {
                                 output: rewound_output,
                                 tx_id,
+                                hash,
                             })
                         },
                         Err(OutputManagerStorageError::DuplicateOutput) => {
@@ -2510,7 +2512,7 @@ impl UtxoSelection {
 }
 
 #[derive(Debug, Clone)]
-pub struct OutputStatusesByTxId {
+pub struct OutputInfoByTxId {
     pub statuses: Vec<OutputStatus>,
     pub(crate) mined_height: Option<u64>,
     pub(crate) block_hash: Option<BlockHash>,

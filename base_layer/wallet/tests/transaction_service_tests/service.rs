@@ -5155,46 +5155,6 @@ async fn test_update_faux_tx_on_oms_validation() {
         alice_ts_interface.base_node_identity.public_key().clone(),
         Network::LocalNet,
     );
-    let tx_id_1 = alice_ts_interface
-        .transaction_service_handle
-        .import_utxo_with_status(
-            MicroMinotari::from(10000),
-            alice_address.clone(),
-            "blah".to_string(),
-            ImportStatus::Imported,
-            None,
-            None,
-            None,
-        )
-        .await
-        .unwrap();
-    let tx_id_2 = alice_ts_interface
-        .transaction_service_handle
-        .import_utxo_with_status(
-            MicroMinotari::from(20000),
-            alice_address.clone(),
-            "one-sided 1".to_string(),
-            ImportStatus::FauxUnconfirmed,
-            None,
-            None,
-            None,
-        )
-        .await
-        .unwrap();
-
-    let tx_id_3 = alice_ts_interface
-        .transaction_service_handle
-        .import_utxo_with_status(
-            MicroMinotari::from(30000),
-            alice_address,
-            "one-sided 2".to_string(),
-            ImportStatus::FauxConfirmed,
-            None,
-            None,
-            None,
-        )
-        .await
-        .unwrap();
 
     let uo_1 = make_input(
         &mut OsRng.clone(),
@@ -5217,6 +5177,56 @@ async fn test_update_faux_tx_on_oms_validation() {
         &alice_ts_interface.key_manager_handle,
     )
     .await;
+
+    let tx_id_1 = alice_ts_interface
+        .transaction_service_handle
+        .import_utxo_with_status(
+            MicroMinotari::from(10000),
+            alice_address.clone(),
+            "blah".to_string(),
+            ImportStatus::Imported,
+            None,
+            None,
+            None,
+            uo_1.to_transaction_output(&alice_ts_interface.key_manager_handle)
+                .await
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let tx_id_2 = alice_ts_interface
+        .transaction_service_handle
+        .import_utxo_with_status(
+            MicroMinotari::from(20000),
+            alice_address.clone(),
+            "one-sided 1".to_string(),
+            ImportStatus::FauxUnconfirmed,
+            None,
+            None,
+            None,
+            uo_2.to_transaction_output(&alice_ts_interface.key_manager_handle)
+                .await
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let tx_id_3 = alice_ts_interface
+        .transaction_service_handle
+        .import_utxo_with_status(
+            MicroMinotari::from(30000),
+            alice_address,
+            "one-sided 2".to_string(),
+            ImportStatus::FauxConfirmed,
+            None,
+            None,
+            None,
+            uo_3.to_transaction_output(&alice_ts_interface.key_manager_handle)
+                .await
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
     for (tx_id, uo) in [(tx_id_1, uo_1), (tx_id_2, uo_2), (tx_id_3, uo_3)] {
         alice_ts_interface
             .output_manager_service_handle

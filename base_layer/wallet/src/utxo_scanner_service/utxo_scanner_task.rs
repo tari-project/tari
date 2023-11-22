@@ -553,8 +553,8 @@ where
     async fn scan_for_outputs(
         &mut self,
         outputs: Vec<TransactionOutput>,
-    ) -> Result<Vec<(WalletOutput, String, ImportStatus, TxId)>, UtxoScannerError> {
-        let mut found_outputs: Vec<(WalletOutput, String, ImportStatus, TxId)> = Vec::new();
+    ) -> Result<Vec<(WalletOutput, String, ImportStatus, TxId, TransactionOutput)>, UtxoScannerError> {
+        let mut found_outputs: Vec<(WalletOutput, String, ImportStatus, TxId, TransactionOutput)> = Vec::new();
         found_outputs.append(
             &mut self
                 .resources
@@ -562,16 +562,18 @@ where
                 .scan_for_recoverable_outputs(outputs.clone())
                 .await?
                 .into_iter()
-                .map(|ro| {
+                .map(|ro| -> Result<_, UtxoScannerError> {
                     let message = if ro.output.features.is_coinbase() {
                         "**COINBASE** ".to_owned() + &self.resources.recovery_message
                     } else {
                         self.resources.recovery_message.clone()
                     };
-                    let status = ImportStatus::Imported;
-                    (ro.output, message, status, ro.tx_id)
+                    let output = outputs.iter().find(|o| o.hash() == ro.hash).ok_or_else(|| {
+                        UtxoScannerError::UtxoScanningError(format!("Output '{}' not found", ro.hash.to_hex()))
+                    })?;
+                    Ok((ro.output, message, ImportStatus::Imported, ro.tx_id, output.clone()))
                 })
-                .collect(),
+                .collect::<Result<Vec<_>, _>>()?,
         );
 
         found_outputs.append(
@@ -581,29 +583,38 @@ where
                 .scan_outputs_for_one_sided_payments(outputs.clone())
                 .await?
                 .into_iter()
-                .map(|ro| {
+                .map(|ro| -> Result<_, UtxoScannerError> {
                     let message = if ro.output.features.is_coinbase() {
                         "**COINBASE** ".to_owned() + &self.resources.one_sided_payment_message
                     } else {
                         self.resources.one_sided_payment_message.clone()
                     };
-                    (ro.output, message, ImportStatus::FauxUnconfirmed, ro.tx_id)
+                    let output = outputs.iter().find(|o| o.hash() == ro.hash).ok_or_else(|| {
+                        UtxoScannerError::UtxoScanningError(format!("Output '{}' not found", ro.hash.to_hex()))
+                    })?;
+                    Ok((
+                        ro.output,
+                        message,
+                        ImportStatus::FauxUnconfirmed,
+                        ro.tx_id,
+                        output.clone(),
+                    ))
                 })
-                .collect(),
+                .collect::<Result<Vec<_>, _>>()?,
         );
         Ok(found_outputs)
     }
 
     async fn import_utxos_to_transaction_service(
         &mut self,
-        utxos: Vec<(WalletOutput, String, ImportStatus, TxId)>,
+        utxos: Vec<(WalletOutput, String, ImportStatus, TxId, TransactionOutput)>,
         current_height: u64,
         mined_timestamp: NaiveDateTime,
     ) -> Result<(u64, MicroMinotari), UtxoScannerError> {
         let mut num_recovered = 0u64;
         let mut total_amount = MicroMinotari::from(0);
-        for (uo, message, import_status, tx_id) in utxos {
-            let source_address = if uo.features.is_coinbase() {
+        for (wo, message, import_status, tx_id, to) in utxos {
+            let source_address = if wo.features.is_coinbase() {
                 // It's a coinbase, so we know we mined it (we do mining with cold wallets).
                 self.resources.wallet_identity.address.clone()
             } else {
@@ -613,19 +624,20 @@ where
             };
             match self
                 .import_key_manager_utxo_to_transaction_service(
-                    uo.clone(),
+                    wo.clone(),
                     source_address,
                     message,
                     import_status,
                     tx_id,
                     current_height,
                     mined_timestamp,
+                    to.clone(),
                 )
                 .await
             {
                 Ok(_) => {
                     num_recovered = num_recovered.saturating_add(1);
-                    total_amount += uo.value;
+                    total_amount += wo.value;
                 },
                 Err(WalletError::TransactionServiceError(TransactionServiceError::TransactionStorageError(
                     TransactionStorageError::DuplicateOutput,
@@ -678,6 +690,7 @@ where
         tx_id: TxId,
         current_height: u64,
         mined_timestamp: NaiveDateTime,
+        scanned_output: TransactionOutput,
     ) -> Result<TxId, WalletError> {
         let tx_id = self
             .resources
@@ -690,6 +703,7 @@ where
                 Some(tx_id),
                 Some(current_height),
                 Some(mined_timestamp),
+                scanned_output,
             )
             .await?;
 

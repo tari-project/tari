@@ -782,6 +782,7 @@ where
                 tx_id,
                 current_height,
                 mined_timestamp,
+                scanned_output,
             } => self
                 .add_utxo_import_transaction_with_status(
                     amount,
@@ -791,7 +792,7 @@ where
                     tx_id,
                     current_height,
                     mined_timestamp,
-                    transaction_validation_join_handles,
+                    scanned_output,
                 )
                 .await
                 .map(TransactionServiceResponse::UtxoImported),
@@ -2796,9 +2797,7 @@ where
         tx_id: Option<TxId>,
         current_height: Option<u64>,
         mined_timestamp: Option<NaiveDateTime>,
-        transaction_validation_join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<OperationId, TransactionServiceProtocolError<OperationId>>>,
-        >,
+        scanned_output: TransactionOutput,
     ) -> Result<TxId, TransactionServiceError> {
         let tx_id = if let Some(id) = tx_id { id } else { TxId::new_random() };
         self.db.add_utxo_import_transaction_with_status(
@@ -2810,6 +2809,7 @@ where
             import_status.clone(),
             current_height,
             mined_timestamp,
+            scanned_output,
         )?;
         let transaction_event = match import_status {
             ImportStatus::Imported => TransactionEvent::TransactionImported(tx_id),
@@ -2828,9 +2828,6 @@ where
             );
             e
         });
-        // Because we added new transactions, let try to trigger a validation for them
-        self.start_transaction_validation_protocol(transaction_validation_join_handles)
-            .await?;
         Ok(tx_id)
     }
 

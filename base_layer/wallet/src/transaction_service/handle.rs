@@ -142,6 +142,7 @@ pub enum TransactionServiceRequest {
         tx_id: Option<TxId>,
         current_height: Option<u64>,
         mined_timestamp: Option<NaiveDateTime>,
+        scanned_output: TransactionOutput,
     },
     SubmitTransactionToSelf(TxId, Transaction, MicroMinotari, MicroMinotari, String),
     SetLowPowerMode,
@@ -212,9 +213,10 @@ impl fmt::Display for TransactionServiceRequest {
                 tx_id,
                 current_height,
                 mined_timestamp,
+                ..
             } => write!(
                 f,
-                "ImportUtxo (from {}, {}, {} and {:?} and {:?} and {:?} and {:?})",
+                "ImportUtxo (from {}, {}, {} and {:?} and {:?} and {:?} and {:?}",
                 source_address, amount, message, import_status, tx_id, current_height, mined_timestamp
             ),
             Self::SubmitTransactionToSelf(tx_id, _, _, _, _) => write!(f, "SubmitTransaction ({})", tx_id),
@@ -734,6 +736,7 @@ impl TransactionServiceHandle {
         tx_id: Option<TxId>,
         current_height: Option<u64>,
         mined_timestamp: Option<NaiveDateTime>,
+        scanned_output: TransactionOutput,
     ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
@@ -745,6 +748,7 @@ impl TransactionServiceHandle {
                 tx_id,
                 current_height,
                 mined_timestamp,
+                scanned_output,
             })
             .await??
         {

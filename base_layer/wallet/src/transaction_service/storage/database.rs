@@ -35,7 +35,10 @@ use tari_common_types::{
     transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
     types::{BlockHash, PrivateKey},
 };
-use tari_core::transactions::{tari_amount::MicroMinotari, transaction_components::Transaction};
+use tari_core::transactions::{
+    tari_amount::MicroMinotari,
+    transaction_components::{Transaction, TransactionOutput},
+};
 
 use crate::transaction_service::{
     error::TransactionStorageError,
@@ -127,7 +130,7 @@ pub trait TransactionBackend: Send + Sync + Clone {
         mined_in_block: BlockHash,
         mined_timestamp: u64,
         num_confirmations: u64,
-        is_confirmed: bool,
+        must_be_confirmed: bool,
         is_faux: bool,
     ) -> Result<(), TransactionStorageError>;
     /// Clears the mined block and height of a transaction
@@ -641,6 +644,7 @@ where T: TransactionBackend + 'static
         import_status: ImportStatus,
         current_height: Option<u64>,
         mined_timestamp: Option<NaiveDateTime>,
+        scanned_output: TransactionOutput,
     ) -> Result<(), TransactionStorageError> {
         let transaction = CompletedTransaction::new(
             tx_id,
@@ -650,7 +654,7 @@ where T: TransactionBackend + 'static
             MicroMinotari::from(0),
             Transaction::new(
                 Vec::new(),
-                Vec::new(),
+                vec![scanned_output],
                 Vec::new(),
                 PrivateKey::default(),
                 PrivateKey::default(),
@@ -690,7 +694,7 @@ where T: TransactionBackend + 'static
         mined_in_block: BlockHash,
         mined_timestamp: u64,
         num_confirmations: u64,
-        is_confirmed: bool,
+        must_be_confirmed: bool,
         is_faux: bool,
     ) -> Result<(), TransactionStorageError> {
         self.db.update_mined_height(
@@ -699,7 +703,7 @@ where T: TransactionBackend + 'static
             mined_in_block,
             mined_timestamp,
             num_confirmations,
-            is_confirmed,
+            must_be_confirmed,
             is_faux,
         )
     }

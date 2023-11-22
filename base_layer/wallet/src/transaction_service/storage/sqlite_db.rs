@@ -44,7 +44,7 @@ use tari_common_types::{
     types::{BlockHash, PrivateKey, PublicKey, Signature},
 };
 use tari_core::transactions::tari_amount::MicroMinotari;
-use tari_utilities::{ByteArray, Hidden};
+use tari_utilities::{hex::Hex, ByteArray, Hidden};
 use thiserror::Error;
 use tokio::time::Instant;
 use zeroize::Zeroize;
@@ -786,13 +786,13 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         mined_in_block: BlockHash,
         mined_timestamp: u64,
         num_confirmations: u64,
-        is_confirmed: bool,
+        must_be_confirmed: bool,
         is_faux: bool,
     ) -> Result<(), TransactionStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
-        let status = if is_confirmed {
+        let status = if must_be_confirmed {
             if is_faux {
                 TransactionStatus::FauxConfirmed
             } else {
@@ -1797,6 +1797,17 @@ impl CompletedTransactionSql {
                 mined_timestamp
             ))
         })?;
+        trace!(
+            target: LOG_TARGET,
+            "update_mined_height: tx_id '{}', status '{:?}', confirmations '{}', mined height '{}', \
+            mined timestamp '{}', mined block hash '{}'",
+            tx_id,
+            status,
+            num_confirmations,
+            mined_height,
+            timestamp,
+            mined_in_block.to_hex(),
+        );
         diesel::update(completed_transactions::table.filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64)))
             .set(UpdateCompletedTransactionSql {
                 confirmations: Some(Some(num_confirmations as i64)),
@@ -1825,8 +1836,12 @@ impl CompletedTransactionSql {
                         .load::<i32>(conn)?
                         .first()
                     {
-                        if *status == TransactionStatus::FauxConfirmed as i32 {
+                        if *status == TransactionStatus::FauxConfirmed as i32 ||
+                            *status == TransactionStatus::FauxUnconfirmed as i32
+                        {
                             Some(TransactionStatus::FauxUnconfirmed as i32)
+                        } else if *status == TransactionStatus::Imported as i32 {
+                            Some(TransactionStatus::Imported as i32)
                         } else if *status == TransactionStatus::Broadcast as i32 {
                             Some(TransactionStatus::Broadcast as i32)
                         } else {
@@ -2018,6 +2033,7 @@ pub struct UnconfirmedTransactionInfo {
     pub tx_id: TxId,
     pub signature: Signature,
     pub status: TransactionStatus,
+    pub message: String,
 }
 
 impl TryFrom<UnconfirmedTransactionInfoSql> for UnconfirmedTransactionInfo {
@@ -2031,6 +2047,7 @@ impl TryFrom<UnconfirmedTransactionInfoSql> for UnconfirmedTransactionInfo {
                 PrivateKey::from_vec(&i.transaction_signature_key)?,
             ),
             status: TransactionStatus::try_from(i.status)?,
+            message: i.message,
         })
     }
 }
@@ -2041,6 +2058,7 @@ pub struct UnconfirmedTransactionInfoSql {
     pub status: i32,
     pub transaction_signature_nonce: Vec<u8>,
     pub transaction_signature_key: Vec<u8>,
+    pub message: String,
 }
 
 impl UnconfirmedTransactionInfoSql {
@@ -2054,12 +2072,18 @@ impl UnconfirmedTransactionInfoSql {
                 completed_transactions::status,
                 completed_transactions::transaction_signature_nonce,
                 completed_transactions::transaction_signature_key,
+                completed_transactions::message,
             ))
             .filter(
                 completed_transactions::status
+                    // Filter out imported or scanned transactions
                     .ne(TransactionStatus::Imported as i32)
                     .and(completed_transactions::status.ne(TransactionStatus::FauxUnconfirmed as i32))
                     .and(completed_transactions::status.ne(TransactionStatus::FauxConfirmed as i32))
+                    // Filter out any transaction without a kernel signature
+                    .and(completed_transactions::transaction_signature_nonce.ne(vec![0u8; 32]))
+                    .and(completed_transactions::transaction_signature_key.ne(vec![0u8; 32]))
+                    // Allow the remainder of the unconfirmed transactions
                     .and(
                         completed_transactions::mined_height
                             .is_null()

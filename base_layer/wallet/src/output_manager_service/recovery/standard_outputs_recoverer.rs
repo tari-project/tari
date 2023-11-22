@@ -23,7 +23,7 @@
 use std::time::Instant;
 
 use log::*;
-use tari_common_types::transaction::TxId;
+use tari_common_types::{transaction::TxId, types::FixedHash};
 use tari_core::transactions::{
     key_manager::{TariKeyId, TransactionKeyManagerBranch, TransactionKeyManagerInterface},
     tari_amount::MicroMinotari,
@@ -69,7 +69,7 @@ where
 
         let known_scripts = self.db.get_all_known_one_sided_payment_scripts()?;
 
-        let mut rewound_outputs: Vec<(WalletOutput, bool)> = Vec::new();
+        let mut rewound_outputs: Vec<(WalletOutput, bool, FixedHash)> = Vec::new();
         let push_pub_key_script = script!(PushPubKey(Box::default()));
         for output in outputs {
             let known_script_index = known_scripts.iter().position(|s| s.script == output.script);
@@ -92,6 +92,7 @@ where
                 None => continue,
             };
 
+            let hash = output.hash();
             let uo = WalletOutput::new_with_rangeproof(
                 output.version,
                 committed_value,
@@ -109,7 +110,7 @@ where
                 output.proof.clone(),
             );
 
-            rewound_outputs.push((uo, known_script_index.is_some()));
+            rewound_outputs.push((uo, known_script_index.is_some(), hash));
         }
 
         let rewind_time = start.elapsed();
@@ -121,7 +122,7 @@ where
         );
 
         let mut rewound_outputs_with_tx_id: Vec<RecoveredOutput> = Vec::new();
-        for (output, has_known_script) in &mut rewound_outputs {
+        for (output, has_known_script, hash) in &mut rewound_outputs {
             let db_output = DbWalletOutput::from_wallet_output(
                 output.clone(),
                 &self.master_key_manager,
@@ -145,6 +146,7 @@ where
             rewound_outputs_with_tx_id.push(RecoveredOutput {
                 output: output.clone(),
                 tx_id,
+                hash: *hash,
             });
             self.update_outputs_script_private_key_and_update_key_manager_index(output)
                 .await?;

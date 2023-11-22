@@ -476,6 +476,7 @@ async fn test_utxo_scanner_recovery_with_restart() {
             tx_id: _,
             current_height: _,
             mined_timestamp: _,
+            scanned_output: _,
         } = req
         {
             assert_eq!(message, "Output found on blockchain during Wallet Recovery".to_string());
@@ -542,6 +543,7 @@ async fn test_utxo_scanner_recovery_with_restart() {
             tx_id: _,
             current_height: _,
             mined_timestamp: _,
+            scanned_output: _,
         } = req
         {
             assert_eq!(message, "recovery".to_string());
@@ -952,6 +954,7 @@ async fn test_utxo_scanner_one_sided_payments() {
             tx_id: _,
             current_height: _,
             mined_timestamp: _,
+            scanned_output: _,
         } = req
         {
             assert_eq!(message, "one-sided non-default".to_string());
@@ -1049,6 +1052,7 @@ async fn test_utxo_scanner_one_sided_payments() {
             tx_id: _,
             current_height: h,
             mined_timestamp: _,
+            scanned_output: _,
         } = req
         {
             println!("{:?}", h);

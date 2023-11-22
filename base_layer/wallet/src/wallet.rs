@@ -486,6 +486,12 @@ where
                 None,
                 None,
                 None,
+                unblinded_output
+                    .clone()
+                    .to_wallet_output(&self.key_manager_service)
+                    .await?
+                    .to_transaction_output(&self.key_manager_service)
+                    .await?,
             )
             .await?;
         let wallet_output = unblinded_output.to_wallet_output(&self.key_manager_service).await?;

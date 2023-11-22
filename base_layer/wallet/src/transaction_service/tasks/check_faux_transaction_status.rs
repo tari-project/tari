@@ -29,7 +29,7 @@ use tari_common_types::{
 };
 
 use crate::{
-    output_manager_service::{handle::OutputManagerHandle, storage::OutputStatus},
+    output_manager_service::handle::OutputManagerHandle,
     transaction_service::{
         config::TransactionServiceConfig,
         handle::{TransactionEvent, TransactionEventSender},
@@ -97,41 +97,38 @@ pub async fn check_faux_transactions<TBackend: 'static + TransactionBackend>(
         all_faux_transactions.len()
     );
     for tx in all_faux_transactions {
-        let output_statuses_for_tx_id = match output_manager.get_output_statuses_for_tx_id(tx.tx_id).await {
+        let output_info_for_tx_id = match output_manager.get_output_info_for_tx_id(tx.tx_id).await {
             Ok(s) => s,
             Err(e) => {
                 error!(target: LOG_TARGET, "Problem retrieving output statuses: {}", e);
                 return;
             },
         };
-        let some_outputs_spent = !output_statuses_for_tx_id
-            .statuses
-            .iter()
-            .any(|s| s != &OutputStatus::Unspent);
-        let mined_height = if let Some(height) = output_statuses_for_tx_id.mined_height {
+        let output_status = output_info_for_tx_id.statuses[0];
+        let mined_height = if let Some(height) = output_info_for_tx_id.mined_height {
             height
         } else {
             tip_height
         };
-        let mined_in_block: BlockHash = if let Some(hash) = output_statuses_for_tx_id.block_hash {
+        let mined_in_block: BlockHash = if let Some(hash) = output_info_for_tx_id.block_hash {
             hash
         } else {
             FixedHash::zero()
         };
         let is_valid = tip_height >= mined_height;
-        let was_confirmed = tx.status == TransactionStatus::FauxConfirmed;
-        let is_confirmed =
+        let previously_confirmed = tx.status == TransactionStatus::FauxConfirmed;
+        let must_be_confirmed =
             tip_height.saturating_sub(mined_height) >= TransactionServiceConfig::default().num_confirmations_required;
         let num_confirmations = tip_height - mined_height;
         debug!(
             target: LOG_TARGET,
-            "Updating faux transaction: TxId({}), mined_height({}), is_confirmed({}), num_confirmations({}), \
-             no_outputs_spent({}), is_valid({})",
+            "Updating faux transaction: TxId({}), mined_height({}), must_be_confirmed({}), num_confirmations({}), \
+             output_status({}), is_valid({})",
             tx.tx_id,
             mined_height,
-            is_confirmed,
+            must_be_confirmed,
             num_confirmations,
-            some_outputs_spent,
+            output_status,
             is_valid,
         );
         let result = db.set_transaction_mined_height(
@@ -141,7 +138,7 @@ pub async fn check_faux_transactions<TBackend: 'static + TransactionBackend>(
             tx.mined_timestamp
                 .map_or(0, |mined_timestamp| mined_timestamp.timestamp() as u64),
             num_confirmations,
-            is_confirmed,
+            must_be_confirmed,
             true,
         );
         if let Err(e) = result {
@@ -152,8 +149,8 @@ pub async fn check_faux_transactions<TBackend: 'static + TransactionBackend>(
         } else {
             // Only send an event if the transaction was not previously confirmed OR was previously confirmed and is
             // now not confirmed (i.e. confirmation changed)
-            if !(was_confirmed && is_confirmed) {
-                let transaction_event = if is_confirmed {
+            if !(previously_confirmed && must_be_confirmed) {
+                let transaction_event = if must_be_confirmed {
                     TransactionEvent::FauxTransactionConfirmed {
                         tx_id: tx.tx_id,
                         is_valid,
