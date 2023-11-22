@@ -1,5 +1,5 @@
--- Any old 'outputs' will not be valid due to the removal of 'coinbase_block_height',
--- so we drop and recreate the table.
+-- Any old 'outputs' will not be valid due to the removal of 'coinbase_block_height' and removal of default value for
+-- 'spending_priority', so we drop and recreate the table.
 
 DROP TABLE outputs;
 CREATE TABLE outputs
@@ -41,8 +41,8 @@ CREATE TABLE outputs
     CONSTRAINT unique_commitment UNIQUE (commitment)
 );
 
--- Any old 'completed_transactions' will not be valid due to the removal of 'coinbase_block_height',
--- so we drop and recreate the table.
+-- Any old 'completed_transactions' will not be valid due to the removal of 'coinbase_block_height' and coinbase
+-- transactions no longer being supported, so we drop and recreate the table.
 
 DROP TABLE completed_transactions;
 CREATE TABLE completed_transactions

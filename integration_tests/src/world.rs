@@ -305,7 +305,7 @@ impl TariWorld {
         }
     }
 
-    pub async fn miner_node_script_key_id(&mut self) -> TariKeyId {
+    pub async fn script_key_id(&mut self) -> TariKeyId {
         match self.key_manager.import_key(self.wallet_private_key.clone()).await {
             Ok(key_id) => key_id,
             Err(_) => KeyId::Imported {

@@ -27,7 +27,7 @@ use tari_common_types::{
     tari_address::TariAddress,
     types::{Commitment, PrivateKey, PublicKey},
 };
-use tari_crypto::keys::PublicKey as PK;
+use tari_crypto::keys::{PublicKey as PK, SecretKey};
 use tari_key_manager::key_manager_service::{KeyManagerInterface, KeyManagerServiceError};
 use tari_script::{one_sided_payment_script, stealth_payment_script, ExecutionStack, TariScript};
 use tari_utilities::ByteArrayError;
@@ -370,13 +370,45 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
     }
 }
 
+/// Clients that do not need to spend the wallet output must call this function to generate a coinbase transaction,
+/// so that the only way to get access to the funds will be via the Diffie-Hellman shared secret.
 pub async fn generate_coinbase(
     fee: MicroMinotari,
     reward: MicroMinotari,
     height: u64,
     extra: &[u8],
     key_manager: &MemoryDbKeyManager,
-    miner_node_script_key_id: &TariKeyId,
+    wallet_payment_address: &TariAddress,
+    stealth_payment: bool,
+    consensus_constants: &ConsensusConstants,
+) -> Result<(TransactionOutput, TransactionKernel), CoinbaseBuildError> {
+    // The random script key is to ensure that it is not known to the caller, and it is also not used
+    // in the Diffie-Hellmann protocol.
+    let script_key_id = key_manager.import_key(PrivateKey::random(&mut OsRng)).await?;
+    let (_, coinbase_output, coinbase_kernel, _) = generate_coinbase_with_wallet_output(
+        fee,
+        reward,
+        height,
+        extra,
+        key_manager,
+        &script_key_id,
+        wallet_payment_address,
+        stealth_payment,
+        consensus_constants,
+    )
+    .await?;
+    Ok((coinbase_output, coinbase_kernel))
+}
+
+/// Clients that need to spend the wallet output must call this function to generate a coinbase transaction,
+/// so that the only way to get access to the funds will be via the Diffie-Hellman shared secret.
+pub async fn generate_coinbase_with_wallet_output(
+    fee: MicroMinotari,
+    reward: MicroMinotari,
+    height: u64,
+    extra: &[u8],
+    key_manager: &MemoryDbKeyManager,
+    script_key_id: &TariKeyId,
     wallet_payment_address: &TariAddress,
     stealth_payment: bool,
     consensus_constants: &ConsensusConstants,
@@ -409,7 +441,7 @@ pub async fn generate_coinbase(
         .with_spend_key_id(spending_key_id)
         .with_encryption_key_id(encryption_key_id)
         .with_sender_offset_key_id(sender_offset_key_id)
-        .with_script_key_id(miner_node_script_key_id.clone())
+        .with_script_key_id(script_key_id.clone())
         .with_script(script)
         .with_extra(extra.to_vec())
         .build_with_reward(consensus_constants, reward)

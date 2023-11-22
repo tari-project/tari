@@ -27,19 +27,16 @@ use std::{cmp, str::FromStr, sync::Arc};
 use log::*;
 use minotari_app_grpc::{authentication::ClientAuthenticationInterceptor, tari_rpc::base_node_client::BaseNodeClient};
 use minotari_node_grpc_client::grpc;
-use rand::rngs::OsRng;
-use tari_common_types::{tari_address::TariAddress, types::PrivateKey};
+use tari_common_types::tari_address::TariAddress;
 use tari_core::{
     consensus::ConsensusManager,
     proof_of_work::{monero_rx, monero_rx::FixedByteArray, Difficulty},
     transactions::{
         generate_coinbase,
-        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TariKeyId},
+        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
         transaction_components::{TransactionKernel, TransactionOutput},
     },
 };
-use tari_crypto::keys::SecretKey;
-use tari_key_manager::key_manager_service::KeyManagerInterface;
 use tonic::{codegen::InterceptedService, transport::Channel};
 
 use crate::{
@@ -56,7 +53,6 @@ pub struct BlockTemplateProtocol<'a> {
     config: Arc<MergeMiningProxyConfig>,
     base_node_client: &'a mut BaseNodeClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>,
     key_manager: MemoryDbKeyManager,
-    miner_node_script_key_id: TariKeyId,
     wallet_payment_address: TariAddress,
     consensus_manager: ConsensusManager,
 }
@@ -67,8 +63,6 @@ impl<'a> BlockTemplateProtocol<'a> {
         config: Arc<MergeMiningProxyConfig>,
     ) -> Result<BlockTemplateProtocol<'a>, MmProxyError> {
         let key_manager = create_memory_db_key_manager();
-        let wallet_private_key = PrivateKey::random(&mut OsRng);
-        let miner_node_script_key_id = key_manager.import_key(wallet_private_key).await?;
         let wallet_payment_address = TariAddress::from_str(&config.wallet_payment_address)
             .map_err(|err| MmProxyError::WalletPaymentAddress(err.to_string()))?;
         let consensus_manager = ConsensusManager::builder(config.network).build()?;
@@ -76,7 +70,6 @@ impl<'a> BlockTemplateProtocol<'a> {
             config,
             base_node_client,
             key_manager,
-            miner_node_script_key_id,
             wallet_payment_address,
             consensus_manager,
         })
@@ -213,13 +206,12 @@ impl BlockTemplateProtocol<'_> {
         let block_reward = miner_data.reward;
         let total_fees = miner_data.total_fees;
 
-        let (_, coinbase_output, coinbase_kernel, _) = generate_coinbase(
+        let (coinbase_output, coinbase_kernel) = generate_coinbase(
             total_fees.into(),
             block_reward.into(),
             tari_height,
             self.config.coinbase_extra.as_bytes(),
             &self.key_manager,
-            &self.miner_node_script_key_id,
             &self.wallet_payment_address,
             self.config.stealth_payment,
             self.consensus_manager.consensus_constants(tari_height),

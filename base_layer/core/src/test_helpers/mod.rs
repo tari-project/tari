@@ -45,7 +45,7 @@ use crate::{
     consensus::{ConsensusConstants, ConsensusManager},
     proof_of_work::{difficulty::CheckedAdd, sha3x_difficulty, AchievedTargetDifficulty, Difficulty},
     transactions::{
-        generate_coinbase,
+        generate_coinbase_with_wallet_output,
         key_manager::{MemoryDbKeyManager, TariKeyId},
         tari_amount::MicroMinotari,
         transaction_components::{Transaction, WalletOutput},
@@ -74,9 +74,9 @@ pub fn create_orphan_block(block_height: u64, transactions: Vec<Transaction>, co
 
 pub async fn default_coinbase_entities(key_manager: &MemoryDbKeyManager) -> (TariKeyId, TariAddress) {
     let wallet_private_key = PrivateKey::random(&mut OsRng);
-    let miner_node_script_key_id = key_manager.import_key(wallet_private_key.clone()).await.unwrap();
+    let script_key_id = key_manager.import_key(wallet_private_key.clone()).await.unwrap();
     let wallet_payment_address = TariAddress::new(PublicKey::from_secret_key(&wallet_private_key), Network::LocalNet);
-    (miner_node_script_key_id, wallet_payment_address)
+    (script_key_id, wallet_payment_address)
 }
 
 pub async fn create_block(
@@ -84,7 +84,7 @@ pub async fn create_block(
     prev_block: &Block,
     spec: BlockSpec,
     km: &MemoryDbKeyManager,
-    miner_node_script_key_id: &TariKeyId,
+    script_key_id: &TariKeyId,
     wallet_payment_address: &TariAddress,
 ) -> (Block, WalletOutput) {
     let mut header = BlockHeader::from_previous(&prev_block.header);
@@ -103,13 +103,13 @@ pub async fn create_block(
             .unwrap()
     });
 
-    let (coinbase, _, _, coinbase_output) = generate_coinbase(
+    let (coinbase_transaction, _, _, coinbase_wallet_output) = generate_coinbase_with_wallet_output(
         MicroMinotari::from(0),
         reward,
         header.height,
         &[],
         km,
-        miner_node_script_key_id,
+        script_key_id,
         wallet_payment_address,
         false,
         rules.consensus_constants(header.height),
@@ -120,7 +120,7 @@ pub async fn create_block(
     let mut block = header
         .into_builder()
         .with_transactions(
-            Some(coinbase)
+            Some(coinbase_transaction)
                 .filter(|_| !spec.skip_coinbase)
                 .into_iter()
                 .chain(spec.transactions)
@@ -137,7 +137,7 @@ pub async fn create_block(
     block.header.output_smt_size = prev_block.header.output_smt_size + block.body.outputs().len() as u64;
     block.header.kernel_mmr_size = prev_block.header.kernel_mmr_size + block.body.kernels().len() as u64;
 
-    (block, coinbase_output)
+    (block, coinbase_wallet_output)
 }
 
 pub fn mine_to_difficulty(mut block: Block, difficulty: Difficulty) -> Result<Block, String> {

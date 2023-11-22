@@ -52,7 +52,7 @@ async fn create_next_block(
     prev_block: &Block,
     transactions: Vec<Arc<Transaction>>,
     key_manager: &MemoryDbKeyManager,
-    miner_node_script_key_id: &TariKeyId,
+    script_key_id: &TariKeyId,
     wallet_payment_address: &TariAddress,
 ) -> (Arc<Block>, WalletOutput) {
     let rules = db.rules();
@@ -63,7 +63,7 @@ async fn create_next_block(
             .with_transactions(transactions.into_iter().map(|t| (*t).clone()).collect())
             .finish(),
         key_manager,
-        miner_node_script_key_id,
+        script_key_id,
         wallet_payment_address,
     )
     .await;
@@ -92,14 +92,14 @@ async fn add_many_chained_blocks(
     let mut prev_block = Arc::new(db.fetch_block(last_header.height, true).unwrap().into_block());
     let mut blocks = Vec::with_capacity(size);
     let mut outputs = Vec::with_capacity(size);
-    let (miner_node_script_key_id, wallet_payment_address) = default_coinbase_entities(key_manager).await;
+    let (script_key_id, wallet_payment_address) = default_coinbase_entities(key_manager).await;
     for _ in 1..=size {
         let (block, coinbase_utxo) = create_next_block(
             db,
             &prev_block,
             vec![],
             key_manager,
-            &miner_node_script_key_id,
+            &script_key_id,
             &wallet_payment_address,
         )
         .await;
@@ -506,13 +506,13 @@ mod fetch_header_containing_kernel_mmr {
         )
         .await;
 
-        let (miner_node_script_key_id, wallet_payment_address) = default_coinbase_entities(&key_manager).await;
+        let (script_key_id, wallet_payment_address) = default_coinbase_entities(&key_manager).await;
         let (block, _) = create_next_block(
             &db,
             &blocks[0],
             txns,
             &key_manager,
-            &miner_node_script_key_id,
+            &script_key_id,
             &wallet_payment_address,
         )
         .await;
@@ -644,13 +644,13 @@ mod validator_node_merkle_root {
             &key_manager,
         )
         .await;
-        let (miner_node_script_key_id, wallet_payment_address) = default_coinbase_entities(&key_manager).await;
+        let (script_key_id, wallet_payment_address) = default_coinbase_entities(&key_manager).await;
         let (block, _) = create_next_block(
             &db,
             &blocks[0],
             tx,
             &key_manager,
-            &miner_node_script_key_id,
+            &script_key_id,
             &wallet_payment_address,
         )
         .await;

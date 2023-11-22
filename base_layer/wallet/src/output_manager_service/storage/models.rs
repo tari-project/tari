@@ -118,18 +118,7 @@ impl Eq for DbWalletOutput {}
 pub enum SpendingPriority {
     Normal,
     HtlcSpendAsap,
-    // Unknown,
 }
-
-// impl From<u32> for SpendingPriority {
-//     fn from(value: u32) -> Self {
-//         match value {
-//             0 => SpendingPriority::Normal,
-//             1 => SpendingPriority::HtlcSpendAsap,
-//             _ => SpendingPriority::Unknown,
-//         }
-//     }
-// }
 
 impl TryFrom<u32> for SpendingPriority {
     type Error = String;
@@ -142,15 +131,6 @@ impl TryFrom<u32> for SpendingPriority {
         }
     }
 }
-
-// impl From<SpendingPriority> for u32 {
-//     fn from(value: SpendingPriority) -> Self {
-//         match value {
-//             SpendingPriority::Normal => 0,
-//             SpendingPriority::HtlcSpendAsap => 1,
-//         }
-//     }
-// }
 
 impl From<SpendingPriority> for i32 {
     fn from(value: SpendingPriority) -> Self {

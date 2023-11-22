@@ -426,7 +426,7 @@ pub async fn create_chained_blocks<T: Into<BlockSpecs>>(
     let km = create_memory_db_key_manager();
     let blocks: BlockSpecs = blocks.into();
     let mut block_names = Vec::with_capacity(blocks.len());
-    let (miner_node_script_key_id, wallet_payment_address) = default_coinbase_entities(&km).await;
+    let (script_key_id, wallet_payment_address) = default_coinbase_entities(&km).await;
     for block_spec in blocks {
         let prev_block = block_hashes
             .get(block_spec.parent)
@@ -438,7 +438,7 @@ pub async fn create_chained_blocks<T: Into<BlockSpecs>>(
             prev_block.block(),
             block_spec,
             &km,
-            &miner_node_script_key_id,
+            &script_key_id,
             &wallet_payment_address,
         )
         .await;
@@ -502,7 +502,7 @@ pub struct TestBlockchain {
     chain: Vec<(&'static str, Arc<ChainBlock>)>,
     rules: ConsensusManager,
     pub km: MemoryDbKeyManager,
-    miner_node_script_key_id: TariKeyId,
+    script_key_id: TariKeyId,
     wallet_payment_address: TariAddress,
 }
 
@@ -515,13 +515,13 @@ impl TestBlockchain {
             .map(Arc::new)
             .unwrap();
         let km = create_memory_db_key_manager();
-        let (miner_node_script_key_id, wallet_payment_address) = default_coinbase_entities(&km).await;
+        let (script_key_id, wallet_payment_address) = default_coinbase_entities(&km).await;
         let mut blockchain = Self {
             db,
             chain: Default::default(),
             rules,
             km,
-            miner_node_script_key_id,
+            script_key_id,
             wallet_payment_address,
         };
 
@@ -625,7 +625,7 @@ impl TestBlockchain {
             parent.block(),
             block_spec,
             &self.km,
-            &self.miner_node_script_key_id,
+            &self.script_key_id,
             &self.wallet_payment_address,
         )
         .await;
@@ -643,7 +643,7 @@ impl TestBlockchain {
             parent.block(),
             block_spec,
             &self.km,
-            &self.miner_node_script_key_id,
+            &self.script_key_id,
             &self.wallet_payment_address,
         )
         .await;

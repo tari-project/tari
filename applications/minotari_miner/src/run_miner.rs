@@ -28,26 +28,24 @@ use minotari_app_grpc::{
     authentication::ClientAuthenticationInterceptor,
     tari_rpc::{base_node_client::BaseNodeClient, TransactionOutput as GrpcTransactionOutput},
 };
-use rand::rngs::OsRng;
 use tari_common::{
     configuration::bootstrap::{grpc_default_port, ApplicationType},
     exit_codes::{ExitCode, ExitError},
     load_configuration,
     DefaultConfigLoader,
 };
-use tari_common_types::{tari_address::TariAddress, types::PrivateKey};
+use tari_common_types::tari_address::TariAddress;
 use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;
 use tari_core::{
     blocks::BlockHeader,
     consensus::ConsensusManager,
     transactions::{
         generate_coinbase,
-        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TariKeyId},
+        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
         tari_amount::MicroMinotari,
     },
 };
-use tari_crypto::{keys::SecretKey, ristretto::RistrettoPublicKey};
-use tari_key_manager::key_manager_service::KeyManagerInterface;
+use tari_crypto::ristretto::RistrettoPublicKey;
 use tari_utilities::hex::Hex;
 use tokio::time::sleep;
 use tonic::{
@@ -76,11 +74,6 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
     debug!(target: LOG_TARGET_FILE, "{:?}", config);
     setup_grpc_config(&mut config);
     let key_manager = create_memory_db_key_manager();
-    let wallet_private_key = PrivateKey::random(&mut OsRng);
-    let miner_node_script_key_id = key_manager
-        .import_key(wallet_private_key)
-        .await
-        .map_err(|err| ExitError::new(ExitCode::KeyManagerServiceError, err.to_string()))?;
     let wallet_payment_address = TariAddress::from_str(&config.wallet_payment_address).map_err(|err| {
         ExitError::new(
             ExitCode::WalletPaymentAddress,
@@ -157,7 +150,6 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
                 &config,
                 &cli,
                 &key_manager,
-                &miner_node_script_key_id,
                 &wallet_payment_address,
                 &consensus_manager,
             )
@@ -256,7 +248,6 @@ async fn mining_cycle(
     config: &MinerConfig,
     cli: &Cli,
     key_manager: &MemoryDbKeyManager,
-    miner_node_script_key_id: &TariKeyId,
     wallet_payment_address: &TariAddress,
     consensus_manager: &ConsensusManager,
 ) -> Result<bool, MinerError> {
@@ -287,29 +278,28 @@ async fn mining_cycle(
     let miner_data = template_response.miner_data.ok_or_else(|| err_empty("miner_data"))?;
     let fee = MicroMinotari::from(miner_data.total_fees);
     let reward = MicroMinotari::from(miner_data.reward);
-    let (_, output, kernel, _) = generate_coinbase(
+    let (coinbase_output, coinbase_kernel) = generate_coinbase(
         fee,
         reward,
         height,
         config.coinbase_extra.as_bytes(),
         key_manager,
-        miner_node_script_key_id,
         wallet_payment_address,
         config.stealth_payment,
         consensus_manager.consensus_constants(height),
     )
     .await
     .map_err(|e| MinerError::CoinbaseError(e.to_string()))?;
-    debug!(target: LOG_TARGET, "Coinbase kernel: {}", kernel);
-    debug!(target: LOG_TARGET, "Coinbase output: {}", output);
+    debug!(target: LOG_TARGET, "Coinbase kernel: {}", coinbase_kernel);
+    debug!(target: LOG_TARGET, "Coinbase output: {}", coinbase_output);
 
     let body = block_template
         .body
         .as_mut()
         .ok_or_else(|| err_empty("new_block_template.body"))?;
-    let grpc_output = GrpcTransactionOutput::try_from(output.clone()).map_err(MinerError::Conversion)?;
+    let grpc_output = GrpcTransactionOutput::try_from(coinbase_output.clone()).map_err(MinerError::Conversion)?;
     body.outputs.push(grpc_output);
-    body.kernels.push(kernel.into());
+    body.kernels.push(coinbase_kernel.into());
     let target_difficulty = miner_data.target_difficulty;
 
     debug!(target: LOG_TARGET, "Asking base node to assemble the MMR roots");

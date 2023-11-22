@@ -40,7 +40,7 @@ use tari_common_types::{tari_address::TariAddress, types::PublicKey};
 use tari_core::{
     consensus::ConsensusManager,
     transactions::{
-        generate_coinbase,
+        generate_coinbase_with_wallet_output,
         key_manager::{MemoryDbKeyManager, TariKeyId},
         tari_amount::MicroMinotari,
         transaction_components::WalletOutput,
@@ -157,7 +157,7 @@ pub async fn mine_blocks_without_wallet(
     num_blocks: u64,
     weight: u64,
     key_manager: &MemoryDbKeyManager,
-    miner_node_script_key_id: &TariKeyId,
+    script_key_id: &TariKeyId,
     wallet_payment_address: &TariAddress,
     stealth_payment: bool,
     consensus_manager: &ConsensusManager,
@@ -167,7 +167,7 @@ pub async fn mine_blocks_without_wallet(
             base_client,
             weight,
             key_manager,
-            miner_node_script_key_id,
+            script_key_id,
             wallet_payment_address,
             stealth_payment,
             consensus_manager,
@@ -183,7 +183,7 @@ pub async fn mine_blocks_without_wallet(
 pub async fn mine_block(
     base_client: &mut BaseNodeClient,
     key_manager: &MemoryDbKeyManager,
-    miner_node_script_key_id: &TariKeyId,
+    script_key_id: &TariKeyId,
     wallet_payment_address: &TariAddress,
     stealth_payment: bool,
     consensus_manager: &ConsensusManager,
@@ -192,7 +192,7 @@ pub async fn mine_block(
         base_client,
         0,
         key_manager,
-        miner_node_script_key_id,
+        script_key_id,
         wallet_payment_address,
         stealth_payment,
         consensus_manager,
@@ -219,7 +219,7 @@ async fn mine_block_without_wallet(
     base_client: &mut BaseNodeClient,
     weight: u64,
     key_manager: &MemoryDbKeyManager,
-    miner_node_script_key_id: &TariKeyId,
+    script_key_id: &TariKeyId,
     wallet_payment_address: &TariAddress,
     stealth_payment: bool,
     consensus_manager: &ConsensusManager,
@@ -228,7 +228,7 @@ async fn mine_block_without_wallet(
         base_client,
         weight,
         key_manager,
-        miner_node_script_key_id,
+        script_key_id,
         wallet_payment_address,
         stealth_payment,
         consensus_manager,
@@ -258,7 +258,7 @@ async fn create_block_template_with_coinbase(
     base_client: &mut BaseNodeClient,
     weight: u64,
     key_manager: &MemoryDbKeyManager,
-    miner_node_script_key_id: &TariKeyId,
+    script_key_id: &TariKeyId,
     wallet_payment_address: &TariAddress,
     stealth_payment: bool,
     consensus_manager: &ConsensusManager,
@@ -286,13 +286,13 @@ async fn create_block_template_with_coinbase(
     let height = template.header.as_ref().unwrap().height;
 
     // add the coinbase outputs and kernels to the block template
-    let (_, output, kernel, wallet_output) = generate_coinbase(
+    let (_, coinbase_output, coinbase_kernel, coinbase_wallet_output) = generate_coinbase_with_wallet_output(
         MicroMinotari::from(fee),
         MicroMinotari::from(reward),
         height,
         &[],
         key_manager,
-        miner_node_script_key_id,
+        script_key_id,
         wallet_payment_address,
         stealth_payment,
         consensus_manager.consensus_constants(height),
@@ -301,11 +301,11 @@ async fn create_block_template_with_coinbase(
     .unwrap();
     let body = block_template.body.as_mut().unwrap();
 
-    let grpc_output = GrpcTransactionOutput::try_from(output).unwrap();
+    let grpc_output = GrpcTransactionOutput::try_from(coinbase_output).unwrap();
     body.outputs.push(grpc_output);
-    body.kernels.push(kernel.into());
+    body.kernels.push(coinbase_kernel.into());
 
-    (block_template, wallet_output)
+    (block_template, coinbase_wallet_output)
 }
 
 pub async fn mine_block_with_coinbase_on_node(world: &mut TariWorld, base_node: String, coinbase_name: String) {
@@ -316,12 +316,12 @@ pub async fn mine_block_with_coinbase_on_node(world: &mut TariWorld, base_node: 
         .get_grpc_client()
         .await
         .unwrap();
-    let miner_node_script_key_id = &world.miner_node_script_key_id().await;
+    let script_key_id = &world.script_key_id().await;
     let (template, wallet_output) = create_block_template_with_coinbase(
         &mut client,
         0,
         &world.key_manager,
-        miner_node_script_key_id,
+        script_key_id,
         &world.default_payment_address.clone(),
         false,
         &world.consensus_manager.clone(),
@@ -334,7 +334,7 @@ pub async fn mine_block_with_coinbase_on_node(world: &mut TariWorld, base_node: 
 pub async fn mine_block_before_submit(
     client: &mut BaseNodeClient,
     key_manager: &MemoryDbKeyManager,
-    miner_node_script_key_id: &TariKeyId,
+    script_key_id: &TariKeyId,
     wallet_payment_address: &TariAddress,
     stealth_payment: bool,
     consensus_manager: &ConsensusManager,
@@ -343,7 +343,7 @@ pub async fn mine_block_before_submit(
         client,
         0,
         key_manager,
-        miner_node_script_key_id,
+        script_key_id,
         wallet_payment_address,
         stealth_payment,
         consensus_manager,

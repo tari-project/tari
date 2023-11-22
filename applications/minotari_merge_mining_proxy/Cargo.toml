@@ -21,7 +21,6 @@ minotari_node_grpc_client = { path = "../../clients/rust/base_node_grpc_client" 
 minotari_wallet_grpc_client = { path = "../../clients/rust/wallet_grpc_client" }
 minotari_app_grpc = { path = "../minotari_app_grpc" }
 tari_key_manager = {  path = "../../base_layer/key_manager", features = ["key_manager_service"] }
-tari_crypto = { version = "0.19", features = ["borsh"] }
 
 anyhow = "1.0.53"
 crossterm = { version = "0.25.0" }
@@ -44,7 +43,6 @@ tokio = { version = "1.23", features = ["macros"] }
 tonic = "0.6.2"
 tracing = "0.1"
 url = "2.1.1"
-rand = "0.8"
 
 [build-dependencies]
 tari_features = { path = "../../common/tari_features"}
