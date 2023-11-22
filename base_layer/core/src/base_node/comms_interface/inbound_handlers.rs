@@ -501,6 +501,7 @@ where B: BlockchainBackend + 'static
 
     async fn check_min_block_difficulty(&self, new_block: &NewBlock) -> Result<(), CommsInterfaceError> {
         let constants = self.consensus_manager.consensus_constants(new_block.header.height);
+        let gen_hash = self.consensus_manager.get_genesis_block().hash().clone();
         let mut min_difficulty = constants.min_pow_difficulty(new_block.header.pow.pow_algo);
         let mut header = self.blockchain_db.fetch_last_chain_header().await?;
         loop {
@@ -525,7 +526,7 @@ where B: BlockchainBackend + 'static
                 .await?;
         }
         let achieved = match new_block.header.pow_algo() {
-            PowAlgorithm::RandomX => randomx_difficulty(&new_block.header, &self.randomx_factory)?,
+            PowAlgorithm::RandomX => randomx_difficulty(&new_block.header, &self.randomx_factory, &gen_hash)?,
             PowAlgorithm::Sha3x => sha3x_difficulty(&new_block.header)?,
         };
         if achieved < min_difficulty {

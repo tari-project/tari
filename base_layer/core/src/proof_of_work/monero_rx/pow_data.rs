@@ -56,7 +56,6 @@ pub struct MoneroPowData {
     pub coinbase_tx: monero::Transaction,
     /// aux chain merkle proof hashes
     pub aux_chain_merkle_proof: MerkleProof,
-
 }
 
 impl BorshSerialize for MoneroPowData {

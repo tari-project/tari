@@ -68,6 +68,7 @@ serde = { version = "1.0.106", features = ["derive"] }
 serde_json = "1.0"
 serde_repr = "0.1.8"
 sha3 = "0.10"
+sha2 = "0.10"
 strum = "0.22"
 strum_macros = "0.22"
 thiserror = "1.0.26"

@@ -77,9 +77,10 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for HeaderFullValidator
 
         check_timestamp_ftl(header, &self.rules)?;
         check_pow_data(header, &self.rules, db)?;
+        let gen_hash = self.rules.get_genesis_block().hash().clone();
 
         let achieved_target = if let Some(target) = target_difficulty {
-            check_target_difficulty(header, target, &self.difficulty_calculator.randomx_factory)?
+            check_target_difficulty(header, target, &self.difficulty_calculator.randomx_factory, &gen_hash)?
         } else {
             self.difficulty_calculator
                 .check_achieved_and_target_difficulty(db, header)?

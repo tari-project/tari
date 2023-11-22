@@ -28,8 +28,10 @@ use monero::{
     cryptonote::hash::Hashable,
     VarInt,
 };
-use tari_utilities::hex::HexError;
+use primitive_types::U256;
+use sha2::{Digest, Sha256};
 use tari_common_types::types::FixedHash;
+use tari_utilities::hex::HexError;
 
 use super::{
     error::MergeMineError,
@@ -40,6 +42,7 @@ use super::{
 use crate::{
     blocks::BlockHeader,
     proof_of_work::{
+        monero_rx::merkle_tree_parameters::MerkleTreeParameters,
         randomx_factory::{RandomXFactory, RandomXVMInstance},
         Difficulty,
     },
@@ -51,8 +54,9 @@ pub const LOG_TARGET: &str = "c::pow::monero_rx";
 pub fn randomx_difficulty(
     header: &BlockHeader,
     randomx_factory: &RandomXFactory,
+    gen_hash: &FixedHash,
 ) -> Result<Difficulty, MergeMineError> {
-    let monero_pow_data = verify_header(header)?;
+    let monero_pow_data = verify_header(header, gen_hash)?;
     debug!(target: LOG_TARGET, "Valid Monero data: {}", monero_pow_data);
     let blockhashing_blob = monero_pow_data.to_blockhashing_blob();
     let vm = randomx_factory.create(monero_pow_data.randomx_key())?;
@@ -90,7 +94,7 @@ fn parse_extra_field_truncate_on_error(raw_extra_field: &RawExtraField) -> Extra
 /// 1. The merkle proof and coinbase hash produce a matching merkle root
 ///
 /// If these assertions pass, a valid `MoneroPowData` instance is returned
-pub fn verify_header(header: &BlockHeader) -> Result<MoneroPowData, MergeMineError> {
+pub fn verify_header(header: &BlockHeader, gen_hash: &FixedHash) -> Result<MoneroPowData, MergeMineError> {
     let monero_data = MoneroPowData::from_header(header)?;
     let expected_merge_mining_hash = header.merge_mining_hash();
     let extra_field = ExtraField::try_parse(&monero_data.coinbase_tx.prefix.extra)
@@ -108,7 +112,13 @@ pub fn verify_header(header: &BlockHeader) -> Result<MoneroPowData, MergeMineErr
                 ));
             }
             already_seen_mmfield = true;
-            is_found = check_aux_chains(&monero_data, depth, &merge_mining_hash, &expected_merge_mining_hash)
+            is_found = check_aux_chains(
+                &monero_data,
+                depth,
+                &merge_mining_hash,
+                &expected_merge_mining_hash,
+                gen_hash,
+            )
             // if depth == VarInt(0) && merge_mining_hash.as_bytes() == expected_merge_mining_hash.as_slice() {
             //     is_found = true;
             // }
@@ -128,9 +138,30 @@ pub fn verify_header(header: &BlockHeader) -> Result<MoneroPowData, MergeMineErr
     Ok(monero_data)
 }
 
-fn check_aux_chains(monero_data: &MoneroPowData, merkle_tree_params: VarInt, aux_chain_merkle_root: &monero::Hash, tari_hash: &FixedHash) -> bool{
-    // let merkle_parameters = merkle_tree_params.
-true
+fn check_aux_chains(
+    monero_data: &MoneroPowData,
+    merge_mining_params: VarInt,
+    aux_chain_merkle_root: &monero::Hash,
+    tari_hash: &FixedHash,
+    gen_hash: &FixedHash,
+) -> bool {
+    let merkle_tree_params = MerkleTreeParameters::from_varint(merge_mining_params);
+    let hash_position = U256::from_little_endian(
+        &Sha256::new()
+            .chain_update(gen_hash)
+            .chain_update(merkle_tree_params.aux_nonce.to_le_bytes())
+            .chain_update((109 as u8).to_le_bytes())
+            .finalize()
+            .to_vec(),
+    )
+    .low_u32() %
+        merkle_tree_params.number_of_chains as u32;
+    if hash_position != monero_data.aux_chain_merkle_proof.branch().len() as u32 {
+        return false;
+    }
+    let t_hash = monero::Hash::from_slice(tari_hash.as_slice());
+    let merkle_root = monero_data.aux_chain_merkle_proof.calculate_root(&t_hash);
+    merkle_root == *aux_chain_merkle_root
 }
 
 /// Extracts the Monero block hash from the coinbase transaction's extra field
@@ -180,7 +211,12 @@ pub fn serialize_monero_block_to_hex(obj: &monero::Block) -> Result<String, Merg
 }
 
 /// Constructs the Monero PoW data from the given block and seed
-pub fn construct_monero_data(block: monero::Block, seed: FixedByteArray) -> Result<MoneroPowData, MergeMineError> {
+pub fn construct_monero_data(
+    block: monero::Block,
+    seed: FixedByteArray,
+    ordered_aux_chain_hashes: Vec<monero::Hash>,
+    tari_hash: FixedHash,
+) -> Result<MoneroPowData, MergeMineError> {
     let hashes = create_ordered_transaction_hashes_from_block(&block);
     let root = tree_hash(&hashes)?;
     let coinbase_merkle_proof = create_merkle_proof(&hashes, &hashes[0]).ok_or_else(|| {
@@ -190,15 +226,22 @@ pub fn construct_monero_data(block: monero::Block, seed: FixedByteArray) -> Resu
                 .to_string(),
         )
     })?;
+
+    let t_hash = monero::Hash::from_slice(tari_hash.as_slice());
+    let aux_chain_merkle_proof = create_merkle_proof(&ordered_aux_chain_hashes, &t_hash).ok_or_else(|| {
+        MergeMineError::ValidationError(
+            "create_merkle_proof returned None, could not find tari hash in ordered aux chain hashes".to_string(),
+        )
+    })?;
     #[allow(clippy::cast_possible_truncation)]
     Ok(MoneroPowData {
         header: block.header,
         randomx_key: seed,
         transaction_count: hashes.len() as u16,
         merkle_root: root,
-        coinbase_merkle_proof: coinbase_merkle_proof.clone(),
+        coinbase_merkle_proof,
         coinbase_tx: block.miner_tx,
-        aux_chain_merkle_proof: coinbase_merkle_proof
+        aux_chain_merkle_proof,
     })
 }
 
@@ -350,10 +393,13 @@ pub fn create_block_hashing_blob(
 //     #[test]
 //     fn test_monero_rs_block_serialize() {
 //         // block with only the miner tx and no other transactions
-//         let hex = "0c0c94debaf805beb3489c722a285c092a32e7c6893abfc7d069699c8326fc3445a749c5276b6200000000029b892201ffdf882201b699d4c8b1ec020223df524af2a2ef5f870adb6e1ceb03a475c39f8b9ef76aa50b46ddd2a18349402b012839bfa19b7524ec7488917714c216ca254b38ed0424ca65ae828a7c006aeaf10208f5316a7f6b99cca60000";
-//         // blockhashing blob for above block as accepted by monero
-//         let hex_blockhash_blob="0c0c94debaf805beb3489c722a285c092a32e7c6893abfc7d069699c8326fc3445a749c5276b6200000000602d0d4710e2c2d38da0cce097accdf5dc18b1d34323880c1aae90ab8f6be6e201";
-//         let bytes = hex::decode(hex).unwrap();
+//         let hex =
+// "0c0c94debaf805beb3489c722a285c092a32e7c6893abfc7d069699c8326fc3445a749c5276b6200000000029b892201ffdf882201b699d4c8b1ec020223df524af2a2ef5f870adb6e1ceb03a475c39f8b9ef76aa50b46ddd2a18349402b012839bfa19b7524ec7488917714c216ca254b38ed0424ca65ae828a7c006aeaf10208f5316a7f6b99cca60000"
+// ;         // blockhashing blob for above block as accepted by monero
+//         let
+// hex_blockhash_blob="
+// 0c0c94debaf805beb3489c722a285c092a32e7c6893abfc7d069699c8326fc3445a749c5276b6200000000602d0d4710e2c2d38da0cce097accdf5dc18b1d34323880c1aae90ab8f6be6e201"
+// ;         let bytes = hex::decode(hex).unwrap();
 //         let block = deserialize::<monero::Block>(&bytes[..]).unwrap();
 //         let header = consensus::serialize::<monero::BlockHeader>(&block.header);
 //         let tx_count = 1 + block.tx_hashes.len() as u64;
@@ -377,8 +423,9 @@ pub fn create_block_hashing_blob(
 //
 //     #[test]
 //     fn test_monero_data() {
-//         let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
-//         let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
+//         let blocktemplate_blob =
+// "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000"
+// .to_string();         let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
 //         let bytes = hex::decode(blocktemplate_blob).unwrap();
 //         let mut block = deserialize::<monero::Block>(&bytes[..]).unwrap();
 //         let mut block_header = BlockHeader {
@@ -425,17 +472,20 @@ pub fn create_block_hashing_blob(
 //
 //     #[test]
 //     fn test_input_blob() {
-//         let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
-//         let bytes = hex::decode(blocktemplate_blob).unwrap();
+//         let blocktemplate_blob =
+// "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000"
+// .to_string();         let bytes = hex::decode(blocktemplate_blob).unwrap();
 //         let block = deserialize::<monero::Block>(&bytes[..]).unwrap();
 //         let input_blob = create_blockhashing_blob_from_block(&block).unwrap();
-//         assert_eq!(input_blob, "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000058b030b6800d433bbcb2b560afe2a08e4dc152fa77ead96d37aaf14897d3c09601");
-//     }
+//         assert_eq!(input_blob,
+// "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000058b030b6800d433bbcb2b560afe2a08e4dc152fa77ead96d37aaf14897d3c09601"
+// );     }
 //
 //     #[test]
 //     fn test_append_mm_tag() {
-//         let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
-//         let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
+//         let blocktemplate_blob =
+// "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000"
+// .to_string();         let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
 //         let bytes = hex::decode(blocktemplate_blob).unwrap();
 //         let mut block = deserialize::<monero::Block>(&bytes[..]).unwrap();
 //         let mut block_header = BlockHeader {
@@ -487,8 +537,9 @@ pub fn create_block_hashing_blob(
 //
 //     #[test]
 //     fn test_append_mm_tag_no_tag() {
-//         let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
-//         let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
+//         let blocktemplate_blob =
+// "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000"
+// .to_string();         let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
 //         let bytes = hex::decode(blocktemplate_blob).unwrap();
 //         let block = deserialize::<monero::Block>(&bytes[..]).unwrap();
 //         let mut block_header = BlockHeader {
@@ -539,8 +590,9 @@ pub fn create_block_hashing_blob(
 //
 //     #[test]
 //     fn test_append_mm_tag_wrong_hash() {
-//         let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
-//         let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
+//         let blocktemplate_blob =
+// "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000"
+// .to_string();         let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
 //         let bytes = hex::decode(blocktemplate_blob).unwrap();
 //         let mut block = deserialize::<monero::Block>(&bytes[..]).unwrap();
 //         let mut block_header = BlockHeader {
@@ -595,8 +647,9 @@ pub fn create_block_hashing_blob(
 //
 //     #[test]
 //     fn test_duplicate_append_mm_tag() {
-//         let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
-//         let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
+//         let blocktemplate_blob =
+// "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000"
+// .to_string();         let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
 //         let bytes = hex::decode(blocktemplate_blob).unwrap();
 //         let mut block = deserialize::<monero::Block>(&bytes[..]).unwrap();
 //         let mut block_header = BlockHeader {
@@ -673,8 +726,9 @@ pub fn create_block_hashing_blob(
 //
 //     #[test]
 //     fn test_extra_field_with_parsing_error() {
-//         let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
-//         let bytes = hex::decode(blocktemplate_blob).unwrap();
+//         let blocktemplate_blob =
+// "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000"
+// .to_string();         let bytes = hex::decode(blocktemplate_blob).unwrap();
 //         let mut block = deserialize::<monero::Block>(&bytes[..]).unwrap();
 //         let block_header = BlockHeader {
 //             version: 0,
@@ -705,14 +759,14 @@ pub fn create_block_hashing_blob(
 //
 //         extra_field_before_parse.0.insert(0, SubField::Padding(230));
 //         assert_eq!(
-//             "ExtraField([Padding(230), TxPublicKey(06225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa4782), \
-//              Nonce([246, 58, 168, 109, 46, 133, 127, 7])])",
+//             "ExtraField([Padding(230), TxPublicKey(06225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa4782),
+// \              Nonce([246, 58, 168, 109, 46, 133, 127, 7])])",
 //             &format!("{:?}", extra_field_before_parse)
 //         );
 //         assert!(ExtraField::try_parse(&extra_field_before_parse.clone().into()).is_err());
 //
-//         // Now insert the merge mining tag - this would also clean up the extra field and remove the invalid sub-fields
-//         let hash = block_header.merge_mining_hash();
+//         // Now insert the merge mining tag - this would also clean up the extra field and remove the invalid
+// sub-fields         let hash = block_header.merge_mining_hash();
 //         insert_merge_mining_tag_into_block(&mut block, hash).unwrap();
 //         assert!(ExtraField::try_parse(&block.miner_tx.prefix.extra.clone()).is_ok());
 //
@@ -721,8 +775,8 @@ pub fn create_block_hashing_blob(
 //         assert_eq!(
 //             &format!(
 //                 "ExtraField([MergeMining(Some(0), 0x{}), \
-//                  TxPublicKey(06225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa4782), Nonce([246, 58, 168, \
-//                  109, 46, 133, 127, 7])])",
+//                  TxPublicKey(06225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa4782), Nonce([246, 58, 168,
+// \                  109, 46, 133, 127, 7])])",
 //                 hex::encode(hash)
 //             ),
 //             &format!("{:?}", extra_field_after_tag)
@@ -731,8 +785,9 @@ pub fn create_block_hashing_blob(
 //
 //     #[test]
 //     fn test_verify_header_no_coinbase() {
-//         let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
-//         let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
+//         let blocktemplate_blob =
+// "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000"
+// .to_string();         let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
 //         let bytes = hex::decode(blocktemplate_blob).unwrap();
 //         let mut block = deserialize::<monero::Block>(&bytes[..]).unwrap();
 //         let mut block_header = BlockHeader {
@@ -826,8 +881,9 @@ pub fn create_block_hashing_blob(
 //
 //     #[test]
 //     fn test_verify_invalid_root() {
-//         let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
-//         let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
+//         let blocktemplate_blob =
+// "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000"
+// .to_string();         let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
 //         let bytes = hex::decode(blocktemplate_blob).unwrap();
 //         let mut block = deserialize::<monero::Block>(&bytes[..]).unwrap();
 //         let mut block_header = BlockHeader {
