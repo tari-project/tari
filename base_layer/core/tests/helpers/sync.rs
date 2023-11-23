@@ -40,7 +40,7 @@ use tari_core::{
     mempool::MempoolServiceConfig,
     proof_of_work::{randomx_factory::RandomXFactory, Difficulty},
     test_helpers::blockchain::TempDatabase,
-    transactions::test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager},
+    transactions::key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
     validation::mocks::MockValidator,
 };
 use tari_p2p::{services::liveness::LivenessConfig, P2pConfig};
@@ -97,11 +97,11 @@ pub async fn create_network_with_local_and_peer_nodes() -> (
     NodeInterfaces,
     ChainBlock,
     ConsensusManager,
-    TestKeyManager,
+    MemoryDbKeyManager,
 ) {
     let network = Network::LocalNet;
     let temp_dir = tempdir().unwrap();
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
@@ -254,7 +254,7 @@ pub async fn create_and_add_some_blocks(
     start_block: &ChainBlock,
     number_of_blocks: usize,
     consensus_manager: &ConsensusManager,
-    key_manager: &TestKeyManager,
+    key_manager: &MemoryDbKeyManager,
     difficulties: &[u64],
 ) -> Vec<ChainBlock> {
     if number_of_blocks != difficulties.len() {

@@ -31,6 +31,7 @@ use std::{
 use tari_common::configuration::Network;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
+    tari_address::TariAddress,
     types::{Commitment, FixedHash, HashOutput, PublicKey, Signature},
 };
 use tari_storage::lmdb_store::LMDBConfig;
@@ -62,9 +63,9 @@ use crate::{
     },
     consensus::{chain_strength_comparer::ChainStrengthComparerBuilder, ConsensusConstantsBuilder, ConsensusManager},
     proof_of_work::{AchievedTargetDifficulty, Difficulty, PowAlgorithm},
-    test_helpers::{block_spec::BlockSpecs, create_consensus_rules, BlockSpec},
+    test_helpers::{block_spec::BlockSpecs, create_consensus_rules, default_coinbase_entities, BlockSpec},
     transactions::{
-        test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager},
+        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TariKeyId},
         transaction_components::{TransactionInput, TransactionKernel, TransactionOutput, WalletOutput},
         CryptoFactories,
     },
@@ -422,16 +423,25 @@ pub async fn create_chained_blocks<T: Into<BlockSpecs>>(
     let mut block_hashes = HashMap::new();
     block_hashes.insert("GB".to_string(), genesis_block);
     let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
-    let km = create_test_core_key_manager_with_memory_db();
+    let km = create_memory_db_key_manager();
     let blocks: BlockSpecs = blocks.into();
     let mut block_names = Vec::with_capacity(blocks.len());
+    let (script_key_id, wallet_payment_address) = default_coinbase_entities(&km).await;
     for block_spec in blocks {
         let prev_block = block_hashes
             .get(block_spec.parent)
             .unwrap_or_else(|| panic!("Could not find block {}", block_spec.parent));
         let name = block_spec.name;
         let difficulty = block_spec.difficulty;
-        let (block, _) = create_block(&rules, prev_block.block(), block_spec, &km).await;
+        let (block, _) = create_block(
+            &rules,
+            prev_block.block(),
+            block_spec,
+            &km,
+            &script_key_id,
+            &wallet_payment_address,
+        )
+        .await;
         let block = mine_block(block, prev_block.accumulated_data(), difficulty);
         block_names.push(name.to_string());
         block_hashes.insert(name.to_string(), block);
@@ -491,31 +501,36 @@ pub struct TestBlockchain {
     db: BlockchainDatabase<TempDatabase>,
     chain: Vec<(&'static str, Arc<ChainBlock>)>,
     rules: ConsensusManager,
-    pub km: TestKeyManager,
+    pub km: MemoryDbKeyManager,
+    script_key_id: TariKeyId,
+    wallet_payment_address: TariAddress,
 }
 
 impl TestBlockchain {
-    pub fn new(db: BlockchainDatabase<TempDatabase>, rules: ConsensusManager) -> Self {
+    pub async fn new(db: BlockchainDatabase<TempDatabase>, rules: ConsensusManager) -> Self {
         let genesis = db
             .fetch_block(0, true)
             .unwrap()
             .try_into_chain_block()
             .map(Arc::new)
             .unwrap();
-        let km = create_test_core_key_manager_with_memory_db();
+        let km = create_memory_db_key_manager();
+        let (script_key_id, wallet_payment_address) = default_coinbase_entities(&km).await;
         let mut blockchain = Self {
             db,
             chain: Default::default(),
             rules,
             km,
+            script_key_id,
+            wallet_payment_address,
         };
 
         blockchain.chain.push(("GB", genesis));
         blockchain
     }
 
-    pub fn create(rules: ConsensusManager) -> Self {
-        Self::new(create_custom_blockchain(rules.clone()), rules)
+    pub async fn create(rules: ConsensusManager) -> Self {
+        Self::new(create_custom_blockchain(rules.clone()), rules).await
     }
 
     pub async fn append_chain(
@@ -545,10 +560,10 @@ impl TestBlockchain {
         Ok(())
     }
 
-    pub fn with_validators(validators: Validators<TempDatabase>) -> Self {
+    pub async fn with_validators(validators: Validators<TempDatabase>) -> Self {
         let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
         let db = create_store_with_consensus_and_validators(rules.clone(), validators);
-        Self::new(db, rules)
+        Self::new(db, rules).await
     }
 
     pub fn rules(&self) -> &ConsensusManager {
@@ -605,7 +620,15 @@ impl TestBlockchain {
             .ok_or_else(|| format!("Parent block not found with name '{}'", block_spec.parent))
             .unwrap();
         let difficulty = block_spec.difficulty;
-        let (block, coinbase) = create_block(&self.rules, parent.block(), block_spec, &self.km).await;
+        let (block, coinbase) = create_block(
+            &self.rules,
+            parent.block(),
+            block_spec,
+            &self.km,
+            &self.script_key_id,
+            &self.wallet_payment_address,
+        )
+        .await;
         let block = mine_block(block, parent.accumulated_data(), difficulty);
         (block, coinbase)
     }
@@ -615,7 +638,15 @@ impl TestBlockchain {
             .get_block_by_name(block_spec.parent)
             .ok_or_else(|| format!("Parent block not found with name '{}'", block_spec.parent))
             .unwrap();
-        let (mut block, outputs) = create_block(&self.rules, parent.block(), block_spec, &self.km).await;
+        let (mut block, outputs) = create_block(
+            &self.rules,
+            parent.block(),
+            block_spec,
+            &self.km,
+            &self.script_key_id,
+            &self.wallet_payment_address,
+        )
+        .await;
         block.body.sort();
         (block, outputs)
     }
@@ -647,12 +678,5 @@ impl TestBlockchain {
 
     pub fn get_genesis_block(&self) -> Arc<ChainBlock> {
         self.chain.first().map(|(_, block)| block).unwrap().clone()
-    }
-}
-
-impl Default for TestBlockchain {
-    fn default() -> Self {
-        let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
-        TestBlockchain::create(rules)
     }
 }

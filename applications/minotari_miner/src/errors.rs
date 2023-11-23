@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 use minotari_app_grpc::authentication::BasicAuthError;
+use tari_core::consensus::ConsensusBuilderError;
 use thiserror::Error;
 use tonic::codegen::http::uri::InvalidUri;
 
@@ -28,7 +29,7 @@ use tonic::codegen::http::uri::InvalidUri;
 pub enum MinerError {
     #[error("I/O error")]
     IOError(#[from] std::io::Error),
-    #[error("GRPC error: {0}")]
+    #[error("gRPC error: {0}")]
     GrpcStatus(#[from] tonic::Status),
     #[error("Connection error: {0}")]
     GrpcConnection(#[from] tonic::transport::Error),
@@ -44,10 +45,14 @@ pub enum MinerError {
     BlockHeader(String),
     #[error("Conversion error: {0}")]
     Conversion(String),
-    #[error("Invalid grpc credentials: {0}")]
+    #[error("Invalid gRPC credentials: {0}")]
     BasicAuthError(#[from] BasicAuthError),
-    #[error("Invalid grpc url: {0}")]
+    #[error("Invalid gRPC url: {0}")]
     InvalidUri(#[from] InvalidUri),
+    #[error("Coinbase error: {0}")]
+    CoinbaseError(String),
+    #[error("Consensus build error: {0}")]
+    ConsensusBuilderError(#[from] ConsensusBuilderError),
 }
 
 pub fn err_empty(name: &str) -> MinerError {

@@ -44,13 +44,13 @@ mod test {
     use crate::{
         covenant,
         covenants::{filters::test::setup_filter_test, test::create_input},
-        transactions::{test_helpers::create_test_core_key_manager_with_memory_db, transaction_components::OutputType},
+        transactions::{key_manager::create_memory_db_key_manager, transaction_components::OutputType},
     };
 
     #[tokio::test]
     async fn it_filters_outputs_that_match_input_fields() {
         let covenant = covenant!(fields_preserved(@fields(@field::features_maturity, @field::features_output_type)));
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let mut input = create_input(&key_manager).await;
         input.set_maturity(42).unwrap();
         input.features_mut().unwrap().output_type = OutputType::ValidatorNodeRegistration;

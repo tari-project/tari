@@ -40,7 +40,7 @@ use hyper::{header::HeaderValue, service::Service, Body, Method, Request, Respon
 use json::json;
 use jsonrpc::error::StandardError;
 use minotari_node_grpc_client::{grpc, grpc::base_node_client::BaseNodeClient};
-use minotari_wallet_grpc_client::{grpc::wallet_client::WalletClient, ClientAuthenticationInterceptor};
+use minotari_wallet_grpc_client::ClientAuthenticationInterceptor;
 use reqwest::{ResponseBuilderExt, Url};
 use serde_json as json;
 use tari_core::proof_of_work::{
@@ -77,7 +77,6 @@ impl MergeMiningProxyService {
         config: MergeMiningProxyConfig,
         http_client: reqwest::Client,
         base_node_client: BaseNodeClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>,
-        wallet_client: WalletClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>,
         block_templates: BlockTemplateRepository,
         randomx_factory: RandomXFactory,
     ) -> Self {
@@ -88,7 +87,6 @@ impl MergeMiningProxyService {
                 block_templates,
                 http_client,
                 base_node_client,
-                wallet_client,
                 initial_sync_achieved: Arc::new(AtomicBool::new(false)),
                 current_monerod_server: Arc::new(RwLock::new(None)),
                 last_assigned_monerod_server: Arc::new(RwLock::new(None)),
@@ -159,7 +157,6 @@ struct InnerService {
     block_templates: BlockTemplateRepository,
     http_client: reqwest::Client,
     base_node_client: BaseNodeClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>,
-    wallet_client: WalletClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>,
     initial_sync_achieved: Arc<AtomicBool>,
     current_monerod_server: Arc<RwLock<Option<String>>>,
     last_assigned_monerod_server: Arc<RwLock<Option<String>>>,
@@ -395,7 +392,6 @@ impl InnerService {
         }
 
         let mut grpc_client = self.base_node_client.clone();
-        let mut grpc_wallet_client = self.wallet_client.clone();
 
         // Add merge mining tag on blocktemplate request
         debug!(target: LOG_TARGET, "Requested new block template from Minotari base node");
@@ -429,8 +425,7 @@ impl InnerService {
             }
         }
 
-        let new_block_protocol =
-            BlockTemplateProtocol::new(&mut grpc_client, &mut grpc_wallet_client, self.config.clone());
+        let new_block_protocol = BlockTemplateProtocol::new(&mut grpc_client, self.config.clone()).await?;
 
         let seed_hash = FixedByteArray::from_hex(&monerod_resp["result"]["seed_hash"].to_string().replace('\"', ""))
             .map_err(|err| MmProxyError::InvalidMonerodResponse(format!("seed hash hex is invalid: {}", err)))?;

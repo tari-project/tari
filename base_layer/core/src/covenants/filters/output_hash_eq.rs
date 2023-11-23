@@ -47,12 +47,12 @@ mod test {
             filters::test::setup_filter_test,
             test::{create_input, create_outputs},
         },
-        transactions::test_helpers::create_test_core_key_manager_with_memory_db,
+        transactions::key_manager::create_memory_db_key_manager,
     };
 
     #[tokio::test]
     async fn it_filters_output_with_specific_hash() {
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let output = create_outputs(1, Default::default(), &key_manager).await.remove(0);
         let output_hash = output.hash();
         let mut hash = [0u8; 32];

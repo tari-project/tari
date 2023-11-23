@@ -26,6 +26,7 @@ use tari_common::{
     configuration::{Network, StringList},
     SubConfigPath,
 };
+use tari_common_types::tari_address::TariAddress;
 use tari_comms::multiaddr::Multiaddr;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -45,10 +46,6 @@ pub struct MergeMiningProxyConfig {
     pub base_node_grpc_address: Option<Multiaddr>,
     /// GRPC authentication for base node
     pub base_node_grpc_authentication: GrpcAuthentication,
-    /// The Minotari wallet's GRPC address
-    pub console_wallet_grpc_address: Option<Multiaddr>,
-    /// GRPC authentication for console wallet
-    pub console_wallet_grpc_authentication: GrpcAuthentication,
     /// Address of the minotari_merge_mining_proxy application
     pub listener_address: Multiaddr,
     /// In sole merged mining, the block solution is usually submitted to the Monero blockchain (monerod) as well as to
@@ -71,6 +68,10 @@ pub struct MergeMiningProxyConfig {
     pub coinbase_extra: String,
     /// Selected network
     pub network: Network,
+    /// The Tari wallet address (valid address in hex) where the mining funds will be sent to - must be assigned
+    pub wallet_payment_address: String,
+    /// Stealth payment yes or no
+    pub stealth_payment: bool,
 }
 
 impl Default for MergeMiningProxyConfig {
@@ -83,8 +84,6 @@ impl Default for MergeMiningProxyConfig {
             monerod_use_auth: false,
             base_node_grpc_address: None,
             base_node_grpc_authentication: GrpcAuthentication::default(),
-            console_wallet_grpc_address: None,
-            console_wallet_grpc_authentication: GrpcAuthentication::default(),
             listener_address: "/ip4/127.0.0.1/tcp/18081".parse().unwrap(),
             submit_to_origin: true,
             wait_for_initial_sync_at_startup: true,
@@ -92,6 +91,8 @@ impl Default for MergeMiningProxyConfig {
             max_randomx_vms: 5,
             coinbase_extra: "tari_merge_mining_proxy".to_string(),
             network: Default::default(),
+            wallet_payment_address: TariAddress::default().to_hex(),
+            stealth_payment: true,
         }
     }
 }
@@ -117,12 +118,10 @@ mod test {
               baz = "foo"
             [merge_mining_proxy]
               monerod_username = "cmot"
-              console_wallet_grpc_address = "/dns4/wallet/tcp/9000"
             [config_a.merge_mining_proxy]
               monerod_url = [ "http://network.a.org" ]
               monerod_password = "password_igor"
               base_node_grpc_address = "/dns4/base_node_a/tcp/8080"
-              console_wallet_grpc_address = "/dns4/wallet_a/tcp/9000"
             [config_b.merge_mining_proxy]
               submit_to_origin = false
               monerod_url = [ "http://network.b.org" ]
@@ -150,10 +149,6 @@ mod test {
             config.base_node_grpc_address,
             Some(Multiaddr::from_str("/dns4/base_node_b/tcp/8080").unwrap())
         );
-        assert_eq!(
-            config.console_wallet_grpc_address,
-            Some(Multiaddr::from_str("/dns4/wallet/tcp/9000").unwrap())
-        );
 
         let cfg = get_config("config_a");
         let config = MergeMiningProxyConfig::load_from(&cfg).expect("Failed to load config");
@@ -164,10 +159,6 @@ mod test {
         assert_eq!(
             config.base_node_grpc_address,
             Some(Multiaddr::from_str("/dns4/base_node_a/tcp/8080").unwrap())
-        );
-        assert_eq!(
-            config.console_wallet_grpc_address,
-            Some(Multiaddr::from_str("/dns4/wallet_a/tcp/9000").unwrap())
         );
     }
 

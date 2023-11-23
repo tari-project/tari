@@ -107,6 +107,7 @@ impl OutputManagerServiceMock {
                             Some(RecoveredOutput {
                                 output: dbuo.wallet_output,
                                 tx_id: TxId::new_random(),
+                                hash: dbuo.hash,
                             })
                         } else {
                             None
@@ -131,6 +132,7 @@ impl OutputManagerServiceMock {
                             Some(RecoveredOutput {
                                 output: dbuo.wallet_output,
                                 tx_id: TxId::new_random(),
+                                hash: dbuo.hash,
                             })
                         } else {
                             None

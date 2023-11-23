@@ -45,7 +45,7 @@ use crate::steps::{node_steps::submit_transaction_to, wallet_steps::create_tx_sp
 #[when(expr = "I have mine-before-tip mining node {word} connected to base node {word} and wallet {word}")]
 #[when(expr = "I have mining node {word} connected to base node {word} and wallet {word}")]
 pub async fn create_miner(world: &mut TariWorld, miner_name: String, bn_name: String, wallet_name: String) {
-    register_miner_process(world, miner_name, bn_name, wallet_name);
+    register_miner_process(world, miner_name, bn_name, wallet_name, false);
 }
 
 #[when(expr = "mining node {word} mines {int} blocks")]
@@ -65,7 +65,18 @@ async fn mine_blocks_on(world: &mut TariWorld, blocks: u64, base_node: String) {
         .get_node_client(&base_node)
         .await
         .expect("Couldn't get the node client to mine with");
-    mine_blocks_without_wallet(&mut client, blocks, 0, &world.key_manager).await;
+    let script_key_id = &world.script_key_id().await;
+    mine_blocks_without_wallet(
+        &mut client,
+        blocks,
+        0,
+        &world.key_manager,
+        script_key_id,
+        &world.default_payment_address.clone(),
+        false,
+        &world.consensus_manager.clone(),
+    )
+    .await;
 }
 
 #[when(expr = "mining node {word} mines {int} blocks with min difficulty {int} and max difficulty {int}")]
@@ -94,7 +105,18 @@ async fn mine_custom_weight_blocks_with_height(world: &mut TariWorld, num_blocks
         .get_node_client(&node_name)
         .await
         .expect("Couldn't get the node client to mine with");
-    mine_blocks_without_wallet(&mut client, num_blocks, weight, &world.key_manager).await;
+    let script_key_id = &world.script_key_id().await;
+    mine_blocks_without_wallet(
+        &mut client,
+        num_blocks,
+        weight,
+        &world.key_manager,
+        script_key_id,
+        &world.default_payment_address.clone(),
+        false,
+        &world.consensus_manager.clone(),
+    )
+    .await;
 }
 
 #[then(expr = "I have a SHA3 miner {word} connected to node {word}")]
@@ -105,10 +127,13 @@ async fn sha3_miner_connected_to_base_node(world: &mut TariWorld, miner: String,
     let peers = base_node.seed_nodes.clone();
     world.wallet_connected_to_base_node.insert(miner.clone(), miner.clone());
     spawn_wallet(world, miner.clone(), Some(miner.clone()), peers, None, None).await;
-    register_miner_process(world, miner.clone(), miner.clone(), miner);
+    register_miner_process(world, miner.clone(), miner.clone(), miner, false);
 }
 
-#[then(expr = "while mining via SHA3 miner {word} all transactions in wallet {word} are found to be Mined_Confirmed")]
+#[then(
+    expr = "while mining via SHA3 miner {word} all transactions in wallet {word} are found to be \
+            Mined_or_Faux_Confirmed"
+)]
 async fn while_mining_all_txs_in_wallet_are_mined_confirmed(world: &mut TariWorld, miner: String, wallet: String) {
     let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
     let wallet_address = world.get_wallet_address(&wallet).await.unwrap();
@@ -121,7 +146,7 @@ async fn while_mining_all_txs_in_wallet_are_mined_confirmed(world: &mut TariWorl
     let miner_ps = world.miners.get(&miner).unwrap();
     let num_retries = 100;
     println!(
-        "Detecting {} Mined_Confirmed transactions for wallet {}",
+        "Detecting {} Mined_or_Faux_Confirmed transactions for wallet {}",
         wallet_tx_ids.len(),
         wallet
     );
@@ -136,7 +161,7 @@ async fn while_mining_all_txs_in_wallet_are_mined_confirmed(world: &mut TariWorl
             // TRANSACTION_STATUS_MINED_CONFIRMED code is currently 6
             if tx_status == 6 {
                 println!(
-                    "Wallet transaction with id {} has been detected with status Mined_Confirmed",
+                    "Wallet transaction with id {} has been detected with status Mined_or_Faux_Confirmed",
                     tx_id
                 );
                 break 'inner;
@@ -144,12 +169,15 @@ async fn while_mining_all_txs_in_wallet_are_mined_confirmed(world: &mut TariWorl
 
             if retry == num_retries {
                 panic!(
-                    "Unable to have wallet transaction with tx_id = {} with status Mined_Confirmed",
+                    "Unable to have wallet transaction with tx_id = {} with status Mined_or_Faux_Confirmed",
                     tx_id
                 );
             }
 
-            println!("Mine a block for tx_id {} to have status Mined_Confirmed", tx_id);
+            println!(
+                "Mine a block for tx_id {} to have status Mined_or_Faux_Confirmed",
+                tx_id
+            );
             miner_ps.mine(world, Some(1), None, None).await;
 
             tokio::time::sleep(Duration::from_secs(5)).await;
@@ -157,7 +185,7 @@ async fn while_mining_all_txs_in_wallet_are_mined_confirmed(world: &mut TariWorl
     }
 }
 
-#[then(expr = "while mining via node {word} all transactions in wallet {word} are found to be Mined_Confirmed")]
+#[then(expr = "while mining via node {word} all transactions in wallet {word} are found to be Mined_or_Faux_Confirmed")]
 async fn while_mining_in_node_all_txs_in_wallet_are_mined_confirmed(
     world: &mut TariWorld,
     node: String,
@@ -165,6 +193,7 @@ async fn while_mining_in_node_all_txs_in_wallet_are_mined_confirmed(
 ) {
     let mut wallet_client = create_wallet_client(world, wallet.clone()).await.unwrap();
     let wallet_address = world.get_wallet_address(&wallet).await.unwrap();
+    let script_key_id = &world.script_key_id().await;
     let wallet_tx_ids = world.wallet_tx_ids.get(&wallet_address).unwrap();
 
     if wallet_tx_ids.is_empty() {
@@ -176,13 +205,13 @@ async fn while_mining_in_node_all_txs_in_wallet_are_mined_confirmed(
     let mut mined_status_flag = false;
 
     println!(
-        "Detecting transactions on wallet {}, while mining on node {}, to be Mined_Confirmed",
+        "Detecting transactions on wallet {}, while mining on node {}, to be Mined_or_Faux_Confirmed",
         &wallet, &node
     );
 
     for tx_id in wallet_tx_ids {
         println!(
-            "Waiting for transaction with id {} to have status Mined_Confirmed, while mining on node {}",
+            "Waiting for transaction with id {} to have status Mined_or_Faux_Confirmed, while mining on node {}",
             tx_id, &node
         );
 
@@ -194,27 +223,39 @@ async fn while_mining_in_node_all_txs_in_wallet_are_mined_confirmed(
             let tx_status = res.transactions.first().unwrap().status;
             // TRANSACTION_STATUS_MINED_CONFIRMED code is currently 6
             if tx_status == 6 {
-                println!("Transaction with id {} has been Mined_Confirmed", tx_id);
+                println!("Transaction with id {} has been Mined_or_Faux_Confirmed", tx_id);
                 mined_status_flag = true;
                 break 'inner;
             }
 
-            println!("Mine a block for tx_id {} to have status Mined_Confirmed", tx_id);
-            mine_block(&mut node_client, &mut wallet_client).await;
+            println!(
+                "Mine a block for tx_id {} to have status Mined_or_Faux_Confirmed",
+                tx_id
+            );
+            mine_block(
+                &mut node_client,
+                &world.key_manager,
+                script_key_id,
+                &world.default_payment_address.clone(),
+                false,
+                &world.consensus_manager.clone(),
+            )
+            .await;
 
             tokio::time::sleep(Duration::from_secs(5)).await;
         }
 
         if !mined_status_flag {
             panic!(
-                "Failed to have transaction with id {} on wallet {}, while mining on node {}, to be Mined_Confirmed",
+                "Failed to have transaction with id {} on wallet {}, while mining on node {}, to be \
+                 Mined_or_Faux_Confirmed",
                 tx_id, &wallet, &node
             );
         }
     }
 
     println!(
-        "Wallet {} has all transactions Mined_Confirmed, while mining on node {}",
+        "Wallet {} has all transactions Mined_or_Faux_Confirmed, while mining on node {}",
         &wallet, &node
     );
 }
@@ -233,7 +274,24 @@ async fn sha3_miner_connected_to_all_seed_nodes(world: &mut TariWorld, sha3_mine
     )
     .await;
 
-    register_miner_process(world, sha3_miner.clone(), sha3_miner.clone(), sha3_miner);
+    register_miner_process(world, sha3_miner.clone(), sha3_miner.clone(), sha3_miner, false);
+}
+
+#[when(expr = "I have a stealth SHA3 miner {word} connected to all seed nodes")]
+async fn stealth_sha3_miner_connected_to_all_seed_nodes(world: &mut TariWorld, sha3_miner: String) {
+    spawn_base_node(world, false, sha3_miner.clone(), world.seed_nodes.clone()).await;
+
+    spawn_wallet(
+        world,
+        sha3_miner.clone(),
+        Some(sha3_miner.clone()),
+        world.seed_nodes.clone(),
+        None,
+        None,
+    )
+    .await;
+
+    register_miner_process(world, sha3_miner.clone(), sha3_miner.clone(), sha3_miner, true);
 }
 
 #[given(expr = "I have a SHA3 miner {word} connected to seed node {word}")]
@@ -254,7 +312,7 @@ async fn sha3_miner_connected_to_seed_node(world: &mut TariWorld, sha3_miner: St
     .await;
 
     println!("Register SHA3 miner {}", &sha3_miner);
-    register_miner_process(world, sha3_miner.clone(), sha3_miner.clone(), sha3_miner);
+    register_miner_process(world, sha3_miner.clone(), sha3_miner.clone(), sha3_miner, false);
 }
 
 #[when(expr = "I have individual mining nodes connected to each wallet and base node {word}")]
@@ -263,7 +321,7 @@ async fn mining_nodes_connected_to_each_wallet_and_base_node(world: &mut TariWor
 
     for (ind, wallet_name) in wallets.keys().enumerate() {
         let miner = format!("Miner_{}", ind);
-        register_miner_process(world, miner, base_node.clone(), wallet_name.clone());
+        register_miner_process(world, miner, base_node.clone(), wallet_name.clone(), false);
     }
 }
 
@@ -281,8 +339,19 @@ async fn mining_node_mine_blocks(world: &mut TariWorld, blocks: u64) {
 async fn mine_without_submit(world: &mut TariWorld, block: String, node: String) {
     let mut client = world.get_node_client(&node).await.unwrap();
 
-    let unmined_block: Block =
-        Block::try_from(mine_block_before_submit(&mut client, &world.key_manager).await).unwrap();
+    let script_key_id = &world.script_key_id().await;
+    let unmined_block: Block = Block::try_from(
+        mine_block_before_submit(
+            &mut client,
+            &world.key_manager,
+            script_key_id,
+            &world.default_payment_address.clone(),
+            false,
+            &world.consensus_manager.clone(),
+        )
+        .await,
+    )
+    .unwrap();
     world.blocks.insert(block, unmined_block);
 }
 
@@ -332,7 +401,7 @@ async fn num_blocks_with_difficulty(world: &mut TariWorld, num_blocks: u64, diff
 
     let miner_name = format!("miner-{}", &node);
     if world.miners.get(&miner_name).is_none() {
-        register_miner_process(world, miner_name.clone(), node.clone(), wallet_name.clone());
+        register_miner_process(world, miner_name.clone(), node.clone(), wallet_name.clone(), false);
     }
 
     let miner = world.miners.get(&miner_name).unwrap();

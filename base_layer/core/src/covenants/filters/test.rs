@@ -27,7 +27,7 @@ use crate::{
         Covenant,
     },
     transactions::{
-        test_helpers::TestKeyManager,
+        key_manager::MemoryDbKeyManager,
         transaction_components::{TransactionInput, TransactionOutput},
     },
 };
@@ -40,7 +40,7 @@ pub async fn setup_filter_test<'a, F>(
     input: &'a TransactionInput,
     block_height: u64,
     output_mod: F,
-    key_manager: &TestKeyManager,
+    key_manager: &MemoryDbKeyManager,
 ) -> (CovenantContext<'a>, Vec<TransactionOutput>)
 where
     F: FnOnce(&mut Vec<TransactionOutput>),

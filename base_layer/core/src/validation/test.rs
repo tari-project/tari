@@ -36,13 +36,9 @@ use crate::{
     proof_of_work::AchievedTargetDifficulty,
     test_helpers::{blockchain::create_store_with_consensus, create_chain_header},
     transactions::{
-        key_manager::TxoStage,
+        key_manager::{create_memory_db_key_manager, TxoStage},
         tari_amount::{uT, MicroMinotari},
-        test_helpers::{
-            create_random_signature_from_secret_key,
-            create_test_core_key_manager_with_memory_db,
-            create_utxo,
-        },
+        test_helpers::{create_random_signature_from_secret_key, create_utxo},
         transaction_components::{KernelBuilder, KernelFeatures, OutputFeatures, TransactionKernel},
         CryptoFactories,
     },
@@ -177,7 +173,7 @@ async fn chain_balance_validation() {
     let consensus_manager = ConsensusManagerBuilder::new(Network::Esmeralda).build().unwrap();
     let genesis = consensus_manager.get_genesis_block();
     let faucet_value = 5000 * uT;
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let (faucet_utxo, faucet_key_id, _) = create_utxo(
         faucet_value,
         &key_manager,
@@ -360,7 +356,7 @@ async fn chain_balance_validation_burned() {
     let consensus_manager = ConsensusManagerBuilder::new(Network::Esmeralda).build().unwrap();
     let genesis = consensus_manager.get_genesis_block();
     let faucet_value = 5000 * uT;
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let (faucet_utxo, faucet_key_id, _) = create_utxo(
         faucet_value,
         &key_manager,
@@ -512,16 +508,13 @@ async fn chain_balance_validation_burned() {
 mod transaction_validator {
     use super::*;
     use crate::{
-        transactions::{
-            test_helpers::create_test_core_key_manager_with_memory_db,
-            transaction_components::{OutputType, TransactionError},
-        },
+        transactions::transaction_components::{OutputType, TransactionError},
         validation::transaction::TransactionInternalConsistencyValidator,
     };
 
     #[tokio::test]
     async fn it_rejects_coinbase_outputs() {
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build().unwrap();
         let db = create_store_with_consensus(consensus_manager.clone());
         let factories = CryptoFactories::default();
@@ -543,7 +536,7 @@ mod transaction_validator {
 
     #[tokio::test]
     async fn coinbase_extra_must_be_empty() {
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build().unwrap();
         let db = create_store_with_consensus(consensus_manager.clone());
         let factories = CryptoFactories::default();

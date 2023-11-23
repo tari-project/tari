@@ -26,9 +26,9 @@ use tari_core::{
     borsh::SerializedSize,
     covenants::Covenant,
     transactions::{
-        key_manager::TariKeyId,
+        key_manager::{MemoryDbKeyManager, TariKeyId},
         tari_amount::MicroMinotari,
-        test_helpers::{create_transaction_with, TestKeyManager, TestParams},
+        test_helpers::{create_transaction_with, TestParams},
         transaction_components::{
             OutputFeatures,
             Transaction,
@@ -54,7 +54,7 @@ struct TestTransactionBuilder {
 }
 
 impl TestTransactionBuilder {
-    pub async fn new(key_manager: &TestKeyManager) -> Self {
+    pub async fn new(key_manager: &MemoryDbKeyManager) -> Self {
         Self {
             amount: MicroMinotari(0),
             fee_per_gram: MicroMinotari(1),
@@ -80,7 +80,7 @@ impl TestTransactionBuilder {
         self.amount += amount
     }
 
-    pub async fn add_input(&mut self, u: WalletOutput, key_manager: &TestKeyManager) -> &mut Self {
+    pub async fn add_input(&mut self, u: WalletOutput, key_manager: &MemoryDbKeyManager) -> &mut Self {
         self.update_amount(u.value);
 
         if u.features.maturity > self.inputs_max_height {
@@ -97,7 +97,7 @@ impl TestTransactionBuilder {
         self
     }
 
-    pub async fn build(mut self, key_manager: &TestKeyManager) -> (Transaction, WalletOutput) {
+    pub async fn build(mut self, key_manager: &MemoryDbKeyManager) -> (Transaction, WalletOutput) {
         self.create_utxo(key_manager, self.inputs.len()).await;
 
         let inputs = self.inputs.iter().map(|f| f.1.clone()).collect();
@@ -107,7 +107,7 @@ impl TestTransactionBuilder {
         (tx, self.output.clone().unwrap().1)
     }
 
-    async fn create_utxo(&mut self, key_manager: &TestKeyManager, num_inputs: usize) {
+    async fn create_utxo(&mut self, key_manager: &MemoryDbKeyManager, num_inputs: usize) {
         let script = script!(Nop);
         let features = OutputFeatures::default();
         let covenant = Covenant::default();
@@ -153,7 +153,7 @@ impl TestTransactionBuilder {
 pub async fn build_transaction_with_output_and_fee_per_gram(
     utxos: Vec<WalletOutput>,
     fee_per_gram: u64,
-    key_manager: &TestKeyManager,
+    key_manager: &MemoryDbKeyManager,
 ) -> (Transaction, WalletOutput) {
     let mut builder = TestTransactionBuilder::new(key_manager).await;
     for wallet_output in utxos {
@@ -167,7 +167,7 @@ pub async fn build_transaction_with_output_and_fee_per_gram(
 pub async fn build_transaction_with_output_and_lockheight(
     utxos: Vec<WalletOutput>,
     lockheight: u64,
-    key_manager: &TestKeyManager,
+    key_manager: &MemoryDbKeyManager,
 ) -> (Transaction, WalletOutput) {
     let mut builder = TestTransactionBuilder::new(key_manager).await;
     for wallet_output in utxos {
@@ -180,7 +180,7 @@ pub async fn build_transaction_with_output_and_lockheight(
 
 pub async fn build_transaction_with_output(
     utxos: Vec<WalletOutput>,
-    key_manager: &TestKeyManager,
+    key_manager: &MemoryDbKeyManager,
 ) -> (Transaction, WalletOutput) {
     let mut builder = TestTransactionBuilder::new(key_manager).await;
     for wallet_output in utxos {

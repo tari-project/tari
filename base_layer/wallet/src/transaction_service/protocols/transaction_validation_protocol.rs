@@ -44,14 +44,12 @@ use tari_utilities::hex::Hex;
 
 use crate::{
     connectivity_service::WalletConnectivityInterface,
-    output_manager_service::handle::OutputManagerHandle,
     transaction_service::{
         config::TransactionServiceConfig,
         error::{TransactionServiceError, TransactionServiceProtocolError, TransactionServiceProtocolErrorExt},
         handle::{TransactionEvent, TransactionEventSender},
         storage::{
             database::{TransactionBackend, TransactionDatabase},
-            models::TxCancellationReason,
             sqlite_db::UnconfirmedTransactionInfo,
         },
     },
@@ -66,7 +64,6 @@ pub struct TransactionValidationProtocol<TTransactionBackend, TWalletConnectivit
     connectivity: TWalletConnectivity,
     config: TransactionServiceConfig,
     event_publisher: TransactionEventSender,
-    output_manager_handle: OutputManagerHandle,
 }
 
 #[allow(unused_variables)]
@@ -81,7 +78,6 @@ where
         connectivity: TWalletConnectivity,
         config: TransactionServiceConfig,
         event_publisher: TransactionEventSender,
-        output_manager_handle: OutputManagerHandle,
     ) -> Self {
         Self {
             operation_id,
@@ -89,7 +85,6 @@ where
             connectivity,
             config,
             event_publisher,
-            output_manager_handle,
         }
     }
 
@@ -147,43 +142,13 @@ where
             }
             if let Some((tip_height, tip_block, tip_mined_timestamp)) = tip_info {
                 for unmined_tx in &unmined {
-                    // Treat coinbases separately
-                    if unmined_tx.is_coinbase() {
-                        if unmined_tx.coinbase_block_height.unwrap_or_default() <= tip_height {
-                            debug!(
-                                target: LOG_TARGET,
-                                "Updated coinbase {} as abandoned (Operation ID: {})",
-                                unmined_tx.tx_id,
-                                self.operation_id
-                            );
-                            self.update_coinbase_as_abandoned(
-                                unmined_tx.tx_id,
-                                &tip_block,
-                                tip_height,
-                                tip_mined_timestamp,
-                                tip_height.saturating_sub(unmined_tx.coinbase_block_height.unwrap_or_default()),
-                            )
-                            .await?;
-                            state_changed = true;
-                        } else {
-                            debug!(
-                                target: LOG_TARGET,
-                                "Coinbase not found, but it is for a block that is not yet in the chain. Coinbase \
-                                 height: {}, tip height:{} (Operation ID: {})",
-                                unmined_tx.coinbase_block_height.unwrap_or_default(),
-                                tip_height,
-                                self.operation_id
-                            );
-                        }
-                    } else {
-                        debug!(
-                            target: LOG_TARGET,
-                            "Updated transaction {} as unmined (Operation ID: {})", unmined_tx.tx_id, self.operation_id
-                        );
-                        self.update_transaction_as_unmined(unmined_tx.tx_id, &unmined_tx.status)
-                            .await?;
-                        self.publish_event(TransactionEvent::NewBlockMined(unmined_tx.tx_id));
-                    }
+                    debug!(
+                        target: LOG_TARGET,
+                        "Updated transaction {} as unmined (Operation ID: {})", unmined_tx.tx_id, self.operation_id
+                    );
+                    self.update_transaction_as_unmined(unmined_tx.tx_id, &unmined_tx.status)
+                        .await?;
+                    self.publish_event(TransactionEvent::NewBlockMined(unmined_tx.tx_id));
                 }
             }
         }
@@ -430,67 +395,6 @@ where
             })
         }
 
-        if *status == TransactionStatus::Coinbase {
-            if let Err(e) = self.output_manager_handle.set_coinbase_abandoned(tx_id, false).await {
-                warn!(
-                    target: LOG_TARGET,
-                    "Could not mark coinbase output for TxId: {} as not abandoned: {} (Operation ID: {})",
-                    tx_id,
-                    e,
-                    self.operation_id
-                );
-            };
-        }
-
-        Ok(())
-    }
-
-    #[allow(clippy::ptr_arg)]
-    async fn update_coinbase_as_abandoned(
-        &mut self,
-        tx_id: TxId,
-        mined_in_block: &BlockHash,
-        mined_height: u64,
-        mined_timestamp: u64,
-        num_confirmations: u64,
-    ) -> Result<(), TransactionServiceProtocolError<OperationId>> {
-        // This updates the OMS first before we update the TMS. If we update the TMS first and operation fail inside of
-        // the OMS, we have two databases that are out of sync, as the TMS would have been updated and OMS will be stuck
-        // forever as pending_incoming.
-        self.output_manager_handle
-            .set_coinbase_abandoned(tx_id, true)
-            .await
-            .map_err(|e| {
-                warn!(
-                    target: LOG_TARGET,
-                    "Could not mark coinbase output for TxId: {} as abandoned: {} (Operation ID: {})",
-                    tx_id,
-                    e,
-                    self.operation_id
-                );
-                e
-            })
-            .for_protocol(self.operation_id)?;
-        self.db
-            .set_transaction_mined_height(
-                tx_id,
-                mined_height,
-                *mined_in_block,
-                mined_timestamp,
-                num_confirmations,
-                num_confirmations >= self.config.num_confirmations_required,
-                false,
-            )
-            .for_protocol(self.operation_id)?;
-
-        self.db
-            .abandon_coinbase_transaction(tx_id)
-            .for_protocol(self.operation_id)?;
-
-        self.publish_event(TransactionEvent::TransactionCancelled(
-            tx_id,
-            TxCancellationReason::AbandonedCoinbase,
-        ));
         Ok(())
     }
 
@@ -499,18 +403,6 @@ where
         tx_id: TxId,
         status: &TransactionStatus,
     ) -> Result<(), TransactionServiceProtocolError<OperationId>> {
-        if *status == TransactionStatus::Coinbase {
-            if let Err(e) = self.output_manager_handle.set_coinbase_abandoned(tx_id, false).await {
-                warn!(
-                    target: LOG_TARGET,
-                    "Could not mark coinbase output for TxId: {} as not abandoned: {} (Operation ID: {})",
-                    tx_id,
-                    e,
-                    self.operation_id
-                );
-            };
-        }
-
         self.db
             .set_transaction_as_unmined(tx_id)
             .for_protocol(self.operation_id)?;
