@@ -731,7 +731,7 @@ async fn test_import_utxo() {
     let claim = PublicKey::from_secret_key(&key);
     let script = script!(Nop);
     let input = inputs!(claim);
-    let temp_features = OutputFeatures::create_coinbase(50, None);
+    let temp_features = OutputFeatures::create_coinbase(50, None, RangeProofType::BulletProofPlus);
 
     let key_manager = create_memory_db_key_manager();
     let p = TestParams::new(&key_manager);

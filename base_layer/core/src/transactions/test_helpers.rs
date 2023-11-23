@@ -309,6 +309,7 @@ pub async fn create_coinbase_wallet_output(
     test_params: &TestParams,
     height: u64,
     extra: Option<Vec<u8>>,
+    range_proof_type: RangeProofType,
 ) -> WalletOutput {
     let rules = create_consensus_manager();
     let key_manager = create_memory_db_key_manager();
@@ -317,7 +318,16 @@ pub async fn create_coinbase_wallet_output(
         .create_output(
             UtxoTestParams {
                 value: rules.get_block_reward_at(height),
-                features: OutputFeatures::create_coinbase(height + constants.coinbase_min_maturity(), extra),
+                features: OutputFeatures::create_coinbase(
+                    height + constants.coinbase_min_maturity(),
+                    extra,
+                    range_proof_type,
+                ),
+                minimum_value_promise: if range_proof_type == RangeProofType::BulletProofPlus {
+                    MicroMinotari(0)
+                } else {
+                    rules.get_block_reward_at(height)
+                },
                 ..Default::default()
             },
             &key_manager,

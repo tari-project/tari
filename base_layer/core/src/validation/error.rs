@@ -109,6 +109,8 @@ pub enum ValidationError {
     OutputTypeNotPermitted { output_type: OutputType },
     #[error("Range proof type '{range_proof_type}' is not permitted")]
     RangeProofTypeNotPermitted { range_proof_type: RangeProofType },
+    #[error("Output type '{output_type}' is not matched to any range proof type")]
+    OutputTypeNotMatchedToRangeProofType { output_type: OutputType },
     #[error("Validator registration has invalid minimum amount {actual}, must be at least {min}")]
     ValidatorNodeRegistrationMinDepositAmount { min: MicroMinotari, actual: MicroMinotari },
     #[error("Validator registration has invalid maturity {actual}, must be at least {min}")]
@@ -167,6 +169,7 @@ impl ValidationError {
             err @ ValidationError::InvalidBurnError(_) |
             err @ ValidationError::OutputTypeNotPermitted { .. } |
             err @ ValidationError::RangeProofTypeNotPermitted { .. } |
+            err @ ValidationError::OutputTypeNotMatchedToRangeProofType { .. } |
             err @ ValidationError::ValidatorNodeRegistrationMinDepositAmount { .. } |
             err @ ValidationError::ValidatorNodeRegistrationMinLockHeight { .. } |
             err @ ValidationError::InvalidValidatorNodeSignature |

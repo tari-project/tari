@@ -369,8 +369,15 @@ pub fn check_permitted_range_proof_types(
     constants: &ConsensusConstants,
     output: &TransactionOutput,
 ) -> Result<(), ValidationError> {
-    if !constants
-        .permitted_range_proof_types()
+    let binding = constants.permitted_range_proof_types();
+    let permitted_range_proof_types = binding.iter().find(|&&t| t.0 == output.features.output_type).ok_or(
+        ValidationError::OutputTypeNotMatchedToRangeProofType {
+            output_type: output.features.output_type,
+        },
+    )?;
+
+    if !permitted_range_proof_types
+        .1
         .contains(&output.features.range_proof_type)
     {
         return Err(ValidationError::RangeProofTypeNotPermitted {
@@ -535,7 +542,7 @@ mod test {
         use crate::transactions::{
             aggregated_body::AggregateBody,
             key_manager::create_memory_db_key_manager,
-            transaction_components::TransactionError,
+            transaction_components::{RangeProofType, TransactionError},
         };
 
         #[tokio::test]
@@ -545,7 +552,12 @@ mod test {
             let test_params = TestParams::new(&key_manager).await;
             let rules = test_helpers::create_consensus_manager();
             let key_manager = create_memory_db_key_manager();
-            let coinbase = block_on(test_helpers::create_coinbase_wallet_output(&test_params, height, None));
+            let coinbase = block_on(test_helpers::create_coinbase_wallet_output(
+                &test_params,
+                height,
+                None,
+                RangeProofType::RevealedValue,
+            ));
             let coinbase_output = coinbase.to_transaction_output(&key_manager).await.unwrap();
             let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key_id, &key_manager).await;
 
@@ -563,7 +575,9 @@ mod test {
             let key_manager = create_memory_db_key_manager();
             let test_params = TestParams::new(&key_manager).await;
             let rules = test_helpers::create_consensus_manager();
-            let mut coinbase = test_helpers::create_coinbase_wallet_output(&test_params, height, None).await;
+            let mut coinbase =
+                test_helpers::create_coinbase_wallet_output(&test_params, height, None, RangeProofType::RevealedValue)
+                    .await;
             coinbase.features.maturity = 0;
             let coinbase_output = coinbase.to_transaction_output(&key_manager).await.unwrap();
             let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key_id, &key_manager).await;
@@ -585,7 +599,13 @@ mod test {
             let key_manager = create_memory_db_key_manager();
             let test_params = TestParams::new(&key_manager).await;
             let rules = test_helpers::create_consensus_manager();
-            let mut coinbase = test_helpers::create_coinbase_wallet_output(&test_params, height, None).await;
+            let mut coinbase = test_helpers::create_coinbase_wallet_output(
+                &test_params,
+                height,
+                None,
+                RangeProofType::BulletProofPlus,
+            )
+            .await;
             coinbase.value = 123.into();
             let coinbase_output = coinbase.to_transaction_output(&key_manager).await.unwrap();
             let coinbase_kernel = test_helpers::create_coinbase_kernel(&coinbase.spending_key_id, &key_manager).await;

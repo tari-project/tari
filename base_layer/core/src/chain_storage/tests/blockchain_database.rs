@@ -65,6 +65,7 @@ async fn create_next_block(
         key_manager,
         script_key_id,
         wallet_payment_address,
+        None,
     )
     .await;
     let block = apply_mmr_to_block(db, block);

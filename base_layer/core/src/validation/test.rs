@@ -39,7 +39,7 @@ use crate::{
         key_manager::{create_memory_db_key_manager, TxoStage},
         tari_amount::{uT, MicroMinotari},
         test_helpers::{create_random_signature_from_secret_key, create_utxo},
-        transaction_components::{KernelBuilder, KernelFeatures, OutputFeatures, TransactionKernel},
+        transaction_components::{KernelBuilder, KernelFeatures, OutputFeatures, RangeProofType, TransactionKernel},
         CryptoFactories,
     },
     tx,
@@ -235,7 +235,7 @@ async fn chain_balance_validation() {
     let (coinbase, coinbase_key_id, _) = create_utxo(
         coinbase_value,
         &key_manager,
-        &OutputFeatures::create_coinbase(1, None),
+        &OutputFeatures::create_coinbase(1, None, RangeProofType::BulletProofPlus),
         &TariScript::default(),
         &Covenant::default(),
         MicroMinotari::zero(),
@@ -296,7 +296,7 @@ async fn chain_balance_validation() {
     let (coinbase, spending_key_id, _) = create_utxo(
         v,
         &key_manager,
-        &OutputFeatures::create_coinbase(1, None),
+        &OutputFeatures::create_coinbase(1, None, RangeProofType::BulletProofPlus),
         &TariScript::default(),
         &Covenant::default(),
         MicroMinotari::zero(),
@@ -418,10 +418,10 @@ async fn chain_balance_validation_burned() {
     let (coinbase, coinbase_key_id, _) = create_utxo(
         coinbase_value,
         &key_manager,
-        &OutputFeatures::create_coinbase(1, None),
+        &OutputFeatures::create_coinbase(1, None, RangeProofType::RevealedValue),
         &TariScript::default(),
         &Covenant::default(),
-        MicroMinotari::zero(),
+        coinbase_value,
     )
     .await;
     let (pk, sig) = create_random_signature_from_secret_key(
@@ -519,7 +519,7 @@ mod transaction_validator {
         let db = create_store_with_consensus(consensus_manager.clone());
         let factories = CryptoFactories::default();
         let validator = TransactionInternalConsistencyValidator::new(true, consensus_manager, factories);
-        let features = OutputFeatures::create_coinbase(0, None);
+        let features = OutputFeatures::create_coinbase(0, None, RangeProofType::BulletProofPlus);
         let tx = match tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, features: features, &key_manager)
         {
             Ok((tx, _, _)) => tx,

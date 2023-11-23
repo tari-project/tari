@@ -28,6 +28,7 @@ use tari_common::{
 };
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::multiaddr::Multiaddr;
+use tari_core::transactions::transaction_components::RangeProofType;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -72,6 +73,8 @@ pub struct MergeMiningProxyConfig {
     pub wallet_payment_address: String,
     /// Stealth payment yes or no
     pub stealth_payment: bool,
+    /// Range proof type - revealed_value or bullet_proof_plus: (default = bullet_proof_plus)
+    pub range_proof_type: RangeProofType,
 }
 
 impl Default for MergeMiningProxyConfig {
@@ -93,6 +96,7 @@ impl Default for MergeMiningProxyConfig {
             network: Default::default(),
             wallet_payment_address: TariAddress::default().to_hex(),
             stealth_payment: true,
+            range_proof_type: RangeProofType::BulletProofPlus,
         }
     }
 }

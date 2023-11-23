@@ -41,6 +41,7 @@ use serde::{Deserialize, Serialize};
 use tari_common::{configuration::Network, SubConfigPath};
 use tari_common_types::{grpc_authentication::GrpcAuthentication, tari_address::TariAddress};
 use tari_comms::multiaddr::Multiaddr;
+use tari_core::transactions::transaction_components::RangeProofType;
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
@@ -77,6 +78,8 @@ pub struct MinerConfig {
     pub wallet_payment_address: String,
     /// Stealth payment yes or no
     pub stealth_payment: bool,
+    /// Range proof type - revealed_value or bullet_proof_plus: (default = bullet_proof_plus)
+    pub range_proof_type: RangeProofType,
 }
 
 /// The proof of work data structure that is included in the block header. For the Minotari miner only `Sha3x` is
@@ -110,6 +113,7 @@ impl Default for MinerConfig {
             wait_timeout_on_error: 10,
             wallet_payment_address: TariAddress::default().to_hex(),
             stealth_payment: true,
+            range_proof_type: RangeProofType::BulletProofPlus,
         }
     }
 }

@@ -75,11 +75,16 @@ impl From<ConsensusConstants> for grpc::ConsensusConstants {
             .map(|ot| i32::from(ot.as_byte()))
             .collect::<Vec<i32>>();
 
-        let permitted_range_proof_types = cc.permitted_range_proof_types();
-        let permitted_range_proof_types = permitted_range_proof_types
-            .iter()
-            .map(|rpt| i32::from(rpt.as_byte()))
-            .collect::<Vec<i32>>();
+        let mut permitted_range_proof_types = Vec::with_capacity(cc.permitted_range_proof_types().len());
+        for (output_type, range_proof_types) in cc.permitted_range_proof_types() {
+            permitted_range_proof_types.push(grpc::PermittedRangeProofs {
+                output_type: i32::from(output_type.as_byte()),
+                range_proof_types: range_proof_types
+                    .iter()
+                    .map(|rpt| i32::from(rpt.as_byte()))
+                    .collect::<Vec<i32>>(),
+            });
+        }
 
         let randomx_pow = grpc::PowAlgorithmConstants {
             max_difficulty: cc.max_pow_difficulty(PowAlgorithm::RandomX).as_u64(),
