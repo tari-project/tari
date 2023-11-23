@@ -119,9 +119,6 @@ pub fn verify_header(header: &BlockHeader, gen_hash: &FixedHash) -> Result<Moner
                 &expected_merge_mining_hash,
                 gen_hash,
             )
-            // if depth == VarInt(0) && merge_mining_hash.as_bytes() == expected_merge_mining_hash.as_slice() {
-            //     is_found = true;
-            // }
         }
     }
 
@@ -160,10 +157,9 @@ fn check_aux_chains(
         u32::from(merkle_tree_params.number_of_chains);
     let t_hash = monero::Hash::from_slice(tari_hash.as_slice());
     let (merkle_root, pos) = monero_data.aux_chain_merkle_proof.calculate_root_with_pos(&t_hash);
-    if hash_position != pos+1 {
+    if hash_position != pos {
         return false;
     }
-
 
     merkle_root == *aux_chain_merkle_root
 }

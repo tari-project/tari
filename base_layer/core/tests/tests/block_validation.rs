@@ -200,7 +200,7 @@ fn add_monero_data(tblock: &mut Block, seed_key: &str) {
     let bytes = hex::decode(blocktemplate_blob).unwrap();
     let mut mblock = monero_rx::deserialize::<MoneroBlock>(&bytes[..]).unwrap();
     let hash = monero::Hash::from_slice(tblock.header.merge_mining_hash().as_slice());
-    monero_rx::insert_merge_mining_tag_and_aux_chain_merkle_root_into_block(&mut mblock, hash,1, 0).unwrap();
+    monero_rx::insert_merge_mining_tag_and_aux_chain_merkle_root_into_block(&mut mblock, hash, 1, 0).unwrap();
     let hashes = monero_rx::create_ordered_transaction_hashes_from_block(&mblock);
     let merkle_root = monero_rx::tree_hash(&hashes).unwrap();
     let coinbase_merkle_proof = monero_rx::create_merkle_proof(&hashes, &hashes[0]).unwrap();

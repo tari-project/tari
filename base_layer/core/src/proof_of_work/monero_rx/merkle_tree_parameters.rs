@@ -20,10 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::cmp::min;
-use std::convert::TryFrom;
+use std::{cmp::min, convert::TryFrom};
+
 use monero::VarInt;
 
+#[derive(Debug)]
 pub struct MerkleTreeParameters {
     pub number_of_chains: u8,
     pub aux_nonce: u32,
@@ -41,12 +42,17 @@ impl MerkleTreeParameters {
     }
 
     pub fn to_varint(&self) -> VarInt {
-        let size = u8::try_from(self.number_of_chains.leading_zeros()).expect("This cant fail, u8 can only have 8 leading 0's which will fit in 255");
+        let size = u8::try_from(self.number_of_chains.leading_zeros())
+            .expect("This cant fail, u8 can only have 8 leading 0's which will fit in 255");
         let mut bits = encode_bits(8 - size);
         let mut n = encode_aux_chain_count(self.number_of_chains, 8 - size);
         let mut nonce = encode_aux_nonce(self.aux_nonce);
         bits.append(&mut n);
         bits.append(&mut nonce);
+        if bits.len() < 64 {
+            let mut missing_zeroes = vec![0; 64 - bits.len()];
+            bits.append(&mut missing_zeroes);
+        }
         let num: u64 = bits.iter().fold(0, |result, &bit| (result << 1) ^ u64::from(bit));
         VarInt(num)
     }
