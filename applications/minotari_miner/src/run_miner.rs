@@ -29,6 +29,7 @@ use minotari_app_grpc::{
     tari_rpc::{base_node_client::BaseNodeClient, TransactionOutput as GrpcTransactionOutput},
     tls::protocol_string,
 };
+use minotari_app_utilities::network_check::set_network_if_choice_valid;
 use tari_common::{
     configuration::bootstrap::{grpc_default_port, ApplicationType},
     exit_codes::{ExitCode, ExitError},
@@ -73,6 +74,9 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
     let cfg = load_configuration(config_path.as_path(), true, &cli)?;
     let mut config = MinerConfig::load_from(&cfg).expect("Failed to load config");
     config.set_base_path(cli.common.get_base_path());
+
+    set_network_if_choice_valid(config.network)?;
+
     debug!(target: LOG_TARGET_FILE, "{:?}", config);
     setup_grpc_config(&mut config);
     let key_manager = create_memory_db_key_manager();

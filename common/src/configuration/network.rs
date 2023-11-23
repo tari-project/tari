@@ -25,11 +25,17 @@ use std::{
     fmt,
     fmt::{Display, Formatter},
     str::FromStr,
+    sync::Mutex,
 };
 
 use serde::{Deserialize, Serialize};
+use structopt::lazy_static::lazy_static;
 
 use crate::ConfigurationError;
+
+lazy_static! {
+    pub static ref CURRENT_NETWORK: Mutex<Network> = Mutex::new(Network::default());
+}
 
 /// Represents the available Tari p2p networks. Only nodes with matching byte values will be able to connect, so these
 /// should never be changed once released.
