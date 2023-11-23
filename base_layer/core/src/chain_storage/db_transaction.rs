@@ -339,16 +339,16 @@ impl fmt::Display for WriteOperation {
             InsertOrphanBlock(block) => write!(
                 f,
                 "InsertOrphanBlock({}, {})",
-                block.hash().to_hex(),
+                block.hash(),
                 block.body.to_counts_string()
             ),
             InsertChainHeader { header } => {
-                write!(f, "InsertChainHeader(#{} {})", header.height(), header.hash().to_hex())
+                write!(f, "InsertChainHeader(#{} {})", header.height(), header.hash())
             },
             InsertTipBlockBody { block } => write!(
                 f,
                 "InsertTipBlockBody({}, {})",
-                block.accumulated_data().hash.to_hex(),
+                block.accumulated_data().hash,
                 block.block().body.to_counts_string(),
             ),
             InsertKernel {
@@ -358,8 +358,8 @@ impl fmt::Display for WriteOperation {
             } => write!(
                 f,
                 "Insert kernel {} in block:{} position: {}",
-                kernel.hash().to_hex(),
-                header_hash.to_hex(),
+                kernel.hash(),
+                header_hash,
                 mmr_position
             ),
             InsertOutput {
@@ -370,27 +370,24 @@ impl fmt::Display for WriteOperation {
             } => write!(
                 f,
                 "Insert output {} in block({}):{},",
-                output.hash().to_hex(),
+                output.hash(),
                 header_height,
-                header_hash.to_hex(),
+                header_hash,
             ),
-            DeleteOrphanChainTip(hash) => write!(f, "DeleteOrphanChainTip({})", hash.to_hex()),
-            InsertOrphanChainTip(hash, total_accumulated_difficulty) => write!(
-                f,
-                "InsertOrphanChainTip({}, {})",
-                hash.to_hex(),
-                total_accumulated_difficulty
-            ),
-            DeleteTipBlock(hash) => write!(f, "DeleteTipBlock({})", hash.to_hex()),
+            DeleteOrphanChainTip(hash) => write!(f, "DeleteOrphanChainTip({})", hash),
+            InsertOrphanChainTip(hash, total_accumulated_difficulty) => {
+                write!(f, "InsertOrphanChainTip({}, {})", hash, total_accumulated_difficulty)
+            },
+            DeleteTipBlock(hash) => write!(f, "DeleteTipBlock({})", hash),
             InsertMoneroSeedHeight(data, height) => {
                 write!(f, "Insert Monero seed string {} for height: {}", data.to_hex(), height)
             },
-            InsertChainOrphanBlock(block) => write!(f, "InsertChainOrphanBlock({})", block.hash().to_hex()),
+            InsertChainOrphanBlock(block) => write!(f, "InsertChainOrphanBlock({})", block.hash()),
             UpdateBlockAccumulatedData { header_hash, .. } => {
-                write!(f, "Update Block data for block {}", header_hash.to_hex())
+                write!(f, "Update Block data for block {}", header_hash)
             },
-            PruneOutputsSpentAtHash { block_hash } => write!(f, "Prune output(s) at hash: {}", block_hash.to_hex()),
-            DeleteAllInputsInBlock { block_hash } => write!(f, "Delete outputs in block {}", block_hash.to_hex()),
+            PruneOutputsSpentAtHash { block_hash } => write!(f, "Prune output(s) at hash: {}", block_hash),
+            DeleteAllInputsInBlock { block_hash } => write!(f, "Delete outputs in block {}", block_hash),
             SetAccumulatedDataForOrphan(accumulated_data) => {
                 write!(f, "Set accumulated data for orphan {}", accumulated_data)
             },
@@ -403,16 +400,13 @@ impl fmt::Display for WriteOperation {
             } => write!(
                 f,
                 "Update best block to height:{} ({}) with difficulty: {} and timestamp: {}",
-                height,
-                hash.to_hex(),
-                accumulated_difficulty,
-                timestamp
+                height, hash, accumulated_difficulty, timestamp
             ),
             SetPruningHorizonConfig(pruning_horizon) => write!(f, "Set config: pruning horizon to {}", pruning_horizon),
             SetPrunedHeight { height, .. } => write!(f, "Set pruned height to {}", height),
             DeleteHeader(height) => write!(f, "Delete header at height: {}", height),
-            DeleteOrphan(hash) => write!(f, "Delete orphan with hash: {}", hash.to_hex()),
-            InsertBadBlock { hash, height } => write!(f, "Insert bad block #{} {}", height, hash.to_hex()),
+            DeleteOrphan(hash) => write!(f, "Delete orphan with hash: {}", hash),
+            InsertBadBlock { hash, height } => write!(f, "Insert bad block #{} {}", height, hash),
             SetHorizonData { .. } => write!(f, "Set horizon data"),
             InsertReorg { .. } => write!(f, "Insert reorg"),
             ClearAllReorgs => write!(f, "Clear all reorgs"),
@@ -466,8 +460,8 @@ impl Display for DbKey {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
             DbKey::HeaderHeight(v) => f.write_str(&format!("Header height (#{})", v)),
-            DbKey::HeaderHash(v) => f.write_str(&format!("Header hash (#{})", v.to_hex())),
-            DbKey::OrphanBlock(v) => f.write_str(&format!("Orphan block hash ({})", v.to_hex())),
+            DbKey::HeaderHash(v) => f.write_str(&format!("Header hash (#{})", v)),
+            DbKey::OrphanBlock(v) => f.write_str(&format!("Orphan block hash ({})", v)),
         }
     }
 }

@@ -2477,7 +2477,7 @@ impl fmt::Display for MetadataValue {
             MetadataValue::AccumulatedWork(d) => write!(f, "Total accumulated work is {}", d),
             MetadataValue::PruningHorizon(h) => write!(f, "Pruning horizon is {}", h),
             MetadataValue::PrunedHeight(height) => write!(f, "Effective pruned height is {}", height),
-            MetadataValue::BestBlock(hash) => write!(f, "Chain tip block hash is {}", hash.to_hex()),
+            MetadataValue::BestBlock(hash) => write!(f, "Chain tip block hash is {}", hash),
             MetadataValue::HorizonData(_) => write!(f, "Horizon data"),
             MetadataValue::BestBlockTimestamp(timestamp) => write!(f, "Chain tip block timestamp is {}", timestamp),
             MetadataValue::MigrationVersion(n) => write!(f, "Migration version {}", n),
