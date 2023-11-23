@@ -30,7 +30,6 @@ use primitive_types::U256;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{Commitment, HashOutput, PrivateKey};
 use tari_mmr::{pruned_hashset::PrunedHashSet, ArrayLike};
-use tari_utilities::hex::Hex;
 
 use crate::{
     blocks::{error::BlockError, Block, BlockHeader},
@@ -198,7 +197,7 @@ impl BlockHeaderAccumulatedData {
 
 impl Display for BlockHeaderAccumulatedData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "Hash: {}", self.hash.to_hex())?;
+        writeln!(f, "Hash: {}", self.hash)?;
         writeln!(f, "Achieved difficulty: {}", self.achieved_difficulty)?;
         writeln!(f, "Total accumulated difficulty: {}", self.total_accumulated_difficulty)?;
         writeln!(

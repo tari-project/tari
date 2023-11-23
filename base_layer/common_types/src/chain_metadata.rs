@@ -24,7 +24,6 @@ use std::fmt::{Display, Error, Formatter};
 
 use primitive_types::U256;
 use serde::{Deserialize, Serialize};
-use tari_utilities::hex::Hex;
 
 use crate::types::{BlockHash, FixedHash};
 
@@ -145,7 +144,7 @@ impl ChainMetadata {
 impl Display for ChainMetadata {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         let height = self.height_of_longest_chain;
-        let best_block = self.best_block.to_hex();
+        let best_block = self.best_block;
         let accumulated_difficulty = self.accumulated_difficulty;
         writeln!(f, "Height of longest chain: {}", height)?;
         writeln!(f, "Total accumulated difficulty: {}", accumulated_difficulty)?;

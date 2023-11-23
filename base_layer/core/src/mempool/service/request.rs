@@ -47,11 +47,13 @@ impl Display for MempoolRequest {
             MempoolRequest::GetTxStateByExcessSig(sig) => {
                 write!(f, "GetTxStateByExcessSig ({})", sig.get_signature().to_hex())
             },
-            MempoolRequest::SubmitTransaction(tx) => write!(
-                f,
-                "SubmitTransaction ({})",
-                tx.body.kernels()[0].excess_sig.get_signature().to_hex()
-            ),
+            MempoolRequest::SubmitTransaction(tx) => {
+                let sig_hex = tx
+                    .first_kernel_excess_sig()
+                    .map(|sig| sig.get_signature().to_hex())
+                    .unwrap_or_else(|| "No kernels!".to_string());
+                write!(f, "SubmitTransaction ({})", sig_hex)
+            },
             MempoolRequest::GetFeePerGramStats { count, tip_height } => {
                 write!(f, "GetFeePerGramStats(count: {}, tip_height: {})", *count, *tip_height)
             },

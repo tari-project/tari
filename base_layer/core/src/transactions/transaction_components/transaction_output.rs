@@ -498,7 +498,7 @@ impl Display for TransactionOutput {
             "({}, {}) [{:?}], Script: ({}), Offset Pubkey: ({}), Metadata Signature: ({}, {}, {}, {}, {}), Encrypted \
              data ({}), Proof: {}",
             self.commitment.to_hex(),
-            self.hash().to_hex(),
+            self.hash(),
             self.features,
             self.script,
             self.sender_offset_public_key.to_hex(),
