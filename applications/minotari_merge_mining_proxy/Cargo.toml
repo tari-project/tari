@@ -35,6 +35,7 @@ hex = "0.4.2"
 hyper = "0.14.12"
 jsonrpc = "0.12.0"
 log = { version = "0.4.8", features = ["std"] }
+monero = { version = "0.18" }
 reqwest = { version = "0.11.4", features = ["json"] }
 serde = { version = "1.0.106", features = ["derive"] }
 serde_json = "1.0.57"

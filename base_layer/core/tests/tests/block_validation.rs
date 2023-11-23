@@ -118,6 +118,7 @@ async fn test_monero_blocks() {
         .add_consensus_constants(cc)
         .build()
         .unwrap();
+    let gen_hash = *cm.get_genesis_block().hash();
     let difficulty_calculator = DifficultyCalculator::new(cm.clone(), RandomXFactory::default());
     let header_validator = HeaderFullValidator::new(cm.clone(), difficulty_calculator);
     let db = create_store_with_consensus_and_validators(
@@ -175,7 +176,7 @@ async fn test_monero_blocks() {
     block_3.header.nonce = 1;
     let hash2 = block_3.hash();
     assert_ne!(hash1, hash2);
-    assert!(verify_header(&block_3.header).is_ok());
+    assert!(verify_header(&block_3.header, &gen_hash).is_ok());
     match db.add_block(Arc::new(block_3.clone())) {
         Err(ChainStorageError::ValidationError {
             source: ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidNonce),
@@ -198,11 +199,13 @@ fn add_monero_data(tblock: &mut Block, seed_key: &str) {
 .to_string();
     let bytes = hex::decode(blocktemplate_blob).unwrap();
     let mut mblock = monero_rx::deserialize::<MoneroBlock>(&bytes[..]).unwrap();
-    let hash = tblock.header.merge_mining_hash();
-    monero_rx::insert_merge_mining_tag_into_block(&mut mblock, hash).unwrap();
+    let hash = monero::Hash::from_slice(tblock.header.merge_mining_hash().as_slice());
+    monero_rx::insert_merge_mining_tag_and_aux_chain_merkle_root_into_block(&mut mblock, hash,1, 0).unwrap();
     let hashes = monero_rx::create_ordered_transaction_hashes_from_block(&mblock);
     let merkle_root = monero_rx::tree_hash(&hashes).unwrap();
     let coinbase_merkle_proof = monero_rx::create_merkle_proof(&hashes, &hashes[0]).unwrap();
+    let aux_hashes = vec![hash];
+    let aux_chain_merkle_proof = monero_rx::create_merkle_proof(&aux_hashes, &aux_hashes[0]).unwrap();
     #[allow(clippy::cast_possible_truncation)]
     let monero_data = MoneroPowData {
         header: mblock.header,
@@ -211,6 +214,7 @@ fn add_monero_data(tblock: &mut Block, seed_key: &str) {
         merkle_root,
         coinbase_merkle_proof,
         coinbase_tx: mblock.miner_tx,
+        aux_chain_merkle_proof,
     };
     let mut serialized = Vec::new();
     BorshSerialize::serialize(&monero_data, &mut serialized).unwrap();

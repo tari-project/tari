@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::cmp::min;
-
+use std::convert::TryFrom;
 use monero::VarInt;
 
 pub struct MerkleTreeParameters {
@@ -39,51 +39,89 @@ impl MerkleTreeParameters {
             aux_nonce,
         }
     }
+
+    pub fn to_varint(&self) -> VarInt {
+        let size = u8::try_from(self.number_of_chains.leading_zeros()).expect("This cant fail, u8 can only have 8 leading 0's which will fit in 255");
+        let mut bits = encode_bits(8 - size);
+        let mut n = encode_aux_chain_count(self.number_of_chains, 8 - size);
+        let mut nonce = encode_aux_nonce(self.aux_nonce);
+        bits.append(&mut n);
+        bits.append(&mut nonce);
+        let num: u64 = bits.iter().fold(0, |result, &bit| (result << 1) ^ u64::from(bit));
+        VarInt(num)
+    }
 }
 
-pub fn get_decode_bits(num: u64) -> u8 {
+fn get_decode_bits(num: u64) -> u8 {
     let bits_num: Vec<u8> = (61..=63).rev().map(|n| ((num >> n) & 1) as u8).collect();
     bits_num.iter().fold(0, |result, &bit| (result << 1) ^ bit)
 }
 
-pub fn get_aux_chain_count(num: u64, bits: u8) -> u8 {
+fn encode_bits(num: u8) -> Vec<u8> {
+    (0..=2).rev().map(|n| (num >> n) & 1).collect()
+}
+
+fn get_aux_chain_count(num: u64, bits: u8) -> u8 {
     let start = 60 - min(8, bits) + 1;
     let bits_num: Vec<u8> = (start..=60).rev().map(|n| ((num >> n) & 1) as u8).collect();
     bits_num.iter().fold(0, |result, &bit| (result << 1) ^ bit)
 }
 
-pub fn get_aux_nonce(num: u64, bits: u8) -> u32 {
-    let start = 60 - min(8, bits as u32) + 1 - 32;
-    let end = 60 - min(8, bits as u32);
+fn encode_aux_chain_count(num: u8, bit_length: u8) -> Vec<u8> {
+    (0..bit_length).rev().map(|n| (num >> n) & 1).collect()
+}
+
+fn get_aux_nonce(num: u64, bits: u8) -> u32 {
+    let start = 60 - min(8, u32::from(bits)) + 1 - 32;
+    let end = 60 - min(8, u32::from(bits));
     let bits_num: Vec<u32> = (start..=end).rev().map(|n| ((num >> n) & 1) as u32).collect();
     bits_num.iter().fold(0, |result, &bit| (result << 1) ^ bit)
+}
+
+fn encode_aux_nonce(num: u32) -> Vec<u8> {
+    (0..=31).rev().map(|n| ((num >> n) & 1) as u8).collect()
 }
 
 #[cfg(test)]
 mod test {
     use crate::proof_of_work::monero_rx::merkle_tree_parameters::{
+        encode_aux_chain_count,
+        encode_aux_nonce,
+        encode_bits,
         get_aux_chain_count,
         get_aux_nonce,
         get_decode_bits,
     };
 
     #[test]
-    fn get_decode_bits_test() {
+    fn en_decode_bits_test() {
         let num = 0b1100000000000000000000000000000000000000000000000000000000000101;
         let bit = get_decode_bits(num);
         assert_eq!(bit, 6);
+        let bits = encode_bits(6);
+        let array = vec![1, 1, 0];
+        assert_eq!(bits, array);
 
         let num = 0b0100000000000000000000000000000000000000000000000000000000000101;
         let bit = get_decode_bits(num);
         assert_eq!(bit, 2);
+        let bits = encode_bits(2);
+        let array = vec![0, 1, 0];
+        assert_eq!(bits, array);
 
         let num = 0b1110000000000000000000000000000000000000000000000000000000000101;
         let bit = get_decode_bits(num);
         assert_eq!(bit, 7);
+        let bits = encode_bits(7);
+        let array = vec![1, 1, 1];
+        assert_eq!(bits, array);
 
         let num = 0b0011000000000000000000000000000000000000000000000000000000000101;
         let bit = get_decode_bits(num);
         assert_eq!(bit, 1);
+        let bits = encode_bits(1);
+        let array = vec![0, 0, 1];
+        assert_eq!(bits, array);
     }
 
     #[test]
@@ -91,34 +129,58 @@ mod test {
         let num = 0b1101111111100000000000000000000000000000000000000000000000000101;
         let aux_number = get_aux_chain_count(num, 8);
         assert_eq!(aux_number, 255);
+        let bits = encode_aux_chain_count(255, 8);
+        let array = vec![1, 1, 1, 1, 1, 1, 1, 1];
+        assert_eq!(bits, array);
 
         let num = 0b1100000000100000000000000000000000000000000000000000000000000101;
         let aux_number = get_aux_chain_count(num, 8);
         assert_eq!(aux_number, 1);
+        let bits = encode_aux_chain_count(1, 8);
+        let array = vec![0, 0, 0, 0, 0, 0, 0, 1];
+        assert_eq!(bits, array);
 
         let num = 0b1100000000000000000000000000000000000000000000000000000000000101;
         let aux_number = get_aux_chain_count(num, 8);
         assert_eq!(aux_number, 0);
+        let bits = encode_aux_chain_count(0, 8);
+        let array = vec![0, 0, 0, 0, 0, 0, 0, 0];
+        assert_eq!(bits, array);
 
         let num = 0b1100111000000000000000000000000000000000000000000000000000000101;
         let aux_number = get_aux_chain_count(num, 8);
         assert_eq!(aux_number, 112);
+        let bits = encode_aux_chain_count(112, 8);
+        let array = vec![0, 1, 1, 1, 0, 0, 0, 0];
+        assert_eq!(bits, array);
 
         let num = 0b1100000100000000000000000000000000000000000000000000000000000101;
         let aux_number = get_aux_chain_count(num, 8);
         assert_eq!(aux_number, 8);
+        let bits = encode_aux_chain_count(8, 8);
+        let array = vec![0, 0, 0, 0, 1, 0, 0, 0];
+        assert_eq!(bits, array);
 
         let num = 0b1100000001000000000000000000000000000000000000000000000000000101;
         let aux_number = get_aux_chain_count(num, 7);
         assert_eq!(aux_number, 1);
+        let bits = encode_aux_chain_count(1, 7);
+        let array = vec![0, 0, 0, 0, 0, 0, 1];
+        assert_eq!(bits, array);
 
         let num = 0b1100000010000000000000000000000000000000000000000000000000000101;
         let aux_number = get_aux_chain_count(num, 6);
         assert_eq!(aux_number, 1);
+        let bits = encode_aux_chain_count(1, 6);
+        let array = vec![0, 0, 0, 0, 0, 1];
+        assert_eq!(bits, array);
 
         let num = 0b1100000100000000000000000000000000000000000000000000000000000101;
         let aux_number = get_aux_chain_count(num, 5);
         assert_eq!(aux_number, 1);
+        let bits = encode_aux_chain_count(1, 5);
+        let array = vec![0, 0, 0, 0, 1];
+        assert_eq!(bits, array);
 
         let num = 0b1100000110000000000000000000000000000000000000000000000000000101;
         let aux_number = get_aux_chain_count(num, 5);
@@ -127,6 +189,9 @@ mod test {
         let num = 0b1111000110000000000000000000000000000000000000000000000000000101;
         let aux_number = get_aux_chain_count(num, 1);
         assert_eq!(aux_number, 1);
+        let bits = encode_aux_chain_count(1, 1);
+        let array = vec![1];
+        assert_eq!(bits, array);
     }
 
     #[test]
@@ -134,10 +199,20 @@ mod test {
         let num = 0b1100000000110000000000000000000000000000000000000000000000000101;
         let aux_number = get_aux_nonce(num, 8);
         assert_eq!(aux_number, 2147483648);
+        let bits = encode_aux_nonce(2147483648);
+        let array = vec![
+            1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ];
+        assert_eq!(bits, array);
 
         let num = 0b1100000000011111111111111111111111111111111000000000000000000101;
         let aux_number = get_aux_nonce(num, 8);
         assert_eq!(aux_number, u32::MAX);
+        let bits = encode_aux_nonce(u32::MAX);
+        let array = vec![
+            1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        ];
+        assert_eq!(bits, array);
 
         let num = 0b1100000000111111111111111111111111111111110000000000000000000101;
         let aux_number = get_aux_nonce(num, 7);
@@ -150,5 +225,19 @@ mod test {
         let num = 0b1100000000100000000000000000000000000000001000000000000000000101;
         let aux_number = get_aux_nonce(num, 8);
         assert_eq!(aux_number, 1);
+        let bits = encode_aux_nonce(1);
+        let array = vec![
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+        ];
+        assert_eq!(bits, array);
+
+        let num = 0b1100000000100000000000000000000000000000000000000000000000000101;
+        let aux_number = get_aux_nonce(num, 8);
+        assert_eq!(aux_number, 0);
+        let bits = encode_aux_nonce(0);
+        let array = vec![
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ];
+        assert_eq!(bits, array);
     }
 }

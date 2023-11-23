@@ -146,26 +146,30 @@ fn check_aux_chains(
     gen_hash: &FixedHash,
 ) -> bool {
     let merkle_tree_params = MerkleTreeParameters::from_varint(merge_mining_params);
+    if merkle_tree_params.number_of_chains == 0 {
+        return false;
+    }
     let hash_position = U256::from_little_endian(
         &Sha256::new()
             .chain_update(gen_hash)
             .chain_update(merkle_tree_params.aux_nonce.to_le_bytes())
-            .chain_update((109 as u8).to_le_bytes())
-            .finalize()
-            .to_vec(),
+            .chain_update((109_u8).to_le_bytes())
+            .finalize(),
     )
     .low_u32() %
-        merkle_tree_params.number_of_chains as u32;
-    if hash_position != monero_data.aux_chain_merkle_proof.branch().len() as u32 {
+        u32::from(merkle_tree_params.number_of_chains);
+    let t_hash = monero::Hash::from_slice(tari_hash.as_slice());
+    let (merkle_root, pos) = monero_data.aux_chain_merkle_proof.calculate_root_with_pos(&t_hash);
+    if hash_position != pos+1 {
         return false;
     }
-    let t_hash = monero::Hash::from_slice(tari_hash.as_slice());
-    let merkle_root = monero_data.aux_chain_merkle_proof.calculate_root(&t_hash);
+
+
     merkle_root == *aux_chain_merkle_root
 }
 
 /// Extracts the Monero block hash from the coinbase transaction's extra field
-pub fn extract_tari_hash_from_block(monero: &monero::Block) -> Result<Option<monero::Hash>, MergeMineError> {
+pub fn extract_aux_merkle_root_from_block(monero: &monero::Block) -> Result<Option<monero::Hash>, MergeMineError> {
     // When we extract the merge mining hash, we do not care if the extra field can be parsed without error.
     let extra_field = parse_extra_field_truncate_on_error(&monero.miner_tx.prefix.extra);
 
@@ -261,9 +265,11 @@ pub fn create_ordered_transaction_hashes_from_block(block: &monero::Block) -> Ve
 }
 
 /// Inserts merge mining hash into a Monero block
-pub fn insert_merge_mining_tag_into_block<T: AsRef<[u8]>>(
+pub fn insert_merge_mining_tag_and_aux_chain_merkle_root_into_block<T: AsRef<[u8]>>(
     block: &mut monero::Block,
     hash: T,
+    aux_number: u8,
+    aux_nonce: u32,
 ) -> Result<(), MergeMineError> {
     if hash.as_ref().len() != monero::Hash::len_bytes() {
         return Err(MergeMineError::HashingError(format!(
@@ -290,7 +296,13 @@ pub fn insert_merge_mining_tag_into_block<T: AsRef<[u8]>>(
     // To circumvent this, we create a new extra field by appending the original extra field to the merge mining field
     // instead.
     let hash = monero::Hash::from_slice(hash.as_ref());
-    extra_field.0.insert(0, SubField::MergeMining(Some(VarInt(0)), hash));
+    let mt_params = MerkleTreeParameters {
+        number_of_chains: aux_number,
+        aux_nonce,
+    };
+    extra_field
+        .0
+        .insert(0, SubField::MergeMining(Some(mt_params.to_varint()), hash));
 
     block.miner_tx.prefix.extra = extra_field.into();
     Ok(())

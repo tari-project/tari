@@ -87,7 +87,7 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
         base_node_client,
         BlockTemplateRepository::new(),
         randomx_factory,
-    );
+    )?;
     let service = make_service_fn(|_conn| future::ready(Result::<_, Infallible>::Ok(randomx_service.clone())));
 
     match Server::try_bind(&listen_addr) {

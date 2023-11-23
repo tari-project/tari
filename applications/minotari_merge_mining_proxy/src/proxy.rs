@@ -43,11 +43,9 @@ use minotari_node_grpc_client::{grpc, grpc::base_node_client::BaseNodeClient};
 use minotari_wallet_grpc_client::ClientAuthenticationInterceptor;
 use reqwest::{ResponseBuilderExt, Url};
 use serde_json as json;
-use tari_core::proof_of_work::{
-    monero_rx,
-    monero_rx::FixedByteArray,
-    randomx_difficulty,
-    randomx_factory::RandomXFactory,
+use tari_core::{
+    consensus::ConsensusManager,
+    proof_of_work::{monero_rx, monero_rx::FixedByteArray, randomx_difficulty, randomx_factory::RandomXFactory},
 };
 use tari_utilities::hex::Hex;
 use tonic::{codegen::InterceptedService, transport::Channel};
@@ -79,9 +77,10 @@ impl MergeMiningProxyService {
         base_node_client: BaseNodeClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>,
         block_templates: BlockTemplateRepository,
         randomx_factory: RandomXFactory,
-    ) -> Self {
+    ) -> Result<Self, MmProxyError> {
         debug!(target: LOG_TARGET, "Config: {:?}", config);
-        Self {
+        let consensus_manager = ConsensusManager::builder(config.network).build()?;
+        Ok(Self {
             inner: InnerService {
                 config: Arc::new(config),
                 block_templates,
@@ -91,8 +90,9 @@ impl MergeMiningProxyService {
                 current_monerod_server: Arc::new(RwLock::new(None)),
                 last_assigned_monerod_server: Arc::new(RwLock::new(None)),
                 randomx_factory,
+                consensus_manager,
             },
-        }
+        })
     }
 }
 
@@ -161,6 +161,7 @@ struct InnerService {
     current_monerod_server: Arc<RwLock<Option<String>>>,
     last_assigned_monerod_server: Arc<RwLock<Option<String>>>,
     randomx_factory: RandomXFactory,
+    consensus_manager: ConsensusManager,
 }
 
 impl InnerService {
@@ -238,10 +239,12 @@ impl InnerService {
             },
         };
 
+        let gen_hash = *self.consensus_manager.get_genesis_block().hash();
+
         for param in params.iter().filter_map(|p| p.as_str()) {
             let monero_block = monero_rx::deserialize_monero_block_from_hex(param)?;
             debug!(target: LOG_TARGET, "Monero block: {}", monero_block);
-            let hash = monero_rx::extract_tari_hash_from_block(&monero_block)?.ok_or_else(|| {
+            let hash = monero_rx::extract_aux_merkle_root_from_block(&monero_block)?.ok_or_else(|| {
                 MmProxyError::MissingDataError("Could not find Minotari header in coinbase".to_string())
             })?;
 
@@ -262,8 +265,12 @@ impl InnerService {
                     continue;
                 },
             };
-
-            let monero_data = monero_rx::construct_monero_data(monero_block, block_data.monero_seed.clone())?;
+            let monero_data = monero_rx::construct_monero_data(
+                monero_block,
+                block_data.monero_seed.clone(),
+                block_data.aux_chain_hashes.clone(),
+                block_data.tari_hash,
+            )?;
 
             debug!(target: LOG_TARGET, "Monero PoW Data: {:?}", monero_data);
 
@@ -276,7 +283,7 @@ impl InnerService {
             let start = Instant::now();
             let achieved_target = if self.config.check_tari_difficulty_before_submit {
                 trace!(target: LOG_TARGET, "Starting calculate achieved Tari difficultly");
-                let diff = randomx_difficulty(&tari_header, &self.randomx_factory)?;
+                let diff = randomx_difficulty(&tari_header, &self.randomx_factory, &gen_hash)?;
                 trace!(
                     target: LOG_TARGET,
                     "Finished calculate achieved Tari difficultly - achieved {} vs. target {}",
@@ -425,7 +432,8 @@ impl InnerService {
             }
         }
 
-        let new_block_protocol = BlockTemplateProtocol::new(&mut grpc_client, self.config.clone()).await?;
+        let new_block_protocol =
+            BlockTemplateProtocol::new(&mut grpc_client, self.config.clone(), self.consensus_manager.clone()).await?;
 
         let seed_hash = FixedByteArray::from_hex(&monerod_resp["result"]["seed_hash"].to_string().replace('\"', ""))
             .map_err(|err| MmProxyError::InvalidMonerodResponse(format!("seed hash hex is invalid: {}", err)))?;
@@ -472,7 +480,10 @@ impl InnerService {
         );
 
         self.block_templates
-            .save(mining_hash, final_block_template_data.template)
+            .save(
+                final_block_template_data.aux_chain_mr,
+                final_block_template_data.template,
+            )
             .await;
 
         debug!(target: LOG_TARGET, "Returning template result: {}", monerod_resp);

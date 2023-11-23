@@ -192,23 +192,30 @@ impl MerkleProof {
     }
 
     /// Calculates the merkle root hash from the provide Monero hash
-
     pub fn calculate_root(&self, hash: &Hash) -> Hash {
+        self.calculate_root_with_pos(hash).0
+    }
+
+    pub fn calculate_root_with_pos(&self, hash: &Hash) -> (Hash, u32) {
         if self.branch.is_empty() {
-            return *hash;
+            return (*hash, 0);
         }
 
         let mut root = *hash;
         let depth = self.branch.len();
+        let mut pos = 0;
+        let mut multiplier = 1;
         for d in 0..depth {
             if (self.path_bitmap >> (depth - d - 1)) & 1 > 0 {
                 root = cn_fast_hash2(&self.branch[d], &root);
             } else {
                 root = cn_fast_hash2(&root, &self.branch[d]);
+                pos += multiplier;
             }
+            multiplier *= 2;
         }
 
-        root
+        (root, pos)
     }
 }
 

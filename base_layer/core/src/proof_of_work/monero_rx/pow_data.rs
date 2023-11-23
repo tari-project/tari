@@ -65,8 +65,8 @@ impl BorshSerialize for MoneroPowData {
         BorshSerialize::serialize(&self.transaction_count, writer)?;
         self.merkle_root.consensus_encode(writer)?;
         BorshSerialize::serialize(&self.coinbase_merkle_proof, writer)?;
-        BorshSerialize::serialize(&self.aux_chain_merkle_proof, writer)?;
         self.coinbase_tx.consensus_encode(writer)?;
+        BorshSerialize::serialize(&self.aux_chain_merkle_proof, writer)?;
         Ok(())
     }
 }

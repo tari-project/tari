@@ -501,7 +501,7 @@ where B: BlockchainBackend + 'static
 
     async fn check_min_block_difficulty(&self, new_block: &NewBlock) -> Result<(), CommsInterfaceError> {
         let constants = self.consensus_manager.consensus_constants(new_block.header.height);
-        let gen_hash = self.consensus_manager.get_genesis_block().hash().clone();
+        let gen_hash = *self.consensus_manager.get_genesis_block().hash();
         let mut min_difficulty = constants.min_pow_difficulty(new_block.header.pow.pow_algo);
         let mut header = self.blockchain_db.fetch_last_chain_header().await?;
         loop {
