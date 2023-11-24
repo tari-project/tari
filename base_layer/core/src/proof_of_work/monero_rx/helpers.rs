@@ -140,7 +140,7 @@ fn check_aux_chains(
     merge_mining_params: VarInt,
     aux_chain_merkle_root: &monero::Hash,
     tari_hash: &FixedHash,
-    gen_hash: &FixedHash,
+    tari_genesis_block_hash: &FixedHash,
 ) -> bool {
     let t_hash = monero::Hash::from_slice(tari_hash.as_slice());
     if merge_mining_params == VarInt(0) {
@@ -155,7 +155,7 @@ fn check_aux_chains(
     }
     let hash_position = U256::from_little_endian(
         &Sha256::new()
-            .chain_update(gen_hash)
+            .chain_update(tari_genesis_block_hash)
             .chain_update(merkle_tree_params.aux_nonce.to_le_bytes())
             .chain_update((109_u8).to_le_bytes())
             .finalize(),
@@ -791,7 +791,7 @@ mod test {
         let extra_field_after_tag = ExtraField::try_parse(&block.miner_tx.prefix.extra.clone()).unwrap();
         assert_eq!(
             &format!(
-                "ExtraField([MergeMining(Some(3458764513820540928), 0x{}), \
+                "ExtraField([MergeMining(Some(0), 0x{}), \
                  TxPublicKey(06225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa4782), Nonce([246, 58, 168, \
                  109, 46, 133, 127, 7])])",
                 hex::encode(hash)
