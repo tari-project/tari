@@ -679,13 +679,9 @@ impl ConsensusConstants {
                 RangeProofType::BulletProofPlus,
                 RangeProofType::RevealedValue,
             ]),
-            (OutputType::Burn, &[
-                RangeProofType::BulletProofPlus,
-                RangeProofType::RevealedValue,
-            ]),
+            (OutputType::Burn, &[RangeProofType::BulletProofPlus]),
             (OutputType::ValidatorNodeRegistration, &[
                 RangeProofType::BulletProofPlus,
-                RangeProofType::RevealedValue,
             ]),
             (OutputType::CodeTemplateRegistration, &[RangeProofType::BulletProofPlus]),
         ]
