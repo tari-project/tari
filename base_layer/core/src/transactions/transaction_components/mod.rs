@@ -85,7 +85,6 @@ pub const MAX_TRANSACTION_RECIPIENTS: usize = 15;
 pub(crate) const AEAD_KEY_LEN: usize = std::mem::size_of::<Key>();
 
 // Type for hiding aead key encryption
-hidden_type!(EncryptedValueKey, SafeArray<u8, AEAD_KEY_LEN>);
 hidden_type!(EncryptedDataKey, SafeArray<u8, AEAD_KEY_LEN>);
 
 //----------------------------------------     Crate functions   ----------------------------------------------------//

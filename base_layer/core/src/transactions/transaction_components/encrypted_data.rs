@@ -25,6 +25,18 @@
 
 //! Encrypted data using the the extended-nonce variant XChaCha20-Poly1305 encryption with secure random nonce.
 
+/// -------------------------------------------
+/// One-sided or stealth payments:
+///  - Sender wallets should use `encrypt_data` and `decrypt_data` as it provides additional security guarantees by
+///    virtue of an internal KDF that is applied to the input pre-key, with the pre-key being a Diffie-Hellman key
+///    exchange result between the two parties.
+/// Interactive payments:
+///  - Receiver wallets should use `encrypt_data_no_kdf` and `decrypt_data_no_kdf` as it uses less resources.
+/// Wallet recovery:
+///  - Both methods should be tried if the first method's decryption results in failed commitment verification.
+///  - Preference can be given for the decryption function to be tried first in accordance with the type of wallet
+///    that is being recovered
+/// -------------------------------------------
 use std::mem::size_of;
 
 use blake2::Blake2b;
@@ -74,17 +86,43 @@ pub struct EncryptedData {
 const ENCRYPTED_DATA_AAD: &[u8] = b"TARI_AAD_VALUE_AND_MASK_EXTEND_NONCE_VARIANT";
 
 impl EncryptedData {
-    /// Encrypt the value and mask (with fixed length) using XChaCha20-Poly1305 with a secure random nonce
-    /// Notes: - This implementation does not require or assume any uniqueness for `encryption_key` or `commitment`
-    ///        - With the use of a secure random nonce, there's no added security benefit in using the commitment in the
-    ///          internal key derivation; but it binds the encrypted data to the commitment
-    ///        - Consecutive calls to this function with the same inputs will produce different ciphertexts
+    /// Encrypt the value and mask (with fixed length) using XChaCha20-Poly1305 with a secure random nonce; all
+    /// non-interactive payments (one-sided and stealth) should use this method.
+    /// Note: This implementation does not require or assume any uniqueness for `encryption_key` or `commitment`.
     pub fn encrypt_data(
         encryption_key: &PrivateKey,
         commitment: &Commitment,
         value: MicroMinotari,
         mask: &PrivateKey,
     ) -> Result<EncryptedData, EncryptedDataError> {
+        let aead_key = kdf_aead(encryption_key, commitment);
+        EncryptedData::encrypt(value, mask, &aead_key)
+    }
+
+    /// Encrypt the value and mask (with fixed length) using XChaCha20-Poly1305 with a secure random nonce, but without
+    /// calculating a kdf, typically used for interactive payments where clients need optimal performance.
+    /// Note: This implementation does not require or assume any uniqueness for `encryption_key`
+    pub fn encrypt_data_no_kdf(
+        encryption_key: &PrivateKey,
+        value: MicroMinotari,
+        mask: &PrivateKey,
+    ) -> Result<EncryptedData, EncryptedDataError> {
+        let aead_key = aead(encryption_key);
+        EncryptedData::encrypt(value, mask, &aead_key)
+    }
+
+    // Do the encryption.
+    // Notes:
+    // - With the use of a secure random nonce, there's no added security benefit in using the commitment in the
+    //   internal key derivation; but it binds the encrypted data to the commitment.
+    // - Consecutive calls to this function with the same inputs will produce different ciphertexts.
+    fn encrypt(
+        value: MicroMinotari,
+        mask: &PrivateKey,
+        aead_key: &EncryptedDataKey,
+    ) -> Result<EncryptedData, EncryptedDataError> {
+        let cipher = XChaCha20Poly1305::new(GenericArray::from_slice(aead_key.reveal()));
+
         // Encode the value and mask
         let mut bytes = Zeroizing::new([0u8; SIZE_VALUE + SIZE_MASK]);
         bytes[..SIZE_VALUE].clone_from_slice(value.as_u64().to_le_bytes().as_ref());
@@ -92,10 +130,6 @@ impl EncryptedData {
 
         // Produce a secure random nonce
         let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
-
-        // Set up the AEAD
-        let aead_key = kdf_aead(encryption_key, commitment);
-        let cipher = XChaCha20Poly1305::new(GenericArray::from_slice(aead_key.reveal()));
 
         // Encrypt in place
         let tag = cipher.encrypt_in_place_detached(&nonce, ENCRYPTED_DATA_AAD, bytes.as_mut_slice())?;
@@ -109,23 +143,40 @@ impl EncryptedData {
         Ok(Self { data })
     }
 
-    /// Authenticate and decrypt the value and mask
-    /// Note: This design (similar to other AEADs) is not key committing, thus the caller must not rely on successful
-    ///       decryption to assert that the expected key was used
+    /// Authenticate and decrypt the value and mask, using a KDF.
     pub fn decrypt_data(
         encryption_key: &PrivateKey,
         commitment: &Commitment,
         encrypted_data: &EncryptedData,
     ) -> Result<(MicroMinotari, PrivateKey), EncryptedDataError> {
+        let aead_key = kdf_aead(encryption_key, commitment);
+        EncryptedData::decrypt(encrypted_data, &aead_key)
+    }
+
+    /// Authenticate and decrypt the value and mask, without using a KDF.
+    pub fn decrypt_data_no_kdf(
+        encryption_key: &PrivateKey,
+        encrypted_data: &EncryptedData,
+    ) -> Result<(MicroMinotari, PrivateKey), EncryptedDataError> {
+        let aead_key = aead(encryption_key);
+        EncryptedData::decrypt(encrypted_data, &aead_key)
+    }
+
+    // Do the decryption.
+    // Notes:
+    // - This design (similar to other AEADs) is not key committing, thus the caller must not rely on successful
+    //   decryption to assert that the expected key was used
+    fn decrypt(
+        encrypted_data: &EncryptedData,
+        aead_key: &EncryptedDataKey,
+    ) -> Result<(MicroMinotari, PrivateKey), EncryptedDataError> {
+        let cipher = XChaCha20Poly1305::new(GenericArray::from_slice(aead_key.reveal()));
+
         // Extract the nonce, ciphertext, and tag
         let nonce = XNonce::from_slice(&encrypted_data.as_bytes()[..SIZE_NONCE]);
         let mut bytes = Zeroizing::new([0u8; SIZE_VALUE + SIZE_MASK]);
         bytes.clone_from_slice(&encrypted_data.as_bytes()[SIZE_NONCE..SIZE_NONCE + SIZE_VALUE + SIZE_MASK]);
         let tag = Tag::from_slice(&encrypted_data.as_bytes()[SIZE_NONCE + SIZE_VALUE + SIZE_MASK..]);
-
-        // Set up the AEAD
-        let aead_key = kdf_aead(encryption_key, commitment);
-        let cipher = XChaCha20Poly1305::new(GenericArray::from_slice(aead_key.reveal()));
 
         // Decrypt in place
         cipher.decrypt_in_place_detached(nonce, ENCRYPTED_DATA_AAD, bytes.as_mut_slice(), tag)?;
@@ -240,8 +291,21 @@ fn kdf_aead(encryption_key: &PrivateKey, commitment: &Commitment) -> EncryptedDa
     aead_key
 }
 
+// Generate a no-kdf aead key
+fn aead(encryption_key: &PrivateKey) -> EncryptedDataKey {
+    let mut aead_key = EncryptedDataKey::from(SafeArray::default());
+    aead_key.reveal_mut().copy_from_slice(encryption_key.as_bytes());
+
+    aead_key
+}
+
 #[cfg(test)]
 mod test {
+    use std::{
+        cmp::{max, min},
+        time::Instant,
+    };
+
     use rand::rngs::OsRng;
     use tari_common_types::types::{CommitmentFactory, PrivateKey};
     use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey};
@@ -260,16 +324,33 @@ mod test {
             let commitment = CommitmentFactory::default().commit(&mask, &PrivateKey::from(value));
             let encryption_key = PrivateKey::random(&mut OsRng);
             let amount = MicroMinotari::from(value);
+
+            // With kdf
             let encrypted_data = EncryptedData::encrypt_data(&encryption_key, &commitment, amount, &mask).unwrap();
             let (decrypted_value, decrypted_mask) =
                 EncryptedData::decrypt_data(&encryption_key, &commitment, &encrypted_data).unwrap();
             assert_eq!(amount, decrypted_value);
             assert_eq!(mask, decrypted_mask);
+
             if let Ok((decrypted_value, decrypted_mask)) =
                 EncryptedData::decrypt_data(&PrivateKey::random(&mut OsRng), &commitment, &encrypted_data)
             {
                 assert_ne!(amount, decrypted_value);
                 assert_ne!(mask, decrypted_mask);
+            }
+
+            // Without kdf
+            let encrypted_data_no_kdf = EncryptedData::encrypt_data_no_kdf(&encryption_key, amount, &mask).unwrap();
+            let (decrypted_value_no_kdf, decrypted_mask) =
+                EncryptedData::decrypt_data_no_kdf(&encryption_key, &encrypted_data_no_kdf).unwrap();
+            assert_eq!(amount, decrypted_value_no_kdf);
+            assert_eq!(mask, decrypted_mask);
+
+            if let Ok((decrypted_value_no_kdf, decrypted_mask_no_kdf)) =
+                EncryptedData::decrypt_data_no_kdf(&PrivateKey::random(&mut OsRng), &encrypted_data_no_kdf)
+            {
+                assert_ne!(amount, decrypted_value_no_kdf);
+                assert_ne!(mask, decrypted_mask_no_kdf);
             }
         }
     }
@@ -291,5 +372,105 @@ mod test {
             let encrypted_data_from_bytes = EncryptedData::from_bytes(&bytes).unwrap();
             assert_eq!(encrypted_data, encrypted_data_from_bytes);
         }
+    }
+
+    // This unit test quantifies the performance hit due to calculating a KDF. The flag `do_performance_testing` must be
+    // set to `false` otherwise the test will fail; this is to ensure that profiling is not run for CI.
+    //
+    // Some consecutive results running in release mode on a Core i7-12700H (with no other processes running):
+    //
+    // Variance:                131.7726303 %
+    // Total time no kdf:       971827 microseconds
+    // Total time with kdf:     2252429 microseconds
+    // Average time no kdf:     3.887308 microseconds
+    // Average time with kdf:   9.0097159 microseconds
+    //
+    // Variance:                114.5347296 %
+    // Total time no kdf:       1026156 microseconds
+    // Total time with kdf:     2201461 microseconds
+    // Average time no kdf:     4.104624 microseconds
+    // Average time with kdf:   8.805844 microseconds
+    //
+    // Variance:                127.8624748 %
+    // Total time no kdf:       981144 microseconds
+    // Total time with kdf:     2235659 microseconds
+    // Average time no kdf:     3.924576 microseconds
+    // Average time with kdf:   8.942636 microseconds
+    //
+    #[test]
+    fn we_can_quantify_the_kdf_performance_hit() {
+        #[allow(clippy::cast_possible_truncation)]
+        fn round_to_8_decimals(num: f64) -> f64 {
+            ((num * 10000000.0) as u128) as f64 / 10000000.0
+        }
+
+        let do_performance_testing = false;
+        let iterations = if do_performance_testing { 50000 } else { 1 };
+
+        // Set up data
+        let mut commitments = Vec::with_capacity(iterations * 5);
+        let mut encryption_keys = Vec::with_capacity(iterations * 5);
+        let mut amounts = Vec::with_capacity(iterations * 5);
+        let mut masks = Vec::with_capacity(iterations * 5);
+        for _ in 0..iterations {
+            for (value, mask) in [
+                (0, PrivateKey::default()),
+                (0, PrivateKey::random(&mut OsRng)),
+                (123456, PrivateKey::default()),
+                (654321, PrivateKey::random(&mut OsRng)),
+                (u64::MAX, PrivateKey::random(&mut OsRng)),
+            ] {
+                commitments.push(CommitmentFactory::default().commit(&mask, &PrivateKey::from(value)));
+                encryption_keys.push(PrivateKey::random(&mut OsRng));
+                amounts.push(MicroMinotari::from(value));
+                masks.push(mask);
+            }
+        }
+
+        // With KDF
+        let start = Instant::now();
+        for i in 0..iterations * 5 {
+            let encrypted_data =
+                EncryptedData::encrypt_data(&encryption_keys[i], &commitments[i], amounts[i], &masks[i]).unwrap();
+            let (decrypted_value, decrypted_mask) =
+                EncryptedData::decrypt_data(&encryption_keys[i], &commitments[i], &encrypted_data).unwrap();
+            assert_eq!(amounts[i], decrypted_value);
+            assert_eq!(masks[i], decrypted_mask);
+        }
+        let time_taken_with_kdf = start.elapsed().as_micros();
+
+        // Without KDF
+        let start = Instant::now();
+        for i in 0..iterations * 5 {
+            let encrypted_data =
+                EncryptedData::encrypt_data_no_kdf(&encryption_keys[i], amounts[i], &masks[i]).unwrap();
+            let (decrypted_value, decrypted_mask) =
+                EncryptedData::decrypt_data_no_kdf(&encryption_keys[i], &encrypted_data).unwrap();
+            assert_eq!(amounts[i], decrypted_value);
+            assert_eq!(masks[i], decrypted_mask);
+        }
+        let time_taken_no_kdf = start.elapsed().as_micros();
+
+        let min_time = min(time_taken_with_kdf, time_taken_no_kdf);
+        let max_time = max(time_taken_with_kdf, time_taken_no_kdf);
+
+        let variance = if min_time == 0 {
+            0f64
+        } else {
+            round_to_8_decimals((max_time - min_time) as f64 / min_time as f64 * 100.0)
+        };
+        let average_with_kdf = round_to_8_decimals(time_taken_with_kdf as f64 / (iterations * 5) as f64);
+        let average_no_kdf = round_to_8_decimals(time_taken_no_kdf as f64 / (iterations * 5) as f64);
+
+        println!();
+        println!("Variance:                {} %", variance);
+        println!("Total time no kdf:       {} microseconds", time_taken_no_kdf);
+        println!("Total time with kdf:     {} microseconds", time_taken_with_kdf);
+        println!("Average time no kdf:     {} microseconds", average_no_kdf);
+        println!("Average time with kdf:   {} microseconds", average_with_kdf);
+        println!();
+
+        // This is to make sure we do not run performance tests on CI.
+        assert!(!do_performance_testing);
     }
 }
