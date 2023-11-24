@@ -48,6 +48,8 @@ pub enum MergeMineError {
     InvalidMerkleRoot,
     #[error("Invalid difficulty: {0}")]
     DifficultyError(#[from] DifficultyError),
+    #[error("Cannot mine with 0 aux chains")]
+    ZeroAuxChains,
 }
 
 impl MergeMineError {
@@ -64,7 +66,7 @@ impl MergeMineError {
                 reason: err.to_string(),
                 ban_duration: BanPeriod::Long,
             }),
-            MergeMineError::RandomXVMFactoryError(_) => None,
+            MergeMineError::RandomXVMFactoryError(_)| MergeMineError::ZeroAuxChains => None,
         }
     }
 }

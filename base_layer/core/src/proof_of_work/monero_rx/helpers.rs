@@ -270,9 +270,12 @@ pub fn create_ordered_transaction_hashes_from_block(block: &monero::Block) -> Ve
 pub fn insert_merge_mining_tag_and_aux_chain_merkle_root_into_block<T: AsRef<[u8]>>(
     block: &mut monero::Block,
     hash: T,
-    aux_number: u8,
+    aux_chain_count: u8,
     aux_nonce: u32,
 ) -> Result<(), MergeMineError> {
+    if aux_chain_count == 0{
+        return Err(MergeMineError::ZeroAuxChains)
+    }
     if hash.as_ref().len() != monero::Hash::len_bytes() {
         return Err(MergeMineError::HashingError(format!(
             "Expected source to be {} bytes, but it was {} bytes",
@@ -298,12 +301,16 @@ pub fn insert_merge_mining_tag_and_aux_chain_merkle_root_into_block<T: AsRef<[u8
     // To circumvent this, we create a new extra field by appending the original extra field to the merge mining field
     // instead.
     let hash = monero::Hash::from_slice(hash.as_ref());
-    // update this at a later stage when monero-rs is correct
-    let _mt_params = MerkleTreeParameters {
-        number_of_chains: aux_number,
+    let mt_params = MerkleTreeParameters {
+        number_of_chains: aux_chain_count,
         aux_nonce,
     };
-    extra_field.0.insert(0, SubField::MergeMining(Some(VarInt(0)), hash));
+    let encoded = if aux_chain_count == 1 {
+        VarInt(0)
+    } else {
+        mt_params.to_varint()
+    };
+    extra_field.0.insert(0, SubField::MergeMining(Some(encoded), hash));
 
     block.miner_tx.prefix.extra = extra_field.into();
     Ok(())
