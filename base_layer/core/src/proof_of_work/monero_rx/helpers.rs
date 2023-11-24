@@ -142,6 +142,13 @@ fn check_aux_chains(
     tari_hash: &FixedHash,
     gen_hash: &FixedHash,
 ) -> bool {
+    let t_hash = monero::Hash::from_slice(tari_hash.as_slice());
+    if merge_mining_params == VarInt(0) {
+        // we interpret 0 as there is only 1 chain, tari.
+        if t_hash == *aux_chain_merkle_root {
+            return true;
+        }
+    }
     let merkle_tree_params = MerkleTreeParameters::from_varint(merge_mining_params);
     if merkle_tree_params.number_of_chains == 0 {
         return false;
@@ -155,7 +162,6 @@ fn check_aux_chains(
     )
     .low_u32() %
         u32::from(merkle_tree_params.number_of_chains);
-    let t_hash = monero::Hash::from_slice(tari_hash.as_slice());
     let (merkle_root, pos) = monero_data.aux_chain_merkle_proof.calculate_root_with_pos(&t_hash);
     if hash_position != pos {
         return false;
@@ -292,13 +298,12 @@ pub fn insert_merge_mining_tag_and_aux_chain_merkle_root_into_block<T: AsRef<[u8
     // To circumvent this, we create a new extra field by appending the original extra field to the merge mining field
     // instead.
     let hash = monero::Hash::from_slice(hash.as_ref());
-    let mt_params = MerkleTreeParameters {
+    // update this at a later stage when monero-rs is correct
+    let _mt_params = MerkleTreeParameters {
         number_of_chains: aux_number,
         aux_nonce,
     };
-    extra_field
-        .0
-        .insert(0, SubField::MergeMining(Some(mt_params.to_varint()), hash));
+    extra_field.0.insert(0, SubField::MergeMining(Some(VarInt(0)), hash));
 
     block.miner_tx.prefix.extra = extra_field.into();
     Ok(())
