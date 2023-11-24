@@ -35,6 +35,7 @@ use serde::{Deserialize, Serialize};
     Debug, Clone, Copy, Hash, PartialEq, Deserialize, Serialize, Eq, BorshSerialize, FromPrimitive, BorshDeserialize,
 )]
 #[repr(u8)]
+#[serde(rename_all = "snake_case")]
 pub enum RangeProofType {
     /// Range proof is a BulletProofPlus
     BulletProofPlus = 0,
@@ -90,5 +91,30 @@ mod tests {
         assert_eq!(RangeProofType::RevealedValue.as_byte(), 1);
         assert_eq!(RangeProofType::BulletProofPlus.to_string(), "BulletProofPlus");
         assert_eq!(RangeProofType::RevealedValue.to_string(), "RevealedValue");
+    }
+
+    #[derive(Clone, Serialize, Deserialize, Debug)]
+    #[allow(clippy::struct_excessive_bools)]
+    struct TestConfig {
+        name: String,
+        range_proof_type: RangeProofType,
+    }
+
+    #[test]
+    fn it_deserializes_enums() {
+        let config_str_1 = r#"
+            name = "blockchain champion"
+            range_proof_type = "revealed_value"
+        "#;
+        let config_1 = toml::from_str::<TestConfig>(config_str_1).unwrap();
+        let config_str_2 = r#"
+            name = "blockchain champion"
+            range_proof_type = "bullet_proof_plus"
+        "#;
+        let config_2 = toml::from_str::<TestConfig>(config_str_2).unwrap();
+
+        // Enums in the config
+        assert_eq!(config_1.range_proof_type, RangeProofType::RevealedValue);
+        assert_eq!(config_2.range_proof_type, RangeProofType::BulletProofPlus);
     }
 }
