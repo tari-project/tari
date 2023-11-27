@@ -107,9 +107,25 @@ appenders:
         kind: fixed_window
         base: 1
         count: 5
-        pattern: "{{log_dir}}/log/miner/miner.{}.log"
+        pattern: "{{log_dir}}/log/miner.{}.log"
     encoder:
-      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] {l:5} {m}{n}"
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{X(grpc)}] {f}.{L} {i} [{t}] {l:5} {m}{n}"
+  # An appender named "proxy" that writes to a file with a custom pattern encoder
+  proxy:
+    kind: rolling_file
+    path: "{{log_dir}}/log/proxy.log"
+    policy:
+      kind: compound
+      trigger:
+        kind: size
+        limit: 200mb
+      roller:
+        kind: fixed_window
+        base: 1
+        count: 50
+        pattern: "{{log_dir}}/log/proxy.{}.log"
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{X(grpc)}] {f}.{L} {i} [{t}] {l:5} {m}{n}"
 
 # We don't want prints during cucumber test, everything useful will in logs.
 # root:
@@ -125,6 +141,7 @@ loggers:
       - base_layer_wallet
       - base_layer_base_node
       - miner
+      - proxy
     additive: true
   stdout:
     level: info # we have only single print, and it's info
@@ -167,6 +184,12 @@ loggers:
     level: debug
     appenders:
       - miner
+    additive: false
+  # merge mining proxy
+  minotari_mm_proxy::proxy:
+    level: debug
+    appenders:
+      - proxy
     additive: false
   # Route log events sent to the "comms" logger to the "network" appender
   comms:

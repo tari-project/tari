@@ -133,10 +133,10 @@ impl MergeMiningProxyProcess {
                             origin_submission.to_string(),
                         ),
                         (
-                            "miner.wallet_payment_address".to_string(),
+                            "merge_mining_proxy.wallet_payment_address".to_string(),
                             wallet_payment_address.to_hex(),
                         ),
-                        ("miner.stealth_payment".to_string(), stealth.to_string()),
+                        ("merge_mining_proxy.stealth_payment".to_string(), stealth.to_string()),
                     ],
                 },
             };
