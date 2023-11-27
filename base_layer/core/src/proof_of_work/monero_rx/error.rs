@@ -66,7 +66,7 @@ impl MergeMineError {
                 reason: err.to_string(),
                 ban_duration: BanPeriod::Long,
             }),
-            MergeMineError::RandomXVMFactoryError(_)| MergeMineError::ZeroAuxChains => None,
+            MergeMineError::RandomXVMFactoryError(_) | MergeMineError::ZeroAuxChains => None,
         }
     }
 }

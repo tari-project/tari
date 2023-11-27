@@ -273,8 +273,8 @@ pub fn insert_merge_mining_tag_and_aux_chain_merkle_root_into_block<T: AsRef<[u8
     aux_chain_count: u8,
     aux_nonce: u32,
 ) -> Result<(), MergeMineError> {
-    if aux_chain_count == 0{
-        return Err(MergeMineError::ZeroAuxChains)
+    if aux_chain_count == 0 {
+        return Err(MergeMineError::ZeroAuxChains);
     }
     if hash.as_ref().len() != monero::Hash::len_bytes() {
         return Err(MergeMineError::HashingError(format!(
