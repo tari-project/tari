@@ -71,6 +71,7 @@ tari_features = { path = "../../common/tari_features"}
 
 [features]
 libtor = ["tari_libtor"]
+grpc = []
 
 [package.metadata.cargo-machete]
 # We need to specify extra features for log4rs even though it is not used directly in this crate
