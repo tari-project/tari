@@ -73,7 +73,7 @@ pub struct MergeMiningProxyConfig {
     pub wallet_payment_address: String,
     /// Stealth payment yes or no
     pub stealth_payment: bool,
-    /// Range proof type - revealed_value or bullet_proof_plus: (default = bullet_proof_plus)
+    /// Range proof type - revealed_value or bullet_proof_plus: (default = revealed_value)
     pub range_proof_type: RangeProofType,
 }
 
@@ -96,7 +96,7 @@ impl Default for MergeMiningProxyConfig {
             network: Default::default(),
             wallet_payment_address: TariAddress::default().to_hex(),
             stealth_payment: true,
-            range_proof_type: RangeProofType::BulletProofPlus,
+            range_proof_type: RangeProofType::RevealedValue,
         }
     }
 }

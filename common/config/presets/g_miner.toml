@@ -50,5 +50,5 @@
 #wallet_payment_address = "YOUR_WALLET_TARI_ADDRESS"
 # Stealth payment yes or no (default: true)
 #stealth_payment = true
-# Range proof type - revealed_value or bullet_proof_plus: (default = "bullet_proof_plus")
-#range_proof_type = "bullet_proof_plus"
+# Range proof type - revealed_value or bullet_proof_plus: (default = "revealed_value")
+#range_proof_type = "revealed_value"
