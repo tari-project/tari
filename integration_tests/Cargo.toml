@@ -18,7 +18,7 @@ tari_common = { path = "../common" }
 tari_common_types = { path = "../base_layer/common_types" }
 tari_comms = { path = "../comms/core" }
 tari_comms_dht = { path = "../comms/dht" }
-minotari_console_wallet = { path = "../applications/minotari_console_wallet" }
+minotari_console_wallet = { path = "../applications/minotari_console_wallet", features = ["grpc"] }
 tari_contacts = { path = "../base_layer/contacts" }
 tari_core = { path = "../base_layer/core" }
 minotari_merge_mining_proxy = { path = "../applications/minotari_merge_mining_proxy" }
