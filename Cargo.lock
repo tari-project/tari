@@ -5848,6 +5848,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+ "toml 0.5.11",
  "tracing",
  "zeroize",
 ]

@@ -215,6 +215,7 @@ impl BlockTemplateProtocol<'_> {
             &self.wallet_payment_address,
             self.config.stealth_payment,
             self.consensus_manager.consensus_constants(tari_height),
+            self.config.range_proof_type,
         )
         .await?;
         Ok((coinbase_output, coinbase_kernel))

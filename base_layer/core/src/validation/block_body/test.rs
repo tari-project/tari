@@ -40,7 +40,7 @@ use crate::{
         key_manager::{TariKeyId, TransactionKeyManagerBranch},
         tari_amount::{uT, T},
         test_helpers::schema_to_transaction,
-        transaction_components::TransactionError,
+        transaction_components::{RangeProofType, TransactionError},
         CoinbaseBuilder,
         CryptoFactories,
     },
@@ -242,6 +242,7 @@ async fn it_allows_multiple_coinbases() {
         .with_sender_offset_key_id(TariKeyId::default())
         .with_script_key_id(TariKeyId::default())
         .with_script(one_sided_payment_script(wallet_payment_address.public_key()))
+        .with_range_proof_type(RangeProofType::RevealedValue)
         .build_with_reward(blockchain.rules().consensus_constants(1), coinbase.value)
         .await
         .unwrap();
@@ -566,7 +567,13 @@ mod orphan_validator {
         let rules = ConsensusManager::builder(Network::LocalNet)
             .add_consensus_constants(
                 ConsensusConstantsBuilder::new(Network::LocalNet)
-                    .with_permitted_range_proof_types(&[RangeProofType::RevealedValue])
+                    .with_permitted_range_proof_types([
+                        (OutputType::Standard, &[RangeProofType::RevealedValue]),
+                        (OutputType::Coinbase, &[RangeProofType::RevealedValue]),
+                        (OutputType::Burn, &[RangeProofType::RevealedValue]),
+                        (OutputType::ValidatorNodeRegistration, &[RangeProofType::RevealedValue]),
+                        (OutputType::CodeTemplateRegistration, &[RangeProofType::RevealedValue]),
+                    ])
                     .with_coinbase_lockheight(0)
                     .build(),
             )
@@ -587,5 +594,73 @@ mod orphan_validator {
         let err = validator.validate(&unmined).unwrap_err();
         unpack_enum!(ValidationError::RangeProofTypeNotPermitted { range_proof_type } = err);
         assert_eq!(range_proof_type, RangeProofType::BulletProofPlus);
+    }
+
+    #[tokio::test]
+    async fn it_accepts_permitted_range_proof_types() {
+        let rules = ConsensusManager::builder(Network::LocalNet)
+            .add_consensus_constants(
+                ConsensusConstantsBuilder::new(Network::LocalNet)
+                    .with_permitted_range_proof_types([
+                        (OutputType::Standard, &[RangeProofType::BulletProofPlus]),
+                        (OutputType::Coinbase, &[RangeProofType::BulletProofPlus]),
+                        (OutputType::Burn, &[RangeProofType::BulletProofPlus]),
+                        (OutputType::ValidatorNodeRegistration, &[
+                            RangeProofType::BulletProofPlus,
+                        ]),
+                        (OutputType::CodeTemplateRegistration, &[RangeProofType::BulletProofPlus]),
+                    ])
+                    .with_coinbase_lockheight(0)
+                    .build(),
+            )
+            .build()
+            .unwrap();
+        let mut blockchain = TestBlockchain::create(rules.clone()).await;
+        let validator = BlockBodyInternalConsistencyValidator::new(rules, false, CryptoFactories::default());
+        let (_, coinbase) = blockchain.append(block_spec!("1", parent: "GB")).await.unwrap();
+
+        let schema = txn_schema!(from: vec![coinbase.clone()], to: vec![201 * T]);
+        let (tx, _) = schema_to_transaction(&[schema], &blockchain.km).await;
+
+        let transactions = tx.into_iter().map(|b| Arc::try_unwrap(b).unwrap()).collect::<Vec<_>>();
+
+        let (unmined, _) = blockchain
+            .create_unmined_block(block_spec!("2", parent: "1", transactions: transactions))
+            .await;
+        assert!(validator.validate(&unmined).is_ok());
+    }
+
+    #[tokio::test]
+    async fn it_rejects_when_output_types_are_not_matched() {
+        let rules = ConsensusManager::builder(Network::LocalNet)
+            .add_consensus_constants(
+                ConsensusConstantsBuilder::new(Network::LocalNet)
+                    .with_permitted_range_proof_types([
+                        (OutputType::CodeTemplateRegistration, &[RangeProofType::BulletProofPlus]),
+                        (OutputType::CodeTemplateRegistration, &[RangeProofType::BulletProofPlus]),
+                        (OutputType::CodeTemplateRegistration, &[RangeProofType::BulletProofPlus]),
+                        (OutputType::CodeTemplateRegistration, &[RangeProofType::BulletProofPlus]),
+                        (OutputType::CodeTemplateRegistration, &[RangeProofType::BulletProofPlus]),
+                    ])
+                    .with_coinbase_lockheight(0)
+                    .build(),
+            )
+            .build()
+            .unwrap();
+        let mut blockchain = TestBlockchain::create(rules.clone()).await;
+        let validator = BlockBodyInternalConsistencyValidator::new(rules, false, CryptoFactories::default());
+        let (_, coinbase) = blockchain.append(block_spec!("1", parent: "GB")).await.unwrap();
+
+        let schema = txn_schema!(from: vec![coinbase.clone()], to: vec![201 * T]);
+        let (tx, _) = schema_to_transaction(&[schema], &blockchain.km).await;
+
+        let transactions = tx.into_iter().map(|b| Arc::try_unwrap(b).unwrap()).collect::<Vec<_>>();
+
+        let (unmined, _) = blockchain
+            .create_unmined_block(block_spec!("2", parent: "1", transactions: transactions))
+            .await;
+        let err = validator.validate(&unmined).unwrap_err();
+        unpack_enum!(ValidationError::OutputTypeNotMatchedToRangeProofType { output_type } = err);
+        assert!(output_type == OutputType::Standard || output_type == OutputType::Coinbase);
     }
 }

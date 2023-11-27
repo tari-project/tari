@@ -66,7 +66,13 @@ use crate::{
     test_helpers::{block_spec::BlockSpecs, create_consensus_rules, default_coinbase_entities, BlockSpec},
     transactions::{
         key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TariKeyId},
-        transaction_components::{TransactionInput, TransactionKernel, TransactionOutput, WalletOutput},
+        transaction_components::{
+            RangeProofType,
+            TransactionInput,
+            TransactionKernel,
+            TransactionOutput,
+            WalletOutput,
+        },
         CryptoFactories,
     },
     validation::{
@@ -440,6 +446,7 @@ pub async fn create_chained_blocks<T: Into<BlockSpecs>>(
             &km,
             &script_key_id,
             &wallet_payment_address,
+            None,
         )
         .await;
         let block = mine_block(block, prev_block.accumulated_data(), difficulty);
@@ -504,6 +511,7 @@ pub struct TestBlockchain {
     pub km: MemoryDbKeyManager,
     script_key_id: TariKeyId,
     wallet_payment_address: TariAddress,
+    range_proof_type: RangeProofType,
 }
 
 impl TestBlockchain {
@@ -523,6 +531,7 @@ impl TestBlockchain {
             km,
             script_key_id,
             wallet_payment_address,
+            range_proof_type: RangeProofType::BulletProofPlus,
         };
 
         blockchain.chain.push(("GB", genesis));
@@ -627,6 +636,7 @@ impl TestBlockchain {
             &self.km,
             &self.script_key_id,
             &self.wallet_payment_address,
+            Some(self.range_proof_type),
         )
         .await;
         let block = mine_block(block, parent.accumulated_data(), difficulty);
@@ -645,6 +655,7 @@ impl TestBlockchain {
             &self.km,
             &self.script_key_id,
             &self.wallet_payment_address,
+            Some(self.range_proof_type),
         )
         .await;
         block.body.sort();

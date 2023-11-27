@@ -59,6 +59,7 @@ use crate::{
             KernelBuilder,
             KernelFeatures,
             OutputFeatures,
+            RangeProofType,
             Transaction,
             TransactionBuilder,
             TransactionError,
@@ -88,6 +89,8 @@ pub enum CoinbaseBuildError {
     MissingScriptKey,
     #[error("The script for this coinbase transaction wasn't provided")]
     MissingScript,
+    #[error("The range proof type for this coinbase transaction wasn't provided")]
+    MissingRangeProofType,
     #[error("The wallet public key for this coinbase transaction wasn't provided")]
     MissingWalletPublicKey,
     #[error("The encryption key for this coinbase transaction wasn't provided")]
@@ -141,6 +144,7 @@ pub struct CoinbaseBuilder<TKeyManagerInterface> {
     script: Option<TariScript>,
     covenant: Covenant,
     extra: Option<Vec<u8>>,
+    range_proof_type: Option<RangeProofType>,
 }
 
 impl<TKeyManagerInterface> CoinbaseBuilder<TKeyManagerInterface>
@@ -160,6 +164,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             script: None,
             covenant: Covenant::default(),
             extra: None,
+            range_proof_type: None,
         }
     }
 
@@ -221,6 +226,13 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         self
     }
 
+    /// Provide some arbitrary additional information that will be stored in the coinbase output's `coinbase_extra`
+    /// field.
+    pub fn with_range_proof_type(mut self, range_proof_type: RangeProofType) -> Self {
+        self.range_proof_type = Some(range_proof_type);
+        self
+    }
+
     /// Try and construct a Coinbase Transaction. The block reward is taken from the emission curve for the current
     /// block height. The other parameters (keys, nonces etc.) are provided by the caller. Other data is
     /// automatically set: Coinbase transactions have an offset of zero, no fees, the `COINBASE_OUTPUT` flags are set
@@ -257,6 +269,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
             .ok_or(CoinbaseBuildError::MissingSenderOffsetKey)?;
         let covenant = self.covenant;
         let script = self.script.ok_or(CoinbaseBuildError::MissingScript)?;
+        let range_proof_type = self.range_proof_type.ok_or(CoinbaseBuildError::MissingRangeProofType)?;
 
         let kernel_features = KernelFeatures::create_coinbase();
         let metadata = TransactionMetadata::new_with_features(0.into(), 0, kernel_features);
@@ -293,12 +306,16 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         let excess = Commitment::from_public_key(&public_spend_key);
         // generate tx details
         let value: u64 = total_reward.into();
-        let output_features = OutputFeatures::create_coinbase(height + constants.coinbase_min_maturity(), self.extra);
+        let output_features =
+            OutputFeatures::create_coinbase(height + constants.coinbase_min_maturity(), self.extra, range_proof_type);
         let encrypted_data = self
             .key_manager
             .encrypt_data_for_recovery(&spending_key_id, Some(&encryption_key_id), total_reward.into())
             .await?;
-        let minimum_value_promise = MicroMinotari::zero();
+        let minimum_value_promise = match range_proof_type {
+            RangeProofType::BulletProofPlus => MicroMinotari::zero(),
+            RangeProofType::RevealedValue => MicroMinotari(value),
+        };
 
         let output_version = TransactionOutputVersion::get_current_version();
         let metadata_message = TransactionOutput::metadata_signature_message_from_parts(
@@ -381,6 +398,7 @@ pub async fn generate_coinbase(
     wallet_payment_address: &TariAddress,
     stealth_payment: bool,
     consensus_constants: &ConsensusConstants,
+    range_proof_type: RangeProofType,
 ) -> Result<(TransactionOutput, TransactionKernel), CoinbaseBuildError> {
     // The script key is not used in the Diffie-Hellmann protocol, so we assign default.
     let script_key_id = TariKeyId::default();
@@ -394,6 +412,7 @@ pub async fn generate_coinbase(
         wallet_payment_address,
         stealth_payment,
         consensus_constants,
+        range_proof_type,
     )
     .await?;
     Ok((coinbase_output, coinbase_kernel))
@@ -411,6 +430,7 @@ pub async fn generate_coinbase_with_wallet_output(
     wallet_payment_address: &TariAddress,
     stealth_payment: bool,
     consensus_constants: &ConsensusConstants,
+    range_proof_type: RangeProofType,
 ) -> Result<(Transaction, TransactionOutput, TransactionKernel, WalletOutput), CoinbaseBuildError> {
     let (sender_offset_key_id, _) = key_manager
         .get_next_key(TransactionKeyManagerBranch::SenderOffset.get_branch_key())
@@ -443,6 +463,7 @@ pub async fn generate_coinbase_with_wallet_output(
         .with_script_key_id(script_key_id.clone())
         .with_script(script)
         .with_extra(extra.to_vec())
+        .with_range_proof_type(range_proof_type)
         .build_with_reward(consensus_constants, reward)
         .await?;
 
@@ -546,7 +567,8 @@ mod test {
             .with_encryption_key_id(TariKeyId::default())
             .with_sender_offset_key_id(p.sender_offset_key_id)
             .with_script_key_id(p.script_key_id)
-            .with_script(one_sided_payment_script(wallet_payment_address.public_key()));
+            .with_script(one_sided_payment_script(wallet_payment_address.public_key()))
+            .with_range_proof_type(RangeProofType::RevealedValue);
         let (tx, _unblinded_output) = builder
             .build(rules.consensus_constants(42), rules.emission_schedule())
             .await
@@ -596,7 +618,8 @@ mod test {
             .with_encryption_key_id(TariKeyId::default())
             .with_sender_offset_key_id(p.sender_offset_key_id)
             .with_script_key_id(p.script_key_id)
-            .with_script(one_sided_payment_script(wallet_payment_address.public_key()));
+            .with_script(one_sided_payment_script(wallet_payment_address.public_key()))
+            .with_range_proof_type(RangeProofType::BulletProofPlus);
         let (mut tx, _) = builder
             .build(rules.consensus_constants(42), rules.emission_schedule())
             .await
@@ -630,7 +653,8 @@ mod test {
             .with_encryption_key_id(TariKeyId::default())
             .with_sender_offset_key_id(p.sender_offset_key_id.clone())
             .with_script_key_id(p.script_key_id.clone())
-            .with_script(one_sided_payment_script(wallet_payment_address.public_key()));
+            .with_script(one_sided_payment_script(wallet_payment_address.public_key()))
+            .with_range_proof_type(RangeProofType::BulletProofPlus);
         let (mut tx, _) = builder
             .build(rules.consensus_constants(0), rules.emission_schedule())
             .await
@@ -644,7 +668,8 @@ mod test {
             .with_encryption_key_id(TariKeyId::default())
             .with_sender_offset_key_id(p.sender_offset_key_id.clone())
             .with_script_key_id(p.script_key_id.clone())
-            .with_script(one_sided_payment_script(wallet_payment_address.public_key()));
+            .with_script(one_sided_payment_script(wallet_payment_address.public_key()))
+            .with_range_proof_type(RangeProofType::BulletProofPlus);
         let (tx2, _) = builder
             .build(rules.consensus_constants(0), rules.emission_schedule())
             .await
@@ -675,7 +700,8 @@ mod test {
             .with_encryption_key_id(TariKeyId::default())
             .with_sender_offset_key_id(p.sender_offset_key_id)
             .with_script_key_id(p.script_key_id)
-            .with_script(one_sided_payment_script(wallet_payment_address.public_key()));
+            .with_script(one_sided_payment_script(wallet_payment_address.public_key()))
+            .with_range_proof_type(RangeProofType::BulletProofPlus);
         let (tx3, _) = builder
             .build(rules.consensus_constants(0), rules.emission_schedule())
             .await
@@ -703,7 +729,7 @@ mod test {
             TransactionKeyManagerInterface,
             TxoStage,
         },
-        transaction_components::TransactionKernelVersion,
+        transaction_components::{RangeProofType, TransactionKernelVersion},
     };
 
     #[tokio::test]
@@ -724,7 +750,8 @@ mod test {
             .with_encryption_key_id(TariKeyId::default())
             .with_sender_offset_key_id(p.sender_offset_key_id.clone())
             .with_script_key_id(p.script_key_id.clone())
-            .with_script(one_sided_payment_script(wallet_payment_address.public_key()));
+            .with_script(one_sided_payment_script(wallet_payment_address.public_key()))
+            .with_range_proof_type(RangeProofType::RevealedValue);
         let (mut tx, _) = builder
             .build(rules.consensus_constants(0), rules.emission_schedule())
             .await
@@ -740,7 +767,8 @@ mod test {
             .with_encryption_key_id(TariKeyId::default())
             .with_sender_offset_key_id(p.sender_offset_key_id)
             .with_script_key_id(p.script_key_id)
-            .with_script(one_sided_payment_script(wallet_payment_address.public_key()));
+            .with_script(one_sided_payment_script(wallet_payment_address.public_key()))
+            .with_range_proof_type(RangeProofType::RevealedValue);
         let (tx2, output) = builder
             .build(rules.consensus_constants(0), rules.emission_schedule())
             .await

@@ -269,7 +269,7 @@ async fn sender_signature_verification() {
 
     tx_output = wallet_output.to_transaction_output(&key_manager).await.unwrap();
     assert!(tx_output.verify_metadata_signature().is_ok());
-    tx_output.features = OutputFeatures::create_coinbase(0, None);
+    tx_output.features = OutputFeatures::create_coinbase(0, None, RangeProofType::BulletProofPlus);
     assert!(tx_output.verify_metadata_signature().is_err());
 
     tx_output = wallet_output.to_transaction_output(&key_manager).await.unwrap();

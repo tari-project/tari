@@ -287,6 +287,7 @@ async fn mining_cycle(
         wallet_payment_address,
         config.stealth_payment,
         consensus_manager.consensus_constants(height),
+        config.range_proof_type,
     )
     .await
     .map_err(|e| MinerError::CoinbaseError(e.to_string()))?;

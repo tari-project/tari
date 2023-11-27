@@ -42,6 +42,7 @@ use tari_core::{
             KernelBuilder,
             KernelFeatures,
             OutputFeatures,
+            RangeProofType,
             Transaction,
             TransactionKernel,
             TransactionKernelVersion,
@@ -102,7 +103,7 @@ pub async fn create_coinbase(
 
     let wallet_output = create_wallet_output_with_data(
         script!(Nop),
-        OutputFeatures::create_coinbase(maturity_height, extra),
+        OutputFeatures::create_coinbase(maturity_height, extra, RangeProofType::BulletProofPlus),
         &p,
         value,
         key_manager,
