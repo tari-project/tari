@@ -25,6 +25,7 @@ mod ban_peer;
 mod block_timing;
 mod check_db;
 mod check_for_updates;
+mod create_grpc_cert;
 mod dial_peer;
 mod discover_peer;
 mod get_block;
@@ -133,6 +134,7 @@ pub enum Command {
     GetStateInfo(get_state_info::Args),
     GetNetworkStats(get_network_stats::Args),
     ListValidatorNodes(list_validator_nodes::Args),
+    CreateGrpcCert(create_grpc_cert::Args),
     Quit(quit::Args),
     Exit(quit::Args),
     Watch(watch_command::Args),
@@ -228,6 +230,7 @@ impl CommandContext {
                 Command::Status(_) |
                 Command::Watch(_) |
                 Command::ListValidatorNodes(_) |
+                Command::CreateGrpcCert(_) |
                 Command::Quit(_) |
                 Command::Exit(_) => 30,
                 // These commands involve intense blockchain db operations and needs a lot of time to complete
@@ -293,6 +296,7 @@ impl HandleCommand<Command> for CommandContext {
             Command::Quit(args) | Command::Exit(args) => self.handle_command(args).await,
             Command::Watch(args) => self.handle_command(args).await,
             Command::ListValidatorNodes(args) => self.handle_command(args).await,
+            Command::CreateGrpcCert(args) => self.handle_command(args).await,
         }
     }
 }
