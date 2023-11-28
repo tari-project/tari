@@ -29,26 +29,27 @@ use rcgen::{generate_simple_self_signed, Certificate, CertificateParams, DnType,
 
 use super::{CommandContext, HandleCommand};
 
-/// Create a self signed TLS certificate for use with gRPC
+/// Create self signed TLS certificates for use with gRPC
 #[derive(Debug, Parser)]
 pub struct Args {}
 
 #[async_trait]
 impl HandleCommand<Args> for CommandContext {
     async fn handle_command(&mut self, _: Args) -> Result<(), Error> {
-        self.create_grpc_cert()
+        self.create_tls_certs()
     }
 }
 
 impl CommandContext {
-    pub fn create_grpc_cert(&self) -> Result<(), Error> {
-        match generate_self_signed_cert() {
+    pub fn create_tls_certs(&self) -> Result<(), Error> {
+        match generate_self_signed_certs() {
             Ok((cacert, cert, private_key)) => {
                 self.write_to_disk("ca.pem", &cacert);
                 self.write_to_disk("server.pem", &cert);
                 self.write_to_disk("server.key", &private_key);
 
                 println!("Certificates generated successfully.");
+                println!("Move the ca.pem to the client service `application/config/` directory.")
             },
             Err(err) => eprintln!("Error generating certificates: {}", err),
         }
@@ -61,11 +62,11 @@ impl CommandContext {
         let mut file = File::create(path).expect("Unable to create file");
         file.write_all(data.as_ref()).expect("Unable to write data to file");
 
-        println!("{} written to disk.", filename);
+        println!("{:?} written to disk.", path);
     }
 }
 
-fn generate_self_signed_cert() -> Result<(String, String, String), RcgenError> {
+fn generate_self_signed_certs() -> Result<(String, String, String), RcgenError> {
     let subject_alt_names = vec!["localhost".to_string(), "127.0.0.1".to_string(), "0.0.0.0".to_string()];
     let mut params = CertificateParams::new(subject_alt_names.clone());
     params.distinguished_name.push(DnType::CommonName, "127.0.0.1");
