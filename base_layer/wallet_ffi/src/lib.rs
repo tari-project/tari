@@ -47,9 +47,6 @@
 
 #![recursion_limit = "1024"]
 
-#[cfg(test)]
-#[macro_use]
-extern crate lazy_static;
 use core::ptr;
 use std::{
     boxed::Box,
@@ -8576,6 +8573,7 @@ mod test {
         storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
         transaction_service::handle::TransactionSendStatus,
     };
+    use once_cell::sync::Lazy;
     use tari_common_types::{emoji, transaction::TransactionStatus, types::PrivateKey};
     use tari_comms::peer_manager::PeerFeatures;
     use tari_core::{
@@ -8639,9 +8637,7 @@ mod test {
         }
     }
 
-    lazy_static! {
-        static ref CALLBACK_STATE_FFI: Mutex<CallbackState> = Mutex::new(CallbackState::new());
-    }
+    static CALLBACK_STATE_FFI: Lazy<Mutex<CallbackState>> = Lazy::new(|| Mutex::new(CallbackState::new()));
 
     unsafe extern "C" fn received_tx_callback(tx: *mut TariPendingInboundTransaction) {
         assert!(!tx.is_null());
