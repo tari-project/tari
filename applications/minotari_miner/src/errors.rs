@@ -48,6 +48,8 @@ pub enum MinerError {
     BasicAuthError(#[from] BasicAuthError),
     #[error("Invalid grpc url: {0}")]
     InvalidUri(#[from] InvalidUri),
+    #[error("TLS connection error: {0}")]
+    TlsConnectionError(String),
 }
 
 pub fn err_empty(name: &str) -> MinerError {

@@ -41,7 +41,7 @@ use tari_utilities::hex::Hex;
 use tokio::time::sleep;
 use tonic::{
     codegen::InterceptedService,
-    transport::{Channel, Endpoint},
+    transport::{Certificate, Channel, ClientTlsConfig, Endpoint},
 };
 
 use crate::{
@@ -64,6 +64,7 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
     let config_path = cli.common.config_path();
     let cfg = load_configuration(config_path.as_path(), true, &cli)?;
     let mut config = MinerConfig::load_from(&cfg).expect("Failed to load config");
+    config.config_dir = cli.common.config_path().parent().unwrap().to_path_buf();
     debug!(target: LOG_TARGET_FILE, "{:?}", config);
     setup_grpc_config(&mut config);
 
@@ -196,9 +197,14 @@ async fn connect(config: &MinerConfig) -> Result<(BaseNodeGrpcClient, WalletGrpc
     Ok((node_conn, wallet_conn))
 }
 
+fn protocol_string(tls_enabled: bool) -> String {
+    format!("http{}://", if tls_enabled { "s" } else { "" })
+}
+
 async fn connect_wallet(config: &MinerConfig) -> Result<WalletGrpcClient, MinerError> {
     let wallet_addr = format!(
-        "http://{}",
+        "{}{}",
+        protocol_string(config.wallet_grpc_tls_domain_name.is_some()),
         multiaddr_to_socketaddr(
             &config
                 .wallet_grpc_address
@@ -207,7 +213,17 @@ async fn connect_wallet(config: &MinerConfig) -> Result<WalletGrpcClient, MinerE
         )?
     );
     info!(target: LOG_TARGET, "👛 Connecting to wallet at {}", wallet_addr);
-    let channel = Endpoint::from_str(&wallet_addr)?.connect().await?;
+    let mut endpoint = Endpoint::from_str(&wallet_addr)?;
+
+    if let Some(domain_name) = config.wallet_grpc_tls_domain_name.as_ref() {
+        let pem = tokio::fs::read(config.config_dir.join("miner/ca.pem")).await?;
+        let ca = Certificate::from_pem(pem);
+
+        let tls = ClientTlsConfig::new().ca_certificate(ca).domain_name(domain_name);
+        endpoint = endpoint.tls_config(tls)?;
+    }
+
+    let channel = endpoint.connect().await?;
     let wallet_conn = WalletClient::with_interceptor(
         channel,
         ClientAuthenticationInterceptor::create(&config.wallet_grpc_authentication)?,
@@ -218,16 +234,31 @@ async fn connect_wallet(config: &MinerConfig) -> Result<WalletGrpcClient, MinerE
 
 async fn connect_base_node(config: &MinerConfig) -> Result<BaseNodeGrpcClient, MinerError> {
     let base_node_addr = format!(
-        "http://{}",
+        "{}{}",
+        protocol_string(config.base_node_grpc_tls_domain_name.is_some()),
         multiaddr_to_socketaddr(
             &config
                 .base_node_grpc_address
                 .clone()
                 .expect("Base node grpc address not found")
-        )?
+        )?,
     );
+
     info!(target: LOG_TARGET, "👛 Connecting to base node at {}", base_node_addr);
-    let channel = Endpoint::from_str(&base_node_addr)?.connect().await?;
+    let mut endpoint = Endpoint::from_str(&base_node_addr)?;
+
+    if let Some(domain_name) = config.base_node_grpc_tls_domain_name.as_ref() {
+        let pem = tokio::fs::read(config.config_dir.join("miner/ca.pem")).await?;
+        let ca = Certificate::from_pem(pem);
+
+        let tls = ClientTlsConfig::new().ca_certificate(ca).domain_name(domain_name);
+        endpoint = endpoint.tls_config(tls)?;
+    }
+
+    let channel = endpoint
+        .connect()
+        .await
+        .map_err(|e| MinerError::TlsConnectionError(e.to_string()))?;
     let node_conn = BaseNodeClient::with_interceptor(
         channel,
         ClientAuthenticationInterceptor::create(&config.base_node_grpc_authentication)?,
