@@ -56,6 +56,8 @@ pub struct MinerConfig {
     pub base_node_grpc_authentication: GrpcAuthentication,
     /// GRPC domain name for node TLS validation
     pub base_node_grpc_tls_domain_name: Option<String>,
+    /// GRPC ca cert name for TLS
+    pub base_node_grpc_ca_cert_filename: String,
     /// GRPC address of console wallet
     pub wallet_grpc_address: Option<Multiaddr>,
     /// GRPC authentication for console wallet
@@ -110,6 +112,7 @@ impl Default for MinerConfig {
             base_node_grpc_address: None,
             base_node_grpc_authentication: GrpcAuthentication::default(),
             base_node_grpc_tls_domain_name: None,
+            base_node_grpc_ca_cert_filename: "node_ca.pem".to_string(),
             wallet_grpc_address: None,
             wallet_grpc_authentication: GrpcAuthentication::default(),
             wallet_grpc_tls_domain_name: None,

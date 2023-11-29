@@ -64,13 +64,13 @@ impl CommandContext {
                      certificates to safeguard your applications and data against potential security threats."
                 );
 
-                self.write_to_disk("ca.pem", &cacert);
+                self.write_to_disk("node_ca.pem", &cacert);
                 self.write_to_disk("server.pem", &cert);
                 self.write_to_disk("server.key", &private_key);
 
                 println!("Certificates generated successfully.");
                 println!(
-                    "To continue configuration move the `ca.pem` to the client service's `application/config/` \
+                    "To continue configuration move the `node_ca.pem` to the client service's `application/config/` \
                      directory."
                 );
             },

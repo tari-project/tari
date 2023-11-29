@@ -248,11 +248,15 @@ async fn connect_base_node(config: &MinerConfig) -> Result<BaseNodeGrpcClient, M
     let mut endpoint = Endpoint::from_str(&base_node_addr)?;
 
     if let Some(domain_name) = config.base_node_grpc_tls_domain_name.as_ref() {
-        let pem = tokio::fs::read(config.config_dir.join("ca.pem")).await?;
+        let pem = tokio::fs::read(config.config_dir.join(&config.base_node_grpc_ca_cert_filename))
+            .await
+            .map_err(|e| MinerError::TlsConnectionError(e.to_string()))?;
         let ca = Certificate::from_pem(pem);
 
         let tls = ClientTlsConfig::new().ca_certificate(ca).domain_name(domain_name);
-        endpoint = endpoint.tls_config(tls)?;
+        endpoint = endpoint
+            .tls_config(tls)
+            .map_err(|e| MinerError::TlsConnectionError(e.to_string()))?;
     }
 
     let channel = endpoint
