@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2023. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -19,12 +19,21 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-pub mod authentication;
 
-pub mod conversions;
+use std::path::PathBuf;
 
-pub mod tls;
+use tonic::transport::Identity;
 
-pub mod tari_rpc {
-    tonic::include_proto!("tari.rpc");
+use crate::tls::error::GrpcTlsError;
+
+pub async fn read_identity(config_dir: PathBuf) -> Result<Identity, GrpcTlsError> {
+    let err = |file| move |e| GrpcTlsError::FileReadError(format!("Could not load the file `{:?}`: {}", file, e));
+
+    let cert_file = config_dir.join("server.pem");
+    let cert = tokio::fs::read(&cert_file).await.map_err(err(cert_file))?;
+
+    let key_file = config_dir.join("server.key");
+    let key = tokio::fs::read(&key_file).await.map_err(err(key_file))?;
+
+    Ok(Identity::from_pem(cert, key))
 }
