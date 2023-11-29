@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::path::{Path, PathBuf};
+
 use minotari_wallet_grpc_client::GrpcAuthentication;
 use serde::{Deserialize, Serialize};
 use tari_common::{
@@ -45,10 +47,18 @@ pub struct MergeMiningProxyConfig {
     pub base_node_grpc_address: Option<Multiaddr>,
     /// GRPC authentication for base node
     pub base_node_grpc_authentication: GrpcAuthentication,
+    /// GRPC domain name for node TLS validation
+    pub base_node_grpc_tls_domain_name: Option<String>,
+    /// GRPC ca cert name for TLS
+    pub base_node_grpc_ca_cert_filename: String,
     /// The Minotari wallet's GRPC address
     pub console_wallet_grpc_address: Option<Multiaddr>,
     /// GRPC authentication for console wallet
     pub console_wallet_grpc_authentication: GrpcAuthentication,
+    /// GRPC domain name for wallet TLS validation
+    pub console_wallet_grpc_tls_domain_name: Option<String>,
+    /// GRPC ca cert name for TLS
+    pub console_wallet_grpc_ca_cert_filename: String,
     /// Address of the minotari_merge_mining_proxy application
     pub listener_address: Multiaddr,
     /// In sole merged mining, the block solution is usually submitted to the Monero blockchain (monerod) as well as to
@@ -71,6 +81,8 @@ pub struct MergeMiningProxyConfig {
     pub coinbase_extra: String,
     /// Selected network
     pub network: Network,
+    /// The relative path to store persistent config
+    pub config_dir: PathBuf,
 }
 
 impl Default for MergeMiningProxyConfig {
@@ -83,8 +95,12 @@ impl Default for MergeMiningProxyConfig {
             monerod_use_auth: false,
             base_node_grpc_address: None,
             base_node_grpc_authentication: GrpcAuthentication::default(),
+            base_node_grpc_tls_domain_name: None,
+            base_node_grpc_ca_cert_filename: "node_ca.pem".to_string(),
             console_wallet_grpc_address: None,
             console_wallet_grpc_authentication: GrpcAuthentication::default(),
+            console_wallet_grpc_tls_domain_name: None,
+            console_wallet_grpc_ca_cert_filename: "wallet_ca.pem".to_string(),
             listener_address: "/ip4/127.0.0.1/tcp/18081".parse().unwrap(),
             submit_to_origin: true,
             wait_for_initial_sync_at_startup: true,
@@ -92,6 +108,15 @@ impl Default for MergeMiningProxyConfig {
             max_randomx_vms: 5,
             coinbase_extra: "tari_merge_mining_proxy".to_string(),
             network: Default::default(),
+            config_dir: PathBuf::from("config/merge_mining_proxy"),
+        }
+    }
+}
+
+impl MergeMiningProxyConfig {
+    pub fn set_base_path<P: AsRef<Path>>(&mut self, base_path: P) {
+        if !self.config_dir.is_absolute() {
+            self.config_dir = base_path.as_ref().join(self.config_dir.as_path());
         }
     }
 }

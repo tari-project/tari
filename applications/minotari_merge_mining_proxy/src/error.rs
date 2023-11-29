@@ -96,6 +96,8 @@ pub enum MmProxyError {
     ServersUnavailable,
     #[error("Invalid difficulty: {0}")]
     DifficultyError(#[from] DifficultyError),
+    #[error("TLS connection error: {0}")]
+    TlsConnectionError(String),
 }
 
 impl From<tonic::Status> for MmProxyError {
