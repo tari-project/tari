@@ -23,3 +23,7 @@
 pub mod certs;
 pub mod error;
 pub mod identity;
+
+pub fn protocol_string(tls_enabled: bool) -> String {
+    format!("http{}://", if tls_enabled { "s" } else { "" })
+}

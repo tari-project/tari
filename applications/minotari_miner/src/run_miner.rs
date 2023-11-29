@@ -27,6 +27,7 @@ use log::*;
 use minotari_app_grpc::{
     authentication::ClientAuthenticationInterceptor,
     tari_rpc::{base_node_client::BaseNodeClient, wallet_client::WalletClient},
+    tls::protocol_string,
 };
 use tari_common::{
     configuration::bootstrap::{grpc_default_port, ApplicationType},
@@ -195,10 +196,6 @@ async fn connect(config: &MinerConfig) -> Result<(BaseNodeGrpcClient, WalletGrpc
     };
 
     Ok((node_conn, wallet_conn))
-}
-
-fn protocol_string(tls_enabled: bool) -> String {
-    format!("http{}://", if tls_enabled { "s" } else { "" })
 }
 
 async fn connect_wallet(config: &MinerConfig) -> Result<WalletGrpcClient, MinerError> {
