@@ -5617,6 +5617,7 @@ dependencies = [
  "log",
  "log4rs",
  "multiaddr",
+ "once_cell",
  "path-clean",
  "prost-build",
  "serde",
