@@ -147,7 +147,7 @@ impl BorshDeserialize for MerkleProof {
     fn deserialize_reader<R>(reader: &mut R) -> Result<Self, io::Error>
     where R: io::Read {
         let len = reader.read_varint()?;
-        if len > MAX_MERKLE_TREE_PROOF_SIZE {
+        if len >= MAX_MERKLE_TREE_PROOF_SIZE {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "Larger than max merkle tree length".to_string(),
@@ -167,7 +167,7 @@ impl BorshDeserialize for MerkleProof {
 
 impl MerkleProof {
     fn try_construct(branch: Vec<Hash>, path_bitmap: u32) -> Option<Self> {
-        if branch.len() > MAX_MERKLE_TREE_PROOF_SIZE {
+        if branch.len() >= MAX_MERKLE_TREE_PROOF_SIZE {
             return None;
         }
         Some(Self { branch, path_bitmap })
@@ -350,7 +350,7 @@ mod test {
                 let hashes = create_monero_hashes(input_vec);
                 let length = hashes.len();
                 let res = MerkleProof::try_construct(hashes, path);
-                if length > MAX_MERKLE_TREE_PROOF_SIZE {
+                if length >= MAX_MERKLE_TREE_PROOF_SIZE {
                     return res.is_none();
                 }
                 res.is_some()
@@ -367,7 +367,7 @@ mod test {
                 let hashes = create_monero_hashes(input_vec);
                 let hash = hashes[0];
                 let length = hashes.len();
-                if length > MAX_MERKLE_TREE_PROOF_SIZE {
+                if length >= MAX_MERKLE_TREE_PROOF_SIZE {
                     return true;
                 }
                 let proof = MerkleProof::try_construct(hashes, path).unwrap();
@@ -379,7 +379,7 @@ mod test {
                 let hashes = create_monero_hashes(input_vec);
                 let hash = Hash::from_slice(hash.bits.as_slice());
                 let length = hashes.len();
-                if length > MAX_MERKLE_TREE_PROOF_SIZE {
+                if length >= MAX_MERKLE_TREE_PROOF_SIZE {
                     return true;
                 }
                 let proof = MerkleProof::try_construct(hashes, path).unwrap();
