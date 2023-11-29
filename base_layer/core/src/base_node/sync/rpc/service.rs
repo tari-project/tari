@@ -371,7 +371,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         Ok(Streaming::new(rx))
     }
 
-    #[instrument(skip(self), err)]
+    #[instrument(level = "trace", skip(self), err)]
     async fn get_header_by_height(
         &self,
         request: Request<u64>,
@@ -450,7 +450,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         }
     }
 
-    #[instrument(skip(self), err)]
+    #[instrument(level = "trace", skip(self), err)]
     async fn get_chain_metadata(&self, _: Request<()>) -> Result<Response<proto::base_node::ChainMetadata>, RpcStatus> {
         let chain_metadata = self
             .db()
@@ -460,7 +460,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         Ok(Response::new(chain_metadata.into()))
     }
 
-    #[instrument(skip(self), err)]
+    #[instrument(level = "trace", skip(self), err)]
     async fn sync_kernels(
         &self,
         request: Request<SyncKernelsRequest>,
@@ -586,7 +586,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         Ok(Streaming::new(rx))
     }
 
-    #[instrument(skip(self), err)]
+    #[instrument(level = "trace", skip(self), err)]
     async fn sync_utxos(&self, request: Request<SyncUtxosRequest>) -> Result<Streaming<SyncUtxosResponse>, RpcStatus> {
         let req = request.message();
         let peer_node_id = request.context().peer_node_id();
