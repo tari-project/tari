@@ -90,16 +90,13 @@ fn encode_aux_nonce(num: u32) -> Vec<u8> {
 
 #[cfg(test)]
 mod test {
-    use crate::proof_of_work::monero_rx::{
-        merkle_tree_parameters::{
-            encode_aux_chain_count,
-            encode_aux_nonce,
-            encode_bits,
-            get_aux_chain_count,
-            get_aux_nonce,
-            get_decode_bits,
-        },
-        MerkleTreeParameters,
+    use crate::proof_of_work::monero_rx::merkle_tree_parameters::{
+        encode_aux_chain_count,
+        encode_aux_nonce,
+        encode_bits,
+        get_aux_chain_count,
+        get_aux_nonce,
+        get_decode_bits,
     };
 
     #[test]
