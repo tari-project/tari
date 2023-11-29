@@ -107,6 +107,8 @@ pub struct BaseNodeConfig {
     pub lmdb: LMDBConfig,
     /// The relative path to store persistent data
     pub data_dir: PathBuf,
+    /// The relative path to the config directory
+    pub config_dir: PathBuf,
     /// The relative path to store the lmbd data
     pub lmdb_path: PathBuf,
     /// The maximum amount of VMs that RandomX will be use
@@ -169,6 +171,7 @@ impl Default for BaseNodeConfig {
             db_type: DatabaseType::Lmdb,
             lmdb: Default::default(),
             data_dir: PathBuf::from("data/base_node"),
+            config_dir: PathBuf::from("config/base_node"),
             lmdb_path: PathBuf::from("db"),
             max_randomx_vms: 5,
             bypass_range_proof_verification: false,
@@ -201,6 +204,9 @@ impl BaseNodeConfig {
         }
         if !self.data_dir.is_absolute() {
             self.data_dir = base_path.as_ref().join(self.data_dir.as_path());
+        }
+        if !self.config_dir.is_absolute() {
+            self.config_dir = base_path.as_ref().join(self.config_dir.as_path());
         }
         if !self.lmdb_path.is_absolute() {
             self.lmdb_path = self.data_dir.join(self.lmdb_path.as_path());

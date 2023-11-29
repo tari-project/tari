@@ -144,8 +144,15 @@ pub async fn run_base_node_with_cli(
 
         let mut tls_identity = None;
         if config.base_node.grpc_tls_enabled {
-            let cert = tokio::fs::read(config.base_node.data_dir.join("server.pem")).await?;
-            let key = tokio::fs::read(config.base_node.data_dir.join("server.key")).await?;
+            let cert_file = config.base_node.config_dir.join("server.pem");
+            let cert = tokio::fs::read(&cert_file)
+                .await
+                .expect(&format!("Could not load the file `{:?}`", cert_file));
+
+            let key_file = config.base_node.config_dir.join("server.key");
+            let key = tokio::fs::read(&key_file)
+                .await
+                .expect(&format!("Could not load the file `{:?}`", key_file));
 
             tls_identity = Some(Identity::from_pem(cert, key));
         }

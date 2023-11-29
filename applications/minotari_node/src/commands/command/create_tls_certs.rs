@@ -44,12 +44,35 @@ impl CommandContext {
     pub fn create_tls_certs(&self) -> Result<(), Error> {
         match generate_self_signed_certs() {
             Ok((cacert, cert, private_key)) => {
+                println!(
+                    "⚠️WARNING: The use of self-signed TLS certificates poses a significant security risk. These \
+                     certificates are not issued or verified by a trusted Certificate Authority (CA), making them \
+                     susceptible to man-in-the-middle attacks. When employing self-signed certificates, the \
+                     encryption provided is compromised, and your data may be intercepted or manipulated without \
+                     detection."
+                );
+                println!();
+                println!(
+                    "It is strongly advised to use certificates issued by reputable CAs to ensure the authenticity \
+                     and security of your connections. Self-signed certificates are suitable for testing purposes \
+                     only and should never be used in a production environment where data integrity and \
+                     confidentiality are paramount."
+                );
+                println!();
+                println!(
+                    "Please exercise extreme caution and prioritize the use of valid, properly authenticated TLS \
+                     certificates to safeguard your applications and data against potential security threats."
+                );
+
                 self.write_to_disk("ca.pem", &cacert);
                 self.write_to_disk("server.pem", &cert);
                 self.write_to_disk("server.key", &private_key);
 
                 println!("Certificates generated successfully.");
-                println!("Move the ca.pem to the client service `application/config/` directory.")
+                println!(
+                    "To continue configuration move the `ca.pem` to the client service's `application/config/` \
+                     directory."
+                );
             },
             Err(err) => eprintln!("Error generating certificates: {}", err),
         }
@@ -57,9 +80,9 @@ impl CommandContext {
     }
 
     fn write_to_disk(&self, filename: &str, data: &String) {
-        let dir = &self.config.base_node.data_dir;
+        let dir = &self.config.base_node.config_dir;
         let path = dir.join(Path::new(filename));
-        let mut file = File::create(path).expect("Unable to create file");
+        let mut file = File::create(&path).expect("Unable to create file");
         file.write_all(data.as_ref()).expect("Unable to write data to file");
 
         println!("{:?} written to disk.", path);
