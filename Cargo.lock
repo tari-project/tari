@@ -1798,6 +1798,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "env_logger"
+version = "0.8.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a19187fea3ac7e84da7dacf48de0c45d63c6a76f9490dae389aead16c243fce3"
+dependencies = [
+ "log",
+ "regex",
+]
+
+[[package]]
 name = "equivalent"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3154,6 +3164,7 @@ dependencies = [
  "minotari_app_utilities",
  "minotari_node_grpc_client",
  "minotari_wallet_grpc_client",
+ "monero",
  "reqwest",
  "serde",
  "serde_json",
@@ -3293,7 +3304,7 @@ dependencies = [
  "diesel",
  "diesel_migrations",
  "digest 0.10.7",
- "env_logger",
+ "env_logger 0.7.1",
  "fs2",
  "futures 0.3.29",
  "itertools 0.10.5",
@@ -4419,6 +4430,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1004a344b30a54e2ee58d66a71b32d2db2feb0a31f9a2d302bf0536f15de2a33"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "quickcheck"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "588f6378e4dd99458b60ec275b4477add41ce4fa9f64dcba6f15adccb19b50d6"
+dependencies = [
+ "env_logger 0.8.4",
+ "log",
+ "rand",
 ]
 
 [[package]]
@@ -5600,7 +5622,7 @@ dependencies = [
  "data-encoding",
  "derivative",
  "digest 0.10.7",
- "env_logger",
+ "env_logger 0.7.1",
  "futures 0.3.29",
  "lmdb-zero",
  "log",
@@ -5649,7 +5671,7 @@ dependencies = [
  "diesel",
  "diesel_migrations",
  "digest 0.10.7",
- "env_logger",
+ "env_logger 0.7.1",
  "futures 0.3.29",
  "futures-test",
  "futures-util",
@@ -5744,7 +5766,7 @@ dependencies = [
  "decimal-rs",
  "derivative",
  "digest 0.10.7",
- "env_logger",
+ "env_logger 0.7.1",
  "fs2",
  "futures 0.3.29",
  "hex",
@@ -5761,11 +5783,13 @@ dependencies = [
  "once_cell",
  "primitive-types",
  "prost 0.9.0",
+ "quickcheck",
  "rand",
  "randomx-rs",
  "serde",
  "serde_json",
  "serde_repr",
+ "sha2 0.10.8",
  "sha3",
  "strum",
  "strum_macros",

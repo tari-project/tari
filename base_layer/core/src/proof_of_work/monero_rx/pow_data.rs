@@ -54,6 +54,8 @@ pub struct MoneroPowData {
     pub coinbase_merkle_proof: MerkleProof,
     /// Coinbase tx from Monero
     pub coinbase_tx: monero::Transaction,
+    /// aux chain merkle proof hashes
+    pub aux_chain_merkle_proof: MerkleProof,
 }
 
 impl BorshSerialize for MoneroPowData {
@@ -64,6 +66,7 @@ impl BorshSerialize for MoneroPowData {
         self.merkle_root.consensus_encode(writer)?;
         BorshSerialize::serialize(&self.coinbase_merkle_proof, writer)?;
         self.coinbase_tx.consensus_encode(writer)?;
+        BorshSerialize::serialize(&self.aux_chain_merkle_proof, writer)?;
         Ok(())
     }
 }
@@ -80,6 +83,7 @@ impl BorshDeserialize for MoneroPowData {
         let coinbase_merkle_proof = BorshDeserialize::deserialize_reader(reader)?;
         let coinbase_tx = monero::Transaction::consensus_decode(reader)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+        let aux_chain_merkle_proof = BorshDeserialize::deserialize_reader(reader)?;
         Ok(Self {
             header,
             randomx_key,
@@ -87,6 +91,7 @@ impl BorshDeserialize for MoneroPowData {
             merkle_root,
             coinbase_merkle_proof,
             coinbase_tx,
+            aux_chain_merkle_proof,
         })
     }
 }
@@ -122,10 +127,10 @@ impl MoneroPowData {
     }
 
     /// Returns true if the coinbase merkle proof produces the `merkle_root` hash, otherwise false
-    pub fn is_valid_merkle_root(&self) -> bool {
+    pub fn is_coinbase_valid_merkle_root(&self) -> bool {
         let coinbase_hash = self.coinbase_tx.hash();
         let merkle_root = self.coinbase_merkle_proof.calculate_root(&coinbase_hash);
-        self.merkle_root == merkle_root
+        (self.merkle_root == merkle_root) && self.coinbase_merkle_proof.check_coinbase_path()
     }
 
     /// Returns the blockhashing_blob for the Monero block
@@ -173,6 +178,7 @@ mod test {
             merkle_root: Hash::new([10; 32]),
             coinbase_merkle_proof: MerkleProof::default(),
             coinbase_tx: Transaction::default(),
+            aux_chain_merkle_proof: MerkleProof::default(),
         };
         let mut buf = Vec::new();
         monero_pow_data.serialize(&mut buf).unwrap();
