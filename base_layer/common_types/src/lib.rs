@@ -33,6 +33,3 @@ pub mod transaction;
 mod tx_id;
 pub mod types;
 pub mod waiting_requests;
-
-#[macro_use]
-extern crate lazy_static;

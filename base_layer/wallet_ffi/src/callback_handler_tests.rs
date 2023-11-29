@@ -29,6 +29,7 @@ mod test {
             },
         },
     };
+    use once_cell::sync::Lazy;
     use rand::{rngs::OsRng, RngCore};
     use tari_common::configuration::Network;
     use tari_common_types::{
@@ -125,9 +126,7 @@ mod test {
         }
     }
 
-    lazy_static! {
-        static ref CALLBACK_STATE: Mutex<CallbackState> = Mutex::new(CallbackState::new());
-    }
+    static CALLBACK_STATE: Lazy<Mutex<CallbackState>> = Lazy::new(|| Mutex::new(CallbackState::new()));
 
     unsafe extern "C" fn received_tx_callback(tx: *mut InboundTransaction) {
         let mut lock = CALLBACK_STATE.lock().unwrap();

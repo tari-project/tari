@@ -27,7 +27,6 @@ data-encoding = "2.2.0"
 derivative = "2.2.0"
 digest = "0.10"
 futures = { version = "^0.3", features = ["async-await"] }
-lazy_static = "1.4.0"
 lmdb-zero = "0.4.4"
 log = { version = "0.4.0", features = ["std"] }
 log-mdc = "0.1.0"
