@@ -519,6 +519,7 @@ mod test {
                 CliCommands::ClaimShaAtomicSwapRefund(_) => {},
                 CliCommands::RevalidateWalletDb => {},
                 CliCommands::RegisterValidatorNode(_) => {},
+                CliCommands::CreateTlsCerts => {},
             }
         }
         assert!(get_balance && send_tari && burn_tari && make_it_rain && coin_split && discover_peer && whois);
