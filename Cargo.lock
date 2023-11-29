@@ -3293,7 +3293,6 @@ dependencies = [
  "minotari_app_utilities",
  "nom",
  "qrcode",
- "rcgen",
  "rustyline",
  "rustyline-derive",
  "serde",

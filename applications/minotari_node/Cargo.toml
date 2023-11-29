@@ -43,7 +43,6 @@ nom = "7.1"
 rustyline = "9.0"
 rustyline-derive = "0.5"
 serde = "1.0.136"
-rcgen = "0.11.3"
 strum = { version = "0.22", features = ["derive"] }
 thiserror = "^1.0.26"
 tokio = { version = "1.23", features = ["signal"] }
