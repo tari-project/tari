@@ -35,7 +35,8 @@ use monero::{
 
 use crate::proof_of_work::monero_rx::error::MergeMineError;
 
-const MAX_MERKLE_TREE_BYTES: usize = 4096;
+// Binary tree of depth 32 means u32::MAX tree, this is more than large enough to support most trees.
+const MAX_MERKLE_TREE_PROOF_SIZE: usize = 32;
 
 /// Returns the Keccak 256 hash of the byte input
 fn cn_fast_hash(data: &[u8]) -> Hash {
@@ -137,7 +138,7 @@ impl BorshSerialize for MerkleProof {
         for hash in &self.branch {
             hash.consensus_encode(writer)?;
         }
-        BorshSerialize::serialize(&self.path_bitmap, writer)?;
+        writer.write_varint(self.path_bitmap)?;
         Ok(())
     }
 }
@@ -146,10 +147,10 @@ impl BorshDeserialize for MerkleProof {
     fn deserialize_reader<R>(reader: &mut R) -> Result<Self, io::Error>
     where R: io::Read {
         let len = reader.read_varint()?;
-        if len > MAX_MERKLE_TREE_BYTES {
+        if len > MAX_MERKLE_TREE_PROOF_SIZE {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "Larger than max merkle tree bytes".to_string(),
+                "Larger than max merkle tree length".to_string(),
             ));
         }
         let mut branch = Vec::with_capacity(len);
@@ -159,13 +160,16 @@ impl BorshDeserialize for MerkleProof {
                     .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err.to_string()))?,
             );
         }
-        let path_bitmap = BorshDeserialize::deserialize_reader(reader)?;
+        let path_bitmap = reader.read_varint()?;
         Ok(Self { branch, path_bitmap })
     }
 }
 
 impl MerkleProof {
     fn try_construct(branch: Vec<Hash>, path_bitmap: u32) -> Option<Self> {
+        if branch.len() > MAX_MERKLE_TREE_PROOF_SIZE {
+            return None;
+        }
         Some(Self { branch, path_bitmap })
     }
 
@@ -212,6 +216,7 @@ impl MerkleProof {
                 root = cn_fast_hash2(&root, &self.branch[d]);
                 pos += multiplier;
             }
+            // this cant overflow as the max depth is 32, and 2^32 == u32::MAX
             multiplier *= 2;
         }
 
@@ -312,7 +317,76 @@ mod test {
 
     use super::*;
     use crate::proof_of_work::randomx_factory::RandomXFactory;
+    mod quicktest {
+        use monero::Hash;
+        use quickcheck::{quickcheck, Arbitrary, Gen};
 
+        use crate::proof_of_work::monero_rx::merkle_tree::{MerkleProof, MAX_MERKLE_TREE_PROOF_SIZE};
+
+        #[derive(Clone, Debug)]
+        struct QuickHash {
+            pub bits: Vec<u8>,
+        }
+
+        impl Arbitrary for QuickHash {
+            fn arbitrary(g: &mut Gen) -> QuickHash {
+                let mut hash = Vec::new();
+                for _ in 0..32 {
+                    hash.push(u8::arbitrary(g));
+                }
+                QuickHash { bits: hash }
+            }
+        }
+
+        fn create_monero_hashes(input_vec: Vec<QuickHash>) -> Vec<Hash> {
+            input_vec
+                .into_iter()
+                .map(|v| Hash::from_slice(v.bits.as_slice()))
+                .collect()
+        }
+        #[test]
+        fn test_create() {
+            fn try_create(input_vec: Vec<QuickHash>, path: u32) -> bool {
+                let hashes = create_monero_hashes(input_vec);
+                let length = hashes.len();
+                let res = MerkleProof::try_construct(hashes, path);
+                if length > MAX_MERKLE_TREE_PROOF_SIZE {
+                    return res.is_none();
+                }
+                res.is_some()
+            }
+            quickcheck(try_create as fn(Vec<QuickHash>, u32) -> bool)
+        }
+
+        #[test]
+        fn test_proof() {
+            fn proof_first(input_vec: Vec<QuickHash>, path: u32) -> bool {
+                let hashes = create_monero_hashes(input_vec);
+                let hash = hashes[0];
+                let length = hashes.len();
+                if length > MAX_MERKLE_TREE_PROOF_SIZE {
+                    return true;
+                }
+                let proof = MerkleProof::try_construct(hashes, path).unwrap();
+                proof.calculate_root(&hash);
+                true
+            }
+
+            fn proof_random(input_vec: Vec<QuickHash>, hash: QuickHash, path: u32) -> bool {
+                let hashes = create_monero_hashes(input_vec);
+                let hash = Hash::from_slice(hash.bits.as_slice());
+                let length = hashes.len();
+                if length > MAX_MERKLE_TREE_PROOF_SIZE {
+                    return true;
+                }
+                let proof = MerkleProof::try_construct(hashes, path).unwrap();
+                proof.calculate_root(&hash);
+                true
+            }
+            quickcheck(proof_first as fn(Vec<QuickHash>, u32) -> bool);
+            quickcheck(proof_random as fn(Vec<QuickHash>, QuickHash, u32) -> bool);
+        }
+    }
     mod tree_hash {
         use super::*;
 

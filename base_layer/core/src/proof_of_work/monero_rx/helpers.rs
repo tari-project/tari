@@ -313,6 +313,17 @@ pub fn insert_merge_mining_tag_and_aux_chain_merkle_root_into_block<T: AsRef<[u8
     extra_field.0.insert(0, SubField::MergeMining(Some(encoded), hash));
 
     block.miner_tx.prefix.extra = extra_field.into();
+
+    //lets test the block to ensure its serializes correctly
+    let blocktemplate_blob = serialize_monero_block_to_hex(block)?;
+    let bytes = hex::decode(blocktemplate_blob).map_err(|_| HexError::HexConversionError {})?;
+    let de_block = monero::consensus::deserialize::<monero::Block>(&bytes[..])
+        .map_err(|_| MergeMineError::ValidationError("blocktemplate blob invalid".to_string()))?;
+    if block != &de_block {
+        return Err(MergeMineError::SerializeError(
+            "Blocks dont match after serialization".to_string(),
+        ));
+    }
     Ok(())
 }
 

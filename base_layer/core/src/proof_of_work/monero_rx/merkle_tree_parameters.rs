@@ -24,6 +24,7 @@ use std::{cmp::min, convert::TryFrom};
 
 use monero::VarInt;
 
+// This is based on https://github.com/SChernykh/p2pool/blob/merge-mining/docs/MERGE_MINING.MD#merge-mining-tx_extra-tag-format
 #[derive(Debug)]
 pub struct MerkleTreeParameters {
     pub number_of_chains: u8,
