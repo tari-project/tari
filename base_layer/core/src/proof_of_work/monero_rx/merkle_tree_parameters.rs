@@ -25,7 +25,7 @@ use std::{cmp::min, convert::TryFrom};
 use monero::VarInt;
 
 // This is based on https://github.com/SChernykh/p2pool/blob/merge-mining/docs/MERGE_MINING.MD#merge-mining-tx_extra-tag-format
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MerkleTreeParameters {
     pub number_of_chains: u8,
     pub aux_nonce: u32,
@@ -33,7 +33,7 @@ pub struct MerkleTreeParameters {
 
 impl MerkleTreeParameters {
     pub fn from_varint(merkle_tree_varint: VarInt) -> MerkleTreeParameters {
-        let bits = get_decode_bits(merkle_tree_varint.0);
+        let bits = get_decode_bits(merkle_tree_varint.0) + 1;
         let number_of_chains = get_aux_chain_count(merkle_tree_varint.0, bits);
         let aux_nonce = get_aux_nonce(merkle_tree_varint.0, bits);
         MerkleTreeParameters {
@@ -45,16 +45,15 @@ impl MerkleTreeParameters {
     pub fn to_varint(&self) -> VarInt {
         let size = u8::try_from(self.number_of_chains.leading_zeros())
             .expect("This cant fail, u8 can only have 8 leading 0's which will fit in 255");
-        let mut bits = encode_bits(8 - size);
-        let mut n = encode_aux_chain_count(self.number_of_chains, 8 - size);
-        let mut nonce = encode_aux_nonce(self.aux_nonce);
-        bits.append(&mut n);
-        bits.append(&mut nonce);
-        if bits.len() < 64 {
-            let mut missing_zeroes = vec![0; 64 - bits.len()];
-            bits.append(&mut missing_zeroes);
-        }
-        let num: u64 = bits.iter().fold(0, |result, &bit| (result << 1) ^ u64::from(bit));
+        let mut size_bits = encode_bits(7 - size);
+        let mut n_bits = encode_aux_chain_count(self.number_of_chains, 8 - size);
+        let mut nonce_bits = encode_aux_nonce(self.aux_nonce);
+        // this wont underflow as max size will be size_bits(3) + n_bits(8) + nonce_bits(32) = 43
+        let mut zero_bits = vec![0; 64 - size_bits.len() - n_bits.len() - nonce_bits.len()];
+        size_bits.append(&mut n_bits);
+        size_bits.append(&mut nonce_bits);
+        size_bits.append(&mut zero_bits);
+        let num: u64 = size_bits.iter().fold(0, |result, &bit| (result << 1) ^ u64::from(bit));
         VarInt(num)
     }
 }
@@ -91,13 +90,16 @@ fn encode_aux_nonce(num: u32) -> Vec<u8> {
 
 #[cfg(test)]
 mod test {
-    use crate::proof_of_work::monero_rx::merkle_tree_parameters::{
-        encode_aux_chain_count,
-        encode_aux_nonce,
-        encode_bits,
-        get_aux_chain_count,
-        get_aux_nonce,
-        get_decode_bits,
+    use crate::proof_of_work::monero_rx::{
+        merkle_tree_parameters::{
+            encode_aux_chain_count,
+            encode_aux_nonce,
+            encode_bits,
+            get_aux_chain_count,
+            get_aux_nonce,
+            get_decode_bits,
+        },
+        MerkleTreeParameters,
     };
 
     #[test]
@@ -246,5 +248,34 @@ mod test {
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         ];
         assert_eq!(bits, array);
+    }
+
+    mod quicktest {
+        use quickcheck::{quickcheck, Arbitrary, Gen};
+
+        use crate::proof_of_work::monero_rx::MerkleTreeParameters;
+
+        impl Arbitrary for MerkleTreeParameters {
+            fn arbitrary(g: &mut Gen) -> MerkleTreeParameters {
+                let mut mt = MerkleTreeParameters {
+                    number_of_chains: u8::arbitrary(g),
+                    aux_nonce: u32::arbitrary(g),
+                };
+                if mt.number_of_chains == 0 {
+                    mt.number_of_chains = 1;
+                };
+                mt
+            }
+        }
+
+        #[test]
+        fn test_ser_deserialize() {
+            fn varint_serialization(mt_params: MerkleTreeParameters) -> bool {
+                let varint = mt_params.to_varint();
+                let deserialize = MerkleTreeParameters::from_varint(varint);
+                mt_params == deserialize
+            }
+            quickcheck(varint_serialization as fn(MerkleTreeParameters) -> bool)
+        }
     }
 }

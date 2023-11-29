@@ -314,7 +314,7 @@ pub fn insert_merge_mining_tag_and_aux_chain_merkle_root_into_block<T: AsRef<[u8
 
     block.miner_tx.prefix.extra = extra_field.into();
 
-    //lets test the block to ensure its serializes correctly
+    // lets test the block to ensure its serializes correctly
     let blocktemplate_blob = serialize_monero_block_to_hex(block)?;
     let bytes = hex::decode(blocktemplate_blob).map_err(|_| HexError::HexConversionError {})?;
     let de_block = monero::consensus::deserialize::<monero::Block>(&bytes[..])
