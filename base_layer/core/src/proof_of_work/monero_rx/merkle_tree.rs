@@ -361,6 +361,9 @@ mod test {
         #[test]
         fn test_proof() {
             fn proof_first(input_vec: Vec<QuickHash>, path: u32) -> bool {
+                if input_vec.is_empty() {
+                    return true;
+                }
                 let hashes = create_monero_hashes(input_vec);
                 let hash = hashes[0];
                 let length = hashes.len();
