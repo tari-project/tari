@@ -80,7 +80,13 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for HeaderFullValidator
         let gen_hash = *self.rules.get_genesis_block().hash();
 
         let achieved_target = if let Some(target) = target_difficulty {
-            check_target_difficulty(header, target, &self.difficulty_calculator.randomx_factory, &gen_hash)?
+            check_target_difficulty(
+                header,
+                target,
+                &self.difficulty_calculator.randomx_factory,
+                &gen_hash,
+                &self.rules,
+            )?
         } else {
             self.difficulty_calculator
                 .check_achieved_and_target_difficulty(db, header)?
@@ -188,7 +194,7 @@ fn check_pow_data<B: BlockchainBackend>(
                     BlockHeaderValidationError::InvalidNonce,
                 ));
             }
-            let monero_data = MoneroPowData::from_header(block_header)?;
+            let monero_data = MoneroPowData::from_header(block_header, &rules)?;
             let seed_height = db.fetch_monero_seed_first_seen_height(&monero_data.randomx_key)?;
             if seed_height != 0 {
                 // Saturating sub: subtraction can underflow in reorgs / rewind-blockchain command

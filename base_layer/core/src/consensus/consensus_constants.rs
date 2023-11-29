@@ -82,6 +82,8 @@ pub struct ConsensusConstants {
     /// This is the maximum age a Monero merge mined seed can be reused
     /// Monero forces a change every height mod 2048 blocks
     max_randomx_seed_height: u64,
+    /// Monero Coinbases are unlimited in size, but we limited the extra field to only a certain bytes.
+    max_extra_field_size: usize,
     /// This keeps track of the block split targets and which algo is accepted
     /// Ideally this should count up to 100. If this does not you will reduce your target time.
     proof_of_work: HashMap<PowAlgorithm, PowAlgorithmConstants>,
@@ -198,6 +200,11 @@ impl ConsensusConstants {
     #[allow(clippy::cast_possible_wrap)]
     pub fn ftl_as_time(&self) -> DateTime<Utc> {
         Utc::now().add(Duration::seconds(self.future_time_limit as i64))
+    }
+
+    /// Monero Coinbases are unlimited in size, but we limited the extra field to only a certain bytes.
+    pub fn max_extra_field_size(&self) -> usize {
+        self.max_extra_field_size
     }
 
     /// When doing difficulty adjustments and FTL calculations this is the amount of blocks we look at.
@@ -371,6 +378,7 @@ impl ConsensusConstants {
             emission_decay: &ESMERALDA_DECAY_PARAMS,
             emission_tail: 800 * T,
             max_randomx_seed_height: u64::MAX,
+            max_extra_field_size: 200,
             proof_of_work: algos,
             faucet_value: ESMERALDA_FAUCET_VALUE.into(), // The esmeralda genesis block is re-used for localnet
             transaction_weight: TransactionWeight::latest(),
@@ -433,6 +441,7 @@ impl ConsensusConstants {
             emission_decay: &EMISSION_DECAY,
             emission_tail: 100.into(),
             max_randomx_seed_height: u64::MAX,
+            max_extra_field_size: 200,
             proof_of_work: algos,
             faucet_value: 0.into(), // 1_195_651_566_094_148.into(),
             transaction_weight: TransactionWeight::v1(),
@@ -488,6 +497,7 @@ impl ConsensusConstants {
             emission_decay: &ESMERALDA_DECAY_PARAMS,
             emission_tail: 800 * T,
             max_randomx_seed_height: 3000,
+            max_extra_field_size: 200,
             proof_of_work: algos,
             faucet_value: 0.into(), // ESMERALDA_FAUCET_VALUE.into(),
             transaction_weight: TransactionWeight::v1(),
@@ -542,6 +552,7 @@ impl ConsensusConstants {
             emission_decay: &EMISSION_DECAY,
             emission_tail: 800 * T,
             max_randomx_seed_height: 3000,
+            max_extra_field_size: 200,
             proof_of_work: algos,
             faucet_value: 0.into(), /* ESMERALDA_FAUCET_VALUE.into(), // The esmeralda genesis block is re-used for
                                      * stagenet */
@@ -591,6 +602,7 @@ impl ConsensusConstants {
             emission_decay: &EMISSION_DECAY,
             emission_tail: 800 * T,
             max_randomx_seed_height: 3000,
+            max_extra_field_size: 200,
             proof_of_work: algos,
             faucet_value: 0.into(), /* ESMERALDA_FAUCET_VALUE.into(), // The esmeralda genesis block is re-used for
                                      * stagenet */
@@ -642,6 +654,7 @@ impl ConsensusConstants {
             emission_decay: &EMISSION_DECAY,
             emission_tail: 100.into(),
             max_randomx_seed_height: u64::MAX,
+            max_extra_field_size: 200,
             proof_of_work: algos,
             faucet_value: MicroMinotari::from(0),
             transaction_weight: TransactionWeight::v1(),

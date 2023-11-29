@@ -25,6 +25,7 @@ use log::*;
 use monero::{
     blockdata::transaction::{ExtraField, RawExtraField, SubField},
     consensus,
+    consensus::Encodable,
     cryptonote::hash::Hashable,
     VarInt,
 };
@@ -32,6 +33,7 @@ use primitive_types::U256;
 use sha2::{Digest, Sha256};
 use tari_common_types::types::FixedHash;
 use tari_utilities::hex::HexError;
+use tiny_keccak::{Hasher, Keccak};
 
 use super::{
     error::MergeMineError,
@@ -41,6 +43,7 @@ use super::{
 };
 use crate::{
     blocks::BlockHeader,
+    consensus::ConsensusManager,
     proof_of_work::{
         monero_rx::merkle_tree_parameters::MerkleTreeParameters,
         randomx_factory::{RandomXFactory, RandomXVMInstance},
@@ -55,8 +58,9 @@ pub fn randomx_difficulty(
     header: &BlockHeader,
     randomx_factory: &RandomXFactory,
     gen_hash: &FixedHash,
+    consensus: &ConsensusManager,
 ) -> Result<Difficulty, MergeMineError> {
-    let monero_pow_data = verify_header(header, gen_hash)?;
+    let monero_pow_data = verify_header(header, gen_hash, consensus)?;
     debug!(target: LOG_TARGET, "Valid Monero data: {}", monero_pow_data);
     let blockhashing_blob = monero_pow_data.to_blockhashing_blob();
     let vm = randomx_factory.create(monero_pow_data.randomx_key())?;
@@ -94,10 +98,14 @@ fn parse_extra_field_truncate_on_error(raw_extra_field: &RawExtraField) -> Extra
 /// 1. The merkle proof and coinbase hash produce a matching merkle root
 ///
 /// If these assertions pass, a valid `MoneroPowData` instance is returned
-pub fn verify_header(header: &BlockHeader, gen_hash: &FixedHash) -> Result<MoneroPowData, MergeMineError> {
-    let monero_data = MoneroPowData::from_header(header)?;
+pub fn verify_header(
+    header: &BlockHeader,
+    gen_hash: &FixedHash,
+    consensus: &ConsensusManager,
+) -> Result<MoneroPowData, MergeMineError> {
+    let monero_data = MoneroPowData::from_header(header, consensus)?;
     let expected_merge_mining_hash = header.merge_mining_hash();
-    let extra_field = ExtraField::try_parse(&monero_data.coinbase_tx.prefix.extra)
+    let extra_field = ExtraField::try_parse(&monero_data.coinbase_tx_extra)
         .map_err(|_| MergeMineError::DeserializeError("Invalid extra field".to_string()))?;
     // Check that the Tari MM hash is found in the Monero coinbase transaction
     // and that only 1 Tari header is found
@@ -232,6 +240,16 @@ pub fn construct_monero_data(
                 .to_string(),
         )
     })?;
+    let coinbase = block.miner_tx.clone();
+
+    let mut keccak = Keccak::v256();
+    let mut encoder_prefix = Vec::new();
+    coinbase.prefix.version.consensus_encode(&mut encoder_prefix).map_err(|e| MergeMineError::SerializeError(e.to_string()))?;
+    coinbase.prefix.unlock_time.consensus_encode(&mut encoder_prefix).map_err(|e| MergeMineError::SerializeError(e.to_string()))?;
+    coinbase.prefix.inputs.consensus_encode(&mut encoder_prefix).map_err(|e| MergeMineError::SerializeError(e.to_string()))?;
+    coinbase.prefix.outputs.consensus_encode(&mut encoder_prefix).map_err(|e| MergeMineError::SerializeError(e.to_string()))?;
+    keccak.update(&encoder_prefix);
+
 
     let t_hash = monero::Hash::from_slice(tari_hash.as_slice());
     let aux_chain_merkle_proof = create_merkle_proof(&ordered_aux_chain_hashes, &t_hash).ok_or_else(|| {
@@ -246,7 +264,8 @@ pub fn construct_monero_data(
         transaction_count: hashes.len() as u16,
         merkle_root: root,
         coinbase_merkle_proof,
-        coinbase_tx: block.miner_tx,
+        coinbase_tx_extra: block.miner_tx.prefix.extra,
+        coinbase_tx_hasher: keccak,
         aux_chain_merkle_proof,
     })
 }
@@ -357,6 +376,7 @@ mod test {
         TxIn,
         TxOut,
     };
+    use tari_common::configuration::Network;
     use tari_common_types::types::FixedHash;
     use tari_test_utils::unpack_enum;
     use tari_utilities::{
@@ -450,10 +470,60 @@ mod test {
     }
 
     #[test]
+    fn test_monero_partial_hash() {
+        let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
+        let bytes = hex::decode(blocktemplate_blob).unwrap();
+        let mut block = deserialize::<monero::Block>(&bytes[..]).unwrap();
+        let block_header= BlockHeader::new(0);
+        let hash = block_header.merge_mining_hash();
+        insert_merge_mining_tag_and_aux_chain_merkle_root_into_block(&mut block, hash, 1, 0).unwrap();
+
+
+        let coinbase = block.miner_tx.clone();
+        let extra = coinbase.prefix.extra.clone();
+        let mut keccak = Keccak::v256();
+        let mut encoder_prefix = Vec::new();
+        coinbase.prefix.version.consensus_encode(&mut encoder_prefix).unwrap();
+        coinbase.prefix.unlock_time.consensus_encode(&mut encoder_prefix).unwrap();
+        coinbase.prefix.inputs.consensus_encode(&mut encoder_prefix).unwrap();
+        coinbase.prefix.outputs.consensus_encode(&mut encoder_prefix).unwrap();
+        keccak.update(&encoder_prefix);
+
+        let mut finalised_prefix_keccak = keccak.clone();
+        let mut encoder_extra_field = Vec::new();
+        extra.consensus_encode(&mut encoder_extra_field).unwrap();
+        finalised_prefix_keccak.update(&encoder_extra_field);
+        let mut prefix_hash: [u8; 32] = [0; 32];
+        finalised_prefix_keccak.finalize(&mut prefix_hash);
+
+        let test_prefix_hash = block.miner_tx.prefix.hash();
+        let test2 = monero::Hash::from_slice(&prefix_hash);
+        assert_eq!(test_prefix_hash, test2);
+
+        //let mut finalised_keccak = Keccak::v256();
+        let rct_sig_base = RctSigBase {
+            rct_type: RctType::Null,
+            txn_fee: Default::default(),
+            pseudo_outs: vec![],
+            ecdh_info: vec![],
+            out_pk: vec![]
+        };
+        let hashes = vec![test2, rct_sig_base.hash(),monero::Hash::null()];
+        let encoder_final: Vec<u8> = hashes
+            .into_iter()
+            .flat_map(|h| Vec::from(&h.to_bytes()[..]))
+            .collect();
+        let coinbase = monero::Hash::new(encoder_final);
+        let coinbase_hash = block.miner_tx.hash();
+        assert_eq!(coinbase, coinbase_hash);
+    }
+
+    #[test]
     fn test_monero_data() {
         let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
         let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
         let bytes = hex::decode(blocktemplate_blob).unwrap();
+        let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
         let mut block = deserialize::<monero::Block>(&bytes[..]).unwrap();
         let mut block_header = BlockHeader {
             version: 0,
@@ -481,13 +551,25 @@ mod test {
         let aux_hashes = vec![monero::Hash::from_slice(hash.as_ref())];
         let aux_chain_merkle_proof = create_merkle_proof(&aux_hashes, &aux_hashes[0]).unwrap();
 
+        let coinbase = block.miner_tx.clone();
+        let extra = coinbase.prefix.extra.clone();
+        let mut keccak = Keccak::v256();
+        let mut encoder_prefix = Vec::new();
+        coinbase.prefix.version.consensus_encode(&mut encoder_prefix).unwrap();
+        coinbase.prefix.unlock_time.consensus_encode(&mut encoder_prefix).unwrap();
+        coinbase.prefix.inputs.consensus_encode(&mut encoder_prefix).unwrap();
+        coinbase.prefix.outputs.consensus_encode(&mut encoder_prefix).unwrap();
+        keccak.update(&encoder_prefix);
+
+
         let monero_data = MoneroPowData {
             header: block.header,
             randomx_key: FixedByteArray::from_canonical_bytes(&from_hex(&seed_hash).unwrap()).unwrap(),
             transaction_count: u16::try_from(hashes.len()).unwrap(),
             merkle_root: root,
             coinbase_merkle_proof,
-            coinbase_tx: block.miner_tx,
+            coinbase_tx_hasher: keccak.clone(),
+            coinbase_tx_extra: extra.clone(),
             aux_chain_merkle_proof,
         };
         let mut serialized = Vec::new();
@@ -497,7 +579,36 @@ mod test {
             pow_data: serialized,
         };
         block_header.pow = pow;
-        MoneroPowData::from_header(&block_header).unwrap();
+        MoneroPowData::from_header(&block_header, &rules).unwrap();
+
+        //lets test the hashesh
+        let mut finalised_prefix_keccak = keccak.clone();
+        let mut encoder_extra_field = Vec::new();
+        extra.consensus_encode(&mut encoder_extra_field).unwrap();
+        finalised_prefix_keccak.update(&encoder_extra_field);
+        let mut prefix_hash: [u8; 32] = [0; 32];
+        finalised_prefix_keccak.finalize(&mut prefix_hash);
+
+        let test_prefix_hash = block.miner_tx.prefix.hash();
+        let test2 = monero::Hash::from_slice(&prefix_hash);
+        assert_eq!(test_prefix_hash, test2);
+
+        //let mut finalised_keccak = Keccak::v256();
+        let rct_sig_base = RctSigBase {
+            rct_type: RctType::Null,
+            txn_fee: Default::default(),
+            pseudo_outs: vec![],
+            ecdh_info: vec![],
+            out_pk: vec![]
+        };
+        let hashes = vec![test2, rct_sig_base.hash(),monero::Hash::null()];
+        let encoder_final: Vec<u8> = hashes
+            .into_iter()
+            .flat_map(|h| Vec::from(&h.to_bytes()[..]))
+            .collect();
+        let coinbase = monero::Hash::new(encoder_final);
+        let coinbase_hash = block.miner_tx.hash();
+        assert_eq!(coinbase, coinbase_hash);
     }
 
     #[test]
@@ -511,6 +622,7 @@ mod test {
 
     #[test]
     fn test_append_mm_tag() {
+        let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
         let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
         let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
         let bytes = hex::decode(blocktemplate_blob).unwrap();
@@ -546,13 +658,25 @@ mod test {
         let coinbase_merkle_proof = create_merkle_proof(&hashes, &hashes[0]).unwrap();
         let aux_hashes = vec![monero::Hash::from_slice(hash.as_ref())];
         let aux_chain_merkle_proof = create_merkle_proof(&aux_hashes, &aux_hashes[0]).unwrap();
+
+        let coinbase = block.miner_tx.clone();
+        let extra = coinbase.prefix.extra.clone();
+        let mut keccak = Keccak::v256();
+        let mut encoder_prefix = Vec::new();
+        coinbase.prefix.version.consensus_encode(&mut encoder_prefix).unwrap();
+        coinbase.prefix.unlock_time.consensus_encode(&mut encoder_prefix).unwrap();
+        coinbase.prefix.inputs.consensus_encode(&mut encoder_prefix).unwrap();
+        coinbase.prefix.outputs.consensus_encode(&mut encoder_prefix).unwrap();
+        keccak.update(&encoder_prefix);
+
         let monero_data = MoneroPowData {
             header: block.header,
             randomx_key: FixedByteArray::from_canonical_bytes(&from_hex(&seed_hash).unwrap()).unwrap(),
             transaction_count: count,
             merkle_root: root,
             coinbase_merkle_proof,
-            coinbase_tx: block.miner_tx,
+            coinbase_tx_hasher: keccak,
+            coinbase_tx_extra: extra,
             aux_chain_merkle_proof,
         };
         let mut serialized = Vec::new();
@@ -562,11 +686,13 @@ mod test {
             pow_data: serialized,
         };
         block_header.pow = pow;
-        verify_header(&block_header, &hash).unwrap();
+
+        verify_header(&block_header, &hash, &rules).unwrap();
     }
 
     #[test]
     fn test_append_mm_tag_no_tag() {
+        let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
         let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
         let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
         let bytes = hex::decode(blocktemplate_blob).unwrap();
@@ -598,13 +724,25 @@ mod test {
         let coinbase_merkle_proof = create_merkle_proof(&hashes, &hashes[0]).unwrap();
         let aux_hashes = vec![monero::Hash::from_slice(block_header.hash().as_ref())];
         let aux_chain_merkle_proof = create_merkle_proof(&aux_hashes, &aux_hashes[0]).unwrap();
+
+        let coinbase = block.miner_tx.clone();
+        let extra = coinbase.prefix.extra.clone();
+        let mut keccak = Keccak::v256();
+        let mut encoder_prefix = Vec::new();
+        coinbase.prefix.version.consensus_encode(&mut encoder_prefix).unwrap();
+        coinbase.prefix.unlock_time.consensus_encode(&mut encoder_prefix).unwrap();
+        coinbase.prefix.inputs.consensus_encode(&mut encoder_prefix).unwrap();
+        coinbase.prefix.outputs.consensus_encode(&mut encoder_prefix).unwrap();
+        keccak.update(&encoder_prefix);
+
         let monero_data = MoneroPowData {
             header: block.header,
             randomx_key: FixedByteArray::from_canonical_bytes(&from_hex(&seed_hash).unwrap()).unwrap(),
             transaction_count: count,
             merkle_root: root,
             coinbase_merkle_proof,
-            coinbase_tx: block.miner_tx,
+            coinbase_tx_hasher: keccak,
+            coinbase_tx_extra: extra,
             aux_chain_merkle_proof,
         };
 
@@ -615,13 +753,14 @@ mod test {
             pow_data: serialized,
         };
         block_header.pow = pow;
-        let err = verify_header(&block_header, &block_header.hash()).unwrap_err();
+        let err = verify_header(&block_header, &block_header.hash(), &rules).unwrap_err();
         unpack_enum!(MergeMineError::ValidationError(details) = err);
         assert!(details.contains("Expected merge mining tag was not found in Monero coinbase transaction"));
     }
 
     #[test]
     fn test_append_mm_tag_wrong_hash() {
+        let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
         let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
         let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
         let bytes = hex::decode(blocktemplate_blob).unwrap();
@@ -658,13 +797,26 @@ mod test {
         let coinbase_merkle_proof = create_merkle_proof(&hashes, &hashes[0]).unwrap();
         let aux_hashes = vec![monero::Hash::from_slice(hash.as_ref())];
         let aux_chain_merkle_proof = create_merkle_proof(&aux_hashes, &aux_hashes[0]).unwrap();
+
+
+        let coinbase = block.miner_tx.clone();
+        let extra = coinbase.prefix.extra.clone();
+        let mut keccak = Keccak::v256();
+        let mut encoder_prefix = Vec::new();
+        coinbase.prefix.version.consensus_encode(&mut encoder_prefix).unwrap();
+        coinbase.prefix.unlock_time.consensus_encode(&mut encoder_prefix).unwrap();
+        coinbase.prefix.inputs.consensus_encode(&mut encoder_prefix).unwrap();
+        coinbase.prefix.outputs.consensus_encode(&mut encoder_prefix).unwrap();
+        keccak.update(&encoder_prefix);
+
         let monero_data = MoneroPowData {
             header: block.header,
             randomx_key: FixedByteArray::from_canonical_bytes(&from_hex(&seed_hash).unwrap()).unwrap(),
             transaction_count: count,
             merkle_root: root,
             coinbase_merkle_proof,
-            coinbase_tx: block.miner_tx,
+            coinbase_tx_hasher: keccak,
+            coinbase_tx_extra: extra,
             aux_chain_merkle_proof,
         };
         let mut serialized = Vec::new();
@@ -674,13 +826,14 @@ mod test {
             pow_data: serialized,
         };
         block_header.pow = pow;
-        let err = verify_header(&block_header, &block_header.hash()).unwrap_err();
+        let err = verify_header(&block_header, &block_header.hash(), &rules).unwrap_err();
         unpack_enum!(MergeMineError::ValidationError(details) = err);
         assert!(details.contains("Expected merge mining tag was not found in Monero coinbase transaction"));
     }
 
     #[test]
     fn test_duplicate_append_mm_tag() {
+        let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
         let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
         let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
         let bytes = hex::decode(blocktemplate_blob).unwrap();
@@ -737,13 +890,26 @@ mod test {
         let coinbase_merkle_proof = create_merkle_proof(&hashes, &hashes[0]).unwrap();
         let aux_hashes = vec![monero::Hash::from_slice(hash.as_ref())];
         let aux_chain_merkle_proof = create_merkle_proof(&aux_hashes, &aux_hashes[0]).unwrap();
+
+
+        let coinbase = block.miner_tx.clone();
+        let extra = coinbase.prefix.extra.clone();
+        let mut keccak = Keccak::v256();
+        let mut encoder_prefix = Vec::new();
+        coinbase.prefix.version.consensus_encode(&mut encoder_prefix).unwrap();
+        coinbase.prefix.unlock_time.consensus_encode(&mut encoder_prefix).unwrap();
+        coinbase.prefix.inputs.consensus_encode(&mut encoder_prefix).unwrap();
+        coinbase.prefix.outputs.consensus_encode(&mut encoder_prefix).unwrap();
+        keccak.update(&encoder_prefix);
+
         let monero_data = MoneroPowData {
             header: block.header,
             randomx_key: FixedByteArray::from_canonical_bytes(&from_hex(&seed_hash).unwrap()).unwrap(),
             transaction_count: count,
             merkle_root: root,
             coinbase_merkle_proof,
-            coinbase_tx: block.miner_tx,
+            coinbase_tx_hasher: keccak,
+            coinbase_tx_extra: extra,
             aux_chain_merkle_proof,
         };
         let mut serialized = Vec::new();
@@ -755,7 +921,7 @@ mod test {
         block_header.pow = pow;
 
         // Header verification will fail because there are more than one merge mining tag
-        let err = verify_header(&block_header, &block_header.hash()).unwrap_err();
+        let err = verify_header(&block_header, &block_header.hash(), &rules).unwrap_err();
         unpack_enum!(MergeMineError::ValidationError(details) = err);
         assert!(details.contains("More than one merge mining tag found in coinbase"));
     }
@@ -820,6 +986,7 @@ mod test {
 
     #[test]
     fn test_verify_header_no_coinbase() {
+        let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
         let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
         let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
         let bytes = hex::decode(blocktemplate_blob).unwrap();
@@ -856,13 +1023,26 @@ mod test {
         let coinbase_merkle_proof = create_merkle_proof(&hashes, &hashes[0]).unwrap();
         let aux_hashes = vec![monero::Hash::from_slice(hash.as_ref())];
         let aux_chain_merkle_proof = create_merkle_proof(&aux_hashes, &aux_hashes[0]).unwrap();
+
+
+        let coinbase:monero::Transaction = Default::default();
+        let extra = coinbase.prefix.extra.clone();
+        let mut keccak = Keccak::v256();
+        let mut encoder_prefix = Vec::new();
+        coinbase.prefix.version.consensus_encode(&mut encoder_prefix).unwrap();
+        coinbase.prefix.unlock_time.consensus_encode(&mut encoder_prefix).unwrap();
+        coinbase.prefix.inputs.consensus_encode(&mut encoder_prefix).unwrap();
+        coinbase.prefix.outputs.consensus_encode(&mut encoder_prefix).unwrap();
+        keccak.update(&encoder_prefix);
+
         let monero_data = MoneroPowData {
             header: block.header,
             randomx_key: FixedByteArray::from_canonical_bytes(&from_hex(&seed_hash).unwrap()).unwrap(),
             transaction_count: count,
             merkle_root: root,
             coinbase_merkle_proof,
-            coinbase_tx: Default::default(),
+            coinbase_tx_hasher: keccak,
+            coinbase_tx_extra: extra,
             aux_chain_merkle_proof,
         };
         let mut serialized = Vec::new();
@@ -872,13 +1052,14 @@ mod test {
             pow_data: serialized,
         };
         block_header.pow = pow;
-        let err = verify_header(&block_header, &block_header.hash()).unwrap_err();
+        let err = verify_header(&block_header, &block_header.hash(), &rules).unwrap_err();
         unpack_enum!(MergeMineError::ValidationError(details) = err);
         assert!(details.contains("Expected merge mining tag was not found in Monero coinbase transaction"));
     }
 
     #[test]
     fn test_verify_header_no_data() {
+        let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
         let mut block_header = BlockHeader {
             version: 0,
             height: 0,
@@ -896,6 +1077,16 @@ mod test {
             validator_node_mr: FixedHash::zero(),
             validator_node_size: 0,
         };
+        let coinbase: monero::Transaction = Default::default();
+
+        let extra = coinbase.prefix.extra.clone();
+        let mut keccak = Keccak::v256();
+        let mut encoder_prefix = Vec::new();
+        coinbase.prefix.version.consensus_encode(&mut encoder_prefix).unwrap();
+        coinbase.prefix.unlock_time.consensus_encode(&mut encoder_prefix).unwrap();
+        coinbase.prefix.inputs.consensus_encode(&mut encoder_prefix).unwrap();
+        coinbase.prefix.outputs.consensus_encode(&mut encoder_prefix).unwrap();
+        keccak.update(&encoder_prefix);
 
         let monero_data = MoneroPowData {
             header: Default::default(),
@@ -903,7 +1094,8 @@ mod test {
             transaction_count: 1,
             merkle_root: Default::default(),
             coinbase_merkle_proof: create_merkle_proof(&[Hash::null()], &Hash::null()).unwrap(),
-            coinbase_tx: Default::default(),
+            coinbase_tx_hasher: keccak,
+            coinbase_tx_extra: extra,
             aux_chain_merkle_proof: Default::default(),
         };
         let mut serialized = Vec::new();
@@ -913,13 +1105,14 @@ mod test {
             pow_data: serialized,
         };
         block_header.pow = pow;
-        let err = verify_header(&block_header, &block_header.hash()).unwrap_err();
+        let err = verify_header(&block_header, &block_header.hash(), &rules).unwrap_err();
         unpack_enum!(MergeMineError::ValidationError(details) = err);
         assert!(details.contains("Expected merge mining tag was not found in Monero coinbase transaction"));
     }
 
     #[test]
     fn test_verify_invalid_root() {
+        let rules = ConsensusManager::builder(Network::LocalNet).build().unwrap();
         let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
         let seed_hash = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad97".to_string();
         let bytes = hex::decode(blocktemplate_blob).unwrap();
@@ -956,13 +1149,26 @@ mod test {
         let coinbase_merkle_proof = create_merkle_proof(&hashes, &hashes[0]).unwrap();
         let aux_hashes = vec![monero::Hash::from_slice(hash.as_ref())];
         let aux_chain_merkle_proof = create_merkle_proof(&aux_hashes, &aux_hashes[0]).unwrap();
+
+
+        let coinbase = block.miner_tx.clone();
+        let extra = coinbase.prefix.extra.clone();
+        let mut keccak = Keccak::v256();
+        let mut encoder_prefix = Vec::new();
+        coinbase.prefix.version.consensus_encode(&mut encoder_prefix).unwrap();
+        coinbase.prefix.unlock_time.consensus_encode(&mut encoder_prefix).unwrap();
+        coinbase.prefix.inputs.consensus_encode(&mut encoder_prefix).unwrap();
+        coinbase.prefix.outputs.consensus_encode(&mut encoder_prefix).unwrap();
+        keccak.update(&encoder_prefix);
+
         let monero_data = MoneroPowData {
             header: block.header,
             randomx_key: FixedByteArray::from_canonical_bytes(&from_hex(&seed_hash).unwrap()).unwrap(),
             transaction_count: count,
             merkle_root: Hash::null(),
             coinbase_merkle_proof,
-            coinbase_tx: block.miner_tx,
+            coinbase_tx_hasher: keccak,
+            coinbase_tx_extra: extra,
             aux_chain_merkle_proof,
         };
         let mut serialized = Vec::new();
@@ -972,7 +1178,7 @@ mod test {
             pow_data: serialized,
         };
         block_header.pow = pow;
-        let err = verify_header(&block_header, &block_header.hash()).unwrap_err();
+        let err = verify_header(&block_header, &block_header.hash(), &rules).unwrap_err();
         unpack_enum!(MergeMineError::InvalidMerkleRoot = err);
     }
 

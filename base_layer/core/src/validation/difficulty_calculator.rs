@@ -52,7 +52,8 @@ impl DifficultyCalculator {
             constants.max_pow_difficulty(block_header.pow.pow_algo),
         );
         let gen_hash = *self.rules.get_genesis_block().hash();
-        let achieved_target = check_target_difficulty(block_header, target, &self.randomx_factory, &gen_hash)?;
+        let achieved_target =
+            check_target_difficulty(block_header, target, &self.randomx_factory, &gen_hash, &self.rules)?;
 
         Ok(achieved_target)
     }

@@ -3439,7 +3439,7 @@ dependencies = [
  "sealed 0.4.0",
  "serde",
  "thiserror",
- "tiny-keccak",
+ "tiny-keccak 2.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -5873,6 +5873,7 @@ dependencies = [
  "tari_utilities",
  "tempfile",
  "thiserror",
+ "tiny-keccak 2.0.2 (git+https://github.com/SWvheerden/tiny-keccak?rev=7d8143eefdca14c8b30f805cbb0ca7aa764951af)",
  "tokio",
  "toml 0.5.11",
  "tracing",
@@ -6288,6 +6289,15 @@ version = "2.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2c9d3793400a45f954c52e73d068316d76b6f4e36977e3fcebb13a2721e80237"
 dependencies = [
+ "crunchy",
+]
+
+[[package]]
+name = "tiny-keccak"
+version = "2.0.2"
+source = "git+https://github.com/SWvheerden/tiny-keccak?rev=7d8143eefdca14c8b30f805cbb0ca7aa764951af#7d8143eefdca14c8b30f805cbb0ca7aa764951af"
+dependencies = [
+ "borsh",
  "crunchy",
 ]
 

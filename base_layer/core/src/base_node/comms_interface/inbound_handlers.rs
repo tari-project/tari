@@ -526,7 +526,12 @@ where B: BlockchainBackend + 'static
                 .await?;
         }
         let achieved = match new_block.header.pow_algo() {
-            PowAlgorithm::RandomX => randomx_difficulty(&new_block.header, &self.randomx_factory, &gen_hash)?,
+            PowAlgorithm::RandomX => randomx_difficulty(
+                &new_block.header,
+                &self.randomx_factory,
+                &gen_hash,
+                &self.consensus_manager,
+            )?,
             PowAlgorithm::Sha3x => sha3x_difficulty(&new_block.header)?,
         };
         if achieved < min_difficulty {
