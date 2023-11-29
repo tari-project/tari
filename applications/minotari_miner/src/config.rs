@@ -64,6 +64,8 @@ pub struct MinerConfig {
     pub wallet_grpc_authentication: GrpcAuthentication,
     /// GRPC domain name for wallet TLS validation
     pub wallet_grpc_tls_domain_name: Option<String>,
+    /// GRPC ca cert name for TLS
+    pub wallet_grpc_ca_cert_filename: String,
     /// Number of mining threads
     pub num_mining_threads: usize,
     /// Start mining only when base node is bootstrapped and current block height is on the tip of network
@@ -116,6 +118,7 @@ impl Default for MinerConfig {
             wallet_grpc_address: None,
             wallet_grpc_authentication: GrpcAuthentication::default(),
             wallet_grpc_tls_domain_name: None,
+            wallet_grpc_ca_cert_filename: "wallet_ca.pem".to_string(),
             num_mining_threads: num_cpus::get(),
             mine_on_tip_only: true,
             proof_of_work_algo: ProofOfWork::Sha3x,

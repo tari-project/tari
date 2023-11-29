@@ -26,14 +26,14 @@ use std::{fs, io::Stdout, path::PathBuf};
 
 use clap::Parser;
 use log::*;
-use minotari_app_grpc::authentication::ServerAuthenticationInterceptor;
+use minotari_app_grpc::{authentication::ServerAuthenticationInterceptor, tls::identity::read_identity};
 use minotari_wallet::{WalletConfig, WalletSqlite};
 use rand::{rngs::OsRng, seq::SliceRandom};
 use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tari_comms::{multiaddr::Multiaddr, peer_manager::Peer, utils::multiaddr::multiaddr_to_socketaddr};
 use tokio::{runtime::Handle, sync::broadcast};
-use tonic::transport::Server;
+use tonic::transport::{Identity, Server, ServerTlsConfig};
 use tui::backend::CrosstermBackend;
 
 use crate::{
@@ -274,10 +274,24 @@ pub fn tui_mode(
                 exit_code: ExitCode::UnknownError,
                 details: Some(e.to_string()),
             })?;
+
+            let mut tls_identity = None;
+            if config.grpc_tls_enabled {
+                match handle
+                    .block_on(read_identity(config.config_dir.clone()))
+                    .map(Some)
+                    .map_err(|e| ExitError::new(ExitCode::TlsConfigurationError, e.to_string()))
+                {
+                    Ok(identity) => tls_identity = identity,
+                    Err(e) => return Err(e),
+                }
+            }
+
             handle.spawn(run_grpc(
                 grpc,
                 address,
                 config.grpc_authentication.clone(),
+                tls_identity,
                 wallet.clone(),
             ));
         }
@@ -382,8 +396,21 @@ pub fn grpc_mode(handle: Handle, config: &WalletConfig, wallet: WalletSqlite) ->
             details: Some(e.to_string()),
         })?;
         let auth = config.grpc_authentication.clone();
+
+        let mut tls_identity = None;
+        if config.grpc_tls_enabled {
+            match handle
+                .block_on(read_identity(config.config_dir.clone()))
+                .map(Some)
+                .map_err(|e| ExitError::new(ExitCode::TlsConfigurationError, e.to_string()))
+            {
+                Ok(identity) => tls_identity = identity,
+                Err(e) => return Err(e),
+            }
+        }
+
         handle
-            .block_on(run_grpc(grpc, address, auth, wallet))
+            .block_on(run_grpc(grpc, address, auth, tls_identity, wallet))
             .map_err(|e| ExitError::new(ExitCode::GrpcError, e))?;
     } else {
         println!("GRPC server is disabled");
@@ -396,6 +423,7 @@ async fn run_grpc(
     grpc: WalletGrpcServer,
     grpc_listener_addr: Multiaddr,
     auth_config: GrpcAuthentication,
+    tls_identity: Option<Identity>,
     wallet: WalletSqlite,
 ) -> Result<(), String> {
     // Do not remove this println!
@@ -408,7 +436,15 @@ async fn run_grpc(
         .ok_or("Unable to prepare server gRPC authentication".to_string())?;
     let service = minotari_app_grpc::tari_rpc::wallet_server::WalletServer::with_interceptor(grpc, auth);
 
-    Server::builder()
+    let mut server_builder = if let Some(identity) = tls_identity {
+        Server::builder()
+            .tls_config(ServerTlsConfig::new().identity(identity))
+            .map_err(|e| e.to_string())?
+    } else {
+        Server::builder()
+    };
+
+    server_builder
         .add_service(service)
         .serve_with_shutdown(address, wallet.wait_until_shutdown())
         .await

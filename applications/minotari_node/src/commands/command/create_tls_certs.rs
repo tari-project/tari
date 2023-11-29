@@ -52,7 +52,7 @@ impl CommandContext {
                 println!("Certificates generated successfully.");
                 println!(
                     "To continue configuration move the `node_ca.pem` to the client service's `application/config/` \
-                     directory. Restart the base node with the configuration tls_enabled=true"
+                     directory. Restart the base node with the configuration grpc_tls_enabled=true"
                 );
                 println!();
             },

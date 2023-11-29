@@ -216,11 +216,15 @@ async fn connect_wallet(config: &MinerConfig) -> Result<WalletGrpcClient, MinerE
     let mut endpoint = Endpoint::from_str(&wallet_addr)?;
 
     if let Some(domain_name) = config.wallet_grpc_tls_domain_name.as_ref() {
-        let pem = tokio::fs::read(config.config_dir.join("miner/ca.pem")).await?;
+        let pem = tokio::fs::read(config.config_dir.join(&config.wallet_grpc_ca_cert_filename))
+            .await
+            .map_err(|e| MinerError::TlsConnectionError(e.to_string()))?;
         let ca = Certificate::from_pem(pem);
 
         let tls = ClientTlsConfig::new().ca_certificate(ca).domain_name(domain_name);
-        endpoint = endpoint.tls_config(tls)?;
+        endpoint = endpoint
+            .tls_config(tls)
+            .map_err(|e| MinerError::TlsConnectionError(e.to_string()))?;
     }
 
     let channel = endpoint.connect().await?;
