@@ -36,7 +36,10 @@
 //! All miner options configured under `[miner]` section of
 //! Minotari's `config.toml`.
 
-use std::{path::PathBuf, time::Duration};
+use std::{
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
 use minotari_app_grpc::tari_rpc::{pow_algo::PowAlgos, NewBlockTemplateRequest, PowAlgo};
 use serde::{Deserialize, Serialize};
@@ -120,7 +123,7 @@ impl Default for MinerConfig {
             coinbase_extra: "minotari_miner".to_string(),
             network: Default::default(),
             wait_timeout_on_error: 10,
-            config_dir: PathBuf::from("config"),
+            config_dir: PathBuf::from("config/miner"),
         }
     }
 }
@@ -141,6 +144,12 @@ impl MinerConfig {
 
     pub fn validate_tip_interval(&self) -> Duration {
         Duration::from_secs(self.validate_tip_timeout_sec)
+    }
+
+    pub fn set_base_path<P: AsRef<Path>>(&mut self, base_path: P) {
+        if !self.config_dir.is_absolute() {
+            self.config_dir = base_path.as_ref().join(self.config_dir.as_path());
+        }
     }
 }
 

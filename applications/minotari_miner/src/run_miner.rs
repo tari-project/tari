@@ -64,7 +64,7 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
     let config_path = cli.common.config_path();
     let cfg = load_configuration(config_path.as_path(), true, &cli)?;
     let mut config = MinerConfig::load_from(&cfg).expect("Failed to load config");
-    config.config_dir = cli.common.config_path().parent().unwrap().to_path_buf();
+    config.set_base_path(cli.common.get_base_path());
     debug!(target: LOG_TARGET_FILE, "{:?}", config);
     setup_grpc_config(&mut config);
 
@@ -248,7 +248,7 @@ async fn connect_base_node(config: &MinerConfig) -> Result<BaseNodeGrpcClient, M
     let mut endpoint = Endpoint::from_str(&base_node_addr)?;
 
     if let Some(domain_name) = config.base_node_grpc_tls_domain_name.as_ref() {
-        let pem = tokio::fs::read(config.config_dir.join("miner/ca.pem")).await?;
+        let pem = tokio::fs::read(config.config_dir.join("ca.pem")).await?;
         let ca = Certificate::from_pem(pem);
 
         let tls = ClientTlsConfig::new().ca_certificate(ca).domain_name(domain_name);
