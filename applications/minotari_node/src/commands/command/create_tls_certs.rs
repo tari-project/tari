@@ -48,11 +48,13 @@ impl CommandContext {
                 write_cert_to_disk(self.config.base_node.config_dir.clone(), "server.pem", &cert)?;
                 write_cert_to_disk(self.config.base_node.config_dir.clone(), "server.key", &private_key)?;
 
+                println!();
                 println!("Certificates generated successfully.");
                 println!(
                     "To continue configuration move the `node_ca.pem` to the client service's `application/config/` \
-                     directory."
+                     directory. Restart the base node with the configuration tls_enabled=true"
                 );
+                println!();
             },
             Err(err) => eprintln!("Error generating certificates: {}", err),
         }

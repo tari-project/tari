@@ -74,4 +74,5 @@ pub fn print_warning() {
         "Please exercise extreme caution and prioritize the use of valid, properly authenticated TLS certificates to \
          safeguard your applications and data against potential security threats."
     );
+    println!();
 }
