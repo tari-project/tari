@@ -282,14 +282,16 @@ mod tests {
 
     #[test]
     fn it_deserializes_enums() {
-        let config_str = r#"name = "blockchain champion"
-                inner_config.deny_methods = [
-                    "list_headers",
-                    "get_constants",
-            #        "get_blocks"
-                    "identify",
-            #        "get_shard_key"
-                ]"#;
+        let config_str = r#"
+            name = "blockchain champion"
+            inner_config.deny_methods = [
+                "list_headers",
+                "get_constants",
+            #    "get_blocks"
+                "identify",
+            #    "get_shard_key"
+            ]
+        "#;
         let config = toml::from_str::<TestConfig>(config_str).unwrap();
 
         // Enums in the config

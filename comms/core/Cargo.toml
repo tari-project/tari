@@ -27,7 +27,6 @@ data-encoding = "2.2.0"
 derivative = "2.2.0"
 digest = "0.10"
 futures = { version = "^0.3", features = ["async-await"] }
-lazy_static = "1.4.0"
 lmdb-zero = "0.4.4"
 log = { version = "0.4.0", features = ["std"] }
 log-mdc = "0.1.0"
@@ -40,7 +39,7 @@ rand = "0.8"
 serde = "1.0.119"
 serde_derive = "1.0.119"
 sha3 = "0.10"
-snow = { version = "=0.9.3", features = ["default-resolver"] }
+snow = { version = "0.9.4", features = ["default-resolver"] }
 thiserror = "1.0.26"
 tokio = { version = "1.23", features = ["rt-multi-thread", "time", "sync", "signal", "net", "macros", "io-util"] }
 tokio-stream = { version = "0.1.9", features = ["sync"] }

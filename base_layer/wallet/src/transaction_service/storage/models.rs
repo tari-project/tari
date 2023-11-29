@@ -39,6 +39,8 @@ use tari_core::transactions::{
     SenderTransactionProtocol,
 };
 
+use crate::transaction_service::error::TransactionStorageError;
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct InboundTransaction {
     pub tx_id: TxId,
@@ -138,7 +140,6 @@ pub struct CompletedTransaction {
     pub timestamp: NaiveDateTime,
     pub cancelled: Option<TxCancellationReason>,
     pub direction: TransactionDirection,
-    pub coinbase_block_height: Option<u64>,
     pub send_count: u32,
     pub last_send_timestamp: Option<NaiveDateTime>,
     pub transaction_signature: Signature,
@@ -160,16 +161,18 @@ impl CompletedTransaction {
         message: String,
         timestamp: NaiveDateTime,
         direction: TransactionDirection,
-        coinbase_block_height: Option<u64>,
         mined_height: Option<u64>,
         mined_timestamp: Option<NaiveDateTime>,
-    ) -> Self {
+    ) -> Result<Self, TransactionStorageError> {
+        if status == TransactionStatus::Coinbase {
+            return Err(TransactionStorageError::CoinbaseNotSupported);
+        }
         let transaction_signature = if let Some(excess_sig) = transaction.first_kernel_excess_sig() {
             excess_sig.clone()
         } else {
             Signature::default()
         };
-        Self {
+        Ok(Self {
             tx_id,
             source_address,
             destination_address,
@@ -181,7 +184,6 @@ impl CompletedTransaction {
             timestamp,
             cancelled: None,
             direction,
-            coinbase_block_height,
             send_count: 0,
             last_send_timestamp: None,
             transaction_signature,
@@ -189,15 +191,7 @@ impl CompletedTransaction {
             mined_height,
             mined_in_block: None,
             mined_timestamp,
-        }
-    }
-
-    pub fn is_coinbase(&self) -> bool {
-        if let Some(height) = self.coinbase_block_height {
-            height > 0
-        } else {
-            false
-        }
+        })
     }
 }
 
@@ -269,7 +263,6 @@ impl From<OutboundTransaction> for CompletedTransaction {
             },
             transaction,
             direction: TransactionDirection::Outbound,
-            coinbase_block_height: None,
             send_count: 0,
             last_send_timestamp: None,
             transaction_signature,
@@ -299,7 +292,6 @@ impl From<InboundTransaction> for CompletedTransaction {
             },
             transaction: Transaction::new(vec![], vec![], vec![], PrivateKey::default(), PrivateKey::default()),
             direction: TransactionDirection::Inbound,
-            coinbase_block_height: None,
             send_count: 0,
             last_send_timestamp: None,
             transaction_signature: Signature::default(),
@@ -338,7 +330,6 @@ pub enum TxCancellationReason {
     Orphan,             // 4
     TimeLocked,         // 5
     InvalidTransaction, // 6
-    AbandonedCoinbase,  // 7
 }
 
 impl TryFrom<u32> for TxCancellationReason {
@@ -353,7 +344,6 @@ impl TryFrom<u32> for TxCancellationReason {
             4 => Ok(TxCancellationReason::Orphan),
             5 => Ok(TxCancellationReason::TimeLocked),
             6 => Ok(TxCancellationReason::InvalidTransaction),
-            7 => Ok(TxCancellationReason::AbandonedCoinbase),
             code => Err(TransactionConversionError { code: code as i32 }),
         }
     }
@@ -371,7 +361,6 @@ impl Display for TxCancellationReason {
             Orphan => "Orphan",
             TimeLocked => "TimeLocked",
             InvalidTransaction => "Invalid Transaction",
-            AbandonedCoinbase => "Abandoned Coinbase",
         };
         fmt.write_str(response)
     }

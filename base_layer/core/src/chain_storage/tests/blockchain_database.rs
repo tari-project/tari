@@ -22,6 +22,8 @@
 // DAMAGE.
 use std::sync::Arc;
 
+use tari_common_types::tari_address::TariAddress;
+
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainHeader, NewBlockTemplate},
     chain_storage::{BlockchainDatabase, ChainStorageError},
@@ -29,11 +31,13 @@ use crate::{
     test_helpers::{
         blockchain::{create_new_blockchain, TempDatabase},
         create_block,
+        default_coinbase_entities,
         BlockSpec,
     },
     transactions::{
+        key_manager::{MemoryDbKeyManager, TariKeyId},
         tari_amount::T,
-        test_helpers::{create_test_core_key_manager_with_memory_db, schema_to_transaction, TestKeyManager},
+        test_helpers::schema_to_transaction,
         transaction_components::{Transaction, WalletOutput},
     },
     txn_schema,
@@ -47,7 +51,9 @@ async fn create_next_block(
     db: &BlockchainDatabase<TempDatabase>,
     prev_block: &Block,
     transactions: Vec<Arc<Transaction>>,
-    key_manager: &TestKeyManager,
+    key_manager: &MemoryDbKeyManager,
+    script_key_id: &TariKeyId,
+    wallet_payment_address: &TariAddress,
 ) -> (Arc<Block>, WalletOutput) {
     let rules = db.rules();
     let (block, output) = create_block(
@@ -57,6 +63,9 @@ async fn create_next_block(
             .with_transactions(transactions.into_iter().map(|t| (*t).clone()).collect())
             .finish(),
         key_manager,
+        script_key_id,
+        wallet_payment_address,
+        None,
     )
     .await;
     let block = apply_mmr_to_block(db, block);
@@ -78,14 +87,23 @@ fn apply_mmr_to_block(db: &BlockchainDatabase<TempDatabase>, block: Block) -> Bl
 async fn add_many_chained_blocks(
     size: usize,
     db: &BlockchainDatabase<TempDatabase>,
-    key_manager: &TestKeyManager,
+    key_manager: &MemoryDbKeyManager,
 ) -> (Vec<Arc<Block>>, Vec<WalletOutput>) {
     let last_header = db.fetch_last_header().unwrap();
     let mut prev_block = Arc::new(db.fetch_block(last_header.height, true).unwrap().into_block());
     let mut blocks = Vec::with_capacity(size);
     let mut outputs = Vec::with_capacity(size);
+    let (script_key_id, wallet_payment_address) = default_coinbase_entities(key_manager).await;
     for _ in 1..=size {
-        let (block, coinbase_utxo) = create_next_block(db, &prev_block, vec![], key_manager).await;
+        let (block, coinbase_utxo) = create_next_block(
+            db,
+            &prev_block,
+            vec![],
+            key_manager,
+            &script_key_id,
+            &wallet_payment_address,
+        )
+        .await;
 
         db.add_block(block.clone()).unwrap().assert_added();
         prev_block = block.clone();
@@ -96,8 +114,8 @@ async fn add_many_chained_blocks(
 }
 
 mod fetch_blocks {
-
     use super::*;
+    use crate::transactions::key_manager::create_memory_db_key_manager;
 
     #[test]
     fn it_returns_genesis() {
@@ -109,7 +127,7 @@ mod fetch_blocks {
     #[tokio::test]
     async fn it_returns_all() {
         let db = setup();
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         add_many_chained_blocks(4, &db, &key_manager).await;
         let blocks = db.fetch_blocks(.., true).unwrap();
         assert_eq!(blocks.len(), 5);
@@ -121,7 +139,7 @@ mod fetch_blocks {
     #[tokio::test]
     async fn it_returns_one() {
         let db = setup();
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let (new_blocks, _) = add_many_chained_blocks(1, &db, &key_manager).await;
         let blocks = db.fetch_blocks(1..=1, true).unwrap();
         assert_eq!(blocks.len(), 1);
@@ -131,7 +149,7 @@ mod fetch_blocks {
     #[tokio::test]
     async fn it_returns_nothing_if_asking_for_blocks_out_of_range() {
         let db = setup();
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         add_many_chained_blocks(1, &db, &key_manager).await;
         let blocks = db.fetch_blocks(2.., true).unwrap();
         assert!(blocks.is_empty());
@@ -140,7 +158,7 @@ mod fetch_blocks {
     #[tokio::test]
     async fn it_returns_blocks_between_bounds_exclusive() {
         let db = setup();
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         add_many_chained_blocks(5, &db, &key_manager).await;
         let blocks = db.fetch_blocks(3..5, true).unwrap();
         assert_eq!(blocks.len(), 2);
@@ -151,7 +169,7 @@ mod fetch_blocks {
     #[tokio::test]
     async fn it_returns_blocks_between_bounds_inclusive() {
         let db = setup();
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         add_many_chained_blocks(5, &db, &key_manager).await;
         let blocks = db.fetch_blocks(3..=5, true).unwrap();
         assert_eq!(blocks.len(), 3);
@@ -163,7 +181,7 @@ mod fetch_blocks {
     #[tokio::test]
     async fn it_returns_blocks_to_the_tip() {
         let db = setup();
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         add_many_chained_blocks(5, &db, &key_manager).await;
         let blocks = db.fetch_blocks(3.., true).unwrap();
         assert_eq!(blocks.len(), 3);
@@ -175,7 +193,7 @@ mod fetch_blocks {
     #[tokio::test]
     async fn it_returns_blocks_from_genesis() {
         let db = setup();
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         add_many_chained_blocks(5, &db, &key_manager).await;
         let blocks = db.fetch_blocks(..=3, true).unwrap();
         assert_eq!(blocks.len(), 4);
@@ -188,6 +206,7 @@ mod fetch_blocks {
 
 mod fetch_headers {
     use super::*;
+    use crate::transactions::key_manager::create_memory_db_key_manager;
 
     #[test]
     fn it_returns_genesis() {
@@ -205,7 +224,7 @@ mod fetch_headers {
     #[tokio::test]
     async fn it_returns_all() {
         let db = setup();
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         add_many_chained_blocks(4, &db, &key_manager).await;
         let headers = db.fetch_headers(..).unwrap();
         assert_eq!(headers.len(), 5);
@@ -217,7 +236,7 @@ mod fetch_headers {
     #[tokio::test]
     async fn it_returns_nothing_if_asking_for_blocks_out_of_range() {
         let db = setup();
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         add_many_chained_blocks(1, &db, &key_manager).await;
         let headers = db.fetch_headers(2..).unwrap();
         assert!(headers.is_empty());
@@ -226,7 +245,7 @@ mod fetch_headers {
     #[tokio::test]
     async fn it_returns_blocks_between_bounds_exclusive() {
         let db = setup();
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         add_many_chained_blocks(5, &db, &key_manager).await;
         let headers = db.fetch_headers(3..5).unwrap();
         assert_eq!(headers.len(), 2);
@@ -237,7 +256,7 @@ mod fetch_headers {
     #[tokio::test]
     async fn it_returns_blocks_between_bounds_inclusive() {
         let db = setup();
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         add_many_chained_blocks(5, &db, &key_manager).await;
         let headers = db.fetch_headers(3..=5).unwrap();
         assert_eq!(headers.len(), 3);
@@ -248,7 +267,7 @@ mod fetch_headers {
     #[tokio::test]
     async fn it_returns_blocks_to_the_tip() {
         let db = setup();
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         add_many_chained_blocks(5, &db, &key_manager).await;
         let headers = db.fetch_headers(3..).unwrap();
         assert_eq!(headers.len(), 3);
@@ -260,7 +279,7 @@ mod fetch_headers {
     #[tokio::test]
     async fn it_returns_blocks_from_genesis() {
         let db = setup();
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         add_many_chained_blocks(5, &db, &key_manager).await;
         let headers = db.fetch_headers(..=3).unwrap();
         assert_eq!(headers.len(), 4);
@@ -275,6 +294,7 @@ mod find_headers_after_hash {
     use tari_common_types::types::FixedHash;
 
     use super::*;
+    use crate::transactions::key_manager::create_memory_db_key_manager;
 
     #[test]
     fn it_returns_none_given_empty_vec() {
@@ -287,7 +307,7 @@ mod find_headers_after_hash {
     async fn it_returns_from_genesis() {
         let db = setup();
         let genesis_hash = db.fetch_block(0, true).unwrap().block().hash();
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         add_many_chained_blocks(1, &db, &key_manager).await;
         let hashes = vec![genesis_hash];
         let (index, headers) = db.find_headers_after_hash(hashes, 1).unwrap().unwrap();
@@ -298,7 +318,7 @@ mod find_headers_after_hash {
     #[tokio::test]
     async fn it_returns_the_first_headers_found() {
         let db = setup();
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         add_many_chained_blocks(5, &db, &key_manager).await;
         let hashes = (1..=3)
             .rev()
@@ -314,7 +334,7 @@ mod find_headers_after_hash {
     async fn fnit_ignores_unknown_hashes() {
         let db = setup();
 
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         add_many_chained_blocks(5, &db, &key_manager).await;
         let hashes = (2..=4)
             .map(|i| db.fetch_block(i, true).unwrap().block().hash())
@@ -329,6 +349,7 @@ mod find_headers_after_hash {
 
 mod fetch_block_hashes_from_header_tip {
     use super::*;
+    use crate::transactions::key_manager::create_memory_db_key_manager;
 
     #[test]
     fn it_returns_genesis() {
@@ -341,7 +362,7 @@ mod fetch_block_hashes_from_header_tip {
     #[tokio::test]
     async fn it_returns_empty_set_for_big_offset() {
         let db = setup();
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         add_many_chained_blocks(5, &db, &key_manager).await;
         let hashes = db.fetch_block_hashes_from_header_tip(3, 6).unwrap();
         assert!(hashes.is_empty());
@@ -350,7 +371,7 @@ mod fetch_block_hashes_from_header_tip {
     #[tokio::test]
     async fn it_returns_n_hashes_from_tip() {
         let db = setup();
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let (blocks, _) = add_many_chained_blocks(5, &db, &key_manager).await;
         let hashes = db.fetch_block_hashes_from_header_tip(3, 1).unwrap();
         assert_eq!(hashes.len(), 3);
@@ -362,7 +383,7 @@ mod fetch_block_hashes_from_header_tip {
     #[tokio::test]
     async fn it_returns_hashes_without_overlapping() {
         let db = setup();
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let (blocks, _) = add_many_chained_blocks(3, &db, &key_manager).await;
         let hashes = db.fetch_block_hashes_from_header_tip(2, 0).unwrap();
         assert_eq!(hashes[0], blocks[2].hash());
@@ -375,7 +396,7 @@ mod fetch_block_hashes_from_header_tip {
     async fn it_returns_all_hashes_from_tip() {
         let db = setup();
         let genesis = db.fetch_tip_header().unwrap();
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let (blocks, _) = add_many_chained_blocks(5, &db, &key_manager).await;
         let hashes = db.fetch_block_hashes_from_header_tip(10, 0).unwrap();
         assert_eq!(hashes.len(), 6);
@@ -397,12 +418,13 @@ mod get_stats {
 
 mod fetch_total_size_stats {
     use super::*;
+    use crate::transactions::key_manager::create_memory_db_key_manager;
 
     #[tokio::test]
     async fn it_measures_the_number_of_entries() {
         let db = setup();
         let genesis_output_count = db.fetch_header(0).unwrap().unwrap().output_smt_size;
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let _block_and_outputs = add_many_chained_blocks(2, &db, &key_manager).await;
         let stats = db.fetch_total_size_stats().unwrap();
         assert_eq!(
@@ -454,6 +476,7 @@ mod prepare_new_block {
 
 mod fetch_header_containing_kernel_mmr {
     use super::*;
+    use crate::transactions::key_manager::create_memory_db_key_manager;
 
     #[test]
     fn it_returns_genesis() {
@@ -474,7 +497,7 @@ mod fetch_header_containing_kernel_mmr {
     async fn it_returns_corresponding_header() {
         let db = setup();
         let genesis = db.fetch_block(0, true).unwrap();
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let (blocks, outputs) = add_many_chained_blocks(1, &db, &key_manager).await;
         let num_genesis_kernels = genesis.block().body.kernels().len() as u64;
 
@@ -484,7 +507,16 @@ mod fetch_header_containing_kernel_mmr {
         )
         .await;
 
-        let (block, _) = create_next_block(&db, &blocks[0], txns, &key_manager).await;
+        let (script_key_id, wallet_payment_address) = default_coinbase_entities(&key_manager).await;
+        let (block, _) = create_next_block(
+            &db,
+            &blocks[0],
+            txns,
+            &key_manager,
+            &script_key_id,
+            &wallet_payment_address,
+        )
+        .await;
         db.add_block(block).unwrap();
         let _block_and_outputs = add_many_chained_blocks(3, &db, &key_manager).await;
 
@@ -511,12 +543,13 @@ mod fetch_header_containing_kernel_mmr {
 
 mod clear_all_pending_headers {
     use super::*;
+    use crate::transactions::key_manager::create_memory_db_key_manager;
 
     #[tokio::test]
     async fn it_clears_no_headers() {
         let db = setup();
         assert_eq!(db.clear_all_pending_headers().unwrap(), 0);
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let _block_and_outputs = add_many_chained_blocks(2, &db, &key_manager).await;
         db.clear_all_pending_headers().unwrap();
         let last_header = db.fetch_last_header().unwrap();
@@ -526,7 +559,7 @@ mod clear_all_pending_headers {
     #[tokio::test]
     async fn it_clears_headers_after_tip() {
         let db = setup();
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let _blocks_and_outputs = add_many_chained_blocks(2, &db, &key_manager).await;
         let prev_block = db.fetch_block(2, true).unwrap();
         let mut prev_accum = prev_block.accumulated_data().clone();
@@ -577,13 +610,16 @@ mod validator_node_merkle_root {
     use super::*;
     use crate::{
         chain_storage::calculate_validator_node_mr,
-        transactions::transaction_components::{OutputFeatures, ValidatorNodeSignature},
+        transactions::{
+            key_manager::create_memory_db_key_manager,
+            transaction_components::{OutputFeatures, ValidatorNodeSignature},
+        },
         ValidatorNodeBMT,
     };
 
     #[tokio::test]
     async fn it_has_the_correct_genesis_merkle_root() {
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let vn_mmr = ValidatorNodeBMT::create(Vec::new());
         let db = setup();
         let (blocks, _outputs) = add_many_chained_blocks(1, &db, &key_manager).await;
@@ -593,7 +629,7 @@ mod validator_node_merkle_root {
     #[tokio::test]
     async fn it_has_the_correct_merkle_root_for_current_vn_set() {
         let db = setup();
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let (blocks, outputs) = add_many_chained_blocks(1, &db, &key_manager).await;
 
         let (sk, public_key) = PublicKey::random_keypair(&mut OsRng);
@@ -609,7 +645,16 @@ mod validator_node_merkle_root {
             &key_manager,
         )
         .await;
-        let (block, _) = create_next_block(&db, &blocks[0], tx, &key_manager).await;
+        let (script_key_id, wallet_payment_address) = default_coinbase_entities(&key_manager).await;
+        let (block, _) = create_next_block(
+            &db,
+            &blocks[0],
+            tx,
+            &key_manager,
+            &script_key_id,
+            &wallet_payment_address,
+        )
+        .await;
         db.add_block(block).unwrap().assert_added();
 
         let consts = db.consensus_constants().unwrap();

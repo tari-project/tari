@@ -23,11 +23,11 @@
 use std::time::Instant;
 
 use log::*;
-use tari_common_types::transaction::TxId;
+use tari_common_types::{transaction::TxId, types::FixedHash};
 use tari_core::transactions::{
     key_manager::{TariKeyId, TransactionKeyManagerBranch, TransactionKeyManagerInterface},
     tari_amount::MicroMinotari,
-    transaction_components::{TransactionError, TransactionOutput, WalletOutput},
+    transaction_components::{OutputType, TransactionError, TransactionOutput, WalletOutput},
 };
 use tari_script::{inputs, script, ExecutionStack, Opcode, TariScript};
 use tari_utilities::hex::Hex;
@@ -69,7 +69,7 @@ where
 
         let known_scripts = self.db.get_all_known_one_sided_payment_scripts()?;
 
-        let mut rewound_outputs: Vec<WalletOutput> = Vec::new();
+        let mut rewound_outputs: Vec<(WalletOutput, bool, FixedHash)> = Vec::new();
         let push_pub_key_script = script!(PushPubKey(Box::default()));
         for output in outputs {
             let known_script_index = known_scripts.iter().position(|s| s.script == output.script);
@@ -92,6 +92,7 @@ where
                 None => continue,
             };
 
+            let hash = output.hash();
             let uo = WalletOutput::new_with_rangeproof(
                 output.version,
                 committed_value,
@@ -109,7 +110,7 @@ where
                 output.proof.clone(),
             );
 
-            rewound_outputs.push(uo);
+            rewound_outputs.push((uo, known_script_index.is_some(), hash));
         }
 
         let rewind_time = start.elapsed();
@@ -121,20 +122,12 @@ where
         );
 
         let mut rewound_outputs_with_tx_id: Vec<RecoveredOutput> = Vec::new();
-        for output in &mut rewound_outputs {
-            // Attempting to recognize output source by i.e., standard MimbleWimble, simple or stealth one-sided
-            let output_source = match *output.script.as_slice() {
-                [Opcode::Nop] => OutputSource::Standard,
-                [Opcode::PushPubKey(_), Opcode::Drop, Opcode::PushPubKey(_)] => OutputSource::StealthOneSided,
-                [Opcode::PushPubKey(_)] => OutputSource::OneSided,
-                _ => OutputSource::RecoveredButUnrecognized,
-            };
-
+        for (output, has_known_script, hash) in &mut rewound_outputs {
             let db_output = DbWalletOutput::from_wallet_output(
                 output.clone(),
                 &self.master_key_manager,
                 None,
-                output_source,
+                Self::output_source(output, *has_known_script),
                 None,
                 None,
             )
@@ -153,6 +146,7 @@ where
             rewound_outputs_with_tx_id.push(RecoveredOutput {
                 output: output.clone(),
                 tx_id,
+                hash: *hash,
             });
             self.update_outputs_script_private_key_and_update_key_manager_index(output)
                 .await?;
@@ -166,6 +160,28 @@ where
         }
 
         Ok(rewound_outputs_with_tx_id)
+    }
+
+    // Helper function to get the output source for a given output
+    fn output_source(output: &WalletOutput, has_known_script: bool) -> OutputSource {
+        match output.features.output_type {
+            OutputType::Standard => match *output.script.as_slice() {
+                [Opcode::Nop] => OutputSource::Standard,
+                [Opcode::PushPubKey(_), Opcode::Drop, Opcode::PushPubKey(_)] => OutputSource::StealthOneSided,
+                [Opcode::PushPubKey(_)] => {
+                    if has_known_script {
+                        OutputSource::OneSided
+                    } else {
+                        OutputSource::Standard
+                    }
+                },
+                _ => OutputSource::NonStandardScript,
+            },
+            OutputType::Coinbase => OutputSource::Coinbase,
+            OutputType::Burn => OutputSource::Burn,
+            OutputType::ValidatorNodeRegistration => OutputSource::ValidatorNodeRegistration,
+            OutputType::CodeTemplateRegistration => OutputSource::CodeTemplateRegistration,
+        }
     }
 
     async fn find_script_key(
@@ -244,16 +260,7 @@ where
             .master_key_manager
             .get_public_key_at_key_id(&output.spending_key_id)
             .await?;
-        let script_key = if output.features.is_coinbase() {
-            let found_index = self
-                .master_key_manager
-                .find_key_index(TransactionKeyManagerBranch::Coinbase.get_branch_key(), &public_key)
-                .await?;
-            TariKeyId::Managed {
-                branch: TransactionKeyManagerBranch::CoinbaseScript.get_branch_key(),
-                index: found_index,
-            }
-        } else {
+        let script_key = {
             let found_index = self
                 .master_key_manager
                 .find_key_index(

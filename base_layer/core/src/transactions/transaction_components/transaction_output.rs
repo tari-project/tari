@@ -589,9 +589,9 @@ mod test {
 
     use super::{batch_verify_range_proofs, TransactionOutput};
     use crate::transactions::{
-        key_manager::TransactionKeyManagerInterface,
+        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager, TransactionKeyManagerInterface},
         tari_amount::MicroMinotari,
-        test_helpers::{create_test_core_key_manager_with_memory_db, TestKeyManager, TestParams, UtxoTestParams},
+        test_helpers::{TestParams, UtxoTestParams},
         transaction_components::{OutputFeatures, RangeProofType},
         CryptoFactories,
     };
@@ -599,7 +599,7 @@ mod test {
     #[tokio::test]
     async fn it_builds_correctly() {
         let factories = CryptoFactories::default();
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let test_params = TestParams::new(&key_manager).await;
 
         let value = MicroMinotari(10);
@@ -623,7 +623,7 @@ mod test {
     #[tokio::test]
     async fn it_does_not_verify_incorrect_minimum_value() {
         let factories = CryptoFactories::default();
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let test_params = TestParams::new(&key_manager).await;
 
         let value = MicroMinotari(10);
@@ -643,7 +643,7 @@ mod test {
     #[tokio::test]
     async fn it_does_batch_verify_correct_minimum_values() {
         let factories = CryptoFactories::default();
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let test_params = TestParams::new(&key_manager).await;
 
         let outputs = [
@@ -681,7 +681,7 @@ mod test {
 
     #[tokio::test]
     async fn it_does_batch_verify_with_mixed_range_proof_types() {
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let factories = CryptoFactories::default();
         let test_params = TestParams::new(&key_manager).await;
 
@@ -729,7 +729,7 @@ mod test {
 
     #[tokio::test]
     async fn invalid_revealed_value_proofs_are_blocked() {
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let test_params = TestParams::new(&key_manager).await;
         assert!(create_output(
             &test_params,
@@ -760,7 +760,7 @@ mod test {
 
     #[tokio::test]
     async fn revealed_value_proofs_only_succeed_with_valid_metadata_signatures() {
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let test_params = TestParams::new(&key_manager).await;
         let mut output = create_output(
             &test_params,
@@ -787,7 +787,7 @@ mod test {
     #[tokio::test]
     async fn it_does_not_batch_verify_incorrect_minimum_values() {
         let factories = CryptoFactories::default();
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let test_params = TestParams::new(&key_manager).await;
 
         let outputs = [
@@ -818,7 +818,7 @@ mod test {
         value: MicroMinotari,
         minimum_value_promise: MicroMinotari,
         range_proof_type: RangeProofType,
-        key_manager: &TestKeyManager,
+        key_manager: &MemoryDbKeyManager,
     ) -> Result<TransactionOutput, String> {
         let utxo = test_params
             .create_output(
@@ -845,7 +845,7 @@ mod test {
         value: MicroMinotari,
         minimum_value_promise: MicroMinotari,
         range_proof_type: RangeProofType,
-        key_manager: &TestKeyManager,
+        key_manager: &MemoryDbKeyManager,
     ) -> TransactionOutput {
         // we need first to create a valid minimum value, regardless of the minimum_value_promise
         // because this test function should allow creating an invalid proof for later testing

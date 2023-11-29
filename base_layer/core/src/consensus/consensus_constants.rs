@@ -100,7 +100,7 @@ pub struct ConsensusConstants {
     /// An allowlist of output types
     permitted_output_types: &'static [OutputType],
     /// The allowlist of range proof types
-    permitted_range_proof_types: &'static [RangeProofType],
+    permitted_range_proof_types: [(OutputType, &'static [RangeProofType]); 5],
     /// Coinbase outputs are allowed to have metadata, but it has the following length limit
     coinbase_output_features_extra_max_length: u32,
     /// Maximum number of token elements permitted in covenants
@@ -305,7 +305,7 @@ impl ConsensusConstants {
     }
 
     /// Returns the permitted range proof types
-    pub fn permitted_range_proof_types(&self) -> &[RangeProofType] {
+    pub fn permitted_range_proof_types(&self) -> [(OutputType, &[RangeProofType]); 5] {
         self.permitted_range_proof_types
     }
 
@@ -379,7 +379,7 @@ impl ConsensusConstants {
             output_version_range,
             kernel_version_range,
             permitted_output_types: OutputType::all(),
-            permitted_range_proof_types: RangeProofType::all(),
+            permitted_range_proof_types: Self::all_range_proof_types(),
             max_covenant_length: 100,
             vn_epoch_length: 10,
             vn_validity_period_epochs: VnEpoch(100),
@@ -442,7 +442,7 @@ impl ConsensusConstants {
             kernel_version_range,
             // igor is the first network to support the new output types
             permitted_output_types: OutputType::all(),
-            permitted_range_proof_types: RangeProofType::all(),
+            permitted_range_proof_types: Self::all_range_proof_types(),
             max_covenant_length: 100,
             vn_epoch_length: 10,
             vn_validity_period_epochs: VnEpoch(3),
@@ -672,8 +672,29 @@ impl ConsensusConstants {
         &[OutputType::Coinbase, OutputType::Standard, OutputType::Burn]
     }
 
-    const fn current_permitted_range_proof_types() -> &'static [RangeProofType] {
-        &[RangeProofType::BulletProofPlus]
+    const fn current_permitted_range_proof_types() -> [(OutputType, &'static [RangeProofType]); 5] {
+        [
+            (OutputType::Standard, &[RangeProofType::BulletProofPlus]),
+            (OutputType::Coinbase, &[
+                RangeProofType::BulletProofPlus,
+                RangeProofType::RevealedValue,
+            ]),
+            (OutputType::Burn, &[RangeProofType::BulletProofPlus]),
+            (OutputType::ValidatorNodeRegistration, &[
+                RangeProofType::BulletProofPlus,
+            ]),
+            (OutputType::CodeTemplateRegistration, &[RangeProofType::BulletProofPlus]),
+        ]
+    }
+
+    const fn all_range_proof_types() -> [(OutputType, &'static [RangeProofType]); 5] {
+        [
+            (OutputType::Standard, RangeProofType::all()),
+            (OutputType::Coinbase, RangeProofType::all()),
+            (OutputType::Burn, RangeProofType::all()),
+            (OutputType::ValidatorNodeRegistration, RangeProofType::all()),
+            (OutputType::CodeTemplateRegistration, RangeProofType::all()),
+        ]
     }
 }
 
@@ -838,7 +859,10 @@ impl ConsensusConstantsBuilder {
         self
     }
 
-    pub fn with_permitted_range_proof_types(mut self, permitted_range_proof_types: &'static [RangeProofType]) -> Self {
+    pub fn with_permitted_range_proof_types(
+        mut self,
+        permitted_range_proof_types: [(OutputType, &'static [RangeProofType]); 5],
+    ) -> Self {
         self.consensus.permitted_range_proof_types = permitted_range_proof_types;
         self
     }
@@ -862,7 +886,10 @@ mod test {
             emission::{Emission, EmissionSchedule},
             ConsensusConstants,
         },
-        transactions::tari_amount::{uT, MicroMinotari},
+        transactions::{
+            tari_amount::{uT, MicroMinotari},
+            transaction_components::{OutputType, RangeProofType},
+        },
     };
 
     #[test]
@@ -936,6 +963,68 @@ mod test {
                 break;
             }
             previous_reward = reward;
+        }
+    }
+
+    // This function is to ensure all OutputType variants are assessed in the tests
+    fn cycle_output_type_enum(output_type: OutputType) -> OutputType {
+        match output_type {
+            OutputType::Standard => OutputType::Coinbase,
+            OutputType::Coinbase => OutputType::Burn,
+            OutputType::Burn => OutputType::ValidatorNodeRegistration,
+            OutputType::ValidatorNodeRegistration => OutputType::CodeTemplateRegistration,
+            OutputType::CodeTemplateRegistration => OutputType::Standard,
+        }
+    }
+
+    // This function is to ensure all RangeProofType variants are assessed in the tests
+    fn cycle_range_proof_type_enum(range_proof_type: RangeProofType) -> RangeProofType {
+        match range_proof_type {
+            RangeProofType::BulletProofPlus => RangeProofType::RevealedValue,
+            RangeProofType::RevealedValue => RangeProofType::BulletProofPlus,
+        }
+    }
+
+    #[test]
+    fn range_proof_types_coverage() {
+        let mut output_type_enums = vec![OutputType::Standard];
+        loop {
+            let next_variant = cycle_output_type_enum(*output_type_enums.last().unwrap());
+            if output_type_enums.contains(&next_variant) {
+                break;
+            }
+            output_type_enums.push(next_variant);
+        }
+
+        let mut range_proof_type_enums = vec![RangeProofType::BulletProofPlus];
+        loop {
+            let next_variant = cycle_range_proof_type_enum(*range_proof_type_enums.last().unwrap());
+            if range_proof_type_enums.contains(&next_variant) {
+                break;
+            }
+            range_proof_type_enums.push(next_variant);
+        }
+
+        let permitted_range_proof_types = ConsensusConstants::current_permitted_range_proof_types().to_vec();
+        for item in &output_type_enums {
+            let entries = permitted_range_proof_types
+                .iter()
+                .filter(|&&x| x.0 == *item)
+                .collect::<Vec<_>>();
+            assert_eq!(entries.len(), 1);
+            assert!(!entries[0].1.is_empty());
+        }
+
+        let permitted_range_proof_types = ConsensusConstants::all_range_proof_types().to_vec();
+        for output_type in &output_type_enums {
+            let entries = permitted_range_proof_types
+                .iter()
+                .filter(|&&x| x.0 == *output_type)
+                .collect::<Vec<_>>();
+            assert_eq!(entries.len(), 1);
+            for range_proof_type in &range_proof_type_enums {
+                assert!(entries[0].1.iter().any(|&x| x == *range_proof_type));
+            }
         }
     }
 }

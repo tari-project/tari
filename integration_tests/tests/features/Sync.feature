@@ -25,7 +25,7 @@ Feature: Block Sync
   @critical
   Scenario: Simple block sync
     Given I have 1 seed nodes
-    When I have a SHA3 miner MINER connected to all seed nodes
+    When I have a stealth SHA3 miner MINER connected to all seed nodes
     When mining node MINER mines 20 blocks
     When I have 2 base nodes connected to all seed nodes
     Then all nodes are at height 20

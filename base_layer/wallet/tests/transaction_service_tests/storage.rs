@@ -50,9 +50,9 @@ use tari_common_types::{
 use tari_core::{
     covenants::Covenant,
     transactions::{
-        key_manager::{TransactionKeyManagerBranch, TransactionKeyManagerInterface},
+        key_manager::{create_memory_db_key_manager, TransactionKeyManagerBranch, TransactionKeyManagerInterface},
         tari_amount::{uT, MicroMinotari},
-        test_helpers::{create_test_core_key_manager_with_memory_db, create_wallet_output_with_data, TestParams},
+        test_helpers::{create_wallet_output_with_data, TestParams},
         transaction_components::{
             OutputFeatures,
             RangeProofType,
@@ -74,7 +74,7 @@ use tempfile::tempdir;
 
 pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let mut db = TransactionDatabase::new(backend);
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let input = create_wallet_output_with_data(
         script!(Nop),
         OutputFeatures::default(),
@@ -85,7 +85,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     .await
     .unwrap();
     let constants = create_consensus_constants(0);
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let mut builder = SenderTransactionProtocol::builder(constants.clone(), key_manager.clone());
     let amount = MicroMinotari::from(10_000);
     builder
@@ -323,7 +323,6 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             timestamp: Utc::now().naive_utc(),
             cancelled: None,
             direction: TransactionDirection::Outbound,
-            coinbase_block_height: None,
             send_count: 0,
             last_send_timestamp: None,
 
@@ -517,14 +516,10 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         panic!("Should have found cancelled outbound tx");
     }
 
+    // Transactions with empty kernel signatures should not be returned with this method, as those will be considered
+    // as faux transactions (imported or one-sided)
     let unmined_txs = db.fetch_unconfirmed_transactions_info().unwrap();
-
-    assert_eq!(unmined_txs.len(), 4);
-
-    db.set_transaction_as_unmined(completed_txs[0].tx_id).unwrap();
-
-    let unmined_txs = db.fetch_unconfirmed_transactions_info().unwrap();
-    assert_eq!(unmined_txs.len(), 5);
+    assert_eq!(unmined_txs.len(), 0);
 }
 
 #[tokio::test]
@@ -574,10 +569,10 @@ async fn import_tx_and_read_it_from_db() {
         "message".to_string(),
         Utc::now().naive_utc(),
         TransactionDirection::Inbound,
-        Some(0),
         Some(5),
         Some(NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
-    );
+    )
+    .unwrap();
 
     sqlite_db
         .write(WriteOperation::Insert(DbKeyValuePair::CompletedTransaction(
@@ -603,10 +598,10 @@ async fn import_tx_and_read_it_from_db() {
         "message".to_string(),
         Utc::now().naive_utc(),
         TransactionDirection::Inbound,
-        Some(0),
         Some(6),
         Some(NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
-    );
+    )
+    .unwrap();
 
     sqlite_db
         .write(WriteOperation::Insert(DbKeyValuePair::CompletedTransaction(
@@ -632,10 +627,10 @@ async fn import_tx_and_read_it_from_db() {
         "message".to_string(),
         Utc::now().naive_utc(),
         TransactionDirection::Inbound,
-        Some(0),
         Some(7),
         Some(NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
-    );
+    )
+    .unwrap();
 
     sqlite_db
         .write(WriteOperation::Insert(DbKeyValuePair::CompletedTransaction(

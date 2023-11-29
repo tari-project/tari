@@ -29,6 +29,7 @@ mod test {
             },
         },
     };
+    use once_cell::sync::Lazy;
     use rand::{rngs::OsRng, RngCore};
     use tari_common::configuration::Network;
     use tari_common_types::{
@@ -125,9 +126,7 @@ mod test {
         }
     }
 
-    lazy_static! {
-        static ref CALLBACK_STATE: Mutex<CallbackState> = Mutex::new(CallbackState::new());
-    }
+    static CALLBACK_STATE: Lazy<Mutex<CallbackState>> = Lazy::new(|| Mutex::new(CallbackState::new()));
 
     unsafe extern "C" fn received_tx_callback(tx: *mut InboundTransaction) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
@@ -323,8 +322,8 @@ mod test {
             TransactionDirection::Inbound,
             None,
             None,
-            None,
-        );
+        )
+        .unwrap();
         db.insert_completed_transaction(2u64.into(), completed_tx.clone())
             .unwrap();
 
@@ -389,10 +388,10 @@ mod test {
             "6".to_string(),
             Utc::now().naive_utc(),
             TransactionDirection::Inbound,
-            None,
             Some(2),
             Some(NaiveDateTime::from_timestamp_opt(0, 0).unwrap_or(NaiveDateTime::MIN)),
-        );
+        )
+        .unwrap();
         db.insert_completed_transaction(6u64.into(), faux_unconfirmed_tx.clone())
             .unwrap();
 
@@ -421,10 +420,10 @@ mod test {
             "7".to_string(),
             Utc::now().naive_utc(),
             TransactionDirection::Inbound,
-            None,
             Some(5),
             Some(NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
-        );
+        )
+        .unwrap();
         db.insert_completed_transaction(7u64.into(), faux_confirmed_tx.clone())
             .unwrap();
 

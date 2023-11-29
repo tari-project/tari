@@ -48,8 +48,9 @@ use tari_core::{
     },
     test_helpers::blockchain::TempDatabase,
     transactions::{
+        key_manager::{create_memory_db_key_manager, MemoryDbKeyManager},
         tari_amount::{uT, T},
-        test_helpers::{create_test_core_key_manager_with_memory_db, schema_to_transaction, TestKeyManager},
+        test_helpers::schema_to_transaction,
         transaction_components::{TransactionOutput, WalletOutput},
     },
     txn_schema,
@@ -77,13 +78,13 @@ async fn setup() -> (
     ChainBlock,
     WalletOutput,
     TempDir,
-    TestKeyManager,
+    MemoryDbKeyManager,
 ) {
     let network = NetworkConsensus::from(Network::LocalNet);
     let consensus_constants = ConsensusConstantsBuilder::new(Network::LocalNet)
         .with_coinbase_lockheight(1)
         .build();
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let temp_dir = tempdir().unwrap();
     let (block0, utxo0) =
         create_genesis_block_with_coinbase_value(100_000_000.into(), &consensus_constants, &key_manager).await;
@@ -212,8 +213,11 @@ async fn test_base_node_wallet_rpc() {
     assert_eq!(resp.rejection_reason, TxSubmissionRejectionReason::AlreadyMined);
 
     // Now create a different tx that uses the same input as Tx1 to produce a DoubleSpend rejection
-    let (txs1b, _utxos1) =
-        schema_to_transaction(&[txn_schema!(from: vec![utxo0], to: vec![2 * T, 1 * T])], &key_manager).await;
+    let (txs1b, _utxos1) = schema_to_transaction(
+        &[txn_schema!(from: vec![utxo0.clone()], to: vec![2 * T, 1 * T])],
+        &key_manager,
+    )
+    .await;
     let tx1b = (*txs1b[0]).clone();
 
     // Now if we submit Tx1 is should return as rejected as AlreadyMined

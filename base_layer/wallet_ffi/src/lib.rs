@@ -47,9 +47,6 @@
 
 #![recursion_limit = "1024"]
 
-#[cfg(test)]
-#[macro_use]
-extern crate lazy_static;
 use core::ptr;
 use std::{
     boxed::Box,
@@ -317,8 +314,7 @@ impl From<DbWalletOutput> for TariUtxo {
                 OutputStatus::ShortTermEncumberedToBeReceived => 7,
                 OutputStatus::ShortTermEncumberedToBeSpent => 8,
                 OutputStatus::SpentMinedUnconfirmed => 9,
-                OutputStatus::AbandonedCoinbase => 10,
-                OutputStatus::NotStored => 11,
+                OutputStatus::NotStored => 10,
             },
         }
     }
@@ -8577,18 +8573,14 @@ mod test {
         storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
         transaction_service::handle::TransactionSendStatus,
     };
+    use once_cell::sync::Lazy;
     use tari_common_types::{emoji, transaction::TransactionStatus, types::PrivateKey};
     use tari_comms::peer_manager::PeerFeatures;
     use tari_core::{
         covenant,
         transactions::{
-            key_manager::SecretTransactionKeyManagerInterface,
-            test_helpers::{
-                create_test_core_key_manager_with_memory_db,
-                create_test_input,
-                create_wallet_output_with_data,
-                TestParams,
-            },
+            key_manager::{create_memory_db_key_manager, SecretTransactionKeyManagerInterface},
+            test_helpers::{create_test_input, create_wallet_output_with_data, TestParams},
         },
     };
     use tari_key_manager::{mnemonic::MnemonicLanguage, mnemonic_wordlists};
@@ -8645,9 +8637,7 @@ mod test {
         }
     }
 
-    lazy_static! {
-        static ref CALLBACK_STATE_FFI: Mutex<CallbackState> = Mutex::new(CallbackState::new());
-    }
+    static CALLBACK_STATE_FFI: Lazy<Mutex<CallbackState>> = Lazy::new(|| Mutex::new(CallbackState::new()));
 
     unsafe extern "C" fn received_tx_callback(tx: *mut TariPendingInboundTransaction) {
         assert!(!tx.is_null());
@@ -9899,7 +9889,7 @@ mod test {
     #[allow(clippy::too_many_lines)]
     fn test_wallet_get_utxos() {
         unsafe {
-            let key_manager = create_test_core_key_manager_with_memory_db();
+            let key_manager = create_memory_db_key_manager();
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
             let mut recovery_in_progress = true;
@@ -10109,7 +10099,7 @@ mod test {
             );
             assert_eq!(error, 0);
 
-            let key_manager = create_test_core_key_manager_with_memory_db();
+            let key_manager = create_memory_db_key_manager();
             for i in 0..10 {
                 let uout = (*alice_wallet)
                     .runtime
@@ -10164,7 +10154,7 @@ mod test {
     #[allow(clippy::too_many_lines, clippy::needless_collect)]
     fn test_wallet_coin_join() {
         unsafe {
-            let key_manager = create_test_core_key_manager_with_memory_db();
+            let key_manager = create_memory_db_key_manager();
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
             let mut recovery_in_progress = true;
@@ -10365,7 +10355,7 @@ mod test {
     #[allow(clippy::too_many_lines, clippy::needless_collect)]
     fn test_wallet_coin_split() {
         unsafe {
-            let key_manager = create_test_core_key_manager_with_memory_db();
+            let key_manager = create_memory_db_key_manager();
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
             let mut recovery_in_progress = true;
@@ -10633,7 +10623,7 @@ mod test {
             );
             assert_eq!(error, 0);
 
-            let key_manager = create_test_core_key_manager_with_memory_db();
+            let key_manager = create_memory_db_key_manager();
             for i in 1..=5 {
                 (*alice_wallet)
                     .runtime
@@ -10755,7 +10745,7 @@ mod test {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
             // Test the consistent features case
-            let key_manager = create_test_core_key_manager_with_memory_db();
+            let key_manager = create_memory_db_key_manager();
             let utxo_1 = runtime
                 .block_on(create_wallet_output_with_data(
                     script!(Nop),
@@ -10896,7 +10886,7 @@ mod test {
             );
 
             // Test the consistent features case
-            let key_manager = create_test_core_key_manager_with_memory_db();
+            let key_manager = create_memory_db_key_manager();
             let utxo_1 = runtime
                 .block_on(create_wallet_output_with_data(
                     script!(Nop),
@@ -10992,7 +10982,7 @@ mod test {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
 
-            let key_manager = create_test_core_key_manager_with_memory_db();
+            let key_manager = create_memory_db_key_manager();
             let utxo_1 = runtime
                 .block_on(create_wallet_output_with_data(
                     script!(Nop),

@@ -66,7 +66,7 @@ async fn check_block_changes_are_detected(field: MerkleMountainRangeField, block
 
     let (txs, _) = schema_to_transaction(
         &[txn_schema!(
-            from: vec![output],
+            from: vec![output.clone()],
             to: vec![50 * T],
             input_version: TransactionInputVersion::V0,
             output_version: TransactionOutputVersion::V0

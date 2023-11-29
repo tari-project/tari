@@ -149,9 +149,9 @@ mod test {
         covenants::Covenant,
         test_helpers::create_consensus_constants,
         transactions::{
-            key_manager::TransactionKeyManagerInterface,
+            key_manager::{create_memory_db_key_manager, TransactionKeyManagerInterface},
             tari_amount::*,
-            test_helpers::{create_test_core_key_manager_with_memory_db, TestParams},
+            test_helpers::TestParams,
             transaction_components::{
                 EncryptedData,
                 OutputFeatures,
@@ -172,7 +172,7 @@ mod test {
 
     #[tokio::test]
     async fn zero_amount_fails() {
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let test_params = TestParams::new(&key_manager).await;
         let consensus_constants = create_consensus_constants(0);
         let info = SingleRoundSenderData::default();
@@ -204,7 +204,7 @@ mod test {
 
     #[tokio::test]
     async fn invalid_version_fails() {
-        let key_manager = create_test_core_key_manager_with_memory_db();
+        let key_manager = create_memory_db_key_manager();
         let test_params = TestParams::new(&key_manager).await;
         let consensus_constants = create_consensus_constants(0);
 
@@ -250,7 +250,7 @@ mod test {
             tari_key_manager::key_manager_service::storage::sqlite_db::KeyManagerSqliteDatabase<
                 tari_common_sqlite::connection::DbConnection,
             >,
-        > = create_test_core_key_manager_with_memory_db();
+        > = create_memory_db_key_manager();
         let consensus_constants = create_consensus_constants(0);
         let m = TransactionMetadata::new(MicroMinotari(100), 0);
         let test_params = TestParams::new(&key_manager).await;

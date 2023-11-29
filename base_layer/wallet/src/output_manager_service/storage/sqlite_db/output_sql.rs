@@ -50,7 +50,7 @@ use crate::{
         service::Balance,
         storage::{
             database::{OutputBackendQuery, SortDirection},
-            models::DbWalletOutput,
+            models::{DbWalletOutput, SpendingPriority},
             sqlite_db::{UpdateOutput, UpdateOutputSql},
             OutputSource,
             OutputStatus,
@@ -91,7 +91,6 @@ pub struct OutputSql {
     pub marked_deleted_in_block: Option<Vec<u8>>,
     pub received_in_tx_id: Option<i64>,
     pub spent_in_tx_id: Option<i64>,
-    pub coinbase_block_height: Option<i64>,
     pub coinbase_extra: Option<Vec<u8>>,
     pub features_json: String,
     pub spending_priority: i32,
@@ -263,12 +262,6 @@ impl OutputSql {
                 }
             },
         };
-
-        // debug!(
-        //     target: LOG_TARGET,
-        //     "Executing UTXO select query: {}",
-        //     diesel::debug_query(&query)
-        // );
 
         Ok(query.load(conn)?)
     }
@@ -603,17 +596,6 @@ impl OutputSql {
             .first::<OutputSql>(conn)?)
     }
 
-    /// Find a particular Output, if it exists and is in the specified Spent state
-    pub fn find_pending_coinbase_at_block_height(
-        block_height: u64,
-        conn: &mut SqliteConnection,
-    ) -> Result<OutputSql, OutputManagerStorageError> {
-        Ok(outputs::table
-            .filter(outputs::status.ne(OutputStatus::Unspent as i32))
-            .filter(outputs::coinbase_block_height.eq(block_height as i64))
-            .first::<OutputSql>(conn)?)
-    }
-
     pub fn delete(&self, conn: &mut SqliteConnection) -> Result<(), OutputManagerStorageError> {
         let num_deleted =
             diesel::delete(outputs::table.filter(outputs::spending_key.eq(&self.spending_key))).execute(conn)?;
@@ -756,7 +738,11 @@ impl OutputSql {
                 });
             },
         };
-        let spending_priority = (self.spending_priority as u32).into();
+        let spending_priority = SpendingPriority::try_from(self.spending_priority as u32).map_err(|e| {
+            OutputManagerStorageError::ConversionError {
+                reason: format!("Could not convert spending priority from i32: {}", e),
+            }
+        })?;
         let mined_in_block = match self.mined_in_block {
             Some(v) => match v.try_into() {
                 Ok(v) => Some(v),

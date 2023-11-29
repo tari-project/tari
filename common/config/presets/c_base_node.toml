@@ -33,6 +33,9 @@ identity_file = "config/base_node_id_nextnet.json"
 # Set to false to disable the base node GRPC server (default = true)
 #grpc_enabled = true
 
+# The socket to expose for the gRPC base node server (default = "/ip4/127.0.0.1/tcp/18142")
+#grpc_address = "/ip4/127.0.0.1/tcp/18142"
+
 # gRPC authentication method (default = "none")
 #grpc_authentication = { username = "admin", password = "xxxx" }
 

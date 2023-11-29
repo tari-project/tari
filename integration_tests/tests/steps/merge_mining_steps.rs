@@ -38,7 +38,7 @@ async fn merge_mining_proxy_with_submission(
         "disabled" => false,
         _ => panic!("This should be a boolean"),
     };
-    register_merge_mining_proxy_process(world, mining_proxy_name, base_node_name, wallet_name, enabled).await;
+    register_merge_mining_proxy_process(world, mining_proxy_name, base_node_name, wallet_name, enabled, true).await;
 }
 
 #[when(expr = "I have a merge mining proxy {word} connected to {word} and {word} with default config")]
@@ -48,7 +48,7 @@ async fn merge_mining_proxy_with_default_config(
     base_node_name: String,
     wallet_name: String,
 ) {
-    register_merge_mining_proxy_process(world, mining_proxy_name, base_node_name, wallet_name, true).await;
+    register_merge_mining_proxy_process(world, mining_proxy_name, base_node_name, wallet_name, true, false).await;
 }
 
 #[when(expr = "I ask for a block height from proxy {word}")]

@@ -40,7 +40,7 @@ use tari_core::{
     mempool::MempoolServiceConfig,
     proof_of_work::{randomx_factory::RandomXFactory, Difficulty},
     test_helpers::blockchain::create_test_blockchain_db,
-    transactions::test_helpers::create_test_core_key_manager_with_memory_db,
+    transactions::key_manager::create_memory_db_key_manager,
     validation::mocks::MockValidator,
 };
 use tari_p2p::{services::liveness::config::LivenessConfig, P2pConfig};
@@ -71,7 +71,7 @@ static EMISSION: [u64; 2] = [10, 10];
 async fn test_listening_lagging() {
     let network = Network::LocalNet;
     let temp_dir = tempdir().unwrap();
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
@@ -147,7 +147,7 @@ async fn test_listening_lagging() {
 async fn test_listening_initial_fallen_behind() {
     let network = Network::LocalNet;
     let temp_dir = tempdir().unwrap();
-    let key_manager = create_test_core_key_manager_with_memory_db();
+    let key_manager = create_memory_db_key_manager();
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();

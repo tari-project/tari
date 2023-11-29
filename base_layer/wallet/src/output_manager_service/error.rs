@@ -28,7 +28,6 @@ use tari_comms_dht::outbound::DhtOutboundError;
 use tari_core::transactions::{
     transaction_components::{EncryptedDataError, TransactionError},
     transaction_protocol::TransactionProtocolError,
-    CoinbaseBuildError,
 };
 use tari_crypto::errors::RangeProofError;
 use tari_key_manager::{
@@ -102,8 +101,6 @@ pub enum OutputManagerError {
     BaseNodeChanged,
     #[error("Invalid Sender Message Type")]
     InvalidSenderMessage,
-    #[error("Coinbase build error: `{0}`")]
-    CoinbaseBuildError(#[from] CoinbaseBuildError),
     #[error("TXO Validation protocol cancelled")]
     Cancellation,
     #[error("Base NodeService Error: `{0}`")]

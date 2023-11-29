@@ -42,8 +42,8 @@ openssl = { version = "0.10.55", features = ["vendored"] }
 crate-type = ["staticlib","cdylib"]
 
 [dev-dependencies]
+once_cell = "1.8.0"
 tempfile = "3.1.0"
-lazy_static = "1.3.0"
 tari_key_manager = {  path = "../key_manager" }
 tari_common_types = {  path = "../../base_layer/common_types"}
 tari_test_utils = {  path = "../../infrastructure/test_utils"}
