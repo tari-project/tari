@@ -605,7 +605,7 @@ where
         Ok(())
     }
 
-    #[instrument(name = "rpc::server::handle_req", skip(self, request), err, fields(request_size = request.len()))]
+    #[instrument(name = "rpc::server::handle_req", level="trace", skip(self, request), err, fields(request_size = request.len ()))]
     async fn handle_request(&mut self, mut request: Bytes) -> Result<(), RpcServerError> {
         let decoded_msg = proto::rpc::RpcRequest::decode(&mut request)?;
 

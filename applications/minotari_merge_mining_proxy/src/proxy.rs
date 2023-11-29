@@ -164,7 +164,7 @@ struct InnerService {
 }
 
 impl InnerService {
-    #[instrument]
+    #[instrument(level = "trace")]
     #[allow(clippy::cast_possible_wrap)]
     async fn handle_get_height(&self, monerod_resp: Response<json::Value>) -> Result<Response<Body>, MmProxyError> {
         let (parts, mut json) = monerod_resp.into_parts();
@@ -177,7 +177,7 @@ impl InnerService {
         }
 
         let mut base_node_client = self.base_node_client.clone();
-        trace!(target: LOG_TARGET, "Successful connection to base node GRPC");
+        info!(target: LOG_TARGET, "Successful connection to base node GRPC");
 
         let result =
             base_node_client
@@ -203,7 +203,7 @@ impl InnerService {
             );
         }
 
-        debug!(
+        info!(
             target: LOG_TARGET,
             "Monero height = #{}, Minotari base node height = #{}", json["height"], height
         );
