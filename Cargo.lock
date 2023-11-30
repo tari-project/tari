@@ -501,8 +501,18 @@ version = "0.10.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4114279215a005bc675e386011e594e1d9b800918cea18fcadadcce864a2046b"
 dependencies = [
- "borsh-derive",
+ "borsh-derive 0.10.3",
  "hashbrown 0.13.2",
+]
+
+[[package]]
+name = "borsh"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf617fabf5cdbdc92f774bfe5062d870f228b80056d41180797abf48bed4056e"
+dependencies = [
+ "borsh-derive 1.2.0",
+ "cfg_aliases",
 ]
 
 [[package]]
@@ -516,6 +526,20 @@ dependencies = [
  "proc-macro-crate 0.1.5",
  "proc-macro2",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "borsh-derive"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f404657a7ea7b5249e36808dff544bc88a28f26e0ac40009f674b7a009d14be3"
+dependencies = [
+ "once_cell",
+ "proc-macro-crate 2.0.0",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.38",
+ "syn_derive",
 ]
 
 [[package]]
@@ -691,6 +715,12 @@ name = "cfg-if"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
+
+[[package]]
+name = "cfg_aliases"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fd16c4719339c4530435d38e511904438d07cce7950afa3718a84ac36c10e89e"
 
 [[package]]
 name = "chacha20"
@@ -3027,7 +3057,7 @@ version = "0.53.0-pre.0"
 dependencies = [
  "argon2",
  "base64 0.13.1",
- "borsh",
+ "borsh 0.10.3",
  "chrono",
  "log",
  "prost 0.9.0",
@@ -3151,7 +3181,7 @@ version = "0.53.0-pre.0"
 dependencies = [
  "anyhow",
  "bincode",
- "borsh",
+ "borsh 0.10.3",
  "bytes 1.5.0",
  "chrono",
  "clap 3.2.25",
@@ -3189,7 +3219,7 @@ name = "minotari_miner"
 version = "0.53.0-pre.0"
 dependencies = [
  "base64 0.13.1",
- "borsh",
+ "borsh 0.10.3",
  "bufstream",
  "chrono",
  "clap 3.2.25",
@@ -3224,7 +3254,7 @@ dependencies = [
 name = "minotari_mining_helper_ffi"
 version = "0.53.0-pre.0"
 dependencies = [
- "borsh",
+ "borsh 0.10.3",
  "hex",
  "libc",
  "rand",
@@ -3243,7 +3273,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "bincode",
- "borsh",
+ "borsh 0.10.3",
  "chrono",
  "clap 3.2.25",
  "config",
@@ -3299,7 +3329,7 @@ dependencies = [
  "async-trait",
  "bincode",
  "blake2",
- "borsh",
+ "borsh 0.10.3",
  "chacha20poly1305",
  "chrono",
  "derivative",
@@ -3345,7 +3375,7 @@ dependencies = [
 name = "minotari_wallet_ffi"
 version = "0.53.0-pre.0"
 dependencies = [
- "borsh",
+ "borsh 0.10.3",
  "cbindgen",
  "chacha20poly1305",
  "chrono",
@@ -4272,6 +4302,15 @@ checksum = "e17d47ce914bf4de440332250b0edd23ce48c005f59fab39d3335866b114f11a"
 dependencies = [
  "thiserror",
  "toml 0.5.11",
+]
+
+[[package]]
+name = "proc-macro-crate"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7e8366a6159044a37876a2b9817124296703c586a5c92e2c53751fa06d8d43e8"
+dependencies = [
+ "toml_edit 0.20.7",
 ]
 
 [[package]]
@@ -5463,6 +5502,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "syn_derive"
+version = "0.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1329189c02ff984e9736652b1631330da25eaa6bc639089ed4915d25446cbe7b"
+dependencies = [
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.38",
+]
+
+[[package]]
 name = "sync_wrapper"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5653,7 +5704,7 @@ version = "0.53.0-pre.0"
 dependencies = [
  "base64 0.21.5",
  "blake2",
- "borsh",
+ "borsh 0.10.3",
  "chacha20poly1305",
  "digest 0.10.7",
  "newtype-ops",
@@ -5817,7 +5868,7 @@ dependencies = [
  "bincode",
  "bitflags 2.4.1",
  "blake2",
- "borsh",
+ "borsh 0.10.3",
  "bytes 0.5.6",
  "chacha20poly1305",
  "chrono",
@@ -5873,7 +5924,7 @@ dependencies = [
  "tari_utilities",
  "tempfile",
  "thiserror",
- "tiny-keccak 2.0.2 (git+https://github.com/SWvheerden/tiny-keccak?rev=7d8143eefdca14c8b30f805cbb0ca7aa764951af)",
+ "tiny-keccak 2.0.2 (git+https://github.com/SWvheerden/tiny-keccak?rev=4935e7e1a8700665b19732d103d836bddffce7a9)",
  "tokio",
  "toml 0.5.11",
  "tracing",
@@ -5887,7 +5938,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c74907b0c0237bc545e1da9b3ad6654fff934bdbd291bbe2a0e57e61933d6fc4"
 dependencies = [
  "blake2",
- "borsh",
+ "borsh 0.10.3",
  "digest 0.10.7",
  "log",
  "once_cell",
@@ -6026,7 +6077,7 @@ version = "0.53.0-pre.0"
 dependencies = [
  "bincode",
  "blake2",
- "borsh",
+ "borsh 0.10.3",
  "criterion 0.5.1",
  "digest 0.10.7",
  "log",
@@ -6080,7 +6131,7 @@ name = "tari_script"
 version = "0.12.0"
 dependencies = [
  "blake2",
- "borsh",
+ "borsh 0.10.3",
  "digest 0.10.7",
  "integer-encoding",
  "rand",
@@ -6152,7 +6203,7 @@ dependencies = [
  "base58-monero 0.3.2",
  "base64 0.13.1",
  "bincode",
- "borsh",
+ "borsh 0.10.3",
  "generic-array",
  "newtype-ops",
  "serde",
@@ -6295,9 +6346,9 @@ dependencies = [
 [[package]]
 name = "tiny-keccak"
 version = "2.0.2"
-source = "git+https://github.com/SWvheerden/tiny-keccak?rev=7d8143eefdca14c8b30f805cbb0ca7aa764951af#7d8143eefdca14c8b30f805cbb0ca7aa764951af"
+source = "git+https://github.com/SWvheerden/tiny-keccak?rev=4935e7e1a8700665b19732d103d836bddffce7a9#4935e7e1a8700665b19732d103d836bddffce7a9"
 dependencies = [
- "borsh",
+ "borsh 1.2.0",
  "crunchy",
 ]
 
@@ -6457,7 +6508,7 @@ dependencies = [
  "serde",
  "serde_spanned",
  "toml_datetime",
- "toml_edit",
+ "toml_edit 0.19.15",
 ]
 
 [[package]]
@@ -6478,6 +6529,17 @@ dependencies = [
  "indexmap 2.1.0",
  "serde",
  "serde_spanned",
+ "toml_datetime",
+ "winnow",
+]
+
+[[package]]
+name = "toml_edit"
+version = "0.20.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "70f427fce4d84c72b5b732388bf4a9f4531b53f74e2887e3ecb2481f68f66d81"
+dependencies = [
+ "indexmap 2.1.0",
  "toml_datetime",
  "winnow",
 ]
