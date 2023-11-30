@@ -1,4 +1,4 @@
-// Copyright 2020. The Tari Project
+// Copyright 2023. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -19,12 +19,17 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-pub mod authentication;
 
-pub mod conversions;
+use std::io;
 
-pub mod tls;
+use rcgen::RcgenError;
 
-pub mod tari_rpc {
-    tonic::include_proto!("tari.rpc");
+#[derive(Debug, thiserror::Error)]
+pub enum GrpcTlsError {
+    #[error("Couldn't read file: {0}")]
+    FileReadError(String),
+    #[error("Error generating the certificate: {0}")]
+    CertGenerationError(#[from] RcgenError),
+    #[error("Error opening or writing the file: {0}")]
+    IoError(#[from] io::Error),
 }

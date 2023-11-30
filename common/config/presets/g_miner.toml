@@ -11,6 +11,8 @@
 #base_node_grpc_address = "/ip4/127.0.0.1/tcp/18142"
 # GRPC authentication for the base node (default = "none")
 #base_node_grpc_authentication = { username = "miner", password = "xxxx" }
+# GRPC TLS communication is turned on by defining the domain name for the service (default = "none")
+#base_node_grpc_tls_domain_name = "localhost"
 
 # GRPC address of console wallet (default = "/ip4/127.0.0.1/tcp/18143")
 #wallet_grpc_address = "/ip4/127.0.0.1/tcp/18143"

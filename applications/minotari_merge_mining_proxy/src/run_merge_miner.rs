@@ -25,6 +25,7 @@ use std::{convert::Infallible, str::FromStr};
 use futures::future;
 use hyper::{service::make_service_fn, Server};
 use log::*;
+use minotari_app_grpc::tls::protocol_string;
 use minotari_node_grpc_client::grpc::base_node_client::BaseNodeClient;
 use minotari_wallet_grpc_client::{grpc::wallet_client::WalletClient, ClientAuthenticationInterceptor};
 use tari_common::{
@@ -37,7 +38,7 @@ use tari_core::proof_of_work::randomx_factory::RandomXFactory;
 use tokio::time::Duration;
 use tonic::{
     codegen::InterceptedService,
-    transport::{Channel, Endpoint},
+    transport::{Certificate, Channel, ClientTlsConfig, Endpoint},
 };
 
 use crate::{
@@ -53,6 +54,7 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
     let config_path = cli.common.config_path();
     let cfg = load_configuration(&config_path, true, &cli)?;
     let mut config = MergeMiningProxyConfig::load_from(&cfg)?;
+    config.set_base_path(cli.common.get_base_path());
     setup_grpc_config(&mut config);
 
     info!(target: LOG_TARGET, "Configuration: {:?}", config);
@@ -124,16 +126,35 @@ async fn connect_base_node(
     config: &MergeMiningProxyConfig,
 ) -> Result<BaseNodeClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>, MmProxyError> {
     let base_node_addr = format!(
-        "http://{}",
+        "{}{}",
+        protocol_string(config.base_node_grpc_tls_domain_name.is_some()),
         multiaddr_to_socketaddr(
             &config
                 .base_node_grpc_address
                 .clone()
                 .expect("Base node grpc address not found")
-        )?
+        )?,
     );
+
     info!(target: LOG_TARGET, "👛 Connecting to base node at {}", base_node_addr);
-    let channel = Endpoint::from_str(&base_node_addr)?.connect().await?;
+    let mut endpoint = Endpoint::from_str(&base_node_addr)?;
+
+    if let Some(domain_name) = config.base_node_grpc_tls_domain_name.as_ref() {
+        let pem = tokio::fs::read(config.config_dir.join(&config.base_node_grpc_ca_cert_filename))
+            .await
+            .map_err(|e| MmProxyError::TlsConnectionError(e.to_string()))?;
+        let ca = Certificate::from_pem(pem);
+
+        let tls = ClientTlsConfig::new().ca_certificate(ca).domain_name(domain_name);
+        endpoint = endpoint
+            .tls_config(tls)
+            .map_err(|e| MmProxyError::TlsConnectionError(e.to_string()))?;
+    }
+
+    let channel = endpoint
+        .connect()
+        .await
+        .map_err(|e| MmProxyError::TlsConnectionError(e.to_string()))?;
     let node_conn = BaseNodeClient::with_interceptor(
         channel,
         ClientAuthenticationInterceptor::create(&config.base_node_grpc_authentication)?,

@@ -133,6 +133,7 @@ pub enum CliCommands {
     ClaimShaAtomicSwapRefund(ClaimShaAtomicSwapRefundArgs),
     RevalidateWalletDb,
     RegisterValidatorNode(RegisterValidatorNodeArgs),
+    CreateTlsCerts,
 }
 
 #[derive(Debug, Args, Clone)]

@@ -120,6 +120,8 @@ pub enum ExitCode {
     TorAuthConfiguration = 118,
     #[error("Unable to read Tor cookie file")]
     TorAuthUnreadableCookie = 119,
+    #[error("Unable to configure TLS")]
+    TlsConfigurationError = 124,
 }
 
 impl From<super::ConfigError> for ExitError {
