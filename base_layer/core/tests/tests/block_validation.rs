@@ -213,7 +213,11 @@ fn add_monero_data(tblock: &mut Block, seed_key: &str) {
     let mut keccak = Keccak::v256();
     let mut encoder_prefix = Vec::new();
     coinbase.prefix.version.consensus_encode(&mut encoder_prefix).unwrap();
-    coinbase.prefix.unlock_time.consensus_encode(&mut encoder_prefix).unwrap();
+    coinbase
+        .prefix
+        .unlock_time
+        .consensus_encode(&mut encoder_prefix)
+        .unwrap();
     coinbase.prefix.inputs.consensus_encode(&mut encoder_prefix).unwrap();
     coinbase.prefix.outputs.consensus_encode(&mut encoder_prefix).unwrap();
     keccak.update(&encoder_prefix);

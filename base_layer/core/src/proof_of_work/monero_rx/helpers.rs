@@ -244,12 +244,27 @@ pub fn construct_monero_data(
 
     let mut keccak = Keccak::v256();
     let mut encoder_prefix = Vec::new();
-    coinbase.prefix.version.consensus_encode(&mut encoder_prefix).map_err(|e| MergeMineError::SerializeError(e.to_string()))?;
-    coinbase.prefix.unlock_time.consensus_encode(&mut encoder_prefix).map_err(|e| MergeMineError::SerializeError(e.to_string()))?;
-    coinbase.prefix.inputs.consensus_encode(&mut encoder_prefix).map_err(|e| MergeMineError::SerializeError(e.to_string()))?;
-    coinbase.prefix.outputs.consensus_encode(&mut encoder_prefix).map_err(|e| MergeMineError::SerializeError(e.to_string()))?;
+    coinbase
+        .prefix
+        .version
+        .consensus_encode(&mut encoder_prefix)
+        .map_err(|e| MergeMineError::SerializeError(e.to_string()))?;
+    coinbase
+        .prefix
+        .unlock_time
+        .consensus_encode(&mut encoder_prefix)
+        .map_err(|e| MergeMineError::SerializeError(e.to_string()))?;
+    coinbase
+        .prefix
+        .inputs
+        .consensus_encode(&mut encoder_prefix)
+        .map_err(|e| MergeMineError::SerializeError(e.to_string()))?;
+    coinbase
+        .prefix
+        .outputs
+        .consensus_encode(&mut encoder_prefix)
+        .map_err(|e| MergeMineError::SerializeError(e.to_string()))?;
     keccak.update(&encoder_prefix);
-
 
     let t_hash = monero::Hash::from_slice(tari_hash.as_slice());
     let aux_chain_merkle_proof = create_merkle_proof(&ordered_aux_chain_hashes, &t_hash).ok_or_else(|| {
@@ -474,17 +489,20 @@ mod test {
         let blocktemplate_blob = "0c0c8cd6a0fa057fe21d764e7abf004e975396a2160773b93712bf6118c3b4959ddd8ee0f76aad0000000002e1ea2701ffa5ea2701d5a299e2abb002028eb3066ced1b2cc82ea046f3716a48e9ae37144057d5fb48a97f941225a1957b2b0106225b7ec0a6544d8da39abe68d8bd82619b4a7c5bdae89c3783b256a8fa47820208f63aa86d2e857f070000".to_string();
         let bytes = hex::decode(blocktemplate_blob).unwrap();
         let mut block = deserialize::<monero::Block>(&bytes[..]).unwrap();
-        let block_header= BlockHeader::new(0);
+        let block_header = BlockHeader::new(0);
         let hash = block_header.merge_mining_hash();
         insert_merge_mining_tag_and_aux_chain_merkle_root_into_block(&mut block, hash, 1, 0).unwrap();
-
 
         let coinbase = block.miner_tx.clone();
         let extra = coinbase.prefix.extra.clone();
         let mut keccak = Keccak::v256();
         let mut encoder_prefix = Vec::new();
         coinbase.prefix.version.consensus_encode(&mut encoder_prefix).unwrap();
-        coinbase.prefix.unlock_time.consensus_encode(&mut encoder_prefix).unwrap();
+        coinbase
+            .prefix
+            .unlock_time
+            .consensus_encode(&mut encoder_prefix)
+            .unwrap();
         coinbase.prefix.inputs.consensus_encode(&mut encoder_prefix).unwrap();
         coinbase.prefix.outputs.consensus_encode(&mut encoder_prefix).unwrap();
         keccak.update(&encoder_prefix);
@@ -500,19 +518,16 @@ mod test {
         let test2 = monero::Hash::from_slice(&prefix_hash);
         assert_eq!(test_prefix_hash, test2);
 
-        //let mut finalised_keccak = Keccak::v256();
+        // let mut finalised_keccak = Keccak::v256();
         let rct_sig_base = RctSigBase {
             rct_type: RctType::Null,
             txn_fee: Default::default(),
             pseudo_outs: vec![],
             ecdh_info: vec![],
-            out_pk: vec![]
+            out_pk: vec![],
         };
-        let hashes = vec![test2, rct_sig_base.hash(),monero::Hash::null()];
-        let encoder_final: Vec<u8> = hashes
-            .into_iter()
-            .flat_map(|h| Vec::from(&h.to_bytes()[..]))
-            .collect();
+        let hashes = vec![test2, rct_sig_base.hash(), monero::Hash::null()];
+        let encoder_final: Vec<u8> = hashes.into_iter().flat_map(|h| Vec::from(&h.to_bytes()[..])).collect();
         let coinbase = monero::Hash::new(encoder_final);
         let coinbase_hash = block.miner_tx.hash();
         assert_eq!(coinbase, coinbase_hash);
@@ -556,11 +571,14 @@ mod test {
         let mut keccak = Keccak::v256();
         let mut encoder_prefix = Vec::new();
         coinbase.prefix.version.consensus_encode(&mut encoder_prefix).unwrap();
-        coinbase.prefix.unlock_time.consensus_encode(&mut encoder_prefix).unwrap();
+        coinbase
+            .prefix
+            .unlock_time
+            .consensus_encode(&mut encoder_prefix)
+            .unwrap();
         coinbase.prefix.inputs.consensus_encode(&mut encoder_prefix).unwrap();
         coinbase.prefix.outputs.consensus_encode(&mut encoder_prefix).unwrap();
         keccak.update(&encoder_prefix);
-
 
         let monero_data = MoneroPowData {
             header: block.header,
@@ -581,7 +599,7 @@ mod test {
         block_header.pow = pow;
         MoneroPowData::from_header(&block_header, &rules).unwrap();
 
-        //lets test the hashesh
+        // lets test the hashesh
         let mut finalised_prefix_keccak = keccak.clone();
         let mut encoder_extra_field = Vec::new();
         extra.consensus_encode(&mut encoder_extra_field).unwrap();
@@ -593,19 +611,16 @@ mod test {
         let test2 = monero::Hash::from_slice(&prefix_hash);
         assert_eq!(test_prefix_hash, test2);
 
-        //let mut finalised_keccak = Keccak::v256();
+        // let mut finalised_keccak = Keccak::v256();
         let rct_sig_base = RctSigBase {
             rct_type: RctType::Null,
             txn_fee: Default::default(),
             pseudo_outs: vec![],
             ecdh_info: vec![],
-            out_pk: vec![]
+            out_pk: vec![],
         };
-        let hashes = vec![test2, rct_sig_base.hash(),monero::Hash::null()];
-        let encoder_final: Vec<u8> = hashes
-            .into_iter()
-            .flat_map(|h| Vec::from(&h.to_bytes()[..]))
-            .collect();
+        let hashes = vec![test2, rct_sig_base.hash(), monero::Hash::null()];
+        let encoder_final: Vec<u8> = hashes.into_iter().flat_map(|h| Vec::from(&h.to_bytes()[..])).collect();
         let coinbase = monero::Hash::new(encoder_final);
         let coinbase_hash = block.miner_tx.hash();
         assert_eq!(coinbase, coinbase_hash);
@@ -664,7 +679,11 @@ mod test {
         let mut keccak = Keccak::v256();
         let mut encoder_prefix = Vec::new();
         coinbase.prefix.version.consensus_encode(&mut encoder_prefix).unwrap();
-        coinbase.prefix.unlock_time.consensus_encode(&mut encoder_prefix).unwrap();
+        coinbase
+            .prefix
+            .unlock_time
+            .consensus_encode(&mut encoder_prefix)
+            .unwrap();
         coinbase.prefix.inputs.consensus_encode(&mut encoder_prefix).unwrap();
         coinbase.prefix.outputs.consensus_encode(&mut encoder_prefix).unwrap();
         keccak.update(&encoder_prefix);
@@ -730,7 +749,11 @@ mod test {
         let mut keccak = Keccak::v256();
         let mut encoder_prefix = Vec::new();
         coinbase.prefix.version.consensus_encode(&mut encoder_prefix).unwrap();
-        coinbase.prefix.unlock_time.consensus_encode(&mut encoder_prefix).unwrap();
+        coinbase
+            .prefix
+            .unlock_time
+            .consensus_encode(&mut encoder_prefix)
+            .unwrap();
         coinbase.prefix.inputs.consensus_encode(&mut encoder_prefix).unwrap();
         coinbase.prefix.outputs.consensus_encode(&mut encoder_prefix).unwrap();
         keccak.update(&encoder_prefix);
@@ -798,13 +821,16 @@ mod test {
         let aux_hashes = vec![monero::Hash::from_slice(hash.as_ref())];
         let aux_chain_merkle_proof = create_merkle_proof(&aux_hashes, &aux_hashes[0]).unwrap();
 
-
         let coinbase = block.miner_tx.clone();
         let extra = coinbase.prefix.extra.clone();
         let mut keccak = Keccak::v256();
         let mut encoder_prefix = Vec::new();
         coinbase.prefix.version.consensus_encode(&mut encoder_prefix).unwrap();
-        coinbase.prefix.unlock_time.consensus_encode(&mut encoder_prefix).unwrap();
+        coinbase
+            .prefix
+            .unlock_time
+            .consensus_encode(&mut encoder_prefix)
+            .unwrap();
         coinbase.prefix.inputs.consensus_encode(&mut encoder_prefix).unwrap();
         coinbase.prefix.outputs.consensus_encode(&mut encoder_prefix).unwrap();
         keccak.update(&encoder_prefix);
@@ -891,13 +917,16 @@ mod test {
         let aux_hashes = vec![monero::Hash::from_slice(hash.as_ref())];
         let aux_chain_merkle_proof = create_merkle_proof(&aux_hashes, &aux_hashes[0]).unwrap();
 
-
         let coinbase = block.miner_tx.clone();
         let extra = coinbase.prefix.extra.clone();
         let mut keccak = Keccak::v256();
         let mut encoder_prefix = Vec::new();
         coinbase.prefix.version.consensus_encode(&mut encoder_prefix).unwrap();
-        coinbase.prefix.unlock_time.consensus_encode(&mut encoder_prefix).unwrap();
+        coinbase
+            .prefix
+            .unlock_time
+            .consensus_encode(&mut encoder_prefix)
+            .unwrap();
         coinbase.prefix.inputs.consensus_encode(&mut encoder_prefix).unwrap();
         coinbase.prefix.outputs.consensus_encode(&mut encoder_prefix).unwrap();
         keccak.update(&encoder_prefix);
@@ -1024,13 +1053,16 @@ mod test {
         let aux_hashes = vec![monero::Hash::from_slice(hash.as_ref())];
         let aux_chain_merkle_proof = create_merkle_proof(&aux_hashes, &aux_hashes[0]).unwrap();
 
-
-        let coinbase:monero::Transaction = Default::default();
+        let coinbase: monero::Transaction = Default::default();
         let extra = coinbase.prefix.extra.clone();
         let mut keccak = Keccak::v256();
         let mut encoder_prefix = Vec::new();
         coinbase.prefix.version.consensus_encode(&mut encoder_prefix).unwrap();
-        coinbase.prefix.unlock_time.consensus_encode(&mut encoder_prefix).unwrap();
+        coinbase
+            .prefix
+            .unlock_time
+            .consensus_encode(&mut encoder_prefix)
+            .unwrap();
         coinbase.prefix.inputs.consensus_encode(&mut encoder_prefix).unwrap();
         coinbase.prefix.outputs.consensus_encode(&mut encoder_prefix).unwrap();
         keccak.update(&encoder_prefix);
@@ -1083,7 +1115,11 @@ mod test {
         let mut keccak = Keccak::v256();
         let mut encoder_prefix = Vec::new();
         coinbase.prefix.version.consensus_encode(&mut encoder_prefix).unwrap();
-        coinbase.prefix.unlock_time.consensus_encode(&mut encoder_prefix).unwrap();
+        coinbase
+            .prefix
+            .unlock_time
+            .consensus_encode(&mut encoder_prefix)
+            .unwrap();
         coinbase.prefix.inputs.consensus_encode(&mut encoder_prefix).unwrap();
         coinbase.prefix.outputs.consensus_encode(&mut encoder_prefix).unwrap();
         keccak.update(&encoder_prefix);
@@ -1150,13 +1186,16 @@ mod test {
         let aux_hashes = vec![monero::Hash::from_slice(hash.as_ref())];
         let aux_chain_merkle_proof = create_merkle_proof(&aux_hashes, &aux_hashes[0]).unwrap();
 
-
         let coinbase = block.miner_tx.clone();
         let extra = coinbase.prefix.extra.clone();
         let mut keccak = Keccak::v256();
         let mut encoder_prefix = Vec::new();
         coinbase.prefix.version.consensus_encode(&mut encoder_prefix).unwrap();
-        coinbase.prefix.unlock_time.consensus_encode(&mut encoder_prefix).unwrap();
+        coinbase
+            .prefix
+            .unlock_time
+            .consensus_encode(&mut encoder_prefix)
+            .unwrap();
         coinbase.prefix.inputs.consensus_encode(&mut encoder_prefix).unwrap();
         coinbase.prefix.outputs.consensus_encode(&mut encoder_prefix).unwrap();
         keccak.update(&encoder_prefix);

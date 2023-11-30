@@ -26,14 +26,14 @@ use std::{
     io,
     io::Write,
 };
-use monero::cryptonote::hash::Hashable;
-
-use monero::util::ringct::RctSigBase;
-use monero::util::ringct::RctType;
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use monero::blockdata::transaction::RawExtraField;
-use monero::consensus::{Decodable, Encodable};
+use monero::{
+    blockdata::transaction::RawExtraField,
+    consensus::{Decodable, Encodable},
+    cryptonote::hash::Hashable,
+    util::ringct::{RctSigBase, RctType},
+};
 use tari_utilities::hex::{to_hex, Hex};
 use tiny_keccak::{Hasher, Keccak};
 
@@ -116,7 +116,8 @@ impl MoneroPowData {
         let mut v = tari_header.pow.pow_data.as_slice();
         let pow_data: MoneroPowData =
             BorshDeserialize::deserialize(&mut v).map_err(|e| MergeMineError::DeserializeError(format!("{:?}", e)))?;
-        if pow_data.coinbase_tx_extra.0.len() > consensus.consensus_constants(tari_header.height).max_extra_field_size() {
+        if pow_data.coinbase_tx_extra.0.len() > consensus.consensus_constants(tari_header.height).max_extra_field_size()
+        {
             return Err(MergeMineError::DeserializeError(format!(
                 "Extra size({}) is larger than allowed {} bytes",
                 pow_data.coinbase_tx_extra.0.len(),
@@ -151,26 +152,25 @@ impl MoneroPowData {
     pub fn is_coinbase_valid_merkle_root(&self) -> bool {
         let mut finalised_prefix_keccak = self.coinbase_tx_hasher.clone();
         let mut encoder_extra_field = Vec::new();
-        self.coinbase_tx_extra.consensus_encode(&mut encoder_extra_field).unwrap();
+        self.coinbase_tx_extra
+            .consensus_encode(&mut encoder_extra_field)
+            .unwrap();
         finalised_prefix_keccak.update(&encoder_extra_field);
         let mut prefix_hash: [u8; 32] = [0; 32];
         finalised_prefix_keccak.finalize(&mut prefix_hash);
 
         let final_prefix_hash = monero::Hash::from_slice(&prefix_hash);
 
-        //let mut finalised_keccak = Keccak::v256();
+        // let mut finalised_keccak = Keccak::v256();
         let rct_sig_base = RctSigBase {
             rct_type: RctType::Null,
             txn_fee: Default::default(),
             pseudo_outs: vec![],
             ecdh_info: vec![],
-            out_pk: vec![]
+            out_pk: vec![],
         };
-        let hashes = vec![final_prefix_hash, rct_sig_base.hash(),monero::Hash::null()];
-        let encoder_final: Vec<u8> = hashes
-            .into_iter()
-            .flat_map(|h| Vec::from(&h.to_bytes()[..]))
-            .collect();
+        let hashes = vec![final_prefix_hash, rct_sig_base.hash(), monero::Hash::null()];
+        let encoder_final: Vec<u8> = hashes.into_iter().flat_map(|h| Vec::from(&h.to_bytes()[..])).collect();
         let coinbase_hash = monero::Hash::new(encoder_final);
 
         let merkle_root = self.coinbase_merkle_proof.calculate_root(&coinbase_hash);
@@ -203,6 +203,7 @@ mod test {
     use monero::{consensus::Encodable, BlockHeader, Hash, VarInt};
     use tari_utilities::ByteArray;
     use tiny_keccak::{Hasher, Keccak};
+
     use super::MoneroPowData;
     use crate::proof_of_work::monero_rx::{merkle_tree::MerkleProof, FixedByteArray};
 
@@ -213,7 +214,11 @@ mod test {
         let mut keccak = Keccak::v256();
         let mut encoder_prefix = Vec::new();
         coinbase.prefix.version.consensus_encode(&mut encoder_prefix).unwrap();
-        coinbase.prefix.unlock_time.consensus_encode(&mut encoder_prefix).unwrap();
+        coinbase
+            .prefix
+            .unlock_time
+            .consensus_encode(&mut encoder_prefix)
+            .unwrap();
         coinbase.prefix.inputs.consensus_encode(&mut encoder_prefix).unwrap();
         coinbase.prefix.outputs.consensus_encode(&mut encoder_prefix).unwrap();
         keccak.update(&encoder_prefix);
