@@ -90,7 +90,7 @@ impl<T: Clone> Future for OneshotSignal<T> {
     type Output = Option<T>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        if self.inner.is_terminated() {
+        if self.is_terminated() {
             return Poll::Ready(None);
         }
 
