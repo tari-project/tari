@@ -5849,7 +5849,7 @@ dependencies = [
  "tari_utilities",
  "tempfile",
  "thiserror",
- "tiny-keccak 2.0.2 (git+https://github.com/SWvheerden/tiny-keccak?rev=4935e7e1a8700665b19732d103d836bddffce7a9)",
+ "tiny-keccak 2.0.2 (git+https://github.com/tari-project/tiny-keccak?rev=bcddc65530d8646de7282cd8d18d891dc434b643)",
  "tokio",
  "toml 0.5.11",
  "tracing",
@@ -6271,7 +6271,7 @@ dependencies = [
 [[package]]
 name = "tiny-keccak"
 version = "2.0.2"
-source = "git+https://github.com/SWvheerden/tiny-keccak?rev=4935e7e1a8700665b19732d103d836bddffce7a9#4935e7e1a8700665b19732d103d836bddffce7a9"
+source = "git+https://github.com/tari-project/tiny-keccak?rev=bcddc65530d8646de7282cd8d18d891dc434b643#bcddc65530d8646de7282cd8d18d891dc434b643"
 dependencies = [
  "borsh",
  "crunchy",

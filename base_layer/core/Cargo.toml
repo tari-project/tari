@@ -76,7 +76,7 @@ tokio = { version = "1.23", features = ["time", "sync", "macros"] }
 tracing = "0.1.26"
 zeroize = "1"
 primitive-types = { version = "0.12", features = ["serde"] }
-tiny-keccak = { git = "https://github.com/SWvheerden/tiny-keccak", rev = "4935e7e1a8700665b19732d103d836bddffce7a9",features = ["keccak"] }
+tiny-keccak = { git = "https://github.com/tari-project/tiny-keccak", rev = "bcddc65530d8646de7282cd8d18d891dc434b643",features = ["keccak"] }
 
 [dev-dependencies]
 criterion = { version = "0.4.0" }
