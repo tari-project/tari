@@ -15,7 +15,7 @@ tari_comms = { path = "../../comms/core", features = ["rpc"] }
 tari_common_types = { path = "../../base_layer/common_types" }
 tari_comms_dht = { path = "../../comms/dht" }
 tari_core = { path = "../../base_layer/core", default-features = false, features = ["transactions"] }
-tari_crypto = { version = "0.19" }
+tari_crypto = { version = "0.19.1" }
 tari_libtor = { path = "../../infrastructure/libtor", optional = true }
 tari_p2p = { path = "../../base_layer/p2p", features = ["auto-update"] }
 tari_storage = {path="../../infrastructure/storage"}
@@ -26,7 +26,7 @@ tari_utilities = { version = "0.6" }
 anyhow = "1.0.53"
 async-trait = "0.1.52"
 bincode = "1.3.1"
-borsh = "0.10"
+borsh = "1.2"
 chrono = { version = "0.4.19", default-features = false }
 clap = { version = "3.2", features = ["derive", "env"] }
 console-subscriber = "0.1.8"

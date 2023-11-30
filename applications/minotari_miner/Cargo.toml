@@ -14,11 +14,11 @@ tari_common_types = { path = "../../base_layer/common_types" }
 tari_comms = { path = "../../comms/core" }
 minotari_app_utilities = { path = "../minotari_app_utilities" }
 minotari_app_grpc = { path = "../minotari_app_grpc" }
-tari_crypto = { version = "0.19" }
+tari_crypto = { version = "0.19.1" }
 tari_utilities = { version = "0.6" }
 
 base64 = "0.13.0"
-borsh = "0.10"
+borsh = "1.2"
 bufstream = "0.1"
 chrono = { version = "0.4.19", default-features = false }
 clap = { version = "3.2", features = ["derive"] }

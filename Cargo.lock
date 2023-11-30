@@ -64,18 +64,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ahash"
-version = "0.8.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "91429305e9f0a25f6205c5b8e0d2db09e0708a7a6df0f42212bb56c32c8ac97a"
-dependencies = [
- "cfg-if",
- "once_cell",
- "version_check",
- "zerocopy",
-]
-
-[[package]]
 name = "aho-corasick"
 version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -497,35 +485,12 @@ dependencies = [
 
 [[package]]
 name = "borsh"
-version = "0.10.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4114279215a005bc675e386011e594e1d9b800918cea18fcadadcce864a2046b"
-dependencies = [
- "borsh-derive 0.10.3",
- "hashbrown 0.13.2",
-]
-
-[[package]]
-name = "borsh"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bf617fabf5cdbdc92f774bfe5062d870f228b80056d41180797abf48bed4056e"
 dependencies = [
- "borsh-derive 1.2.0",
+ "borsh-derive",
  "cfg_aliases",
-]
-
-[[package]]
-name = "borsh-derive"
-version = "0.10.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0754613691538d51f329cce9af41d7b7ca150bc973056f1156611489475f54f7"
-dependencies = [
- "borsh-derive-internal",
- "borsh-schema-derive-internal",
- "proc-macro-crate 0.1.5",
- "proc-macro2",
- "syn 1.0.109",
 ]
 
 [[package]]
@@ -540,28 +505,6 @@ dependencies = [
  "quote",
  "syn 2.0.38",
  "syn_derive",
-]
-
-[[package]]
-name = "borsh-derive-internal"
-version = "0.10.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "afb438156919598d2c7bad7e1c0adf3d26ed3840dbc010db1a882a65583ca2fb"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
-name = "borsh-schema-derive-internal"
-version = "0.10.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "634205cc43f74a1b9046ef87c4540ebda95696ec0f315024860cad7c5b0f5ccd"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
 ]
 
 [[package]]
@@ -2256,16 +2199,7 @@ version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888"
 dependencies = [
- "ahash 0.7.7",
-]
-
-[[package]]
-name = "hashbrown"
-version = "0.13.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43a3c133739dddd0d2990f9a4bdf8eb4b21ef50e4851ca85ab661199821d510e"
-dependencies = [
- "ahash 0.8.6",
+ "ahash",
 ]
 
 [[package]]
@@ -3057,7 +2991,7 @@ version = "0.53.0-pre.0"
 dependencies = [
  "argon2",
  "base64 0.13.1",
- "borsh 0.10.3",
+ "borsh",
  "chrono",
  "log",
  "prost 0.9.0",
@@ -3181,7 +3115,7 @@ version = "0.53.0-pre.0"
 dependencies = [
  "anyhow",
  "bincode",
- "borsh 0.10.3",
+ "borsh",
  "bytes 1.5.0",
  "chrono",
  "clap 3.2.25",
@@ -3219,7 +3153,7 @@ name = "minotari_miner"
 version = "0.53.0-pre.0"
 dependencies = [
  "base64 0.13.1",
- "borsh 0.10.3",
+ "borsh",
  "bufstream",
  "chrono",
  "clap 3.2.25",
@@ -3254,7 +3188,7 @@ dependencies = [
 name = "minotari_mining_helper_ffi"
 version = "0.53.0-pre.0"
 dependencies = [
- "borsh 0.10.3",
+ "borsh",
  "hex",
  "libc",
  "rand",
@@ -3273,7 +3207,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "bincode",
- "borsh 0.10.3",
+ "borsh",
  "chrono",
  "clap 3.2.25",
  "config",
@@ -3329,7 +3263,7 @@ dependencies = [
  "async-trait",
  "bincode",
  "blake2",
- "borsh 0.10.3",
+ "borsh",
  "chacha20poly1305",
  "chrono",
  "derivative",
@@ -3375,7 +3309,7 @@ dependencies = [
 name = "minotari_wallet_ffi"
 version = "0.53.0-pre.0"
 dependencies = [
- "borsh 0.10.3",
+ "borsh",
  "cbindgen",
  "chacha20poly1305",
  "chrono",
@@ -4283,15 +4217,6 @@ dependencies = [
  "impl-codec",
  "impl-serde",
  "uint",
-]
-
-[[package]]
-name = "proc-macro-crate"
-version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d6ea3c4595b96363c13943497db34af4460fb474a95c43f4446ad341b8c9785"
-dependencies = [
- "toml 0.5.11",
 ]
 
 [[package]]
@@ -5704,7 +5629,7 @@ version = "0.53.0-pre.0"
 dependencies = [
  "base64 0.21.5",
  "blake2",
- "borsh 0.10.3",
+ "borsh",
  "chacha20poly1305",
  "digest 0.10.7",
  "newtype-ops",
@@ -5868,7 +5793,7 @@ dependencies = [
  "bincode",
  "bitflags 2.4.1",
  "blake2",
- "borsh 0.10.3",
+ "borsh",
  "bytes 0.5.6",
  "chacha20poly1305",
  "chrono",
@@ -5933,12 +5858,12 @@ dependencies = [
 
 [[package]]
 name = "tari_crypto"
-version = "0.19.0"
+version = "0.19.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c74907b0c0237bc545e1da9b3ad6654fff934bdbd291bbe2a0e57e61933d6fc4"
+checksum = "f5f92a2fc36466fb0653a67671fd62ebadadc69cecd0b240bd40cc76150ff488"
 dependencies = [
  "blake2",
- "borsh 0.10.3",
+ "borsh",
  "digest 0.10.7",
  "log",
  "once_cell",
@@ -6077,7 +6002,7 @@ version = "0.53.0-pre.0"
 dependencies = [
  "bincode",
  "blake2",
- "borsh 0.10.3",
+ "borsh",
  "criterion 0.5.1",
  "digest 0.10.7",
  "log",
@@ -6131,7 +6056,7 @@ name = "tari_script"
 version = "0.12.0"
 dependencies = [
  "blake2",
- "borsh 0.10.3",
+ "borsh",
  "digest 0.10.7",
  "integer-encoding",
  "rand",
@@ -6196,14 +6121,14 @@ dependencies = [
 
 [[package]]
 name = "tari_utilities"
-version = "0.6.1"
+version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0c396f014de7fa290ea8decd7238df9f1c175f243480a4ebef9ec61f144b1c95"
+checksum = "387dd7a5067310780c64c0e00288ab65b38f8899d8913ee6df3645bc59711c24"
 dependencies = [
  "base58-monero 0.3.2",
  "base64 0.13.1",
  "bincode",
- "borsh 0.10.3",
+ "borsh",
  "generic-array",
  "newtype-ops",
  "serde",
@@ -6348,7 +6273,7 @@ name = "tiny-keccak"
 version = "2.0.2"
 source = "git+https://github.com/SWvheerden/tiny-keccak?rev=4935e7e1a8700665b19732d103d836bddffce7a9#4935e7e1a8700665b19732d103d836bddffce7a9"
 dependencies = [
- "borsh 1.2.0",
+ "borsh",
  "crunchy",
 ]
 
@@ -7417,26 +7342,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e17bb3549cc1321ae1296b9cdc2698e2b6cb1992adfa19a8c72e5b7a738f44cd"
 dependencies = [
  "time",
-]
-
-[[package]]
-name = "zerocopy"
-version = "0.7.21"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "686b7e407015242119c33dab17b8f61ba6843534de936d94368856528eae4dcc"
-dependencies = [
- "zerocopy-derive",
-]
-
-[[package]]
-name = "zerocopy-derive"
-version = "0.7.21"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "020f3dfe25dfc38dfea49ce62d5d45ecdd7f0d8a724fa63eb36b6eba4ec76806"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.38",
 ]
 
 [[package]]

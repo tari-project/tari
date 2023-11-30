@@ -24,7 +24,7 @@ tari_common_types = {  path = "../../base_layer/common_types" }
 tari_comms = {  path = "../../comms/core" }
 tari_comms_dht = {  path = "../../comms/dht" }
 tari_comms_rpc_macros = {  path = "../../comms/rpc_macros" }
-tari_crypto = { version = "0.19", features = ["borsh"] }
+tari_crypto = { version = "0.19.1", features = ["borsh"] }
 tari_metrics = { path = "../../infrastructure/metrics", optional = true }
 tari_mmr = {  path = "../../base_layer/mmr", optional = true}
 tari_p2p = {  path = "../../base_layer/p2p" }
@@ -41,7 +41,7 @@ async-trait = {version = "0.1.50"}
 bincode = "1.1.4"
 bitflags = { version = "2.4", features = ["serde"] }
 blake2 = "0.10"
-borsh = { version = "0.10", features = ["const-generics"] }
+borsh = { version = "1.2", features = ["derive"] }
 bytes = "0.5"
 chacha20poly1305 = "0.10.1"
 chrono = { version = "0.4.19", default-features = false, features = ["serde"] }
@@ -51,7 +51,7 @@ digest = "0.10"
 fs2 = "0.4.0"
 futures = { version = "^0.3.16", features = ["async-await"] }
 hex = "0.4.2"
-integer-encoding = "3.0.2"
+integer-encoding = "3.0"
 lmdb-zero = "0.4.4"
 log = "0.4"
 log-mdc = "0.1.0"

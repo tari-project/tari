@@ -8567,7 +8567,6 @@ mod test {
         sync::Mutex,
     };
 
-    use borsh::BorshSerialize;
     use libc::{c_char, c_uchar, c_uint};
     use minotari_wallet::{
         storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
@@ -9104,7 +9103,7 @@ mod test {
             let error_ptr = &mut error as *mut c_int;
 
             let expected_covenant = covenant!(identity());
-            let covenant_bytes = Box::into_raw(Box::new(ByteVector(expected_covenant.try_to_vec().unwrap())));
+            let covenant_bytes = Box::into_raw(Box::new(ByteVector(borsh::to_vec(&expected_covenant).unwrap())));
             let covenant = covenant_create_from_bytes(covenant_bytes, error_ptr);
 
             assert_eq!(error, 0);

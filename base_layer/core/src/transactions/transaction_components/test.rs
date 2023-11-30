@@ -534,7 +534,6 @@ async fn test_output_recover_openings() {
 mod validate_internal_consistency {
 
     use blake2::Blake2b;
-    use borsh::BorshSerialize;
     use digest::{consts::U32, Digest};
     use tari_common_types::types::FixedHash;
     use tari_crypto::hashing::DomainSeparation;
@@ -608,7 +607,10 @@ mod validate_internal_consistency {
         let mut hasher = Blake2b::<U32>::default();
         BaseLayerCovenantsDomain::add_domain_separation_tag(&mut hasher, COVENANTS_FIELD_HASHER_LABEL);
 
-        let hash = hasher.chain_update(features.try_to_vec().unwrap()).finalize().to_vec();
+        let hash = hasher
+            .chain_update(borsh::to_vec(&features).unwrap())
+            .finalize()
+            .to_vec();
 
         let mut slice = [0u8; FixedHash::byte_size()];
         slice.copy_from_slice(hash.as_ref());

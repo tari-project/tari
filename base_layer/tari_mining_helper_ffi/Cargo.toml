@@ -8,13 +8,13 @@ edition = "2018"
 
 [dependencies]
 tari_comms = {  path = "../../comms/core" }
-tari_crypto = { version = "0.19" }
+tari_crypto = { version = "0.19.1" }
 tari_common = {  path = "../../common" }
 tari_core = {  path = "../core", default-features = false, features = ["transactions"]}
 tari_utilities = { version = "0.6" }
 libc = "0.2.65"
 thiserror = "1.0.26"
-borsh = "0.10"
+borsh = "1.2"
 hex = "0.4.2"
 
 [dev-dependencies]
