@@ -49,6 +49,8 @@ pub enum MinerError {
     BasicAuthError(#[from] BasicAuthError),
     #[error("Invalid gRPC url: {0}")]
     InvalidUri(#[from] InvalidUri),
+    #[error("TLS connection error: {0}")]
+    TlsConnectionError(String),
     #[error("Coinbase error: {0}")]
     CoinbaseError(String),
     #[error("Consensus build error: {0}")]

@@ -34,7 +34,10 @@
 //! All miner options configured under `[miner]` section of
 //! Minotari's `config.toml`.
 
-use std::time::Duration;
+use std::{
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
 use minotari_app_grpc::tari_rpc::{pow_algo::PowAlgos, NewBlockTemplateRequest, PowAlgo};
 use serde::{Deserialize, Serialize};
@@ -50,6 +53,10 @@ pub struct MinerConfig {
     pub base_node_grpc_address: Option<Multiaddr>,
     /// GRPC authentication for base node
     pub base_node_grpc_authentication: GrpcAuthentication,
+    /// GRPC domain name for node TLS validation
+    pub base_node_grpc_tls_domain_name: Option<String>,
+    /// GRPC ca cert name for TLS
+    pub base_node_grpc_ca_cert_filename: String,
     /// Number of mining threads
     pub num_mining_threads: usize,
     /// Start mining only when base node is bootstrapped and current block height is on the tip of network
@@ -74,6 +81,8 @@ pub struct MinerConfig {
     pub network: Network,
     /// Base node reconnect timeout after any gRPC or miner error
     pub wait_timeout_on_error: u64,
+    /// The relative path to store persistent config
+    pub config_dir: PathBuf,
     /// The Tari wallet address (valid address in hex) where the mining funds will be sent to - must be assigned
     pub wallet_payment_address: String,
     /// Stealth payment yes or no
@@ -101,6 +110,8 @@ impl Default for MinerConfig {
         Self {
             base_node_grpc_address: None,
             base_node_grpc_authentication: GrpcAuthentication::default(),
+            base_node_grpc_tls_domain_name: None,
+            base_node_grpc_ca_cert_filename: "node_ca.pem".to_string(),
             num_mining_threads: num_cpus::get(),
             mine_on_tip_only: true,
             proof_of_work_algo: ProofOfWork::Sha3x,
@@ -111,6 +122,7 @@ impl Default for MinerConfig {
             coinbase_extra: "minotari_miner".to_string(),
             network: Default::default(),
             wait_timeout_on_error: 10,
+            config_dir: PathBuf::from("config/miner"),
             wallet_payment_address: TariAddress::default().to_hex(),
             stealth_payment: true,
             range_proof_type: RangeProofType::RevealedValue,
@@ -134,6 +146,12 @@ impl MinerConfig {
 
     pub fn validate_tip_interval(&self) -> Duration {
         Duration::from_secs(self.validate_tip_timeout_sec)
+    }
+
+    pub fn set_base_path<P: AsRef<Path>>(&mut self, base_path: P) {
+        if !self.config_dir.is_absolute() {
+            self.config_dir = base_path.as_ref().join(self.config_dir.as_path());
+        }
     }
 }
 

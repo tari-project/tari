@@ -98,6 +98,8 @@ pub enum MmProxyError {
     ServersUnavailable,
     #[error("Invalid difficulty: {0}")]
     DifficultyError(#[from] DifficultyError),
+    #[error("TLS connection error: {0}")]
+    TlsConnectionError(String),
     #[error("Key manager service error: `{0}`")]
     KeyManagerServiceError(String),
     #[error("Key manager error: {0}")]
