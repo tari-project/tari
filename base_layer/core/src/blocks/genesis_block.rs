@@ -120,7 +120,8 @@ pub fn get_stagenet_genesis_block() -> ChainBlock {
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
             FixedHash::from_hex("b3569982f737771e11008c97050640d12a94ce42231ac69fb955dbf66c9d19b8").unwrap();
-        block.header.output_mr = FixedHash::zero();
+        block.header.output_mr =
+            FixedHash::from_hex("95f849715638f24c62f6673693efad50523da0841fb77b6b6e068b95c85fe890").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
     }
@@ -171,7 +172,8 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
             FixedHash::from_hex("b3569982f737771e11008c97050640d12a94ce42231ac69fb955dbf66c9d19b8").unwrap();
-        block.header.output_mr = FixedHash::zero();
+        block.header.output_mr =
+            FixedHash::from_hex("95f849715638f24c62f6673693efad50523da0841fb77b6b6e068b95c85fe890").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
     }
@@ -228,7 +230,8 @@ pub fn get_igor_genesis_block() -> ChainBlock {
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
             FixedHash::from_hex("5057ce1672184c5875bc707119a506fdb44bbc7b8eb33420aee642e1064ace3a").unwrap();
-        block.header.output_mr = FixedHash::zero();
+        block.header.output_mr =
+            FixedHash::from_hex("162adb813d717bd7eea0b3ba447af30c00f5e4b7959e69658fc4f356fa7bbf9f").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
     }
@@ -333,7 +336,7 @@ fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &[
             height: 0,
             prev_hash: FixedHash::zero(),
             timestamp: timestamp.into(),
-            output_mr: FixedHash::from_hex("daab077d6dadb830bf506cc55c82abc6c3563bec6ff1d5699806f8b13059b4c3").unwrap(),
+            output_mr: FixedHash::zero(),
             output_smt_size: 0,
             kernel_mr: FixedHash::from_hex("c14803066909d6d22abf0d2d2782e8936afc3f713f2af3a4ef5c42e8400c1303").unwrap(),
             kernel_mmr_size: 0,
