@@ -198,15 +198,12 @@ impl fmt::Display for OutputManagerRequest {
             CreateClaimShaAtomicSwapTransaction(output, pre_image, fee_per_gram) => write!(
                 f,
                 "ClaimShaAtomicSwap(output hash: {}, pre_image: {}, fee_per_gram: {} )",
-                output.to_hex(),
-                pre_image,
-                fee_per_gram,
+                output, pre_image, fee_per_gram,
             ),
             CreateHtlcRefundTransaction(output, fee_per_gram) => write!(
                 f,
                 "CreateHtlcRefundTransaction(output hash: {}, , fee_per_gram: {} )",
-                output.to_hex(),
-                fee_per_gram,
+                output, fee_per_gram,
             ),
 
             GetOutputInfoByTxId(t) => write!(f, "GetOutputInfoByTxId: {}", t),
