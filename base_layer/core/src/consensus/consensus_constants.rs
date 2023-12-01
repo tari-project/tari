@@ -389,7 +389,7 @@ impl ConsensusConstants {
             coinbase_output_features_extra_max_length: 64,
         }];
         #[cfg(any(test, debug_assertions))]
-        assert_hybrid_pow_constants(&consensus_constants, &[120], &[60], &[40], CheckDifficultyRatio::No);
+        assert_hybrid_pow_constants(&consensus_constants, &[120], &[60], &[40]);
         consensus_constants
     }
 
@@ -452,13 +452,7 @@ impl ConsensusConstants {
             coinbase_output_features_extra_max_length: 64,
         }];
         #[cfg(any(test, debug_assertions))]
-        assert_hybrid_pow_constants(
-            &consensus_constants,
-            &[target_time],
-            &[randomx_split],
-            &[sha3x_split],
-            CheckDifficultyRatio::No,
-        );
+        assert_hybrid_pow_constants(&consensus_constants, &[target_time], &[randomx_split], &[sha3x_split]);
         consensus_constants
     }
 
@@ -512,7 +506,7 @@ impl ConsensusConstants {
             coinbase_output_features_extra_max_length: 64,
         }];
         #[cfg(any(test, debug_assertions))]
-        assert_hybrid_pow_constants(&consensus_constants, &[120], &[60], &[40], CheckDifficultyRatio::Yes);
+        assert_hybrid_pow_constants(&consensus_constants, &[120], &[60], &[40]);
         consensus_constants
     }
 
@@ -567,7 +561,7 @@ impl ConsensusConstants {
             coinbase_output_features_extra_max_length: 64,
         }];
         #[cfg(any(test, debug_assertions))]
-        assert_hybrid_pow_constants(&consensus_constants, &[120], &[60], &[40], CheckDifficultyRatio::Yes);
+        assert_hybrid_pow_constants(&consensus_constants, &[120], &[60], &[40]);
         consensus_constants
     }
 
@@ -616,7 +610,7 @@ impl ConsensusConstants {
             coinbase_output_features_extra_max_length: 64,
         }];
         #[cfg(any(test, debug_assertions))]
-        assert_hybrid_pow_constants(&consensus_constants, &[120], &[60], &[40], CheckDifficultyRatio::Yes);
+        assert_hybrid_pow_constants(&consensus_constants, &[120], &[60], &[40]);
         consensus_constants
     }
 
@@ -666,7 +660,7 @@ impl ConsensusConstants {
             coinbase_output_features_extra_max_length: 64,
         }];
         #[cfg(any(test, debug_assertions))]
-        assert_hybrid_pow_constants(&consensus_constants, &[120], &[60], &[40], CheckDifficultyRatio::Yes);
+        assert_hybrid_pow_constants(&consensus_constants, &[120], &[60], &[40]);
         consensus_constants
     }
 
@@ -700,13 +694,6 @@ impl ConsensusConstants {
     }
 }
 
-#[derive(PartialEq)]
-#[cfg(any(test, debug_assertions))]
-enum CheckDifficultyRatio {
-    Yes,
-    No,
-}
-
 // Assert the hybrid POW constants.
 // Note: The math and constants in this function should not be changed without ample consideration that should include
 //       discussion with the Tari community, modelling and system level tests.
@@ -714,14 +701,12 @@ enum CheckDifficultyRatio {
 //   > sha3x_target_time = randomx_target_time * (100 - 40) / 40
 //   > randomx_target_time = sha3x_target_time * (100 - 60) / 60
 //   > target_time = randomx_target_time * sha3x_target_time / (ramdomx_target_time + sha3x_target_time)
-// `CheckDifficultyRatio` is optional for internal testing (Network::LocalNet and Network::Igor).
 #[cfg(any(test, debug_assertions))]
 fn assert_hybrid_pow_constants(
     consensus_constants: &[ConsensusConstants],
     target_time: &[u64],
     randomx_split: &[u64], // RamdomX
     sha3x_split: &[u64],
-    check_difficulty_ratio: CheckDifficultyRatio,
 ) {
     assert_eq!(consensus_constants.len(), target_time.len());
     assert_eq!(consensus_constants.len(), randomx_split.len());
