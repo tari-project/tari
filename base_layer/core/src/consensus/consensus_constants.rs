@@ -151,7 +151,7 @@ pub struct PowAlgorithmConstants {
     pub target_time: u64,
 }
 
-const ESMERALDA_FAUCET_VALUE: u64 = 3_798_999_293_855_109;
+const ESMERALDA_FAUCET_VALUE: u64 = 6_050_258_300_519_067;
 
 // The target time used by the difficulty adjustment algorithms, their target time is the target block interval * PoW
 // algorithm count
@@ -499,7 +499,7 @@ impl ConsensusConstants {
             max_randomx_seed_height: 3000,
             max_extra_field_size: 200,
             proof_of_work: algos,
-            faucet_value: 0.into(), // ESMERALDA_FAUCET_VALUE.into(),
+            faucet_value: ESMERALDA_FAUCET_VALUE.into(),
             transaction_weight: TransactionWeight::v1(),
             max_script_byte_size: 2048,
             input_version_range,
