@@ -120,8 +120,7 @@ pub fn get_stagenet_genesis_block() -> ChainBlock {
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
             FixedHash::from_hex("b3569982f737771e11008c97050640d12a94ce42231ac69fb955dbf66c9d19b8").unwrap();
-        block.header.output_mr =
-            FixedHash::from_hex("95f849715638f24c62f6673693efad50523da0841fb77b6b6e068b95c85fe890").unwrap();
+        block.header.output_mr = FixedHash::zero();
         block.header.validator_node_mr =
             FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
     }
@@ -172,8 +171,7 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
             FixedHash::from_hex("b3569982f737771e11008c97050640d12a94ce42231ac69fb955dbf66c9d19b8").unwrap();
-        block.header.output_mr =
-            FixedHash::from_hex("95f849715638f24c62f6673693efad50523da0841fb77b6b6e068b95c85fe890").unwrap();
+        block.header.output_mr = FixedHash::zero();
         block.header.validator_node_mr =
             FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
     }
@@ -192,7 +190,7 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
 
 fn get_nextnet_genesis_block_raw() -> Block {
     // Set genesis timestamp
-    let genesis_timestamp = DateTime::parse_from_rfc2822("07 Nov 2023 08:10:00 +0200").expect("parse may not fail");
+    let genesis_timestamp = DateTime::parse_from_rfc2822("07 Nov 2024 08:10:00 +0200").expect("parse may not fail");
     // Let us add a "not before" proof to the genesis block
     let not_before_proof = b"nextnet has a blast, its prowess echoed in every gust \
         \
@@ -230,8 +228,7 @@ pub fn get_igor_genesis_block() -> ChainBlock {
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
             FixedHash::from_hex("5057ce1672184c5875bc707119a506fdb44bbc7b8eb33420aee642e1064ace3a").unwrap();
-        block.header.output_mr =
-            FixedHash::from_hex("162adb813d717bd7eea0b3ba447af30c00f5e4b7959e69658fc4f356fa7bbf9f").unwrap();
+        block.header.output_mr = FixedHash::zero();
         block.header.validator_node_mr =
             FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
     }
@@ -271,7 +268,7 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
     let mut block = get_esmeralda_genesis_block_raw();
 
     // Add faucet utxos - enable/disable as required
-    let add_faucet_utxos = false;
+    let add_faucet_utxos = true;
     if add_faucet_utxos {
         // NB! Update 'consensus_constants.rs/pub fn esmeralda()/ConsensusConstants {faucet_value: ?}' with total value
         // NB: `esmeralda_genesis_sanity_check` must pass
@@ -283,9 +280,9 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
 
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
-            FixedHash::from_hex("b3569982f737771e11008c97050640d12a94ce42231ac69fb955dbf66c9d19b8").unwrap();
+            FixedHash::from_hex("9166f00ee1d2b86ba15ec2f1e388a9527ef190b06af645ebed3ef81e397fd1b2").unwrap();
         block.header.output_mr =
-            FixedHash::from_hex("95f849715638f24c62f6673693efad50523da0841fb77b6b6e068b95c85fe890").unwrap();
+            FixedHash::from_hex("db15c3dfcd164190452fdfe2820b095bd8c0ef295f762441157a164328aba5c4").unwrap();
         block.header.validator_node_mr =
             FixedHash::from_hex("277da65c40b2cf99db86baedb903a3f0a38540f3a94d40c826eecac7e27d5dfc").unwrap();
     }
@@ -304,7 +301,7 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
 
 fn get_esmeralda_genesis_block_raw() -> Block {
     // Set genesis timestamp
-    let genesis_timestamp = DateTime::parse_from_rfc2822("07 Nov 2023 08:01:00 +0200").expect("parse may not fail");
+    let genesis_timestamp = DateTime::parse_from_rfc2822("01 Dec 2023 08:01:00 +0200").expect("parse may not fail");
     // Let us add a "not before" proof to the genesis block
     let not_before_proof =
         b"as I sip my drink, thoughts of esmeralda consume my mind, like a refreshing nourishing draught \
@@ -403,7 +400,7 @@ mod test {
         // Note: Generate new data for `pub fn get_esmeralda_genesis_block()` and `fn get_esmeralda_genesis_block_raw()`
         // if consensus values change, e.g. new faucet or other
         let block = get_esmeralda_genesis_block();
-        check_block(Network::Esmeralda, &block, 0, 0);
+        check_block(Network::Esmeralda, &block, 155, 1);
     }
 
     #[test]
@@ -475,7 +472,7 @@ mod test {
         assert_eq!(kernel_mmr.get_merkle_root().unwrap(), block.header().kernel_mr,);
         assert_eq!(
             FixedHash::try_from(output_smt.hash().as_slice()).unwrap(),
-            FixedHash::zero(),
+            block.header().output_mr,
         );
         assert_eq!(calculate_validator_node_mr(&vn_nodes), block.header().validator_node_mr,);
 
