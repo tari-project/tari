@@ -20,11 +20,11 @@ Want to contribute? Start by reading the [Contributing Guide](Contributing.md) a
 ### Versions
 The recommended running versions of each network are:
 
-| Network   | Version         |
-|-----------|-----------------|
-| Stagenet  | 0.50.0-hotfix.1 |
-| Nextnet   | 0.51.0-rc.1     |
-| Esmeralda | 0.53.0-pre.0    |
+| Network   | Version     |
+|-----------|-------------|
+| Stagenet  | 0.52.0      |
+| Nextnet   | ---         |
+| Esmeralda | 1.0.0-pre.0 |
 
 For more detail about versioning, see [Release Ideology](https://github.com/tari-project/tari/blob/development/docs/src/branching_releases.md).
 

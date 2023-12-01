@@ -1,6 +1,6 @@
 [package]
 name = "minotari_console_wallet"
-version = "0.53.0-pre.0"
+version = "1.0.0-pre.0"
 authors = ["The Tari Development Community"]
 edition = "2018"
 license = "BSD-3-Clause"
