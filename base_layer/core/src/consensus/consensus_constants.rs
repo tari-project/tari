@@ -389,7 +389,7 @@ impl ConsensusConstants {
             coinbase_output_features_extra_max_length: 64,
         }];
         #[cfg(any(test, debug_assertions))]
-        assert_hybrid_pow_constants(&consensus_constants, &[120], &[60], &[40], CheckDifficultyRatio::No);
+        assert_hybrid_pow_constants(&consensus_constants, &[120], &[60], &[40]);
         consensus_constants
     }
 
@@ -452,13 +452,7 @@ impl ConsensusConstants {
             coinbase_output_features_extra_max_length: 64,
         }];
         #[cfg(any(test, debug_assertions))]
-        assert_hybrid_pow_constants(
-            &consensus_constants,
-            &[target_time],
-            &[randomx_split],
-            &[sha3x_split],
-            CheckDifficultyRatio::No,
-        );
+        assert_hybrid_pow_constants(&consensus_constants, &[target_time], &[randomx_split], &[sha3x_split]);
         consensus_constants
     }
 
@@ -512,7 +506,7 @@ impl ConsensusConstants {
             coinbase_output_features_extra_max_length: 64,
         }];
         #[cfg(any(test, debug_assertions))]
-        assert_hybrid_pow_constants(&consensus_constants, &[120], &[60], &[40], CheckDifficultyRatio::Yes);
+        assert_hybrid_pow_constants(&consensus_constants, &[120], &[60], &[40]);
         consensus_constants
     }
 
@@ -525,12 +519,12 @@ impl ConsensusConstants {
     pub fn stagenet() -> Vec<Self> {
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
-            min_difficulty: Difficulty::from_u64(60_000_000).expect("valid difficulty"),
+            min_difficulty: Difficulty::from_u64(1_200_000_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
             target_time: 300,
         });
         algos.insert(PowAlgorithm::RandomX, PowAlgorithmConstants {
-            min_difficulty: Difficulty::from_u64(60_000).expect("valid difficulty"),
+            min_difficulty: Difficulty::from_u64(1_200_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
             target_time: 200,
         });
@@ -567,19 +561,19 @@ impl ConsensusConstants {
             coinbase_output_features_extra_max_length: 64,
         }];
         #[cfg(any(test, debug_assertions))]
-        assert_hybrid_pow_constants(&consensus_constants, &[120], &[60], &[40], CheckDifficultyRatio::Yes);
+        assert_hybrid_pow_constants(&consensus_constants, &[120], &[60], &[40]);
         consensus_constants
     }
 
     pub fn nextnet() -> Vec<Self> {
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
-            min_difficulty: Difficulty::from_u64(60_000_000).expect("valid difficulty"),
+            min_difficulty: Difficulty::from_u64(1_200_000_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
             target_time: 300,
         });
         algos.insert(PowAlgorithm::RandomX, PowAlgorithmConstants {
-            min_difficulty: Difficulty::from_u64(60_000).expect("valid difficulty"),
+            min_difficulty: Difficulty::from_u64(1_200_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
             target_time: 200,
         });
@@ -616,7 +610,7 @@ impl ConsensusConstants {
             coinbase_output_features_extra_max_length: 64,
         }];
         #[cfg(any(test, debug_assertions))]
-        assert_hybrid_pow_constants(&consensus_constants, &[120], &[60], &[40], CheckDifficultyRatio::Yes);
+        assert_hybrid_pow_constants(&consensus_constants, &[120], &[60], &[40]);
         consensus_constants
     }
 
@@ -625,12 +619,12 @@ impl ConsensusConstants {
         let difficulty_block_window = 90;
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
-            min_difficulty: Difficulty::from_u64(60_000_000).expect("valid difficulty"),
+            min_difficulty: Difficulty::from_u64(1_200_000_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
             target_time: 300,
         });
         algos.insert(PowAlgorithm::RandomX, PowAlgorithmConstants {
-            min_difficulty: Difficulty::from_u64(60_000).expect("valid difficulty"),
+            min_difficulty: Difficulty::from_u64(1_200_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
             target_time: 200,
         });
@@ -666,7 +660,7 @@ impl ConsensusConstants {
             coinbase_output_features_extra_max_length: 64,
         }];
         #[cfg(any(test, debug_assertions))]
-        assert_hybrid_pow_constants(&consensus_constants, &[120], &[60], &[40], CheckDifficultyRatio::Yes);
+        assert_hybrid_pow_constants(&consensus_constants, &[120], &[60], &[40]);
         consensus_constants
     }
 
@@ -700,13 +694,6 @@ impl ConsensusConstants {
     }
 }
 
-#[derive(PartialEq)]
-#[cfg(any(test, debug_assertions))]
-enum CheckDifficultyRatio {
-    Yes,
-    No,
-}
-
 // Assert the hybrid POW constants.
 // Note: The math and constants in this function should not be changed without ample consideration that should include
 //       discussion with the Tari community, modelling and system level tests.
@@ -714,14 +701,12 @@ enum CheckDifficultyRatio {
 //   > sha3x_target_time = randomx_target_time * (100 - 40) / 40
 //   > randomx_target_time = sha3x_target_time * (100 - 60) / 60
 //   > target_time = randomx_target_time * sha3x_target_time / (ramdomx_target_time + sha3x_target_time)
-// `CheckDifficultyRatio` is optional for internal testing (Network::LocalNet and Network::Igor).
 #[cfg(any(test, debug_assertions))]
 fn assert_hybrid_pow_constants(
     consensus_constants: &[ConsensusConstants],
     target_time: &[u64],
     randomx_split: &[u64], // RamdomX
     sha3x_split: &[u64],
-    check_difficulty_ratio: CheckDifficultyRatio,
 ) {
     assert_eq!(consensus_constants.len(), target_time.len());
     assert_eq!(consensus_constants.len(), randomx_split.len());
@@ -747,19 +732,6 @@ fn assert_hybrid_pow_constants(
             randomx_constants.min_difficulty <= randomx_constants.max_difficulty,
             "RandomX min_difficulty > max_difficulty"
         );
-        // - Starting difficulty (these should enable an average home use miner to mine a block in 2 minutes)
-        if check_difficulty_ratio == CheckDifficultyRatio::Yes {
-            assert_eq!(
-                sha3x_constants.min_difficulty.as_u64(),
-                sha3x_constants.target_time * 200_000,
-                "SHA3X min_difficulty is not 200,000x SHA3X target_time"
-            );
-            assert_eq!(
-                randomx_constants.min_difficulty.as_u64(),
-                randomx_constants.target_time * 300,
-                "RandomX min_difficulty is not 300x RandomX target_time"
-            );
-        }
         // - Target time (the ratios here are important to determine the SHA3/Monero split and overall block time)
         assert_eq!(randomx_split[i] + sha3x_split[i], 100, "Split must add up to 100");
         assert_eq!(
