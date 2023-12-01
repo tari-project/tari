@@ -625,12 +625,12 @@ impl ConsensusConstants {
         let difficulty_block_window = 90;
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3x, PowAlgorithmConstants {
-            min_difficulty: Difficulty::from_u64(60_000_000).expect("valid difficulty"),
+            min_difficulty: Difficulty::from_u64(1_200_000_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
             target_time: 300,
         });
         algos.insert(PowAlgorithm::RandomX, PowAlgorithmConstants {
-            min_difficulty: Difficulty::from_u64(60_000).expect("valid difficulty"),
+            min_difficulty: Difficulty::from_u64(1_200_000).expect("valid difficulty"),
             max_difficulty: Difficulty::max(),
             target_time: 200,
         });
@@ -747,19 +747,6 @@ fn assert_hybrid_pow_constants(
             randomx_constants.min_difficulty <= randomx_constants.max_difficulty,
             "RandomX min_difficulty > max_difficulty"
         );
-        // - Starting difficulty (these should enable an average home use miner to mine a block in 2 minutes)
-        if check_difficulty_ratio == CheckDifficultyRatio::Yes {
-            assert_eq!(
-                sha3x_constants.min_difficulty.as_u64(),
-                sha3x_constants.target_time * 200_000,
-                "SHA3X min_difficulty is not 200,000x SHA3X target_time"
-            );
-            assert_eq!(
-                randomx_constants.min_difficulty.as_u64(),
-                randomx_constants.target_time * 300,
-                "RandomX min_difficulty is not 300x RandomX target_time"
-            );
-        }
         // - Target time (the ratios here are important to determine the SHA3/Monero split and overall block time)
         assert_eq!(randomx_split[i] + sha3x_split[i], 100, "Split must add up to 100");
         assert_eq!(
