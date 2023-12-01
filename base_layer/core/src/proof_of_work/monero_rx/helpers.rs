@@ -494,7 +494,7 @@ mod test {
         insert_merge_mining_tag_and_aux_chain_merkle_root_into_block(&mut block, hash, 1, 0).unwrap();
 
         let coinbase = block.miner_tx.clone();
-        let extra = coinbase.prefix.extra.clone();
+        let extra = coinbase.prefix.extra;
         let mut keccak = Keccak::v256();
         let mut encoder_prefix = Vec::new();
         coinbase.prefix.version.consensus_encode(&mut encoder_prefix).unwrap();
@@ -567,7 +567,7 @@ mod test {
         let aux_chain_merkle_proof = create_merkle_proof(&aux_hashes, &aux_hashes[0]).unwrap();
 
         let coinbase = block.miner_tx.clone();
-        let extra = coinbase.prefix.extra.clone();
+        let extra = coinbase.prefix.extra;
         let mut keccak = Keccak::v256();
         let mut encoder_prefix = Vec::new();
         coinbase.prefix.version.consensus_encode(&mut encoder_prefix).unwrap();

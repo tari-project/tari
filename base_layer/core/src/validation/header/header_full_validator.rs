@@ -194,7 +194,7 @@ fn check_pow_data<B: BlockchainBackend>(
                     BlockHeaderValidationError::InvalidNonce,
                 ));
             }
-            let monero_data = MoneroPowData::from_header(block_header, &rules)?;
+            let monero_data = MoneroPowData::from_header(block_header, rules)?;
             let seed_height = db.fetch_monero_seed_first_seen_height(&monero_data.randomx_key)?;
             if seed_height != 0 {
                 // Saturating sub: subtraction can underflow in reorgs / rewind-blockchain command
