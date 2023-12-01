@@ -1023,8 +1023,9 @@ where B: BlockchainBackend
 
     fn insert_block(&self, block: Arc<ChainBlock>) -> Result<(), ChainStorageError> {
         let mut db = self.db_write_access()?;
+
         let mut txn = DbTransaction::new();
-        insert_best_block(&mut txn, block)?;
+        insert_best_block(&mut txn, block, &self.consensus_manager)?;
         db.write(txn)
     }
 
@@ -1182,6 +1183,7 @@ where B: BlockchainBackend
             &self.config,
             &*self.validators.block,
             self.consensus_manager.chain_strength_comparer(),
+            &self.consensus_manager,
         )?;
         Ok(())
     }
@@ -1467,7 +1469,11 @@ fn add_block<T: BlockchainBackend>(
 }
 
 /// Adds a new block onto the chain tip and sets it to the best block.
-fn insert_best_block(txn: &mut DbTransaction, block: Arc<ChainBlock>) -> Result<(), ChainStorageError> {
+fn insert_best_block(
+    txn: &mut DbTransaction,
+    block: Arc<ChainBlock>,
+    consensus: &ConsensusManager,
+) -> Result<(), ChainStorageError> {
     let block_hash = block.accumulated_data().hash;
     debug!(
         target: LOG_TARGET,
@@ -1477,7 +1483,7 @@ fn insert_best_block(txn: &mut DbTransaction, block: Arc<ChainBlock>) -> Result<
     );
     if block.header().pow_algo() == PowAlgorithm::RandomX {
         let monero_header =
-            MoneroPowData::from_header(block.header()).map_err(|e| ChainStorageError::InvalidArguments {
+            MoneroPowData::from_header(block.header(), consensus).map_err(|e| ChainStorageError::InvalidArguments {
                 func: "insert_best_block",
                 arg: "block",
                 message: format!("block contained invalid or malformed monero PoW data: {}", e),
@@ -1822,7 +1828,7 @@ fn handle_possible_reorg<T: BlockchainBackend>(
     let hash = candidate_block.header.hash();
     insert_orphan_and_find_new_tips(db, candidate_block, header_validator, consensus_manager)?;
     let after_orphans = timer.elapsed();
-    let res = swap_to_highest_pow_chain(db, config, block_validator, chain_strength_comparer);
+    let res = swap_to_highest_pow_chain(db, config, block_validator, chain_strength_comparer, consensus_manager);
     trace!(
         target: LOG_TARGET,
         "[handle_possible_reorg] block #{}, insert_orphans in {:.2?}, swap_to_highest in {:.2?} '{}'",
@@ -1841,6 +1847,7 @@ fn reorganize_chain<T: BlockchainBackend>(
     block_validator: &dyn CandidateBlockValidator<T>,
     fork_hash: HashOutput,
     chain: &VecDeque<Arc<ChainBlock>>,
+    consensus: &ConsensusManager,
 ) -> Result<Vec<Arc<ChainBlock>>, ChainStorageError> {
     let removed_blocks = rewind_to_hash(backend, fork_hash)?;
     debug!(
@@ -1872,11 +1879,11 @@ fn reorganize_chain<T: BlockchainBackend>(
             remove_orphan(backend, block_hash)?;
 
             info!(target: LOG_TARGET, "Restoring previous chain after failed reorg.");
-            restore_reorged_chain(backend, fork_hash, removed_blocks)?;
+            restore_reorged_chain(backend, fork_hash, removed_blocks, consensus)?;
             return Err(e.into());
         }
 
-        insert_best_block(&mut txn, block.clone())?;
+        insert_best_block(&mut txn, block.clone(), consensus)?;
         // Failed to store the block - this should typically never happen unless there is a bug in the validator
         // (e.g. does not catch a double spend). In any case, we still need to restore the chain to a
         // good state before returning.
@@ -1886,7 +1893,7 @@ fn reorganize_chain<T: BlockchainBackend>(
                 "Failed to commit reorg chain: {:?}. Restoring last chain.", e
             );
 
-            restore_reorged_chain(backend, fork_hash, removed_blocks)?;
+            restore_reorged_chain(backend, fork_hash, removed_blocks, consensus)?;
             return Err(e);
         }
     }
@@ -1899,6 +1906,7 @@ fn swap_to_highest_pow_chain<T: BlockchainBackend>(
     config: &BlockchainDatabaseConfig,
     block_validator: &dyn CandidateBlockValidator<T>,
     chain_strength_comparer: &dyn ChainStrengthComparer,
+    consensus: &ConsensusManager,
 ) -> Result<BlockAddResult, ChainStorageError> {
     let metadata = db.fetch_chain_metadata()?;
     // lets clear out all remaining headers that dont have a matching block
@@ -1955,7 +1963,7 @@ fn swap_to_highest_pow_chain<T: BlockchainBackend>(
         .prev_hash;
 
     let num_added_blocks = reorg_chain.len();
-    let removed_blocks = reorganize_chain(db, block_validator, fork_hash, &reorg_chain)?;
+    let removed_blocks = reorganize_chain(db, block_validator, fork_hash, &reorg_chain, consensus)?;
     let num_removed_blocks = removed_blocks.len();
 
     // reorg is required when any blocks are removed or more than one are added
@@ -2007,6 +2015,7 @@ fn restore_reorged_chain<T: BlockchainBackend>(
     db: &mut T,
     to_hash: HashOutput,
     previous_chain: Vec<Arc<ChainBlock>>,
+    consensus: &ConsensusManager,
 ) -> Result<(), ChainStorageError> {
     let invalid_chain = rewind_to_hash(db, to_hash)?;
     debug!(
@@ -2022,7 +2031,7 @@ fn restore_reorged_chain<T: BlockchainBackend>(
 
     for block in previous_chain.into_iter().rev() {
         txn.delete_orphan(block.accumulated_data().hash);
-        insert_best_block(&mut txn, block)?;
+        insert_best_block(&mut txn, block, consensus)?;
     }
     db.write(txn)?;
     Ok(())

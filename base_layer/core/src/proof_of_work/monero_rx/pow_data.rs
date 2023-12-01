@@ -29,13 +29,20 @@ use std::{
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use monero::{
+    blockdata::transaction::RawExtraField,
     consensus::{Decodable, Encodable},
     cryptonote::hash::Hashable,
+    util::ringct::{RctSigBase, RctType},
 };
 use tari_utilities::hex::{to_hex, Hex};
+use tiny_keccak::{Hasher, Keccak};
 
 use super::{error::MergeMineError, fixed_array::FixedByteArray, merkle_tree::MerkleProof};
-use crate::{blocks::BlockHeader, proof_of_work::monero_rx::helpers::create_block_hashing_blob};
+use crate::{
+    blocks::BlockHeader,
+    consensus::ConsensusManager,
+    proof_of_work::monero_rx::helpers::create_block_hashing_blob,
+};
 
 /// This is a struct to deserialize the data from he pow field into data required for the randomX Monero merged mine
 /// pow.
@@ -52,8 +59,10 @@ pub struct MoneroPowData {
     pub merkle_root: monero::Hash,
     /// Coinbase merkle proof hashes
     pub coinbase_merkle_proof: MerkleProof,
-    /// Coinbase tx from Monero
-    pub coinbase_tx: monero::Transaction,
+    /// incomplete hashed state of the coinbase transaction
+    pub coinbase_tx_hasher: Keccak,
+    /// extra field of the coinbase
+    pub coinbase_tx_extra: RawExtraField,
     /// aux chain merkle proof hashes
     pub aux_chain_merkle_proof: MerkleProof,
 }
@@ -65,7 +74,8 @@ impl BorshSerialize for MoneroPowData {
         BorshSerialize::serialize(&self.transaction_count, writer)?;
         self.merkle_root.consensus_encode(writer)?;
         BorshSerialize::serialize(&self.coinbase_merkle_proof, writer)?;
-        self.coinbase_tx.consensus_encode(writer)?;
+        BorshSerialize::serialize(&self.coinbase_tx_hasher, writer)?;
+        BorshSerialize::serialize(&self.coinbase_tx_extra.0, writer)?;
         BorshSerialize::serialize(&self.aux_chain_merkle_proof, writer)?;
         Ok(())
     }
@@ -81,8 +91,8 @@ impl BorshDeserialize for MoneroPowData {
         let merkle_root = monero::Hash::consensus_decode(reader)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
         let coinbase_merkle_proof = BorshDeserialize::deserialize_reader(reader)?;
-        let coinbase_tx = monero::Transaction::consensus_decode(reader)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+        let coinbase_tx_hasher = BorshDeserialize::deserialize_reader(reader)?;
+        let coinbase_tx_extra = RawExtraField(BorshDeserialize::deserialize_reader(reader)?);
         let aux_chain_merkle_proof = BorshDeserialize::deserialize_reader(reader)?;
         Ok(Self {
             header,
@@ -90,7 +100,8 @@ impl BorshDeserialize for MoneroPowData {
             transaction_count,
             merkle_root,
             coinbase_merkle_proof,
-            coinbase_tx,
+            coinbase_tx_hasher,
+            coinbase_tx_extra,
             aux_chain_merkle_proof,
         })
     }
@@ -98,10 +109,21 @@ impl BorshDeserialize for MoneroPowData {
 
 impl MoneroPowData {
     /// Create a new MoneroPowData struct from the given header
-    pub fn from_header(tari_header: &BlockHeader) -> Result<MoneroPowData, MergeMineError> {
+    pub fn from_header(
+        tari_header: &BlockHeader,
+        consensus: &ConsensusManager,
+    ) -> Result<MoneroPowData, MergeMineError> {
         let mut v = tari_header.pow.pow_data.as_slice();
-        let pow_data =
+        let pow_data: MoneroPowData =
             BorshDeserialize::deserialize(&mut v).map_err(|e| MergeMineError::DeserializeError(format!("{:?}", e)))?;
+        if pow_data.coinbase_tx_extra.0.len() > consensus.consensus_constants(tari_header.height).max_extra_field_size()
+        {
+            return Err(MergeMineError::DeserializeError(format!(
+                "Extra size({}) is larger than allowed {} bytes",
+                pow_data.coinbase_tx_extra.0.len(),
+                consensus.consensus_constants(tari_header.height).max_extra_field_size()
+            )));
+        }
         if !v.is_empty() {
             return Err(MergeMineError::DeserializeError(format!(
                 "{} bytes leftover after deserialize",
@@ -128,7 +150,29 @@ impl MoneroPowData {
 
     /// Returns true if the coinbase merkle proof produces the `merkle_root` hash, otherwise false
     pub fn is_coinbase_valid_merkle_root(&self) -> bool {
-        let coinbase_hash = self.coinbase_tx.hash();
+        let mut finalised_prefix_keccak = self.coinbase_tx_hasher.clone();
+        let mut encoder_extra_field = Vec::new();
+        self.coinbase_tx_extra
+            .consensus_encode(&mut encoder_extra_field)
+            .unwrap();
+        finalised_prefix_keccak.update(&encoder_extra_field);
+        let mut prefix_hash: [u8; 32] = [0; 32];
+        finalised_prefix_keccak.finalize(&mut prefix_hash);
+
+        let final_prefix_hash = monero::Hash::from_slice(&prefix_hash);
+
+        // let mut finalised_keccak = Keccak::v256();
+        let rct_sig_base = RctSigBase {
+            rct_type: RctType::Null,
+            txn_fee: Default::default(),
+            pseudo_outs: vec![],
+            ecdh_info: vec![],
+            out_pk: vec![],
+        };
+        let hashes = vec![final_prefix_hash, rct_sig_base.hash(), monero::Hash::null()];
+        let encoder_final: Vec<u8> = hashes.into_iter().flat_map(|h| Vec::from(&h.to_bytes()[..])).collect();
+        let coinbase_hash = monero::Hash::new(encoder_final);
+
         let merkle_root = self.coinbase_merkle_proof.calculate_root(&coinbase_hash);
         (self.merkle_root == merkle_root) && self.coinbase_merkle_proof.check_coinbase_path()
     }
@@ -149,22 +193,36 @@ impl Display for MoneroPowData {
         writeln!(fmt, "MoneroBlockHeader: {} ", self.header)?;
         writeln!(fmt, "RandomX vm key: {}", self.randomx_key.to_hex())?;
         writeln!(fmt, "Monero tx count: {}", self.transaction_count)?;
-        writeln!(fmt, "Monero tx root: {}", to_hex(self.merkle_root.as_bytes()))?;
-        writeln!(fmt, "Monero coinbase tx: {}", self.coinbase_tx)
+        writeln!(fmt, "Monero tx root: {}", to_hex(self.merkle_root.as_bytes()))
     }
 }
 
 #[cfg(test)]
 mod test {
     use borsh::{BorshDeserialize, BorshSerialize};
-    use monero::{BlockHeader, Hash, Transaction, VarInt};
+    use monero::{consensus::Encodable, BlockHeader, Hash, VarInt};
     use tari_utilities::ByteArray;
+    use tiny_keccak::{Hasher, Keccak};
 
     use super::MoneroPowData;
     use crate::proof_of_work::monero_rx::{merkle_tree::MerkleProof, FixedByteArray};
 
     #[test]
     fn test_borsh_de_serialization() {
+        let coinbase: monero::Transaction = Default::default();
+        let extra = coinbase.prefix.extra.clone();
+        let mut keccak = Keccak::v256();
+        let mut encoder_prefix = Vec::new();
+        coinbase.prefix.version.consensus_encode(&mut encoder_prefix).unwrap();
+        coinbase
+            .prefix
+            .unlock_time
+            .consensus_encode(&mut encoder_prefix)
+            .unwrap();
+        coinbase.prefix.inputs.consensus_encode(&mut encoder_prefix).unwrap();
+        coinbase.prefix.outputs.consensus_encode(&mut encoder_prefix).unwrap();
+        keccak.update(&encoder_prefix);
+
         let monero_pow_data = MoneroPowData {
             header: BlockHeader {
                 major_version: VarInt(1),
@@ -177,7 +235,8 @@ mod test {
             transaction_count: 9,
             merkle_root: Hash::new([10; 32]),
             coinbase_merkle_proof: MerkleProof::default(),
-            coinbase_tx: Transaction::default(),
+            coinbase_tx_extra: extra,
+            coinbase_tx_hasher: keccak,
             aux_chain_merkle_proof: MerkleProof::default(),
         };
         let mut buf = Vec::new();

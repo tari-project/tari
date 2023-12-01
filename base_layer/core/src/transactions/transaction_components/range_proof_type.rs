@@ -36,6 +36,7 @@ use serde::{Deserialize, Serialize};
 )]
 #[repr(u8)]
 #[serde(rename_all = "snake_case")]
+#[borsh(use_discriminant = true)]
 pub enum RangeProofType {
     /// Range proof is a BulletProofPlus
     BulletProofPlus = 0,

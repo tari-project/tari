@@ -392,7 +392,7 @@ mod tests {
             let mut error = -1;
             let error_ptr = &mut error as *mut c_int;
             let block = create_test_block();
-            let header_bytes = block.header.try_to_vec().unwrap();
+            let header_bytes = borsh::to_vec(&block.header).unwrap();
             #[allow(clippy::cast_possible_truncation)]
             let len = header_bytes.len() as u32;
             let byte_vec = byte_vector_create(header_bytes.as_ptr(), len, error_ptr);
@@ -421,7 +421,7 @@ mod tests {
             let mut error = -1;
             let error_ptr = &mut error as *mut c_int;
             let block = create_test_block();
-            let header_bytes = block.header.try_to_vec().unwrap();
+            let header_bytes = borsh::to_vec(&block.header).unwrap();
             let len = u32::try_from(header_bytes.len()).unwrap();
             let byte_vec = byte_vector_create(header_bytes.as_ptr(), len, error_ptr);
             inject_nonce(byte_vec, nonce, error_ptr);
@@ -438,7 +438,7 @@ mod tests {
             let mut error = -1;
             let error_ptr = &mut error as *mut c_int;
             let block = create_test_block();
-            let header_bytes = block.header.try_to_vec().unwrap();
+            let header_bytes = borsh::to_vec(&block.header).unwrap();
             #[allow(clippy::cast_possible_truncation)]
             let len = header_bytes.len() as u32;
             let byte_vec = byte_vector_create(header_bytes.as_ptr(), len, error_ptr);
@@ -461,7 +461,7 @@ mod tests {
             let hash_hex_broken_ptr: *const c_char = CString::into_raw(hash_hex_broken) as *const c_char;
             let mut template_difficulty = 30000;
             let mut share_difficulty = 24000;
-            let header_bytes = block.header.try_to_vec().unwrap();
+            let header_bytes = borsh::to_vec(&block.header).unwrap();
             #[allow(clippy::cast_possible_truncation)]
             let len = header_bytes.len() as u32;
             let byte_vec = byte_vector_create(header_bytes.as_ptr(), len, error_ptr);

@@ -46,6 +46,7 @@ use crate::{
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
 #[repr(u8)]
+#[borsh(use_discriminant = true)]
 /// Output field
 pub enum OutputField {
     Commitment = byte_codes::FIELD_COMMITMENT,
@@ -605,10 +606,10 @@ mod test {
                 let mut hasher = Blake2b::<U32>::default();
                 BaseLayerCovenantsDomain::add_domain_separation_tag(&mut hasher, COVENANTS_FIELD_HASHER_LABEL);
                 let expected_hash = hasher
-                    .chain(output.features.try_to_vec().unwrap())
-                    .chain(output.commitment.try_to_vec().unwrap())
-                    .chain(output.script.try_to_vec().unwrap())
-                    .chain(output.minimum_value_promise.try_to_vec().unwrap())
+                    .chain(borsh::to_vec(&output.features).unwrap())
+                    .chain(borsh::to_vec(&output.commitment).unwrap())
+                    .chain(borsh::to_vec(&output.script).unwrap())
+                    .chain(borsh::to_vec(&output.minimum_value_promise).unwrap())
                     .finalize()
                     .to_vec();
                 assert_eq!(hash, expected_hash);

@@ -283,7 +283,7 @@ impl InnerService {
             let start = Instant::now();
             let achieved_target = if self.config.check_tari_difficulty_before_submit {
                 trace!(target: LOG_TARGET, "Starting calculate achieved Tari difficultly");
-                let diff = randomx_difficulty(&tari_header, &self.randomx_factory, &gen_hash)?;
+                let diff = randomx_difficulty(&tari_header, &self.randomx_factory, &gen_hash, &self.consensus_manager)?;
                 trace!(
                     target: LOG_TARGET,
                     "Finished calculate achieved Tari difficultly - achieved {} vs. target {}",

@@ -31,7 +31,7 @@ use crate::{
     blocks::{BlockHeader, BlockHeaderValidationError, BlockValidationError},
     borsh::SerializedSize,
     chain_storage::{BlockchainBackend, MmrRoots, MmrTree},
-    consensus::ConsensusConstants,
+    consensus::{ConsensusConstants, ConsensusManager},
     covenants::Covenant,
     proof_of_work::{
         randomx_difficulty,
@@ -121,9 +121,10 @@ pub fn check_target_difficulty(
     target: Difficulty,
     randomx_factory: &RandomXFactory,
     gen_hash: &FixedHash,
+    consensus: &ConsensusManager,
 ) -> Result<AchievedTargetDifficulty, ValidationError> {
     let achieved = match block_header.pow_algo() {
-        PowAlgorithm::RandomX => randomx_difficulty(block_header, randomx_factory, gen_hash)?,
+        PowAlgorithm::RandomX => randomx_difficulty(block_header, randomx_factory, gen_hash, consensus)?,
         PowAlgorithm::Sha3x => sha3x_difficulty(block_header)?,
     };
 
