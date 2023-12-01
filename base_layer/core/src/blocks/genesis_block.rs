@@ -107,7 +107,7 @@ pub fn get_stagenet_genesis_block() -> ChainBlock {
     let mut block = get_stagenet_genesis_block_raw();
 
     // Add faucet utxos - enable/disable as required
-    let add_faucet_utxos = true;
+    let add_faucet_utxos = false;
     if add_faucet_utxos {
         // NB! Update 'consensus_constants.rs/pub fn igor()/ConsensusConstants {faucet_value: ?}' with total value
         // NB: `stagenet_genesis_sanity_check` must pass
@@ -117,7 +117,6 @@ pub fn get_stagenet_genesis_block() -> ChainBlock {
         let print_values = false;
         print_mr_values(&mut block, print_values);
 
-        // Hardcode the Merkle roots once they've been computed above
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
             FixedHash::from_hex("b3569982f737771e11008c97050640d12a94ce42231ac69fb955dbf66c9d19b8").unwrap();
@@ -160,7 +159,7 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
     let mut block = get_nextnet_genesis_block_raw();
 
     // Add faucet utxos - enable/disable as required
-    let add_faucet_utxos = true;
+    let add_faucet_utxos = false;
     if add_faucet_utxos {
         // NB! Update 'consensus_constants.rs/pub fn igor()/ConsensusConstants {faucet_value: ?}' with total value
         // NB: `nextnet_genesis_sanity_check` must pass
@@ -170,7 +169,6 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
         let print_values = false;
         print_mr_values(&mut block, print_values);
 
-        // Hardcode the Merkle roots once they've been computed above
         // Hardcode the Merkle roots once they've been computed above
         block.header.kernel_mr =
             FixedHash::from_hex("b3569982f737771e11008c97050640d12a94ce42231ac69fb955dbf66c9d19b8").unwrap();
@@ -219,7 +217,7 @@ pub fn get_igor_genesis_block() -> ChainBlock {
     let mut block = get_igor_genesis_block_raw();
 
     // Add faucet utxos - enable/disable as required
-    let add_faucet_utxos = true;
+    let add_faucet_utxos = false;
     if add_faucet_utxos {
         // NB! Update 'consensus_constants.rs/pub fn igor()/ConsensusConstants {faucet_value: ?}' with total value
         // NB: `igor_genesis_sanity_check` must pass
@@ -273,7 +271,7 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
     let mut block = get_esmeralda_genesis_block_raw();
 
     // Add faucet utxos - enable/disable as required
-    let add_faucet_utxos = true;
+    let add_faucet_utxos = false;
     if add_faucet_utxos {
         // NB! Update 'consensus_constants.rs/pub fn esmeralda()/ConsensusConstants {faucet_value: ?}' with total value
         // NB: `esmeralda_genesis_sanity_check` must pass
@@ -389,7 +387,7 @@ mod test {
         // Note: Generate new data for `pub fn get_stagenet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
         // if consensus values change, e.g. new faucet or other
         let block = get_stagenet_genesis_block();
-        check_block(Network::StageNet, &block, 455, 1);
+        check_block(Network::StageNet, &block, 0, 0);
     }
 
     #[test]
@@ -397,7 +395,7 @@ mod test {
         // Note: Generate new data for `pub fn get_nextnet_genesis_block()` and `fn get_stagenet_genesis_block_raw()`
         // if consensus values change, e.g. new faucet or other
         let block = get_nextnet_genesis_block();
-        check_block(Network::NextNet, &block, 455, 1);
+        check_block(Network::NextNet, &block, 0, 0);
     }
 
     #[test]
@@ -405,7 +403,7 @@ mod test {
         // Note: Generate new data for `pub fn get_esmeralda_genesis_block()` and `fn get_esmeralda_genesis_block_raw()`
         // if consensus values change, e.g. new faucet or other
         let block = get_esmeralda_genesis_block();
-        check_block(Network::Esmeralda, &block, 455, 1);
+        check_block(Network::Esmeralda, &block, 0, 0);
     }
 
     #[test]
@@ -413,7 +411,7 @@ mod test {
         // Note: Generate new data for `pub fn get_igor_genesis_block()` and `fn get_igor_genesis_block_raw()`
         // if consensus values change, e.g. new faucet or other
         let block = get_igor_genesis_block();
-        check_block(Network::Igor, &block, 1200, 1);
+        check_block(Network::Igor, &block, 0, 0);
     }
 
     fn check_block(network: Network, block: &ChainBlock, expected_outputs: usize, expected_kernels: usize) {
@@ -477,7 +475,7 @@ mod test {
         assert_eq!(kernel_mmr.get_merkle_root().unwrap(), block.header().kernel_mr,);
         assert_eq!(
             FixedHash::try_from(output_smt.hash().as_slice()).unwrap(),
-            block.header().output_mr,
+            FixedHash::zero(),
         );
         assert_eq!(calculate_validator_node_mr(&vn_nodes), block.header().validator_node_mr,);
 

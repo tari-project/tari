@@ -434,7 +434,7 @@ impl ConsensusConstants {
             emission_tail: 100.into(),
             max_randomx_seed_height: u64::MAX,
             proof_of_work: algos,
-            faucet_value: 1_195_651_566_094_148.into(),
+            faucet_value: 0.into(), // 1_195_651_566_094_148.into(),
             transaction_weight: TransactionWeight::v1(),
             max_script_byte_size: 2048,
             input_version_range,
@@ -495,7 +495,7 @@ impl ConsensusConstants {
             emission_tail: 800 * T,
             max_randomx_seed_height: 3000,
             proof_of_work: algos,
-            faucet_value: ESMERALDA_FAUCET_VALUE.into(),
+            faucet_value: 0.into(), // ESMERALDA_FAUCET_VALUE.into(),
             transaction_weight: TransactionWeight::v1(),
             max_script_byte_size: 2048,
             input_version_range,
@@ -549,7 +549,8 @@ impl ConsensusConstants {
             emission_tail: 800 * T,
             max_randomx_seed_height: 3000,
             proof_of_work: algos,
-            faucet_value: ESMERALDA_FAUCET_VALUE.into(), // The esmeralda genesis block is re-used for stagenet
+            faucet_value: 0.into(), /* ESMERALDA_FAUCET_VALUE.into(), // The esmeralda genesis block is re-used for
+                                     * stagenet */
             transaction_weight: TransactionWeight::v1(),
             max_script_byte_size: 2048,
             input_version_range,
@@ -597,7 +598,8 @@ impl ConsensusConstants {
             emission_tail: 800 * T,
             max_randomx_seed_height: 3000,
             proof_of_work: algos,
-            faucet_value: ESMERALDA_FAUCET_VALUE.into(), // The esmeralda genesis block is re-used for stagenet
+            faucet_value: 0.into(), /* ESMERALDA_FAUCET_VALUE.into(), // The esmeralda genesis block is re-used for
+                                     * stagenet */
             transaction_weight: TransactionWeight::v1(),
             max_script_byte_size: 2048,
             input_version_range,

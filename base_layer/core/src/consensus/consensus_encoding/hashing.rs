@@ -28,6 +28,7 @@ use digest::{
     consts::{U32, U64},
     Digest,
 };
+use tari_common::configuration::CURRENT_NETWORK;
 use tari_crypto::{hash_domain, hashing::DomainSeparation};
 
 /// Domain separated consensus encoding hasher.
@@ -41,8 +42,9 @@ where D: Default
 {
     #[allow(clippy::new_ret_no_self)]
     pub fn new(label: &'static str) -> ConsensusHasher<D> {
+        let network = *CURRENT_NETWORK.lock().unwrap();
         let mut digest = D::default();
-        M::add_domain_separation_tag(&mut digest, label);
+        M::add_domain_separation_tag(&mut digest, &format!("{}.n{}", label, network.as_byte()));
         ConsensusHasher::from_digest(digest)
     }
 }
@@ -147,8 +149,10 @@ mod tests {
 
     #[test]
     fn it_hashes_using_the_domain_hasher() {
+        let network = *CURRENT_NETWORK.lock().unwrap();
+        // Script is chosen because the consensus encoding impl for TariScript has 2 writes
         let mut hasher = Blake2b::<U32>::default();
-        TestHashDomain::add_domain_separation_tag(&mut hasher, "foo");
+        TestHashDomain::add_domain_separation_tag(&mut hasher, &format!("{}.n{}", "foo", network.as_byte()));
 
         let expected_hash = hasher.chain_update(b"\xff\x00\x00\x00\x00\x00\x00\x00").finalize();
         let hash = DomainSeparatedConsensusHasher::<TestHashDomain, Blake2b<U32>>::new("foo")
@@ -160,10 +164,11 @@ mod tests {
 
     #[test]
     fn it_adds_to_hash_challenge_in_complete_chunks() {
+        let network = *CURRENT_NETWORK.lock().unwrap();
         // Script is chosen because the consensus encoding impl for TariScript has 2 writes
         let test_subject = script!(Nop);
         let mut hasher = Blake2b::<U32>::default();
-        TestHashDomain::add_domain_separation_tag(&mut hasher, "foo");
+        TestHashDomain::add_domain_separation_tag(&mut hasher, &format!("{}.n{}", "foo", network.as_byte()));
 
         let expected_hash = hasher.chain_update(b"\x01\x73").finalize();
         let hash = DomainSeparatedConsensusHasher::<TestHashDomain, Blake2b<U32>>::new("foo")

@@ -41,7 +41,7 @@ pub mod bootstrap;
 pub mod error;
 pub mod loader;
 mod network;
-pub use network::Network;
+pub use network::{Network, CURRENT_NETWORK};
 mod common_config;
 mod multiaddr_list;
 pub mod name_server;
