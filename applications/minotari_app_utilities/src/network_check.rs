@@ -79,3 +79,28 @@ pub fn set_network_if_choice_valid(network: Network) -> Result<(), NetworkCheckE
         Err(e) => Err(e),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn set_network() {
+        assert_eq!(*CURRENT_NETWORK.lock().unwrap(), Network::Esmeralda);
+
+        // Invalid networks
+        for network in [Network::MainNet, Network::StageNet, Network::NextNet] {
+            assert!(set_network_if_choice_valid(network).is_err());
+            assert_eq!(*CURRENT_NETWORK.lock().unwrap(), Network::Esmeralda);
+        }
+
+        // Valid networks (we can't test against other binary configurations)
+        for network in [Network::LocalNet, Network::Igor, Network::Esmeralda] {
+            assert!(set_network_if_choice_valid(network).is_ok());
+            assert_eq!(*CURRENT_NETWORK.lock().unwrap(), network);
+        }
+
+        // Ensure we've restored the network for other tests
+        assert_eq!(*CURRENT_NETWORK.lock().unwrap(), Network::Esmeralda);
+    }
+}

@@ -140,12 +140,39 @@ impl<D: Digest> Write for WriteHashWrapper<D> {
 mod tests {
     use blake2::Blake2b;
     use digest::consts::U32;
+    use tari_common::configuration::Network;
     use tari_crypto::hash_domain;
     use tari_script::script;
 
     use super::*;
 
     hash_domain!(TestHashDomain, "com.tari.test.test_hash", 0);
+
+    #[test]
+    fn network_yields_distinct_hash() {
+        let label = "test";
+        let input = [1u8; 32];
+
+        assert_eq!(*CURRENT_NETWORK.lock().unwrap(), Network::Esmeralda);
+
+        // Generate a mainnet hash
+        *CURRENT_NETWORK.lock().unwrap() = Network::MainNet;
+        let hash_mainnet = DomainSeparatedConsensusHasher::<TestHashDomain, Blake2b<U32>>::new(label)
+            .chain(&input)
+            .finalize();
+
+        // Generate a stagenet hash
+        *CURRENT_NETWORK.lock().unwrap() = Network::StageNet;
+        let hash_stagenet = DomainSeparatedConsensusHasher::<TestHashDomain, Blake2b<U32>>::new(label)
+            .chain(&input)
+            .finalize();
+
+        // They should be distinct
+        assert_ne!(hash_mainnet, hash_stagenet);
+
+        // Restore the network for other tests
+        *CURRENT_NETWORK.lock().unwrap() = Network::Esmeralda;
+    }
 
     #[test]
     fn it_hashes_using_the_domain_hasher() {
