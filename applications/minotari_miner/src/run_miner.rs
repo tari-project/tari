@@ -29,15 +29,21 @@ use minotari_app_grpc::{
     tari_rpc::{base_node_client::BaseNodeClient, TransactionOutput as GrpcTransactionOutput},
     tls::protocol_string,
 };
-use minotari_app_utilities::network_check::set_network_if_choice_valid;
+use minotari_app_utilities::{
+    network_check::set_network_if_choice_valid,
+    parse_miner_input::{
+        base_node_socket_address,
+        verify_base_node_grpc_mining_responses,
+        wallet_payment_address,
+        BaseNodeGrpcClient,
+    },
+};
 use tari_common::{
-    configuration::bootstrap::{grpc_default_port, ApplicationType},
     exit_codes::{ExitCode, ExitError},
     load_configuration,
     DefaultConfigLoader,
 };
 use tari_common_types::tari_address::TariAddress;
-use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;
 use tari_core::{
     blocks::BlockHeader,
     consensus::ConsensusManager,
@@ -50,10 +56,7 @@ use tari_core::{
 use tari_crypto::ristretto::RistrettoPublicKey;
 use tari_utilities::hex::Hex;
 use tokio::time::sleep;
-use tonic::{
-    codegen::InterceptedService,
-    transport::{Certificate, Channel, ClientTlsConfig, Endpoint},
-};
+use tonic::transport::{Certificate, ClientTlsConfig, Endpoint};
 
 use crate::{
     cli::Cli,
@@ -66,8 +69,6 @@ use crate::{
 pub const LOG_TARGET: &str = "minotari::miner::main";
 pub const LOG_TARGET_FILE: &str = "minotari::logging::miner::main";
 
-type BaseNodeGrpcClient = BaseNodeClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>;
-
 #[allow(clippy::too_many_lines)]
 pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
     let config_path = cli.common.config_path();
@@ -78,27 +79,16 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
     set_network_if_choice_valid(config.network)?;
 
     debug!(target: LOG_TARGET_FILE, "{:?}", config);
-    setup_grpc_config(&mut config);
+    // setup_grpc_config(&mut config);
     let key_manager = create_memory_db_key_manager();
-    let wallet_payment_address = TariAddress::from_str(&config.wallet_payment_address).map_err(|err| {
-        ExitError::new(
-            ExitCode::WalletPaymentAddress,
-            "'wallet_payment_address' ".to_owned() + &err.to_string(),
-        )
-    })?;
+    let wallet_payment_address = wallet_payment_address(config.wallet_payment_address.clone(), config.network)
+        .map_err(|err| {
+            ExitError::new(
+                ExitCode::WalletPaymentAddress,
+                "'wallet_payment_address' ".to_owned() + &err.to_string(),
+            )
+        })?;
     debug!(target: LOG_TARGET_FILE, "wallet_payment_address: {}", wallet_payment_address);
-    if wallet_payment_address == TariAddress::default() {
-        return Err(ExitError::new(
-            ExitCode::WalletPaymentAddress,
-            "'wallet_payment_address' may not have the default value".to_string(),
-        ));
-    }
-    if wallet_payment_address.network() != config.network {
-        return Err(ExitError::new(
-            ExitCode::WalletPaymentAddress,
-            "'wallet_payment_address' network does not match miner network".to_string(),
-        ));
-    }
     let consensus_manager = ConsensusManager::builder(config.network)
         .build()
         .map_err(|err| ExitError::new(ExitCode::ConsensusManagerBuilderError, err.to_string()))?;
@@ -144,9 +134,23 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
         let mut node_conn = connect(&config).await.map_err(|e| {
             ExitError::new(
                 ExitCode::GrpcError,
-                format!("Could not connect to wallet or base node: {}", e),
+                format!("Could not connect to base node: {}", e.to_string()),
             )
         })?;
+        if let Err(e) = verify_base_node_responses(&mut node_conn, &config).await {
+            if let MinerError::BaseNodeNotResponding(_) = e {
+                println!();
+                println!("{}", e.to_string());
+                error!(target: LOG_TARGET, "{}", e.to_string());
+                let msg = "Are the base node's gRPC mining methods denied in its 'config.toml'? Please ensure these \
+                           methods are commented out:\n  'grpc_server_deny_methods': \"get_new_block_template\", \
+                           \"get_tip_info\", \"get_new_block\", \"submit_block\"";
+                println!("{}", msg);
+                error!(target: LOG_TARGET, "{}", msg);
+                println!();
+                return Err(ExitError::new(ExitCode::GrpcError, e.to_string()));
+            }
+        }
 
         let mut blocks_found: u64 = 0;
         loop {
@@ -216,11 +220,13 @@ async fn connect(config: &MinerConfig) -> Result<BaseNodeGrpcClient, MinerError>
     let node_conn = match connect_base_node(config).await {
         Ok(client) => client,
         Err(e) => {
-            error!(target: LOG_TARGET, "Could not connect to base node");
-            error!(
-                target: LOG_TARGET,
-                "Is its grpc running? try running it with `--enable-grpc` or enable it in config"
-            );
+            let msg = format!("Fatal: Could not connect to base node ({})", e);
+            println!("{}", msg);
+            error!(target: LOG_TARGET, "{}", msg);
+            let msg =
+                "Is the base node's gRPC running? Try running it with `--enable-grpc` or enable it in the config.";
+            println!("{}", msg);
+            error!(target: LOG_TARGET, "{}", msg);
             return Err(e);
         },
     };
@@ -229,17 +235,14 @@ async fn connect(config: &MinerConfig) -> Result<BaseNodeGrpcClient, MinerError>
 }
 
 async fn connect_base_node(config: &MinerConfig) -> Result<BaseNodeGrpcClient, MinerError> {
+    let socketaddr = base_node_socket_address(config.base_node_grpc_address.clone(), config.network)?;
     let base_node_addr = format!(
         "{}{}",
         protocol_string(config.base_node_grpc_tls_domain_name.is_some()),
-        multiaddr_to_socketaddr(
-            &config
-                .base_node_grpc_address
-                .clone()
-                .expect("Base node grpc address not found")
-        )?,
+        socketaddr,
     );
 
+    println!("👛 Connecting to base node at {}", base_node_addr);
     info!(target: LOG_TARGET, "👛 Connecting to base node at {}", base_node_addr);
     let mut endpoint = Endpoint::from_str(&base_node_addr)?;
 
@@ -265,6 +268,16 @@ async fn connect_base_node(config: &MinerConfig) -> Result<BaseNodeGrpcClient, M
     );
 
     Ok(node_conn)
+}
+
+async fn verify_base_node_responses(
+    node_conn: &mut BaseNodeGrpcClient,
+    config: &MinerConfig,
+) -> Result<(), MinerError> {
+    if let Err(e) = verify_base_node_grpc_mining_responses(node_conn, config.pow_algo_request()).await {
+        return Err(MinerError::BaseNodeNotResponding(e));
+    }
+    Ok(())
 }
 
 #[allow(clippy::too_many_lines)]
@@ -429,17 +442,4 @@ async fn validate_tip(
         return Err(MinerError::MinerLostBlock(height));
     }
     Ok(())
-}
-
-fn setup_grpc_config(config: &mut MinerConfig) {
-    if config.base_node_grpc_address.is_none() {
-        config.base_node_grpc_address = Some(
-            format!(
-                "/ip4/127.0.0.1/tcp/{}",
-                grpc_default_port(ApplicationType::BaseNode, config.network)
-            )
-            .parse()
-            .unwrap(),
-        );
-    }
 }

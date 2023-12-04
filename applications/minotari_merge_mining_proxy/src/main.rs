@@ -55,5 +55,11 @@ async fn main() -> Result<(), anyhow::Error> {
         &cli.common.get_base_path(),
         include_str!("../log4rs_sample.yml"),
     )?;
-    run_merge_miner::start_merge_miner(cli).await
+    match run_merge_miner::start_merge_miner(cli).await {
+        Ok(_) => Ok(()),
+        Err(err) => {
+            eprintln!("Fatal error: {:?}", err);
+            Err(err)
+        },
+    }
 }
