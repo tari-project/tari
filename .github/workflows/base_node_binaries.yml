@@ -346,14 +346,14 @@ jobs:
         run: |
           cd buildtools
           call generate_config.bat
-          "%programfiles(x86)%\Inno Setup 6\iscc.exe" "/DMyAppVersion=${{ env.VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer" "/DMinotariSuite=env.TBN_FILENAME" "/DTariSuitePath=${{ github.workspace }}${{ env.TBN_DIST }}" "windows_inno_installer.iss"
+          "%programfiles(x86)%\Inno Setup 6\iscc.exe" "/DMyAppVersion=${{ env.VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer" "/DMinotariSuite=${{ env.TBN_FILENAME }}" "/DTariSuitePath=${{ github.workspace }}${{ env.TBN_DIST }}" "windows_inno_installer.iss"
           cd Output
           echo "Compute archive shasum"
-          ${{ env.SHARUN }} "env.TBN_FILENAME-${{ env.VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe" >> "env.TBN_FILENAME-${{ env.VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe.sha256"
+          ${{ env.SHARUN }} "${{ env.TBN_FILENAME }}-${{ env.VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe" >> "${{ env.TBN_FILENAME }}-${{ env.VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe.sha256"
           echo "Show the shasum"
-          cat "env.TBN_FILENAME-${{ env.VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe.sha256"
+          cat "${{ env.TBN_FILENAME }}-${{ env.VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe.sha256"
           echo "Checkum verification archive is "
-          ${{ env.SHARUN }} --check "env.TBN_FILENAME-${{ env.VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe.sha256"
+          ${{ env.SHARUN }} --check "${{ env.TBN_FILENAME }}-${{ env.VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe.sha256"
 
       - name: Artifact upload for Windows installer
         uses: actions/upload-artifact@v3
