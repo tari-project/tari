@@ -957,7 +957,7 @@ async fn test_utxo_scanner_one_sided_payments() {
             scanned_output: _,
         } = req
         {
-            assert_eq!(message, "one-sided non-default".to_string());
+            assert_eq!(message, "Output found on blockchain during Wallet Recovery".to_string());
         }
     }
 
@@ -1056,7 +1056,7 @@ async fn test_utxo_scanner_one_sided_payments() {
         } = req
         {
             println!("{:?}", h);
-            assert_eq!(message, "new one-sided message".to_string());
+            assert_eq!(message, "Output found on blockchain during Wallet Recovery".to_string());
         }
     }
 }

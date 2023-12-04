@@ -787,21 +787,15 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         mined_timestamp: u64,
         num_confirmations: u64,
         must_be_confirmed: bool,
-        is_faux: bool,
+        status: &TransactionStatus,
     ) -> Result<(), TransactionStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
         let status = if must_be_confirmed {
-            if is_faux {
-                TransactionStatus::FauxConfirmed
-            } else {
-                TransactionStatus::MinedConfirmed
-            }
-        } else if is_faux {
-            TransactionStatus::FauxUnconfirmed
+            status.mined_confirm()
         } else {
-            TransactionStatus::MinedUnconfirmed
+            status.mined_unconfirm()
         };
 
         match CompletedTransactionSql::update_mined_height(
@@ -1013,27 +1007,43 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()
     }
 
-    fn fetch_unconfirmed_faux_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+    fn fetch_unconfirmed_detected_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
         let mut conn = self.database_connection.get_pooled_connection()?;
         let cipher = acquire_read_lock!(self.cipher);
 
-        CompletedTransactionSql::index_by_status_and_cancelled(TransactionStatus::FauxUnconfirmed, false, &mut conn)?
-            .into_iter()
-            .map(|ct: CompletedTransactionSql| {
-                CompletedTransaction::try_from(ct, &cipher).map_err(TransactionStorageError::from)
-            })
-            .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()
+        let mut one_sided = CompletedTransactionSql::index_by_status_and_cancelled(
+            TransactionStatus::OneSidedUnconfirmed,
+            false,
+            &mut conn,
+        )?
+        .into_iter()
+        .map(|ct: CompletedTransactionSql| {
+            CompletedTransaction::try_from(ct, &cipher).map_err(TransactionStorageError::from)
+        })
+        .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
+        let mut coinbases = CompletedTransactionSql::index_by_status_and_cancelled(
+            TransactionStatus::CoinbaseUnconfirmed,
+            false,
+            &mut conn,
+        )?
+        .into_iter()
+        .map(|ct: CompletedTransactionSql| {
+            CompletedTransaction::try_from(ct, &cipher).map_err(TransactionStorageError::from)
+        })
+        .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
+        coinbases.append(&mut one_sided);
+        Ok(coinbases)
     }
 
-    fn fetch_confirmed_faux_transactions_from_height(
+    fn fetch_confirmed_detected_transactions_from_height(
         &self,
         height: u64,
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
         let mut conn = self.database_connection.get_pooled_connection()?;
         let cipher = acquire_read_lock!(self.cipher);
 
-        CompletedTransactionSql::index_by_status_and_cancelled_from_block_height(
-            TransactionStatus::FauxConfirmed,
+        let mut one_sided = CompletedTransactionSql::index_by_status_and_cancelled_from_block_height(
+            TransactionStatus::OneSidedConfirmed,
             false,
             height as i64,
             &mut conn,
@@ -1042,7 +1052,20 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         .map(|ct: CompletedTransactionSql| {
             CompletedTransaction::try_from(ct, &cipher).map_err(TransactionStorageError::from)
         })
-        .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()
+        .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
+        let mut coinbases = CompletedTransactionSql::index_by_status_and_cancelled_from_block_height(
+            TransactionStatus::CoinbaseConfirmed,
+            false,
+            height as i64,
+            &mut conn,
+        )?
+        .into_iter()
+        .map(|ct: CompletedTransactionSql| {
+            CompletedTransaction::try_from(ct, &cipher).map_err(TransactionStorageError::from)
+        })
+        .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
+        coinbases.append(&mut one_sided);
+        Ok(coinbases)
     }
 }
 
@@ -1836,10 +1859,14 @@ impl CompletedTransactionSql {
                         .load::<i32>(conn)?
                         .first()
                     {
-                        if *status == TransactionStatus::FauxConfirmed as i32 ||
-                            *status == TransactionStatus::FauxUnconfirmed as i32
+                        if *status == TransactionStatus::OneSidedConfirmed as i32 ||
+                            *status == TransactionStatus::OneSidedUnconfirmed as i32
                         {
-                            Some(TransactionStatus::FauxUnconfirmed as i32)
+                            Some(TransactionStatus::OneSidedUnconfirmed as i32)
+                        } else if *status == TransactionStatus::CoinbaseUnconfirmed as i32 ||
+                            *status == TransactionStatus::CoinbaseConfirmed as i32
+                        {
+                            Some(TransactionStatus::CoinbaseUnconfirmed as i32)
                         } else if *status == TransactionStatus::Imported as i32 {
                             Some(TransactionStatus::Imported as i32)
                         } else if *status == TransactionStatus::Broadcast as i32 {
@@ -2078,8 +2105,10 @@ impl UnconfirmedTransactionInfoSql {
                 completed_transactions::status
                     // Filter out imported or scanned transactions
                     .ne(TransactionStatus::Imported as i32)
-                    .and(completed_transactions::status.ne(TransactionStatus::FauxUnconfirmed as i32))
-                    .and(completed_transactions::status.ne(TransactionStatus::FauxConfirmed as i32))
+                    .and(completed_transactions::status.ne(TransactionStatus::OneSidedUnconfirmed as i32))
+                    .and(completed_transactions::status.ne(TransactionStatus::OneSidedConfirmed as i32))
+                    .and(completed_transactions::status.ne(TransactionStatus::CoinbaseUnconfirmed as i32))
+                    .and(completed_transactions::status.ne(TransactionStatus::CoinbaseConfirmed as i32))
                     // Filter out any transaction without a kernel signature
                     .and(completed_transactions::transaction_signature_nonce.ne(vec![0u8; 32]))
                     .and(completed_transactions::transaction_signature_key.ne(vec![0u8; 32]))

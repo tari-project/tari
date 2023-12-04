@@ -131,7 +131,7 @@ pub trait TransactionBackend: Send + Sync + Clone {
         mined_timestamp: u64,
         num_confirmations: u64,
         must_be_confirmed: bool,
-        is_faux: bool,
+        status: &TransactionStatus,
     ) -> Result<(), TransactionStorageError>;
     /// Clears the mined block and height of a transaction
     fn set_transaction_as_unmined(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
@@ -142,8 +142,8 @@ pub trait TransactionBackend: Send + Sync + Clone {
         &self,
     ) -> Result<Vec<InboundTransactionSenderInfo>, TransactionStorageError>;
     fn fetch_imported_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
-    fn fetch_unconfirmed_faux_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
-    fn fetch_confirmed_faux_transactions_from_height(
+    fn fetch_unconfirmed_detected_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
+    fn fetch_confirmed_detected_transactions_from_height(
         &self,
         height: u64,
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
@@ -416,16 +416,16 @@ where T: TransactionBackend + 'static
         Ok(t)
     }
 
-    pub fn get_unconfirmed_faux_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
-        let t = self.db.fetch_unconfirmed_faux_transactions()?;
+    pub fn get_unconfirmed_detected_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+        let t = self.db.fetch_unconfirmed_detected_transactions()?;
         Ok(t)
     }
 
-    pub fn get_confirmed_faux_transactions_from_height(
+    pub fn get_confirmed_detected_transactions_from_height(
         &self,
         height: u64,
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
-        let t = self.db.fetch_confirmed_faux_transactions_from_height(height)?;
+        let t = self.db.fetch_confirmed_detected_transactions_from_height(height)?;
         Ok(t)
     }
 
@@ -695,7 +695,7 @@ where T: TransactionBackend + 'static
         mined_timestamp: u64,
         num_confirmations: u64,
         must_be_confirmed: bool,
-        is_faux: bool,
+        status: &TransactionStatus,
     ) -> Result<(), TransactionStorageError> {
         self.db.update_mined_height(
             tx_id,
@@ -704,7 +704,7 @@ where T: TransactionBackend + 'static
             mined_timestamp,
             num_confirmations,
             must_be_confirmed,
-            is_faux,
+            status,
         )
     }
 

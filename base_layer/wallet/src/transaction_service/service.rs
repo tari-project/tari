@@ -117,7 +117,7 @@ use crate::{
             models::{CompletedTransaction, TxCancellationReason},
         },
         tasks::{
-            check_faux_transaction_status::check_faux_transactions,
+            check_faux_transaction_status::check_detected_transactions,
             send_finalized_transaction::send_finalized_transaction_message,
             send_transaction_cancelled::send_transaction_cancelled_message,
             send_transaction_reply::send_transaction_reply,
@@ -928,7 +928,7 @@ where
                 None => 0u64,
             };
             let event_publisher = self.event_publisher.clone();
-            tokio::spawn(check_faux_transactions(
+            tokio::spawn(check_detected_transactions(
                 output_manager_handle,
                 db,
                 event_publisher,
@@ -2813,12 +2813,16 @@ where
         )?;
         let transaction_event = match import_status {
             ImportStatus::Imported => TransactionEvent::TransactionImported(tx_id),
-            ImportStatus::FauxUnconfirmed => TransactionEvent::FauxTransactionUnconfirmed {
-                tx_id,
-                num_confirmations: 0,
-                is_valid: true,
+            ImportStatus::OneSidedUnconfirmed | ImportStatus::CoinbaseUnconfirmed => {
+                TransactionEvent::DetectedTransactionUnconfirmed {
+                    tx_id,
+                    num_confirmations: 0,
+                    is_valid: true,
+                }
             },
-            ImportStatus::FauxConfirmed => TransactionEvent::FauxTransactionConfirmed { tx_id, is_valid: true },
+            ImportStatus::OneSidedConfirmed | ImportStatus::CoinbaseConfirmed => {
+                TransactionEvent::DetectedTransactionConfirmed { tx_id, is_valid: true }
+            },
         };
         let _size = self.event_publisher.send(Arc::new(transaction_event)).map_err(|e| {
             trace!(

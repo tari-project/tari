@@ -367,8 +367,16 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
 
     assert!(db.fetch_last_mined_transaction().unwrap().is_none());
 
-    db.set_transaction_mined_height(completed_txs[0].tx_id, 10, FixedHash::zero(), 0, 5, true, false)
-        .unwrap();
+    db.set_transaction_mined_height(
+        completed_txs[0].tx_id,
+        10,
+        FixedHash::zero(),
+        0,
+        5,
+        true,
+        &completed_txs[0].status,
+    )
+    .unwrap();
 
     assert_eq!(
         db.fetch_last_mined_transaction().unwrap().unwrap().tx_id,
@@ -594,7 +602,7 @@ async fn import_tx_and_read_it_from_db() {
             PrivateKey::random(&mut OsRng),
             PrivateKey::random(&mut OsRng),
         ),
-        TransactionStatus::FauxUnconfirmed,
+        TransactionStatus::OneSidedUnconfirmed,
         "message".to_string(),
         Utc::now().naive_utc(),
         TransactionDirection::Inbound,
@@ -623,7 +631,7 @@ async fn import_tx_and_read_it_from_db() {
             PrivateKey::random(&mut OsRng),
             PrivateKey::random(&mut OsRng),
         ),
-        TransactionStatus::FauxConfirmed,
+        TransactionStatus::OneSidedConfirmed,
         "message".to_string(),
         Utc::now().naive_utc(),
         TransactionDirection::Inbound,
@@ -644,14 +652,14 @@ async fn import_tx_and_read_it_from_db() {
     assert_eq!(db_tx.first().unwrap().tx_id, TxId::from(1u64));
     assert_eq!(db_tx.first().unwrap().mined_height, Some(5));
 
-    let db_tx = sqlite_db.fetch_unconfirmed_faux_transactions().unwrap();
+    let db_tx = sqlite_db.fetch_unconfirmed_detected_transactions().unwrap();
     assert_eq!(db_tx.len(), 1);
     assert_eq!(db_tx.first().unwrap().tx_id, TxId::from(2u64));
     assert_eq!(db_tx.first().unwrap().mined_height, Some(6));
 
-    let db_tx = sqlite_db.fetch_confirmed_faux_transactions_from_height(10).unwrap();
+    let db_tx = sqlite_db.fetch_confirmed_detected_transactions_from_height(10).unwrap();
     assert_eq!(db_tx.len(), 0);
-    let db_tx = sqlite_db.fetch_confirmed_faux_transactions_from_height(4).unwrap();
+    let db_tx = sqlite_db.fetch_confirmed_detected_transactions_from_height(4).unwrap();
     assert_eq!(db_tx.len(), 1);
     assert_eq!(db_tx.first().unwrap().tx_id, TxId::from(3u64));
     assert_eq!(db_tx.first().unwrap().mined_height, Some(7));

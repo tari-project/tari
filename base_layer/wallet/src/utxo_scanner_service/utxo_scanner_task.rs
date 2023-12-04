@@ -485,7 +485,7 @@ where
             total_scanned += outputs.len();
 
             let start = Instant::now();
-            let found_outputs = self.scan_for_outputs(outputs).await?;
+            let found_outputs = self.scan_for_outputs(outputs, current_height).await?;
             scan_for_outputs_profiling.push(start.elapsed());
 
             let (mut count, mut amount) = self
@@ -553,6 +553,7 @@ where
     async fn scan_for_outputs(
         &mut self,
         outputs: Vec<TransactionOutput>,
+        height: u64,
     ) -> Result<Vec<(WalletOutput, String, ImportStatus, TxId, TransactionOutput)>, UtxoScannerError> {
         let mut found_outputs: Vec<(WalletOutput, String, ImportStatus, TxId, TransactionOutput)> = Vec::new();
         found_outputs.append(
@@ -563,15 +564,18 @@ where
                 .await?
                 .into_iter()
                 .map(|ro| -> Result<_, UtxoScannerError> {
-                    let message = if ro.output.features.is_coinbase() {
-                        "**COINBASE** ".to_owned() + &self.resources.recovery_message
+                    let (message, status) = if ro.output.features.is_coinbase() {
+                        (
+                            format!("Coinbase for height: {}", height),
+                            ImportStatus::CoinbaseUnconfirmed,
+                        )
                     } else {
-                        self.resources.recovery_message.clone()
+                        (self.resources.recovery_message.clone(), ImportStatus::Imported)
                     };
                     let output = outputs.iter().find(|o| o.hash() == ro.hash).ok_or_else(|| {
                         UtxoScannerError::UtxoScanningError(format!("Output '{}' not found", ro.hash.to_hex()))
                     })?;
-                    Ok((ro.output, message, ImportStatus::Imported, ro.tx_id, output.clone()))
+                    Ok((ro.output, message, status, ro.tx_id, output.clone()))
                 })
                 .collect::<Result<Vec<_>, _>>()?,
         );
@@ -584,21 +588,18 @@ where
                 .await?
                 .into_iter()
                 .map(|ro| -> Result<_, UtxoScannerError> {
-                    let message = if ro.output.features.is_coinbase() {
-                        "**COINBASE** ".to_owned() + &self.resources.one_sided_payment_message
+                    let (message, status) = if ro.output.features.is_coinbase() {
+                        (
+                            format!("Coinbase for height: {}", height),
+                            ImportStatus::CoinbaseUnconfirmed,
+                        )
                     } else {
-                        self.resources.one_sided_payment_message.clone()
+                        (self.resources.recovery_message.clone(), ImportStatus::OneSidedUnconfirmed)
                     };
                     let output = outputs.iter().find(|o| o.hash() == ro.hash).ok_or_else(|| {
                         UtxoScannerError::UtxoScanningError(format!("Output '{}' not found", ro.hash.to_hex()))
                     })?;
-                    Ok((
-                        ro.output,
-                        message,
-                        ImportStatus::FauxUnconfirmed,
-                        ro.tx_id,
-                        output.clone(),
-                    ))
+                    Ok((ro.output, message, status, ro.tx_id, output.clone()))
                 })
                 .collect::<Result<Vec<_>, _>>()?,
         );
