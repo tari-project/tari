@@ -37,7 +37,7 @@ use tari_contacts::contacts_service::{
 };
 use tari_shutdown::Shutdown;
 
-use crate::{config::ApplicationConfig, error::ChatClientError, networking};
+use crate::{config::ApplicationConfig, error::Error, networking};
 
 const LOG_TARGET: &str = "contacts::chat_client";
 
@@ -88,14 +88,14 @@ impl Client {
         }
     }
 
-    pub async fn initialize(&mut self) -> Result<(), ChatClientError> {
+    pub async fn initialize(&mut self) -> Result<(), Error> {
         debug!(target: LOG_TARGET, "initializing chat");
 
         let signal = self.shutdown.to_signal();
 
         let (contacts, comms_node) = networking::start(self.identity.clone(), self.config.clone(), signal)
             .await
-            .map_err(|e| ChatClientError::InitializationError(e.to_string()))?;
+            .map_err(|e| Error::InitializationError(e.to_string()))?;
 
         if !self.config.peer_seeds.peer_seeds.is_empty() {
             loop {

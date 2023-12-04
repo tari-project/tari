@@ -23,7 +23,6 @@
 use std::{str::FromStr, sync::Arc, time::Duration};
 
 use minotari_app_utilities::{identity_management, identity_management::load_from_json};
-use tari_common::exit_codes::{ExitCode, ExitError};
 // Re-exports
 pub use tari_comms::{
     multiaddr::Multiaddr,
@@ -44,14 +43,15 @@ use tari_shutdown::ShutdownSignal;
 use crate::{
     config::ApplicationConfig,
     database::{connect_to_db, create_chat_storage},
+    error::NetworkingError,
 };
 
 pub async fn start(
     node_identity: Arc<NodeIdentity>,
     config: ApplicationConfig,
     shutdown_signal: ShutdownSignal,
-) -> anyhow::Result<(ContactsServiceHandle, CommsNode)> {
-    create_chat_storage(&config.chat_client.db_file);
+) -> Result<(ContactsServiceHandle, CommsNode), NetworkingError> {
+    create_chat_storage(&config.chat_client.db_file)?;
     let backend = connect_to_db(config.chat_client.db_file)?;
 
     let (publisher, subscription_factory) = pubsub_connector(100);
@@ -59,8 +59,7 @@ pub async fn start(
 
     let mut p2p_config = config.chat_client.p2p.clone();
 
-    let tor_identity =
-        load_from_json(&config.chat_client.tor_identity_file).map_err(|e| ExitError::new(ExitCode::ConfigError, e))?;
+    let tor_identity = load_from_json(&config.chat_client.tor_identity_file)?;
     p2p_config.transport.tor.identity = tor_identity;
 
     let fut = StackBuilder::new(shutdown_signal)
@@ -100,28 +99,25 @@ pub async fn start(
         .iter()
         .map(|s| SeedPeer::from_str(s))
         .map(|r| r.map(Peer::from))
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| NetworkingError::PeerSeeds(e.to_string()))?;
 
     for peer in seed_peers {
         peer_manager.add_peer(peer).await?;
     }
 
-    let comms = spawn_comms_using_transport(comms, p2p_config.transport.clone())
-        .await
-        .unwrap();
+    let comms = spawn_comms_using_transport(comms, p2p_config.transport.clone()).await?;
 
     // Save final node identity after comms has initialized. This is required because the public_address can be
     // changed by comms during initialization when using tor.
     match p2p_config.transport.transport_type {
         TransportType::Tcp => {}, // Do not overwrite TCP public_address in the base_node_id!
         _ => {
-            identity_management::save_as_json(&config.chat_client.identity_file, &*comms.node_identity())
-                .map_err(|e| ExitError::new(ExitCode::IdentityError, e))?;
+            identity_management::save_as_json(&config.chat_client.identity_file, &*comms.node_identity())?;
         },
     };
     if let Some(hs) = comms.hidden_service() {
-        identity_management::save_as_json(&config.chat_client.tor_identity_file, hs.tor_identity())
-            .map_err(|e| ExitError::new(ExitCode::IdentityError, e))?;
+        identity_management::save_as_json(&config.chat_client.tor_identity_file, hs.tor_identity())?;
     }
     handles.register(comms);
 

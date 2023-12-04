@@ -258,8 +258,8 @@ pub async fn spawn_ffi_chat_client(name: &str, seed_peers: Vec<Peer>, base_dir: 
     )
     .unwrap();
 
-    database::create_chat_storage(&config.chat_client.db_file);
-    database::create_peer_storage(&config.chat_client.data_dir);
+    database::create_chat_storage(&config.chat_client.db_file).unwrap();
+    database::create_peer_storage(&config.chat_client.data_dir).unwrap();
 
     config.peer_seeds.peer_seeds = seed_peers
         .iter()

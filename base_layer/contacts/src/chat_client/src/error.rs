@@ -20,40 +20,47 @@
 //   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //   USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::path::{Path, PathBuf};
+use std::io;
 
-use diesel::{Connection, SqliteConnection};
-use tari_common_sqlite::{
-    connection::{DbConnection, DbConnectionUrl},
-    error::StorageError as SqliteStorageError,
-};
-use tari_contacts::contacts_service::storage::sqlite_db::ContactsServiceSqliteDatabase;
-use tari_storage::lmdb_store::{LMDBBuilder, LMDBConfig};
+use diesel::ConnectionError;
+use minotari_app_utilities::identity_management::IdentityError;
+use tari_common_sqlite::error::StorageError as SqliteStorageError;
+use tari_comms::peer_manager::PeerManagerError;
+use tari_p2p::initialization::CommsInitializationError;
+use tari_storage::lmdb_store::LMDBError;
 
-use crate::error::StorageError;
-
-pub fn connect_to_db(db_path: PathBuf) -> Result<ContactsServiceSqliteDatabase<DbConnection>, SqliteStorageError> {
-    let url: DbConnectionUrl = DbConnectionUrl::File(db_path);
-    let connection = DbConnection::connect_url(&url)?;
-    Ok(ContactsServiceSqliteDatabase::init(connection))
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("Couldn't initialize the chat client: {0}")]
+    InitializationError(String),
+    #[error("Networking error: {0}")]
+    NetworkingError(#[from] NetworkingError),
 }
 
-pub fn create_chat_storage(db_file_path: &Path) -> Result<(), StorageError> {
-    // Create the storage db
-    std::fs::create_dir_all(db_file_path.parent().ok_or(StorageError::FilePathError)?)?;
-    let _db = SqliteConnection::establish(db_file_path.as_os_str().to_str().ok_or(StorageError::FilePathError)?)?;
-    Ok(())
+#[derive(Debug, thiserror::Error)]
+pub enum StorageError {
+    #[error("Couldn't connect to database: {0}")]
+    ConnectionError(#[from] ConnectionError),
+    #[error("Couldn't create chat storage: {0}")]
+    CreationError(#[from] io::Error),
+    #[error("Couldn't convert db file path to string")]
+    FilePathError,
+    #[error("Couldn't create chat storage: {0}")]
+    LMDBError(#[from] LMDBError),
 }
 
-pub fn create_peer_storage(base_path: &PathBuf) -> Result<(), StorageError> {
-    std::fs::create_dir_all(base_path)?;
-
-    LMDBBuilder::new()
-        .set_path(base_path)
-        .set_env_config(LMDBConfig::default())
-        .set_max_number_of_databases(1)
-        .add_database("peerdb", lmdb_zero::db::CREATE)
-        .build()?;
-
-    Ok(())
+#[derive(Debug, thiserror::Error)]
+pub enum NetworkingError {
+    #[error("Couldn't initialize comms: {0}")]
+    CommsInitializationError(#[from] CommsInitializationError),
+    #[error("Storage error: {0}")]
+    SqliteStorageError(#[from] SqliteStorageError),
+    #[error("Identity error: {0}")]
+    IdentityError(#[from] IdentityError),
+    #[error("Error mapping the peer seeds: {0}")]
+    PeerSeeds(String),
+    #[error("Identity error: {0}")]
+    PeerManagerError(#[from] PeerManagerError),
+    #[error("Storage error: {0}")]
+    StorageError(#[from] StorageError),
 }
