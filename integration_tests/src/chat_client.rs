@@ -64,7 +64,7 @@ pub async fn spawn_chat_client(name: &str, seed_peers: Vec<Peer>, base_dir: Path
 
     let mut client = Client::new(identity, config);
 
-    client.initialize().await;
+    client.initialize().await.expect("the chat client to spawn");
     client
 }
 

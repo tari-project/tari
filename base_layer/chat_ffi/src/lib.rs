@@ -148,20 +148,20 @@ pub unsafe extern "C" fn create_chat_client(
     };
 
     let mut client = Client::new(identity, (*config).clone());
-    runtime.block_on(client.initialize());
+    if let Ok(()) = runtime.block_on(client.initialize()) {
+        let mut callback_handler = CallbackHandler::new(
+            client.contacts.clone().expect("No contacts service loaded yet"),
+            client.shutdown.to_signal(),
+            callback_contact_status_change,
+            callback_message_received,
+            callback_delivery_confirmation_received,
+            callback_read_confirmation_received,
+        );
 
-    let mut callback_handler = CallbackHandler::new(
-        client.contacts.clone().expect("No contacts service loaded yet"),
-        client.shutdown.to_signal(),
-        callback_contact_status_change,
-        callback_message_received,
-        callback_delivery_confirmation_received,
-        callback_read_confirmation_received,
-    );
-
-    runtime.spawn(async move {
-        callback_handler.start().await;
-    });
+        runtime.spawn(async move {
+            callback_handler.start().await;
+        });
+    }
 
     let client = ChatClient { client, runtime };
 
