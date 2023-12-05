@@ -149,12 +149,10 @@ impl ChatClientConfig {
         if !self.db_file.is_absolute() {
             self.db_file = self.data_dir.join(self.db_file.as_path());
         }
-        if self.log_path.is_some() && !self.log_path.as_ref().expect("There to be a path").is_absolute() {
-            self.log_path = Some(
-                base_path
-                    .as_ref()
-                    .join(self.log_path.as_ref().expect("There to be a path").as_path()),
-            );
+        if let Some(path) = self.log_path.as_ref() {
+            if path.is_absolute() {
+                self.log_path = Some(base_path.as_ref().join(path));
+            }
         }
         self.p2p.set_base_path(base_path);
     }

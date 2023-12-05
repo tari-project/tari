@@ -85,11 +85,11 @@ pub async fn start(
         ))
         .build();
 
-    let mut handles = fut.await.expect("Service initialization failed");
+    let mut handles = fut.await?;
 
     let comms = handles
         .take_handle::<UnspawnedCommsNode>()
-        .expect("P2pInitializer was not added to the stack or did not add UnspawnedCommsNode");
+        .ok_or(NetworkingError::CommsSpawnError)?;
 
     let peer_manager = comms.peer_manager();
 
