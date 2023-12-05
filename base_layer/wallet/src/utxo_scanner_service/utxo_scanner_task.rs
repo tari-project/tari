@@ -594,7 +594,10 @@ where
                             ImportStatus::CoinbaseUnconfirmed,
                         )
                     } else {
-                        (self.resources.recovery_message.clone(), ImportStatus::OneSidedUnconfirmed)
+                        (
+                            self.resources.recovery_message.clone(),
+                            ImportStatus::OneSidedUnconfirmed,
+                        )
                     };
                     let output = outputs.iter().find(|o| o.hash() == ro.hash).ok_or_else(|| {
                         UtxoScannerError::UtxoScanningError(format!("Output '{}' not found", ro.hash.to_hex()))
