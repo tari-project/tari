@@ -36,6 +36,8 @@ pub enum InterfaceError {
     AllocationError,
     #[error("An error because the supplied position was out of range")]
     PositionInvalidError,
+    #[error("The client had an error communication with contact services")]
+    ContactServiceError(String),
 }
 
 /// This struct is meant to hold an error for use by FFI client applications. The error has an integer code and string
@@ -68,6 +70,10 @@ impl From<InterfaceError> for LibChatError {
             },
             InterfaceError::InvalidArgument(_) => Self {
                 code: 7,
+                message: format!("{:?}", v),
+            },
+            InterfaceError::ContactServiceError(_) => Self {
+                code: 8,
                 message: format!("{:?}", v),
             },
         }
