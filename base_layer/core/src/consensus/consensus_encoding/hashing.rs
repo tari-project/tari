@@ -175,8 +175,6 @@ mod tests {
         // They should be distinct
         assert_ne!(hash_mainnet, hash_stagenet);
 
-        // Restore the network for other tests
-        //        *CURRENT_NETWORK.lock().unwrap() = Network::Esmeralda;
     }
 
     #[test]
