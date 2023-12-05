@@ -2148,7 +2148,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
     txn.set_accumulated_data_for_orphan(chain_block.accumulated_data().clone());
     db.write(txn)?;
 
-    let tips = find_orphan_descendant_tips_of(db, chain_header, prev_timestamps, validator)?;
+    let tips = find_orphan_decadent_tips_of(db, chain_header, prev_timestamps, validator)?;
     debug!(target: LOG_TARGET, "Found {} new orphan tips", tips.len());
     let mut txn = DbTransaction::new();
     for new_tip in &tips {
@@ -2163,7 +2163,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
 }
 
 // Find the tip set of any orphans that have hash as an ancestor
-fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
+fn find_orphan_decadent_tips_of<T: BlockchainBackend>(
     db: &mut T,
     prev_chain_header: ChainHeader,
     prev_timestamps: RollingVec<EpochTime>,
@@ -2225,8 +2225,7 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
                 let mut txn = DbTransaction::new();
                 txn.set_accumulated_data_for_orphan(chain_header.accumulated_data().clone());
                 db.write(txn)?;
-                let children =
-                    find_orphan_descendant_tips_of(db, chain_header, prev_timestamps_for_children, validator)?;
+                let children = find_orphan_decadent_tips_of(db, chain_header, prev_timestamps_for_children, validator)?;
                 res.extend(children);
             },
             Err(e) => {
