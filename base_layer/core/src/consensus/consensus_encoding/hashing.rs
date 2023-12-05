@@ -28,7 +28,7 @@ use digest::{
     consts::{U32, U64},
     Digest,
 };
-use tari_common::configuration::CURRENT_NETWORK;
+use tari_common::configuration::Network;
 use tari_crypto::{hash_domain, hashing::DomainSeparation};
 
 /// Domain separated consensus encoding hasher.
@@ -42,7 +42,11 @@ where D: Default
 {
     #[allow(clippy::new_ret_no_self)]
     pub fn new(label: &'static str) -> ConsensusHasher<D> {
-        let network = *CURRENT_NETWORK.lock().unwrap();
+        let network = Network::current();
+        Self::new_with_network(label, network)
+    }
+
+    pub fn new_with_network(label: &'static str, network: Network) -> ConsensusHasher<D> {
         let mut digest = D::default();
         M::add_domain_separation_tag(&mut digest, &format!("{}.n{}", label, network.as_byte()));
         ConsensusHasher::from_digest(digest)
@@ -153,30 +157,31 @@ mod tests {
         let label = "test";
         let input = [1u8; 32];
 
-        assert_eq!(*CURRENT_NETWORK.lock().unwrap(), Network::Esmeralda);
+        // assert_eq!(Network::current(), Network::Esmeralda);
 
         // Generate a mainnet hash
-        *CURRENT_NETWORK.lock().unwrap() = Network::MainNet;
-        let hash_mainnet = DomainSeparatedConsensusHasher::<TestHashDomain, Blake2b<U32>>::new(label)
-            .chain(&input)
-            .finalize();
+        // Network::set_current(Network::MainNet);
+        let hash_mainnet =
+            DomainSeparatedConsensusHasher::<TestHashDomain, Blake2b<U32>>::new_with_network(label, Network::MainNet)
+                .chain(&input)
+                .finalize();
 
         // Generate a stagenet hash
-        *CURRENT_NETWORK.lock().unwrap() = Network::StageNet;
-        let hash_stagenet = DomainSeparatedConsensusHasher::<TestHashDomain, Blake2b<U32>>::new(label)
-            .chain(&input)
-            .finalize();
+        let hash_stagenet =
+            DomainSeparatedConsensusHasher::<TestHashDomain, Blake2b<U32>>::new_with_network(label, Network::StageNet)
+                .chain(&input)
+                .finalize();
 
         // They should be distinct
         assert_ne!(hash_mainnet, hash_stagenet);
 
         // Restore the network for other tests
-        *CURRENT_NETWORK.lock().unwrap() = Network::Esmeralda;
+        //        *CURRENT_NETWORK.lock().unwrap() = Network::Esmeralda;
     }
 
     #[test]
     fn it_hashes_using_the_domain_hasher() {
-        let network = *CURRENT_NETWORK.lock().unwrap();
+        let network = Network::current();
         // Script is chosen because the consensus encoding impl for TariScript has 2 writes
         let mut hasher = Blake2b::<U32>::default();
         TestHashDomain::add_domain_separation_tag(&mut hasher, &format!("{}.n{}", "foo", network.as_byte()));
@@ -191,7 +196,7 @@ mod tests {
 
     #[test]
     fn it_adds_to_hash_challenge_in_complete_chunks() {
-        let network = *CURRENT_NETWORK.lock().unwrap();
+        let network = Network::current();
         // Script is chosen because the consensus encoding impl for TariScript has 2 writes
         let test_subject = script!(Nop);
         let mut hasher = Blake2b::<U32>::default();

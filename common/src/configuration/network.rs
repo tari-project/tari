@@ -25,15 +25,14 @@ use std::{
     fmt,
     fmt::{Display, Formatter},
     str::FromStr,
-    sync::Mutex,
+    sync::OnceLock,
 };
 
-use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 
 use crate::ConfigurationError;
 
-pub static CURRENT_NETWORK: Lazy<Mutex<Network>> = Lazy::new(|| Mutex::new(Network::default()));
+static CURRENT_NETWORK: OnceLock<Network> = OnceLock::new();
 
 /// Represents the available Tari p2p networks. Only nodes with matching byte values will be able to connect, so these
 /// should never be changed once released.
@@ -50,6 +49,14 @@ pub enum Network {
 }
 
 impl Network {
+    pub fn current() -> Self {
+        *CURRENT_NETWORK.get_or_init(Network::default)
+    }
+
+    pub fn set_current(network: Network) -> Result<(), Network> {
+        CURRENT_NETWORK.set(network)
+    }
+
     pub fn as_byte(self) -> u8 {
         self as u8
     }
