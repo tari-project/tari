@@ -37,20 +37,20 @@ use tari_contacts::contacts_service::{
 };
 use tari_shutdown::Shutdown;
 
-use crate::{config::ApplicationConfig, networking};
+use crate::{config::ApplicationConfig, error::Error, networking};
 
 const LOG_TARGET: &str = "contacts::chat_client";
 
 #[async_trait]
 pub trait ChatClient {
-    async fn add_contact(&self, address: &TariAddress);
+    async fn add_contact(&self, address: &TariAddress) -> Result<(), Error>;
     fn add_metadata(&self, message: Message, metadata_type: MessageMetadataType, data: String) -> Message;
-    async fn check_online_status(&self, address: &TariAddress) -> ContactOnlineStatus;
+    async fn check_online_status(&self, address: &TariAddress) -> Result<ContactOnlineStatus, Error>;
     fn create_message(&self, receiver: &TariAddress, message: String) -> Message;
-    async fn get_messages(&self, sender: &TariAddress, limit: u64, page: u64) -> Vec<Message>;
-    async fn send_message(&self, message: Message);
-    async fn send_read_receipt(&self, message: Message);
-    async fn get_conversationalists(&self) -> Vec<TariAddress>;
+    async fn get_messages(&self, sender: &TariAddress, limit: u64, page: u64) -> Result<Vec<Message>, Error>;
+    async fn send_message(&self, message: Message) -> Result<(), Error>;
+    async fn send_read_receipt(&self, message: Message) -> Result<(), Error>;
+    async fn get_conversationalists(&self) -> Result<Vec<TariAddress>, Error>;
     fn identity(&self) -> &NodeIdentity;
     fn shutdown(&mut self);
 }
@@ -88,14 +88,14 @@ impl Client {
         }
     }
 
-    pub async fn initialize(&mut self) {
+    pub async fn initialize(&mut self) -> Result<(), Error> {
         debug!(target: LOG_TARGET, "initializing chat");
 
         let signal = self.shutdown.to_signal();
 
         let (contacts, comms_node) = networking::start(self.identity.clone(), self.config.clone(), signal)
             .await
-            .unwrap();
+            .map_err(|e| Error::InitializationError(e.to_string()))?;
 
         if !self.config.peer_seeds.peer_seeds.is_empty() {
             loop {
@@ -109,7 +109,9 @@ impl Client {
 
         self.contacts = Some(contacts);
 
-        debug!(target: LOG_TARGET, "Connections established")
+        debug!(target: LOG_TARGET, "Connections established");
+
+        Ok(())
     }
 
     pub fn quit(&mut self) {
@@ -127,59 +129,49 @@ impl ChatClient for Client {
         self.shutdown.trigger();
     }
 
-    async fn add_contact(&self, address: &TariAddress) {
+    async fn add_contact(&self, address: &TariAddress) -> Result<(), Error> {
         if let Some(mut contacts_service) = self.contacts.clone() {
-            contacts_service
-                .upsert_contact(address.into())
-                .await
-                .expect("Contact wasn't added");
-        }
-    }
-
-    async fn check_online_status(&self, address: &TariAddress) -> ContactOnlineStatus {
-        if let Some(mut contacts_service) = self.contacts.clone() {
-            let contact = contacts_service
-                .get_contact(address.clone())
-                .await
-                .expect("Client does not have contact");
-
-            return contacts_service
-                .get_contact_online_status(contact)
-                .await
-                .expect("Failed to get status");
+            contacts_service.upsert_contact(address.into()).await?;
         }
 
-        ContactOnlineStatus::Offline
+        Ok(())
     }
 
-    async fn send_message(&self, message: Message) {
+    async fn check_online_status(&self, address: &TariAddress) -> Result<ContactOnlineStatus, Error> {
         if let Some(mut contacts_service) = self.contacts.clone() {
-            contacts_service
-                .send_message(message)
-                .await
-                .expect("Message wasn't sent");
+            let contact = contacts_service.get_contact(address.clone()).await?;
+
+            return Ok(contacts_service.get_contact_online_status(contact).await?);
         }
+
+        Ok(ContactOnlineStatus::Offline)
     }
 
-    async fn get_messages(&self, sender: &TariAddress, limit: u64, page: u64) -> Vec<Message> {
+    async fn send_message(&self, message: Message) -> Result<(), Error> {
+        if let Some(mut contacts_service) = self.contacts.clone() {
+            contacts_service.send_message(message).await?;
+        }
+
+        Ok(())
+    }
+
+    async fn get_messages(&self, sender: &TariAddress, limit: u64, page: u64) -> Result<Vec<Message>, Error> {
         let mut messages = vec![];
         if let Some(mut contacts_service) = self.contacts.clone() {
-            messages = contacts_service
-                .get_messages(sender.clone(), limit, page)
-                .await
-                .expect("Messages not fetched");
+            messages = contacts_service.get_messages(sender.clone(), limit, page).await?;
         }
 
-        messages
+        Ok(messages)
     }
 
-    async fn send_read_receipt(&self, message: Message) {
+    async fn send_read_receipt(&self, message: Message) -> Result<(), Error> {
         if let Some(mut contacts_service) = self.contacts.clone() {
             contacts_service
                 .send_read_confirmation(message.address.clone(), message.message_id)
-                .await
-                .expect("Read receipt not sent");
+                .await?;
         }
+
+        Ok(())
     }
 
     fn create_message(&self, receiver: &TariAddress, message: String) -> Message {
@@ -196,16 +188,13 @@ impl ChatClient for Client {
         message
     }
 
-    async fn get_conversationalists(&self) -> Vec<TariAddress> {
+    async fn get_conversationalists(&self) -> Result<Vec<TariAddress>, Error> {
         let mut addresses = vec![];
         if let Some(mut contacts_service) = self.contacts.clone() {
-            addresses = contacts_service
-                .get_conversationalists()
-                .await
-                .expect("Addresses from conversations not fetched");
+            addresses = contacts_service.get_conversationalists().await?;
         }
 
-        addresses
+        Ok(addresses)
     }
 }
 

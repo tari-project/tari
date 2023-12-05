@@ -27,3 +27,4 @@ diesel = { version = "2.0.3", features = ["sqlite", "r2d2", "serde_json", "chron
 lmdb-zero = "0.4.4"
 log = "0.4.17"
 serde = "1.0.136"
+thiserror = "1.0.50"

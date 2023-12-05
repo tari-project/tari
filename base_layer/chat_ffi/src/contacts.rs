@@ -58,7 +58,12 @@ pub unsafe extern "C" fn add_chat_contact(client: *mut ChatClient, address: *mut
         ptr::swap(error_out, &mut error as *mut c_int);
     }
 
-    (*client).runtime.block_on((*client).client.add_contact(&(*address)));
+    let result = (*client).runtime.block_on((*client).client.add_contact(&(*address)));
+
+    if let Err(e) = result {
+        error = LibChatError::from(InterfaceError::ContactServiceError(e.to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    }
 }
 
 /// Check the online status of a contact
@@ -97,7 +102,14 @@ pub unsafe extern "C" fn check_online_status(
     }
 
     let rec = (*receiver).clone();
-    let status = (*client).runtime.block_on((*client).client.check_online_status(&rec));
+    let result = (*client).runtime.block_on((*client).client.check_online_status(&rec));
 
-    status.as_u8().into()
+    match result {
+        Ok(status) => status.as_u8().into(),
+        Err(e) => {
+            error = LibChatError::from(InterfaceError::ContactServiceError(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            0
+        },
+    }
 }

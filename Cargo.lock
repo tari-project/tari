@@ -5579,6 +5579,7 @@ dependencies = [
  "tari_service_framework",
  "tari_shutdown",
  "tari_storage",
+ "thiserror",
 ]
 
 [[package]]
