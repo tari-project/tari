@@ -13,7 +13,7 @@ use serde::{
 };
 
 use crate::{
-    configuration::{ConfigOverrideProvider, Network},
+    configuration::{bootstrap::prompt, ConfigOverrideProvider, Network},
     ConfigError,
     LOG_TARGET,
 };
@@ -88,10 +88,21 @@ pub fn load_configuration<P: AsRef<Path>, TOverride: ConfigOverrideProvider>(
 pub fn write_default_config_to<P: AsRef<Path>>(path: P) -> Result<(), std::io::Error> {
     // Use the same config file so that all the settings are easier to find, and easier to
     // support users over chat channels
+    let mine = prompt(
+        "Node config does not exist.\nWould you like to mine (Y/n)?\nNOTE: this will enable gprc methods that can \
+         leak private info on the node",
+    );
+    let base_node_deny_methods = if mine {
+        include_str!("../../config/presets/c_base_node_mining_deny_methods.toml")
+    } else {
+        include_str!("../../config/presets/c_base_node_non_mining_deny_methods.toml")
+    };
+
     let common = include_str!("../../config/presets/a_common.toml");
     let source = [
         common,
         include_str!("../../config/presets/b_peer_seeds.toml"),
+        base_node_deny_methods,
         include_str!("../../config/presets/c_base_node.toml"),
         include_str!("../../config/presets/d_console_wallet.toml"),
         include_str!("../../config/presets/g_miner.toml"),
