@@ -54,7 +54,16 @@ impl Network {
     }
 
     pub fn set_current(network: Network) -> Result<(), Network> {
-        CURRENT_NETWORK.set(network)
+        match CURRENT_NETWORK.set(network) {
+            Ok(_) => Ok(()),
+            Err(other) => {
+                if other == network {
+                    Ok(())
+                } else {
+                    Err(other)
+                }
+            }
+        }
     }
 
     pub fn as_byte(self) -> u8 {
