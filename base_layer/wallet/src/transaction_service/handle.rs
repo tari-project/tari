@@ -302,12 +302,12 @@ pub enum TransactionEvent {
     TransactionCancelled(TxId, TxCancellationReason),
     TransactionBroadcast(TxId),
     TransactionImported(TxId),
-    FauxTransactionUnconfirmed {
+    DetectedTransactionUnconfirmed {
         tx_id: TxId,
         num_confirmations: u64,
         is_valid: bool,
     },
-    FauxTransactionConfirmed {
+    DetectedTransactionConfirmed {
         tx_id: TxId,
         is_valid: bool,
     },
@@ -360,19 +360,19 @@ impl fmt::Display for TransactionEvent {
             TransactionEvent::TransactionImported(tx) => {
                 write!(f, "TransactionImported for {tx}")
             },
-            TransactionEvent::FauxTransactionUnconfirmed {
+            TransactionEvent::DetectedTransactionUnconfirmed {
                 tx_id,
                 num_confirmations,
                 is_valid,
             } => {
                 write!(
                     f,
-                    "FauxTransactionUnconfirmed for {tx_id} with num confirmations: {num_confirmations}. is_valid: \
-                     {is_valid}"
+                    "DetectedTransactionUnconfirmed for {tx_id} with num confirmations: {num_confirmations}. \
+                     is_valid: {is_valid}"
                 )
             },
-            TransactionEvent::FauxTransactionConfirmed { tx_id, is_valid } => {
-                write!(f, "FauxTransactionConfirmed for {tx_id}. is_valid: {is_valid}")
+            TransactionEvent::DetectedTransactionConfirmed { tx_id, is_valid } => {
+                write!(f, "DetectedTransactionConfirmed for {tx_id}. is_valid: {is_valid}")
             },
             TransactionEvent::TransactionMined { tx_id, is_valid } => {
                 write!(f, "TransactionMined for {tx_id}. is_valid: {is_valid}")

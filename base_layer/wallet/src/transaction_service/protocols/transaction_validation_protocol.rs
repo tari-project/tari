@@ -371,18 +371,18 @@ where
                 mined_timestamp,
                 num_confirmations,
                 num_confirmations >= self.config.num_confirmations_required,
-                status.is_faux(),
+                status,
             )
             .for_protocol(self.operation_id)?;
 
         if num_confirmations >= self.config.num_confirmations_required {
-            if status.is_faux() {
-                self.publish_event(TransactionEvent::FauxTransactionConfirmed { tx_id, is_valid: true })
+            if status.is_coinbase() || status.is_imported_from_chain() {
+                self.publish_event(TransactionEvent::DetectedTransactionConfirmed { tx_id, is_valid: true })
             } else {
                 self.publish_event(TransactionEvent::TransactionMined { tx_id, is_valid: true })
             }
-        } else if status.is_faux() {
-            self.publish_event(TransactionEvent::FauxTransactionUnconfirmed {
+        } else if status.is_coinbase() || status.is_imported_from_chain() {
+            self.publish_event(TransactionEvent::DetectedTransactionUnconfirmed {
                 tx_id,
                 num_confirmations,
                 is_valid: true,

@@ -682,8 +682,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
                                             }
                                         },
                                         ReceivedFinalizedTransaction(tx_id) => handle_completed_tx(tx_id, RECEIVED, &mut transaction_service, &mut sender).await,
-                                        TransactionMinedUnconfirmed{tx_id, num_confirmations: _, is_valid: _} | FauxTransactionUnconfirmed{tx_id, num_confirmations: _, is_valid: _}=> handle_completed_tx(tx_id, CONFIRMATION, &mut transaction_service, &mut sender).await,
-                                        TransactionMined{tx_id, is_valid: _} | FauxTransactionConfirmed{tx_id, is_valid: _} => handle_completed_tx(tx_id, MINED, &mut transaction_service, &mut sender).await,
+                                        TransactionMinedUnconfirmed{tx_id, num_confirmations: _, is_valid: _} | DetectedTransactionUnconfirmed{tx_id, num_confirmations: _, is_valid: _}=> handle_completed_tx(tx_id, CONFIRMATION, &mut transaction_service, &mut sender).await,
+                                        TransactionMined{tx_id, is_valid: _} | DetectedTransactionConfirmed{tx_id, is_valid: _} => handle_completed_tx(tx_id, MINED, &mut transaction_service, &mut sender).await,
                                         TransactionCancelled(tx_id, _) => {
                                             match transaction_service.get_any_transaction(tx_id).await{
                                                 Ok(Some(wallet_tx)) => {

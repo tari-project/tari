@@ -8737,7 +8737,7 @@ mod test {
             type_of((*tx).clone()),
             std::any::type_name::<TariCompletedTransaction>()
         );
-        assert_eq!((*tx).status, TransactionStatus::FauxConfirmed);
+        assert_eq!((*tx).status, TransactionStatus::OneSidedConfirmed);
         let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
         lock.scanned_tx_callback_called = true;
         drop(lock);
@@ -8750,7 +8750,7 @@ mod test {
             type_of((*tx).clone()),
             std::any::type_name::<TariCompletedTransaction>()
         );
-        assert_eq!((*tx).status, TransactionStatus::FauxUnconfirmed);
+        assert_eq!((*tx).status, TransactionStatus::OneSidedUnconfirmed);
         let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
         lock.scanned_tx_unconfirmed_callback_called = true;
         let mut error = 0;

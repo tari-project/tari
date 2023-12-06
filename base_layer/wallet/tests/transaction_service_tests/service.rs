@@ -5200,7 +5200,7 @@ async fn test_update_faux_tx_on_oms_validation() {
             MicroMinotari::from(20000),
             alice_address.clone(),
             "one-sided 1".to_string(),
-            ImportStatus::FauxUnconfirmed,
+            ImportStatus::OneSidedUnconfirmed,
             None,
             None,
             None,
@@ -5216,7 +5216,7 @@ async fn test_update_faux_tx_on_oms_validation() {
             MicroMinotari::from(30000),
             alice_address,
             "one-sided 2".to_string(),
-            ImportStatus::FauxConfirmed,
+            ImportStatus::OneSidedConfirmed,
             None,
             None,
             None,
@@ -5251,14 +5251,14 @@ async fn test_update_faux_tx_on_oms_validation() {
         }
         if tx_id == tx_id_2 {
             if let WalletTransaction::Completed(tx) = &transaction {
-                assert_eq!(tx.status, TransactionStatus::FauxUnconfirmed);
+                assert_eq!(tx.status, TransactionStatus::OneSidedUnconfirmed);
             } else {
                 panic!("Should find a complete FauxUnconfirmed transaction");
             }
         }
         if tx_id == tx_id_3 {
             if let WalletTransaction::Completed(tx) = &transaction {
-                assert_eq!(tx.status, TransactionStatus::FauxConfirmed);
+                assert_eq!(tx.status, TransactionStatus::OneSidedConfirmed);
             } else {
                 panic!("Should find a complete FauxConfirmed transaction");
             }
@@ -5284,13 +5284,13 @@ async fn test_update_faux_tx_on_oms_validation() {
                 .unwrap()
                 .unwrap();
             if let WalletTransaction::Completed(tx) = transaction {
-                if tx_id == tx_id_1 && tx.status == TransactionStatus::FauxUnconfirmed && !found_imported {
+                if tx_id == tx_id_1 && tx.status == TransactionStatus::OneSidedUnconfirmed && !found_imported {
                     found_imported = true;
                 }
-                if tx_id == tx_id_2 && tx.status == TransactionStatus::FauxUnconfirmed && !found_faux_unconfirmed {
+                if tx_id == tx_id_2 && tx.status == TransactionStatus::OneSidedUnconfirmed && !found_faux_unconfirmed {
                     found_faux_unconfirmed = true;
                 }
-                if tx_id == tx_id_3 && tx.status == TransactionStatus::FauxConfirmed && !found_faux_confirmed {
+                if tx_id == tx_id_3 && tx.status == TransactionStatus::OneSidedConfirmed && !found_faux_confirmed {
                     found_faux_confirmed = true;
                 }
             }
