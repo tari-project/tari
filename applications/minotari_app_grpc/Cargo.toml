@@ -11,9 +11,9 @@ edition = "2018"
 tari_common_types = {  path = "../../base_layer/common_types" }
 tari_comms = { path = "../../comms/core" }
 tari_core = { path = "../../base_layer/core" }
-tari_crypto = { version = "0.19.1" }
+tari_crypto = { version = "0.20" }
 tari_script = { path = "../../infrastructure/tari_script" }
-tari_utilities = { version = "0.6" }
+tari_utilities = { version = "0.7" }
 
 argon2 = { version = "0.4.1", features = ["std", "password-hash"] }
 base64 = "0.13.0"

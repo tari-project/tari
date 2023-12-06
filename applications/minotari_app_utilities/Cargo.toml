@@ -10,7 +10,7 @@ tari_common = { path = "../../common" }
 tari_common_types = { path = "../../base_layer/common_types" }
 tari_comms = { path = "../../comms/core" }
 tari_features = { path = "../../common/tari_features"}
-tari_utilities = { version = "0.6" }
+tari_utilities = { version = "0.7" }
 
 clap = { version = "3.2", features = ["derive", "env"] }
 futures = { version = "^0.3.16", default-features = false, features = ["alloc"] }
