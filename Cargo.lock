@@ -5859,9 +5859,9 @@ dependencies = [
 
 [[package]]
 name = "tari_crypto"
-version = "0.19.1"
+version = "0.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f5f92a2fc36466fb0653a67671fd62ebadadc69cecd0b240bd40cc76150ff488"
+checksum = "63a3ed2c551101eb42b7f9386c207e28d53e6816f7b4c9a0883548922f317b3e"
 dependencies = [
  "blake2",
  "borsh",
@@ -6122,9 +6122,9 @@ dependencies = [
 
 [[package]]
 name = "tari_utilities"
-version = "0.6.2"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "387dd7a5067310780c64c0e00288ab65b38f8899d8913ee6df3645bc59711c24"
+checksum = "8c1bb0e5d1d812f2be2d6ad861caad68f75adb5b2e8376264850300deb16ddc7"
 dependencies = [
  "base58-monero 0.3.2",
  "base64 0.13.1",
