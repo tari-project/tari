@@ -2048,7 +2048,7 @@ impl BlockchainBackend for LMDBDatabase {
         };
 
         let tips_len = strongest_tips.len();
-        let mut result = Vec::new();
+        let mut chain_tips = Vec::new();
         for chain_tip in strongest_tips {
             let orphan: Block = lmdb_get(&txn, &self.orphans_db, chain_tip.hash.as_slice())?.ok_or_else(|| {
                 ChainStorageError::ValueNotFound {
@@ -2071,10 +2071,10 @@ impl BlockchainBackend for LMDBDatabase {
                     details: format!("Accumulated data mismatch at height #{}", height),
                 }
             })?;
-            result.push(chain_header);
+            chain_tips.push(chain_header);
         }
         trace!(target: LOG_TARGET, "Call to fetch_strongest_orphan_chain_tips() ({}) completed in {:.2?}", tips_len, timer.elapsed());
-        Ok(result)
+        Ok(chain_tips)
     }
 
     fn fetch_orphan_children_of(&self, parent_hash: HashOutput) -> Result<Vec<Block>, ChainStorageError> {

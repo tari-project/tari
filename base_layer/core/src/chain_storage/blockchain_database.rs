@@ -1669,7 +1669,10 @@ fn check_for_valid_height<T: BlockchainBackend>(db: &T, height: u64) -> Result<(
 /// Removes blocks from the db from current tip to specified height.
 /// Returns the blocks removed, ordered from tip to height.
 #[allow(clippy::too_many_lines)]
-fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec<Arc<ChainBlock>>, ChainStorageError> {
+fn rewind_to_height<T: BlockchainBackend>(
+    db: &mut T,
+    target_height: u64,
+) -> Result<Vec<Arc<ChainBlock>>, ChainStorageError> {
     let last_header = db.fetch_last_header()?;
 
     // Delete headers
@@ -1679,11 +1682,11 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
     // We use the cmp::max value here because we'll only delete headers here and leave remaining headers to be deleted
     // with the whole block
     let steps_back = last_header_height
-        .checked_sub(cmp::max(last_block_height, height))
+        .checked_sub(cmp::max(last_block_height, target_height))
         .ok_or_else(|| {
             ChainStorageError::InvalidQuery(format!(
                 "Cannot rewind to height ({}) that is greater than the tip header height {}.",
-                cmp::max(height, last_block_height),
+                cmp::max(target_height, last_block_height),
                 last_header_height
             ))
         })?;
@@ -1697,18 +1700,18 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
         );
     }
     // We might have more headers than blocks, so we first see if we need to delete the extra headers.
+    let mut txn = DbTransaction::new();
     for h in 0..steps_back {
-        let mut txn = DbTransaction::new();
         info!(
             target: LOG_TARGET,
             "Rewinding headers at height {}",
             last_header_height - h
         );
         txn.delete_header(last_header_height - h);
-        db.write(txn)?;
     }
+    db.write(txn)?;
     // Delete blocks
-    let mut steps_back = last_block_height.saturating_sub(height);
+    let mut steps_back = last_block_height.saturating_sub(target_height);
     // No blocks to remove, no need to update the best block
     if steps_back == 0 {
         return Ok(vec![]);
@@ -1719,10 +1722,12 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
         target: LOG_TARGET,
         "Rewinding blocks from height {} to {}",
         last_block_height,
-        last_block_height - steps_back
+        target_height
     );
 
-    let effective_pruning_horizon = metadata.height_of_longest_chain() - metadata.pruned_height();
+    let effective_pruning_horizon = metadata
+        .height_of_longest_chain()
+        .saturating_sub(metadata.pruned_height());
     let prune_past_horizon = metadata.is_pruned_node() && steps_back > effective_pruning_horizon;
     if prune_past_horizon {
         warn!(
@@ -1748,7 +1753,8 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
             txn.insert_chained_orphan(block.clone());
         }
         removed_blocks.push(block);
-        // Set best block to one before, to keep DB consistent. Or if we reached pruned horizon, set best block to 0.
+        // Set best block to one before, to keep DB consistent, or, if we reached pruned horizon, set best block to 0 as
+        // we have run out of headers.
         let chain_header = db.fetch_chain_header_by_height(if prune_past_horizon && h + 1 == steps_back {
             0
         } else {
@@ -1775,14 +1781,15 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
             chain_header.height(),
             chain_header.accumulated_data().total_accumulated_difficulty
         );
+        // This write operation is inside the loop to reduce the size of the write operation; this previously caused
+        // issues.
         db.write(txn)?;
     }
 
     if prune_past_horizon {
         // We are rewinding past pruning horizon, so we need to remove all blocks and the UTXO's from them. We do not
         // have to delete the headers as they are still valid.
-        // We don't have these complete blocks, so we don't push them to the channel for further processing such as the
-        // mempool add reorg'ed tx.
+        // We don't have these complete blocks, so we don't push them to the removed blocks.
         for h in 0..(last_block_height - steps_back) {
             let mut txn = DbTransaction::new();
             debug!(
@@ -1791,6 +1798,8 @@ fn rewind_to_height<T: BlockchainBackend>(db: &mut T, height: u64) -> Result<Vec
                 last_block_height - h - steps_back,
             );
             let header = fetch_header(db, last_block_height - h - steps_back)?;
+            // Although we do not have this full block, this method  will remove all remaining data that is linked to
+            // the specific header hash
             txn.delete_tip_block(header.hash());
             db.write(txn)?;
         }
