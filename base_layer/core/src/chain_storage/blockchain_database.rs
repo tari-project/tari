@@ -81,7 +81,7 @@ use crate::{
         Reorg,
         TargetDifficulties,
     },
-    common::rolling_vec::RollingVec,
+    common::{rolling_vec::RollingVec, BanPeriod},
     consensus::{
         chain_strength_comparer::ChainStrengthComparer,
         ConsensusConstants,
@@ -1855,14 +1855,14 @@ fn reorganize_chain<T: BlockchainBackend>(
     backend: &mut T,
     block_validator: &dyn CandidateBlockValidator<T>,
     fork_hash: HashOutput,
-    chain: &VecDeque<Arc<ChainBlock>>,
+    new_chain_from_fork: &VecDeque<Arc<ChainBlock>>,
     consensus: &ConsensusManager,
 ) -> Result<Vec<Arc<ChainBlock>>, ChainStorageError> {
     let removed_blocks = rewind_to_hash(backend, fork_hash)?;
     debug!(
         target: LOG_TARGET,
         "Validate and add {} chain block(s) from block {}. Rewound blocks: [{}]",
-        chain.len(),
+        new_chain_from_fork.len(),
         fork_hash,
         removed_blocks
             .iter()
@@ -1870,8 +1870,7 @@ fn reorganize_chain<T: BlockchainBackend>(
             .collect::<Vec<_>>()
             .join(", ")
     );
-
-    for block in chain {
+    for (i, block) in new_chain_from_fork.iter().enumerate() {
         let mut txn = DbTransaction::new();
         let block_hash = *block.hash();
         txn.delete_orphan(block_hash);
@@ -1884,8 +1883,15 @@ fn reorganize_chain<T: BlockchainBackend>(
                 block_hash,
                 e
             );
-            txn.insert_bad_block(block.header().hash(), block.header().height);
-            remove_orphan(backend, block_hash)?;
+            if e.get_ban_reason().is_some() && e.get_ban_reason().unwrap().ban_duration != BanPeriod::Short {
+                txn.insert_bad_block(block.header().hash(), block.header().height);
+            }
+            // We removed a block from the orphan chain, so the chain is now "broken", so we remove the rest of the
+            // remaining blocks as well.
+            for j in (i + 1)..new_chain_from_fork.len() {
+                txn.delete_orphan(*new_chain_from_fork[j].hash());
+            }
+            backend.write(txn)?;
 
             info!(target: LOG_TARGET, "Restoring previous chain after failed reorg.");
             restore_reorged_chain(backend, fork_hash, removed_blocks, consensus)?;
