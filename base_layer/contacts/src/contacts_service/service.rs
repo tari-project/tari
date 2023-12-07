@@ -199,7 +199,7 @@ where T: ContactsBackend + 'static
         let shutdown = self
             .shutdown_signal
             .take()
-            .expect("Output Manager Service initialized without shutdown signal");
+            .expect("Contacts Service initialized without shutdown signal");
         pin_mut!(shutdown);
 
         // Add all contacts as monitored peers to the liveness service
