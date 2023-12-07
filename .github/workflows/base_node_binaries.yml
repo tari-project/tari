@@ -23,6 +23,9 @@ env:
   matrix-json-file: ".github/workflows/base_node_binaries.json"
   CARGO_HTTP_MULTIPLEXING: false
   CARGO_UNSTABLE_SPARSE_REGISTRY: true
+  CARGO: cargo
+  # CARGO_OPTIONS: "--verbose"
+  CARGO_OPTIONS: "--release"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -124,10 +127,17 @@ jobs:
           targets: ${{ matrix.builds.target }}
 
       - name: Install Linux dependencies - Ubuntu
-        if: ${{ startsWith(runner.os,'Linux') && matrix.builds.name != 'linux-arm64' }}
+        if: ${{ startsWith(runner.os,'Linux') && ( ! matrix.builds.cross ) }}
         run: |
           sudo apt-get update
           sudo bash scripts/install_ubuntu_dependencies.sh
+
+      - name: Install Linux dependencies - Ubuntu - cross-compile arm64 on x86-64
+        if: ${{ startsWith(runner.os,'Linux') && ( ! matrix.builds.cross ) && matrix.builds.name == 'linux-arm64' }}
+        run: |
+          sudo apt-get update
+          sudo bash scripts/install_ubuntu_dependencies-arm64.sh
+          rustup target add ${{ matrix.builds.target }}
 
       - name: Install macOS dependencies
         if: startsWith(runner.os,'macOS')
@@ -136,7 +146,6 @@ jobs:
           rustup target add ${{ matrix.builds.target }}
 
       - name: Install Windows dependencies
-        # continue-on-error: true  # WARNING: workaround
         if: startsWith(runner.os,'Windows')
         run: |
           vcpkg.exe install sqlite3:x64-windows zlib:x64-windows
@@ -149,7 +158,7 @@ jobs:
           # choco upgrade strawberryperl -y
 
       - name: Set environment variables - Nix
-        if: "!startsWith(runner.os,'Windows')"
+        if: ${{ ! startsWith(runner.os,'Windows') }}
         run: |
           echo "SHARUN=shasum --algorithm 256" >> $GITHUB_ENV
           echo "CC=gcc" >> $GITHUB_ENV
@@ -193,23 +202,36 @@ jobs:
         if: ${{ ! startsWith(github.ref, 'refs/tags/v') }}
         uses: Swatinem/rust-cache@v2
 
-      - name: Build rust binaries
+      - name: Install and setup cargo cross
+        if: ${{ matrix.builds.cross }}
         shell: bash
         run: |
-          if [ "${{ matrix.builds.cross }}" != "true" ]; then
-            cargo build --release \
-              --target ${{ matrix.builds.target }} \
-              --features "${{ matrix.builds.features }}" \
-              ${{ matrix.builds.target_bins }} \
-              ${{ matrix.builds.flags }} --locked
-          else
-            cargo install cross
-            cross build --release \
-              --target ${{ matrix.builds.target }} \
-              --features "${{ matrix.builds.features }}" \
-              ${{ matrix.builds.target_bins }} \
-              ${{ matrix.builds.flags }} --locked
-          fi
+          cargo install cross
+          echo "CARGO=cross" >> $GITHUB_ENV
+
+      - name: Install and setup cargo-auditable
+        if: ${{ false }}
+        # if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        shell: bash
+        run: |
+          cargo install cargo-auditable
+          echo "CARGO=${{ env.CARGO }} auditable" >> $GITHUB_ENV
+          echo "CARGO_OPTIONS=${{ env.CARGO_OPTIONS }} --release" >> $GITHUB_ENV
+
+      - name: Show command used for Cargo
+        run: |
+          echo "cargo command is: ${{ env.CARGO }}"
+          echo "cargo options is: ${{ env.CARGO_OPTIONS }}"
+          echo "cross flag: ${{ matrix.builds.cross }}"
+
+      - name: Build release binaries
+        shell: bash
+        run: |
+          ${{ env.CARGO }} build ${{ env.CARGO_OPTIONS }} \
+            --target ${{ matrix.builds.target }} \
+            --features "${{ matrix.builds.features }}" \
+            ${{ matrix.builds.target_bins }} \
+            ${{ matrix.builds.flags }} --locked
 
       - name: Copy binaries to folder for archiving
         shell: bash
@@ -363,7 +385,6 @@ jobs:
           path: "${{ github.workspace }}/buildtools/Output/*"
 
       - name: Archive and Checksum Binaries
-        # if: "!startsWith(runner.os,'Windows')"    # Disable checksum for Windows - workaround
         shell: bash
         run: |
           echo "Archive ${{ env.BINFILE }} too ${{ env.BINFILE }}.zip"
