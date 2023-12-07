@@ -38,8 +38,11 @@ use std::io::stdout;
 
 use clap::Parser;
 use crossterm::{execute, terminal::SetTitle};
+use log::*;
 use minotari_app_utilities::consts;
 use tari_common::initialize_logging;
+
+const LOG_TARGET: &str = "minotari_mm_proxy::proxy";
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -58,7 +61,7 @@ async fn main() -> Result<(), anyhow::Error> {
     match run_merge_miner::start_merge_miner(cli).await {
         Ok(_) => Ok(()),
         Err(err) => {
-            eprintln!("Fatal error: {:?}", err);
+            error!(target: LOG_TARGET, "Fatal error: {:?}", err);
             Err(err)
         },
     }

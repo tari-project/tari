@@ -131,21 +131,16 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
 
         Ok(())
     } else {
-        let mut node_conn = connect(&config).await.map_err(|e| {
-            ExitError::new(
-                ExitCode::GrpcError,
-                format!("Could not connect to base node: {}", e.to_string()),
-            )
-        })?;
+        let mut node_conn = connect(&config)
+            .await
+            .map_err(|e| ExitError::new(ExitCode::GrpcError, e.to_string()))?;
         if let Err(e) = verify_base_node_responses(&mut node_conn, &config).await {
             if let MinerError::BaseNodeNotResponding(_) = e {
                 println!();
-                println!("{}", e.to_string());
                 error!(target: LOG_TARGET, "{}", e.to_string());
                 let msg = "Are the base node's gRPC mining methods denied in its 'config.toml'? Please ensure these \
                            methods are commented out:\n  'grpc_server_deny_methods': \"get_new_block_template\", \
                            \"get_tip_info\", \"get_new_block\", \"submit_block\"";
-                println!("{}", msg);
                 error!(target: LOG_TARGET, "{}", msg);
                 println!();
                 return Err(ExitError::new(ExitCode::GrpcError, e.to_string()));
@@ -220,12 +215,9 @@ async fn connect(config: &MinerConfig) -> Result<BaseNodeGrpcClient, MinerError>
     let node_conn = match connect_base_node(config).await {
         Ok(client) => client,
         Err(e) => {
-            let msg = format!("Fatal: Could not connect to base node ({})", e);
-            println!("{}", msg);
-            error!(target: LOG_TARGET, "{}", msg);
+            error!(target: LOG_TARGET, "Could not connect to base node");
             let msg =
                 "Is the base node's gRPC running? Try running it with `--enable-grpc` or enable it in the config.";
-            println!("{}", msg);
             error!(target: LOG_TARGET, "{}", msg);
             return Err(e);
         },
@@ -242,7 +234,6 @@ async fn connect_base_node(config: &MinerConfig) -> Result<BaseNodeGrpcClient, M
         socketaddr,
     );
 
-    println!("👛 Connecting to base node at {}", base_node_addr);
     info!(target: LOG_TARGET, "👛 Connecting to base node at {}", base_node_addr);
     let mut endpoint = Endpoint::from_str(&base_node_addr)?;
 
