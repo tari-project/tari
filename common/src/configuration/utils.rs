@@ -93,17 +93,18 @@ pub fn write_default_config_to<P: AsRef<Path>>(path: P) -> Result<(), std::io::E
          leak private info on the node",
     );
     let base_node_deny_methods = if mine {
-        include_str!("../../config/presets/c_base_node_mining_deny_methods.toml")
+        include_str!("../../config/presets/c_base_node_b_mining_deny_methods.toml")
     } else {
-        include_str!("../../config/presets/c_base_node_non_mining_deny_methods.toml")
+        include_str!("../../config/presets/c_base_node_b_non_mining_deny_methods.toml")
     };
 
     let common = include_str!("../../config/presets/a_common.toml");
     let source = [
         common,
         include_str!("../../config/presets/b_peer_seeds.toml"),
+        include_str!("../../config/presets/c_base_node_a.toml"),
         base_node_deny_methods,
-        include_str!("../../config/presets/c_base_node.toml"),
+        include_str!("../../config/presets/c_base_node_c.toml"),
         include_str!("../../config/presets/d_console_wallet.toml"),
         include_str!("../../config/presets/g_miner.toml"),
         include_str!("../../config/presets/f_merge_mining_proxy.toml"),

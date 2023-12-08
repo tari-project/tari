@@ -1,3 +1,4 @@
+
 # Uncomment all gRPC server methods that should be denied default (only active when `grpc_enabled = true`)
 grpc_server_deny_methods = [
     "get_version",
@@ -7,31 +8,31 @@ grpc_server_deny_methods = [
     #"get_tip_info",
     "identify",
     "get_network_status",
-    #"list_headers"
+    #"list_headers",
     "get_header_by_hash",
     "get_blocks",
     "get_block_timing",
     "get_constants",
     "get_block_size",
     "get_block_fees",
-    #"get_tokens_in_circulation"
-    #"get_network_difficulty"
+    #"get_tokens_in_circulation",
+    #"get_network_difficulty",
     #"get_new_block_template",
     #"get_new_block",
     #"get_new_block_blob",
-    #"submit_block"
-    #"submit_block_blob"
-    #"submit_transaction"
-    #"search_kernels"
-    #"search_utxos"
-    #"fetch_matching_utxos"
+    #"submit_block",
+    #"submit_block_blob",
+    #"submit_transaction",
+    #"search_kernels",
+    #"search_utxos",
+    #"fetch_matching_utxos",
     "get_peers",
     "get_mempool_transactions",
-    #"transaction_state"
-    #"list_connected_peers"
-    #"get_mempool_stats"
-    #"get_active_validator_nodes"
-    #"get_shard_key"
-    #"get_template_registrations"
-    #"get_side_chain_utxos"
+    #"transaction_state",
+    #"list_connected_peers",
+    #"get_mempool_stats",
+    #"get_active_validator_nodes",
+    #"get_shard_key",
+    #"get_template_registrations",
+    #"get_side_chain_utxos",
 ]
