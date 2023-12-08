@@ -154,6 +154,8 @@ pub struct PowAlgorithmConstants {
 const FAUCET_VALUE: u64 = 6_030_157_777_181_012;
 const ESMERALDA_FAUCET_VALUE: u64 = FAUCET_VALUE;
 // const IGOR_FAUCET_VALUE: u64 = 1_897_859_637_874_722;
+const INITIAL_EMISSION: MicroMinotari = MicroMinotari(13_952_877_857);
+const ESMERALDA_INITIAL_EMISSION: MicroMinotari = INITIAL_EMISSION;
 
 // The target time used by the difficulty adjustment algorithms, their target time is the target block interval * PoW
 // algorithm count
@@ -495,7 +497,7 @@ impl ConsensusConstants {
             difficulty_block_window: 90,
             max_block_transaction_weight: 127_795,
             median_timestamp_count: 11,
-            emission_initial: 13_952_877_857 * uT,
+            emission_initial: ESMERALDA_INITIAL_EMISSION,
             emission_decay: &ESMERALDA_DECAY_PARAMS,
             emission_tail: 800 * T,
             max_randomx_seed_height: 3000,
@@ -550,7 +552,7 @@ impl ConsensusConstants {
             difficulty_block_window: 90,
             max_block_transaction_weight: 127_795,
             median_timestamp_count: 11,
-            emission_initial: 18_462_816_327 * uT,
+            emission_initial: INITIAL_EMISSION,
             emission_decay: &EMISSION_DECAY,
             emission_tail: 800 * T,
             max_randomx_seed_height: 3000,
@@ -599,7 +601,7 @@ impl ConsensusConstants {
             difficulty_block_window: 90,
             max_block_transaction_weight: 127_795,
             median_timestamp_count: 11,
-            emission_initial: 18_462_816_327 * uT,
+            emission_initial: INITIAL_EMISSION,
             emission_decay: &EMISSION_DECAY,
             emission_tail: 800 * T,
             max_randomx_seed_height: 3000,
@@ -965,6 +967,76 @@ mod test {
         assert_eq!(total_supply_up_to_tail_emission, 20_999_999_999_819_869 * uT);
         let (_, reward, _) = rewards.next().unwrap();
         assert_eq!(reward, esmeralda[0].emission_tail);
+    }
+
+    #[test]
+    fn nextnet_schedule() {
+        let nextnet = ConsensusConstants::nextnet();
+        let schedule = EmissionSchedule::new(
+            nextnet[0].emission_initial,
+            nextnet[0].emission_decay,
+            nextnet[0].emission_tail,
+        );
+        // No genesis block coinbase
+        assert_eq!(schedule.block_reward(0), MicroMinotari(0));
+        // Coinbases starts at block 1
+        let coinbase_offset = 1;
+        let first_reward = schedule.block_reward(coinbase_offset);
+        assert_eq!(first_reward, nextnet[0].emission_initial * uT);
+        assert_eq!(schedule.supply_at_block(coinbase_offset), first_reward);
+        // 'half_life_block' at approximately '(total supply - faucet value) / 2'
+        #[allow(clippy::cast_possible_truncation)]
+        let half_life_block = (365.0 * 24.0 * 30.0 * 2.76) as u64;
+        assert_eq!(
+            schedule.supply_at_block(half_life_block + coinbase_offset),
+            7_483_280_506_356_578 * uT
+        );
+        // Tail emission starts after block 3,255,552 + coinbase_offset
+        let mut rewards = schedule
+            .iter()
+            .skip(3255552 + usize::try_from(coinbase_offset).unwrap());
+        let (block_num, reward, supply) = rewards.next().unwrap();
+        assert_eq!(block_num, 3255553 + coinbase_offset);
+        assert_eq!(reward, 800_000_415 * uT);
+        let total_supply_up_to_tail_emission = supply + nextnet[0].faucet_value;
+        assert_eq!(total_supply_up_to_tail_emission, 20_999_999_999_819_869 * uT);
+        let (_, reward, _) = rewards.next().unwrap();
+        assert_eq!(reward, nextnet[0].emission_tail);
+    }
+
+    #[test]
+    fn stagenet_schedule() {
+        let stagenet = ConsensusConstants::stagenet();
+        let schedule = EmissionSchedule::new(
+            stagenet[0].emission_initial,
+            stagenet[0].emission_decay,
+            stagenet[0].emission_tail,
+        );
+        // No genesis block coinbase
+        assert_eq!(schedule.block_reward(0), MicroMinotari(0));
+        // Coinbases starts at block 1
+        let coinbase_offset = 1;
+        let first_reward = schedule.block_reward(coinbase_offset);
+        assert_eq!(first_reward, stagenet[0].emission_initial * uT);
+        assert_eq!(schedule.supply_at_block(coinbase_offset), first_reward);
+        // 'half_life_block' at approximately '(total supply - faucet value) / 2'
+        #[allow(clippy::cast_possible_truncation)]
+        let half_life_block = (365.0 * 24.0 * 30.0 * 2.76) as u64;
+        assert_eq!(
+            schedule.supply_at_block(half_life_block + coinbase_offset),
+            7_483_280_506_356_578 * uT
+        );
+        // Tail emission starts after block 3,255,552 + coinbase_offset
+        let mut rewards = schedule
+            .iter()
+            .skip(3255552 + usize::try_from(coinbase_offset).unwrap());
+        let (block_num, reward, supply) = rewards.next().unwrap();
+        assert_eq!(block_num, 3255553 + coinbase_offset);
+        assert_eq!(reward, 800_000_415 * uT);
+        let total_supply_up_to_tail_emission = supply + stagenet[0].faucet_value;
+        assert_eq!(total_supply_up_to_tail_emission, 20_999_999_999_819_869 * uT);
+        let (_, reward, _) = rewards.next().unwrap();
+        assert_eq!(reward, stagenet[0].emission_tail);
     }
 
     #[test]
