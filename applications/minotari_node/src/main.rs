@@ -103,7 +103,6 @@ fn main() {
 
 fn main_inner() -> Result<(), ExitError> {
     let cli = Cli::parse();
-
     let config_path = cli.common.config_path();
     let cfg = load_configuration(config_path, true, &cli)?;
 

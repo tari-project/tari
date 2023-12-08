@@ -88,6 +88,7 @@ pub async fn run_base_node(
         watch: None,
         profile_with_tokio_console: false,
         grpc_enabled: false,
+        mining_enabled: false,
     };
 
     run_base_node_with_cli(node_identity, config, cli, shutdown).await
@@ -136,10 +137,8 @@ pub async fn run_base_node_with_cli(
             format!("/ip4/127.0.0.1/tcp/{}", port).parse().unwrap()
         });
         // Go, GRPC, go go
-        let grpc = grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(
-            &ctx,
-            config.base_node.grpc_server_deny_methods.clone(),
-        );
+        let grpc =
+            grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx, config.base_node.clone());
         let auth = config.base_node.grpc_authentication.clone();
 
         let mut tls_identity = None;

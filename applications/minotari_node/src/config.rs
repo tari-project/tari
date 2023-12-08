@@ -94,6 +94,8 @@ pub struct BaseNodeConfig {
     pub grpc_authentication: GrpcAuthentication,
     /// GRPC tls enabled
     pub grpc_tls_enabled: bool,
+    /// Enable mining on the base node, overriding other settings regarding mining
+    pub mining_enabled: bool,
     /// A path to the file that stores the base node identity and secret key
     pub identity_file: PathBuf,
     /// Spin up and use a built-in Tor instance. This only works on macos/linux - requires that the wallet was built
@@ -164,6 +166,7 @@ impl Default for BaseNodeConfig {
             ],
             grpc_authentication: GrpcAuthentication::default(),
             grpc_tls_enabled: false,
+            mining_enabled: false,
             identity_file: PathBuf::from("config/base_node_id.json"),
             use_libtor: false,
             tor_identity_file: PathBuf::from("config/base_node_tor_id.json"),

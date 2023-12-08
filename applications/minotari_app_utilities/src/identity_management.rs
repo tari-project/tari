@@ -72,7 +72,7 @@ pub fn setup_node_identity<P: AsRef<Path>>(
         Err(e) => {
             debug!(target: LOG_TARGET, "Failed to load node identity: {}", e);
             if !create_id {
-                let prompt = prompt("Node identity does not exist.\nWould you like to to create one (Y/n)?");
+                let prompt = prompt("Node identity does not exist.\nWould you like to create one (Y/n)?");
                 if !prompt {
                     error!(
                         target: LOG_TARGET,
