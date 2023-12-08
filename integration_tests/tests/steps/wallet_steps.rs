@@ -221,13 +221,17 @@ async fn wallet_detects_all_txs_as_mined_confirmed(world: &mut TariWorld, wallet
                     grpc::TransactionStatus::MinedUnconfirmed |
                     grpc::TransactionStatus::MinedConfirmed |
                     grpc::TransactionStatus::OneSidedUnconfirmed |
-                    grpc::TransactionStatus::OneSidedConfirmed => {
+                    grpc::TransactionStatus::OneSidedConfirmed |
+                    grpc::TransactionStatus::CoinbaseUnconfirmed |
+                    grpc::TransactionStatus::CoinbaseConfirmed => {
                         break;
                     },
                     _ => (),
                 },
                 "Mined_or_Faux_Confirmed" => match tx_info.status() {
-                    grpc::TransactionStatus::MinedConfirmed | grpc::TransactionStatus::OneSidedConfirmed => {
+                    grpc::TransactionStatus::MinedConfirmed |
+                    grpc::TransactionStatus::OneSidedConfirmed |
+                    grpc::TransactionStatus::CoinbaseConfirmed => {
                         break;
                     },
                     _ => (),
@@ -238,7 +242,8 @@ async fn wallet_detects_all_txs_as_mined_confirmed(world: &mut TariWorld, wallet
                     grpc::TransactionStatus::Broadcast |
                     grpc::TransactionStatus::MinedUnconfirmed |
                     grpc::TransactionStatus::MinedConfirmed |
-                    grpc::TransactionStatus::Coinbase => {
+                    grpc::TransactionStatus::CoinbaseConfirmed |
+                    grpc::TransactionStatus::CoinbaseUnconfirmed => {
                         break;
                     },
                     _ => (),

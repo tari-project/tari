@@ -2061,11 +2061,10 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
         return Ok(());
     }
 
+    let mut txn = DbTransaction::new();
     let parent = match db.fetch_orphan_chain_tip_by_hash(&candidate_block.header.prev_hash)? {
         Some(curr_parent) => {
-            let mut txn = DbTransaction::new();
             txn.remove_orphan_chain_tip(candidate_block.header.prev_hash);
-            db.write(txn)?;
             info!(
                 target: LOG_TARGET,
                 "New orphan ({}) extends a chain in the current candidate tip set",
@@ -2101,10 +2100,9 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
                         hash
                     );
 
-                    let mut txn = DbTransaction::new();
                     txn.insert_orphan(candidate_block);
-                    db.write(txn)?;
                 }
+                db.write(txn)?;
                 return Ok(());
             },
         },
@@ -2118,18 +2116,18 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
         Ok(achieved_target_diff) => achieved_target_diff,
         // future timelimit validation can succeed at a later time. As the block is not yet valid, we discard it
         // for now and ban the peer, but wont blacklist the block.
-        Err(e @ ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidTimestampFutureTimeLimit)) => {
-            return Err(e.into())
-        },
+        Err(e @ ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidTimestampFutureTimeLimit)) |
         // We dont want to mark a block as bad for internal failures
         Err(
             e @ ValidationError::FatalStorageError(_) | e @ ValidationError::IncorrectNumberOfTimestampsProvided { .. },
-        ) => return Err(e.into()),
+        ) |
         // We dont have to mark the block twice
-        Err(e @ ValidationError::BadBlockFound { .. }) => return Err(e.into()),
+        Err(e @ ValidationError::BadBlockFound { .. }) => {
+            db.write(txn)?;
+            return Err(e.into())
+        },
 
         Err(e) => {
-            let mut txn = DbTransaction::new();
             txn.insert_bad_block(candidate_block.header.hash(), candidate_block.header.height);
             db.write(txn)?;
             return Err(e.into());
@@ -2145,21 +2143,20 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
         .with_total_kernel_offset(candidate_block.header.total_kernel_offset.clone())
         .build()?;
 
-    // NOTE: Panic is impossible, accumulated data constructed from block
-    let chain_block = ChainBlock::try_construct(candidate_block, accumulated_data).unwrap();
+    let chain_block = ChainBlock::try_construct(candidate_block, accumulated_data).ok_or(
+        ChainStorageError::UnexpectedResult("Somehow hash is missing from Chain block".to_string()),
+    )?;
     let chain_header = chain_block.to_chain_header();
 
     // Extend orphan chain tip.
-    let mut txn = DbTransaction::new();
-    if !db.contains(&DbKey::OrphanBlock(chain_block.accumulated_data().hash))? {
-        txn.insert_orphan(chain_block.to_arc_block());
-    }
+
+    txn.insert_orphan(chain_block.to_arc_block());
+
     txn.set_accumulated_data_for_orphan(chain_block.accumulated_data().clone());
     db.write(txn)?;
-
     let tips = find_orphan_descendant_tips_of(db, chain_header, prev_timestamps, validator)?;
-    debug!(target: LOG_TARGET, "Found {} new orphan tips", tips.len());
     let mut txn = DbTransaction::new();
+    debug!(target: LOG_TARGET, "Found {} new orphan tips", tips.len());
     for new_tip in &tips {
         txn.insert_orphan_chain_tip(
             *new_tip.hash(),

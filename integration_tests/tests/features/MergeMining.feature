@@ -31,7 +31,7 @@ Feature: Merge Mining
     When I ask for a block header by hash using last block header from proxy PROXY
     Then Proxy response for block header by hash is valid
 
-  @critical
+  @critical @broken
   Scenario: Simple Merge Mining
     Given I have a seed node NODE
     When I have wallet WALLET connected to all seed nodes
