@@ -79,7 +79,6 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
     set_network_if_choice_valid(config.network)?;
 
     debug!(target: LOG_TARGET_FILE, "{:?}", config);
-    // setup_grpc_config(&mut config);
     let key_manager = create_memory_db_key_manager();
     let wallet_payment_address = wallet_payment_address(config.wallet_payment_address.clone(), config.network)
         .map_err(|err| {
@@ -141,7 +140,7 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
                 let msg = "Are the base node's gRPC mining methods denied in its 'config.toml'? Please ensure these \
                            methods are commented out:\n  'grpc_server_deny_methods': \"get_new_block_template\", \
                            \"get_tip_info\", \"get_new_block\", \"submit_block\"";
-                error!(target: LOG_TARGET, "{}", msg);
+                println!(target: LOG_TARGET, "{}", msg);
                 println!();
                 return Err(ExitError::new(ExitCode::GrpcError, e.to_string()));
             }

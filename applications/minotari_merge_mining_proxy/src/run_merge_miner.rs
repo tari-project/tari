@@ -68,10 +68,10 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
     let mut base_node_client = match connect_base_node(&config).await {
         Ok(client) => client,
         Err(e) => {
-            error!(target: LOG_TARGET, "Could not connect to base node");
+            error!(target: LOG_TARGET, "Could not connect to base node: {}", e);
             let msg =
                 "Is the base node's gRPC running? Try running it with `--enable-grpc` or enable it in the config.";
-            error!(target: LOG_TARGET, "{}", msg);
+            println!(target: LOG_TARGET, "{}", msg);
             return Err(e.into());
         },
     };
@@ -82,7 +82,7 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
             let msg = "Are the base node's gRPC mining methods denied in its 'config.toml'? Please ensure these \
                        methods are commented out:\n  'grpc_server_deny_methods': \"get_new_block_template\", \
                        \"get_tip_info\", \"get_new_block\", \"submit_block\"";
-            error!(target: LOG_TARGET, "{}", msg);
+            println!(target: LOG_TARGET, "{}", msg);
             println!();
             return Err(e.into());
         }
