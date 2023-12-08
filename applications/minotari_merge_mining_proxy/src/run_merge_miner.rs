@@ -26,21 +26,19 @@ use futures::future;
 use hyper::{service::make_service_fn, Server};
 use log::*;
 use minotari_app_grpc::tls::protocol_string;
-use minotari_node_grpc_client::grpc::base_node_client::BaseNodeClient;
-use minotari_wallet_grpc_client::ClientAuthenticationInterceptor;
-use tari_common::{
-    configuration::bootstrap::{grpc_default_port, ApplicationType},
-    load_configuration,
-    DefaultConfigLoader,
+use minotari_app_utilities::parse_miner_input::{
+    base_node_socket_address,
+    verify_base_node_grpc_mining_responses,
+    wallet_payment_address,
+    BaseNodeGrpcClient,
 };
-use tari_common_types::tari_address::TariAddress;
+use minotari_node_grpc_client::{grpc, grpc::base_node_client::BaseNodeClient};
+use minotari_wallet_grpc_client::ClientAuthenticationInterceptor;
+use tari_common::{load_configuration, DefaultConfigLoader};
 use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;
 use tari_core::proof_of_work::randomx_factory::RandomXFactory;
 use tokio::time::Duration;
-use tonic::{
-    codegen::InterceptedService,
-    transport::{Certificate, Channel, ClientTlsConfig, Endpoint},
-};
+use tonic::transport::{Certificate, ClientTlsConfig, Endpoint};
 
 use crate::{
     block_template_data::BlockTemplateRepository,
@@ -49,6 +47,7 @@ use crate::{
     proxy::MergeMiningProxyService,
     Cli,
 };
+
 const LOG_TARGET: &str = "minotari_mm_proxy::proxy";
 
 pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
@@ -56,20 +55,6 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
     let cfg = load_configuration(&config_path, true, &cli)?;
     let mut config = MergeMiningProxyConfig::load_from(&cfg)?;
     config.set_base_path(cli.common.get_base_path());
-    setup_grpc_config(&mut config);
-
-    let wallet_payment_address = TariAddress::from_str(&config.wallet_payment_address)
-        .map_err(|err| MmProxyError::WalletPaymentAddress("'wallet_payment_address' ".to_owned() + &err.to_string()))?;
-    if wallet_payment_address == TariAddress::default() {
-        return Err(anyhow::Error::msg(
-            "'wallet_payment_address' may not have the default value",
-        ));
-    }
-    if wallet_payment_address.network() != config.network {
-        return Err(anyhow::Error::msg(
-            "'wallet_payment_address' network does not match miner network".to_string(),
-        ));
-    }
 
     info!(target: LOG_TARGET, "Configuration: {:?}", config);
     let client = reqwest::Client::builder()
@@ -79,7 +64,29 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
         .build()
         .map_err(MmProxyError::ReqwestError)?;
 
-    let base_node_client = connect_base_node(&config).await?;
+    let wallet_payment_address = wallet_payment_address(config.wallet_payment_address.clone(), config.network)?;
+    let mut base_node_client = match connect_base_node(&config).await {
+        Ok(client) => client,
+        Err(e) => {
+            error!(target: LOG_TARGET, "Could not connect to base node: {}", e);
+            let msg =
+                "Is the base node's gRPC running? Try running it with `--enable-grpc` or enable it in the config.";
+            println!(target: LOG_TARGET, "{}", msg);
+            return Err(e.into());
+        },
+    };
+    if let Err(e) = verify_base_node_responses(&mut base_node_client).await {
+        if let MmProxyError::BaseNodeNotResponding(_) = e {
+            println!();
+            error!(target: LOG_TARGET, "{}", e.to_string());
+            let msg = "Are the base node's gRPC mining methods denied in its 'config.toml'? Please ensure these \
+                       methods are commented out:\n  'grpc_server_deny_methods': \"get_new_block_template\", \
+                       \"get_tip_info\", \"get_new_block\", \"submit_block\"";
+            println!(target: LOG_TARGET, "{}", msg);
+            println!();
+            return Err(e.into());
+        }
+    }
 
     let listen_addr = multiaddr_to_socketaddr(&config.listener_address)?;
     let randomx_factory = RandomXFactory::new(config.max_randomx_vms);
@@ -89,6 +96,7 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
         base_node_client,
         BlockTemplateRepository::new(),
         randomx_factory,
+        wallet_payment_address,
     )?;
     let service = make_service_fn(|_conn| future::ready(Result::<_, Infallible>::Ok(randomx_service.clone())));
 
@@ -112,18 +120,26 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
     }
 }
 
-async fn connect_base_node(
-    config: &MergeMiningProxyConfig,
-) -> Result<BaseNodeClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>, MmProxyError> {
+async fn verify_base_node_responses(node_conn: &mut BaseNodeGrpcClient) -> Result<(), MmProxyError> {
+    if let Err(e) = verify_base_node_grpc_mining_responses(node_conn, grpc::NewBlockTemplateRequest {
+        algo: Some(grpc::PowAlgo {
+            pow_algo: grpc::pow_algo::PowAlgos::Randomx.into(),
+        }),
+        max_weight: 0,
+    })
+    .await
+    {
+        return Err(MmProxyError::BaseNodeNotResponding(e));
+    }
+    Ok(())
+}
+
+async fn connect_base_node(config: &MergeMiningProxyConfig) -> Result<BaseNodeGrpcClient, MmProxyError> {
+    let socketaddr = base_node_socket_address(config.base_node_grpc_address.clone(), config.network)?;
     let base_node_addr = format!(
         "{}{}",
         protocol_string(config.base_node_grpc_tls_domain_name.is_some()),
-        multiaddr_to_socketaddr(
-            &config
-                .base_node_grpc_address
-                .clone()
-                .expect("Base node grpc address not found")
-        )?,
+        socketaddr,
     );
 
     info!(target: LOG_TARGET, "👛 Connecting to base node at {}", base_node_addr);
@@ -151,17 +167,4 @@ async fn connect_base_node(
     );
 
     Ok(node_conn)
-}
-
-fn setup_grpc_config(config: &mut MergeMiningProxyConfig) {
-    if config.base_node_grpc_address.is_none() {
-        config.base_node_grpc_address = Some(
-            format!(
-                "/ip4/127.0.0.1/tcp/{}",
-                grpc_default_port(ApplicationType::BaseNode, config.network)
-            )
-            .parse()
-            .unwrap(),
-        );
-    }
 }

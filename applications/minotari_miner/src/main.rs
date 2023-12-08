@@ -52,7 +52,7 @@ async fn main() {
     match main_inner().await {
         Ok(_) => std::process::exit(0),
         Err(err) => {
-            eprintln!("Fatal error: {:?}", err);
+            error!(target: LOG_TARGET, "Fatal error: {:?}", err);
             let exit_code = err.exit_code;
             error!(target: LOG_TARGET, "Exiting with code: {:?}", exit_code);
             std::process::exit(exit_code as i32)
