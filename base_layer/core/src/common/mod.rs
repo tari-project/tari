@@ -48,7 +48,7 @@ pub struct BanReason {
     pub ban_duration: BanPeriod,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum BanPeriod {
     Short,
     Long,
