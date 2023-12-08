@@ -20,10 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::{MutexGuard, PoisonError};
-
 use tari_common::{
-    configuration::{Network, CURRENT_NETWORK},
+    configuration::Network,
     exit_codes::{ExitCode, ExitError},
 };
 use tari_features::resolver::Target;
@@ -37,8 +35,11 @@ pub enum NetworkCheckError {
     NextNetBinary(Network),
     #[error("The network {0} is invalid for this binary built for TestNet")]
     TestNetBinary(Network),
-    #[error("Had a problem with the CURRENT_NETWORK guard: {0}")]
-    CurrentNetworkGuard(#[from] PoisonError<MutexGuard<'static, Network>>),
+    #[error("Could not set the network, tried to set to {attempted} but the current network is {current_network}")]
+    CouldNotSetNetwork {
+        attempted: Network,
+        current_network: Network,
+    },
 }
 
 impl From<NetworkCheckError> for ExitError {
@@ -71,11 +72,10 @@ pub fn is_network_choice_valid(network: Network) -> Result<Network, NetworkCheck
 
 pub fn set_network_if_choice_valid(network: Network) -> Result<(), NetworkCheckError> {
     match is_network_choice_valid(network) {
-        Ok(network) => {
-            let mut current_network = CURRENT_NETWORK.lock()?;
-            *current_network = network;
-            Ok(())
-        },
+        Ok(network) => Network::set_current(network).map_err(|instead_network| NetworkCheckError::CouldNotSetNetwork {
+            attempted: network,
+            current_network: instead_network,
+        }),
         Err(e) => Err(e),
     }
 }
