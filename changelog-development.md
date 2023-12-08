@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.0.0-pre.1](https://github.com/tari-project/tari/compare/v1.0.0-pre.0...v1.0.0-pre.1) (2023-12-08)
+
+
+### ⚠ BREAKING CHANGES
+
+* update status (#6008)
+
+### Features
+
+*  hazop findings ([#6020](https://github.com/tari-project/tari/issues/6020)) ([a68d0dd](https://github.com/tari-project/tari/commit/a68d0dd2fb7719ae99bcd2b62980b5f37d66284a))
+* add miner input processing ([#6016](https://github.com/tari-project/tari/issues/6016)) ([26f5b60](https://github.com/tari-project/tari/commit/26f5b6044832f737c7019dab0e00d2234aac442f))
+* add wallet ffi shutdown tests ([#6007](https://github.com/tari-project/tari/issues/6007)) ([3129ce8](https://github.com/tari-project/tari/commit/3129ce8dd066ea16900ee8add4e608c1890c6545))
+* fix hazop findings ([#6017](https://github.com/tari-project/tari/issues/6017)) ([0bc62b4](https://github.com/tari-project/tari/commit/0bc62b4a5b78893a226700226bac01590a543bb8))
+* make base node support 1 click mining ([#6019](https://github.com/tari-project/tari/issues/6019)) ([d377269](https://github.com/tari-project/tari/commit/d3772690c36e0dcb6476090fc428e5745298e398))
+* update faucets ([#6024](https://github.com/tari-project/tari/issues/6024)) ([394976c](https://github.com/tari-project/tari/commit/394976cc591f9551e1542f2730a8ec299b524229))
+* update status ([#6008](https://github.com/tari-project/tari/issues/6008)) ([e19ce15](https://github.com/tari-project/tari/commit/e19ce15549b138d462060997d40147bad39a1871))
+
+
+### Bug Fixes
+
+* **chat:** chat client possible panics ([#6015](https://github.com/tari-project/tari/issues/6015)) ([cf66c51](https://github.com/tari-project/tari/commit/cf66c51483f4b2744221fb652f3b32340d2ee693))
+
 ## [1.0.0-pre.0](https://github.com/tari-project/tari/compare/v0.53.0-pre.0...v1.0.0-pre.0) (2023-12-01)
 
 
