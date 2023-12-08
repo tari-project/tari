@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.0.0-pre.2](https://github.com/tari-project/tari/compare/v1.0.0-pre.1...v1.0.0-pre.2) (2023-12-08)
+
+
+### Bug Fixes
+
+* chat build ([#6026](https://github.com/tari-project/tari/issues/6026)) ([15793b7](https://github.com/tari-project/tari/commit/15793b7e4dfdcaaad6ec90e357348daf42300eab))
+
 ## [1.0.0-pre.1](https://github.com/tari-project/tari/compare/v1.0.0-pre.0...v1.0.0-pre.1) (2023-12-08)
 
 
