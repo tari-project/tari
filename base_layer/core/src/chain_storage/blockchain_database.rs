@@ -2149,11 +2149,13 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
     let chain_header = chain_block.to_chain_header();
 
     // Extend orphan chain tip.
+
     txn.insert_orphan(chain_block.to_arc_block());
 
     txn.set_accumulated_data_for_orphan(chain_block.accumulated_data().clone());
-
+    db.write(txn)?;
     let tips = find_orphan_descendant_tips_of(db, chain_header, prev_timestamps, validator)?;
+    let mut txn = DbTransaction::new();
     debug!(target: LOG_TARGET, "Found {} new orphan tips", tips.len());
     for new_tip in &tips {
         txn.insert_orphan_chain_tip(
