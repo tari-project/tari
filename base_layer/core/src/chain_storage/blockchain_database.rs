@@ -1888,8 +1888,8 @@ fn reorganize_chain<T: BlockchainBackend>(
             }
             // We removed a block from the orphan chain, so the chain is now "broken", so we remove the rest of the
             // remaining blocks as well.
-            for j in (i + 1)..new_chain_from_fork.len() {
-                txn.delete_orphan(*new_chain_from_fork[j].hash());
+            for block in new_chain_from_fork.iter().skip(i + 1) {
+                txn.delete_orphan(*block.hash());
             }
             backend.write(txn)?;
 
@@ -2283,13 +2283,6 @@ fn get_previous_timestamps<T: BlockchainBackend>(
     timestamps.sort_unstable();
 
     Ok(timestamps)
-}
-
-// Discard the the orphan block from the orphan pool that corresponds to the provided block hash.
-fn remove_orphan<T: BlockchainBackend>(db: &mut T, hash: HashOutput) -> Result<(), ChainStorageError> {
-    let mut txn = DbTransaction::new();
-    txn.delete_orphan(hash);
-    db.write(txn)
 }
 
 /// Gets all blocks ordered from the the block that connects (via prev_hash) to the main chain, to the orphan tip.
