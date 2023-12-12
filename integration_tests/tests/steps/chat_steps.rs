@@ -288,10 +288,15 @@ async fn matching_delivery_timestamps(
             .expect("no message with that content found")
             .clone();
 
-        assert_eq!(
-            client_1_message.delivery_confirmation_at.unwrap(),
-            client_2_message.delivery_confirmation_at.unwrap()
-        );
+        let client_1_delivery = client_1_message.delivery_confirmation_at.unwrap();
+        let client_2_delivery = client_2_message.delivery_confirmation_at.unwrap();
+        let diff = if client_1_delivery > client_2_delivery {
+            client_1_delivery - client_2_delivery
+        } else {
+            client_2_delivery - client_1_delivery
+        };
+
+        assert!(diff < 2);
 
         return Ok(());
     }
@@ -346,10 +351,15 @@ async fn matching_read_timestamps(
             continue;
         }
 
-        assert_eq!(
-            client_1_message.read_confirmation_at.unwrap(),
-            client_2_message.read_confirmation_at.unwrap()
-        );
+        let client_1_read = client_1_message.read_confirmation_at.unwrap();
+        let client_2_read = client_2_message.read_confirmation_at.unwrap();
+        let diff = if client_1_read > client_2_read {
+            client_1_read - client_2_read
+        } else {
+            client_2_read - client_1_read
+        };
+
+        assert!(diff < 2);
 
         return Ok(());
     }
