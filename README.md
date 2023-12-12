@@ -356,7 +356,7 @@ CONTAINER ID        IMAGE                                    COMMAND            
 73427509a4bb        quay.io/tarilabs/minotari_node:v0.5.4   "start.sh"          45 minutes ago      Up 26 minutes       0.0.0.0:18142->18142/tcp   tbn_minotari_node_1
 ```
 
-With the container ID `73427509a4bb`, connect to the `minotari_node`` console using `docker attach 73427509a4bb`:
+With the container ID `73427509a4bb`, connect to the `minotari_node` console using `docker attach 73427509a4bb`:
 
 ```
 >> help
