@@ -20,6 +20,8 @@ use crate::{
 
 //-------------------------------------           Main API functions         --------------------------------------//
 
+/// Loads the configuration file from the specified path, or creates a new one with the embedded default presets if it
+/// does not. This also prompts the user.
 pub fn load_configuration<P: AsRef<Path>, TOverride: ConfigOverrideProvider>(
     config_path: P,
     create_if_not_exists: bool,
@@ -31,9 +33,19 @@ pub fn load_configuration<P: AsRef<Path>, TOverride: ConfigOverrideProvider>(
         config_path.as_ref().to_str().unwrap_or("[??]")
     );
     if !config_path.as_ref().exists() && create_if_not_exists {
-        write_default_config_to(&config_path)
+        let sources = prompt_default_config();
+        write_default_config_to(&config_path, &sources)
             .map_err(|io| ConfigError::new("Could not create default config", Some(io.to_string())))?;
     }
+
+    load_configuration_with_overrides(config_path, overrides)
+}
+
+/// Loads the config at the given path applying all overrides.
+pub fn load_configuration_with_overrides<P: AsRef<Path>, TOverride: ConfigOverrideProvider>(
+    config_path: P,
+    overrides: &TOverride,
+) -> Result<Config, ConfigError> {
     let filename = config_path
         .as_ref()
         .to_str()
@@ -83,9 +95,9 @@ pub fn load_configuration<P: AsRef<Path>, TOverride: ConfigOverrideProvider>(
     Ok(cfg)
 }
 
-/// Installs a new configuration file template, copied from the application type's preset and written to the given path.
+/// Returns a new configuration file template in parts from the embedded presets.
 /// Also includes the common configuration defined in `config/presets/common.toml`.
-pub fn write_default_config_to<P: AsRef<Path>>(path: P) -> Result<(), std::io::Error> {
+pub fn prompt_default_config() -> [&'static str; 12] {
     // Use the same config file so that all the settings are easier to find, and easier to
     // support users over chat channels
     let mine = prompt(
@@ -99,7 +111,7 @@ pub fn write_default_config_to<P: AsRef<Path>>(path: P) -> Result<(), std::io::E
     };
 
     let common = include_str!("../../config/presets/a_common.toml");
-    let source = [
+    [
         common,
         include_str!("../../config/presets/b_peer_seeds.toml"),
         include_str!("../../config/presets/c_base_node_a.toml"),
@@ -113,13 +125,17 @@ pub fn write_default_config_to<P: AsRef<Path>>(path: P) -> Result<(), std::io::E
         include_str!("../../config/presets/i_indexer.toml"),
         include_str!("../../config/presets/j_dan_wallet_daemon.toml"),
     ]
-    .join("\n");
+}
 
+pub fn write_default_config_to<P: AsRef<Path>>(path: P, sources: &[&str]) -> Result<(), std::io::Error> {
     if let Some(d) = path.as_ref().parent() {
         fs::create_dir_all(d)?
     };
     let mut file = File::create(path)?;
-    file.write_all(source.as_ref())
+    for source in sources {
+        file.write_all(source.as_bytes())?;
+    }
+    Ok(())
 }
 
 pub fn serialize_string<S, T>(source: &T, ser: S) -> Result<S::Ok, S::Error>
