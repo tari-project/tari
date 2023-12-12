@@ -72,10 +72,22 @@ pub fn is_network_choice_valid(network: Network) -> Result<Network, NetworkCheck
 
 pub fn set_network_if_choice_valid(network: Network) -> Result<(), NetworkCheckError> {
     match is_network_choice_valid(network) {
-        Ok(network) => Network::set_current(network).map_err(|instead_network| NetworkCheckError::CouldNotSetNetwork {
-            attempted: network,
-            current_network: instead_network,
-        }),
+        Ok(network) => match Network::set_current(network) {
+            Ok(()) => Ok(()),
+            Err(instead_network) => {
+                // While you should not set the network twice, the cucumber test do this as they all share a common
+                // memory space. So we do allow you to set it twice, if and only if you set it to the current existing
+                // network.
+                if instead_network == network {
+                    Ok(())
+                } else {
+                    Err(NetworkCheckError::CouldNotSetNetwork {
+                        attempted: network,
+                        current_network: instead_network,
+                    })
+                }
+            },
+        },
         Err(e) => Err(e),
     }
 }
