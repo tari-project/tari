@@ -23,6 +23,7 @@
 use std::path::{Path, PathBuf};
 
 use diesel::{Connection, SqliteConnection};
+use log::trace;
 use tari_common_sqlite::{
     connection::{DbConnection, DbConnectionUrl},
     error::StorageError as SqliteStorageError,
@@ -32,16 +33,21 @@ use tari_storage::lmdb_store::{LMDBBuilder, LMDBConfig};
 
 use crate::error::StorageError;
 
+const LOG_TARGET: &str = "contacts::chat_client::database";
+
 pub fn connect_to_db(db_path: PathBuf) -> Result<ContactsServiceSqliteDatabase<DbConnection>, SqliteStorageError> {
     let url: DbConnectionUrl = DbConnectionUrl::File(db_path);
     let connection = DbConnection::connect_url(&url)?;
+    trace!(target: LOG_TARGET, "Connected to chat storage db {:?}", url);
     Ok(ContactsServiceSqliteDatabase::init(connection))
 }
 
 pub fn create_chat_storage(db_file_path: &Path) -> Result<(), StorageError> {
     // Create the storage db
     std::fs::create_dir_all(db_file_path.parent().ok_or(StorageError::FilePathError)?)?;
-    let _db = SqliteConnection::establish(db_file_path.as_os_str().to_str().ok_or(StorageError::FilePathError)?)?;
+    let db_path = db_file_path.as_os_str().to_str().ok_or(StorageError::FilePathError)?;
+    let _db = SqliteConnection::establish(db_path)?;
+    trace!(target: LOG_TARGET, "Created chat storage db {}", db_path);
     Ok(())
 }
 
@@ -54,6 +60,8 @@ pub fn create_peer_storage(base_path: &PathBuf) -> Result<(), StorageError> {
         .set_max_number_of_databases(1)
         .add_database("peerdb", lmdb_zero::db::CREATE)
         .build()?;
+
+    trace!(target: LOG_TARGET, "Created chat peer db {:?}", base_path.join("peerdb"));
 
     Ok(())
 }

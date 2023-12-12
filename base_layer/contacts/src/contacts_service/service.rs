@@ -302,19 +302,46 @@ where T: ContactsBackend + 'static
                 let ob_message = OutboundDomainMessage::from(MessageDispatch::Message(message.clone()));
 
                 message.stored_at = Utc::now().naive_utc().timestamp() as u64;
-                self.db.save_message(message)?;
-                self.deliver_message(address, ob_message).await?;
+                match self.db.save_message(message) {
+                    Ok(_) => {
+                        if let Err(e) = self.deliver_message(address.clone(), ob_message).await {
+                            trace!(target: LOG_TARGET, "Failed to broadcast a message {} over the network: {}", address, e);
+                        }
+                    },
+                    Err(e) => {
+                        trace!(target: LOG_TARGET, "Failed to save the message locally, did not broadcast the message to the network");
+                        return Err(e.into());
+                    },
+                }
 
+                trace!(target: LOG_TARGET, "Sent message to {} successfully", address);
                 Ok(ContactsServiceResponse::MessageSent)
             },
             ContactsServiceRequest::SendReadConfirmation(address, confirmation) => {
                 let msg = OutboundDomainMessage::from(MessageDispatch::ReadConfirmation(confirmation.clone()));
                 trace!(target: LOG_TARGET, "Sending read confirmation with details: message_id: {:?}, timestamp: {:?}", confirmation.message_id, confirmation.timestamp);
 
-                self.deliver_message(address, msg).await?;
-
-                self.db
-                    .confirm_message(confirmation.message_id.clone(), None, Some(confirmation.timestamp))?;
+                match self.deliver_message(address.clone(), msg).await {
+                    Ok(_) => {
+                        trace!(target: LOG_TARGET, "Read confirmation broadcast for message_id: {:?} to {}", confirmation.message_id, address);
+                        match self.db.confirm_message(
+                            confirmation.message_id.clone(),
+                            None,
+                            Some(confirmation.timestamp),
+                        ) {
+                            Ok(_) => {
+                                trace!(target: LOG_TARGET, "Read confirmation locally saved for message_id: {:?} to {}", confirmation.message_id, address);
+                            },
+                            Err(e) => {
+                                trace!(target: LOG_TARGET, "Failed to save the read confirmation locally for message_id: {:?} with error {}", confirmation.message_id, e);
+                            },
+                        }
+                    },
+                    Err(e) => {
+                        trace!(target: LOG_TARGET, "Failed to broadcast the read confirmation of message_id: {:?} to {} with error {}", confirmation.message_id, address, e);
+                        return Err(e);
+                    },
+                }
 
                 Ok(ContactsServiceResponse::ReadConfirmationSent)
             },
@@ -398,9 +425,13 @@ where T: ContactsBackend + 'static
         &mut self,
         msg: DomainMessage<Result<proto::MessageDispatch, prost::DecodeError>>,
     ) -> Result<(), ContactsServiceError> {
+        trace!(target: LOG_TARGET, "Handling incoming chat message dispatch {:?} from peer {}", msg, msg.source_peer.public_key);
+
         let msg_inner = match &msg.inner {
             Ok(msg) => msg.clone(),
             Err(e) => {
+                debug!(target: LOG_TARGET, "Banning peer {} for illformed message", msg.source_peer.public_key);
+
                 self.connectivity
                     .ban_peer(
                         msg.source_peer.node_id.clone(),
@@ -555,19 +586,26 @@ where T: ContactsBackend + 'static
             stored_at: EpochTime::now().as_u64(),
             ..message
         };
+        trace!(target: LOG_TARGET, "Handling chat message {:?}", our_message);
 
         match self.db.save_message(our_message.clone()) {
             Ok(..) => {
-                let _msg = self
+                if let Err(e) = self
                     .message_publisher
-                    .send(Arc::new(MessageDispatch::Message(our_message.clone())));
+                    .send(Arc::new(MessageDispatch::Message(our_message.clone())))
+                {
+                    debug!(target: LOG_TARGET, "Failed to re-broadcast chat message internally: {}", e);
+                }
 
                 // Send a delivery notification
                 self.create_and_send_delivery_confirmation_for_msg(&our_message).await?;
 
                 Ok(())
             },
-            Err(e) => Err(e.into()),
+            Err(e) => {
+                trace!(target: LOG_TARGET, "Failed to save incoming message to the db {}", e);
+                Err(e.into())
+            },
         }
     }
 
@@ -576,17 +614,21 @@ where T: ContactsBackend + 'static
         message: &Message,
     ) -> Result<(), ContactsServiceError> {
         let address = &message.address;
-        let delivery_time = EpochTime::now().as_u64();
         let confirmation = MessageDispatch::DeliveryConfirmation(Confirmation {
             message_id: message.message_id.clone(),
-            timestamp: delivery_time,
+            timestamp: message.stored_at,
         });
         let msg = OutboundDomainMessage::from(confirmation);
+        trace!(target: LOG_TARGET, "Sending a delivery notification {:?}", msg);
 
         self.deliver_message(address.clone(), msg).await?;
 
-        self.db
-            .confirm_message(message.message_id.clone(), Some(delivery_time), None)?;
+        if let Err(e) = self
+            .db
+            .confirm_message(message.message_id.clone(), Some(message.stored_at), None)
+        {
+            trace!(target: LOG_TARGET, "Failed to store the delivery confirmation in the db: {}", e);
+        }
 
         Ok(())
     }
@@ -622,7 +664,7 @@ where T: ContactsBackend + 'static
 
         match self.get_online_status(&contact).await {
             Ok(ContactOnlineStatus::Online) => {
-                info!(target: LOG_TARGET, "Chat message being sent directed");
+                info!(target: LOG_TARGET, "Chat message being sent direct");
                 let mut comms_outbound = self.dht.outbound_requester();
 
                 comms_outbound
@@ -636,6 +678,7 @@ where T: ContactsBackend + 'static
             },
             Err(e) => return Err(e),
             _ => {
+                info!(target: LOG_TARGET, "Chat message being sent via closest broadcast");
                 let mut comms_outbound = self.dht.outbound_requester();
                 comms_outbound
                     .closest_broadcast(address.public_key().clone(), encryption, vec![], message)
