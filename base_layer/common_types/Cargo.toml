@@ -3,7 +3,7 @@ name = "tari_common_types"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency common types"
 license = "BSD-3-Clause"
-version = "1.0.0-pre.2"
+version = "1.0.0-pre.3"
 edition = "2018"
 
 [dependencies]
