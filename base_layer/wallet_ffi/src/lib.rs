@@ -8247,7 +8247,9 @@ pub unsafe extern "C" fn emoji_set_destroy(emoji_set: *mut EmojiSet) {
 /// None
 #[no_mangle]
 pub unsafe extern "C" fn wallet_destroy(wallet: *mut TariWallet) {
+    debug!(target: LOG_TARGET, "Wallet destroy called");
     if !wallet.is_null() {
+        debug!(target: LOG_TARGET, "Wallet pointer not yet destroyed, shutting down now");
         let mut w = Box::from_raw(wallet);
         let wallet_comms = w.wallet.comms.clone();
         w.shutdown.trigger();
