@@ -37,7 +37,7 @@ async-trait = "0.1.50"
 chrono = { version = "0.4.22", default-features = false }
 config = "0.13.0"
 csv = "1.1"
-cucumber = { version = "0.18.0", features = ["default", "libtest", "output-junit"] }
+cucumber = { version = "0.20.0", features = ["default", "libtest", "output-junit"] }
 futures = { version = "^0.3.1" }
 indexmap = "1.9.1"
 libc = "0.2.65"
