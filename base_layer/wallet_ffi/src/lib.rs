@@ -4985,6 +4985,7 @@ pub unsafe extern "C" fn public_keys_get_at(
 #[allow(clippy::too_many_lines)]
 unsafe fn init_logging(
     log_path: *const c_char,
+    log_verbosity: c_int,
     num_rolling_log_files: c_uint,
     size_per_log_file_bytes: c_uint,
     error_out: *mut c_int,
@@ -4998,6 +4999,17 @@ unsafe fn init_logging(
         ptr::swap(error_out, &mut error as *mut c_int);
         return;
     }
+
+    let log_level = match log_verbosity {
+        0 => LevelFilter::Off,
+        1 => LevelFilter::Error,
+        2 => LevelFilter::Warn,
+        3 => LevelFilter::Info,
+        4 => LevelFilter::Debug,
+        5 | 11 => LevelFilter::Trace, // Cranked up to 11
+        _ => LevelFilter::Warn,
+    };
+
     let path = v.unwrap().to_owned();
     let encoder = PatternEncoder::new("{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] {l:5} {m}{n}");
     let log_appender: Box<dyn Append> = if num_rolling_log_files != 0 && size_per_log_file_bytes != 0 {
@@ -5043,57 +5055,57 @@ unsafe fn init_logging(
             Logger::builder()
                 .appender("logfile")
                 .additive(false)
-                .build("comms", LevelFilter::Warn),
+                .build("comms", log_level),
         )
         .logger(
             Logger::builder()
                 .appender("logfile")
                 .additive(false)
-                .build("comms::noise", LevelFilter::Warn),
+                .build("comms::noise", log_level),
         )
         .logger(
             Logger::builder()
                 .appender("logfile")
                 .additive(false)
-                .build("tokio_util", LevelFilter::Warn),
+                .build("tokio_util", log_level),
         )
         .logger(
             Logger::builder()
                 .appender("logfile")
                 .additive(false)
-                .build("tracing", LevelFilter::Warn),
+                .build("tracing", log_level),
         )
         .logger(
             Logger::builder()
                 .appender("logfile")
                 .additive(false)
-                .build("wallet::transaction_service::callback_handler", LevelFilter::Warn),
+                .build("wallet::transaction_service::callback_handler", log_level),
         )
         .logger(
             Logger::builder()
                 .appender("logfile")
                 .additive(false)
-                .build("p2p", LevelFilter::Warn),
+                .build("p2p", log_level),
         )
         .logger(
             Logger::builder()
                 .appender("logfile")
                 .additive(false)
-                .build("yamux", LevelFilter::Warn),
+                .build("yamux", log_level),
         )
         .logger(
             Logger::builder()
                 .appender("logfile")
                 .additive(false)
-                .build("dht", LevelFilter::Warn),
+                .build("dht", log_level),
         )
         .logger(
             Logger::builder()
                 .appender("logfile")
                 .additive(false)
-                .build("mio", LevelFilter::Warn),
+                .build("mio", log_level),
         )
-        .build(Root::builder().appender("logfile").build(LevelFilter::Debug))
+        .build(Root::builder().appender("logfile").build(log_level))
         .expect("Should be able to create a Config");
 
     match log4rs::init_config(lconfig) {
@@ -5108,6 +5120,13 @@ unsafe fn init_logging(
 /// `config` - The TariCommsConfig pointer
 /// `log_path` - An optional file path to the file where the logs will be written. If no log is required pass *null*
 /// pointer.
+/// `log_verbosity` - how verbose should logging be as a c_int 0-5, or 11
+///        0 => Off
+///        1 => Error
+///        2 => Warn
+///        3 => Info
+///        4 => Debug
+///        5 | 11 => Trace // Cranked up to 11
 /// `num_rolling_log_files` - Specifies how many rolling log files to produce, if no rolling files are wanted then set
 /// this to 0
 /// `size_per_log_file_bytes` - Specifies the size, in bytes, at which the logs files will roll over, if no
@@ -5200,11 +5219,13 @@ unsafe fn init_logging(
 pub unsafe extern "C" fn wallet_create(
     config: *mut TariCommsConfig,
     log_path: *const c_char,
+    log_verbosity: c_int,
     num_rolling_log_files: c_uint,
     size_per_log_file_bytes: c_uint,
     passphrase: *const c_char,
     seed_words: *const TariSeedWords,
     network_str: *const c_char,
+
     callback_received_transaction: unsafe extern "C" fn(*mut TariPendingInboundTransaction),
     callback_received_transaction_reply: unsafe extern "C" fn(*mut TariCompletedTransaction),
     callback_received_finalized_transaction: unsafe extern "C" fn(*mut TariCompletedTransaction),
@@ -5236,7 +5257,13 @@ pub unsafe extern "C" fn wallet_create(
     }
 
     if !log_path.is_null() {
-        init_logging(log_path, num_rolling_log_files, size_per_log_file_bytes, error_out);
+        init_logging(
+            log_path,
+            log_verbosity,
+            num_rolling_log_files,
+            size_per_log_file_bytes,
+            error_out,
+        );
 
         if error > 0 {
             return ptr::null_mut();
@@ -9427,6 +9454,7 @@ mod test {
                 ptr::null(),
                 0,
                 0,
+                0,
                 passphrase,
                 ptr::null(),
                 alice_network_str,
@@ -9468,6 +9496,7 @@ mod test {
             let alice_wallet2 = wallet_create(
                 alice_config,
                 ptr::null(),
+                0,
                 0,
                 0,
                 passphrase,
@@ -9580,6 +9609,7 @@ mod test {
             let alice_wallet = wallet_create(
                 alice_config,
                 ptr::null(),
+                0,
                 0,
                 0,
                 passphrase,
@@ -9805,6 +9835,7 @@ mod test {
                 ptr::null(),
                 0,
                 0,
+                0,
                 passphrase,
                 ptr::null(),
                 network_str,
@@ -9865,6 +9896,7 @@ mod test {
             let recovered_wallet = wallet_create(
                 config,
                 log_path,
+                0,
                 0,
                 0,
                 passphrase,
@@ -9941,6 +9973,7 @@ mod test {
             let alice_wallet = wallet_create(
                 alice_config,
                 ptr::null(),
+                0,
                 0,
                 0,
                 passphrase,
@@ -10091,6 +10124,7 @@ mod test {
                 ptr::null(),
                 0,
                 0,
+                0,
                 passphrase,
                 ptr::null(),
                 network_str,
@@ -10206,6 +10240,7 @@ mod test {
             let alice_wallet = wallet_create(
                 alice_config,
                 ptr::null(),
+                0,
                 0,
                 0,
                 passphrase,
@@ -10406,6 +10441,7 @@ mod test {
             let alice_wallet = wallet_create(
                 alice_config,
                 ptr::null(),
+                0,
                 0,
                 0,
                 passphrase,
@@ -10613,6 +10649,7 @@ mod test {
             let alice_wallet = wallet_create(
                 alice_config,
                 ptr::null(),
+                0,
                 0,
                 0,
                 passphrase,
@@ -10865,6 +10902,7 @@ mod test {
                 ptr::null(),
                 0,
                 0,
+                0,
                 passphrase,
                 ptr::null(),
                 network_str,
@@ -11102,6 +11140,7 @@ mod test {
                 ptr::null(),
                 0,
                 0,
+                0,
                 passphrase,
                 ptr::null(),
                 alice_network_str,
@@ -11159,6 +11198,7 @@ mod test {
             let bob_wallet_ptr = wallet_create(
                 bob_config,
                 ptr::null(),
+                0,
                 0,
                 0,
                 passphrase,

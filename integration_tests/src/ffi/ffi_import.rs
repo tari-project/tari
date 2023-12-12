@@ -380,6 +380,7 @@ extern "C" {
     pub fn wallet_create(
         config: *mut TariCommsConfig,
         log_path: *const c_char,
+        log_level: c_int,
         num_rolling_log_files: c_uint,
         size_per_log_file_bytes: c_uint,
         passphrase: *const c_char,

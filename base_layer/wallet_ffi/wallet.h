@@ -2584,6 +2584,13 @@ TariPublicKey *public_keys_get_at(const struct TariPublicKeys *public_keys,
  * `config` - The TariCommsConfig pointer
  * `log_path` - An optional file path to the file where the logs will be written. If no log is required pass *null*
  * pointer.
+ * `log_verbosity` - how verbose should logging be as a c_int 0-5, or 11
+ *        0 => Off
+ *        1 => Error
+ *        2 => Warn
+ *        3 => Info
+ *        4 => Debug
+ *        5 | 11 => Trace // Cranked up to 11
  * `num_rolling_log_files` - Specifies how many rolling log files to produce, if no rolling files are wanted then set
  * this to 0
  * `size_per_log_file_bytes` - Specifies the size, in bytes, at which the logs files will roll over, if no
@@ -2673,6 +2680,7 @@ TariPublicKey *public_keys_get_at(const struct TariPublicKeys *public_keys,
  */
 struct TariWallet *wallet_create(TariCommsConfig *config,
                                  const char *log_path,
+                                 int log_verbosity,
                                  unsigned int num_rolling_log_files,
                                  unsigned int size_per_log_file_bytes,
                                  const char *passphrase,
