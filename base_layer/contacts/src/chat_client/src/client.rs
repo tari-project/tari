@@ -28,8 +28,9 @@ use std::{
 
 use async_trait::async_trait;
 use log::debug;
+use rand::rngs::OsRng;
 use tari_common_types::tari_address::TariAddress;
-use tari_comms::{CommsNode, NodeIdentity};
+use tari_comms::{peer_manager::PeerFeatures, CommsNode, NodeIdentity};
 use tari_contacts::contacts_service::{
     handle::ContactsServiceHandle,
     service::ContactOnlineStatus,
@@ -37,7 +38,7 @@ use tari_contacts::contacts_service::{
 };
 use tari_shutdown::Shutdown;
 
-use crate::{config::ApplicationConfig, error::Error, networking};
+use crate::{config::ApplicationConfig, error::Error, networking, networking::Multiaddr};
 
 const LOG_TARGET: &str = "contacts::chat_client";
 
@@ -88,26 +89,45 @@ impl Client {
         }
     }
 
+    pub fn sideload(config: ApplicationConfig, contacts: ContactsServiceHandle) -> Self {
+        // Create a placeholder ID. It won't be written or used when sideloaded.
+        let identity = Arc::new(NodeIdentity::random(
+            &mut OsRng,
+            Multiaddr::empty(),
+            PeerFeatures::COMMUNICATION_NODE,
+        ));
+
+        Self {
+            config,
+            contacts: Some(contacts),
+            identity,
+            shutdown: Shutdown::new(),
+        }
+    }
+
     pub async fn initialize(&mut self) -> Result<(), Error> {
         debug!(target: LOG_TARGET, "initializing chat");
 
-        let signal = self.shutdown.to_signal();
+        // Only run the networking if we're operating as a standalone client. If we're sideloading we can skip all this
+        if self.contacts.is_none() {
+            let signal = self.shutdown.to_signal();
 
-        let (contacts, comms_node) = networking::start(self.identity.clone(), self.config.clone(), signal)
-            .await
-            .map_err(|e| Error::InitializationError(e.to_string()))?;
+            let (contacts, comms_node) = networking::start(self.identity.clone(), self.config.clone(), signal)
+                .await
+                .map_err(|e| Error::InitializationError(e.to_string()))?;
 
-        if !self.config.peer_seeds.peer_seeds.is_empty() {
-            loop {
-                debug!(target: LOG_TARGET, "Waiting for peer connections...");
-                match wait_for_connectivity(comms_node.clone()).await {
-                    Ok(_) => break,
-                    Err(e) => debug!(target: LOG_TARGET, "{}. Still waiting...", e),
+            if !self.config.peer_seeds.peer_seeds.is_empty() {
+                loop {
+                    debug!(target: LOG_TARGET, "Waiting for peer connections...");
+                    match wait_for_connectivity(comms_node.clone()).await {
+                        Ok(_) => break,
+                        Err(e) => debug!(target: LOG_TARGET, "{}. Still waiting...", e),
+                    }
                 }
             }
-        }
 
-        self.contacts = Some(contacts);
+            self.contacts = Some(contacts);
+        }
 
         debug!(target: LOG_TARGET, "Connections established");
 

@@ -5653,6 +5653,7 @@ dependencies = [
  "lmdb-zero",
  "log",
  "minotari_app_utilities",
+ "rand",
  "serde",
  "tari_common",
  "tari_common_sqlite",
