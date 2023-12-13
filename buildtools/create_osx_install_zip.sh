@@ -80,7 +80,7 @@ cp -f "${local_dir}/get_xmrig_osx.ps1" "${tarball_folder}/runtime/get_xmrig_osx.
 # Config
 cat "${project_dir}"/common/config/presets/*.toml >"${tarball_folder}/config/config.toml"
 cp -f "${project_dir}/common/xmrig_config/config_example_stagenet.json" "${tarball_folder}/config/xmrig_config_example_stagenet.json"
-cp -f "${project_dir}/common/xmrig_config/config_example_mainnet.json" "${tarball_folder}/config/xxmrig_config_example_mainnet.json"
+cp -f "${project_dir}/common/xmrig_config/config_example_mainnet.json" "${tarball_folder}/config/xmrig_config_example_mainnet.json"
 cp -f "${project_dir}/common/xmrig_config/config_example_mainnet_self_select.json" "${tarball_folder}/config/xmrig_config_example_mainnet_self_select.json"
 
 # Scripts

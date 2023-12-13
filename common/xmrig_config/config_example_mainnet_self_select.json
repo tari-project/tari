@@ -3,6 +3,7 @@
     "cpu": true,
     "opencl": false,
     "cuda": false,
+    "log-file": ".\\xmrig.exe.log",
     "pools": [
         {
             "coin": "monero",

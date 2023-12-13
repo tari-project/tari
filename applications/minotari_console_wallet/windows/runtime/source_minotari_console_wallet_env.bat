@@ -2,16 +2,6 @@
 title Minotari Wallet
 
 rem Verify arguments
-if ["%config_path%"]==[""] (
-    echo Problem with "config_path" environment variable: '%config_path%'
-    pause
-    exit /b 10101
-)
-if not exist "%config_path%" (
-    echo Path as per "config_path" environment variable not found: '%config_path%'
-    pause
-    exit /b 10101
-)
 if ["%base_path%"]==[""] (
     echo Problem with "base_path" environment variable: '%base_path%'
     pause
@@ -61,19 +51,13 @@ if exist "%my_exe_path%\%my_exe%" (
 
 echo.
 echo.
-if not exist "%config_path%\log4rs_console_wallet.yml" (
-    echo Creating new "%config_path%\log4rs_console_wallet.yml".
-) else (
-    echo Using existing "%config_path%\log4rs_console_wallet.yml"
-)
-echo.
 
 cd "%base_path%"
 rem check if Windows Terminal is in path, if so, run it there, to see emojis properly.
 where /q wt
 if errorlevel 1 (
-    "%console_wallet%" --config "%config_path%\config.toml" --log_config "%config_path%\log4rs_console_wallet.yml" --base-path "%base_path%"
+    "%console_wallet%" --base-path "%base_path%"
 ) else (
-    wt "%console_wallet%" --config "%config_path%\config.toml" --log_config "%config_path%\log4rs_console_wallet.yml" --base-path "%base_path%"
+    wt "%console_wallet%" --base-path "%base_path%"
     exit
 )
