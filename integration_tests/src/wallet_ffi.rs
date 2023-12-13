@@ -55,8 +55,7 @@ use crate::{
 pub struct WalletFFI {
     pub name: String,
     pub port: u64,
-    // pub grpc_port: u64,
-    // pub temp_dir_path: String,
+    pub base_dir: PathBuf,
     pub wallet: Arc<Mutex<ffi::Wallet>>,
 }
 
@@ -76,7 +75,12 @@ impl WalletFFI {
             .unwrap()
             .into();
         let wallet = ffi::Wallet::create(comms_config, log_path, seed_words_ptr);
-        Self { name, port, wallet }
+        Self {
+            name,
+            port,
+            base_dir: base_dir_path,
+            wallet,
+        }
     }
 
     pub fn identify(&self) -> String {
@@ -185,6 +189,10 @@ impl WalletFFI {
 
     pub fn get_fee_per_gram_stats(&self, count: u32) -> FeePerGramStats {
         self.wallet.lock().unwrap().get_fee_per_gram_stats(count)
+    }
+
+    pub fn contacts_handle(&self) -> *mut c_void {
+        self.wallet.lock().unwrap().contacts_handle()
     }
 }
 

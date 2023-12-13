@@ -433,4 +433,16 @@ impl Wallet {
         }
         FeePerGramStats::from_ptr(ptr)
     }
+
+    pub fn contacts_handle(&self) -> *mut c_void {
+        let ptr;
+        let mut error = 0;
+        unsafe {
+            ptr = ffi_import::contacts_handle(self.ptr, &mut error);
+            if error > 0 {
+                println!("contacts_handle error {}", error);
+            }
+        }
+        ptr
+    }
 }

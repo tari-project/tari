@@ -79,6 +79,15 @@ extern "C" {
         callback_delivery_confirmation_received: unsafe extern "C" fn(*mut c_void),
         callback_read_confirmation_received: unsafe extern "C" fn(*mut c_void),
     ) -> *mut ClientFFI;
+    pub fn sideload_chat_client(
+        config: *mut c_void,
+        contact_handle: *mut c_void,
+        error_out: *const c_int,
+        callback_contact_status_change: unsafe extern "C" fn(*mut c_void),
+        callback_message_received: unsafe extern "C" fn(*mut c_void),
+        callback_delivery_confirmation_received: unsafe extern "C" fn(*mut c_void),
+        callback_read_confirmation_received: unsafe extern "C" fn(*mut c_void),
+    ) -> *mut ClientFFI;
     pub fn create_chat_message(receiver: *mut c_void, message: *const c_char, error_out: *const c_int) -> *mut c_void;
     pub fn send_chat_message(client: *mut ClientFFI, message: *mut c_void, error_out: *const c_int);
     pub fn add_chat_message_metadata(
@@ -300,6 +309,37 @@ pub async fn spawn_ffi_chat_client(name: &str, seed_peers: Vec<Peer>, base_dir: 
     }
 }
 
+pub async fn sideload_ffi_chat_client(
+    address: TariAddress,
+    base_dir: PathBuf,
+    contacts_handle_ptr: *mut c_void,
+) -> ChatFFI {
+    let mut config = test_config(Multiaddr::empty());
+    config.chat_client.set_base_path(base_dir);
+
+    let config_ptr = Box::into_raw(Box::new(config)) as *mut c_void;
+
+    let client_ptr;
+    let error_out = Box::into_raw(Box::new(0));
+    unsafe {
+        *ChatCallback::instance().contact_status_change.lock().unwrap() = 0;
+
+        client_ptr = sideload_chat_client(
+            config_ptr,
+            contacts_handle_ptr,
+            error_out,
+            callback_contact_status_change,
+            callback_message_received,
+            callback_delivery_confirmation_received,
+            callback_read_confirmation_received,
+        );
+    }
+
+    ChatFFI {
+        ptr: Arc::new(Mutex::new(PtrWrapper(client_ptr))),
+        address,
+    }
+}
 static mut INSTANCE: Option<ChatCallback> = None;
 static START: Once = Once::new();
 

@@ -591,4 +591,5 @@ extern "C" {
         error_out: *mut c_int,
     ) -> c_ulonglong;
     pub fn fee_per_gram_stat_destroy(fee_per_gram_stat: *mut TariFeePerGramStat);
+    pub fn contacts_handle(wallet: *mut TariWallet, error_out: *mut c_int) -> *mut c_void;
 }
