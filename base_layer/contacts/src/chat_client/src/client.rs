@@ -52,7 +52,7 @@ pub trait ChatClient {
     async fn send_message(&self, message: Message) -> Result<(), Error>;
     async fn send_read_receipt(&self, message: Message) -> Result<(), Error>;
     async fn get_conversationalists(&self) -> Result<Vec<TariAddress>, Error>;
-    fn identity(&self) -> &NodeIdentity;
+    fn address(&self) -> TariAddress;
     fn shutdown(&mut self);
 }
 
@@ -141,8 +141,8 @@ impl Client {
 
 #[async_trait]
 impl ChatClient for Client {
-    fn identity(&self) -> &NodeIdentity {
-        &self.identity
+    fn address(&self) -> TariAddress {
+        TariAddress::from_public_key(self.identity.public_key(), self.config.chat_client.network)
     }
 
     fn shutdown(&mut self) {

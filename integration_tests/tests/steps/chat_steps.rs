@@ -23,8 +23,6 @@
 use std::{cmp::Ordering, convert::TryFrom, time::Duration};
 
 use cucumber::{then, when};
-use tari_common::configuration::Network;
-use tari_common_types::tari_address::TariAddress;
 use tari_contacts::contacts_service::{
     handle::{DEFAULT_MESSAGE_LIMIT, DEFAULT_MESSAGE_PAGE},
     service::ContactOnlineStatus,
@@ -71,9 +69,8 @@ async fn send_message_to(
 ) -> anyhow::Result<()> {
     let sender = world.chat_clients.get(&sender).unwrap();
     let receiver = world.chat_clients.get(&receiver).unwrap();
-    let address = TariAddress::from_public_key(receiver.identity().public_key(), Network::LocalNet);
 
-    let message = sender.create_message(&address, message);
+    let message = sender.create_message(&receiver.address(), message);
 
     sender.send_message(message).await?;
     Ok(())
@@ -89,7 +86,7 @@ async fn i_reply_to_message(
 ) -> anyhow::Result<()> {
     let sender = world.chat_clients.get(&sender).unwrap();
     let receiver = world.chat_clients.get(&receiver).unwrap();
-    let address = TariAddress::from_public_key(receiver.identity().public_key(), Network::LocalNet);
+    let address = receiver.address();
 
     for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
         let messages: Vec<Message> = (*sender)
@@ -132,7 +129,7 @@ async fn receive_n_messages(
 ) -> anyhow::Result<()> {
     let receiver = world.chat_clients.get(&receiver).unwrap();
     let sender = world.chat_clients.get(&sender).unwrap();
-    let address = TariAddress::from_public_key(sender.identity().public_key(), Network::LocalNet);
+    let address = sender.address();
 
     let mut messages = vec![];
     for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
@@ -149,7 +146,7 @@ async fn receive_n_messages(
 
     panic!(
         "Receiver {} only received {}/{} messages",
-        (*receiver).identity().node_id(),
+        address,
         messages.len(),
         message_count
     )
@@ -160,9 +157,7 @@ async fn add_as_contact(world: &mut TariWorld, sender: String, receiver: String)
     let receiver = world.chat_clients.get(&receiver).unwrap();
     let sender = world.chat_clients.get(&sender).unwrap();
 
-    let address = TariAddress::from_public_key(receiver.identity().public_key(), Network::LocalNet);
-
-    sender.add_contact(&address).await?;
+    sender.add_contact(&receiver.address()).await?;
     Ok(())
 }
 
@@ -171,11 +166,10 @@ async fn wait_for_contact_to_be_online(world: &mut TariWorld, client: String, co
     let client = world.chat_clients.get(&client).unwrap();
     let contact = world.chat_clients.get(&contact).unwrap();
 
-    let address = TariAddress::from_public_key(contact.identity().public_key(), Network::LocalNet);
     let mut last_status = ContactOnlineStatus::Banned("No result came back".to_string());
 
     for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP / 4) {
-        last_status = client.check_online_status(&address).await?;
+        last_status = client.check_online_status(&contact.address()).await?;
         if ContactOnlineStatus::Online == last_status {
             return Ok(());
         }
@@ -185,7 +179,7 @@ async fn wait_for_contact_to_be_online(world: &mut TariWorld, client: String, co
 
     panic!(
         "Contact {} never came online, status is: {}",
-        contact.identity().node_id(),
+        contact.address(),
         last_status
     )
 }
@@ -199,7 +193,7 @@ async fn have_replied_message(
 ) -> anyhow::Result<()> {
     let receiver = world.chat_clients.get(&receiver).unwrap();
     let sender = world.chat_clients.get(&sender).unwrap();
-    let address = TariAddress::from_public_key(sender.identity().public_key(), Network::LocalNet);
+    let address = sender.address();
 
     for _ in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
         let messages: Vec<Message> = (*receiver)
@@ -254,8 +248,8 @@ async fn matching_delivery_timestamps(
 ) -> anyhow::Result<()> {
     let client_1 = world.chat_clients.get(&sender).unwrap();
     let client_2 = world.chat_clients.get(&receiver).unwrap();
-    let client_1_address = TariAddress::from_public_key(client_1.identity().public_key(), Network::LocalNet);
-    let client_2_address = TariAddress::from_public_key(client_2.identity().public_key(), Network::LocalNet);
+    let client_1_address = client_1.address();
+    let client_2_address = client_2.address();
 
     for _a in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
         let client_1_messages: Vec<Message> = (*client_1)
@@ -313,8 +307,8 @@ async fn matching_read_timestamps(
 ) -> anyhow::Result<()> {
     let client_1 = world.chat_clients.get(&sender).unwrap();
     let client_2 = world.chat_clients.get(&receiver).unwrap();
-    let client_1_address = TariAddress::from_public_key(client_1.identity().public_key(), Network::LocalNet);
-    let client_2_address = TariAddress::from_public_key(client_2.identity().public_key(), Network::LocalNet);
+    let client_1_address = client_1.address();
+    let client_2_address = client_2.address();
 
     for _a in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
         let client_1_messages: Vec<Message> = (*client_1)
@@ -371,11 +365,10 @@ async fn matching_read_timestamps(
 async fn send_read_receipt(world: &mut TariWorld, sender: String, receiver: String, msg: String) -> anyhow::Result<()> {
     let client_1 = world.chat_clients.get(&receiver).unwrap();
     let client_2 = world.chat_clients.get(&sender).unwrap();
-    let client_2_address = TariAddress::from_public_key(client_2.identity().public_key(), Network::LocalNet);
 
     for _a in 0..(TWO_MINUTES_WITH_HALF_SECOND_SLEEP) {
         let messages: Vec<Message> = (*client_1)
-            .get_messages(&client_2_address, DEFAULT_MESSAGE_LIMIT, DEFAULT_MESSAGE_PAGE)
+            .get_messages(&client_2.address(), DEFAULT_MESSAGE_LIMIT, DEFAULT_MESSAGE_PAGE)
             .await?;
 
         if messages.is_empty() {

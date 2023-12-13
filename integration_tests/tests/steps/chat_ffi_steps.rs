@@ -23,6 +23,7 @@
 use std::time::Duration;
 
 use cucumber::{then, when};
+use tari_common_types::tari_address::TariAddress;
 use tari_integration_tests::{
     chat_ffi::{spawn_ffi_chat_client, ChatCallback},
     TariWorld,

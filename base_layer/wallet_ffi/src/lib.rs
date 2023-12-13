@@ -8641,7 +8641,6 @@ pub unsafe extern "C" fn contacts_handle_destroy(contacts_handle: *mut ContactsS
         drop(Box::from_raw(contacts_handle))
     }
 }
-
 /// ------------------------------------------------------------------------------------------ ///
 #[cfg(test)]
 mod test {

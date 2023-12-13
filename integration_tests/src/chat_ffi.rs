@@ -35,11 +35,11 @@ type ClientFFI = c_void;
 use libc::{c_char, c_int, c_uchar, c_uint};
 use minotari_app_utilities::identity_management::setup_node_identity;
 use tari_chat_client::{database, error::Error as ClientError, ChatClient};
+use tari_common::configuration::Network;
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{Peer, PeerFeatures},
-    NodeIdentity,
 };
 use tari_contacts::contacts_service::{
     service::ContactOnlineStatus,
@@ -113,7 +113,7 @@ unsafe impl Send for PtrWrapper {}
 #[derive(Debug)]
 pub struct ChatFFI {
     ptr: Arc<Mutex<PtrWrapper>>,
-    pub identity: Arc<NodeIdentity>,
+    pub address: TariAddress,
 }
 
 struct Conversationalists(Vec<TariAddress>);
@@ -236,8 +236,8 @@ impl ChatClient for ChatFFI {
         Ok(addresses)
     }
 
-    fn identity(&self) -> &NodeIdentity {
-        &self.identity
+    fn address(&self) -> TariAddress {
+        self.address.clone()
     }
 
     fn shutdown(&mut self) {
@@ -296,7 +296,7 @@ pub async fn spawn_ffi_chat_client(name: &str, seed_peers: Vec<Peer>, base_dir: 
 
     ChatFFI {
         ptr: Arc::new(Mutex::new(PtrWrapper(client_ptr))),
-        identity,
+        address: TariAddress::from_public_key(identity.public_key(), Network::LocalNet),
     }
 }
 
