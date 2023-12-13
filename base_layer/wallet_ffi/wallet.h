@@ -72,6 +72,8 @@ struct Contact;
 
 struct ContactsLivenessData;
 
+struct ContactsServiceHandle;
+
 /**
  * A covenant allows a UTXO to specify some restrictions on how it is spent in a future transaction.
  * See https://rfc.tari.com/RFC-0250_Covenants.html for details.
@@ -3925,6 +3927,36 @@ unsigned long long fee_per_gram_stat_get_max_fee_per_gram(TariFeePerGramStat *fe
  * None
  */
 void fee_per_gram_stat_destroy(TariFeePerGramStat *fee_per_gram_stat);
+
+/**
+ * Returns a ptr to the ContactsServiceHandle for use with chat
+ *
+ * ## Arguments
+ * `wallet` - The wallet instance
+ * `error_out` - Pointer to an int which will be modified
+ *
+ * ## Returns
+ * `*mut ContactsServiceHandle` an opaque pointer used in chat sideloading initialization
+ *
+ * # Safety
+ * You should release the returned pointer after it's been used to initialize chat using `contacts_handle_destroy`
+ */
+struct ContactsServiceHandle *contacts_handle(struct TariWallet *wallet,
+                                              int *error_out);
+
+/**
+ * Frees memory for a ContactsServiceHandle
+ *
+ * ## Arguments
+ * `contacts_handle` - The pointer to a ContactsServiceHandle
+ *
+ * ## Returns
+ * `()` - Does not return a value, equivalent to void in C
+ *
+ * # Safety
+ * None
+ */
+void contacts_handle_destroy(struct ContactsServiceHandle *contacts_handle);
 
 /**
  * Extracts a `NodeId` represented as a vector of bytes wrapped into a `ByteVector`

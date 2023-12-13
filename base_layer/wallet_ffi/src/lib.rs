@@ -128,7 +128,7 @@ use tari_comms::{
     types::CommsPublicKey,
 };
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
-use tari_contacts::contacts_service::types::Contact;
+use tari_contacts::contacts_service::{handle::ContactsServiceHandle, types::Contact};
 use tari_core::{
     borsh::FromBytes,
     consensus::ConsensusManager,
@@ -8597,6 +8597,48 @@ pub unsafe extern "C" fn fee_per_gram_stat_get_max_fee_per_gram(
 pub unsafe extern "C" fn fee_per_gram_stat_destroy(fee_per_gram_stat: *mut TariFeePerGramStat) {
     if !fee_per_gram_stat.is_null() {
         drop(Box::from_raw(fee_per_gram_stat))
+    }
+}
+
+/// Returns a ptr to the ContactsServiceHandle for use with chat
+///
+/// ## Arguments
+/// `wallet` - The wallet instance
+/// `error_out` - Pointer to an int which will be modified
+///
+/// ## Returns
+/// `*mut ContactsServiceHandle` an opaque pointer used in chat sideloading initialization
+///
+/// # Safety
+/// You should release the returned pointer after it's been used to initialize chat using `contacts_handle_destroy`
+#[no_mangle]
+pub unsafe extern "C" fn contacts_handle(wallet: *mut TariWallet, error_out: *mut c_int) -> *mut ContactsServiceHandle {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+
+    Box::into_raw(Box::new((*wallet).wallet.contacts_service.clone()))
+}
+
+/// Frees memory for a ContactsServiceHandle
+///
+/// ## Arguments
+/// `contacts_handle` - The pointer to a ContactsServiceHandle
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn contacts_handle_destroy(contacts_handle: *mut ContactsServiceHandle) {
+    if !contacts_handle.is_null() {
+        drop(Box::from_raw(contacts_handle))
     }
 }
 
