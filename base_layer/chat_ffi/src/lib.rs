@@ -150,16 +150,17 @@ pub unsafe extern "C" fn create_chat_client(
 
     let mut client = Client::new(identity, (*config).clone());
 
-    let contacts_handler = match client.contacts.clone() {
-        Some(contacts_handler) => contacts_handler,
-        None => {
-            error = LibChatError::from(InterfaceError::NullError("No contacts service loaded yet".to_string())).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-            return ptr::null_mut();
-        },
-    };
-
     if let Ok(()) = runtime.block_on(client.initialize()) {
+        let contacts_handler = match client.contacts.clone() {
+            Some(contacts_handler) => contacts_handler,
+            None => {
+                error =
+                    LibChatError::from(InterfaceError::NullError("No contacts service loaded yet".to_string())).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return ptr::null_mut();
+            },
+        };
+
         let mut callback_handler = CallbackHandler::new(
             contacts_handler,
             client.shutdown.to_signal(),
