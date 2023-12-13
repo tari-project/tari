@@ -8,24 +8,24 @@
 [merge_mining_proxy]
 
 # URL to monerod (default = "")
-monerod_url = [# stagenet
-    "http://stagenet.xmr-tw.org:38081",
-    "http://stagenet.community.xmr.to:38081",
-    "http://monero-stagenet.exan.tech:38081",
-    "http://xmr-lux.boldsuck.org:38081",
-    "http://singapore.node.xmr.pm:38081",
-]
-
-#monerod_url = [ # mainnet
-#    # more reliable
-#    "http://xmr.support:18081",
-#    "http://node1.xmr-tw.org:18081",
-#    "http://xmr.nthrow.nyc:18081",
-#    # not so reliable
-#    "http://node.xmrig.com:18081",
-#    "http://monero.exan.tech:18081",
-#    "http://18.132.124.81:18081",
+#monerod_url = [# stagenet
+#    "http://stagenet.xmr-tw.org:38081",
+#    "http://stagenet.community.xmr.to:38081",
+#    "http://monero-stagenet.exan.tech:38081",
+#    "http://xmr-lux.boldsuck.org:38081",
+#    "http://singapore.node.xmr.pm:38081",
 #]
+
+monerod_url = [ # mainnet
+    # more reliable
+    "http://xmr.support:18081",
+    "http://node1.xmr-tw.org:18081",
+    "http://xmr.nthrow.nyc:18081",
+    # not so reliable
+    "http://node.xmrig.com:18081",
+    "http://monero.exan.tech:18081",
+    "http://18.132.124.81:18081",
+]
 
 # Username for curl. (default = "")
 #monerod_username = ""
