@@ -3,7 +3,7 @@ name = "minotari_wallet"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency wallet library"
 license = "BSD-3-Clause"
-version = "1.0.0-pre.4"
+version = "1.0.0-rc.1"
 edition = "2018"
 
 [dependencies]
