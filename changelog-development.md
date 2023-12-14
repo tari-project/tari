@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.0.0-pre.4](https://github.com/tari-project/tari/compare/v1.0.0-pre.2...v1.0.0-pre.4) (2023-12-14)
+
+
+### Features
+
+* console wallet use dns seeds ([#6034](https://github.com/tari-project/tari/issues/6034)) ([b194954](https://github.com/tari-project/tari/commit/b194954f489bd8ac234993e65463a24808dce8f2))
+* fix windows installer ([#6043](https://github.com/tari-project/tari/issues/6043)) ([c37a0a8](https://github.com/tari-project/tari/commit/c37a0a89726eec765c9c10d3da0c990d339de9b9))
+* side load chat ([#6042](https://github.com/tari-project/tari/issues/6042)) ([d729c45](https://github.com/tari-project/tari/commit/d729c458b17406d9f5dbb8982a9bf5604f39c63c))
+* update tests and constants ([#6028](https://github.com/tari-project/tari/issues/6028)) ([d558206](https://github.com/tari-project/tari/commit/d558206ea62c12f3258ede8cfcbf9d44f139ccdd))
+
+
+### Bug Fixes
+
+* remove duplicate config settings ([#6029](https://github.com/tari-project/tari/issues/6029)) ([662af28](https://github.com/tari-project/tari/commit/662af28bf811c771cf0fdf9b583c1296a2283188))
+
 ## [1.0.0-pre.3](https://github.com/tari-project/tari/compare/v1.0.0-pre.2...v1.0.0-pre.3) (2023-12-12)
 
 
