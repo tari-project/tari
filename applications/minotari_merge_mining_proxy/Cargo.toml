@@ -4,7 +4,7 @@ authors = ["The Tari Development Community"]
 description = "The Tari merge mining proxy for xmrig"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "1.0.0-pre.4"
+version = "1.0.0-rc.1"
 edition = "2018"
 
 [features]
