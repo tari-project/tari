@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.0.0-rc.1](https://github.com/tari-project/tari/compare/v1.0.0-rc.1...v1.0.0-rc.0) (2023-12-14)
+
+
+### Features
+
+* fix windows installer ([#6043](https://github.com/tari-project/tari/issues/6043)) ([c37a0a8](https://github.com/tari-project/tari/commit/c37a0a89726eec765c9c10d3da0c990d339de9b9))
+* side load chat ([#6042](https://github.com/tari-project/tari/issues/6042)) ([d729c45](https://github.com/tari-project/tari/commit/d729c458b17406d9f5dbb8982a9bf5604f39c63c))
+
+### Bug Fixes
+
+
+
 ## [1.0.0-rc.0](https://github.com/tari-project/tari/compare/v1.0.0-rc0...v0.49.0-rc.0) (2023-12-12)
 
 
