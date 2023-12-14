@@ -104,7 +104,7 @@ fn main() {
 fn main_inner() -> Result<(), ExitError> {
     let cli = Cli::parse();
     let config_path = cli.common.config_path();
-    let cfg = load_configuration(config_path, true, &cli)?;
+    let cfg = load_configuration(config_path, true, cli.non_interactive_mode, &cli)?;
 
     if cli.profile_with_tokio_console {
         console_subscriber::init();

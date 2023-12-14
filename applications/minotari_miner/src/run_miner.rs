@@ -72,7 +72,7 @@ pub const LOG_TARGET_FILE: &str = "minotari::logging::miner::main";
 #[allow(clippy::too_many_lines)]
 pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
     let config_path = cli.common.config_path();
-    let cfg = load_configuration(config_path.as_path(), true, &cli)?;
+    let cfg = load_configuration(config_path.as_path(), true, cli.non_interactive_mode, &cli)?;
     let mut config = MinerConfig::load_from(&cfg).expect("Failed to load config");
     config.set_base_path(cli.common.get_base_path());
 
