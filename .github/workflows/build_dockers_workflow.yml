@@ -20,7 +20,7 @@ name: Build docker images - workflow_call/on-demand
         default: x86-64
       features:
         type: string
-        default: safe
+        default: 'safe,grpc'
       version:
         type: string
         description: 'build tag/version'
