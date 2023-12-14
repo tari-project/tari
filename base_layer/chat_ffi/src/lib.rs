@@ -29,6 +29,7 @@ use libc::c_int;
 use log::info;
 use minotari_app_utilities::identity_management::setup_node_identity;
 use tari_chat_client::{config::ApplicationConfig, networking::PeerFeatures, ChatClient as ChatClientTrait, Client};
+use tari_contacts::contacts_service::handle::ContactsServiceHandle;
 use tokio::runtime::Runtime;
 
 use crate::{
@@ -148,9 +149,109 @@ pub unsafe extern "C" fn create_chat_client(
     };
 
     let mut client = Client::new(identity, (*config).clone());
+
+    if let Ok(()) = runtime.block_on(client.initialize()) {
+        let contacts_handler = match client.contacts.clone() {
+            Some(contacts_handler) => contacts_handler,
+            None => {
+                error =
+                    LibChatError::from(InterfaceError::NullError("No contacts service loaded yet".to_string())).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return ptr::null_mut();
+            },
+        };
+
+        let mut callback_handler = CallbackHandler::new(
+            contacts_handler,
+            client.shutdown.to_signal(),
+            callback_contact_status_change,
+            callback_message_received,
+            callback_delivery_confirmation_received,
+            callback_read_confirmation_received,
+        );
+
+        runtime.spawn(async move {
+            callback_handler.start().await;
+        });
+    }
+
+    let client = ChatClient { client, runtime };
+
+    Box::into_raw(Box::new(client))
+}
+
+/// Side loads a chat client
+///
+/// ## Arguments
+/// `config` - The ApplicationConfig pointer
+/// `contacts_handler` - A pointer to a contacts handler extracted from the wallet ffi
+/// `error_out` - Pointer to an int which will be modified
+/// `callback_contact_status_change` - A callback function pointer. this is called whenever a
+/// contacts liveness event comes in.
+/// `callback_message_received` - A callback function pointer. This is called whenever a chat
+/// message is received.
+/// `callback_delivery_confirmation_received` - A callback function pointer. This is called when the
+/// client receives a confirmation of message delivery.
+/// `callback_read_confirmation_received` - A callback function pointer. This is called when the
+/// client receives a confirmation of message read.
+///
+/// ## Returns
+/// `*mut ChatClient` - Returns a pointer to a ChatClient, note that it returns ptr::null_mut()
+/// if any error was encountered or if the runtime could not be created.
+///
+/// # Safety
+/// The ```destroy_chat_client``` method must be called when finished with a ClientFFI to prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn sideload_chat_client(
+    config: *mut ApplicationConfig,
+    contacts_handle: *mut ContactsServiceHandle,
+    error_out: *mut c_int,
+    callback_contact_status_change: CallbackContactStatusChange,
+    callback_message_received: CallbackMessageReceived,
+    callback_delivery_confirmation_received: CallbackDeliveryConfirmationReceived,
+    callback_read_confirmation_received: CallbackReadConfirmationReceived,
+) -> *mut ChatClient {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    if config.is_null() {
+        error = LibChatError::from(InterfaceError::NullError("config".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+
+    if let Some(log_path) = (*config).clone().chat_client.log_path {
+        init_logging(log_path, (*config).clone().chat_client.log_verbosity, error_out);
+
+        if error > 0 {
+            return ptr::null_mut();
+        }
+    }
+    info!(
+        target: LOG_TARGET,
+        "Sideloading Tari Chat FFI version: {}",
+        consts::APP_VERSION
+    );
+
+    let runtime = match Runtime::new() {
+        Ok(r) => r,
+        Err(e) => {
+            error = LibChatError::from(InterfaceError::TokioError(e.to_string())).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    };
+
+    if contacts_handle.is_null() {
+        error = LibChatError::from(InterfaceError::NullError("contacts_handle".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+
+    let mut client = Client::sideload((*config).clone(), (*contacts_handle).clone());
     if let Ok(()) = runtime.block_on(client.initialize()) {
         let mut callback_handler = CallbackHandler::new(
-            client.contacts.clone().expect("No contacts service loaded yet"),
+            (*contacts_handle).clone(),
             client.shutdown.to_signal(),
             callback_contact_status_change,
             callback_message_received,

@@ -172,6 +172,7 @@ impl Wallet {
             ptr = wallet_create(
                 comms_config.get_ptr(),
                 CString::new(log_path).unwrap().into_raw(),
+                11,
                 50,
                 104857600, // 100 MB
                 CString::new("kensentme").unwrap().into_raw(),
@@ -431,5 +432,17 @@ impl Wallet {
             }
         }
         FeePerGramStats::from_ptr(ptr)
+    }
+
+    pub fn contacts_handle(&self) -> *mut c_void {
+        let ptr;
+        let mut error = 0;
+        unsafe {
+            ptr = ffi_import::contacts_handle(self.ptr, &mut error);
+            if error > 0 {
+                println!("contacts_handle error {}", error);
+            }
+        }
+        ptr
     }
 }

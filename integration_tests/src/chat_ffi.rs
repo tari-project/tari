@@ -35,11 +35,11 @@ type ClientFFI = c_void;
 use libc::{c_char, c_int, c_uchar, c_uint};
 use minotari_app_utilities::identity_management::setup_node_identity;
 use tari_chat_client::{database, error::Error as ClientError, ChatClient};
+use tari_common::configuration::Network;
 use tari_common_types::tari_address::TariAddress;
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{Peer, PeerFeatures},
-    NodeIdentity,
 };
 use tari_contacts::contacts_service::{
     service::ContactOnlineStatus,
@@ -73,6 +73,15 @@ extern "C" fn callback_read_confirmation_received(_state: *mut c_void) {
 extern "C" {
     pub fn create_chat_client(
         config: *mut c_void,
+        error_out: *const c_int,
+        callback_contact_status_change: unsafe extern "C" fn(*mut c_void),
+        callback_message_received: unsafe extern "C" fn(*mut c_void),
+        callback_delivery_confirmation_received: unsafe extern "C" fn(*mut c_void),
+        callback_read_confirmation_received: unsafe extern "C" fn(*mut c_void),
+    ) -> *mut ClientFFI;
+    pub fn sideload_chat_client(
+        config: *mut c_void,
+        contact_handle: *mut c_void,
         error_out: *const c_int,
         callback_contact_status_change: unsafe extern "C" fn(*mut c_void),
         callback_message_received: unsafe extern "C" fn(*mut c_void),
@@ -113,7 +122,7 @@ unsafe impl Send for PtrWrapper {}
 #[derive(Debug)]
 pub struct ChatFFI {
     ptr: Arc<Mutex<PtrWrapper>>,
-    pub identity: Arc<NodeIdentity>,
+    pub address: TariAddress,
 }
 
 struct Conversationalists(Vec<TariAddress>);
@@ -236,8 +245,8 @@ impl ChatClient for ChatFFI {
         Ok(addresses)
     }
 
-    fn identity(&self) -> &NodeIdentity {
-        &self.identity
+    fn address(&self) -> TariAddress {
+        self.address.clone()
     }
 
     fn shutdown(&mut self) {
@@ -296,10 +305,41 @@ pub async fn spawn_ffi_chat_client(name: &str, seed_peers: Vec<Peer>, base_dir: 
 
     ChatFFI {
         ptr: Arc::new(Mutex::new(PtrWrapper(client_ptr))),
-        identity,
+        address: TariAddress::from_public_key(identity.public_key(), Network::LocalNet),
     }
 }
 
+pub async fn sideload_ffi_chat_client(
+    address: TariAddress,
+    base_dir: PathBuf,
+    contacts_handle_ptr: *mut c_void,
+) -> ChatFFI {
+    let mut config = test_config(Multiaddr::empty());
+    config.chat_client.set_base_path(base_dir);
+
+    let config_ptr = Box::into_raw(Box::new(config)) as *mut c_void;
+
+    let client_ptr;
+    let error_out = Box::into_raw(Box::new(0));
+    unsafe {
+        *ChatCallback::instance().contact_status_change.lock().unwrap() = 0;
+
+        client_ptr = sideload_chat_client(
+            config_ptr,
+            contacts_handle_ptr,
+            error_out,
+            callback_contact_status_change,
+            callback_message_received,
+            callback_delivery_confirmation_received,
+            callback_read_confirmation_received,
+        );
+    }
+
+    ChatFFI {
+        ptr: Arc::new(Mutex::new(PtrWrapper(client_ptr))),
+        address,
+    }
+}
 static mut INSTANCE: Option<ChatCallback> = None;
 static START: Once = Once::new();
 
