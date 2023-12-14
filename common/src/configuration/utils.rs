@@ -23,6 +23,7 @@ use crate::{
 pub fn load_configuration<P: AsRef<Path>, TOverride: ConfigOverrideProvider>(
     config_path: P,
     create_if_not_exists: bool,
+    non_interactive: bool,
     overrides: &TOverride,
 ) -> Result<Config, ConfigError> {
     debug!(
@@ -31,7 +32,7 @@ pub fn load_configuration<P: AsRef<Path>, TOverride: ConfigOverrideProvider>(
         config_path.as_ref().to_str().unwrap_or("[??]")
     );
     if !config_path.as_ref().exists() && create_if_not_exists {
-        write_default_config_to(&config_path)
+        write_default_config_to(&config_path, non_interactive)
             .map_err(|io| ConfigError::new("Could not create default config", Some(io.to_string())))?;
     }
     let filename = config_path
@@ -85,13 +86,17 @@ pub fn load_configuration<P: AsRef<Path>, TOverride: ConfigOverrideProvider>(
 
 /// Installs a new configuration file template, copied from the application type's preset and written to the given path.
 /// Also includes the common configuration defined in `config/presets/common.toml`.
-pub fn write_default_config_to<P: AsRef<Path>>(path: P) -> Result<(), std::io::Error> {
+pub fn write_default_config_to<P: AsRef<Path>>(path: P, non_interactive: bool) -> Result<(), std::io::Error> {
     // Use the same config file so that all the settings are easier to find, and easier to
     // support users over chat channels
-    let mine = prompt(
-        "Node config does not exist.\nWould you like to mine (Y/n)?\nNOTE: this will enable gprc methods that can \
-         leak private info on the node",
-    );
+    let mine = if non_interactive {
+        false
+    } else {
+        prompt(
+            "Node config does not exist.\nWould you like to mine (Y/n)?\nNOTE: this will enable gprc methods that can \
+             leak private info on the node",
+        )
+    };
     let base_node_deny_methods = if mine {
         include_str!("../../config/presets/c_base_node_b_mining_deny_methods.toml")
     } else {

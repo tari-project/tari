@@ -139,6 +139,7 @@ impl MergeMiningProxyProcess {
                         ("merge_mining_proxy.stealth_payment".to_string(), stealth.to_string()),
                     ],
                 },
+                non_interactive_mode: false,
             };
             let rt = runtime::Builder::new_multi_thread().enable_all().build().unwrap();
             if let Err(e) = rt.block_on(merge_miner(cli)) {
