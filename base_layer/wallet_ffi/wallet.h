@@ -196,9 +196,6 @@ struct TransportConfig;
  */
 struct UnblindedOutput;
 
-/**
- * -------------------------------- Vector ------------------------------------------------ ///
- */
 struct TariVector {
   enum TariTypeTag tag;
   uintptr_t len;
