@@ -177,10 +177,11 @@ where B: BlockchainBackend + 'static
                     .map_err(|e| ExitError::new(ExitCode::IdentityError, e))?;
             },
         };
-        if let Some(hs) = comms.hidden_service() {
-            identity_management::save_as_json(&base_node_config.tor_identity_file, hs.tor_identity())
-                .map_err(|e| ExitError::new(ExitCode::IdentityError, e))?;
-        }
+        todo!("Fix this");
+        // if let Some(hs) = comms.hidden_service() {
+        //     identity_management::save_as_json(&base_node_config.tor_identity_file, hs.tor_identity())
+        //         .map_err(|e| ExitError::new(ExitCode::IdentityError, e))?;
+        // }
 
         handles.register(comms);
 
