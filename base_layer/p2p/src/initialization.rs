@@ -70,6 +70,7 @@ use tari_storage::{
 use thiserror::Error;
 use tokio::sync::{broadcast, mpsc};
 use tower::ServiceBuilder;
+use tari_comms::transports::HiddenServiceTransport;
 
 use crate::{
     comms_connector::{InboundDomainConnector, PubsubDomainConnector},
@@ -251,20 +252,17 @@ pub async fn spawn_comms_using_transport(
             let listener_address_override = tor_config.listener_address_override.clone();
             let mut hidden_service_ctl = initialize_hidden_service(tor_config)?;
             // Set the listener address to be the address (usually local) to which tor will forward all traffic
-            let transport = hidden_service_ctl.initialize_transport().await?;
+            let instant = Instant::now();
+            let transport = HiddenServiceTransport::new(hidden_service_ctl);
+            error!(target: LOG_TARGET, "TOR transport initialized in {:.0?}", instant.elapsed());
 
-            info!(
-                target: LOG_TARGET,
-                "Tor hidden service initialized. proxied_address = '{:?}', listener_override_address = {:?}",
-                hidden_service_ctl.proxied_address(),
-                listener_address_override,
-            );
+
 
             comms
                 .with_listener_address(
                     listener_address_override.unwrap_or_else(|| multiaddr![Ip4([127, 0, 0, 1]), Tcp(0u16)]),
                 )
-                .with_hidden_service_controller(hidden_service_ctl)
+                // .with_hidden_service_controller(hidden_service_ctl)
                 .spawn_with_transport(transport)
                 .await?
         },

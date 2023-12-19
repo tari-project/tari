@@ -121,10 +121,11 @@ pub async fn start(
             trace!(target: LOG_TARGET, "save chat identity file");
         },
     };
-    if let Some(hs) = comms.hidden_service() {
-        identity_management::save_as_json(&config.chat_client.tor_identity_file, hs.tor_identity())?;
-        trace!(target: LOG_TARGET, "resave the chat tor identity {:?}", hs.tor_identity());
-    }
+    todo!("Fix this");
+    // if let Some(hs) = comms.hidden_service() {
+    //     identity_management::save_as_json(&config.chat_client.tor_identity_file, hs.tor_identity())?;
+    //     trace!(target: LOG_TARGET, "resave the chat tor identity {:?}", hs.tor_identity());
+    // }
     handles.register(comms);
 
     let comms = handles.expect_handle::<CommsNode>();
