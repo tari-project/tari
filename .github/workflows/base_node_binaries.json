@@ -7,7 +7,7 @@
     "cross": false,
     "target_cpu": "x86-64",
     "target_bins": "--bin minotari_node --bin minotari_console_wallet --bin minotari_merge_mining_proxy --bin minotari_miner",
-    "features": "safe"
+    "features": "default, safe"
   },
   {
     "name": "linux-arm64",
@@ -28,7 +28,7 @@
     "cross": false,
     "target_cpu": "x86-64",
     "target_bins": "--bin minotari_node --bin minotari_console_wallet --bin minotari_merge_mining_proxy --bin minotari_miner",
-    "features": "libtor, safe"
+    "features": "default, safe"
   },
   {
     "name": "macos-arm64",
@@ -38,7 +38,7 @@
     "cross": false,
     "target_cpu": "generic",
     "target_bins": "--bin minotari_node --bin minotari_console_wallet --bin minotari_merge_mining_proxy --bin minotari_miner",
-    "features": "libtor, safe",
+    "features": "default, safe",
     "build_enabled": true
   },
   {

@@ -168,7 +168,7 @@ impl Default for BaseNodeConfig {
             grpc_tls_enabled: false,
             mining_enabled: false,
             identity_file: PathBuf::from("config/base_node_id.json"),
-            use_libtor: false,
+            use_libtor: true,
             tor_identity_file: PathBuf::from("config/base_node_tor_id.json"),
             p2p,
             db_type: DatabaseType::Lmdb,

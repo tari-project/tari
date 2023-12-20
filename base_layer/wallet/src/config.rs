@@ -154,7 +154,7 @@ impl Default for WalletConfig {
             recovery_retry_limit: 3,
             fee_per_gram: 5,
             num_required_confirmations: 3,
-            use_libtor: false,
+            use_libtor: true,
             identity_file: None,
         }
     }
