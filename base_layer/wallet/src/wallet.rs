@@ -21,9 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{cmp, marker::PhantomData, sync::Arc};
+use std::time::Duration;
 
 use blake2::Blake2b;
 use digest::consts::U32;
+use futures::FutureExt;
 use log::*;
 use rand::rngs::OsRng;
 use tari_common::configuration::bootstrap::ApplicationType;
@@ -77,6 +79,7 @@ use tari_script::{one_sided_payment_script, ExecutionStack, TariScript};
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::{hex::Hex, ByteArray};
+use tokio::task;
 
 use crate::{
     base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
@@ -102,7 +105,7 @@ use crate::{
     util::wallet_identity::WalletIdentity,
     utxo_scanner_service::{handle::UtxoScannerHandle, initializer::UtxoScannerServiceInitializer, RECOVERY_KEY},
 };
-
+use futures::TryFutureExt;
 const LOG_TARGET: &str = "wallet";
 /// The minimum buffer size for the wallet pubsub_connector channel
 const WALLET_BUFFER_MIN_SIZE: usize = 300;
@@ -280,14 +283,50 @@ where
                 e
             })?;
 
+
+        let comms2 = comms.clone();
+            // .and_then(
+           // |res| async move {
+               // dbg!(res);
+               //  info!(target: LOG_TARGET, "Wallet has established connectivity");
+               //  Ok(())
+            // },
+        // );
+        // let wallet_db2 = wallet_database.clone();
+        // task::spawn(async move {
+        //     let res1 =            comms2.connectivity().wait_for_connectivity(Duration::from_secs(60)).await;
+        //     match res1 {
+        //         Ok(_) => {
+        //             info!(target: LOG_TARGET, "Wallet has established connectivity");
+        //             let res2 = wallet_db2.set_node_address(
+        //                 comms2
+        //                     .node_identity()
+        //                     .first_public_address()
+        //                     .ok_or(WalletError::PublicAddressNotSet).expect("could not set wallet address"),
+        //             );
+        //            match res2 {
+        //                Ok(_) => {
+        //                    info!(target: LOG_TARGET, "Wallet has set node address");
+        //                },
+        //                Err(e) => {
+        //                    error!(target: LOG_TARGET, "Wallet failed to set node address: {:?}", e);
+        //                },
+        //            }
+        //         },
+        //         Err(e) => {
+        //             error!(target: LOG_TARGET, "Wallet failed to establish connectivity: {:?}", e);
+        //         },
+        //     }
+        // });
+
         // Persist the comms node address and features after it has been spawned to capture any modifications made
         // during comms startup. In the case of a Tor Transport the public address could have been generated
-        wallet_database.set_node_address(
-            comms
-                .node_identity()
-                .first_public_address()
-                .ok_or(WalletError::PublicAddressNotSet)?,
-        )?;
+        // wallet_database.set_node_address(
+        //     comms
+        //         .node_identity()
+        //         .first_public_address()
+        //         .ok_or(WalletError::PublicAddressNotSet)?,
+        // )?;
         wallet_database.set_node_features(comms.node_identity().features())?;
         let identity_sig = comms.node_identity().identity_signature_read().as_ref().cloned();
         if let Some(identity_sig) = identity_sig {
