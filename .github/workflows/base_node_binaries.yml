@@ -26,6 +26,8 @@ env:
   CARGO: cargo
   # CARGO_OPTIONS: "--verbose"
   CARGO_OPTIONS: "--release"
+  # Needed for S3 as a default upload location
+  TARI_NETWORK_DIR: testnet
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
