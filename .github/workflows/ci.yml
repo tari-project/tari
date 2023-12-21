@@ -203,7 +203,7 @@ jobs:
       - name: cargo test
         run: cargo nextest run --all-features --release -E "not package(tari_integration_tests)" --profile ci
       - name: upload artifact
-        uses: actions/upload-artifact@v3  # upload test results as artifact
+        uses: actions/upload-artifact@v4  # upload test results as artifact
         if: always()
         with:
           name: test-results
@@ -221,7 +221,7 @@ jobs:
         run: echo $PR_NUM > pr_num.txt
 
       - name: Upload the PR number
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: pr_num
           path: ./pr_num.txt
@@ -232,7 +232,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Upload
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: Event File
           path: ${{ github.event_path }}
