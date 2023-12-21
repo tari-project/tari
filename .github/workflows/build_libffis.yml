@@ -194,7 +194,7 @@ jobs:
         run: brew install coreutils
 
       - name: Download iOS libffiss for ${{ matrix.libffis }}
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           # wildcard downloads not supported yet ( minotari_*_ffi-ios-* )
           # name: ${{ matrix.libffis }}-ios
@@ -311,7 +311,7 @@ jobs:
     if: ${{ startsWith(github.ref, 'refs/tags/v') }}
     steps:
       - name: Download all ffi libraries
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           path: libffiss
 
