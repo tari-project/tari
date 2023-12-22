@@ -70,6 +70,7 @@ features = ["crossterm"]
 tari_features = { path = "../../common/tari_features"}
 
 [features]
+default = ["libtor"]
 libtor = ["tari_libtor"]
 grpc = []
 
