@@ -358,7 +358,7 @@ jobs:
       - name: Artifact upload for macOS pkg
         if: startsWith(runner.os,'macOS')
         continue-on-error: true
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.VERSION }}.pkg
           path: "${{ env.distDirPKG }}/${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.VERSION }}*.pkg*"
@@ -378,7 +378,7 @@ jobs:
           ${{ env.SHARUN }} --check "${{ env.TBN_FILENAME }}-${{ env.VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.builds.name }}-installer.exe.sha256"
 
       - name: Artifact upload for Windows installer
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: startsWith(runner.os,'Windows')
         with:
           name: "${{ env.TBN_FILENAME }}_windows_installer"
@@ -404,7 +404,7 @@ jobs:
           ${SHARUN} --check "${{ env.BINFILE }}.zip.sha256"
 
       - name: Artifact upload for Archive
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ env.TBN_FILENAME }}_archive-${{ matrix.builds.name }}
           path: "${{ github.workspace }}${{ env.TBN_DIST }}/${{ env.BINFILE }}.zip*"
@@ -424,7 +424,7 @@ jobs:
           ${SHARUN} --check "minotari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}.sha256"
 
       - name: Artifact upload for Miner
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: minotari_miner-${{ matrix.builds.name }}
           path: "${{ github.workspace }}${{ env.TBN_DIST }}/minotari_miner-${{ matrix.builds.name }}${{ env.TBN_EXT}}*"
@@ -454,7 +454,7 @@ jobs:
 
       - name: Artifact upload for diag-utils
         continue-on-error: true
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ env.TBN_FILENAME }}_archive-diag-utils-${{ matrix.builds.name }}
           path: "${{ github.workspace }}${{ env.TBN_DIST }}/diag-utils/*.zip*"
