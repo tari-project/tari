@@ -99,7 +99,7 @@ jobs:
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         shell: bash
         run: |
-          source buildtools/multinet_envs.sh ${{github.ref_name}}
+          source buildtools/multinet_envs.sh ${{ github.ref_name }}
           echo ${TARI_NETWORK}
           echo ${TARI_NETWORK_DIR}
           echo "TARI_NETWORK=${TARI_NETWORK}" >> $GITHUB_ENV
@@ -109,7 +109,7 @@ jobs:
         id: vars
         shell: bash
         run: |
-          echo "VBRANCH=$(echo ${{ env.GITHUB_REF_NAME }})" >> $GITHUB_ENV
+          echo "VBRANCH=${{ github.ref_name }}" >> $GITHUB_ENV
           echo "VSHA_SHORT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
 
       - name: Default Destination Folder
@@ -241,13 +241,12 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE${TBN_DIST}"
           cd "$GITHUB_WORKSPACE${TBN_DIST}"
           VERSION=$(awk -F ' = ' '$1 ~ /version/ { gsub(/["]/, "", $2); printf("%s",$2) }' "$GITHUB_WORKSPACE/applications/minotari_node/Cargo.toml")
-          echo "Branch: ${VBRANCH}"
-          echo "Sha: ${VSHA_SHORT}"
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
           echo "VSHA_SHORT=${VSHA_SHORT}" >> $GITHUB_ENV
           BINFILE="${TBN_FILENAME}-${VERSION}-${VSHA_SHORT}-${{ matrix.builds.name }}${TBN_EXT}"
           echo "BINFILE=${BINFILE}" >> $GITHUB_ENV
           echo "Copying files for ${BINFILE} to $(pwd)"
+          echo "MTS_SOURCE=$(pwd)" >> $GITHUB_ENV
           ls -la "$GITHUB_WORKSPACE/target/${{ matrix.builds.target }}/release/"
           FILES=(
             "minotari_node"
@@ -263,6 +262,7 @@ jobs:
           if [ -f "$GITHUB_WORKSPACE/applications/minotari_node/${PLATFORM_SPECIFIC_DIR}/runtime/start_tor${SHELL_EXT}" ]; then
             cp -v "$GITHUB_WORKSPACE/applications/minotari_node/${PLATFORM_SPECIFIC_DIR}/runtime/start_tor${SHELL_EXT}" .
           fi
+          ls -la ${{ env.MTS_SOURCE }}
 
       - name: Build the macOS pkg
         if: startsWith(runner.os,'macOS')
@@ -348,12 +348,14 @@ jobs:
             xcrun stapler staple -v "${distDirPKG}/${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.VERSION }}.pkg"
           fi
           cd ${distDirPKG}
+          ls -la
           echo "Compute pkg shasum"
           ${SHARUN} "${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.VERSION }}.pkg" \
             >> "${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.VERSION }}.pkg.sha256"
           cat "${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.VERSION }}.pkg.sha256"
           echo "Checksum verification for pkg is "
           ${SHARUN} --check "${{ env.TBN_FILENAME }}-${{ matrix.builds.name }}-${{ env.VERSION }}.pkg.sha256"
+          cp -v *.pkg* ${{ env.MTS_SOURCE }}
 
       - name: Artifact upload for macOS pkg
         if: startsWith(runner.os,'macOS')
@@ -466,78 +468,52 @@ jobs:
           rm -vRf "${{ github.workspace }}${{ env.TBN_DIST }}/diag-utils/"
 
       - name: Artifact Windows Installer for S3
+        if: startsWith(runner.os,'Windows')
         continue-on-error: true
         shell: bash
-        run: |  
+        run: |
           if [ -d "${{ github.workspace }}/buildtools/Output/" ]; then
             echo "Coping Windows installer ..."
             cp -v "${{ github.workspace }}/buildtools/Output/"* \
               "${{ github.workspace }}${{ env.TBN_DIST }}"
-          else
-            echo "No buildtools/Output."
           fi
 
       - name: Sync dist to S3 - Bash
         continue-on-error: true # Don't break if s3 upload fails
         if: ${{ env.AWS_SECRET_ACCESS_KEY != '' && matrix.builds.runs-on != 'self-hosted' }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          DEST_DIR: "${{ env.S3DESTOVERRIDE }}${{ env.PLATFORM_SPECIFIC_DIR }}/${{ env.TARI_NETWORK_DIR }}/"
+          S3CMD: "cp"
+          S3OPTIONS: '--recursive --exclude "*" --include "*.zip*" --include "*.pkg*" --include "*.exe*"'
+          # S3OPTIONS: '--acl public-read'
         shell: bash
         run: |
-          echo "Starting upload ... ${{ env.SOURCE }}"
-          if [ "$RUNNER_OS" == "Windows" ]; then
-            echo "No ls for 'D:' on Windows"
-          else
-            ls -al ${{ env.SOURCE }}
-          fi
+          echo "Starting upload ... ${{ env.MTS_SOURCE }}"
+          ls -al ${{ env.MTS_SOURCE }}
 
           aws s3 ${{ env.S3CMD }} --region ${{ secrets.AWS_REGION }} \
-            "${{ env.SOURCE }}" \
+            "${{ env.MTS_SOURCE }}" \
             s3://${{ secrets.AWS_S3_BUCKET }}/${{ env.DEST_DIR }} \
             ${{ env.S3OPTIONS }}
-          echo "Done - $?"
-          exit 0
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          SOURCE: "${{ github.workspace }}${{ env.TBN_DIST }}"
-          DEST_DIR: "${{ env.S3DESTOVERRIDE }}${{ env.PLATFORM_SPECIFIC_DIR }}/${{ env.TARI_NETWORK_DIR }}/"
-          S3CMD: "cp"
-          S3OPTIONS: '--recursive --exclude "*" --include "*.zip*" --include "*.pkg*" --include "*.exe*"'
-          # S3OPTIONS: '--acl public-read'
 
-      - name: Copy tags to latest s3 - Bash
-        continue-on-error: true # Don't break if s3 upload fails
-        if: ${{ env.AWS_SECRET_ACCESS_KEY != '' && matrix.builds.runs-on != 'self-hosted' && startsWith(github.ref, 'refs/tags/v') }}
-        shell: bash
-        run: |
-          echo "Starting upload ... ${{ env.SOURCE }}"
-          if [ "$RUNNER_OS" == "Windows" ]; then
-            echo "No ls for 'D:' on Windows"
-          else
-            ls -al ${{ env.SOURCE }}
+          if [[ "${{ github.ref }}" =~ refs\/tags\/v* ]]; then
+            echo "Copy tags to latest s3"
+            aws s3 ${{ env.S3CMD }} --region ${{ secrets.AWS_REGION }} \
+              "${{ env.MTS_SOURCE }}" \
+              s3://${{ secrets.AWS_S3_BUCKET }}/current/${{ env.DEST_DIR }} \
+              ${{ env.S3OPTIONS }}
+
+            aws s3 rm --region ${{ secrets.AWS_REGION }} \
+              s3://${{ secrets.AWS_S3_BUCKET }}/latest/${{ env.DEST_DIR }}/ \
+              --recursive --include "*"
+
+            aws s3 ${{ env.S3CMD }} --region ${{ secrets.AWS_REGION }} \
+              "${{ env.MTS_SOURCE }}" \
+              s3://${{ secrets.AWS_S3_BUCKET }}/latest/${{ env.DEST_DIR }} \
+              ${{ env.S3OPTIONS }}
           fi
-
-          aws s3 ${{ env.S3CMD }} --region ${{ secrets.AWS_REGION }} \
-            "${{ env.SOURCE }}" \
-            s3://${{ secrets.AWS_S3_BUCKET }}/current/${{ env.DEST_DIR }} \
-            ${{ env.S3OPTIONS }}
-
-          aws s3 rm --region ${{ secrets.AWS_REGION }} \
-            s3://${{ secrets.AWS_S3_BUCKET }}/latest/${{ env.DEST_DIR }}/*
-
-          aws s3 ${{ env.S3CMD }} --region ${{ secrets.AWS_REGION }} \
-            "${{ env.SOURCE }}" \
-            s3://${{ secrets.AWS_S3_BUCKET }}/latest/${{ env.DEST_DIR }} \
-            ${{ env.S3OPTIONS }}
-          echo "Done - $?"
-          exit 0
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          SOURCE: "${{ github.workspace }}${{ env.TBN_DIST }}"
-          DEST_DIR: "${{ env.S3DESTOVERRIDE }}${{ env.PLATFORM_SPECIFIC_DIR }}/${{ env.TARI_NETWORK_DIR }}/"
-          S3CMD: "cp"
-          S3OPTIONS: '--recursive --exclude "*" --include "*.zip*" --include "*.pkg*" --include "*.exe*"'
-          # S3OPTIONS: '--acl public-read'
 
   create-release:
     runs-on: ubuntu-latest
