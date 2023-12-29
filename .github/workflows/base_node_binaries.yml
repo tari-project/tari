@@ -28,6 +28,7 @@ env:
   CARGO_OPTIONS: "--release"
   # Needed for S3 as a default upload location
   TARI_NETWORK_DIR: testnet
+  S3_DEST_OVERRIDE: ""
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -112,14 +113,10 @@ jobs:
           echo "VBRANCH=${{ github.ref_name }}" >> $GITHUB_ENV
           echo "VSHA_SHORT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
 
-      - name: Default Destination Folder
-        run: |
-          echo "S3DESTOVERRIDE=" >> $GITHUB_ENV
-
       - name: Scheduled Destination Folder Override
-        if: ${{ github.event_name == 'schedule' && github.event.schedule == '05 00 01 * *' }}
+        if: ${{ github.event_name == 'schedule' && github.event.schedule == '05 00 * * *' }}
         run: |
-          echo "S3DESTOVERRIDE=daily/" >> $GITHUB_ENV
+          echo "S3_DEST_OVERRIDE=daily/" >> $GITHUB_ENV
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@master
@@ -484,14 +481,15 @@ jobs:
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          DEST_DIR: "${{ env.S3DESTOVERRIDE }}${{ env.PLATFORM_SPECIFIC_DIR }}/${{ env.TARI_NETWORK_DIR }}/"
+          DEST_DIR: "${{ env.S3_DEST_OVERRIDE }}${{ env.PLATFORM_SPECIFIC_DIR }}/${{ env.TARI_NETWORK_DIR }}/"
           S3CMD: "cp"
-          S3OPTIONS: '--recursive --exclude "*" --include "*.zip*" --include "*.pkg*" --include "*.exe*"'
-          # S3OPTIONS: '--acl public-read'
+          S3OPTIONS: '--recursive --exclude "*" --include "*.zip*" --include "*.pkg*" --include "*installer.exe*"'
         shell: bash
         run: |
           echo "Starting upload ... ${{ env.MTS_SOURCE }}"
           ls -al ${{ env.MTS_SOURCE }}
+
+          aws --version
 
           aws s3 ${{ env.S3CMD }} --region ${{ secrets.AWS_REGION }} \
             "${{ env.MTS_SOURCE }}" \
@@ -506,7 +504,7 @@ jobs:
               ${{ env.S3OPTIONS }}
 
             aws s3 rm --region ${{ secrets.AWS_REGION }} \
-              s3://${{ secrets.AWS_S3_BUCKET }}/latest/${{ env.DEST_DIR }}/ \
+              s3://${{ secrets.AWS_S3_BUCKET }}/latest/${{ env.DEST_DIR }} \
               --recursive --include "*"
 
             aws s3 ${{ env.S3CMD }} --region ${{ secrets.AWS_REGION }} \
