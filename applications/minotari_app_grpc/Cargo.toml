@@ -20,18 +20,18 @@ base64 = "0.13.0"
 borsh = "1.2"
 chrono = { version = "0.4.19", default-features = false }
 log = "0.4"
-prost = "0.9"
-prost-types = "0.9"
+prost = "0.10"
+prost-types = "0.10"
 rand = "0.8"
 rcgen = "0.11.3"
 subtle = { version = "2.5.0", features = ["core_hint_black_box"] }
 thiserror = "1"
 tokio = { version = "1.23", features = ["fs"] }
-tonic = "0.6.2"
+tonic = { version = "0.7.2", features = ["tls"]}
 zeroize = "1"
 
 [build-dependencies]
-tonic-build = "0.6.2"
+tonic-build = "0.7.2"
 
 [package.metadata.cargo-machete]
 ignored = ["prost"] # this is so we can run cargo machete without getting false positive about macro dependancies
