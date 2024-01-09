@@ -115,6 +115,7 @@ jobs:
 
       - name: Scheduled Destination Folder Override
         if: ${{ github.event_name == 'schedule' && github.event.schedule == '05 00 * * *' }}
+        shell: bash
         run: |
           echo "S3_DEST_OVERRIDE=daily/" >> $GITHUB_ENV
 
@@ -218,6 +219,7 @@ jobs:
           echo "CARGO_OPTIONS=${{ env.CARGO_OPTIONS }} --release" >> $GITHUB_ENV
 
       - name: Show command used for Cargo
+        shell: bash
         run: |
           echo "cargo command is: ${{ env.CARGO }}"
           echo "cargo options is: ${{ env.CARGO_OPTIONS }}"
