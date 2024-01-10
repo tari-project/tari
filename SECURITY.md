@@ -30,8 +30,8 @@ This policy does not apply to:
 * End-user documentation and educational or "help" materials (e.g., [Tari Labs University](https://tlu.tarilabs.com/));
 * Example or test code.
 * Proof-of-concept or demonstration applications.
-* Code marked `NOT READY FOR PRODUCTION`, unless the code is demonstrably used in production applications, and those 
-  applications are considered in-scope.
+* Code clearly marked as "NOT READY FOR PRODUCTION", or similar wording. An exception is code that is marked as such, 
+  but is demonstrably used in production applications covered by the scope anyway.
 * Support, marketing, and social media channels (e.g., Telegram or Discord);
 * Social engineering of Tari users and Tari Labs staff or contractors;
 * Yat vulnerabilities (which should be disclosed via the [Yat Bug Bounty](https://bugcrowd.com/yat-og) program);
